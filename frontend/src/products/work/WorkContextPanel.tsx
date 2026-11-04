@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarClock, ChevronDown, ChevronRight, RefreshCw, Settings2 } from 'lucide-react'
+import { CalendarClock, ChevronRight, RefreshCw, Settings2 } from 'lucide-react'
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -12,6 +12,7 @@ import { connectionSummary } from '../../components/workspace/workspaceConnectio
 import { cloudStateIcon, cloudStateLabel, type CrewAsk, useCrewAsking, useCrewLivesOnMac, useCrewSharedAgentCount, useYourComputerSummary, YourComputerPanel } from './YourComputerPanel'
 import { activateTab } from '../../utils/activateTab'
 import { useChatStore } from '../../stores/useChatStore'
+import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useContextMenuWideStore } from '../../stores/useContextMenuWideStore'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
@@ -67,7 +68,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const automationItems = inventory.filter(item => item.view === 'schedules')
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' | 'access' }>()
-  const [asksOpen, setAsksOpen] = useState(false)
   const computerState = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:access'), projectId)
   const sharedAgents = useCrewSharedAgentCount(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
   const asking = useCrewAsking(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
@@ -131,32 +131,39 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const sharedText = sharedAgents ? `${sharedAgents} ${sharedAgents === 1 ? 'agent' : 'agents'} shared` : undefined
   // Offline is the whole answer: on this Mac, reached from nowhere else.
   const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, computerState === 'offline' ? undefined : sharedText || who].filter(Boolean).join(' · ') || undefined
-  const accessRow = (item: CrewMenuItem) => item.id === 'mcp:access' && lastAsk ? <div key={item.id} className="flex items-center gap-1"><div className="min-w-0 flex-1"><Row icon={cloudStateIcon(computerState, theirs)} onClick={() => item.id === 'mcp:access' && accessInMenu ? showMenu('access') : open(item)}>{item.label}</Row></div>{askPill()}</div> : <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => item.id === 'mcp:access' && accessInMenu ? showMenu('access') : open(item)}>{item.label}</Row>
-  // Someone else is asking (or just asked) a shared agent on this Mac: the Access row shows who, and a click opens that
-  // agent's tab (owner, 3 Nov mockup access-live). Several asks expand into a short list.
-  const activeAsks = asking.filter(ask => ask.active)
-  const lastAsk = activeAsks[0] || asking[0]
+  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' && !asking.length ? accessDetail : undefined} onClick={() => item.id === 'mcp:access' && accessInMenu ? showMenu('access') : open(item)}>{item.label}</Row>
+  // Someone else asked a shared agent on this Mac in the last 10 minutes: one tree line each under Access (owner, 4 Nov).
+  // A click opens that person's own thread with the agent for the owner to read; their messages are never in the owner's tab.
   const ago = (ask: CrewAsk) => ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`
-  const openAsk = (ask: CrewAsk) => {
-    const tab = Object.values(useChatStore.getState().chatTabs).find(row => row.metadata?.agentProfileProjectId === projectId && !row.metadata?.isViewOnly && (ask.tab === 'main' ? row.metadata?.agentProfileIsMainChat : row.metadata?.agentProfileConversationKey === ask.conversation_key))
-    if (tab) activateTab(tab.tabId)
+  const openAsk = async (ask: CrewAsk) => {
+    const store = useChatStore.getState()
+    const tabs = Object.values(store.chatTabs)
+    const main = tabs.find(row => row.metadata?.agentProfileProjectId === projectId && row.metadata?.agentProfileIsMainChat && !row.metadata?.isViewOnly)
+    if (!main || !ask.session_id) return
+    const existing = tabs.find(row => row.sessionId === ask.session_id && row.metadata?.isViewOnly)
+    const tabId = existing?.tabId || await store.createChatTab(`${ask.sender} · ${ask.agent}`, {
+      ...main.metadata,
+      agentProfileIsMainChat: false,
+      agentProfileBuilder: false,
+      agentProfileConversationKey: `${projectId}:history:${ask.session_id}`,
+      agentProfileConversationId: undefined,
+      isViewOnly: true,
+      readOnlyRestoredAt: Date.now(),
+      userInteractiveContinuation: false,
+    }, ask.session_id)
+    store.setTabCanSteer(tabId, false)
+    await hydrateTabEvents(ask.session_id, { workspacePath: main.metadata?.agentProfileWorkspace, fallbackToChatHistory: true, preferChatHistory: true })
+    activateTab(tabId)
   }
-  const askPill = () => lastAsk && <button type="button" aria-expanded={asking.length > 1 ? asksOpen : undefined} onClick={() => asking.length > 1 ? setAsksOpen(value => !value) : openAsk(lastAsk)} title={asking.length > 1 ? 'Who asked your agents' : `Open ${lastAsk.agent}`}
-    className={`ml-auto inline-flex max-w-[65%] shrink-0 items-center gap-1.5 truncate rounded-full px-2 py-0.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeAsks.length ? 'bg-emerald-500/10 text-foreground hover:bg-emerald-500/20' : 'text-muted-foreground hover:bg-muted'}`}>
-    {activeAsks.length > 0 && <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 motion-safe:animate-pulse" />}
-    {asking.length > 1 ? <><span className="truncate">{asking.length} asking your agents</span><ChevronDown aria-hidden="true" className={`h-3 w-3 shrink-0 transition-transform ${asksOpen ? 'rotate-180' : ''}`} /></>
-      : activeAsks.length ? <span className="truncate">{lastAsk.sender} is asking {lastAsk.agent}</span>
-      : <span className="truncate"><span className="font-medium text-foreground">{lastAsk.sender}</span> asked {lastAsk.agent} · {ago(lastAsk)}</span>}
-  </button>
-  const asksList = asking.length > 1 && asksOpen && <div role="list" aria-label="Who asked your agents" className="ml-6 space-y-0.5 pb-1">
-    {asking.slice(0, 5).map(ask => <button key={`${ask.tab}:${ask.sender}`} role="listitem" type="button" onClick={() => openAsk(ask)} title={`Open ${ask.agent}`} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+  const asksTree = asking.length > 0 && <div role="list" aria-label="Who asked your agents" className="ml-3 border-l border-border pl-2 pb-1">
+    {asking.slice(0, 5).map(ask => <button key={`${ask.tab}:${ask.sender}`} role="listitem" type="button" onClick={() => void openAsk(ask)} title={`Open ${ask.sender}'s chat with ${ask.agent}`} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${ask.active ? 'bg-emerald-500 motion-safe:animate-pulse' : 'bg-muted-foreground/40'}`} />
-      <span className="min-w-0 flex-1 truncate"><span className="text-foreground">{ask.sender}</span> → {ask.agent}</span>
+      <span className="min-w-0 flex-1 truncate"><span className="font-medium text-foreground">{ask.sender}</span> {ask.active ? 'is asking' : 'asked'} {ask.agent}</span>
       <span className="shrink-0 text-muted-foreground">{ago(ask)}</span>
     </button>)}
     {asking.length > 5 && <p className="px-1.5 text-[11px] text-muted-foreground">+{asking.length - 5} more</p>}
   </div>
-  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(accessRow)}{asksList}</div>}>
+  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.map(accessRow)}{asksTree}</div>}>
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Dashboards work once this Crew is online. Move it online from your Mac.</p>
