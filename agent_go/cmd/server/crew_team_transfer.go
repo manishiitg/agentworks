@@ -196,7 +196,7 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			externalJSON(w, in)
 			return
 		}
-		if e = store.EncodeSync(r.Context(), pair, crewTeamRoots(root), &snapshot); e != nil {
+		if e = store.EncodeFolderSync(r.Context(), pair, crewTeamRoots(root), &snapshot); e != nil {
 			fail(e)
 			return
 		}
