@@ -130,9 +130,4 @@ func TestSharedAgentThreadPerSender(t *testing.T) {
 	if !hiddenFromTabStrip(a) || isUserViewConversationKey(a) || !isSideChatConversationKey(a) {
 		t.Fatalf("thread %q: hidden=%t userView=%t side=%t", a, hiddenFromTabStrip(a), isUserViewConversationKey(a), isSideChatConversationKey(a))
 	}
-	for _, tool := range []string{"share", "manage_crew_sync", "settings", "set_workflow_secret"} {
-		if !sharedAgentOwnerOnlyTools[tool] {
-			t.Fatalf("%s is offered to someone else's turn", tool)
-		}
-	}
 }

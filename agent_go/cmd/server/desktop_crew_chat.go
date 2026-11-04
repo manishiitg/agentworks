@@ -303,7 +303,7 @@ func projectCrewMacEvents(raw []byte, local, paired string) ([]byte, error) {
 	return json.Marshal(envelope)
 }
 
-// crewMacSharedAskKey marks a turn as another person's message to a shared Mac agent (its value is their id): it runs
+// crewMacSharedAskKey marks a turn as another person's message to a shared Mac agent (its value is a *crewMacSharedAsk): it runs
 // with the agent's own tools, without secrets or owner-only tools (agent_profile_routes.go). Only desktopMacSharedAgent
 // sets it.
 type crewMacSharedAskKey struct{}
@@ -383,7 +383,12 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 			attribution["client_message_id"] = idempotency
 		}
 		askCtx := context.WithValue(ctx, deliveredAgentMessageKey{}, attribution)
-		askCtx = context.WithValue(askCtx, crewMacSharedAskKey{}, args.SenderID)
+		// The sender's turn starts from the owner's own chat with this agent (owner, 4 Nov, decisions log).
+		ask := &crewMacSharedAsk{Sender: args.SenderID}
+		if owner, err := api.resolveAgentProfileConversation(r, profile, macSharedAgentChatKey(project, call.Tab), ""); err == nil {
+			ask.Owner = owner
+		}
+		askCtx = context.WithValue(askCtx, crewMacSharedAskKey{}, ask)
 		// Queued as its own turn, never steered into another sender's running turn: each sender reads only their own.
 		body, _ := json.Marshal(AgentProfileChatRequest{Message: crewMacSharedAgentText(*agent, call.Caller, message), ConversationKey: conversation.ConversationKey, DeliveryMode: "queue"})
 		req, _ := http.NewRequestWithContext(askCtx, http.MethodPost, "http://localhost/api/agent-profiles/work/query", bytes.NewReader(body))
