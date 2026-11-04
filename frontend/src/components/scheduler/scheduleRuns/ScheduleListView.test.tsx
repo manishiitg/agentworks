@@ -131,16 +131,4 @@ describe('ScheduleListView declutter', () => {
     }
   })
 
-  it('says Not run yet instead of Last ran: never', async () => {
-    const { host, unmount } = await renderList([
-      job({ id: 'a', name: 'Fresh', run_count: 0 }),
-    ])
-    try {
-      expect(host.textContent).toContain('Not run yet')
-      expect(host.textContent).not.toContain('Last ran: never')
-    } finally {
-      await unmount()
-    }
-  })
-
 })

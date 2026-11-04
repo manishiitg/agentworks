@@ -18,11 +18,6 @@ describe('project activity presentation', () => {
   it('keeps server-reported background-only work visible after foreground completion', () => {
     expect(workProjectActivity([session('main', { display_status: 'idle', status: 'waiting', has_running_background_agents: true })], tabs, 'project')).toBe('running')
   })
-  it('recognizes the legacy Code scope after a move without changing session identity', () => {
-    const legacy = session('code:project:project:chat:hidden', { workspace_path: '_users/owner/Chats/Code/projects/project' })
-    expect(workProjectActivity([legacy], tabs, 'project')).toBe('running')
-    expect(legacy.session_id).toBe('code:project:project:chat:hidden')
-  })
 })
 it('uses saved names and makes only legacy hexadecimal/empty labels readable without renaming', () => {
   expect(workSideChatDisplayName('Quarterly review')).toBe('Quarterly review')

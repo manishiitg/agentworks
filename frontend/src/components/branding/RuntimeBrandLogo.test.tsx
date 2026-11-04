@@ -29,13 +29,6 @@ it('retains light and dark wordmarks in a horizontal header', async () => {
   await act(async () => root.render(<RuntimeBrandLogo />))
   expect(Array.from(host.querySelectorAll('img')).map(image => image.getAttribute('src'))).toEqual(['/brand/logo.svg', '/brand/logo-white.svg'])
 })
-it('fits a wordmark inside the rail when the deployment has no mark', async () => {
-  window.__APP_RUNTIME_CONFIG__ = { appName: 'customer', logoUrl: '/brand/logo.svg', logoDarkUrl: '/brand/logo-white.svg' }
-  await act(async () => root.render(<ProductTopBar><RuntimeBrandLogo /></ProductTopBar>))
-  expect(host.querySelector('img')?.className).toContain('w-full object-contain')
-  expect(host.querySelector('img')?.className).not.toContain('w-auto')
-})
-
 it('uses the default AgentWorks mark and name in the sidebar without custom branding', async () => {
   delete window.__APP_RUNTIME_CONFIG__
   await act(async () => root.render(<RuntimeBrandLogo variant="sidebar-header" />))

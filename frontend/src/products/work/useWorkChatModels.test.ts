@@ -39,9 +39,9 @@ describe('server chat-model projection', () => {
     for (const tab of Object.values(protectedTabs)) expect(tabs[tab.tabId]).toBe(tab)
   })
 
-  it('keeps unavailable selections repairable without inventing a replacement runtime', () => {
+  it('drops the stale runtime when the server reports the chat model unavailable', () => {
     useChatStore.setState({ chatTabs: { main: chat('main', 'crew', { agentProfileEngine: 'cursor', agentProfileModelID: 'auto', agentProfileRuntimeDirty: false }) } })
     applyWorkChatModels('work', 'crew', [{ conversation_key: 'crew', engine: '', provider: '', own_model: true, display_label: 'Model unavailable', error: 'Choose an available model in Models.' }], true)
-    expect(useChatStore.getState().chatTabs.main.metadata).toMatchObject({ agentProfileChatModelLabel: 'Model unavailable', agentProfileCanOpenModels: true, agentProfileEngine: 'cursor', agentProfileModelID: 'auto', agentProfileRuntimeDirty: false })
+    expect(useChatStore.getState().chatTabs.main.metadata).toMatchObject({ agentProfileChatModelLabel: 'Model unavailable', agentProfileCanOpenModels: true, agentProfileEngine: undefined, agentProfileModelID: undefined })
   })
 })

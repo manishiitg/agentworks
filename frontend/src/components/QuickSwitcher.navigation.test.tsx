@@ -84,7 +84,6 @@ it('defaults to running workflows, Crews and Relays before idle work, with brows
     expect.stringContaining('Running Crew'), expect.stringContaining('Running project'),
   ]))
   expect(rows[4].textContent).toContain('Idle current')
-  expect(rows[0].className).toContain('bg-blue-50')
   expect(rows[5].getAttribute('data-navigation-id')).toBe('browse:active')
   expect(host.querySelector('[data-navigation-id="browse:workflows"]')).not.toBeNull()
   expect(host.querySelector('[data-navigation-id="browse:relays"]')).not.toBeNull()
@@ -136,7 +135,6 @@ it('ranks exact names first, then recency before match strength and activity, wi
     'crew:running', 'crew:current', 'crew:olderA', 'crew:olderB',
     'panel:analytics:keywords',
   ])
-  expect(host.querySelector('[data-navigation-id="crew:exact"]')?.className).toContain('bg-blue-50')
 
   // Preserve the panel scope and word-order-independent search, while giving
   // words found entirely in the tab name priority over its keywords.

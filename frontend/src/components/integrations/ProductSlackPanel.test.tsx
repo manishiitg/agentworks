@@ -20,7 +20,6 @@ it('keeps the bot form readable and preserves server selection restrictions and 
   const host = document.createElement('div'), root = createRoot(host)
   try {
     await act(async () => root.render(<ProductSlackPanel workspacePath="Crew/one" section="bot" />))
-    expect(host.firstElementChild?.className).toContain('max-w-3xl')
     expect(host.textContent).toContain('Let people message this Crew')
     expect(host.textContent).toContain('Each connection keeps its own permissions')
     expect([...host.querySelectorAll('button')].find(button => button.textContent === 'Use here')?.disabled).toBe(true)

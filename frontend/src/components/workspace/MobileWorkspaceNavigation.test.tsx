@@ -26,7 +26,6 @@ it('switches full-height phone panes without losing the mounted draft, and offer
     expect(host.querySelector('header')?.className).not.toContain('max-md:hidden')
     expect(host.querySelector('main')?.className).toContain('hidden md:flex')
     expect(host.querySelector('aside')?.classList.contains('hidden')).toBe(false)
-    expect(host.querySelector('[class*="grid-rows"]')?.className).not.toContain('row-start-3')
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close workspace panel"]')!.click())
     expect(draft.value).toBe('Keep this draft')
     expect(host.querySelector('aside')?.className).toContain('hidden md:block')

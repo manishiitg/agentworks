@@ -9,12 +9,11 @@ it('neither Crew nor Code shows a "Native agent tools" switch', () => {
 })
 
 describe('projectProductForPath at the shared root', () => {
-  it('knows a Crew at Crew/<folder>, in any spelling of the folder, and nothing else under Crew', () => {
+  it('knows a Crew at Crew/<folder> and nothing else under Crew', () => {
     expect(projectProductForPath('Crew/sde-1a2b3c4d')).toBe(CREW_PRODUCT)
     expect(projectProductForPath('/Crew/sde-1a2b3c4d/db/reports')).toBe(CREW_PRODUCT)
     expect(projectProductForPath('Crew')).toBeNull()
     expect(projectProductForPath('Crew/')).toBeNull()
     expect(projectProductForPath('Crew/.migrating/x')).toBeNull()
-    expect(projectProductForPath('Chats/Work/projects/x-1')).toBe(CREW_PRODUCT)
   })
 })

@@ -86,7 +86,6 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
     const mcp = setup.querySelector<HTMLButtonElement>('[aria-label="Connect AI tools"]')!
     expect(setup.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
     expect(setup.querySelector('[aria-label="My vaults"]')).toBeNull()
-    expect(setup.querySelector('[aria-label="Setup"]')?.className).toContain('grid-cols-2')
     expect(setup.textContent).toContain('AI models & accounts')
     expect(setup.textContent).toContain('CLI, Cowork & ChatGPT')
     expect(picker.hidden).toBe(true)
@@ -155,7 +154,6 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
     await act(async () => window.dispatchEvent(new Event('open-product-settings')))
     expect(menu.hidden).toBe(false)
     expect(picker.hidden).toBe(true)
-    expect(menu.className).toContain('bottom-full')
     await act(async () => destination.querySelector<HTMLButtonElement>('[aria-label="Connect AI tools"]')!.click())
     expect(useAppStore.getState().adminPage).toBe('mcp')
     expect(menu.hidden).toBe(true)

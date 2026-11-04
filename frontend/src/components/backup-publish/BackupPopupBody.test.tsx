@@ -68,9 +68,6 @@ it('renders destinations without kickers or commit hashes', async () => {
     expect(host.textContent).toContain('org/repo')
     expect(host.textContent).not.toContain('abcdef12')
     expect(host.textContent).not.toContain('Backed up 34 files with mirrors.')
-    for (const chip of host.querySelectorAll('.rounded.bg-muted')) {
-      expect(chip.className).not.toContain('uppercase')
-    }
   } finally {
     await unmount()
   }

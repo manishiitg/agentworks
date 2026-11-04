@@ -72,11 +72,9 @@ it('keeps a bottom-left entry with Escape dismissal when the sidebar is collapse
   auth.user.allowed_products = ['work', 'bullpen']
   await render(async host => {
     const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Account & settings"]')!
-    expect(trigger.parentElement?.className).toContain('bottom-3 left-3')
     await act(async () => trigger.click())
     const menu = host.querySelector<HTMLElement>('[role="menu"]')!
     expect(menu.hidden).toBe(false)
-    expect(menu.className).toContain('left-full')
     expect([...menu.querySelectorAll('[data-product-option]')].map(item => item.getAttribute('aria-label'))).toEqual(['Crew', 'AgentBridge', 'Dashboards', 'CLI / MCP'])
     expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBeNull()
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))

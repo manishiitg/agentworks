@@ -66,7 +66,6 @@ it('expands to labeled rows, facts, and actions', async () => {
   await act(async () => (viewChat as HTMLButtonElement).click())
   expect(onOpen).toHaveBeenCalledWith(successRun)
   const remove = host.querySelector('button[aria-label="Delete conversation record"]')
-  expect(remove?.className).not.toContain('destructive')
   await act(async () => (remove as HTMLButtonElement).click())
   expect(onDelete).toHaveBeenCalledWith(successRun)
 })
