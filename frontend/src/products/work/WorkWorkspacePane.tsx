@@ -48,7 +48,7 @@ const ReplyFileViewer = lazy(() => import('../../components/workspace/ReplyFileV
 const ChatFileReview = lazy(() => import('../../components/workspace/ChatFileReview.tsx').then(module => ({ default: module.ChatFileReview })))
 const CostsPopup = lazy(() => import('../../components/workflow/CostsPopup'))
 const AutomationHubPanel = lazy(() => import('../../components/automation/AutomationHubPanel').then(module => ({ default: module.AutomationHubPanel })))
-const ReportView = lazy(() => import('../../components/workflow/ReportViewer').then(module => ({ default: module.ReportView })))
+const CrewDashboardPanel = lazy(() => import('./CrewDashboardPanel').then(module => ({ default: module.CrewDashboardPanel })))
 const DatabaseView = lazy(() => import('../../components/workflow/DatabaseView'))
 const ReportHumanInputPanel = lazy(() => import('../../components/workflow/ReportHumanInputPanel'))
 const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ default: module.CodeShellPanel })))
@@ -342,7 +342,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           skillsManager={<WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} onOpenFile={filePath => { void openProjectFile(filePath) }} onSelectedSkillsChange={onSelectedSkillsChange} />}
         />}
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>
-          {view === 'dashboard' && <ReportView
+          {view === 'dashboard' && <CrewDashboardPanel
+            projectId={projectId}
             workspacePath={workspacePath}
             dashboardConversation
             crewConversationPane={readOnly}

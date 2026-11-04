@@ -554,6 +554,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) emitScriptedExecutionEvent(
 	if scriptPath != "" {
 		scriptRelPath := strings.TrimPrefix(scriptPath, docsRoot+"/")
 		scriptRelPath = strings.TrimPrefix(scriptRelPath, hcpo.GetWorkspacePath()+"/")
+		if hcpo.crewAutomationCodeRoot != "" && strings.HasPrefix(scriptPath, hcpo.crewAutomationCodeRoot+string(filepath.Separator)) {
+			// Authored Crew source has a physical .agentworks path. Read it
+			// through this executable's logical namespace, just like execution.
+			scriptRelPath = filepath.Join(hcpo.scriptedSourceDir(stepID), filepath.Base(scriptPath))
+		}
 		if content, err := hcpo.ReadWorkspaceFile(ctx, scriptRelPath); err == nil {
 			scriptContent = content
 			hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted] Read script content for UI: %s (%d bytes)", scriptRelPath, len(content)))

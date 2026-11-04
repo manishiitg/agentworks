@@ -129,6 +129,28 @@ func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
 	return &binding, nil
 }
 
+// Old workflows may have a folder name distinct from their stable manifest ID.
+// Resolve through the private registry; never synthesize a filesystem path from
+// an ID or accept an editable manifest as ownership evidence.
+func findCrewExecutableByID(id string) (*crewExecutableBinding, error) {
+	bindings, err := readCrewExecutables()
+	if err != nil {
+		return nil, err
+	}
+	var result *crewExecutableBinding
+	for _, binding := range bindings {
+		if binding.ID != id {
+			continue
+		}
+		if result != nil {
+			return nil, fmt.Errorf("workflow identity is registered more than once")
+		}
+		copy := binding
+		result = &copy
+	}
+	return result, nil
+}
+
 func registerCrewExecutable(binding crewExecutableBinding) error {
 	crewExecutablesMu.Lock()
 	defer crewExecutablesMu.Unlock()

@@ -1,0 +1,140 @@
+"""PLAT-746-265: one-Goal conversion preserves history and cannot widen access."""
+from contextlib import closing
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import sqlite3
+import tempfile
+import unittest
+
+spec=importlib.util.spec_from_file_location('goal_conversion',Path(__file__).with_name('migrate-goal-to-crew.py'))
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+
+
+def write(p,v):
+    p.parent.mkdir(parents=True,exist_ok=True)
+    p.write_text(json.dumps(v))
+
+
+def hashes(root):
+    return {str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
+
+
+class Migration(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.base=Path(self.tmp.name).resolve();self.docs=self.base/'docs';self.state=self.base/'state'
+        self.source=self.docs/'Workflow/old-goal';self.private=self.docs/'_system/crew-data/crew'
+        write(self.state/'ownership/workflows.json',{'Workflow/old-goal':'owner'})
+        write(self.state/'ownership/projects.json',{'projects':{'work/target':{'product':'work','folder':'target','owner_id':'owner','project_id':'crew','private':True,'run_people':['runner']}}})
+        (self.docs/'Crew/target').mkdir(parents=True)
+        write(self.private/'product.json',{'id':'crew','product':'work','main_chat_key':'crew:chat:existing'})
+        write(self.source/'workflow.json',{'id':'old-goal','label':'Revenue goal','created_by':'owner','access':{'owners':['owner'],'readers':['runner']},'schedules':[], 'capabilities':{'selected_secrets':['api-name']}})
+        write(self.source/'planning/plan.json',{'steps':[{'id':'one','type':'scripted'}]})
+        write(self.source/'variables/variables.json',{'variables':[],'groups':[{'name':'default','values':{},'enabled':True}]})
+        write(self.source/'code/one/main.py',{'source':'original'})
+        (self.source/'code/one/main.py').write_text('# original script\n')
+        write(self.source/'runs/iteration-1/run_metadata.json',{'run_id':'original-run'})
+        write(self.source/'skills/example/SKILL.md',{'untouched':'skill'})
+        write(self.source/'knowledgebase/example.json',{'untouched':'knowledge'})
+        write(self.source/'db/reports/index.html',{'report':'original business report'})
+        write(self.docs/'Workflow/unrelated/workflow.json',{'id':'unrelated'})
+        self.key='old-goal:chat:owner-'+hashlib.sha256(b'owner').hexdigest()[:16]
+        record={'profile_id':'agentworks','conversation_key':self.key,'conversation_id':'conversation-original','session_id':'session-original','workspace_path':'Workflow/old-goal','resource_id':'old-goal'}
+        write(self.docs/'_users/owner/chat_history/product-conversations.json',{'entries':{'agentworks/'+self.key:record},'agents':{'agentworks/'+self.key:{'name':'Revenue Builder'}}})
+        self.oldpath='Workflow/old-goal/builder/conversation/users/owner/2026-11-04/session-session-original-conversation.json'
+        write(self.docs/self.oldpath,{'session_id':'session-original','user_id':'owner','workspace_path':'Workflow/old-goal','conversation_history':[{'role':'user','content':'Do not rewrite Workflow/old-goal inside messages'}]})
+        write(self.docs/'_users/owner/chat_history/index.json',{'entries':{self.oldpath:{'session':{'session_id':'session-original','workspace_path':'Workflow/old-goal','conversation_path':self.oldpath},'conversation_path':self.oldpath}}})
+        for filename,field in [('schedules.json','schedules'),('functions.json','functions'),('webhooks.json','webhooks')]:
+            write(self.source/filename,{field:[{'id':field+'-original','name':field,'enabled':False,'run_as':'owner','project':{'kind':'goal','id':'old-goal'},'action':{'type':'run','tab':self.key},'input':{'groups':['default']},'auth':{'encrypted_secret':'opaque-not-printed'}}]})
+        with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
+            db.execute('CREATE TABLE business_data(value TEXT)');db.execute("INSERT INTO business_data VALUES ('unchanged')")
+            db.execute('CREATE TABLE workflow_goal_metrics(metric_id TEXT PRIMARY KEY, definition_json TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1)')
+            db.execute('INSERT INTO workflow_goal_metrics VALUES (?,?,1)',('revenue',json.dumps({'id':'revenue','role':'primary','unit':'USD','target':20})))
+            db.execute('CREATE TABLE goal_observations(observation_id TEXT PRIMARY KEY,criterion_id TEXT,metric TEXT,run_id TEXT,route TEXT,environment TEXT,value REAL,status TEXT,unit TEXT,observed_at TEXT,window_start TEXT,window_end TEXT,evidence_json TEXT,recorded_at TEXT)')
+            db.execute('INSERT INTO goal_observations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',('original-observation','earned','revenue','source-run','','',12,'','USD','2026-11-01T00:00:00Z','','','["source report"]','2026-11-01T00:00:00Z'))
+
+        # Existing canonical chat journal must remain untouched by conversion.
+        with closing(sqlite3.connect(self.state/'structured-chat-events-v2.sqlite')) as db,db:
+            db.execute('CREATE TABLE structured_chat_sessions(session_id TEXT,owner_id TEXT)')
+            db.execute('CREATE TABLE structured_chat_sequences(session_id TEXT,last_sequence INTEGER)')
+            db.execute("INSERT INTO structured_chat_sessions VALUES ('session-original','owner')")
+            db.execute("INSERT INTO structured_chat_sequences VALUES ('session-original',2)")
+
+    def conversion(self):return m.Conversion(self.docs,self.state,'old-goal','crew')
+
+    def test_one_goal_preserves_history_ids_other_goal_and_private_chats(self):
+        before=hashes(self.base);c=self.conversion()
+        self.assertEqual(c.report()['status'],'ready');self.assertEqual(hashes(self.base),before)
+        result=c.apply();self.assertTrue(Path(result['backup'],'files.tar.gz').exists())
+        self.assertFalse((self.source/'workflow.json').exists())
+        self.assertTrue((self.docs/'Crew/target/.agentworks/workflows/old-goal/workflow.json').exists())
+        self.assertEqual((self.source/'runs/iteration-1/run_metadata.json').read_text(),'{"run_id": "original-run"}')
+        after=hashes(self.base)
+        for name in ['docs/Workflow/unrelated/workflow.json','docs/Workflow/old-goal/skills/example/SKILL.md','docs/Workflow/old-goal/knowledgebase/example.json','docs/Workflow/old-goal/db/reports/index.html']:
+            self.assertEqual(before[name],after[name])
+        with closing(sqlite3.connect(self.private/'db/db.sqlite')) as db, db:
+            self.assertEqual(db.execute('SELECT observation_id,metric,recorded_at FROM goal_observations').fetchall(),[('original-observation','revenue','2026-11-01T00:00:00Z')])
+            self.assertEqual(db.execute('SELECT run_id FROM goal_observations').fetchone()[0],'old-goal:source-run')
+            self.assertEqual(json.loads(db.execute('SELECT definition_json FROM crew_goals').fetchone()[0])['status'],'active')
+        with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
+            self.assertEqual(db.execute('SELECT * FROM business_data').fetchall(),[('unchanged',)])
+            self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name='goal_observations'").fetchall())
+        for filename,field in [('schedules.json','schedules'),('functions.json','functions'),('webhooks.json','webhooks')]:
+            entry=m.read(self.source/filename)[field][0]
+            self.assertFalse(entry['enabled']);self.assertTrue(entry['action']['tab'].startswith('imported-'))
+            self.assertEqual(entry['input'],{'input_preset':'default'})
+            self.assertEqual(entry['auth']['encrypted_secret'],'opaque-not-printed')
+        transcript=next((self.private/'builder/conversation').rglob('*-conversation.json'))
+        self.assertEqual(m.read(transcript)['conversation_history'][0]['content'],'Do not rewrite Workflow/old-goal inside messages')
+        self.assertEqual(m.read(transcript)['user_id'],'owner')
+        registry=m.read(self.docs/'_users/owner/chat_history/product-conversations.json')
+        row=next(iter(registry['entries'].values()))
+        self.assertEqual(row['session_id'],'session-original');self.assertEqual(row['resource_id'],'crew')
+        index=m.read(self.docs/'_users/owner/chat_history/index.json')
+        item=next(iter(index['entries'].values()))
+        self.assertTrue(item['session']['conversation_path'].startswith('Crew/target/'))
+        self.assertEqual(self.conversion().report()['status'],'already migrated')
+        self.conversion().apply();self.assertEqual(after,hashes(self.base))
+
+    def test_refuses_access_expansion_collision_and_escaping_source_without_writes(self):
+        registry=self.state/'ownership/projects.json';original=m.read(registry)
+        changed=m.read(registry);changed['projects']['work/target']['private']=False;write(registry,changed)
+        before=hashes(self.base)
+        with self.assertRaisesRegex(ValueError,'sharing audience'):self.conversion()
+        self.assertEqual(before,hashes(self.base));write(registry,original)
+        destination=self.docs/'Crew/target/.agentworks/workflows/old-goal';destination.mkdir(parents=True)
+        with self.assertRaisesRegex(ValueError,'already has source'):self.conversion()
+        destination.rmdir()
+        (self.source/'code/escape').symlink_to(self.base)
+        with self.assertRaisesRegex(ValueError,'symlink'):self.conversion()
+
+
+    def test_second_goal_merges_without_replacing_first_and_keeps_distinct_folder_id(self):
+        first=self.conversion().apply()
+        source=self.docs/'Workflow/second-folder'
+        write(source/'workflow.json',{'id':'second-id','label':'Reporting','access':{'owners':['owner'],'readers':['runner']}})
+        owners=m.read(self.state/'ownership/workflows.json');owners['Workflow/second-folder']='owner';write(self.state/'ownership/workflows.json',owners)
+        result=m.Conversion(self.docs,self.state,'second-folder','crew').apply()
+        with closing(sqlite3.connect(self.private/'db/db.sqlite')) as db:
+            goals=[json.loads(row[0]) for row in db.execute('SELECT definition_json FROM crew_goals')]
+            self.assertEqual(len(goals),2)
+            self.assertEqual(len(db.execute('SELECT * FROM goal_observations').fetchall()),1)
+        second=next(g for g in goals if g['id']==result['goal_id'])
+        self.assertEqual(second['workflow_ids'],['second-id'])
+        self.assertTrue((self.docs/'Crew/target/.agentworks/workflows/second-id/workflow.json').is_file())
+
+    def test_legacy_batch_and_raw_database_scripts_report_before_any_writes(self):
+        file=self.source/'schedules.json';doc=m.read(file);doc['schedules'][0]['input']={'groups':['one','two']};write(file,doc)
+        before=hashes(self.base)
+        with self.assertRaisesRegex(ValueError,'batch schedules'):self.conversion()
+        self.assertEqual(before,hashes(self.base))
+        doc['schedules'][0]['input']={};write(file,doc)
+        (self.source/'code/one/main.py').write_text("import sqlite3, os\nsqlite3.connect(os.environ['DB_PATH'])\n")
+        before=hashes(self.base)
+        with self.assertRaisesRegex(ValueError,'agentworks_db'):self.conversion()
+        self.assertEqual(before,hashes(self.base))
+
+
+if __name__=='__main__':unittest.main()

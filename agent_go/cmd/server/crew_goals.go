@@ -68,7 +68,7 @@ func (api *StreamingAPI) handleCrewGoals(w http.ResponseWriter, r *http.Request)
 				req.Goal.ID = uuid.NewString()
 			}
 			for _, id := range req.Goal.WorkflowIDs {
-				binding, e := findCrewExecutable("Workflow/" + id)
+				binding, e := findCrewExecutableByID(id)
 				if e != nil || binding == nil || binding.ID != id || binding.CrewRoot != root || (binding.Kind != "workflow" && binding.Kind != "script") {
 					http.Error(w, "Choose workflows or scripts belonging to this Crew.", 400)
 					return
@@ -102,7 +102,45 @@ func (api *StreamingAPI) handleCrewGoals(w http.ResponseWriter, r *http.Request)
 	for _, goal := range goals {
 		progress[goal.ID] = step.SummarizeCrewGoal(goal, ledger, time.Now())
 	}
-	writeAIJSON(w, map[string]any{"goals": goals, "measurements": ledger, "progress": progress, "can_edit": project.OwnedByCaller && userAccessForClaims(claims).CanEdit, "workspace_path": root})
+	// Keep migrated dashboards on their original workflow/database. The Crew
+	// offers them through the same report viewer, without copying SQL or files.
+	dashboards := []map[string]string{}
+	seen := map[string]bool{}
+	defaultDashboard := root
+	_, parentReport, reportErr := readFileFromWorkspace(r.Context(), root+"/db/reports/index.html")
+	if reportErr != nil {
+		http.Error(w, "Could not load dashboards.", 500)
+		return
+	}
+	for _, goal := range goals {
+		for _, id := range goal.WorkflowIDs {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			binding, err := findCrewExecutableByID(id)
+			if err != nil {
+				http.Error(w, "Could not load dashboards.", 500)
+				return
+			}
+			if binding == nil || binding.CrewRoot != root {
+				continue
+			}
+			_, exists, err := readFileFromWorkspace(r.Context(), binding.Root+"/db/reports/index.html")
+			if err != nil {
+				http.Error(w, "Could not load dashboards.", 500)
+				return
+			}
+			if !exists {
+				continue
+			}
+			dashboards = append(dashboards, map[string]string{"workspace_path": binding.Root, "name": goal.Name})
+			if !parentReport && defaultDashboard == root {
+				defaultDashboard = binding.Root
+			}
+		}
+	}
+	writeAIJSON(w, map[string]any{"goals": goals, "measurements": ledger, "progress": progress, "can_edit": project.OwnedByCaller && userAccessForClaims(claims).CanEdit, "workspace_path": root, "dashboards": dashboards, "default_dashboard_workspace": defaultDashboard})
 }
 
 func recordCrewGoalObservations(ctx context.Context, root, source string, observations []step.GoalObservation) error {
