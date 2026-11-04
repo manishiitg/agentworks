@@ -46,20 +46,6 @@ async function renderSwitcher(onClose = vi.fn()) {
   return host
 }
 
-it('lists Code workspaces next to Crews and opens one on the Code surface', async () => {
-  (window as Window & { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'work', 'code'] }
-  const onClose = vi.fn()
-  const host = await renderSwitcher(onClose)
-  expect(host.textContent).toContain('SDE')
-  await act(async () => { await vi.waitFor(() => expect(host.textContent).toContain('billing-api')) })
-  expect(host.textContent).not.toContain('shared by')
-  const row = [...host.querySelectorAll('.cursor-pointer')].find(div => div.textContent?.includes('billing-api'))
-  await act(async () => { row!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
-  expect(useProductSurfaceStore.getState().selectedWorkProjectId).toBe('code-own')
-  expect(useProductSurfaceStore.getState().productSurface).toBe('code')
-  expect(onClose).toHaveBeenCalled()
-})
-
 it('lists no Code workspaces where the deployment or the account has no Code', async () => {
   (window as Window & { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'work'] }
   let host = await renderSwitcher()

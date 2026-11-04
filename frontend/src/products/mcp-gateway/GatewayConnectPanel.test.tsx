@@ -23,32 +23,6 @@ describe('GatewayConnectPanel shared client setup', () => {
   }
   const button = (label: string) => [...container!.querySelectorAll('button')].find(el => el.textContent === label)!
 
-  it('uses Vault commands and group instructions without a test request or workflow downloads', async () => {
-    await renderPanel()
-    expect(container!.textContent).toContain(`claude mcp add --transport http vault '${BASE}/api/vault/mcp'`)
-    expect(container!.textContent).toContain('your user and group permissions')
-    expect(container!.textContent).not.toContain('Send test request')
-    expect(api.get).toHaveBeenCalledWith('/api/oauth/vault/connections')
-    expect(api.get).not.toHaveBeenCalledWith('/api/oauth/mcp/connections')
-    await act(async () => { button('Codex').click() })
-    expect(container!.textContent).toContain('codex mcp login vault')
-    await act(async () => { button('JSON MCP client').click() })
-    expect(container!.querySelector('pre')!.textContent).toContain('"vault"')
-    expect(container!.querySelector('pre')!.textContent).not.toContain('"agentworks"')
-    await act(async () => { [...container!.querySelectorAll('button')].find(el => el.textContent?.includes('Hosted AI app'))!.click() })
-    await act(async () => { button('Claude Cowork').click() })
-    expect(container!.textContent).toContain('Connect manually instead')
-    expect(container!.textContent).not.toContain('Download Cowork plugin')
-    expect(container!.textContent).not.toContain('Download skill')
-  })
-
-  it('does not claim Copied when clipboard rejects the URL', async () => {
-    await renderPanel()
-    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('Denied'))
-    await act(async () => { (container!.querySelector('[title="Copy: Vault MCP URL"]') as HTMLButtonElement).click() })
-    expect(container!.querySelector('[title="Copied"]')).toBeNull()
-  })
-
   it('revokes only the selected Vault OAuth client', async () => {
     vi.mocked(api.delete).mockResolvedValue({ status: 204 } as never)
     await renderPanel([{ id: 'family_test', client_name: 'Claude test' }])

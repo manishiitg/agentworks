@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../services/api', () => ({ agentApi: { getChatHistoryResumeConversation: mocks.history, getSessionEvents: mocks.runtime } }))
 vi.mock('../stores/useChatStore', () => ({ useChatStore: { getState: () => ({
   getTabEvents: mocks.getEvents, setTabEvents: mocks.setEvents, setTabLastEventIndex: mocks.cursor,
-  setTabHasMoreOlderEvents: mocks.hasMore, setTabHistoryPagination: mocks.pagination,
+  setTabHasMoreOlderEvents: mocks.hasMore, setTabHistoryPagination: mocks.pagination, markTabHistoryLoaded: () => {},
 }) } }))
 vi.mock('./sessionRestore', () => ({ appendRestoredLiveTail: mocks.append }))
 import { hydrateExecutionConversation } from './executionConversationRestore'

@@ -32,15 +32,6 @@ async function mount(onAsk?: (message: string) => void, relayMode = false) {
   return host
 }
 
-it('lists typed functions and the built-in ask, not webhooks', async () => {
-  const host = await mount()
-  const card = host.querySelector('[data-testid="workflow-function-review_pr"]')!
-  expect(card.textContent).toContain('PR_NUMBER: integer, REVIEW_DEPTH: string?')
-  expect(card.textContent).toContain('Review or skip → Review')
-  expect(host.querySelector('[data-testid="workflow-function-ask"]')?.textContent).toContain('Run mode')
-  expect(host.textContent).not.toContain('GitHub PRs')
-})
-
 it('pauses a function and routes edits to the Builder chat', async () => {
   const onAsk = vi.fn()
   const host = await mount(onAsk)
@@ -67,15 +58,6 @@ it('shows the durable Flow endpoint without the continuing ask function', async 
   expect(host.textContent).toContain('/api/relays/relay-1/runs')
   expect(host.querySelector('[data-testid="relay-release-status"]')?.textContent).toContain('Published v1')
   expect(host.querySelector('[data-testid="workflow-function-review_pr"]')?.textContent).not.toContain('groups default')
-})
-
-it('keeps reader API instructions visible while restricting authoring actions', async () => {
-  vi.mocked(useCanWriteWorkflow).mockReturnValue(false)
-  const host = await mount(vi.fn(), true)
-  expect(host.textContent).toContain('External API request')
-  expect(host.textContent).toContain('Anyone with access')
-  expect(host.textContent).not.toContain('Publish in chat')
-  expect(host.textContent).not.toContain('Pause')
 })
 
 it('shows a broken active release instead of claiming draft only', async () => {

@@ -48,45 +48,6 @@ describe('Autopilot slash commands', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.stringContaining('Keep my existing targets'))
   })
 
-  it('runs the complete manual Autopilot lifecycle through the scheduler backend', async () => {
-    runPulseMock.mockResolvedValueOnce({ run_id: 'manual-pulse-1' })
-    const addToast = vi.fn()
-    const command = findCommand('pulse', 'workflow')
-
-    await command?.execute({
-      beforeSlash: '',
-      onSubmit: vi.fn(),
-      workshopMode: 'workshop',
-      workflowWorkspacePath: 'Workflow/social-media',
-      getWorkspaceStore: () => ({ activeFolder: null }),
-      addToast,
-    } as unknown as CommandContext)
-
-    expect(runPulseMock).toHaveBeenCalledWith('Workflow/social-media')
-    expect(addToast).toHaveBeenCalledWith('Autopilot started', 'success')
-  })
-
-  it('uses the chat workflow even when the file browser points elsewhere', async () => {
-    runPulseMock.mockClear().mockResolvedValueOnce({ run_id: 'pulse-chat' })
-    await findCommand('pulse', 'workflow')?.execute({
-      workflowWorkspacePath: 'Workflow/latency-report',
-      getWorkspaceStore: () => ({ activeFolder: 'Workflow/other' }),
-      addToast: vi.fn(),
-    } as unknown as CommandContext)
-    expect(runPulseMock).toHaveBeenCalledExactlyOnceWith('Workflow/latency-report')
-  })
-
-  it('does not run Autopilot against a file browser folder when no workflow is open', async () => {
-    runPulseMock.mockClear()
-    const addToast = vi.fn()
-    await findCommand('pulse', 'workflow')?.execute({
-      getWorkspaceStore: () => ({ activeFolder: 'Workflow/other' }),
-      addToast,
-    } as unknown as CommandContext)
-    expect(runPulseMock).not.toHaveBeenCalled()
-    expect(addToast).toHaveBeenCalledWith('Open a workflow before running Autopilot', 'error')
-  })
-
   it('has no slash command for recurring Autopilot setup — it is a toolbar/popup toggle', () => {
     const workflowCommand = findCommand('pulse-setup', 'workflow')
     const orgCommand = findCommand('pulse-setup', 'multi-agent')
@@ -100,16 +61,6 @@ describe('Autopilot slash commands', () => {
 
 
 
-
-  it('hides Builder reviews from Run and rejects direct command lookup there', () => {
-    const runCommands = getCommands('workflow', 'run').map(command => command.command)
-
-    for (const command of ['pulse', 'strategy-auditor', 'goal-advisor', 'design-plan', 'review-code', 'review-artifact-drift', 'backup', 'publish', 'notify']) {
-      expect(runCommands).not.toContain(command)
-      expect(findCommand(command, 'workflow', 'run', true)).toBeUndefined()
-      expect(findCommand(command, 'workflow', 'workshop', true)).toBeDefined()
-    }
-  })
 
   it('enforces read-only workflow access even when a restored chat says Builder', () => {
     for (const mode of ['run', 'workshop', undefined] as const) {

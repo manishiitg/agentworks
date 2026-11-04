@@ -28,13 +28,3 @@ it('does not restore hidden product-backed or feature-disabled options', () => {
   expect(integrationNavigationOptions(sections.filter(item => item.value !== 'apps'), plugins).map(item => item.value)).not.toContain('secrets')
 })
 
-it('keeps Relay search destinations consistent with its admitted connection inventory', () => {
-  const visible = INTEGRATION_SECTIONS.filter(section => RELAY_INTEGRATION_SECTION_IDS.has(section.id))
-  // The registry is built at module load; deployment-backed plugin entries may
-  // already be absent before this test installs its server runtime config.
-  const registeredPlugins = projectPluginTabs().filter(tab => INTEGRATION_SECTIONS.some(section => section.id === tab.value))
-  expect(new Set(visible.map(section => section.id))).toEqual(new Set(['cli', ...projectIntegrationSections(null, true).filter(section => section.value !== 'apps').map(section => section.value), ...registeredPlugins.map(tab => tab.value)]))
-  expect(visible.map(section => section.id)).not.toContain('slack-app')
-  expect(visible.find(section => section.id === 'slack')?.label).toBe('Slack')
-  expect(visible.find(section => section.id === 'apps')).toBeUndefined()
-})

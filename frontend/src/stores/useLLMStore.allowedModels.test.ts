@@ -10,7 +10,7 @@ afterEach(() => {
 // written back with the shared list.
 describe('models the account does not allow', () => {
   it('are not offered in the picker', async () => {
-    useLLMStore.persist.setOptions({ storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } })
+    useLLMStore.persist?.setOptions({ storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } })
     vi.spyOn(llmConfigService, 'getModelMetadata').mockResolvedValue({ models: [] } as never)
     useLLMStore.setState({
       defaultsLoaded: true,
@@ -25,7 +25,7 @@ describe('models the account does not allow', () => {
   })
 
   it('never go back to the server with the shared list', async () => {
-    useLLMStore.persist.setOptions({ storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } })
+    useLLMStore.persist?.setOptions({ storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } })
     vi.spyOn(llmConfigService, 'getPublishedLLMs').mockResolvedValue([
       { id: 'b', name: 'Flagged', provider: 'pi-cli', model_id: 'example/other', not_allowed: true },
     ] as never)

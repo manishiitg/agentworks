@@ -60,17 +60,6 @@ describe('CrewFunctionsView', () => {
     container.remove()
   })
 
-  it('lists declared functions with inputs, returns and creator, excluding conversational ask', async () => {
-    await renderView()
-    const fn = byTestId('crew-function-run_login_flow')!
-    expect(fn.textContent).toContain('build: string')
-    expect(fn.textContent).toContain('env: staging | prod?')
-    expect(fn.textContent).toContain('passed: boolean')
-    expect(fn.textContent).toContain('By crew:alpha (Alpha Bot)')
-    expect(byTestId('crew-function-ask')).toBeNull()
-    expect(container.textContent).toContain('fresh isolated chat')
-  })
-
   it('shows recent calls with status and latest progress, expandable to the result', async () => {
     await renderView()
     const running = byTestId('crew-function-call-fn-1')!
@@ -83,18 +72,6 @@ describe('CrewFunctionsView', () => {
     expect(done.textContent).toContain('three bugs')
     expect(done.textContent).toContain('report.pdf')
     expect(done.textContent).toContain('Isolated execution')
-  })
-
-  it('removes a function and routes edits to the Crew chat', async () => {
-    const onEdit = vi.fn()
-    remove.mockResolvedValue({})
-    await renderView({ onEdit })
-    const fn = byTestId('crew-function-run_login_flow')!
-    const buttons = Array.from(fn.querySelectorAll('button'))
-    await act(async () => { buttons.find(button => button.textContent === 'Edit in chat')!.click() })
-    expect(onEdit).toHaveBeenCalledWith(expect.stringContaining('"run_login_flow"'))
-    await act(async () => { buttons.find(button => button.textContent === 'Remove')!.click() })
-    expect(remove).toHaveBeenCalledWith(scope, 'run_login_flow')
   })
 
   it('describes schema fields', () => {

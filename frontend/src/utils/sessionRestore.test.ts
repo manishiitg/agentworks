@@ -16,6 +16,8 @@ vi.mock('../stores/useChatStore', () => ({
     setTabHasMoreOlderEvents: mocks.setTabHasMoreOlderEvents,
     setTabHistoryPagination: mocks.setTabHistoryPagination,
     getTabEvents: mocks.getTabEvents,
+    markTabHistoryLoaded: () => {},
+    chatTabs: {},
   }) },
 }))
 vi.mock('../stores/useModeStore', () => ({ useModeStore: { getState: () => ({ setModeCategory: vi.fn() }) } }))

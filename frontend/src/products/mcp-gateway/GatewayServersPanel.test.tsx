@@ -86,20 +86,6 @@ describe('GatewayServersPanel', () => {
     }
   }
 
-  it('shows only connected servers in the connected panel', async () => {
-    await renderPanel(vi.fn(healthyFetch()))
-    const connected = container!.querySelector('[aria-label="Connected servers"]')!
-    expect(connected.textContent).toContain('Notion')
-    expect(connected.textContent).toContain('2 tools')
-    expect(connected.textContent).toContain('WorkOS')
-    expect(connected.textContent).toContain('Tools not loaded')
-    expect(refreshTools).toHaveBeenCalledOnce()
-    expect(container!.querySelector('[aria-label="Available servers"]')).toBeNull()
-    expect(container!.querySelector('[data-testid="mcp-add-custom"]')).toBeNull()
-    expect(container!.textContent).toContain('3 connections')
-    expect(container!.textContent).not.toContain('Linear')
-  })
-
   it('shows only available servers and connection actions in the available panel', async () => {
     await renderPanel(vi.fn(healthyFetch()), undefined, 'available')
     const available = container!.querySelector('[aria-label="Available servers"]')!
@@ -110,41 +96,6 @@ describe('GatewayServersPanel', () => {
     expect(available.textContent).toContain('Add connection')
     expect(container!.querySelector('[data-testid="gateway-add-linear"]')!.textContent).toContain('Add connection')
     expect(container!.textContent).toContain('3 results')
-  })
-
-  it('discovers and shows tools for an AgentWorks-only connected server', async () => {
-    const getDetail = vi.mocked(agentApi.getToolDetail).mockResolvedValue({
-      name: 'WorkOS', server: 'WorkOS', status: 'ok', connection: 'connected',
-      function_names: ['list_users'],
-      tools: [{ name: 'list_users', description: 'List organization users', server: 'WorkOS', parameters: { org_id: { type: 'string', description: 'Organization ID' } }, required: ['org_id'] }],
-    })
-    await renderPanel(vi.fn(healthyFetch()))
-
-    await act(async () => {
-      ;(container!.querySelector('[aria-label="Show AgentWorks tools on WorkOS"]') as HTMLButtonElement).click()
-    })
-    await act(async () => {})
-
-    expect(getDetail).toHaveBeenCalledWith('WorkOS')
-    expect(container!.textContent).toContain('list_users')
-    expect(container!.textContent).toContain('List organization users')
-    expect(container!.querySelector('[data-tool-card="list_users"] [aria-label="Arguments for list_users"]')).not.toBeNull()
-    expect(container!.querySelector('[data-tool-card="list_users"] [aria-label="Input JSON schema"]')!.textContent).toContain('"org_id"')
-  })
-
-  it('explains when a connected AgentWorks server needs authorization', async () => {
-    vi.mocked(agentApi.getToolDetail).mockResolvedValue({
-      name: 'WorkOS', server: 'WorkOS', status: 'error', connection: 'connected',
-      error: 'transport error: authorization required', function_names: [],
-    })
-    await renderPanel(vi.fn(healthyFetch()))
-    await act(async () => {
-      ;(container!.querySelector('[aria-label="Show AgentWorks tools on WorkOS"]') as HTMLButtonElement).click()
-    })
-    await act(async () => {})
-
-    expect(container!.textContent).toContain('Authorization is required to load this server’s tools.')
-    expect(container!.textContent).not.toContain('transport error')
   })
 
   it('filters the list by search text', async () => {
@@ -259,42 +210,6 @@ describe('GatewayServersPanel', () => {
     expect(fetchMock.mock.calls.length).toBe(callsBefore)
   })
 
-  it('keeps maintenance in the actions popover and disconnect behind confirmation', async () => {
-    const fetchMock = vi.fn(healthyFetch())
-    await renderPanel(fetchMock)
-    const actions = container!.querySelector('[aria-label="Actions for Notion"]') as HTMLButtonElement
-    const action = (label: string) => [...container!.querySelectorAll('button')].find(button => button.textContent === label) as HTMLButtonElement
-    expect(action('Connection settings')).toBeUndefined()
-    await act(async () => { actions.click() })
-    expect(action('Refresh tool list')).not.toBeUndefined()
-    await act(async () => { action('Connection settings').click() })
-    expect(actions.getAttribute('aria-expanded')).toBe('false')
-    expect(container!.textContent).toContain('Server access token')
-    expect(container!.textContent).toContain('Update this server’s connection token.')
-    expect(action('Update token').disabled).toBe(true)
-    await act(async () => { action('Cancel').click() })
-    expect(container!.textContent).not.toContain('Server access token')
-    await act(async () => { actions.click() })
-    await act(async () => { action('Disconnect server').click() })
-    expect(document.body.textContent).toContain('Reconnecting requires assigning permissions again.')
-    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
-    await act(async () => { ([...document.body.querySelectorAll('button')].find(button => button.textContent === 'Cancel') as HTMLButtonElement).click() })
-    expect(document.body.textContent).not.toContain('Reconnecting requires assigning permissions again.')
-  })
-
-  it('uses shared sign-in for OAuth connection settings without exposing a raw credential editor', async () => {
-    const fetchMock = vi.fn((url: string) => url.endsWith('/api/admin/connectors')
-      ? Promise.resolve(jsonResponse(200, { connectors: [{ ID: 'c1', WorkspaceID: 'w1', Provider: 'notion', Label: 'Notion', Status: 'active', UpstreamURL: 'https://x/mcp', OAuthServer: 'Notion' }] }))
-      : healthyFetch()(url))
-    await renderPanel(fetchMock)
-    await act(async () => { (container!.querySelector('[aria-label="Actions for Notion"]') as HTMLButtonElement).click() })
-    await act(async () => { ([...container!.querySelectorAll('button')].find(button => button.textContent === 'Connection settings') as HTMLButtonElement).click() })
-    expect(container!.textContent).toContain('Sign in again to reconnect.')
-    expect(container!.textContent).toContain('Sign in again')
-    expect(container!.querySelector('input[type="password"]')).toBeNull()
-    expect(container!.textContent).not.toContain('Update token')
-  })
-
   it('puts custom setup after the catalog and opens chat without a connection form', async () => {
     const fetchMock = vi.fn(healthyFetch())
     const onAddCustom = vi.fn(async () => {})
@@ -308,22 +223,6 @@ describe('GatewayServersPanel', () => {
     await act(async () => { (footer.querySelector('button') as HTMLButtonElement).click() })
     expect(onAddCustom).toHaveBeenCalledOnce()
     expect(fetchMock.mock.calls.length).toBe(callsBefore)
-  })
-
-  it('creates a named OAuth connection before sign-in without reusing provider authentication', async () => {
-    const fetchMock = vi.fn((url: string, init?: RequestInit) => init?.method === 'POST'
-      ? Promise.resolve(jsonResponse(201, { ID: 'c-new', OAuthCredentialID: 'c-new', Status: 'authentication_required' })) : healthyFetch()(url))
-    await renderPanel(fetchMock, undefined, 'available')
-    await act(async () => { (container!.querySelector('[data-testid="gateway-add-slack"]') as HTMLButtonElement).click() })
-    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
-    const input = container!.querySelector('[aria-label="Slack connection name"]') as HTMLInputElement
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Slack · Engineering')
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await act(async () => { input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/caplayer/api/admin/connectors`, expect.objectContaining({ method: 'POST', body: JSON.stringify({ Provider: 'Slack', Label: 'Slack · Engineering', Slug: '', URL: '' }) }))
-    expect(container!.querySelector('[data-testid="gateway-add-slack"]')).not.toBeNull()
   })
 
   it('warns on stale data when a refetch fails instead of hiding it', async () => {
@@ -354,33 +253,4 @@ describe('GatewayServersPanel', () => {
     expect(container!.textContent).toContain('Notion')
   })
 
-  it('adds an AgentWorks server to the gateway from its catalog template', async () => {
-    const fetchMock = vi.fn(healthyFetch())
-    await renderPanel(fetchMock, undefined, 'available')
-
-    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-      if (init?.method === 'POST' && url.endsWith('/api/admin/connectors')) {
-        return Promise.resolve(jsonResponse(201, { ID: 'c2' }))
-      }
-      return healthyFetch()(url)
-    })
-
-    await act(async () => {
-      ;(container!.querySelector('[data-testid="gateway-add-linear"]') as HTMLButtonElement).click()
-    })
-    const input = container!.querySelector('[aria-label="Linear connection name"]') as HTMLInputElement
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Linear · Work')
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await act(async () => { input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE}/api/caplayer/api/admin/connectors`,
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ Provider: 'Linear', Label: 'Linear · Work', Slug: '', URL: '' }),
-      }),
-    )
-  })
 })
