@@ -240,9 +240,9 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
     onCancel={() => setOpen('')} onMove={() => void move(false)} onOpen={() => { setDoneSeen(true); if (link) window.open(link, '_blank', 'noopener,noreferrer') }} />
   const network = networkName(target) || 'your server'
   const tabs = [
-    { id: 'mac', icon: '💻', label: 'Mac online', detail: 'you, from anywhere', tone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
-    { id: 'publish', icon: '☁️', label: 'Publish', detail: 'agents on the server', tone: 'bg-sky-500/10 text-sky-700 dark:text-sky-300' },
-    { id: 'team', icon: '👥', label: 'Team', detail: 'work with people', tone: 'bg-violet-500/10 text-violet-700 dark:text-violet-300' },
+    { id: 'mac', label: 'Mac online', detail: 'you, from anywhere', tone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
+    { id: 'publish', label: 'Publish', detail: 'agents on the server', tone: 'bg-sky-500/10 text-sky-700 dark:text-sky-300' },
+    { id: 'team', label: 'Team', detail: 'work with people', tone: 'bg-violet-500/10 text-violet-700 dark:text-violet-300' },
   ] as const
   const serverCopies = [...(status?.on_server || []), ...(team.team?.server_data ? [{ name: `${team.team.server_data.name}/ (shared folder)`, detail: 'kept on the server so your team can sync it' }] : [])]
   return <div className="space-y-3.5 text-sm">
@@ -253,12 +253,12 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
           if (next < 0) return
           event.preventDefault(); setSection(tabs[next].id); document.getElementById(`crew-access-${projectId}-${tabs[next].id}`)?.focus()
         }} className={`min-w-0 rounded-lg px-2 py-2 text-center ${section === item.id ? item.tone : 'text-muted-foreground hover:bg-muted'}`}>
-        <span className="block font-semibold"><span aria-hidden="true">{item.icon}</span> {item.label}</span><span className="mt-0.5 block text-[11px]">{item.detail}</span>
+        <span className="block font-semibold">{item.label}</span><span className="mt-0.5 block text-[11px]">{item.detail}</span>
       </button>)}
     </div>
     {section === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
       {binding?.connection_id && !online
-        ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} projectId={projectId} connection={binding.connection_id} network={network} copies={serverCopies} />
+        ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} projectId={projectId} connection={binding.connection_id} network={network} copies={serverCopies} onTeam={() => setSection('team')} />
         : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
       <div className="px-0.5">
         {status && !online && !moving && <label className="flex items-center justify-between gap-3 border-t border-border py-2.5">
@@ -286,7 +286,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
       </div>
     </section>}
     {section === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
-      <p className="flex items-start gap-2 rounded-[10px] bg-sky-500/10 px-3 py-2 text-[13px] text-sky-800 dark:text-sky-200"><span aria-hidden="true">☁️</span><span>Publish runs it on {network} from now on, with your Mac on or off: chat, memory, skills, selected files, schedules and triggers go with it, using your AI login on the server. Publish the whole Crew, or just one agent.</span></p>
+      <p className="flex items-start gap-2 rounded-[10px] bg-sky-500/10 px-3 py-2 text-[13px] text-sky-800 dark:text-sky-200"><span>Publish runs it on {network} from now on, with your Mac on or off: chat, memory, skills, selected files, schedules and triggers go with it, using your AI login on the server. Publish the whole Crew, or just one agent.</span></p>
       {!connections.length && <p className="text-xs text-muted-foreground">Sign in to a server in Connections first.</p>}
       {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
       <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
@@ -309,16 +309,15 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen }: { projectId: s
 
 const allOnMac = (network: string) => `Everything is on this Mac. Use it from your phone, the web or your other apps while the Mac is on; your messages pass through ${network}, your files don't.`
 function MacDataLine({ children }: { children: ReactNode }) {
-  return <p className="flex items-start gap-2 rounded-[10px] bg-emerald-500/10 px-3 py-2 text-[13px] text-emerald-800 dark:text-emerald-200"><span aria-hidden="true">🔒</span><span>{children}</span></p>
+  return <p className="rounded-[10px] bg-emerald-500/10 px-3 py-2 text-[13px] text-emerald-800 dark:text-emerald-200">{children}</p>
 }
-function MacOnlineDataLine({ projectId, connection, network, copies }: { projectId: string; connection: string; network: string; copies: ServerCopy[] }) {
-  const { status, error } = useTeamCopyStatus(projectId, connection)
-  const names = copies.map(copy => copy.name)
-  if (status?.ready) names.push('your shared agents’ instructions, skills, memory and chats for the team copy')
-  return <MacDataLine>{names.length
-    ? `Your Mac does the work while it is on. Messages pass through ${network}; the server also keeps ${names.join(', ')}. Your other files stay on this Mac.`
-    : !status || error ? `Your Mac does the work while it is on; messages pass through ${network}. Files shared through Team or Publish are kept there; other files stay on this Mac.`
-    : allOnMac(network)}</MacDataLine>
+// The Mac online line speaks only about the Mac (owner, 4 Nov: keep the tabs' ideas apart). When the server keeps
+// something for Team or Publish, one link says so and the Team tab lists it.
+function MacOnlineDataLine({ projectId, connection, network, copies, onTeam }: { projectId: string; connection: string; network: string; copies: ServerCopy[]; onTeam: () => void }) {
+  const { status } = useTeamCopyStatus(projectId, connection)
+  const kept = copies.length > 0 || Boolean(status?.ready)
+  return <MacDataLine>Your Mac does the work while it is on. Messages pass through {network}. Your files stay on this Mac.
+    {kept && <> <button type="button" className="underline underline-offset-2" onClick={onTeam}>Some agent data is kept on the server for your team</button>.</>}</MacDataLine>
 }
 
 /** Slack for a Mac Crew, inside the app (owner, 3 Nov): the same setup as on its page online, on its online copy. */
