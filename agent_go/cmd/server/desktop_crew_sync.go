@@ -51,7 +51,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		PublishAgent *crewAgentPublishSelection `json:"publish_agent,omitempty"`
 		TransferID   string                     `json:"transfer_id,omitempty"`
 		Agents       []macSharedAgent           `json:"agents"`
-		WhenMacOff   string                     `json:"when_mac_off"`
 	}
 	if r.Method == http.MethodGet {
 		input.Action = "status"
@@ -258,9 +257,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		api.desktopShareMacCrewAgents(w, r, claims, roots.ID, binding, connection, input.Action, input.Agents)
 		return
 	}
-	// The Team tab's "When your Mac is off" and its status line, from the online copy that decides it.
+	// The Team tab's team copy status line, from the online copy that decides it.
 	if input.Action == "team_copy" {
-		reply, status, code, err := api.desktopTeamCopy(r.Context(), claims, roots.ID, binding, connection, input.WhenMacOff)
+		reply, status, code, err := api.desktopTeamCopy(r.Context(), claims, roots.ID, binding, connection)
 		if err != nil {
 			externalError(w, status, code, err.Error())
 			return
