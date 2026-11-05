@@ -67,7 +67,6 @@ func TestWorkIdentityToolPersistsAndPromptVariablesReloadIt(t *testing.T) {
 	}
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"operation": "set",
-		"icon":      "🛠️",
 		"name":      "Nova",
 	})
 	if err != nil {
@@ -88,7 +87,7 @@ func TestWorkIdentityToolPersistsAndPromptVariablesReloadIt(t *testing.T) {
 		t.Fatalf("project metadata was not preserved/updated: %+v", saved)
 	}
 	identity, _ := saved["identity"].(map[string]interface{})
-	if identity["icon"] != "🛠️" || identity["name"] != "Nova" {
+	if identity["icon"] != nil || identity["name"] != "Nova" {
 		t.Fatalf("identity was not saved: %+v", identity)
 	}
 	if len(emitted) != 1 || emitted[0].Product != "work" || emitted[0].Kind != "identity_updated" || emitted[0].Payload["operation"] != "set" {
@@ -101,7 +100,7 @@ func TestWorkIdentityToolPersistsAndPromptVariablesReloadIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load Crew prompt variables: %v", err)
 	}
-	if got := variables["WORK_IDENTITY"]; !strings.Contains(got, "Purpose: Ship the demo Crew.") || !strings.Contains(got, "Icon: 🛠️") || !strings.Contains(got, "Name: Nova") {
+	if got := variables["WORK_IDENTITY"]; !strings.Contains(got, "Purpose: Ship the demo Crew.") || !strings.Contains(got, "Name: Nova") {
 		t.Fatalf("prompt identity was not reloaded: %q", got)
 	}
 	if got := variables["WORK_IDENTITY_KEY"]; got != "Ship the demo Crew." {
@@ -188,7 +187,7 @@ func TestWorkIdentityRequiresPurpose(t *testing.T) {
 	}
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"operation": "set", "icon": "🤖", "name": "Helper",
+		"operation": "set", "name": "Helper",
 	})
 	if err != nil {
 		t.Fatalf("set without purpose: %v", err)
@@ -217,30 +216,10 @@ func TestWorkIdentityRequiresPurpose(t *testing.T) {
 }
 
 func TestWorkIdentityStaysCompact(t *testing.T) {
-	identity := workIdentity{
-		Icon: strings.Repeat("x", workIdentityIconLimit+1),
-		Name: "Nova",
-	}
-	if got := validateWorkIdentity(identity); got != "The identity icon is invalid: icon must be 8 characters or fewer." {
-		t.Fatalf("unexpected icon validation: %q", got)
-	}
-
-	identity.Icon = "N"
+	identity := workIdentity{}
 	identity.Name = strings.Repeat("x", workIdentityNameLimit+1)
 	if got := validateWorkIdentity(identity); got != "The identity name must be at most 60 characters." {
 		t.Fatalf("unexpected name validation: %q", got)
-	}
-}
-
-func TestWorkIdentityAcceptsUploadedImage(t *testing.T) {
-	image := "data:image/png;base64," + strings.Repeat("A", 1024)
-	identity := workIdentity{Icon: image, Name: "Nova"}
-	if got := validateWorkIdentity(identity); got != "" {
-		t.Fatalf("uploaded image icon should validate, got %q", got)
-	}
-	rendered := renderWorkIdentity(identity)
-	if strings.Contains(rendered, "AAAA") || !strings.Contains(rendered, "Icon: (custom uploaded image)") {
-		t.Fatalf("uploaded image icon must be redacted from prompts, got %q", rendered)
 	}
 }
 
@@ -289,7 +268,6 @@ func TestCreateCrewProjectToolCreatesIdentifiedPersistentProject(t *testing.T) {
 	}
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"name":        "Launch Crew",
-		"icon":        "🚀",
 		"description": "Own the launch.",
 	})
 	if err != nil {
@@ -314,7 +292,7 @@ func TestCreateCrewProjectToolCreatesIdentifiedPersistentProject(t *testing.T) {
 		t.Fatalf("decode product manifest: %v", err)
 	}
 	identity, _ := product["identity"].(map[string]interface{})
-	if product["product"] != "work" || product["title"] != "Launch Crew" || identity["name"] != "Launch Crew" || identity["icon"] != "🚀" {
+	if product["product"] != "work" || product["title"] != "Launch Crew" || identity["name"] != "Launch Crew" || identity["icon"] != nil {
 		t.Fatalf("Crew identity was not persisted: %+v", product)
 	}
 	var workflow map[string]interface{}

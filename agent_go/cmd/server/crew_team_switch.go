@@ -102,7 +102,7 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 			if slices.ContainsFunc(current, func(agent macSharedAgent) bool { return agent.Tab == row.Tab }) {
 				continue
 			}
-			if strings.TrimSpace(row.Purpose) == "" || strings.TrimSpace(row.Icon) == "" {
+			if strings.TrimSpace(row.Purpose) == "" {
 				out.NeedsPurpose = append(out.NeedsPurpose, row.Name)
 				continue
 			}

@@ -10,13 +10,12 @@ import (
 	"time"
 )
 
-// Main's name, purpose and icon have one home: the Crew identity in product.json ("identity" and "description"),
-// which set_work_identity writes and which Main's purpose already came from. Side tabs keep their own tab identity.
-// Before this, Main saved its icon in the Crew identity while the tab list read the tab identity, so the icon never
-// showed (owner, 4 Nov, PLAT-856-509).
+// Main's name and purpose have one home: the Crew identity in product.json ("identity" and "description"),
+// which set_work_identity writes and which Main's purpose already came from. Side tabs keep their own tab identity
+// (PLAT-856-509). Agents have no icon (owner, 5 Nov): an agent is its name and purpose.
 
 type crewMainIdentity struct {
-	Name, Purpose, Icon string
+	Name, Purpose string
 }
 
 func crewManifestPath(workspacePath string) string {
@@ -36,18 +35,17 @@ func readCrewMainIdentity(ctx context.Context, workspacePath string) (crewMainId
 		Description string `json:"description"`
 		Identity    struct {
 			Name string `json:"name"`
-			Icon string `json:"icon"`
 		} `json:"identity"`
 	}
 	if json.Unmarshal([]byte(raw), &manifest) != nil {
 		return crewMainIdentity{}, false
 	}
-	return crewMainIdentity{Name: strings.TrimSpace(manifest.Identity.Name), Purpose: strings.TrimSpace(manifest.Description), Icon: strings.TrimSpace(manifest.Identity.Icon)}, true
+	return crewMainIdentity{Name: strings.TrimSpace(manifest.Identity.Name), Purpose: strings.TrimSpace(manifest.Description)}, true
 }
 
-// writeCrewMainIdentity saves Main's name, purpose or icon (nil keeps one) into the Crew identity, as
+// writeCrewMainIdentity saves Main's name or purpose (nil keeps one) into the Crew identity, as
 // set_work_identity does, keeping every other manifest field.
-func writeCrewMainIdentity(ctx context.Context, workspacePath string, name, purpose, icon *string) (crewMainIdentity, error) {
+func writeCrewMainIdentity(ctx context.Context, workspacePath string, name, purpose *string) (crewMainIdentity, error) {
 	manifestPath := crewManifestPath(workspacePath)
 	raw, exists, err := readFileFromWorkspace(ctx, manifestPath)
 	if err != nil {
@@ -67,13 +65,6 @@ func writeCrewMainIdentity(ctx context.Context, workspacePath string, name, purp
 	if name != nil {
 		identity["name"] = strings.Join(strings.Fields(*name), " ")
 	}
-	if icon != nil {
-		clean, err := cleanAgentIcon(*icon)
-		if err != nil {
-			return crewMainIdentity{}, err
-		}
-		identity["icon"] = clean
-	}
 	if purpose != nil {
 		clean := strings.Join(strings.Fields(*purpose), " ")
 		if len([]rune(clean)) > productAgentPurposeMaxRunes {
@@ -91,6 +82,6 @@ func writeCrewMainIdentity(ctx context.Context, workspacePath string, name, purp
 		return crewMainIdentity{}, err
 	}
 	saved, _ := readCrewMainIdentity(ctx, workspacePath)
-	log.Printf("[AGENT_IDENTITY] store=crew path=%s name_set=%t purpose_set=%t icon_set=%t icon=%q", manifestPath, name != nil, purpose != nil, icon != nil, saved.Icon)
+	log.Printf("[AGENT_IDENTITY] store=crew path=%s name_set=%t purpose_set=%t", manifestPath, name != nil, purpose != nil)
 	return saved, nil
 }

@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../../components/chat/AgentCard'
-import { AgentIcon } from '../../components/chat/AgentIcon'
 import { useAgentMenuState, type AgentMenuState } from '../../components/chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import type { PollingEvent } from '../../services/api-types'
@@ -57,7 +56,6 @@ function AgentBoardCard({ agent, onOpen }: { agent: CrewAgentRow; onOpen: () => 
     className="flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
     <span className="flex min-w-0 items-center gap-2">
       <span className={`h-2 w-2 shrink-0 rounded-full ${running ? 'bg-primary animate-pulse' : state === 'waiting' || agent.asking ? 'bg-amber-500' : state === 'failed' ? 'bg-destructive' : state === 'done' ? 'bg-primary' : 'bg-muted-foreground/30'}`} aria-hidden="true" />
-      <AgentIcon name={agent.name} icon={agent.info?.icon} />
       <span className="truncate text-sm font-medium">{agent.name}</span>
     </span>
     <span title={purpose || undefined} className="line-clamp-2 break-words text-xs text-muted-foreground">{purpose || 'No purpose set yet'}</span>
@@ -71,7 +69,6 @@ function ClosedBoardCard({ agent, onOpen }: { agent: CrewClosedAgent; onOpen: ()
     className="flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-2xl border border-dashed border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
     <span className="flex min-w-0 items-center gap-2">
       <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden="true" />
-      <AgentIcon name={agent.name} icon={agent.icon} />
       <span className="truncate text-sm font-medium">{agent.name}</span>
     </span>
     <span title={purpose || undefined} className="line-clamp-2 break-words text-xs text-muted-foreground">{purpose || 'No purpose set yet'}</span>

@@ -348,14 +348,13 @@ func (api *StreamingAPI) crewAgentPublishRecord(ctx context.Context, claims *Use
 		if main, ok := readCrewMainIdentity(ctx, roots.Virtual); ok {
 			identity.Name = "Main"
 			identity.Purpose = firstNonEmptyTrimmed(main.Purpose, identity.Purpose)
-			identity.Icon = firstNonEmptyTrimmed(main.Icon, identity.Icon)
 		}
 	}
 	if !ok || canonicalCrewWorkspaceRoot(record.WorkspacePath) != roots.Virtual || record.ProfileID != crewProfileID || hiddenFromTabStrip(record.ConversationKey) {
 		return record, identity, fmt.Errorf("choose one of your Crew's agents")
 	}
-	if (tab != macMainTab && strings.TrimSpace(identity.Name) == "") || strings.TrimSpace(identity.Purpose) == "" || strings.TrimSpace(identity.Icon) == "" {
-		return record, identity, fmt.Errorf("give this agent a name, purpose and icon before publishing; ask it to set its identity")
+	if (tab != macMainTab && strings.TrimSpace(identity.Name) == "") || strings.TrimSpace(identity.Purpose) == "" {
+		return record, identity, fmt.Errorf("give this agent a name and purpose before publishing; ask it to set its identity")
 	}
 	if api.crewAgentTurnRunning(record.SessionID) {
 		return record, identity, fmt.Errorf("finish or stop this agent's reply before publishing")

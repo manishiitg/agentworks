@@ -65,13 +65,6 @@ func crewProjectSlug(name string) string {
 	return name
 }
 
-func defaultCrewIcon(name string) string {
-	for _, char := range strings.TrimSpace(name) {
-		return strings.ToUpper(string(char))
-	}
-	return "C"
-}
-
 func customCommandMarkdown(name, description, icon, prompt string, modes []string, showOnCard bool) string {
 	var out strings.Builder
 	out.WriteString("---\nname: ")
@@ -243,8 +236,9 @@ func RegisterFeatureSkills(profileID, productName string) error {
 	return nil
 }
 
+// workIdentity is the Crew's name; its purpose is the project description. A Crew and its agents have no icon
+// (owner, 5 Nov): an agent is its name and purpose.
 type workIdentity struct {
-	Icon string `json:"icon,omitempty"`
 	Name string `json:"name,omitempty"`
 }
 
@@ -256,43 +250,24 @@ type workProjectManifest struct {
 }
 
 const (
-	workIdentityIconLimit    = 8
 	workIdentityNameLimit    = 60
 	workIdentityPurposeLimit = 1000
 )
 
 func normalizeWorkIdentity(identity workIdentity) workIdentity {
-	identity.Icon = strings.TrimSpace(identity.Icon)
 	identity.Name = strings.TrimSpace(identity.Name)
 	return identity
 }
 
 func renderWorkIdentity(identity workIdentity) string {
 	identity = normalizeWorkIdentity(identity)
-	if identity.Icon == "" && identity.Name == "" {
+	if identity.Name == "" {
 		return ""
 	}
-	var lines []string
-	if identity.Icon != "" {
-		// An uploaded image is kilobytes of base64: it feeds the WORK_IDENTITY
-		// prompt variable and tool results, so never inline it.
-		if workflowtypes.IsImageIcon(identity.Icon) {
-			lines = append(lines, "Icon: (custom uploaded image)")
-		} else {
-			lines = append(lines, "Icon: "+identity.Icon)
-		}
-	}
-	if identity.Name != "" {
-		lines = append(lines, "Name: "+identity.Name)
-	}
-	return strings.Join(lines, "\n")
+	return "Name: " + identity.Name
 }
 
 func validateWorkIdentity(identity workIdentity) string {
-	// A preserved uploaded image must not block unrelated identity edits.
-	if reason := workflowtypes.ValidateIcon(identity.Icon); reason != "" {
-		return fmt.Sprintf("The identity icon is invalid: %s.", reason)
-	}
 	limits := []struct {
 		label string
 		value string
@@ -337,8 +312,8 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 		return agentprofiles.ToolSpec{
 			Name:     "set_work_identity",
 			Category: "work_identity",
-			Description: "Set, update, or clear this Crew project's agent identity when the user asks. It is also Main's name, purpose and icon; a side tab sets its own with set_my_agent_identity. " +
-				"A short name, icon, and purpose keep the agent consistent across project chats, schedules, bots, and background work; they change presentation and behavior, never permissions. " +
+			Description: "Set, update, or clear this Crew project's agent identity when the user asks. It is also Main's name and purpose; a side tab sets its own with set_my_agent_identity. " +
+				"A short name and purpose keep the agent consistent across project chats, schedules, bots, and background work; they change presentation and behavior, never permissions. " +
 				"The purpose is required: ask the user for it before the first save, and refuse to clear it. " +
 				"Store it in product.json, preserve omitted fields, and never invent an identity.",
 			Parameters: map[string]interface{}{
@@ -346,9 +321,8 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				"properties": map[string]interface{}{
 					"operation": map[string]interface{}{
 						"type": "string", "enum": []string{"set", "clear"},
-						"description": "Use set to create or update the identity, or clear to remove its icon and name. The purpose is required and clear never removes it.",
+						"description": "Use set to create or update the identity, or clear to remove its name. The purpose is required and clear never removes it.",
 					},
-					"icon":    map[string]interface{}{"type": "string", "maxLength": workIdentityIconLimit, "description": "One emoji or short glyph. Omit to preserve; pass empty to remove."},
 					"name":    map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Short display name. Omit to preserve; pass empty to remove."},
 					"purpose": map[string]interface{}{"type": "string", "maxLength": workIdentityPurposeLimit, "description": "Required: what this Crew is for, in one short line. Saved as the project description. Omit to preserve."},
 				},
@@ -366,7 +340,7 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				operation, _ := args["operation"].(string)
 				operation = strings.ToLower(strings.TrimSpace(operation))
 				if operation == "clear" {
-					// Clear removes the name and icon only. The purpose lives in the
+					// Clear removes the name only. The purpose lives in the
 					// top-level description and is never touched by clear.
 					delete(manifest, "identity")
 				} else if operation == "set" {
@@ -377,9 +351,6 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 					}
 					if value, ok := args["name"].(string); ok {
 						identity.Name = value
-					}
-					if value, ok := args["icon"].(string); ok {
-						identity.Icon = value
 					}
 					identity = normalizeWorkIdentity(identity)
 					if validationError := validateWorkIdentity(identity); validationError != "" {
@@ -412,7 +383,7 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				}
 				if operation == "clear" {
 					emitIdentityUpdated(operation)
-					return "The project icon and name were removed. The required purpose is preserved and still applies.", nil
+					return "The project name was removed. The required purpose is preserved and still applies.", nil
 				}
 				var saved workIdentity
 				encodedIdentity, _ := json.Marshal(manifest["identity"])
@@ -434,14 +405,13 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 			Name:     "create_crew",
 			Category: "work_projects",
 			Description: "Create another basic Crew project for the signed-in user when they ask. " +
-				"The new Crew has its own durable conversation, files, runtime configuration, display name, and icon. " +
+				"The new Crew has its own durable conversation, files, runtime configuration, and display name. " +
 				"This does not replace or rename the active Crew. After creation, tell the user to select the new Crew from the top project menu; it asks for its purpose on first chat.",
 			Parameters: map[string]interface{}{
 				"type":                 "object",
 				"additionalProperties": false,
 				"properties": map[string]interface{}{
 					"name":        map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Crew display name and project title."},
-					"icon":        map[string]interface{}{"type": "string", "maxLength": workIdentityIconLimit, "description": "One emoji or short glyph. Omit to use the name's initial."},
 					"description": map[string]interface{}{"type": "string", "maxLength": 1000, "description": "Optional short purpose for this Crew."},
 					"root_path":   map[string]interface{}{"type": "string", "description": "Local app only: full path to an existing folder the person chose for this new Crew. Files stay there; Crew resources use .agentworks."},
 				},
@@ -452,12 +422,8 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 				if name == "" || name == "<nil>" {
 					return "", fmt.Errorf("name is required")
 				}
-				icon, _ := args["icon"].(string)
 				description, _ := args["description"].(string)
-				identity := normalizeWorkIdentity(workIdentity{Name: name, Icon: icon})
-				if identity.Icon == "" {
-					identity.Icon = defaultCrewIcon(name)
-				}
+				identity := normalizeWorkIdentity(workIdentity{Name: name})
 				if validationError := validateWorkIdentity(identity); validationError != "" {
 					return validationError, nil
 				}
@@ -525,14 +491,13 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 					runtime.Emit(&orchestratorevents.ProductInteractionEvent{
 						Product: "work",
 						Kind:    kind,
-						Payload: map[string]interface{}{"operation": "created", "project_id": id, "name": name, "icon": identity.Icon, "workspace_path": workspacePath},
+						Payload: map[string]interface{}{"operation": "created", "project_id": id, "name": name, "workspace_path": workspacePath},
 					})
 				}
 				result, err := json.MarshalIndent(map[string]interface{}{
 					"status":         "created",
 					"project_id":     id,
 					"name":           name,
-					"icon":           identity.Icon,
 					"workspace_path": workspacePath,
 					"message":        "The Crew was created. Select it from the top project menu to open its persistent conversation.",
 				}, "", "  ")

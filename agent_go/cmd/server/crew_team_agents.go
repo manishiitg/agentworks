@@ -17,7 +17,6 @@ import (
 type crewTeamAgent struct {
 	Tab     string `json:"tab"`
 	Name    string `json:"name"`
-	Icon    string `json:"icon,omitempty"`
 	Purpose string `json:"purpose,omitempty"`
 	// Place is where it runs: "mac" (its maker's Mac) or "server" (published).
 	Place string `json:"place"`
@@ -50,7 +49,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		if crewPublishedTarget(t.ProjectID, agent.Tab) {
 			place = "server"
 		}
-		owner.Agents = append(owner.Agents, crewTeamAgent{Tab: agent.Tab, Name: agent.Name, Icon: agent.Icon, Purpose: agent.Purpose, Place: place})
+		owner.Agents = append(owner.Agents, crewTeamAgent{Tab: agent.Tab, Name: agent.Name, Purpose: agent.Purpose, Place: place})
 	}
 	out := []crewTeamAgentsPerson{owner}
 	for _, p := range t.People {
@@ -81,7 +80,7 @@ func memberTeamAgents(ctx context.Context, project, member, caller string) []cre
 		if !side {
 			continue // the Crew's Main is the owner's
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Icon: identity.Icon, Purpose: identity.Purpose, Place: "server"})
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server"})
 	}
 	return out
 }

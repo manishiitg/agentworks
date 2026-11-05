@@ -184,8 +184,8 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	agents, err := cleanMacSharedAgents([]macSharedAgent{
-		{Tab: "writer01", Name: "Writer", Purpose: "Drafts posts", Icon: "✍️", Audience: "team"},
-		{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Icon: "💬", AgentBridgePublic: true},
+		{Tab: "writer01", Name: "Writer", Purpose: "Drafts posts", Audience: "team"},
+		{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", AgentBridgePublic: true},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -206,24 +206,18 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 			t.Fatalf("%s: reason %q, want %q", tc.name, reason, tc.reason)
 		}
 	}
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "../x", Name: "x", Purpose: "x", Icon: "💬", Audience: "team"}}, nil); err == nil {
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "../x", Name: "x", Purpose: "x", Audience: "team"}}, nil); err == nil {
 		t.Fatal("a tab id with path characters was saved")
 	}
-	// Owner, 4 Nov: an agent is shared only with its name, purpose and icon.
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "team"}}, nil); err == nil {
-		t.Fatal("an agent without an icon was shared")
+	// Owner, 5 Nov: an agent is shared with its name and purpose; it has no icon.
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Audience: "team"}}, nil); err == nil {
+		t.Fatal("an agent without a purpose was shared")
 	}
-	// An agent already shared before the rule keeps working when its name or purpose changes; a new audience
-	// counts as sharing again and needs the icon.
-	shared := []macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "team"}}
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers anything", Audience: "team"}}, shared); err != nil {
-		t.Fatalf("refreshing an existing share without an icon was refused: %v", err)
-	}
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "team", AgentBridgePublic: true}}, shared); err == nil {
-		t.Fatal("newly public for an agent without an icon was accepted")
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "team", AgentBridgePublic: true}}, nil); err != nil {
+		t.Fatalf("an agent with a name and purpose was refused: %v", err)
 	}
 	// Owner, 5 Nov: In team or Only me only.
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Icon: "💬", Audience: "everyone"}}, nil); err == nil {
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "everyone"}}, nil); err == nil {
 		t.Fatal("an old everyone audience was saved")
 	}
 

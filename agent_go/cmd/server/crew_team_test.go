@@ -75,7 +75,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	// The team's agents (a shared room, 5 Nov): members see the owner's In team agents, grouped by person; Only me
 	// agents and non-members see nothing.
-	if err := writeMacSharedAgents("team-test", []macSharedAgent{{Tab: "team01", Name: "Reviewer", Purpose: "Checks invoices", Icon: "🔍", Audience: "team"}, {Tab: "solo01", Name: "Solo", Purpose: "Private", Icon: "🔒", AgentBridgePublic: true}}); err != nil {
+	if err := writeMacSharedAgents("team-test", []macSharedAgent{{Tab: "team01", Name: "Reviewer", Purpose: "Checks invoices", Audience: "team"}, {Tab: "solo01", Name: "Solo", Purpose: "Private", AgentBridgePublic: true}}); err != nil {
 		t.Fatal(err)
 	}
 	if w = call("member", "GET", base+"/agents", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"Reviewer"`) || strings.Contains(w.Body.String(), `"Solo"`) {

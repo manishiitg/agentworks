@@ -16,7 +16,7 @@ import (
 
 type accessibleProjectIdentity struct {
 	Name string `json:"name"`
-	Icon string `json:"icon"`
+	Icon string `json:"icon,omitempty"` // workflows only; a Crew is its name and purpose (owner, 5 Nov)
 }
 
 func accessibleProjectIcon(icon, name string) string {
@@ -109,8 +109,7 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 			identityName = name
 		}
 		workspacePath := canonicalChatHistoryWorkspacePath(userID, filepath.ToSlash(filepath.Dir(candidate)))
-		identityIcon := accessibleProjectIcon(manifest.Identity.Icon, identityName)
-		haystack := strings.ToLower(strings.Join([]string{id, name, identityName, identityIcon, workspacePath}, "\n"))
+		haystack := strings.ToLower(strings.Join([]string{id, name, identityName, workspacePath}, "\n"))
 		if query != "" && !strings.Contains(haystack, query) {
 			continue
 		}
@@ -120,12 +119,9 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 			itemAccess = "owner"
 		}
 		items = append(items, map[string]interface{}{
-			"id":   id,
-			"name": name,
-			"identity": accessibleProjectIdentity{
-				Name: identityName,
-				Icon: identityIcon,
-			},
+			"id":             id,
+			"name":           name,
+			"identity":       accessibleProjectIdentity{Name: identityName},
 			"profile_id":     product.ProfileID,
 			"description":    strings.TrimSpace(manifest.Description),
 			"workspace_path": workspacePath,

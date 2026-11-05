@@ -215,8 +215,8 @@ func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *Us
 		if chat.Conversation.Native.Provider != provider || chat.Conversation.Native.SessionID != in.Native[0].SessionID {
 			return fmt.Errorf("the native session differs from the staged agent")
 		}
-		if (selection.Tab != macMainTab && strings.TrimSpace(chat.Identity.Name) == "") || strings.TrimSpace(chat.Identity.Purpose) == "" || strings.TrimSpace(chat.Identity.Icon) == "" {
-			return fmt.Errorf("give the agent a name, purpose and icon")
+		if (selection.Tab != macMainTab && strings.TrimSpace(chat.Identity.Name) == "") || strings.TrimSpace(chat.Identity.Purpose) == "" {
+			return fmt.Errorf("give the agent a name and purpose")
 		}
 		copy := *chat
 		imported = &copy

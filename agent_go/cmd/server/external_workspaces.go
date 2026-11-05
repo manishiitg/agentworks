@@ -38,7 +38,7 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"before_seq": externalInteger(1, 1<<30),
 		"tool_name":  externalString("For chat_tool: exact native name from chat_tools."),
 		"arguments":  map[string]any{"type": "object"},
-		"changes":    map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, purpose, llm_config, selected_skills, templates, files, functions and schedules."},
+		"changes":    map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, purpose, llm_config, selected_skills, templates, files, functions and schedules."},
 	}, "action")
 }
 
@@ -303,7 +303,7 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				relay = nil // its Mac is the owner's: the member's row is an ordinary Crew row
 			}
 			seen[key] = true
-			item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "icon": doc.Identity.Icon, "owned_by_caller": binding.OwnerID == claims.UserID, "owner_name": strings.SplitN(logUsernameForUserID(binding.OwnerID), "@", 2)[0], "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}
+			item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "owned_by_caller": binding.OwnerID == claims.UserID, "owner_name": strings.SplitN(logUsernameForUserID(binding.OwnerID), "@", 2)[0], "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}
 			if navigation {
 				root := binding.Binding.WorkspacePath
 				item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)

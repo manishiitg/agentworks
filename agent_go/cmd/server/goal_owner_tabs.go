@@ -443,7 +443,7 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 			externalError(w, 400, "invalid_arguments", "Enter a tab name.")
 			return
 		}
-		_, err = defaultProductConversationRegistryStore().setAgentIdentity(r.Context(), tab.OwnerID, goalChatProfile, tab.ID, &name, nil, nil, tab.OwnerID)
+		_, err = defaultProductConversationRegistryStore().setAgentIdentity(r.Context(), tab.OwnerID, goalChatProfile, tab.ID, &name, nil, tab.OwnerID)
 	case "close":
 		if tab.IsMain {
 			externalError(w, 400, "main_chat", "Keep your Builder tab; close a named tab instead.")

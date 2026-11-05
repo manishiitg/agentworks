@@ -52,7 +52,7 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 		t.Fatalf("accessible search out=%s err=%v", out, err)
 	}
 	out, err = registrar.tools["list_accessible_workflows"].exec(context.Background(), map[string]interface{}{"query": "banking"})
-	if err != nil || !strings.Contains(out, `"crews":`) || !strings.Contains(out, `"name": "Banking"`) || !strings.Contains(out, `"icon": "B"`) || !strings.Contains(out, `"workspace_path": "Chats/Work/projects/banking"`) {
+	if err != nil || !strings.Contains(out, `"crews":`) || !strings.Contains(out, `"name": "Banking"`) || strings.Contains(out, `"icon": "B"`) || !strings.Contains(out, `"workspace_path": "Chats/Work/projects/banking"`) {
 		t.Fatalf("Crew discovery out=%s err=%v", out, err)
 	}
 	if _, err := registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/private-bank"}); err == nil {

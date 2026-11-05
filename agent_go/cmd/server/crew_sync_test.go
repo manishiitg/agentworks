@@ -96,7 +96,7 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if split {
 				options.LocalRoot = project
 			}
-			_, err = writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Example", "", "", "local-id", "Crew/local", nil, options)
+			_, err = writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Example", "", "local-id", "Crew/local", nil, options)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -127,7 +127,7 @@ func validateCrewAgentShare(ctx context.Context, caller, root string, change cre
 	}
 	for key, purpose := range change.Purposes {
 		agent := byID[key]
-		if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, agent.tab.OwnerID, agent.tab.Record.ProfileID, key, nil, &purpose, nil, caller); err != nil {
+		if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, agent.tab.OwnerID, agent.tab.Record.ProfileID, key, nil, &purpose, caller); err != nil {
 			return nil, err
 		}
 	}

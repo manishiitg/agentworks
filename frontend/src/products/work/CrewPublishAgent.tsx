@@ -4,7 +4,7 @@ import type { ListScheduledJobsResponse } from '../../services/api-types'
 import { desktopRequest } from '../../services/desktopConnections'
 import { Button } from '../../components/ui/Button'
 
-type Agent = { tab: string; name: string; purpose: string; icon?: string }
+type Agent = { tab: string; name: string; purpose: string }
 type Selection = { tab: string; paths: string[]; account_id?: string }
 export type AgentPlacement = { location: 'publishing' | 'server'; since?: string; transfer_id: string }
 type Preview = {
@@ -92,7 +92,6 @@ export function CrewPublishAgent({ projectId, connection, serverLink, serverName
       const since = date && Number.isFinite(date.getTime()) ? date.toLocaleDateString() === new Date().toLocaleDateString() ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
       const schedules = place?.location === 'server' ? serverSchedules?.[agent.tab] : undefined
       return <div key={agent.tab} className="flex flex-wrap items-center gap-2.5 border-t border-border py-2.5 text-sm">
-        <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">{agent.icon || '🤖'}</span>
         <span className="min-w-0 break-words" title={agent.purpose || 'Set a purpose in this agent’s chat first.'}>{agent.name}</span>
         <span className={`rounded-full px-2 py-0.5 text-xs ${place?.location === 'server' ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300' : place ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`} title={date?.toLocaleString()}>{place?.location === 'server' ? `On the server${since ? ` · since ${since}` : ''}` : place ? 'Publishing…' : 'On this Mac'}</span>
         {schedules !== undefined && schedules > 0 && <span className="text-[12.5px] text-muted-foreground">{schedules} {schedules === 1 ? 'schedule' : 'schedules'} running there</span>}

@@ -5,7 +5,6 @@ import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Trash2, X } from
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
 import { WorkflowReferenceAccess } from '../../components/folders/WorkflowReferenceAccess'
 import { Button } from '../../components/ui/Button'
-import { IconUploadField } from '../../components/ui/IconUploadField'
 import { SettingsCard } from '../../components/ui/SettingsCard'
 import { ToggleRow } from '../../components/ui/ToggleRow'
 import { Input } from '../../components/ui/Input'
@@ -47,19 +46,15 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
   onDeleteRequest: () => void
 }) {
   const [nameDraft, setNameDraft] = useState('')
-  const [iconDraft, setIconDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setNameDraft(projectIdentity?.name ?? '')
-    setIconDraft(projectIdentity?.icon ?? '')
     setError(null)
-  }, [projectIdentity?.name, projectIdentity?.icon, projectPurpose])
+  }, [projectIdentity?.name, projectPurpose])
 
-  const displayName = nameDraft.trim() || projectTitle
   const dirty = nameDraft.trim() !== (projectIdentity?.name ?? '')
-    || iconDraft.trim() !== (projectIdentity?.icon ?? '')
 
   const save = async () => {
     if (!dirty || saving) return
@@ -68,7 +63,6 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
     try {
       await onUpdateIdentity({
         name: nameDraft.trim(),
-        icon: iconDraft.trim(),
         purpose: projectPurpose, // unchanged here; Main's card edits it
       })
     } catch (cause) {
@@ -83,7 +77,7 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
       {error && <StatusBanner tone="error">{error}</StatusBanner>}
       <SettingsCard
         icon={<Tag aria-hidden="true" className="h-4 w-4 text-primary" />}
-        title="Name and icon"
+        title="Name"
       >
         <div>
           <Label className="mb-2 block">Project name</Label>
@@ -92,16 +86,6 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
             onChange={event => setNameDraft(event.target.value)}
             disabled={saving}
             placeholder={projectTitle}
-          />
-        </div>
-        <div>
-          <Label className="mb-2 block">Icon</Label>
-          <IconUploadField
-            value={iconDraft}
-            onChange={setIconDraft}
-            label={displayName}
-            disabled={saving}
-            inputAriaLabel="Project icon"
           />
         </div>
         <div className="flex justify-end">

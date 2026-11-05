@@ -236,10 +236,10 @@ func externalTools() ([]externalTool, error) {
 		// Crew authoring (crews:write; owner-only edits). One spec shape
 		// serves create_crew, export_crew and import_crew.
 		specProps, fnSpec, scheduleSpec := externalCrewSpecSchemas()
-		add("create_crew", "Create a Crew you own from a spec: name, icon, purpose (what the Crew is for; its standing instructions), skills, functions, schedules, project files. Returns the new Crew as workspace action=get does. Requires crews:write on a connection covering all your Crews.", false, false, specProps, "name", "purpose")
+		add("create_crew", "Create a Crew you own from a spec: name, purpose (what the Crew is for; its standing instructions), skills, functions, schedules, project files. Returns the new Crew as workspace action=get does. Requires crews:write on a connection covering all your Crews.", false, false, specProps, "name", "purpose")
 		strList := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
 		add("update_crew", "Edit a Crew you own. Every field is optional; omitted parts stay as they are. skills: set/add/remove names. functions: upsert specs / delete names. schedules: add specs (an add whose name already exists counts as already added), update specs by id, remove ids (an id that is already gone counts as removed), so a retry after a dropped connection is safe. files: write project files; remove_files deletes them. Requires crews:write.", false, false, crewID(map[string]any{
-			"name": map[string]any{"type": "string", "maxLength": 60}, "icon": map[string]any{"type": "string", "maxLength": 8},
+			"name":         map[string]any{"type": "string", "maxLength": 60},
 			"purpose":      map[string]any{"type": "string", "maxLength": crewPurposeLimit},
 			"skills":       map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"set": strList, "add": strList, "remove": strList}},
 			"functions":    map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"upsert": map[string]any{"type": "array", "items": fnSpec}, "delete": strList}},

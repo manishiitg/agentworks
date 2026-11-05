@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, MoreHorizontal } from 'lucide-react'
+import { ChevronRight, Eye, MoreHorizontal } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useAgentsViewStore, useCrewAgentsStore, type CrewAgentRow } from '../chat/AgentCard'
-import { AGENT_KEY, AgentIcon, AgentMark } from '../chat/AgentIcon'
+import { AGENT_KEY, AgentMark, AgentSharedMark } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
@@ -33,8 +33,8 @@ function useTeamPeopleNames(projectId: string): string[] {
   return names
 }
 
-/** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its icon,
- * name and a mark at the end only when needed, the agent card on hover, and "…" to manage it. "+" is in the top line. */
+/** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its
+ * name (no icon, owner 5 Nov) and a mark at the end only when needed, the agent card on hover, and "…" to manage it. "+" is in the top line. */
 export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const view = useAgentsViewStore(state => state.view)
   const crew = useCrewAgentsStore()
@@ -95,8 +95,10 @@ function AgentRow({ agent, active, dragging, onDrag }: { agent: CrewAgentRow; ac
     <AgentHoverCard info={agent.info} shortcut={agent.shortcut}>
       <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => agent.open ? agent.open() : openAgent(agent.tabId)}
         className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-        <AgentIcon name={agent.name} icon={agent.info?.icon} active={active} shared={agent.info?.sharedWith} />
-        <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+        <span className="min-w-0 truncate">{agent.name}</span>
+        <AgentSharedMark shared={agent.info?.sharedWith} />
+        {agent.owner && <Eye role="img" aria-label="Watching: only its owner types here" className="h-3 w-3 shrink-0 text-muted-foreground" />}
+        <span className="flex-1" />
         {agent.shortcut && <span className="hidden shrink-0 text-[10px] text-muted-foreground group-hover:inline">{AGENT_KEY}{agent.shortcut}</span>}
         <AgentMark state={state} asking={agent.asking} />
       </button>

@@ -20,7 +20,7 @@ import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentSt
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
-import { fillAgentIconDraft, fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
+import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
 import { useAgentMenuState } from './agentMenuState'
 import { AgentMark } from './AgentIcon'
 
@@ -36,13 +36,12 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 }
 
 /** One tab-management view; each product supplies its existing server operations. */
-export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, mainIcon, allowSideChats, opening, surface,
+export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
   onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
   mainPurpose?: string
-  mainIcon?: string
   allowSideChats: boolean; opening: boolean; surface: ProductSurface
   onOrder: (keys: string[]) => Promise<void>; onPin: (key: string, pinned: boolean) => Promise<void>
   onRename: (tab: ChatTab, name: string) => Promise<boolean | void>; onOpen: (name: string) => Promise<boolean | void>
@@ -138,21 +137,19 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const share = id ? shares[id] : undefined
     const ask = id ? asking.find(item => item.tab === id) : undefined
     const purpose = purposeOf(tab)
-    // A teammate's agent: its name, icon and purpose from the server, no actions (it is theirs).
+    // A teammate's agent: its name and purpose from the server, no actions (it is theirs).
     const theirs = !canControl(tab) ? listedFor(tab) : undefined
-    if (theirs) return { info: { name: tabLabel(tab), icon: theirs.icon || undefined, purpose: theirs.purpose, owner: ownerShortName(theirs.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '') || undefined } }
+    if (theirs) return { info: { name: tabLabel(tab), purpose: theirs.purpose, owner: ownerShortName(theirs.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '') || undefined } }
     const ago = ask && (ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`)
     return {
       asking: ask?.active,
       info: purpose === undefined ? undefined : {
         name: tabLabel(tab),
-        icon: (tab.tabId === canonicalTabId ? mainIcon : listedFor(tab)?.icon) || undefined,
         purpose,
         sharedWith: share?.line,
         canChange: share?.canChange,
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         onSetPurpose: () => fillAgentPurposeDraft(tab.tabId),
-        onSetIcon: () => fillAgentIconDraft(tab.tabId),
         onSharing: macHere && placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
         onRemove: tab.tabId !== canonicalTabId && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
       },
@@ -192,14 +189,14 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
   const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, owner: canControl(tab) ? undefined : listedFor(tab)?.tab_owner_name || undefined, pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })).concat(teamRemote.map((agent): CrewAgentRow => ({
     tabId: `team-remote:${agent.key}`, name: agent.name, main: false, owner: agent.owner, open: agent.open,
-    info: { name: agent.name, icon: agent.icon, purpose: agent.purpose, owner: ownerShortName(agent.owner) || undefined } }))) : []
+    info: { name: agent.name, purpose: agent.purpose, owner: ownerShortName(agent.owner) || undefined } }))) : []
   // Agents the server lists that have no tab here (closed), for the team board, which lists every agent.
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
   // (owner, 4 Nov).
-  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, icon: chat.icon,
+  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose, chat.icon]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.icon, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
   useEffect(() => {
     if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere, closedAgents)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,7 +204,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // The open tab's details, for the purpose line at the top of its chat.
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
-  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.icon ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}` : ''
+  const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}` : ''
   useEffect(() => {
     useOpenAgentStore.getState().set(openTab?.tabId ?? null, openInfo ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -421,7 +418,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         return <Fragment key={agent.key}>{first && <span className="ml-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-4 w-px bg-border" />{person}:</span>}
           <button type="button" onClick={agent.open} title={`${person}'s ${agent.name} · watch it here; only ${person} types there`}
             className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-            {agent.icon && <span aria-hidden="true">{agent.icon}</span>}<span className="max-w-[10rem] truncate">{agent.name}</span>
+            <span className="max-w-[10rem] truncate">{agent.name}</span>
             <Eye role="img" aria-label="Watching: only they type here" className="h-3 w-3 shrink-0" />
           </button></Fragment>
       })}

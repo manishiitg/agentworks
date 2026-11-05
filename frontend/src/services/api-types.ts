@@ -308,8 +308,6 @@ export interface AgentProfileSideChat {
   pinned?: boolean
   /** The agent's one-line purpose, set by its owner or by the agent itself. */
   purpose?: string
-  /** The agent's one emoji, picked with its purpose; shown before the purpose. */
-  icon?: string
   /** The caller's own Main chat, listed only when asked for (withMain). */
   is_main?: boolean
 }

@@ -25,11 +25,11 @@ func TestAgentIdentityBelongsToTheTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	name, purpose := "Reviewer", "Reads every change and says what is risky"
-	if _, err := store.setAgentIdentity(ctx, "user-1", "code", "proj-1:chat:ab12", &name, &purpose, nil, "the person"); err != nil {
+	if _, err := store.setAgentIdentity(ctx, "user-1", "code", "proj-1:chat:ab12", &name, &purpose, "the person"); err != nil {
 		t.Fatal(err)
 	}
 	purposeOnly := "Reads changes and tests them"
-	identity, err := store.setAgentIdentity(ctx, "user-1", "code", "proj-1:chat:ab12", nil, &purposeOnly, nil, "agent Reviewer")
+	identity, err := store.setAgentIdentity(ctx, "user-1", "code", "proj-1:chat:ab12", nil, &purposeOnly, "agent Reviewer")
 	if err != nil || identity.Name != "Reviewer" || identity.Purpose != purposeOnly || identity.UpdatedBy != "agent Reviewer" {
 		t.Fatalf("a purpose-only change must keep the name and record who changed it: %+v %v", identity, err)
 	}
@@ -37,25 +37,11 @@ func TestAgentIdentityBelongsToTheTab(t *testing.T) {
 	if err != nil || listed["proj-1:chat:ab12"].Name != "Reviewer" || len(listed) != 1 {
 		t.Fatalf("identities are keyed by conversation key: %+v %v", listed, err)
 	}
-	if _, err := store.setAgentIdentity(ctx, "user-1", "code", "proj-1:chat:gone", &name, nil, nil, "the person"); err == nil {
+	if _, err := store.setAgentIdentity(ctx, "user-1", "code", "proj-1:chat:gone", &name, nil, "the person"); err == nil {
 		t.Fatal("a tab that no longer exists cannot be given an identity")
 	}
-	// The icon is one emoji, picked with the purpose (PLAT-856-509): a flag, a skin tone or a joined emoji is one;
-	// text or two emoji are refused, and the purpose is kept.
-	for _, good := range []string{"🧾", "🇮🇳", "👩🏽‍💻", "❤️"} {
-		icon := good
-		if identity, err := store.setAgentIdentity(ctx, "user-1", "code", "proj-1:chat:ab12", nil, nil, &icon, "agent Reviewer"); err != nil || identity.Icon != good || identity.Purpose != purposeOnly {
-			t.Fatalf("icon %q refused or purpose lost: %+v %v", good, identity, err)
-		}
-	}
-	for _, bad := range []string{"AB", "🧾🧾", "🧾 invoices", "1"} {
-		icon := bad
-		if _, err := store.setAgentIdentity(ctx, "user-1", "code", "proj-1:chat:ab12", nil, nil, &icon, "agent Reviewer"); err == nil {
-			t.Fatalf("icon %q should be refused", bad)
-		}
-	}
 	long := strings.Repeat("x", productAgentPurposeMaxRunes+1)
-	if _, err := store.setAgentIdentity(ctx, "user-1", "code", "proj-1:chat:ab12", nil, &long, nil, "the person"); err == nil {
+	if _, err := store.setAgentIdentity(ctx, "user-1", "code", "proj-1:chat:ab12", nil, &long, "the person"); err == nil {
 		t.Fatal("a purpose longer than one short line is refused")
 	}
 }

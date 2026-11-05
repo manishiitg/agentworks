@@ -158,7 +158,7 @@ func (api *StreamingAPI) projectCreationTool(profileID, userID, sessionID string
 			return "", fmt.Errorf("open your Crew's Builder to create another Crew")
 		}
 		ctx = context.WithValue(ctx, UserContextKey, claims)
-		spec := crewSpec{Name: externalArg(args, "name"), Icon: externalArg(args, "icon"), Purpose: externalArg(args, "description"), RootPath: externalArg(args, "root_path")}
+		spec := crewSpec{Name: externalArg(args, "name"), Purpose: externalArg(args, "description"), RootPath: externalArg(args, "root_path")}
 		id, setupErr := api.createWorkspaceFromSpec(ctx, claims, profileID, spec, false)
 		if setupErr != nil && id == "" {
 			return "", fmt.Errorf("%s", externalCrewCreateError(id, setupErr))
@@ -171,7 +171,7 @@ func (api *StreamingAPI) projectCreationTool(profileID, userID, sessionID string
 		if binding.Interaction != nil && strings.TrimSpace(binding.Interaction.Kind) != "" {
 			kind = strings.TrimSpace(binding.Interaction.Kind)
 		}
-		api.emitAgentProfileEvent(sessionID, &orchestratorevents.ProductInteractionEvent{Product: profileID, Kind: kind, Payload: map[string]any{"operation": "created", "project_id": id, "name": spec.Name, "icon": spec.Icon, "workspace_path": response["workspace_path"]}})
+		api.emitAgentProfileEvent(sessionID, &orchestratorevents.ProductInteractionEvent{Product: profileID, Kind: kind, Payload: map[string]any{"operation": "created", "project_id": id, "name": spec.Name, "workspace_path": response["workspace_path"]}})
 		response["status"], response["project_id"], response["name"] = "created", id, spec.Name
 		if setupErr != nil {
 			response["warnings"] = []string{projectCreationWarning(setupErr)}

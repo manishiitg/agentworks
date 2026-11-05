@@ -226,7 +226,6 @@ func TestCreateCrewProjectValidatesInput(t *testing.T) {
 		"empty title":              func(r *CreateCrewRequest) { r.Title = " " },
 		"long title":               func(r *CreateCrewRequest) { r.Title = strings.Repeat("a", 61) },
 		"long purpose":             func(r *CreateCrewRequest) { r.Purpose = strings.Repeat("a", 2001) },
-		"long icon":                func(r *CreateCrewRequest) { r.Icon = strings.Repeat("a", 9) },
 		"empty key":                func(r *CreateCrewRequest) { r.IdempotencyKey = "" },
 		"bad workflow":             func(r *CreateCrewRequest) { r.WorkflowPath = "Chats/other" },
 		"other profile":            func(r *CreateCrewRequest) { r.ProfileID = "crewx" },
