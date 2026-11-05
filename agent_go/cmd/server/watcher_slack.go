@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -24,6 +25,27 @@ type watcherSlackScope struct {
 	jobID         string
 	userID        string
 	workspacePath string
+	// expires is the check's own time limit with a margin: a check killed before its stop runs cannot leave a live
+	// session (review, 5 Nov).
+	expires time.Time
+}
+
+// watcherSlackSessionLife is how long a check's Slack session lives at most: the check's 60-second limit plus margin.
+const watcherSlackSessionLife = 2 * time.Minute
+
+// liveWatcherSlackScope is the check's session while it is still live; an expired one is removed.
+func (api *StreamingAPI) liveWatcherSlackScope(sessionID string) (watcherSlackScope, bool) {
+	cached, found := api.watcherSlackSessions.Load(sessionID)
+	if !found {
+		return watcherSlackScope{}, false
+	}
+	scope := cached.(watcherSlackScope)
+	if time.Now().After(scope.expires) {
+		api.watcherSlackSessions.Delete(sessionID)
+		log.Printf("[WATCHER_SLACK] job=%s result=refused reason=session_expired", scope.jobID)
+		return watcherSlackScope{}, false
+	}
+	return scope, true
 }
 
 // watcherSlackReadTools are the Slack MCP tools a Watcher may call: each reads, none sends or changes anything.
@@ -48,7 +70,7 @@ func (api *StreamingAPI) openWatcherSlackSession(job productScheduleJob, root st
 		return nil, func() {}
 	}
 	session := watcherSlackSessionPrefix + uuid.NewString()
-	api.watcherSlackSessions.Store(session, watcherSlackScope{jobID: job.ID(), userID: job.UserID, workspacePath: root})
+	api.watcherSlackSessions.Store(session, watcherSlackScope{jobID: job.ID(), userID: job.UserID, workspacePath: root, expires: time.Now().Add(watcherSlackSessionLife)})
 	env := map[string]string{"MCP_API_URL": base + "/s/" + session, "MCP_SESSION_ID": session}
 	common.PopulateMCPBridgeShortEnv(env) // the session's own token
 	delete(env, "MCP_CUSTOM")             // Slack reading only: no platform tools, no virtual tools
@@ -62,11 +84,10 @@ func (api *StreamingAPI) resolveWatcherSlackMCPServer(ctx context.Context, sessi
 	if !strings.HasPrefix(sessionID, watcherSlackSessionPrefix) {
 		return nil, false, nil
 	}
-	cached, found := api.watcherSlackSessions.Load(sessionID)
+	scope, found := api.liveWatcherSlackScope(sessionID)
 	if !found {
 		return nil, true, fmt.Errorf("this Watcher check has finished")
 	}
-	scope := cached.(watcherSlackScope)
 	if !watcherSlackToolAllowed(tool) {
 		log.Printf("[WATCHER_SLACK] job=%s tool=%s result=refused reason=not_a_read_tool", scope.jobID, tool)
 		return nil, true, fmt.Errorf("a Watcher can only read Slack (read a channel or thread, search, list your conversations, look up people)")
@@ -94,8 +115,8 @@ func (api *StreamingAPI) watcherSlackPerson(sessionID string) (string, bool) {
 	if !strings.HasPrefix(sessionID, watcherSlackSessionPrefix) {
 		return "", false
 	}
-	if cached, ok := api.watcherSlackSessions.Load(sessionID); ok {
-		return cached.(watcherSlackScope).userID, true
+	if scope, ok := api.liveWatcherSlackScope(sessionID); ok {
+		return scope.userID, true
 	}
 	return "", true
 }
