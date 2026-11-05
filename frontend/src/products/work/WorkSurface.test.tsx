@@ -103,9 +103,12 @@ describe('Crew native tab dragging', () => {
       await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
       const menu = document.querySelector('[role="dialog"][aria-label="Agents"]')!
       expect(menu.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
-      expect(menu.querySelector('button[title="Research · alex.taylor · alex.taylor@example.com"]')).not.toBeNull()
+      // The owner is named by the server's display name, never an email (PLAT-856-509).
+      const research = menu.querySelector('button[title^="Research"]')
+      expect(research?.getAttribute('title')).toContain('alex.taylor')
+      expect(research?.getAttribute('title')).not.toContain('@')
       // Another owner's tab can be pinned on the caller's own strip.
-      expect(menu.querySelector('[aria-label="Unpin Research · alex.taylor"]')).not.toBeNull()
+      expect(menu.querySelector('[aria-label="Unpin Research"]')).not.toBeNull()
       expect(menu.querySelector('[aria-label="Rename Research"]')).toBeNull()
       expect(menu.querySelector('[aria-label="Close Review"]')).toBeNull()
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore() }

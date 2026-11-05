@@ -39,6 +39,21 @@ type crewTeamTabAgent struct {
 	Fixed     string `json:"fixed,omitempty"`
 	// Address is the send_message target for "Ask from my agent".
 	Address string `json:"address,omitempty"`
+	// Whose agent it is, by account, with the server's display name: screens group people by OwnerID, never by a name.
+	OwnerID   string `json:"owner_id"`
+	OwnerName string `json:"owner_name"`
+	// Place is where it runs ("mac" or "server"); StatusLabel is its availability ("Mac off"), "" when it can answer.
+	Place       string `json:"place"`
+	StatusLabel string `json:"status_label,omitempty"`
+	// Tab is the agent's tab in its person's copy ("main" for a Mac's Main), so the Mac app finds its own tabs' rows.
+	Tab string `json:"tab"`
+}
+
+// crewTeamTabShare is one shared folder with its size as the server holds it.
+type crewTeamTabShare struct {
+	Path  string `json:"path"`
+	Files int    `json:"files"`
+	Bytes int64  `json:"bytes"`
 }
 
 // crewTeamTabMac is the Crew owner's Mac (a Mac Crew only; a Crew on the server has no Mac).
@@ -73,6 +88,12 @@ type crewTeamTabReply struct {
 	// MacOnly is the line under the folder choice of a Mac Crew: its folders are listed from the owner's Mac.
 	MacOnly  string `json:"mac_only,omitempty"`
 	CanLeave bool   `json:"can_leave"`
+	// CanChoose: the viewer changes Folders / Whole Crew and stops sharing a folder (a Team setting, from anywhere).
+	// Picking a new folder reads the Crew's own folder, so a Mac Crew's picker is in its owner's Mac app (MacOnly).
+	CanChoose bool `json:"can_choose"`
+	// Shares are the shared folders' sizes as kept here (Whole for the Whole Crew); zero before the first sync.
+	Shares []crewTeamTabShare `json:"shares,omitempty"`
+	Whole  *crewTeamTabShare  `json:"whole,omitempty"`
 }
 
 func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +181,8 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if a.StatusLabel != "" {
 				detail = append(detail, a.StatusLabel)
 			}
-			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam}
+			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
+				OwnerID: p.UserID, OwnerName: p.Name, Place: a.Place, StatusLabel: a.StatusLabel, Tab: a.Tab}
 			// Only me is per person (owner, 5 Nov): each person chooses for their own agents, the owner's Mac ones too.
 			if mine {
 				row.CanChange = true
@@ -171,7 +193,42 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 	}
 	out.Sync = crewTeamTabSyncFor(t, viewer)
+	out.CanChoose = view.CanManage
+	out.Shares, out.Whole = crewTeamTabShares(t, viewer)
 	return out
+}
+
+// crewTeamTabShares sizes what the Team shares from the files this server keeps for it.
+func crewTeamTabShares(t crewTeam, viewer string) ([]crewTeamTabShare, *crewTeamTabShare) {
+	if !t.edits(viewer) {
+		return nil, nil
+	}
+	s, err := readCrewTeamFileState(t.ProjectID)
+	if err != nil {
+		return nil, nil
+	}
+	whole := &crewTeamTabShare{}
+	shares := make([]crewTeamTabShare, len(t.Folder.Folders))
+	for i, f := range t.Folder.Folders {
+		shares[i].Path = f
+	}
+	for rel, v := range s.Versions {
+		if v.File == nil {
+			continue
+		}
+		whole.Files++
+		whole.Bytes += v.File.Size
+		for i, f := range t.Folder.Folders {
+			if rel == f || strings.HasPrefix(rel, f+"/") {
+				shares[i].Files++
+				shares[i].Bytes += v.File.Size
+			}
+		}
+	}
+	if t.Folder.Whole {
+		return nil, whole
+	}
+	return shares, nil
 }
 
 // crewTeamTabSyncFor is the shared folder's state for the viewer from this server: a teammate working on the website
@@ -224,8 +281,29 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 	return out
 }
 
-// crewTeamCopyLine is one copy's sync state in plain words, and whether it is a problem.
+// crewTeamCopyLine is one copy's sync state in plain words, and whether it is a problem: the one line the Mac app and
+// the website show (a Mac's own copy from its status, a member's server copy from the Team tab), with what it leaves out.
 func crewTeamCopyLine(b crewTeamLocal) (string, bool) {
+	line, problem := crewTeamCopyState(b)
+	if b.Root != "" {
+		op := b.onPurpose()
+		skipped := 0
+		for _, rel := range crewTeamSkipped(b.Root) {
+			if !op[rel] {
+				skipped++
+			}
+		}
+		if skipped > 0 {
+			line += fmt.Sprintf(" · %d private-looking %s skipped", skipped, plural(skipped, "file", "files"))
+		}
+	}
+	if n := len(b.TooLarge); n > 0 {
+		line += fmt.Sprintf(" · %d %s over 64 MB not synced", n, plural(n, "file", "files"))
+	}
+	return line, problem
+}
+
+func crewTeamCopyState(b crewTeamLocal) (string, bool) {
 	files := fmt.Sprintf("%d %s", len(b.Files), plural(len(b.Files), "file", "files"))
 	ago := ""
 	if at, err := time.Parse(time.RFC3339Nano, b.LastSynced); err == nil {

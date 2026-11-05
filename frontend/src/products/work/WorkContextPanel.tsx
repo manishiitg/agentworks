@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Bot, CalendarClock, ChevronRight, FolderSync, Globe, Laptop, Link2, RefreshCw, Settings2, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
@@ -8,9 +8,7 @@ import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
-import { cloudStateIcon, type CrewAsk, openCrewAskThread, takeCrewAccess, type CrewAccessLine, YourComputerPanel } from './YourComputerPanel'
-import { isLocalDeployment } from '../productSurfaceConfig'
-import { useContextMenuWideStore } from '../../stores/useContextMenuWideStore'
+import { cloudStateIcon, type CrewAsk, openCrewAskThread, type CrewAccessLine } from './YourComputerPanel'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -55,11 +53,11 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const accessItems = inventory.filter(item => item.group === 'Share' && item.view === 'mcp')
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const automationItems = inventory.filter(item => item.view === 'schedules')
-  const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' | 'access' }>()
+  const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' }>()
   const computerState = access?.place
   const accessTree = access?.tree || []
   const asking = access?.asking || []
-  const showMenu = (view: 'full' | 'integrations' | 'automations' | 'access') => {
+  const showMenu = (view: 'full' | 'integrations' | 'automations') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     setMenu({ scope, view })
   }
@@ -77,24 +75,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     onOpen(item.view)
   }
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
-  // A Crew on this Mac opens Access inside this same menu card, grown, with a back arrow (owner, 3 Nov: "same this just
-  // gets bigger"), not as the full side panel.
-  // Only the Mac app's own Crews (isLocalDeployment): the website's raw workspace id is 'local' too, and there the
-  // Access page is the server's (WorkIntegrationsPanel AccessPage), like for a Crew opened from a server in the Mac app.
-  const accessInMenu = isLocalDeployment() && computerState !== undefined && computerState !== 'online'
-  const accessOpen = menu?.scope === scope && menu.view === 'access'
-  // An agent's tab asked for its sharing: open Access here (the card then scrolls to that agent).
-  useEffect(() => {
-    const open = () => { if (accessInMenu && !accessOpen && takeCrewAccess(projectId)) showMenu('access') }
-    open()
-    window.addEventListener('agentworks:open-crew-access', open)
-    return () => window.removeEventListener('agentworks:open-crew-access', open)
-  })
-  useEffect(() => { useContextMenuWideStore.getState().setWide(accessOpen); return () => useContextMenuWideStore.getState().setWide(false) }, [accessOpen])
-  // Access opens straight on its tabs, without a title row (owner, 4 Nov); the side panel's own toggle closes it.
-  if (menu?.scope === scope && menu.view === 'access') return <WorkspaceContextCard noFooter page>
-    <YourComputerPanel projectId={projectId} sessionId={reviewSessionId} canEdit onBack={() => setMenu(undefined)} />
-  </WorkspaceContextCard>
+  // Access is one full-panel page in the Mac app and on the website (owner, 5 Nov: the same Team screens everywhere),
+  // with Who can use it where the server lists it; it is never a smaller copy inside this menu.
   if (menu?.scope === scope) {
     const renderItem = (item: CrewMenuItem) => {
       if (item.id === 'dashboard') return <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
@@ -104,7 +86,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       const color = connections.some(row => row.attention) ? 'text-amber-600 dark:text-amber-400' : connections.some(row => row.connected) ? 'text-emerald-600 dark:text-emerald-400' : undefined
       return <Row key={item.id} icon={item.icon} hint={connections.length && item.id !== 'mcp:connected' ? connections.map(row => row.detail).join('\n') : undefined} detail={menu.view === 'integrations' && status ? <span className={color}>{status}</span> : undefined} onClick={() => open(item)}>{item.label}</Row>
     }
-    return <WorkspaceContextCard title={{ full: 'Full menu', integrations: 'Integrations', automations: 'Automations', access: 'Access' }[menu.view]} onBack={() => setMenu(undefined)}>
+    return <WorkspaceContextCard title={{ full: 'Full menu', integrations: 'Integrations', automations: 'Automations' }[menu.view]} onBack={() => setMenu(undefined)}>
       {menu.view !== 'full' ? <div className="space-y-0.5">{(menu.view === 'integrations' ? integrations : automationItems).map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {
         const items = inventory.filter(item => item.group === group)
         if (!items.length) return null
@@ -120,23 +102,20 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const theirs = access?.role === 'member' || access?.role === 'shared'
   const macElsewhere = data?.mac_elsewhere === true
   const accessDetail = section('access')?.detail || section('sharing')?.detail
-  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => item.id === 'mcp:access' && accessInMenu ? showMenu('access') : open(item)}>{item.label}</Row>
+  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => open(item)}>{item.label}</Row>
   const openAsk = (ask: CrewAsk) => { void openCrewAskThread(projectId, ask) }
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.
   const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, public: Link2, folder: FolderSync, clash: TriangleAlert, where: access?.where === 'mac' ? Laptop : Globe }
-  // Where Access is not inside this menu (the website, a Crew from a server), it opens as the Access page, the same
-  // Team tab and its Sync section (TeamSyncPanel scrolls to it after openCrewSync).
-  const openAccessPage = () => { if (!accessInMenu) openID('mcp:access') }
+  // Each line opens the Access page (WorkSurface listens) at its tab, or at Sync (TeamSyncPanel scrolls to it).
   const openLine = (line: CrewAccessLine) => {
     if (line.kind === 'folder' || line.kind === 'clash') openCrewSync(projectId)
     else openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
-    openAccessPage()
   }
-  // A person in the Team: their agent in this Crew's tabs (watch only), else Access at the Team tab.
-  const openPerson = (name: string) => {
-    const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileProjectId === projectId && item.metadata?.agentProfileTabCanWrite === false && (item.metadata?.agentProfileTabOwnerName || '').split('@')[0] === name.split('@')[0])
-    if (tab) activateTab(tab.tabId); else { openCrewAccess(projectId, '', 'team'); openAccessPage() }
+  // A person in the Team, by account: their agent in this Crew's tabs (watch only), else Access at the Team tab.
+  const openPerson = (userId: string) => {
+    const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileProjectId === projectId && item.metadata?.agentProfileTabCanWrite === false && item.metadata?.agentProfileTabOwnerID === userId)
+    if (tab) activateTab(tab.tabId); else openCrewAccess(projectId, '', 'team')
   }
   const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const treeLines = accessTree.map((line, index) => {
@@ -149,7 +128,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
           {line.progress && line.progress.bytes_total > 0 && <span aria-hidden="true" className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.round(line.progress.bytes_done * 100 / line.progress.bytes_total))}%` }} /></span>}
         </span>
       </button>
-      {line.people?.map(person => <button key={person.name} type="button" onClick={() => openPerson(person.name)} title={person.online_label} className={`${lineButton} pl-6`}>
+      {line.people?.map(person => <button key={person.user_id} type="button" onClick={() => openPerson(person.user_id)} title={person.online_label} className={`${lineButton} pl-6`}>
         <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${person.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
         <span className="min-w-0 flex-1 break-words text-muted-foreground"><span className="text-foreground">{person.name}</span>{person.status_label && <span> · {person.status_label}</span>}{person.agents?.length ? ` · ${person.agents.join(', ')}` : ''}</span>
       </button>)}

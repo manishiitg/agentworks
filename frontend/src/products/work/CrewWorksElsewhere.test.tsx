@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import type { Team, TeamTarget } from './teamApi'
 const mocks = vi.hoisted(() => ({ team: undefined as Team | undefined, target: undefined as TeamTarget | undefined, desktop: vi.fn(), request: vi.fn() }))
-vi.mock('./teamApi', () => ({ useProjectTeam: () => ({ team: mocks.team, target: mocks.target }), teamRequest: mocks.request }))
+vi.mock('./teamApi', () => ({ useTeamTab: () => ({ view: mocks.team ? { team: mocks.team } : undefined, target: mocks.target, error: '' }), teamRequest: mocks.request }))
 vi.mock('../../services/desktopConnections', () => ({ desktopRequest: mocks.desktop }))
 import { CrewWhereRow, CrewWorksElsewhere } from './CrewWorksElsewhere'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

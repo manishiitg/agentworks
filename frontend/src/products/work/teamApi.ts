@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
+import type { AgentProfileSideChat } from '../../services/api-types'
 import { desktopRequest } from '../../services/desktopConnections'
+import { liveFeed } from '../../services/liveFeed'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
+import { registerRemoteSession } from '../../utils/remoteSessions'
 import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -28,82 +31,103 @@ export async function teamRequest<T>(target: TeamTarget, suffix = '', method = '
   return (response.status === 204 ? '' : raw === 'blob' ? await response.blob() : raw ? await response.text() : await response.json()) as T
 }
 
+/** The Mac app's own Crew is kept online through Mac online (its crew-sync binding); undefined elsewhere. */
+async function macBinding(project: string): Promise<{ connection: string; peer: string; side?: string } | undefined> {
+  if (!(hasDesktopConnections() && getRawActiveWorkspaceId() === 'local')) return undefined
+  const { data } = await api.get<{ binding?: { connection_id: string; peer_project_id: string; side?: string } }>(`/api/crew-sync/${encodeURIComponent(project)}`, { skipSessionContext: true })
+  return data.binding?.connection_id ? { connection: data.binding.connection_id, peer: data.binding.peer_project_id, side: data.binding.side } : undefined
+}
+
 /** Where this Crew's Team is kept: on the website the Crew itself; in the Mac app its online copy, through the Mac's
  * saved sign-in (undefined until Mac online pairs it). */
 async function teamTarget(project: string): Promise<TeamTarget | undefined> {
   if (!(hasDesktopConnections() && getRawActiveWorkspaceId() === 'local')) return { project }
-  const { data } = await api.get<{ binding?: { connection_id: string; peer_project_id: string } }>(`/api/crew-sync/${encodeURIComponent(project)}`, { skipSessionContext: true })
-  if (!data.binding?.connection_id) return undefined
-  return { connection: data.binding.connection_id, project: data.binding.peer_project_id, localProject: project }
-}
-
-export function useProjectTeam(project: string) {
-  const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
-  const user = useAuthStore(s => s.user?.id)
-  const [result, setResult] = useState<{ team: Team; target: TeamTarget }>()
-  const [error, setError] = useState('')
-  const [version, setVersion] = useState(0)
-  useEffect(() => {
-    let active = true
-    setResult(undefined)
-    const load = async () => {
-      try {
-        const target = await teamTarget(project)
-        if (!target) return
-        const team = await teamRequest<Team>(target)
-        if (active) { setResult({ team, target: { ...target, folderId: team.folder.id } }); setError('') }
-      } catch (e) { if (active) setError(teamError(e)) }
-    }
-    if (project) void load()
-    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15000)
-    const refresh = () => void load()
-    window.addEventListener('agentworks:team-updated', refresh)
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', refresh) }
-  }, [project, workspace, user, version])
-  return { ...result, error, refresh: () => setVersion(v => v + 1) }
+  const binding = await macBinding(project)
+  return binding ? { connection: binding.connection, project: binding.peer, localProject: project } : undefined
 }
 
 /** The Team tab as the server writes it for the signed-in person (crew_team_tab.go): every row, and what they may
- * change. The screen shows it and sends the person's choices; it decides nothing itself. */
+ * change. Every screen shows it and sends the person's choices; none decides anything itself. */
 export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean }
-export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; fixed?: string; address?: string }
+export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; place: 'mac' | 'server'; status_label?: string; tab: string }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
+export type TeamTabShare = { path: string; files: number; bytes: number }
 export type TeamTabView = {
   team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
   mac?: { on: boolean; line: string; note: string; yours: boolean }
   sync?: TeamTabSync; can_switch: boolean; all_in_team: boolean; mac_only?: string; can_leave: boolean
+  can_choose: boolean; shares?: TeamTabShare[]; whole?: TeamTabShare
 }
+/** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */
+export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; error: string }
 
-export function useTeamTab(project: string) {
-  const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
-  const user = useAuthStore(s => s.user?.id)
-  const [result, setResult] = useState<{ view: TeamTabView; target: TeamTarget }>()
-  const [error, setError] = useState('')
-  useEffect(() => {
-    let active = true
-    setResult(undefined)
-    const load = async () => {
+// One read of the Team tab per Crew for the whole page (the Team tab, the left menu, tabs, watching lines): every
+// screen shares it. A live notice (crew_panel) or a Team change reads it again at once; otherwise every 15 s.
+type TabEntry = { state: TeamTabState; listeners: Set<(state: TeamTabState) => void>; load: () => Promise<void>; stop: () => void }
+const tabCache = new Map<string, TabEntry>()
+
+function watchTeamTab(project: string, key: string, listener: (state: TeamTabState) => void) {
+  let entry = tabCache.get(key)
+  if (!entry) {
+    let seq = 0
+    const created: TabEntry = { state: { error: '' }, listeners: new Set(), load: async () => {}, stop: () => {} }
+    const publish = (state: TeamTabState) => { created.state = state; created.listeners.forEach(notify => notify(state)) }
+    created.load = async () => {
+      const mine = ++seq
       try {
         const target = await teamTarget(project)
-        if (!target) return
+        if (mine !== seq) return
+        if (!target) { publish({ unbound: true, error: '' }); return }
         const view = await teamRequest<TeamTabView>(target, '/tab')
-        if (active) { setResult({ view, target: { ...target, folderId: view.team.folder.id } }); setError('') }
-      } catch (e) { if (active) setError(teamError(e)) }
+        if (mine === seq) publish({ view, target: { ...target, folderId: view.team.folder.id }, error: '' })
+      } catch (e) { if (mine === seq) publish({ ...created.state, error: teamError(e) }) }
     }
-    if (project) void load()
-    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15000)
-    window.addEventListener('agentworks:team-updated', load)
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', load) }
-  }, [project, workspace, user])
-  return { ...result, error }
+    const reload = () => { void created.load() }
+    const timer = window.setInterval(() => { if (!document.hidden) reload() }, 15000)
+    window.addEventListener('agentworks:team-updated', reload)
+    const unlive = liveFeed.subscribe(['crew_panel'], null, reload, project)
+    created.stop = () => { window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', reload); unlive() }
+    tabCache.set(key, created)
+    entry = created
+    reload()
+  }
+  const watched = entry
+  watched.listeners.add(listener)
+  listener(watched.state)
+  return () => {
+    watched.listeners.delete(listener)
+    if (watched.listeners.size) return
+    watched.stop()
+    tabCache.delete(key)
+  }
 }
+
+export function useTeamTab(project?: string): TeamTabState {
+  const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
+  const user = useAuthStore(s => s.user?.id)
+  const [state, setState] = useState<TeamTabState>({ error: '' })
+  useEffect(() => {
+    setState({ error: '' })
+    if (!project || !user) return
+    return watchTeamTab(project, `${workspace}\x00${user}\x00${project}`, setState)
+  }, [project, workspace, user])
+  return state
+}
+
+const changed = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
 
 export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {
   const saved = target.connection && target.localProject
     ? await desktopRequest<Team>(`/${encodeURIComponent(target.connection)}/crew-teams/${encodeURIComponent(target.localProject)}`, 'PUT', team)
     : await teamRequest<Team>(target, '', 'PUT', team)
-  window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+  changed()
   return saved
+}
+
+/** Adds or removes one person; the server changes its record (crew_team_people.go). */
+export async function changeTeamPeople(target: TeamTarget, change: { add: string } | { remove: string }) {
+  await teamRequest<Team>({ project: target.project, connection: target.connection }, '/people', 'POST', change)
+  changed()
 }
 
 export type TeamSwitchResult = { team: Team; folder_created?: boolean }
@@ -114,12 +138,44 @@ export async function switchTeam(target: TeamTarget, on: boolean, ownMac = false
   if (!ownMac || !target.connection || !target.localProject) {
     const team = await teamRequest<Team>(target)
     const saved = await teamRequest<Team>(target, '', 'PUT', { ...team, on })
-    window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+    changed()
     return { team: saved }
   }
   const result = await desktopRequest<TeamSwitchResult>(`/${encodeURIComponent(target.connection)}/crew-teams/${encodeURIComponent(target.localProject)}/switch`, 'POST', { on })
-  window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+  changed()
   return result
+}
+
+/** One of the Team's agents by its chat key. A Mac app tab of a teammate's agent carries the server's key after
+ * ":team:" (teamSideChats). */
+export function teamAgentFor(agents: TeamTabAgent[] | undefined, chatKey?: string) {
+  if (!chatKey) return undefined
+  return agents?.find(item => item.key === chatKey || chatKey.endsWith(`:team:${item.key}`))
+}
+
+/** The Team tab's row for one chat tab here: someone else's by its key; one of the person's own by its key on the
+ * website, by its Mac tab ("main" or the tab id) in the Mac app, whose own tabs use this Mac's keys. */
+export function teamAgentForTab(state: TeamTabState, key: string | undefined, main: boolean, own: boolean) {
+  const agents = state.view?.agents
+  if (!agents || !key) return undefined
+  if (!own || !state.target?.localProject) return teamAgentFor(agents, key)
+  const tab = main ? 'main' : key.split(':chat:')[1]
+  return agents.find(agent => agent.can_change && agent.tab === tab)
+}
+
+/** The Team members' own agents in the owner's Mac app (owner, 5 Nov): the online copy's side-chat rows the person
+ * does not write, as real tabs of this Crew. Their chats are read from the server through this Mac's sign-in
+ * (utils/remoteSessions.ts); the key carries the server's after ":team:". Empty outside the Mac app's own Crew. */
+export async function teamSideChats(profileId: string, projectId: string): Promise<AgentProfileSideChat[]> {
+  const binding = await macBinding(projectId)
+  if (!binding || binding.side !== 'local') return []
+  const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(binding.connection)}/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats?project_id=${encodeURIComponent(binding.peer)}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
+  if (!response.ok) return []
+  const rows = await response.json() as AgentProfileSideChat[]
+  return (rows || []).filter(row => row.can_write === false && row.tab_owner_id && row.session_id && !row.is_main).map(row => {
+    registerRemoteSession(row.session_id, binding.connection)
+    return { ...row, conversation_key: `${projectId}:team:${row.conversation_key}`, chat_location: undefined, agent_id: undefined }
+  })
 }
 
 /** A Team invite as the invited person sees it (owner, 5 Nov): accept on the web or on this Mac, or decline. */
@@ -127,41 +183,38 @@ export type TeamInvite = { project_id: string; name: string; owner_name: string;
 
 export async function answerTeamInvite(invite: TeamInvite, accept: boolean) {
   await teamRequest<unknown>({ project: invite.project_id, connection: invite.connection }, '/invite', 'POST', { accept })
-  window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+  changed()
 }
 
-export function useTeamInvites() { return useTeamLists().invites }
-
-function useTeamLists() {
+/** Open Team invites for the signed-in person, from each connected server in the Mac app, else this one. */
+export function useTeamInvites() {
   const user = useAuthStore(s => s.user?.id)
   const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
   const connections = useConnectedWorkStore(s => s.connections)
-  const [lists, setLists] = useState<{ teams: { team: Team; target: TeamTarget }[]; invites: TeamInvite[] }>({ teams: [], invites: [] })
+  const [invites, setInvites] = useState<TeamInvite[]>([])
   useEffect(() => {
     let active = true
-    setLists({ teams: [], invites: [] })
+    setInvites([])
     const load = async () => {
-      const results: { team: Team; target: TeamTarget }[] = []
-      const invites: TeamInvite[] = []
+      const found: TeamInvite[] = []
       const sources = hasDesktopConnections() && getRawActiveWorkspaceId() === 'local' ? connections.filter(c => c.id !== 'local').map(c => c.id) : [undefined]
       await Promise.all(sources.map(async connection => {
         try {
-          let data: { teams: Team[]; invites?: TeamInvite[] }
+          let data: { invites?: TeamInvite[] }
           if (connection) {
             const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(connection)}/api/crew-teams`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
             if (!response.ok) return
             data = await response.json()
-          } else data = (await api.get<{ teams: Team[]; invites?: TeamInvite[] }>('/api/crew-teams', { skipSessionContext: true })).data
-          for (const team of data.teams || []) if (team.folder_access) results.push({ team, target: { project: team.project_id, connection, folderId: team.folder.id } })
-          for (const invite of data.invites || []) invites.push({ ...invite, connection })
+          } else data = (await api.get<{ invites?: TeamInvite[] }>('/api/crew-teams', { skipSessionContext: true })).data
+          for (const invite of data.invites || []) found.push({ ...invite, connection })
         } catch { /* An offline network keeps its copies on the computer. */ }
       }))
-      if (active) setLists({ teams: results, invites })
+      if (active) setInvites(found)
     }
     void load()
     const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15000)
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', load) }
   }, [user, workspace, connections])
-  return lists
+  return invites
 }

@@ -4,14 +4,16 @@
 
 export type MacInfo = { device_id: string; name: string; online: boolean; last_seen?: string }
 export type MacCrewState = { state: 'working' | 'idle' | 'waiting'; last_line?: string; at?: string }
-export type CrewLocationFields = { location?: 'mac' | 'server'; mac?: MacInfo; state?: MacCrewState; where?: 'mac' | 'web' }
+export type CrewLocationFields = { location?: 'mac' | 'server'; mac?: MacInfo; state?: MacCrewState; where?: 'mac' | 'web'; owned_by_caller?: boolean }
 
 /** Mac Crews grouped per Mac, in first-seen order, plus everything else. */
 export function groupByMac<T extends CrewLocationFields>(projects: T[]): { macs: Array<{ mac: MacInfo; rows: T[] }>; server: T[] } {
   const macs = new Map<string, { mac: MacInfo; rows: T[] }>()
   const server: T[] = []
   for (const project of projects) {
-    if (project.location !== 'mac') { server.push(project); continue }
+    // Only your own Mac Crews sit under "On your Mac"; a teammate's Mac Crew is listed with the server's (its row names
+    // its owner), never as yours.
+    if (project.location !== 'mac' || project.owned_by_caller === false) { server.push(project); continue }
     // A Crew paired before Macs were named has no device id: it lives on a Mac we cannot name, never grouped under
     // the Mac that is on now.
     const mac: MacInfo = project.mac?.device_id ? project.mac : { device_id: 'unknown-mac', name: project.mac?.name || 'Another Mac', online: project.mac?.online === true, last_seen: project.mac?.last_seen }

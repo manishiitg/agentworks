@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Laptop, Globe } from 'lucide-react'
 import { desktopRequest } from '../../services/desktopConnections'
-import { teamRequest, useProjectTeam } from './teamApi'
+import { teamRequest, useTeamTab } from './teamApi'
 
 /** One working copy per Team member (owner, 5 Nov): a member's own agents in a Crew work either on the website or on
  * their Mac. The server says which (team.where); in the other place the Crew is one plain screen with one button that
  * moves the working copy there. */
 export function useCrewWorksElsewhere(projectId: string) {
-  const { team, target } = useProjectTeam(projectId)
+  const { view, target } = useTeamTab(projectId)
+  const team = view?.team
   const onMacApp = Boolean(target?.connection)
   const elsewhere: 'mac' | 'web' | undefined = !team?.where ? undefined
     : onMacApp && team.where === 'web' ? 'web'
@@ -47,7 +48,8 @@ export function CrewWorksElsewhere({ projectId }: { projectId: string }) {
 
 /** On the Mac, in a member's working copy: where it works and the way back to the website. */
 export function CrewWhereRow({ projectId }: { projectId: string }) {
-  const { team, target } = useProjectTeam(projectId)
+  const { view, target } = useTeamTab(projectId)
+  const team = view?.team
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   if (team?.where !== 'mac' || !target?.connection) return null

@@ -15,9 +15,8 @@ import { MacAgentBridge } from './MacAgentBridge'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
 import { TeamTab } from './TeamTab'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
-export { useMacTabShareLine, useMacSharedAgents, useTeamRemoteAgents, openCrewAccess, takeCrewAccess, openCrewAskThread } from './MacSharedAgents'
-export type { MacAgentShare } from './MacSharedAgents'
-import { useProjectTeam } from './teamApi'
+export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
+import { useTeamTab } from './teamApi'
 import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
 import { hasPendingCrewAccess, pendingCrewAccessSection, type CrewAccessSection } from './MacSharedAgents'
 
@@ -51,7 +50,7 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
-export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; people?: { name: string; online: boolean; online_label?: string; agents?: string[]; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
+export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; people?: { user_id: string; name: string; online: boolean; online_label?: string; agents?: string[]; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
 type PlaceEntry = { place?: CloudState; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
@@ -147,7 +146,8 @@ export function YourComputerPanel({ projectId, sessionId, onFullScreen, onBack, 
 }
 
 function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspacePath, tabId, onAsk }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void; workspacePath?: string; tabId?: string; onAsk?: (message: string) => void | Promise<unknown> }) {
-  const team = useProjectTeam(projectId)
+  const team = useTeamTab(projectId).view?.team
+  const teamChanged = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   // The last Access tab is remembered per Crew in this browser (owner, 5 Nov); an agent asking for its sharing still opens Team.
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {
@@ -208,7 +208,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
       if (action === 'server' && reply?.place === 'online') setMoved(reply)
       // Mac online off also turned the Team off (the server says so, owner 5 Nov).
       if (reply?.team_note) setError(reply.team_note)
-      if (action !== 'server') team.refresh()
+      if (action !== 'server') teamChanged()
       return true
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.'); return false }
@@ -253,7 +253,15 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
   if (status.access_view === 'summary') return <p className="text-sm text-muted-foreground">{status.access_summary}</p>
   // A row only the Mac can change, as the server words it here.
   const macText = (text?: AccessText) => text ? <div className="space-y-1.5 px-1"><MacDataLine>{text.line}</MacDataLine>{text.note && <p className="text-xs text-muted-foreground">{text.note}</p>}</div> : null
-  const serverCopies = [...(status?.on_server || []), ...(team.team?.server_data ? [{ name: `Shared with the team: ${team.team.server_data.name}`, detail: 'kept on the server so your team can sync it' }] : [])]
+  const serverCopies = [...(status?.on_server || []), ...(team?.server_data ? [{ name: `Shared with the team: ${team.server_data.name}`, detail: 'kept on the server so your team can sync it' }] : [])]
+  // Team on while Mac online is off (the Mac app's own Crew): the Mac turns both on (the server decides, owner 5 Nov).
+  const turnOnTeam = async () => {
+    if (!target) { setSection('mac'); setAsking(true); return }
+    setBusy(true); setError('')
+    try { await desktopRequest(`/${encodeURIComponent(target)}/crew-teams/${encodeURIComponent(projectId)}/switch`, 'POST', { on: true }); teamChanged() }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'The Team could not be turned on. Try again.') }
+    finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId) }
+  }
   return <div className="space-y-3.5 text-sm">
     {/* No title row (owner, 4 Nov): a small back arrow beside the tabs, and Esc, return to the workspace. */}
     <div className="flex items-stretch gap-2">
@@ -277,14 +285,13 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
       {macText(status.access_publish)}
       {(status.on_server || []).map(copy => <p key={copy.name} className="px-1 text-xs"><span className="font-medium">{copy.name}</span> <span className="text-muted-foreground">· {copy.detail}</span></p>)}
     </section>}
-    {!here && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3"><TeamTab projectId={projectId} /></section>}
     {here && !needsServer && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
       {binding?.connection_id && !online
         ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} network={network} copies={serverCopies} onTeam={() => setSection('team')} />
         : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
       <div className="px-0.5">
         {status && !online && !moving && <label className="flex items-center justify-between gap-3 py-2.5">
-          <span><span className="font-semibold">You</span> <span className="text-[12.5px] text-muted-foreground">· from anywhere while your Mac is on{team.team?.on ? ' · Team uses it' : ''}</span></span>
+          <span><span className="font-semibold">You</span> <span className="text-[12.5px] text-muted-foreground">· from anywhere while your Mac is on{team?.on ? ' · Team uses it' : ''}</span></span>
           <Switch aria-label="Use from phone and web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
         </label>}
         {asking && !binding && <div role="group" aria-label="Which network?" className="space-y-1.5 border-t border-border py-3">
@@ -319,16 +326,11 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
       </div>
       {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} />}
     </section>}
-    {here && !needsServer && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      {binding && !online && binding.connection_id ? <TeamTab projectId={projectId} connection={binding.connection_id}
-        macSwitch={<Switch aria-label="Mac online" checked disabled={busy} onCheckedChange={on => { if (!on) void run('offline') }} />} /> : online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Open Team on the server</Button> : <TeamOffline onTurnOn={async () => {
-          // Team on also turns Mac online on (owner, 5 Nov); with several networks the person picks one there first.
-          if (!target) { setSection('mac'); setAsking(true); return }
-          setBusy(true); setError('')
-          try { await desktopRequest(`/${encodeURIComponent(target)}/crew-teams/${encodeURIComponent(projectId)}/switch`, 'POST', { on: true }); window.dispatchEvent(new CustomEvent('agentworks:team-updated')) }
-          catch (cause) { setError(cause instanceof Error ? cause.message : 'The Team could not be turned on. Try again.') }
-          finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId); team.refresh() }
-        }} busy={busy} />}
+    {/* One Team tab everywhere (owner, 5 Nov): the server's /tab reply decides its rows. The Mac app's own Crew adds its
+        Mac online switch, and turns the Team on through the Mac while Mac online is off. */}
+    {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
+      <TeamTab projectId={projectId} onTurnOn={here ? () => void turnOnTeam() : undefined}
+        macSwitch={here && binding?.connection_id && !online ? <Switch aria-label="Mac online" checked disabled={busy} onCheckedChange={on => { if (!on) void run('offline') }} /> : undefined} />
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}
     {status.access_share && workspacePath && tabId && onAsk && <section aria-label="Who can use it"><h3 className="mb-2 text-xs font-medium text-muted-foreground">Who can use it</h3><ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
@@ -340,14 +342,6 @@ const allOnMac = (network: string) => `Everything is on this Mac. Use it from yo
 function MacDataLine({ children }: { children: ReactNode }) {
   return <p className="px-1 text-[13px] text-muted-foreground">{children}</p>
 }
-/** The Team tab while Mac online is off: one switch; turning it on turns Mac online on too (the server does both). */
-function TeamOffline({ onTurnOn, busy }: { onTurnOn: () => void; busy: boolean }) {
-  return <label className="flex items-center justify-between gap-3 px-0.5 py-2.5 text-sm">
-    <span><span className="font-semibold">Team</span> <span className="text-[12.5px] text-muted-foreground">· off · turning it on also turns on Mac online</span></span>
-    <Switch aria-label="Team" checked={false} disabled={busy} onCheckedChange={on => { if (on) onTurnOn() }} />
-  </label>
-}
-
 // The Mac online line speaks only about the Mac (owner, 4 Nov: keep the tabs' ideas apart). When the server keeps
 // something for Team or Publish, one link says so and the Team tab lists it.
 function MacOnlineDataLine({ network, copies, onTeam }: { network: string; copies: ServerCopy[]; onTeam: () => void }) {
@@ -454,7 +448,7 @@ function LaptopCard({ sessionId }: { sessionId?: string }) {
     return () => { active = false; window.removeEventListener('crew-laptop-settings-changed', load) }
   }, [endpoint])
   const online = Boolean(settings?.device_id && devices.some(item => item.device_id === settings.device_id))
-  const summary = !settings ? 'Checking…' : !settings.device_id ? 'Off' : `${settings.device_id} · ${online ? 'online' : 'offline'}`
+  const summary = !settings ? 'Checking…' : !settings.device_id ? 'Off' : `Your laptop · ${online ? 'online' : 'offline'}`
   return <Card icon={<Laptop className="h-4 w-4 text-muted-foreground" />} title="Laptop access" status={summary} tone={!settings?.device_id ? 'off' : online ? 'ok' : 'warn'} details={<CodeLocalFilesSettings sessionId={sessionId} />}>
     {settings?.device_id && <ul className="space-y-1 text-xs">
       {settings.folders.length === 0 && <li className="text-muted-foreground">No folders shared</li>}

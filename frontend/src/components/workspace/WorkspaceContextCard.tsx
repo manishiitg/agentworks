@@ -1,18 +1,18 @@
 import type { ReactNode } from 'react'
 import { ArrowLeft, ChevronRight, List, Search, type LucideIcon } from 'lucide-react'
-export function WorkspaceContextCard({ children, title, summary, subtle = false, onFullMenu, onBack, footerContent, noFooter = false, page = false }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean; onFullMenu?: () => void; onBack?: () => void; footerContent?: ReactNode; noFooter?: boolean; page?: boolean }) {
+export function WorkspaceContextCard({ children, title, summary, subtle = false, onFullMenu, onBack, footerContent }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean; onFullMenu?: () => void; onBack?: () => void; footerContent?: ReactNode }) {
   return (
     <div className="flex h-full min-h-0 flex-col p-3 sm:p-4">
       <aside
         aria-label="Workspace context"
-        className={`flex max-h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border p-4 shadow-sm ${page ? 'bg-background' : subtle ? 'bg-muted/30 dark:bg-zinc-900/70' : 'bg-muted/70 dark:bg-zinc-800/80'}`}
+        className={`flex max-h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border p-4 shadow-sm ${subtle ? 'bg-muted/30 dark:bg-zinc-900/70' : 'bg-muted/70 dark:bg-zinc-800/80'}`}
       >
         {(title || summary) && <header className="shrink-0 border-b border-border pb-3">
           {title && <h2 className="text-sm font-semibold text-foreground">{onBack ? <button type="button" aria-label="Back to workspace" title="Back to workspace" onClick={onBack} className="inline-flex min-h-8 items-center gap-2 rounded hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft aria-hidden="true" className="h-3.5 w-3.5"/>{title}</button> : title}</h2>}
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
         </header>}
         <div className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
-        {!noFooter && <footer className="shrink-0 border-t border-border pt-3">
+        <footer className="shrink-0 border-t border-border pt-3">
         {footerContent && <div className="mb-2">{footerContent}</div>}
         <div className="flex items-center gap-3">
         <button
@@ -33,7 +33,7 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false,
           <List className="h-3.5 w-3.5 shrink-0"/><span className="whitespace-nowrap text-left">Full menu</span><ChevronRight className="h-3 w-3"/>
         </button>}
         </div>
-        </footer>}
+        </footer>
       </aside>
     </div>
   )

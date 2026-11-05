@@ -1,5 +1,5 @@
 import { YourComputerPanel } from './YourComputerPanel'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Server } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectIntegrationPanel, INTEGRATION_LABELS, type IntegrationSection } from '../../components/integrations/ProjectIntegrationPanel'
@@ -22,7 +22,10 @@ import { ComputerUsePanel } from './ComputerUsePanel'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'message-agents'
 
-export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange }: {
+export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange, onAccessPage, onBack }: {
+  /** Told whether the Access page is showing (it has its own back arrow and tabs, so the pane hides its title). */
+  onAccessPage?: (access: boolean) => void
+  onBack?: () => void
   accessLoading?: boolean
   onAppsSaved?: () => void
   canEdit?: boolean; workspacePath: string; projectId: string; projectTitle: string
@@ -45,6 +48,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     if (next === 'message-agents' && !integrationProductAvailable('bullpen', allowedProducts)) return
     if (['apps', 'brain', 'folders', 'mac-folders', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)
   })
+  useEffect(() => { onAccessPage?.(tab === 'access'); return () => onAccessPage?.(false) }, [tab, onAccessPage])
   const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Access', 'computer-use': 'Computer use', 'message-agents': 'Message other agents' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
@@ -53,7 +57,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     <div data-ui-view-section={tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       <>
         {/* One Access page in the Mac app and on the website (owner, 5 Nov); the server's reply decides its rows. */}
-        {tab === 'access' && <div className="max-w-2xl"><YourComputerPanel projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} onAsk={draft} /></div>}
+        {tab === 'access' && <div className="max-w-2xl"><YourComputerPanel projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} onAsk={draft} onBack={onBack} /></div>}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
         {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}

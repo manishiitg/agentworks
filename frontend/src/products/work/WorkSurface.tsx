@@ -57,7 +57,8 @@ import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../.
 import { parseProductInteraction } from '../../../shared/session/interactions'
 import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { ChatEmptyState } from './ChatEmptyState'
-import { useCrewLivesOnMac } from './YourComputerPanel'
+import { teamSideChats } from './teamApi'
+import { ownerShortName } from '../../components/chat/chatTabName'
 import { CrewWorksElsewhere, useCrewWorksElsewhere } from './CrewWorksElsewhere'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { type RunsOnSelection } from './RunsOnPicker'
@@ -648,7 +649,10 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       if (openingRef.current || document.visibilityState === 'hidden') return
       busy = true
       try {
-        const rows = await agentApi.listAgentProfileSideChats(profileId, projectId, true)
+        // In the Mac app the Team members' own agents are listed from the Crew's online copy, as real tabs like on the
+        // website (they are read from the server; only their owner types).
+        const [rows, teammates] = await Promise.all([agentApi.listAgentProfileSideChats(profileId, projectId, true), teamSideChats(profileId, projectId).catch(() => [])])
+        rows.push(...teammates)
         if (cancelled) return
         const main = rows.find(chat => chat.is_main)
         setMainPurpose(main ? main.purpose || '' : undefined)
@@ -831,7 +835,7 @@ function WorkTopBarControl({
       label={selected?.identity?.name || selected?.title}
       leading={selected ? <EntityIdentityIcon icon={selected.identity?.icon} label={selected.identity?.name || selected.title} /> : undefined}
       compactOnNarrow
-      title={selected ? `${selected.identity?.name || selected.title}${selected.identity?.name && selected.identity.name !== selected.title ? ` · ${selected.title}` : ''}${selected.shared ? ` · shared by ${selected.shared.ownerUsername || selected.shared.ownerId} (${isWorkSessionRun(selected) ? 'Run' : 'Builder'})` : ''}` : `${sessions.length ? 'Choose a' : 'New'} ${product.itemNoun}`}
+      title={selected ? `${selected.identity?.name || selected.title}${selected.identity?.name && selected.identity.name !== selected.title ? ` · ${selected.title}` : ''}${selected.shared ? ` · shared by ${ownerShortName(selected.shared.ownerUsername || '') || 'a teammate'}` : ''}` : `${sessions.length ? 'Choose a' : 'New'} ${product.itemNoun}`}
       placeholder={`${sessions.length ? 'Choose a' : 'New'} ${product.itemNoun}`}
       open={open}
       onToggle={() => setOpen(current => !current)}
@@ -1029,9 +1033,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   // workspace. People the Crew is only shared with use its dashboard.
   const showShell = product.hasTerminal && !isWorkSessionRun(selected)
   const isShared = isWorkSessionRun(selected)
-  // A Crew that lives on its owner's Mac, seen from the website or phone (owner, 3 Nov): only the chat, no right
-  // panel, because its work area is on the Mac. The Mac app itself keeps the full panel.
-  const macOnly = useCrewLivesOnMac(selected?.id)
   // A Team member's own agents work in one place; in the other the Crew is one plain screen (owner, 5 Nov).
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '').elsewhere
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
@@ -1094,15 +1095,18 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('agentworks:open-chat-usage', open)
     return () => window.removeEventListener('agentworks:open-chat-usage', open)
   }, [selected?.id, workspacePanels, selectWorkspaceView])
-  // An agent tab's "Sharing…" opens the Crew menu, which opens Access at that agent (YourComputerPanel openCrewAccess).
+  // openCrewAccess / openCrewSync (an agent's "Sharing…", the side panel's Access lines) open the one Access page, the
+  // same full panel in the Mac app and on the website; it then opens the asked tab (and scrolls to Sync).
   useEffect(() => {
     const open = (event: Event) => {
-      if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId !== selected?.id || workspaceView === 'context') return
-      selectWorkspaceView('context')
+      if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId !== selected?.id || isShared) return
+      setWorkspaceViewTarget('mcp', 'access')
+      setPanelOpen(true)
+      selectWorkspaceView('mcp')
     }
     window.addEventListener('agentworks:open-crew-access', open)
     return () => window.removeEventListener('agentworks:open-crew-access', open)
-  }, [selected?.id, workspaceView, selectWorkspaceView])
+  }, [selected?.id, isShared, selectWorkspaceView])
   // "Works once this Crew is online. [Move online]" opens Where it lives (useMacCrew.tsx).
   useEffect(() => {
     const open = (event: Event) => {
@@ -1456,13 +1460,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               divider={null}
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
-              toolbarWhenPanelClosed={!isWorkSessionRun(selected) && !macOnly}
-              showToolbar={!isShared && !macOnly}
-              chatOpen={!isShared && (chatOpen || macOnly)} panelOpen={isShared || (panelOpen && !macOnly)} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
+              toolbarWhenPanelClosed={!isWorkSessionRun(selected)}
+              showToolbar={!isShared}
+              chatOpen={!isShared && chatOpen} panelOpen={isShared || panelOpen} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
               retainWorkspace
-              onCloseWorkspace={isShared || macOnly ? undefined : () => setPanelOpen(false)}
-              showChatReopenControl={!isShared && !macOnly}
-              mobilePane={macOnly ? 'chat' : mobilePane}
+              onCloseWorkspace={isShared ? undefined : () => setPanelOpen(false)}
+              showChatReopenControl={!isShared}
+              mobilePane={mobilePane}
               onMobilePaneChange={pane => { if (pane === 'chat') openChatPane(); else selectWorkspaceView('context') }}
               laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
