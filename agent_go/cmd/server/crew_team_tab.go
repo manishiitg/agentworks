@@ -98,7 +98,7 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 
 func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabReply {
 	view := t.view(viewer)
-	view.Lent = crewTeamLentNow(ctx, t)
+	view.Lent = crewTeamLentNow(ctx, t, viewer)
 	twin := crewRelayTwin(t.ProjectID)
 	ownerName := crewPersonShortName(t.OwnerID)
 	out := crewTeamTabReply{Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, Switch: "server",
