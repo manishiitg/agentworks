@@ -2655,6 +2655,9 @@ func runServer(cmd *cobra.Command, args []string) {
 		api.recordMCPBridgeCall(strings.TrimSpace(r.Header.Get("X-Session-ID")), server, tool)
 	}
 
+	// `mcpbridge secret NAME` from a coding CLI's shell: its own read-only token, outside the tool routes (which refuse
+	// that token), session_value_read.go.
+	router.HandleFunc("/bridge/secret-read", api.handleSessionSecretRead).Methods("POST")
 	toolsRouter := router.PathPrefix("/tools").Subrouter()
 	toolsRouter.Use(bridgeAuthMiddleware(api.apiToken))
 	toolsRouter.HandleFunc("/mcp/{server}/{tool}", func(w http.ResponseWriter, r *http.Request) {
@@ -2676,8 +2679,6 @@ func runServer(cmd *cobra.Command, args []string) {
 			})
 		})
 	}).Methods("POST", "OPTIONS")
-	// `mcpbridge secret NAME` from a coding CLI's shell (session token only; session_value_read.go).
-	toolsRouter.HandleFunc("/secret", api.handleSessionSecretRead).Methods("POST")
 	toolsRouter.HandleFunc("/virtual/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		executorHandlers.HandlePerToolVirtualRequest(w, r, vars["tool"])
