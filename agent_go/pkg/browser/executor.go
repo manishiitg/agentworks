@@ -1091,7 +1091,7 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		if isCdpMode && isCDPUnavailableError(err) {
 			return "", cdpUnavailableError(cdpPort, err)
 		}
-		return "", err
+		return "", withStaleRefHint(err)
 	}
 
 	recordingContextNote := ""
@@ -2006,6 +2006,11 @@ func isStuckBrowserError(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
+	// An explicit wait (wait --url, wait <selector>) that runs out of time is the page answering "not yet", not a hung
+	// browser: the renderer was idle and the next command works. Report it as a normal error.
+	if strings.Contains(msg, "wait timed out") {
+		return false
+	}
 	for _, needle := range []string{"operation timed out", "timed out after", "command timed out", "command execution timed out", "cdp command timed out",
 		"target crashed", "page crashed", "tab crashed", "targetcrashed"} {
 		if strings.Contains(msg, needle) {
@@ -2013,6 +2018,15 @@ func isStuckBrowserError(err error) bool {
 		}
 	}
 	return false
+}
+
+// withStaleRefHint adds the next step to "Unknown ref: eN": refs belong to the snapshot that produced them, so an old one
+// fails after the page changed.
+func withStaleRefHint(err error) error {
+	if err == nil || !strings.Contains(err.Error(), "Unknown ref") {
+		return err
+	}
+	return fmt.Errorf("%w (the element ref is from an older snapshot: take a new snapshot and use its refs)", err)
 }
 
 // maxFullPageScreenshotHeight is the tallest page a full-page screenshot is attempted for: a taller capture exceeds Chrome's texture

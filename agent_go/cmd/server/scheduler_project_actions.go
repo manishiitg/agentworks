@@ -6,10 +6,14 @@ import (
 	"errors"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
+	"math/rand"
 	"sort"
 	"strings"
 	"time"
 )
+
+// scheduledStartJitter is the longest random delay before a timed run starts.
+const scheduledStartJitter = 5 * time.Second
 
 // dispatchProjectTimers belongs to the single scheduler clock. The dispatcher
 // owns execution and per-person receipts, never a second polling service.
@@ -117,6 +121,9 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 				}
 			}
 			go func(job productScheduleJob, scheduledFor time.Time) {
+				// Schedules due the same minute would otherwise all open their
+				// provider connection in the same instant; spread them by a few seconds.
+				time.Sleep(time.Duration(rand.Int63n(int64(scheduledStartJitter))))
 				if when := job.Schedule.When; when != nil {
 					loc, err := time.LoadLocation(when.Timezone)
 					if err != nil {

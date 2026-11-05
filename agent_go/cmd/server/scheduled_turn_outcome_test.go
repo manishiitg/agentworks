@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -142,4 +144,50 @@ func indexOf(h, n string) int {
 		}
 	}
 	return -1
+}
+
+// TestScheduledTurnNetworkDropIsNamedAndRetried: six scheduled turns on a
+// codex-cli model failed in the same minute with "[network]: EOF"; the schedule
+// logged only "turn ended with conversation_error" and gave up after one try.
+// The failure must carry the model's error, and a network drop is retried.
+func TestScheduledTurnNetworkDropIsNamedAndRetried(t *testing.T) {
+	store := storeevents.NewEventStore(200)
+	const sessionID = "sched-session-network"
+	turnStart := time.Now().UTC()
+	store.AddEvent(sessionID, storeevents.Event{
+		Type:      "llm_generation_error",
+		Timestamp: turnStart.Add(time.Second),
+		Data: &agentevents.AgentEvent{
+			Type: "llm_generation_error",
+			Data: &agentevents.LLMGenerationErrorEvent{Error: "codex-cli/gpt-5 [network]: EOF"},
+		},
+	})
+	store.AddEvent(sessionID, errEvent("conversation_error", "", turnStart.Add(2*time.Second)))
+	failure := scheduledTurnFailure(store, sessionID, turnStart)
+	if !contains(failure, "[network]: EOF") {
+		t.Fatalf("failure text lost the model error: %q", failure)
+	}
+
+	saved := scheduledTurnNetworkRetryDelays
+	scheduledTurnNetworkRetryDelays = []time.Duration{time.Millisecond, time.Millisecond}
+	defer func() { scheduledTurnNetworkRetryDelays = saved }()
+	calls := 0
+	_, err := runScheduledTurnWithNetworkRetry(context.Background(), "job", func() (internalSessionTurnResult, error) {
+		calls++
+		if calls < 3 {
+			return internalSessionTurnResult{}, errors.New(failure)
+		}
+		return internalSessionTurnResult{FinalResponse: "done"}, nil
+	})
+	if err != nil || calls != 3 {
+		t.Fatalf("network drop not retried twice: calls=%d err=%v", calls, err)
+	}
+	calls = 0
+	_, err = runScheduledTurnWithNetworkRetry(context.Background(), "job", func() (internalSessionTurnResult, error) {
+		calls++
+		return internalSessionTurnResult{}, errors.New("claudecode/ [quota_exhausted]: limit reached")
+	})
+	if err == nil || calls != 1 {
+		t.Fatalf("a non-network failure was retried: calls=%d err=%v", calls, err)
+	}
 }
