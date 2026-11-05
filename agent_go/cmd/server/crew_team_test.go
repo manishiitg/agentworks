@@ -3,6 +3,8 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -466,5 +468,46 @@ func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
 	}
 	if _, err := readCrewTeam("gone-copy"); err == nil {
 		t.Fatal("the old Team record stayed behind")
+	}
+}
+
+// Owner, 5 Nov ("Sync it anyway"): a file that looks like it holds passwords or keys reaches the shared folder only
+// when its uploader declared it on purpose in that transfer; machine state never does; removing it ends the choice.
+func TestCrewTeamSyncsCredentialFileOnlyWhenChosenOnPurpose(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	if err := writeCrewTeam(crewTeam{ProjectID: "purpose-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Path: "team"}}); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("//registry.example.com/:_authToken=${TOKEN}\n")
+	src := filepath.Join(t.TempDir(), "npmrc")
+	if err := os.WriteFile(src, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	file := crewsync.File{Hash: hex.EncodeToString(sum[:]), Size: int64(len(data))}
+	key := crewTeamKey("express/.npmrc")
+	send := func(transfer string, declared ...string) error {
+		_, err := applyCrewTeamChanges(t.Context(), "purpose-test", "member", transfer, crewTransferDigest(transfer), crewsync.Snapshot{Files: crewsync.Manifest{key: file}, Changes: []crewsync.Change{{Path: key, After: &file, DataPath: src}}}, declared...)
+		return err
+	}
+	if err := send("undeclared"); err == nil {
+		t.Fatal("a credential-looking file was shared without being chosen")
+	}
+	if crewTeamAllowed("node_modules/.npmrc", crewTeamOnPurpose{"node_modules/.npmrc": true}) {
+		t.Fatal("machine state was allowed on purpose")
+	}
+	if err := send("chosen", "express/.npmrc"); err != nil {
+		t.Fatalf("chosen file: %v", err)
+	}
+	state, _ := readCrewTeamFileState("purpose-test")
+	if state.OnPurpose["express/.npmrc"] != "member" || state.Versions["express/.npmrc"].File == nil {
+		t.Fatalf("not recorded on purpose: %+v", state.OnPurpose)
+	}
+	if _, err := applyCrewTeamChanges(t.Context(), "purpose-test", "member", "stop", crewTransferDigest("stop"), crewsync.Snapshot{Files: crewsync.Manifest{}, Changes: []crewsync.Change{{Path: key, Before: &file}}}); err != nil {
+		t.Fatalf("stop syncing: %v", err)
+	}
+	if state, _ = readCrewTeamFileState("purpose-test"); state.OnPurpose["express/.npmrc"] != "" {
+		t.Fatal("the on-purpose record stayed after the file was removed")
 	}
 }

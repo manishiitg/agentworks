@@ -29,6 +29,20 @@ type crewTeamTransfer struct {
 	Direction  string             `json:"direction"`
 	Snapshot   *crewsync.Snapshot `json:"snapshot,omitempty"`
 	Base       crewsync.Manifest  `json:"base,omitempty"`
+	// OnPurpose: on upload, the files the uploader chose to sync despite credential-looking names; on download, the
+	// files the shared folder holds on purpose (owner, 5 Nov, "Sync it anyway").
+	OnPurpose []string `json:"on_purpose,omitempty"`
+}
+
+// crewTeamTransferOnPurpose is what a transfer may carry on purpose: the folder's on-purpose files and, for an upload,
+// the uploader's own choices saved with that transfer.
+func crewTeamTransferOnPurpose(project, stage string) (crewTeamOnPurpose, []string) {
+	state, _ := readCrewTeamFileState(project)
+	var declared []string
+	if raw, err := os.ReadFile(filepath.Join(stage, "on_purpose.json")); err == nil {
+		_ = json.Unmarshal(raw, &declared)
+	}
+	return state.onPurpose().with(declared), declared
 }
 
 func crewTeamPair(project, actor, client, direction string) string {
@@ -55,20 +69,20 @@ func crewTeamSnapshotStore(project, actor, client, direction string) (filesnapsh
 	}
 	return filesnapshots.Store{Root: root, Private: filepath.Join(d, "transfers", crewTransferDigest(actor+"\x00"+client), direction)}, nil
 }
-func crewTeamSnapshotScope(claims *UserClaims, s *crewsync.Snapshot) error {
-	if e := validateCrewTeamSnapshot(s); e != nil {
+func crewTeamSnapshotScope(claims *UserClaims, s *crewsync.Snapshot, on ...crewTeamOnPurpose) error {
+	if e := validateCrewTeamSnapshot(s, on...); e != nil {
 		return e
 	}
 	if claims.AccessToken != nil && claims.AccessToken.FileGuard != nil {
 		g := claims.AccessToken.FileGuard
 		for key := range s.Files {
-			rel, _ := crewTeamRelative(key)
+			rel, _ := crewTeamRelative(key, on...)
 			if !g.Allows(rel, false) {
 				return fmt.Errorf("this connection cannot transfer the whole shared folder")
 			}
 		}
 		for _, c := range s.Changes {
-			rel, _ := crewTeamRelative(c.Path)
+			rel, _ := crewTeamRelative(c.Path, on...)
 			if !g.Allows(rel, true) {
 				return fmt.Errorf("this connection cannot change that shared file")
 			}
@@ -127,9 +141,17 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 	fail := func(e error) { externalError(w, 409, "transfer_failed", e.Error()) }
 	switch in.Action {
 	case "prepare":
-		if e = crewTeamSnapshotScope(claims, in.Snapshot); e != nil {
+		state, _ := readCrewTeamFileState(project)
+		if e = crewTeamSnapshotScope(claims, in.Snapshot, state.onPurpose().with(in.OnPurpose)); e != nil {
 			fail(e)
 			return
+		}
+		// The uploader's on-purpose choices stay with this transfer for its apply.
+		if len(in.OnPurpose) > 0 {
+			if e = fsutil.WriteJSONAtomic(filepath.Join(stage, "on_purpose.json"), in.OnPurpose, 0600); e != nil {
+				fail(e)
+				return
+			}
 		}
 		if in.Snapshot.Content == nil || len(in.Snapshot.Payloads) != 1 || !crewPayloadValid(in.Snapshot.Payloads["content"]) {
 			fail(fmt.Errorf("send one verified file-content bundle"))
@@ -156,6 +178,9 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 		}
 		externalJSON(w, in)
 	case "pull":
+		state, _ := readCrewTeamFileState(project)
+		op := state.onPurpose()
+		in.OnPurpose = sortedOnPurpose(op)
 		var snapshot crewsync.Snapshot
 		if raw, err := os.ReadFile(meta); err == nil {
 			if e = json.Unmarshal(raw, &snapshot); e != nil {
@@ -169,7 +194,15 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			fail(err)
 			return
 		}
-		if e = validateCrewTeamSnapshot(&crewsync.Snapshot{Files: in.Base}); e != nil {
+		// The caller's base may still name a file someone stopped syncing on purpose: it is only compared against,
+		// never sent, so it is not refused (the reply no longer has it).
+		baseOp := crewTeamOnPurpose{}.with(sortedOnPurpose(op))
+		for key := range in.Base {
+			if rel, ok := strings.CutPrefix(key, "resources/"); ok {
+				baseOp[rel] = true
+			}
+		}
+		if e = validateCrewTeamSnapshot(&crewsync.Snapshot{Files: in.Base}, baseOp); e != nil {
 			fail(e)
 			return
 		}
@@ -178,13 +211,13 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			fail(e)
 			return
 		}
-		snapshot, e = crewTeamCapture(r.Context(), root, stage, in.Base)
+		snapshot, e = crewTeamCapture(r.Context(), root, stage, in.Base, op)
 		if e != nil {
 			fail(e)
 			return
 		}
 		defer snapshot.Close()
-		if e = crewTeamSnapshotScope(claims, &snapshot); e != nil {
+		if e = crewTeamSnapshotScope(claims, &snapshot, op); e != nil {
 			fail(e)
 			return
 		}
@@ -232,7 +265,8 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			fail(e)
 			return
 		}
-		if e = crewTeamSnapshotScope(claims, &snapshot); e != nil {
+		op, declared := crewTeamTransferOnPurpose(project, stage)
+		if e = crewTeamSnapshotScope(claims, &snapshot, op); e != nil {
 			fail(e)
 			return
 		}
@@ -279,7 +313,7 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		defer snapshot.Close()
-		receipt, e := applyCrewTeamChanges(r.Context(), project, claims.UserID, in.Client+"/"+in.TransferID, digest, snapshot)
+		receipt, e := applyCrewTeamChanges(r.Context(), project, claims.UserID, in.Client+"/"+in.TransferID, digest, snapshot, declared...)
 		if e != nil {
 			fail(e)
 			return
@@ -367,7 +401,8 @@ func (api *StreamingAPI) handleCrewTeamPiece(w http.ResponseWriter, r *http.Requ
 		externalError(w, 404, "transfer_missing", "Restart the shared-folder transfer.")
 		return
 	}
-	if e = crewTeamSnapshotScope(claims, &s); e != nil {
+	op, _ := crewTeamTransferOnPurpose(project, stage)
+	if e = crewTeamSnapshotScope(claims, &s, op); e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
@@ -469,6 +504,7 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/crew-teams/{project}/sync/{transfer}", api.handleCrewTeamPiece).Methods("GET", "PUT", "HEAD")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/folders", api.handleDesktopTeamFolders).Methods("GET")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/local", api.handleDesktopTeamStatus).Methods("GET")
+	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/sync-anyway", api.handleDesktopTeamSyncAnyway).Methods("POST")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}", api.handleDesktopCrewTeam).Methods("GET", "PUT")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/switch", api.handleDesktopCrewTeamSwitch).Methods("POST")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/join", api.handleDesktopCrewTeamJoin).Methods("GET", "POST")
@@ -505,4 +541,13 @@ func completeCrewTeamTransfer(stage string) {
 	for i := 2; i < len(completed); i++ {
 		_ = os.RemoveAll(completed[i].path)
 	}
+}
+
+func sortedOnPurpose(op crewTeamOnPurpose) []string {
+	out := make([]string, 0, len(op))
+	for p := range op {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }

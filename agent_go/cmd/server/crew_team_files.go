@@ -41,7 +41,42 @@ type crewTeamFileState struct {
 	Events   []crewTeamEvent            `json:"events"`
 	Clashes  []crewTeamClash            `json:"clashes"`
 	Receipts map[string]crewTeamReceipt `json:"receipts"`
+	// OnPurpose: files that look like they hold passwords or keys which a member chose to sync anyway (owner, 5 Nov),
+	// by path, with who chose it. Everyone then syncs them like any shared file.
+	OnPurpose map[string]string `json:"on_purpose,omitempty"`
 }
+
+// crewTeamOnPurpose is a set of exact paths synced on purpose; such a path is shared despite its credential-looking
+// name, still never machine state.
+type crewTeamOnPurpose map[string]bool
+
+func (s crewTeamFileState) onPurpose() crewTeamOnPurpose {
+	op := crewTeamOnPurpose{}
+	for p := range s.OnPurpose {
+		op[p] = true
+	}
+	return op
+}
+
+// with adds the given exact paths.
+func (op crewTeamOnPurpose) with(paths []string) crewTeamOnPurpose {
+	out := crewTeamOnPurpose{}
+	for p := range op {
+		out[p] = true
+	}
+	for _, p := range paths {
+		out[p] = true
+	}
+	return out
+}
+
+func joinOnPurpose(ops []crewTeamOnPurpose) crewTeamOnPurpose {
+	if len(ops) == 0 {
+		return nil
+	}
+	return ops[0]
+}
+
 type crewTeamReceipt struct {
 	TransferID string   `json:"transfer_id"`
 	Digest     string   `json:"digest"`
@@ -49,14 +84,20 @@ type crewTeamReceipt struct {
 	Conflicts  []string `json:"conflicts"`
 }
 
-func crewTeamAllowed(rel string) bool {
+func crewTeamAllowed(rel string, on ...crewTeamOnPurpose) bool {
 	_, err := publication.CleanPath(rel)
-	return err == nil && norm.NFC.String(rel) == rel && !publication.Excluded(rel) && !publication.CredentialPath(rel) && !strings.HasPrefix(rel, "_system/") && rel != "_system" && crewsync.Allowed("resources/"+rel, false)
+	if err != nil || norm.NFC.String(rel) != rel || strings.HasPrefix(rel, "_system/") || rel == "_system" || !crewsync.Allowed("resources/"+rel, false) {
+		return false
+	}
+	if joinOnPurpose(on)[rel] {
+		return !publication.ExcludedFromSync(rel, false) // chosen on purpose: credentials allowed, machine state never
+	}
+	return !publication.Excluded(rel) && !publication.CredentialPath(rel)
 }
 func crewTeamKey(rel string) string { return "resources/" + rel }
-func crewTeamRelative(key string) (string, error) {
+func crewTeamRelative(key string, on ...crewTeamOnPurpose) (string, error) {
 	rel, ok := strings.CutPrefix(key, "resources/")
-	if !ok || !crewTeamAllowed(rel) {
+	if !ok || !crewTeamAllowed(rel, on...) {
 		return "", fmt.Errorf("only ordinary files inside the shared folder can be transferred")
 	}
 	return rel, nil
@@ -100,7 +141,7 @@ func (s crewTeamFileState) manifest() crewsync.Manifest {
 	}
 	return m
 }
-func crewTeamCapture(ctx context.Context, root, private string, base crewsync.Manifest) (crewsync.Snapshot, error) {
+func crewTeamCapture(ctx context.Context, root, private string, base crewsync.Manifest, on ...crewTeamOnPurpose) (crewsync.Snapshot, error) {
 	if e := os.MkdirAll(private, 0700); e != nil {
 		return crewsync.Snapshot{}, e
 	}
@@ -109,12 +150,12 @@ func crewTeamCapture(ctx context.Context, root, private string, base crewsync.Ma
 		return s, e
 	}
 	for key := range s.Files {
-		rel, err := crewTeamRelative(key)
+		rel, err := crewTeamRelative(key, on...)
 		if err != nil {
 			delete(s.Files, key)
 			continue
 		}
-		f, err := openCrewTeamFile(root, rel)
+		f, err := openCrewTeamFile(root, rel, on...)
 		if err != nil {
 			s.Close()
 			return crewsync.Snapshot{}, err
@@ -123,14 +164,14 @@ func crewTeamCapture(ctx context.Context, root, private string, base crewsync.Ma
 	}
 	changes := s.Changes[:0]
 	for _, c := range s.Changes {
-		if _, e := crewTeamRelative(c.Path); e == nil {
+		if _, e := crewTeamRelative(c.Path, on...); e == nil {
 			changes = append(changes, c)
 		}
 	}
 	s.Changes = changes
 	omitted := s.Omitted[:0]
 	for _, p := range s.Omitted {
-		if _, e := crewTeamRelative(p); e == nil {
+		if _, e := crewTeamRelative(p, on...); e == nil {
 			omitted = append(omitted, p)
 		}
 	}
@@ -147,7 +188,7 @@ func crewTeamSame(a, b *crewsync.File) bool {
 	}
 	return *a == *b
 }
-func validateCrewTeamSnapshot(s *crewsync.Snapshot) error {
+func validateCrewTeamSnapshot(s *crewsync.Snapshot, on ...crewTeamOnPurpose) error {
 	if s == nil || s.Git != nil || s.StatePath != "" || s.DatabasePath != "" || len(s.Files) > publication.MaxFiles || len(s.Changes) > publication.MaxFiles {
 		return fmt.Errorf("send only the shared folder's files")
 	}
@@ -159,7 +200,7 @@ func validateCrewTeamSnapshot(s *crewsync.Snapshot) error {
 	var total int64
 	folded := map[string]string{}
 	for key, f := range s.Files {
-		rel, e := crewTeamRelative(key)
+		rel, e := crewTeamRelative(key, on...)
 		if e != nil {
 			return e
 		}
@@ -185,7 +226,7 @@ func validateCrewTeamSnapshot(s *crewsync.Snapshot) error {
 	}
 	seen := map[string]bool{}
 	for _, c := range s.Changes {
-		if _, e := crewTeamRelative(c.Path); e != nil {
+		if _, e := crewTeamRelative(c.Path, on...); e != nil {
 			return e
 		}
 		if seen[c.Path] {
@@ -204,7 +245,7 @@ func validateCrewTeamSnapshot(s *crewsync.Snapshot) error {
 		}
 	}
 	for _, p := range s.Omitted {
-		if _, e := crewTeamRelative(p); e != nil {
+		if _, e := crewTeamRelative(p, on...); e != nil {
 			return e
 		}
 	}
@@ -213,7 +254,8 @@ func validateCrewTeamSnapshot(s *crewsync.Snapshot) error {
 
 // The caller holds the team lock and has rechecked current membership. Only this
 // writer mutates canonical bytes; native agents use their own working copies.
-func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest string, snapshot crewsync.Snapshot) (crewTeamReceipt, error) {
+// declared are the paths the uploader chose to sync on purpose in this transfer.
+func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest string, snapshot crewsync.Snapshot, declared ...string) (crewTeamReceipt, error) {
 	dir, e := crewTeamContentDir(project)
 	if e != nil {
 		return crewTeamReceipt{}, e
@@ -233,7 +275,8 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 	if transfer == "" || len(transfer) > 257 || !validCrewTeamHash(digest) {
 		return receipt, fmt.Errorf("use a stable transfer identity")
 	}
-	if e = validateCrewTeamSnapshot(&snapshot); e != nil {
+	op := state.onPurpose().with(declared)
+	if e = validateCrewTeamSnapshot(&snapshot, op); e != nil {
 		return receipt, e
 	}
 	root := filepath.Join(dir, "files")
@@ -256,7 +299,7 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 			next[c.Path] = *c.After
 		}
 	}
-	if e = validateCrewTeamSnapshot(&crewsync.Snapshot{Files: next}); e != nil {
+	if e = validateCrewTeamSnapshot(&crewsync.Snapshot{Files: next}, op); e != nil {
 		return receipt, e
 	}
 	receipt = crewTeamReceipt{TransferID: transfer, Digest: digest, Revision: state.Revision + 1, Conflicts: []string{}}
@@ -268,8 +311,21 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 		return receipt, e
 	}
 	for _, c := range changes {
-		rel, _ := crewTeamRelative(c.Path)
+		rel, _ := crewTeamRelative(c.Path, op)
 		current := state.Versions[rel]
+		// A file synced on purpose is recorded with who chose it; removing it ends that.
+		if c.After == nil {
+			if _, was := state.OnPurpose[rel]; was {
+				delete(state.OnPurpose, rel)
+				log.Printf("[CREW_TEAM] project=%s actor=%s event=sync_anyway path=%q on=false", project, actor, rel)
+			}
+		} else if op[rel] && !crewTeamAllowed(rel) && state.OnPurpose[rel] == "" {
+			if state.OnPurpose == nil {
+				state.OnPurpose = map[string]string{}
+			}
+			state.OnPurpose[rel] = actor
+			log.Printf("[CREW_TEAM] project=%s actor=%s event=sync_anyway path=%q on=true", project, actor, rel)
+		}
 		if crewTeamSame(current.File, c.After) {
 			continue
 		}
@@ -292,7 +348,7 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 			if e != nil {
 				return receipt, e
 			}
-			e = writeCrewTeamFile(ctx, root, rel, f, *c.After)
+			e = writeCrewTeamFile(ctx, root, rel, f, *c.After, op)
 			f.Close()
 			if e != nil {
 				return receipt, e
@@ -313,8 +369,8 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 	log.Printf("[CREW_TEAM_FILES] project=%s actor=%s transfer=%s revision=%d changes=%d conflicts=%d", project, actor, transfer, state.Revision, len(changes), len(receipt.Conflicts))
 	return receipt, nil
 }
-func openCrewTeamFile(root, rel string) (*os.File, error) {
-	if !crewTeamAllowed(rel) {
+func openCrewTeamFile(root, rel string, on ...crewTeamOnPurpose) (*os.File, error) {
+	if !crewTeamAllowed(rel, on...) {
 		return nil, fmt.Errorf("this path is outside shared content")
 	}
 	dir, err := os.OpenRoot(root)
@@ -351,8 +407,8 @@ func openCrewTeamFile(root, rel string) (*os.File, error) {
 	}
 	return f, nil
 }
-func writeCrewTeamFile(ctx context.Context, root, rel string, src io.Reader, meta crewsync.File) error {
-	if !crewTeamAllowed(rel) {
+func writeCrewTeamFile(ctx context.Context, root, rel string, src io.Reader, meta crewsync.File, on ...crewTeamOnPurpose) error {
+	if !crewTeamAllowed(rel, on...) {
 		return fmt.Errorf("this path is outside shared content")
 	}
 	dir, e := os.OpenRoot(root)
@@ -420,7 +476,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 		}
 		files := []map[string]any{}
 		for name, v := range s.Versions {
-			if v.File == nil || !crewTeamAllowed(name) {
+			if v.File == nil || !crewTeamAllowed(name, s.onPurpose()) {
 				continue
 			}
 			if token := claims.AccessToken; token != nil && token.FileGuard != nil && !token.FileGuard.Allows(name, false) {
@@ -432,7 +488,10 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 		externalJSON(w, map[string]any{"project_id": project, "folder": t.Folder, "revision": s.Revision, "folder_access": true, "files": files})
 		return
 	}
-	if !crewTeamAllowed(rel) {
+	// A file a member chose to sync on purpose is an ordinary shared file here too.
+	known, _ := readCrewTeamFileState(project)
+	op := known.onPurpose()
+	if !crewTeamAllowed(rel, op) {
 		externalError(w, 403, "team_path_forbidden", "Choose a file inside the shared folder; private state and credentials stay private.")
 		return
 	}
@@ -443,7 +502,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 			externalError(w, 403, "team_path_forbidden", "That path is not available in the shared folder.")
 			return
 		}
-		f, e := openCrewTeamFile(root, rel)
+		f, e := openCrewTeamFile(root, rel, op)
 		if e != nil {
 			externalError(w, 404, "team_file_missing", "This shared file is not available.")
 			return

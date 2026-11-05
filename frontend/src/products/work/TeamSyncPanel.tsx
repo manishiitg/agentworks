@@ -82,6 +82,9 @@ export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { t
   const [clashes, setClashes] = useState<TeamClash[]>([])
   const [events, setEvents] = useState<TeamEvent[]>([])
   const [skipped, setSkipped] = useState<string[]>([])
+  // "Sync it anyway" (owner, 5 Nov): skipped single files can be chosen; chosen ones are synced on purpose.
+  const [choosable, setChoosable] = useState<string[]>([])
+  const [onPurpose, setOnPurpose] = useState<string[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [version, setVersion] = useState(0)
@@ -96,14 +99,20 @@ export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { t
         setClashes(a.clashes); setEvents(b.events); setError('')
         onSummary?.(a.clashes.length, b.events.filter(e => new Date(e.time).toDateString() === new Date().toDateString()).length)
         if (target.connection) {
-          const local = await desktopRequest<{ skipped: string[] }>(`/${encodeURIComponent(target.connection)}/crew-teams/${encodeURIComponent(target.project)}/local`)
-          if (active) setSkipped(local.skipped || [])
+          const local = await desktopRequest<{ skipped: string[]; skipped_files?: string[]; synced_on_purpose?: string[] }>(`/${encodeURIComponent(target.connection)}/crew-teams/${encodeURIComponent(target.project)}/local`)
+          if (active) { setSkipped(local.skipped || []); setChoosable(local.skipped_files || []); setOnPurpose(local.synced_on_purpose || []) }
         }
       } catch (e) { if (active) setError(teamError(e)) }
     }
     void load(); const timer = window.setInterval(() => { if (!document.hidden) void load() }, 10000)
     return () => { active = false; window.clearInterval(timer) }
   }, [target.project, target.connection, version])
+  const syncAnyway = async (path: string, on: boolean) => {
+    if (!target.connection) return
+    setBusy(true); setError('')
+    try { await desktopRequest(`/${encodeURIComponent(target.connection)}/crew-teams/${encodeURIComponent(target.project)}/sync-anyway`, 'POST', { path, on }); setVersion(v => v + 1) }
+    catch (e) { setError(teamError(e)) } finally { setBusy(false) }
+  }
   const resolve = async (clash: TeamClash, keep: string) => {
     setBusy(true); setError('')
     try { await teamRequest(target, '/resolve', 'POST', { path: clash.path, keep, winning_revision: clash.winning_revision, transfer_id: crypto.randomUUID() }); setVersion(v => v + 1) }
@@ -143,7 +152,16 @@ export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { t
       : <details key={`${round.time}:${i}`} className="border-b border-border py-2 text-xs"><summary className="cursor-pointer">{round.author} {verb(round.kind)} {round.events.length} files · <span className="text-muted-foreground">{clock(round.time)}</span></summary>
         <ul className="mt-1 max-h-64 space-y-0.5 overflow-y-auto pl-4 text-muted-foreground">{round.events.map((e, j) => <li key={`${e.revision}:${e.path}:${j}`} className="break-all">{e.path}</li>)}</ul></details>)
       : <p className="text-xs text-muted-foreground">Changes will appear here when files sync.</p>}</section>
-    {skipped.length > 0 && <section><h3 className="mb-1 font-semibold">Skipped private files</h3><ul className="space-y-1 text-xs text-muted-foreground">{skipped.map(path => <li key={path} className="break-all">{path}</li>)}</ul></section>}
+    {(skipped.length > 0 || onPurpose.length > 0) && <section aria-label="Private-looking files" className="space-y-1.5">
+      <h3 className="font-semibold">Skipped private files</h3>
+      <p className="text-xs text-muted-foreground">These look like they may hold passwords or keys, so they stay on this Mac unless you choose to sync them. A synced file goes to everyone in the Team.</p>
+      <ul className="space-y-1 text-xs">
+        {skipped.map(path => <li key={path} className="flex items-center gap-2"><span className="min-w-0 flex-1 break-all text-muted-foreground">{path}</span>
+          {choosable.includes(path) && <button type="button" disabled={busy} onClick={() => void syncAnyway(path, true)} className="shrink-0 text-primary hover:underline">Sync it anyway</button>}</li>)}
+        {onPurpose.map(path => <li key={path} className="flex items-center gap-2"><span className="min-w-0 flex-1 break-all">{path} <span className="text-muted-foreground">· Synced on purpose</span></span>
+          <button type="button" disabled={busy} onClick={() => void syncAnyway(path, false)} className="shrink-0 text-primary hover:underline">Stop syncing</button></li>)}
+      </ul>
+    </section>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }
