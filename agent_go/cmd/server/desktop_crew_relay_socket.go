@@ -207,7 +207,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 	conn, response, err := websocket.DefaultDialer.DialContext(ctx, server.String(), http.Header{"Authorization": {"Bearer " + connection.Token}})
 	if response != nil {
 		if token := response.Header.Get("X-Renewed-Token"); token != "" {
-			saveRenewedDesktopToken(owner, connection, token)
+			_ = saveRenewedDesktopToken(owner, connection, token)
 		}
 	}
 	if err != nil {
@@ -417,21 +417,6 @@ func (api *StreamingAPI) desktopCrewRelayState(ctx context.Context, local, pair 
 		return "working"
 	}
 	return "idle"
-}
-
-func saveRenewedDesktopToken(owner string, connection desktopConnection, token string) {
-	desktopConnectionsMu.Lock()
-	defer desktopConnectionsMu.Unlock()
-	records, err := readDesktopConnections(owner)
-	if err != nil {
-		return
-	}
-	for i := range records {
-		if records[i].ID == connection.ID && records[i].Token == connection.Token {
-			records[i].Token = token
-		}
-	}
-	_ = writeDesktopConnections(owner, records)
 }
 
 // desktopCrewLastLine is the last line of the main chat's latest reply (or the

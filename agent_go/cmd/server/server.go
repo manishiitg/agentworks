@@ -2415,6 +2415,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.PathPrefix("/server-products/").HandlerFunc(api.handleServerProduct)
 	common.ScopeAgentMCP = api.scopeAgentMCP
 	router.HandleFunc("/internal/vault/mcp", api.handleVaultRuntimeMCP).Methods("GET", "POST", "DELETE")
+	router.HandleFunc("/internal/server-vault/mcp/{conn}/{id}", api.handleServerVaultMCP).Methods("GET", "POST", "DELETE")
 	router.HandleFunc("/internal/caplayer/oauth-token", api.handleCapLayerOAuthToken).Methods("POST")
 
 	// Authentication API routes (public - no auth required, handled by AuthMiddleware)
@@ -2559,6 +2560,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// The catalog of servers that can be connected, and connections of a place.
 	apiRouter.HandleFunc("/mcp/catalog", api.handleMCPCatalog).Methods("GET")
 	apiRouter.HandleFunc("/vault/connections", api.handleMyVaultServers).Methods("GET")
+	api.registerVaultMeRoutes(apiRouter)
 	apiRouter.HandleFunc("/vault/github", api.handleGitHubVault).Methods("GET", "DELETE")
 	apiRouter.HandleFunc("/vault/github/connect", api.handleGitHubVault).Methods("POST")
 	apiRouter.HandleFunc("/vault/github/complete", api.handleGitHubVault).Methods("POST")
@@ -6104,7 +6106,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				codingAgentSecretEnvironment[name] = value
 			}
 		}
-		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets) {
+		codingAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		// On the Mac, a selected secret its Vault lacks comes from the lender's Vault on the Crew's company server.
+		codingAgentSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, codingAgentSecrets, req.SelectedGlobalSecrets)
+		for _, secret := range codingAgentSecrets {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
 		// A shared agent's turn for someone else keeps them (owner, 4 Nov: "whatever the main agent has access to the
@@ -8409,6 +8414,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Keep that in mind before relying on either one in this block.
 		isWorkflowPhase := req.PhaseID != ""
 		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		if !isWorkflowPhase {
+			allChatSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, allChatSecrets, req.SelectedGlobalSecrets)
+		}
 		if len(allChatSecrets) > 0 && !isWorkflowPhase {
 			// Inject secret values as environment variables for shell execution (SECRET_ prefix)
 			if workspaceEnv == nil {

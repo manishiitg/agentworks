@@ -180,6 +180,26 @@ func desktopConnectionFor(owner, id string) (desktopConnection, error) {
 	}
 	return desktopConnection{}, fmt.Errorf("connection not found")
 }
+
+// saveRenewedDesktopToken keeps the server's renewed sign-in for this saved connection (X-Renewed-Token); "" is a no-op.
+func saveRenewedDesktopToken(owner string, c desktopConnection, token string) error {
+	if token == "" {
+		return nil
+	}
+	desktopConnectionsMu.Lock()
+	defer desktopConnectionsMu.Unlock()
+	records, err := readDesktopConnections(owner)
+	if err != nil {
+		return err
+	}
+	for i := range records {
+		if records[i].ID == c.ID && records[i].Token == c.Token {
+			records[i].Token = token
+		}
+	}
+	return writeDesktopConnections(owner, records)
+}
+
 func desktopJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(value)
@@ -420,21 +440,8 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
-			if token := resp.Header.Get("X-Renewed-Token"); token != "" {
-				desktopConnectionsMu.Lock()
-				defer desktopConnectionsMu.Unlock()
-				records, e := readDesktopConnections(owner)
-				if e != nil {
-					return e
-				}
-				for i := range records {
-					if records[i].ID == c.ID && records[i].Token == c.Token {
-						records[i].Token = token
-					}
-				}
-				if e = writeDesktopConnections(owner, records); e != nil {
-					return e
-				}
+			if e := saveRenewedDesktopToken(owner, c, resp.Header.Get("X-Renewed-Token")); e != nil {
+				return e
 			}
 			resp.Header.Del("X-Renewed-Token")
 			resp.Header.Del("Set-Cookie")
