@@ -1632,9 +1632,17 @@
   },
   {
     "family": "sessions",
+    "name": "native_preview",
+    "member": "sessions_native_preview_crew",
+    "description": "Preview your own local conversation history for this project before continuing in a new chat.",
+    "source": "manage_crew_chats",
+    "source_action": "native_preview"
+  },
+  {
+    "family": "sessions",
     "name": "native_resume",
     "member": "sessions_native_resume_crew",
-    "description": "Resume a listed native conversation in a separate private Crew tab with its original account. Opening does not start a turn.",
+    "description": "Copy a listed native conversation into an independent private Crew tab with its original account and history. Opening does not start a turn.",
     "source": "manage_crew_chats",
     "source_action": "native_resume"
   }

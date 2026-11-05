@@ -347,8 +347,16 @@ func (api *StreamingAPI) handleLocalProject(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	id := r.URL.Query().Get("project_id")
-	crew, roots, ok := api.localProjectAccess(w, r, id, false)
+	crew, roots, ok := api.localProjectAccess(w, r, id, r.URL.Query().Get("availability") == "true" || r.URL.Query().Get("native_id") != "")
 	if !ok {
+		return
+	}
+	if r.URL.Query().Get("availability") == "true" {
+		writeAgentProfileJSON(w, 200, map[string]bool{"can_import_local_chats": cliPersonalMac()})
+		return
+	}
+	if r.URL.Query().Get("native_id") != "" {
+		api.previewLocalProjectSession(w, r, crew, roots.Files, roots.Owner)
 		return
 	}
 	out := recognizeLocalProject(r.Context(), roots.Files)

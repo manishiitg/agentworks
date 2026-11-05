@@ -1,3 +1,4 @@
+import { LocalChatPicker, type ImportedLocalChat } from './LocalChatPicker'
 import { listenForProjectIntegrationNavigation } from '../../utils/projectIntegrationNavigation'
 import { chatFilesNavigationEvent } from '../../components/workspace/chatFileNavigation'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -534,6 +535,18 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     chatTabs: state.chatTabs,
     activeTabId: state.activeTabId,
   })))
+  const [importLocalChat, setImportLocalChat] = useState(false)
+  const [localImportProject, setLocalImportProject] = useState('')
+  useEffect(() => {
+    const abort = new AbortController()
+    setLocalImportProject('')
+    if (allowSideChats && profileId === 'work') {
+      void api.get('/api/agent-profiles/work/local-project', { params: { project_id: projectId, availability: true }, signal: abort.signal })
+        .then(({ data }) => { if (!abort.signal.aborted && data.can_import_local_chats) setLocalImportProject(projectId) })
+        .catch(() => {})
+    }
+    return () => abort.abort()
+  }, [allowSideChats, profileId, projectId])
   const [opening, setOpening] = useState(false)
   const canonicalSessionId = chatTabs[canonicalTabId]?.sessionId
   // Which agents this project has, their names, order and pins come from the server's list (the person's
@@ -751,8 +764,33 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     check(useChatStore.getState().tabEvents, true)
     return useChatStore.subscribe(state => check(state.tabEvents, false))
   }, [allowSideChats, watchedSessions])
-  return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose}
-    allowSideChats={allowSideChats} opening={opening} surface="work" projectActivity={projectActivity}
+  const openImportedChat = async (chat: ImportedLocalChat) => {
+    const state = useChatStore.getState()
+    const primary = state.chatTabs[canonicalTabId]
+    if (!primary) throw new Error('Open the project again to continue this chat.')
+    let tab = Object.values(state.chatTabs).find(item => item.metadata?.agentProfileConversationKey === chat.conversation_key)
+    if (!tab) {
+      const id = await state.createChatTab(chat.name, {
+        ...primary.metadata,
+        agentProfileIsMainChat: false, agentProfileBuilder: false,
+        agentProfileConversationKey: chat.conversation_key, agentProfileConversationId: chat.conversation_id,
+        agentProfileChatLocation: undefined, agentProfileTabCanWrite: true,
+        agentProfileEngine: chat.engine, agentProfileModelID: chat.model_id,
+        agentProfileConnectionID: chat.connection_id,
+        agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id,
+        agentProfileChatModelOverride: true, agentProfileMCPSelectionInitialized: true,
+      }, chat.session_id)
+      state.setTabConfig(id, { selectedServers: primary.config.selectedServers, selectedSkills: primary.config.selectedSkills })
+      tab = useChatStore.getState().chatTabs[id]
+    }
+    setListed(current => [...(current || []).filter(row => row.conversation_key !== chat.conversation_key), { ...chat, pinned: true }])
+    if (!tab) throw new Error('Could not open the imported chat. Try again.')
+    activateTab(tab.tabId)
+    void syncRef.current()
+  }
+  return <><ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose}
+    allowSideChats={allowSideChats} opening={opening} surface="work"
+    onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} projectActivity={projectActivity}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}
     onReopen={async chat => {
       // The list pass opens a tab for every agent the server lists; then switch to this one.
@@ -763,6 +801,8 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     }}
     onOrder={async keys => { applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys)) }}
     onPin={async (key, pinned) => { applyServerOrder(await agentApi.pinAgentProfileSideChat(profileId, projectId, key, pinned)) }} />
+    {importLocalChat && <LocalChatPicker key={projectId} projectId={projectId} onClose={() => setImportLocalChat(false)} onImported={openImportedChat} />}
+  </>
 }
 
 function WorkTopBarControl({

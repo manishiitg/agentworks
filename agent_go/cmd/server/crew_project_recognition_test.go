@@ -98,14 +98,14 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	}
 	const project = "local-example"
 	const virtual = "Crew/local-example"
-	f.write(t, virtual+"/product.json", `{"schema_version":1,"product":"work","id":"local-example","title":"Local example","session_id":"local-main","owner_id":"default"}`)
-	f.write(t, virtual+"/workflow.json", `{"id":"local-example","label":"Local example","created_by":"default"}`)
+	f.write(t, "_system/crew-data/"+project+"/product.json", `{"schema_version":1,"product":"work","id":"local-example","title":"Local example","session_id":"local-main","owner_id":"default"}`)
+	f.write(t, "_system/crew-data/"+project+"/workflow.json", `{"id":"local-example","label":"Local example","created_by":"default"}`)
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: project, ProjectID: project, OwnerID: "default", Shared: true, Private: true, CanonicalRoot: virtual, LocalRoot: root}); err != nil {
 		t.Fatal(err)
 	}
 	recognitionWrite(t, filepath.Join(root, "CLAUDE.md"), "Existing project guidance")
-	path := filepath.Join(home, ".claude", "projects", claudeNativeTranscriptProjectSlug(root), "native-example.jsonl")
-	recognitionWrite(t, path, fmt.Sprintf("{\"type\":\"user\",\"sessionId\":\"native-example\",\"cwd\":%q,\"timestamp\":\"2026-10-27T10:00:00Z\",\"message\":{\"role\":\"user\",\"content\":\"Explain the project\"}}\n{\"type\":\"assistant\",\"sessionId\":\"native-example\",\"cwd\":%q,\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"It has two modules.\"}]}}\n", root, root))
+	path := filepath.Join(home, ".claude", "projects", claudeNativeTranscriptProjectSlug(root), "11111111-1111-4111-8111-111111111111.jsonl")
+	recognitionWrite(t, path, fmt.Sprintf("{\"type\":\"user\",\"sessionId\":\"11111111-1111-4111-8111-111111111111\",\"cwd\":%q,\"timestamp\":\"2026-10-27T10:00:00Z\",\"message\":{\"role\":\"user\",\"content\":\"Explain the project\"}}\n{\"type\":\"assistant\",\"sessionId\":\"11111111-1111-4111-8111-111111111111\",\"timestamp\":\"2026-10-27T10:00:01Z\",\"cwd\":%q,\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"It has two modules.\"}]}}\n", root, root))
 	request := func(method, query, body string, claims *UserClaims) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "/api/agent-profiles/work/local-project"+query, strings.NewReader(body))
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
@@ -142,6 +142,10 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	if len(data.Instructions) != 1 || len(data.Sessions) != 1 {
 		t.Fatalf("list data: %s", w.Body.String())
 	}
+	available := request(http.MethodGet, "?project_id="+project+"&availability=true", "", owner)
+	if available.Code != 200 || !strings.Contains(available.Body.String(), `"can_import_local_chats":true`) {
+		t.Fatalf("availability: %d %s", available.Code, available.Body.String())
+	}
 	// The MCP adapter returns the same canonical discovery, and native chat
 	// registers that same action rather than scanning a second path.
 	wm := httptest.NewRecorder()
@@ -155,10 +159,18 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	}
 	limited := crewWriter("default")
 	limited.AccessToken = &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}
+	if denied := request(http.MethodGet, "?project_id="+project+"&native_id="+data.Sessions[0].ID, "", limited); denied.Code != 403 {
+		t.Fatalf("read token previewed private native history: %d", denied.Code)
+	}
 	body := fmt.Sprintf(`{"project_id":%q,"id":%q}`, project, data.Sessions[0].ID)
 	if denied := request(http.MethodPost, "", body, limited); denied.Code != 403 {
 		t.Fatalf("read token resumed: %d %s", denied.Code, denied.Body.String())
 	}
+	preview := request(http.MethodGet, "?project_id="+project+"&native_id="+data.Sessions[0].ID, "", owner)
+	if preview.Code != 200 || !strings.Contains(preview.Body.String(), "It has two modules.") {
+		t.Fatalf("preview: %d %s", preview.Code, preview.Body.String())
+	}
+	original, _ := os.ReadFile(path)
 	w = request(http.MethodPost, "", body, owner)
 	if w.Code != 200 {
 		t.Fatalf("resume: %d %s", w.Code, w.Body.String())
@@ -172,12 +184,28 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 		t.Fatal("replaced main chat")
 	}
 	runtime, found, err := ReadChatHistoryRuntimeForSession("default", response.SessionID, virtual)
-	if err != nil || !found || runtime.AgentSessionHandle.Provider.NativeSessionID != "native-example" || runtime.AgentSessionHandle.ConnectionID != "global:claude-code" {
-		t.Fatalf("lost original native/account: %+v %v", runtime, err)
+	if err != nil || !found || runtime.AgentSessionHandle.Provider.NativeSessionID == "11111111-1111-4111-8111-111111111111" || runtime.AgentSessionHandle.Provider.NativeSessionID == "" || runtime.AgentSessionHandle.ConnectionID != "global:claude-code" {
+		t.Fatalf("lost independent native copy/original account: %+v %v", runtime, err)
+	}
+	unchanged, _ := os.ReadFile(path)
+	if string(unchanged) != string(original) {
+		t.Fatal("import modified native original")
+	}
+	if !runtime.NativeHandoff {
+		t.Fatal("native copy would be replaced by transcript-only continuation")
+	}
+	listedAgain := request(http.MethodGet, "?project_id="+project+"&sessions=true", "", owner)
+	var afterImport localProjectRecognition
+	if json.Unmarshal(listedAgain.Body.Bytes(), &afterImport) != nil || len(afterImport.Sessions) != 1 {
+		t.Fatalf("imported copy appeared as original: %s", listedAgain.Body.String())
 	}
 	currentProfile, _ := f.api.agentProfiles.Resolve("work", 0, "default")
 	applyCrewNativeToolPolicy(&currentProfile, true, true)
-	if runtime.WorkshopMode != crewCLIMode(false) || runtime.AgentToolsMode != normalizeAgentToolsMode(currentProfile.Runtime.AgentTools.Mode) || runtime.AgentSessionHandle.Provider.WorkingDir != root {
+	wantCwd, cwdErr := crewCLIWorkingDir(virtual, "default", response.SessionID, "claude-code", false)
+	if cwdErr != nil {
+		t.Fatal(cwdErr)
+	}
+	if runtime.WorkshopMode != crewCLIMode(false) || runtime.AgentToolsMode != normalizeAgentToolsMode(currentProfile.Runtime.AgentTools.Mode) || runtime.AgentSessionHandle.Provider.WorkingDir != wantCwd {
 		t.Fatal("resume changed Crew mode or canonical cwd")
 	}
 	w = request(http.MethodPost, "", body, owner)
