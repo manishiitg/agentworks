@@ -62,7 +62,8 @@ export function FolderGrantList<T extends FolderGrantItem>({
                 {grant.access === 'read_write' ? 'Read + Write' : 'Read'}
               </span>
             )}
-            <button
+            {/* A Team's shared folder comes with the Team (its owner adds or removes people), not from this list. */}
+            {!grant.id.startsWith('team-') && <button
               type="button"
               disabled={disabled}
               onClick={() => void onRemove(grant)}
@@ -70,7 +71,7 @@ export function FolderGrantList<T extends FolderGrantItem>({
               aria-label={`Remove ${grant.alias}`}
             >
               <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            </button>}
           </div>
         </div>
       ))}

@@ -29,6 +29,9 @@ import (
 
 const crewTeamServerHost = "http://team-server-copy.invalid"
 
+// crewTeamCopyReasonKey names why a member's copy is made, for its log line (turn, or accepted on joining).
+type crewTeamCopyReasonKey struct{}
+
 // crewTeamTransportKey carries an in-process transport for the team sync calls (crewTeamHTTPClient).
 type crewTeamTransportKey struct{}
 
@@ -97,7 +100,8 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 		if err = saveCrewTeamLocal(dir, b); err != nil {
 			return "", err
 		}
-		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%s event=created", project, logUsernameForUserID(member), t.Folder.Path)
+		reason, _ := ctx.Value(crewTeamCopyReasonKey{}).(string)
+		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%s event=created reason=%s", project, logUsernameForUserID(member), t.Folder.Path, firstNonEmptyTrimmed(reason, "turn"))
 	} else if err != nil {
 		return "", err
 	}

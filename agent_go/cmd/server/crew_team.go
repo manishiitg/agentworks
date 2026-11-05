@@ -386,6 +386,17 @@ func (api *StreamingAPI) answerCrewTeamInvite(w http.ResponseWriter, r *http.Req
 		externalJSON(w, map[string]any{"declined": true})
 		return
 	}
+	// A new member's own copy of the shared folder is made now, so it is in their Crew's attached folders before
+	// their first turn (owner, 5 Nov: the shared folder shows where folders already show). After the reply: the copy
+	// syncs through this same server.
+	if t.Folder.ID != "" && !IsLocalMode() {
+		member := claims.UserID
+		go func() {
+			round, done := context.WithTimeout(context.WithValue(context.WithoutCancel(r.Context()), crewTeamCopyReasonKey{}, "accepted"), 2*time.Minute)
+			defer done()
+			_, _ = api.syncCrewTeamServerCopy(round, member, project, true)
+		}()
+	}
 	externalJSON(w, t.view(claims.UserID))
 }
 
