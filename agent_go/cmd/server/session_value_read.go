@@ -6,6 +6,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -148,4 +151,48 @@ func (api *StreamingAPI) handleSessionSecretRead(w http.ResponseWriter, r *http.
 // secretsTurnDisabled: the profile turned secrets off for its turns.
 func secretsTurnDisabled(profile *resolvedAgentProfile) bool {
 	return profile != nil && profile.Definition.Runtime.Capabilities.Secrets == agentprofiles.CapabilityDisabled
+}
+
+// secretReadFile is where a chat's CLI shell finds what `mcpbridge secret NAME` needs: <its private HOME>/.agentworks/
+// secret-read. The private home is per chat session (cliruntime digest of user, project, session, provider), and a
+// session runs one turn at a time, so the file is that chat's alone. Rewritten at every turn start: the token rotates
+// hourly, and the route answers only while the turn runs, so a file left after a turn reads nothing.
+const secretReadFileName = ".agentworks/secret-read"
+
+// secretReadCommand is the command the skill names: ~/.agentworks/bin/mcpbridge secret NAME.
+const secretReadCommand = ".agentworks/bin/mcpbridge"
+
+func (api *StreamingAPI) writeSecretReadFile(sessionID, home string) {
+	token := common.BridgeTokenForSession(sessionID + mcpagent.SecretReadTokenSuffix)
+	if strings.TrimSpace(home) == "" || token == "" {
+		return
+	}
+	body, _ := json.Marshal(map[string]string{"url": strings.TrimRight(api.GetAPIURL(), "/"), "session": sessionID, "token": token})
+	path := filepath.Join(home, secretReadFileName)
+	// The home's folders are setgid to the person's slot group: 0640 lets that slot (and no one else) read it.
+	if err := os.MkdirAll(filepath.Dir(path), 0o2770); err != nil {
+		log.Printf("[SECRET_READ] file session=%s result=failed reason=%q", sessionID, err.Error())
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, body, 0o640); err != nil || os.Rename(tmp, path) != nil {
+		_ = os.Remove(tmp)
+		log.Printf("[SECRET_READ] file session=%s result=failed reason=write", sessionID)
+		return
+	}
+	// The shell finds the command at a fixed place in its own home: ~/.agentworks/bin/mcpbridge.
+	bridge := strings.TrimSpace(os.Getenv("MCP_BRIDGE_BINARY"))
+	if bridge == "" {
+		bridge, _ = exec.LookPath("mcpbridge")
+	}
+	link := filepath.Join(home, secretReadCommand)
+	if current, err := os.Readlink(link); bridge != "" && current != bridge {
+		_ = os.MkdirAll(filepath.Dir(link), 0o2770)
+		_ = os.Remove(link)
+		if err = os.Symlink(bridge, link); err != nil {
+			log.Printf("[SECRET_READ] file session=%s result=failed reason=command_link", sessionID)
+			return
+		}
+	}
+	log.Printf("[SECRET_READ] file session=%s result=written command=%t", sessionID, bridge != "")
 }

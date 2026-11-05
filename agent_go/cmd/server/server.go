@@ -6896,6 +6896,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			// PLAT-364: the guard above is final, so the CLI can be confined to it.
 			applyCLILandlock(llmAgent, sessionID, currentUserID, finalProvider, chatWorkingDir, cliSecurityPolicy, chatRuntimeDir)
+			if llmAgent.CodingAgentToolsMode() == "full" && isCodingAgentProvider(finalProvider, finalModelID) {
+				// `mcpbridge secret NAME` in the CLI's own shell (session_value_read.go).
+				api.writeSecretReadFile(sessionID, cliPrivateHome(finalProvider, chatWorkingDir, chatRuntimeDir))
+			}
 			if fullCLIOn = profileAgentToolsMode == "full" && isCodingAgentProvider(finalProvider, finalModelID) && llmAgent.CodingAgentToolsMode() == "full"; fullCLIOn {
 				log.Printf("[PRODUCT_TOOL_GATE] session=%s full_cli=true duplicate_file_and_terminal_actions=off", sessionID)
 			}
