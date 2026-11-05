@@ -998,7 +998,9 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 			return session, fmt.Errorf("Crew runtime unavailable")
 		}
 		// An agent shared from a Crew on its owner's Mac runs there; its answer comes back to this inbox (PLAT-856-509).
-		if !IsLocalMode() && crewRelayTwin(dest.ID) {
+		// A Team member's own server agent in a Mac Crew runs here like any server chat (review 5 Nov: it was sent to
+		// the owner's Mac and refused as "not shared").
+		if !IsLocalMode() && crewRelayTwin(dest.ID) && crewTeamMemberTab(ctx, dest.ID, dest.ChatKey) == "" {
 			return session, api.deliverToMacSharedAgent(ctx, c, m, source, dest)
 		}
 		// A Team member's agent on their Mac, in a Crew on the server (crew_team_mac_watch.go).

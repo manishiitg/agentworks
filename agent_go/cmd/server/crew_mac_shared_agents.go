@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -360,12 +361,31 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	// A shared agent stays on the Mac. Only an explicit Publish moves it to the server.
 	if result.Status == http.StatusServiceUnavailable && !IsLocalMode() && action == "ask" {
 		if err := holdForMac(manifest.ID, "mac_off", call, "", 0); err != nil {
+			if errors.Is(err, errCrewMacHeldFull) {
+				externalError(w, 429, "too_many_waiting", "Too many of your messages are already waiting for this Mac. Try again when it is back.")
+				return true
+			}
 			externalError(w, 503, "message_not_saved", "Your message could not be saved. Please try again.")
 			return true
 		}
 		externalJSON(w, map[string]any{"status": "waiting", "workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": macSharedAgentChatKey(manifest.ID, agent.Tab), "name": agent.Name,
 			"message": shareOwnerLabel(project.OwnerID) + "'s Mac is off; your message is delivered when it's back. Read this chat for its answer."})
 		return true
+	}
+	// A held ask of this person that could not be delivered is said once, on their next read of this chat.
+	if action == "read_chat" {
+		if notices := takeHeldAskRefusals(manifest.ID, agent.Tab, claims.UserID); len(notices) > 0 {
+			if result.Status != http.StatusOK {
+				externalJSON(w, map[string]any{"chat_id": macSharedAgentChatKey(manifest.ID, agent.Tab), "name": agent.Name, "notices": notices})
+				return true
+			}
+			log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=refusal_shown count=%d", manifest.ID, agent.Tab, len(notices))
+			var withNotices map[string]any
+			if json.Unmarshal(result.Body, &withNotices) == nil {
+				withNotices["notices"] = notices
+				result.Body, _ = json.Marshal(withNotices)
+			}
+		}
 	}
 	if result.Status == http.StatusServiceUnavailable {
 		externalError(w, 503, "owner_mac_off", "Its owner's Mac is off. Try again later.")
@@ -804,6 +824,9 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d published=%t", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status, published)
 	if status == http.StatusServiceUnavailable && !IsLocalMode() && !published {
 		if err := holdForMac(dest.ID, "mac_off", ask, c.ID, from); err != nil {
+			if errors.Is(err, errCrewMacHeldFull) {
+				return fmt.Errorf("Too many of your messages are already waiting for this Mac. Try again when it is back.")
+			}
 			return fmt.Errorf("Your message could not be saved. Please try again.")
 		}
 		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s Mac is off; your message is delivered when it's back. The answer comes to this inbox.")
@@ -839,6 +862,7 @@ func (api *StreamingAPI) awaitMacAgentAnswer(inbox, submission string, from int,
 		}
 		if working, _ := out["working"].(bool); !working && strings.TrimSpace(answer) != "" {
 			if _, done := macAgentAnswered.LoadOrStore(submission, true); !done {
+				time.AfterFunc(macAgentReplyWindow, func() { macAgentAnswered.Delete(submission) })
 				api.appendMacAgentReply(inbox, from, answer)
 				log.Printf("[CREW_SHARED_AGENT] inbox=%s submission=%s action=answer_sent", inbox, submission)
 			}

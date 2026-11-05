@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -361,6 +362,9 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	log.Printf("[CREW_TEAM] project=%s event=member_mac_message of=%s tab=%s user=%s mac_status=%d", dest.ID, logUsernameForUserID(person), agent.Tab, logUsernameForUserID(source.UserID), status)
 	if status == http.StatusServiceUnavailable {
 		if err := holdForPersonMac(dest.ID, person, "mac_off", ask, c.ID, from); err != nil {
+			if errors.Is(err, errCrewMacHeldFull) {
+				return fmt.Errorf("Too many of your messages are already waiting for this Mac. Try again when it is back.")
+			}
 			return fmt.Errorf("Your message could not be saved. Please try again.")
 		}
 		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(person)+"'s Mac is off; your message is delivered when it's back. The answer comes to this inbox.")
