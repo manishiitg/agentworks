@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"path"
@@ -490,9 +491,12 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 		return nil, fmt.Errorf("the Crew's conversation has moved to a new session since run %s started; make a new call", runID)
 	}
 	framed := fmt.Sprintf("[Follow-up from %s %q about its task in run %s]\n\n%s", caller.Stamp.Type, caller.Label, runID, strings.TrimSpace(message))
-	req, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: framed}, conversation)
+	req, tabAccount, err := automationProductChatQuery(ctx, ownerID, profile, framed, conversation)
 	if err != nil {
 		return nil, err
+	}
+	if tabAccount {
+		log.Printf("[CREW_FOLLOWUP] tab_account run=%s session=%s engine=%s model=%s applied=true", runID, conversation.SessionID, req.Provider, req.ModelID)
 	}
 	reqMap, err := queryRequestToMap(req)
 	if err != nil {

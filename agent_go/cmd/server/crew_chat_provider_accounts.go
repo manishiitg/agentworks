@@ -60,3 +60,23 @@ func useProjectChatDefault(input *AgentProfileChatRequest, conversation *Product
 		}
 	}
 }
+
+// automationProductChatQuery builds a server-started turn (a schedule, Watcher, function or trigger follow-up) in a
+// product chat. No browser sends the tab's saved choice in Models, so it is applied here: the same engine, model,
+// effort and account the browser sends and crewChatUsesPersonalAccountScope checks. Without it these turns ran on
+// the Crew's model and account and were refused "This chat's provider account changed".
+func automationProductChatQuery(ctx context.Context, userID string, profile agentprofiles.Profile, message string, conversation ProductConversationRecord) (QueryRequest, bool, error) {
+	input := AgentProfileChatRequest{Message: message}
+	own, err := defaultProductConversationRegistryStore().agentIdentity(ctx, userID, profile.ID, conversation.ConversationKey)
+	if err != nil {
+		return QueryRequest{}, false, err
+	}
+	applied := false
+	if _, offered := findProviderOptionByID(profile.Runtime.ProviderOptions, own.Engine); own.Engine != "" && offered {
+		input.Engine, input.ModelID, input.ReasoningEffort, input.ConnectionID = own.Engine, own.ModelID, own.ReasoningEffort, own.ConnectionID
+		conversation.ConnectionID = "" // the saved choice names the account; none is the company account
+		applied = true
+	}
+	query, err := queryRequestForAgentProfileChat(profile, input, conversation)
+	return query, applied, err
+}

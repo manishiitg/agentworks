@@ -1357,10 +1357,13 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 			runErr = err
 			break
 		}
-		req, err := queryRequestForAgentProfileChat(job.Profile, AgentProfileChatRequest{Message: message}, conversation)
+		req, tabAccount, err := automationProductChatQuery(runCtx, job.UserID, job.Profile, message, conversation)
 		if err != nil {
 			runErr = err
 			break
+		}
+		if tabAccount {
+			scheduleLogf("[PRODUCT-SCHEDULE] tab_account job=%s session=%s engine=%s model=%s applied=true", job.ID(), sessionID, req.Provider, req.ModelID)
 		}
 		reqMap, err := queryRequestToMap(req)
 		if err != nil {
