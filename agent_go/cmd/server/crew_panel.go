@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -156,6 +157,8 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			out[i] = section
 		} else {
 			denied, ok := err.(crewPanelReadError)
+			// Which section shows "Try again", and why: the panel answer alone could not tell (5 Nov, a server Crew).
+			log.Printf("[CREW_PANEL] project=%s section=%s result=failed status=%d reason=%q", key.project, sources[i].id, denied.status, err)
 			if sources[i].noCache || (ok && denied.status >= 400 && denied.status < 500) {
 				c.remove(k)
 			} else if old, found := c.previous(k); found {
