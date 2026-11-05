@@ -23,12 +23,39 @@ export function syncRounds(events: TeamEvent[]): SyncRound[] {
   return rounds
 }
 
+/** A sync round in progress, from the sync client itself (Mac status "progress"). */
+export type SyncProgress = { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number }
+const mb = (bytes: number) => bytes >= 10 << 20 ? `${Math.round(bytes / (1 << 20))} MB` : bytes >= 1 << 20 ? `${(bytes / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+export const progressLine = (p: SyncProgress) => `${p.direction === 'upload' ? 'Sending' : 'Receiving'} ${p.files} ${p.files === 1 ? 'file' : 'files'} · ${mb(p.bytes_done)} of ${mb(p.bytes_total)}`
+const progressPercent = (p: SyncProgress) => p.bytes_total > 0 ? Math.min(100, Math.round(p.bytes_done * 100 / p.bytes_total)) : 0
+
+/** This Mac's round in progress for a team folder, polled every 2 s while one runs (the web has none to show). */
+function useSyncProgress(target?: TeamTarget, enabled = true): SyncProgress | undefined {
+  const [progress, setProgress] = useState<SyncProgress>()
+  useEffect(() => {
+    setProgress(undefined)
+    if (!target?.connection || !enabled) return
+    let active = true, timer = 0
+    const load = async () => {
+      let next: SyncProgress | undefined
+      try { next = (await desktopRequest<{ progress?: SyncProgress | null }>(`/${encodeURIComponent(target.connection!)}/crew-teams/${encodeURIComponent(target.project)}/local`)).progress || undefined } catch { next = undefined }
+      if (!active) return
+      setProgress(next)
+      timer = window.setTimeout(() => void load(), next ? 2000 : 15000)
+    }
+    void load()
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [target?.connection, target?.project, enabled])
+  return progress
+}
+
 const verb = (kind: string) => kind === 'clash' ? 'clash saved in history' : kind === 'removed' ? 'removed' : 'sent'
 const clock = (time: string) => new Date(time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 /** The shared folder in a few words for the Crew's side panel: open clashes, or how long ago the last change came. */
 export function useTeamSyncSummary(target?: TeamTarget, enabled = true): string {
   const [line, setLine] = useState('')
+  const progress = useSyncProgress(target, enabled)
   useEffect(() => {
     setLine('')
     if (!target || !enabled) return
@@ -45,7 +72,7 @@ export function useTeamSyncSummary(target?: TeamTarget, enabled = true): string 
     void load(); const timer = window.setInterval(() => { if (!document.hidden) void load() }, 30000)
     return () => { active = false; window.clearInterval(timer) }
   }, [target?.project, target?.connection, target?.folderId, enabled])
-  return line
+  return progress ? `${progressLine(progress)} (${progressPercent(progress)}%)` : line
 }
 
 export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { target: TeamTarget; name?: string; projectId?: string; onSummary?: (clashes: number, today: number) => void; onAsk?: () => void }) {
@@ -59,6 +86,7 @@ export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { t
   const [busy, setBusy] = useState(false)
   const [version, setVersion] = useState(0)
   const [comparison, setComparison] = useState<{ path: string; diff: string }>()
+  const progress = useSyncProgress(target)
   useEffect(() => {
     let active = true
     const load = async () => {
@@ -96,6 +124,12 @@ export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { t
   }
   return <div ref={root} data-team-sync className="space-y-5 text-sm">
     <div className="flex items-center justify-between"><p className="text-xs text-muted-foreground">Latest arrival is current. Earlier versions stay in history.</p><button type="button" aria-label="Refresh Sync" onClick={() => setVersion(v => v + 1)} className="rounded p-1 hover:bg-muted"><RefreshCw className="h-4 w-4" /></button></div>
+    {progress && <section aria-label="Sync in progress" className="space-y-1.5">
+      <p className="text-xs">{progressLine(progress)}</p>
+      <div role="progressbar" aria-label="Sync progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent(progress)} className="h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${progressPercent(progress)}%` }} />
+      </div>
+    </section>}
     <section aria-label="Open clashes" className="space-y-3"><h3 className="font-semibold">{clashes.length ? `${clashes.length} ${clashes.length === 1 ? 'clash' : 'clashes'}` : 'No open clashes'}</h3>
       {clashes.map(c => <article key={`${c.path}:${c.winning_revision}`} className="space-y-2 rounded-xl border border-amber-500/40 p-3">
         <p className="break-all font-medium">{c.path}</p><p className="text-xs text-muted-foreground">Current: {c.winning_author} · revision {c.winning_revision}<br />Earlier: {c.losing_author || 'No file'} · revision {c.losing_revision}</p>
