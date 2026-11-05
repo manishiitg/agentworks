@@ -29,24 +29,44 @@ const mb = (bytes: number) => bytes >= 10 << 20 ? `${Math.round(bytes / (1 << 20
 export const progressLine = (p: SyncProgress) => `${p.direction === 'upload' ? 'Sending' : 'Receiving'} ${p.files} ${p.files === 1 ? 'file' : 'files'} · ${mb(p.bytes_done)} of ${mb(p.bytes_total)}`
 const progressPercent = (p: SyncProgress) => p.bytes_total > 0 ? Math.min(100, Math.round(p.bytes_done * 100 / p.bytes_total)) : 0
 
-/** This Mac's round in progress for a team folder, polled every 2 s while one runs (the web has none to show). */
-function useSyncProgress(target?: TeamTarget, enabled = true): SyncProgress | undefined {
-  const [progress, setProgress] = useState<SyncProgress>()
+/** This Mac's copy of a team folder, from its sync client: the round in progress, the last good round, files and
+ * the last error. Polled every 2 s while a round runs, else every 10 s (the web has none to show). */
+type LocalSync = { status?: string; message?: string; last_synced?: string; file_count?: number; progress?: SyncProgress | null }
+function useLocalSync(target?: TeamTarget, enabled = true): LocalSync | undefined {
+  const [local, setLocal] = useState<LocalSync>()
   useEffect(() => {
-    setProgress(undefined)
+    setLocal(undefined)
     if (!target?.connection || !enabled) return
     let active = true, timer = 0
     const load = async () => {
-      let next: SyncProgress | undefined
-      try { next = (await desktopRequest<{ progress?: SyncProgress | null }>(`/${encodeURIComponent(target.connection!)}/crew-teams/${encodeURIComponent(target.project)}/local`)).progress || undefined } catch { next = undefined }
+      let next: LocalSync | undefined
+      try { next = await desktopRequest<LocalSync>(`/${encodeURIComponent(target.connection!)}/crew-teams/${encodeURIComponent(target.project)}/local`) } catch (e) { next = { status: 'offline', message: teamError(e) } }
       if (!active) return
-      setProgress(next)
-      timer = window.setTimeout(() => void load(), next ? 2000 : 15000)
+      setLocal(next)
+      timer = window.setTimeout(() => void load(), next?.progress ? 2000 : 10000)
     }
     void load()
     return () => { active = false; window.clearTimeout(timer) }
   }, [target?.connection, target?.project, enabled])
-  return progress
+  return local
+}
+function useSyncProgress(target?: TeamTarget, enabled = true): SyncProgress | undefined { return useLocalSync(target, enabled)?.progress || undefined }
+
+const secondsAgo = (at?: string) => {
+  const seconds = at ? Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 1000)) : -1
+  return seconds < 0 ? '' : seconds < 60 ? `${seconds} s ago` : seconds < 3600 ? `${Math.round(seconds / 60)} min ago` : clock(at!)
+}
+
+/** The Sync section's one always-visible line (owner, 5 Nov: "I don't see sync status here"). */
+function localSyncLine(local?: LocalSync): { text: string; problem: boolean } | undefined {
+  if (!local) return undefined
+  if (local.progress) return { text: progressLine(local.progress), problem: false }
+  if (local.status === 'offline') return { text: "Can't sync: your company's server can't be reached. Changes here send when it's back; it tries again every few seconds.", problem: true }
+  if (local.message) return { text: `Can't sync: ${local.message} · trying again in a few seconds`, problem: true }
+  const files = `${local.file_count ?? 0} ${local.file_count === 1 ? 'file' : 'files'}`
+  const ago = secondsAgo(local.last_synced)
+  if (local.status === 'up_to_date') return { text: `Up to date${ago ? ` · checked ${ago}` : ''} · ${files}`, problem: false }
+  return { text: `Changes waiting to send${ago ? ` · last synced ${ago}` : ''} · ${files}`, problem: false }
 }
 
 const verb = (kind: string) => kind === 'clash' ? 'clash saved in history' : kind === 'removed' ? 'removed' : 'sent'
@@ -89,7 +109,9 @@ export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { t
   const [busy, setBusy] = useState(false)
   const [version, setVersion] = useState(0)
   const [comparison, setComparison] = useState<{ path: string; diff: string }>()
-  const progress = useSyncProgress(target)
+  const local = useLocalSync(target)
+  const progress = local?.progress || undefined
+  const status = localSyncLine(local)
   useEffect(() => {
     let active = true
     const load = async () => {
@@ -132,9 +154,8 @@ export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { t
     activateTab(tab.tabId); onAsk?.(); window.setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_FOCUS_COMPOSER_EVENT)), 50)
   }
   return <div ref={root} data-team-sync className="space-y-5 text-sm">
-    <div className="flex items-center justify-between"><p className="text-xs text-muted-foreground">Latest arrival is current. Earlier versions stay in history.</p><button type="button" aria-label="Refresh Sync" onClick={() => setVersion(v => v + 1)} className="rounded p-1 hover:bg-muted"><RefreshCw className="h-4 w-4" /></button></div>
+    <div className="flex items-center justify-between gap-2">{status ? <p role="status" className={`text-xs ${status.problem ? 'text-amber-600' : 'text-muted-foreground'}`}>{status.text}</p> : <span />}<button type="button" aria-label="Refresh Sync" onClick={() => setVersion(v => v + 1)} className="rounded p-1 hover:bg-muted"><RefreshCw className="h-4 w-4" /></button></div>
     {progress && <section aria-label="Sync in progress" className="space-y-1.5">
-      <p className="text-xs">{progressLine(progress)}</p>
       <div role="progressbar" aria-label="Sync progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent(progress)} className="h-1.5 overflow-hidden rounded-full bg-muted">
         <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${progressPercent(progress)}%` }} />
       </div>

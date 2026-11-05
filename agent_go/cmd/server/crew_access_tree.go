@@ -41,6 +41,11 @@ type crewAccessFacts struct {
 	LastChange  time.Time
 	Clashes     []crewTeamClash
 	Progress    *crewTeamRound
+	// This Mac's own copy of the shared folder (absent on the website): its last good round, files and last error.
+	LocalSynced time.Time
+	LocalFiles  int
+	LocalError  string
+	HasLocal    bool
 	Viewer      string
 }
 
@@ -101,6 +106,10 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 		switch {
 		case f.Progress != nil:
 			detail = crewAccessProgressLine(*f.Progress)
+		case f.HasLocal && f.LocalError != "":
+			detail = "Can't sync: " + f.LocalError
+		case f.HasLocal && !f.LocalSynced.IsZero():
+			detail = fmt.Sprintf("Up to date · checked %s · %d %s", crewAccessAgo(f.LocalSynced), f.LocalFiles, plural(f.LocalFiles, "file", "files"))
 		case !f.LastChange.IsZero():
 			detail = "Last change " + crewAccessAgo(f.LastChange)
 		}
@@ -221,6 +230,10 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 		f.TeamKnown, f.Team, f.People, f.Clashes, f.LastChange = true, remote.team, remote.people, remote.clashes, remote.last
 		if dir, err := crewTeamLocalDir(owner, c, b.PeerProjectID, remote.team.Folder.ID); err == nil {
 			f.Progress = crewTeamRoundFor(dir)
+			if local, err := readCrewTeamLocal(dir); err == nil {
+				f.HasLocal, f.LocalFiles, f.LocalError = true, len(local.LocalBase), local.Error
+				f.LocalSynced, _ = time.Parse(time.RFC3339Nano, local.LastSynced)
+			}
 		}
 	}
 	if rows, err := api.macAgentRows(ctx, claims, project); err == nil {

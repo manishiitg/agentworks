@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -165,9 +166,9 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 						done()
 						if err != nil {
 							b.Status = "pending"
-							b.Error = err.Error()
+							b.Error = crewTeamPlainSyncError(err)
 							_ = saveCrewTeamLocal(dir, b)
-							log.Printf("[CREW_TEAM_LOCAL] project=%s event=pending reason=%q", t.ProjectID, err)
+							log.Printf("[CREW_TEAM] project=%s event=sync_failed shown=%q reason=%q", t.ProjectID, b.Error, err)
 						}
 					}
 				}
@@ -545,4 +546,27 @@ func crewTeamStagedBytes(file, direction string) int64 {
 		return info.Size()
 	}
 	return 0
+}
+
+// crewTeamPlainSyncError is what the person sees for a failed sync round ("Can't sync: …", owner 5 Nov): one plain
+// sentence, never a raw error, path, address or ID (the raw one goes to the log).
+func crewTeamPlainSyncError(err error) string {
+	text := err.Error()
+	for _, known := range []struct{ match, say string }{
+		{"cannot reach your company's server", "your company's server can't be reached"},
+		{"the shared folder moved", "the shared folder moved on this Mac; pick it again in the Team tab"},
+		{"belongs to a different saved account", "this folder belongs to a different sign-in"},
+		{"the shared folder changed", "the Team chose another shared folder; this copy is no longer shared"},
+		{"shared folder access was removed", "you no longer have the shared folder; its files stay on this Mac"},
+		{"ask the owner to allow shared folder editing", "the shared folder is not shared with you"},
+		{"transfer refused", "the server refused the transfer; check that you are still in the Team"},
+		{"exceeds 256 MiB", "the shared folder is over 256 MB"},
+		{"differ only by letter case", "two files differ only by capital letters; rename one"},
+		{"context deadline exceeded", "it took too long"},
+	} {
+		if strings.Contains(text, known.match) {
+			return known.say
+		}
+	}
+	return "something went wrong on this Mac"
 }
