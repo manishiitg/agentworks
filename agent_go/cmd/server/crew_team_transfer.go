@@ -1,16 +1,21 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"maps"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -115,6 +120,61 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 		externalError(w, 400, "invalid_transfer", e.Error())
 		return
 	}
+	// A step runs as a job that outlives the request: the request waits up to crewTeamSyncWait, then answers
+	// "still working" and the caller asks again with the same transfer (Showcase, 5 Nov: a 7,184-file apply ran past the
+	// 20 s the company gateway and the Mac allow, was cut, and the Mac looped). Each finished result is handed out once.
+	key := stage + "\x00" + in.Action
+	job := &crewTeamSyncJob{done: make(chan struct{})}
+	if running, loaded := crewTeamSyncJobs.LoadOrStore(key, job); loaded {
+		job = running.(*crewTeamSyncJob)
+	} else {
+		detached := r.WithContext(context.WithoutCancel(r.Context()))
+		go func() {
+			start, result := time.Now(), httptest.NewRecorder()
+			api.crewTeamSyncStep(result, detached, claims, project, in, stage)
+			files, changes := 0, 0
+			if in.Snapshot != nil {
+				files, changes = len(in.Snapshot.Files), len(in.Snapshot.Changes)
+			}
+			log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=%s files=%d changes=%d base=%d status=%d ms=%d", project, logUsernameForUserID(claims.UserID), in.Action, files, changes, len(in.Base), result.Code, time.Since(start).Milliseconds())
+			job.result = result
+			close(job.done)
+		}()
+	}
+	select {
+	case <-job.done:
+		crewTeamSyncJobs.CompareAndDelete(key, job)
+		for name, values := range job.result.Header() {
+			w.Header()[name] = values
+		}
+		w.WriteHeader(job.result.Code)
+		_, _ = w.Write(job.result.Body.Bytes())
+	case <-time.After(crewTeamSyncWait):
+		w.Header().Set(crewTeamWorkingHeader, "1")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"working":true}`))
+	case <-r.Context().Done():
+	}
+}
+
+// crewTeamSyncWait is how long a sync request waits for its step before answering "still working".
+const crewTeamSyncWait = 10 * time.Second
+
+// crewTeamWorkingHeader marks a 202 that means "the step is still running; ask again with the same transfer".
+const crewTeamWorkingHeader = "X-Team-Working"
+
+type crewTeamSyncJob struct {
+	done   chan struct{}
+	result *httptest.ResponseRecorder
+}
+
+// crewTeamSyncJobs are the running (or finished, not yet handed out) sync steps, by transfer folder and action.
+var crewTeamSyncJobs sync.Map
+
+// crewTeamSyncStep is one sync step under the team lock: prepare, pull, apply or ack.
+func (api *StreamingAPI) crewTeamSyncStep(w http.ResponseWriter, r *http.Request, claims *UserClaims, project string, in crewTeamTransfer, stage string) {
+	var e error
 	dir, _ := crewTeamContentDir(project)
 	if e = os.MkdirAll(stage, 0700); e != nil {
 		externalError(w, 409, "transfer_failed", e.Error())
@@ -176,7 +236,8 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			fail(e)
 			return
 		}
-		externalJSON(w, in)
+		// The uploader already has its snapshot; echoing it back cost a 3 MB reply every round for 7,000 files.
+		externalJSON(w, map[string]bool{"prepared": true})
 	case "pull":
 		state, _ := readCrewTeamFileState(project)
 		op := state.onPurpose()
@@ -204,6 +265,14 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 		}
 		if e = validateCrewTeamSnapshot(&crewsync.Snapshot{Files: in.Base}, baseOp); e != nil {
 			fail(e)
+			return
+		}
+		// Nothing changed since the caller's last download: the team's own record says so, without reading and hashing
+		// every shared file again (11-14 s for 7,000 files, under the team lock, every few seconds).
+		if len(in.Base) > 0 && maps.Equal(in.Base, state.manifest()) {
+			_ = os.RemoveAll(stage)
+			in.Snapshot, in.Base, in.Unchanged = nil, nil, true
+			externalJSON(w, in)
 			return
 		}
 		root := filepath.Join(dir, "files")
