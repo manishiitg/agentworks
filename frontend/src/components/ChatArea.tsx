@@ -79,6 +79,7 @@ import {
   shouldKeepChatSessionSubscribed,
 } from '../utils/workflowSessionSubscription'
 import { activateTab } from '../utils/activateTab'
+import { fillAskFromMyAgentDraft } from '../utils/agentPurposeDraft'
 import { selectWorkflowPreset } from '../utils/workflowNavigation'
 import { ProductChatSurface } from '../platform/chat/ProductChatSurface'
 import { buildCleanConversationItems } from '../utils/cleanConversation'
@@ -3894,7 +3895,14 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         />
       )}
 
-      {observingOwnerTab && <div className="border-t border-border px-4 py-3 text-sm text-muted-foreground">{activeTab?.metadata?.agentProfileTabOwnerName || 'Another owner'} controls this tab. You can follow the conversation here and use your own tab to chat.</div>}
+      {/* Someone else's agent (a teammate's, or another owner's tab): you watch it live; your own agent asks it
+          (owner, 5 Nov, "A Team is a shared room"). No chat box here. */}
+      {observingOwnerTab && <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border px-4 py-3 text-sm text-muted-foreground">
+        <span className="inline-flex min-w-0 items-center gap-2"><span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
+          <span className="min-w-0">Watching {activeTab?.metadata?.agentProfileTabOwnerName || 'another person'}'s {activeTab?.name || 'agent'} live. Only they type here.</span></span>
+        {activeTab?.metadata?.agentProfileProjectId && <button type="button" className="ml-auto shrink-0 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
+          onClick={() => { if (!fillAskFromMyAgentDraft(activeTab.metadata!.agentProfileProjectId!, activeTab.metadata?.agentProfileTabOwnerName || 'their', activeTab.name || 'agent')) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask from my agent</button>}
+      </div>}
 
       {/* Scheduled runs show a compact stop action beside the terminal toggle.
           Keep the footer for bot runs and surfaces that hide the input row. */}

@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom'
-import { useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
+import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
+import { useProjectTeam } from '../../products/work/teamApi'
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -85,8 +86,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // Another person's tab names that person, so two owners' main chats never look alike.
   const tabLabel = (tab: ChatTab) => {
     const owner = tab.metadata?.agentProfileTabOwnerName
-    const name = compactOwnerChatName(tab.tabId === canonicalTabId ? 'Main' : sideChatName(tab), owner)
-    return owner && !canControl(tab) ? `${name} · ${ownerShortName(owner)}` : name
+    // Other people's agents sit under their name (left menu headings, tab strip groups), so the name alone (owner, 5 Nov).
+    return compactOwnerChatName(tab.tabId === canonicalTabId ? 'Main' : sideChatName(tab), owner)
   }
   // The purpose icon, for the tab's owner only (owner, 3 Nov): it fills the chat box; the agent saves the line itself.
   const purposeOf = (tab: ChatTab): string | undefined => {
@@ -105,13 +106,20 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const place = useYourComputerSummary(Boolean(placeProject), placeProject)
   // On the website a Crew that lives on its owner's Mac has no tabs of its own online; a new one would be empty.
   const livesOnMac = useCrewLivesOnMac(placeProject)
+  // A Crew with its Team on says so after its name, for its owner and members alike (owner, 5 Nov).
+  const { team } = useProjectTeam(placeProject || '')
+  const teamPeople = team?.on ? 1 + team.people.filter(person => !person.invited).length : 0
   // A Crew on its owner's Mac shows the Mac's own tabs while the Mac is on; with it off, Main only (PLAT-856-509).
   const sideChatsHere = allowSideChats && place !== 'mac_off'
   // A Crew on its owner's Mac shows where it lives only as the colour of the agents arrow (owner, 3 Nov): green with the
   // Mac on, grey with it off, amber while moving. Online Crews keep a plain arrow.
   const arrowTone = place === 'mac' ? 'text-emerald-500' : place === 'mac_off' ? 'text-muted-foreground/50' : place === 'moving' ? 'text-amber-500' : ''
   const placeWord = place === 'mac' ? 'On your Mac' : place === 'mac_off' ? 'Mac off' : place === 'moving' ? 'Moving online' : ''
-  const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
+  const shownTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
+  // Grouped by person like the left menu (owner, 5 Nov): your own tabs first, then each other person's under their name.
+  const tabOwnerLabel = (tab: ChatTab) => canControl(tab) ? '' : ownerShortName(listedFor(tab)?.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '') || 'Someone'
+  const tabPeople = [...new Set(shownTabs.map(tabOwnerLabel))].sort((a, b) => a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))
+  const visibleTabs = tabPeople.flatMap(person => shownTabs.filter(tab => tabOwnerLabel(tab) === person))
   const [moreOpen, setMoreOpen] = useState(false)
   // Which agents others can message and who asked them lately (a Crew on this Mac): marks on each tab's avatar.
   const macHere = livesOnMacHere(place) && !livesOnMac
@@ -126,6 +134,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     const share = id ? shares[id] : undefined
     const ask = id ? asking.find(item => item.tab === id) : undefined
     const purpose = purposeOf(tab)
+    // A teammate's agent: its name, icon and purpose from the server, no actions (it is theirs).
+    const theirs = !canControl(tab) ? listedFor(tab) : undefined
+    if (theirs) return { info: { name: tabLabel(tab), icon: theirs.icon || undefined, purpose: theirs.purpose, owner: ownerShortName(theirs.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '') || undefined } }
     const ago = ask && (ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`)
     return {
       asking: ask?.active,
@@ -363,12 +374,15 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
       {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} projectId={placeProject} showName={menuMode || phone} />}
+      {surface === 'work' && teamPeople > 0 && <span title={`Team · ${teamPeople} people`} className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground">Team</span>}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
-      {visibleTabs.map(tab => {
+      {visibleTabs.map((tab, index) => {
+        const person = tabOwnerLabel(tab)
+        const groupLabel = person && (index === 0 || tabOwnerLabel(visibleTabs[index - 1]) !== person)
+          ? <span key={`person:${person}`} className="ml-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-4 w-px bg-border" />{person}:</span> : null
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
         const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
-        return <div
-          key={tab.tabId}
+        return <Fragment key={tab.tabId}>{groupLabel}<div
           data-chat-tab-id={tab.tabId}
           draggable={!!key}
           onDragStart={key ? event => startDrag(event, key, tab.tabId) : undefined}
@@ -392,7 +406,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         onCloseTab={hideOrCloseTab}
         closeStopsSession={!!key}
         onMakeInteractive={onMakeInteractive}
-      />{renderAfterTab?.(tab)}</div>
+      />{renderAfterTab?.(tab)}</div></Fragment>
       })}
       </div>
       {!menuMode && (tabs.length > 1 || phone || livesOnMac) && (
