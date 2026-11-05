@@ -13,7 +13,7 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { MacAgentBridge } from './MacAgentBridge'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
-import { CrewTeamTab } from '../../components/workspace/CrewTeamTab'
+import { TeamTab } from './TeamTab'
 export { useMacTabShareLine, useMacSharedAgents, useTeamRemoteAgents, openCrewAccess, takeCrewAccess, openCrewAskThread } from './MacSharedAgents'
 export type { MacAgentShare } from './MacSharedAgents'
 import { useProjectTeam } from './teamApi'
@@ -46,7 +46,7 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
 export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; people?: { name: string; online: boolean; online_label?: string; agents?: string[]; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
-type PlaceEntry = { place?: CloudState; shared?: number; summary?: string; tree?: CrewAccessLine[]; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
+type PlaceEntry = { place?: CloudState; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
 function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
@@ -58,17 +58,13 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
     const load = () => {
       created.abort?.abort()
       created.abort = new AbortController()
-      void api.get<{ place?: CloudState; shared_agents?: number; access_summary?: string; access_tree?: CrewAccessLine[]; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
+      void api.get<{ place?: CloudState; shared_agents?: number; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
         .then(({ data }) => {
           const shared = data.shared_agents || 0
-          const summary = data.access_summary || ''
-          const tree = data.access_tree || []
           const asking = data.asking || []
-          if (!data.place || (data.place === created.place && shared === created.shared && summary === created.summary && JSON.stringify(tree) === JSON.stringify(created.tree || []) && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
-          created.tree = tree
+          if (!data.place || (data.place === created.place && shared === created.shared && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
           created.place = data.place
           created.shared = shared
-          created.summary = summary
           created.asking = asking
           created.listeners.forEach(notify => notify(data.place))
         }).catch(() => {})
@@ -102,29 +98,6 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string): Cl
   return state
 }
 
-/** The Access row's line after where the Crew lives ("Team: 2 people · 3 agents in team"), written by the server
- * from the same reading as its place (owner, 5 Nov). */
-export function useCrewAccessSummary(projectId?: string): string {
-  const [summary, setSummary] = useState('')
-  useEffect(() => {
-    setSummary('')
-    if (!projectId) return
-    return watchCrewPlace(projectId, () => setSummary(placeCache.get(projectId)?.summary || ''))
-  }, [projectId])
-  return summary
-}
-
-/** The Access tree's lines (server-written), from the same reading as its place. */
-export function useCrewAccessTree(projectId?: string): CrewAccessLine[] {
-  const [tree, setTree] = useState<CrewAccessLine[]>([])
-  useEffect(() => {
-    setTree([])
-    if (!projectId) return
-    return watchCrewPlace(projectId, () => setTree(placeCache.get(projectId)?.tree || []))
-  }, [projectId])
-  return tree
-}
-
 /** Who asked this Crew's shared agents on this Mac lately, newest first (owner, 3 Nov). */
 export function useCrewAsking(projectId?: string): CrewAsk[] {
   const [asking, setAsking] = useState<CrewAsk[]>([])
@@ -143,7 +116,6 @@ export function useCrewLivesOnMac(projectId?: string): boolean {
   return (place === 'mac' || place === 'mac_off') && !(crewCloudMode() && getRawActiveWorkspaceId() === 'local')
 }
 
-export const cloudStateLabel: Record<CloudState, string> = { mac: 'On this Mac', mac_off: 'Mac off', moving: 'Publishing…', online: 'Online', offline: 'On this Mac · Offline' }
 /** The Access row icon: a laptop while it lives on a Mac, a cloud online, people for someone else's Crew, with a dot:
  * green reachable now, grey Mac off, amber moving. */
 export function cloudStateIcon(state?: CloudState, theirs = false): LucideIcon {
@@ -330,7 +302,8 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
       {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} />}
     </section>}
     {!needsServer && section === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      {binding && !online && binding.connection_id ? <CrewTeamTab projectId={projectId} connection={binding.connection_id} network={networkName(binding.connection_id)} /> : online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Open Team on the server</Button> : <TeamOffline onTurnOn={async () => {
+      {binding && !online && binding.connection_id ? <TeamTab projectId={projectId} connection={binding.connection_id}
+        macSwitch={<Switch aria-label="Mac online" checked disabled={busy} onCheckedChange={on => { if (!on) void run('offline') }} />} /> : online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Open Team on the server</Button> : <TeamOffline onTurnOn={async () => {
           // Team on also turns Mac online on (owner, 5 Nov); with several networks the person picks one there first.
           if (!target) { setSection('mac'); setAsking(true); return }
           setBusy(true); setError('')

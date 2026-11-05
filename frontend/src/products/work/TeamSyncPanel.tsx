@@ -5,7 +5,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../../utils/workspacePaneChat'
 import { desktopRequest } from '../../services/desktopConnections'
-import { teamError, teamRequest, type TeamClash, type TeamEvent, type TeamTarget } from './teamApi'
+import { teamError, teamRequest, type TeamClash, type TeamEvent, type TeamTabSync, type TeamTarget } from './teamApi'
 import { takeCrewSync } from './MacSharedAgents'
 
 /** One sync round: one person's files sent (or removed) together, so a first upload is one row, not hundreds (owner,
@@ -50,7 +50,6 @@ function useLocalSync(target?: TeamTarget, enabled = true): LocalSync | undefine
   }, [target?.connection, target?.project, enabled])
   return local
 }
-function useSyncProgress(target?: TeamTarget, enabled = true): SyncProgress | undefined { return useLocalSync(target, enabled)?.progress || undefined }
 
 const secondsAgo = (at?: string) => {
   const seconds = at ? Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 1000)) : -1
@@ -72,30 +71,9 @@ function localSyncLine(local?: LocalSync): { text: string; problem: boolean } | 
 const verb = (kind: string) => kind === 'clash' ? 'clash saved in history' : kind === 'removed' ? 'removed' : 'sent'
 const clock = (time: string) => new Date(time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
-/** The shared folder in a few words for the Crew's side panel: open clashes, or how long ago the last change came. */
-export function useTeamSyncSummary(target?: TeamTarget, enabled = true): string {
-  const [line, setLine] = useState('')
-  const progress = useSyncProgress(target, enabled)
-  useEffect(() => {
-    setLine('')
-    if (!target || !enabled) return
-    let active = true
-    const load = async () => {
-      try {
-        const [a, b] = await Promise.all([teamRequest<{ clashes: TeamClash[] }>(target, '/clashes'), teamRequest<{ events: TeamEvent[] }>(target, '/events')])
-        if (!active) return
-        const minutes = b.events[0] ? Math.max(0, Math.round((Date.now() - new Date(b.events[0].time).getTime()) / 60_000)) : -1
-        setLine(a.clashes.length ? `${a.clashes.length} ${a.clashes.length === 1 ? 'clash' : 'clashes'}`
-          : minutes < 0 ? 'nothing synced yet' : minutes < 1 ? 'last change just now' : minutes < 60 ? `last change ${minutes} min ago` : `last change ${clock(b.events[0].time)}`)
-      } catch { if (active) setLine('') }
-    }
-    void load(); const timer = window.setInterval(() => { if (!document.hidden) void load() }, 30000)
-    return () => { active = false; window.clearInterval(timer) }
-  }, [target?.project, target?.connection, target?.folderId, enabled])
-  return progress ? `${progressLine(progress)} (${progressPercent(progress)}%)` : line
-}
-
-export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { target: TeamTarget; name?: string; projectId?: string; onSummary?: (clashes: number, today: number) => void; onAsk?: () => void }) {
+/** The shared folder's sync: in the Mac app this Mac's own copy (from its sync client), elsewhere the server's line for
+ * this person (server, from the Team tab reply); then clashes, recent rounds and skipped private files. */
+export function TeamSyncPanel({ target, name, projectId, server, onSummary, onAsk }: { target: TeamTarget; name?: string; projectId?: string; server?: TeamTabSync; onSummary?: (clashes: number, today: number) => void; onAsk?: () => void }) {
   // Opened from the side panel's Shared folder row: scroll here once it is on screen.
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => { if (projectId && takeCrewSync(projectId)) window.setTimeout(() => root.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 300) }, [projectId])
@@ -110,8 +88,8 @@ export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { t
   const [version, setVersion] = useState(0)
   const [comparison, setComparison] = useState<{ path: string; diff: string }>()
   const local = useLocalSync(target)
-  const progress = local?.progress || undefined
-  const status = localSyncLine(local)
+  const progress = local?.progress || server?.progress || undefined
+  const status = localSyncLine(local) || (server ? { text: server.line, problem: Boolean(server.problem) } : undefined)
   useEffect(() => {
     let active = true
     const load = async () => {
@@ -155,6 +133,7 @@ export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { t
   }
   return <div ref={root} data-team-sync className="space-y-5 text-sm">
     <div className="flex items-center justify-between gap-2">{status ? <p role="status" className={`text-xs ${status.problem ? 'text-amber-600' : 'text-muted-foreground'}`}>{status.text}</p> : <span />}<button type="button" aria-label="Refresh Sync" onClick={() => setVersion(v => v + 1)} className="rounded p-1 hover:bg-muted"><RefreshCw className="h-4 w-4" /></button></div>
+    {server?.last && <p className="text-xs text-muted-foreground">{server.last}</p>}
     {progress && <section aria-label="Sync in progress" className="space-y-1.5">
       <div role="progressbar" aria-label="Sync progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent(progress)} className="h-1.5 overflow-hidden rounded-full bg-muted">
         <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${progressPercent(progress)}%` }} />

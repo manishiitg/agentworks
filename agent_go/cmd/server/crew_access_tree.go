@@ -52,14 +52,16 @@ type crewAccessFacts struct {
 	ServerCrew bool
 	// Where the viewer's own agents work, when they are a Team member: "mac" or "web" (crew_team_where.go).
 	Where string
+	// Member: the viewer is a teammate, not the Crew's owner; the owner's Mac and its agent choices are not theirs.
+	Member bool
 }
 
 func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	lines := []crewAccessLine{}
 	teamOn := f.TeamKnown && f.Team != nil && f.Team.On
 	switch {
-	case f.ServerCrew:
-		// A Crew on the server has no Mac (owner, 5 Nov): its tree starts with the Team.
+	case f.ServerCrew || f.Member:
+		// A Crew on the server has no Mac (owner, 5 Nov), and a teammate's tree is about their Team: it starts there.
 	case f.MacOnline:
 		// One line, no detail (owner, 5 Nov).
 		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Mac online"})
@@ -68,6 +70,9 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	}
 	if !f.TeamKnown {
 		return append(lines, crewAccessPublicLine(f.Agents)...)
+	}
+	if f.Member {
+		f.Agents = nil // the owner's Mac choices; the team line lists everyone's agents
 	}
 	if !teamOn {
 		if f.MacOnline || f.ServerCrew {
@@ -212,8 +217,19 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 		f.TeamKnown = true // no Team record means the Team is off
 		if t, err := readCrewTeam(project); err == nil {
 			f.Team = &t
+			f.Member = t.OwnerID != owner
 			if t.On {
 				f.People = teamAgentsByPerson(ctx, t, owner)
+			}
+			// A teammate on the website has their own copy of the shared folder here (crew_team_server_copy.go).
+			if _, onMac := t.memberMac(owner); f.Member && !onMac && t.Folder.ID != "" && crewRelayTwin(project) {
+				if dir, err := crewTeamServerCopyDir(owner, project, t.Folder.ID); err == nil {
+					f.Progress = crewTeamRoundFor(dir)
+					if local, err := readCrewTeamLocal(dir); err == nil {
+						f.HasLocal, f.LocalFiles, f.LocalError = true, len(local.Files), local.Error
+						f.LocalSynced, _ = time.Parse(time.RFC3339Nano, local.LastSynced)
+					}
+				}
 			}
 			if s, err := readCrewTeamFileState(project); err == nil {
 				if n := len(s.Events); n > 0 {

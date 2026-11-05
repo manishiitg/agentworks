@@ -1149,11 +1149,18 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			}
 			id, _ := args["inbox_id"].(string)
 			var target triggerTarget
-			// A Team member's agent, listed on this Mac from the Crew's online copy (crew_team_message.go).
-			if raw, _ := args["target"].(string); id == "" && IsLocalMode() && strings.HasPrefix(strings.TrimSpace(raw), "team:") {
+			// A Team member's agent, listed on this Mac from the Crew's online copy (crew_team_message.go); the Team
+			// tab's address for it (crewTeamAgentAddress) means the same agent here.
+			teamTarget, _ := args["target"].(string)
+			if id == "" && IsLocalMode() {
+				if mapped := crewTeamAddressOnMac(teamTarget); mapped != "" {
+					teamTarget = mapped
+				}
+			}
+			if id == "" && IsLocalMode() && strings.HasPrefix(strings.TrimSpace(teamTarget), "team:") {
 				message, _ := args["message"].(string)
 				submission, _ := args["submission_id"].(string)
-				out, err := api.sendTeamMessageFromMac(ctx, userID, caller, raw, message, submission)
+				out, err := api.sendTeamMessageFromMac(ctx, userID, caller, teamTarget, message, submission)
 				if err != nil {
 					return "", err
 				}

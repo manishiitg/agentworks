@@ -1,6 +1,6 @@
 import { YourComputerPanel } from './YourComputerPanel'
 import { useMacCrew } from './useMacCrew'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Server } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectIntegrationPanel, INTEGRATION_LABELS, type ProjectSecretControls, type IntegrationSection } from '../../components/integrations/ProjectIntegrationPanel'
@@ -21,7 +21,9 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { integrationProductAvailable } from '../../components/integrations/integrationSections'
 import { isLocalDeployment } from '../productSurfaceConfig'
 import { ComputerUsePanel } from './ComputerUsePanel'
-import { TeamMemberAccess } from './TeamMemberAccess'
+import { TeamTab } from './TeamTab'
+import api from '../../services/api'
+import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'message-agents'
 
@@ -76,9 +78,25 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
   </div>
 }
 
-/** Members see their Team; the owner's computer controls stay with the owner. */
+/** The server says which Access page this person gets (crew-sync access_view): the Team tab alone (a teammate, or the
+ * website copy of a Mac Crew), a Crew on the server's page with its Team tab, one line for a shared Crew, or the
+ * owner's own page (in the Mac app the Team tab is inside it). Read once, and again when the Team changes. */
 function AccessPage(props: { projectId: string; sessionId?: string; workspacePath: string; tabId: string; canEdit: boolean; onAsk: (message: string) => void | Promise<unknown> }) {
-  return <TeamMemberAccess projectId={props.projectId}><OwnerAccessPage {...props} /></TeamMemberAccess>
+  const [access, setAccess] = useState<{ access_view?: 'team' | 'server_crew' | 'summary'; access_summary?: string }>()
+  const local = getRawActiveWorkspaceId() === 'local'
+  useEffect(() => {
+    if (local) return
+    let live = true
+    const load = () => void api.get(`/api/crew-sync/${encodeURIComponent(props.projectId)}`, { skipSessionContext: true }).then(({ data }) => { if (live) setAccess(data) }).catch(() => { if (live) setAccess({}) })
+    load()
+    window.addEventListener('agentworks:team-updated', load)
+    return () => { live = false; window.removeEventListener('agentworks:team-updated', load) }
+  }, [props.projectId, local])
+  if (local) return <OwnerAccessPage {...props} />
+  if (!access) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
+  if (access.access_view === 'summary') return <p className="text-sm text-muted-foreground">{access.access_summary}</p>
+  if (access.access_view === 'team') return <div className="max-w-2xl"><TeamTab projectId={props.projectId} /></div>
+  return <><OwnerAccessPage {...props} />{access.access_view === 'server_crew' && <div className="mt-6 max-w-2xl"><TeamTab projectId={props.projectId} /></div>}</>
 }
 
 function OwnerAccessPage({ projectId, sessionId, workspacePath, tabId, canEdit, onAsk }: { projectId: string; sessionId?: string; workspacePath: string; tabId: string; canEdit: boolean; onAsk: (message: string) => void | Promise<unknown> }) {

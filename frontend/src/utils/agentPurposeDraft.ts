@@ -31,30 +31,14 @@ export function fillTeamSetupDraft(projectId: string): boolean {
 }
 
 /** "Ask from my agent" on a teammate's agent you are watching (owner, 5 Nov, "A Team is a shared room"): your own
- * Main opens with the request started; you finish it and send it, and your agent reaches theirs. False when your
- * Main's tab is not open. */
-export function fillAskFromMyAgentDraft(projectId: string, ownerName: string, agentName: string, watchedKey?: string): boolean {
+ * Main opens with the request started; you finish it and send it, and your agent reaches theirs at the address the
+ * server gave it (the Team agents list). False when your Main's tab is not open. */
+export function fillAskFromMyAgentDraft(projectId: string, ownerName: string, agentName: string, address?: string): boolean {
   const main = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
   if (!main) return false
   const owner = ownerShortName(ownerName) || 'their'
-  const address = teammateAgentAddress(watchedKey)
   fillDraft(main.tabId, `Ask ${owner}'s ${agentName} agent${address ? ` (message it at ${address})` : ''}: `)
   return true
-}
-
-/** The exact address the server knows for a watched teammate's agent, so the agent need not search (owner, 5 Nov):
- * workspace:work:<serverProject>/agent/<serverChatKey>. The web tab's key is the server key; a Mac app tab carries it
- * after ":team:" (MacSharedAgents openTeamRemoteAgent). */
-export function teammateAgentAddress(watchedKey?: string): string {
-  const watched = watchedKey || ''
-  // In the Mac app the agent is on the server: its id there is team:<this Crew>:<server chat key>, which this Mac's
-  // send_message takes (list_agents names it the same way); a workspace address would not resolve on the Mac.
-  if (watched.includes(':team:')) {
-    const [localProject, serverKey] = watched.split(':team:')
-    return localProject && serverKey ? `team:${localProject}:${serverKey}` : ''
-  }
-  const project = watched.split(':chat:')[0]
-  return project && project !== watched ? `workspace:work:${project}/agent/${watched}` : ''
 }
 
 /** A finished set_my_agent_identity call (native or over MCP, whose name carries a prefix), or a saved Crew identity

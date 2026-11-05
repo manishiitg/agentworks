@@ -42,14 +42,13 @@ type crewPanelSection struct {
 	Access *crewPanelAccess `json:"access,omitempty"`
 }
 type crewPanelAccess struct {
-	Where   string                `json:"where,omitempty"`
-	Place   string                `json:"place,omitempty"`
-	Role    string                `json:"role,omitempty"`
-	View    string                `json:"view,omitempty"`
-	Summary string                `json:"summary,omitempty"`
-	Tree    []crewAccessLine      `json:"tree"`
-	Asking  []crewPanelAsk        `json:"asking"`
-	Member  *crewTeamMemberAccess `json:"member_access,omitempty"`
+	Where   string           `json:"where,omitempty"`
+	Place   string           `json:"place,omitempty"`
+	Role    string           `json:"role,omitempty"`
+	View    string           `json:"view,omitempty"`
+	Summary string           `json:"summary,omitempty"`
+	Tree    []crewAccessLine `json:"tree"`
+	Asking  []crewPanelAsk   `json:"asking"`
 }
 type crewPanelAsk struct {
 	macAskActivity

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -15,52 +14,6 @@ import (
 )
 
 // PLAT-856: members manage their own participation, never the owner's Mac or settings.
-type crewTeamOwnAgent struct {
-	Key    string `json:"key"`
-	Name   string `json:"name"`
-	InTeam bool   `json:"in_team"`
-}
-type crewTeamMemberAccess struct {
-	Name       string                 `json:"name"`
-	People     []crewTeamAgentsPerson `json:"people"`
-	Shared     string                 `json:"shared"`
-	CopyStatus string                 `json:"copy_status"`
-	OwnAgents  []crewTeamOwnAgent     `json:"own_agents"`
-}
-
-func (api *StreamingAPI) crewTeamMemberAccess(ctx context.Context, t crewTeam, caller string) *crewTeamMemberAccess {
-	out := &crewTeamMemberAccess{Name: t.Name, People: teamAgentsByPerson(ctx, t, caller), Shared: "Nothing shared yet", OwnAgents: []crewTeamOwnAgent{}}
-	if t.Folder.ID != "" && t.edits(caller) && !crewRelayTwin(t.ProjectID) {
-		// A Crew on the server: everyone on the web works in its own folder; nothing to copy.
-		out.Shared = t.Folder.display()
-	} else if t.Folder.ID != "" && t.edits(caller) {
-		out.Shared = t.Folder.display()
-		out.CopyStatus = "Your copy is being prepared"
-		if dir, err := crewTeamServerCopyDir(caller, t.ProjectID, t.Folder.ID); err == nil {
-			if b, err := readCrewTeamLocal(dir); err == nil {
-				switch {
-				case b.Error != "":
-					out.CopyStatus = "Can't sync: " + b.Error
-				case b.Status == "up_to_date":
-					out.CopyStatus = fmt.Sprintf("Up to date · %d files", len(b.Files))
-				default:
-					out.CopyStatus = "Syncing your copy"
-				}
-			}
-		}
-	}
-	store := defaultProductConversationRegistryStore()
-	records, err := store.projectChats(ctx, caller, crewProfileID, t.ProjectID)
-	if err != nil {
-		return out
-	}
-	identities, _ := store.agentIdentities(ctx, caller, crewProfileID, t.ProjectID)
-	for _, r := range records {
-		identity := identities[r.ConversationKey]
-		out.OwnAgents = append(out.OwnAgents, crewTeamOwnAgent{Key: r.ConversationKey, Name: firstNonEmptyTrimmed(identity.Name, r.Title, "Main"), InTeam: !identity.OnlyMe})
-	}
-	return out
-}
 func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	project := mux.Vars(r)["project"]

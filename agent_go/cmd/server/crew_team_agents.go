@@ -21,6 +21,19 @@ type crewTeamAgent struct {
 	Place       string `json:"place"`
 	ChatKey     string `json:"chat_key"`
 	StatusLabel string `json:"status_label,omitempty"`
+	// InTeam: everyone in the Team sees it (its maker chose In team); false only on the viewer's own Only me agents.
+	InTeam bool `json:"in_team"`
+	// Address is how another agent messages it (send_message target), written here so no screen builds it.
+	Address string `json:"address,omitempty"`
+}
+
+// crewTeamAgentAddress is the send_message target of one of the Team's agents in this Crew's online copy; on a Mac
+// send_message maps it to the Crew paired with that copy (crew_team_message.go).
+func crewTeamAgentAddress(project, chatKey string) string {
+	if project == "" || chatKey == "" {
+		return ""
+	}
+	return "workspace:" + crewProfileID + ":" + project + "/agent/" + chatKey
 }
 
 type crewTeamAgentsPerson struct {
@@ -69,7 +82,12 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		if onMac && !crewPublishedTarget(t.ProjectID, agent.Tab) {
 			place = "mac"
 		}
-		row := crewTeamAgent{Tab: agent.Tab, Name: agent.Name, Purpose: agent.Purpose, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab)}
+		// Named like the left menu: its own name, Main for the Crew's Main, never an email.
+		name := firstNonEmptyTrimmed(agent.Name, "Agent")
+		if agent.Tab == macMainTab {
+			name = firstNonEmptyTrimmed(agent.Name, "Main")
+		}
+		row := crewTeamAgent{Tab: agent.Tab, Name: name, Purpose: agent.Purpose, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab), InTeam: true}
 		if agent.Tab == macMainTab {
 			row.ChatKey = mainKey
 		}
@@ -91,7 +109,11 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 			person.MacOn = crewMacSocketFor(p.UserID, t.ProjectID, pair) != nil
 			person.Agents = []crewTeamAgent{}
 			for _, tab := range crewMacTabsFor(ctx, p.UserID, t.ProjectID, caller) {
-				row := crewTeamAgent{Tab: tab.Tab, Name: tab.Name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey}
+				name := firstNonEmptyTrimmed(tab.Name, "Agent")
+				if tab.Tab == macMainTab {
+					name = "Main"
+				}
+				row := crewTeamAgent{Tab: tab.Tab, Name: name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey, InTeam: !tab.OnlyMe}
 				if !person.MacOn {
 					row.StatusLabel = "Mac off"
 				}
@@ -102,6 +124,11 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		}
 		person.Active, person.ActiveLabel = teamActive(p.UserID, person.MacOn)
 		out = append(out, person)
+	}
+	for i := range out {
+		for j := range out[i].Agents {
+			out[i].Agents[j].Address = crewTeamAgentAddress(t.ProjectID, out[i].Agents[j].ChatKey)
+		}
 	}
 	return out
 }
@@ -130,7 +157,7 @@ func memberTeamAgents(ctx context.Context, project, member, caller string) []cre
 		if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, member) || strings.HasPrefix(tab, "root-") {
 			name = "Main"
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey})
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, InTeam: !identity.OnlyMe})
 	}
 	return out
 }

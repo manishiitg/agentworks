@@ -374,7 +374,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 		{id: "access", title: "Access", allowed: true, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data crewSyncReply
 			err := read(ctx, api.handleCrewSync, "/api/crew-sync/"+url.PathEscape(project), nil, &data)
-			access := &crewPanelAccess{Where: data.Where, Place: data.Place, Role: data.Role, View: data.AccessView, Summary: data.AccessSummary, Tree: data.AccessTree, Member: data.MemberAccess, Asking: []crewPanelAsk{}}
+			access := &crewPanelAccess{Where: data.Where, Place: data.Place, Role: data.Role, View: data.AccessView, Summary: data.AccessSummary, Tree: data.AccessTree, Asking: []crewPanelAsk{}}
 			section := crewPanelSection{Access: access, Busy: data.Place == "moving"}
 			place := map[string]string{"mac": "On this Mac", "mac_off": "Mac off", "moving": "Publishing…", "online": "Online", "offline": "On this Mac · Offline"}[data.Place]
 			section.Detail = place
