@@ -38,6 +38,12 @@ func crewCoOwnerIDs(root string) []string {
 }
 
 // crewRegistryCoOwnerIDs are only the co-owners registered for the Crew at root (the owner manages this list).
+// Only registry owners may change permanent ownership. Team membership grants
+// temporary build access and must not be able to make itself permanent.
+func crewRegistryOwnedByCaller(userID, root string) bool {
+	return crewProjectOwnedByCallerStrict(userID, root) || registryListHas(crewRegistryCoOwnerIDs(root), userID)
+}
+
 func crewRegistryCoOwnerIDs(root string) []string {
 	rec, found := crewOwnerRecordAt(root)
 	if !found {

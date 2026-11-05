@@ -84,3 +84,60 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 		t.Fatalf("leave changed wrong membership: %+v %v", saved, err)
 	}
 }
+
+// PLAT-856-543: changing Team access cancels a removed member's existing turn,
+// while the creator, other Crews and independent registered owners keep work.
+func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"member","products":["work"]}]}`)
+	registry := withProjectOwnerRegistry(t)
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "revoked", ProjectID: "revoked", OwnerID: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"leave", "remove", "off", "registered-owner"} {
+		t.Run(action, func(t *testing.T) {
+			team := crewTeam{ProjectID: "revoked", OwnerID: "owner", Name: "Example", On: true, People: []crewTeamPerson{{UserID: "member"}}}
+			if err := writeCrewTeam(team); err != nil {
+				t.Fatal(err)
+			}
+			if action == "registered-owner" {
+				if _, err := registry.AddCoOwner("work", "revoked", "member"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			canceled := map[string]bool{}
+			api := &StreamingAPI{stoppedSessions: map[string]bool{}, activeSessions: map[string]*ActiveSessionInfo{
+				"member-turn":  {UserID: "member", WorkspacePath: "Crew/revoked", Status: "running"},
+				"owner-turn":   {UserID: "owner", WorkspacePath: "Crew/revoked", Status: "running"},
+				"another-crew": {UserID: "member", WorkspacePath: "Crew/another", Status: "running"},
+			}, agentCancelFuncs: map[string]context.CancelFunc{}}
+			for id := range api.activeSessions {
+				api.agentCancelFuncs[id] = func() { canceled[id] = true }
+			}
+			route, method, who, body := "/api/crew-teams/revoked", "PUT", "owner", `{"name":"Example","on":true,"people":[]}`
+			if action == "leave" {
+				route += "/leave"
+				method = "POST"
+				who = "member"
+				body = `{}`
+			}
+			if action == "off" {
+				body = `{"name":"Example","on":false,"people":[{"user_id":"member"}]}`
+			}
+			r := httptest.NewRequest(method, route, strings.NewReader(body))
+			r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who}))
+			router := mux.NewRouter()
+			api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, r)
+			if w.Code != 200 {
+				t.Fatalf("revocation failed: %d %s", w.Code, w.Body.String())
+			}
+			if canceled["member-turn"] != (action != "registered-owner") || canceled["owner-turn"] || canceled["another-crew"] {
+				t.Fatalf("wrong work canceled: %v", canceled)
+			}
+		})
+	}
+}

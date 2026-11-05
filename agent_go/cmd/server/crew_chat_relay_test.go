@@ -1,19 +1,24 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // PLAT-856-442: the website dropped all Mac events because the store correctly
@@ -342,5 +347,109 @@ func checkCrewRelaySocketEndToEnd(t *testing.T, api *StreamingAPI, project, pair
 	defer func() { stop(); <-done }()
 	if got := api.callCrewMac(request(t.Context(), "/"), project, crewChatCall{Operation: "resolve"}); got.Status != 200 {
 		t.Fatalf("reconnected Mac: %d %s", got.Status, got.Body)
+	}
+}
+
+// PLAT-856-543: real relay HTTP reads must retain the original credential
+// boundary; a live watch must stop before sending data after its grant is lost.
+func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}
+	seed := func(conversation string) {
+		t.Helper()
+		if err := writeCrewTeam(team); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab, Audience: "team"}}); err != nil {
+			t.Fatal(err)
+		}
+		crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: macMainTab, ConversationID: conversation}}})
+	}
+	t.Cleanup(func() { crewMacTeamTabsCache.Delete("team\x00owner") })
+	handler := f.api.crewChatRelayMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("relay route escaped to ordinary handler")
+		w.WriteHeader(500)
+	}))
+	call := func(claims *UserClaims) *httptest.ResponseRecorder {
+		session := crewChatSessionID("team", "credential-check")
+		r := httptest.NewRequest("GET", "/api/sessions/"+session+"/events", nil)
+		r = mux.SetURLVars(r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), map[string]string{"session_id": session})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	seed("credential-check")
+	if w := call(&UserClaims{UserID: "other"}); w.Code != 200 {
+		t.Fatalf("admitted watch failed: %d %s", w.Code, w.Body.String())
+	}
+	for name, claims := range map[string]*UserClaims{
+		"other Crew token":    {UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"another"}}},
+		"folder token":        {UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true, FileGuard: &wf.FolderGuard{ReadPaths: []string{"visible"}}}},
+		"execution principal": {UserID: "other", ExecutionPrincipal: &ExecutionPrincipal{}},
+		"bot route":           {UserID: "other", BotRouteGrant: "route"},
+		"preview":             {UserID: "other", Scope: "report-preview"},
+	} {
+		if w := call(claims); w.Code != 403 {
+			t.Fatalf("%s gained another person's watch: %d %s", name, w.Code, w.Body.String())
+		}
+	}
+	for _, revocation := range []string{"only-me", "removed", "team-off"} {
+		t.Run(revocation, func(t *testing.T) {
+			seed(revocation)
+			session := crewChatSessionID("team", revocation)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r = mux.SetURLVars(r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "other"})), map[string]string{"session_id": session})
+				handler.ServeHTTP(w, r)
+			}))
+			defer server.Close()
+			client := server.Client()
+			client.Timeout = 5 * time.Second
+			response, err := client.Get(server.URL + "/api/sessions/" + session + "/events/stream")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			if response.StatusCode != 200 {
+				raw, _ := io.ReadAll(response.Body)
+				t.Fatalf("allowed stream: %d %s", response.StatusCode, raw)
+			}
+			reader := bufio.NewReader(response.Body)
+			for {
+				line, err := reader.ReadString('\n')
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.HasPrefix(line, "data:") {
+					break
+				}
+			}
+			revoked := team
+			switch revocation {
+			case "only-me":
+				err = writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab}})
+			case "removed":
+				revoked.People = nil
+				err = writeCrewTeam(revoked)
+			case "team-off":
+				revoked.On = false
+				err = writeCrewTeam(revoked)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			crewRelayStreams.append("owner", "team", revocation, crewRelayBatch{Kind: "event", Seq: 1, Body: json.RawMessage(`{"events":[{"content":"after-revocation"}]}`)})
+			rest, err := io.ReadAll(reader)
+			if err != nil {
+				t.Fatalf("revoked stream did not close: %v", err)
+			}
+			if bytes.Contains(rest, []byte("after-revocation")) {
+				t.Fatal("revoked watch received private data")
+			}
+		})
 	}
 }

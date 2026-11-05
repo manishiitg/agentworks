@@ -134,7 +134,7 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"ann","username":"ann","products":["work"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"ann","username":"ann","email":"ann@example.com","products":["work"]}]}`)
 	registry := newTestRegistry(t)
 	prev := defaultProjectOwnersOverride
 	defaultProjectOwnersOverride = registry
@@ -163,6 +163,17 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 		save(tc.on, tc.invited, tc.people...)
 		if got := crewProjectOwnedByCaller("ann", root); got != tc.wantCoOwnerOf {
 			t.Fatalf("%s: ann builds the Crew = %v, want %v", tc.name, got, tc.wantCoOwnerOf)
+		}
+		crew := crewProjectBinding{OwnerID: "owner"}
+		crew.Binding.WorkspacePath = root
+		if crewOwnersStateFor(crew, "ann").CanManage {
+			t.Fatal("Team membership can manage permanent owners")
+		}
+		api := &StreamingAPI{}
+		for _, action := range []string{"add", "remove"} {
+			if _, status, _, _ := api.changeCrewOwners(&UserClaims{UserID: "ann"}, crew, action, "ann@example.com"); status != http.StatusForbidden {
+				t.Fatalf("%s: Team member changed permanent owners via %s: %d", tc.name, action, status)
+			}
 		}
 		if crewProjectOwnedByCallerStrict("ann", root) || len(crewRegistryCoOwnerIDs(root)) != 0 {
 			t.Fatalf("%s: a team member became the owner or a registered co-owner", tc.name)

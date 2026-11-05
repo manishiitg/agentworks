@@ -104,7 +104,23 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if !crewTeamMember("team-test", "member") {
 		t.Fatal("active member missing")
 	}
-	for _, who := range []string{"member", "outsider"} {
+	// The creator is not a removable roster entry, and owner_id from a PUT
+	// never transfers the Crew, even when a joined member edits Team settings.
+	if w = call("member", "PUT", base, `{"on":true,"people":[{"user_id":"owner"}]}`, ""); w.Code != 400 {
+		t.Fatalf("creator accepted as removable person: %d %s", w.Code, w.Body.String())
+	}
+	forgedOwner := strings.Replace(config, `"name":"Example"`, `"name":"Example","owner_id":"member"`, 1)
+	if w = call("member", "PUT", base, forgedOwner, ""); w.Code != 200 {
+		t.Fatalf("member update: %d %s", w.Code, w.Body.String())
+	}
+	if saved, err := readCrewTeam("team-test"); err != nil || saved.OwnerID != "owner" {
+		t.Fatalf("creator changed: %+v %v", saved, err)
+	}
+	// Joined members manage the same Team settings; outsiders still cannot.
+	if w = call("member", "PUT", base, config, ""); w.Code != 200 {
+		t.Fatalf("member cannot manage Team: %d %s", w.Code, w.Body.String())
+	}
+	for _, who := range []string{"outsider"} {
 		if w = call(who, "PUT", base, config, ""); w.Code != 403 {
 			t.Fatalf("%s changed team: %d %s", who, w.Code, w.Body.String())
 		}

@@ -30,7 +30,7 @@ type crewOwnersState struct {
 
 func crewOwnersStateFor(crew crewProjectBinding, callerID string) crewOwnersState {
 	dir, _ := readUserDirectoryFile()
-	state := crewOwnersState{CanManage: crewProjectOwnedByCaller(callerID, crew.Binding.WorkspacePath), CoOwners: []runSharePerson{}}
+	state := crewOwnersState{CanManage: crewRegistryOwnedByCaller(callerID, crew.Binding.WorkspacePath), CoOwners: []runSharePerson{}}
 	if people := peopleForIDs(dir, []string{crew.OwnerID}); len(people) == 1 {
 		state.Owner = people[0]
 	}
@@ -82,7 +82,7 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 
 // changeCrewOwners applies one add or remove by a Crew owner. It returns the new state, or a refusal (status, code, plain message).
 func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, crew crewProjectBinding, action, email string) (crewOwnersState, int, string, string) {
-	if !crewProjectOwnedByCaller(claims.UserID, crew.Binding.WorkspacePath) {
+	if !crewRegistryOwnedByCaller(claims.UserID, crew.Binding.WorkspacePath) {
 		return crewOwnersState{}, http.StatusForbidden, "forbidden", "Only a Crew owner can add or remove owners."
 	}
 

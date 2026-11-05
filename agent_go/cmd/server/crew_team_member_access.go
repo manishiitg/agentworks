@@ -125,12 +125,15 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 		externalError(w, 403, "team_member_required", "You are not a member of this Team now.")
 		return
 	}
+	previous := t
+	previous.People = slices.Clone(t.People)
 	t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == claims.UserID })
 	t.Revision++
 	if err = writeCrewTeam(t); err != nil {
 		externalError(w, 409, "team_save_failed", err.Error())
 		return
 	}
+	api.stopRemovedCrewTeamSessions(previous, t)
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=left revision=%d", project, logUsernameForUserID(claims.UserID), t.Revision)
 	go removeStaleCrewTeamServerCopies(context.WithoutCancel(r.Context()))
 	externalJSON(w, map[string]bool{"left": true})
