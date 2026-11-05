@@ -453,6 +453,11 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode}) {
 		return
 	}
+	// Always on: while the server answers for this agent from its standby copy, the owner's Mac does not run it.
+	if line := api.crewStandbyMacRefusal(r.Context(), profile.ID, input.ConversationKey); line != "" {
+		writeAgentProfileError(w, http.StatusConflict, line)
+		return
+	}
 	// A Mac Crew runs on its Mac; published agents have their own server workspace.
 	if crewLivesOnMac(profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context())) {
 		writeAgentProfileError(w, http.StatusConflict, crewOnMacRefusalFor(input.ConversationKey, productWorkspaceUserID(r.Context())))

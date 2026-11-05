@@ -19,9 +19,10 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// PLAT-856-509: Team agents stay on their maker's Mac. Messages wait here while
-// it is off and return their answer to the original inbox. Publish is the only
-// way to move that agent's execution onto the server (decisions log, 5 Nov).
+// PLAT-856-509: Team agents run on their maker's Mac. Messages wait here while
+// it is off and return their answer to the original inbox. An In team agent of
+// the Crew owner's Mac with a standby copy answers on the server instead while
+// the Mac is off (Always on, crew_agent_always_on.go); Only me ones wait.
 
 type crewMacWaitingMessage struct {
 	ID           string          `json:"id"`
@@ -338,13 +339,20 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 			continue
 		}
 		published := person == "" && crewPublishedTarget(project, held.Tab)
-		if !published && !macOn {
+		// An In team agent with a standby copy answers on the server while the Mac is off (Always on); an Only me one
+		// keeps waiting for the Mac.
+		standby := person == "" && !published && api.crewStandbyRoute(context.Background(), owner, project, held.Tab, heldSender(held.Args), true)
+		if !published && !standby && !macOn {
 			stopped[queue] = true
 			continue
 		}
+		started := time.Now()
 		send := func(call crewChatCall, timeout time.Duration) crewChatResult {
 			if published {
 				return api.publishedAgentCall(context.Background(), owner, project, call, held.Inbox != "") // an inbox means an agent message
+			}
+			if standby {
+				return api.standbyAgentCall(context.Background(), owner, project, call, held.Inbox != "")
 			}
 			if person != "" {
 				return callCrewMacPair(context.Background(), person, project, pair, call, timeout)
@@ -352,16 +360,19 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 			return callCrewMacFor(context.Background(), owner, project, call, timeout)
 		}
 		result := send(crewChatCall{Operation: "agent_ask", Tab: held.Tab, Message: held.Message, Caller: held.Caller, Args: held.Args, SubmissionID: held.SubmissionID}, 60*time.Second)
-		log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=deliver_held inbox=%q status=%d published=%t", project, held.Tab, held.Inbox, result.Status, published)
+		log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=deliver_held inbox=%q status=%d published=%t standby=%t", project, held.Tab, held.Inbox, result.Status, published, standby)
 		if result.Status != http.StatusOK {
 			// Retried next pass with the same submission id, so a Mac that did take it (a lost reply) runs it once.
 			stopped[queue] = true
 			continue
 		}
 		delivered[held.ID] = true
+		if standby {
+			crewAlwaysOnLog(project, held.Tab, "held_delivered_on_server", map[bool]string{true: "agent_message", false: "ask"}[held.Inbox != ""], started)
+		}
 		if held.Inbox != "" {
 			api.startMacAgentAnswer(macAgentAwaiting{Inbox: held.Inbox, Submission: held.SubmissionID, From: held.From, Project: project, Tab: held.Tab, Mac: owner,
-				Member: person != "", Published: published, SenderID: heldSender(held.Args), Caller: held.Caller})
+				Member: person != "", Published: published, Standby: standby, SenderID: heldSender(held.Args), Caller: held.Caller})
 		}
 	}
 	_, err = updateCrewMacWaiting(project, func(next *crewMacWaitingState) {

@@ -48,8 +48,11 @@ type crewStandbyReply struct {
 	Eligible bool     `json:"eligible"`
 	Reason   string   `json:"reason,omitempty"`
 	Need     []string `json:"need,omitempty"`  // standby_check: keys whose copy differs from the Mac's fingerprint
-	Event    string   `json:"event,omitempty"` // standby_store: stored, unchanged or diverged
+	Event    string   `json:"event,omitempty"` // standby_store: stored, unchanged, diverged or server_writer
 	Revision uint64   `json:"revision,omitempty"`
+	// Writer is "server" while the server answers for the agent from its copy (step 2, crew_agent_always_on.go): the
+	// Mac then neither runs the agent nor sends copies of it until it is handed back.
+	Writer string `json:"writer,omitempty"`
 }
 
 // crewAgentStandby is one agent's standby copy on the server: "standby" means the server holds a current copy and the
@@ -61,6 +64,11 @@ type crewAgentStandby struct {
 	Revision uint64                             `json:"revision"`
 	CopiedAt string                             `json:"copied_at"`
 	Sessions map[string]crewAgentStandbySession `json:"sessions"`
+	// Writer is "server" once the server ran a turn of the agent from this copy (Always on, step 2), with the copy's
+	// revision then and the time; empty while the Mac runs it. Step 3 hands it back to the Mac.
+	Writer         string `json:"writer,omitempty"`
+	WriterRevision uint64 `json:"writer_revision,omitempty"`
+	WriterSince    string `json:"writer_since,omitempty"`
 }
 
 type crewAgentStandbySession struct {
@@ -73,6 +81,8 @@ type crewAgentStandbySession struct {
 	Revision        uint64   `json:"revision"`
 	StoredAt        string   `json:"stored_at"`
 	Diverged        []string `json:"diverged,omitempty"` // earlier copies kept because the new one did not extend them
+	// Imported is the revision of this copy the server's own chat was last made from (crew_agent_always_on.go).
+	Imported uint64 `json:"imported,omitempty"`
 }
 
 var crewStandbyLocks sync.Map
@@ -194,7 +204,8 @@ func pruneCrewStandby(project string) {
 		reason := ""
 		if binding == nil || binding.PairID != row.PairID {
 			reason = "pair_changed"
-		} else if ok, why := crewStandbyEligible(project, owner, tab); !ok {
+		} else if ok, why := crewStandbyEligible(project, owner, tab); !ok && row.Writer != "server" {
+			// A copy the server answers from holds turns the Mac does not have yet: it stays until handed back.
 			reason = why
 		}
 		if reason == "" {
@@ -220,8 +231,8 @@ func dropCrewStandbyTab(project, tab, reason string) {
 	if err != nil {
 		return
 	}
-	if _, ok := rows[tab]; !ok {
-		return
+	if row, ok := rows[tab]; !ok || row.Writer == "server" {
+		return // a copy the server answers from stays until it is handed back to the Mac
 	}
 	started := time.Now()
 	if dir, err := crewStandbyDir(project); err == nil {
@@ -260,12 +271,6 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 	defer lock.Unlock()
 	reply := &crewStandbyReply{}
 	out.Standby = reply
-	if ok, reason := crewStandbyEligible(id, claims.UserID, tab); !ok {
-		reply.Reason = reason
-		dropCrewStandbyTab(id, tab, reason)
-		return out, nil
-	}
-	reply.Eligible = true
 	rows, err := readCrewStandby(id)
 	if err != nil {
 		return out, err
@@ -274,6 +279,13 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 	if row.PairID != "" && row.PairID != binding.PairID {
 		row = crewAgentStandby{}
 	}
+	reply.Writer = row.Writer
+	if ok, reason := crewStandbyEligible(id, claims.UserID, tab); !ok {
+		reply.Reason = reason
+		dropCrewStandbyTab(id, tab, reason)
+		return out, nil
+	}
+	reply.Eligible = true
 	reply.Revision = row.Revision
 	if in.Action == "standby_check" {
 		for _, item := range in.Standby.Sessions {
@@ -291,6 +303,12 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 	}
 	item := in.Standby.Sessions[0]
 	started := time.Now()
+	if row.Writer == "server" {
+		// The server answers for this agent: its chats here are newer than the Mac's copy, which must not replace them.
+		reply.Event = "server_writer"
+		crewStandbyLog(id, tab, "server_writer", 0, started, "")
+		return out, nil
+	}
 	if crewStandbyKeyTab(binding.PeerProjectID, item.Key) != tab {
 		return out, fmt.Errorf("a conversation does not belong to this agent")
 	}

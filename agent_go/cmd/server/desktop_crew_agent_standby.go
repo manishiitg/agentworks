@@ -157,6 +157,11 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 		}
 		skip("server_unavailable")
 		return
+	} else if noteCrewStandbyWriter(project, tab, answer.Writer); answer.Writer == "server" {
+		// The server answers for this agent (Always on, step 2): its chats there are newer than this Mac's, so no copy
+		// is sent until it is handed back.
+		skip("server_writer")
+		return
 	} else if !answer.Eligible {
 		skip("not_in_team")
 		return
@@ -191,6 +196,10 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 			skip("server_unavailable")
 			break
 		}
+		if noteCrewStandbyWriter(project, tab, answer.Writer); answer.Writer == "server" {
+			skip("server_writer")
+			return
+		}
 		if !answer.Eligible {
 			skip("not_in_team")
 			return
@@ -223,4 +232,57 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 		agent.primed = true
 		crewStandbyMu.Unlock()
 	}
+}
+
+// Always on, step 2, the Mac's side: while the server answers for an agent from its standby copy (writer=server),
+// this Mac does not run that agent. The server's answer is kept for a short while so a turn costs at most one check.
+type crewStandbyWriterSeen struct {
+	writer string
+	at     time.Time
+}
+
+const crewStandbyWriterFresh = 15 * time.Second
+
+var crewStandbyWriters sync.Map // project + "\x00" + tab -> crewStandbyWriterSeen
+
+func noteCrewStandbyWriter(project, tab, writer string) {
+	crewStandbyWriters.Store(project+"\x00"+tab, crewStandbyWriterSeen{writer: writer, at: time.Now()})
+}
+
+// crewStandbyMacRefusal is the plain line for a turn this Mac must not run because the server answers for the agent
+// now, or "". Only the Crew owner's Mac with Mac online and the Team on asks; a server it cannot reach lets the turn run.
+func (api *StreamingAPI) crewStandbyMacRefusal(ctx context.Context, profileID, key string) string {
+	if !IsLocalMode() || profileID != crewProfileID {
+		return ""
+	}
+	project := crewResourceProjectID(key)
+	tab := crewAgentPublishTab(key)
+	if project == "" || tab == "" {
+		return ""
+	}
+	if b, err := crewroot.ReadSync(project); err != nil || b == nil || b.Side != "local" || b.Mode != "relay" {
+		return ""
+	}
+	if state := readCrewTeamState(project); !state.TeamOn || state.MemberOf != "" {
+		return ""
+	}
+	seen, ok := crewStandbyWriters.Load(project + "\x00" + tab)
+	if !ok || time.Since(seen.(crewStandbyWriterSeen).at) > crewStandbyWriterFresh {
+		writer := ""
+		check, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if claims, binding, connection, err := api.desktopCrewChatBinding(check, project); err == nil && binding.Mode == "relay" {
+			reply, err := desktopCrewSyncCall(check, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "standby_check", PairID: binding.PairID, Standby: &crewStandbyRequest{Tab: tab}})
+			if err == nil && reply.Standby != nil {
+				writer = reply.Standby.Writer
+			}
+		}
+		noteCrewStandbyWriter(project, tab, writer)
+		seen, _ = crewStandbyWriters.Load(project + "\x00" + tab)
+	}
+	if seen.(crewStandbyWriterSeen).writer != "server" {
+		return ""
+	}
+	log.Printf("[ALWAYS_ON] project=%s tab=%s event=mac_refused reason=server_writer ms=0", project, tab)
+	return crewStandbyMacRefusalLine
 }

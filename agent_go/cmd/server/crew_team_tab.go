@@ -45,6 +45,9 @@ type crewTeamTabAgent struct {
 	// Place is where it runs ("mac" or "server"); StatusLabel is its availability ("Mac off"), "" when it can answer.
 	Place       string `json:"place"`
 	StatusLabel string `json:"status_label,omitempty"`
+	// PlaceLabel / PlaceServer: where an agent of the owner's Mac answers now (Always on), shown as the row's label.
+	PlaceLabel  string `json:"place_label,omitempty"`
+	PlaceServer bool   `json:"place_server,omitempty"`
 	// Tab is the agent's tab in its person's copy ("main" for a Mac's Main), so the Mac app finds its own tabs' rows.
 	Tab string `json:"tab"`
 	// When others ask (crew_when_others_ask.go), the row's details: what it uses (names only; the owner's own sign-ins
@@ -123,7 +126,9 @@ type crewTeamTabReply struct {
 	// AgentsMacOnly is the Agents list's last line for the owner of a Mac Crew: Public on AgentBridge is switched in
 	// their Mac app (its screen there leaves the line out).
 	AgentsMacOnly string `json:"agents_mac_only,omitempty"`
-	CanLeave      bool   `json:"can_leave"`
+	// AgentsLine is the Agents card's line under All my agents in team (Always on, for the owner of a Mac Crew).
+	AgentsLine string `json:"agents_line,omitempty"`
+	CanLeave   bool   `json:"can_leave"`
 	// CanChoose: the viewer switches Folders / Whole Crew and stops sharing a folder, the main owner only (owner, 5 Nov).
 	// CanAddFolder: the viewer adds a folder to share by name, anyone in the Team; a missing one is made. The owner's
 	// Mac app also picks from the Mac's folders.
@@ -168,7 +173,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		if viewer == t.OwnerID {
 			out.MacOnly = "A folder added here is made on your Mac and shared."
 		}
-		out.Intro = "People work with you here. The shared folder is kept on the server. Messages to Mac agents wait while the Mac is off and arrive when it is back."
+		out.Intro = "People work with you here. The shared folder is kept on the server. While the Mac is off, In team agents answer from the server; Only me agents wait for it."
 		mac := &crewTeamTabMac{Yours: viewer == t.OwnerID}
 		name := ""
 		if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
@@ -184,6 +189,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	bridges := crewTeamBridgesFor(ctx, t)
 	if viewer == t.OwnerID && twin {
 		out.AgentsMacOnly = "Change these from your Mac app."
+		out.AgentsLine = crewAlwaysOnAgentsLine
 	}
 	if !t.On {
 		// Team off: only AgentBridge is left to choose, on the owner's own agents.
@@ -225,11 +231,11 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if a.Place == "mac" && !p.Owner {
 				detail = append(detail, map[bool]string{true: "On your Mac", false: "On their Mac"}[mine])
 			}
-			if a.StatusLabel != "" {
+			if a.StatusLabel != "" && a.PlaceLabel == "" { // the place label already says the Mac is off
 				detail = append(detail, a.StatusLabel)
 			}
 			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
-				OwnerID: p.UserID, OwnerName: p.Name, Place: a.Place, StatusLabel: a.StatusLabel, Tab: a.Tab}
+				OwnerID: p.UserID, OwnerName: p.Name, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceServer: a.PlaceServer, Tab: a.Tab}
 			// Only me is per person (owner, 5 Nov): each person chooses for their own agents, the owner's Mac ones too.
 			// Each person's Main is always In team (owner, 5 Nov).
 			if a.Tab == macMainTab || crewTeamMainAgent(t, p.UserID, a.ChatKey) {

@@ -99,6 +99,10 @@ func crewLivesOnMac(profileID, conversationKey, caller string) bool {
 			return onMac
 		}
 	}
+	// An In team agent the server answers for from its standby copy (Always on) runs here, its teammates' threads too.
+	if crewStandbyServesKey(conversationKey) {
+		return false
+	}
 	placement, err := crewPublishedAgent(project, crewAgentPublishTab(conversationKey))
 	return err != nil || placement == nil || placement.Location != "server"
 }
