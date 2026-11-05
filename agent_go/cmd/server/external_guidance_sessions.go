@@ -97,7 +97,7 @@ func externalOperationHasGuidance(tool externalTool, args map[string]any) bool {
 		}
 	}
 	switch action {
-	case "list", "get", "read", "search", "browse", "inspect", "status", "history", "runs", "calls", "catalog", "discover", "diagnostics", "validate", "preview", "usage", "export", "check", "backup_status", "secrets_list", "schedule_status", "whats_new":
+	case "list", "get", "read", "search", "browse", "inspect", "status", "history", "runs", "calls", "catalog", "discover", "diagnostics", "validate", "preview", "usage", "export", "check", "backup_status", "secrets_list", "whats_new":
 		return false
 	}
 	return true

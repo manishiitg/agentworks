@@ -547,54 +547,6 @@
   },
   {
     "family": "brain",
-    "name": "schedule_status",
-    "member": "brain_admin__schedule_status",
-    "source": "brain_admin",
-    "source_action": "schedule_status",
-    "description": "Use Brain schedule status with its existing person and folder access."
-  },
-  {
-    "family": "brain",
-    "name": "schedule_enable",
-    "member": "brain_admin__schedule_enable",
-    "source": "brain_admin",
-    "source_action": "schedule_enable",
-    "description": "Use Brain schedule enable with its existing person and folder access."
-  },
-  {
-    "family": "brain",
-    "name": "schedule_disable",
-    "member": "brain_admin__schedule_disable",
-    "source": "brain_admin",
-    "source_action": "schedule_disable",
-    "description": "Use Brain schedule disable with its existing person and folder access."
-  },
-  {
-    "family": "brain",
-    "name": "schedule_set_cadence",
-    "member": "brain_admin__schedule_set_cadence",
-    "source": "brain_admin",
-    "source_action": "schedule_set_cadence",
-    "description": "Use Brain schedule set cadence with its existing person and folder access."
-  },
-  {
-    "family": "brain",
-    "name": "schedule_set_message",
-    "member": "brain_admin__schedule_set_message",
-    "source": "brain_admin",
-    "source_action": "schedule_set_message",
-    "description": "Use Brain schedule set message with its existing person and folder access."
-  },
-  {
-    "family": "brain",
-    "name": "schedule_run_now",
-    "member": "brain_admin__schedule_run_now",
-    "source": "brain_admin",
-    "source_action": "schedule_run_now",
-    "description": "Use Brain schedule run now with its existing person and folder access."
-  },
-  {
-    "family": "brain",
     "name": "whats_new",
     "member": "brain_admin__whats_new",
     "source": "brain_admin",

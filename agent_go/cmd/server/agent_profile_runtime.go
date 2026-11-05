@@ -1178,11 +1178,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			return err
 		}
 	}
-	// Brain's Organize schedule is a product schedule (no project): the chat manages the person's own copy (PLAT-618).
-	if !readOnly && resolved.Definition.ID == knowledgebaseproduct.ProfileID && len(resolved.Definition.Schedules) > 0 {
-		if err := api.registerBrainScheduleTool(registrar, userID); err != nil {
-			return err
-		}
+	if !readOnly && resolved.Definition.ID == knowledgebaseproduct.ProfileID {
 		if err := api.registerBrainSecretsTool(registrar, userID); err != nil {
 			return err
 		}

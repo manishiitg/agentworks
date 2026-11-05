@@ -34,7 +34,7 @@ func TestBuilderProductsGateCachedAndExternalTools(t *testing.T) {
 	t.Setenv("AGENT_PRODUCTS", "")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
 	blocked := append(knowledgebase.ToolNames(), caplayerproduct.ExternalTools()...)
-	blocked = append(blocked, "brain_schedule", "brain_secrets", "run_relay", "test_relay", "publish_relay")
+	blocked = append(blocked, "brain_secrets", "run_relay", "test_relay", "publish_relay")
 	gate := newProductToolGate(nil)
 	claims := &UserClaims{UserID: "default"}
 	resolve := (&StreamingAPI{}).bindToolExecutionContext(context.WithValue(context.Background(), UserContextKey, claims), "product-selection-test", QueryRequest{}, false)

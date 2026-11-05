@@ -2,24 +2,21 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 )
 
 // brain_admin is the MCP/CLI face of what the Brain page and Brain chat did alone (owner, 2026-10-12: people use their
-// own agents for Brain, not the page): backup health and reconcile, Brain's own secrets, the person's Organize Brain
-// schedule, and what's new since the person last looked. Every action re-uses the app's own checks.
+// own agents for Brain, not the page): backup health and reconcile, Brain's own secrets,
+// and what's new since the person last looked. Every action re-uses the app's own checks.
 const brainAdminTool = "brain_admin"
 
-var brainAdminReadActions = map[string]bool{"backup_status": true, "secrets_list": true, "secrets_request_set": true, "schedule_status": true, "whats_new": true}
+var brainAdminReadActions = map[string]bool{"backup_status": true, "secrets_list": true, "secrets_request_set": true, "whats_new": true}
 var brainAdminWriteActions = map[string]bool{
 	"backup_reconcile": true, "secrets_set": true, "secrets_delete": true, "mark_seen": true,
-	"schedule_enable": true, "schedule_disable": true, "schedule_set_cadence": true, "schedule_set_message": true, "schedule_run_now": true,
 }
 
 // brainAdminSensitive are the changes that need the person's own live connection.
@@ -44,7 +41,6 @@ func brainAdminToolAllowed(c *UserClaims) bool {
 func externalBrainAdminDefinition(add func(name, description string, write, scoped bool, props map[string]any, required ...string)) {
 	actions := make([]any, 0, len(brainAdminReadActions)+len(brainAdminWriteActions))
 	for _, name := range []string{"backup_status", "backup_reconcile", "secrets_list", "secrets_request_set", "secrets_set", "secrets_delete",
-		"schedule_status", "schedule_enable", "schedule_disable", "schedule_set_cadence", "schedule_set_message", "schedule_run_now",
 		"whats_new", "mark_seen"} {
 		actions = append(actions, name)
 	}
@@ -53,16 +49,13 @@ func externalBrainAdminDefinition(add func(name, description string, write, scop
 		"secrets_list / secrets_set / secrets_delete: Vault-backed Brain secrets, for example the backup token named by brain_access configure_backup pat_secret; people who own the whole Brain only; names only, values are never returned. "+
 		"A secret's VALUE never goes through an agent: secrets_request_set (name) returns the command the person types in their own terminal (agentworks brain secret set NAME, hidden input); then refer to the secret by name. "+
 		"backup_reconcile and secrets_delete need the person's own connection. "+
-		"schedule_status / schedule_enable / schedule_disable / schedule_set_cadence (cadence_hours) / schedule_set_message (message) / schedule_run_now: your own Organize Brain schedule. "+
 		"whats_new: what changed in Brain since you last marked it seen (commits with the files added, updated or removed); mark_seen (commit) records the newest commit you read. "+
 		"Reads need knowledgebase:read, changes need knowledgebase:write.", true, false, map[string]any{
-		"value":         map[string]any{"type": "string", "minLength": 1, "maxLength": 65536, "description": "secrets_set: user-supplied value, encrypted by Vault and never returned."},
-		"action":        map[string]any{"type": "string", "enum": actions},
-		"name":          map[string]any{"type": "string", "maxLength": 128, "description": "secrets_request_set / secrets_delete: the secret's name (letters, digits, underscore; starts with a letter)."},
-		"cadence_hours": map[string]any{"type": "integer", "minimum": minScheduleCadenceHours, "maximum": maxScheduleCadenceHours, "description": "schedule_set_cadence: hours between runs (24 = daily, 168 = weekly)."},
-		"message":       map[string]any{"type": "string", "maxLength": 4000, "description": "schedule_set_message: what each scheduled run should do."},
-		"commit":        map[string]any{"type": "string", "maxLength": 64, "description": "mark_seen: a Brain commit id (the head from whats_new)."},
-		"limit":         map[string]any{"type": "integer", "minimum": 1, "maximum": 200, "description": "whats_new: most recent commits to return (default 50)."},
+		"value":  map[string]any{"type": "string", "minLength": 1, "maxLength": 65536, "description": "secrets_set: user-supplied value, encrypted by Vault and never returned."},
+		"action": map[string]any{"type": "string", "enum": actions},
+		"name":   map[string]any{"type": "string", "maxLength": 128, "description": "secrets_request_set / secrets_delete: the secret's name (letters, digits, underscore; starts with a letter)."},
+		"commit": map[string]any{"type": "string", "maxLength": 64, "description": "mark_seen: a Brain commit id (the head from whats_new)."},
+		"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": 200, "description": "whats_new: most recent commits to return (default 50)."},
 	}, "action")
 }
 
@@ -196,57 +189,7 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 			return
 		}
 		knowledgebaseWriteJSON(w, map[string]any{"result": map[string]any{"last_seen": service.SeenCommit(principal.IdentityID)}})
-	default: // schedule_*
-		api.externalBrainSchedule(w, r, action, args)
 	}
-}
-
-func (api *StreamingAPI) externalBrainSchedule(w http.ResponseWriter, r *http.Request, action string, args map[string]any) {
-	claims := GetUserFromContext(r.Context())
-	if api == nil || api.projectActions == nil {
-		externalError(w, http.StatusServiceUnavailable, "unavailable", "Brain schedules are not available on this server.")
-		return
-	}
-	ps, ctx, userID := api.projectActions, r.Context(), claims.UserID
-	jobID := productScheduleJobID(knowledgebaseproduct.ProfileID, "organize")
-	var job productScheduleJob
-	var err error
-	switch strings.TrimPrefix(action, "schedule_") {
-	case "status":
-		job, err = ps.Job(ctx, userID, jobID)
-	case "enable", "disable":
-		job, err = ps.SetEnabled(ctx, userID, jobID, action == "schedule_enable")
-	case "set_cadence":
-		hours, ok := args["cadence_hours"].(float64)
-		if !ok {
-			externalError(w, http.StatusBadRequest, "invalid_arguments", "schedule_set_cadence needs cadence_hours.")
-			return
-		}
-		job, err = ps.SetCadence(ctx, userID, jobID, int(hours))
-	case "set_message":
-		message, _ := args["message"].(string)
-		job, err = ps.SetMessage(ctx, userID, jobID, message)
-	case "run_now":
-		session, runErr := ps.Trigger(ctx, userID, jobID)
-		if runErr != nil {
-			externalError(w, http.StatusBadRequest, "invalid_arguments", runErr.Error())
-			return
-		}
-		knowledgebaseWriteJSON(w, map[string]any{"result": map[string]any{"started": true, "session_id": session}})
-		return
-	default:
-		externalError(w, http.StatusBadRequest, "invalid_arguments", fmt.Sprintf("Unknown schedule action %q.", action))
-		return
-	}
-	if err != nil {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", err.Error())
-		return
-	}
-	effective := job.Effective()
-	knowledgebaseWriteJSON(w, map[string]any{"result": map[string]any{
-		"enabled": effective.Enabled, "cadence_hours": effective.CadenceHours, "messages": effective.Messages,
-		"last_run_at": job.State.LastRunAt, "last_status": job.State.LastStatus,
-	}})
 }
 
 // handleBrainSecretSet sets one of Brain's own secrets for the person. It is a route, not a tool: it takes only the person's

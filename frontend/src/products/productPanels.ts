@@ -8,7 +8,7 @@
 // Workflows and Relays keep their richer registry in
 // components/workflow/workspaceViews.ts (VIEWS); WORKFLOW_PANELS re-exports it.
 import {
-  Archive, BookOpen, Brain, BrainCircuit, CalendarClock, Database, DollarSign, Files, Fingerprint, KeyRound, LayoutDashboard,
+  Archive, BookOpen, Brain, BrainCircuit, Database, DollarSign, Files, Fingerprint, KeyRound, LayoutDashboard,
   Lightbulb, MessageSquareText, Monitor, Plus, Route, Server, ShieldCheck, Terminal, UsersRound, Zap, type LucideIcon,
 } from 'lucide-react'
 import type { WorkWorkspaceView } from './work/WorkWorkspacePane'
@@ -51,7 +51,6 @@ export const BRAIN_PANELS: ProductPanel<KnowledgebaseView>[] = [
   { id: 'access', label: 'Folder access', icon: ShieldCheck },
   { id: 'models', label: 'Assistant model', icon: BrainCircuit },
   { id: 'secrets', label: 'Brain secrets', icon: KeyRound },
-  { id: 'schedules', label: 'Schedules', icon: CalendarClock },
   { id: 'backup', label: 'Backup', icon: Archive },
   { id: 'crew', label: 'Use in a Crew', icon: UsersRound },
 ]
