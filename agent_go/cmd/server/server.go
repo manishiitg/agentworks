@@ -6486,23 +6486,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[BROWSER] Auto-adding agent-browser skill and tool (enable_browser_access: true)")
 			}
 
-			// Create Chats/ folder if it doesn't exist
-			if err := skills.CreateFolder("Chats"); err != nil {
-				log.Printf("[WORKSPACE] Warning: Could not create Chats/ folder: %v", err)
-			}
-
-			// Create subagents/ folder if it doesn't exist
-			if err := skills.CreateFolder("subagents"); err != nil {
-				log.Printf("[WORKSPACE] Warning: Could not create subagents/ folder: %v", err)
-			} else {
-				if err := skills.CreateFolder("subagents/custom"); err != nil {
-					log.Printf("[WORKSPACE] Warning: Could not create subagents/custom/ folder: %v", err)
+			// Make sure the chat folders exist; one that already exists is the usual answer, not a warning.
+			for _, folder := range []string{"Chats", "subagents", "subagents/custom", "memories"} {
+				if err := skills.CreateFolder(folder); err != nil && !strings.Contains(strings.ToLower(err.Error()), "already exists") {
+					log.Printf("[WORKSPACE] Warning: Could not create %s/ folder: %v", folder, err)
 				}
-			}
-
-			// Create memories/ folder if it doesn't exist
-			if err := skills.CreateFolder("memories"); err != nil {
-				log.Printf("[WORKSPACE] Warning: Could not create memories/ folder: %v", err)
 			}
 
 			// Chat mode: LLM-visible workspace tools (advanced + media/provider tools).
@@ -7601,7 +7589,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			chatBrowserCfg := buildChatBrowserConfig(req)
 			if chatBrowserCfg.HasAgentBrowser {
 				browserPrompt := "\n## Browser\n\nThis session has a browser tool configured (mode=" + chatBrowserCfg.Mode + "). " +
-					"CDP availability is live state and is not stored in this prompt. Before first use, call `agent_browser(command=\"status\", session=\"default\")` and follow its `effective_mode` and authorized endpoints. Read the attached `agent-browser` skill for tab, file, and safety rules. "
+					"CDP availability is live state and is not stored in this prompt. Before first use, run the browser `status` command first (in a coding CLI: `browser` with action=execute, command=\"status\"; elsewhere `agent_browser(command=\"status\")`) and follow its `effective_mode` and authorized endpoints. Read the attached `agent-browser` skill for tab, file, and safety rules. "
 				if chatBrowserCfg.Mode == "auto" || chatBrowserCfg.Mode == "cdp" {
 					_, endpointGuidance := cdpPromptEndpoints(chatBrowserCfg.CdpPorts, chatBrowserCfg.CdpPort)
 					browserPrompt += endpointGuidance + " These endpoints are configured candidates; live status is authoritative.\n"

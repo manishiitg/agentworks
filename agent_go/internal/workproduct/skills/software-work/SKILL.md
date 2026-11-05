@@ -1,6 +1,6 @@
 ---
 name: software-work
-description: Investigate engineering incidents, quality assurance and security findings.
+description: Investigate engineering incidents, quality assurance and security findings, and run a web app or API others can open.
 ---
 
 # Software work
