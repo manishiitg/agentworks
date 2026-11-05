@@ -22,22 +22,26 @@ func TestLaptopConnectionKeepsCrewOnServer(t *testing.T) {
 		if !laptopConnectionTurn(req, resolved) {
 			t.Fatal("own interactive turn lost connection")
 		}
-		for _, trigger := range []string{"cron", "code_chat", "auto_notification", "bot:slack"} {
-			denied := req
-			denied.TriggeredBy = trigger
-			if laptopConnectionTurn(denied, resolved) {
-				t.Fatalf("%s inherited laptop", trigger)
-			}
-			// The Crew chat keeps the same tool list on every turn (a changing list relaunched the CLI,
-			// 5 Nov); the tools still refuse on this turn through laptopConnectionTurn above.
-			if trigger == "cron" && !laptopListedTurn(denied, resolved) {
-				t.Fatal("scheduled turn of the owner's Crew chat dropped the listed laptop tools")
+		// The person's own automatic turns keep the laptop (owner, 5 Nov), so the tools never change between turns.
+		for _, trigger := range []string{"cron", "code_chat", "auto_notification", "agent_message"} {
+			own := req
+			own.TriggeredBy = trigger
+			own.IsAutoNotification = trigger == "auto_notification"
+			if !laptopConnectionTurn(own, resolved) {
+				t.Fatalf("own %s turn lost the laptop", trigger)
 			}
 		}
-		denied := req
-		denied.PinRunMode = true
-		if laptopConnectionTurn(denied, resolved) || laptopListedTurn(denied, resolved) {
-			t.Fatal("Run inherited laptop")
+		// Turns that work for other people never get it.
+		for name, other := range map[string]func(*QueryRequest){
+			"run":                  func(r *QueryRequest) { r.PinRunMode = true },
+			"slack":                func(r *QueryRequest) { r.BotPlatform = "slack" },
+			"other person's agent": func(r *QueryRequest) { r.AgentMessageFromOtherPerson = true },
+		} {
+			denied := req
+			other(&denied)
+			if laptopConnectionTurn(denied, resolved) {
+				t.Fatalf("%s inherited laptop", name)
+			}
 		}
 	}
 }

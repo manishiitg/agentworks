@@ -968,6 +968,9 @@ type QueryRequest struct {
 	// AgentMessageInbox marks another agent's message delivered into this chat (agent_messaging.go). It survives
 	// the turn queue, and makes the turn attended: the tab shows question cards (codingAgentTurnAttended).
 	AgentMessageInbox string `json:"agent_message_inbox,omitempty"`
+	// AgentMessageFromOtherPerson marks an agent message whose sender belongs to another person: that turn works for
+	// them, so it never gets the receiving person's laptop.
+	AgentMessageFromOtherPerson bool `json:"agent_message_from_other_person,omitempty"`
 	// Internal/system callers can force a real server-tracked turn instead of the
 	// retained coding-CLI live-input shortcut. Scheduler sequences rely on this so
 	// the next cron message waits for turn completion instead of racing a tmux
@@ -14488,8 +14491,8 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	caller := GetUserFromContext(ctx)
 	// Why a turn has no laptop tools: on server B the tools came and went between turns, relaunching the CLI each
 	// time (2026-10-28), and the log could not say which check failed.
-	laptopWhy := fmt.Sprintf("read_only=%t website=%t builder_turn=%t listed=%t project=%t", crewReadOnly, websiteDeviceClaims(caller), laptopBuilderTurn(*req, resolvedProfile), laptopListedTurn(*req, resolvedProfile), laptopProjectAllowed(ctx, caller, req.SelectedFolder))
-	if !crewReadOnly && websiteDeviceClaims(caller) && laptopListedTurn(*req, resolvedProfile) && laptopProjectAllowed(ctx, caller, req.SelectedFolder) {
+	laptopWhy := fmt.Sprintf("read_only=%t website=%t builder_turn=%t project=%t", crewReadOnly, websiteDeviceClaims(caller), laptopBuilderTurn(*req, resolvedProfile), laptopProjectAllowed(ctx, caller, req.SelectedFolder))
+	if !crewReadOnly && websiteDeviceClaims(caller) && laptopBuilderTurn(*req, resolvedProfile) && laptopProjectAllowed(ctx, caller, req.SelectedFolder) {
 		settings, err := readLaptopSettings(currentUserID, req.SelectedFolder)
 		laptopWhy += fmt.Sprintf(" settings_err=%v device=%t folders=%d", err, (&laptopConnectionTarget{DeviceID: settings.DeviceID}).valid(), len(settings.Folders))
 		if err == nil && (&laptopConnectionTarget{DeviceID: settings.DeviceID}).valid() && len(settings.Folders) > 0 {

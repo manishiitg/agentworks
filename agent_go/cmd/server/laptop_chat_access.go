@@ -118,7 +118,7 @@ func (api *StreamingAPI) interactiveLaptopOwner(ctx context.Context, claims *Use
 	api.lastQueryMu.RLock()
 	req := api.lastQueryRequests[sessionID]
 	api.lastQueryMu.RUnlock()
-	if req.userID != caller.UserID || api.isSyntheticTurn(sessionID) || !laptopBuilderTurn(req, laptopProfileForRequest(req)) {
+	if req.userID != caller.UserID || api.laptopSyntheticTurnRefused(sessionID, req) || !laptopBuilderTurn(req, laptopProfileForRequest(req)) {
 		return nil, errors.New("Laptop settings need your own interactive chat turn")
 	}
 	if !laptopProjectAllowed(ctx, caller, req.SelectedFolder) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
