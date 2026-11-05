@@ -1,20 +1,29 @@
 # A Crew on this Mac, from chat
 
-Everything on the Access page of a Crew that lives on the owner's Mac also works from that Crew's own chat, with
-`manage_crew_sync` (the owner only, in the Mac app):
+The Access page of a Crew on the owner's Mac has three tabs, and everything on it also works from that Crew's own
+chat (the owner only, in the Mac app):
 
+**Mac online** (only you, from anywhere, while this Mac is on): `manage_crew_sync`
 - "Where does it live?" → `action=status`.
-- "Use it from my phone" / "Use from phone and web" → `action=reach_on` (with several networks, ask which and pass `network`). "Only on this
-  Mac" → `action=reach_off`.
-- "Move it online" → tell the person it is one-way (it lives online from then on; a backup copy of the folder stays on
-  this Mac), get their yes in chat, then `action=server` with `confirmed=true`.
-- "Give me the link / open it on my phone / use it from ChatGPT or Claude / Slack" → `action=links`. Signing in to
-  ChatGPT, Claude or Slack stays the person's own click.
-- "Who can message my agents?" → `action=agents`.
-- "Let Anita use the Writer agent" → `action=share agent=Writer audience=chosen people=["anita"]`; "everyone" →
-  `audience=everyone`; "my team" → `audience=team`. Chosen people must already be in the Team (add them with `team_sync configure`). Sharing opens the agent to those people and to their own AI agents (Claude Code, Codex, their
-  local bots) at its address. It runs as you set it up, in its own thread with each person; by default it only answers their questions; pass `can_make_changes=true` when the owner wants it to change files, run commands and use their apps and logins for them. When a name matches several people, ask which one. The agent needs a purpose first: in
-  that agent's tab it sets its own with `set_my_agent_identity`.
-- "Stop sharing Writer" → `action=unshare agent=Writer`.
+- "Use it from my phone / the web" → `action=reach_on` (with several networks, ask which and pass `network`).
+  "Only on this Mac" → `action=reach_off`. Turning it off also turns the Team off.
+- "Give me the link / use it from ChatGPT or Claude" → `action=links`. Signing in there stays the person's own click.
+- AgentBridge (other people's agents): "make Writer public" → `action=public agent=Writer`; "only my agents" →
+  `action=only_my_agents agent=Writer`. Public means agents can message it; it never shows on anyone's website.
 
-Say "On this Mac", "Offline" and "Online"; never server, sync or relay.
+**Publish** (move one agent, or the whole Crew, to run on the server from now on):
+- One agent → `action=publish_preview agent=…`, show what moves, and after the person's yes `action=publish_agent`
+  with the `transfer_id` and `confirmed=true`.
+- Whole Crew → tell the person it is one-way, get their yes, then `action=server confirmed=true`.
+
+**Team** (work on this Crew with people):
+- "Turn on the Team" → `action=team on=true` (it also turns Mac online on). Off → `on=false`.
+- People and the shared folder → `team_sync configure`. A person added is invited and joins when they accept; every
+  member reads and writes the shared folder. Sync history and clashes → `team_sync recent` / `clashes`.
+- Each agent is **In team** (everyone in the Team sees it and its chat live; their agents can message it) or
+  **Only me**: `action=share agent=…` / `action=unshare agent=…`. "All my agents" → `action=team_all on=true`.
+  Main is In team by default. An agent needs a purpose and icon first (`set_my_agent_identity` in its tab).
+- By default a shared agent only answers questions; pass `can_make_changes=true` when the owner wants it to work for them.
+- Files that look like they hold passwords or keys are skipped by the sync and stay on this Mac.
+
+Say "On this Mac", "Mac online", "Publish" and "Team"; never relay, twin or copy.
