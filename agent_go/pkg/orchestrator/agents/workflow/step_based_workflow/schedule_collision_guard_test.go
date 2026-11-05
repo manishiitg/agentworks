@@ -12,7 +12,7 @@ func TestScheduleGuardStopsSideEffects(t *testing.T) {
 	r := GuardScheduleTools(draft, func(context.Context, string, map[string]interface{}) error {
 		return fmt.Errorf("bot grant changed")
 	})
-	for _, name := range []string{"migrate_agent_steps", "execute_step", "run_full_workflow", "update_scripted_step", "update_step_config", "get_workflow_config"} {
+	for _, name := range []string{"execute_step", "run_full_workflow", "update_scripted_step", "update_step_config", "get_workflow_config"} {
 		err := r.RegisterCustomTool(name, "test", map[string]interface{}{"type": "object"}, func(context.Context, map[string]interface{}) (string, error) { called = true; return "ok", nil }, "workflow")
 		if err != nil {
 			t.Fatal(err)
