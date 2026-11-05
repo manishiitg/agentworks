@@ -97,7 +97,7 @@ func agentWorksSpec() crewSpec {
 		}
 	}
 	return crewSpec{
-		Name: agentWorksName, Icon: "A",
+		Name:           agentWorksName,
 		Purpose:        "Your own agent: looks after your Goals, Crews and Relays, keeps watch, gets things fixed and tells you only what needs you.",
 		SelectedSkills: available,
 		Files: map[string]string{

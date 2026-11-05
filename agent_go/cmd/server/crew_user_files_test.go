@@ -47,7 +47,7 @@ func TestManagedCrewUserFilesHTTPAndNativeBoundary(t *testing.T) {
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 	const logical = "Crew/example-managed"
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
-	_, err := writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Example", "", "", "managed-id", logical, nil, crewCreationOptions{})
+	_, err := writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Example", "", "managed-id", logical, nil, crewCreationOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

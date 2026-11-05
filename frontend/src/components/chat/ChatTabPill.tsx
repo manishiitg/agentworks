@@ -7,10 +7,10 @@ import { useAgentMenuState } from './agentMenuState'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
-import { compactOwnerChatName, ownerInitials } from './chatTabName'
+import { compactOwnerChatName } from './chatTabName'
 import { AgentPurposeButton } from './AgentPurposeButton'
 import { AgentHoverCard, type AgentCardInfo } from './AgentCard'
-import { AgentIcon, AgentMark } from './AgentIcon'
+import { AgentMark, AgentSharedMark } from './AgentIcon'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -136,16 +136,8 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     >
       {!ownerName && productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
-      {/* An agent's icon (when it has one) with the shared badge, as in the left menu (owner, 4 Nov, option C). Its mark
-          (working, needs you, failed, new reply) sits on the icon's corner so it takes no extra space (owner, 4 Nov). */}
-      {agent && agent.info?.icon?.trim()
-        ? <span className="relative shrink-0"><AgentIcon name={displayName} icon={agent.info.icon} active={isActive} shared={agent.info.sharedWith} letter={false} />
-            {/* Working: a ring turns around the icon instead of a spinner beside it (owner, 4 Nov). */}
-            {!isBlank && menuState === 'running'
-              ? <span role="img" aria-label="Working" className="pointer-events-none absolute -inset-[3px] animate-spin rounded-full border-2 border-foreground/10 border-t-[hsl(var(--info))]" />
-              : <span className="absolute -right-1 -top-1 grid place-items-center rounded-full bg-background"><AgentMark state={isBlank ? null : menuState} asking={agent.asking} /></span>}</span>
-        : agent && <AgentIcon name={displayName} active={isActive} shared={agent.info?.sharedWith} letter={false} />}
-      {agent ? (!agent.info?.icon?.trim() && <AgentMark state={isBlank ? null : menuState} asking={agent.asking} />) :
+      {/* An agent is its name only (owner, 5 Nov: no icons): its mark (working, needs you, failed, new reply) sits before it. */}
+      {agent ? <AgentMark state={isBlank ? null : menuState} asking={agent.asking} /> :
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
         {/* An idle tab shows its owner a quiet purpose icon in this spot instead (owner, 3 Nov). */}
         {!isBlank && status === 'ready' && onSetPurpose && <AgentPurposeButton name={displayName} purpose={purpose} onSetPurpose={onSetPurpose} />}
@@ -179,17 +171,14 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
         />
       ) : (
         <>
-          {/* Another person's agent (owner, 5 Nov): its icon, and a watch mark since only they type there; their name
-              is the strip's group label, not a tile on each tab. */}
-          {ownerName && !yourTab && (agent?.info?.icon
-            ? <span aria-hidden="true" className="shrink-0 text-xs leading-4">{agent.info.icon}</span>
-            : <span aria-hidden="true" title={`Owned by ${ownerName}`} className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold leading-4 text-primary">{ownerInitials(ownerName) || '·'}</span>)}
           <AgentHoverCard info={agent?.info}><span
             className={`block min-w-0 truncate whitespace-nowrap ${productSurface ? 'max-w-[18rem] font-semibold' : 'max-w-[14rem]'}`}
             title={agent?.info ? undefined : tooltip}
           >
             {displayName}
           </span></AgentHoverCard>
+          <AgentSharedMark shared={agent?.info?.sharedWith} />
+          {/* Another person's agent (owner, 5 Nov): a watch mark, since only they type there; their name is the strip's group label. */}
           {ownerName && !yourTab && <Eye role="img" aria-label="Watching: only they type here" className="h-3 w-3 shrink-0 text-muted-foreground"><title>Watching: only {ownerName} types here</title></Eye>}
         </>
       )}

@@ -32,7 +32,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	owner, other := crewWriter("owner"), crewWriter("other")
 
 	create := map[string]any{
-		"name": "Support Triage", "icon": "🛟",
+		"name":            "Support Triage",
 		"purpose":         "Triage inbound tickets and route them to the right team.",
 		"selected_skills": []any{"triage"},
 		"files":           map[string]any{"skills/triage/SKILL.md": "---\nname: triage\n---\nSort tickets by severity.\n"},
@@ -60,7 +60,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	if err := json.Unmarshal([]byte(crewAuthoringFile(t, env, root+"/product.json")), &product); err != nil {
 		t.Fatalf("product.json at the UI layout path: %v", err)
 	}
-	if identity := product["identity"].(map[string]any); identity["name"] != "Support Triage" || identity["icon"] != "🛟" {
+	if identity := product["identity"].(map[string]any); identity["name"] != "Support Triage" || identity["icon"] != nil {
 		t.Fatalf("identity = %v", identity)
 	}
 	runtime := crewAuthoringFile(t, env, root+"/workflow.json")

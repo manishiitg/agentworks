@@ -69,7 +69,7 @@ func TestLocalCrewFolderLifecyclePreservesProjectAndRunBoundary(t *testing.T) {
 	}
 	const logical = "Crew/example-local"
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
-	_, err = writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Example", "", "", "local-id", logical, nil, crewCreationOptions{LocalRoot: selected})
+	_, err = writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Example", "", "local-id", logical, nil, crewCreationOptions{LocalRoot: selected})
 	if err != nil {
 		t.Fatal(err)
 	}

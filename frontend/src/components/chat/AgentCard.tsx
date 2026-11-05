@@ -9,8 +9,6 @@ import { useMobileViewport } from '../../hooks/useMobileViewport'
 // long press on touch) opens one card, and the open tab's purpose sits in one line at the top of its chat.
 export interface AgentCardInfo {
   name: string
-  /** Its emoji, once it has one; the first letter stands in until then. */
-  icon?: string
   purpose?: string
   /** "tester-b", "everyone in the company"; undefined while the agent is not shared. */
   sharedWith?: string
@@ -18,7 +16,6 @@ export interface AgentCardInfo {
   lastAsked?: { who: string; when: string; active: boolean; open: () => void }
   /** Only on your own agents; a teammate's agent is theirs to change. */
   onSetPurpose?: () => void
-  onSetIcon?: () => void
   /** A teammate's agent: whose it is (it is shared with the team). */
   owner?: string
   /** Removes the agent for good (its chat is deleted); only for its owner, never Main. */
@@ -52,7 +49,7 @@ export interface CrewAgentActions {
 /** pinned: shown in the list (and on the tab bar); the rest sit under "Hidden agents". */
 export interface CrewAgentRow { tabId: string; name: string; main: boolean; pinned?: boolean; /** A teammate's agent shown in the Mac app: it opens on the server's page (no tab here). */ open?: () => void; /** Whose agent it is when it is someone else's (a Team or co-owner Crew); absent for your own. */ owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
 /** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */
-export interface CrewClosedAgent { key: string; name: string; purpose?: string; icon?: string; open: () => Promise<unknown> }
+export interface CrewClosedAgent { key: string; name: string; purpose?: string; open: () => Promise<unknown> }
 export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; closed: CrewClosedAgent[]; canAdd: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean, closed?: CrewClosedAgent[]) => void }>(set => ({
   projectId: null,
   name: '',
@@ -124,7 +121,6 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         <button type="button" onClick={() => finish(info.lastAsked!.open)} className="min-w-0 truncate text-primary hover:underline">{info.lastAsked.who} · {info.lastAsked.when}</button></div>}
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 max-md:[&>button]:min-h-10">
         {info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="text-primary hover:underline">{info.purpose ? 'Change purpose' : 'Set purpose'}</button>}
-        {info.onSetIcon && <button type="button" onClick={() => finish(info.onSetIcon!)} className="text-primary hover:underline">{info.icon ? 'Change icon' : 'Set icon'}</button>}
         {info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
       </div>
       {info.onRemove && <div className="mt-2 flex items-center gap-3 border-t border-border pt-1.5">
@@ -140,7 +136,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   </>
 }
 
-/** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <agent name> ⓘ", no icon (the left menu shows it). The Crew name opens its
+/** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <agent name> ⓘ". The Crew name opens its
  * team board; ⓘ opens the agent's card (purpose, sharing, ✎). Purpose text is not shown inline. */
 export function AgentHeaderLine({ tabId, crewName, projectId, showName = true }: { tabId?: string | null; crewName: string; projectId?: string; showName?: boolean }) {
   const open = useOpenAgentStore()

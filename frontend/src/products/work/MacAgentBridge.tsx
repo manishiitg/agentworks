@@ -3,7 +3,7 @@ import { desktopRequest } from '../../services/desktopConnections'
 import { Button } from '../../components/ui/Button'
 
 type SharedAgent = { tab: string; audience: 'team' | ''; address?: string; can_change?: boolean; agentbridge_public?: boolean }
-type AgentRow = { tab: string; name: string; purpose: string; icon?: string }
+type AgentRow = { tab: string; name: string; purpose: string }
 type Placement = { location: 'publishing' | 'server' }
 
 /** AgentBridge on the Mac online tab (owner, 4 Nov mockup): agents, not people. Per agent, Only my agents | Public. Public
@@ -57,7 +57,6 @@ export function MacAgentBridge({ projectId, connection, crewName }: { projectId:
       const agent = shared.find(item => item.tab === row.tab)
       const place = placements[row.tab]?.location
       return <div key={row.tab} className="flex flex-wrap items-center gap-2.5 border-t border-border py-2.5 pl-3 text-sm">
-        <span aria-hidden="true">{row.icon?.trim() || '•'}</span>
         <span title={row.purpose || undefined} className="min-w-0 truncate">{row.name}</span>
         {agent?.agentbridge_public && agent.address && <>
           <code className="min-w-0 truncate rounded bg-muted px-1.5 py-0.5 text-xs">agent:{agent.address}</code>

@@ -40,7 +40,6 @@ type sharedProjectSummary struct {
 	ID            string `json:"id"`
 	Title         string `json:"title"`
 	Description   string `json:"description,omitempty"`
-	Icon          string `json:"icon,omitempty"`
 	Name          string `json:"name,omitempty"`
 	OwnerID       string `json:"owner_id"`
 	OwnerUsername string `json:"owner_username,omitempty"`
@@ -378,7 +377,6 @@ func summarizeSharedProject(ctx context.Context, claims *UserClaims, ownerID, pr
 		ID:              manifest.ID,
 		Title:           manifest.Title,
 		Description:     strings.TrimSpace(manifest.Description),
-		Icon:            strings.TrimSpace(manifest.Identity.Icon),
 		Name:            strings.TrimSpace(manifest.Identity.Name),
 		OwnerID:         ownerID,
 		OwnerUsername:   crewOwnerDisplayName(ownerID),

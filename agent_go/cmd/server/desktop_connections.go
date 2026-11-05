@@ -511,7 +511,6 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 					OwnerName     string `json:"owner_name"`
 					ID            string `json:"id"`
 					Name          string `json:"name"`
-					Icon          string `json:"icon"`
 					Mode          string `json:"mode"`
 				} `json:"workspaces"`
 				Workflows []struct {
@@ -529,7 +528,7 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 			}
 			projects := []desktopProject{}
 			for _, p := range inventory.Workspaces {
-				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, Icon: p.Icon, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName})
+				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName})
 			}
 			for _, p := range inventory.Workflows {
 				if p.Manifest.Kind != "relay" {

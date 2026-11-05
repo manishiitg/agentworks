@@ -13,7 +13,7 @@ import { Switch } from '../../components/ui/Switch'
 import type { CrewAsk } from './YourComputerPanel'
 
 type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'team' | ''; address?: string; can_change?: boolean; agentbridge_public?: boolean }
-type AgentRow = { tab: string; name: string; purpose: string; icon?: string }
+type AgentRow = { tab: string; name: string; purpose: string }
 
 // Reads one JSON reply from the Crew's network through the Mac's saved sign-in.
 async function viaConnection<T>(connection: string, path: string): Promise<T> {
@@ -30,7 +30,7 @@ function agentChatTabId(projectId: string, tab: string) {
 }
 
 /** Your agents in the Team (owner, 5 Nov, "A Team is a shared room"): each agent is In team or Only me. Joining needs
- * the agent's purpose and icon, set from its own chat. Saved as you go. */
+ * the agent's purpose, set from its own chat. Saved as you go. */
 export function MacSharedAgents({ projectId, connection }: { projectId: string; connection: string }) {
   const [rows, setRows] = useState<AgentRow[] | null>(null)
   // Where each agent answers: a published agent is on the server (the server decides; absent means this Mac).
@@ -40,7 +40,7 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [openPurpose, setOpenPurpose] = useState('')
-  // "All agents in team" (owner, 5 Nov): kept on this Mac; while on, every agent with a purpose and icon is in the team.
+  // "All agents in team" (owner, 5 Nov): kept on this Mac; while on, every agent with a purpose is in the team.
   const [allInTeam, setAllInTeam] = useState(false)
   const endpoint = `/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`
   useEffect(() => {
@@ -67,10 +67,10 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
     card?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
   }, [rows, supported, projectId])
   if (!supported || !rows) return null
-  // Sharing needs the agent's purpose and icon (the server refuses it otherwise).
-  const readyOf = (tab: string) => { const row = rows.find(item => item.tab === tab); return Boolean(row?.purpose?.trim() && row.icon?.trim()) }
+  // Sharing needs the agent's purpose (the server refuses it otherwise).
+  const readyOf = (tab: string) => Boolean(rows.find(item => item.tab === tab)?.purpose?.trim())
   const purposeOf = (tab: string) => rows.find(row => row.tab === tab)?.purpose?.trim() || ''
-  // Saves the whole list; only agents with a purpose and icon are sent (the server refuses others).
+  // Saves the whole list; only agents with a purpose are sent (the server refuses others).
   const save = async (next: SharedAgent[]) => {
     setShared(next)
     const ready = next.filter(agent => readyOf(agent.tab))
@@ -116,7 +116,7 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
   }
   return <section ref={cards} aria-label="Your agents in the team">
     <div className="border-t border-border px-0.5 py-2.5 text-sm">
-      <label className="flex items-center gap-2"><span className="font-medium">All agents in team</span><span className="text-xs text-muted-foreground">new agents join too, once they have a purpose and icon</span><Switch aria-label="All agents in team" className="ml-auto" checked={allInTeam} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>
+      <label className="flex items-center gap-2"><span className="font-medium">All agents in team</span><span className="text-xs text-muted-foreground">new agents join too, once they have a purpose</span><Switch aria-label="All agents in team" className="ml-auto" checked={allInTeam} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>
       <p className="mt-1 text-xs text-muted-foreground">In team: everyone in this Crew's Team sees this agent and its chat live, and their agents can message it. Only me: just you.</p>
     </div>
     {rows.map(row => {
@@ -124,12 +124,10 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
       const purpose = purposeOf(row.tab)
       const place = placements[row.tab]?.location
       const choice = agent?.audience === 'team' ? 'team' : 'none'
-      // An agent without a purpose or icon cannot be shared: its row always says so (owner, 5 Nov).
-      const missing = readyOf(row.tab) ? '' : !purpose && !row.icon?.trim() ? 'a purpose and icon' : !purpose ? 'a purpose' : 'an icon'
-      const blocked = missing ? `Give this agent ${missing} before sharing it` : ''
+      // An agent without a purpose cannot be shared: its row always says so (owner, 5 Nov).
+      const blocked = readyOf(row.tab) ? '' : 'Give this agent a purpose before sharing it'
       return <div key={row.tab} data-shared-agent-card={row.tab} className="border-t border-border px-0.5 py-2.5 text-sm">
         <div className="flex flex-wrap items-center gap-2.5">
-          <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">{row.icon?.trim() || row.name.slice(0, 1).toUpperCase()}</span>
           <span title={purpose || undefined} className="min-w-0 truncate">{row.name}</span>
           {/* The row reads as a state, not only a toggle (owner, 5 Nov: "ui is not clear"). */}
           {choice === 'team' && <span className="shrink-0 text-xs text-muted-foreground">Shared with the team</span>}
@@ -265,7 +263,7 @@ export async function openCrewAskThread(projectId: string, ask: CrewAsk) {
 /** A Team member's agent in the owner's Mac app (owner, 5 Nov: "I need to see the other user's agent … in local"):
  * read from the Crew's online copy through this Mac's sign-in; it opens as a watch-only tab inside this Crew, its
  * chat read from the server (utils/remoteSessions.ts), where only its owner types. */
-export type TeamRemoteAgent = { key: string; name: string; icon?: string; purpose?: string; owner: string; open: () => void }
+export type TeamRemoteAgent = { key: string; name: string; purpose?: string; owner: string; open: () => void }
 
 export function useTeamRemoteAgents(projectId?: string, enabled = true): TeamRemoteAgent[] {
   const [agents, setAgents] = useState<TeamRemoteAgent[]>([])
@@ -277,13 +275,13 @@ export function useTeamRemoteAgents(projectId?: string, enabled = true): TeamRem
       const { data } = await api.get<{ binding?: { connection_id?: string; peer_project_id?: string; side?: string } }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { skipSessionContext: true })
       const connection = data.binding?.connection_id, peer = data.binding?.peer_project_id
       if (!connection || !peer || data.binding?.side !== 'local') { if (live) setAgents([]); return }
-      const rows = await viaConnection<{ conversation_key: string; session_id?: string; name: string; icon?: string; purpose?: string; tab_owner_id?: string; tab_owner_name?: string; can_write?: boolean }[]>(connection, `/api/agent-profiles/work/side-chats?project_id=${encodeURIComponent(peer)}`)
+      const rows = await viaConnection<{ conversation_key: string; session_id?: string; name: string; purpose?: string; tab_owner_id?: string; tab_owner_name?: string; can_write?: boolean }[]>(connection, `/api/agent-profiles/work/side-chats?project_id=${encodeURIComponent(peer)}`)
       const next = (rows || []).filter(row => row.can_write === false && row.tab_owner_id && row.session_id).map(row => {
         const owner = row.tab_owner_name || 'Teammate'
-        return { key: row.conversation_key, name: row.name, icon: row.icon, purpose: row.purpose, owner,
+        return { key: row.conversation_key, name: row.name, purpose: row.purpose, owner,
           open: () => { void openTeamRemoteAgent(projectId, connection, { key: row.conversation_key, session: row.session_id!, name: row.name, owner }) } }
       })
-      if (live) setAgents(current => JSON.stringify(current.map(a => [a.key, a.name, a.icon, a.owner])) === JSON.stringify(next.map(a => [a.key, a.name, a.icon, a.owner])) ? current : next)
+      if (live) setAgents(current => JSON.stringify(current.map(a => [a.key, a.name, a.owner])) === JSON.stringify(next.map(a => [a.key, a.name, a.owner])) ? current : next)
     }
     const reload = () => { void load().catch(() => {}) }
     reload()

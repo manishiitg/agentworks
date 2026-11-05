@@ -541,7 +541,6 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const [listed, setListed] = useState<AgentProfileSideChat[] | null>(null)
   // The person's own Main chat's purpose, for its purpose icon (undefined: not theirs or not loaded).
   const [mainPurpose, setMainPurpose] = useState<string | undefined>()
-  const [mainIcon, setMainIcon] = useState<string | undefined>()
   const ownedListed = (listed || []).filter(chat => chat.can_write !== false)
   const allTabs = Object.values(chatTabs)
   const sideChats = (listed || [])
@@ -639,7 +638,6 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         if (cancelled) return
         const main = rows.find(chat => chat.is_main)
         setMainPurpose(main ? main.purpose || '' : undefined)
-        setMainIcon(main?.icon || undefined)
         const listed = rows.filter(chat => !chat.is_main)
         for (const chat of listed) {
           const state = useChatStore.getState()
@@ -730,7 +728,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       window.removeEventListener('focus', onFocus)
     }
   }, [allowSideChats, canonicalTabId, profileId, projectId])
-  // An agent here that saved its name, purpose or icon (set_my_agent_identity): list again so every place shows it now.
+  // An agent here that saved its name or purpose (set_my_agent_identity): list again so every place shows it now.
   const watchedSessions = [canonicalSessionId, ...(listed || []).map(chat => chat.session_id)].filter((id): id is string => !!id).join(' ')
   useEffect(() => {
     if (!allowSideChats || !watchedSessions) return
@@ -752,7 +750,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     check(useChatStore.getState().tabEvents, true)
     return useChatStore.subscribe(state => check(state.tabEvents, false))
   }, [allowSideChats, watchedSessions])
-  return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose} mainIcon={mainIcon}
+  return <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose}
     allowSideChats={allowSideChats} opening={opening} surface="work" projectActivity={projectActivity}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}
     onReopen={async chat => {
