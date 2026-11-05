@@ -57,6 +57,10 @@ const splitDevelopment = !!(process.env.DEV_URL && process.env.AGENTWORKS_DESKTO
 const currentDesktopOrigin = () => splitDevelopment ? new URL(process.env.MCP_AGENT_SERVER_URL).origin : desktopAgentReady && agentProcess && agentProcess.exitCode === null && !agentProcess.killed
   ? (process.env.AGENTWORKS_DEV_AGENT_BINARY ? new URL(process.env.MCP_AGENT_SERVER_URL).origin : `http://127.0.0.1:${dynamicAgentPort}`) : null;
 const desktopConnectionSecret = crypto.randomBytes(32).toString('hex');
+// Admits this app's own notification stream on its local server (lib/notify.js).
+const notifySecret = crypto.randomBytes(32).toString('hex');
+let desktopConnectionsApi = null;
+let stopNotifyStream = null;
 const currentDesktopAppOrigin = () => process.env.DEV_URL ? new URL(process.env.DEV_URL).origin : currentDesktopOrigin();
 const { withoutDesktopBootstrap } = require('./lib/connections');
 
@@ -1255,7 +1259,7 @@ function spawnAgent(userDataPath) {
     let started = null;
     spawnServer({
       name: 'agent', bin, args, preferredPort: plannedAgentPort || 45678, cwd,
-      bootstrap: port => ({ secret: desktopConnectionSecret, host: `127.0.0.1:${port}`, auth_secret: env.AUTH_SECRET }),
+      bootstrap: port => ({ secret: desktopConnectionSecret, host: `127.0.0.1:${port}`, auth_secret: env.AUTH_SECRET, notify_secret: notifySecret }),
       env: (port) => ({
         ...withoutDesktopBootstrap(env),
         // OAuth tools run without an incoming browser request, so they need a
@@ -1670,6 +1674,29 @@ function handleLocalServerExit(name, child, code, signal) {
   restartServers();
 }
 
+// Notifications this Mac has turned on arrive here, window open or not (lib/notify.js); clicking opens the chat.
+function startNotifications() {
+  if (stopNotifyStream || splitDevelopment || process.env.AGENTWORKS_DEV_AGENT_BINARY) return;
+  const { startNotifyStream, notifyRoute } = require('./lib/notify');
+  stopNotifyStream = startNotifyStream({
+    getPort: () => dynamicAgentPort,
+    secret: notifySecret,
+    authSecret: process.env.AUTH_SECRET,
+    userId: process.env.DEFAULT_USER_ID || 'default',
+    log: diagLog,
+    show: msg => {
+      if (!Notification.isSupported() || typeof msg.title !== 'string') return;
+      const notice = new Notification({ title: msg.title, body: typeof msg.body === 'string' ? msg.body : '', silent: !msg.sound });
+      notice.on('click', () => {
+        const connection = typeof msg.connection === 'string' && /^[a-f0-9]{32}$/.test(msg.connection) ? msg.connection : 'local';
+        openMainWindow();
+        desktopConnectionsApi?.open(connection, notifyRoute(msg.route, connection !== 'local')).catch(err => diagLog('[notify] could not open the chat:', err.message));
+      });
+      notice.show();
+    },
+  });
+}
+
 function showErrorAndExit(message) {
   dialog.showMessageBoxSync({
     type: 'error',
@@ -1767,7 +1794,7 @@ function createWindow(initialUrl) {
 
   if (!desktopConnectionsInstalled) {
   desktopConnectionsInstalled = true;
-  require('./lib/connections').installDesktopConnections({
+  desktopConnectionsApi = require('./lib/connections').installDesktopConnections({
     session: mainWindow.webContents.session, ipcMain, getWindow: () => mainWindow,
     getOrigin: currentDesktopOrigin, getAppOrigin: currentDesktopAppOrigin, secret: desktopConnectionSecret,
     getSecret: splitDevelopment ? () => require('./lib/devConnection').readDevelopmentProof(
@@ -1884,6 +1911,7 @@ app.whenReady().then(async () => {
 
   // 4. Create Window
   createWindow();
+  startNotifications();
   checkForUpdates();
   // Re-check every 4 hours so long-running sessions notice new releases
   // without requiring a manual restart.

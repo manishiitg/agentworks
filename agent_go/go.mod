@@ -41,7 +41,10 @@ require (
 
 require github.com/Microsoft/go-winio v0.6.2
 
-require github.com/restic/chunker v0.5.0 // indirect
+require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
+	github.com/restic/chunker v0.5.0 // indirect
+)
 
 replace github.com/manishiitg/coding-agent-loop/workspace => ../workspace
 

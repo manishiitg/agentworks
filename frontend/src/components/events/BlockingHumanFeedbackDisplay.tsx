@@ -1,9 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
-import { playNotificationSound } from '../../utils/sound'
 import {
-  hasBeenNotified,
-  markNotified,
   hasSubmittedFeedback,
   markFeedbackSubmitted,
 } from '../../utils/notificationDedup'
@@ -60,7 +57,6 @@ export const BlockingHumanFeedbackDisplay: React.FC<BlockingHumanFeedbackDisplay
   )
   const hasSubmitted = submittedLocally || resolvedByServer
   const [submitError, setSubmitError] = useState('')
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default')
   const electronAPI = (window as unknown as {
     electronAPI?: { setDockBadge?: (badge: string) => void }
   }).electronAPI
@@ -74,23 +70,6 @@ export const BlockingHumanFeedbackDisplay: React.FC<BlockingHumanFeedbackDisplay
   const yesLabel = event.data.yes_label || 'Approve'
   const noLabel = event.data.no_label || ''
 
-  // Request notification permission on component mount
-  React.useEffect(() => {
-    if (!surfaceNotifications) return
-    if ('Notification' in window) {
-      setNotificationPermission(Notification.permission)
-
-      if (Notification.permission === 'default') {
-        Notification.requestPermission().then((permission) => {
-          setNotificationPermission(permission)
-        }).catch((error) => {
-          console.error('[BLOCKING_FEEDBACK] Permission request failed:', error)
-        })
-      }
-    }
-
-  }, [surfaceNotifications])
-
   // Keep the Electron dock badge in sync with the pending request.
   React.useEffect(() => {
     if (!surfaceNotifications) return
@@ -98,54 +77,6 @@ export const BlockingHumanFeedbackDisplay: React.FC<BlockingHumanFeedbackDisplay
     electronAPI.setDockBadge(hasSubmitted ? '' : '1')
     return () => electronAPI.setDockBadge?.('')
   }, [electronAPI, hasSubmitted, surfaceNotifications])
-
-  // Human feedback is short-lived, so notify as soon as the direct response
-  // card is available. Keep potentially sensitive question text out of the OS
-  // notification preview; the user sees it after opening AgentWorks.
-  React.useEffect(() => {
-    if (!surfaceNotifications) return
-    const requestId = event.data.request_id || ''
-    const enabled = localStorage.getItem('mcp_notifications_enabled') !== 'false'
-    // Skip if already submitted, already notified (e.g. page refresh), or notifications disabled
-    if (!enabled || hasSubmitted || (requestId && hasBeenNotified(requestId))) return
-    if (!('Notification' in window) || notificationPermission !== 'granted') return
-
-    let notificationRef: Notification | null = null
-    const timer = setTimeout(() => {
-      // Re-check submitted state in case submission won the scheduling race.
-      if (hasSubmitted) return
-
-      try {
-        playNotificationSound()
-        if (requestId) markNotified(requestId)
-
-        notificationRef = new Notification('AgentWorks needs your input', {
-          body: 'A workflow is waiting for your response.',
-          icon: '/logo.svg',
-          tag: `blocking-feedback-${requestId || Date.now()}`,
-          requireInteraction: true,
-          silent: false
-        })
-
-        notificationRef.onclick = () => {
-          window.focus()
-          notificationRef?.close()
-        }
-
-        // Auto-close notification after 30 seconds
-        setTimeout(() => {
-          notificationRef?.close()
-        }, 30000)
-      } catch (error) {
-        console.error('[BLOCKING_FEEDBACK] Failed to create notification:', error)
-      }
-    }, 0)
-
-    return () => {
-      clearTimeout(timer)
-      notificationRef?.close()
-    }
-  }, [event.data.request_id, hasSubmitted, notificationPermission, surfaceNotifications])
 
   const triggerScrollCallback = () => {
     if (onFeedbackSubmitted) {

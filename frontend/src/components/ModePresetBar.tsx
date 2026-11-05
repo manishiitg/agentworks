@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import NotifyBell from './topbar/NotifyBell'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
 import { Settings, Copy, Eye, CalendarClock } from 'lucide-react'
@@ -22,7 +23,7 @@ import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { dedupeServerNames } from '../utils/mcpServerAlias'
 import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
-import { ProductTopBar, ProductTopBarMain } from './workspace/ProductTopBar'
+import { ProductTopBar, ProductTopBarActions, ProductTopBarMain } from './workspace/ProductTopBar'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { WorkflowIcon } from './workflow/WorkflowIcon'
@@ -635,6 +636,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
               })()}
             </div>
           </ProductTopBarMain>
+          {!activityMonitorInWorkspace && <ProductTopBarActions><NotifyBell /></ProductTopBarActions>}
 
       </ProductTopBar>
 
