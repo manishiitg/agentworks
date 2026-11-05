@@ -127,6 +127,8 @@ func TestExpiredClientExpectationIsDropped(t *testing.T) {
 func TestLiveInputObserverUsesClientIdentityWithoutFreshTurnExpectation(t *testing.T) {
 	const session = "chat-live-identity"
 	store := openClientMessageTestStore(t, session)
+	store.ExpectClientUserMessage(session, "first", "same question")
+	store.AddEvent(session, journalTestEvent("fresh-turn", "same question"))
 	for _, id := range []string{"first", "second", "second"} {
 		event := journalTestEvent("observer:chat-live-identity:turn:one:user_message", "same question")
 		userMessageEventData(&event).Metadata = map[string]interface{}{

@@ -59,7 +59,7 @@ export function reconcileDurableUserEchoes(
   current: ReadonlyArray<PollingEvent>,
   incoming: ReadonlyArray<PollingEvent>,
 ): { current: PollingEvent[]; incoming: PollingEvent[]; replacedIds: string[] } {
-  const echoes = new Set(incoming.filter(isDurableClientUserMessage).map(readClientMessageId))
+  const echoes = new Set(incoming.filter(isDurableClientUserMessage).map(readClientMessageId).filter(Boolean))
   if (echoes.size === 0) return { current: [...current], incoming: [...incoming], replacedIds: [] }
   const provisionals = new Map<string, PollingEvent>()
   const kept: PollingEvent[] = []
@@ -81,7 +81,7 @@ export function keepUnechoedProvisionals(
   durable: PollingEvent[],
   current: ReadonlyArray<PollingEvent>,
 ): PollingEvent[] {
-  const durableIds = new Set(durable.filter(isDurableClientUserMessage).map(readClientMessageId))
+  const durableIds = new Set(durable.filter(isDurableClientUserMessage).map(readClientMessageId).filter(Boolean))
   const pending = current.filter(event => isProvisionalUserMessage(event) && event.id && !durableIds.has(readClientMessageId(event)))
   return pending.length === 0 ? durable : [...durable, ...pending]
 }
