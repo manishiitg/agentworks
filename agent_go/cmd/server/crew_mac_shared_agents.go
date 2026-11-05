@@ -239,7 +239,9 @@ func macSharedAgentAccess(project, tab, caller, owner string, byAgent bool) (mac
 	return agent, ""
 }
 
-// macSharedAudience: whether the shared list lets this caller message the tab.
+// macSharedAudience: whether the shared list lets this caller message the tab. A Mac agent reaches another person
+// only through Team (owner, 5 Nov): Team on, the caller a joined member, the agent In team. An old "everyone" or
+// "chosen" audience grants nothing; with the Team off, members is only the owner, so only Public on AgentBridge counts.
 func macSharedAudience(agents []macSharedAgent, tab, caller, owner string, members []string, byAgent bool) (macSharedAgent, string) {
 	if caller == "" || caller == owner {
 		return macSharedAgent{}, "owner"
@@ -248,7 +250,7 @@ func macSharedAudience(agents []macSharedAgent, tab, caller, owner string, membe
 		if agent.Tab != tab {
 			continue
 		}
-		if byAgent && agent.AgentBridgePublic || agent.Audience == "everyone" || (slices.Contains(members, caller) && (agent.Audience == "team" || agent.Audience == "chosen" && slices.Contains(agent.People, caller))) {
+		if byAgent && agent.AgentBridgePublic || agent.Audience == "team" && slices.Contains(members, caller) {
 			return agent, ""
 		}
 		return macSharedAgent{}, "not_in_audience"
