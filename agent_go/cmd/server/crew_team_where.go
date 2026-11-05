@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -369,4 +370,24 @@ func (api *StreamingAPI) handleDesktopCrewTeamAddToMac(w http.ResponseWriter, r 
 		return
 	}
 	externalJSON(w, map[string]any{"where": "mac", "project_id": local})
+}
+
+// crewTeamMemberFilesPath is the root of the Files view for this person in the Crew at root (owner, 5 Nov: one Files
+// view everywhere, the server decides its root). A Team member of a Crew on the server works in the Crew's own folder,
+// so their Files opens on the one folder the Team shares; everyone else, and a Team of several folders or the Whole
+// Crew, gets the Crew's files root. Access is unchanged: the same workspace routes and checks as the Crew root.
+func crewTeamMemberFilesPath(user, root string) string {
+	files := crewFilesPath(root)
+	if !crewTeamOnlyMember(root, user) {
+		return files
+	}
+	rec, ok := crewOwnerRecordAt(root)
+	if !ok || crewRelayTwin(rec.ProjectID) {
+		return files
+	}
+	t, err := readCrewTeam(rec.ProjectID)
+	if err != nil || !t.edits(user) || t.Folder.Whole || len(t.Folder.Folders) != 1 {
+		return files
+	}
+	return path.Join(files, t.Folder.Folders[0])
 }

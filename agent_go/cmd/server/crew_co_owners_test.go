@@ -179,4 +179,15 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 			t.Fatalf("%s: a team member became the owner or a registered co-owner", tc.name)
 		}
 	}
+	// One Files view (owner, 5 Nov): the server opens a joined member's Files on the folder the Team shares; the owner
+	// keeps the Crew's root.
+	if err := writeCrewTeam(crewTeam{ProjectID: "team-proj", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "ann"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := crewTeamMemberFilesPath("ann", root); got != root+"/team" {
+		t.Fatalf("member Files root = %q, want %q", got, root+"/team")
+	}
+	if got := crewTeamMemberFilesPath("owner", root); got != root {
+		t.Fatalf("owner Files root = %q, want %q", got, root)
+	}
 }

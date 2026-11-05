@@ -381,7 +381,7 @@ func summarizeSharedProject(ctx context.Context, claims *UserClaims, ownerID, pr
 		OwnerID:         ownerID,
 		OwnerUsername:   crewOwnerDisplayName(ownerID),
 		WorkspacePath:   projectRoot,
-		FilesPath:       crewFilesPath(projectRoot),
+		FilesPath:       crewTeamMemberFilesPath(claims.UserID, projectRoot),
 		CreatedAt:       strings.TrimSpace(manifest.CreatedAt),
 		UpdatedAt:       strings.TrimSpace(manifest.UpdatedAt),
 		SelectedServers: savedAppSelection(manifest.Capabilities.SelectedServers),

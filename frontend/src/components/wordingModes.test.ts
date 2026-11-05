@@ -11,7 +11,6 @@ const FILES = [
   'components/workflow/WorkflowFolderAccessView.tsx',
   'components/folders/WorkflowReferenceAccess.tsx',
   'products/knowledgebase/KnowledgebaseAccessPanel.tsx',
-  'products/work/SharedCrewFilesPanel.tsx',
   'components/ToolSelectionSection.tsx',
   'hooks/useCanWriteWorkflow.ts',
   'components/MCPConfigEditor.tsx',
