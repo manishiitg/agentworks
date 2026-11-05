@@ -89,7 +89,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			t.Fatalf("member changed registered other agent %s: %d", otherKey, w.Code)
 		}
 	}
-	// The Team tab offers the member a choice only for their own agent; everyone else's is theirs to change, and the
+	// The Team tab offers the member a choice (In team, purpose, AgentBridge) only for their own agent; everyone else's is theirs to change, and the
 	// owner can never be removed.
 	team, _ = readCrewTeam(team.ProjectID)
 	tab := crewTeamTabFor(t.Context(), team, "member")
@@ -100,7 +100,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			if !agent.CanChange || agent.InTeam {
 				t.Fatalf("own agent row: %+v", agent)
 			}
-		} else if agent.CanChange || agent.Fixed == "" {
+		} else if agent.CanChange || agent.Fixed == "" || agent.AgentBridge != nil || agent.CanSetPurpose {
 			t.Fatalf("member can change another person's agent: %+v", agent)
 		}
 	}

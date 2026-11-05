@@ -182,6 +182,17 @@ func logDashboardShareRefusal(claims *UserClaims, target dashboardTarget, mode, 
 }
 
 func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string, createDashboard bool, changes ...crewAgentShareChange) (state runShareState, err error) {
+	// One agent switched from the Team tab (shared_agent) with no mode: who it is shared with stays as it is.
+	if strings.TrimSpace(mode) == "" && len(changes) > 0 && changes[0].Agent != "" {
+		current, readErr := api.readRunShare(ctx, claims, target)
+		if readErr != nil {
+			return runShareState{}, readErr
+		}
+		mode, emails = current.Mode, nil
+		for _, person := range current.People {
+			emails = append(emails, person.Email)
+		}
+	}
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	stage := "mode"
 	var cause error
@@ -253,7 +264,7 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 			}
 		}
 		keys := crewSharedAgentKeys(target.Root)
-		if len(changes) > 0 && (changes[0].Agents != nil || len(changes[0].Purposes) > 0) {
+		if len(changes) > 0 && changes[0].changesAgents() {
 			var err error
 			keys, err = validateCrewAgentShare(ctx, claims.UserID, target.Root, changes[0])
 			if err != nil {

@@ -10,10 +10,11 @@ import { openAppPage } from '../../utils/appNavigation'
 import { activateTab } from '../../utils/activateTab'
 import CreateFolderDialog from '../../components/workspace/CreateFolderDialog'
 import { WORK_PROFILE_ID } from './workData'
-import { changeTeamPeople, crewServerFolders, saveTeam, switchTeam, teamAgentForTab, teamError, teamRequest, useTeamTab, type Team, type TeamTabAgent, type TeamTabShare, type TeamTabState, type TeamTabView, type TeamTarget } from './teamApi'
+import { changeTeamPeople, crewServerFolders, saveTeam, switchTeam, teamError, teamRequest, useTeamTab, type Team, type TeamTabAgent, type TeamTabShare, type TeamTabState, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
+import { AgentSharingRow, CopySetupLine, teamAgentChatTab } from './AgentSharingRow'
 
 type Person = { id: string; username: string; email?: string }
 // A size read from this Mac's own Crew folder; whether it is too big to share is the server's answer.
@@ -72,6 +73,8 @@ export function TeamTab({ projectId, macSwitch, onTurnOn }: { projectId: string;
   return <div className="space-y-3">
     {team.on && <p className="px-1 text-[13px] text-muted-foreground">{view.intro}</p>}
     <PeopleCard view={view} target={target} projectId={projectId} />
+    {/* Team off: the owner's own agents stay listed for Public on AgentBridge. */}
+    {!team.on && view.agents.length > 0 && <AgentsCard state={state} view={view} target={target} projectId={projectId} />}
     {team.on && <>
       <CrewWhereRow projectId={projectId} />
       <SharesCard view={view} target={target} projectId={projectId} />
@@ -246,13 +249,16 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
   </section>
 }
 
-/** Every agent in the Team, as the server lists it: the person's own with In team / Only me, everyone else's as
- * theirs to change, and All agents in team for whoever may switch the Team. The same rows in the Mac app and on the
- * website. */
+/** The one agent sharing list (owner, 5 Nov, approved mockups "Single Team Tab" and "Agent Sharing List"): every agent
+ * in the Team as the server lists it, the person's own with In team / Only me, its purpose and Public on AgentBridge,
+ * everyone else's as theirs to change. The same rows in the Mac app and on the website; only a Mac Crew's Public on
+ * AgentBridge is switched in its owner's Mac app, and the server words that elsewhere. */
 function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; view: TeamTabView; target: TeamTarget; projectId: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [opened, setOpened] = useState('')
+  // The owner's own Mac app holding this Crew (the same test as the folder picker).
+  const onMacApp = Boolean(target.connection && target.localProject && view.mac?.yours)
   // The viewer's own All my agents in team (owner, 5 Nov): it never changes anyone else's agents.
   const chooseAll = async (on: boolean) => {
     setBusy(true); setError('')
@@ -269,8 +275,8 @@ function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; v
       <h3 className="flex-1 font-semibold">Agents</h3>
       <AskButton projectId={projectId} card="agents" />
     </div>
-    {view.can_all_mine && <label className="flex items-center gap-2 text-[13px]"><span className="flex-1 font-medium">All my agents in team</span><Switch aria-label="All my agents in team" checked={view.all_in_team} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>}
-    {view.can_all_mine && <p className="text-xs text-muted-foreground">Your new agents join too, unless you choose Only me. Main is always in team.</p>}
+    {view.can_all_mine && view.team.on && <label className="flex items-center gap-2 text-[13px]"><span className="flex-1 font-medium">All my agents in team</span><Switch aria-label="All my agents in team" checked={view.all_in_team} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>}
+    {view.can_all_mine && view.team.on && <p className="text-xs text-muted-foreground">Your new agents join too, unless you choose Only me. Main is always in team.</p>}
     {view.agents.map(agent => <div key={agent.key} className="border-t border-border pt-2">
     <div className="flex items-center gap-2 text-[13px]">
       <button type="button" aria-label={`${opened === agent.key ? 'Hide' : 'Show'} details for ${agent.name}`} aria-expanded={opened === agent.key} onClick={() => setOpened(opened === agent.key ? '' : agent.key)} className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground">
@@ -289,9 +295,12 @@ function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; v
         : <span className="shrink-0 text-xs text-muted-foreground">{agent.fixed}</span>}
       <AgentMenu agent={agent} state={state} projectId={projectId} />
     </div>
+    <AgentSharingRow agent={agent} state={state} target={target} projectId={projectId} onMacApp={onMacApp} />
     {opened === agent.key && <AgentDetails agent={agent} target={target} projectId={projectId} />}
     </div>)}
     {!view.agents.length && <p className="text-xs text-muted-foreground">No agents in the team yet.</p>}
+    {!onMacApp && view.agents_mac_only && view.agents.some(agent => agent.agentbridge?.mac_only) && <p className="text-xs text-muted-foreground">{view.agents_mac_only}</p>}
+    {onMacApp && <CopySetupLine crewName={view.team.name} />}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </section>
 }
@@ -353,8 +362,7 @@ function AgentMenu({ agent, state, projectId }: { agent: TeamTabAgent; state: Te
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [open])
-  const tab = open ? Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileProjectId === projectId && !item.metadata?.isViewOnly
-    && teamAgentForTab(state, item.metadata?.agentProfileConversationKey, item.metadata?.agentProfileIsMainChat !== false, item.metadata?.agentProfileTabCanWrite !== false)?.key === agent.key) : undefined
+  const tab = open ? teamAgentChatTab(state, projectId, agent.key) : undefined
   const ask = !agent.can_change && agent.address
   const item = 'block w-full rounded-lg px-2.5 py-1.5 text-left text-xs hover:bg-muted'
   return <div ref={box} className="relative shrink-0">
