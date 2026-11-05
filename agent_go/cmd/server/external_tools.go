@@ -321,6 +321,7 @@ func externalTools() ([]externalTool, error) {
 		externalCrewFilesDefinition(add)
 		externalCrewDiagnosticsDefinition(add)
 		externalCrewOwnersDefinition(add)
+		externalCrewTeamSyncDefinition(add)
 		if err := externalCrewExecutionDefinition(add); err != nil {
 			externalCatalogErr = err
 			return

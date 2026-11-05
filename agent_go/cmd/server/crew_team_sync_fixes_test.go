@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -307,5 +309,107 @@ func TestCrewTeamLineMergeOfConcurrentEdits(t *testing.T) {
 				t.Fatal("the merge did not produce a new version for both copies to download")
 			}
 		})
+	}
+}
+
+// Owner, 5 Nov: a same-line clash tells both people once, stays on the sync line, and an agent sorts it out: clashes
+// returns both versions and resolve keep=other puts the other person's version back as a new revision.
+func TestCrewTeamClashNotifiesBothAndAgentResolves(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("MULTI_USER_MODE", "true")
+	crewTeamTestDocs(t, "clash-test", "clash-test")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"member","username":"member","can_create":true,"products":["work"]},{"id":"outsider","username":"outsider","can_create":true,"products":["work"]}]}`)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "clash-test", OwnerID: "owner", ProjectID: "clash-test"}); err != nil {
+		t.Fatal(err)
+	}
+	team := crewTeam{ProjectID: "clash-test", Name: "Example", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Whole: true}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	store, err := crewTeamChunkStore("clash-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := func(content string) crewTeamFileVersion {
+		v, err := crewTeamChunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	commit := func(actor, transfer string, c crewTeamChange) {
+		if _, err := commitCrewTeamChanges(t.Context(), "clash-test", actor, transfer, crewTransferDigest(transfer), []crewTeamChange{c}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	drain := func() (jobs []notifyJob) {
+		for {
+			select {
+			case job := <-notifyQueue:
+				if job.event == "team_clash" {
+					jobs = append(jobs, job)
+				}
+			default:
+				return jobs
+			}
+		}
+	}
+	drain()
+	const ownerText, memberText = "title\nalpha owner\nend\n", "title\nalpha member\nend\n"
+	base, ours, theirs := put("title\nalpha\nend\n"), put(ownerText), put(memberText)
+	commit("owner", "a", crewTeamChange{Path: "notes.txt", After: &base})
+	commit("owner", "b", crewTeamChange{Path: "notes.txt", Before: base.Hash, After: &ours})
+	commit("member", "c", crewTeamChange{Path: "notes.txt", Before: base.Hash, After: &theirs})
+	other := put("other\n")
+	commit("member", "d", crewTeamChange{Path: "other.txt", After: &other}) // a later round: no second notice
+	jobs := drain()
+	if len(jobs) != 1 || len(jobs[0].direct) != 2 {
+		t.Fatalf("want one notice to both people, got %+v", jobs)
+	}
+	bodies := map[string]string{}
+	for _, d := range jobs[0].direct {
+		bodies[d.user] = d.msg.Body
+	}
+	if !strings.Contains(bodies["owner"], "You and member both changed notes.txt. member's version is in the file; yours is kept.") || !strings.Contains(bodies["member"], "Your version is in the file; owner's is kept.") {
+		t.Fatalf("notice texts %q", bodies)
+	}
+	if sync := crewTeamTabSyncFor(team, "owner"); sync == nil || !strings.Contains(sync.Line, "1 clash to sort out: notes.txt") {
+		t.Fatalf("sync line %+v", sync)
+	}
+	call := func(user string, args map[string]any) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/api/external/call", nil)
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+		w := httptest.NewRecorder()
+		(&StreamingAPI{}).externalCrewTeamSyncCall(w, r, args)
+		return w
+	}
+	w := call("member", map[string]any{"crew_id": "clash-test", "action": "clashes"})
+	var listed struct {
+		Clashes []crewTeamClashView `json:"clashes"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &listed) != nil || len(listed.Clashes) != 1 {
+		t.Fatalf("clashes: %d %s", w.Code, w.Body.String())
+	}
+	c := listed.Clashes[0]
+	if c.Current == nil || c.Other == nil || c.Current.Text != memberText || c.Other.Text != ownerText || c.Other.Who != "owner" {
+		t.Fatalf("clash versions %+v", c)
+	}
+	if w = call("outsider", map[string]any{"crew_id": "clash-test", "action": "resolve", "path": "notes.txt", "clash_id": c.ID, "keep": "other"}); w.Code != 403 {
+		t.Fatalf("an outsider resolved a clash: %d", w.Code)
+	}
+	if w = call("member", map[string]any{"crew_id": "clash-test", "action": "resolve", "path": "notes.txt", "clash_id": c.ID, "keep": "other"}); w.Code != 200 {
+		t.Fatalf("resolve: %d %s", w.Code, w.Body.String())
+	}
+	state, _ := readCrewTeamFileState("clash-test")
+	root, _ := crewTeamFilesRoot("clash-test")
+	if got, _ := os.ReadFile(filepath.Join(root, "notes.txt")); string(got) != ownerText || state.Versions["notes.txt"].Author != "member" || state.Versions["notes.txt"].Revision != state.Revision {
+		t.Fatalf("keep other wrote %q as %+v", got, state.Versions["notes.txt"])
+	}
+	if open := crewTeamOpenClashPaths(state.Clashes); len(open) != 0 {
+		t.Fatalf("clash still open: %v", open)
+	}
+	if sync := crewTeamTabSyncFor(team, "owner"); !strings.Contains(sync.Line, "no clashes") {
+		t.Fatalf("sync line after resolve %q", sync.Line)
 	}
 }

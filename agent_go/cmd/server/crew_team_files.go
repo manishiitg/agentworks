@@ -293,6 +293,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 	// A write that fails part way keeps the record in step with the files already written (review 5 Nov #10): what
 	// went in is saved as this revision without a receipt, so the retry applies only the rest.
 	applied := 0
+	notices := []crewTeamClashNotice{}
 	partial := func(e error) (crewTeamReceipt, error) {
 		if applied > 0 {
 			state.Revision = receipt.Revision
@@ -340,6 +341,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 			// A stale delete never beats a teammate's newer edit: the edit stays, and it is recorded again at this
 			// revision so every copy, the deleter's included, receives it on its next round.
 			state.Clashes = append(state.Clashes, crewTeamClash{Path: c.Path, WinningRevision: receipt.Revision, LosingRevision: current.Revision, WinningAuthor: current.Author, LosingAuthor: actor})
+			notices = append(notices, crewTeamClashNotice{clash: state.Clashes[len(state.Clashes)-1], removed: true})
 			receipt.Conflicts = append(receipt.Conflicts, c.Path)
 			state.Events = append(state.Events, crewTeamEvent{Path: c.Path, Kind: "kept", Revision: receipt.Revision, Actor: actor, Author: current.Author, At: now, File: current.File, Chunks: current.Chunks})
 			applied++
@@ -378,6 +380,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 		}
 		if kind == "clash" || merged && hunks > 0 {
 			state.Clashes = append(state.Clashes, crewTeamClash{Path: c.Path, WinningRevision: receipt.Revision, LosingRevision: current.Revision, WinningAuthor: actor, LosingAuthor: current.Author, Merged: merged, Hunks: hunks})
+			notices = append(notices, crewTeamClashNotice{clash: state.Clashes[len(state.Clashes)-1]})
 			receipt.Conflicts = append(receipt.Conflicts, c.Path)
 		}
 		state.Events = append(state.Events, crewTeamEvent{Path: c.Path, Kind: kind, Revision: receipt.Revision, Actor: actor, At: now, File: after, Chunks: chunks})
@@ -396,6 +399,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 	}
 	log.Printf("[CREW_TEAM_FILES] project=%s actor=%s transfer=%s revision=%d changes=%d conflicts=%d", project, actor, transfer, state.Revision, len(changes), len(receipt.Conflicts))
 	publishCrewPanelChanged(project)
+	notifyCrewTeamClashes(project, team, notices)
 	return receipt, nil
 }
 

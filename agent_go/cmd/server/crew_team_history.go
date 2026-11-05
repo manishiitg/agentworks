@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -107,14 +108,18 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		}
 		externalJSON(w, map[string]any{"events": out, "revision": s.Revision})
 	case "clashes":
-		out := []crewTeamClash{}
+		// with_text (agents): both versions' text, the file now and the other person's from history.
+		withText := r.URL.Query().Get("with_text") != ""
+		store, _ := crewTeamChunkStore(project)
+		out := []crewTeamClashView{}
 		for i := len(s.Clashes) - 1; i >= 0; i-- {
 			c := s.Clashes[i]
 			if !c.Resolved && allowed(c.Path) {
-				c.Source = "team_folder"
-				c.WinningAuthor = shareOwnerLabel(c.WinningAuthor)
-				c.LosingAuthor = shareOwnerLabel(c.LosingAuthor)
-				out = append(out, c)
+				view := crewTeamClashViewOf(store, s, c, withText && store != "")
+				view.Source = "team_folder"
+				view.WinningAuthor = shareOwnerLabel(c.WinningAuthor)
+				view.LosingAuthor = shareOwnerLabel(c.LosingAuthor)
+				out = append(out, view)
 			}
 		}
 		externalJSON(w, map[string]any{"clashes": out, "revision": s.Revision})
@@ -175,8 +180,10 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 			Keep            string `json:"keep"`
 			WinningRevision uint64 `json:"winning_revision"`
 			TransferID      string `json:"transfer_id"`
+			// Content is a merged text an agent wrote; it is saved as a new revision by the caller.
+			Content *string `json:"content"`
 		}
-		if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in) != nil || !allowed(in.Path) || in.TransferID == "" {
+		if json.NewDecoder(io.LimitReader(r.Body, 3*crewTeamMergeMaxBytes)).Decode(&in) != nil || !allowed(in.Path) || in.TransferID == "" {
 			externalError(w, 400, "invalid_resolution", "Choose the file and which version to keep.")
 			return
 		}
@@ -184,27 +191,67 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 			externalError(w, 403, "team_folder_forbidden", e.Error())
 			return
 		}
-		if in.WinningRevision == 0 {
-			in.WinningRevision = s.Revision
+		how := "keep_current"
+		var write *crewTeamChange
+		before := ""
+		if current := s.Versions[in.Path].File; current != nil {
+			before = current.Hash
 		}
-		if in.Keep != "current" {
+		switch {
+		case in.Content != nil:
+			// The agent's merged text, written like any save so every copy downloads it.
+			if len(*in.Content) > crewTeamMergeMaxBytes {
+				externalError(w, 400, "invalid_resolution", "The merged text is over 2 MiB; sort this file out in the Files panel.")
+				return
+			}
+			store, err := crewTeamChunkStore(project)
+			if err != nil {
+				externalError(w, 409, "team_restore_failed", err.Error())
+				return
+			}
+			executable := false
+			if current := s.Versions[in.Path].File; current != nil {
+				executable = current.Executable
+			}
+			version, err := crewTeamChunkReader(strings.NewReader(*in.Content), int64(len(*in.Content)), executable, func(id string, data []byte) error { return crewTeamPutChunk(store, id, data) })
+			if err != nil {
+				externalError(w, 409, "team_restore_failed", err.Error())
+				return
+			}
+			how, write = "content", &crewTeamChange{Path: in.Path, Before: before, After: &version}
+		case in.Keep == "other":
+			// The other person's version: the clash's losing side, put back as a new revision.
+			c, ok := s.crewTeamOpenClash(in.Path, in.WinningRevision)
+			if !ok {
+				externalError(w, 404, "clash_not_found", "There is no open clash for this file; list the clashes first.")
+				return
+			}
+			in.WinningRevision = c.WinningRevision
+			how, write = "keep_other", &crewTeamChange{Path: in.Path, Before: before}
+			if !s.crewTeamClashRemoved(c) {
+				write.After = s.versionAt(in.Path, c.LosingRevision)
+			}
+		case in.Keep != "current":
 			raw, ok := strings.CutPrefix(in.Keep, "revision:")
 			revision, err := strconv.ParseUint(raw, 10, 64)
 			if !ok || err != nil || revision > s.Revision {
-				externalError(w, 400, "invalid_revision", "Choose one of the saved revisions.")
+				externalError(w, 400, "invalid_revision", "Choose keep current or other, or one of the saved revisions.")
 				return
 			}
-			// The kept version's chunks are still in the store: restoring is a new revision with them.
-			before := ""
-			if current := s.Versions[in.Path].File; current != nil {
-				before = current.Hash
-			}
-			change := crewTeamChange{Path: in.Path, Before: before, After: s.versionAt(in.Path, revision)}
+			how, write = "revision", &crewTeamChange{Path: in.Path, Before: before, After: s.versionAt(in.Path, revision)}
+		}
+		if in.WinningRevision == 0 {
+			in.WinningRevision = s.Revision
+		}
+		if write != nil {
+			// A kept version's chunks are still in the store: restoring is a new revision with them.
+			change := *write
 			if change.After != nil && len(change.After.Chunks) == 0 && change.After.Size > 0 {
 				externalError(w, 409, "team_history_unavailable", "This version is unavailable.")
 				return
 			}
-			if _, e = commitCrewTeamChanges(r.Context(), project, claims.UserID, in.TransferID, crewTransferDigest("restore\x00"+in.Path+"\x00"+in.Keep), []crewTeamChange{change}); e != nil {
+			wire, _ := json.Marshal(change.After)
+			if _, e = commitCrewTeamChanges(r.Context(), project, claims.UserID, in.TransferID, crewTransferDigest("restore\x00"+in.Path+"\x00"+in.Keep+"\x00"+string(wire)), []crewTeamChange{change}); e != nil {
 				externalError(w, 409, "team_restore_failed", e.Error())
 				return
 			}
@@ -214,14 +261,20 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 				return
 			}
 		}
+		resolved := 0
 		for i := range s.Clashes {
-			if s.Clashes[i].Path == in.Path && s.Clashes[i].WinningRevision <= in.WinningRevision {
+			if s.Clashes[i].Path == in.Path && s.Clashes[i].WinningRevision <= in.WinningRevision && !s.Clashes[i].Resolved {
 				s.Clashes[i].Resolved = true
+				resolved++
 			}
 		}
 		if e = fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), s, 0600); e != nil {
 			externalError(w, 409, "team_restore_failed", e.Error())
 			return
+		}
+		if resolved > 0 {
+			log.Printf("[CREW_TEAM_SYNC] clash_resolved project=%s path=%q by=%s how=%s clashes=%d revision=%d", project, in.Path, claims.UserID, how, resolved, s.Revision)
+			publishCrewPanelChanged(project)
 		}
 		externalJSON(w, map[string]any{"resolved": true, "revision": s.Revision})
 	}

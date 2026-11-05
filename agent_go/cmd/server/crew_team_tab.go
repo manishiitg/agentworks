@@ -245,17 +245,13 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 			files++
 		}
 	}
-	clashes := 0
-	for _, c := range s.Clashes {
-		if !c.Resolved {
-			clashes++
-		}
-	}
+	// An open clash stays on the line, by file, until someone sorts it out (owner, 5 Nov).
+	open := crewTeamOpenClashPaths(s.Clashes)
 	clashLine := "no clashes"
-	if clashes > 0 {
-		clashLine = fmt.Sprintf("%d %s", clashes, plural(clashes, "clash", "clashes"))
+	if len(open) > 0 {
+		clashLine = crewTeamClashLine(open)
 	}
-	out := &crewTeamTabSync{Problem: clashes > 0}
+	out := &crewTeamTabSync{Problem: len(open) > 0}
 	if n := len(s.Events); n > 0 {
 		e := s.Events[n-1]
 		if at, err := time.Parse(time.RFC3339Nano, e.At); err == nil {
