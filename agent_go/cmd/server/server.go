@@ -4611,7 +4611,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if req.LLMConfig != nil && req.LLMConfig.Primary.ConnectionID != "" {
 			connectionID = req.LLMConfig.Primary.ConnectionID
 		}
-		req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: finalProvider, ModelID: finalModelID, ConnectionID: connectionID}}
+		// The chat's own options (its reasoning effort) stay when the locked answer is the model it chose: rebuilding
+		// without them dropped the effort picked in the chat, so Claude never got --effort (5 Nov).
+		var keptOptions map[string]interface{}
+		if req.LLMConfig != nil && strings.EqualFold(req.LLMConfig.Primary.Provider, finalProvider) && req.LLMConfig.Primary.ModelID == finalModelID {
+			keptOptions = maps.Clone(req.LLMConfig.Primary.Options)
+		}
+		req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: finalProvider, ModelID: finalModelID, ConnectionID: connectionID, Options: keptOptions}}
 		req.LLMConfigSource = ""
 		supported := getSupportedProviders()
 		if len(supported) > 0 {
@@ -6352,6 +6358,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		agentConfig.ServerName = serverList
 
 		applySharedLLMAgentTuning(&agentConfig, &req, presetLLMConfig)
+		api.applyCompactEarlyToClaude(&agentConfig, sessionID, currentUserID)
 
 		// Set agent mode based on request
 		agentConfig.AgentMode = mcpagent.SimpleAgent
