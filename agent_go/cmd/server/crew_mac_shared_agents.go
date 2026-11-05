@@ -123,7 +123,12 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 	return out, nil
 }
 
-func writeMacSharedAgents(project string, agents []macSharedAgent) error {
+func writeMacSharedAgents(project string, agents []macSharedAgent) (result error) {
+	defer func() {
+		if result == nil {
+			publishCrewPanelChanged(project)
+		}
+	}()
 	path, err := macSharedAgentsPath(project)
 	if err != nil {
 		return err
@@ -731,6 +736,7 @@ var macAsks = struct {
 }{byProject: map[string][]macAskActivity{}}
 
 func noteMacAsk(project string, ask macAskActivity) {
+	defer publishCrewPanelChanged(project)
 	macAsks.Lock()
 	defer macAsks.Unlock()
 	kept := []macAskActivity{}

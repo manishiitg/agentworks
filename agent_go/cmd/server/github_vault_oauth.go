@@ -486,6 +486,7 @@ func (api *StreamingAPI) disconnectGitHub(ctx context.Context, person string) (b
 	if err := os.Remove(githubRecordPath(person)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return revoked, err
 	}
+	publishCrewPanelForPerson(person)
 	log.Printf("[GITHUB_VAULT] disconnected person=%s revoked_at_github=%t", person, revoked)
 	return revoked, nil
 }

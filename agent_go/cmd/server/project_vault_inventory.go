@@ -53,6 +53,7 @@ func (api *StreamingAPI) selectProjectVaultItem(ctx context.Context, person, wor
 		if err := api.setProjectSelectedServers(ctx, scope.Workspace, func(current []string) []string { return current }, !selected); err != nil {
 			return before, err
 		}
+		publishCrewPanelForPerson(person)
 		return api.projectVaultInventory(ctx, person, workspace)
 	}
 	var item *projectVaultItem
@@ -144,6 +145,7 @@ func (api *StreamingAPI) selectProjectVaultItem(ctx context.Context, person, wor
 		}
 	}
 	log.Printf("[PROJECT_VAULT] actor=%q workspace=%q kind=%q item=%q selected=%t", person, root, kind, id, selected)
+	publishCrewPanelForPerson(person)
 	return api.projectVaultInventory(ctx, person, root)
 }
 

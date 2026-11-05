@@ -107,6 +107,7 @@ func (api *StreamingAPI) saveGitHubAccount(ctx context.Context, person, token, s
 		return nil, errors.New("Your GitHub connection details could not be saved. Try again.")
 	}
 	log.Printf("[GITHUB_VAULT] connected person=%s github_login=%s source=%s", person, login, source)
+	publishCrewPanelForPerson(person)
 	return &rec, nil
 }
 

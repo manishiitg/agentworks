@@ -23,7 +23,8 @@ const (
 	// Sessions: the set or status of running sessions/executions changed
 	// (header activity monitor). Never published per event, only on status
 	// transitions.
-	Sessions Kind = "sessions"
+	Sessions  Kind = "sessions"
+	CrewPanel Kind = "crew_panel"
 	// Schedules: the workflow schedule summary changed (header).
 	Schedules Kind = "schedules"
 	// Notifications: org-dashboard notifications for a workflow changed.
@@ -47,6 +48,7 @@ const (
 // Notice is one change. Workflow is the workspace path ("Workflow/<folder>")
 // for workflow-scoped kinds and empty for global ones.
 type Notice struct {
+	Project  string `json:"project,omitempty"`
 	Kind     Kind   `json:"kind"`
 	Workflow string `json:"workflow,omitempty"`
 	// Session names a chat session for session-scoped kinds (ui_control).
@@ -147,6 +149,10 @@ func (b *Bus) PublishToUser(kind Kind, user, session string) {
 		return
 	}
 	b.publish(Notice{Kind: kind, Session: session, User: user})
+}
+
+func (b *Bus) PublishProject(kind Kind, project string) {
+	b.publish(Notice{Kind: kind, Project: project})
 }
 
 func (b *Bus) publish(n Notice) {

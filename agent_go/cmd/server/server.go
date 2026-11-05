@@ -369,6 +369,8 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
+	crewPanels crewPanelCache
+
 	crewTurnSnapshots     sync.Map // execution ID -> *crewTurnSnapshot; no transcript content
 	workspaceGitChatUsage sync.Map // authorized chat/workspace -> incremental tool-path index
 
@@ -2388,6 +2390,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.Use(api.apiRequestLogMiddleware)
 	apiRouter.Use(agentBridgeAPIMiddleware)
 	apiRouter.Use(api.crewChatRelayMiddleware)
+	apiRouter.HandleFunc("/crews/{project}/panel", api.handleCrewPanel).Methods("GET")
 	apiRouter.HandleFunc(strings.TrimPrefix(dashboardAppFramePath, "/api"), api.dashboardAppFrame).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/agents", api.handleBullpenAgents).Methods("GET")
 	apiRouter.HandleFunc("/agent-directory", api.handleAgentDirectory).Methods("GET")
