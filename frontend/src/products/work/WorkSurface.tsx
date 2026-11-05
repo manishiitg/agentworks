@@ -57,6 +57,7 @@ import { parseProductInteraction } from '../../../shared/session/interactions'
 import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
 import { ChatEmptyState } from './ChatEmptyState'
 import { useCrewLivesOnMac } from './YourComputerPanel'
+import { CrewWorksElsewhere, useCrewWorksElsewhere } from './CrewWorksElsewhere'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { type RunsOnSelection } from './RunsOnPicker'
 import { rememberRunsOn } from './runsOnMemory'
@@ -991,6 +992,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   // A Crew that lives on its owner's Mac, seen from the website or phone (owner, 3 Nov): only the chat, no right
   // panel, because its work area is on the Mac. The Mac app itself keeps the full panel.
   const macOnly = useCrewLivesOnMac(selected?.id)
+  // A Team member's own agents work in one place; in the other the Crew is one plain screen (owner, 5 Nov).
+  const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '').elsewhere
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   useEffect(() => {
@@ -1434,7 +1437,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                       <div className="relative flex min-h-0 flex-1 flex-col">
                         {teamBoardProject === selected.id && <TeamBoard projectId={selected.id} onClose={closeTeamBoard} />}
                         <div className="min-h-0 flex-1">
-                        <ChatArea
+                        {worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}
                           compact
                           landingContent={<ChatEmptyState tabId={tabId} />}
@@ -1444,7 +1447,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                           // Code only, and only its owner: New chat replaces this project's conversation in the same
                           // tab (the server rotates the project's session), never a second, parallel chat.
                           showNewChatAction={!isWorkSessionRun(selected) && tabId === canonicalTabId}
-                        />
+                        />}
                         </div>
                       </div>
                   ) : (

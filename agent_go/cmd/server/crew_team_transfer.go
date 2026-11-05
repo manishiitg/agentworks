@@ -581,6 +581,7 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/switch", api.handleDesktopCrewTeamSwitch).Methods("POST")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/join", api.handleDesktopCrewTeamJoin).Methods("GET", "POST")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/remove-from-mac", api.handleDesktopCrewTeamRemoveFromMac).Methods("POST")
+	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/add-to-mac", api.handleDesktopCrewTeamAddToMac).Methods("POST")
 }
 
 // Keep request identifiers usable in private state without accepting a path.

@@ -199,6 +199,7 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 		return "", err
 	}
 	log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_copy_on_mac online_project=%s", local, project)
+	publishCrewPanelChanged(local)
 	return local, nil
 }
 
@@ -233,6 +234,9 @@ func (api *StreamingAPI) handleDesktopCrewTeamRemoveFromMac(w http.ResponseWrite
 		}
 	}
 	log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_copy_off_mac online_project=%s", local, project)
+	if local != "" {
+		publishCrewPanelChanged(local)
+	}
 	externalJSON(w, map[string]any{"where": "web", "project_id": local})
 }
 
@@ -252,6 +256,7 @@ func dropCrewMacPair(user, project, pair string) {
 		}
 		sock.mu.Unlock()
 	}
+	publishCrewPanelChanged(project)
 }
 
 // setCrewTeamMacOnlyMe sets In team / Only me for one of the member's own agents on their Mac (its row key from
@@ -302,4 +307,57 @@ func setCrewTeamMacOnlyMe(w http.ResponseWriter, r *http.Request, project, user,
 	log.Printf("[CREW_TEAM] agent visibility user=%s tab=%s in_team=%t place=mac", logUsernameForUserID(user), tab, !onlyMe)
 	externalJSON(w, map[string]any{"in_team": !onlyMe})
 	return true
+}
+
+// crewTeamWhereFor is where the caller's own agents in this Crew work, when they are a Team member: on the server
+// from the Team record; on a Mac for its member copy, from whether this Mac still offers it.
+func crewTeamWhereFor(project, user string) string {
+	if IsLocalMode() {
+		if readCrewTeamState(project).MemberOf == "" {
+			return ""
+		}
+		if b, err := crewroot.ReadSync(project); err == nil && b != nil && b.Editing == "local" {
+			return "mac"
+		}
+		return "web"
+	}
+	t, err := readCrewTeam(project)
+	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID {
+		return ""
+	}
+	return t.view(user).Where
+}
+
+// handleDesktopCrewTeamAddToMac moves the member's agents of a Team's Crew back to this Mac's existing copy ("Add to
+// this Mac instead"); a Mac without one adds it from the Team invite.
+func (api *StreamingAPI) handleDesktopCrewTeamAddToMac(w http.ResponseWriter, r *http.Request) {
+	if !desktopConnectionGate(w, r) {
+		return
+	}
+	claims := GetUserFromContext(r.Context())
+	connectionID, project := mux.Vars(r)["connection"], mux.Vars(r)["project"]
+	if !crewTeamClientID(project) {
+		externalError(w, 400, "invalid_team", "Choose a team.")
+		return
+	}
+	c, err := desktopConnectionFor(claims.UserID, connectionID)
+	if err != nil {
+		externalError(w, 409, "team_connection_required", err.Error())
+		return
+	}
+	if crewTeamMemberCopy(project) == "" {
+		externalError(w, 404, "no_mac_copy", "This Mac has no copy of this Crew yet. Use Add to my Mac on the Team invite.")
+		return
+	}
+	var team crewTeam
+	if err = crewTeamRemoteJSON(r.Context(), claims.UserID, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project), nil, &team); err != nil {
+		externalError(w, 409, "team_unavailable", err.Error())
+		return
+	}
+	local, err := api.addCrewTeamToMac(r.Context(), claims, c, project, team, "")
+	if err != nil {
+		externalError(w, 409, "mac_copy_failed", err.Error())
+		return
+	}
+	externalJSON(w, map[string]any{"where": "mac", "project_id": local})
 }
