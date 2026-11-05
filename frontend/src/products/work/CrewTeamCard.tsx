@@ -127,7 +127,7 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
         <p>The whole <b className="text-foreground">{team.name}</b> folder{whole ? `: ${sizeLine(whole)}` : ''}. Everyone in the Team reads and edits it.</p>
         <p>Not shared: your chats and memory, app files, <code>node_modules</code>, <code>.git</code> history and caches, and files that look like passwords or keys (you can still choose those in Sync).</p>
         {whole && whole.bytes > 0 && <p className="text-amber-600">First sync sends {mb(whole.bytes)}; you'll see progress under Access.</p>}
-        <p>Back to Folders: one click; you pick folders again. Copies already on teammates' Macs stay there.</p>
+        <p>Back to Folders: one click; your last folders come back (or team/). Copies already on teammates' Macs stay there.</p>
       </div> : <div className="space-y-1.5">
         {(team.folder.folders || []).map(folder => <FolderRow key={folder} folder={folder} connection={target.connection} localProject={target.localProject} busy={busy}
           onRemove={() => void save({ ...team, folder: { folders: (team.folder.folders || []).filter(f => f !== folder) } })} />)}

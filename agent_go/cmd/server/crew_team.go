@@ -126,13 +126,15 @@ type crewTeam struct {
 	Name       string              `json:"name"`
 	OwnerID    string              `json:"owner_id"`
 	// On is the Team tab's switch (owner, 4 Nov): off, the roster stays saved but only the owner is in the team.
-	On           bool             `json:"on"`
-	People       []crewTeamPerson `json:"people"`
-	Folder       crewTeamFolder   `json:"folder"`
-	Revision     uint64           `json:"revision"`
-	OwnerName    string           `json:"owner_name,omitempty"`
-	CanManage    bool             `json:"can_manage"`
-	FolderAccess bool             `json:"folder_access"`
+	On     bool             `json:"on"`
+	People []crewTeamPerson `json:"people"`
+	Folder crewTeamFolder   `json:"folder"`
+	// LastFolders are the folders shared before the Whole Crew, for going back to Folders (owner only).
+	LastFolders  []string `json:"last_folders,omitempty"`
+	Revision     uint64   `json:"revision"`
+	OwnerName    string   `json:"owner_name,omitempty"`
+	CanManage    bool     `json:"can_manage"`
+	FolderAccess bool     `json:"folder_access"`
 	// Lent is what the owner lends the Team's agents in this Crew (names only, from the server, never saved).
 	Lent *crewTeamLent `json:"lent,omitempty"`
 }
@@ -216,6 +218,9 @@ func (t crewTeam) view(user string) crewTeam {
 	// Team-only members can discover shared agents but do not learn folder contents.
 	if !t.FolderAccess && !t.CanManage {
 		t.Folder = crewTeamFolder{}
+	}
+	if !t.CanManage {
+		t.LastFolders = nil
 	}
 	return t
 }
@@ -393,6 +398,17 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	for _, p := range previous.People {
 		if !slices.ContainsFunc(input.People, func(q crewTeamPerson) bool { return q.UserID == p.UserID }) {
 			log.Printf("[CREW_TEAM] project=%s actor=%s event=removed user=%s was_invited=%t", project, owner, logUsernameForUserID(p.UserID), p.Invited)
+		}
+	}
+	// Back to Folders from the Whole Crew picks the folders shared before it, or team/ (owner, 5 Nov); the server decides.
+	input.LastFolders = previous.LastFolders
+	if len(previous.Folder.Folders) > 0 {
+		input.LastFolders = previous.Folder.Folders
+	}
+	if previous.Folder.Whole && !input.Folder.Whole && len(input.Folder.Folders) == 0 {
+		input.Folder.Folders = input.LastFolders
+		if len(input.Folder.Folders) == 0 {
+			input.Folder.Folders = []string{crewTeamDefaultFolder}
 		}
 	}
 	input.Folder.ID = previous.Folder.ID
@@ -676,6 +692,17 @@ func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Reque
 		if input.Folder.Whole {
 			files, bytes := crewTeamShareSize(roots.Files, input.Folder)
 			log.Printf("[CREW_TEAM] local project=%s event=folder whole=true files=%d bytes=%d", roots.ID, files, bytes)
+		} else if len(input.Folder.Folders) == 0 {
+			// Back to Folders with none chosen before: the server picks team/, so it exists here (as Team on makes it).
+			var current crewTeam
+			if crewTeamRemoteJSON(r.Context(), claims.UserID, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID), nil, &current) == nil && current.Folder.Whole && len(current.LastFolders) == 0 {
+				if dir := filepath.Join(roots.Files, crewTeamDefaultFolder); !fileExists(dir) {
+					if err := os.MkdirAll(dir, 0o755); err != nil {
+						externalError(w, 409, "invalid_folder", "The team folder could not be made on this Mac.")
+						return
+					}
+				}
+			}
 		}
 	}
 	var out crewTeam
