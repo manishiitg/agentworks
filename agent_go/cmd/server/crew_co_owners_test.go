@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // Crew co-owners (owner decision 2026-10-15): a co-owner has the main owner's PERMISSIONS on the Crew (build, files, the
@@ -189,5 +191,31 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	}
 	if got := crewTeamMemberFilesPath("owner", root); got != root {
 		t.Fatalf("owner Files root = %q, want %q", got, root)
+	}
+	// A Mac Crew: a member on the web works in their own copy in the Crew's folder, team-copies/<member>/.
+	if err := crewroot.WriteSync("team-proj", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := crewTeamMemberFilesPath("ann", root), root+"/team-copies/ann"; got != want {
+		t.Fatalf("member Files root on a Mac Crew = %q, want %q", got, want)
+	}
+	// team-copies/ is never shared or synced, Whole Crew included, and Files lists only a member's own copy.
+	whole := crewTeamFolder{ID: "f2", Whole: true}
+	if whole.holds("team-copies/ann/notes.md") || whole.walks("team-copies") || crewTeamAllowed("team-copies/ann/notes.md") || !whole.holds("notes.md") {
+		t.Fatal("team-copies/ is part of the Whole Crew share")
+	}
+	for _, tc := range []struct {
+		entry, listing, user string
+		hidden               bool
+	}{
+		{root + "/team-copies", root, "owner", true},
+		{root + "/team-copies/ann", root, "ann", true},
+		{root + "/team-copies/ann/notes.md", root + "/team-copies/ann", "ann", false},
+		{root + "/team-copies/ann/notes.md", root + "/team-copies/ann", "bob", true},
+		{root + "/notes.md", root, "owner", false},
+	} {
+		if got := crewroot.TeamCopyHidden(tc.entry, tc.listing, tc.user); got != tc.hidden {
+			t.Fatalf("Files listing of %q in %q for %s: hidden=%v, want %v", tc.entry, tc.listing, tc.user, got, tc.hidden)
+		}
 	}
 }

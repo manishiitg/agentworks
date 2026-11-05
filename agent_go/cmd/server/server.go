@@ -3221,6 +3221,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	migrateCrewSyncToRelay()
 	migrateMacSharedAudiences()
+	migrateCrewTeamMemberCopies()
 	stopTeamSync := api.startCrewTeamSync()
 	defer stopTeamSync()
 	notifyCtx, stopNotifier := context.WithCancel(context.Background())

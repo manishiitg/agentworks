@@ -181,6 +181,10 @@ func SyncContentAllowed(key string, directory bool) bool {
 	if area == "knowledge" {
 		return (rel == "knowledgebase" || strings.HasPrefix(rel, "knowledgebase/")) && !publication.ExcludedFromSync(rel, directory)
 	}
+	// Team members' working copies are their own, never shared or synced (crew_team_member_copy.go).
+	if first := strings.SplitN(rel, "/", 2)[0]; area != "knowledge" && first == TeamCopiesFolder {
+		return false
+	}
 	if area == "resources" {
 		first := strings.SplitN(rel, "/", 2)[0]
 		switch first {
@@ -197,6 +201,31 @@ func SyncContentAllowed(key string, directory bool) bool {
 		return true
 	}
 	return !publication.ExcludedFromSync(rel, directory)
+}
+
+// TeamCopiesFolder holds each Team member's working copy of a Crew on the server, at team-copies/<member>/.
+const TeamCopiesFolder = "team-copies"
+
+// TeamCopyHidden: a Files listing never shows team-copies/; a person sees only their own copy, when the listing is
+// opened inside it (their Files root). entry and listing are workspace paths, user the caller's id.
+func TeamCopyHidden(entry, listing, user string) bool {
+	parts := strings.Split(strings.Trim(filepath.ToSlash(entry), "/"), "/")
+	at := 2
+	if len(parts) > 2 && parts[2] == FilesSegment {
+		at = 3
+	}
+	if len(parts) <= at || !strings.EqualFold(parts[0], "Crew") || parts[at] != TeamCopiesFolder {
+		return false
+	}
+	if user == "" {
+		return true
+	}
+	own := strings.Join(parts[:at+1], "/") + "/" + user
+	inside := func(p string) bool {
+		p = strings.Trim(filepath.ToSlash(p), "/")
+		return p == own || strings.HasPrefix(p, own+"/")
+	}
+	return !inside(entry) || !inside(listing)
 }
 
 // ensureRuntimeDirectory makes a runtime folder before it is granted: a relay copy of a Mac Crew has never run here, so
