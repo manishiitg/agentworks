@@ -39,13 +39,15 @@ type crewSyncRequest struct {
 	SourceID              string                     `json:"source_id,omitempty"`
 	// PreviousProjectID (create): the online copy this Mac Crew had before Mac online was turned off; its Team moves to
 	// the new copy, so people and the shared folder survive off and on (owner, 5 Nov).
-	PreviousProjectID string              `json:"previous_project_id,omitempty"`
-	Name              string              `json:"name,omitempty"`
-	MacName           string              `json:"mac_name,omitempty"`
-	Editing           string              `json:"editing,omitempty"`
-	Snapshot          *crewsync.Snapshot  `json:"snapshot,omitempty"`
-	Agents            []macSharedAgent    `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
-	TeamCopy          *crewTeamCopyRecord `json:"team_copy,omitempty"`
+	PreviousProjectID string `json:"previous_project_id,omitempty"`
+	// TeamMessage (team_message): a Mac agent's message to a Team member's agent (crew_team_message.go).
+	TeamMessage *crewTeamMessageRequest `json:"team_message,omitempty"`
+	Name        string                  `json:"name,omitempty"`
+	MacName     string                  `json:"mac_name,omitempty"`
+	Editing     string                  `json:"editing,omitempty"`
+	Snapshot    *crewsync.Snapshot      `json:"snapshot,omitempty"`
+	Agents      []macSharedAgent        `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
+	TeamCopy    *crewTeamCopyRecord     `json:"team_copy,omitempty"`
 }
 type crewServerCopy struct {
 	Name   string `json:"name"`
@@ -84,6 +86,8 @@ type crewSyncReply struct {
 	AccessSummary string `json:"access_summary,omitempty"`
 	// AccessTree is the side panel's tree under the Access row (crew_access_tree.go).
 	AccessTree []crewAccessLine `json:"access_tree,omitempty"`
+	// InboxID: team_message's conversation, for the Mac agent's later reads.
+	InboxID string `json:"inbox_id,omitempty"`
 	// TeamNote: Mac online off also turned the Team off (owner, 5 Nov).
 	TeamNote string `json:"team_note,omitempty"`
 }
@@ -218,6 +222,10 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	}
 	if input.Action == "share_agents" {
 		api.shareMacCrewAgents(w, r, mux.Vars(r)["project"], input)
+		return
+	}
+	if input.Action == "team_message" {
+		api.crewTeamMessage(w, r, mux.Vars(r)["project"], input)
 		return
 	}
 	if input.Action == "team_copy" || input.Action == "team_copy_record" {

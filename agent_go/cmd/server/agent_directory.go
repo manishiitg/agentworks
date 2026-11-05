@@ -104,6 +104,10 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	if !IsLocalMode() {
 		agents = append(agents, macSharedAgentRows(claims.UserID, false)...)
 	}
+	// On this Mac: the Team members' own agents of each Crew whose Team is on, from its online copy (owner, 5 Nov).
+	if IsLocalMode() {
+		agents = append(agents, teamMemberAgentRows(ctx, claims.UserID, crews)...)
+	}
 	discovered, err := DiscoverWorkflowManifests(ctx)
 	if err != nil {
 		return nil, err
