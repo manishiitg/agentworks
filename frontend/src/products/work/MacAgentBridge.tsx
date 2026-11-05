@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import api from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { Button } from '../../components/ui/Button'
-import { CrewCodingApps } from './CrewCodingApps'
 
 type SharedAgent = { tab: string; audience: 'team' | 'everyone' | 'chosen' | ''; people?: string[]; address?: string; can_change?: boolean; agentbridge_public?: boolean }
 type AgentRow = { tab: string; name: string; purpose: string; icon?: string }
@@ -11,7 +9,7 @@ type Placement = { location: 'publishing' | 'server' }
 /** AgentBridge on the Mac online tab (owner, 4 Nov mockup): agents, not people. Per agent, Only my agents | Public. Public
  * is its own setting (owner, 5 Nov: Public is AgentBridge only): any agent on the server can message it, and it is never
  * listed on anyone's website. Who can use it as a person stays the Team tab's choice; this tab never changes it. */
-export function MacAgentBridge({ projectId, connection, network, crewName }: { projectId: string; connection: string; network: string; crewName: string }) {
+export function MacAgentBridge({ projectId, connection, crewName }: { projectId: string; connection: string; crewName: string }) {
   const [rows, setRows] = useState<AgentRow[] | null>(null)
   const [shared, setShared] = useState<SharedAgent[]>([])
   const [placements, setPlacements] = useState<Record<string, Placement>>({})
@@ -48,6 +46,11 @@ export function MacAgentBridge({ projectId, connection, network, crewName }: { p
       setBusy(false)
     }
   }
+  const copySetup = async () => {
+    const line = `Connect to AgentWorks, then ask my ${JSON.stringify(crewName)} Crew's agent to help me.`
+    try { await navigator.clipboard.writeText(line); setCopied('setup'); window.setTimeout(() => setCopied(''), 1500) }
+    catch { setError('Copy this setup line into your coding app: ' + line) }
+  }
   if (!rows) return null
   return <div aria-label="AgentBridge">
     {rows.map(row => {
@@ -71,25 +74,8 @@ export function MacAgentBridge({ projectId, connection, network, crewName }: { p
             </div>}
       </div>
     })}
-    <CrewCodingApps connection={connection} crewName={crewName} otherCrews={<OtherCrews projectId={projectId} />} />
-    <p className="pb-2.5 pl-3 text-[12.5px] text-muted-foreground">Public: any agent on {network} can find and message it. It does not appear on anyone's website. It stays on this Mac.</p>
+    {/* Your own coding apps can always message this Crew: one setup line to paste there (owner, 5 Nov: less text). */}
+    <button type="button" className="border-t border-border py-2.5 pl-3 text-left text-xs text-primary hover:underline w-full" onClick={() => void copySetup()}>{copied === 'setup' ? 'Copied' : 'Copy setup line'}</button>
     {error && <p role="alert" className="pl-3 text-xs text-amber-600">{error}</p>}
   </div>
-}
-
-/** This Mac's other Crews, which can always message this one: names from the Mac's own agent directory. */
-function OtherCrews({ projectId }: { projectId: string }) {
-  const [names, setNames] = useState<string[]>([])
-  useEffect(() => {
-    let live = true
-    // The person's own Crews are "crew" rows; "crew_agent" rows are other people's shared agents.
-    void api.get<{ agents?: { kind?: string; crew_id?: string; name?: string }[] }>('/api/agent-directory', { skipSessionContext: true }).then(({ data }) => {
-      const seen = new Set<string>()
-      for (const row of data.agents || []) if (row.kind === 'crew' && row.crew_id !== projectId && row.name) seen.add(row.name)
-      if (live) setNames([...seen])
-    }).catch(() => {})
-    return () => { live = false }
-  }, [projectId])
-  if (!names.length) return null
-  return <span>· your other Crews ({names.slice(0, 3).join(', ')}{names.length > 3 ? '…' : ''})</span>
 }
