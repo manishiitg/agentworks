@@ -281,7 +281,6 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		out.AccessSummary = crewAccessSummaryFor(r.Context(), GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
 		out.AccessTree = api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), out.ProjectID, out.Binding)
 		out.Where = crewTeamWhereFor(out.ProjectID, GetUserIDFromContext(r.Context()))
-		go api.refreshCrewTeamAll(context.WithoutCancel(r.Context()), GetUserFromContext(r.Context()), out.ProjectID) // never slows this read
 		if IsLocalMode() {
 			out.Asking = api.recentMacAsks(out.ProjectID)
 		}
