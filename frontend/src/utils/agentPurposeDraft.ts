@@ -6,7 +6,7 @@ import { CHAT_FOCUS_COMPOSER_EVENT } from './workspacePaneChat'
 import { ownerShortName } from '../components/chat/chatTabName'
 
 /** The words the purpose button puts in a tab's chat box; the person adds one line and sends it, and the agent saves its name and purpose (owner, 5 Nov: no icons). */
-export const AGENT_PURPOSE_PROMPT = "Set this agent's name and purpose: "
+export const AGENT_PURPOSE_PROMPT = "Set your name and purpose (sessions action=identity). If I add nothing here, suggest them from your work in this chat and save them: "
 
 function fillDraft(tabId: string, prompt: string) {
   const store = useChatStore.getState()
