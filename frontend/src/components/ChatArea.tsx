@@ -30,6 +30,7 @@ import type { PollingEvent, ExtendedLLMConfiguration, SSEEventMessage, SSEStatus
 import type { AgentMode } from '../stores/types'
 import { ChatInput } from './ChatInput'
 import { ChatLinkStatus } from './chat/ChatLinkStatus'
+import { NotifyNudge } from './chat/NotifyNudge'
 import { ComposerPendingPrompt } from './chat/ComposerPendingPrompt'
 import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { StepInspectionTabs } from './chat/StepInspectionTabs'
@@ -1128,6 +1129,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // Cancel button. Display state needs a signal that stays true for the whole
   // turn; the composer keeps the volatile one.
   const activeTabBusy = activeTabStreaming || !!activeTab?.hasRunningBgAgents
+  // The one-time phone notification nudge waits for a message the person sent here.
+  const [sentHere, setSentHere] = useState(false)
   // Resume give-up TIMER only. A resume that never produces a terminal/content may
   // eventually fall to 'landing'; resumeGaveUp flips true after RESUME_SETTLE_MS so
   // a genuinely-dead resume isn't stuck on a spinner forever. This is purely a
@@ -3873,6 +3876,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       {canDockCodingAgentQuestion && dockedCodingAgentPrompt && (
         <ComposerPendingPrompt key={`${dockedCodingAgentPrompt.provider}:${dockedCodingAgentPrompt.promptId}`} prompt={dockedCodingAgentPrompt} onAnswer={answerCodingAgentQuestion} />
       )}
+      {sentHere && !hideInput && !observingOwnerTab && <NotifyNudge agentName={activeTab?.name || 'the agent'} />}
       {!hideInput && !observingOwnerTab && (
         <ChatInput
           // The composer owns tab-local draft, paste, upload and submit state.
@@ -3881,7 +3885,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           // foreground catch-up loop, which can drop another tab's completion
           // while a resumed chat is opening.
           key={targetTabId ?? 'inactive-chat-input'}
-          onSubmit={(query, options) => onSubmitOverride ? onSubmitOverride(query, options) : submitQueryWithQuery(query, undefined, options)}
+          onSubmit={(query, options) => { setSentHere(true); return onSubmitOverride ? onSubmitOverride(query, options) : submitQueryWithQuery(query, undefined, options) }}
           onStopStreaming={stopStreaming}
           onNewChat={() => void handleNewChat(targetTabId ?? undefined)}
           tabId={targetTabId}

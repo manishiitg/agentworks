@@ -5,7 +5,7 @@ import { iconButtonClass } from '../ui/IconPopover'
 import { useChatStore } from '../../stores'
 import { playNotificationSound } from '../../utils/sound'
 import {
-  loadNotifySettings, notifyDeviceId, saveNotifyChats, turnNotificationsOff, turnNotificationsOn,
+  loadNotifySettings, notifyDeviceId, notifyErrorToast, saveNotifyChats, turnNotificationsOff, turnNotificationsOn,
   type NotifyChats, type NotifySettings,
 } from '../../services/notifications'
 
@@ -45,7 +45,7 @@ export default function NotifyBell() {
   const run = async (change: () => Promise<void>) => {
     if (busy) return
     setBusy(true)
-    try { await change() } catch (error) { addToast(error instanceof Error ? error.message : 'Notifications could not be changed. Try again.', 'error') }
+    try { await change() } catch (error) { addToast(...notifyErrorToast(error)) }
     finally { setBusy(false) }
   }
 

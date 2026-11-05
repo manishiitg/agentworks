@@ -57,6 +57,14 @@ export const loadNotifySettings = () => call<NotifySettings>(deviceBase(), '/api
 
 export const saveNotifyChats = (chats: NotifyChats) => call<NotifySettings>(deviceBase(), '/api/notifications', 'PUT', { chats })
 
+export const saveNotifyNeedsMe = (needsMe: boolean) => call<NotifySettings>(deviceBase(), '/api/notifications', 'PUT', { needs_me: needsMe })
+
+// removeNotifyDevice stops notifications on one of the person's devices; this device also drops its subscription.
+export async function removeNotifyDevice(id: string): Promise<NotifyDevice[]> {
+  if (id === notifyDeviceId()) return turnNotificationsOff()
+  return (await call<{ devices: NotifyDevice[] }>(deviceBase(), `/api/notifications/devices/${encodeURIComponent(id)}`, 'DELETE')).devices
+}
+
 function deviceLabel(): string {
   if (isMacApp()) return 'This Mac app'
   const ua = navigator.userAgent
@@ -70,6 +78,22 @@ function base64UrlToBytes(value: string): Uint8Array {
   return Uint8Array.from(atob(padded), c => c.charCodeAt(0))
 }
 
+// An iPhone or iPad shows notifications only for a site opened from its Home Screen (Apple's rule).
+export const NOTIFY_HOME_SCREEN_HINT = 'First add AgentWorks to your Home Screen (Share › Add to Home Screen), then open it from there and tap Turn on.'
+
+// notifyErrorToast words a failed change for the toast; the Home Screen step is advice, not an error.
+export function notifyErrorToast(error: unknown): [string, 'info' | 'error'] {
+  const message = error instanceof Error && error.message ? error.message : 'Notifications could not be changed. Try again.'
+  return [message, message === NOTIFY_HOME_SCREEN_HINT ? 'info' : 'error']
+}
+
+export function notifyNeedsHomeScreen(): boolean {
+  if (typeof window === 'undefined' || isMacApp()) return false
+  const apple = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
+  const standalone = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true
+  return apple && !standalone
+}
+
 export function webPushSupported(): boolean {
   return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 }
@@ -80,6 +104,7 @@ export async function turnNotificationsOn(settings: NotifySettings, sound: boole
   if (isMacApp()) {
     return (await call<{ devices: NotifyDevice[] }>(deviceBase(), '/api/notifications/devices', 'POST', { id, kind: 'mac', label: deviceLabel(), sound })).devices
   }
+  if (notifyNeedsHomeScreen()) throw new Error(NOTIFY_HOME_SCREEN_HINT)
   if (!webPushSupported()) throw new Error("This browser can't show notifications.")
   const permission = await Notification.requestPermission()
   if (permission !== 'granted') throw new Error('Notifications are blocked for this site. Allow them in the browser\'s site settings, then try again.')

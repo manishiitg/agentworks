@@ -311,7 +311,9 @@ func (api *StreamingAPI) handleNotifications(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		rec, err = updateNotifyRecord(user, func(rec *notifyRecord) error {
-			rec.Prefs.Chats = strings.TrimPrefix(in.Chats, "mine")
+			if in.Chats != "" { // a change names only what it changes
+				rec.Prefs.Chats = strings.TrimPrefix(in.Chats, "mine")
+			}
 			if in.NeedsMe != nil {
 				rec.Prefs.NeedsMeOff = !*in.NeedsMe
 			}

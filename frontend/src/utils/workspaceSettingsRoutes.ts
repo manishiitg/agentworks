@@ -2,6 +2,7 @@ export const WORKSPACE_SETTINGS_PATHS = {
   providers: '/settings/ai-accounts',
   mcp: '/settings/ai-tools',
   users: '/settings/people',
+  notifications: '/settings/notifications',
 } as const
 export type WorkspaceSettingsPage = keyof typeof WORKSPACE_SETTINGS_PATHS
 
