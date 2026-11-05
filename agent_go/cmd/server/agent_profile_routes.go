@@ -468,9 +468,10 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		externalError(w, http.StatusForbidden, "tab_owner", err.Error())
 		return
 	}
-	// A Team member's agent runs on their own login here, never the owner's or the server's (owner, 5 Nov).
-	if caller := productWorkspaceUserID(r.Context()); conversation.Provider != "" && crewTeamOnlyMember(conversation.WorkspacePath, caller) && ownDefaultProviderAccountID(r.Context(), caller, conversation.Provider) == "" {
-		log.Printf("[CREW_TEAM] member turn refused user=%s provider=%s reason=no_own_login", logUsernameForUserID(caller), conversation.Provider)
+	// A Crew's co-owners (registered or through its Team) run on their own login, never the owner's or the server's
+	// (owner, 5 Nov: the owner no longer pays for co-owners' turns).
+	if caller := productWorkspaceUserID(r.Context()); conversation.Provider != "" && crewIsCoOwner(conversation.WorkspacePath, caller) && ownDefaultProviderAccountID(r.Context(), caller, conversation.Provider) == "" {
+		log.Printf("[CREW_OWNERS] co_owner turn refused user=%s provider=%s reason=no_own_login", logUsernameForUserID(caller), conversation.Provider)
 		externalError(w, http.StatusConflict, "own_login_required", fmt.Sprintf("Sign in to %s on this server once (Providers), so your agent here runs on your own login.", providerAccountProductName(conversation.Provider)))
 		return
 	}

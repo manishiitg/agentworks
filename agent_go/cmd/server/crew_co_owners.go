@@ -109,20 +109,9 @@ func crewRoleOf(root, userID string) string {
 	return crewRoleNone
 }
 
-// coOwnerTurnOwner is the main owner of the Crew at workspacePath when callerID is one of its CO-owners, or "". Such a
-// caller's Builder turn runs as that owner for provider accounts and token limits (their cost is billed to the owner;
-// the cost record still names the caller).
+// coOwnerTurnOwner is whose provider accounts and token limits a turn uses when it is not the caller's: a Goal or
+// Flow co-owner's turn runs as that Flow's owner (flowOwnerTurnOwner). A Crew's co-owners, registered or through its
+// Team, run on their own login (owner, 5 Nov: the owner no longer pays for co-owners' turns), so for a Crew it is "".
 func coOwnerTurnOwner(ctx context.Context, callerID, workspacePath string) string {
-	if owner := flowOwnerTurnOwner(ctx, callerID, workspacePath); owner != "" {
-		return owner
-	}
-	ref, ok := resolveCrewPath(ctx, callerID, workspacePath)
-	if !ok || ref.OwnerID == "" || ref.OwnerID == sanitizeUserIDForPath(callerID) || !crewIsCoOwner(ref.Root, callerID) {
-		return ""
-	}
-	// A Team member's own agents run on their own login, never the owner's (owner, 5 Nov).
-	if crewTeamOnlyMember(ref.Root, callerID) {
-		return ""
-	}
-	return ref.OwnerID
+	return flowOwnerTurnOwner(ctx, callerID, workspacePath)
 }

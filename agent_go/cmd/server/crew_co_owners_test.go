@@ -87,7 +87,7 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 		t.Fatal("the workspace proxy gate ignores co-owners")
 	}
 
-	// A co-owner's turn runs as the main owner for accounts and limits; the owner's own and a stranger's turn do not change.
+	// Owner, 5 Nov: a Crew co-owner's turn runs on their own login, never the main owner's; nobody's turn borrows it.
 	crewOwners.mu.Lock()
 	crewOwners.entries = map[string]crewOwnerEntry{}
 	crewOwners.read = func(_ context.Context, r string) string {
@@ -98,11 +98,10 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	}
 	crewOwners.mu.Unlock()
 	t.Cleanup(func() { crewOwners.mu.Lock(); crewOwners.read = nil; crewOwners.mu.Unlock() })
-	if got := coOwnerTurnOwner(context.Background(), "co", root+"/instructions.md"); got != "owner" {
-		t.Fatalf("co-owner turn owner = %q, want owner", got)
-	}
-	if coOwnerTurnOwner(context.Background(), "owner", root) != "" || coOwnerTurnOwner(context.Background(), "ann", root) != "" {
-		t.Fatal("only a co-owner's turn runs as the main owner")
+	for _, who := range []string{"co", "owner", "ann"} {
+		if got := coOwnerTurnOwner(context.Background(), who, root+"/instructions.md"); got != "" {
+			t.Fatalf("%s's Crew turn runs as %q, want their own login", who, got)
+		}
 	}
 
 	// Every owner reads every Builder conversation on disk (owner, 2026-10-16); readers read none.
