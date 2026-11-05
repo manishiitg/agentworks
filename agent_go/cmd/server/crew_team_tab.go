@@ -236,6 +236,12 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if a.StatusLabel != "" && a.PlaceLabel == "" { // the place label already says the Mac is off
 				detail = append(detail, a.StatusLabel)
 			}
+			// Always on: a hand back that found the agent had answered on both the Mac and the server (owner only).
+			if mine && p.Owner && a.Place == "mac" {
+				if kept := crewHandbackKeptNote(t.ProjectID, a.Tab); kept != "" {
+					detail = append(detail, kept)
+				}
+			}
 			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
 				OwnerID: p.UserID, OwnerName: p.Name, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceServer: a.PlaceServer, Tab: a.Tab}
 			// Only me is per person (owner, 5 Nov): each person chooses for their own agents, the owner's Mac ones too.

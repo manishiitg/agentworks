@@ -43,9 +43,9 @@ func crewAlwaysOnLog(project, tab, event, reason string, started time.Time) {
 
 // crewStandbyServerWriter: the server answers for this agent now (it ran a turn from the standby copy and has not
 // handed the agent back to the Mac yet).
-// crewAlwaysOnAnswering turns on answering from the server copy (step 2) and the Mac's matching refusal. Off until
-// handing back to the Mac (step 3) is in: until then the standby copy is only kept fresh (step 1). AGENTWORKS_ALWAYS_ON=1
-// turns it on for a test.
+// crewAlwaysOnAnswering turns on answering from the server copy (step 2) and the Mac's matching refusal; off by
+// default, AGENTWORKS_ALWAYS_ON=1 turns it on. Handing back (step 3, crew_agent_handback.go) reads the writer directly
+// and runs either way, so an agent the server answered for never stays stuck there when this is turned off.
 var crewAlwaysOnAnswering = os.Getenv("AGENTWORKS_ALWAYS_ON") == "1"
 
 func crewStandbyServerWriter(project, tab string) bool {
@@ -128,18 +128,86 @@ func (api *StreamingAPI) crewStandbyRoute(ctx context.Context, owner, project, t
 		log.Printf("[ALWAYS_ON] project=%s tab=%s event=import_retry_later import_error=%q", project, tab, err)
 	}
 	crewStandbyImportFailed.Delete(project + "\x00" + tab)
+	// The decision, the in-flight mark and the writer are settled under the lock the hand back flips the writer under:
+	// a call routed here is never lost to a flip that happens before its turn is running or queued.
+	lock := crewStandbyLock(project)
+	lock.Lock()
+	defer lock.Unlock()
+	if !crewStandbyCanAnswer(project, owner, tab) {
+		crewAlwaysOnLog(project, tab, "not_on_server", "handed_back", started)
+		return false
+	}
 	if writes {
-		markCrewStandbyWriter(project, tab)
+		addCrewStandbyFlight(project, tab)
+		markCrewStandbyWriterLocked(project, tab)
 	}
 	return true
 }
 
-// markCrewStandbyWriter records that the server answers for this agent from its standby copy at the copy's revision.
-func markCrewStandbyWriter(project, tab string) {
+// Calls routed to the server copy whose turn is not yet visible as running or queued (crewStandbyRoute until the turn
+// is admitted). handback_done answers Busy while any is in flight. An entry that is never released (a caller that
+// stopped before its turn) expires.
+const crewStandbyFlightExpiry = 2 * time.Minute
+
+var crewStandbyFlights = struct {
+	sync.Mutex
+	at map[string][]time.Time
+}{at: map[string][]time.Time{}}
+
+func addCrewStandbyFlight(project, tab string) {
+	crewStandbyFlights.Lock()
+	defer crewStandbyFlights.Unlock()
+	key := project + "\x00" + tab
+	crewStandbyFlights.at[key] = append(crewStandbyFlights.at[key], time.Now())
+}
+
+// releaseCrewStandbyFlight: one routed call's turn is running or queued now.
+func releaseCrewStandbyFlight(project, tab string) {
+	crewStandbyFlights.Lock()
+	defer crewStandbyFlights.Unlock()
+	key := project + "\x00" + tab
+	if flights := crewStandbyFlights.at[key]; len(flights) > 1 {
+		crewStandbyFlights.at[key] = flights[1:]
+	} else {
+		delete(crewStandbyFlights.at, key)
+	}
+}
+
+func crewStandbyInFlight(project, tab string) bool {
+	crewStandbyFlights.Lock()
+	defer crewStandbyFlights.Unlock()
+	key := project + "\x00" + tab
+	kept := crewStandbyFlights.at[key][:0]
+	for _, at := range crewStandbyFlights.at[key] {
+		if time.Since(at) < crewStandbyFlightExpiry {
+			kept = append(kept, at)
+		}
+	}
+	if len(kept) == 0 {
+		delete(crewStandbyFlights.at, key)
+		return false
+	}
+	crewStandbyFlights.at[key] = kept
+	return true
+}
+
+// crewStandbyFlightHolder lets the owner's website chat (routeCrewMainChat) release its flight once its turn is
+// admitted by the chat handler that called it.
+type crewStandbyFlightHolder struct{ project, tab string }
+
+type crewStandbyFlightHolderKey struct{}
+
+func (h *crewStandbyFlightHolder) release() {
+	if h != nil && h.project != "" {
+		releaseCrewStandbyFlight(h.project, h.tab)
+		h.project = ""
+	}
+}
+
+// markCrewStandbyWriterLocked records that the server answers for this agent from its standby copy at the copy's
+// revision. The caller holds the project's standby lock.
+func markCrewStandbyWriterLocked(project, tab string) {
 	started := time.Now()
-	lock := crewStandbyLock(project)
-	lock.Lock()
-	defer lock.Unlock()
 	rows, err := readCrewStandby(project)
 	if err != nil {
 		return

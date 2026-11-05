@@ -159,8 +159,9 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 		return
 	} else if noteCrewStandbyWriter(project, tab, answer.Writer); answer.Writer == "server" {
 		// The server answers for this agent (Always on, step 2): its chats there are newer than this Mac's, so no copy
-		// is sent until it is handed back.
+		// is sent until it is handed back (step 3, which this Mac starts now).
 		skip("server_writer")
+		go api.handBackCrewStandby(project, tab)
 		return
 	} else if !answer.Eligible {
 		skip("not_in_team")
@@ -198,6 +199,7 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 		}
 		if noteCrewStandbyWriter(project, tab, answer.Writer); answer.Writer == "server" {
 			skip("server_writer")
+			go api.handBackCrewStandby(project, tab)
 			return
 		}
 		if !answer.Eligible {
@@ -284,5 +286,6 @@ func (api *StreamingAPI) crewStandbyMacRefusal(ctx context.Context, profileID, k
 		return ""
 	}
 	log.Printf("[ALWAYS_ON] project=%s tab=%s event=mac_refused reason=server_writer source=%s ms=0", project, tab, source)
+	go api.handBackCrewStandby(project, tab) // one at a time per agent; a running hand back makes this a no-op
 	return crewStandbyMacRefusalLine
 }

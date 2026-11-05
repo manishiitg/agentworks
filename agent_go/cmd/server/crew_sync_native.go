@@ -157,8 +157,11 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 		return
 	}
 	binding, err := crewroot.ReadSync(roots.ID)
+	// push: the Mac sends a native session here (Publish, standby copies). pull: the Mac takes back the server's newer
+	// copy of an agent it answered for while the Mac was off (Always on, crew_agent_handback.go); the server sends only
+	// the bundle that handback_pull staged for this owner on this pair.
 	direction := r.URL.Query().Get("direction")
-	if err != nil || binding == nil || binding.ArchiveOnly || binding.Side != "server" || binding.PairID != r.URL.Query().Get("pair") || direction != "push" || binding.Editing != "local" {
+	if err != nil || binding == nil || binding.ArchiveOnly || binding.Side != "server" || binding.PairID != r.URL.Query().Get("pair") || (direction != "push" && direction != "pull") || binding.Editing != "local" {
 		externalError(w, 409, "native_sync_unavailable", "Use the project's current sync connection.")
 		return
 	}
@@ -208,11 +211,19 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 		conn.WriteJSON(crewNativeErrorReply(err))
 		return
 	}
+	if direction == "pull" {
+		// Only the exact copy handback_pull staged is sent; a stage that changed since asks the Mac to start again.
+		b.Root = stage
+		if err = b.ValidateFiles(); err != nil {
+			conn.WriteJSON(map[string]string{"error": "This conversation changed on the server; try again.", "code": "native_changed"})
+			return
+		}
+	}
 	if err = conn.WriteJSON(map[string]bool{"ready": true}); err != nil {
 		return
 	}
 	stream := &nativersync.Socket{Conn: conn}
-	err = nativersync.Server(ctx, stage, false, stream)
+	err = nativersync.Server(ctx, stage, direction == "pull", stream)
 	if err == nil && direction == "push" {
 		b.Root = stage
 		err = pruneCrewNativeStage(stage, &b)
@@ -258,6 +269,17 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 }
 
 func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection desktopConnection, binding *crewroot.SyncBinding, b *sessiontransfer.Bundle) error {
+	return desktopCrewNativeTransfer(ctx, roots, connection, binding, b, "push")
+}
+
+// desktopCrewNativePull brings the server's copy of a native session (described by b, from handback_pull) into this
+// Mac's native stage for it, sending only what differs from what the stage holds (rsync deltas). b.Root is the stage
+// afterwards and its files match b.
+func desktopCrewNativePull(ctx context.Context, roots crewroot.Roots, connection desktopConnection, binding *crewroot.SyncBinding, b *sessiontransfer.Bundle) error {
+	return desktopCrewNativeTransfer(ctx, roots, connection, binding, b, "pull")
+}
+
+func desktopCrewNativeTransfer(ctx context.Context, roots crewroot.Roots, connection desktopConnection, binding *crewroot.SyncBinding, b *sessiontransfer.Bundle, direction string) error {
 	if crewArchiveOnly(roots) {
 		return fmt.Errorf("this computer continues from saved conversation history")
 	}
@@ -271,11 +293,13 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 	if err != nil {
 		return err
 	}
-	if b.Root != stage {
-		return fmt.Errorf("native export is not staged")
-	}
-	if err = b.ValidateFiles(); err != nil {
-		return err
+	if direction == "push" {
+		if b.Root != stage {
+			return fmt.Errorf("native export is not staged")
+		}
+		if err = b.ValidateFiles(); err != nil {
+			return err
+		}
 	}
 	server, err := desktopServerURL(connection.Server)
 	if err != nil {
@@ -283,7 +307,6 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 	}
 	server.Scheme = map[string]string{"https": "wss", "http": "ws"}[server.Scheme]
 	server.Path = "/api/crew-sync/" + url.PathEscape(binding.PeerProjectID) + "/native"
-	direction := "push"
 	server.RawQuery = url.Values{"pair": {binding.PairID}, "direction": {direction}}.Encode()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
@@ -315,7 +338,7 @@ func desktopCrewNativeSync(ctx context.Context, roots crewroot.Roots, connection
 		return crewSyncPeerError(ready.Code, ready.Error)
 	}
 	stream := &nativersync.Socket{Conn: conn}
-	if err = nativersync.Client(ctx, stage, true, stream); err != nil {
+	if err = nativersync.Client(ctx, stage, direction == "push", stream); err != nil {
 		return err
 	}
 	var result struct {
