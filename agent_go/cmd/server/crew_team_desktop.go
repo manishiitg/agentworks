@@ -170,6 +170,17 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		line, problem = crewAccessProgressLine(*progress), false
 	case err != nil:
 		line, problem = "Can't sync: your company's server can't be reached. Changes here send when it's back.", true
+	default:
+		// An open clash stays on this Mac's line too, by file, until someone sorts it out (owner, 5 Nov).
+		var open struct {
+			Clashes []crewTeamClash `json:"clashes"`
+		}
+		if crewTeamRemoteJSON(r.Context(), owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/clashes?folder_id="+url.QueryEscape(t.Folder.ID), nil, &open) == nil {
+			slices.Reverse(open.Clashes) // the server lists newest first
+			if paths := crewTeamOpenClashPaths(open.Clashes); len(paths) > 0 {
+				line, problem = line+" · "+crewTeamClashLine(paths), true
+			}
+		}
 	}
 	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "file_count": len(b.Files),
 		"skipped": skipped, "skipped_files": choosable, "synced_on_purpose": mine, "too_large": b.TooLarge, "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": progress,

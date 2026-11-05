@@ -132,10 +132,10 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 			detail = "Last change " + crewAccessAgo(f.LastChange)
 		}
 		if f.Progress == nil {
-			if len(f.Clashes) == 0 {
+			if open := crewTeamOpenClashPaths(f.Clashes); len(open) == 0 {
 				detail += " · no clashes"
 			} else {
-				detail += fmt.Sprintf(" · %d %s", len(f.Clashes), plural(len(f.Clashes), "clash", "clashes"))
+				detail += " · " + crewTeamClashLine(open)
 			}
 		}
 		lines = append(lines, crewAccessLine{Kind: "folder", Title: "Shared: " + f.Team.Folder.display(), Detail: detail, Progress: f.Progress})

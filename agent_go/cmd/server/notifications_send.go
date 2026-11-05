@@ -23,9 +23,16 @@ import (
 // What the server notifies about, decided here and only here (notifications.go).
 
 type notifyJob struct {
-	event   string // finished | failed | needs_you
+	event   string // finished | failed | needs_you | team_clash
 	session string
 	owner   string // who started the turn, when the caller knows
+	// direct: a message for named people, not about a chat (a Team clash): each gets their own text on their devices.
+	direct []notifyDirect
+}
+
+type notifyDirect struct {
+	user string
+	msg  notifyMessage
 }
 
 var notifyQueue = make(chan notifyJob, 512)
@@ -178,6 +185,20 @@ func notifyText(event string, chat notifyChat) (string, string) {
 }
 
 func (api *StreamingAPI) notifySend(ctx context.Context, job notifyJob) {
+	if len(job.direct) > 0 {
+		for _, d := range job.direct {
+			rec, err := readNotifyRecord(d.user)
+			if err != nil {
+				continue
+			}
+			for _, device := range rec.Devices {
+				msg := d.msg
+				msg.Event, msg.Sound = job.event, device.Sound
+				api.notifyDeliver(ctx, d.user, device, job, msg)
+			}
+		}
+		return
+	}
 	chat := api.notifyChatFor(ctx, job)
 	title, body := notifyText(job.event, chat)
 	for _, rec := range notifyRecordsWithDevices() {

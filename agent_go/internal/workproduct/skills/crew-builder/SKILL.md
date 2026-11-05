@@ -42,9 +42,13 @@ still require the person's provider login or phone.
 | Connected agents (AgentBridge), Cloud or Laptop access | `panel-access`, `crew-agents` |
 | Instructions & identity; Models; Costs & usage; Terminal | `panel-settings`, `panel-settings`, `panel-settings`, `panel-settings` |
 
-For a shared-folder clash, use `team_sync` to read the clash and compare its two
-revisions. Save the merged file normally, then resolve with `keep=current`.
-Restoring a saved revision creates a new revision; it never erases history.
+Shared-folder clash (two people changed the same lines; both are notified): run
+`team_sync action=clashes` to see both versions, `current` (the file now) and
+`other` (the other person's, kept in history). Show the person the difference in
+plain words, then do what they ask with `team_sync action=resolve path=… clash_id=…`:
+"keep mine" / "keep theirs" → the side whose `who` matches (`keep=current` or
+`keep=other`); "merge them" → write the combined text and pass it as `content`. Each is a new revision every copy downloads and closes the clash;
+history is never erased. Over MCP it is `workspace action=team_clashes` / `team_resolve`.
 
 ## Answering questions about panels and settings
 

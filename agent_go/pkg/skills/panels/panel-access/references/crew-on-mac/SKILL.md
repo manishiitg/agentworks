@@ -24,7 +24,8 @@ chat (the owner only, in the Mac app):
   files, `node_modules`/`.git`/caches and files that look like passwords or keys. Say its size first (the Team card
   shows it); no confirm. Switching back to folders stops syncing the rest; copies already on teammates' Macs stay.
   Teammates get it as one folder with the Crew's layout (~/AgentWorks/<Crew>/ on a Mac, an attached folder for their
-  agents). Sync history and clashes → `team_sync recent` / `clashes`.
+  agents). Sync history and clashes → `team_sync recent` / `clashes`; sort a clash out with
+  `team_sync resolve` (keep=current, keep=other, or merged `content`).
 - Each agent is **In team** (everyone in the Team sees it and its chat live; their agents can message it) or
   **Only me**: `action=share agent=…` / `action=unshare agent=…`. "All my agents" → `action=team_all on=true`.
   Main is In team by default. A purpose is optional (`sessions action=identity` in its tab sets one).

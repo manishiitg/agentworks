@@ -63,6 +63,8 @@ func agentSourceMutates(source, operation string, original bool) bool {
 		return !crewCapabilityRead(operation)
 	case externalCrewCommandsTool:
 		return operation != "list"
+	case externalCrewTeamSyncTool:
+		return operation != "clashes"
 	case "manage_crew_chats":
 		return operation != "list" && operation != "read" && operation != "tools" && operation != "project_context" && operation != "native_list"
 	case "builder_tabs":
@@ -138,6 +140,11 @@ func agentSourceConsentAllowed(claims *UserClaims, tool externalTool) bool {
 		}
 	case "manage_condition_triggers":
 		return externalWatchersAllowed(claims)
+	case externalCrewTeamSyncTool:
+		if action.SourceAction == "clashes" {
+			return claims.AccessToken.Allows("crews:read")
+		}
+		return claims.AccessToken.Allows("crews:write")
 	case "crew_skills", "crew_mcp", externalCrewCommandsTool:
 		scope := "crews:write"
 		if crewCapabilityRead(action.SourceAction) {

@@ -453,6 +453,22 @@
   },
   {
     "family": "workspace",
+    "name": "team_clashes",
+    "member": "crew_team_sync__clashes",
+    "description": "Use the current workspace team clashes operation.",
+    "source": "crew_team_sync",
+    "source_action": "clashes"
+  },
+  {
+    "family": "workspace",
+    "name": "team_resolve",
+    "member": "crew_team_sync__resolve",
+    "description": "Use the current workspace team resolve operation.",
+    "source": "crew_team_sync",
+    "source_action": "resolve"
+  },
+  {
+    "family": "workspace",
     "name": "rename",
     "member": "manage_project__rename",
     "description": "Use the current workspace rename operation.",
