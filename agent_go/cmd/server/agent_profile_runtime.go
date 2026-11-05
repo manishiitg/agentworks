@@ -820,7 +820,8 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			req.Servers = nil
 		}
 	}
-	if err := validateVaultSecretSelection(ctx, secretsPerson, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+	// The selected secrets are checked against whoever lends them, as the turn's SECRET_* are resolved (owner-lent).
+	if err := validateVaultSecretSelection(ctx, api.projectSecretsOwner(userID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
 	mark("mcp")

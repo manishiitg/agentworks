@@ -150,11 +150,7 @@ func (s *SchedulerService) executeDurablePythonRelay(ctx context.Context, sctx *
 		if err := authorizePythonRelayInvocation(ctx, sctx); err != nil {
 			return err
 		}
-		selected := s.api.loadSelectedSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets)
-		if err := validateVaultSecretSelection(ctx, sctx.OwnerUserID, selected, &sctx.Capabilities.SelectedSecrets); err != nil {
-			return err
-		}
-		if err := validateVaultSecretSelection(ctx, sctx.OwnerUserID, selected, sctx.Capabilities.SelectedGlobalSecretNames); err != nil {
+		if _, err := s.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets, sctx.Capabilities.SelectedGlobalSecretNames); err != nil {
 			return err
 		}
 		return verify(ctx)
@@ -187,8 +183,11 @@ func (s *SchedulerService) executeDurablePythonRelay(ctx context.Context, sctx *
 				delete(cfg.Env, key)
 			}
 		}
-		selected := s.api.loadSelectedSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets)
-		for _, secret := range s.api.mergeGlobalSecretsFor(ctx, sctx.OwnerUserID, selected, sctx.Capabilities.SelectedGlobalSecretNames) {
+		secrets, err := s.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets, sctx.Capabilities.SelectedGlobalSecretNames)
+		if err != nil {
+			return err
+		}
+		for _, secret := range secrets {
 			cfg.Env["SECRET_"+secret.Name] = secret.Value
 		}
 		attemptCtx, cancel := context.WithDeadline(ctx, binding.Deadline)

@@ -86,8 +86,9 @@ const vaultSecretRegistrationActor = "system:secret-registration"
 // startVaultSecretRegistration registers shared secret names at backend start,
 // without an administrator opening Vault > Secrets. The gateway may start after
 // this process, so it retries (up to a minute apart) until it succeeds. Saving a
-// managed secret registers again through syncVaultSecretMetadata.
-func startVaultSecretRegistration() {
+// managed secret registers again through syncVaultSecretMetadata. once Vault answers, afterwards runs (the startup move
+// of project secrets into their owners' Vaults).
+func startVaultSecretRegistration(afterwards func()) {
 	if !vaultConfigured() {
 		return
 	}
@@ -98,6 +99,9 @@ func startVaultSecretRegistration() {
 			cancel()
 			if err == nil {
 				log.Printf("[VAULT] registered %d shared secret names", len(getGlobalSecrets()))
+				if afterwards != nil {
+					afterwards()
+				}
 				if IsLocalMode() {
 					// A Mac that turned its own Vault on keeps every shared secret it had: registration grants each
 					// name to the Platform group, which this Mac's person is in.
@@ -298,7 +302,8 @@ func (api *StreamingAPI) handleVaultSecretAccess(w http.ResponseWriter, r *http.
 // must use the same server-resolved workspace and encrypted project store,
 // rather than treating the browser's empty decrypted list as authoritative.
 func (api *StreamingAPI) validateQuerySecretSelection(ctx context.Context, userID string, req QueryRequest) error {
-	userID = api.crewSecretsPerson(userID, req.SelectedFolder, "chat")
+	// Checked against whoever lends the selected secrets, as the turn resolves them (owner-lent).
+	userID = api.projectSecretsOwner(userID, req.SelectedFolder)
 	scoped := req.DecryptedSecrets
 	if (req.AgentMode == "workflow" || req.AgentMode == "workflow_phase") && req.SelectedGlobalSecrets != nil && len(*req.SelectedGlobalSecrets) > 0 {
 		workspace := req.SelectedFolder

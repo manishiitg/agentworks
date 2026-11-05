@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -144,6 +145,29 @@ func (f *ownerVaultFake) vaultName(t *testing.T, person, name string) string {
 	f.mu.Unlock()
 	full, err := vaultSecretName(id, name)
 	if err != nil {
+		t.Fatal(err)
+	}
+	return full
+}
+
+// seed stores value as NAME in person's own vault, or in root's project vault when root is not empty, and returns its
+// full name.
+func (f *ownerVaultFake) seed(t *testing.T, api *StreamingAPI, person, root, name, value string) string {
+	t.Helper()
+	f.mu.Lock()
+	id := f.personalLocked(person)
+	if root != "" {
+		id = f.projectLocked(person, root)
+	}
+	full, err := vaultSecretName(id, name)
+	if err == nil {
+		f.names[id] = append(f.names[id], full)
+	}
+	f.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.storeManagedGlobalSecret(context.Background(), full, value, false); err != nil {
 		t.Fatal(err)
 	}
 	return full

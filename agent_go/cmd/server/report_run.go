@@ -346,11 +346,8 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 	api.reportRunSessions.Store(sessionID, reportRunScope{workspacePath: workspacePath, userID: userID})
 	defer api.reportRunSessions.Delete(sessionID)
 
-	scopedSecrets := api.loadSelectedSecrets(ctx, userID, workspacePath, selection.secrets)
-	if err := validateVaultSecretSelection(ctx, userID, scopedSecrets, &selection.secrets); err != nil {
-		return map[string]any{"success": false, "error": err.Error()}
-	}
-	if err := validateVaultSecretSelection(ctx, userID, scopedSecrets, selection.globalSecrets); err != nil {
+	// Like a scheduled run, the script gets the project's selected secrets lent by its owner.
+	if _, err := api.projectRunSecrets(ctx, userID, workspacePath, selection.secrets, selection.globalSecrets); err != nil {
 		return map[string]any{"success": false, "error": err.Error()}
 	}
 	env := api.reportRunEnv(ctx, userID, workspacePath, selection, sessionID)
@@ -469,7 +466,7 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 // and an MCP bridge session scoped to the workflow's selected servers.
 func (api *StreamingAPI) reportRunEnv(ctx context.Context, userID, workspacePath string, selection reportRunSelection, sessionID string) map[string]string {
 	env := map[string]string{}
-	secrets := api.mergeGlobalSecretsFor(ctx, userID, api.loadSelectedSecrets(ctx, userID, workspacePath, selection.secrets), selection.globalSecrets)
+	secrets, _ := api.projectRunSecrets(ctx, userID, workspacePath, selection.secrets, selection.globalSecrets)
 	for _, secret := range secrets {
 		env["SECRET_"+secret.Name] = secret.Value
 	}
