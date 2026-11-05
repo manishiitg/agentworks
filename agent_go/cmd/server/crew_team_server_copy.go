@@ -110,7 +110,7 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 	c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: member}}
 	sync := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: &UserClaims{UserID: member, Username: member}})
 	if err = syncCrewTeamLocal(sync, member, c, dir, &b); err != nil {
-		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%q event=sync_failed reason=%q", project, logUsernameForUserID(member), t.Folder.display(), err)
+		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%q event=sync_failed step=%s reason=%q", project, logUsernameForUserID(member), t.Folder.display(), crewTeamStepOf(err), err)
 		return b.Root, err
 	}
 	log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%q event=synced status=%s", project, logUsernameForUserID(member), t.Folder.display(), b.Status)

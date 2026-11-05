@@ -456,10 +456,9 @@ func writeCrewTeamFile(ctx context.Context, root, rel string, src io.Reader, met
 		return e
 	}
 	defer dir.Remove(tmp)
+	// No fsync per file: a 7,184-file apply took 267 s with one each (Showcase, 5 Nov), holding the team lock. The
+	// revision is in history before any file is written, and the rename keeps each file whole.
 	e = crewsync.CopyChecked(ctx, f, src, meta)
-	if e == nil {
-		e = f.Sync()
-	}
 	if e == nil && meta.Executable {
 		e = f.Chmod(0700)
 	}
