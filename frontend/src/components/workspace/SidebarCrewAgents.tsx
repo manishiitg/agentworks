@@ -6,14 +6,13 @@ import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 import { OPEN_TEAM_BOARD_EVENT } from '../chat/ProjectWorkspaceTitle'
-import { teamAgentStatus, useTeamAgents } from '../../products/work/useTeamAgents'
+import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
+import { useAuthStore } from '../../stores/useAuthStore'
 
 // The phone drawer closes once something is opened from it.
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
 const openTeamBoard = (projectId: string) => { window.dispatchEvent(new CustomEvent(OPEN_TEAM_BOARD_EVENT, { detail: { projectId } })); closeDrawer() }
 const openAgent = (tabId: string) => { activateTab(tabId); closeDrawer() }
-
-const personKey = (name: string) => name.trim().toLowerCase().split('@')[0]
 
 /** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its
  * name (no icon, owner 5 Nov) and a mark at the end only when needed, the agent card on hover, and "…" to manage it. "+" is in the top line. */
@@ -23,27 +22,31 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const activeTabId = useChatStore(state => state.activeTabId)
   const [showHidden, setShowHidden] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
-  const peopleStatus = useTeamAgents(projectId)
+  // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
+  const team = useTeamTab(projectId).view
+  const me = useAuthStore(state => state.user?.id)
   const tabs = useChatStore(state => state.chatTabs)
-  const teamPeople = peopleStatus.filter(person => !person.you).map(person => person.name)
+  const teamPeople = (team?.team.on ? team.people : []).filter(person => person.user_id !== me && person.note !== 'invited')
   // Every agent is listed, the open one highlighted, so the menu matches the top line (owner, 4 Nov: "show that on left also").
   const total = crew.agents.length + crew.closed.length
   if (view === 'tabs' || crew.projectId !== projectId || !crew.agents.length) return null
   // Hidden agents (unpinned, as on the tab bar) sit at the end; the open one always stays in view.
   const shown = crew.agents.filter(agent => agent.pinned !== false || agent.tabId === activeTabId)
   const hidden = crew.agents.filter(agent => agent.pinned === false && agent.tabId !== activeTabId)
-  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={teamAgentStatus(peopleStatus, tabs[agent.tabId]?.metadata?.agentProfileTabOwnerID, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} />
-  // A shared room (owner, 5 Nov): with other people's agents here, the list is grouped by person, yours under "You".
-  const people = [...new Set(shown.map(agent => agent.owner || ''))]
+  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} />
+  // A shared room (owner, 5 Nov): with other people's agents here, the list is grouped by person (by account), yours
+  // under "You", each heading the server's display name.
+  const people = [...new Set(shown.map(agent => agent.ownerId || ''))]
+  const nameOf = (id: string) => teamPeople.find(person => person.user_id === id)?.name || shown.find(agent => agent.ownerId === id)?.owner || 'Someone'
   // A Team member with nothing shared here still has a heading, so the team sees who is in it.
-  const quiet = teamPeople.filter(name => !people.some(person => person && personKey(person) === personKey(name)))
+  const quiet = teamPeople.filter(person => !people.includes(person.user_id))
   const grouped = people.length > 1 || quiet.length > 0
   return <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
-    {grouped ? people.map(person => <div key={person || 'you'} role="group" aria-label={person ? `${person}'s agents` : 'Your agents'}>
-      <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{person || 'You'}</p>
-      {shown.filter(agent => (agent.owner || '') === person).map(row)}
+    {grouped ? people.map(person => <div key={person || 'you'} role="group" aria-label={person ? `${nameOf(person)}'s agents` : 'Your agents'}>
+      <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{person ? nameOf(person) : 'You'}</p>
+      {shown.filter(agent => (agent.ownerId || '') === person).map(row)}
     </div>) : shown.map(row)}
-    {quiet.map(name => <div key={`quiet:${name}`} role="group" aria-label={`${name}'s agents`}>
+    {quiet.map(({ user_id: id, name }) => <div key={`quiet:${id}`} role="group" aria-label={`${name}'s agents`}>
       <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{name}</p>
       <p className="px-2 py-0.5 text-[11px] text-muted-foreground/70">No shared agents</p>
     </div>)}
@@ -77,7 +80,7 @@ function AgentRow({ agent, status, active, dragging, onDrag }: { agent: CrewAgen
     onDragOver={dragging && key ? event => { event.preventDefault(); setOver(true) } : undefined} onDragLeave={() => setOver(false)}
     onDrop={dragging && key ? event => { event.preventDefault(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
     <AgentHoverCard info={agent.info} shortcut={agent.shortcut}>
-      <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => agent.open ? agent.open() : openAgent(agent.tabId)}
+      <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => openAgent(agent.tabId)}
         className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         <span className="min-w-0 truncate">{agent.name}</span>
         <AgentSharedMark shared={agent.info?.sharedWith} />

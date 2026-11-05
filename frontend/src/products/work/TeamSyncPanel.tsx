@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { GitCompareArrows, RefreshCw } from 'lucide-react'
+import { ChevronRight, GitCompareArrows, RefreshCw } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
@@ -25,13 +25,11 @@ export function syncRounds(events: TeamEvent[]): SyncRound[] {
 
 /** A sync round in progress, from the sync client itself (Mac status "progress"). */
 export type SyncProgress = { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number }
-const mb = (bytes: number) => bytes >= 10 << 20 ? `${Math.round(bytes / (1 << 20))} MB` : bytes >= 1 << 20 ? `${(bytes / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
-export const progressLine = (p: SyncProgress) => `${p.direction === 'upload' ? 'Sending' : 'Receiving'} ${p.files} ${p.files === 1 ? 'file' : 'files'} · ${mb(p.bytes_done)} of ${mb(p.bytes_total)}`
 const progressPercent = (p: SyncProgress) => p.bytes_total > 0 ? Math.min(100, Math.round(p.bytes_done * 100 / p.bytes_total)) : 0
 
-/** This Mac's copy of a team folder, from its sync client: the round in progress, the last good round, files and
- * the last error. Polled every 2 s while a round runs, else every 10 s (the web has none to show). */
-type LocalSync = { status?: string; message?: string; last_synced?: string; file_count?: number; progress?: SyncProgress | null }
+/** This Mac's copy of a team folder, from its sync client: the round in progress and the server-written line for it
+ * (crew_team_desktop.go, worded like the website's). Polled every 2 s while a round runs, else every 10 s. */
+type LocalSync = { line?: string; problem?: boolean; progress?: SyncProgress | null }
 function useLocalSync(target?: TeamTarget, enabled = true): LocalSync | undefined {
   const [local, setLocal] = useState<LocalSync>()
   useEffect(() => {
@@ -40,7 +38,7 @@ function useLocalSync(target?: TeamTarget, enabled = true): LocalSync | undefine
     let active = true, timer = 0
     const load = async () => {
       let next: LocalSync | undefined
-      try { next = await desktopRequest<LocalSync>(`/${encodeURIComponent(target.connection!)}/crew-teams/${encodeURIComponent(target.project)}/local`) } catch (e) { next = { status: 'offline', message: teamError(e) } }
+      try { next = await desktopRequest<LocalSync>(`/${encodeURIComponent(target.connection!)}/crew-teams/${encodeURIComponent(target.project)}/local`) } catch (e) { next = { line: `Can't sync: ${teamError(e)}`, problem: true } }
       if (!active) return
       setLocal(next)
       timer = window.setTimeout(() => void load(), next?.progress ? 2000 : 10000)
@@ -51,29 +49,12 @@ function useLocalSync(target?: TeamTarget, enabled = true): LocalSync | undefine
   return local
 }
 
-const secondsAgo = (at?: string) => {
-  const seconds = at ? Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 1000)) : -1
-  return seconds < 0 ? '' : seconds < 60 ? `${seconds} s ago` : seconds < 3600 ? `${Math.round(seconds / 60)} min ago` : clock(at!)
-}
-
-/** The Sync section's one always-visible line (owner, 5 Nov: "I don't see sync status here"). */
-function localSyncLine(local?: LocalSync): { text: string; problem: boolean } | undefined {
-  if (!local) return undefined
-  if (local.progress) return { text: progressLine(local.progress), problem: false }
-  if (local.status === 'offline') return { text: "Can't sync: your company's server can't be reached. Changes here send when it's back; it tries again every few seconds.", problem: true }
-  if (local.message) return { text: `Can't sync: ${local.message} · trying again in a few seconds`, problem: true }
-  const files = `${local.file_count ?? 0} ${local.file_count === 1 ? 'file' : 'files'}`
-  const ago = secondsAgo(local.last_synced)
-  if (local.status === 'up_to_date') return { text: `Up to date${ago ? ` · checked ${ago}` : ''} · ${files}`, problem: false }
-  return { text: `Changes waiting to send${ago ? ` · last synced ${ago}` : ''} · ${files}`, problem: false }
-}
-
 const verb = (kind: string) => kind === 'clash' ? 'clash saved in history' : kind === 'removed' ? 'removed' : 'sent'
 const clock = (time: string) => new Date(time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 /** The shared folder's sync: in the Mac app this Mac's own copy (from its sync client), elsewhere the server's line for
  * this person (server, from the Team tab reply); then clashes, recent rounds and skipped private files. */
-export function TeamSyncPanel({ target, name, projectId, server, onSummary, onAsk }: { target: TeamTarget; name?: string; projectId?: string; server?: TeamTabSync; onSummary?: (clashes: number, today: number) => void; onAsk?: () => void }) {
+export function TeamSyncPanel({ target, name, projectId, server }: { target: TeamTarget; name?: string; projectId?: string; server?: TeamTabSync }) {
   // Opened from the side panel's Shared folder row: scroll here once it is on screen.
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => { if (projectId && takeCrewSync(projectId)) window.setTimeout(() => root.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 300) }, [projectId])
@@ -89,7 +70,9 @@ export function TeamSyncPanel({ target, name, projectId, server, onSummary, onAs
   const [comparison, setComparison] = useState<{ path: string; diff: string }>()
   const local = useLocalSync(target)
   const progress = local?.progress || server?.progress || undefined
-  const status = localSyncLine(local) || (server ? { text: server.line, problem: Boolean(server.problem) } : undefined)
+  // One line, written by the server for this copy: the Mac's own copy in the Mac app, else this server's.
+  const status = local?.line ? { text: local.line, problem: Boolean(local.problem) } : server ? { text: server.line, problem: Boolean(server.problem) } : undefined
+  const [details, setDetails] = useState(false)
   useEffect(() => {
     let active = true
     const load = async () => {
@@ -97,7 +80,6 @@ export function TeamSyncPanel({ target, name, projectId, server, onSummary, onAs
         const [a, b] = await Promise.all([teamRequest<{ clashes: TeamClash[] }>(target, '/clashes'), teamRequest<{ events: TeamEvent[] }>(target, '/events')])
         if (!active) return
         setClashes(a.clashes); setEvents(b.events); setError('')
-        onSummary?.(a.clashes.length, b.events.filter(e => new Date(e.time).toDateString() === new Date().toDateString()).length)
         if (target.connection) {
           const local = await desktopRequest<{ skipped: string[]; skipped_files?: string[]; synced_on_purpose?: string[] }>(`/${encodeURIComponent(target.connection)}/crew-teams/${encodeURIComponent(target.project)}/local`)
           if (active) { setSkipped(local.skipped || []); setChoosable(local.skipped_files || []); setOnPurpose(local.synced_on_purpose || []) }
@@ -125,11 +107,11 @@ export function TeamSyncPanel({ target, name, projectId, server, onSummary, onAs
     const store = useChatStore.getState()
     const tabs = Object.values(store.chatTabs).filter(t => t.metadata?.agentProfileIsMainChat && !t.metadata?.isViewOnly)
     const tab = tabs.find(t => t.metadata?.agentProfileProjectId === (target.localProject || target.project)) || tabs[0]
-    if (!tab) { setError('Open your own project’s Main chat, then ask it to compare these two revisions with team_sync.'); return }
-    const prompt = `Help resolve the clash in ${name || 'my team'}: ${clash.path}. Compare revisions ${clash.losing_revision} and ${clash.winning_revision} with team_sync, explain the differences, and suggest a merged version. Save the agreed version normally, then mark the clash resolved with keep=current.`
+    if (!tab) { setError('Open your own Main chat in this Crew, then ask it to compare these two versions.'); return }
+    const prompt = `Help resolve the clash in ${name || 'my team'}: ${clash.path}. Compare versions ${clash.losing_revision} and ${clash.winning_revision} of the shared file, explain the differences, and suggest a merged version. Save the agreed version normally, then mark the clash resolved, keeping the current version.`
     const existing = store.getTabConfig(tab.tabId)?.inputText || ''
     store.setTabConfig(tab.tabId, { inputText: existing ? `${existing}\n\n${prompt}` : prompt })
-    activateTab(tab.tabId); onAsk?.(); window.setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_FOCUS_COMPOSER_EVENT)), 50)
+    activateTab(tab.tabId); window.setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_FOCUS_COMPOSER_EVENT)), 50)
   }
   return <div ref={root} data-team-sync className="space-y-5 text-sm">
     <div className="flex items-center justify-between gap-2">{status ? <p role="status" className={`text-xs ${status.problem ? 'text-amber-600' : 'text-muted-foreground'}`}>{status.text}</p> : <span />}<button type="button" aria-label="Refresh Sync" onClick={() => setVersion(v => v + 1)} className="rounded p-1 hover:bg-muted"><RefreshCw className="h-4 w-4" /></button></div>
@@ -139,6 +121,11 @@ export function TeamSyncPanel({ target, name, projectId, server, onSummary, onAs
         <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${progressPercent(progress)}%` }} />
       </div>
     </section>}
+    {/* Clashes and Recent behind one toggle (approved mockup): the line above says the state. */}
+    <button type="button" aria-expanded={details} onClick={() => setDetails(value => !value)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${details ? 'rotate-90' : ''}`} />{clashes.length ? `${clashes.length} ${clashes.length === 1 ? 'clash' : 'clashes'} · details` : 'Details'}
+    </button>
+    {details && <>
     <section aria-label="Open clashes" className="space-y-3"><h3 className="font-semibold">{clashes.length ? `${clashes.length} ${clashes.length === 1 ? 'clash' : 'clashes'}` : 'No open clashes'}</h3>
       {clashes.map(c => <article key={`${c.path}:${c.winning_revision}`} className="space-y-2 rounded-xl border border-amber-500/40 p-3">
         <p className="break-all font-medium">{c.path}</p><p className="text-xs text-muted-foreground">Current: {c.winning_author} · revision {c.winning_revision}<br />Earlier: {c.losing_author || 'No file'} · revision {c.losing_revision}</p>
@@ -152,6 +139,7 @@ export function TeamSyncPanel({ target, name, projectId, server, onSummary, onAs
       : <details key={`${round.time}:${i}`} className="border-b border-border py-2 text-xs"><summary className="cursor-pointer">{round.author} {verb(round.kind)} {round.events.length} files · <span className="text-muted-foreground">{clock(round.time)}</span></summary>
         <ul className="mt-1 max-h-64 space-y-0.5 overflow-y-auto pl-4 text-muted-foreground">{round.events.map((e, j) => <li key={`${e.revision}:${e.path}:${j}`} className="break-all">{e.path}</li>)}</ul></details>)
       : <p className="text-xs text-muted-foreground">Changes will appear here when files sync.</p>}</section>
+    </>}
     {(skipped.length > 0 || onPurpose.length > 0) && <section aria-label="Private-looking files" className="space-y-1.5">
       <h3 className="font-semibold">Skipped private files</h3>
       <p className="text-xs text-muted-foreground">These look like they may hold passwords or keys, so they stay on this Mac unless you choose to sync them. A synced file goes to everyone in the Team.</p>

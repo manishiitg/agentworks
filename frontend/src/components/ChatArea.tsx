@@ -3895,7 +3895,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           (owner, 5 Nov, "A Team is a shared room"). No chat box here. */}
       {observingOwnerTab && <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border px-4 py-3 text-sm text-muted-foreground">
         <TeamAgentWatchingStatus projectId={activeTab?.metadata?.agentProfileProjectId}
-          ownerId={activeTab?.metadata?.agentProfileTabOwnerID} chatKey={activeTab?.metadata?.agentProfileConversationKey}
+          chatKey={activeTab?.metadata?.agentProfileConversationKey}
           ownerName={activeTab?.metadata?.agentProfileTabOwnerName || 'another person'} agentName={activeTab?.name || 'agent'} />
       </div>}
 

@@ -13,7 +13,8 @@ import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
 import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
-import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useMacSharedAgents, useTeamRemoteAgents, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
+import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
+import { teamAgentForTab, useTeamTab } from '../../products/work/teamApi'
 import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
@@ -110,39 +111,48 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // A Crew on its owner's Mac shows where it lives only as the colour of the agents arrow (owner, 3 Nov): green with the
   // Mac on, grey with it off, amber while moving. Online Crews keep a plain arrow.
   const arrowTone = place === 'mac' ? 'text-emerald-500' : place === 'mac_off' ? 'text-muted-foreground/50' : place === 'moving' ? 'text-amber-500' : ''
-  const placeWord = place === 'mac' ? 'On your Mac' : place === 'mac_off' ? 'Mac off' : place === 'moving' ? 'Moving online' : ''
+  // Someone else's Mac Crew (a teammate's view) names its owner's Mac, from the server's Team reading.
+  const teamState = useTeamTab(placeProject)
+  const team = teamState.view
+  const crewOwner = team?.mac && !team.mac.yours ? team.people.find(person => person.note === 'owner')?.name : undefined
+  const placeWord = crewOwner
+    ? place === 'mac' ? `On ${crewOwner}'s Mac` : place === 'mac_off' ? `${crewOwner}'s Mac is off` : ''
+    : place === 'mac' ? 'On your Mac' : place === 'mac_off' ? 'Mac off' : place === 'moving' ? 'Moving online' : ''
   const shownTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
-  // Grouped by person like the left menu (owner, 5 Nov): your own tabs first, then each other person's under their name.
-  const tabOwnerLabel = (tab: ChatTab) => canControl(tab) ? '' : ownerShortName(listedFor(tab)?.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '') || 'Someone'
-  const tabPeople = [...new Set(shownTabs.map(tabOwnerLabel))].sort((a, b) => a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))
+  // Grouped by person like the left menu (owner, 5 Nov): your own tabs first, then each other person's, by account,
+  // under the server's display name.
+  const tabOwnerId = (tab: ChatTab) => canControl(tab) ? '' : listedFor(tab)?.tab_owner_id || tab.metadata?.agentProfileTabOwnerID || 'someone'
+  const personName = (id: string) => team?.people.find(person => person.user_id === id)?.name
+    || ownerShortName(tabs.map(tab => tabOwnerId(tab) === id ? listedFor(tab)?.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '' : '').find(Boolean) || '') || 'Someone'
+  const byName = (a: string, b: string) => a === '' ? -1 : b === '' ? 1 : personName(a).localeCompare(personName(b))
+  const tabPeople = [...new Set(shownTabs.map(tabOwnerId))].sort(byName)
   // The header shows the same agents as the left menu (owner, 5 Nov: "why is server different from local"): yours,
   // then each teammate's shared ones under their name, with the eye.
-  const visibleTabs = tabPeople.flatMap(person => shownTabs.filter(tab => tabOwnerLabel(tab) === person))
+  const visibleTabs = tabPeople.flatMap(person => shownTabs.filter(tab => tabOwnerId(tab) === person))
   const [moreOpen, setMoreOpen] = useState(false)
   // Which agents others can message and who asked them lately (a Crew on this Mac): marks on each tab's avatar.
   const macHere = livesOnMacHere(place) && !livesOnMac
-  const shares = useMacSharedAgents(placeProject, macHere)
-  // In the Mac app, the Team members' own agents from the online copy (owner, 5 Nov); they open on the server's page.
-  const teamRemote = useTeamRemoteAgents(placeProject, macHere)
   const asking = useCrewAsking(macHere ? placeProject : undefined)
   // The Agents menu is grouped by person like the left menu (owner, 5 Nov): You, then each teammate, their agents marked
-  // with the eye; in the Mac app the teammates' agents on the server are listed there too.
-  const remoteOwner = (owner: string) => ownerShortName(owner) || 'Someone'
-  const menuPeople = [...new Set([...tabs.map(tabOwnerLabel), ...teamRemote.map(agent => remoteOwner(agent.owner))])].sort((a, b) => a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))
+  // with the eye. In the Mac app the teammates' agents are real tabs too (WorkSurface lists them from the server).
+  const menuPeople = [...new Set(tabs.map(tabOwnerId))].sort(byName)
   const menuGrouped = menuPeople.length > 1 || menuPeople[0] !== ''
-  const menuGroups = menuPeople.map(person => ({ person, tabs: tabs.filter(tab => tabOwnerLabel(tab) === person), remote: teamRemote.filter(agent => remoteOwner(agent.owner) === person) }))
+  const menuGroups = menuPeople.map(person => ({ person, tabs: tabs.filter(tab => tabOwnerId(tab) === person) }))
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
-  const sharedHere = (tab: ChatTab) => { const id = agentId(tab); return Boolean(id && shares[id]) }
+  // Your own agent In team, from the Team tab's server reading (the same rows in the Mac app and on the website).
+  const shareOf = (tab: ChatTab) => canControl(tab) && team?.team.on && teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true)?.in_team
+    ? { line: 'my team', canChange: true } : undefined
+  const sharedHere = (tab: ChatTab) => Boolean(shareOf(tab))
   const agentFace = (tab: ChatTab): ChatTabPillProps['agent'] => {
     // A Crew's agents only (owner, 4 Nov); Goal and Relay chat tabs keep their status dot.
     if (surface !== 'work' || !isAgentTab(tab)) return undefined
     const id = agentId(tab)
-    const share = id ? shares[id] : undefined
+    const share = shareOf(tab)
     const ask = id ? asking.find(item => item.tab === id) : undefined
     const purpose = purposeOf(tab)
     // A teammate's agent: its name and purpose from the server, no actions (it is theirs).
     const theirs = !canControl(tab) ? listedFor(tab) : undefined
-    if (theirs) return { info: { name: tabLabel(tab), purpose: theirs.purpose, owner: ownerShortName(theirs.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '') || undefined } }
+    if (theirs) return { info: { name: tabLabel(tab), purpose: theirs.purpose, owner: personName(tabOwnerId(tab)) } }
     const ago = ask && (ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`)
     return {
       asking: ask?.active,
@@ -153,7 +163,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         canChange: share?.canChange,
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         onSetPurpose: () => fillAgentPurposeDraft(tab.tabId),
-        onSharing: macHere && placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
+        onSharing: placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
         onRemove: tab.tabId !== canonicalTabId && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
       },
     }
@@ -190,16 +200,14 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const agentTabs = tabs.filter(isAgentTab)
   const listedInMenu = (tab: ChatTab) => onStrip(tab) || tab.tabId === activeTabId
   const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
-  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, owner: canControl(tab) ? undefined : listedFor(tab)?.tab_owner_name || undefined, pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })).concat(teamRemote.map((agent): CrewAgentRow => ({
-    tabId: `team-remote:${agent.key}`, name: agent.name, main: false, owner: agent.owner, open: agent.open,
-    info: { name: agent.name, purpose: agent.purpose, owner: ownerShortName(agent.owner) || undefined } }))) : []
+  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, ownerId: canControl(tab) ? undefined : tabOwnerId(tab), owner: canControl(tab) ? undefined : personName(tabOwnerId(tab)), pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })) : []
   // Agents the server lists that have no tab here (closed), for the team board, which lists every agent.
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
   // (owner, 4 Nov).
   const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose,
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
-  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
+  const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, ownedListed.map(chat => chat.conversation_key), closedListed.map(chat => [chat.conversation_key, chat.name, chat.purpose]), crewAgents.map(agent => [agent.tabId, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.pinned, agent.actions?.remove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.sharedWith, agent.info?.lastAsked?.when])])
   useEffect(() => {
     if (placeProject) useCrewAgentsStore.getState().set(placeProject, projectName, crewAgents, sideChatsHere, closedAgents)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -382,9 +390,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} projectId={placeProject} showName={menuMode || phone} />}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map((tab, index) => {
-        const person = tabOwnerLabel(tab)
-        const groupLabel = person && (index === 0 || tabOwnerLabel(visibleTabs[index - 1]) !== person)
-          ? <span key={`person:${person}`} className="ml-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-4 w-px bg-border" />{person}:</span> : null
+        const person = tabOwnerId(tab)
+        const groupLabel = person && (index === 0 || tabOwnerId(visibleTabs[index - 1]) !== person)
+          ? <span key={`person:${person}`} className="ml-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-4 w-px bg-border" />{personName(person)}:</span> : null
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
         const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
         return <Fragment key={tab.tabId}>{groupLabel}<div
@@ -414,7 +422,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}
       </div>
-      {(!menuMode || onImportLocalChat) && (tabs.length > 1 || teamRemote.length > 0 || phone || livesOnMac || onImportLocalChat) && (
+      {(!menuMode || onImportLocalChat) && (tabs.length > 1 || phone || livesOnMac || onImportLocalChat) && (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
             type="button"
@@ -436,13 +444,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
             <div ref={menuRef} style={menuPosition} className="fixed z-[100] flex w-80 max-w-[calc(100vw-1rem)] flex-col rounded-2xl border border-border bg-popover p-1.5 shadow-lg" role="dialog" aria-label="Agents">
               <div className="flex shrink-0 items-center gap-3 px-2.5 pb-2 pt-1.5">
                 <h2 className="text-sm font-semibold">Agents</h2>
-                <span className="ml-auto flex items-center gap-2"><CrewPlaceBadge place={place} />
+                <span className="ml-auto flex items-center gap-2"><CrewPlaceBadge place={place} word={placeWord} />
                 {canReorderInMenu && <button type="button" aria-pressed={reordering} onClick={() => setReordering(value => !value)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{reordering ? 'Done' : 'Reorder'}</button>}</span>
               </div>
               {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
               {menuGroups.map(group => <Fragment key={`person:${group.person}`}>
-              {menuGrouped && <p className="px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground">{group.person || 'You'}</p>}
+              {menuGrouped && <p className="px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground">{group.person ? personName(group.person) : 'You'}</p>}
               {group.tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
                 // Anyone may pin another person's tab on their own strip; renaming and ordering stay with its owner.
@@ -474,7 +482,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                   /> : <button
                     type="button"
                     onClick={() => { setMoreOpen(false); selectTab(tab.tabId) }}
-                    title={[label, tab.metadata?.agentProfileTabOwnerName].filter(Boolean).join(' · ')}
+                    title={canControl(tab) ? label : `${label} · ${personName(tabOwnerId(tab))}`}
                     className={`min-w-0 flex-1 rounded py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-foreground/85'}`}
                   >
                     <span className="flex min-w-0 items-center gap-2"><span className="truncate text-[13px]">{label}</span>{!canControl(tab) && <Eye role="img" aria-label="Watching: only its owner types here" className="h-3 w-3 shrink-0 text-muted-foreground" />}{sharedHere(tab) && <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium leading-4 text-primary">Shared</span>}{phone && <AgentMenuStateWord tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} />}</span>
@@ -506,11 +514,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                   </>}
                 </div>
               })}
-              {group.remote.map(agent => <button key={`team-remote:${agent.key}`} type="button" onClick={() => { setMoreOpen(false); agent.open() }} title={`${agent.name} · ${agent.owner}`}
-                className="flex min-h-11 w-full items-center gap-2 rounded-xl px-1.5 text-left text-xs text-foreground/85 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <span className="w-4 shrink-0" /><span className="min-w-0 flex-1 py-2"><span className="flex min-w-0 items-center gap-2"><span className="truncate text-[13px]">{agent.name}</span><Eye role="img" aria-label="Watching: only its owner types here" className="h-3 w-3 shrink-0 text-muted-foreground" /></span>
-                {agent.purpose && <span className="block truncate text-[11px] font-normal text-muted-foreground">{agent.purpose}</span>}</span>
-              </button>)}
               </Fragment>)}
               </div>
               {sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
@@ -548,10 +551,10 @@ const PHONE_PLACE: Record<CloudState, string> = { mac: 'On your Mac', mac_off: '
 /** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */
 const livesOnMacHere = (place?: CloudState) => place === 'mac' || place === 'mac_off' || place === 'offline' || place === 'moving'
 
-function CrewPlaceBadge({ place }: { place?: CloudState }) {
+function CrewPlaceBadge({ place, word }: { place?: CloudState; word?: string }) {
   if (!place) return null
   const dot = place === 'mac_off' || place === 'offline' ? 'bg-muted-foreground' : place === 'moving' ? 'bg-amber-500' : 'bg-emerald-500'
-  return <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dot}`} />{PHONE_PLACE[place]}</span>
+  return <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dot}`} />{word || PHONE_PLACE[place]}</span>
 }
 
 /** The phone chat title: the Crew's name and the agent; where it lives is the arrow's colour. */

@@ -65,7 +65,13 @@ func (api *StreamingAPI) handleDesktopTeamFolders(w http.ResponseWriter, r *http
 	case r.URL.Query().Get("whole") == "1":
 		count, bytes = crewTeamShareSize(roots.Files, crewTeamFolder{Whole: true})
 	}
-	externalJSON(w, map[string]any{"folders": folders, "path": rel, "files": count, "bytes": bytes, "max_bytes": publication.MaxBytes, "max_files": publication.MaxFiles})
+	// Whether it is too big to share is decided here, with the words to show (the screen keeps no limits of its own).
+	tooBig := count > publication.MaxFiles || bytes > publication.MaxBytes
+	out := map[string]any{"folders": folders, "path": rel, "files": count, "bytes": bytes, "too_big": tooBig}
+	if tooBig {
+		out["too_big_line"] = fmt.Sprintf("Too big to share: at most %d MB and %d files.", publication.MaxBytes>>20, publication.MaxFiles)
+	}
+	externalJSON(w, out)
 }
 
 // crewTeamShareSize counts the files a share choice would sync from this Crew's folder, by the same rules as a sync.
@@ -156,8 +162,18 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 			mine = append(mine, rel)
 		}
 	}
+	// The Sync line, worded like the website's (crewTeamCopyLine), so both apps show one line for a copy.
+	progress := crewTeamRoundFor(dir)
+	line, problem := crewTeamCopyLine(b)
+	switch {
+	case progress != nil:
+		line, problem = crewAccessProgressLine(*progress), false
+	case err != nil:
+		line, problem = "Can't sync: your company's server can't be reached. Changes here send when it's back.", true
+	}
 	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "file_count": len(b.Files),
-		"skipped": skipped, "skipped_files": choosable, "synced_on_purpose": mine, "too_large": b.TooLarge, "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": crewTeamRoundFor(dir)})
+		"skipped": skipped, "skipped_files": choosable, "synced_on_purpose": mine, "too_large": b.TooLarge, "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": progress,
+		"line": line, "problem": problem})
 }
 
 // setCrewTeamSyncAnyway is this person's own choice for one file that looks like it holds passwords or keys (owner,
