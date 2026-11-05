@@ -3,13 +3,21 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gorilla/mux"
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/mcpagent/oauth"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
@@ -147,5 +155,168 @@ func TestServerVaultAppOnTheMacForwardsWithTheSavedSignIn(t *testing.T) {
 	}
 	if c, err := desktopConnectionFor("alice", connID); err != nil || c.Token != "remote-renewed" {
 		t.Fatal("renewed server sign-in was not saved")
+	}
+}
+
+// Vault step 5B (PLAT-856): a sign-in moved from the Mac is kept only once the server renewed it with the moved refresh
+// token. A refused renewal leaves no app and no credential files behind and answers the plain line; access-token
+// callers and web pages are refused.
+func TestVaultMeImportKeepsAMovedSignInOnlyAfterOneRenewal(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("AUTH_SECRET", strings.Repeat("k", 32))
+	secret := strings.Repeat("s", 32)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", secret)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	oauth.SetTokenSealer(platformClientSealer{})
+	t.Cleanup(func() { oauth.SetTokenSealer(nil) })
+	const upstream = "https://mcp.example.com/mcp"
+	var rejectRefresh atomic.Bool
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Header().Set("Content-Type", "application/json")
+		if rejectRefresh.Load() || r.Form.Get("refresh_token") != "mac-refresh" {
+			w.WriteHeader(400)
+			_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"access_token":"server-access","token_type":"Bearer","refresh_token":"server-refresh","expires_in":3600}`))
+	}))
+	defer issuer.Close()
+	signIn := oauth.OAuthConfig{AuthURL: issuer.URL + "/authorize", TokenURL: issuer.URL + "/token", Resource: upstream}
+	configPath := filepath.Join(t.TempDir(), "mcp.json")
+	if err := mcpclient.SaveConfig(configPath, &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{"Notion": {URL: upstream, OAuth: &signIn}}}); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	connectors := map[string]vaultOAuthConnection{}
+	made := []string{}
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		actor := r.Header.Get("X-CapLayer-Actor")
+		switch {
+		case r.URL.Path == "/api/vaults" && r.Method == "GET":
+			_ = json.NewEncoder(w).Encode(map[string]any{"vaults": []any{map[string]any{"group": map[string]any{"ID": "v-" + actor, "Name": personalVaultName}, "role": "owner"}}})
+		case r.URL.Path == "/api/vaults/v-alice/connectors" && r.Method == "POST" && actor == "alice":
+			id := fmt.Sprintf("c-%08x", len(made)+1)
+			made = append(made, id)
+			connectors[id] = vaultOAuthConnection{ID: id, OAuthServer: "Notion", OAuthCredentialID: id, UpstreamURL: upstream, Label: "Notion", Status: "authentication_required", VaultID: "v-alice"}
+			_ = json.NewEncoder(w).Encode(connectors[id])
+		case strings.HasPrefix(r.URL.Path, "/api/vaults/v-alice/connectors/") && strings.HasSuffix(r.URL.Path, "/sync"):
+			id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/vaults/v-alice/connectors/"), "/sync")
+			c := connectors[id]
+			c.Status = "active"
+			connectors[id] = c
+			_, _ = w.Write([]byte(`{}`))
+		case strings.HasPrefix(r.URL.Path, "/api/vaults/v-alice/connectors/") && r.Method == "DELETE":
+			delete(connectors, strings.TrimPrefix(r.URL.Path, "/api/vaults/v-alice/connectors/"))
+			w.WriteHeader(204)
+		case strings.HasPrefix(r.URL.Path, "/api/admin/connectors/"):
+			c, ok := connectors[strings.TrimPrefix(r.URL.Path, "/api/admin/connectors/")]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(c)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer gateway.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", gateway.URL)
+
+	api := &StreamingAPI{mcpConfigPath: configPath, logger: loggerv2.NewNoop()}
+	router := mux.NewRouter()
+	api.registerVaultMeRoutes(router.PathPrefix("/api").Subrouter())
+	saved, _ := json.Marshal(signIn)
+	body := `{"label":"Notion","oauth_server":"Notion","upstream_url":"` + upstream + `","config":` + string(saved) +
+		`,"token":{"access_token":"mac-access","token_type":"Bearer","refresh_token":"mac-refresh","expiry":"2099-01-01T00:00:00Z"},"client":{"client_id":"dcr-client"}}`
+	call := func(claims *UserClaims, origin string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/api/vault/me/connections/import", strings.NewReader(body))
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		return w
+	}
+	alice := &UserClaims{UserID: "alice", Username: "alice"}
+	state := func() ([]string, map[string]vaultOAuthConnection) {
+		mu.Lock()
+		defer mu.Unlock()
+		left := map[string]vaultOAuthConnection{}
+		for id, c := range connectors {
+			left[id] = c
+		}
+		return append([]string(nil), made...), left
+	}
+	credentialFiles := func(id string) []string {
+		return []string{getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id)), vaultCredentialConfigPath(id), getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id))}
+	}
+
+	token := &UserClaims{UserID: "alice", Username: "alice", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read"}}}
+	if w := call(token, ""); w.Code != 403 {
+		t.Fatalf("access token admitted: %d", w.Code)
+	}
+	if w := call(alice, "https://page.example.com"); w.Code != 403 {
+		t.Fatalf("a web page could move a sign-in: %d", w.Code)
+	}
+	if ids, _ := state(); len(ids) != 0 {
+		t.Fatal("a refused caller created an app")
+	}
+
+	rejectRefresh.Store(true)
+	w := call(alice, "")
+	var refused struct {
+		Error     string `json:"error"`
+		OpenVault bool   `json:"open_vault"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &refused)
+	if w.Code != 409 || refused.Error != "Notion wouldn't move this sign-in. Sign in to Notion once on the server; your Mac keeps its own sign-in." || !refused.OpenVault {
+		t.Fatalf("refused renewal: %d %s", w.Code, w.Body.String())
+	}
+	ids, left := state()
+	if len(ids) != 1 || len(left) != 0 {
+		t.Fatalf("a refused move left an app behind: ids=%v left=%v", ids, left)
+	}
+	refusedID := ids[0]
+	for _, path := range credentialFiles(refusedID) {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("a refused move left %s behind", filepath.Base(path))
+		}
+	}
+
+	rejectRefresh.Store(false)
+	w = call(alice, "")
+	var moved struct {
+		ID     string `json:"id"`
+		Synced bool   `json:"synced"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &moved)
+	ids, left = state()
+	if w.Code != 200 || len(ids) != 2 || moved.ID != ids[1] || !moved.Synced || left[moved.ID].VaultID != "v-alice" || left[moved.ID].Status != "active" {
+		t.Fatalf("move: %d %s %+v", w.Code, w.Body.String(), left)
+	}
+	for _, path := range credentialFiles(moved.ID) {
+		raw, err := os.ReadFile(path)
+		if err != nil || strings.HasPrefix(strings.TrimSpace(string(raw)), "{") {
+			t.Fatalf("%s is not sealed on the server: %v", filepath.Base(path), err)
+		}
+	}
+	// The Vault broker now hands out the renewed sign-in for this app, and none for the removed one.
+	broker := func(id string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/internal/caplayer/oauth/token", strings.NewReader(`{"server_name":"Notion","url":"`+upstream+`","connection_id":"`+id+`"}`))
+		r.Header.Set("Authorization", "Bearer "+secret)
+		w := httptest.NewRecorder()
+		api.handleCapLayerOAuthToken(w, r)
+		return w
+	}
+	if w := broker(moved.ID); w.Code != 200 || !strings.Contains(w.Body.String(), "server-access") {
+		t.Fatalf("moved app unusable: %d %s", w.Code, w.Body.String())
+	}
+	if w := broker(refusedID); w.Code == 200 {
+		t.Fatal("the removed app still had a sign-in")
 	}
 }
