@@ -37,7 +37,7 @@ func crewTeamInTeam(agent macSharedAgent) bool { return !agent.Off && agent.Audi
 // teamAgentsByPerson lists the team's in-team agents, the owner first: the owner's from this Crew's Mac, each member's
 // from their own tabs in the server copy (they run on the server; Only me ones are left out for everyone else).
 func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTeamAgentsPerson {
-	owner := crewTeamAgentsPerson{UserID: t.OwnerID, Name: shareOwnerLabel(t.OwnerID), Owner: true, You: t.OwnerID == caller, Agents: []crewTeamAgent{}}
+	owner := crewTeamAgentsPerson{UserID: t.OwnerID, Name: crewPersonShortName(t.OwnerID), Owner: true, You: t.OwnerID == caller, Agents: []crewTeamAgent{}}
 	if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
 		owner.MacOn = crewMacSocketFor(t.OwnerID, t.ProjectID, b.PairID) != nil
 	}
@@ -56,7 +56,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		if p.Invited || !crewTeamAccountActive(p.UserID) {
 			continue
 		}
-		out = append(out, crewTeamAgentsPerson{UserID: p.UserID, Name: shareOwnerLabel(p.UserID), You: p.UserID == caller, MacOn: time.Since(teamMacSeen(t.ProjectID, p.UserID)) <= teamMacSeenWithin, Agents: memberTeamAgents(ctx, t.ProjectID, p.UserID, caller)})
+		out = append(out, crewTeamAgentsPerson{UserID: p.UserID, Name: crewPersonShortName(p.UserID), You: p.UserID == caller, MacOn: time.Since(teamMacSeen(t.ProjectID, p.UserID)) <= teamMacSeenWithin, Agents: memberTeamAgents(ctx, t.ProjectID, p.UserID, caller)})
 	}
 	return out
 }
@@ -72,13 +72,18 @@ func memberTeamAgents(ctx context.Context, project, member, caller string) []cre
 	identities, _ := store.agentIdentities(ctx, member, crewProfileID, project)
 	for _, record := range records {
 		identity := identities[record.ConversationKey]
-		if identity.OnlyMe && member != caller {
+		if identity.OnlyMe && member != caller || record.SessionID == "" || hiddenFromTabStrip(record.ConversationKey) {
 			continue
 		}
-		name := firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
 		_, tab, side := strings.Cut(record.ConversationKey, codeChatSideMarker)
 		if !side {
-			continue // the Crew's Main is the owner's
+			continue // the Crew's own Main record and Builder chats are not this member's agents
+		}
+		// Named like the left menu (sideChatsFor, owner 5 Nov): their default chat is their Main, a tab its own name;
+		// never a raw chat title or an email.
+		name := firstNonEmptyTrimmed(identity.Name, "Agent")
+		if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, member) || strings.HasPrefix(tab, "root-") {
+			name = "Main"
 		}
 		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server"})
 	}
@@ -100,4 +105,9 @@ func (api *StreamingAPI) handleCrewTeamAgents(w http.ResponseWriter, r *http.Req
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	externalJSON(w, map[string]any{"project_id": project, "name": t.Name, "people": teamAgentsByPerson(r.Context(), t, claims.UserID)})
+}
+
+// crewPersonShortName is how a person is named in a Team: their short name (tester-b), never their email.
+func crewPersonShortName(userID string) string {
+	return strings.SplitN(strings.TrimSpace(shareOwnerLabel(userID)), "@", 2)[0]
 }
