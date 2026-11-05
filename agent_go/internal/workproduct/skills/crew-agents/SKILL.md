@@ -49,7 +49,11 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   status repeats, and do not answer a message that only reports or confirms:
   read it and end your turn. Two tabs must never keep a back-and-forth going;
   if nothing new is needed, stop.
-- Set your own name and purpose with `sessions action=identity` when asked.
+- Set your own name and purpose with `sessions action=identity` (name: a few
+  words; purpose: one short line) when asked, including the "Set purpose"
+  button's message. If the person wrote a name or purpose, save exactly that.
+  If they wrote nothing after it, suggest a name and purpose from the work in
+  this chat, save them, and tell the person in one line so they can change it.
 
 ## Function tabs
 
