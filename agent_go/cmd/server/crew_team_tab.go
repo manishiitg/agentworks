@@ -80,17 +80,20 @@ type crewTeamTabReply struct {
 	Agents []crewTeamTabAgent  `json:"agents"`
 	Mac    *crewTeamTabMac     `json:"mac,omitempty"`
 	Sync   *crewTeamTabSync    `json:"sync,omitempty"`
-	// The Team's settings are the server's record (owner, 5 Nov: members are co-owners): the owner and every joined
-	// member change the switch, people, what is shared and All agents in team, from the website, the Mac app, chat or
-	// MCP. The owner's Mac applies the record when it syncs (crew_team_apply.go).
-	CanSwitch bool `json:"can_switch"`
-	AllInTeam bool `json:"all_in_team"`
+	// The Team's settings are the server's record, changed from the website, the Mac app, chat or MCP; the owner's Mac
+	// applies it when it syncs (crew_team_apply.go). CanSwitch: the Team on/off switch, the Crew's main owner only
+	// (owner, 5 Nov). AllInTeam / CanAllMine: the viewer's own All my agents in team, every joined person's own.
+	CanSwitch  bool `json:"can_switch"`
+	AllInTeam  bool `json:"all_in_team"`
+	CanAllMine bool `json:"can_all_mine"`
 	// MacOnly is the line under the folder choice of a Mac Crew: its folders are listed from the owner's Mac.
 	MacOnly  string `json:"mac_only,omitempty"`
 	CanLeave bool   `json:"can_leave"`
-	// CanChoose: the viewer changes Folders / Whole Crew and stops sharing a folder (a Team setting, from anywhere).
-	// Picking a new folder reads the Crew's own folder, so a Mac Crew's picker is in its owner's Mac app (MacOnly).
-	CanChoose bool `json:"can_choose"`
+	// CanChoose: the viewer switches Folders / Whole Crew and stops sharing a folder, the main owner only (owner, 5 Nov).
+	// CanAddFolder: the viewer adds a folder to share by name, anyone in the Team; a missing one is made. The owner's
+	// Mac app also picks from the Mac's folders.
+	CanChoose    bool `json:"can_choose"`
+	CanAddFolder bool `json:"can_add_folder"`
 	// Shares are the shared folders' sizes as kept here (Whole for the Whole Crew); zero before the first sync.
 	Shares []crewTeamTabShare `json:"shares,omitempty"`
 	Whole  *crewTeamTabShare  `json:"whole,omitempty"`
@@ -122,13 +125,13 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	view.Lent = crewTeamLentNow(ctx, t, viewer)
 	twin := crewRelayTwin(t.ProjectID)
 	ownerName := crewPersonShortName(t.OwnerID)
-	out := crewTeamTabReply{Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, CanSwitch: view.CanManage, AllInTeam: !t.AgentsOnlyMe,
-		CanLeave: viewer != t.OwnerID && t.member(viewer),
-		Intro:    "People work with you here. Everything is kept on the server."}
+	out := crewTeamTabReply{Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, CanSwitch: view.CanManage && viewer == t.OwnerID,
+		AllInTeam: t.allMine(viewer), CanAllMine: t.member(viewer), CanLeave: viewer != t.OwnerID && t.member(viewer),
+		Intro: "People work with you here. Everything is kept on the server."}
 	if twin {
-		out.MacOnly = fmt.Sprintf("Add folders from %s's Mac app, where they are.", ownerName)
+		out.MacOnly = fmt.Sprintf("A folder you add is made on %s's Mac and shared.", ownerName)
 		if viewer == t.OwnerID {
-			out.MacOnly = "Add folders from your Mac app, where they are."
+			out.MacOnly = "A folder added here is made on your Mac and shared."
 		}
 		out.Intro = "People work with you here. The shared folder is kept on the server. Messages to Mac agents wait while the Mac is off and arrive when it is back."
 		mac := &crewTeamTabMac{Yours: viewer == t.OwnerID}
@@ -139,10 +142,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 		mac.Line = map[bool]string{true: "On", false: "Off"}[mac.On] + " · " + firstNonEmptyTrimmed(name, ownerName+"'s Mac")
 		mac.Note = "Change it from the Mac app."
-		if !mac.Yours {
-			mac.Note = fmt.Sprintf("%s's Mac: they change it from their Mac app.", ownerName)
+		if mac.Yours { // teammates see the owner's Mac in the people row (owner, 5 Nov)
+			out.Mac = mac
 		}
-		out.Mac = mac
 	}
 	if !t.On {
 		return out
@@ -184,7 +186,13 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
 				OwnerID: p.UserID, OwnerName: p.Name, Place: a.Place, StatusLabel: a.StatusLabel, Tab: a.Tab}
 			// Only me is per person (owner, 5 Nov): each person chooses for their own agents, the owner's Mac ones too.
-			if mine {
+			// Each person's Main is always In team (owner, 5 Nov).
+			if a.Tab == macMainTab || crewTeamMainAgent(t, p.UserID, a.ChatKey) {
+				row.InTeam, row.Fixed = true, "Always in team"
+				if !mine {
+					row.Address = a.Address
+				}
+			} else if mine {
 				row.CanChange = true
 			} else {
 				row.Fixed, row.Address = "In team · theirs to change", a.Address
@@ -193,7 +201,8 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 	}
 	out.Sync = crewTeamTabSyncFor(t, viewer)
-	out.CanChoose = view.CanManage
+	out.CanChoose = view.CanManage && viewer == t.OwnerID
+	out.CanAddFolder = view.CanManage
 	out.Shares, out.Whole = crewTeamTabShares(t, viewer)
 	return out
 }

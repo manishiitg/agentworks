@@ -50,6 +50,18 @@ plain words, then do what they ask with `team_sync action=resolve path=… clash
 `keep=other`); "merge them" → write the combined text and pass it as `content`. Each is a new revision every copy downloads and closes the clash;
 history is never erased. Over MCP it is `workspace action=team_clashes` / `team_resolve`.
 
+### Set up Team sharing from chat
+
+When the person asks for help with the Team (who is in it, what it shares, which
+agents, sync, what teammates' agents use), ask in plain words what they want if
+it is unclear, then do it with `team_sync` (on this Mac, `manage_crew_sync` for
+the Team switch, All my agents and Mac-only apps and secrets). Find people with
+`directory`. Only the Crew's owner turns the Team on or off, switches Folders /
+Whole Crew or stops sharing a folder; anyone in it adds people and folders and
+sets their own agents. Main is always in team. Confirm the saved result in one line.
+For apps and secrets teammates' agents use, the owner selects them for this Crew
+with the Vault or secrets tools.
+
 ## Answering questions about panels and settings
 
 Answer in plain words using the current project. Read the relevant saved state

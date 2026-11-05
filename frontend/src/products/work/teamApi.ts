@@ -9,9 +9,9 @@ import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useCo
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
-export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; agents_only_me?: boolean; people: { user_id: string; invited?: boolean }[]; folder: { id?: string; whole?: boolean; folders?: string[] }; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
+export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: { id?: string; whole?: boolean; folders?: string[] }; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
 // What teammates' agents use from the owner, as the server writes it (crew_team.go crewTeamLent).
-export type TeamLent = { title: string; line: string; foot?: string; yours: boolean; items: { name: string; kind: string }[] }
+export type TeamLent = { title: string; line: string; foot?: string; empty?: string; yours: boolean; items: { name: string; kind: string }[] }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
 export type TeamClash = { path: string; source: string; winning_revision: number; losing_revision: number; winning_author: string; losing_author: string }
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }
@@ -55,8 +55,8 @@ export type TeamTabShare = { path: string; files: number; bytes: number }
 export type TeamTabView = {
   team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
   mac?: { on: boolean; line: string; note: string; yours: boolean }
-  sync?: TeamTabSync; can_switch: boolean; all_in_team: boolean; mac_only?: string; can_leave: boolean
-  can_choose: boolean; shares?: TeamTabShare[]; whole?: TeamTabShare
+  sync?: TeamTabSync; can_switch: boolean; all_in_team: boolean; can_all_mine: boolean; mac_only?: string; can_leave: boolean
+  can_choose: boolean; can_add_folder: boolean; shares?: TeamTabShare[]; whole?: TeamTabShare
 }
 /** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */
 export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; error: string }

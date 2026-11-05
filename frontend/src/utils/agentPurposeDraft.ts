@@ -19,14 +19,24 @@ function fillDraft(tabId: string, prompt: string) {
 /** Opens the tab with the purpose request ready in its chat box, cursor at the end (owner, 3 Nov: no form). */
 export function fillAgentPurposeDraft(tabId: string) { fillDraft(tabId, AGENT_PURPOSE_PROMPT) }
 
-/** The Team card's Ask (owner, 4 Nov): Main sets the Team up from chat with team_sync and manage_crew_sync. */
-export const TEAM_SETUP_PROMPT = 'Help me set up the Team for this Crew: add or remove people, choose the shared folder and who can edit it, and choose which agents are shared and with whom.'
+/** Each Access/Team card's Ask (owner, 5 Nov): the viewer's own Main sets it up from chat (team_sync, manage_crew_sync);
+ * the question says what the person wants, so the agent proceeds. */
+export const ACCESS_ASK_PROMPTS = {
+  team: "Help me set up who's in this Crew's Team.",
+  shares: 'Help me set up what this Crew\'s Team shares.',
+  agents: 'Help me choose which of my agents are in this Crew\'s Team.',
+  lent: 'Help me share my apps and secrets with this Crew\'s Team.',
+  sync: 'Help me check this Crew\'s Team sync and fix any clashes.',
+  mac: 'Help me set up Mac online for this Crew.',
+  publish: 'Help me publish this Crew to the server.',
+} as const
+export type AccessAskCard = keyof typeof ACCESS_ASK_PROMPTS
 
 /** Opens this Crew's Main chat with the Team request in its chat box; false when Main's tab is not open. */
-export function fillTeamSetupDraft(projectId: string): boolean {
-  const main = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly)
+export function fillAccessAskDraft(projectId: string, card: AccessAskCard): boolean {
+  const main = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
   if (!main) return false
-  fillDraft(main.tabId, TEAM_SETUP_PROMPT)
+  fillDraft(main.tabId, ACCESS_ASK_PROMPTS[card])
   return true
 }
 

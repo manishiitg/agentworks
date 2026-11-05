@@ -98,33 +98,16 @@ func crewTeamRoster(rows []macAgentRow, current []macSharedAgent, on bool) ([]ma
 	return next, changed
 }
 
-// changeCrewTeamFromMac changes this Mac Crew's Team record on the company server through Mac online's connection,
-// with the same server checks as the website, then applies the saved record here.
-func (api *StreamingAPI) changeCrewTeamFromMac(ctx context.Context, project string, change func(*crewTeam)) (crewTeam, error) {
+// setCrewTeamAll is the owner's own All my agents in team from this Mac (its screen and its chat): the server's record.
+func (api *StreamingAPI) setCrewTeamAll(ctx context.Context, project string, on bool) (map[string]any, error) {
 	claims, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
 	if err != nil {
-		return crewTeam{}, fmt.Errorf("Turn on Mac online for this Crew first.")
+		return nil, fmt.Errorf("Turn on Mac online for this Crew first.")
 	}
-	route := "/api/crew-teams/" + url.PathEscape(binding.PeerProjectID)
-	var team crewTeam
-	if err = crewTeamRemoteJSON(ctx, claims.UserID, connection, http.MethodGet, route, nil, &team); err != nil {
-		return team, err
-	}
-	change(&team)
-	var saved crewTeam
-	if err = crewTeamRemoteJSON(ctx, claims.UserID, connection, http.MethodPut, route, team, &saved); err != nil {
-		return saved, err
-	}
-	api.applyCrewTeamOnMac(ctx, project, saved)
-	return saved, nil
-}
-
-// setCrewTeamAll is All agents in team from this Mac (its screen and its chat): the server's record.
-func (api *StreamingAPI) setCrewTeamAll(ctx context.Context, project string, on bool) (map[string]any, error) {
-	saved, err := api.changeCrewTeamFromMac(ctx, project, func(t *crewTeam) { t.AgentsOnlyMe = !on })
-	if err != nil {
+	body := map[string]any{"agent_key": crewTeamAllMine, "in_team": on}
+	if err = crewTeamRemoteJSON(ctx, claims.UserID, connection, http.MethodPost, "/api/crew-teams/"+url.PathEscape(binding.PeerProjectID)+"/agent-visibility", body, nil); err != nil {
 		return nil, err
 	}
-	log.Printf("[CREW_TEAM] local project=%s event=all_in_team on=%t", project, !saved.AgentsOnlyMe)
-	return map[string]any{"all_in_team": !saved.AgentsOnlyMe}, nil
+	log.Printf("[CREW_TEAM] local project=%s event=all_in_team on=%t", project, on)
+	return map[string]any{"all_in_team": on}, nil
 }
