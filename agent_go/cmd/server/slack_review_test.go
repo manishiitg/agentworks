@@ -66,9 +66,8 @@ func TestSlackToolsFollowSessionOriginAndReadOnlyPolicy(t *testing.T) {
 		{name: "owner", mutating: true},
 		{name: "reader", readOnly: true},
 		{name: "slack owner", req: QueryRequest{BotPlatform: "slack"}},
-		// Scheduled runs get no Slack bot tools at all: product.yaml's
-		// scheduled origin has no bot_management capability.
-		{name: "schedule", req: QueryRequest{TriggeredBy: "cron"}, noSlackTools: true},
+		// The person's own scheduled turn gets what a typed turn gets (owner, 5 Nov).
+		{name: "schedule", req: QueryRequest{TriggeredBy: "cron"}, mutating: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := &recordingRegistrar{}

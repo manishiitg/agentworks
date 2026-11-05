@@ -90,10 +90,8 @@ func TestUserAccessToolsAbsentOutsideBuilder(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, exists := reg.tools["manage_user_access"]
-		// Writable workflow users receive Builder authority even when a
-		// legacy client still requests Run. Origin restrictions still apply:
-		// scheduled, Pulse and child turns never manage users.
-		want := origin == "interactive" || origin == "bot" // unattended runs and Pulse never manage users (product.yaml)
+		// The person's own scheduled and background turns get what typed turns get (owner, 5 Nov); Pulse does not.
+		want := origin != "pulse"
 		if exists != want {
 			t.Fatalf("admission %s=%v", origin, exists)
 		}

@@ -105,8 +105,8 @@ func TestAutoNotificationKeepsTheInteractiveNativeConversation(t *testing.T) {
 func TestAutoNotificationKeepsTheUnattendedAndExternalBuilderRole(t *testing.T) {
 	pulse := resolveWorkflowChatPolicy("schedule-cron--daily-round2-g1", QueryRequest{TriggeredBy: "cron"}, nil, false)
 	notice := resolveWorkflowChatPolicy("schedule-cron--daily-round2-g1", QueryRequest{TriggeredBy: "cron", IsAutoNotification: true}, nil, false)
-	if notice.Origin != "notification" || notice.Capabilities["mcp_management"] || notice.Capabilities["user_management"] {
-		t.Fatalf("a notification into an Autopilot chat must keep Autopilot's capabilities and its own origin: %+v", notice)
+	if notice.Origin != "notification" || len(notice.Capabilities) != len(pulse.Capabilities) {
+		t.Fatalf("a notification into a scheduled chat must keep that chat's capabilities and its own origin: %+v", notice)
 	}
 	if chatPolicyRoleRequiresReconnect(true, pulse.sessionKey(), notice.sessionKey(), true, nil) {
 		t.Fatal("a notification into an Autopilot chat restarted its native session")
