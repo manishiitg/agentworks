@@ -251,7 +251,7 @@ func noteCrewStandbyWriter(project, tab, writer string) {
 
 // crewStandbyMacRefusal is the plain line for a turn this Mac must not run because the server answers for the agent
 // now, or "". Only the Crew owner's Mac with Mac online and the Team on asks; a server it cannot reach lets the turn run.
-func (api *StreamingAPI) crewStandbyMacRefusal(ctx context.Context, profileID, key string) string {
+func (api *StreamingAPI) crewStandbyMacRefusal(ctx context.Context, profileID, key, source string) string {
 	if !IsLocalMode() || profileID != crewProfileID {
 		return ""
 	}
@@ -283,6 +283,6 @@ func (api *StreamingAPI) crewStandbyMacRefusal(ctx context.Context, profileID, k
 	if seen.(crewStandbyWriterSeen).writer != "server" {
 		return ""
 	}
-	log.Printf("[ALWAYS_ON] project=%s tab=%s event=mac_refused reason=server_writer ms=0", project, tab)
+	log.Printf("[ALWAYS_ON] project=%s tab=%s event=mac_refused reason=server_writer source=%s ms=0", project, tab, source)
 	return crewStandbyMacRefusalLine
 }

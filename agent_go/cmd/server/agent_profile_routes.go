@@ -454,7 +454,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		return
 	}
 	// Always on: while the server answers for this agent from its standby copy, the owner's Mac does not run it.
-	if line := api.crewStandbyMacRefusal(r.Context(), profile.ID, input.ConversationKey); line != "" {
+	if line := api.crewStandbyMacRefusal(r.Context(), profile.ID, input.ConversationKey, "chat"); line != "" {
 		writeAgentProfileError(w, http.StatusConflict, line)
 		return
 	}

@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -115,11 +116,13 @@ func (api *StreamingAPI) crewStandbyRoute(ctx context.Context, owner, project, t
 	if err := api.importCrewStandby(ctx, owner, project, tab, sender); err != nil {
 		if !crewStandbyServerWriter(project, tab) {
 			crewAlwaysOnLog(project, tab, "not_on_server", "import_failed", started)
+			crewStandbyImportFailed.Store(project+"\x00"+tab, time.Now())
 			log.Printf("[ALWAYS_ON] project=%s tab=%s import_error=%q", project, tab, err)
 			return false
 		}
 		log.Printf("[ALWAYS_ON] project=%s tab=%s event=import_retry_later import_error=%q", project, tab, err)
 	}
+	crewStandbyImportFailed.Delete(project + "\x00" + tab)
 	if writes {
 		markCrewStandbyWriter(project, tab)
 	}
@@ -294,6 +297,15 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 	return api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, transfer, &conversation, current, true)
 }
 
+// crewStandbyImportFailed remembers, per agent, when the server last could not start from its copy (for example no
+// usable AI account on the server), so the Team tab says the agent waits for the Mac rather than promising an answer.
+var crewStandbyImportFailed sync.Map // project\x00tab -> time.Time
+
+func crewStandbyRecentlyFailed(project, tab string) bool {
+	at, ok := crewStandbyImportFailed.Load(project + "\x00" + tab)
+	return ok && time.Since(at.(time.Time)) < 30*time.Minute
+}
+
 // crewAlwaysOnPlaceLabel is where an agent of the owner's Mac answers now, for the Team tab (approved mockup): the
 // server decides the words; serving is set when the server answers for it.
 func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours bool) (label string, serving bool) {
@@ -305,7 +317,7 @@ func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours bool) (labe
 		return "Mac off · answering from the server", true
 	case macOn:
 		return "Mac", false
-	case crewStandbyCanAnswer(project, owner, tab):
+	case crewStandbyCanAnswer(project, owner, tab) && !crewStandbyRecentlyFailed(project, tab):
 		return "Mac off · answering from the server", true
 	case yours:
 		return "Mac off · waits for your Mac", false
