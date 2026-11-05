@@ -104,7 +104,7 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 		lines = append(lines, crewAccessLine{Kind: "agents", Title: "Only you", Detail: strings.Join(onlyYou, ", ")})
 	}
 	lines = append(lines, crewAccessPublicLine(f.Agents)...)
-	if f.Team.Folder.Path != "" {
+	if f.Team.Folder.shared() {
 		detail := "Nothing synced yet"
 		switch {
 		case f.Progress != nil:
@@ -123,7 +123,7 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 				detail += fmt.Sprintf(" · %d %s", len(f.Clashes), plural(len(f.Clashes), "clash", "clashes"))
 			}
 		}
-		lines = append(lines, crewAccessLine{Kind: "folder", Title: "Shared folder · " + strings.TrimSuffix(f.Team.Folder.Path, "/") + "/", Detail: detail, Progress: f.Progress})
+		lines = append(lines, crewAccessLine{Kind: "folder", Title: "Shared: " + f.Team.Folder.display(), Detail: detail, Progress: f.Progress})
 		for i, c := range f.Clashes {
 			if i == 3 {
 				break

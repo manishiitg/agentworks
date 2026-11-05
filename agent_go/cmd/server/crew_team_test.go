@@ -52,11 +52,11 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	base := "/api/crew-teams/team-test"
 	// Team off (the Team tab's switch): the saved roster grants nothing, folder or agents.
-	w := call("owner", "PUT", base, `{"name":"Example","people":[{"user_id":"member"}],"folder":{"path":"docs"}}`, "")
+	w := call("owner", "PUT", base, `{"name":"Example","people":[{"user_id":"member"}],"folder":{"whole":true}}`, "")
 	if w.Code != 200 || crewTeamMember("team-test", "member") || call("member", "GET", base+"/files", "", "").Code != 403 {
 		t.Fatalf("a roster saved with Team off must not let its people in: %d %s", w.Code, w.Body.String())
 	}
-	config := `{"name":"Example","on":true,"people":[{"user_id":"member"},{"user_id":"teammate"}],"folder":{"path":"docs"}}`
+	config := `{"name":"Example","on":true,"people":[{"user_id":"member"},{"user_id":"teammate"}],"folder":{"whole":true}}`
 	w = call("owner", "PUT", base, config, "")
 	if w.Code != 200 {
 		t.Fatalf("owner config: %d %s", w.Code, w.Body.String())
@@ -175,7 +175,8 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			}
 		}
 	}
-	for _, p := range []string{"../outside.txt", ".env", "_system/crew-data/owner/chats.json", ".claude/projects/chat.jsonl"} {
+	// Whole Crew still leaves out private state, credentials and each person's own memory (owner, 5 Nov).
+	for _, p := range []string{"../outside.txt", ".env", "_system/crew-data/owner/chats.json", ".claude/projects/chat.jsonl", "MEMORY.md", "memory/notes.md", "product.json"} {
 		w = call("member", "PUT", base+"/file?path="+url.QueryEscape(p), "private", "invalid")
 		if w.Code != 403 || !strings.Contains(w.Body.String(), "team_path_forbidden") {
 			t.Fatalf("path %s: %d %s", p, w.Code, w.Body.String())
@@ -343,7 +344,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w.Code != 200 || w.Body.String() != "member changed" {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	w = call("owner", "PUT", base, `{"people":[],"folder":{"path":"docs"}}`, "")
+	w = call("owner", "PUT", base, `{"people":[],"folder":{"whole":true}}`, "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -369,7 +370,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	// and an old client's upload is refused even if it still has Team membership.
 	oldTeam, _ := readCrewTeam("team-test")
 	oldDir, _ := crewTeamContentDir("team-test")
-	w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"path":"other"}}`, "")
+	w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":["other"]}}`, "")
 	if w.Code != 200 {
 		t.Fatal("change folder", w.Code, w.Body.String())
 	}
@@ -398,13 +399,26 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	t.Log("[CREW_TEAM_PROOF] folder_change=isolated stale_write=403 old_history=retained")
 	// Live Showcase first-upload failure: there is no canonical files directory yet.
 	c3, d3, b3 := newClient("owner")
-	if err := os.WriteFile(filepath.Join(b3.Root, "first-upload.md"), []byte("new folder starts here"), 0600); err != nil {
+	// Folders share only what is inside them: a file beside them stays on the owner's side (owner, 5 Nov).
+	if err := os.MkdirAll(filepath.Join(b3.Root, "other"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(b3.Root, "other", "first-upload.md"), []byte("new folder starts here"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(b3.Root, "not-shared.md"), []byte("stays here"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	sync(c3, d3, b3)
-	w = call("member", "GET", base+"/file?path=first-upload.md", "", "")
+	w = call("member", "GET", base+"/file?path=other/first-upload.md", "", "")
 	if w.Code != 200 || w.Body.String() != "new folder starts here" {
 		t.Fatal("first upload into empty generation", w.Code, w.Body.String())
+	}
+	if w = call("member", "GET", base+"/files", "", ""); strings.Contains(w.Body.String(), "not-shared.md") {
+		t.Fatal("a file outside the chosen folders was shared", w.Body.String())
+	}
+	if w = call("member", "PUT", base+"/file?path=not-shared.md", "member writes outside", "outside-folders"); w.Code != 403 {
+		t.Fatal("a write outside the chosen folders was accepted", w.Code, w.Body.String())
 	}
 	t.Log("[CREW_TEAM_PROOF] first_upload_into_empty_folder=pass")
 	// A member's server copy (their agents on the server, 5 Nov): what their agent writes reaches the team as theirs,
@@ -413,23 +427,23 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if err != nil || copyRoot == "" {
 		t.Fatalf("member server copy: %q %v", copyRoot, err)
 	}
-	if err = os.WriteFile(filepath.Join(copyRoot, "from-server-agent.md"), []byte("written by the member's agent"), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(copyRoot, "other", "from-server-agent.md"), []byte("written by the member's agent"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = api.syncCrewTeamServerCopy(t.Context(), "member", "team-test", false); err != nil {
 		t.Fatal(err)
 	}
-	if w = call("owner", "GET", base+"/files", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"from-server-agent.md"`) || !strings.Contains(w.Body.String(), `"author":"member"`) {
+	if w = call("owner", "GET", base+"/files", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"other/from-server-agent.md"`) || !strings.Contains(w.Body.String(), `"author":"member"`) {
 		t.Fatalf("server copy upload not recorded as the member's: %d %s", w.Code, w.Body.String())
 	}
-	if grants := crewTeamServerFolders(&UserClaims{UserID: "member"}); len(grants) != 1 || grants[0].Path != copyRoot || grants[0].Alias != "other" {
+	if grants := crewTeamServerFolders(&UserClaims{UserID: "member"}); len(grants) != 1 || grants[0].Path != copyRoot || grants[0].Alias != "example" {
 		t.Fatalf("member's attached team folder: %+v", grants)
 	}
 	if grants := crewTeamServerFolders(&UserClaims{UserID: "outsider"}); len(grants) != 0 {
 		t.Fatalf("outsider got a team folder: %+v", grants)
 	}
 	// Removed from the team: the copy holds files they have no right to, so it goes.
-	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"path":"other"}}`, ""); w.Code != 200 {
+	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"folders":["other"]}}`, ""); w.Code != 200 {
 		t.Fatal("remove member", w.Code, w.Body.String())
 	}
 	removeStaleCrewTeamServerCopies(t.Context())
@@ -449,7 +463,7 @@ func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
 		}
 	}
 	team := func(project, owner string) crewTeam {
-		return crewTeam{ProjectID: project, OwnerID: owner, On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Path: "team"}}
+		return crewTeam{ProjectID: project, OwnerID: owner, On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}
 	}
 	for _, t0 := range []crewTeam{team("gone-copy", "owner"), team("live-copy", "owner"), team("someone-else", "other")} {
 		if err := writeCrewTeam(t0); err != nil {
@@ -476,7 +490,7 @@ func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
 func TestCrewTeamSyncsCredentialFileOnlyWhenChosenOnPurpose(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := writeCrewTeam(crewTeam{ProjectID: "purpose-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Path: "team"}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "purpose-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
 		t.Fatal(err)
 	}
 	data := []byte("//registry.example.com/:_authToken=${TOKEN}\n")

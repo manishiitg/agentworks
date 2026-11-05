@@ -52,7 +52,7 @@ func crewTeamNativeFolders(ctx context.Context, claims *UserClaims) []workflowty
 				continue
 			}
 			id := crewTransferDigest(c.Server + "\x00" + c.User.ID + "\x00" + team.ProjectID)[:12]
-			grants = append(grants, workflowtypes.WorkflowFolderGrant{ID: "team-" + id, Alias: "team_" + id, Path: b.Root, Access: workflowtypes.FolderAccessReadWrite, Reason: team.Name + " · shared folder"})
+			grants = append(grants, workflowtypes.WorkflowFolderGrant{ID: "team-" + id, Alias: "team_" + id, Path: b.Root, Access: workflowtypes.FolderAccessReadWrite, Reason: team.Name + " · shared with the team: " + team.Folder.display()})
 		}
 	}
 	return grants
