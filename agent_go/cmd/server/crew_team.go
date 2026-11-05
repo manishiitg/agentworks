@@ -204,8 +204,29 @@ func (t crewTeam) invited(user string) bool {
 	return user != "" && t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && p.Invited })
 }
 
+// Joined members manage the Team together. Permanent registry ownership and
+// each person's own machine/agent controls remain separate.
+func crewTeamCanManage(t crewTeam, user string) bool {
+	return user != "" && crewTeamAccountActive(user) && (t.member(user) || crewRegistryOwnedByCaller(user, crewProjectRootByID(t.ProjectID)))
+}
+
+// A lost Team grant ends already-running work as well as refusing new turns.
+// An independent registry owner keeps their rights when leaving the Team.
+func (api *StreamingAPI) stopRemovedCrewTeamSessions(previous, current crewTeam) {
+	root := crewProjectRootByID(previous.ProjectID)
+	if root == "" || !previous.On {
+		return
+	}
+	for _, person := range previous.People {
+		if !person.Invited && !current.member(person.UserID) && !crewRegistryOwnedByCaller(person.UserID, root) {
+			log.Printf("[CREW_TEAM] project=%s event=access_revoked user=%s", previous.ProjectID, logUsernameForUserID(person.UserID))
+			api.stopRemovedOwnerSessions(person.UserID, root)
+		}
+	}
+}
+
 func (t crewTeam) view(user string) crewTeam {
-	t.CanManage = t.OwnerID == user
+	t.CanManage = crewTeamCanManage(t, user)
 	t.Where = ""
 	if t.member(user) && user != t.OwnerID {
 		t.Where = "web"
@@ -333,11 +354,11 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	owner := ownerOfCrewProjectID(project)
 	if r.Method == http.MethodGet {
 		t, e := readCrewTeam(project)
-		if os.IsNotExist(e) && owner == claims.UserID {
+		if os.IsNotExist(e) && crewRegistryOwnedByCaller(claims.UserID, crewProjectRootByID(project)) {
 			t = crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}
 			e = nil
 		}
-		if e != nil || !t.member(claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
+		if e != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
 			externalError(w, 403, "team_forbidden", "This Crew isn't shared with you right now. Ask its owner to add you to its Team.")
 			return
 		}
@@ -352,8 +373,12 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		api.answerCrewTeamInvite(w, r, claims, project)
 		return
 	}
-	if owner == "" || owner != claims.UserID {
-		externalError(w, 403, "team_owner_required", "Only this Crew's owner can change its team.")
+	current, currentErr := readCrewTeam(project)
+	if os.IsNotExist(currentErr) {
+		current = crewTeam{ProjectID: project, OwnerID: owner}
+	}
+	if owner == "" || current.OwnerID != owner || !crewTeamAccountActive(owner) || !crewTeamCanManage(current, claims.UserID) {
+		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its settings.")
 		return
 	}
 	var input crewTeam
@@ -401,7 +426,14 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	// A person the owner adds is invited, not a member, until they accept; people already on the roster keep their state.
+	if os.IsNotExist(e) {
+		previous = crewTeam{ProjectID: project, OwnerID: owner}
+	}
+	if previous.OwnerID != owner || !crewTeamCanManage(previous, claims.UserID) {
+		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its settings.")
+		return
+	}
+	// A person added to the Team is invited until they accept; existing people keep their own state.
 	for i := range input.People {
 		at := slices.IndexFunc(previous.People, func(p crewTeamPerson) bool { return p.UserID == input.People[i].UserID })
 		input.People[i].Invited = at < 0 || previous.People[at].Invited
@@ -410,12 +442,12 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			input.People[i].Where, input.People[i].MacPair, input.People[i].OnlyMe = previous.People[at].Where, previous.People[at].MacPair, previous.People[at].OnlyMe
 		}
 		if at < 0 {
-			log.Printf("[CREW_TEAM] project=%s actor=%s event=invited user=%s", project, owner, logUsernameForUserID(input.People[i].UserID))
+			log.Printf("[CREW_TEAM] project=%s actor=%s event=invited user=%s", project, logUsernameForUserID(claims.UserID), logUsernameForUserID(input.People[i].UserID))
 		}
 	}
 	for _, p := range previous.People {
 		if !slices.ContainsFunc(input.People, func(q crewTeamPerson) bool { return q.UserID == p.UserID }) {
-			log.Printf("[CREW_TEAM] project=%s actor=%s event=removed user=%s was_invited=%t", project, owner, logUsernameForUserID(p.UserID), p.Invited)
+			log.Printf("[CREW_TEAM] project=%s actor=%s event=removed user=%s was_invited=%t", project, logUsernameForUserID(claims.UserID), logUsernameForUserID(p.UserID), p.Invited)
 		}
 	}
 	// Back to Folders from the Whole Crew picks the folders shared before it, or team/ (owner, 5 Nov); the server decides.
@@ -432,7 +464,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	input.Folder.ID = previous.Folder.ID
 	if !previous.Folder.same(input.Folder) {
 		input.Folder.ID = uuid.NewString()
-		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder whole=%t folders=%d generation=%s", project, owner, input.Folder.Whole, len(input.Folder.Folders), input.Folder.ID)
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder whole=%t folders=%d generation=%s", project, logUsernameForUserID(claims.UserID), input.Folder.Whole, len(input.Folder.Folders), input.Folder.ID)
 	}
 	if input.Folder.shared() && input.Folder.ID == "" {
 		input.Folder.ID = uuid.NewString()
@@ -460,8 +492,9 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t people=%d revision=%d", project, owner, input.On, len(input.People), input.Revision)
-	externalJSON(w, input.view(owner))
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t people=%d revision=%d", project, logUsernameForUserID(claims.UserID), input.On, len(input.People), input.Revision)
+	api.stopRemovedCrewTeamSessions(previous, input)
+	externalJSON(w, input.view(claims.UserID))
 }
 
 // crewTeamLent names what a Team's agents use of the owner's in this Crew (owner, 5 Nov: "my work can depend on mcps

@@ -82,7 +82,7 @@ func (api *StreamingAPI) crewChatPair(r *http.Request, project, pair string) (*c
 
 func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string, completion bool) (*crewroot.SyncBinding, error) {
 	c := GetUserFromContext(r.Context())
-	if !crewChatWebsiteClaims(c) {
+	if !crewChatWebsiteClaims(c) || !crewMacTeamWatchAllowed(r, project) {
 		return nil, fmt.Errorf("Open this Crew using its owner's website sign-in.")
 	}
 	// A Team member whose agents work on their Mac reads (only reads) their own Mac's chats here, through their pair.
@@ -425,7 +425,18 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
 	last := since
+	allowed := func() bool {
+		if crewMacTeamWatchAllowed(r, project) {
+			return true
+		}
+		streamLog.reason = "access_revoked"
+		log.Printf("[CREW_TEAM] project=%s event=watch_closed reason=access_revoked", project)
+		return false
+	}
 	write := func(kind string, id int, body []byte) bool {
+		if !allowed() {
+			return false
+		}
 		if id > last {
 			last = id
 		}
@@ -508,12 +519,18 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 				return
 			}
 		case <-heartbeat.C:
+			if !allowed() {
+				return
+			}
 			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
 				streamLog.keepaliveMiss()
 				return
 			}
 			flusher.Flush()
 		case <-refresh.C:
+			if !allowed() {
+				return
+			}
 			resume()
 		}
 	}

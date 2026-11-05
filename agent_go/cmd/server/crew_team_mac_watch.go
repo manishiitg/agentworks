@@ -273,13 +273,38 @@ func (api *StreamingAPI) routeCrewMemberMacTabs(w http.ResponseWriter, r *http.R
 // crewMacTeamWatchContext lets someone in the Team read (only read) the relay stream of another person's Mac agent the
 // Team may watch: the read runs as that person, whose Mac holds the chat. Anything else, or any other conversation,
 // keeps the caller's own context.
-func (api *StreamingAPI) crewMacTeamWatchContext(r *http.Request, project, conversation string) (*http.Request, bool) {
-	viewer := GetUserIDFromContext(r.Context())
-	if IsLocalMode() {
-		return r, false
+type crewMacTeamWatchKey struct{}
+type crewMacTeamWatch struct {
+	viewer                             *UserClaims
+	project, conversation, person, tab string
+}
+
+// Retain the original viewer for the lifetime of a relay read. Switching the
+// routing identity must not discard credential limits or current membership.
+func crewMacTeamWatchAllowed(r *http.Request, project string) bool {
+	watch, ok := r.Context().Value(crewMacTeamWatchKey{}).(crewMacTeamWatch)
+	if !ok {
+		return true
+	}
+	if watch.project != project || !crewChatWebsiteClaims(watch.viewer) || !crewTeamAccountActive(watch.viewer.UserID) {
+		return false
 	}
 	t, err := readCrewTeam(project)
-	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID || !t.On || !t.member(viewer) {
+	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !t.On || !t.member(watch.viewer.UserID) {
+		return false
+	}
+	person, tab := crewMacTeamConversation(r.Context(), project, watch.conversation)
+	return person == watch.person && tab == watch.tab
+}
+
+func (api *StreamingAPI) crewMacTeamWatchContext(r *http.Request, project, conversation string) (*http.Request, bool) {
+	claims := GetUserFromContext(r.Context())
+	if IsLocalMode() || !crewChatWebsiteClaims(claims) {
+		return r, false
+	}
+	viewer := claims.UserID
+	t, err := readCrewTeam(project)
+	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !crewTeamAccountActive(viewer) || !t.On || !t.member(viewer) {
 		return r, false
 	}
 	person, tab := crewMacTeamConversation(r.Context(), project, conversation)
@@ -287,7 +312,8 @@ func (api *StreamingAPI) crewMacTeamWatchContext(r *http.Request, project, conve
 		return r, false
 	}
 	log.Printf("[CREW_TEAM] project=%s event=member_watch user=%s of=%s tab=%s read=%s", project, logUsernameForUserID(viewer), logUsernameForUserID(person), tab, strings.TrimPrefix(r.URL.Path, "/api/sessions/"))
-	return r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: person, Username: person})), true
+	ctx := context.WithValue(r.Context(), crewMacTeamWatchKey{}, crewMacTeamWatch{viewer: claims, project: project, conversation: conversation, person: person, tab: tab})
+	return r.WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: person, Username: person})), true
 }
 
 // crewMemberMacTarget reads a member's Mac agent from its row key (crewMacTabRow): whose Mac, and which tab.
