@@ -73,7 +73,7 @@ func (c *conditionService) secretEnvironment(ctx context.Context, job productSch
 	}
 	for _, name := range cfg.Secrets {
 		if env["SECRET_"+name] == "" {
-			return nil, fmt.Errorf("selected secret %q has no value", name)
+			return nil, fmt.Errorf("The secret %[1]s has no value yet. Add a value for %[1]s in this Crew's Secrets (or ask the owner to), then try again.", name)
 		}
 	}
 	return env, nil

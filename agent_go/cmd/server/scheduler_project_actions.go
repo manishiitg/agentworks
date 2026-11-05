@@ -145,7 +145,7 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 						}
 					}
 				}
-				if _, err := s.Run(context.Background(), job, "cron", scheduledFor); err != nil && !errors.Is(err, productschedule.ErrAlreadyRunning) {
+				if _, err := s.Run(context.Background(), job, "cron", scheduledFor); err != nil && !errors.Is(err, productschedule.ErrAlreadyRunning) && !errors.Is(err, productschedule.ErrSkip) {
 					scheduleLogf("[PRODUCT-SCHEDULE] %s failed for %s: %v", job.ID(), job.UserID, err)
 				}
 			}(job, d.ScheduledFor)

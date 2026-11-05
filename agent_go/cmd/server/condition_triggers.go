@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"path"
 	"strings"
 	"sync"
@@ -35,12 +36,43 @@ func (s *ProjectActionDispatcher) conditionService() *conditionService {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.conditions == nil {
-		c := &conditionService{s: s, capacity: make(chan struct{}, 4)}
+		c := &conditionService{s: s, capacity: make(chan struct{}, conditionCheckCapacity)}
 		c.engine = &conditiontrigger.Engine{Store: c, Run: c.runScript, Dispatch: c.dispatch}
 		c.notifyPause = c.pauseNotification
 		s.conditions = c
 	}
 	return s.conditions
+}
+
+// Watcher checks share a small pool. A check that finds the pool full waits
+// for a slot instead of failing, and timed checks start with a short random
+// delay so watchers due on the same minute do not all start together.
+const (
+	conditionCheckCapacity = 8
+	conditionSlotWait      = 60 * time.Second
+	conditionStartJitter   = 5 * time.Second
+)
+
+// errConditionBusy is a quiet skip (productschedule.ErrSkip), not a failure.
+type errConditionBusy struct{}
+
+func (errConditionBusy) Error() string {
+	return "Watcher checks are busy right now. Try again in a minute."
+}
+func (errConditionBusy) Is(target error) bool { return target == productschedule.ErrSkip }
+
+// acquireConditionSlot waits up to wait for a free check slot. It returns a
+// release func, or nil when no slot freed up in time.
+func acquireConditionSlot(ctx context.Context, slots chan struct{}, wait time.Duration) func() {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case slots <- struct{}{}:
+		return func() { <-slots }
+	case <-ctx.Done():
+	case <-timer.C:
+	}
+	return nil
 }
 
 func conditionKey(j productScheduleJob) string { return j.UserID + "/" + j.ID() }
@@ -152,12 +184,19 @@ func (c *conditionService) current(ctx context.Context, job productScheduleJob, 
 }
 
 func (c *conditionService) poll(ctx context.Context, job productScheduleJob, source string, scheduledFor time.Time) (string, error) {
-	select {
-	case c.capacity <- struct{}{}:
-		defer func() { <-c.capacity }()
-	default:
-		return "", errors.New("watcher checks are at capacity")
+	if source == "cron" {
+		select {
+		case <-time.After(time.Duration(rand.Int63n(int64(conditionStartJitter)))):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 	}
+	release := acquireConditionSlot(ctx, c.capacity, conditionSlotWait)
+	if release == nil {
+		c.recordBusySkip(ctx, job, source, scheduledFor)
+		return "", errConditionBusy{}
+	}
+	defer release()
 	key := job.UserID + "\x1f" + job.ID()
 	ctx, cancel := context.WithTimeout(conditionContext(ctx, job), 60*time.Second)
 	defer cancel()
@@ -228,6 +267,24 @@ func (c *conditionService) poll(ctx context.Context, job productScheduleJob, sou
 	}
 	go c.drain(context.Background(), job)
 	return "", firstError(err, firstError(resultErr, stateErr))
+}
+
+// recordBusySkip keeps a check that never got a slot in the watcher's history
+// as skipped. It does not count as a failure.
+func (c *conditionService) recordBusySkip(ctx context.Context, job productScheduleJob, source string, scheduledFor time.Time) {
+	ctx = context.WithoutCancel(conditionContext(ctx, job))
+	now := time.Now().UTC()
+	entry := &ScheduleRunEntry{ID: uuid.NewString(), ScheduleID: job.ID(), TriggerSource: "condition:" + source, Status: "skipped", Error: "watcher checks were busy", StartedAt: now, CompletedAt: &now}
+	if !scheduledFor.IsZero() {
+		entry.ScheduledFor = &scheduledFor
+	}
+	if runs, err := c.s.RunsWorkspace(ctx, job); err == nil {
+		_ = AppendScheduleRun(ctx, runs, entry)
+	}
+	_ = c.s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
+		st.LastAttemptAt = now.Format(time.RFC3339)
+		st.LastStatus, st.LastError = "skipped", "watcher checks were busy"
+	})
 }
 
 func (c *conditionService) pauseNotification(ctx context.Context, job productScheduleJob, detail string) {

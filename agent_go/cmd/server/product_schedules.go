@@ -1678,13 +1678,13 @@ func projectRunDestinations(job productScheduleJob) []ScheduleRunDestination {
 	if strings.TrimSpace(job.ProjectID) == "" {
 		return nil
 	}
-	out := []ScheduleRunDestination{{ID: "main", Label: "Main chat"}}
+	out := []ScheduleRunDestination{{ID: runDestinationChat, Label: "Main chat"}}
 	tabs := []ScheduleRunDestination{}
 	if chats, err := crewOwnerChatRecords(context.Background(), job.UserID, job.Profile.ID, job.ProjectID, job.WorkspacePath); err == nil {
 		side := strings.TrimSpace(job.ProjectID) + codeChatSideMarker
 		for _, chat := range chats {
 			key := chat.Record.ConversationKey
-			// The main chat is listed once, as "main", even when its record sits under a tab key.
+			// The main chat is listed once, as "chat", even when its record sits under a tab key.
 			if chat.OwnerID != job.UserID || chat.Record.IsMainChat || !strings.HasPrefix(key, side) {
 				continue
 			}

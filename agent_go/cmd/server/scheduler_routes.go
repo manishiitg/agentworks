@@ -17,7 +17,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
 
-// ScheduleRunDestination is one place a Crew schedule can run. ID "main" is the main chat, "isolated" is
+// ScheduleRunDestination is one place a Crew schedule can run. ID "chat" is the main chat (the run_destination value), "isolated" is
 // its own conversation, anything else is a tab's chat id.
 type ScheduleRunDestination struct {
 	ID    string `json:"id"`
