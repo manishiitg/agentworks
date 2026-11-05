@@ -14,8 +14,6 @@ export function agentInboxMessage(metadata?: Record<string, unknown>) {
 }
 
 type AgentInboxContent = NonNullable<ReturnType<typeof agentInboxMessage>>
-// Plain words for the sender kind the server stamps; an unknown or empty kind adds nothing.
-const KIND_LABEL: Record<string, string> = { agent: 'Agent', crew: 'Crew', goal: 'Goal', flow: 'Flow', code: 'Crew' }
 const BODY_ARTIFACT_KEYS = ['metadata.display_content'] as const
 
 // A message another agent sent into this chat (owner, 5 Nov): shown like a typed message, a bubble on the right, with
@@ -27,8 +25,6 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
   const collapsible = shouldCollapseTranscriptUserMessage(body)
   const shown = collapsible && !expanded ? transcriptUserMessagePreview(body) : body
   const needsLoad = artifact && message.bodyTruncated !== false && !full.text
-  const kind = KIND_LABEL[message.kind]
-  const showKind = kind && !message.sender.toLowerCase().startsWith(kind.toLowerCase())
   return (
     <article data-testid="agent-inbox-message" className="mb-2 ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%]">
       <div data-testid="agent-inbox-body" className="max-w-full break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
@@ -42,7 +38,7 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
         </button>}
       </div>
       <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
-        <span>From {showKind ? `${kind} · ${message.sender}` : message.sender}</span>
+        <span>From {message.sender}</span>
         {timestamp && <span className="tabular-nums">{timestamp}</span>}
       </div>
     </article>

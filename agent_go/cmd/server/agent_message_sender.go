@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 )
 
@@ -31,10 +32,16 @@ func agentMessageSender(ctx context.Context, source agentMessageEndpoint, receiv
 				name = strings.TrimSpace(identity.Name)
 			}
 		}
-		agent, channel = name, "chat"
-		if crew := strings.TrimSpace(source.Label); crew != "" {
-			agent += " in " + crew
+		// Label may already contain a tab name. Read the project identity
+		// instead of composing that decorated label a second time (PLAT-746).
+		crew := ""
+		if raw, exists, err := readFileFromWorkspace(ctx, strings.TrimRight(source.Path, "/")+"/product.json"); err == nil && exists {
+			var manifest productProjectManifest
+			if json.Unmarshal([]byte(raw), &manifest) == nil {
+				crew = firstNonEmptyTrimmed(manifest.Identity.Name, manifest.Title)
+			}
 		}
+		agent, channel = crewMessageSenderName(crew, name), "website"
 		if source.External {
 			channel = "MCP"
 		}
@@ -84,4 +91,16 @@ func externalConnectionApp(label string) string {
 		return label
 	}
 	return "an AI app"
+}
+
+// A default tab is called Main in the chat UI. Keep a custom agent name intact.
+func crewMessageSenderName(crew, name string) string {
+	crew, name = strings.TrimSpace(crew), strings.TrimSpace(name)
+	if name == "" || name == "Builder" {
+		name = "Main"
+	}
+	if crew == "" || crew == name {
+		return name
+	}
+	return crew + " · " + name
 }
