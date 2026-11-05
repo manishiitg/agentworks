@@ -509,6 +509,10 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	if api == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
+	// A compaction started ahead of the queued messages holds them; it kicks the queue when it ends.
+	if run := idleCompacts.running(sessionID); run != nil && run.beforeQueued {
+		return
+	}
 	if by := api.conversationTurnOccupiedBy(sessionID); by != "" {
 		// A running claimed turn kicks again when it ends. Any other occupant
 		// (lane, cancel handle, stored agent, retained turn) releases without a
@@ -535,6 +539,15 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	}
 	api.conversationTurnQueueDraining[sessionID] = true
 	api.conversationTurnQueueMu.Unlock()
+
+	// "Compact at 300K" in a chat that is never quiet: compact once before the next queued message; its end kicks the
+	// queue again (chat_context_options.go).
+	if api.compactBeforeQueuedTurn(sessionID) {
+		api.conversationTurnQueueMu.Lock()
+		delete(api.conversationTurnQueueDraining, sessionID)
+		api.conversationTurnQueueMu.Unlock()
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	turn, ok, err := api.claimOldestConversationTurn(ctx, sessionID)

@@ -4270,7 +4270,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Idle compaction (PLAT-872): a compaction turn runs only on an idle chat,
 	// and a person's send waits (bounded) for a running one.
 	idleRun := idleCompactRunFromContext(r.Context())
-	if idleRun != nil && (api.conversationTurnOccupied(sessionID) || api.conversationTurnHasBacklog(currentUserID, sessionID)) {
+	if idleRun != nil && (api.conversationTurnOccupied(sessionID) || !idleRun.beforeQueued && api.conversationTurnHasBacklog(currentUserID, sessionID)) {
 		http.Error(w, "turn_running", http.StatusConflict)
 		return
 	}
