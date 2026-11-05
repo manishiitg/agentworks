@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -40,11 +39,6 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	}
 	if !crewMacTabID(in.FromTab) && in.FromTab != macMainTab || strings.TrimSpace(in.ConversationID) == "" {
 		externalError(w, 400, "invalid_sender", "Choose one of this Crew's agents to send from.")
-		return
-	}
-	// The reply comes back only to an In team agent (deliverToMacSharedAgent): say so now, not lose it later.
-	if !slices.ContainsFunc(readMacSharedAgents(project), func(a macSharedAgent) bool { return a.Tab == in.FromTab && crewTeamInTeam(a) }) {
-		externalError(w, 409, "sender_not_in_team", fmt.Sprintf("Put %s in the team first, so their reply can reach it.", firstNonEmptyTrimmed(in.Agent, "this agent")))
 		return
 	}
 	member := crewTeamMemberTab(r.Context(), project, in.ChatKey)

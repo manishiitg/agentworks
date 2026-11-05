@@ -679,7 +679,7 @@ func crewTeamMemberTabs(ctx context.Context, project, viewer string) []AgentProf
 		identities, _ := store.agentIdentities(ctx, p.UserID, crewProfileID, project)
 		for _, record := range records {
 			identity := identities[record.ConversationKey]
-			if identity.OnlyMe || hiddenFromTabStrip(record.ConversationKey) || record.SessionID == "" {
+			if !t.agentInTeam(p.UserID, record.ConversationKey) || hiddenFromTabStrip(record.ConversationKey) || record.SessionID == "" {
 				continue
 			}
 			main := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, p.UserID)
@@ -713,10 +713,9 @@ func crewTeamMemberTab(ctx context.Context, project, key string) string {
 		if err != nil {
 			continue
 		}
-		identities, _ := store.agentIdentities(ctx, p.UserID, crewProfileID, project)
 		for _, record := range records {
 			if record.ConversationKey == strings.TrimSpace(key) {
-				if identities[record.ConversationKey].OnlyMe {
+				if !t.agentInTeam(p.UserID, record.ConversationKey) {
 					return ""
 				}
 				return p.UserID

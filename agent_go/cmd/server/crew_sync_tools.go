@@ -201,7 +201,7 @@ func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, g
 			if !ok {
 				return "", fmt.Errorf("say on=true or on=false")
 			}
-			result, err := api.setCrewTeamAll(ctx, caller, manifest.ID, on)
+			result, err := api.setCrewTeamAll(ctx, manifest.ID, on)
 			if err != nil {
 				return "", err
 			}

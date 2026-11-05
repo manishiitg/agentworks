@@ -56,19 +56,22 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 		r := httptest.NewRequest("GET", "/api/sessions/member-session/events", nil)
 		return watching.crewSessionTabView(r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who, Username: who})), "member-session")
 	}
-	if !watches("owner") || !watches("teammate") || watches("outsider") {
-		t.Fatalf("Team watch: owner=%t teammate=%t outsider=%t", watches("owner"), watches("teammate"), watches("outsider"))
+	// Notifications follow the same rule from the same record (crewTeam.AgentChoices, crew_team_in_team.go).
+	notified := func(who string) bool {
+		return watching.notifyCanSee(t.Context(), who, notifyChat{owner: "member", project: team.ProjectID, found: true}, "member-session")
+	}
+	if !watches("owner") || !watches("teammate") || watches("outsider") || !notified("teammate") || notified("outsider") {
+		t.Fatalf("Team watch: owner=%t teammate=%t outsider=%t notified teammate=%t", watches("owner"), watches("teammate"), watches("outsider"), notified("teammate"))
 	}
 	w := call("member", "agent-visibility", `{"agent_key":"`+key+`","in_team":false}`)
 	if w.Code != 200 {
 		t.Fatalf("own visibility: %d %s", w.Code, w.Body.String())
 	}
-	identities, err := store.agentIdentities(t.Context(), "member", crewProfileID, team.ProjectID)
-	if err != nil || !identities[key].OnlyMe {
+	if saved, err := readCrewTeam(team.ProjectID); err != nil || saved.agentInTeam("member", key) {
 		t.Fatalf("own agent not private: %v", err)
 	}
-	if watches("owner") {
-		t.Fatal("owner still watches an Only me agent")
+	if watches("owner") || watches("teammate") || notified("owner") || notified("teammate") {
+		t.Fatal("another person still watches, or is notified about, an Only me agent")
 	}
 	for _, who := range []string{"owner", "outsider"} {
 		if w := call(who, "agent-visibility", `{"agent_key":"`+key+`","in_team":true}`); w.Code != 403 {
@@ -88,6 +91,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	}
 	// The Team tab offers the member a choice only for their own agent; everyone else's is theirs to change, and the
 	// owner can never be removed.
+	team, _ = readCrewTeam(team.ProjectID)
 	tab := crewTeamTabFor(t.Context(), team, "member")
 	own := 0
 	for _, agent := range tab.Agents {

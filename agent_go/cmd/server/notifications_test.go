@@ -23,7 +23,11 @@ func TestNotifyOtherPeopleOnlyWhenTheyCanWatchTheChat(t *testing.T) {
 		}
 	}
 	onlyMe := chat
-	onlyMe.tab.Identity.OnlyMe = true
+	onlyMe.tab.Record.ConversationKey = "crew-1:chat:private"
+	team.AgentChoices = map[string]map[string]bool{"owner": {"crew-1:chat:private": false}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
 	if api.notifyCanSee(t.Context(), "member", onlyMe, "session-1") {
 		t.Error("a member was notified about a tab set to Only me")
 	}

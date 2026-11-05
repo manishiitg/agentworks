@@ -104,8 +104,8 @@ type ProductAgentIdentity struct {
 	// Unpinned takes this side tab off the strip into the Agents menu; every tab starts pinned (owner, 2026-10-20), so
 	// the saved bit is the opposite one and no tab needs a migration.
 	Unpinned bool `json:"unpinned,omitempty"`
-	// OnlyMe keeps this agent out of the Crew's Team: the others who build the Crew do not see it or its chat. Every
-	// agent starts In team (owner, 5 Nov, "A Team is a shared room").
+	// OnlyMe is the old place of Only me, read only by migrateCrewTeamAgentChoices; the Team record keeps it now
+	// (crew_team_in_team.go). Delete it with that migration.
 	OnlyMe bool `json:"only_me,omitempty"`
 	// Engine, ModelID and ReasoningEffort are the model the person chose for this one chat on the Crew's Models page
 	// (owner, 2026-10-19: chosen by hand only). Empty Engine means the chat follows the Crew's own model.
@@ -125,30 +125,6 @@ const (
 
 // setAgentIdentity changes an agent's name and/or purpose (nil keeps the field) and logs the change with its actor.
 // An empty string clears the field.
-// setAgentOnlyMe chooses In team (false) or Only me (true) for one of the person's own agents.
-func (store productConversationRegistryStore) setAgentOnlyMe(ctx context.Context, userID, profileID, conversationKey string, onlyMe bool) error {
-	path := productConversationRegistryPath(userID)
-	mutex := productConversationRegistryMutex(path)
-	mutex.Lock()
-	defer mutex.Unlock()
-	document, err := store.loadDocument(ctx, path)
-	if err != nil {
-		return err
-	}
-	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
-	if _, ok := document.Entries[entryKey]; !ok {
-		return fmt.Errorf("that agent no longer exists")
-	}
-	if document.Agents == nil {
-		document.Agents = map[string]ProductAgentIdentity{}
-	}
-	identity := document.Agents[entryKey]
-	identity.OnlyMe = onlyMe
-	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	document.Agents[entryKey] = identity
-	return store.writeDocument(ctx, path, document)
-}
-
 func (store productConversationRegistryStore) setAgentIdentity(ctx context.Context, userID, profileID, conversationKey string, name, purpose *string, actor string) (ProductAgentIdentity, error) {
 	conversationKey = strings.TrimSpace(conversationKey)
 	if conversationKey == "" || strings.TrimSpace(userID) == "" {

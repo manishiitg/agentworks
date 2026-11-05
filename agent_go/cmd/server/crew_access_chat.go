@@ -35,12 +35,14 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 	}
 	shared := readMacSharedAgents(project)
 	if action == "agents" {
+		// In team is the Team record's (crew_team_in_team.go), read from the server.
+		team, teamErr := liveCrewTeam(project)
 		list := []map[string]any{}
 		for _, row := range rows {
-			item := map[string]any{"agent": row.Name, "purpose": row.Purpose, "shared": false}
+			item := map[string]any{"agent": row.Name, "purpose": row.Purpose, "in_team": false}
 			if at := slices.IndexFunc(shared, func(agent macSharedAgent) bool { return agent.Tab == row.Tab }); at >= 0 {
 				agent := shared[at]
-				item["shared"], item["audience"], item["can_make_changes"], item["public_on_agentbridge"] = agent.Audience != "", agent.Audience, agent.CanChange, agent.AgentBridgePublic
+				item["in_team"], item["can_make_changes"], item["public_on_agentbridge"] = teamErr == nil && team.On && crewTeamInTeam(agent) && team.agentInTeam(team.OwnerID, agent.Tab), agent.CanChange, agent.AgentBridgePublic
 				if agent.Address != "" {
 					item["address_for_their_agents"] = "agent:" + agent.Address
 				}
@@ -70,26 +72,21 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 		if existing.AgentBridgePublic || existing.Audience != "" {
 			next = append(next, existing)
 		}
-	} else if action == "share" {
-		// Sharing with people is In team (owner, 5 Nov): everyone in this Crew's Team.
-		agent := macSharedAgent{Tab: tab, Audience: "team", AgentBridgePublic: existing.AgentBridgePublic}
-		// It only answers them unless the owner says it can make changes for them (the default, like the screen).
-		if changes, _ := args["can_make_changes"].(bool); changes {
-			agent.CanChange = true
+	} else {
+		// share / unshare is In team / Only me (owner, 5 Nov): the owner's own choice in the Team record on the server.
+		if err = api.setOwnAgentInTeam(ctx, claims.UserID, macSharedAgentChatKey(project, tab), action == "share"); err != nil {
+			return "", err
 		}
-		next = append(next, agent)
-	} else if existing.AgentBridgePublic {
-		// unshare: back to only you for people; it stays public for agents.
-		existing.Audience = ""
+		if action == "unshare" {
+			return api.crewAccessChatAction(ctx, project, "agents", nil)
+		}
+		// It only answers them unless the owner says it can make changes for them (the default, like the screen).
+		changes, _ := args["can_make_changes"].(bool)
+		existing.Audience, existing.CanChange = "team", changes
 		next = append(next, existing)
-	} else if len(next) == len(shared) {
-		return out(map[string]any{"agent": rows[at].Name, "shared": false})
 	}
 	if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, next); err != nil {
 		return "", err
-	}
-	if action == "share" || action == "unshare" {
-		noteMainChoice(project, next)
 	}
 	return api.crewAccessChatAction(ctx, project, "agents", nil)
 }

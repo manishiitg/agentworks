@@ -36,8 +36,6 @@ type crewTeamPerson struct {
 	// "mac" on their Mac, paired to this online copy by MacPair (crew_team_where.go).
 	Where   string `json:"where,omitempty"`
 	MacPair string `json:"mac_pair,omitempty"`
-	// OnlyMe are this member's Mac agents (tab ids) they keep to themselves: never listed or streamed to the others.
-	OnlyMe []string `json:"only_me,omitempty"`
 }
 
 // crewTeamInvite is a Team invite as the invited person sees it.
@@ -134,9 +132,15 @@ type crewTeam struct {
 	Name       string              `json:"name"`
 	OwnerID    string              `json:"owner_id"`
 	// On is the Team tab's switch (owner, 4 Nov): off, the roster stays saved but only the owner is in the team.
-	On     bool             `json:"on"`
-	People []crewTeamPerson `json:"people"`
-	Folder crewTeamFolder   `json:"folder"`
+	On bool `json:"on"`
+	// AgentsOnlyMe is "All agents in team" off: an agent nobody chose for is Only me (crew_team_in_team.go). Off, the
+	// default, every agent is In team unless its own person chose Only me.
+	AgentsOnlyMe bool `json:"agents_only_me,omitempty"`
+	// AgentChoices is each person's own In team (true) / Only me (false) per agent key (crew_team_in_team.go): the one
+	// place this choice is kept, for every Crew kind. A viewer sees only their own.
+	AgentChoices map[string]map[string]bool `json:"agent_choices,omitempty"`
+	People       []crewTeamPerson           `json:"people"`
+	Folder       crewTeamFolder             `json:"folder"`
 	// LastFolders are the folders shared before the Whole Crew, for going back to Folders (owner only).
 	LastFolders  []string `json:"last_folders,omitempty"`
 	Revision     uint64   `json:"revision"`
@@ -250,6 +254,12 @@ func (t crewTeam) view(user string) crewTeam {
 			t.ServerData = d
 		}
 	}
+	// Each person's In team / Only me choices are their own.
+	if mine, ok := t.AgentChoices[user]; ok {
+		t.AgentChoices = map[string]map[string]bool{user: mine}
+	} else {
+		t.AgentChoices = nil
+	}
 	// The Mac pair is only the person's own routing fence.
 	t.People = slices.Clone(t.People)
 	for i := range t.People {
@@ -267,21 +277,20 @@ func (t crewTeam) view(user string) crewTeam {
 	return t
 }
 func crewTeamClaims(claims *UserClaims, project string, write bool) bool {
-	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" || userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, crewProfileID) {
-		return false
-	}
-	if websiteDeviceClaims(claims) {
-		return true
-	}
-	if !personalLaptopSettingsClaims(claims) {
+	// Any of the person's own callers (owner, 5 Nov): the website, their Mac, their own MCP agent or an automatic run.
+	// Membership is checked per Team; a token limited to some Crews or scopes keeps that limit.
+	if claims == nil || claims.UserID == "" || userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, crewProfileID) {
 		return false
 	}
 	t := claims.AccessToken
+	if t == nil {
+		return true
+	}
 	scope := "crews:read"
 	if write {
 		scope = "crews:write"
 	}
-	return t != nil && t.Allows(scope) && t.AllowsCrew(workspaceTokenProjectID(project))
+	return t.Allows(scope) && t.AllowsCrew(workspaceTokenProjectID(project))
 }
 func crewTeamAuthorize(claims *UserClaims, project, rel string, write, folder bool) (crewTeam, error) {
 	if !crewTeamClaims(claims, project, write) {
@@ -440,9 +449,9 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	for i := range input.People {
 		at := slices.IndexFunc(previous.People, func(p crewTeamPerson) bool { return p.UserID == input.People[i].UserID })
 		input.People[i].Invited = at < 0 || previous.People[at].Invited
-		input.People[i].Where, input.People[i].MacPair, input.People[i].OnlyMe = "", "", nil
+		input.People[i].Where, input.People[i].MacPair = "", ""
 		if at >= 0 { // where a member works is theirs to choose
-			input.People[i].Where, input.People[i].MacPair, input.People[i].OnlyMe = previous.People[at].Where, previous.People[at].MacPair, previous.People[at].OnlyMe
+			input.People[i].Where, input.People[i].MacPair = previous.People[at].Where, previous.People[at].MacPair
 		}
 		if at < 0 {
 			log.Printf("[CREW_TEAM] project=%s actor=%s event=invited user=%s", project, logUsernameForUserID(claims.UserID), logUsernameForUserID(input.People[i].UserID))
@@ -451,6 +460,24 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	for _, p := range previous.People {
 		if !slices.ContainsFunc(input.People, func(q crewTeamPerson) bool { return q.UserID == p.UserID }) {
 			log.Printf("[CREW_TEAM] project=%s actor=%s event=removed user=%s was_invited=%t", project, logUsernameForUserID(claims.UserID), logUsernameForUserID(p.UserID), p.Invited)
+		}
+	}
+	// Each person's agent choices are theirs (agent-visibility), never replaced by a save; a person who left takes theirs.
+	input.AgentChoices = map[string]map[string]bool{}
+	for person, choices := range previous.AgentChoices {
+		if person == owner || slices.ContainsFunc(input.People, func(p crewTeamPerson) bool { return p.UserID == person }) {
+			input.AgentChoices[person] = choices
+		}
+	}
+	// Team on (owner, 4-5 Nov) starts with All agents in team and, with nothing shared yet, the Crew's team/ folder.
+	// The server decides it for every caller (website, Mac app, chat, MCP); the owner's Mac makes the folder there
+	// when it applies the record (crew_team_apply.go).
+	madeFolder := false
+	if input.On && !previous.On {
+		input.AgentsOnlyMe = false
+		if !input.Folder.shared() {
+			input.Folder = crewTeamFolder{Folders: []string{crewTeamDefaultFolder}}
+			madeFolder = !crewRelayTwin(project)
 		}
 	}
 	// Back to Folders from the Whole Crew picks the folders shared before it, or team/ (owner, 5 Nov); the server decides.
@@ -491,11 +518,19 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 400, "invalid_name", "Use a shorter team name.")
 		return
 	}
+	if madeFolder {
+		// A Crew on the server: its own folder is where people work, so team/ is made here.
+		if roots, found, err := crewStorageRoots(crewProjectRootByID(project)); err == nil && found {
+			if err = os.MkdirAll(filepath.Join(roots.Files, crewTeamDefaultFolder), 0o755); err != nil {
+				log.Printf("[CREW_TEAM] project=%s event=team_folder_failed reason=%q", project, err)
+			}
+		}
+	}
 	if e = writeCrewTeam(input); e != nil {
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t people=%d revision=%d", project, logUsernameForUserID(claims.UserID), input.On, len(input.People), input.Revision)
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t all_in_team=%t people=%d folder=%q revision=%d", project, logUsernameForUserID(claims.UserID), input.On, !input.AgentsOnlyMe, len(input.People), input.Folder.display(), input.Revision)
 	api.stopRemovedCrewTeamSessions(previous, input)
 	externalJSON(w, input.view(claims.UserID))
 }
@@ -765,10 +800,7 @@ func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Reque
 		externalError(w, 409, "team_unavailable", e.Error())
 		return
 	}
-	// This Mac remembers whether the Team is on, for Main In team by default (crew_team_all.go).
-	if err := writeCrewTeamState(roots.ID, func(s *crewTeamLocalState) { s.TeamOn = out.On }); err != nil {
-		log.Printf("[CREW_TEAM] local project=%s team state not saved: %v", roots.ID, err)
-	}
+	api.applyCrewTeamOnMac(r.Context(), roots.ID, out) // this Mac follows the server's record (crew_team_apply.go)
 	externalJSON(w, out)
 }
 

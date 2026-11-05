@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,9 +16,10 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// "All agents in team" (owner, 5 Nov, "A Team is a shared room"): while it is on, every agent of this Mac Crew is In
-// team, including ones made later; a purpose is optional (owner, 5 Nov). In team is the agent's audience "team";
-// Only me is no audience (an agent public on AgentBridge keeps its entry for that, Mac online's choice).
+// The owner's Mac and its Crew's Team (owner, 5 Nov: the server decides, one Team tab everywhere). Every Team setting
+// is the company server's Team record: on/off, people, what is shared, All agents in team and each agent's In team /
+// Only me. This Mac only applies it (crew_team_apply.go): it lists its agents on the online copy while the Team is
+// on, and makes the team/ folder the server chose. What stays per Mac is Mac online and its own folders.
 
 func crewTeamAllPath(project string) (string, error) {
 	if project == "" || strings.ContainsAny(project, `/\`) || project == "." || project == ".." {
@@ -26,12 +29,10 @@ func crewTeamAllPath(project string) (string, error) {
 	return filepath.Join(state, "crew-sync", project+"-team.json"), err
 }
 
-// crewTeamLocalState is this Mac's own memory of its Crew's Team: All agents in team, whether the Team is on (from the
-// last switch or read of it), and an explicit Only me for Main, so Main In team by default never overrides it.
+// crewTeamLocalState is this Mac's own memory of its Crew's Team.
 type crewTeamLocalState struct {
-	AllInTeam  bool `json:"all_in_team"`
-	TeamOn     bool `json:"team_on,omitempty"`
-	MainOnlyMe bool `json:"main_only_me,omitempty"`
+	// TeamOn is the server record's switch as this Mac last applied it.
+	TeamOn bool `json:"team_on,omitempty"`
 	// PreviousProject is the online copy this Crew had before Mac online was turned off; turning it on again moves
 	// the Team to the new copy.
 	PreviousProject string `json:"previous_online_project,omitempty"`
@@ -67,46 +68,22 @@ func writeCrewTeamState(project string, change func(*crewTeamLocalState)) error 
 	return fsutil.WriteJSONAtomic(path, state, 0o600)
 }
 
-func readCrewTeamAll(project string) bool { return readCrewTeamState(project).AllInTeam }
-
-func writeCrewTeamAll(project string, on bool) error {
-	return writeCrewTeamState(project, func(s *crewTeamLocalState) { s.AllInTeam = on })
-}
-
-// withTeamMain puts Main In team while the Team is on (owner, 5 Nov: "main agents shared by default"), unless the owner
-// chose Only me for it.
-func withTeamMain(project string, current []macSharedAgent) ([]macSharedAgent, bool) {
-	state := readCrewTeamState(project)
-	at := slices.IndexFunc(current, func(agent macSharedAgent) bool { return agent.Tab == macMainTab })
-	if !state.TeamOn || state.MainOnlyMe || at >= 0 && current[at].Audience == "team" {
-		return current, false
-	}
+// crewTeamRoster is this Mac Crew's list on its online copy for the Team's switch: on, every agent is listed for the
+// Team (audience "team"), keeping each entry's other choices, and who sees which is the server's In team / Only me;
+// off, only agents public on AgentBridge stay, with no people audience. It says whether the list changed.
+func crewTeamRoster(rows []macAgentRow, current []macSharedAgent, on bool) ([]macSharedAgent, bool) {
 	next := slices.Clone(current)
-	if at < 0 {
-		next = append(next, macSharedAgent{Tab: macMainTab, Audience: "team"})
-	} else {
-		next[at].Audience = "team"
-	}
-	return next, true
-}
-
-// noteMainChoice records the owner's own In team / Only me choice for Main from a saved share list.
-func noteMainChoice(project string, saved []macSharedAgent) {
-	inTeam := slices.ContainsFunc(saved, func(agent macSharedAgent) bool { return agent.Tab == macMainTab && crewTeamInTeam(agent) })
-	if err := writeCrewTeamState(project, func(s *crewTeamLocalState) { s.MainOnlyMe = !inTeam }); err != nil {
-		log.Printf("[CREW_TEAM] local project=%s main choice not saved: %v", project, err)
-	}
-}
-
-// withAllInTeam puts every agent In team, Main too unless the owner chose Only me for
-// it; it returns the new list and the names added.
-func withAllInTeam(rows []macAgentRow, current []macSharedAgent, mainOnlyMe bool) ([]macSharedAgent, []string) {
-	next := slices.Clone(current)
-	added := []string{}
-	for _, row := range rows {
-		if row.Tab == macMainTab && mainOnlyMe {
-			continue
+	changed := false
+	if !on {
+		next = slices.DeleteFunc(next, func(agent macSharedAgent) bool { return !agent.AgentBridgePublic })
+		changed = len(next) < len(current)
+		for i := range next {
+			changed = changed || next[i].Audience != ""
+			next[i].Audience = ""
 		}
+		return next, changed
+	}
+	for _, row := range rows {
 		at := slices.IndexFunc(next, func(agent macSharedAgent) bool { return agent.Tab == row.Tab })
 		switch {
 		case at < 0:
@@ -116,30 +93,38 @@ func withAllInTeam(rows []macAgentRow, current []macSharedAgent, mainOnlyMe bool
 		default:
 			continue
 		}
-		added = append(added, row.Name)
+		changed = true
 	}
-	return next, added
+	return next, changed
 }
 
-// setCrewTeamAll saves the choice and, when on, puts every ready agent In team now.
-func (api *StreamingAPI) setCrewTeamAll(ctx context.Context, claims *UserClaims, project string, on bool) (map[string]any, error) {
-	if err := writeCrewTeamAll(project, on); err != nil {
+// changeCrewTeamFromMac changes this Mac Crew's Team record on the company server through Mac online's connection,
+// with the same server checks as the website, then applies the saved record here.
+func (api *StreamingAPI) changeCrewTeamFromMac(ctx context.Context, project string, change func(*crewTeam)) (crewTeam, error) {
+	claims, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
+	if err != nil {
+		return crewTeam{}, fmt.Errorf("Turn on Mac online for this Crew first.")
+	}
+	route := "/api/crew-teams/" + url.PathEscape(binding.PeerProjectID)
+	var team crewTeam
+	if err = crewTeamRemoteJSON(ctx, claims.UserID, connection, http.MethodGet, route, nil, &team); err != nil {
+		return team, err
+	}
+	change(&team)
+	var saved crewTeam
+	if err = crewTeamRemoteJSON(ctx, claims.UserID, connection, http.MethodPut, route, team, &saved); err != nil {
+		return saved, err
+	}
+	api.applyCrewTeamOnMac(ctx, project, saved)
+	return saved, nil
+}
+
+// setCrewTeamAll is All agents in team from this Mac (its screen and its chat): the server's record.
+func (api *StreamingAPI) setCrewTeamAll(ctx context.Context, project string, on bool) (map[string]any, error) {
+	saved, err := api.changeCrewTeamFromMac(ctx, project, func(t *crewTeam) { t.AgentsOnlyMe = !on })
+	if err != nil {
 		return nil, err
 	}
-	out := map[string]any{"all_in_team": on}
-	if on {
-		_, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
-		if err != nil || binding == nil || binding.Mode != "relay" || binding.Editing != "local" {
-			out["note"] = "Turn on Use from phone and web to put the agents in the team."
-		} else if rows, err := api.macAgentRows(ctx, claims, project); err != nil {
-			return nil, err
-		} else if next, added := withAllInTeam(rows, readMacSharedAgents(project), readCrewTeamState(project).MainOnlyMe); len(added) > 0 {
-			if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, next); err != nil {
-				return nil, err
-			}
-			out["added"] = added
-		}
-	}
-	log.Printf("[CREW_TEAM] local project=%s event=all_in_team on=%t added=%v", project, on, out["added"])
-	return out, nil
+	log.Printf("[CREW_TEAM] local project=%s event=all_in_team on=%t", project, !saved.AgentsOnlyMe)
+	return map[string]any{"all_in_team": !saved.AgentsOnlyMe}, nil
 }

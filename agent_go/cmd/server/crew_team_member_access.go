@@ -3,11 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
 	"slices"
-	"strings"
 
 	"github.com/gorilla/mux"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -22,13 +22,11 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 		return
 	}
 	t, err := readCrewTeam(project)
-	// On a Crew that lives on the server its owner's agents are server tabs too: In team / Only me works the same way
-	// for the owner (Team for server Crews, owner 5 Nov). A Mac Crew's owner chooses on the Mac.
-	ownerOnServer := err == nil && t.OwnerID == claims.UserID && mux.Vars(r)["op"] == "agent-visibility" && !crewRelayTwin(project)
-	if err != nil || (t.OwnerID == claims.UserID && !ownerOnServer) || !t.member(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
-		externalError(w, 403, "team_member_required", "Only a joined member can change their own participation here.")
+	if err != nil || !t.member(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
+		externalError(w, 403, "team_member_required", "Join this Crew's Team first.")
 		return
 	}
+	// In team / Only me for one of the caller's own agents, the owner's included, for every Crew kind (crew_team_in_team.go).
 	if mux.Vars(r)["op"] == "agent-visibility" {
 		var in struct {
 			Key    string `json:"agent_key"`
@@ -38,28 +36,18 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 			externalError(w, 400, "invalid_agent", "Choose your agent and In team or Only me.")
 			return
 		}
-		in.Key = strings.TrimSpace(in.Key)
-		if setCrewTeamMacOnlyMe(w, r, project, claims.UserID, in.Key, !*in.InTeam) {
-			return // one of their agents on their Mac (crew_team_where.go)
-		}
-		store := defaultProductConversationRegistryStore()
-		records, e := store.projectChats(r.Context(), claims.UserID, crewProfileID, project)
-		if e != nil {
-			externalError(w, 409, "agent_unavailable", "Your agents could not be read. Try again.")
-			return
-		}
-		if !slices.ContainsFunc(records, func(record ProductConversationRecord) bool {
-			return record.ConversationKey == strings.TrimSpace(in.Key)
-		}) {
+		if err = setCrewTeamAgentChoice(r.Context(), project, claims.UserID, in.Key, *in.InTeam); errors.Is(err, errCrewTeamAgentNotYours) {
 			externalError(w, 403, "agent_not_yours", "Choose one of your own agents in this Team.")
 			return
-		}
-		if err = store.setAgentOnlyMe(r.Context(), claims.UserID, crewProfileID, in.Key, !*in.InTeam); err != nil {
-			externalError(w, 409, "agent_update_failed", err.Error())
+		} else if err != nil {
+			externalError(w, 409, "agent_update_failed", "It was not saved. Try again.")
 			return
 		}
-		log.Printf("[CREW_TEAM] agent visibility user=%s tab=%s in_team=%t", logUsernameForUserID(claims.UserID), in.Key, *in.InTeam)
 		externalJSON(w, map[string]any{"in_team": *in.InTeam})
+		return
+	}
+	if t.OwnerID == claims.UserID {
+		externalError(w, 403, "team_owner_stays", "The Crew's owner stays in its Team. Turn the Team off instead.")
 		return
 	}
 	dir, err := crewTeamDir(project)
