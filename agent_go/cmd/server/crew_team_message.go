@@ -49,6 +49,12 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	}
 	member := crewTeamMemberTab(r.Context(), project, in.ChatKey)
 	if member == "" {
+		// A member's agent on their Mac (crew_team_mac_watch.go), not one of their server tabs.
+		if person, _, ok := crewMemberMacAgentFor(r.Context(), project, in.ChatKey, claims.UserID); ok {
+			member = person
+		}
+	}
+	if member == "" {
 		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
 		return
 	}

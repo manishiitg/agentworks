@@ -768,6 +768,9 @@ const macAgentReplyWindow = 30 * time.Minute
 // deliverToMacSharedAgent runs another person's agent message in the shared tab on its owner's Mac and sends the
 // agent's final answer back to the same inbox. The person behind the sending agent must be in the audience.
 func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
+	if _, _, member := crewMemberMacTarget(dest.ID, dest.ChatKey); member {
+		return api.deliverToMemberMacAgent(ctx, c, m, source, dest)
+	}
 	tab := macSharedAgentTab(dest.ID, dest.ChatKey)
 	if _, reason := macSharedAgentForAgent(dest.ID, tab, source.UserID, dest.UserID); reason != "" {
 		log.Printf("[CREW_SHARED_AGENT] project=%s tab=%q action=message refused reason=%s sender_agent=%s user=%s", dest.ID, tab, reason, source.NamedAgentID, logUsernameForUserID(source.UserID))

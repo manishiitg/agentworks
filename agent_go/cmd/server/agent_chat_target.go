@@ -16,6 +16,13 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 	chatID = strings.TrimSpace(chatID)
 	if target.Kind == triggerCallerCrew {
 		if chatID != "" && chatID != "main" {
+			// A Team member's agent on their Mac (crew_team_mac_watch.go): the server decides who may message it.
+			if person, agent, ok := crewMemberMacAgentFor(ctx, target.CrewID, chatID, caller); ok {
+				key := crewMacTabRow(target.CrewID, agent).ConversationKey
+				target.Chat, target.CrewOwner = &codeChat{OwnerID: person, ID: key, Key: key, Name: agent.Name}, person
+				target.Label += " · " + agent.Name
+				return target, nil
+			}
 			if !crewProjectOwnedByCaller(caller, target.Path) {
 				chat, ok := sharedCrewAgentChat(ctx, caller, target.Path, chatID)
 				if !ok {

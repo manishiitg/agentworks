@@ -32,6 +32,8 @@ type crewMacWaitingMessage struct {
 	Inbox        string          `json:"inbox,omitempty"`
 	From         int             `json:"from,omitempty"`
 	At           string          `json:"at"`
+	// Person is the Team member whose Mac holds the agent ("" for the Crew owner's Mac; crew_team_where.go).
+	Person string `json:"person,omitempty"`
 }
 
 type crewMacWaitingState struct {
@@ -91,6 +93,11 @@ func updateCrewMacWaiting(project string, change func(*crewMacWaitingState)) (cr
 }
 
 func holdForMac(project, reason string, call crewChatCall, inbox string, from int) error {
+	return holdForPersonMac(project, "", reason, call, inbox, from)
+}
+
+// holdForPersonMac keeps a message for one person's Mac ("" is the Crew owner's) until it is back.
+func holdForPersonMac(project, person, reason string, call crewChatCall, inbox string, from int) error {
 	if call.SubmissionID == "" {
 		call.SubmissionID = uuid.NewString()
 	}
@@ -101,7 +108,7 @@ func holdForMac(project, reason string, call crewChatCall, inbox string, from in
 			return
 		}
 		s.Waiting = append(s.Waiting, crewMacWaitingMessage{ID: uuid.NewString(), Tab: call.Tab, Caller: call.Caller, Message: call.Message, SubmissionID: call.SubmissionID,
-			Args: call.Args, Inbox: inbox, From: from, At: time.Now().UTC().Format(time.RFC3339Nano)})
+			Args: call.Args, Inbox: inbox, From: from, At: time.Now().UTC().Format(time.RFC3339Nano), Person: person})
 	})
 	log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=held_for_mac reason=%s inbox=%q err=%v", project, call.Tab, reason, inbox, err)
 	return err
@@ -117,6 +124,21 @@ func (api *StreamingAPI) heldMacMessageAllowed(owner, project string, held crewM
 	}
 	if json.Unmarshal(held.Args, &args) != nil || args.SenderID == "" {
 		return false, false
+	}
+	if held.Person != "" {
+		// A member's Mac agent: the sender must still be in the Team and the agent not Only me (its Mac is on now).
+		t, err := readCrewTeam(project)
+		if err != nil {
+			return false, false
+		}
+		if !t.member(args.SenderID) {
+			return false, true
+		}
+		tabs := crewMacTabsFor(context.Background(), held.Person, project, args.SenderID)
+		if len(tabs) == 0 {
+			return false, false // their Mac's agents could not be read now: try again later
+		}
+		return slices.ContainsFunc(tabs, func(tab crewMacTeamTab) bool { return tab.Tab == held.Tab }), true
 	}
 	// The audience helpers treat an unreadable record as empty. For queued mail,
 	// distinguish that from a confirmed removal before deciding to discard it.
@@ -187,11 +209,15 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 	if len(s.Waiting) == 0 {
 		return
 	}
-	// One hand-back per Crew at a time: the Mac's connect and its next offer both start one.
-	if _, busy := crewMacDelivering.LoadOrStore(project, true); busy {
+	// One hand-back per Crew and Mac at a time: the Mac's connect and its next offer both start one.
+	person := ""
+	if owner != ownerOfCrewProjectID(project) {
+		person = owner // a Team member's Mac: only messages held for their agents
+	}
+	if _, busy := crewMacDelivering.LoadOrStore(project+"\x00"+person, true); busy {
 		return
 	}
-	defer crewMacDelivering.Delete(project)
+	defer crewMacDelivering.Delete(project + "\x00" + person)
 	// Without the Mac, only what now belongs to a published agent moves on: its held messages go to it on the server.
 	macOn := crewMacSocketFor(owner, project, pair) != nil
 	s, err = readCrewMacWaiting(project)
@@ -200,6 +226,9 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 	}
 	delivered := map[string]bool{}
 	for _, held := range s.Waiting {
+		if held.Person != person {
+			continue
+		}
 		// An agent published while the message waited is answered on the server from then on.
 		if allowed, permanent := api.heldMacMessageAllowed(owner, project, held); !allowed {
 			if !permanent {
@@ -217,13 +246,16 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 			log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=refused inbox=%q reason=access_removed", project, held.Tab, held.Inbox)
 			continue
 		}
-		published := crewPublishedTarget(project, held.Tab)
+		published := person == "" && crewPublishedTarget(project, held.Tab)
 		if !published && !macOn {
 			continue
 		}
 		send := func(call crewChatCall, timeout time.Duration) crewChatResult {
 			if published {
 				return api.publishedAgentCall(context.Background(), owner, project, call, held.Inbox != "") // an inbox means an agent message
+			}
+			if person != "" {
+				return callCrewMacPair(context.Background(), person, project, pair, call, timeout)
 			}
 			return callCrewMacFor(context.Background(), owner, project, call, timeout)
 		}
@@ -285,10 +317,7 @@ func (api *StreamingAPI) deliverCrewMacWaitingAll(sock *crewMacSocket) {
 	}
 	sock.mu.Unlock()
 	for project, pair := range twins {
-		// Messages held for a Crew's Mac are for its owner's Mac; a Team member's Mac copy never receives them.
-		if ownerOfCrewProjectID(project) != sock.owner {
-			continue
-		}
+		// Each Mac gets only the messages held for its own agents: the owner's, or a member's (held.Person).
 		go api.deliverCrewMacWaiting(sock.owner, project, pair)
 	}
 }

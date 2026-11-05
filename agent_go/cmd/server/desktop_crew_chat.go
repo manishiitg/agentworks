@@ -357,6 +357,11 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 			agent = &shared
 		}
 	}
+	// A Team member's working copy (crew_team_where.go): the server decided who may message its agents (Team, not
+	// Only me); its own shared list is the owner's concept and stays empty here.
+	if agent == nil && readCrewTeamState(project).MemberOf != "" {
+		agent = &macSharedAgent{Tab: call.Tab, Audience: "team"}
+	}
 	if agent == nil {
 		return refuse("not_shared")
 	}
