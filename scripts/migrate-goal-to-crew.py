@@ -116,8 +116,17 @@ class Conversion:
         access = self.manifest.get('access') or {}
         source_owners = set(access.get('owners') or [self.owner])
         target_owners = {self.project['owner_id'], *self.project.get('co_owners', [])}
+        # Joined Team members now build like co-owners on the server. They
+        # live outside ownership/projects.json; ignoring that roster would
+        # silently give them write access to a newly imported private Goal.
+        team = read(self.state/'team-folders'/crew/'team.json')
+        if team:
+            if team.get('project_id') != crew or team.get('owner_id') != self.project['owner_id']:
+                raise ValueError('Repair the destination Crew Team ownership record before converting.')
+            if team.get('on'):
+                target_owners.update(person['user_id'] for person in team.get('people', []) if not person.get('invited'))
         if self.owner != self.project['owner_id'] or source_owners != target_owners or access.get('editors'):
-            raise ValueError('Choose a Crew with the same execution owner and owners; resolve old editor access explicitly first.')
+            raise ValueError('Choose a Crew with the same execution owner and owners (including joined Team members); resolve editor access explicitly first.')
         if bool(access.get('run_everyone')) != (not self.project.get('private', False)) or set(access.get('readers') or []) != set(self.project.get('run_people') or []):
             raise ValueError('Choose a Crew with the same sharing audience. Migration never broadens or removes access.')
         if self.manifest.get('team') or self.project.get('shared_agents'):

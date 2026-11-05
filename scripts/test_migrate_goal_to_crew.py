@@ -104,6 +104,16 @@ class Migration(unittest.TestCase):
         before=hashes(self.base)
         with self.assertRaisesRegex(ValueError,'sharing audience'):self.conversion()
         self.assertEqual(before,hashes(self.base));write(registry,original)
+        team_file=self.state/'team-folders/crew/team.json'
+        write(team_file,{'project_id':'crew','owner_id':'owner','on':True,'people':[{'user_id':'runner','invited':False}]})
+        before=hashes(self.base)
+        with self.assertRaisesRegex(ValueError,'joined Team members'):self.conversion()
+        self.assertEqual(before,hashes(self.base))
+        # An invitation alone grants no access; neither does a switched-off Team.
+        for on,invited in [(True,True),(False,False)]:
+            write(team_file,{'project_id':'crew','owner_id':'owner','on':on,'people':[{'user_id':'runner','invited':invited}]})
+            self.assertEqual(self.conversion().report()['status'],'ready')
+        team_file.unlink()
         destination=self.docs/'Crew/target/.agentworks/workflows/old-goal';destination.mkdir(parents=True)
         with self.assertRaisesRegex(ValueError,'already has source'):self.conversion()
         destination.rmdir()

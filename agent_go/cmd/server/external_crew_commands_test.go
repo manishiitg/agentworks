@@ -37,6 +37,14 @@ func newExternalCrewCommandFixture(t *testing.T) (*externalToolsFixture, string)
 		t.Fatal(err)
 	}
 	f := &externalToolsFixture{docs: t.TempDir()}
+	// Crew roots resolve their physical paths. On macOS t.TempDir may use
+	// /var (a symlink to /private/var); use the same root in workspace handlers
+	// so permission checks exercise accounts, not a fixture path mismatch.
+	var err error
+	f.docs, err = filepath.EvalSymlinks(f.docs)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("WORKSPACE_DOCS_PATH", f.docs)
 	oldDocs := viper.Get("docs-dir")
 	viper.Set("docs-dir", f.docs)

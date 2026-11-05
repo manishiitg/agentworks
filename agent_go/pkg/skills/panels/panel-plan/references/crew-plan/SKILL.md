@@ -8,7 +8,7 @@ Read the saved files before editing. For a workflow, use `action=read/write` wit
 
 Define input names, types, defaults and required values once in Inputs. Optional named presets hold only saved values. No group, preset or input file is required for a workflow with no inputs. Do not submit retired group selectors or invent a default group. Secrets stay in selected Vault bindings, not input values.
 
-An agent step can reference a `crew_agent` ID from the list. It reuses that agent's model and instructions, and the Crew's selected skills, connections and tools as defaults. Explicit step overrides remain; `enabled_skills: []` deliberately selects no skills. It starts its own run context, without copying the agent's private chat or native session. Ordinary steps without a Crew-agent reference keep their own capability settings.
+An agent step can reference a `crew_agent` ID from the list. It reuses that agent's model and instructions, and the Crew's selected skills, connections and tools as defaults. The list offers the workflow owner's agents visible to you; watching a teammate's agent does not let a workflow copy that person's account or instructions. Message teammates through your own agent instead. Explicit step overrides remain; `enabled_skills: []` deliberately selects no skills. It starts its own run context, without copying the agent's private chat or native session. Ordinary steps without a Crew-agent reference keep their own capability settings.
 
 ## Saved scripts
 
