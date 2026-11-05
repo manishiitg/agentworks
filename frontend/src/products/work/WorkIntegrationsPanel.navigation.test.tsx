@@ -21,6 +21,8 @@ vi.mock('../../components/workflow/WorkflowEmailPanel', () => ({ default: () => 
 vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMcpSetupPanel: () => <div data-content="cli">Existing MCP setup</div> }))
 vi.mock('./ComputerUsePanel', () => ({ ComputerUsePanel: () => <div data-content="computer-use">Local computer</div> }))
 vi.mock('./YourComputerPanel', () => ({ YourComputerPanel: () => <div data-computer="">Sync and laptop access</div> }))
+vi.mock('./useMacCrew', () => ({ useMacCrew: () => ({ livesOnMac: false }) }))
+vi.mock('./TeamTab', () => ({ TeamTab: () => null }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
 vi.mock('../../components/integrations/ProjectIntegrationPanel', () => ({ INTEGRATION_LABELS: {github:'GitHub',connected:'MCPs',available:'Available MCPs',secrets:'Secrets',gmail:'Google apps','slack-account':'Slack account',laptop:'Local laptop'}, ProjectIntegrationPanel: ({section}: any) => <section data-content={section} data-integration-section={section}>Native integration</section> }))
@@ -84,7 +86,6 @@ it('opens where it lives and sharing together on the Access page', async () => {
  for (const target of ['access', 'share', 'computer', 'sync', 'laptop', 'agents', 'agentbridge']) {
   await act(async () => state.target('connected'))
   await act(async () => state.target(target))
-  expect(host.querySelector('header')?.textContent).toContain('Access')
   expect(host.querySelector('[data-computer]')).not.toBeNull()
   expect(host.querySelector('[data-content="sharing"]')).not.toBeNull()
  }

@@ -72,9 +72,27 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			t.Fatalf("member changed registered other agent %s: %d", otherKey, w.Code)
 		}
 	}
-	view := api.crewTeamMemberAccess(t.Context(), team, "member")
-	if len(view.OwnAgents) != 1 || view.OwnAgents[0].InTeam {
-		t.Fatalf("wrong member view: %+v", view)
+	// The Team tab offers the member a choice only for their own agent; everyone else's is theirs to change, and the
+	// owner can never be removed.
+	tab := crewTeamTabFor(t.Context(), team, "member")
+	own := 0
+	for _, agent := range tab.Agents {
+		if agent.Key == key {
+			own++
+			if !agent.CanChange || agent.InTeam {
+				t.Fatalf("own agent row: %+v", agent)
+			}
+		} else if agent.CanChange || agent.Fixed == "" {
+			t.Fatalf("member can change another person's agent: %+v", agent)
+		}
+	}
+	if own != 1 || !tab.CanLeave {
+		t.Fatalf("wrong member tab: %+v", tab)
+	}
+	for _, person := range tab.People {
+		if person.UserID == "owner" && person.CanRemove || person.UserID == "member" && person.Note != "you" {
+			t.Fatalf("wrong person row: %+v", person)
+		}
 	}
 	if w := call("member", "leave", `{}`); w.Code != 200 {
 		t.Fatalf("leave: %d %s", w.Code, w.Body.String())

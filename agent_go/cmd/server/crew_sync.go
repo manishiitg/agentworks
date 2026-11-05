@@ -55,10 +55,11 @@ type crewServerCopy struct {
 
 type crewSyncReply struct {
 	// Where the caller's own agents in this Crew work when they are a Team member: "mac" or "web" (crew_team_where.go).
-	Where              string                        `json:"where,omitempty"`
+	Where string `json:"where,omitempty"`
+	// AccessView is which Access page this person gets: "team" (the Team tab alone: a teammate, or the website copy
+	// of a Mac Crew), "server_crew" (a Crew on the server: its page and the Team tab), "summary" (a shared Crew).
 	AccessView         string                        `json:"access_view,omitempty"`
 	Role               string                        `json:"role,omitempty"`
-	MemberAccess       *crewTeamMemberAccess         `json:"member_access,omitempty"`
 	OnServer           []crewServerCopy              `json:"on_server,omitempty"`
 	Publish            *crewAgentPublishPreview      `json:"publish,omitempty"`
 	Placements         map[string]crewAgentPlacement `json:"placements,omitempty"`
@@ -236,7 +237,11 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		project, caller := mux.Vars(r)["project"], GetUserIDFromContext(r.Context())
 		if t, e := readCrewTeam(project); e == nil && t.OwnerID != caller && t.member(caller) && ownerOfCrewProjectID(project) == t.OwnerID && crewTeamAccountActive(t.OwnerID) {
 			w.Header().Set("Cache-Control", "no-store")
-			externalJSON(w, crewSyncReply{ProjectID: project, Place: "online", Role: "member", AccessView: "team", MemberAccess: api.crewTeamMemberAccess(r.Context(), t, caller), AccessSummary: crewMemberAccessSummary(t)})
+			// The side panel's Access row gets the same short tree as the owner (owner, 5 Nov: a long one-line summary was
+			// cut off), written for the member.
+			b, _ := crewroot.ReadSync(project)
+			externalJSON(w, crewSyncReply{ProjectID: project, Place: "online", Role: "member", AccessView: "team", AccessSummary: crewMemberAccessSummary(t),
+				AccessTree: api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), project, b), Where: crewTeamWhereFor(project, caller)})
 			return
 		}
 	}
@@ -265,12 +270,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	out.Role = "owner"
 	if !IsLocalMode() && crewRelayTwin(out.ProjectID) {
 		out.AccessView = "team"
-	} else if !IsLocalMode() && r.Method == http.MethodGet {
-		// A Crew that lives on the server has the same Team (owner, 5 Nov): its owner sees the people and chooses In
-		// team / Only me for their own agents under the normal Access page.
-		if t, e := readCrewTeam(out.ProjectID); e == nil && t.OwnerID == GetUserIDFromContext(r.Context()) {
-			out.MemberAccess = api.crewTeamMemberAccess(r.Context(), t, t.OwnerID)
-		}
+	} else if !IsLocalMode() {
+		// A Crew that lives on the server has the same Team tab (owner, 5 Nov) under its normal Access page.
+		out.AccessView = "server_crew"
 	}
 	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
 	if r.Method == http.MethodGet && out.Place == "" {

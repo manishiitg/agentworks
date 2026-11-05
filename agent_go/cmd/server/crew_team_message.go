@@ -117,6 +117,23 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 	return map[string]any{"sent": true, "to": chatKey, "inbox_id": reply.InboxID, "note": "Their reply comes back to this chat."}, nil
 }
 
+// crewTeamAddressOnMac is this Mac's send_message target for a Team agent addressed the server's way
+// (workspace:work:<online copy>/agent/<chat key>): "team:<the Crew here paired with that copy>:<chat key>", or "".
+func crewTeamAddressOnMac(raw string) string {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(raw), "workspace:"+crewProfileID+":")
+	if !ok {
+		return ""
+	}
+	project, chatKey, ok := strings.Cut(rest, "/agent/")
+	if !ok || project == "" || chatKey == "" {
+		return ""
+	}
+	if local := crewLocalCopyOf(project); local != "" {
+		return "team:" + local + ":" + chatKey
+	}
+	return ""
+}
+
 // teamMemberAgentRows lists, on the Mac, each Team member's own agents of this person's Mac Crews, read from the
 // Crew's online copy through the Mac's sign-in (the server decides what the owner may see). Their id is the
 // send_message target "team:<Crew>:<their chat>".

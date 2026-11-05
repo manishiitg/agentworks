@@ -133,8 +133,17 @@ func crewTeamMemberMacRead(r *http.Request, project, user string) (string, bool)
 
 // crewTeamMemberCopy finds this Mac's working copy of a Team's Crew (the online copy project), if it has one.
 func crewTeamMemberCopy(project string) string {
+	return crewLocalCrewPairedWith(project, func(id string) bool { return readCrewTeamState(id).MemberOf == project })
+}
+
+// crewLocalCopyOf is the Crew on this Mac paired with that online copy: the owner's Mac Crew or a member's copy.
+func crewLocalCopyOf(project string) string {
+	return crewLocalCrewPairedWith(project, func(string) bool { return true })
+}
+
+func crewLocalCrewPairedWith(project string, keep func(string) bool) string {
 	state, err := workflowCLIStateRoot()
-	if err != nil {
+	if err != nil || project == "" {
 		return ""
 	}
 	entries, _ := os.ReadDir(filepath.Join(state, "crew-sync"))
@@ -143,7 +152,7 @@ func crewTeamMemberCopy(project string) string {
 		if entry.IsDir() || !ok || strings.HasSuffix(id, "-files") {
 			continue
 		}
-		if b, e := crewroot.ReadSync(id); e == nil && b != nil && b.Side == "local" && b.PeerProjectID == project && readCrewTeamState(id).MemberOf == project {
+		if b, e := crewroot.ReadSync(id); e == nil && b != nil && b.Side == "local" && b.PeerProjectID == project && keep(id) {
 			return id
 		}
 	}

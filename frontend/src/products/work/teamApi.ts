@@ -26,6 +26,15 @@ export async function teamRequest<T>(target: TeamTarget, suffix = '', method = '
   return (response.status === 204 ? '' : raw === 'blob' ? await response.blob() : raw ? await response.text() : await response.json()) as T
 }
 
+/** Where this Crew's Team is kept: on the website the Crew itself; in the Mac app its online copy, through the Mac's
+ * saved sign-in (undefined until Mac online pairs it). */
+async function teamTarget(project: string): Promise<TeamTarget | undefined> {
+  if (!(hasDesktopConnections() && getRawActiveWorkspaceId() === 'local')) return { project }
+  const { data } = await api.get<{ binding?: { connection_id: string; peer_project_id: string } }>(`/api/crew-sync/${encodeURIComponent(project)}`, { skipSessionContext: true })
+  if (!data.binding?.connection_id) return undefined
+  return { connection: data.binding.connection_id, project: data.binding.peer_project_id, localProject: project }
+}
+
 export function useProjectTeam(project: string) {
   const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
   const user = useAuthStore(s => s.user?.id)
@@ -37,12 +46,8 @@ export function useProjectTeam(project: string) {
     setResult(undefined)
     const load = async () => {
       try {
-        let target: TeamTarget = { project }
-        if (hasDesktopConnections() && getRawActiveWorkspaceId() === 'local') {
-          const { data } = await api.get<{ binding?: { connection_id: string; peer_project_id: string } }>(`/api/crew-sync/${encodeURIComponent(project)}`, { skipSessionContext: true })
-          if (!data.binding?.connection_id) return
-          target = { connection: data.binding.connection_id, project: data.binding.peer_project_id, localProject: project }
-        }
+        const target = await teamTarget(project)
+        if (!target) return
         const team = await teamRequest<Team>(target)
         if (active) { setResult({ team, target: { ...target, folderId: team.folder.id } }); setError('') }
       } catch (e) { if (active) setError(teamError(e)) }
@@ -54,6 +59,41 @@ export function useProjectTeam(project: string) {
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', refresh) }
   }, [project, workspace, user, version])
   return { ...result, error, refresh: () => setVersion(v => v + 1) }
+}
+
+/** The Team tab as the server writes it for the signed-in person (crew_team_tab.go): every row, and what they may
+ * change. The screen shows it and sends the person's choices; it decides nothing itself. */
+export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean }
+export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; fixed?: string; chosen_on_mac?: boolean; address?: string }
+export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
+export type TeamTabView = {
+  team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
+  mac?: { on: boolean; line: string; note: string; yours: boolean }
+  sync?: TeamTabSync; switch: 'server' | 'mac'; can_leave: boolean
+}
+
+export function useTeamTab(project: string) {
+  const workspace = useWorkspaceConnectionStore(s => s.activeWorkspaceId)
+  const user = useAuthStore(s => s.user?.id)
+  const [result, setResult] = useState<{ view: TeamTabView; target: TeamTarget }>()
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    setResult(undefined)
+    const load = async () => {
+      try {
+        const target = await teamTarget(project)
+        if (!target) return
+        const view = await teamRequest<TeamTabView>(target, '/tab')
+        if (active) { setResult({ view, target: { ...target, folderId: view.team.folder.id } }); setError('') }
+      } catch (e) { if (active) setError(teamError(e)) }
+    }
+    if (project) void load()
+    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15000)
+    window.addEventListener('agentworks:team-updated', load)
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', load) }
+  }, [project, workspace, user])
+  return { ...result, error }
 }
 
 export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {

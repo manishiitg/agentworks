@@ -81,7 +81,6 @@ import {
 } from '../utils/workflowSessionSubscription'
 import { activateTab } from '../utils/activateTab'
 import { TeamAgentWatchingStatus } from './chat/TeamAgentWatchingStatus'
-import { fillAskFromMyAgentDraft } from '../utils/agentPurposeDraft'
 import { selectWorkflowPreset } from '../utils/workflowNavigation'
 import { ProductChatSurface } from '../platform/chat/ProductChatSurface'
 import { buildCleanConversationItems } from '../utils/cleanConversation'
@@ -3906,8 +3905,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         <TeamAgentWatchingStatus projectId={activeTab?.metadata?.agentProfileProjectId}
           ownerId={activeTab?.metadata?.agentProfileTabOwnerID} chatKey={activeTab?.metadata?.agentProfileConversationKey}
           ownerName={activeTab?.metadata?.agentProfileTabOwnerName || 'another person'} agentName={activeTab?.name || 'agent'} />
-        {activeTab?.metadata?.agentProfileProjectId && <button type="button" className="ml-auto shrink-0 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
-          onClick={() => { if (!fillAskFromMyAgentDraft(activeTab.metadata!.agentProfileProjectId!, activeTab.metadata?.agentProfileTabOwnerName || 'their', activeTab.name || 'agent', activeTab.metadata?.agentProfileConversationKey)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask from my agent</button>}
       </div>}
 
       {/* Scheduled runs show a compact stop action beside the terminal toggle.
