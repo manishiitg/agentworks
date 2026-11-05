@@ -62,6 +62,9 @@ func (f crewTeamFolder) shared() bool { return f.Whole || len(f.Folders) > 0 }
 // holds: the path (relative to the Crew) is inside what the Team shares. Whole Crew leaves out each person's own
 // memory as well as everything crewTeamAllowed always keeps private.
 func (f crewTeamFolder) holds(rel string) bool {
+	if crewTeamSetupPath(rel) {
+		return f.shared() // the Crew's setup is always part of what a Team shares (crew_team_setup.go)
+	}
 	if f.Whole {
 		return rel != "MEMORY.md" && rel != "memory" && !strings.HasPrefix(rel, "memory/")
 	}
