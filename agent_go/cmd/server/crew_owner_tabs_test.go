@@ -173,6 +173,10 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 		if rec.Code != 200 || len(listed) != 1 || listed[0].TabOwnerID != peer || listed[0].CanWrite {
 			t.Fatalf("%s views: %d %s", person, rec.Code, rec.Body.String())
 		}
+		// Owner, 5 Nov: another person's default chat is their Main, never its key ("Chat owner-…").
+		if listed[0].Name != "Main" {
+			t.Fatalf("%s sees %s's default chat as %q", person, peer, listed[0].Name)
+		}
 		currentView, foundView, _, viewErr := defaultProductConversationRegistryStore().history(viewContext, "owner", profile, viewBinding)
 		if viewErr != nil || !foundView || currentView.SessionID != userView.SessionID {
 			t.Fatalf("listing Builder tabs changed the dashboard conversation: %v", viewErr)

@@ -170,19 +170,27 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 	}
 	out := []AgentProfileSideChat{}
 	var main *AgentProfileSideChat
+	// Every person's default chat in a Crew is their Main (owner, 5 Nov); only the Crew's identity (icon and purpose)
+	// is the Crew owner's. The left menu's person headings tell two people's Mains apart.
+	crewOwner := ownerOfCrewProjectID(projectID)
+	crewMain := func(row *AgentProfileSideChat) {
+		if crew, ok := readCrewMainIdentity(r.Context(), slot.binding.WorkspacePath); ok {
+			row.Icon = firstNonEmptyTrimmed(crew.Icon, row.Icon)
+			row.Purpose = firstNonEmptyTrimmed(crew.Purpose, row.Purpose)
+		}
+	}
 	for _, tab := range owned {
 		record := tab.Record
 		// Dashboard user-view chats belong to that page, not the Builder tab strip.
 		if hiddenFromTabStrip(record.ConversationKey) {
 			continue
 		}
-		ownMain := tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, userID))
+		defaultChat := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, tab.OwnerID)
+		ownMain := tab.OwnerID == userID && defaultChat
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
 			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, Icon: tab.Identity.Icon, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true}
-			// Main's purpose and icon are the Crew identity (crew_main_identity.go).
-			if crew, ok := readCrewMainIdentity(r.Context(), slot.binding.WorkspacePath); ok {
-				main.Icon = firstNonEmptyTrimmed(crew.Icon, main.Icon)
-				main.Purpose = firstNonEmptyTrimmed(crew.Purpose, main.Purpose)
+			if crewOwner == "" || crewOwner == userID {
+				crewMain(main) // Main's purpose and icon are the Crew identity (crew_main_identity.go).
 			}
 		}
 		if ownMain || !isSideChatConversationKey(record.ConversationKey) || !workspacePathsMatchForUser(userID, record.WorkspacePath, slot.binding.WorkspacePath) {
@@ -190,9 +198,18 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 		name := firstNonEmptyTrimmed(tab.Identity.Name, "Chat "+id)
+		// Another person's default chat is their Main, never its key ("Chat root-…", owner 5 Nov); the Crew owner's
+		// carries the Crew's icon and purpose, anyone else's their own.
+		otherDefault := tab.OwnerID != userID && (defaultChat || strings.HasPrefix(id, "root-"))
+		if otherDefault {
+			name = "Main"
+		}
 		row := AgentProfileSideChat{Icon: tab.Identity.Icon, ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose}
 		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
 			row.Pinned = !own.Unpinned
+		}
+		if otherDefault && tab.OwnerID == crewOwner {
+			crewMain(&row)
 		}
 		if agentID := publicationAgentID(record.ConversationKey); agentID != "" {
 			if p, e := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(userID, slot.binding.WorkspacePath), agentID); e == nil && p != nil {
