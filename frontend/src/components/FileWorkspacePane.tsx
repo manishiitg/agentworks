@@ -29,6 +29,8 @@ type FileWorkspacePaneProps = {
   source?: ReadOnlyFileWorkspaceSource
   workspacePath?: string
   title?: string
+  /** The root folder's name when the server names it (WorkWorkspacePane filesName). */
+  rootName?: string
   hiddenRootFolders?: string[]
   hideAddToChat?: boolean
   hideRootActions?: boolean
@@ -56,6 +58,7 @@ function FileWorkspacePaneBody({
   showGit = true,
   workspacePath,
   title,
+  rootName,
   hiddenRootFolders,
   hideAddToChat = false,
   hideRootActions = false,
@@ -164,6 +167,7 @@ function FileWorkspacePaneBody({
               <WorkspacePanelHeaderBoundary active={!(gitEnabled && changesOpen && hasRepos)}>
                 {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <Workspace
                   scopedWorkspacePath={workspacePath}
+                  rootName={rootName}
                   hiddenRootFolders={hiddenRootFolders}
                   hideAddToChat={hideAddToChat}
                   hideRootActions={hideRootActions}

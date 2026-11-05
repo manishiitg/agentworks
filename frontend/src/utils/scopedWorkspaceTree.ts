@@ -8,6 +8,7 @@ export function scopeFilesToWorkspace(
   workspacePath: string,
   hiddenRootFolders: readonly string[] = [],
   userId?: string,
+  rootName?: string,
 ): PlannerFile[] {
   const canonicalPath = (path: string) => publicWorkspacePathForUser(path, userId)
   const target = canonicalPath(workspacePath)
@@ -28,7 +29,9 @@ export function scopeFilesToWorkspace(
   collect(files)
   if (!nodes.size) return []
 
-  const root = nodes.get(target) || { filepath: target, type: 'folder', children: [] }
+  const listed = nodes.get(target) || { filepath: target, type: 'folder', children: [] }
+  // The server may name the root (a Team member's copy is shown as the Crew, not its folder id).
+  const root = rootName ? { ...listed, display_name: rootName } : listed
   nodes.set(target, root)
   for (const [path, node] of nodes) {
     if (path === target) continue

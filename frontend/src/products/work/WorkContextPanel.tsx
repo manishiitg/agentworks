@@ -9,7 +9,7 @@ import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompa
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { cloudStateIcon, type CrewAsk, openCrewAskThread, takeCrewAccess, type CrewAccessLine, YourComputerPanel } from './YourComputerPanel'
-import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
+import { isLocalDeployment } from '../productSurfaceConfig'
 import { useContextMenuWideStore } from '../../stores/useContextMenuWideStore'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
@@ -79,7 +79,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
   // A Crew on this Mac opens Access inside this same menu card, grown, with a back arrow (owner, 3 Nov: "same this just
   // gets bigger"), not as the full side panel.
-  const accessInMenu = getRawActiveWorkspaceId() === 'local' && computerState !== undefined && computerState !== 'online'
+  // Only the Mac app's own Crews (isLocalDeployment): the website's raw workspace id is 'local' too, and there the
+  // Access page is the server's (WorkIntegrationsPanel AccessPage), like for a Crew opened from a server in the Mac app.
+  const accessInMenu = isLocalDeployment() && computerState !== undefined && computerState !== 'online'
   const accessOpen = menu?.scope === scope && menu.view === 'access'
   // An agent's tab asked for its sharing: open Access here (the card then scrolls to that agent).
   useEffect(() => {
@@ -123,11 +125,18 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.
   const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, public: Link2, folder: FolderSync, clash: TriangleAlert, where: access?.where === 'mac' ? Laptop : Globe }
-  const openLine = (line: CrewAccessLine) => line.kind === 'folder' || line.kind === 'clash' ? openCrewSync(projectId) : openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
+  // Where Access is not inside this menu (the website, a Crew from a server), it opens as the Access page, the same
+  // Team tab and its Sync section (TeamSyncPanel scrolls to it after openCrewSync).
+  const openAccessPage = () => { if (!accessInMenu) openID('mcp:access') }
+  const openLine = (line: CrewAccessLine) => {
+    if (line.kind === 'folder' || line.kind === 'clash') openCrewSync(projectId)
+    else openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
+    openAccessPage()
+  }
   // A person in the Team: their agent in this Crew's tabs (watch only), else Access at the Team tab.
   const openPerson = (name: string) => {
     const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileProjectId === projectId && item.metadata?.agentProfileTabCanWrite === false && (item.metadata?.agentProfileTabOwnerName || '').split('@')[0] === name.split('@')[0])
-    if (tab) activateTab(tab.tabId); else openCrewAccess(projectId, '', 'team')
+    if (tab) activateTab(tab.tabId); else { openCrewAccess(projectId, '', 'team'); openAccessPage() }
   }
   const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const treeLines = accessTree.map((line, index) => {

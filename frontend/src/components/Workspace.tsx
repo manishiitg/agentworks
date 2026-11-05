@@ -47,6 +47,8 @@ import { fileSearchTree } from '../utils/lazyWorkspaceTree'
 interface WorkspaceProps {
   /** Restrict the reusable Files experience to one trusted workspace root. */
   scopedWorkspacePath?: string
+  /** The scoped root's name when the server names it (a Team member's copy shows as the Crew). */
+  rootName?: string
   /** Provider/runtime directories to keep out of a creator-facing file tree. */
   hiddenRootFolders?: string[]
   /** Hide the per-row shortcut that adds a file or folder to chat context. */
@@ -84,6 +86,7 @@ function formatTransferSize(bytes: number): string {
 
 export default function Workspace({
   scopedWorkspacePath,
+  rootName,
   hiddenRootFolders = [],
   hideAddToChat = false,
   hideRootActions = false,
@@ -446,7 +449,7 @@ export default function Workspace({
     // Only filter if we're in workflow mode and have a workflow folder path
     // When in multi-agent mode, show all files regardless of preset
     if (scopedWorkspacePath) {
-      result = scopeFilesToWorkspace(result, scopedWorkspacePath, scopedHiddenRootFolders, authUser?.id)
+      result = scopeFilesToWorkspace(result, scopedWorkspacePath, scopedHiddenRootFolders, authUser?.id, rootName)
     } else if (selectedModeCategory === 'workflow' && effectiveWorkflowFolderPath) {
       // Files are already scoped to the workflow folder by the API (folder param)
       // Just adjust filepaths to show workflow folder as root
@@ -467,7 +470,7 @@ export default function Workspace({
     }
 
     return result
-  }, [scopedWorkspacePath, hiddenRootFolders, selectedModeCategory, effectiveWorkflowFolderPath, currentUserFolder, hideManagedEntriesByDefault, showHiddenFiles, authUser?.id])
+  }, [scopedWorkspacePath, hiddenRootFolders, selectedModeCategory, effectiveWorkflowFolderPath, currentUserFolder, hideManagedEntriesByDefault, showHiddenFiles, authUser?.id, rootName])
 
   // Fetch capabilities on mount
   useEffect(() => {
@@ -639,7 +642,7 @@ export default function Workspace({
     // Only filter if we're in workflow mode and have a workflow folder path
     // When in multi-agent mode, show all files regardless of preset
     if (scopedWorkspacePath) {
-      result = scopeFilesToWorkspace(result, scopedWorkspacePath, scopedHiddenRootFolders, authUser?.id)
+      result = scopeFilesToWorkspace(result, scopedWorkspacePath, scopedHiddenRootFolders, authUser?.id, rootName)
     } else if (selectedModeCategory === 'workflow' && effectiveWorkflowFolderPath) {
       // The API returns the workflow folder itself AND its children as flat top-level siblings.
       // e.g., [Workflow/codeanalysis, Workflow/codeanalysis/knowledgebase, Workflow/codeanalysis/learnings, ...]
@@ -698,7 +701,7 @@ export default function Workspace({
 
 
     return result
-  }, [files, searchFiles, scopedWorkspacePath, hiddenRootFolders, effectiveWorkflowFolderPath, searchQuery, selectedModeCategory, effectiveDisplayedIteration, currentUserFolder, pruneRunsToIteration, hideManagedEntriesByDefault, showHiddenFiles, authUser?.id])
+  }, [files, searchFiles, scopedWorkspacePath, rootName, hiddenRootFolders, effectiveWorkflowFolderPath, searchQuery, selectedModeCategory, effectiveDisplayedIteration, currentUserFolder, pruneRunsToIteration, hideManagedEntriesByDefault, showHiddenFiles, authUser?.id])
 
   // Reveal search matches by opening the folders on their path, without permanently
   // forcing every folder open: only newly-matched folders get expanded, so a folder

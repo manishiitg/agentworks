@@ -367,6 +367,8 @@ export interface SharedProjectSummary {
   workspace_path: string
   /** Server-selected logical file root; resource/settings scope stays workspace_path. */
   files_path?: string
+  /** The Files root's name when the server names it (a Team member's copy shows as the Crew). */
+  files_name?: string
   created_at?: string
   updated_at?: string
   llm?: SharedProjectLLM
