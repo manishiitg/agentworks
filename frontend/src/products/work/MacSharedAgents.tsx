@@ -8,6 +8,7 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { activateTab } from '../../utils/activateTab'
+import { registerRemoteSession } from '../../utils/remoteSessions'
 import { Switch } from '../../components/ui/Switch'
 import type { CrewAsk } from './YourComputerPanel'
 
@@ -262,7 +263,8 @@ export async function openCrewAskThread(projectId: string, ask: CrewAsk) {
 /** Where the people it is shared with reach a shared agent (owner, 3 Nov): one audience for all three ways. */
 
 /** A Team member's agent in the owner's Mac app (owner, 5 Nov: "I need to see the other user's agent … in local"):
- * read from the Crew's online copy through this Mac's sign-in; it opens on the server's page, where only its owner types. */
+ * read from the Crew's online copy through this Mac's sign-in; it opens as a watch-only tab inside this Crew, its
+ * chat read from the server (utils/remoteSessions.ts), where only its owner types. */
 export type TeamRemoteAgent = { key: string; name: string; icon?: string; purpose?: string; owner: string; open: () => void }
 
 export function useTeamRemoteAgents(projectId?: string, enabled = true): TeamRemoteAgent[] {
@@ -275,11 +277,11 @@ export function useTeamRemoteAgents(projectId?: string, enabled = true): TeamRem
       const { data } = await api.get<{ binding?: { connection_id?: string; peer_project_id?: string; side?: string } }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { skipSessionContext: true })
       const connection = data.binding?.connection_id, peer = data.binding?.peer_project_id
       if (!connection || !peer || data.binding?.side !== 'local') { if (live) setAgents([]); return }
-      const rows = await viaConnection<{ conversation_key: string; name: string; icon?: string; purpose?: string; tab_owner_id?: string; tab_owner_name?: string; can_write?: boolean }[]>(connection, `/api/agent-profiles/work/side-chats?project_id=${encodeURIComponent(peer)}`)
-      const next = (rows || []).filter(row => row.can_write === false && row.tab_owner_id).map(row => {
-        const id = row.conversation_key.split(':chat:')[1] || ''
-        return { key: row.conversation_key, name: row.name, icon: row.icon, purpose: row.purpose, owner: row.tab_owner_name || 'Teammate',
-          open: () => { void window.electronAPI?.openDesktopConnection?.(connection, `/crew/projects/${encodeURIComponent(peer)}${id ? `?agent=${encodeURIComponent(id)}` : ''}`) } }
+      const rows = await viaConnection<{ conversation_key: string; session_id?: string; name: string; icon?: string; purpose?: string; tab_owner_id?: string; tab_owner_name?: string; can_write?: boolean }[]>(connection, `/api/agent-profiles/work/side-chats?project_id=${encodeURIComponent(peer)}`)
+      const next = (rows || []).filter(row => row.can_write === false && row.tab_owner_id && row.session_id).map(row => {
+        const owner = row.tab_owner_name || 'Teammate'
+        return { key: row.conversation_key, name: row.name, icon: row.icon, purpose: row.purpose, owner,
+          open: () => { void openTeamRemoteAgent(projectId, connection, { key: row.conversation_key, session: row.session_id!, name: row.name, owner }) } }
       })
       if (live) setAgents(current => JSON.stringify(current.map(a => [a.key, a.name, a.icon, a.owner])) === JSON.stringify(next.map(a => [a.key, a.name, a.icon, a.owner])) ? current : next)
     }
@@ -290,4 +292,31 @@ export function useTeamRemoteAgents(projectId?: string, enabled = true): TeamRem
     return () => { live = false; window.clearInterval(timer); window.removeEventListener('focus', reload) }
   }, [projectId, enabled])
   return agents
+}
+
+/** Opens a Team member's agent as a watch-only tab in this Mac Crew; its chat streams from the server. */
+async function openTeamRemoteAgent(projectId: string, connection: string, agent: { key: string; session: string; name: string; owner: string }) {
+  registerRemoteSession(agent.session, connection)
+  const store = useChatStore.getState()
+  const tabs = Object.values(store.chatTabs)
+  const main = tabs.find(row => row.metadata?.agentProfileProjectId === projectId && row.metadata?.agentProfileIsMainChat && !row.metadata?.isViewOnly)
+  if (!main) return
+  const existing = tabs.find(row => row.sessionId === agent.session)
+  const tabId = existing?.tabId || await store.createChatTab(agent.name, {
+    ...main.metadata,
+    agentProfileIsMainChat: false,
+    agentProfileBuilder: false,
+    agentProfileConversationKey: `${projectId}:team:${agent.key}`,
+    agentProfileConversationId: undefined,
+    agentProfileChatLocation: undefined,
+    agentProfileTabCanWrite: false,
+    agentProfileTabOwnerName: agent.owner,
+    isViewOnly: true,
+    viewOnlyWriter: agent.owner,
+    readOnlyRestoredAt: Date.now(),
+    userInteractiveContinuation: false,
+  }, agent.session)
+  store.setTabCanSteer(tabId, false)
+  await hydrateTabEvents(agent.session, {})
+  activateTab(tabId)
 }
