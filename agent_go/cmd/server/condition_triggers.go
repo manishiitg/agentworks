@@ -249,21 +249,27 @@ func (c *conditionService) poll(ctx context.Context, job productScheduleJob, sou
 			st.ConsecutiveFailures = 0
 		} else if !backpressure {
 			st.ConsecutiveFailures++
-			if st.ConsecutiveFailures >= 5 {
-				disabled := false
-				st.Enabled = &disabled
-			}
 		}
 	})
+	if stateErr == nil && !backpressure && err != nil {
+		// Five failures in a row pause it through SetEnabled: a Crew watcher's
+		// on/off lives in the project manifest or caller definition, and the
+		// per-person override is ignored for those.
+		pauseCtx := conditionContext(context.Background(), job)
+		if fresh, readErr := c.s.Job(pauseCtx, job.UserID, job.ID()); readErr == nil && fresh.State.ConsecutiveFailures >= 5 {
+			if fresh.Effective().Enabled {
+				if _, offErr := c.s.SetEnabled(pauseCtx, job.UserID, job.ID(), false); offErr != nil {
+					scheduleLogf("[CONDITION] %s pause after failures failed: %v", job.ID(), offErr)
+				}
+			}
+			if fresh.State.ConsecutiveFailures == 5 && c.notifyPause != nil {
+				c.notifyPause(context.Background(), job, errText)
+			}
+		}
+	}
 	if job.Schedule.Condition.PersonalGmail() && err != nil && stateErr == nil {
 		if _, syncErr := c.syncPersonalGmailOwner(context.Background(), job.UserID); syncErr != nil {
 			scheduleLogf("[CONDITION] personal Gmail inventory needs attention")
-		}
-	}
-	if !backpressure && err != nil && stateErr == nil {
-		fresh, readErr := c.s.Job(context.Background(), job.UserID, job.ID())
-		if readErr == nil && fresh.State.ConsecutiveFailures == 5 && c.notifyPause != nil {
-			c.notifyPause(context.Background(), job, errText)
 		}
 	}
 	go c.drain(context.Background(), job)
@@ -477,13 +483,17 @@ func (c *conditionService) drain(ctx context.Context, job productScheduleJob) {
 	if job.Schedule.Condition.Once || job.Schedule.Condition.GitHubPR != nil {
 		l, err := c.engine.Read(ctx, conditionKey(job))
 		if err == nil && (!l.OnceCompletedAt.IsZero() || !l.CompletedAt.IsZero()) {
-			if err := c.s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
-				disabled := false
-				st.Enabled = &disabled
-			}); err != nil {
+			// SetEnabled switches a Crew watcher off where its on/off lives (the
+			// manifest or caller definition); the per-person override is ignored
+			// for those, so a completed watcher drained again every tick.
+			at := l.OnceCompletedAt
+			if at.IsZero() {
+				at = l.CompletedAt
+			}
+			if _, err := c.s.SetEnabled(conditionContext(ctx, job), job.UserID, job.ID(), false); err != nil {
 				scheduleLogf("[CONDITION] %s complete: disable failed: %v", job.ID(), err)
 			} else {
-				scheduleLogf("[CONDITION] %s one-time completed event=%s at=%s", job.ID(), l.OnceEventID, l.OnceCompletedAt.Format(time.RFC3339))
+				scheduleLogf("[CONDITION] %s completed and switched off event=%s at=%s", job.ID(), l.OnceEventID, at.Format(time.RFC3339))
 			}
 		}
 	}

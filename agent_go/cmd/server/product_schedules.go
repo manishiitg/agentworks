@@ -604,10 +604,16 @@ func (s *ProjectActionDispatcher) SetEnabled(ctx context.Context, userID, jobID 
 	if err != nil {
 		return job, err
 	}
-	if job.ProjectID != "" {
+	if job.ProjectID != "" && job.WatcherSource == nil {
 		return s.UpdateProjectSchedule(ctx, userID, jobID, func(schedule *productschedule.Schedule) { schedule.Enabled = enabled })
 	}
 	if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
+		// A person's watcher on a product keeps its definition, on/off
+		// included, in their own state (Effective ignores the override).
+		if job.WatcherSource != nil && st.Watcher != nil {
+			st.Watcher.Schedule.Enabled = enabled
+			return
+		}
 		st.Enabled = &enabled
 	}); err != nil {
 		return job, err

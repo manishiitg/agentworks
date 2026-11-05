@@ -80,3 +80,49 @@ func TestConditionCheckWaitsForSlot(t *testing.T) {
 		t.Fatal("busy check must be a skip")
 	}
 }
+
+// RTS: a completed one-time Crew watcher was "switched off" through the
+// per-person override, which Effective ignores for project jobs, so the
+// scheduler drained it again every tick. One drain must switch it off in the
+// watcher's own definition; the next drain does nothing.
+func TestConditionCompletedOnceCrewWatcherSwitchesOff(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	env, ctx, _ := agentEmailCrewFixture(t)
+	c := env.svc.conditionService()
+	base, err := c.source(ctx, "owner", "work", "mail-checks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := conditiontrigger.Config{Once: true, Script: "code/triggers/cond-once.py", Target: conditiontrigger.Target{Kind: "agent", Message: "go"}}
+	if _, err := c.saveCaller(ctx, base, productschedule.Schedule{ID: "cond-once", Name: "Once", Enabled: true, CronExpression: "*/5 * * * *", Timezone: "UTC", Condition: &cfg}); err != nil {
+		t.Fatal(err)
+	}
+	read := func() productScheduleJob {
+		j, err := env.svc.Job(ctx, "owner", projectScheduleJobID("work", "mail-checks", "cond-once"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return j
+	}
+	job := read()
+	if job.WatcherSource == nil || !job.Effective().Enabled || job.Schedule.Condition == nil || !job.Schedule.Condition.Once {
+		t.Fatalf("fixture watcher not enabled one-time: %+v", job.Schedule)
+	}
+	if err := c.Save(ctx, conditionKey(job), conditiontrigger.Ledger{OnceEventID: "ticket", OnceCompletedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	c.drain(ctx, job)
+	if read().Effective().Enabled {
+		t.Fatal("completed one-time Crew watcher still enabled after drain")
+	}
+	env.mock.mu.Lock()
+	before := env.mock.files[productScheduleStatePath("owner")]
+	env.mock.mu.Unlock()
+	c.drain(ctx, job)
+	env.mock.mu.Lock()
+	after := env.mock.files[productScheduleStatePath("owner")]
+	env.mock.mu.Unlock()
+	if before != after {
+		t.Fatal("second drain rewrote the switched-off watcher")
+	}
+}
