@@ -260,3 +260,34 @@ export async function openCrewAskThread(projectId: string, ask: CrewAsk) {
 }
 
 /** Where the people it is shared with reach a shared agent (owner, 3 Nov): one audience for all three ways. */
+
+/** A Team member's agent in the owner's Mac app (owner, 5 Nov: "I need to see the other user's agent … in local"):
+ * read from the Crew's online copy through this Mac's sign-in; it opens on the server's page, where only its owner types. */
+export type TeamRemoteAgent = { key: string; name: string; icon?: string; purpose?: string; owner: string; open: () => void }
+
+export function useTeamRemoteAgents(projectId?: string, enabled = true): TeamRemoteAgent[] {
+  const [agents, setAgents] = useState<TeamRemoteAgent[]>([])
+  useEffect(() => {
+    setAgents([])
+    if (!enabled || !projectId || !hasDesktopConnections() || getRawActiveWorkspaceId() !== 'local') return
+    let live = true
+    const load = async () => {
+      const { data } = await api.get<{ binding?: { connection_id?: string; peer_project_id?: string; side?: string } }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { skipSessionContext: true })
+      const connection = data.binding?.connection_id, peer = data.binding?.peer_project_id
+      if (!connection || !peer || data.binding?.side !== 'local') { if (live) setAgents([]); return }
+      const rows = await viaConnection<{ conversation_key: string; name: string; icon?: string; purpose?: string; tab_owner_id?: string; tab_owner_name?: string; can_write?: boolean }[]>(connection, `/api/agent-profiles/work/side-chats?project_id=${encodeURIComponent(peer)}`)
+      const next = (rows || []).filter(row => row.can_write === false && row.tab_owner_id).map(row => {
+        const id = row.conversation_key.split(':chat:')[1] || ''
+        return { key: row.conversation_key, name: row.name, icon: row.icon, purpose: row.purpose, owner: row.tab_owner_name || 'Teammate',
+          open: () => { void window.electronAPI?.openDesktopConnection?.(connection, `/crew/projects/${encodeURIComponent(peer)}${id ? `?agent=${encodeURIComponent(id)}` : ''}`) } }
+      })
+      if (live) setAgents(current => JSON.stringify(current.map(a => [a.key, a.name, a.icon, a.owner])) === JSON.stringify(next.map(a => [a.key, a.name, a.icon, a.owner])) ? current : next)
+    }
+    const reload = () => { void load().catch(() => {}) }
+    reload()
+    const timer = window.setInterval(reload, 30000)
+    window.addEventListener('focus', reload)
+    return () => { live = false; window.clearInterval(timer); window.removeEventListener('focus', reload) }
+  }, [projectId, enabled])
+  return agents
+}

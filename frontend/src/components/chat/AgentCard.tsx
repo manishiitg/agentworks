@@ -50,7 +50,7 @@ export interface CrewAgentActions {
   remove?: () => void
 }
 /** pinned: shown in the list (and on the tab bar); the rest sit under "Hidden agents". */
-export interface CrewAgentRow { tabId: string; name: string; main: boolean; pinned?: boolean; /** Whose agent it is when it is someone else's (a Team or co-owner Crew); absent for your own. */ owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
+export interface CrewAgentRow { tabId: string; name: string; main: boolean; pinned?: boolean; /** A teammate's agent shown in the Mac app: it opens on the server's page (no tab here). */ open?: () => void; /** Whose agent it is when it is someone else's (a Team or co-owner Crew); absent for your own. */ owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
 /** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */
 export interface CrewClosedAgent { key: string; name: string; purpose?: string; icon?: string; open: () => Promise<unknown> }
 export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; closed: CrewClosedAgent[]; canAdd: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean, closed?: CrewClosedAgent[]) => void }>(set => ({

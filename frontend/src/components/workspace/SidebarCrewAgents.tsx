@@ -65,7 +65,7 @@ function AgentRow({ agent, active, dragging, onDrag }: { agent: CrewAgentRow; ac
     onDragOver={dragging && key ? event => { event.preventDefault(); setOver(true) } : undefined} onDragLeave={() => setOver(false)}
     onDrop={dragging && key ? event => { event.preventDefault(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
     <AgentHoverCard info={agent.info} shortcut={agent.shortcut}>
-      <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => openAgent(agent.tabId)}
+      <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => agent.open ? agent.open() : openAgent(agent.tabId)}
         className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         <AgentIcon name={agent.name} icon={agent.info?.icon} active={active} shared={agent.info?.sharedWith} />
         <span className="min-w-0 flex-1 truncate">{agent.name}</span>
