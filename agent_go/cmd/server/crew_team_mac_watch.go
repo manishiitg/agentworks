@@ -24,6 +24,7 @@ type crewMacTeamTab struct {
 	Tab            string // "main" or the Mac tab id
 	ConversationID string // the Mac conversation, as the relay addresses it
 	Name           string
+	OnlyMe         bool // a member's agent they keep to themselves: only they see it
 }
 
 type crewMacTeamTabsRead struct {
@@ -69,7 +70,8 @@ func callCrewMacPair(ctx context.Context, person, project, pair string, call cre
 	return result
 }
 
-// personMacTabs are this person's agents on their Mac that the rest of the Team may watch.
+// personMacTabs are this person's agents on their Mac that the Team may watch; a member's Only me ones are marked
+// (only they see them: crewMacTabsFor).
 func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab {
 	pair, ok := crewMacPairFor(person, project)
 	if !ok {
@@ -84,9 +86,23 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 			}
 		}
 	}
+	onlyMe := map[string]bool{}
+	if !owner {
+		if t, err := readCrewTeam(project); err == nil {
+			if at := slices.IndexFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == person }); at >= 0 {
+				for _, tab := range t.People[at].OnlyMe {
+					onlyMe[tab] = true
+				}
+			}
+		}
+	}
 	keep := func(tabs []crewMacTeamTab) []crewMacTeamTab {
 		if !owner {
-			return slices.Clone(tabs)
+			out := slices.Clone(tabs)
+			for i := range out {
+				out[i].OnlyMe = onlyMe[out[i].Tab]
+			}
+			return out
 		}
 		return slices.DeleteFunc(slices.Clone(tabs), func(t crewMacTeamTab) bool { return !inTeam[t.Tab] })
 	}
@@ -125,6 +141,12 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 	return keep(tabs)
 }
 
+// crewMacTabsFor are this person's Mac agents as the viewer may see them: all of their own, never another person's
+// Only me ones.
+func crewMacTabsFor(ctx context.Context, person, project, viewer string) []crewMacTeamTab {
+	return slices.DeleteFunc(personMacTabs(ctx, person, project), func(t crewMacTeamTab) bool { return t.OnlyMe && viewer != person })
+}
+
 // crewMacPeople are the people whose Mac holds agents of this Crew: its owner, and members on their Mac.
 func crewMacPeople(project string) []string {
 	t, err := readCrewTeam(project)
@@ -144,7 +166,7 @@ func crewMacPeople(project string) []string {
 // crewMacTeamConversation is whose Mac agent this conversation is, and which tab, if the Team may watch it.
 func crewMacTeamConversation(ctx context.Context, project, conversation string) (string, string) {
 	for _, person := range crewMacPeople(project) {
-		for _, t := range personMacTabs(ctx, person, project) {
+		for _, t := range crewMacTabsFor(ctx, person, project, "") {
 			if t.ConversationID == conversation {
 				return person, t.Tab
 			}
@@ -188,7 +210,7 @@ func crewTeamMacMemberTabs(ctx context.Context, project, viewer string) []AgentP
 		if person == owner || person == viewer {
 			continue
 		}
-		for _, tab := range personMacTabs(ctx, person, project) {
+		for _, tab := range crewMacTabsFor(ctx, person, project, viewer) {
 			out = append(out, crewMacTabRow(project, tab))
 		}
 	}

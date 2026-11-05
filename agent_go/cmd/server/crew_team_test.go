@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -602,5 +603,19 @@ func TestCrewTeamMemberMacAdmittedOnlyWithTheirRecordedPair(t *testing.T) {
 	if second == "" || second == "member-pair" || api.crewRelayAdmit(t.Context(), member, crewRelayCrew{Project: "team-test", Pair: "member-pair"}) == nil ||
 		api.crewRelayAdmit(t.Context(), member, crewRelayCrew{Project: "team-test", Pair: second}) != nil {
 		t.Fatal("a second Mac did not replace the first one's working copy")
+	}
+	// A member's Only me agent on their Mac is theirs alone: never listed for, or streamed to, anyone else.
+	crewMacTeamTabsCache.Store("team-test\x00member", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{
+		{Person: "member", Tab: "shared-tab", ConversationID: "c-shared", Name: "Shared"}, {Person: "member", Tab: "private-tab", ConversationID: "c-private", Name: "Private"}}})
+	team, _ = readCrewTeam("team-test")
+	team.People[0].OnlyMe = []string{"private-tab"}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if person, _ := crewMacTeamConversation(t.Context(), "team-test", "c-private"); person != "" || len(crewMacTabsFor(t.Context(), "member", "team-test", "owner")) != 1 {
+		t.Fatal("a member's Only me agent on their Mac was listed or streamed to the owner")
+	}
+	if person, _ := crewMacTeamConversation(t.Context(), "team-test", "c-shared"); person != "member" || len(crewMacTabsFor(t.Context(), "member", "team-test", "member")) != 2 {
+		t.Fatal("a member's In team agent was not watchable, or they lost their own Only me agent")
 	}
 }

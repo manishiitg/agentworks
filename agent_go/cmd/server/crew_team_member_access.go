@@ -80,6 +80,9 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 			return
 		}
 		in.Key = strings.TrimSpace(in.Key)
+		if setCrewTeamMacOnlyMe(w, r, project, claims.UserID, in.Key, !*in.InTeam) {
+			return // one of their agents on their Mac (crew_team_where.go)
+		}
 		store := defaultProductConversationRegistryStore()
 		records, e := store.projectChats(r.Context(), claims.UserID, crewProfileID, project)
 		if e != nil {
