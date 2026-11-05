@@ -77,15 +77,49 @@ func readAllMacSharedAgents(project string) []macSharedAgent {
 	if json.Unmarshal(raw, &agents) != nil {
 		return nil
 	}
-	// Data saved before In team / Only me (owner, 5 Nov) may still say everyone or chosen: that is Only me now; an
-	// agent with no other reason to be listed keeps only its address (off).
-	for i := range agents {
-		if agents[i].Audience != "" && agents[i].Audience != "team" {
-			agents[i].Audience = ""
-			agents[i].Off = agents[i].Off || !agents[i].AgentBridgePublic
-		}
-	}
 	return agents
+}
+
+// migrateMacSharedAudiences converts, once, shared-agent lists saved before In team / Only me (owner, 5 Nov): an old
+// "everyone" or "chosen" audience is Only me now, and an agent with no other reason to be listed keeps only its
+// address (off). Each changed file is backed up first. Runs at start on the Mac and on the server; delete it once every
+// server and Mac has started on it.
+func migrateMacSharedAudiences() {
+	state, err := crewroot.StateRoot()
+	if err != nil {
+		return
+	}
+	files, _ := filepath.Glob(filepath.Join(state, "crew-sync", "*-agents.json"))
+	for _, file := range files {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		var agents []macSharedAgent
+		if json.Unmarshal(raw, &agents) != nil {
+			continue
+		}
+		changed := 0
+		for i := range agents {
+			if agents[i].Audience != "" && agents[i].Audience != "team" {
+				agents[i].Audience = ""
+				agents[i].Off = agents[i].Off || !agents[i].AgentBridgePublic
+				changed++
+			}
+		}
+		if changed == 0 {
+			continue
+		}
+		if os.WriteFile(file+"."+time.Now().UTC().Format("20060102T150405Z")+".bak", raw, 0o600) != nil {
+			continue
+		}
+		out, _ := json.MarshalIndent(agents, "", "  ")
+		if err := os.WriteFile(file, out, 0o600); err != nil {
+			log.Printf("[CREW_SHARED_AGENT] migrate_audience file=%s result=failed reason=%q", filepath.Base(file), err)
+			continue
+		}
+		log.Printf("[CREW_SHARED_AGENT] migrate_audience file=%s changed=%d", filepath.Base(file), changed)
+	}
 }
 
 // cleanMacSharedAgents validates a list the same way on both sides and keeps each tab's first shared time.
