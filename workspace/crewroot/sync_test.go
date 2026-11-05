@@ -52,3 +52,15 @@ func TestSourceLockedCrewGrantsRuntimeFoldersAsFolders(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-856-509: a member's copy folder is named by the path-safe form of their id (team-copies/<sanitized id>), but
+// the listing matched the raw id, so a member whose id is not path-safe could not see their own copy.
+func TestTeamCopyHiddenUsesThePathSafeMemberFolder(t *testing.T) {
+	own := "Crew/Example/team-copies/default/notes.md" // the folder of the id "first.last" (not path-safe)
+	if TeamCopyHidden(own, "Crew/Example/team-copies/default", "first.last") {
+		t.Fatal("a member's own copy is hidden from them")
+	}
+	if !TeamCopyHidden("Crew/Example/team-copies/other/notes.md", "Crew/Example/team-copies/other", "first.last") {
+		t.Fatal("another member's copy is listed")
+	}
+}

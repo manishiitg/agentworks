@@ -52,6 +52,9 @@ type crewTeamLocal struct {
 	SyncAnyway      []string `json:"sync_anyway,omitempty"`
 	StopSyncing     []string `json:"stop_syncing,omitempty"`
 	FolderOnPurpose []string `json:"folder_on_purpose,omitempty"`
+	// TooLarge are files over the per-file limit (64 MiB) this copy leaves out, by path, for the sync status; the rest
+	// of the folder still syncs.
+	TooLarge []string `json:"too_large,omitempty"`
 }
 
 type crewTeamLocalFile struct {
@@ -286,13 +289,13 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 			return crewTeamStep("scan", e)
 		}
 	}
+	// An upload that fails (a refused file, the server busy) does not stop what the team changed from coming down;
+	// the failure is reported once the download is done, and what did not go up goes next round.
+	var uploadErr error
 	if len(scan.changes) > 0 {
 		roundCtx := startCrewTeamRound(ctx, dir, b.Project, "upload", len(scan.changes), 0, 0)
-		e = crewTeamUpload(roundCtx, owner, c, route, query, b, scan)
-		endCrewTeamRound(dir, e)
-		if e != nil {
-			return e
-		}
+		uploadErr = crewTeamUpload(roundCtx, owner, c, route, query, b, scan)
+		endCrewTeamRound(dir, uploadErr)
 		if e = saveCrewTeamLocal(dir, *b); e != nil {
 			return e
 		}
@@ -331,6 +334,10 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 			break
 		}
 	}
+	if uploadErr != nil {
+		log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=upload_failed_download_done revision=%d", b.Project, b.Client, b.Revision)
+		return uploadErr
+	}
 	b.Status = "up_to_date"
 	if pending {
 		b.Status = "pending"
@@ -364,7 +371,11 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 		return out, err
 	}
 	op := b.onPurpose()
-	seen := map[string]bool{}
+	// seen: files this round shares; present: every file name the walk met, spelled as on disk now (on a Mac's
+	// case-insensitive disk a lookup of the old spelling still succeeds after a case-only rename); left: folders the
+	// walk did not enter.
+	seen, present, left := map[string]bool{}, map[string]bool{}, []string{}
+	tooLarge := []string{}
 	var count, bytes int64
 	err = filepath.WalkDir(b.Root, func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -380,15 +391,23 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			if !crewsync.Allowed(crewTeamKey(rel), true) || ignored[rel] || !share.walks(rel) {
+				left = append(left, rel)
 				return filepath.SkipDir
 			}
 			return nil
 		}
+		present[rel] = true
 		if d.Type()&os.ModeSymlink != 0 || !d.Type().IsRegular() || !crewsync.Allowed(crewTeamKey(rel), false) || ignored[rel] || !share.holds(rel) || !crewTeamAllowed(rel, op) {
 			return nil
 		}
 		info, err := d.Info()
 		if err != nil {
+			return nil
+		}
+		if info.Size() > publication.MaxFileBytes {
+			// Over the per-file limit: left out and named in the status, so it never blocks the rest (it stays here,
+			// and the team's earlier version of it stays on the team).
+			tooLarge = append(tooLarge, rel)
 			return nil
 		}
 		seen[rel] = true
@@ -429,9 +448,14 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 	}
 	// Removed here, or taken back from Sync it anyway (the file stays here): removed from the team. A file that is
 	// still here but this copy leaves out (ignored, outside the share) is not this copy's to remove (review 5 Nov).
+	b.TooLarge = tooLarge
 	for rel, known := range b.Files {
-		info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
-		gone := err != nil || !info.Mode().IsRegular()
+		gone := !present[rel]
+		if gone && slices.ContainsFunc(left, func(dir string) bool { return strings.HasPrefix(rel, dir+"/") }) {
+			// Inside a folder the walk left out (its names were not read): only a file that is really gone.
+			info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
+			gone = err != nil || !info.Mode().IsRegular()
+		}
 		if !seen[rel] && gone || slices.Contains(b.StopSyncing, rel) {
 			out.changes = append(out.changes, crewTeamChange{Path: rel, Before: known.Version.Hash})
 			delete(out.entries, rel)
@@ -443,7 +467,13 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 			b.Files[rel] = entry
 		}
 	}
-	sort.Slice(out.changes, func(i, j int) bool { return out.changes[i].Path < out.changes[j].Path })
+	// Removals go first, so no batch adds a name (docs/a.md) while its old spelling (Docs/a.md) is still on the team.
+	sort.Slice(out.changes, func(i, j int) bool {
+		if (out.changes[i].After == nil) != (out.changes[j].After == nil) {
+			return out.changes[i].After == nil
+		}
+		return out.changes[i].Path < out.changes[j].Path
+	})
 	return out, nil
 }
 
@@ -790,6 +820,16 @@ func crewTeamStepOf(err error) string {
 		return step.step
 	}
 	return "-"
+}
+
+// crewTeamTooLargeNotice names the files left out for being over 64 MB (the first few), for the sync status.
+func crewTeamTooLargeNotice(paths []string) string {
+	shown := paths[:min(len(paths), 5)]
+	more := ""
+	if len(paths) > len(shown) {
+		more = fmt.Sprintf(" and %d more", len(paths)-len(shown))
+	}
+	return "Not synced, over 64 MB each: " + strings.Join(shown, ", ") + more + ". Everything else syncs."
 }
 
 func crewTeamPlainSyncError(err error) string {

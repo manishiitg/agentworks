@@ -135,6 +135,9 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		status = "offline"
 		message = "Saved on this Mac. Changes will send when connected."
 	}
+	if len(b.TooLarge) > 0 && message == "" {
+		message = crewTeamTooLargeNotice(b.TooLarge)
+	}
 	// Skipped files, minus the ones synced on purpose; only single files can be chosen (exact paths, never folders).
 	op := b.onPurpose()
 	skipped, choosable := []string{}, []string{}
@@ -154,7 +157,7 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		}
 	}
 	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "file_count": len(b.Files),
-		"skipped": skipped, "skipped_files": choosable, "synced_on_purpose": mine, "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": crewTeamRoundFor(dir)})
+		"skipped": skipped, "skipped_files": choosable, "synced_on_purpose": mine, "too_large": b.TooLarge, "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": crewTeamRoundFor(dir)})
 }
 
 // setCrewTeamSyncAnyway is this person's own choice for one file that looks like it holds passwords or keys (owner,

@@ -336,6 +336,15 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 		if currentHash != c.Before {
 			kind = "clash"
 		}
+		if kind == "clash" && after == nil {
+			// A stale delete never beats a teammate's newer edit: the edit stays, and it is recorded again at this
+			// revision so every copy, the deleter's included, receives it on its next round.
+			state.Clashes = append(state.Clashes, crewTeamClash{Path: c.Path, WinningRevision: receipt.Revision, LosingRevision: current.Revision, WinningAuthor: current.Author, LosingAuthor: actor})
+			receipt.Conflicts = append(receipt.Conflicts, c.Path)
+			state.Events = append(state.Events, crewTeamEvent{Path: c.Path, Kind: "kept", Revision: receipt.Revision, Actor: actor, Author: current.Author, At: now, File: current.File, Chunks: current.Chunks})
+			applied++
+			continue
+		}
 		if after == nil {
 			if e = removeCrewTeamFile(root, c.Path); e != nil {
 				return partial(e)

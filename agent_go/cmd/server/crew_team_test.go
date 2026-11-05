@@ -30,6 +30,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "true")
+	crewTeamTestDocs(t, "team-test", "team-test") // the member's server copy lives in the Crew's folder
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"member","username":"member","can_create":true,"products":["work"]},{"id":"teammate","username":"teammate","can_create":true,"products":["work"]},{"id":"outsider","username":"outsider","can_create":true,"products":["work"]}]}`)
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "team-test", OwnerID: "owner", ProjectID: "team-test"}); err != nil {
 		t.Fatal(err)
@@ -535,6 +536,21 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	if grants := crewTeamServerFolders(&UserClaims{UserID: "outsider"}); len(grants) != 0 {
 		t.Fatalf("outsider got a team folder: %+v", grants)
+	}
+	// PLAT-856-509: Folders -> Whole Crew while the member's agent has an edit not yet sent. The old copy's record
+	// can no longer send; its folder used to be wiped. The folder is kept and the edit reaches the team.
+	if err = os.WriteFile(filepath.Join(copyRoot, "other", "unsent.md"), []byte("not sent yet"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"whole":true}}`, ""); w.Code != 200 {
+		t.Fatal("share switch with an unsent edit", w.Code, w.Body.String())
+	}
+	api.removeStaleCrewTeamServerCopies(t.Context())
+	if _, err = api.syncCrewTeamServerCopy(t.Context(), "member", "team-test", true); err != nil {
+		t.Fatal(err)
+	}
+	if w = call("owner", "GET", base+"/files", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"other/unsent.md"`) {
+		t.Fatalf("the member's unsent edit was lost on the share switch: %d %s", w.Code, w.Body.String())
 	}
 	// Removed from the team: the copy holds files they have no right to, so it goes.
 	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"folders":["other"]}}`, ""); w.Code != 200 {

@@ -154,21 +154,14 @@ func heldSender(args json.RawMessage) string {
 	return a.SenderID
 }
 
-// heldAdmissionRefused: the recheck refused the message for good, with an explicit reason (sharing or access
-// removed, a Watcher removed, the sending connection no longer authorized). Any other error (I/O, a store read, a
-// timeout, anything unexpected) keeps the message waiting: retrying beats dropping it (review, 5 Nov).
+// heldAdmissionRefused: the recheck refused the message for good, by a typed refusal (sharing or access removed, a
+// Watcher removed, the sending connection no longer authorized: agentAdmissionRefusal, or a Watcher's PermanentError).
+// Any other error (I/O, a store read, a timeout, anything unexpected) keeps the message waiting: retrying beats
+// dropping it (review, 5 Nov). The error's wording plays no part.
 func heldAdmissionRefused(err error) bool {
 	var permanent conditiontrigger.PermanentError
-	if errors.As(err, &permanent) {
-		return true
-	}
-	text := strings.ToLower(err.Error())
-	for _, refusal := range []string{"access removed", "no longer authorized", "was removed", "not shared", "isn't shared", "revoked"} {
-		if strings.Contains(text, refusal) {
-			return true
-		}
-	}
-	return false
+	var refused agentAdmissionRefusal
+	return errors.As(err, &permanent) || errors.As(err, &refused)
 }
 
 // heldInboxAdmission rechecks a held agent message against its original inbox: the message must still be there and
@@ -307,14 +300,22 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 		return
 	}
 	delivered := map[string]bool{}
+	// Held messages from one sender to one agent go in the order they were sent: after one that must wait (a passing
+	// failure), the later ones wait too, for the next pass.
+	stopped := map[string]bool{}
 	for _, held := range s.Waiting {
 		if held.Person != person {
+			continue
+		}
+		queue := heldSender(held.Args) + "\x00" + held.Tab
+		if stopped[queue] {
 			continue
 		}
 		// An agent published while the message waited is answered on the server from then on.
 		if allowed, permanent := api.heldMacMessageAllowed(owner, project, held); !allowed {
 			if !permanent {
 				log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=retry inbox=%q reason=admission_unavailable", project, held.Tab, held.Inbox)
+				stopped[queue] = true
 				continue
 			}
 			notice := "This agent didn't get your message because it isn't shared with you anymore. Ask its owner to share it again."
@@ -326,6 +327,7 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 				err := api.appendMacAgentReply(held.Inbox, held.From, notice)
 				if err != nil && !errors.Is(err, os.ErrNotExist) {
 					log.Printf("[CREW_MAC_WAITING] project=%s action=retry inbox=%q reason=notice_failed", project, held.Inbox)
+					stopped[queue] = true
 					continue
 				}
 			} else {
@@ -337,6 +339,7 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 		}
 		published := person == "" && crewPublishedTarget(project, held.Tab)
 		if !published && !macOn {
+			stopped[queue] = true
 			continue
 		}
 		send := func(call crewChatCall, timeout time.Duration) crewChatResult {
@@ -351,23 +354,14 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 		result := send(crewChatCall{Operation: "agent_ask", Tab: held.Tab, Message: held.Message, Caller: held.Caller, Args: held.Args, SubmissionID: held.SubmissionID}, 60*time.Second)
 		log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=deliver_held inbox=%q status=%d published=%t", project, held.Tab, held.Inbox, result.Status, published)
 		if result.Status != http.StatusOK {
+			// Retried next pass with the same submission id, so a Mac that did take it (a lost reply) runs it once.
+			stopped[queue] = true
 			continue
 		}
 		delivered[held.ID] = true
 		if held.Inbox != "" {
-			var args struct {
-				SenderID string `json:"sender_id"`
-			}
-			_ = json.Unmarshal(held.Args, &args)
-			held := held
-			read := func(after, wait int) (map[string]any, int) {
-				raw, _ := json.Marshal(map[string]any{"sender_id": args.SenderID, "after": after, "wait_seconds": wait, "submission": held.SubmissionID})
-				result := send(crewChatCall{Operation: "agent_read", Tab: held.Tab, Caller: held.Caller, Args: raw}, time.Duration(wait+40)*time.Second)
-				var out map[string]any
-				_ = json.Unmarshal(result.Body, &out)
-				return out, result.Status
-			}
-			go api.awaitMacAgentAnswer(held.Inbox, held.SubmissionID, held.From, read)
+			api.startMacAgentAnswer(macAgentAwaiting{Inbox: held.Inbox, Submission: held.SubmissionID, From: held.From, Project: project, Tab: held.Tab, Mac: owner,
+				Member: person != "", Published: published, SenderID: heldSender(held.Args), Caller: held.Caller})
 		}
 	}
 	_, err = updateCrewMacWaiting(project, func(next *crewMacWaitingState) {
@@ -396,6 +390,7 @@ func (api *StreamingAPI) startCrewMacWaiting() context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	if !IsLocalMode() {
 		go api.sweepCrewMacWaiting(ctx)
+		api.resumeMacAgentAnswers()
 	}
 	return cancel
 }
@@ -426,7 +421,13 @@ func (api *StreamingAPI) sweepCrewMacWaiting(ctx context.Context) {
 			}
 			// Each person's Mac that holds agents of this Crew (its owner's, members' on their Mac, also on a Crew that
 			// lives on the server), in parallel with a bound: one Crew's long deliveries never hold up the others.
-			people := crewMacPeople(project)
+			// A Team record or people directory that cannot be read now skips this Crew for this cycle: an incomplete
+			// list would refuse members' held messages for good.
+			people, err := crewMacPeopleChecked(project)
+			if err != nil {
+				log.Printf("[CREW_MAC_WAITING] project=%s action=retry reason=people_unreadable err=%q", project, err.Error())
+				continue
+			}
 			if len(people) == 0 {
 				people = []string{ownerOfCrewProjectID(project)}
 			}

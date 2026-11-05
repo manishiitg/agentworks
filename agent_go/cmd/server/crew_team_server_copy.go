@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -93,21 +94,28 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 		return "", err
 	}
 	b, err := readCrewTeamLocal(dir)
+	if os.IsNotExist(err) && create {
+		// One creation per member and Crew at a time (joining and a first turn both make it): the second one finds
+		// the record the first made, instead of replacing it after the first one's download.
+		creating := crewTeamCopyCreateLock(member, project)
+		creating.Lock()
+		defer creating.Unlock()
+		b, err = readCrewTeamLocal(dir)
+	}
 	if os.IsNotExist(err) {
 		if !create {
 			return "", nil
 		}
-		// The copy itself is in the Crew's folder, team-copies/<member>/ (crew_team_member_copy.go); a new copy starts
-		// empty (an earlier folder choice's copy is gone with its record).
+		// The copy itself is in the Crew's folder, team-copies/<member>/ (crew_team_member_copy.go). A copy made after
+		// the Team's shared folder changed (Folders <-> Whole Crew) keeps what is already there, unsent edits
+		// included: its first download adopts what matches the team and what differs goes up as the member's edit,
+		// as a Mac copy does (previousCrewTeamMemberRoot).
 		root, err := crewTeamMemberCopyRoot(project, member)
 		if err != nil {
 			return "", err
 		}
 		b = crewTeamLocal{FolderID: t.Folder.ID, Connection: "server", Project: project, RemoteUser: member, Client: uuid.NewString(),
 			Root: root, Status: "pending"}
-		if err = os.RemoveAll(root); err != nil {
-			return "", err
-		}
 		if err = os.MkdirAll(root, 0o770); err != nil {
 			return "", err
 		}
@@ -211,13 +219,17 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 				continue
 			}
 		}
+		// Only the shared folder changed (Folders <-> Whole Crew): the member still works here. The old record cannot
+		// send anything any more (the server refuses a previous folder's copy), so its folder is kept, unsent edits
+		// included, and the new record adopts it right away (syncCrewTeamServerCopy).
+		folderChanged := !gone && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID != "" && t.Folder.ID != b.FolderID && t.edits(b.RemoteUser) && crewRelayTwin(b.Project) && !onMac
 		unlock, err := wf.LockWorkspace(ctx, dir)
 		if err != nil {
 			continue
 		}
 		err = os.RemoveAll(dir)
 		// The copy in the Crew's folder goes with it, unless the member's current copy already uses that folder.
-		if err == nil && crewTeamMemberCopyFolder(b.Root) && !crewTeamCopyInUse(t, b, dir) {
+		if err == nil && !folderChanged && crewTeamMemberCopyFolder(b.Root) && !crewTeamCopyInUse(t, b, dir) {
 			err = os.RemoveAll(b.Root)
 		}
 		unlock()
@@ -225,8 +237,24 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 		if onMac {
 			reason = "on_mac" // their agents here work on their Mac, with its own copy
 		}
+		if folderChanged {
+			reason = "folder_changed_kept"
+		}
 		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=removed reason=%s err=%v", b.Project, logUsernameForUserID(b.RemoteUser), reason, err)
+		if folderChanged && err == nil {
+			round, done := context.WithTimeout(context.WithValue(ctx, crewTeamCopyReasonKey{}, "folder_changed"), 2*time.Minute)
+			_, _ = api.syncCrewTeamServerCopy(round, b.RemoteUser, b.Project, true)
+			done()
+		}
 	}
+}
+
+var crewTeamCopyCreating sync.Map
+
+// crewTeamCopyCreateLock serializes making one member's server copy of one Crew.
+func crewTeamCopyCreateLock(member, project string) *sync.Mutex {
+	lock, _ := crewTeamCopyCreating.LoadOrStore(member+"\x00"+project, &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }
 
 func crewTeamsOnServer() []crewTeam {

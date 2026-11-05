@@ -170,7 +170,7 @@ func recheckSharedCrewAgentContact(ctx context.Context, caller, agent agentMessa
 		return nil
 	}
 	if !sharedCrewAgentPeer(ctx, caller.UserID, agent) {
-		return fmt.Errorf("shared agent unavailable or access removed")
+		return admissionRefused("shared agent unavailable or access removed")
 	}
 	return nil
 }
