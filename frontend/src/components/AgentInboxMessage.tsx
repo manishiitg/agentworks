@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview } from '../utils/terminalEventTranscript'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { ShowFullContentButton, useChatArtifactText, type ChatArtifactRef } from './ChatArtifactExpander'
 
@@ -21,16 +23,23 @@ const BODY_ARTIFACT_KEYS = ['metadata.display_content'] as const
 export function AgentInboxMessage({ message, timestamp, artifact = null }: { message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {
   const full = useChatArtifactText(artifact, BODY_ARTIFACT_KEYS)
   const body = full.text || message.body
+  const [expanded, setExpanded] = useState(false)
+  const collapsible = shouldCollapseTranscriptUserMessage(body)
+  const shown = collapsible && !expanded ? transcriptUserMessagePreview(body) : body
+  const needsLoad = artifact && message.bodyTruncated !== false && !full.text
   const kind = KIND_LABEL[message.kind]
   const showKind = kind && !message.sender.toLowerCase().startsWith(kind.toLowerCase())
   return (
     <article data-testid="agent-inbox-message" className="mb-2 ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%]">
       <div data-testid="agent-inbox-body" className="max-w-full break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">
-        <ConversationMarkdownRenderer content={body} framed={false} maxHeight="none" copyableCode />
+        <ConversationMarkdownRenderer content={shown} framed={false} maxHeight="none" copyableCode />
         {/* Legacy summaries lack the body marker: retain their existing access
             to full content rather than treating an unknown body as complete. */}
-        {artifact && message.bodyTruncated !== false && !full.text && <ShowFullContentButton ref_={artifact} loading={full.loading} error={full.error}
-          label="Load full message" onLoad={() => { void full.load() }} />}
+        {needsLoad && artifact ? <ShowFullContentButton ref_={artifact} loading={full.loading} error={full.error}
+          label="Load full message" onLoad={() => { setExpanded(true); void full.load() }} /> : collapsible && <button type="button" aria-expanded={expanded}
+          className="mt-1 text-[11px] font-medium text-muted-foreground hover:text-foreground" onClick={() => setExpanded(value => !value)}>
+          {expanded ? 'Show less' : 'Show full message'}
+        </button>}
       </div>
       <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
         <span>From {showKind ? `${kind} · ${message.sender}` : message.sender}</span>

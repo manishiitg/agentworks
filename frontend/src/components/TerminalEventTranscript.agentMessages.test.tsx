@@ -38,7 +38,13 @@ it('shows the saved incoming message before delivery instructions, with only the
     expect(card).not.toBeNull()
     // Shown like a typed message (owner, 2026-11-05): the body is visible, the delivery envelope is not.
     const messageBody = card.querySelector('[data-testid="agent-inbox-body"]')!
-    expect(messageBody.textContent).toBe(body)
+    expect(messageBody.textContent).not.toContain('Final evidence marker.')
+    const expand = Array.from(messageBody.querySelectorAll('button')).find(item => item.textContent === 'Show full message')!
+    expect(expand.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => expand.click())
+    expect(messageBody.textContent).toContain(body)
+    await act(async () => expand.click())
+    expect(messageBody.textContent).not.toContain('Final evidence marker.')
     expect(messageBody.textContent).not.toContain(inboxID)
     expect(messageBody.textContent).not.toContain('send_message')
     // No developer details on the card (owner, 2026-10-20): the reply address stays in the agent's own prompt.
@@ -79,7 +85,7 @@ it('keeps a delivered artifact summary as an agent card and loads its complete b
       button.click()
       await vi.waitFor(() => expect(agentApi.getChatArtifact).toHaveBeenCalledWith('chat-history', 'artifact-history'))
     })
-    expect(card.querySelector('[data-testid="agent-inbox-body"]')?.textContent).toBe(body)
+    expect(card.querySelector('[data-testid="agent-inbox-body"]')?.textContent).toContain(body)
     expect(card.textContent).not.toContain('Internal delivery instructions')
     expect(card.querySelector('details')).toBeNull()
     expect(card.querySelector('[data-testid="chat-artifact-show-full"]')).toBeNull()
