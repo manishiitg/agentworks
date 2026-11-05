@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -456,6 +457,15 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	removeStaleCrewTeamServerCopies(t.Context())
 	if _, err = os.Stat(copyRoot); !os.IsNotExist(err) {
 		t.Fatalf("a removed member's server copy stayed: %v", err)
+	}
+	// Owner, 5 Nov: Whole Crew, then back to Folders, brings back the folders shared before (the server decides).
+	for _, body := range []string{`{"name":"Example","on":true,"people":[],"folder":{"whole":true}}`, `{"name":"Example","on":true,"people":[],"folder":{"folders":[]}}`} {
+		if w = call("owner", "PUT", base, body, ""); w.Code != 200 {
+			t.Fatal("share switch", w.Code, w.Body.String())
+		}
+	}
+	if back, _ := readCrewTeam("team-test"); back.Folder.Whole || !slices.Equal(back.Folder.Folders, []string{"other"}) {
+		t.Fatalf("back to Folders: %+v", back.Folder)
 	}
 }
 
