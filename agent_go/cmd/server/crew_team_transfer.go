@@ -79,7 +79,6 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
-	noteTeamMacSeen(project, claims.UserID) // each member's Mac syncs the team folder every few seconds while it is on
 	if op == "commit" {
 		defer crewTeamSyncWork(project)()
 	}

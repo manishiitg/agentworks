@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { teamRequest, useProjectTeam } from './teamApi'
 
 export type TeamAgentPerson = {
-  user_id: string; name: string; you?: boolean; mac_on: boolean
+  user_id: string; name: string; you?: boolean; mac_on: boolean; active: boolean; active_label: string
   agents: { tab: string; chat_key: string; name: string; place: string; status_label?: string }[]
 }
 

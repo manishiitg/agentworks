@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -25,12 +24,15 @@ type crewTeamAgent struct {
 }
 
 type crewTeamAgentsPerson struct {
-	UserID string          `json:"user_id"`
-	Name   string          `json:"name"`
-	You    bool            `json:"you,omitempty"`
-	Owner  bool            `json:"owner,omitempty"`
-	MacOn  bool            `json:"mac_on"`
-	Agents []crewTeamAgent `json:"agents"`
+	UserID string `json:"user_id"`
+	Name   string `json:"name"`
+	You    bool   `json:"you,omitempty"`
+	Owner  bool   `json:"owner,omitempty"`
+	MacOn  bool   `json:"mac_on"`
+	// Active is the people dot, ActiveLabel its words ("Active now on the web", "Mac on", "Last seen 2 h ago").
+	Active      bool            `json:"active"`
+	ActiveLabel string          `json:"active_label"`
+	Agents      []crewTeamAgent `json:"agents"`
 }
 
 // crewTeamInTeam: an agent is in the team when its owner chose In team (audience "team").
@@ -76,12 +78,14 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		}
 		owner.Agents = append(owner.Agents, row)
 	}
+	owner.Active, owner.ActiveLabel = teamActive(owner.UserID, owner.MacOn || (onMac && IsLocalMode()))
 	out := []crewTeamAgentsPerson{owner}
 	for _, p := range t.People {
 		if p.Invited || !crewTeamAccountActive(p.UserID) {
 			continue
 		}
-		person := crewTeamAgentsPerson{UserID: p.UserID, Name: crewPersonShortName(p.UserID), You: p.UserID == caller, MacOn: time.Since(teamMacSeen(t.ProjectID, p.UserID)) <= teamMacSeenWithin}
+		// Mac on only from their Mac's own connection: the server copy's sync is not the person being there.
+		person := crewTeamAgentsPerson{UserID: p.UserID, Name: crewPersonShortName(p.UserID), You: p.UserID == caller}
 		if pair, onMac := t.memberMac(p.UserID); onMac {
 			// Their agents here work on their Mac (crew_team_where.go): listed from it, marked when it is off.
 			person.MacOn = crewMacSocketFor(p.UserID, t.ProjectID, pair) != nil
@@ -96,6 +100,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		} else {
 			person.Agents = memberTeamAgents(ctx, t.ProjectID, p.UserID, caller)
 		}
+		person.Active, person.ActiveLabel = teamActive(p.UserID, person.MacOn)
 		out = append(out, person)
 	}
 	return out

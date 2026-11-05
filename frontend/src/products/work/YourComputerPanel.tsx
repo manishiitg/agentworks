@@ -45,7 +45,7 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
-export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; people?: { name: string; online: boolean; agents?: string[]; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
+export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; people?: { name: string; online: boolean; online_label?: string; agents?: string[]; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
 type PlaceEntry = { place?: CloudState; shared?: number; summary?: string; tree?: CrewAccessLine[]; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 

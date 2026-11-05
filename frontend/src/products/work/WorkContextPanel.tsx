@@ -140,7 +140,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
           {line.progress && line.progress.bytes_total > 0 && <span aria-hidden="true" className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.round(line.progress.bytes_done * 100 / line.progress.bytes_total))}%` }} /></span>}
         </span>
       </button>
-      {line.people?.map(person => <button key={person.name} type="button" onClick={() => openPerson(person.name)} className={`${lineButton} pl-6`}>
+      {line.people?.map(person => <button key={person.name} type="button" onClick={() => openPerson(person.name)} title={person.online_label} className={`${lineButton} pl-6`}>
         <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${person.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
         <span className="min-w-0 flex-1 break-words text-muted-foreground"><span className="text-foreground">{person.name}</span>{person.status_label && <span> · {person.status_label}</span>}{person.agents?.length ? ` · ${person.agents.join(', ')}` : ''}</span>
       </button>)}
