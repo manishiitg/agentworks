@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
@@ -771,4 +772,27 @@ func (api *StreamingAPI) hideMainTerminals(sessionID string) {
 			api.terminalStore.Dismiss(snapshot.TerminalID)
 		}
 	}
+}
+
+// compactEarlyClaudeWindow is Claude Code's own auto-compact window for a chat with "Compact at 300K" on. Claude then
+// compacts by itself when the conversation nears it (the window less its summary buffer), also in the middle of a
+// turn and in a chat that is never quiet. The after-reply check above waits for a quiet minute, and a chat with
+// messages queued back to back never had one: it grew to 678K (5 Nov, 0 automatic compactions in 300-678K).
+const compactEarlyClaudeWindow = 330_000
+
+// applyCompactEarlyToClaude starts Claude Code with that window when the chat's owner has "Compact at 300K" on. The
+// setting takes effect when Claude next starts for this chat.
+func (api *StreamingAPI) applyCompactEarlyToClaude(cfg *agent.LLMAgentConfig, sessionID, personUser string) {
+	if cfg == nil || !strings.EqualFold(strings.TrimSpace(string(cfg.Provider)), "claude-code") || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	owner := api.idleCompactOwner(sessionID, personUser)
+	if !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+		return
+	}
+	if cfg.CodingAgentSecretEnvironment == nil {
+		cfg.CodingAgentSecretEnvironment = map[string]string{}
+	}
+	cfg.CodingAgentSecretEnvironment["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = strconv.Itoa(compactEarlyClaudeWindow)
+	log.Printf("[IDLE_COMPACT] session=%s owner=%s action=claude_auto_compact_window window=%d", sessionID, owner, compactEarlyClaudeWindow)
 }
