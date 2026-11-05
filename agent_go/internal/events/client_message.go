@@ -50,15 +50,7 @@ func (es *EventStore) ExpectClientUserMessage(sessionID, clientMessageID, displa
 // stampExpectedClientUserMessage runs with es.mu held, on an already-cloned
 // event.
 func (es *EventStore) stampExpectedClientUserMessage(sessionID string, event *Event) {
-	if event.Type != string(pkgevents.UserMessage) || len(es.expectedClientMessages) == 0 {
-		return
-	}
-	expected, ok := es.expectedClientMessages[sessionID]
-	if !ok {
-		return
-	}
-	if time.Now().After(expected.expires) {
-		delete(es.expectedClientMessages, sessionID)
+	if event.Type != string(pkgevents.UserMessage) {
 		return
 	}
 	switch strings.ToLower(strings.TrimSpace(event.ExecutionKind)) {
@@ -70,7 +62,19 @@ func (es *EventStore) stampExpectedClientUserMessage(sessionID string, event *Ev
 	if message == nil {
 		return
 	}
-	if existing, _ := message.Metadata["client_message_id"].(string); existing != "" {
+	// Live input already carries the submission id. Its observer event id is
+	// only a transport identity; using it leaves the provisional bubble behind
+	// and collides with another steer in the same turn (PLAT-746-331).
+	if existing, _ := message.Metadata["client_message_id"].(string); strings.TrimSpace(existing) != "" {
+		event.ID = ClientUserMessageEventID(strings.TrimSpace(existing))
+		return
+	}
+	expected, ok := es.expectedClientMessages[sessionID]
+	if !ok {
+		return
+	}
+	if time.Now().After(expected.expires) {
+		delete(es.expectedClientMessages, sessionID)
 		return
 	}
 	if message.Metadata == nil {

@@ -121,3 +121,21 @@ func TestExpiredClientExpectationIsDropped(t *testing.T) {
 		t.Fatalf("rows = %v, want the unstamped late echo", journalEventIDs(rows))
 	}
 }
+
+// PLAT-746-331: live input carried its client id, but retained a turn-scoped
+// observer id, duplicating the browser bubble and dropping the next steer.
+func TestLiveInputObserverUsesClientIdentityWithoutFreshTurnExpectation(t *testing.T) {
+	const session = "chat-live-identity"
+	store := openClientMessageTestStore(t, session)
+	for _, id := range []string{"first", "second", "second"} {
+		event := journalTestEvent("observer:chat-live-identity:turn:one:user_message", "same question")
+		userMessageEventData(&event).Metadata = map[string]interface{}{
+			"client_message_id": id, "source": "coding_agent_live_input",
+		}
+		store.AddEvent(session, event)
+	}
+	rows := durableRows(t, store, session)
+	if len(rows) != 2 || rows[0].ID != "user:first" || rows[1].ID != "user:second" {
+		t.Fatalf("rows = %v, want distinct submissions once each", journalEventIDs(rows))
+	}
+}

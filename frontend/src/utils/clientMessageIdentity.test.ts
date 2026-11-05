@@ -65,6 +65,16 @@ describe('reconcileDurableUserEchoes', () => {
 })
 
 describe('keepUnechoedProvisionals', () => {
+  it('restores a live-input observer echo without retaining its provisional bubble', () => {
+    const echo = { ...durable('b', 'question'), id: 'observer:session:turn:one:user_message' }
+    const local = provisional('b', 'question', { confirmation: 'confirmed' })
+    const reconciled = reconcileDurableUserEchoes([local], [echo])
+    expect(reconciled.current).toEqual([])
+    expect(reconciled.replacedIds).toEqual(['user:b'])
+    expect(metadataOf(reconciled.incoming[0]).confirmation).toBe('confirmed')
+    expect(keepUnechoedProvisionals([echo], [local])).toEqual([echo])
+  })
+
   it('keeps a queued bubble until its durable row is on the page', () => {
     const page = [durable('a', 'first')]
     const kept = keepUnechoedProvisionals(page, [provisional('a', 'first'), provisional('b', 'second')])
@@ -124,7 +134,7 @@ describe('store ordering (project-a A/B incident)', () => {
 describe('pendingQueuedProvisionals', () => {
   it('shows queued messages without a durable row as queued provisional bubbles', async () => {
     const { pendingQueuedProvisionals } = await import('./clientMessageIdentity')
-    const present = [{ id: 'user:sub-1', type: 'user_message' }] as never
+    const present = [{ ...durable('sub-1', 'already echoed'), id: 'observer:session:turn:one:user_message' }]
     const rows = pendingQueuedProvisionals([
       { client_message_id: 'sub-1', content: 'already echoed' },
       { client_message_id: 'sub-2', content: 'still queued', queue_position: 1, queued_at: '2026-09-23T05:00:00Z' },
