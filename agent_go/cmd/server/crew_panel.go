@@ -180,8 +180,11 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			if sources[i].noCache || (ok && denied.status >= 400 && denied.status < 500) {
 				c.remove(k)
 			} else if old, found := c.previous(k); found {
+				// A slow refresh keeps the last good answer, marked stale, rather than asking to try again.
 				out[i] = old
 				out[i].Stale = true
+				delete(pending, i)
+				return
 			}
 			out[i].Error = "Could not refresh. Try again."
 		}
