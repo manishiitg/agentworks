@@ -141,11 +141,20 @@ func (s crewTeamFileState) manifest() crewsync.Manifest {
 	}
 	return m
 }
-func crewTeamCapture(ctx context.Context, root, private string, base crewsync.Manifest, on ...crewTeamOnPurpose) (crewsync.Snapshot, error) {
+
+// crewTeamCapture reads what the Team shares from root (the Crew's folder, or a member's copy of it): only paths the
+// share holds are read, so a file a member puts outside it stays on their side.
+func crewTeamCapture(ctx context.Context, root, private string, base crewsync.Manifest, share crewTeamFolder, on ...crewTeamOnPurpose) (crewsync.Snapshot, error) {
 	if e := os.MkdirAll(private, 0700); e != nil {
 		return crewsync.Snapshot{}, e
 	}
-	s, e := crewsync.Capture(ctx, crewTeamRoots(root), base, private)
+	s, e := crewsync.CaptureSelected(ctx, crewTeamRoots(root), base, private, func(key string, directory bool) bool {
+		rel, ok := strings.CutPrefix(key, "resources/")
+		if directory {
+			return ok && share.walks(rel)
+		}
+		return ok && share.holds(rel)
+	})
 	if e != nil {
 		return s, e
 	}
@@ -278,6 +287,16 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 	op := state.onPurpose().with(declared)
 	if e = validateCrewTeamSnapshot(&snapshot, op); e != nil {
 		return receipt, e
+	}
+	// Only what the Team shares is accepted; a member's capture already leaves the rest out.
+	if t, err := readCrewTeam(project); err != nil {
+		return receipt, err
+	} else {
+		for _, c := range snapshot.Changes {
+			if rel, _ := crewTeamRelative(c.Path, op); c.After != nil && !t.Folder.holds(rel) {
+				return receipt, fmt.Errorf("%s is outside what the team shares", rel)
+			}
+		}
 	}
 	root := filepath.Join(dir, "files")
 	if e = os.MkdirAll(root, 0700); e != nil {
@@ -491,7 +510,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 	// A file a member chose to sync on purpose is an ordinary shared file here too.
 	known, _ := readCrewTeamFileState(project)
 	op := known.onPurpose()
-	if !crewTeamAllowed(rel, op) {
+	if !crewTeamAllowed(rel, op) || !t.Folder.holds(rel) {
 		externalError(w, 403, "team_path_forbidden", "Choose a file inside the shared folder; private state and credentials stay private.")
 		return
 	}

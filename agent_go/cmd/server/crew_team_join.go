@@ -27,7 +27,8 @@ var crewTeamJoining sync.Map
 
 func crewTeamJoinKey(connection, project string) string { return connection + "\x00" + project }
 
-// crewTeamDefaultJoinFolder is ~/AgentWorks/<Crew name>/team, with the name made safe for a folder.
+// crewTeamDefaultJoinFolder is ~/AgentWorks/<Crew name>, with the name made safe for a folder: the shared files keep
+// the Crew's own layout inside it (team/…, or the Whole Crew).
 func crewTeamDefaultJoinFolder(name string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -43,7 +44,7 @@ func crewTeamDefaultJoinFolder(name string) (string, error) {
 	if clean == "" {
 		clean = "Shared work"
 	}
-	return filepath.Join(home, "AgentWorks", clean, "team"), nil
+	return filepath.Join(home, "AgentWorks", clean), nil
 }
 
 // crewTeamJoinFolderOK: an absolute folder outside the app's private state that is new or empty, so the team's files

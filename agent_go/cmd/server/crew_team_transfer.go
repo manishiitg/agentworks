@@ -211,7 +211,8 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			fail(e)
 			return
 		}
-		snapshot, e = crewTeamCapture(r.Context(), root, stage, in.Base, op)
+		team, _ := readCrewTeam(project)
+		snapshot, e = crewTeamCapture(r.Context(), root, stage, in.Base, team.Folder, op)
 		if e != nil {
 			fail(e)
 			return

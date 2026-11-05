@@ -270,7 +270,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
     { id: 'team', label: 'Team', detail: 'work with people', tone: 'bg-background text-foreground shadow-sm ring-1 ring-border' },
   ] as const
   const needsServer = !connections.length && !online
-  const serverCopies = [...(status?.on_server || []), ...(team.team?.server_data ? [{ name: `${team.team.server_data.name}/ (shared folder)`, detail: 'kept on the server so your team can sync it' }] : [])]
+  const serverCopies = [...(status?.on_server || []), ...(team.team?.server_data ? [{ name: `Shared with the team: ${team.team.server_data.name}`, detail: 'kept on the server so your team can sync it' }] : [])]
   return <div className="space-y-3.5 text-sm">
     {/* No title row (owner, 4 Nov): a small back arrow beside the tabs, and Esc, return to the workspace. */}
     <div className="flex items-stretch gap-2">

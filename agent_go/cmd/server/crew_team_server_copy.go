@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -101,17 +100,17 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 			return "", err
 		}
 		reason, _ := ctx.Value(crewTeamCopyReasonKey{}).(string)
-		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%s event=created reason=%s", project, logUsernameForUserID(member), t.Folder.Path, firstNonEmptyTrimmed(reason, "turn"))
+		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%q event=created reason=%s", project, logUsernameForUserID(member), t.Folder.display(), firstNonEmptyTrimmed(reason, "turn"))
 	} else if err != nil {
 		return "", err
 	}
 	c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: member}}
 	sync := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: &UserClaims{UserID: member, Username: member}})
 	if err = syncCrewTeamLocal(sync, member, c, dir, &b); err != nil {
-		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%s event=sync_failed reason=%q", project, logUsernameForUserID(member), t.Folder.Path, err)
+		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%q event=sync_failed reason=%q", project, logUsernameForUserID(member), t.Folder.display(), err)
 		return b.Root, err
 	}
-	log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%s event=synced status=%s", project, logUsernameForUserID(member), t.Folder.Path, b.Status)
+	log.Printf("[CREW_TEAM_SERVER] project=%s member=%s folder=%q event=synced status=%s", project, logUsernameForUserID(member), t.Folder.display(), b.Status)
 	return b.Root, nil
 }
 
@@ -210,7 +209,8 @@ func crewTeamServerFolders(claims *UserClaims) []workflowtypes.WorkflowFolderGra
 		if info, err := os.Lstat(b.Root); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
-		alias := strings.Trim(crewTeamAliasClean.ReplaceAllString(strings.ToLower(path.Base(t.Folder.Path)), "_"), "_")
+		// The copy has the Crew's layout, so it is named after the Crew.
+		alias := strings.Trim(crewTeamAliasClean.ReplaceAllString(strings.ToLower(t.Name), "_"), "_")
 		if alias == "" {
 			alias = "team"
 		}
@@ -219,7 +219,7 @@ func crewTeamServerFolders(claims *UserClaims) []workflowtypes.WorkflowFolderGra
 		}
 		used[alias] = true
 		grants = append(grants, workflowtypes.WorkflowFolderGrant{ID: "team-" + crewTransferDigest(t.ProjectID + "\x00" + t.Folder.ID)[:12], Alias: alias, Path: b.Root,
-			Access: workflowtypes.FolderAccessReadWrite, Reason: t.Name + " · the team's shared folder " + t.Folder.Path + "/ (your copy; it syncs with the team)"})
+			Access: workflowtypes.FolderAccessReadWrite, Reason: t.Name + " · shared with the team: " + t.Folder.display() + " (your copy; it syncs with the team)"})
 	}
 	return grants
 }

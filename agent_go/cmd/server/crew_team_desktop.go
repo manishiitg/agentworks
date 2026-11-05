@@ -57,30 +57,40 @@ func (api *StreamingAPI) handleDesktopTeamFolders(w http.ResponseWriter, r *http
 			folders = append(folders, p)
 		}
 	}
+	// The size line before a choice (owner, 5 Nov): one folder's, or the Whole Crew's with whole=1.
 	var count, bytes int64
-	if rel != "" {
-		_ = filepath.WalkDir(folder, func(p string, d fs.DirEntry, err error) error {
-			if err != nil || p == folder {
-				return nil
-			}
-			sub, _ := filepath.Rel(folder, p)
-			sub = filepath.ToSlash(sub)
-			if d.IsDir() {
-				if publication.ExcludedDirectory(sub) || !crewTeamAllowed(sub+"/file.txt") {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if d.Type()&os.ModeSymlink == 0 && crewTeamAllowed(sub) {
-				if info, err := d.Info(); err == nil && info.Mode().IsRegular() {
-					count++
-					bytes += info.Size()
-				}
+	switch {
+	case rel != "":
+		count, bytes = crewTeamShareSize(roots.Files, crewTeamFolder{Folders: []string{rel}})
+	case r.URL.Query().Get("whole") == "1":
+		count, bytes = crewTeamShareSize(roots.Files, crewTeamFolder{Whole: true})
+	}
+	externalJSON(w, map[string]any{"folders": folders, "path": rel, "files": count, "bytes": bytes, "max_bytes": publication.MaxBytes, "max_files": publication.MaxFiles})
+}
+
+// crewTeamShareSize counts the files a share choice would sync from this Crew's folder, by the same rules as a sync.
+func crewTeamShareSize(root string, share crewTeamFolder) (count, bytes int64) {
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || p == root {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if publication.ExcludedDirectory(rel) || !crewTeamAllowed(rel+"/file.txt") || !share.walks(rel) {
+				return filepath.SkipDir
 			}
 			return nil
-		})
-	}
-	externalJSON(w, map[string]any{"folders": folders, "path": rel, "files": count, "bytes": bytes})
+		}
+		if d.Type()&os.ModeSymlink == 0 && crewTeamAllowed(rel) && share.holds(rel) {
+			if info, err := d.Info(); err == nil && info.Mode().IsRegular() {
+				count++
+				bytes += info.Size()
+			}
+		}
+		return nil
+	})
+	return count, bytes
 }
 
 // Only the desktop itself may inspect its saved account's local working path.

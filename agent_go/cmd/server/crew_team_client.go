@@ -111,10 +111,8 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 			if err != nil {
 				return dir, b, err
 			}
-			b.Root, err = crewTeamFolderPath(roots.Files, t.Folder.Path)
-			if err != nil {
-				return dir, b, err
-			}
+			// The Team syncs relative to the Crew's own folder (Whole Crew or chosen folders inside it).
+			b.Root = roots.Files
 			b.LocalProject = rec.ProjectID
 			break
 		}
@@ -229,7 +227,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 		if pending.TransferID == "" {
 			pending = crewTeamTransfer{FolderID: b.FolderID, Client: b.Client, TransferID: uuid.NewString(), Direction: direction}
 			if direction == "upload" {
-				snapshot, err := crewTeamCapture(ctx, b.Root, stage, b.LocalBase, b.onPurpose())
+				snapshot, err := crewTeamCapture(ctx, b.Root, stage, b.LocalBase, team.Folder, b.onPurpose())
 				if err != nil {
 					return err
 				}
@@ -352,7 +350,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 		}
 		_ = os.Remove(filepath.Join(stage, "content"))
 	}
-	check, e := crewTeamCapture(ctx, b.Root, dir, b.LocalBase, b.onPurpose())
+	check, e := crewTeamCapture(ctx, b.Root, dir, b.LocalBase, team.Folder, b.onPurpose())
 	if e != nil {
 		return e
 	}
@@ -556,11 +554,12 @@ func crewTeamPlainSyncError(err error) string {
 		{"cannot reach your company's server", "your company's server can't be reached"},
 		{"the shared folder moved", "the shared folder moved on this Mac; pick it again in the Team tab"},
 		{"belongs to a different saved account", "this folder belongs to a different sign-in"},
-		{"the shared folder changed", "the Team chose another shared folder; this copy is no longer shared"},
+		{"the shared folder changed", "the Team changed what it shares; this copy is no longer shared"},
 		{"shared folder access was removed", "you no longer have the shared folder; its files stay on this Mac"},
 		{"ask the owner to allow shared folder editing", "the shared folder is not shared with you"},
 		{"transfer refused", "the server refused the transfer; check that you are still in the Team"},
-		{"exceeds 256 MiB", "the shared folder is over 256 MB"},
+		{"exceeds 256 MiB", "what the team shares is over 256 MB or 10,000 files"},
+		{"outside what the team shares", "a file is outside what the team shares"},
 		{"differ only by letter case", "two files differ only by capital letters; rename one"},
 		{"context deadline exceeded", "it took too long"},
 	} {

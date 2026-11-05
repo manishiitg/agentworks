@@ -39,11 +39,76 @@ type crewTeamInvite struct {
 	Name      string `json:"name"`
 	OwnerName string `json:"owner_name"`
 }
+
+// crewTeamFolder is what the Team shares (owner, 5 Nov): one or more of the Crew's folders, or the Whole Crew. Files
+// sync relative to the Crew's own folder, so a teammate's copy has the same layout (team/…, code/…). ID is the
+// generation: a new choice starts a new one, and the previous files stay where they are.
 type crewTeamFolder struct {
-	ID    string `json:"id"`
-	Path  string `json:"path"`
-	Label string `json:"label"`
+	ID      string   `json:"id"`
+	Whole   bool     `json:"whole,omitempty"`
+	Folders []string `json:"folders,omitempty"`
 }
+
+// crewTeamMaxFolders keeps the folder list a choice people can read.
+const crewTeamMaxFolders = 20
+
+func (f crewTeamFolder) shared() bool { return f.Whole || len(f.Folders) > 0 }
+
+// holds: the path (relative to the Crew) is inside what the Team shares. Whole Crew leaves out each person's own
+// memory as well as everything crewTeamAllowed always keeps private.
+func (f crewTeamFolder) holds(rel string) bool {
+	if f.Whole {
+		return rel != "MEMORY.md" && rel != "memory" && !strings.HasPrefix(rel, "memory/")
+	}
+	for _, folder := range f.Folders {
+		if rel == folder || strings.HasPrefix(rel, folder+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// walks: a capture descends into this folder (relative to the Crew): it is shared or leads to a shared folder.
+func (f crewTeamFolder) walks(rel string) bool {
+	return f.holds(rel) || !f.Whole && slices.ContainsFunc(f.Folders, func(folder string) bool { return strings.HasPrefix(folder, rel+"/") })
+}
+
+// display is how people read the choice: "Whole Crew" or "team/, code/express/".
+func (f crewTeamFolder) display() string {
+	if f.Whole {
+		return "Whole Crew"
+	}
+	names := make([]string, 0, len(f.Folders))
+	for _, folder := range f.Folders {
+		names = append(names, folder+"/")
+	}
+	return strings.Join(names, ", ")
+}
+
+func (f crewTeamFolder) same(g crewTeamFolder) bool {
+	return f.Whole == g.Whole && slices.Equal(f.Folders, g.Folders)
+}
+
+// cleanCrewTeamFolders checks a folder choice and keeps it short: sorted, no repeats, no folder inside another.
+func cleanCrewTeamFolders(in []string) ([]string, error) {
+	if len(in) > crewTeamMaxFolders {
+		return nil, fmt.Errorf("choose at most %d folders", crewTeamMaxFolders)
+	}
+	out := []string{}
+	for _, folder := range in {
+		folder = strings.Trim(strings.TrimSpace(folder), "/")
+		if _, e := publication.CleanPath(folder); e != nil || publication.ExcludedDirectory(folder) || !crewTeamAllowed(folder+"/file.txt") || !(crewTeamFolder{Whole: true}).holds(folder+"/file.txt") {
+			return nil, fmt.Errorf("choose project subfolders, outside private state and credentials")
+		}
+		out = append(out, folder)
+	}
+	slices.Sort(out)
+	out = slices.Compact(out)
+	return slices.DeleteFunc(out, func(folder string) bool {
+		return slices.ContainsFunc(out, func(parent string) bool { return parent != folder && strings.HasPrefix(folder, parent+"/") })
+	}), nil
+}
+
 type crewTeamServerData struct {
 	Kind          string `json:"kind"`
 	Name          string `json:"name"`
@@ -110,7 +175,7 @@ func (t crewTeam) member(user string) bool {
 }
 func (t crewTeam) edits(user string) bool {
 	// Every joined member reads and writes the shared folder; there is no per-person switch (owner, 5 Nov).
-	return t.Folder.Path != "" && t.member(user)
+	return t.Folder.shared() && t.member(user)
 }
 
 // invited: the person has an open invite to this team (Team on, not accepted yet).
@@ -124,7 +189,7 @@ func (t crewTeam) view(user string) crewTeam {
 	t.OwnerName = shareOwnerLabel(t.OwnerID)
 	if t.edits(user) {
 		if s, e := readCrewTeamFileState(t.ProjectID); e == nil {
-			d := &crewTeamServerData{Kind: "team_folder", Name: t.Folder.Path, TeamProjectID: t.ProjectID}
+			d := &crewTeamServerData{Kind: "team_folder", Name: t.Folder.display(), TeamProjectID: t.ProjectID}
 			for _, v := range s.Versions {
 				if v.File != nil {
 					d.SizeBytes += v.File.Size
@@ -254,7 +319,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	var input crewTeam
 	dec := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
 	if dec.Decode(&input) != nil {
-		externalError(w, 400, "invalid_team", "Choose people and one folder for this team.")
+		externalError(w, 400, "invalid_team", "Choose people and what this team shares.")
 		return
 	}
 	if len(input.People) > 100 {
@@ -269,12 +334,13 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		}
 		seen[p.UserID] = true
 	}
-	if input.Folder.Path != "" {
-		if _, e := publication.CleanPath(input.Folder.Path); e != nil || publication.ExcludedDirectory(input.Folder.Path) || !crewTeamAllowed(input.Folder.Path+"/file.txt") {
-			externalError(w, 400, "invalid_folder", "Choose one project subfolder, outside private state and credentials.")
-			return
-		}
-		input.Folder.Label = path.Base(input.Folder.Path)
+	if input.Folder.Whole {
+		input.Folder.Folders = nil
+	} else if folders, e := cleanCrewTeamFolders(input.Folder.Folders); e != nil {
+		externalError(w, 400, "invalid_folder", strings.ToUpper(e.Error()[:1])+e.Error()[1:]+".")
+		return
+	} else {
+		input.Folder.Folders = folders
 	}
 	dir, e := crewTeamDir(project)
 	if e == nil {
@@ -309,11 +375,11 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	input.Folder.ID = previous.Folder.ID
-	if previous.Folder.Path != input.Folder.Path {
+	if !previous.Folder.same(input.Folder) {
 		input.Folder.ID = uuid.NewString()
-		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder_changed generation=%s", project, owner, input.Folder.ID)
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder whole=%t folders=%d generation=%s", project, owner, input.Folder.Whole, len(input.Folder.Folders), input.Folder.ID)
 	}
-	if input.Folder.Path != "" && input.Folder.ID == "" {
+	if input.Folder.shared() && input.Folder.ID == "" {
 		input.Folder.ID = uuid.NewString()
 	}
 	input.ProjectID = project
@@ -510,23 +576,22 @@ func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Reque
 	if r.Method != http.MethodGet {
 		input = &crewTeam{}
 		if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(input) != nil {
-			externalError(w, 400, "invalid_team", "Choose your team and folder.")
+			externalError(w, 400, "invalid_team", "Choose your team and what it shares.")
 			return
 		}
 		if _, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, id); ok {
 			input.Name = firstNonEmptyTrimmed(manifest.Title, manifest.Label)
 		}
-		if input.Folder.Path != "" {
-			folder, err := crewTeamFolderPath(roots.Files, input.Folder.Path)
-			if err != nil || folder == roots.Files {
-				externalError(w, 400, "invalid_folder", "Choose a folder inside this Crew.")
+		// Each chosen folder is an existing ordinary folder in this Crew; Whole Crew is the Crew's folder itself.
+		for _, rel := range input.Folder.Folders {
+			if folder, err := crewTeamFolderPath(roots.Files, rel); err != nil || folder == roots.Files {
+				externalError(w, 400, "invalid_folder", "Choose existing folders inside this Crew.")
 				return
 			}
-			info, err := os.Lstat(folder)
-			if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-				externalError(w, 400, "invalid_folder", "Choose an existing folder in this Crew.")
-				return
-			}
+		}
+		if input.Folder.Whole {
+			files, bytes := crewTeamShareSize(roots.Files, input.Folder)
+			log.Printf("[CREW_TEAM] local project=%s event=folder whole=true files=%d bytes=%d", roots.ID, files, bytes)
 		}
 	}
 	var out crewTeam
@@ -580,7 +645,7 @@ func crewTeamContentDir(project string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if t.Folder.ID == "" || t.Folder.Path == "" {
+	if t.Folder.ID == "" || !t.Folder.shared() {
 		return "", fmt.Errorf("choose a shared folder first")
 	}
 	return filepath.Join(d, "folders", crewTransferDigest(t.Folder.ID)), nil
@@ -625,5 +690,5 @@ func moveCrewTeamToTwin(owner, previous, created string) {
 		log.Printf("[CREW_TEAM] project=%s event=moved_failed from=%s reason=%q", created, previous, err)
 		return
 	}
-	log.Printf("[CREW_TEAM] project=%s event=moved from=%s people=%d folder=%q", created, previous, len(old.People), old.Folder.Path)
+	log.Printf("[CREW_TEAM] project=%s event=moved from=%s people=%d folder=%q", created, previous, len(old.People), old.Folder.display())
 }

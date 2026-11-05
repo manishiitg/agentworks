@@ -66,7 +66,7 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 	if err = crewTeamRemoteJSON(ctx, claims.UserID, connection, http.MethodGet, route, nil, &team); err != nil {
 		return out, err
 	}
-	if on && team.Folder.Path == "" {
+	if on && !team.Folder.shared() {
 		dir := filepath.Join(roots.Files, crewTeamDefaultFolder)
 		info, statErr := os.Lstat(dir)
 		switch {
@@ -78,7 +78,7 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 		case statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0:
 			return out, fmt.Errorf("this Crew has a %q that is not a folder; choose the shared folder yourself", crewTeamDefaultFolder)
 		}
-		team.Folder = crewTeamFolder{Path: crewTeamDefaultFolder}
+		team.Folder = crewTeamFolder{Folders: []string{crewTeamDefaultFolder}}
 	}
 	team.On = on
 	if _, manifest, ok := api.resolveExternalWorkspace(ctx, claims, project); ok {
@@ -139,7 +139,7 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 	}
 	dropCrewAccessCache(project, binding.PeerProjectID) // the Access row says the new state at once
 	log.Printf("[CREW_TEAM] local project=%s server_project=%s event=switch on=%t people=%d folder=%q folder_created=%tshared=%d unshared=%d",
-		project, binding.PeerProjectID, on, len(saved.People), saved.Folder.Path, out.FolderCreated, len(out.Shared), out.Unshared)
+		project, binding.PeerProjectID, on, len(saved.People), saved.Folder.display(), out.FolderCreated, len(out.Shared), out.Unshared)
 	return out, nil
 }
 

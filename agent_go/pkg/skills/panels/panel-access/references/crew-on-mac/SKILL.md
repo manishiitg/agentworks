@@ -18,8 +18,13 @@ chat (the owner only, in the Mac app):
 
 **Team** (work on this Crew with people):
 - "Turn on the Team" → `action=team on=true` (it also turns Mac online on). Off → `on=false`.
-- People and the shared folder → `team_sync configure`. A person added is invited and joins when they accept; every
-  member reads and writes the shared folder. Sync history and clashes → `team_sync recent` / `clashes`.
+- People and what the team shares → `team_sync configure`. A person added is invited and joins when they accept; every
+  member reads and writes what is shared. `share=folders folders=[…]` shares one or more of this Crew's folders
+  (a new Team starts with an empty `team/`); `share=whole` shares the Whole Crew, everything except chats, memory, app
+  files, `node_modules`/`.git`/caches and files that look like passwords or keys. Say its size first (the Team card
+  shows it); no confirm. Switching back to folders stops syncing the rest; copies already on teammates' Macs stay.
+  Teammates get it as one folder with the Crew's layout (~/AgentWorks/<Crew>/ on a Mac, an attached folder for their
+  agents). Sync history and clashes → `team_sync recent` / `clashes`.
 - Each agent is **In team** (everyone in the Team sees it and its chat live; their agents can message it) or
   **Only me**: `action=share agent=…` / `action=unshare agent=…`. "All my agents" → `action=team_all on=true`.
   Main is In team by default. A purpose is optional (`set_my_agent_identity` in its tab sets one).
