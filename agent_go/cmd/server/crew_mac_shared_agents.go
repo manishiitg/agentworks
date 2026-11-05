@@ -542,7 +542,15 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 	} else if binding != nil && binding.Mode == "relay" {
 		// A purpose changed in its tab since it was shared, or Main joins the Team by default: the online copy follows.
 		next, mainJoined := withTeamMain(project, readMacSharedAgents(project))
-		if mainJoined || macSharedPurposesStale(rows, next) {
+		// "All agents in team" keeps every agent In team, also ones added or allowed since it was turned on.
+		var allJoined []string
+		if readCrewTeamAll(project) {
+			next, allJoined = withAllInTeam(rows, next, readCrewTeamState(project).MainOnlyMe)
+		}
+		if len(allJoined) > 0 {
+			log.Printf("[CREW_TEAM] local project=%s event=all_in_team_refresh added=%v", project, allJoined)
+		}
+		if mainJoined || len(allJoined) > 0 || macSharedPurposesStale(rows, next) {
 			if _, _, err := api.pushMacSharedAgents(r.Context(), claims, project, binding, connection, rows, next); err != nil {
 				log.Printf("[CREW_SHARED_AGENT] local project=%s refresh failed: %v", project, err)
 			} else if mainJoined {
