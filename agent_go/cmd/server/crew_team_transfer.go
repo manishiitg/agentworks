@@ -566,6 +566,7 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/crew-teams/{project}", api.handleCrewTeam).Methods("GET", "PUT")
 	r.HandleFunc("/crew-teams/{project}/{op:invite}", api.handleCrewTeam).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/agents", api.handleCrewTeamAgents).Methods("GET")
+	r.HandleFunc("/crew-teams/{project}/where", api.handleCrewTeamWhere).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/{op:leave|agent-visibility}", api.handleCrewTeamMemberAction).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/{op:files}", api.handleCrewTeamFiles).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/{op:file}", api.handleCrewTeamFiles).Methods("GET", "PUT", "DELETE")
@@ -579,6 +580,7 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}", api.handleDesktopCrewTeam).Methods("GET", "PUT")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/switch", api.handleDesktopCrewTeamSwitch).Methods("POST")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/join", api.handleDesktopCrewTeamJoin).Methods("GET", "POST")
+	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/remove-from-mac", api.handleDesktopCrewTeamRemoveFromMac).Methods("POST")
 }
 
 // Keep request identifiers usable in private state without accepting a path.

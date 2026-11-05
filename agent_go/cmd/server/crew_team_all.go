@@ -37,6 +37,9 @@ type crewTeamLocalState struct {
 	// PreviousProject is the online copy this Crew had before Mac online was turned off; turning it on again moves
 	// the Team to the new copy.
 	PreviousProject string `json:"previous_online_project,omitempty"`
+	// MemberOf: this Mac Crew is a Team member's working copy of someone else's Crew (crew_team_where.go), paired to
+	// that Crew's online copy as the member. It is never repaired into an online copy of its own.
+	MemberOf string `json:"member_of,omitempty"`
 }
 
 func readCrewTeamState(project string) crewTeamLocalState {

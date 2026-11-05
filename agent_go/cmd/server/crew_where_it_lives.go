@@ -68,6 +68,17 @@ func migrateCrewSyncToRelay() {
 
 const crewOnMacRefusal = "This Crew lives on its owner's Mac, so it can't answer here."
 
+// crewOnYourMacRefusal is what a member whose agents work on their Mac is told on the website.
+const crewOnYourMacRefusal = "This Crew works on your Mac, so your agents here answer there. Open it in the AgentWorks app on your Mac, or choose Use it on the web instead."
+
+// crewOnMacRefusalFor is the refusal the caller sees for a server turn of a Crew that lives on a Mac.
+func crewOnMacRefusalFor(conversationKey, caller string) string {
+	if crewTeamMemberOnMac(crewResourceProjectID(conversationKey), caller) {
+		return crewOnYourMacRefusal
+	}
+	return crewOnMacRefusal
+}
+
 // crewLivesOnMac reports a server turn whose agent still runs on the Mac.
 // Only a completed publication for this agent and the current connection makes
 // its server runtime available; the other agents continue through the Mac relay.
@@ -77,9 +88,11 @@ func crewLivesOnMac(profileID, conversationKey, caller string) bool {
 		return false
 	}
 	// A Team member's own agents run on the server, as them (owner, 5 Nov); only the owner's agents live on the Mac.
+	// After "Add to my Mac" a member's own agents work on their Mac instead (crew_team_where.go).
 	if caller != "" && caller != ownerOfCrewProjectID(project) {
 		if t, err := readCrewTeam(project); err == nil && t.member(caller) {
-			return false
+			_, onMac := t.memberMac(caller)
+			return onMac
 		}
 	}
 	placement, err := crewPublishedAgent(project, crewAgentPublishTab(conversationKey))

@@ -74,10 +74,22 @@ func (api *StreamingAPI) crewRelayAdmit(ctx context.Context, claims *UserClaims,
 	if crew.Project == "" || crew.Pair == "" {
 		return fmt.Errorf("missing project or pair")
 	}
+	b, err := crewroot.ReadSync(crew.Project)
+	// A Team member's Mac offers their working copy with the pair the server recorded for them (crew_team_where.go).
+	if t, e := readCrewTeam(crew.Project); e == nil && err == nil && b != nil && b.Side == "server" && ownerOfCrewProjectID(crew.Project) == t.OwnerID {
+		if pair, ok := t.memberMac(claims.UserID); ok {
+			if pair != crew.Pair {
+				return fmt.Errorf("not this member's pair")
+			}
+			return nil
+		}
+		if t.member(claims.UserID) && claims.UserID != t.OwnerID {
+			return fmt.Errorf("member not on their Mac")
+		}
+	}
 	if _, err := api.crewSyncRoots(ctx, claims, crew.Project); err != nil {
 		return fmt.Errorf("not the owner")
 	}
-	b, err := crewroot.ReadSync(crew.Project)
 	if err != nil || b == nil || b.Side != "server" || b.PairID != crew.Pair {
 		return fmt.Errorf("not this Crew's pair")
 	}
@@ -122,7 +134,7 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 		}
 		twins[crew.Project] = crew.Pair
 		// A pair made before Macs were named learns its Mac from the Mac that offers it, so lists group it there.
-		if b, e := crewroot.ReadSync(crew.Project); e == nil && b != nil && b.MacID == "" && sock.device != "" {
+		if b, e := crewroot.ReadSync(crew.Project); e == nil && b != nil && b.MacID == "" && sock.device != "" && ownerOfCrewProjectID(crew.Project) == sock.owner {
 			b.MacID, b.MacName = sock.device, sock.name
 			if e = crewroot.WriteSync(crew.Project, *b); e == nil {
 				log.Printf("[CREW_RELAY] named mac owner=%s device=%s project=%s", sock.owner, sock.device, crew.Project)
@@ -222,6 +234,9 @@ func (api *StreamingAPI) crewRelayHandle(ctx context.Context, sock *crewMacSocke
 			crewRelayStreams.append(sock.owner, msg.Project, msg.Conversation, crewRelayBatch{Kind: "event", Seq: msg.Seq, Body: msg.Event})
 		}
 	case "state":
+		if owner := ownerOfCrewProjectID(msg.Project); owner != "" && owner != sock.owner {
+			return // the Crew's Mac state is its owner's Mac; a member's Mac reports through its own agents
+		}
 		saveCrewMacState(msg.Project, crewMacState{State: msg.State, LastLine: msg.LastLine, At: msg.At})
 		if msg.State == "working" {
 			crewRelaySubmissions.working(sock.owner, msg.Project)

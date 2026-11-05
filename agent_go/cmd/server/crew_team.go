@@ -32,6 +32,10 @@ type crewTeamPerson struct {
 	// Invited: added by the owner but not accepted yet (owner, 5 Nov, the decisions log). An invited person has no
 	// access and no folder sync; accepting on the web or on their Mac makes them a member.
 	Invited bool `json:"invited,omitempty"`
+	// Where this member's own agents work in this Crew (owner, 5 Nov: one working copy): "" or "web" on the server,
+	// "mac" on their Mac, paired to this online copy by MacPair (crew_team_where.go).
+	Where   string `json:"where,omitempty"`
+	MacPair string `json:"mac_pair,omitempty"`
 }
 
 // crewTeamInvite is a Team invite as the invited person sees it.
@@ -200,6 +204,13 @@ func (t crewTeam) view(user string) crewTeam {
 				}
 			}
 			t.ServerData = d
+		}
+	}
+	// The Mac pair is only the person's own routing fence.
+	t.People = slices.Clone(t.People)
+	for i := range t.People {
+		if t.People[i].UserID != user {
+			t.People[i].MacPair = ""
 		}
 	}
 	// Team-only members can discover shared agents but do not learn folder contents.
@@ -371,6 +382,10 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	for i := range input.People {
 		at := slices.IndexFunc(previous.People, func(p crewTeamPerson) bool { return p.UserID == input.People[i].UserID })
 		input.People[i].Invited = at < 0 || previous.People[at].Invited
+		input.People[i].Where, input.People[i].MacPair = "", ""
+		if at >= 0 { // where a member works is theirs to choose
+			input.People[i].Where, input.People[i].MacPair = previous.People[at].Where, previous.People[at].MacPair
+		}
 		if at < 0 {
 			log.Printf("[CREW_TEAM] project=%s actor=%s event=invited user=%s", project, owner, logUsernameForUserID(input.People[i].UserID))
 		}

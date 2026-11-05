@@ -85,6 +85,16 @@ func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string
 	if !crewChatWebsiteClaims(c) {
 		return nil, fmt.Errorf("Open this Crew using its owner's website sign-in.")
 	}
+	// A Team member whose agents work on their Mac reads (only reads) their own Mac's chats here, through their pair.
+	if pair, ok := crewTeamMemberMacRead(r, project, c.UserID); ok {
+		b, err := crewroot.ReadSync(project)
+		if err != nil || b == nil || b.Side != "server" {
+			return nil, fmt.Errorf("This Crew is not currently connected to its Mac conversation. Reopen the Crew.")
+		}
+		member := *b
+		member.PairID = pair
+		return &member, nil
+	}
 	if _, err := api.crewSyncRoots(r.Context(), c, project); err != nil {
 		return nil, err
 	}
@@ -286,6 +296,13 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			if watch, ok := api.crewMacTeamWatchContext(r, project, generation); ok {
 				r = watch
 			}
+		}
+		read := r.Method == "GET" && (suffix == "events/stream" || suffix == "events" || suffix == "status" || suffix == "queued-messages")
+		if read {
+			r = r.WithContext(context.WithValue(r.Context(), crewRelayReadKey{}, true))
+		} else if crewTeamMemberOnMac(project, GetUserIDFromContext(r.Context())) {
+			externalError(w, 409, "mac_chat_action", "This Crew works on your Mac. Open it in the AgentWorks app on your Mac to send, answer or stop.")
+			return
 		}
 		switch {
 		case r.Method == "GET" && suffix == "events/stream":

@@ -285,6 +285,10 @@ func (api *StreamingAPI) deliverCrewMacWaitingAll(sock *crewMacSocket) {
 	}
 	sock.mu.Unlock()
 	for project, pair := range twins {
+		// Messages held for a Crew's Mac are for its owner's Mac; a Team member's Mac copy never receives them.
+		if ownerOfCrewProjectID(project) != sock.owner {
+			continue
+		}
 		go api.deliverCrewMacWaiting(sock.owner, project, pair)
 	}
 }
