@@ -154,7 +154,14 @@ export function YourComputerPanel({ projectId, sessionId, onFullScreen, onBack }
 
 function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
   const team = useProjectTeam(projectId)
-  const [section, setSection] = useState<'mac' | 'publish' | 'team'>(() => hasPendingCrewAccess(projectId) ? 'team' : 'mac')
+  // The last Access tab is remembered per Crew in this browser (owner, 5 Nov); an agent asking for its sharing still opens Team.
+  const tabKey = `agentworks:crew-access-tab:${projectId}`
+  const [section, setSectionState] = useState<'mac' | 'publish' | 'team'>(() => {
+    if (hasPendingCrewAccess(projectId)) return 'team'
+    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'publish' || saved === 'team') return saved } catch { /* storage unavailable */ }
+    return 'mac'
+  })
+  const setSection = (next: 'mac' | 'publish' | 'team') => { setSectionState(next); try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
   const [publishConnection, setPublishConnection] = useState('')
   useEffect(() => {
     const openTeam = (event: Event) => { if ((event as CustomEvent<{ projectId: string }>).detail?.projectId === projectId) setSection('team') }
