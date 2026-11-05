@@ -4,7 +4,7 @@ import type { PendingQueuedMessage } from '../../shared/session/types'
 // A submitted message's identity is its submission id (the Idempotency-Key the
 // chat journal already requires). The browser's provisional bubble and the
 // server's durable user_message share the id `user:<submission id>`, so
-// reconciliation is id replacement, never text matching.
+// reconciliation follows that client id, never message text or the transport event id.
 export const CLIENT_MESSAGE_EVENT_ID_PREFIX = 'user:'
 
 export function clientMessageEventId(clientMessageId: string): string {
@@ -51,7 +51,7 @@ export function carryProvisionalReceipt(durable: PollingEvent, provisional: Poll
 }
 
 // reconcileDurableUserEchoes drops every provisional bubble whose durable
-// echo is in `incoming`, and returns the incoming rows with the bubbles'
+// echo with the same client_message_id is in `incoming`, and returns the incoming rows with the bubbles'
 // receipts carried over. The durable row then lands where the server placed
 // it (after an answer the CLI was still writing), which is what moves a
 // message sent mid-reply below that reply.
@@ -59,20 +59,20 @@ export function reconcileDurableUserEchoes(
   current: ReadonlyArray<PollingEvent>,
   incoming: ReadonlyArray<PollingEvent>,
 ): { current: PollingEvent[]; incoming: PollingEvent[]; replacedIds: string[] } {
-  const echoes = new Set(incoming.filter(isDurableClientUserMessage).map(event => event.id).filter((id): id is string => Boolean(id)))
+  const echoes = new Set(incoming.filter(isDurableClientUserMessage).map(readClientMessageId))
   if (echoes.size === 0) return { current: [...current], incoming: [...incoming], replacedIds: [] }
   const provisionals = new Map<string, PollingEvent>()
   const kept: PollingEvent[] = []
   for (const event of current) {
-    if (event.id && echoes.has(event.id) && isProvisionalUserMessage(event)) provisionals.set(event.id, event)
+    if (event.id && echoes.has(readClientMessageId(event)) && isProvisionalUserMessage(event)) provisionals.set(readClientMessageId(event), event)
     else kept.push(event)
   }
   if (provisionals.size === 0) return { current: [...current], incoming: [...incoming], replacedIds: [] }
   const merged = incoming.map(event => {
-    const provisional = event.id ? provisionals.get(event.id) : undefined
+    const provisional = provisionals.get(readClientMessageId(event))
     return provisional && isDurableClientUserMessage(event) ? carryProvisionalReceipt(event, provisional) : event
   })
-  return { current: kept, incoming: merged, replacedIds: [...provisionals.keys()] }
+  return { current: kept, incoming: merged, replacedIds: [...provisionals.values()].map(event => event.id!) }
 }
 
 // On restore, a provisional bubble survives only while its durable row is
@@ -81,8 +81,8 @@ export function keepUnechoedProvisionals(
   durable: PollingEvent[],
   current: ReadonlyArray<PollingEvent>,
 ): PollingEvent[] {
-  const durableIds = new Set(durable.map(event => event.id).filter((id): id is string => Boolean(id)))
-  const pending = current.filter(event => isProvisionalUserMessage(event) && event.id && !durableIds.has(event.id))
+  const durableIds = new Set(durable.filter(isDurableClientUserMessage).map(readClientMessageId))
+  const pending = current.filter(event => isProvisionalUserMessage(event) && event.id && !durableIds.has(readClientMessageId(event)))
   return pending.length === 0 ? durable : [...durable, ...pending]
 }
 
@@ -95,9 +95,9 @@ export function pendingQueuedProvisionals(
   sessionId: string,
 ): PollingEvent[] {
   if (!pending?.length) return []
-  const presentIds = new Set(present.map(event => event.id))
+  const presentIds = new Set(present.map(readClientMessageId).filter(Boolean))
   return pending
-    .filter(message => message.client_message_id && !presentIds.has(clientMessageEventId(message.client_message_id)))
+    .filter(message => message.client_message_id && !presentIds.has(message.client_message_id))
     .map(message => {
       const timestamp = message.queued_at || new Date().toISOString()
       return {
