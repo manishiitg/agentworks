@@ -36,13 +36,13 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {
-    // One Access row for every Crew (owner, 3 Nov): where it lives, who can use it and connected agents on one page.
-    add('mcp', 'Share', 'Access', UsersRound, 'access', 'Access')
+    // One Share row for every Crew (owner, 3 Nov): where it lives, who can use it and connected agents on one page.
+    add('mcp', 'Share', 'Share', UsersRound, 'access', 'Share')
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
-      // Linked projects sit with the Crew's connections; the main menu keeps the Access row (owner, 3 Nov).
+      // Linked projects sit with the Crew's connections; the main menu keeps the Share row (owner, 3 Nov).
       add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
     if (hasDesktopConnections() || isLocalDeployment()) add('mcp', 'Integrations', 'Folders on this Mac', Folder, 'mac-folders')

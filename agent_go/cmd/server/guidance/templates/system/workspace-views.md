@@ -36,8 +36,8 @@ Where things are, for guiding the person through the menu (the agent opens only 
 | `schedules`, `webhooks` | Their advertised schedule/webhook presentation. Prefer the current menu destination and live contract. |
 | `goals` | Goal purpose, success criteria and saved measurements. |
 | `human-actions` | Decisions and questions waiting for a person; do not duplicate them in Goals & metrics. |
-| `mcp` | Vault, Brain, Linked work, Skills, channel setup, Access and AgentBridge through advertised targets. |
-| `access` | Goal execution Team and its existing access policy; product Share is in Access at `mcp/share`. |
+| `mcp` | Vault, Brain, Linked work, Skills, channel setup, Share and AgentBridge through advertised targets. |
+| `access` | Goal execution Team and its existing access policy; product Share is at `mcp/share`. |
 | `identity` | Settings, Models and Upgrades. Computers and their grants live in Vault. |
 | `costs`, `execution-logs` | Recorded Costs and usage, or Run logs for real work. |
 | `publish`, `notify`, `backup` | The corresponding Setup page. |

@@ -1,8 +1,8 @@
-# Access
+# Share
 
 Use share action=get/share action=set for this product’s Share selection (Only me, Chosen people, Everyone). A Goal's or Relay's owners and the people who can use it are also readable and changeable with workspace get_access/set_access (owners, readers) under the same owner checks. Share only the requested product with the requested people; a URL itself grants nothing. Crew has a main owner and may have co-owners. Owners build the whole project and control their own tabs; other people use what is shared. Read back the saved audience/access before reporting completion.
 
-Use `ui action=capabilities`, then the admitted `ui` with view=mcp, action=open, target=share to show Access when advertised. For every product (Crew, Goal and Relay) the website's Access panel lists People (the main owner, other Owners and people who Can use it) and one company-wide choice (Can't access or Can use); an owner can add, remove and change people there, or ask you here. Use `workspace` for Crew owners and `workspace get_access/set_access` for Goal and Relay owners, after reading `panel-access`. Goal execution-team assignments remain separate from Share. There is no separate purpose form to send the person to.
+Use `ui action=capabilities`, then the admitted `ui` with view=mcp, action=open, target=share to show Share when advertised. For every product (Crew, Goal and Relay) the website's Share panel (a Goal's Access & sharing) lists People (the main owner, other Owners and people who Can use it) and one company-wide choice (Can't access or Can use); an owner can add, remove and change people there, or ask you here. Use `workspace` for Crew owners and `workspace get_access/set_access` for Goal and Relay owners, after reading `panel-access`. Goal execution-team assignments remain separate from Share. There is no separate purpose form to send the person to.
 
 ## Shared Crew agents
 

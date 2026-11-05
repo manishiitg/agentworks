@@ -13,7 +13,7 @@ func TestCrewAccessPageMacControlsOnlyOnTheMac(t *testing.T) {
 	twin := &crewroot.SyncBinding{Side: "server", Editing: "local", MacName: "Example Mac"}
 	owner := crewSyncReply{Role: "owner", AccessView: "team", Place: "mac", Binding: twin}
 	crewAccessPage(&owner)
-	if owner.AccessHere != "" || len(owner.AccessTabs) != 3 || owner.AccessMac == nil || owner.AccessPublish == nil || owner.AccessLaptop {
+	if owner.AccessHere != "" || len(owner.AccessTabs) != len(crewAccessMacTabs) || owner.AccessMac == nil || (owner.AccessPublish == nil) == crewPublishTabShown || owner.AccessLaptop {
 		t.Fatalf("website copy of a Mac Crew: %+v", owner)
 	}
 	member := crewSyncReply{Role: "member", AccessView: "team", Binding: twin}
@@ -29,7 +29,7 @@ func TestCrewAccessPageMacControlsOnlyOnTheMac(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	mac := crewSyncReply{Binding: &crewroot.SyncBinding{Side: "local", Editing: "local"}}
 	crewAccessPage(&mac)
-	if mac.AccessHere != "mac" || len(mac.AccessTabs) != 3 || mac.AccessShare {
+	if mac.AccessHere != "mac" || len(mac.AccessTabs) != len(crewAccessMacTabs) || mac.AccessShare {
 		t.Fatalf("Mac app's own Crew: %+v", mac)
 	}
 }

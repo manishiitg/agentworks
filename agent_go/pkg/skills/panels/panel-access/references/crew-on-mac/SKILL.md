@@ -1,6 +1,6 @@
 # A Crew on this Mac, from chat
 
-The Access page of a Crew on the owner's Mac has three tabs, and everything on it also works from that Crew's own
+The Share page of a Crew on the owner's Mac has three tabs, and everything on it also works from that Crew's own
 chat (the owner only, in the Mac app):
 
 **Mac online** (only you, from anywhere, while this Mac is on): `manage_crew_sync`

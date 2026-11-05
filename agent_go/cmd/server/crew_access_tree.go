@@ -12,7 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// The Access tree under the side panel's Access row (owner, 5 Nov, approved mockup "Access Side Panel"): one item per
+// The Share tree under the side panel's Share row (owner, 5 Nov, approved mockup "Access Side Panel"): one item per
 // thing worth saying, each a title and a muted detail, so nothing is cut off. Lines with nothing to say are left out.
 // The server writes every line; the Mac app and the website show the same tree.
 
@@ -26,9 +26,11 @@ type crewAccessPerson struct {
 }
 
 type crewAccessLine struct {
-	Kind     string             `json:"kind"` // mac, team, agents, public, folder, clash
+	Kind     string             `json:"kind"` // mac, team, where, agents, dashboard, public, folder, clash
 	Title    string             `json:"title"`
 	Detail   string             `json:"detail,omitempty"`
+	Path     string             `json:"path,omitempty"` // dashboard: the document the line opens
+	Ask      string             `json:"ask,omitempty"`  // dashboard: none yet; the words put in the person's Main chat box
 	People   []crewAccessPerson `json:"people,omitempty"`
 	Progress *crewTeamRound     `json:"progress,omitempty"`
 }
@@ -151,6 +153,34 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 		}
 	}
 	return lines
+}
+
+// crewAccessDashboardLine is the Crew's dashboard in the Share tree (owner, 5 Nov: one place for Share and the
+// dashboard): who it is shared with, or, with none, an Ask to make one. Nothing creates a dashboard on its own.
+func crewAccessDashboardLine(paths []string, shared string) crewAccessLine {
+	if len(paths) == 0 {
+		return crewAccessLine{Kind: "dashboard", Title: "No dashboard", Detail: "Ask AI to make one", Ask: "Help me make a dashboard for this Crew"}
+	}
+	title := "Dashboard"
+	if len(paths) > 1 {
+		title = fmt.Sprintf("%d dashboards", len(paths))
+	}
+	return crewAccessLine{Kind: "dashboard", Title: title, Detail: shared, Path: paths[0]}
+}
+
+// crewAccessWithDashboard puts the dashboard line after "Shared with the team" (or after the Mac and Team lines when
+// there is no such line), before Public, the shared folder and clashes.
+func crewAccessWithDashboard(tree []crewAccessLine, line crewAccessLine) []crewAccessLine {
+	at := 0
+	for i, l := range tree {
+		switch l.Kind {
+		case "mac", "team", "where", "agents":
+			at = i + 1
+		}
+	}
+	out := append([]crewAccessLine{}, tree[:at]...)
+	out = append(out, line)
+	return append(out, tree[at:]...)
 }
 
 func crewAccessPublicLine(agents []macSharedAgent) []crewAccessLine {

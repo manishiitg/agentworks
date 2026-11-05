@@ -40,6 +40,8 @@ type crewPanelSection struct {
 	Stale  bool             `json:"stale,omitempty"`
 	Error  string           `json:"error,omitempty"`
 	Access *crewPanelAccess `json:"access,omitempty"`
+	// shared is the dashboard's audience in the Share tree's words (the sharing section only).
+	shared string
 }
 type crewPanelAccess struct {
 	Where   string           `json:"where,omitempty"`
@@ -283,9 +285,38 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 			section.Detail = strings.Trim(section.Detail+" · "+sharing, " ·")
 		}
 	}
+	crewPanelDashboardLine(out.Sections)
 	out.Details = crewPanelDetails(sections)
 	w.Header().Set("Cache-Control", "no-store")
 	externalJSON(w, out)
+}
+
+// crewPanelDashboardLine adds the Crew's dashboard to the Share tree, from the panel's own dashboards and sharing
+// reads (owner, 5 Nov: the side menu's separate Dashboards item moved here).
+func crewPanelDashboardLine(sections []crewPanelSection) {
+	var access *crewPanelAccess
+	shared, listed, paths := "", false, []string{}
+	for i := range sections {
+		switch s := &sections[i]; s.ID {
+		case "access":
+			access = s.Access
+		case "sharing":
+			if s.Error == "" {
+				shared = s.shared
+			}
+		case "dashboards":
+			listed = s.Error == ""
+			for _, row := range s.Rows {
+				if row.Path != "" {
+					paths = append(paths, row.Path)
+				}
+			}
+		}
+	}
+	if access == nil || !listed {
+		return
+	}
+	access.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(paths, shared))
 }
 
 func crewPanelRead(r *http.Request, handler http.HandlerFunc, method, route string, vars map[string]string, query url.Values, body, out any) error {

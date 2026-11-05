@@ -49,7 +49,7 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
-export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; people?: { user_id: string; name: string; online: boolean; online_label?: string; agents?: string[]; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
+export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'dashboard' | 'public' | 'folder' | 'clash' | 'where'; title: string; detail?: string; path?: string; ask?: string; people?: { user_id: string; name: string; online: boolean; online_label?: string; agents?: string[]; status_label?: string }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
 type PlaceEntry = { place?: CloudState; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
@@ -265,7 +265,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
     {/* No title row (owner, 4 Nov): a small back arrow beside the tabs, and Esc, return to the workspace. */}
     <div className="flex items-stretch gap-2">
     {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
-    {tabs.length > 1 && <div role="tablist" aria-label="Crew access" className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-xl border border-border bg-muted/30 p-1">
+    {tabs.length > 1 && <div role="tablist" aria-label="Share" className={`grid min-w-0 flex-1 ${tabs.length === 2 ? 'grid-cols-2' : 'grid-cols-3'} gap-1 rounded-xl border border-border bg-muted/30 p-1`}>
       {tabs.map((item, index) => <button key={item.id} type="button" role="tab" id={`crew-access-${projectId}-${item.id}`} aria-controls={`crew-access-panel-${projectId}-${item.id}`} aria-selected={shown === item.id} tabIndex={shown === item.id ? 0 : -1}
         onClick={() => setSection(item.id)} onKeyDown={event => {
           const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1

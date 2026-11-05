@@ -110,6 +110,18 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 	if !found {
 		t.Fatalf("native catalog lost: %s", w.Body.String())
 	}
+	// The dashboard sits in the Share tree (owner, 5 Nov), opening the listed document.
+	dashboardLine := false
+	for _, section := range result.Sections {
+		if section.ID == "access" && section.Access != nil {
+			for _, line := range section.Access.Tree {
+				dashboardLine = dashboardLine || (line.Kind == "dashboard" && strings.HasSuffix(line.Path, "example.html"))
+			}
+		}
+	}
+	if !dashboardLine {
+		t.Fatalf("Share tree lacks the dashboard line: %s", w.Body.String())
+	}
 	if strings.Contains(w.Body.String(), "selected_secrets") || strings.Contains(w.Body.String(), "private-chat") {
 		t.Fatal("non-display state leaked")
 	}

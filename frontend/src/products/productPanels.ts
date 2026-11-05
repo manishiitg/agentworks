@@ -69,7 +69,7 @@ export interface PanelSection { id: string; label: string; keywords?: string }
 
 /** Existing integration target IDs, flattened by MCPs & secrets navigation. */
 export const INTEGRATION_SECTIONS: PanelSection[] = [
-  { id: 'share', label: 'Access', keywords: 'owners share people agents' },
+  { id: 'share', label: 'Share', keywords: 'owners share people agents access' },
   { id: 'agentbridge', label: 'AgentBridge', keywords: 'agents computer network messages' },
   ...PROJECT_INTEGRATION_SECTIONS.filter(section => section.value !== 'apps').map(section => ({ id: section.value, label: section.value === 'apps' ? 'Connection overview' : section.value === 'cli' ? 'MCP access' : section.label, keywords: section.value === 'apps' ? `${section.description} Tools & secrets Apps & tools` : section.description })),
   ...projectPluginTabs().map(tab => ({ id: tab.value, label: tab.label, keywords: 'mcp tools' })),

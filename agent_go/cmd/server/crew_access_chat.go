@@ -24,9 +24,9 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 		link := binding.PeerServer + "/crew/projects/" + binding.PeerProjectID
 		return out(map[string]any{
 			"website":           link,
-			"phone":             link + " (open it on the phone, or scan the code in Access, Phone, Show code)",
-			"chatgpt_or_claude": "Add " + binding.PeerServer + "/api/external/v1/mcp as a connector in ChatGPT or Claude, sign in, then say \"ask my Crew to…\". Access, ChatGPT or Claude, Connect shows the steps.",
-			"slack":             "Access, Slack, Connect sets it up; signing in to Slack is the person's own click.",
+			"phone":             link + " (open it on the phone, or scan the code in Share, Phone, Show code)",
+			"chatgpt_or_claude": "Add " + binding.PeerServer + "/api/external/v1/mcp as a connector in ChatGPT or Claude, sign in, then say \"ask my Crew to…\". Share, ChatGPT or Claude, Connect shows the steps.",
+			"slack":             "Share, Slack, Connect sets it up; signing in to Slack is the person's own click.",
 		})
 	}
 	rows, err := api.macAgentRows(ctx, claims, project)
