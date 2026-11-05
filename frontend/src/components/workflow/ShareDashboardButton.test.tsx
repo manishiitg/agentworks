@@ -16,7 +16,7 @@ it('Sharing: Shared with (Only me / Chosen people / Everyone) and Co-owners, eac
     if (body.action === 'owner_remove') return { data: { owner: { id: 'owner', email: 'owner@example.com' }, co_owners: [], can_manage: true } }
     if (body.action === 'list') return { data: { dashboards: [{ dashboard_id: 'other', short_url: 'https://example.com/d/zzzzz' }, { dashboard_id: 'overview', short_url: 'https://example.com/d/abc23' }] } }
     if (body.action === 'share') return { data: { mode: body.mode === 'people' && !body.emails?.length ? 'private' : body.mode, can_share: true, people: (body.emails || []).map((email: string, index: number) => ({ id: `u${index}`, email })) } }
-    return { data: { mode: 'people', can_share: true, people: [{ id: 'user', email: 'user@example.com' }], agents: [{ chat_id: 'coach', name: 'Coach', purpose: 'Review feedback', selected: true }, { chat_id: 'private', name: 'Private work', purpose: '', selected: false }] } }
+    return { data: { mode: 'people', can_share: true, people: [{ id: 'user', email: 'user@example.com' }] } }
   })
   const host = document.createElement('div'), root = createRoot(host)
   const button = (text: string) => [...host.querySelectorAll('button')].find(item => item.textContent === text)!
@@ -35,8 +35,6 @@ it('Sharing: Shared with (Only me / Chosen people / Everyone) and Co-owners, eac
     expect(host.querySelector('[aria-label="People it is shared with"]')?.textContent).toContain('user@example.com')
     expect(host.querySelector('[aria-label="Owners"]')?.textContent).toContain('Created it')
     expect(host.querySelector('[aria-label="Owners"]')?.textContent).toContain('colleague@example.com')
-    expect(host.textContent).toContain('Agents others can message (1)')
-    expect(host.textContent).not.toContain('Private work')
 
     await act(async () => button('Copy dashboard link').click())
     expect(writeText).toHaveBeenCalledExactlyOnceWith('https://example.com/d/abc23')

@@ -11,7 +11,6 @@ import { Switch } from '../../components/ui/Switch'
 import { HostedAiAppGuide } from '../../components/integrations/HostedAiAppGuide'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
-import { MacAgentBridge } from './MacAgentBridge'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
 import { AskButton, TeamTab } from './TeamTab'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
@@ -308,10 +307,8 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
           {way('ChatGPT or Claude', `“ask my ${name} Crew to…”`, <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
           {open === 'ai' && binding?.peer_server && <div className="border-t border-border py-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
         </div>
-        {binding?.connection_id && !online && <>
-          <p className="mt-4 py-2.5"><span className="font-semibold">AgentBridge</span> <span className="block text-[12.5px] text-muted-foreground">Public: other people’s agents can message it. Only my agents: just yours.</span></p>
-          <MacAgentBridge key={projectId} projectId={projectId} connection={binding.connection_id} crewName={name} />
-        </>}
+        {/* AgentBridge is chosen per agent in the one agent sharing list, on the Team tab (owner, 5 Nov mockup). */}
+        {binding?.connection_id && !online && <p className="mt-4 py-2.5"><span className="font-semibold">AgentBridge</span> <span className="block text-[12.5px] text-muted-foreground">Choose which agents are public on AgentBridge in <button type="button" className="text-primary hover:underline" onClick={() => setSection('team')}>Team · Agents</button>.</span></p>}
         {online && <p className="mt-1 text-[12.5px] text-muted-foreground">Open this published Crew from the Publish tab.</p>}
         {!binding && !online && <p className="mt-1 text-xs text-muted-foreground">Turn on Use from phone and web to connect your other apps.</p>}
       </div>

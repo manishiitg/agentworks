@@ -28,7 +28,8 @@ type crewMacTeamTab struct {
 	Tab            string // "main" or the Mac tab id
 	ConversationID string // the Mac conversation, as the relay addresses it
 	Name           string
-	OnlyMe         bool // a member's agent they keep to themselves: only they see it
+	Purpose        string // its one line, from the Mac's tab
+	OnlyMe         bool   // a member's agent they keep to themselves: only they see it
 }
 
 type crewMacTeamTabsRead struct {
@@ -81,10 +82,6 @@ func callCrewMacPair(ctx context.Context, person, project, pair string, call cre
 // personMacTabs are this person's agents on their Mac that the Team may watch; a member's Only me ones are marked
 // (only they see them: crewMacTabsFor).
 func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab {
-	pair, ok := crewMacPairFor(person, project)
-	if !ok {
-		return nil
-	}
 	owner := person == ownerOfCrewProjectID(project)
 	// In team / Only me is the Team record's (crew_team_in_team.go); the owner's Mac lists only its In team agents here.
 	team, _ := readCrewTeam(project)
@@ -106,22 +103,46 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 		}
 		return slices.DeleteFunc(slices.Clone(tabs), func(t crewMacTeamTab) bool { return !inTeam[t.Tab] })
 	}
+	tabs, ok := readPersonMacTabs(ctx, person, project, !owner || inTeam[macMainTab])
+	if !ok {
+		return nil
+	}
+	return keep(tabs)
+}
+
+// ownerMacTabsAll is every agent on the Crew owner's Mac, Main first, whatever the Team chose: with the Team off the
+// owner still chooses each one's Public on AgentBridge from the same list.
+func ownerMacTabsAll(ctx context.Context, project string) []crewMacTeamTab {
+	tabs, _ := readPersonMacTabs(ctx, ownerOfCrewProjectID(project), project, true)
+	if !slices.ContainsFunc(tabs, func(t crewMacTeamTab) bool { return t.Tab == macMainTab }) {
+		tabs = append([]crewMacTeamTab{{Tab: macMainTab, Name: "Main"}}, tabs...)
+	}
+	return tabs
+}
+
+// readPersonMacTabs is the last agent list read from this person's Mac (at most 15 s old, else read again while the
+// Mac is on, else the last one kept). withMain also reads its Main.
+func readPersonMacTabs(ctx context.Context, person, project string, withMain bool) ([]crewMacTeamTab, bool) {
+	pair, ok := crewMacPairFor(person, project)
+	if !ok {
+		return nil, false
+	}
 	key := project + "\x00" + person
 	cached, _ := crewMacTeamTabsCache.Load(key)
 	if v, ok := cached.(crewMacTeamTabsRead); ok && time.Since(v.at) < 15*time.Second {
-		return keep(v.tabs)
+		return v.tabs, true
 	}
 	if crewMacSocketFor(person, project, pair) == nil {
 		if v, ok := cached.(crewMacTeamTabsRead); ok {
-			return keep(v.tabs)
+			return v.tabs, true
 		}
 		// After a restart nothing is in memory: the last list read from that Mac, kept on disk, so a message to its
 		// agents still waits for the Mac instead of being refused as not shared.
 		if tabs, ok := readSavedCrewMacTabs(project, person); ok {
 			crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{tabs: tabs}) // zero time: read the Mac again once it is back
-			return keep(tabs)
+			return tabs, true
 		}
-		return nil
+		return nil, false
 	}
 	tabs := []crewMacTeamTab{}
 	result := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "tabs"}, 10*time.Second)
@@ -135,11 +156,11 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 		for _, row := range rows {
 			_, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
 			if ok && crewMacTabID(id) && row.ConversationID != "" {
-				tabs = append(tabs, crewMacTeamTab{Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name)})
+				tabs = append(tabs, crewMacTeamTab{Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
 			}
 		}
 	}
-	if !owner || inTeam[macMainTab] {
+	if withMain {
 		main := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "resolve"}, 10*time.Second)
 		var out struct {
 			ConversationID string `json:"conversation_id"`
@@ -149,7 +170,7 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 		}
 	}
 	crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{at: time.Now(), tabs: tabs})
-	return keep(tabs)
+	return tabs, true
 }
 
 var crewMacTabsSaveMu sync.Mutex

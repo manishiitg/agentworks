@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"time"
 )
@@ -23,6 +24,13 @@ type sharedCrewAgent struct {
 type crewAgentShareChange struct {
 	Agents   *[]string         `json:"shared_agents,omitempty"`
 	Purposes map[string]string `json:"agent_purposes,omitempty"`
+	// Agent / AgentOn switch one agent's selection and keep the rest (the Team tab's Public on AgentBridge).
+	Agent   string `json:"shared_agent,omitempty"`
+	AgentOn *bool  `json:"shared_agent_on,omitempty"`
+}
+
+func (c crewAgentShareChange) changesAgents() bool {
+	return c.Agents != nil || len(c.Purposes) > 0 || c.Agent != "" && c.AgentOn != nil
 }
 
 func crewSharedAgentKeys(root string) []string {
@@ -94,6 +102,12 @@ func validateCrewAgentShare(ctx context.Context, caller, root string, change cre
 	keys := crewSharedAgentKeys(root)
 	if change.Agents != nil {
 		keys = *change.Agents
+	}
+	if change.Agent != "" && change.AgentOn != nil {
+		keys = slices.DeleteFunc(slices.Clone(keys), func(key string) bool { return key == change.Agent })
+		if *change.AgentOn {
+			keys = append(keys, change.Agent)
+		}
 	}
 	if len(keys) > 100 {
 		return nil, fmt.Errorf("select at most 100 agents")

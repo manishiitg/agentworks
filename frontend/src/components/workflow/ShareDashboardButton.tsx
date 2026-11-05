@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot, Link2, Share as ShareIcon, Users, X } from 'lucide-react'
+import { Link2, Share as ShareIcon, Users, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import api from '../../services/api'
 import { WORKFLOW_REPORT_REFRESH_EVENT } from './reportRefreshEvent'
@@ -14,7 +14,6 @@ type Person = { id: string; email?: string; username?: string }
 type ShareState = {
   mode: 'everyone' | 'people' | 'private'; people?: Person[]; can_share: boolean; share_blocked?: string; needs_dashboard?: boolean
   accounts?: { kind: string; name: string; use: string }[]
-  agents?: { chat_id: string; name: string; purpose: string; selected: boolean }[]
 }
 type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean }
 const who = (person: Person) => person.email || person.username || person.id
@@ -86,7 +85,6 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   if (!state) return isPanel ? <div className="text-sm">{error ? <p role="alert">{error} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p> : <p role="status" className="text-muted-foreground">Loading access…</p>}</div> : null
   if (!state.can_share) return isPanel ? <p className="text-sm text-muted-foreground">{state.share_blocked || 'Ask a project owner to change access.'}</p> : null
   if (variant === 'row') return <Row icon={Users} detail={audience(state)} onClick={() => onOpen?.()}>{label}</Row>
-  const selected = (state.agents || []).filter(agent => agent.selected)
   const emails = (state.people || []).map(person => person.email).filter((value): value is string => !!value)
   /** The server decides: it takes the mode and the full list of people and answers with the saved state. */
   const putShare = async (next: ShareState['mode'], list?: string[], createDashboard = false) => {
@@ -198,9 +196,9 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     </section>
     {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {(state.agents || !!state.accounts?.length) && <details className="border-t border-border pt-3 text-xs"><summary className="cursor-pointer py-1 text-muted-foreground">Details</summary>
+    {/* Which agents others can message is each agent's Public on AgentBridge, in the Team tab's one agent list. */}
+    {!!state.accounts?.length && <details className="border-t border-border pt-3 text-xs"><summary className="cursor-pointer py-1 text-muted-foreground">Details</summary>
       <div className="mt-2 space-y-3">
-        {state.agents && <div><p className="font-medium">Agents others can message ({selected.length})</p>{selected.map(agent => <div key={agent.chat_id} className="mt-1 flex items-start gap-2"><Bot aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span>{agent.name}{agent.purpose && <span className="block text-muted-foreground">{agent.purpose}</span>}</span></div>)}{!selected.length && <p className="text-muted-foreground">None yet. Ask in chat to share one of this Crew's agents.</p>}</div>}
         {!!state.accounts?.length && <div><p className="font-medium">Accounts used</p><ul className="mt-1 space-y-1">{state.accounts.map((account, i) => <li key={i}>{account.name}<span className="block text-muted-foreground">{account.use}</span></li>)}</ul></div>}
       </div>
     </details>}

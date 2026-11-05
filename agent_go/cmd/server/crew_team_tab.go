@@ -56,6 +56,29 @@ type crewTeamTabAgent struct {
 	CanMakeChanges *bool              `json:"can_make_changes,omitempty"`
 	CanEditRule    bool               `json:"can_edit_rule"`
 	WhenOthersLine string             `json:"when_others_line"`
+	// The agent sharing list (owner, 5 Nov, approved mockup "Agent Sharing List"): its one-line purpose, whether the
+	// viewer may ask its chat to set one (their own agent), and its Public on AgentBridge (only on the Crew owner's own
+	// rows, for the owner; everyone else reads it in Fixed).
+	Purpose       string             `json:"purpose"`
+	CanSetPurpose bool               `json:"can_set_purpose"`
+	AgentBridge   *crewTeamTabBridge `json:"agentbridge,omitempty"`
+}
+
+// crewTeamTabBridge is one agent's Public on AgentBridge as this server keeps it: a Mac Crew's in the list its Mac
+// pushed (crew_mac_shared_agents.go), a Crew on the server's in its Share's selected agents (crew_shared_agents.go).
+type crewTeamTabBridge struct {
+	Public bool `json:"public"`
+	// CanChange: the viewer switches it. MacOnly: only from the owner's Mac app, which keeps the choice (the
+	// crew-sync share_agents action); elsewhere Text is shown with the reply's agents_mac_only line.
+	CanChange bool `json:"can_change"`
+	MacOnly   bool `json:"mac_only,omitempty"`
+	// NeedsPurpose: turning it on first asks the agent's chat for a purpose (an agent is shared with a purpose).
+	NeedsPurpose bool   `json:"needs_purpose,omitempty"`
+	Line         string `json:"line,omitempty"` // under the switch while it is public
+	Text         string `json:"text"`           // the setting in words, where it is not switched
+	// A Crew on the server switches it through its Share: /api/dashboards action=share on Workspace, shared_agent=ShareKey.
+	ShareKey  string `json:"share_key,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
 }
 
 // crewTeamTabShare is one shared folder with its size as the server holds it.
@@ -96,8 +119,11 @@ type crewTeamTabReply struct {
 	AllInTeam  bool `json:"all_in_team"`
 	CanAllMine bool `json:"can_all_mine"`
 	// MacOnly is the line under the folder choice of a Mac Crew: its folders are listed from the owner's Mac.
-	MacOnly  string `json:"mac_only,omitempty"`
-	CanLeave bool   `json:"can_leave"`
+	MacOnly string `json:"mac_only,omitempty"`
+	// AgentsMacOnly is the Agents list's last line for the owner of a Mac Crew: Public on AgentBridge is switched in
+	// their Mac app (its screen there leaves the line out).
+	AgentsMacOnly string `json:"agents_mac_only,omitempty"`
+	CanLeave      bool   `json:"can_leave"`
 	// CanChoose: the viewer switches Folders / Whole Crew and stops sharing a folder, the main owner only (owner, 5 Nov).
 	// CanAddFolder: the viewer adds a folder to share by name, anyone in the Team; a missing one is made. The owner's
 	// Mac app also picks from the Mac's folders.
@@ -155,7 +181,15 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			out.Mac = mac
 		}
 	}
+	bridges := crewTeamBridgesFor(ctx, t)
+	if viewer == t.OwnerID && twin {
+		out.AgentsMacOnly = "Change these from your Mac app."
+	}
 	if !t.On {
+		// Team off: only AgentBridge is left to choose, on the owner's own agents.
+		if viewer == t.OwnerID {
+			out.Agents = crewTeamSoloAgents(ctx, t, bridges)
+		}
 		return out
 	}
 	byPerson := teamAgentsByPerson(ctx, t, viewer)
@@ -216,6 +250,14 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				row.CanMakeChanges = &changes
 			}
 			row.WhenOthersLine = crewTeamWhenOthersLine(rule, p.Name, mine)
+			row.Purpose, row.CanSetPurpose = a.Purpose, mine
+			if p.UserID == t.OwnerID {
+				if b := bridges.row(t, a, viewer, onMac && rule.CanMakeChanges); b != nil && mine {
+					row.AgentBridge = b
+				} else if b != nil && b.Public {
+					row.Fixed = strings.SplitN(row.Fixed, " · ", 2)[0] + " · public on AgentBridge"
+				}
+			}
 			out.Agents = append(out.Agents, row)
 		}
 	}
@@ -223,6 +265,107 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	out.CanChoose = view.CanManage && viewer == t.OwnerID
 	out.CanAddFolder = view.CanManage
 	out.Shares, out.Whole = crewTeamTabShares(t, viewer)
+	return out
+}
+
+// crewTeamBridges is what this server keeps of the Crew owner's agents' Public on AgentBridge.
+type crewTeamBridges struct {
+	twin      bool
+	mac       map[string]macSharedAgent // a Mac Crew's, by tab
+	shareable map[string]bool           // a Crew on the server's: the chat keys its Share can select
+	selected  []string
+	workspace string
+}
+
+func crewTeamBridgesFor(ctx context.Context, t crewTeam) crewTeamBridges {
+	b := crewTeamBridges{twin: crewRelayTwin(t.ProjectID), mac: map[string]macSharedAgent{}, shareable: map[string]bool{}}
+	if b.twin {
+		for _, agent := range readMacSharedAgents(t.ProjectID) {
+			b.mac[agent.Tab] = agent
+		}
+		return b
+	}
+	root := crewProjectRootByID(t.ProjectID)
+	agents, err := crewShareAgents(ctx, t.OwnerID, root, true)
+	if root == "" || err != nil {
+		return b
+	}
+	b.workspace = root
+	for _, agent := range agents {
+		b.shareable[agent.ChatID] = true
+		if agent.Selected {
+			b.selected = append(b.selected, agent.ChatID)
+		}
+	}
+	return b
+}
+
+// row is one of the owner's agents' AgentBridge setting for the viewer; nil when it has none.
+func (b crewTeamBridges) row(t crewTeam, a crewTeamAgent, viewer string, canMakeChanges bool) *crewTeamTabBridge {
+	answers := "It only answers their questions."
+	if canMakeChanges {
+		answers = "It can make changes for them."
+	}
+	out := &crewTeamTabBridge{CanChange: viewer == t.OwnerID}
+	if b.twin {
+		if a.Place == "server" { // published from the Mac: it answers on the server, public there
+			return &crewTeamTabBridge{Public: true, Text: "AgentBridge: public on the server"}
+		}
+		agent, ok := b.mac[a.Tab]
+		out.Public, out.MacOnly = ok && agent.AgentBridgePublic, true
+		out.Line = "Anyone on the AgentBridge network can message it. " + answers
+	} else {
+		key := a.ChatKey
+		if !b.shareable[key] && crewTeamMainAgent(t, t.OwnerID, key) && b.shareable[t.ProjectID] {
+			key = t.ProjectID // the Crew's Main, as its Share names it
+		}
+		if !b.shareable[key] {
+			return nil
+		}
+		out.Public, out.ShareKey, out.Workspace = slices.Contains(b.selected, key), key, b.workspace
+		out.Line = "People this Crew is shared with can message it from their agents. " + answers
+	}
+	out.NeedsPurpose = !out.Public && strings.TrimSpace(a.Purpose) == ""
+	out.Text = "AgentBridge: not public"
+	if out.Public {
+		out.Text = "AgentBridge: public. " + answers
+	}
+	return out
+}
+
+// crewTeamSoloAgents are the owner's own agents while the Team is off, each with its Public on AgentBridge: a Mac
+// Crew's from the owner's Mac, a Crew on the server's from its tabs here.
+func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges) []crewTeamTabAgent {
+	agents := []crewTeamAgent{}
+	if bridges.twin {
+		mainKey := crewTeamOwnerMainKey(ctx, t)
+		for _, tab := range ownerMacTabsAll(ctx, t.ProjectID) {
+			a := crewTeamAgent{Tab: tab.Tab, Name: firstNonEmptyTrimmed(tab.Name, "Agent"), Purpose: firstNonEmptyTrimmed(tab.Purpose, bridges.mac[tab.Tab].Purpose), Place: "mac", ChatKey: macSharedAgentChatKey(t.ProjectID, tab.Tab)}
+			if tab.Tab == macMainTab {
+				a.Name, a.ChatKey = "Main", mainKey
+			}
+			if crewPublishedTarget(t.ProjectID, tab.Tab) {
+				a.Place = "server"
+			}
+			agents = append(agents, a)
+		}
+	} else {
+		agents = memberTeamAgents(ctx, t, t.OwnerID, t.OwnerID)
+	}
+	name := crewPersonShortName(t.OwnerID)
+	out := []crewTeamTabAgent{}
+	for _, a := range agents {
+		rule := t.agentRule(t.OwnerID, crewTeamAgentKey(ctx, t, t.OwnerID, a.ChatKey))
+		row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: "you", Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Place: a.Place, Tab: a.Tab,
+			Uses: []crewTeamAgentUse{}, WhenOthersAsk: rule.WhenOthersAsk, HasRule: rule.WhenOthersAsk != "", CanEditRule: true,
+			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, CanSetPurpose: true,
+			AgentBridge: bridges.row(t, a, t.OwnerID, bridges.twin && rule.CanMakeChanges)}
+		if bridges.twin {
+			changes := rule.CanMakeChanges
+			row.CanMakeChanges = &changes
+		}
+		out = append(out, row)
+	}
 	return out
 }
 
