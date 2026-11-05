@@ -1,6 +1,5 @@
 import { YourComputerPanel } from './YourComputerPanel'
-import { useMacCrew } from './useMacCrew'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Server } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectIntegrationPanel, INTEGRATION_LABELS, type IntegrationSection } from '../../components/integrations/ProjectIntegrationPanel'
@@ -9,7 +8,6 @@ import { useChatStore } from '../../stores/useChatStore'
 import { ProjectKnowledgebasePanel } from '../../components/workflow/ProjectKnowledgebasePanel'
 import { ProductSlackPanel } from '../../components/integrations/ProductSlackPanel'
 import { ProjectMcpSetupPanel } from '../../components/integrations/ProjectMcpSetupPanel'
-import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { WorkFoldersSection } from './WorkIdentityPanel'
@@ -21,8 +19,6 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { integrationProductAvailable } from '../../components/integrations/integrationSections'
 import { isLocalDeployment } from '../productSurfaceConfig'
 import { ComputerUsePanel } from './ComputerUsePanel'
-import { TeamTab } from './TeamTab'
-import api from '../../services/api'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'message-agents'
 
@@ -56,7 +52,8 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     {tab !== 'access' && <WorkspaceViewHeader icon={Server} title={labels[tab]} />}
     <div data-ui-view-section={tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       <>
-        {tab === 'access' && <AccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} canEdit={canEdit} onAsk={draft} />}
+        {/* One Access page in the Mac app and on the website (owner, 5 Nov); the server's reply decides its rows. */}
+        {tab === 'access' && <div className="max-w-2xl"><YourComputerPanel projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} onAsk={draft} /></div>}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
         {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
@@ -72,45 +69,5 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
         {tab === 'whatsapp' && <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
       </>
     </div>
-  </div>
-}
-
-/** The server says which Access page this person gets (crew-sync access_view), the same reply in the Mac app's Crews
- * from a server and on the website: the Team tab alone (a teammate, or the website copy of a Mac Crew), a Crew on the
- * server's page with its Team tab, or one line for a shared Crew. Only the Mac app's own Crews (its local backend, which
- * sends no access_view) get the Mac's Access page, with the Team tab inside it. Read once, and again when the Team
- * changes. */
-function AccessPage(props: { projectId: string; sessionId?: string; workspacePath: string; tabId: string; canEdit: boolean; onAsk: (message: string) => void | Promise<unknown> }) {
-  const [access, setAccess] = useState<{ access_view?: 'team' | 'server_crew' | 'summary'; access_summary?: string; error?: boolean }>()
-  // getRawActiveWorkspaceId() is 'local' on the website too, so it cannot tell the Mac app apart (owner, 5 Nov: the
-  // website owner got the Mac page's Laptop access and "move it online first").
-  const mac = isLocalDeployment()
-  useEffect(() => {
-    if (mac) return
-    let live = true
-    const load = () => void api.get(`/api/crew-sync/${encodeURIComponent(props.projectId)}`, { skipSessionContext: true }).then(({ data }) => { if (live) setAccess(data) }).catch(() => { if (live) setAccess({ error: true }) })
-    load()
-    window.addEventListener('agentworks:team-updated', load)
-    return () => { live = false; window.removeEventListener('agentworks:team-updated', load) }
-  }, [props.projectId, mac])
-  if (mac) return <MacAccessPage {...props} />
-  if (!access) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
-  if (access.access_view === 'summary') return <p className="text-sm text-muted-foreground">{access.access_summary}</p>
-  if (access.access_view === 'team') return <div className="max-w-2xl"><TeamTab projectId={props.projectId} /></div>
-  if (access.access_view === 'server_crew') return <div className="max-w-2xl space-y-6">
-    {props.canEdit && <YourComputerPanel projectId={props.projectId} sessionId={props.sessionId} canEdit />}
-    <section aria-label="Who can use it"><h3 className="mb-2 text-xs font-medium text-muted-foreground">Who can use it</h3><ShareDashboardButton workspacePath={props.workspacePath} variant="panel" tabId={props.tabId} onAsk={props.onAsk} /></section>
-    <TeamTab projectId={props.projectId} />
-  </div>
-  return <p role="alert" className="text-sm text-muted-foreground">Access could not be read. Reopen this page to try again.</p>
-}
-
-/** The Mac app's own Crew: where it lives (Mac online, Publish, Team), and who can use it once it is online. */
-function MacAccessPage({ projectId, sessionId, workspacePath, tabId, canEdit, onAsk }: { projectId: string; sessionId?: string; workspacePath: string; tabId: string; canEdit: boolean; onAsk: (message: string) => void | Promise<unknown> }) {
-  const { livesOnMac } = useMacCrew(projectId, 15000)
-  const [moveScreen, setMoveScreen] = useState(false)
-  return <div className="max-w-2xl space-y-6">
-    {canEdit && <YourComputerPanel projectId={projectId} sessionId={sessionId} canEdit={canEdit} onFullScreen={setMoveScreen} />}
-    {!livesOnMac && !moveScreen && <section aria-label="Who can use it"><h3 className="mb-2 text-xs font-medium text-muted-foreground">Who can use it</h3><ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
   </div>
 }
