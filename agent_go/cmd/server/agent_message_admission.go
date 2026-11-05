@@ -10,6 +10,15 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 )
 
+// agentAdmissionRefusal is a recheck's confirmed refusal (access removed, a Watcher removed, the sending connection
+// no longer authorized), as opposed to a store or runtime error that may pass: a held message is dropped only on this.
+type agentAdmissionRefusal struct{ err error }
+
+func (e agentAdmissionRefusal) Error() string { return e.err.Error() }
+func (e agentAdmissionRefusal) Unwrap() error { return e.err }
+
+func admissionRefused(text string) error { return agentAdmissionRefusal{err: errors.New(text)} }
+
 // Resolve authority again immediately before a queued delivery enters a turn.
 // Persist only the connection ID, never its bearer token. Own named-agent mail
 // follows current account access across CLI sign-in replacement; narrowed keys,
@@ -31,7 +40,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return conditiontrigger.HoldError{Err: err}
 		}
 		if job.Schedule.Condition == nil {
-			return fmt.Errorf("watcher caller was removed")
+			return admissionRefused("watcher caller was removed")
 		}
 		if !job.Effective().Enabled {
 			// Automatic completion stops future checks, not the exact action
@@ -84,12 +93,12 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			}
 		}
 		if err != nil || claims.UserID != source.UserID {
-			return fmt.Errorf("sending connection is no longer authorized")
+			return admissionRefused("sending connection is no longer authorized")
 		}
 		if source.NamedAgentID != "" {
 			agent, err := namedAgentByID(ctx, source.UserID, source.NamedAgentID)
 			if err != nil || !namedAgentConnectionAllowed(agent, claims) {
-				return fmt.Errorf("sending named agent is no longer authorized")
+				return admissionRefused("sending named agent is no longer authorized")
 			}
 		}
 		view := hostedInboxReplyClaims(claims, c, m.From)

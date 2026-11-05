@@ -112,31 +112,96 @@ func migrateCrewTeamMemberCopy(dir, old, stamp string, b *crewTeamLocal) (string
 	if err != nil {
 		return "no_crew_folder", 0
 	}
+	// The copy goes to a sibling folder and is renamed into place whole, so the target only ever holds a finished copy.
+	// A target that exists while this record still points at the old copy is what a crash between the rename and
+	// saving the record left: the migration resumes from it. Anything else in the target is not this copy's.
+	resumed := false
 	if entries, e := os.ReadDir(target); e == nil && len(entries) > 0 {
-		return "target_not_empty", 0
+		if _, e := os.Stat(filepath.Join(target, crewTeamMigratedMarker)); e != nil {
+			return "target_not_empty", 0
+		}
+		resumed = true
 	}
-	backups := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(dir))), "backups")
-	files, err := tarCrewTeamCopy(old, filepath.Join(backups, filepath.Base(filepath.Dir(dir))+"-"+filepath.Base(dir)+"-"+stamp+".tar.gz"))
-	if err != nil {
-		return "backup_failed", files
-	}
-	if err = os.MkdirAll(filepath.Dir(target), 0o770); err != nil {
-		return "copy_failed", files
-	}
-	_ = os.Remove(target)
-	if err = os.CopyFS(target, os.DirFS(old)); err != nil {
-		_ = os.RemoveAll(target)
-		return "copy_failed", files
+	files := 0
+	if !resumed {
+		backups := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(dir))), "backups")
+		files, err = tarCrewTeamCopy(old, filepath.Join(backups, filepath.Base(filepath.Dir(dir))+"-"+filepath.Base(dir)+"-"+stamp+".tar.gz"))
+		if err != nil {
+			return "backup_failed", files
+		}
+		if err = os.MkdirAll(filepath.Dir(target), 0o770); err != nil {
+			return "copy_failed", files
+		}
+		staging := target + ".migrating"
+		_ = os.RemoveAll(staging)
+		if err = copyCrewTeamTree(old, staging); err == nil {
+			err = os.WriteFile(filepath.Join(staging, crewTeamMigratedMarker), nil, 0o600)
+		}
+		if err == nil {
+			_ = os.Remove(target) // an empty target folder
+			err = os.Rename(staging, target)
+		}
+		if err != nil {
+			_ = os.RemoveAll(staging)
+			return "copy_failed", files
+		}
 	}
 	b.Root = target
 	if err = saveCrewTeamLocal(dir, *b); err != nil {
-		_ = os.RemoveAll(target)
-		return "record_failed", files
+		return "record_failed", files // the finished copy stays; the next start resumes from it
 	}
+	_ = os.Remove(filepath.Join(target, crewTeamMigratedMarker))
 	if err = os.RemoveAll(old); err != nil {
 		return "moved_old_not_removed", files
 	}
+	if resumed {
+		return "moved_resumed", files
+	}
 	return "moved", files
+}
+
+// crewTeamMigratedMarker marks a finished migrated copy until its record points at it.
+const crewTeamMigratedMarker = ".team-copy-migrated"
+
+// copyCrewTeamTree copies a folder: files with their mode, folders, and links as links (os.CopyFS refuses links).
+func copyCrewTeamTree(src, dst string) error {
+	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, p)
+		to := filepath.Join(dst, rel)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		switch {
+		case d.IsDir():
+			return os.MkdirAll(to, info.Mode().Perm()|0o700)
+		case d.Type()&os.ModeSymlink != 0:
+			link, err := os.Readlink(p)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(link, to)
+		case d.Type().IsRegular():
+			in, err := os.Open(p)
+			if err != nil {
+				return err
+			}
+			defer in.Close()
+			out, err := os.OpenFile(to, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
+			if err != nil {
+				return err
+			}
+			if _, err = io.Copy(out, in); err != nil {
+				out.Close()
+				return err
+			}
+			return out.Close()
+		}
+		return nil // sockets, devices: not part of a copy
+	})
 }
 
 // tarCrewTeamCopy writes a gzip tarball of the folder's regular files and returns how many it holds.

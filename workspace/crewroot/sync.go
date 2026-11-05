@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
+	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"os"
 	"path"
 	"path/filepath"
@@ -220,7 +221,8 @@ func TeamCopyHidden(entry, listing, user string) bool {
 	if user == "" {
 		return true
 	}
-	own := strings.Join(parts[:at+1], "/") + "/" + user
+	// The folder is named by the path-safe form of the id (crewTeamMemberCopyRoot), so the match uses it too.
+	own := strings.Join(parts[:at+1], "/") + "/" + workspaceref.SanitizeUserID(user)
 	inside := func(p string) bool {
 		p = strings.Trim(filepath.ToSlash(p), "/")
 		return p == own || strings.HasPrefix(p, own+"/")

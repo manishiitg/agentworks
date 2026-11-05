@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -374,6 +375,11 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	raw, _ := json.Marshal(map[string]any{"sender_id": claims.UserID, "after": externalInt(args, "after", 0), "wait_seconds": externalInt(args, "wait_seconds", 0), "events": events, "sender_channel": channel})
 	call := crewChatCall{Operation: operation, Tab: agent.Tab, Message: externalArg(args, "message"), Caller: crewOwnerDisplayName(sanitizeUserIDForPath(claims.UserID)), Args: raw,
 		SubmissionID: externalArg(args, "submission_id")}
+	if operation == "agent_ask" && call.SubmissionID == "" {
+		// Every ask carries an id the Mac runs once: a timed-out ask retried (or held and delivered later) with it is
+		// not run twice. The reply names it for such a retry.
+		call.SubmissionID = uuid.NewString()
+	}
 	if action == "reply_input" {
 		call.Answer, _ = json.Marshal(map[string]any{"provider": args["provider"], "prompt_id": args["request_id"], "answers": args["answers"], "auto": args["auto"]})
 	}
@@ -425,9 +431,18 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 		externalError(w, 503, "owner_mac_off", "Its owner's Mac is off. Try again later.")
 		return true
 	}
+	if result.Status == http.StatusGatewayTimeout && action == "ask" {
+		body, _ := json.Marshal(map[string]any{"submission_id": call.SubmissionID, "chat_id": macSharedAgentChatKey(manifest.ID, agent.Tab),
+			"error": "The Mac did not answer in time; it may still be working on it. Read this chat for its answer, or ask again with the same submission_id so it runs once."})
+		writeCrewChatResult(w, crewChatResult{Status: http.StatusGatewayTimeout, Body: body})
+		return true
+	}
 	var out map[string]any
 	if result.Status == http.StatusOK && json.Unmarshal(result.Body, &out) == nil {
 		out["workspace_id"], out["chat_id"], out["name"], out["purpose"], out["can_write"], out["shared"] = manifest.Product+":"+manifest.ID, macSharedAgentChatKey(manifest.ID, agent.Tab), agent.Name, agent.Purpose, false, true
+		if action == "ask" {
+			out["submission_id"] = call.SubmissionID
+		}
 		externalJSON(w, out)
 		return true
 	}
@@ -869,17 +884,143 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	if status != http.StatusOK {
 		return fmt.Errorf("the agent could not take this message; try again shortly")
 	}
-	go api.awaitMacAgentAnswer(c.ID, m.ID, from, read)
+	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: tab, Mac: dest.UserID, Published: published, SenderID: source.UserID, Caller: sender})
 	return nil
 }
 
 // macAgentAnswered remembers which messages already got their answer, so each is answered once.
 var macAgentAnswered sync.Map
 
+// macAgentAwaiting is one message a Mac (or published) agent took whose answer still goes back to its inbox. It is kept
+// in the app's state while the answer is awaited, so a server restart resumes the wait instead of losing the reply.
+type macAgentAwaiting struct {
+	Inbox      string `json:"inbox"`
+	Submission string `json:"submission"`
+	From       int    `json:"from"`
+	Project    string `json:"project"`
+	Tab        string `json:"tab"`
+	// Mac is whose Mac runs the agent (the Crew owner, or a Team member when Member); Published: it runs on the server.
+	Mac       string    `json:"mac"`
+	Member    bool      `json:"member,omitempty"`
+	Published bool      `json:"published,omitempty"`
+	SenderID  string    `json:"sender_id"`
+	Caller    string    `json:"caller"`
+	Started   time.Time `json:"started"`
+}
+
+func (w macAgentAwaiting) key() string { return w.Inbox + "\x00" + w.Submission }
+
+var macAgentAwaitingMu sync.Mutex
+
+func macAgentAwaitingPath() (string, error) {
+	state, err := crewroot.StateRoot()
+	return filepath.Join(state, "crew-sync", "mac-agent-awaiting.json"), err
+}
+
+func readMacAgentAwaiting() ([]macAgentAwaiting, error) {
+	p, err := macAgentAwaitingPath()
+	if err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(p)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []macAgentAwaiting
+	return out, json.Unmarshal(raw, &out)
+}
+
+func updateMacAgentAwaiting(change func([]macAgentAwaiting) []macAgentAwaiting) error {
+	macAgentAwaitingMu.Lock()
+	defer macAgentAwaitingMu.Unlock()
+	list, err := readMacAgentAwaiting()
+	if err != nil {
+		return err
+	}
+	p, err := macAgentAwaitingPath()
+	if err != nil {
+		return err
+	}
+	return fsutil.WriteJSONAtomic(p, change(list), 0o600)
+}
+
+// macAgentAnswerReadForTest stands in for the Mac in a test.
+var macAgentAnswerReadForTest func(api *StreamingAPI, w macAgentAwaiting, after, wait int) (map[string]any, int)
+
+// macAgentAnswerRead reads the agent's turn for this message from where it runs.
+func macAgentAnswerRead(api *StreamingAPI, w macAgentAwaiting, after, wait int) (map[string]any, int) {
+	if macAgentAnswerReadForTest != nil {
+		return macAgentAnswerReadForTest(api, w, after, wait)
+	}
+	raw, _ := json.Marshal(map[string]any{"sender_id": w.SenderID, "after": after, "wait_seconds": wait, "submission": w.Submission})
+	call := crewChatCall{Operation: "agent_read", Tab: w.Tab, Caller: w.Caller, Args: raw}
+	timeout := time.Duration(wait+40) * time.Second
+	var result crewChatResult
+	switch {
+	case w.Published:
+		result = api.publishedAgentCall(context.Background(), w.Mac, w.Project, call, true)
+	case w.Member:
+		pair, _ := crewMacPairFor(w.Mac, w.Project)
+		result = callCrewMacPair(context.Background(), w.Mac, w.Project, pair, call, timeout)
+	default:
+		result = callCrewMacFor(context.Background(), w.Mac, w.Project, call, timeout)
+	}
+	var out map[string]any
+	_ = json.Unmarshal(result.Body, &out)
+	return out, result.Status
+}
+
+// startMacAgentAnswer records the awaited answer, then waits for it in the background.
+func (api *StreamingAPI) startMacAgentAnswer(w macAgentAwaiting) {
+	if w.Started.IsZero() {
+		w.Started = time.Now().UTC()
+	}
+	if err := updateMacAgentAwaiting(func(list []macAgentAwaiting) []macAgentAwaiting {
+		return append(slices.DeleteFunc(list, func(o macAgentAwaiting) bool { return o.key() == w.key() }), w)
+	}); err != nil {
+		log.Printf("[CREW_SHARED_AGENT] inbox=%s submission=%s action=awaiting_not_saved reason=%q", w.Inbox, w.Submission, err)
+	}
+	go api.awaitMacAgentAnswer(w)
+}
+
+// resumeMacAgentAnswers picks up, after a restart, every answer still awaited within its window.
+func (api *StreamingAPI) resumeMacAgentAnswers() {
+	list, err := readMacAgentAwaiting()
+	if err != nil {
+		log.Printf("[CREW_SHARED_AGENT] action=awaiting_unreadable reason=%q", err)
+		return
+	}
+	for _, w := range list {
+		if time.Since(w.Started) >= macAgentReplyWindow {
+			api.doneMacAgentAnswer(w)
+			continue
+		}
+		log.Printf("[CREW_SHARED_AGENT] inbox=%s submission=%s action=answer_wait_resumed", w.Inbox, w.Submission)
+		go api.awaitMacAgentAnswer(w)
+	}
+}
+
+func (api *StreamingAPI) doneMacAgentAnswer(w macAgentAwaiting) {
+	if err := updateMacAgentAwaiting(func(list []macAgentAwaiting) []macAgentAwaiting {
+		return slices.DeleteFunc(list, func(o macAgentAwaiting) bool { return o.key() == w.key() })
+	}); err != nil {
+		log.Printf("[CREW_SHARED_AGENT] inbox=%s submission=%s action=awaiting_not_cleared reason=%q", w.Inbox, w.Submission, err)
+	}
+}
+
 // awaitMacAgentAnswer sends only the agent's final answer to this sender's turn back to the inbox: once "Still
 // working" if it takes long, then the answer. Never its tool steps.
-func (api *StreamingAPI) awaitMacAgentAnswer(inbox, submission string, from int, read func(after, wait int) (map[string]any, int)) {
-	started, toldWorking := time.Now(), false
+func (api *StreamingAPI) awaitMacAgentAnswer(w macAgentAwaiting) {
+	defer api.doneMacAgentAnswer(w)
+	inbox, submission, from := w.Inbox, w.Submission, w.From
+	read := func(after, wait int) (map[string]any, int) { return macAgentAnswerRead(api, w, after, wait) }
+	started, toldWorking := w.Started, time.Since(w.Started) > 2*time.Minute // a resumed wait already said it
+	if started.IsZero() {
+		started = time.Now()
+	}
 	answer := ""
 	for time.Since(started) < macAgentReplyWindow {
 		out, status := read(0, 25)

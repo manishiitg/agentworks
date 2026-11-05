@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -121,10 +123,21 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 		if v, ok := cached.(crewMacTeamTabsRead); ok {
 			return keep(v.tabs)
 		}
+		// After a restart nothing is in memory: the last list read from that Mac, kept on disk, so a message to its
+		// agents still waits for the Mac instead of being refused as not shared.
+		if tabs, ok := readSavedCrewMacTabs(project, person); ok {
+			crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{tabs: tabs}) // zero time: read the Mac again once it is back
+			return keep(tabs)
+		}
 		return nil
 	}
 	tabs := []crewMacTeamTab{}
 	result := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "tabs"}, 10*time.Second)
+	defer func() {
+		if result.Status == http.StatusOK {
+			saveCrewMacTabs(project, person, tabs)
+		}
+	}()
 	var rows []AgentProfileSideChat
 	if result.Status == http.StatusOK && json.Unmarshal(result.Body, &rows) == nil {
 		for _, row := range rows {
@@ -147,6 +160,51 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 	return keep(tabs)
 }
 
+var crewMacTabsSaveMu sync.Mutex
+
+// crewMacTabsPath keeps, per Crew, the last agent list read from each person's Mac (survives a server restart).
+func crewMacTabsPath(project string) (string, error) {
+	waiting, err := crewMacWaitingPath(project)
+	return strings.TrimSuffix(waiting, "-mac-waiting.json") + "-mac-tabs.json", err
+}
+
+func readSavedCrewMacTabs(project, person string) ([]crewMacTeamTab, bool) {
+	p, err := crewMacTabsPath(project)
+	if err != nil {
+		return nil, false
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return nil, false
+	}
+	saved := map[string][]crewMacTeamTab{}
+	if json.Unmarshal(raw, &saved) != nil {
+		return nil, false
+	}
+	tabs, ok := saved[person]
+	return tabs, ok
+}
+
+func saveCrewMacTabs(project, person string, tabs []crewMacTeamTab) {
+	p, err := crewMacTabsPath(project)
+	if err != nil {
+		return
+	}
+	crewMacTabsSaveMu.Lock()
+	defer crewMacTabsSaveMu.Unlock()
+	saved := map[string][]crewMacTeamTab{}
+	if raw, err := os.ReadFile(p); err == nil {
+		_ = json.Unmarshal(raw, &saved)
+	}
+	if old, ok := saved[person]; ok && slices.Equal(old, tabs) {
+		return
+	}
+	saved[person] = tabs
+	if err = fsutil.WriteJSONAtomic(p, saved, 0o600); err != nil {
+		log.Printf("[CREW_TEAM] project=%s event=mac_tabs_not_saved reason=%q", project, err)
+	}
+}
+
 // crewMacTabsFor are this person's Mac agents as the viewer may see them: all of their own, never another person's
 // Only me ones.
 func crewMacTabsFor(ctx context.Context, person, project, viewer string) []crewMacTeamTab {
@@ -155,18 +213,48 @@ func crewMacTabsFor(ctx context.Context, person, project, viewer string) []crewM
 
 // crewMacPeople are the people whose Mac holds agents of this Crew: its owner, and members on their Mac.
 func crewMacPeople(project string) []string {
+	people, _ := crewMacPeopleChecked(project)
+	return people
+}
+
+// crewMacPeopleChecked is crewMacPeople with an error when the Team record or the people directory cannot be read
+// now: a caller that would drop held messages for someone not listed must not act on a list that is only incomplete.
+func crewMacPeopleChecked(project string) ([]string, error) {
 	t, err := readCrewTeam(project)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
 	owner := ownerOfCrewProjectID(project)
 	if err != nil || owner == "" || t.OwnerID != owner || !t.On {
-		return nil
+		return nil, nil
 	}
 	people := []string{owner}
 	for _, p := range t.People {
-		if _, ok := t.memberMac(p.UserID); ok && crewTeamAccountActive(p.UserID) {
+		if _, ok := t.memberMac(p.UserID); !ok {
+			continue
+		}
+		active, err := crewTeamAccountActiveChecked(p.UserID)
+		if err != nil {
+			return nil, err
+		}
+		if active {
 			people = append(people, p.UserID)
 		}
 	}
-	return people
+	return people, nil
+}
+
+// crewTeamAccountActiveChecked is crewTeamAccountActive that tells an unreadable directory from an inactive account.
+func crewTeamAccountActiveChecked(user string) (bool, error) {
+	directory, err := loadUserDirectory()
+	if err != nil {
+		return false, err
+	}
+	if directory == nil {
+		return false, fmt.Errorf("the people directory is unavailable")
+	}
+	record := directory.byID(user)
+	return record != nil && !record.Disabled && userAllowedProduct(&UserClaims{UserID: user}, crewProfileID), nil
 }
 
 // crewMacTeamConversation is whose Mac agent this conversation is, and which tab, if the Team may watch it.
@@ -399,7 +487,7 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	if status != http.StatusOK {
 		return fmt.Errorf("the agent could not take this message; try again shortly")
 	}
-	go api.awaitMacAgentAnswer(c.ID, m.ID, from, read)
+	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: agent.Tab, Mac: person, Member: true, SenderID: source.UserID, Caller: sender})
 	return nil
 }
 
