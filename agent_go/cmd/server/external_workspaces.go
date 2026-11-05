@@ -309,6 +309,12 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
 			}
 			item["location"] = "server"
+			// A Team member's row says where their own agents here work (owner, 5 Nov: one working copy).
+			if binding.OwnerID != claims.UserID {
+				if where := crewTeamWhereFor(doc.ID, claims.UserID); where != "" {
+					item["where"] = where
+				}
+			}
 			// The owner sees how many of this Crew's agents others can message (PLAT-856-509).
 			if n := len(readMacSharedAgents(doc.ID)); n > 0 && binding.OwnerID == claims.UserID {
 				item["shared_agents"] = n

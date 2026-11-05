@@ -4,7 +4,7 @@
 
 export type MacInfo = { device_id: string; name: string; online: boolean; last_seen?: string }
 export type MacCrewState = { state: 'working' | 'idle' | 'waiting'; last_line?: string; at?: string }
-export type CrewLocationFields = { location?: 'mac' | 'server'; mac?: MacInfo; state?: MacCrewState }
+export type CrewLocationFields = { location?: 'mac' | 'server'; mac?: MacInfo; state?: MacCrewState; where?: 'mac' | 'web' }
 
 /** Mac Crews grouped per Mac, in first-seen order, plus everything else. */
 export function groupByMac<T extends CrewLocationFields>(projects: T[]): { macs: Array<{ mac: MacInfo; rows: T[] }>; server: T[] } {
