@@ -67,7 +67,7 @@ func crewOwnerChatRecords(ctx context.Context, caller, profile, project, workspa
 				continue
 			}
 			// Only me: another person who builds this Crew does not see the agent at all.
-			if person != caller && identities[record.ConversationKey].OnlyMe {
+			if person != caller && !crewAgentInTeam(project, person, record.ConversationKey) {
 				continue
 			}
 			claimed[record.SessionID] = true
@@ -165,7 +165,7 @@ func (api *StreamingAPI) crewSessionTabView(r *http.Request, session string) boo
 		if !crewProjectOwnedByCaller(caller, workspace) || !crewProjectOwnedByCaller(owner, workspace) {
 			return false
 		}
-		if doc.Agents[productConversationRegistryEntryKey(record.ProfileID, record.ConversationKey)].OnlyMe {
+		if !crewAgentInTeam(crewResourceProjectID(record.ConversationKey), owner, record.ConversationKey) {
 			return false
 		}
 		if token := GetUserFromContext(r.Context()).AccessToken; token != nil && (!token.AllowsCrew(record.ResourceID) || !token.Allows("crews:read")) {

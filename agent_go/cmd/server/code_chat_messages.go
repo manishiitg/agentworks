@@ -328,13 +328,9 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", err
 				}
 				if setTeam {
-					if project.Self.IsMain {
-						return "", fmt.Errorf("Main's place in the Team is set on the Access page's Team tab")
-					}
-					if err := defaultProductConversationRegistryStore().setAgentOnlyMe(ctx, userID, project.ProfileID, project.Self.Key, !inTeam); err != nil {
+					if err := api.setOwnAgentInTeam(ctx, userID, project.Self.Key, inTeam); err != nil {
 						return "", err
 					}
-					log.Printf("[CREW_TEAM] agent visibility user=%s tab=%s in_team=%t", logUsernameForUserID(userID), project.Self.Key, inTeam)
 					if name == nil && purpose == nil {
 						return jsonOut(map[string]interface{}{"in_team": inTeam})
 					}

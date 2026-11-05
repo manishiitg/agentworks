@@ -245,6 +245,12 @@ func macSharedAgentAccess(project, tab, caller, owner string, byAgent bool) (mac
 	if reason != "" {
 		return agent, reason
 	}
+	// Reached as a Team member: the agent must be In team by the Team record (crew_team_in_team.go).
+	if !(byAgent && agent.AgentBridgePublic) {
+		if t, err := liveCrewTeam(project); err != nil || !t.agentInTeam(t.OwnerID, agent.Tab) {
+			return macSharedAgent{}, "not_in_audience"
+		}
+	}
 	if claims := (&UserClaims{UserID: caller}); userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, crewProfileID) {
 		return macSharedAgent{}, "no_access"
 	}
@@ -612,29 +618,17 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 			externalError(w, status, code, err.Error())
 			return
 		}
-		noteMainChoice(project, agents) // the owner's own choice: Main Only me is kept from now on
 	} else if binding != nil && binding.Mode == "relay" {
-		// A purpose changed in its tab since it was shared, or Main joins the Team by default: the online copy follows.
-		next, mainJoined := withTeamMain(project, readMacSharedAgents(project))
-		// "All agents in team" keeps every agent In team, also ones added or allowed since it was turned on.
-		var allJoined []string
-		if readCrewTeamAll(project) {
-			next, allJoined = withAllInTeam(rows, next, readCrewTeamState(project).MainOnlyMe)
-		}
-		if len(allJoined) > 0 {
-			log.Printf("[CREW_TEAM] local project=%s event=all_in_team_refresh added=%v", project, allJoined)
-		}
-		if mainJoined || len(allJoined) > 0 || macSharedPurposesStale(rows, next) {
+		// A new agent joins the Team's list, or a purpose changed in its tab since: the online copy follows.
+		if next, changed := crewTeamRoster(rows, readMacSharedAgents(project), readCrewTeamState(project).TeamOn); changed || macSharedPurposesStale(rows, next) {
 			if _, _, err := api.pushMacSharedAgents(r.Context(), claims, project, binding, connection, rows, next); err != nil {
 				log.Printf("[CREW_SHARED_AGENT] local project=%s refresh failed: %v", project, err)
-			} else if mainJoined {
-				log.Printf("[CREW_TEAM] local project=%s event=main_in_team_by_default", project)
 			}
 		}
 	}
 	// Where each agent answers (856-523): a published agent is on the server; any other is on this Mac.
 	placements, _ := readCrewAgentPlacements(project)
-	externalJSON(w, map[string]any{"tabs": rows, "agents": readMacSharedAgents(project), "placements": placements, "all_in_team": readCrewTeamAll(project)})
+	externalJSON(w, map[string]any{"tabs": rows, "agents": readMacSharedAgents(project), "placements": placements})
 }
 
 // macSharedPurposesStale: a shared agent's saved name or purpose differs from its tab's now (and the tab still has one).
@@ -651,8 +645,8 @@ func macSharedPurposesStale(rows []macAgentRow, agents []macSharedAgent) bool {
 
 // refreshMacSharedPurposes follows a purpose change of a shared agent on this Mac to its online copy.
 func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project string) {
-	all := readCrewTeamAll(project)
-	if !IsLocalMode() || len(readMacSharedAgents(project)) == 0 && !all && !readCrewTeamState(project).TeamOn {
+	teamOn := readCrewTeamState(project).TeamOn
+	if !IsLocalMode() || len(readMacSharedAgents(project)) == 0 && !teamOn {
 		return
 	}
 	claims, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
@@ -663,16 +657,10 @@ func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project s
 	if err != nil {
 		return
 	}
-	// "All agents in team": a new agent joins the team (crew_team_all.go); Main is In
-	// team by default while the Team is on.
-	next, added := readMacSharedAgents(project), []string(nil)
-	if all {
-		next, added = withAllInTeam(rows, next, readCrewTeamState(project).MainOnlyMe)
-	}
-	if withMain, joined := withTeamMain(project, next); joined {
-		next, added = withMain, append(added, "Main")
-	}
-	if len(added) == 0 && !macSharedPurposesStale(rows, next) {
+	// While the Team is on every agent is on the Team's list, new ones too (crew_team_all.go); off, only the ones
+	// public on AgentBridge stay.
+	next, changed := crewTeamRoster(rows, readMacSharedAgents(project), teamOn)
+	if !changed && !macSharedPurposesStale(rows, next) {
 		return
 	}
 	if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, next); err != nil {

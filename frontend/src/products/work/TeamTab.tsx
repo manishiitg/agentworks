@@ -7,7 +7,6 @@ import { Button } from '../../components/ui/Button'
 import { fillTeamSetupDraft } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import { saveTeam, switchTeam, teamError, teamRequest, useTeamTab, type Team, type TeamTabView, type TeamTarget } from './teamApi'
-import { MacSharedAgents } from './MacSharedAgents'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
@@ -39,7 +38,7 @@ function useShareSize(connection?: string, localProject?: string, query?: string
  * every row and says what this person may change; this only shows it and sends their choices. In the owner's Mac app
  * the Access page passes its Mac online switch, and their own agents are listed from the Mac itself.
  */
-export function TeamTab({ projectId, connection, macSwitch }: { projectId: string; connection?: string; macSwitch?: ReactNode }) {
+export function TeamTab({ projectId, macSwitch }: { projectId: string; connection?: string; macSwitch?: ReactNode }) {
   const { view, target, error } = useTeamTab(projectId)
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
@@ -49,7 +48,7 @@ export function TeamTab({ projectId, connection, macSwitch }: { projectId: strin
     {team.on && <>
       <CrewWhereRow projectId={projectId} />
       <SharesCard view={view} target={target} />
-      <AgentsCard view={view} target={target} projectId={projectId} connection={connection} />
+      <AgentsCard view={view} target={target} />
       {team.lent && <LentCard lent={team.lent} target={target} />}
       {view.mac && <section aria-label="Mac online" className={card}>
         <h3 className="font-semibold">Mac online</h3>
@@ -97,13 +96,13 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
     setBusy(true); setError('')
     try { await saveTeam(target, next) } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
-  // The switch works where the server says it can: on the server, or for a Mac Crew in its owner's Mac app.
-  const canSwitch = team.can_manage && (view.switch === 'server' || Boolean(target.localProject && view.mac?.yours))
+  // The owner and every joined member switch it (the server says can_switch); the owner's own Mac app goes through its Mac.
+  const canSwitch = view.can_switch
   const turn = async (on: boolean) => {
     setBusy(true); setError(''); setNote('')
     try {
-      const result = await switchTeam(target, on, view.switch === 'server')
-      setNote([result.folder_created ? 'Made an empty team/ folder to share.' : '', result.shared?.length ? `Shared with your team: ${result.shared.join(', ')}.` : '', result.note || ''].filter(Boolean).join(' '))
+      const result = await switchTeam(target, on, Boolean(view.mac?.yours))
+      setNote(result.folder_created ? 'Made an empty team/ folder to share.' : '')
     } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
   const askText = 'Ask chat to set up your team: people, what it shares and which agents are shared'
@@ -116,7 +115,6 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
       {canSwitch ? <Switch aria-label="Team" disabled={busy} checked={team.on} onCheckedChange={on => void turn(on)} />
         : <span className="text-xs text-muted-foreground">{team.on ? 'On' : 'Off'}</span>}
     </div>
-    {!canSwitch && team.can_manage && view.mac_only && <p className="text-xs text-muted-foreground">{view.mac_only}</p>}
     {note && <p className="text-xs text-muted-foreground">{note}</p>}
     {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this Crew with people.</p>}
     {team.on && <div className="divide-y divide-border">
@@ -205,27 +203,30 @@ function SharesCard({ view, target }: { view: TeamTabView; target: TeamTarget })
 }
 
 /** Every agent in the Team, as the server lists it: the person's own ones with In team / Only me, everyone else's as
- * theirs to change. A Mac Crew owner's own agents are listed from their Mac in the Mac app (MacSharedAgents). */
-function AgentsCard({ view, target, projectId, connection }: { view: TeamTabView; target: TeamTarget; projectId: string; connection?: string }) {
+ * theirs to change, and All agents in team for whoever manages the Team. */
+function AgentsCard({ view, target }: { view: TeamTabView; target: TeamTarget }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const fromMac = Boolean(connection && view.mac?.yours)
-  const rows = view.agents.filter(agent => !(fromMac && agent.chosen_on_mac))
+  const rows = view.agents
+  const chooseAll = async (on: boolean) => {
+    setBusy(true); setError('')
+    try { await saveTeam(target, { ...view.team, agents_only_me: !on }) } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
+  }
   const choose = async (key: string, inTeam: boolean) => {
     setBusy(true); setError('')
     try { await teamRequest({ project: target.project, connection: target.connection }, '/agent-visibility', 'POST', { agent_key: key, in_team: inTeam }); changed() }
     catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
   return <section aria-label="Agents" className={card}>
-    {!fromMac && <h3 className="font-semibold">Agents</h3>}
-    {fromMac && connection && <MacSharedAgents projectId={projectId} connection={connection} />}
+    <h3 className="font-semibold">Agents</h3>
+    {view.team.can_manage && <label className="flex items-center gap-2 text-[13px]"><span className="font-medium">All agents in team</span><span className="text-xs text-muted-foreground">new agents join too, unless their person chose Only me</span><Switch aria-label="All agents in team" className="ml-auto" checked={view.all_in_team} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>}
     {rows.map(agent => <div key={agent.key} className="flex items-center gap-2 border-t border-border pt-2 text-[13px]">
       <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b> <span className="text-muted-foreground">· {agent.detail}</span></span>
       {agent.can_change
         ? <select aria-label={`${agent.name} in the team`} value={agent.in_team ? 'team' : 'me'} disabled={busy} onChange={e => void choose(agent.key, e.target.value === 'team')} className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs"><option value="team">In team</option><option value="me">Only me</option></select>
         : <span className="shrink-0 text-xs text-muted-foreground">{agent.fixed}</span>}
     </div>)}
-    {!rows.length && !fromMac && <p className="text-xs text-muted-foreground">No agents in the team yet.</p>}
+    {!rows.length && <p className="text-xs text-muted-foreground">No agents in the team yet.</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </section>
 }

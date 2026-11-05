@@ -242,7 +242,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	// "All agents in team" on the Team tab (crew_team_all.go).
 	if input.Action == "team_all" {
-		out, err := api.setCrewTeamAll(r.Context(), claims, roots.ID, input.AllInTeam)
+		out, err := api.setCrewTeamAll(r.Context(), roots.ID, input.AllInTeam)
 		if err != nil {
 			externalError(w, 409, "team_all_failed", err.Error())
 			return

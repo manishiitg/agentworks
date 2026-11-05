@@ -195,6 +195,12 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 						continue
 					}
 					for _, t := range out.Teams {
+						// The owner's Mac follows its Crew's Team record, changed from anywhere (crew_team_apply.go).
+						if t.OwnerID == c.User.ID {
+							if local := crewLocalProjectForTeam(owner, c, t.ProjectID); local != "" && readCrewTeamState(local).TeamOn != t.On {
+								api.applyCrewTeamOnMac(ctx, local, t)
+							}
+						}
 						if _, joining := crewTeamJoining.Load(crewTeamJoinKey(c.ID, t.ProjectID)); !t.FolderAccess || joining {
 							continue
 						}

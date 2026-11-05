@@ -86,21 +86,13 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 		return nil
 	}
 	owner := person == ownerOfCrewProjectID(project)
+	// In team / Only me is the Team record's (crew_team_in_team.go); the owner's Mac lists only its In team agents here.
+	team, _ := readCrewTeam(project)
 	inTeam := map[string]bool{}
 	if owner {
 		for _, agent := range readMacSharedAgents(project) {
-			if crewTeamInTeam(agent) {
+			if crewTeamInTeam(agent) && team.agentInTeam(person, agent.Tab) {
 				inTeam[agent.Tab] = true
-			}
-		}
-	}
-	onlyMe := map[string]bool{}
-	if !owner {
-		if t, err := readCrewTeam(project); err == nil {
-			if at := slices.IndexFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == person }); at >= 0 {
-				for _, tab := range t.People[at].OnlyMe {
-					onlyMe[tab] = true
-				}
 			}
 		}
 	}
@@ -108,7 +100,7 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 		if !owner {
 			out := slices.Clone(tabs)
 			for i := range out {
-				out[i].OnlyMe = onlyMe[out[i].Tab]
+				out[i].OnlyMe = !team.agentInTeam(person, out[i].Tab)
 			}
 			return out
 		}

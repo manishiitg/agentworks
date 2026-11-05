@@ -197,7 +197,7 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 			continue
 		}
 		// Another person's agent they keep to themselves (Team Only me) is theirs alone.
-		if tab.OwnerID != userID && tab.Identity.OnlyMe {
+		if tab.OwnerID != userID && !crewAgentInTeam(projectID, tab.OwnerID, record.ConversationKey) {
 			continue
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)

@@ -37,8 +37,6 @@ type crewTeamTabAgent struct {
 	// CanChange: the viewer chooses In team / Only me for it here. Otherwise Fixed is shown instead of the choice.
 	CanChange bool   `json:"can_change"`
 	Fixed     string `json:"fixed,omitempty"`
-	// ChosenOnMac: the viewer's own agent on their Mac; the Mac app lists those from the Mac itself.
-	ChosenOnMac bool `json:"chosen_on_mac,omitempty"`
 	// Address is the send_message target for "Ask from my agent".
 	Address string `json:"address,omitempty"`
 }
@@ -67,10 +65,12 @@ type crewTeamTabReply struct {
 	Agents []crewTeamTabAgent  `json:"agents"`
 	Mac    *crewTeamTabMac     `json:"mac,omitempty"`
 	Sync   *crewTeamTabSync    `json:"sync,omitempty"`
-	// Switch is where the Team switch and the folder choice work: "server" here, or "mac" (only the owner's Mac app,
-	// which shares its agents and makes team/ when it turns on).
-	Switch string `json:"switch"`
-	// MacOnly is the line under a setting that only the owner's Mac app changes, shown as text elsewhere.
+	// The Team's settings are the server's record (owner, 5 Nov: members are co-owners): the owner and every joined
+	// member change the switch, people, what is shared and All agents in team, from the website, the Mac app, chat or
+	// MCP. The owner's Mac applies the record when it syncs (crew_team_apply.go).
+	CanSwitch bool `json:"can_switch"`
+	AllInTeam bool `json:"all_in_team"`
+	// MacOnly is the line under the folder choice of a Mac Crew: its folders are listed from the owner's Mac.
 	MacOnly  string `json:"mac_only,omitempty"`
 	CanLeave bool   `json:"can_leave"`
 }
@@ -101,14 +101,13 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	view.Lent = crewTeamLentNow(ctx, t, viewer)
 	twin := crewRelayTwin(t.ProjectID)
 	ownerName := crewPersonShortName(t.OwnerID)
-	out := crewTeamTabReply{Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, Switch: "server",
+	out := crewTeamTabReply{Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, CanSwitch: view.CanManage, AllInTeam: !t.AgentsOnlyMe,
 		CanLeave: viewer != t.OwnerID && t.member(viewer),
 		Intro:    "People work with you here. Everything is kept on the server."}
 	if twin {
-		out.Switch = "mac"
-		out.MacOnly = fmt.Sprintf("Change these from %s's Mac app.", ownerName)
+		out.MacOnly = fmt.Sprintf("Add folders from %s's Mac app, where they are.", ownerName)
 		if viewer == t.OwnerID {
-			out.MacOnly = "Change these from your Mac app."
+			out.MacOnly = "Add folders from your Mac app, where they are."
 		}
 		out.Intro = "People work with you here. The shared folder is kept on the server. Messages to Mac agents wait while the Mac is off and arrive when it is back."
 		mac := &crewTeamTabMac{Yours: viewer == t.OwnerID}
@@ -118,9 +117,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			name = b.MacName
 		}
 		mac.Line = map[bool]string{true: "On", false: "Off"}[mac.On] + " · " + firstNonEmptyTrimmed(name, ownerName+"'s Mac")
-		mac.Note = "Change these from the Mac app."
+		mac.Note = "Change it from the Mac app."
 		if !mac.Yours {
-			mac.Note = fmt.Sprintf("Only %s can change this, from their Mac app.", ownerName)
+			mac.Note = fmt.Sprintf("%s's Mac: they change it from their Mac app.", ownerName)
 		}
 		out.Mac = mac
 	}
@@ -162,13 +161,10 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				detail = append(detail, a.StatusLabel)
 			}
 			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam}
-			switch {
-			case mine && p.Owner && twin:
-				// A Mac Crew owner's agents are In team or Only me on their Mac (crew_mac_shared_agents.go).
-				row.ChosenOnMac, row.Fixed = true, "In team · change it from your Mac app"
-			case mine:
+			// Only me is per person (owner, 5 Nov): each person chooses for their own agents, the owner's Mac ones too.
+			if mine {
 				row.CanChange = true
-			default:
+			} else {
 				row.Fixed, row.Address = "In team · theirs to change", a.Address
 			}
 			out.Agents = append(out.Agents, row)

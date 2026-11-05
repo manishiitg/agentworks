@@ -128,6 +128,20 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			t.Fatalf("%s changed team: %d %s", who, w.Code, w.Body.String())
 		}
 	}
+	// Members are co-owners of the Team's settings (owner, 5 Nov): one changes All agents in team on this Mac Crew from
+	// the website, the server's record is what counts, and the Crew's owner can never leave or be dropped.
+	if w = call("member", "PUT", base, strings.Replace(config, `"on":true`, `"on":true,"agents_only_me":true`, 1), ""); w.Code != 200 {
+		t.Fatalf("member changed All agents in team: %d %s", w.Code, w.Body.String())
+	}
+	if saved, err := readCrewTeam("team-test"); err != nil || !saved.AgentsOnlyMe || saved.agentInTeam("owner", "team01") || !saved.view("member").CanManage {
+		t.Fatalf("member's All agents in team not saved, or not offered: %+v %v", saved, err)
+	}
+	if w = call("owner", "POST", base+"/leave", `{}`, ""); w.Code != 403 || !crewTeamMember("team-test", "owner") {
+		t.Fatalf("the owner left their own Team: %d", w.Code)
+	}
+	if w = call("member", "PUT", base, config, ""); w.Code != 200 {
+		t.Fatalf("member update: %d %s", w.Code, w.Body.String())
+	}
 	file := base + "/file?path=brief.md"
 	w = call("owner", "PUT", file, "first", "first")
 	if w.Code != 200 {
@@ -813,7 +827,7 @@ func TestCrewTeamMemberMacAdmittedOnlyWithTheirRecordedPair(t *testing.T) {
 	crewMacTeamTabsCache.Store("team-test\x00member", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{
 		{Person: "member", Tab: "shared-tab", ConversationID: "c-shared", Name: "Shared"}, {Person: "member", Tab: "private-tab", ConversationID: "c-private", Name: "Private"}}})
 	team, _ = readCrewTeam("team-test")
-	team.People[0].OnlyMe = []string{"private-tab"}
+	team.AgentChoices = map[string]map[string]bool{"member": {"private-tab": false}}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}

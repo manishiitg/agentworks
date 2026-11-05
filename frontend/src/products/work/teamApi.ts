@@ -6,7 +6,7 @@ import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useCo
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
-export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: { id?: string; whole?: boolean; folders?: string[] }; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
+export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; agents_only_me?: boolean; people: { user_id: string; invited?: boolean }[]; folder: { id?: string; whole?: boolean; folders?: string[] }; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
 // What teammates' agents use from the owner, as the server writes it (crew_team.go crewTeamLent).
 export type TeamLent = { title: string; line: string; foot?: string; yours: boolean; items: { name: string; kind: string }[] }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }
@@ -66,12 +66,12 @@ export function useProjectTeam(project: string) {
 /** The Team tab as the server writes it for the signed-in person (crew_team_tab.go): every row, and what they may
  * change. The screen shows it and sends the person's choices; it decides nothing itself. */
 export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean }
-export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; fixed?: string; chosen_on_mac?: boolean; address?: string }
+export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; fixed?: string; address?: string }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamTabView = {
   team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
   mac?: { on: boolean; line: string; note: string; yours: boolean }
-  sync?: TeamTabSync; switch: 'server' | 'mac'; mac_only?: string; can_leave: boolean
+  sync?: TeamTabSync; can_switch: boolean; all_in_team: boolean; mac_only?: string; can_leave: boolean
 }
 
 export function useTeamTab(project: string) {
@@ -106,19 +106,17 @@ export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {
   return saved
 }
 
-export type TeamSwitchResult = { team: Team; shared?: string[]; unshared?: number; folder_created?: boolean; note?: string }
+export type TeamSwitchResult = { team: Team; folder_created?: boolean }
 
-/** The Team tab's switch: the Mac shares the ready agents, makes team/ when no folder is chosen, or turns it all off. */
-export async function switchTeam(target: TeamTarget, on: boolean, serverCrew = false): Promise<TeamSwitchResult> {
-  // A Crew that lives on the server (owner, 5 Nov): the same Team, switched on the server; team/ is shared by default.
-  if (serverCrew && !target.connection) {
+/** The Team tab's switch is the server's record (crew_team.go decides the default folder and All agents in team). The
+ * owner's own Mac app switches through its Mac, which also turns Mac online on and applies the record at once. */
+export async function switchTeam(target: TeamTarget, on: boolean, ownMac = false): Promise<TeamSwitchResult> {
+  if (!ownMac || !target.connection || !target.localProject) {
     const team = await teamRequest<Team>(target)
-    const chosen = team.folder.whole || Boolean(team.folder.folders?.length)
-    const saved = await teamRequest<Team>(target, '', 'PUT', { ...team, on, folder: on && !chosen ? { folders: ['team'] } : team.folder })
+    const saved = await teamRequest<Team>(target, '', 'PUT', { ...team, on })
     window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
     return { team: saved }
   }
-  if (!target.connection || !target.localProject) throw new Error('Turn on Use from phone and web for this Crew first.')
   const result = await desktopRequest<TeamSwitchResult>(`/${encodeURIComponent(target.connection)}/crew-teams/${encodeURIComponent(target.localProject)}/switch`, 'POST', { on })
   window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   return result

@@ -48,7 +48,8 @@ type crewTeamAgentsPerson struct {
 	Agents      []crewTeamAgent `json:"agents"`
 }
 
-// crewTeamInTeam: an agent is in the team when its owner chose In team (audience "team").
+// crewTeamInTeam: the Mac Crew's agent is on its online copy's list for the Team (the owner's Mac lists every agent
+// while the Team is on). Whether it is In team is the Team record's answer (crewTeam.agentInTeam).
 func crewTeamInTeam(agent macSharedAgent) bool { return !agent.Off && agent.Audience == "team" }
 
 // teamAgentsByPerson lists the team's in-team agents, the owner first: the owner's from this Crew's Mac, each member's
@@ -58,24 +59,16 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 	onMac := crewRelayTwin(t.ProjectID)
 	// Website tabs use the Main conversation's physical key, while AgentBridge
 	// addresses it by project. Return the actual tab identity to the browser.
-	mainKey := t.ProjectID
-	if records, err := defaultProductConversationRegistryStore().projectChats(ctx, t.OwnerID, crewProfileID, t.ProjectID); err == nil {
-		for _, record := range records {
-			if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(t.ProjectID, t.OwnerID) {
-				mainKey = record.ConversationKey
-				break
-			}
-		}
-	}
+	mainKey := crewTeamOwnerMainKey(ctx, t)
 	if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
 		owner.MacOn = crewMacSocketFor(t.OwnerID, t.ProjectID, b.PairID) != nil
 	}
 	if !onMac {
 		// A Crew that lives on the server (owner, 5 Nov): its owner's agents are server tabs, In team unless Only me.
-		owner.Agents = memberTeamAgents(ctx, t.ProjectID, t.OwnerID, caller)
+		owner.Agents = memberTeamAgents(ctx, t, t.OwnerID, caller)
 	}
 	for _, agent := range readMacSharedAgents(t.ProjectID) {
-		if !onMac || !crewTeamInTeam(agent) {
+		if !onMac || !crewTeamInTeam(agent) || !t.seesAgent(caller, t.OwnerID, agent.Tab) {
 			continue
 		}
 		place := "server"
@@ -87,7 +80,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		if agent.Tab == macMainTab {
 			name = firstNonEmptyTrimmed(agent.Name, "Main")
 		}
-		row := crewTeamAgent{Tab: agent.Tab, Name: name, Purpose: agent.Purpose, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab), InTeam: true}
+		row := crewTeamAgent{Tab: agent.Tab, Name: name, Purpose: agent.Purpose, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab), InTeam: t.agentInTeam(t.OwnerID, agent.Tab)}
 		if agent.Tab == macMainTab {
 			row.ChatKey = mainKey
 		}
@@ -120,7 +113,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 				person.Agents = append(person.Agents, row)
 			}
 		} else {
-			person.Agents = memberTeamAgents(ctx, t.ProjectID, p.UserID, caller)
+			person.Agents = memberTeamAgents(ctx, t, p.UserID, caller)
 		}
 		person.Active, person.ActiveLabel = teamActive(p.UserID, person.MacOn)
 		out = append(out, person)
@@ -133,8 +126,9 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 	return out
 }
 
-// memberTeamAgents are one member's own tabs in this Crew's server copy.
-func memberTeamAgents(ctx context.Context, project, member, caller string) []crewTeamAgent {
+// memberTeamAgents are one person's own tabs in this Crew's server copy that the caller may see.
+func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []crewTeamAgent {
+	project := t.ProjectID
 	out := []crewTeamAgent{}
 	store := defaultProductConversationRegistryStore()
 	records, err := store.projectChats(ctx, member, crewProfileID, project)
@@ -144,7 +138,7 @@ func memberTeamAgents(ctx context.Context, project, member, caller string) []cre
 	identities, _ := store.agentIdentities(ctx, member, crewProfileID, project)
 	for _, record := range records {
 		identity := identities[record.ConversationKey]
-		if identity.OnlyMe && member != caller || record.SessionID == "" || hiddenFromTabStrip(record.ConversationKey) {
+		if !t.seesAgent(caller, member, record.ConversationKey) || record.SessionID == "" || hiddenFromTabStrip(record.ConversationKey) {
 			continue
 		}
 		_, tab, side := strings.Cut(record.ConversationKey, codeChatSideMarker)
@@ -157,7 +151,7 @@ func memberTeamAgents(ctx context.Context, project, member, caller string) []cre
 		if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, member) || strings.HasPrefix(tab, "root-") {
 			name = "Main"
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, InTeam: !identity.OnlyMe})
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, InTeam: t.agentInTeam(member, record.ConversationKey)})
 	}
 	return out
 }
