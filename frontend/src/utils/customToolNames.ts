@@ -6,7 +6,6 @@
 // Maps to backend "workspace_advanced" category
 export const WORKSPACE_ADVANCED_TOOLS = [
   'execute_shell_command',
-  'read_image',
   'read_pdf',
   'generate_text_llm',
   'diff_patch_workspace_file',

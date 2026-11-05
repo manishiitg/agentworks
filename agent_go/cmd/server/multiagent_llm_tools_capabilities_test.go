@@ -86,7 +86,7 @@ func TestRetiredMediaProvidersAreNeitherCollectableNorAdvertised(t *testing.T) {
 
 	capabilities := buildLLMCapabilities(context.Background(), "all", false)
 	for _, capability := range []string{
-		"read_image", "generate_image", "generate_video",
+		"generate_image", "generate_video",
 		"text_to_speech", "speech_to_text", "generate_music",
 	} {
 		if _, ok := capabilities[capability]; ok {

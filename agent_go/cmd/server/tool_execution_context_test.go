@@ -185,7 +185,7 @@ func TestToolExecutionContextAdmitsTheWhatsAppOwnerPrincipal(t *testing.T) {
 	owner := api.bindToolExecutionContext(
 		context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Provider: "bot_owner"}),
 		"wa-product", req, false)
-	if _, err := owner(incoming, "read_image"); err != nil {
+	if _, err := owner(incoming, "read_skill"); err != nil {
 		t.Fatalf("bot_owner tools rejected: %v", err)
 	}
 
@@ -193,7 +193,7 @@ func TestToolExecutionContextAdmitsTheWhatsAppOwnerPrincipal(t *testing.T) {
 	plain := api.bindToolExecutionContext(
 		context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Provider: "local"}),
 		"wa-product", req, false)
-	if _, err := plain(incoming, "read_image"); err == nil {
+	if _, err := plain(incoming, "read_skill"); err == nil {
 		t.Fatal("non-bot principal executed tools in a bot-marked session")
 	}
 }
@@ -306,7 +306,7 @@ func TestToolExecutionContextOwnersDMContinuesWebBoundTools(t *testing.T) {
 		api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{
 			"crew-main": {SessionID: "crew-main", UserID: "owner", BotPlatform: tc.platform, TriggeredBy: "bot:" + tc.platform, TurnProvider: tc.turnProvider},
 		}}
-		_, err := webBound(api)(incoming, "read_image")
+		_, err := webBound(api)(incoming, "read_skill")
 		if tc.allowed && err != nil {
 			t.Errorf("%s: tools refused: %v", tc.name, err)
 		}

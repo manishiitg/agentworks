@@ -42,7 +42,7 @@ Implemented now:
 - Local chat attachments support picking, pasting screenshots and dropping images
   or text/source files (10 files, 10 MB each). Server uploads are owner/chat
   scoped and read-only to the agent; no automatic laptop copy. Text previews are
-  bounded; the existing `read_image` reads only current-turn attachments. Nested
+  bounded; image reading uses the coding CLI's own file tools. Nested
   image CLIs receive a temporary copy under Landlock, failing closed if unavailable.
   Attachment uploads disclose transfer to the server/model.
 - Local-connected turns exclude MCP connections, skills, project/Vault secrets,

@@ -24,7 +24,7 @@ func TestOwnerWebTurnAfterDMRunsAsWeb(t *testing.T) {
 
 	// Before the fix: the web turn inherits the DM's marks.
 	stale := newAPI()
-	if _, err := stale.bindToolExecutionContext(context.WithValue(context.Background(), UserContextKey, web), "chat-1", QueryRequest{}, false)(incoming, "read_image"); err == nil {
+	if _, err := stale.bindToolExecutionContext(context.WithValue(context.Background(), UserContextKey, web), "chat-1", QueryRequest{}, false)(incoming, "read_skill"); err == nil {
 		t.Fatal("expected the stale bot marks to block tools without the reset")
 	}
 

@@ -5784,7 +5784,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		streamCtx = queryLogCtx.Context(streamCtx)
 		streamCtx = costobserver.ContextWithAttribution(streamCtx, turnCostAttribution)
 		streamCtx = costSourceContext(streamCtx, req)
-		// Tools that start their own model (generate_text_llm, read_image)
+		// Tools that start their own model (generate_text_llm)
 		// resolve and admit accounts with this turn's scope.
 		streamCtx = virtualtools.WithProviderAccountKeys(streamCtx, mergedAPIKeys)
 		defer cancel()
@@ -6080,7 +6080,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		})
 		// Full CLI (owner, 5 Nov): the CLI's own Read, Edit, Write, Grep, Glob and Bash do these jobs, so it sees one
 		// way to do each. Its native access is the same folder grants (Landlock reads and writes); running on the
-		// person's laptop and the actions only AgentWorks has (copy, link, image, folders, snapshots, git) stay. Only
+		// person's laptop and the actions only AgentWorks has (copy, link, folders, snapshots, git) stay. Only
 		// once the CLI really has Full CLI (set after applyCLILandlock): a chat that falls back to bridge tools only
 		// keeps the bridge file tools, so it never ends up with neither. The bridge tool list is admitted at launch.
 		fullCLIOn := false
@@ -6164,9 +6164,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		if toolGate.Admit("read_image") {
-			platformBridgeTools = append(platformBridgeTools, "read_image")
-		}
 		// A guest's ask has no shell, and every non-core tool is otherwise reached by curl through the shell, so the
 		// two tools it needs are native bridge tools: reading project files and replying (856-59).
 		if relayRunChat {
@@ -6195,25 +6192,20 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		agentConfig := agent.LLMAgentConfig{
-			ConnectionID:       resolvedConnectionID,
-			Name:               "chat-agent",
-			ServerName:         serverList, // Use full server list, not just first one
-			ConfigPath:         api.mcpConfigPath,
-			AdmitTool:          toolGate.Admit,
-			Provider:           llm.Provider(finalProvider),
-			ModelID:            finalModelID,
-			Options:            resolvedPrimaryOptions,
-			Temperature:        req.Temperature,
-			MaxTurns:           req.MaxTurns,
-			ToolChoice:         "auto",
-			StreamingChunkSize: 50,
-			Timeout:            0,             // No per-Invoke timeout; streamCtx is explicitly canceled when needed.
-			SelectedTools:      selectedTools, // NEW: Pass selected tools
-			// read_image remains the platform's workspace-aware image-analysis
-			// executor. Expose it directly through every coding-agent bridge so
-			// Muse gets the same path as Codex without re-enabling native file or
-			// shell tools. Admission and registration remain authoritative: if a
-			// product excludes read_image, the bridge cannot advertise it.
+			ConnectionID:          resolvedConnectionID,
+			Name:                  "chat-agent",
+			ServerName:            serverList, // Use full server list, not just first one
+			ConfigPath:            api.mcpConfigPath,
+			AdmitTool:             toolGate.Admit,
+			Provider:              llm.Provider(finalProvider),
+			ModelID:               finalModelID,
+			Options:               resolvedPrimaryOptions,
+			Temperature:           req.Temperature,
+			MaxTurns:              req.MaxTurns,
+			ToolChoice:            "auto",
+			StreamingChunkSize:    50,
+			Timeout:               0,             // No per-Invoke timeout; streamCtx is explicitly canceled when needed.
+			SelectedTools:         selectedTools, // NEW: Pass selected tools
 			AdditionalBridgeTools: platformBridgeTools,
 
 			// Detailed LLM configuration from frontend (unified fallback structure)
@@ -6416,10 +6408,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			virtualtools.ReplaceSessionShellSecrets(sessionID, chatAgentSecretEnv)
 			toolCategories := workspaceRegistry.Categories
 			logfWithContext(queryLogCtx, "[USER_ID_DEBUGGING] Main agent workspace executors: created with explicit userID=%q sessionID=%q", currentUserID, sessionID)
-			// Inject LLM config fallback for read_image HTTP calls (e.g., from claude CLI subprocess)
-			if underlying := llmAgent.GetUnderlyingAgent(); underlying != nil {
-				virtualtools.SetReadImageLLMConfig(workspaceExecutors, mcpagent.ReadAgentRuntimeInfo(underlying).LLMConfig, mergedAPIKeys)
-			}
 
 			// Merge @context file paths into additional folder-guard write access.
 			// workflowReadOnlyFolders was computed above.
@@ -6792,6 +6780,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			if fullCLIOn = profileAgentToolsMode == "full" && isCodingAgentProvider(finalProvider, finalModelID) && llmAgent.CodingAgentToolsMode() == "full"; fullCLIOn {
 				log.Printf("[PRODUCT_TOOL_GATE] session=%s full_cli=true duplicate_file_and_terminal_actions=off", sessionID)
+				// Owner, 5 Nov: "files should be removed for sure in full cli". Its remaining actions
+				// (copy, link, folders, snapshots, git views) stay reachable through search_tools/call_tool.
+				if err := llmAgent.OmitCoreBridgeTools("files"); err != nil {
+					log.Printf("[PRODUCT_TOOL_GATE] session=%s full_cli files bridge omit failed: %v", sessionID, err)
+				}
 			}
 			if resolvedProfile != nil && resolvedProfile.IsolateCodeCLI {
 				log.Printf("[PROJECT_CLI] session=%s actor=%s profile=code mode=%s cwd=%s linked_project=%s", sessionID, sanitizeUserIDForPath(currentUserID), llmAgent.CodingAgentToolsMode(), chatWorkingDir, sharedChatWorkingDir)

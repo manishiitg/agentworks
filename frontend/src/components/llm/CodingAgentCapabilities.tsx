@@ -21,7 +21,6 @@ const CATALOG_CAPABILITIES: Array<{
   aliases: string[]
 }> = [
   { label: 'Web search', aliases: ['search_web', 'search'] },
-  { label: 'Read images', aliases: ['read_image', 'image_analysis'] },
 ]
 
 function normalizeCapabilitySet(capabilities?: string[]): Set<string> {

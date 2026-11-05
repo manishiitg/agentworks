@@ -1170,7 +1170,6 @@ Producers:
 - `mcp-agent-builder-go/agent_go/cmd/server/agent_tuning.go`
 - `mcp-agent-builder-go/agent_go/cmd/server/delegation.go`
 - `mcp-agent-builder-go/agent_go/cmd/server/virtual-tools/workspace_advanced_tools.go`
-- `mcp-agent-builder-go/agent_go/cmd/testing/read_image_providers.go`
 - `mcp-agent-builder-go/agent_go/pkg/agentwrapper/llm_agent.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/interfaces.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/base_agent.go`

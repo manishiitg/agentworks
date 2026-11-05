@@ -9,10 +9,10 @@ import (
 func TestSummaryRequiresWorkflowAuthority(t *testing.T) {
 	for _, profile := range []string{"work", "code", "relays", "example-app", "example-app-child", "example-product"} {
 		t.Run(profile, func(t *testing.T) {
-			gate := newProductToolGate(profileWithPolicy(profile, agentprofiles.ToolPolicy{Mode: agentprofiles.ToolPolicyModeAllowlist, Enabled: []string{"record_summary", "read_image"}}))
+			gate := newProductToolGate(profileWithPolicy(profile, agentprofiles.ToolPolicy{Mode: agentprofiles.ToolPolicyModeAllowlist, Enabled: []string{"record_summary", "read_skill"}}))
 			gate.AllowWorkflowNotifications(true) // A shared runner cannot grant a product this tool.
 			gate.Declare("record_summary")        // A factory declaration cannot bypass the boundary either.
-			if gate.Allows("record_summary") || gate.Admit("record_summary") || !gate.Admit("read_image") {
+			if gate.Allows("record_summary") || gate.Admit("record_summary") || !gate.Admit("read_skill") {
 				t.Fatal("workflow-only tool admitted or unrelated tool removed")
 			}
 		})

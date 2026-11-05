@@ -83,7 +83,7 @@ func runImageGenProvidersTest(cmd *cobra.Command, args []string) error {
 		providers = []string{"vertex", "codex-cli"}
 	}
 
-	keys, err := loadReadImageProviderKeys(context.Background(), workspaceURL)
+	keys, err := loadWorkspaceProviderKeys(context.Background(), workspaceURL)
 	if err != nil {
 		logger.Warn(fmt.Sprintf("Provider key store unavailable; falling back to env/CLI auth only: %v", err))
 	}

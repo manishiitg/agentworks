@@ -52,14 +52,6 @@ func NewAdvancedExecutor(client *Client) map[string]func(ctx context.Context, ar
 		return marshalCappedShellResultForAgent(result)
 	}
 
-	executors["read_image"] = func(ctx context.Context, args map[string]interface{}) (string, error) {
-		var params ReadImageParams
-		if err := mapToStruct(args, &params); err != nil {
-			return "", fmt.Errorf("invalid arguments: %w", err)
-		}
-		return client.ReadImage(ctx, params)
-	}
-
 	executors["diff_patch_workspace_file"] = func(ctx context.Context, args map[string]interface{}) (string, error) {
 		var params DiffPatchWorkspaceFileParams
 		if err := mapToStruct(args, &params); err != nil {

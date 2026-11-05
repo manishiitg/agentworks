@@ -71,12 +71,6 @@
   },
   {
     "family": "files",
-    "name": "image",
-    "member": "read_image",
-    "description": "Ask about a workspace image through the existing vision provider and account."
-  },
-  {
-    "family": "files",
     "name": "link",
     "member": "get_file_link",
     "description": "Get a link to an accessible file; it adds no access."

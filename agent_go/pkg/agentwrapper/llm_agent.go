@@ -45,7 +45,10 @@ type LLMAgentWrapper struct {
 	runtime    mcpagent.RuntimeConfig
 	finalized  bool
 	definition mcpagent.AgentDefinition
-	observers  []mcpagent.AgentEventListener
+	// bridgeOmitCore are core bridge families left off the CLI's direct tools
+	// (files under Full CLI); they stay reachable through call_tool.
+	bridgeOmitCore []string
+	observers      []mcpagent.AgentEventListener
 	// installedSkillResolver belongs to the finalized agent, not the temporary
 	// bootstrap agent created by NewLLMAgentWrapper. Keeping it on the wrapper
 	// lets FinalizeDefinition carry progressive skill reads across replacement.
@@ -663,6 +666,19 @@ func (w *LLMAgentWrapper) SetAdditionalBridgeTools(names []string) error {
 	return nil
 }
 
+// OmitCoreBridgeTools leaves core tool families (such as files) off the coding
+// CLI's direct bridge tools before finalization. They stay in the session
+// catalog, so search_tools and call_tool still reach every action.
+func (w *LLMAgentWrapper) OmitCoreBridgeTools(names ...string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finalized {
+		return errors.New("agent definition is already finalized")
+	}
+	w.bridgeOmitCore = append(w.bridgeOmitCore, names...)
+	return nil
+}
+
 // SetInstalledSkillResolver configures read_skill fallback resolution for the
 // immutable agent that this wrapper will finalize. Setting it only on
 // GetUnderlyingAgent() is incorrect: FinalizeDefinition replaces that draft.
@@ -979,7 +995,7 @@ func (w *LLMAgentWrapper) FinalizeDefinition(ctx context.Context) error {
 		tool := &w.definition.Tools.Direct[i]
 		tool.Description = skills.WorkspacePanelToolGuidance(tool.Name, tool.Description, w.definition.Skills)
 	}
-	runtime := platformtools.BridgeRuntime(projected, w.runtime)
+	runtime := platformtools.BridgeRuntime(projected, w.runtime, w.bridgeOmitCore...)
 	logPromptSize(w.config.SessionID, string(w.config.Provider), w.definition)
 	w.logger.Info("Finalized native tool bridge catalog",
 		loggerv2.String("session_id", w.config.SessionID),

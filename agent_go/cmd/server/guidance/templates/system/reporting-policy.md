@@ -96,7 +96,7 @@ runtime; a dashboard edit does not authorize plan or execution changes.
   returns whether it errored, its script/data-fetch errors, its tab labels,
   any `Loading…` placeholder still on screen, and screenshots at tablet, mobile,
   and desktop widths in both themes
-  under `db/reports/preview/` — open them with `read_image`. Prefer it over
+  under `db/reports/preview/` — open them with your own file or image viewer. Prefer it over
   asking the user to open the Dashboard tab for you.
 - To display recent runs and actions, use the existing summaries in
   `org_dashboard_notifications`. `record_summary(kind="run_summary")` writes

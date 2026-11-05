@@ -1224,7 +1224,7 @@ func (f *BotEventFilter) describeToolCall(event BotEventData) string {
 		return "Searching"
 	case strings.HasPrefix(name, "git_"):
 		return "Working with git"
-	case strings.HasPrefix(name, "image_") || strings.HasPrefix(name, "generate_") || strings.HasPrefix(name, "video_") || name == "read_image":
+	case strings.HasPrefix(name, "image_") || strings.HasPrefix(name, "generate_") || strings.HasPrefix(name, "video_"):
 		return "Working with media"
 	case name == "execute_step" || name == "create_plan" ||
 		strings.HasPrefix(name, "add_") || strings.HasPrefix(name, "update_") || strings.HasPrefix(name, "delete_") ||

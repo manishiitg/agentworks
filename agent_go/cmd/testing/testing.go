@@ -43,7 +43,6 @@ func initTestingCommands() {
 	// The logger will be initialized in each test command based on the log-file parameter
 
 	// Add subcommands explicitly to ensure they're registered
-	TestingCmd.AddCommand(readImageProvidersTestCmd)
 	TestingCmd.AddCommand(imageGenProvidersTestCmd)
 	TestingCmd.AddCommand(shellSecurityTestCmd)
 	TestingCmd.AddCommand(shellOutputTestCmd)

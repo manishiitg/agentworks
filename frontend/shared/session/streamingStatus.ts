@@ -8,7 +8,7 @@ export function humanizeStreamingToolName(toolName: string): string {
   if (normalized === 'execute_step') return 'Running automation step'
   if (normalized.includes('browser') || normalized.includes('agent_browser')) return 'Using browser'
   if (normalized.includes('search')) return 'Searching web'
-  if (normalized.includes('read_image') || normalized.includes('vision')) return 'Reading image'
+  if (normalized.includes('vision')) return 'Reading image'
   if (normalized.includes('generate_image') || normalized.includes('image_gen')) return 'Generating image'
   if (normalized.includes('read') && normalized.includes('file')) return 'Reading file'
   if ((normalized.includes('write') || normalized.includes('update')) && normalized.includes('file')) return 'Updating file'

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
-	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/llm"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -34,7 +32,6 @@ func CreateWorkspaceAdvancedTools() []llmtypes.Tool {
 // CreateWorkspaceAdvancedToolExecutors creates the execution functions for workspace advanced tools
 // Uses the shared executors from pkg/workspace
 // Includes FolderGuard to restrict LLM writes
-// The read_image executor is wrapped with LLM analysis (config read from context at execution time)
 func CreateWorkspaceAdvancedToolExecutors() map[string]func(ctx context.Context, args map[string]any) (string, error) {
 	wsURL := getWorkspaceAPIURL()
 	env := getMCPExtraEnv()
@@ -52,7 +49,6 @@ func CreateWorkspaceAdvancedToolExecutors() map[string]func(ctx context.Context,
 // CreateWorkspaceAdvancedToolExecutorsWithUserID creates workspace advanced tool executors
 // with an explicit user ID set on the client
 // even if the context doesn't carry the user ID.
-// The read_image executor is wrapped with LLM analysis (config read from context at execution time)
 func CreateWorkspaceAdvancedToolExecutorsWithUserID(userID string) map[string]func(ctx context.Context, args map[string]any) (string, error) {
 	wsURL := getWorkspaceAPIURL()
 	client := workspace.NewClient(
@@ -64,27 +60,6 @@ func CreateWorkspaceAdvancedToolExecutorsWithUserID(userID string) map[string]fu
 	executors := workspace.NewAdvancedExecutor(client)
 	attachWorkspaceAdvancedLLMExecutors(executors, wsURL)
 	return executors
-}
-
-// CreateReadImageProviderTestExecutor creates a read_image executor for provider
-// matrix tests. It reads image bytes through the workspace API, but deliberately
-// bypasses workspace-backed image-analysis defaults so the caller's context-injected
-// LLM config is the provider being tested.
-func CreateReadImageProviderTestExecutor(workspaceURL, userID string) func(ctx context.Context, args map[string]any) (string, error) {
-	if strings.TrimSpace(workspaceURL) == "" {
-		workspaceURL = getWorkspaceAPIURL()
-	}
-	clientOptions := []workspace.ClientOption{
-		workspace.WithFolderGuard(getDefaultFolderGuard()),
-		workspace.WithExtraEnv(getMCPExtraEnv()),
-	}
-	if strings.TrimSpace(userID) != "" {
-		clientOptions = append(clientOptions, workspace.WithUserID(userID))
-	}
-	client := workspace.NewClient(workspaceURL, clientOptions...)
-	executors := workspace.NewAdvancedExecutor(client)
-	baseExecutor := executors["read_image"]
-	return wrapReadImageWithLLM(baseExecutor, "")
 }
 
 // CreateWorkspaceAdvancedToolExecutorsWithSession creates workspace advanced tool executors
@@ -245,7 +220,6 @@ func CreateWorkspaceAdvancedToolExecutorsWithURL(wsURL, userID, sessionID string
 }
 
 func attachWorkspaceAdvancedLLMExecutors(executors map[string]func(ctx context.Context, args map[string]any) (string, error), workspaceURL string) {
-	wrapReadImageExecutor(executors, workspaceURL)
 	// This executor starts unbound. The server replaces it after resolving the
 	// current workflow's manifest; generate_text_llm must never choose models
 	// from a global workspace default.
@@ -596,394 +570,6 @@ func structuredOneShotCallOptions(provider llm.Provider) []llmtypes.CallOption {
 	return options
 }
 
-// wrapReadImageExecutor wraps the read_image executor in the map with LLM analysis.
-// The LLM config is read from context at execution time (injected by conversation.go).
-func wrapReadImageExecutor(executors map[string]func(ctx context.Context, args map[string]any) (string, error), workspaceURL string) {
-	if baseExecutor, exists := executors["read_image"]; exists {
-		executors["read_image"] = wrapReadImageWithLLM(baseExecutor, workspaceURL)
-		log.Printf("[READ_IMAGE_DEBUG] read_image executor wrapped with workspace-configurable LLM analysis")
-	}
-}
-
-// SetReadImageLLMConfig re-wraps the read_image executor so that when the
-// context doesn't carry ToolExecutionLLMConfigKey (e.g. HTTP calls from claude CLI),
-// the provided selected config is injected before the inner executor runs.
-// Call this after both CreateWorkspaceAdvancedToolExecutors* AND the agent have been
-// created, so the real LLM config is known.
-func SetReadImageLLMConfig(
-	executors map[string]func(ctx context.Context, args map[string]any) (string, error),
-	selected mcpagent.LLMModel,
-	keys *llm.ProviderAPIKeys,
-) {
-	if existing, ok := executors["read_image"]; ok {
-		executors["read_image"] = injectSelectedLLMConfig(existing, selected, keys)
-		log.Printf("[READ_IMAGE_DEBUG] read_image executor wrapped with LLM selected (provider=%s, model=%s)",
-			selected.Provider, selected.ModelID)
-	}
-}
-
-func stringFromMap(args map[string]any, key string) string {
-	if args == nil {
-		return ""
-	}
-	value, ok := args[key]
-	if !ok {
-		return ""
-	}
-	switch typed := value.(type) {
-	case nil:
-		return ""
-	case string:
-		return typed
-	default:
-		return fmt.Sprint(typed)
-	}
-}
-
-// injectSelectedLLMConfig wraps an executor: if the context has no ToolExecutionLLMConfigKey,
-// the selected config is injected before calling the inner executor. keys are the turn's provider accounts:
-// a call that arrives over the CLI's tool bridge is a plain HTTP request and carries none, and without them the
-// analysis starts the CLI under the server's own account (no login, "Select login method") instead of the
-// account the session runs on. They are attached when the context has none.
-func injectSelectedLLMConfig(
-	inner func(ctx context.Context, args map[string]any) (string, error),
-	selected mcpagent.LLMModel,
-	keys *llm.ProviderAPIKeys,
-) func(ctx context.Context, args map[string]any) (string, error) {
-	return func(ctx context.Context, args map[string]any) (string, error) {
-		if ctx.Value(mcpagent.ToolExecutionLLMConfigKey) == nil {
-			log.Printf("[READ_IMAGE_DEBUG] No LLM config in context, injecting selected (provider=%s, model=%s)",
-				selected.Provider, selected.ModelID)
-			ctx = context.WithValue(ctx, mcpagent.ToolExecutionLLMConfigKey, selected)
-		}
-		if keys != nil && ProviderAccountKeysFromContext(ctx) == nil {
-			ctx = WithProviderAccountKeys(ctx, keys)
-		}
-		return inner(ctx, args)
-	}
-}
-
-// wrapReadImageWithLLM wraps the base read_image executor (which returns base64 data)
-// with a dedicated LLM call that analyzes the image and returns a text response.
-// The LLM config (provider, model, API key) is read from context at execution time.
-func wrapReadImageWithLLM(
-	baseExecutor func(ctx context.Context, args map[string]any) (string, error),
-	workspaceURL string,
-) func(ctx context.Context, args map[string]any) (string, error) {
-	return func(ctx context.Context, args map[string]any) (string, error) {
-		log.Printf("[READ_IMAGE_DEBUG] Wrapped read_image executor called")
-
-		// Step 1: Call the base executor to get base64 image data from workspace
-		rawResult, err := baseExecutor(ctx, args)
-		if err != nil {
-			log.Printf("[READ_IMAGE_DEBUG] Base executor failed: %v", err)
-			return "", err
-		}
-
-		// Step 2: Parse the structured result from workspace
-		var imageData workspace.ReadImageResult
-		if err := json.Unmarshal([]byte(rawResult), &imageData); err != nil {
-			log.Printf("[READ_IMAGE_DEBUG] Failed to parse base result as ReadImageResult: %v", err)
-			return "", fmt.Errorf("failed to parse image data: %w", err)
-		}
-
-		log.Printf("[READ_IMAGE_DEBUG] Image data received: filepath=%s, mimeType=%s, base64Length=%d",
-			imageData.Filepath, imageData.MimeType, len(imageData.Data))
-
-		// Step 3: Resolve the analysis LLM from explicit provider/model args,
-		// workspace config, or finally the current agent model.
-		requestedProvider := strings.TrimSpace(imageData.Provider)
-		if requestedProvider == "" {
-			requestedProvider = stringFromMap(args, "provider")
-		}
-		requestedModelID := strings.TrimSpace(imageData.ModelID)
-		if requestedModelID == "" {
-			requestedModelID = stringFromMap(args, "model_id")
-		}
-		llmModel, provider, modelID, err := createImageAnalysisLLM(ctx, workspaceURL, requestedProvider, requestedModelID)
-		if err != nil {
-			log.Printf("[READ_IMAGE_DEBUG] Failed to create LLM client: %v", err)
-			return "", fmt.Errorf("failed to initialize LLM for image analysis: %w", err)
-		}
-
-		log.Printf("[READ_IMAGE_DEBUG] LLM client created (provider=%s, model=%s), making GenerateContent call",
-			provider, modelID)
-
-		// Step 4: Make the LLM call with the image + query.
-		// CLI providers can inspect local files when given the workspace path
-		// directly. Their adapters do not consume base64 ImageContent through
-		// these transports today, so keep CLI image analysis path-based.
-		parts := []llmtypes.ContentPart{
-			llmtypes.TextContent{Text: imageData.Query},
-			llmtypes.ImageContent{
-				SourceType: "base64",
-				MediaType:  imageData.MimeType,
-				Data:       imageData.Data,
-			},
-		}
-		if readsImageByPath(provider) {
-			absoluteImagePath, pathErr := workspaceAbsolutePath(normalizeWorkspaceDocumentPath(imageData.Filepath))
-			if pathErr != nil {
-				return "", pathErr
-			}
-			if _, statErr := os.Stat(absoluteImagePath); statErr != nil {
-				return "", fmt.Errorf("%s image analysis requires a readable local workspace file at %q: %w", provider, absoluteImagePath, statErr)
-			}
-			parts = []llmtypes.ContentPart{
-				llmtypes.TextContent{Text: fmt.Sprintf("Inspect the local image file at this workspace path:\n%s\n\nQuestion: %s", absoluteImagePath, imageData.Query)},
-			}
-		}
-
-		messages := []llmtypes.MessageContent{
-			{
-				Role:  llmtypes.ChatMessageTypeHuman,
-				Parts: parts,
-			},
-		}
-
-		// A coding-agent provider starts a fresh CLI/tmux runtime for this
-		// analysis. Give it the stable workspace-documents root explicitly rather
-		// than inheriting the server's release directory, which changes at every
-		// deploy and can trigger Claude Code's trust/onboarding prompt. The adapter
-		// pre-trusts this server-owned directory before launch; the prompt handler
-		// remains a fallback for future Claude UI changes.
-		callOptions := []llmtypes.CallOption{}
-		if workingDirOption := llmproviders.CodingAgentWorkingDirOption(llmproviders.Provider(provider), fsutil.WorkspaceDocsRoot()); workingDirOption != nil {
-			callOptions = append(callOptions, workingDirOption)
-		}
-		if strings.EqualFold(provider, string(llmproviders.ProviderClaudeCode)) {
-			// The analysis prompt is passed directly, so do not transiently project
-			// it as CLAUDE.md into the shared docs root.
-			callOptions = append(callOptions, llmproviders.WithClaudeCodeWriteProjectInstructionFile(false))
-		}
-
-		if strings.EqualFold(provider, string(llm.ProviderPiCLI)) {
-			// A Pi session's own model is the fallback analysis model; Pi reads the file by path, as a bounded
-			// one-shot rather than a second interactive terminal.
-			callOptions = append(callOptions, structuredOneShotCallOptions(llm.ProviderPiCLI)...)
-		}
-		resp, err := llmModel.GenerateContent(ctx, messages, callOptions...)
-		if err != nil {
-			log.Printf("[READ_IMAGE_DEBUG] LLM GenerateContent failed: %v", err)
-			return "", fmt.Errorf("LLM image analysis failed: %w", err)
-		}
-
-		// Step 5: Extract and return the text response
-		var responseText string
-		if len(resp.Choices) > 0 {
-			responseText = resp.Choices[0].Content
-		}
-		if responseText == "" {
-			responseText = "(No response from image analysis)"
-		}
-
-		log.Printf("[READ_IMAGE_DEBUG] LLM response received: %d chars", len(responseText))
-
-		// Cap response size
-		const maxResponseSize = 100 * 1024
-		if len(responseText) > maxResponseSize {
-			responseText = responseText[:maxResponseSize] + "\n... (response truncated)"
-			log.Printf("[READ_IMAGE_DEBUG] Response truncated to %d chars", maxResponseSize)
-		}
-
-		// Return final JSON result
-		response := map[string]any{
-			"filepath": imageData.Filepath,
-			"query":    imageData.Query,
-			"provider": provider,
-			"model":    modelID,
-			"response": responseText,
-		}
-
-		responseJSON, err := json.Marshal(response)
-		if err != nil {
-			return "", fmt.Errorf("failed to marshal response: %w", err)
-		}
-
-		log.Printf("[READ_IMAGE_DEBUG] read_image complete, returning LLM analysis result")
-		return string(responseJSON), nil
-	}
-}
-
-func createImageAnalysisLLM(ctx context.Context, workspaceURL, requestedProvider, requestedModelID string) (llmtypes.Model, string, string, error) {
-	apiKeys := loadWorkspaceProviderAPIKeys(ctx, workspaceURL)
-	// Configured image models run on the server account: admit it for this
-	// turn's scope first.
-	admitServer := func(provider string) error { return admitServerAccountFromContext(ctx, provider) }
-	requestedProvider = strings.TrimSpace(requestedProvider)
-	requestedModelID = strings.TrimSpace(requestedModelID)
-	if requestedProvider == "<nil>" {
-		requestedProvider = ""
-	}
-	if requestedModelID == "<nil>" {
-		requestedModelID = ""
-	}
-
-	if requestedProvider != "" || requestedModelID != "" {
-		provider, modelID, err := normalizeImageAnalysisProviderAndModel(requestedProvider, requestedModelID)
-		if err != nil {
-			return nil, "", "", err
-		}
-		apiKeysWithEnv := imageAnalysisAPIKeysWithEnv(apiKeys)
-		if !hasWorkspaceDefaultImageAnalysisAuth(provider, apiKeysWithEnv) {
-			return nil, "", "", fmt.Errorf("read_image requires auth/runtime for requested provider/model %s/%s. Use list_llm_capabilities(capability=\"read_image\", include_models=true) to choose a usable provider/model pair", provider, modelID)
-		}
-		if err := admitServer(provider); err != nil {
-			return nil, "", "", err
-		}
-		model, err := llm.InitializeLLM(llm.Config{
-			Provider: llm.Provider(provider),
-			ModelID:  modelID,
-			Context:  ctx,
-			APIKeys:  apiKeysWithEnv,
-		})
-		if err != nil {
-			return nil, "", "", err
-		}
-		return model, provider, modelID, nil
-	}
-
-	if workspaceURL != "" {
-		imageCfg, exists, err := services.LoadImageAnalysisConfig(ctx, workspaceURL)
-		if err != nil {
-			log.Printf("[READ_IMAGE_DEBUG] Failed to load image analysis config: %v", err)
-		} else if exists && imageCfg != nil {
-			var candidates []services.ImageGenerationModelConfig
-			if imageCfg.Primary != nil {
-				candidates = append(candidates, *imageCfg.Primary)
-			}
-
-			for _, candidate := range candidates {
-				provider, modelID, err := normalizeImageAnalysisProviderAndModel(candidate.Provider, candidate.ModelID)
-				if err != nil {
-					continue
-				}
-				if !hasImageAnalysisProviderAuth(provider, apiKeys) {
-					continue
-				}
-				if err := admitServer(provider); err != nil {
-					log.Printf("[READ_IMAGE_DEBUG] %s server account not admitted: %v", provider, err)
-					continue
-				}
-				model, err := llm.InitializeLLM(llm.Config{
-					Provider: llm.Provider(provider),
-					ModelID:  modelID,
-					Context:  ctx,
-					APIKeys:  apiKeys,
-				})
-				if err == nil {
-					return model, provider, modelID, nil
-				}
-				log.Printf("[READ_IMAGE_DEBUG] Failed to initialize configured image analysis model %s/%s: %v", provider, modelID, err)
-			}
-			return nil, "", "", fmt.Errorf("image analysis config requires a valid configured provider/model with matching auth")
-		}
-
-	}
-
-	llmConfigRaw := ctx.Value(mcpagent.ToolExecutionLLMConfigKey)
-	if llmConfigRaw == nil {
-		log.Printf("[READ_IMAGE_DEBUG] No LLM config in context — cannot perform image analysis fallback")
-		return nil, "", "", fmt.Errorf("LLM configuration not available in context for image analysis")
-	}
-	llmConfig, ok := llmConfigRaw.(mcpagent.LLMModel)
-	if !ok {
-		log.Printf("[READ_IMAGE_DEBUG] LLM config in context has unexpected type: %T", llmConfigRaw)
-		return nil, "", "", fmt.Errorf("LLM configuration in context has unexpected type")
-	}
-
-	model, err := createLLMFromConfig(ctx, llmConfig)
-	if err != nil {
-		return nil, "", "", err
-	}
-	return model, llmConfig.Provider, llmConfig.ModelID, nil
-}
-
-func imageAnalysisAPIKeysWithEnv(apiKeys *llm.ProviderAPIKeys) *llm.ProviderAPIKeys {
-	merged := &llm.ProviderAPIKeys{}
-	if apiKeys != nil {
-		*merged = *apiKeys
-	}
-
-	// Claude Code's subscription credential is intentionally distinct from an
-	// Anthropic API key. The rootless deployment supplies it as a service-scoped
-	// environment variable; pass it explicitly to a child CLI runtime rather
-	// than relying on its ambient saved-login state.
-	if merged.ClaudeCodeOAuthToken == nil {
-		if value := firstNonEmptyEnv("CLAUDE_CODE_OAUTH_TOKEN"); value != "" {
-			merged.ClaudeCodeOAuthToken = &value
-		}
-	}
-	return merged
-}
-
-func hasWorkspaceDefaultImageAnalysisAuth(provider string, apiKeys *llm.ProviderAPIKeys) bool {
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case string(llm.ProviderClaudeCode):
-		if apiKeys == nil || apiKeys.ClaudeCodeOAuthToken == nil || strings.TrimSpace(*apiKeys.ClaudeCodeOAuthToken) == "" {
-			return false
-		}
-		_, err := exec.LookPath("claude")
-		return err == nil
-	case string(llm.ProviderCodexCLI):
-		_, err := exec.LookPath("codex")
-		return err == nil
-	case string(llm.ProviderCursorCLI):
-		_, err := exec.LookPath("cursor-agent")
-		return err == nil
-	}
-	return false
-}
-
-func firstNonEmptyEnv(names ...string) string {
-	for _, name := range names {
-		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-// createLLMFromConfig creates an LLM model instance using multi-llm-provider-go
-// from the agent's LLMModel config (extracted from context).
-func createLLMFromConfig(ctx context.Context, config mcpagent.LLMModel) (llmtypes.Model, error) {
-	if err := llmguard.RequireCodingAgentProvider(config.Provider); err != nil {
-		return nil, err
-	}
-	var apiKeys *llm.ProviderAPIKeys
-	if config.APIKey != nil {
-		apiKeys = &llm.ProviderAPIKeys{}
-		switch llm.Provider(config.Provider) {
-		case llm.ProviderCodexCLI:
-			apiKeys.CodexCLI = config.APIKey
-		case llm.ProviderCursorCLI:
-			apiKeys.CursorCLI = config.APIKey
-		case llm.ProviderPiCLI:
-			apiKeys.PiCLI = config.APIKey
-		}
-	}
-
-	// The agent's own model: same account, same scope as its turn.
-	connectionID := ""
-	if turnKeys := ProviderAccountKeysFromContext(ctx); turnKeys != nil {
-		keys := turnKeys.Clone()
-		if apiKeys != nil {
-			keys.CodexCLI, keys.CursorCLI, keys.PiCLI = firstKey(apiKeys.CodexCLI, keys.CodexCLI), firstKey(apiKeys.CursorCLI, keys.CursorCLI), firstKey(apiKeys.PiCLI, keys.PiCLI)
-		}
-		apiKeys = keys
-		connectionID = config.ConnectionID
-	}
-	llmCfg := llm.Config{
-		Provider:     llm.Provider(config.Provider),
-		ConnectionID: connectionID,
-		ModelID:      config.ModelID,
-		Context:      ctx,
-		APIKeys:      apiKeys,
-	}
-
-	return llm.InitializeLLM(llmguard.WithServerAccountAdmission(llmCfg))
-}
-
 func generateTextAPIKeys(ctx context.Context, workspaceURL string, tiers *WorkflowLLMTierConfig) *llm.ProviderAPIKeys {
 	if tiers != nil && tiers.APIKeys != nil {
 		return tiers.APIKeys.Clone()
@@ -1028,24 +614,4 @@ func keysWithTurnResolver(ctx context.Context, keys *llm.ProviderAPIKeys) *llm.P
 	withResolver := keys.Clone()
 	withResolver.ResolveConnection = turnKeys.ResolveConnection
 	return withResolver
-}
-
-// admitServerAccountFromContext runs the server-account admission of the
-// turn's scope for provider, without changing which keys are used.
-func admitServerAccountFromContext(ctx context.Context, provider string) error {
-	turnKeys := ProviderAccountKeysFromContext(ctx)
-	if turnKeys == nil || turnKeys.ResolveConnection == nil {
-		return nil
-	}
-	_, err := turnKeys.ResolveConnection(ctx, llm.Provider(provider), llmguard.ServerDefaultConnectionPrefix+provider)
-	return err
-}
-
-func firstKey(values ...*string) *string {
-	for _, value := range values {
-		if value != nil && *value != "" {
-			return value
-		}
-	}
-	return nil
 }

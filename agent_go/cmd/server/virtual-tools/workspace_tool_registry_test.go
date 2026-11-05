@@ -2,7 +2,7 @@ package virtualtools
 
 import "testing"
 
-func TestCreateWorkspaceToolRegistryIncludesActiveTextSearchAndImageTools(t *testing.T) {
+func TestCreateWorkspaceToolRegistryIncludesActiveTools(t *testing.T) {
 	t.Setenv("MCP_API_URL", "http://example.test")
 	t.Setenv("MCP_API_TOKEN", "registry-token")
 
@@ -22,7 +22,6 @@ func TestCreateWorkspaceToolRegistryIncludesActiveTextSearchAndImageTools(t *tes
 		"execute_shell_command",
 		"diff_patch_workspace_file",
 		"generate_text_llm",
-		"read_image",
 		"image_gen",
 		"image_edit",
 	} {

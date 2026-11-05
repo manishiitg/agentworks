@@ -84,8 +84,7 @@ func TestNormalizeImageProviderAndModelRejectsWrongModelForProvider(t *testing.T
 }
 
 // image_gen/image_edit generation dropped Vertex (see supportedImageProviderSummary);
-// codex-cli is the only generation provider now. Image *analysis* (read_image)
-// still supports Vertex — see TestNormalizeImageAnalysisProviderAndModelVertexDefault.
+// codex-cli is the only generation provider now.
 func TestNormalizeImageProviderAndModelRejectsVertexAsGenerationProvider(t *testing.T) {
 	_, _, err := normalizeImageProviderAndModel("vertex", "gemini-3.1-flash-image")
 	if err == nil {
