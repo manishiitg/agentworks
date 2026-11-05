@@ -1,4 +1,5 @@
 console.log('Cache bust: 2026-02-08-150000');
+import { remoteSessionPath } from '../utils/remoteSessions'
 import { needsYouDecisions } from '../utils/needsYouDecisions'
 import axios from 'axios'
 import type { CrewLocationFields } from '../components/workspace/macCrews'
@@ -518,6 +519,8 @@ api.interceptors.request.use((config) => {
   if (config.chatIdentityGeneration !== undefined) assertChatIdentityCurrent(config.chatIdentityGeneration)
   config.baseURL = getApiBaseUrl()
   config.headers = config.headers || {}
+  // A Team member's chat shown in the Mac app reads from its server (utils/remoteSessions.ts).
+  if (config.url) config.url = remoteSessionPath(config.url)
 
   // Only add session ID if not already provided
   if (!config.skipSessionContext && config.headers['X-Session-ID'] !== false && !config.headers['X-Session-ID']) {

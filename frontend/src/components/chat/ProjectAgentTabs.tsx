@@ -126,6 +126,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const shares = useMacSharedAgents(placeProject, macHere)
   // In the Mac app, the Team members' own agents from the online copy (owner, 5 Nov); they open on the server's page.
   const teamRemote = useTeamRemoteAgents(placeProject, macHere)
+  // Once opened, a member's agent is a watch-only tab here; the strip shows that tab instead of its button.
+  const teamRemoteClosed = teamRemote.filter(agent => !tabs.some(tab => tab.metadata?.agentProfileConversationKey === `${placeProject}:team:${agent.key}`))
   const asking = useCrewAsking(macHere ? placeProject : undefined)
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   const sharedHere = (tab: ChatTab) => { const id = agentId(tab); return Boolean(id && shares[id]) }
@@ -413,11 +415,11 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}
       {/* The Team members' agents in the Mac app, under each person's name; each opens on the server's page. */}
-      {teamRemote.map((agent, index) => {
+      {teamRemoteClosed.map((agent, index) => {
         const person = ownerShortName(agent.owner) || 'Teammate'
-        const first = index === 0 || (ownerShortName(teamRemote[index - 1].owner) || 'Teammate') !== person
+        const first = index === 0 || (ownerShortName(teamRemoteClosed[index - 1].owner) || 'Teammate') !== person
         return <Fragment key={agent.key}>{first && <span className="ml-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-4 w-px bg-border" />{person}:</span>}
-          <button type="button" onClick={agent.open} title={`${person}'s ${agent.name} · opens on the server, where only ${person} types`}
+          <button type="button" onClick={agent.open} title={`${person}'s ${agent.name} · watch it here; only ${person} types there`}
             className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
             {agent.icon && <span aria-hidden="true">{agent.icon}</span>}<span className="max-w-[10rem] truncate">{agent.name}</span>
             <Eye role="img" aria-label="Watching: only they type here" className="h-3 w-3 shrink-0" />
