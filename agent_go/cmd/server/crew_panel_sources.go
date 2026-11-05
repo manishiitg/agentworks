@@ -45,7 +45,8 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 			return crewPanelSection{Detail: detail}, err
 		}},
 
-		{id: "changes", title: "Changes", allowed: workspaceReadAllowed(r.Context(), claims, workspace, logicalPathIsCaller, true), read: func(ctx context.Context) (crewPanelSection, error) {
+		// Git status over a Crew's repos takes longer than the panel's other reads (5 Nov: past 2 s on every refresh).
+		{id: "changes", title: "Changes", allowed: workspaceReadAllowed(r.Context(), claims, workspace, logicalPathIsCaller, true), timeout: 6 * time.Second, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data struct {
 				Repos       []workspaceGitRepo `json:"repos"`
 				Unavailable bool               `json:"git_unavailable"`
@@ -302,7 +303,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 		}},
 		{id: "schedules", title: "Schedules", allowed: owner && api.scheduler != nil, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data struct{ Jobs []ScheduledJobResponse }
-			err := read(ctx, listScheduledJobsHandler(api.scheduler), "/api/schedules", url.Values{"entity_type": {"product"}, "limit": {"100000"}}, &data)
+			err := read(ctx, listScheduledJobsHandler(api.scheduler), "/api/schedules", url.Values{"entity_type": {"product"}, "limit": {"100000"}, "workspace_path": {workspace}}, &data)
 			section := crewPanelSection{}
 			for _, job := range data.Jobs {
 				if strings.TrimRight(job.WorkspacePath, "/") != strings.TrimRight(workspace, "/") {

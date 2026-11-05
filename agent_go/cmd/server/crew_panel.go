@@ -69,7 +69,9 @@ type crewPanelSource struct {
 	id, title string
 	allowed   bool
 	noCache   bool // Cross-service permissions cannot be rechecked from the Crew record alone.
-	read      func(context.Context) (crewPanelSection, error)
+	// timeout, when set, is this section's own time limit instead of the panel's (a Git status over several repos).
+	timeout time.Duration
+	read    func(context.Context) (crewPanelSection, error)
 }
 type crewPanelReadError struct{ status int }
 
@@ -119,7 +121,14 @@ func (c *crewPanelCache) remove(key crewPanelCacheKey) {
 // Deadline bounds the whole fan-out, not one timeout multiplied by the number
 // of sections. A timed-out reader cannot write back late or replace newer data.
 func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sources []crewPanelSource, timeout time.Duration) []crewPanelSection {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	// The panel waits for its slowest section; each section stops at its own limit.
+	longest := timeout
+	for _, source := range sources {
+		if source.allowed && source.timeout > longest {
+			longest = source.timeout
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, longest)
 	defer cancel()
 	type result struct {
 		index   int
@@ -139,7 +148,16 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 		}
 		pending[i] = true
 		go func(i int, source crewPanelSource) {
-			section, err := source.read(ctx)
+			limit := timeout
+			if source.timeout > 0 {
+				limit = source.timeout
+			}
+			sourceCtx, done := context.WithTimeout(ctx, limit)
+			defer done()
+			section, err := source.read(sourceCtx)
+			if err == nil && sourceCtx.Err() != nil {
+				err = sourceCtx.Err()
+			}
 			results <- result{i, section, err}
 		}(i, source)
 	}

@@ -532,6 +532,8 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 
 		modeFilter := r.URL.Query().Get("mode")
 		entityTypeFilter := r.URL.Query().Get("entity_type")
+		// One project's schedules only (the Crew side panel): skips every other project's state and history reads.
+		workspaceFilter := strings.TrimRight(strings.TrimSpace(r.URL.Query().Get("workspace_path")), "/")
 
 		var allJobs []ScheduledJobResponse
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
@@ -550,6 +552,9 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 			// workflow's schedules to any signed-in account (PLAT-504).
 			workflows = filterWorkflowManifestsForUser(GetUserFromContext(r.Context()), workflows)
 			for _, dw := range workflows {
+				if workspaceFilter != "" && strings.TrimRight(dw.WorkspacePath, "/") != workspaceFilter {
+					continue
+				}
 				for _, sched := range dw.Manifest.Schedules {
 					if enabledFilter != "" {
 						wantEnabled := enabledFilter == "true" || enabledFilter == "1"
@@ -570,7 +575,7 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 
 		if entityTypeFilter == "" || entityTypeFilter == "product" {
 			if modeFilter == "" || modeFilter == "workshop" {
-				productJobs, err := productScheduleJobResponses(r, svc, enabledFilter)
+				productJobs, err := productScheduleJobResponses(r, svc, enabledFilter, workspaceFilter)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -1350,7 +1355,7 @@ func getScheduledJobRunsHandler(svc *SchedulerService) http.HandlerFunc {
 
 // productScheduleJobResponses lists the requesting user's product schedules
 // in the same shape as workflow schedules.
-func productScheduleJobResponses(r *http.Request, svc *SchedulerService, enabledFilter string) ([]ScheduledJobResponse, error) {
+func productScheduleJobResponses(r *http.Request, svc *SchedulerService, enabledFilter, workspaceFilter string) ([]ScheduledJobResponse, error) {
 	if svc == nil || svc.api == nil || svc.api.projectActions == nil {
 		return nil, nil
 	}
@@ -1362,6 +1367,9 @@ func productScheduleJobResponses(r *http.Request, svc *SchedulerService, enabled
 	}
 	var out []ScheduledJobResponse
 	for _, job := range jobs {
+		if workspaceFilter != "" && strings.TrimRight(job.WorkspacePath, "/") != workspaceFilter {
+			continue
+		}
 		if enabledFilter != "" {
 			wantEnabled := enabledFilter == "true" || enabledFilter == "1"
 			if job.Effective().Enabled != wantEnabled {
