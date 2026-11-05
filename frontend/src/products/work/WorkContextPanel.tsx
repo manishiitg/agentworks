@@ -175,7 +175,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       </button>
       {line.people?.map(person => <button key={person.name} type="button" onClick={() => openPerson(person.name)} className={`${lineButton} pl-6`}>
         <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${person.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
-        <span className="min-w-0 flex-1 break-words text-muted-foreground"><span className="text-foreground">{person.name}</span>{person.agents?.length ? ` · ${person.agents.join(', ')}` : ''}</span>
+        <span className="min-w-0 flex-1 break-words text-muted-foreground"><span className="text-foreground">{person.name}</span>{person.status_label && <span> · {person.status_label}</span>}{person.agents?.length ? ` · ${person.agents.join(', ')}` : ''}</span>
       </button>)}
     </div>
   })

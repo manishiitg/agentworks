@@ -15,7 +15,7 @@ import (
 func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"other","products":["work"]},{"id":"removed","products":["work"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"other","products":["work"]},{"id":"removed","products":["work"]}]}`)
 	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "server", Editing: "local", Mode: "relay", PairID: "pair", PeerProjectID: "local-team"}); err != nil {
 		t.Fatal(err)
@@ -48,16 +48,22 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if got := len(readCrewMacWaiting("team").Waiting); got != 2 {
 		t.Fatalf("offline asks not retained: %d", got)
 	}
+	if people := teamAgentsByPerson(t.Context(), team, "other"); len(people) == 0 || len(people[0].Agents) == 0 || people[0].Agents[0].StatusLabel == "" {
+		t.Fatal("disconnected Mac agent was not marked offline for its teammate")
+	}
 	team.People = team.People[:1]
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
 	commands := make(chan crewRelayMessage, 8)
-	sock, err := f.api.crewRelayRegister(t.Context(), &UserClaims{UserID: "owner"}, crewRelayMessage{Type: "hello", DeviceID: "mac", Crews: []crewRelayCrew{{Project: "team", Pair: "pair"}}}, func(m crewRelayMessage) error { commands <- m; return nil }, nil)
+	sock, err := f.api.crewRelayRegister(t.Context(), &UserClaims{UserID: "owner", Username: "owner"}, crewRelayMessage{Type: "hello", DeviceID: "mac", Crews: []crewRelayCrew{{Project: "team", Pair: "pair"}}}, func(m crewRelayMessage) error { commands <- m; return nil }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sock.unregister()
+	if people := teamAgentsByPerson(t.Context(), team, "other"); len(people) == 0 || len(people[0].Agents) == 0 || people[0].Agents[0].StatusLabel != "" {
+		t.Fatal("reconnected Mac agent is still marked offline")
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
 	for {

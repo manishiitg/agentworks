@@ -56,6 +56,12 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w.Code != 200 || crewTeamMember("team-test", "member") || call("member", "GET", base+"/files", "", "").Code != 403 {
 		t.Fatalf("a roster saved with Team off must not let its people in: %d %s", w.Code, w.Body.String())
 	}
+	// A plain refusal must not reveal the owner or whether this private Crew exists.
+	former := call("member", "GET", base, "", "")
+	unknown := call("outsider", "GET", "/api/crew-teams/missing", "", "")
+	if former.Code != 403 || unknown.Code != 403 || former.Body.String() != unknown.Body.String() {
+		t.Fatal("lost-access refusal discloses a private Team's state")
+	}
 	config := `{"name":"Example","on":true,"people":[{"user_id":"member"},{"user_id":"teammate"}],"folder":{"whole":true}}`
 	w = call("owner", "PUT", base, config, "")
 	if w.Code != 200 {

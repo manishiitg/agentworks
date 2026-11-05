@@ -17,9 +17,10 @@ import (
 // The server writes every line; the Mac app and the website show the same tree.
 
 type crewAccessPerson struct {
-	Name   string   `json:"name"`
-	Online bool     `json:"online"`
-	Agents []string `json:"agents,omitempty"`
+	Name        string   `json:"name"`
+	Online      bool     `json:"online"`
+	Agents      []string `json:"agents,omitempty"`
+	StatusLabel string   `json:"status_label,omitempty"`
 }
 
 type crewAccessLine struct {
@@ -76,10 +77,14 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 			continue
 		}
 		names := []string{}
+		status := ""
 		for _, a := range p.Agents {
 			names = append(names, a.Name)
+			if a.StatusLabel != "" {
+				status = a.StatusLabel
+			}
 		}
-		people = append(people, crewAccessPerson{Name: crewPersonShortName(p.UserID), Online: p.MacOn, Agents: names})
+		people = append(people, crewAccessPerson{Name: crewPersonShortName(p.UserID), Online: p.MacOn, Agents: names, StatusLabel: status})
 	}
 	// The viewer is not one of the people listed (owner, 5 Nov): their own agents have the lines below.
 	lines = append(lines, crewAccessLine{Kind: "team", Title: fmt.Sprintf("Team · %d other %s", len(people), plural(len(people), "person", "people")), People: people})
