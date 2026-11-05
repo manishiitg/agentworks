@@ -3,6 +3,8 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -268,6 +270,9 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			t.Fatalf("file %s: %q %v; want %q", path, got, err, want)
 		}
 	}
+	// Each copy's first round only receives the team folder (review 5 Nov #1).
+	sync(c1, d1, b1)
+	sync(c2, d2, b2)
 	if err := os.WriteFile(filepath.Join(b1.Root, "sync.md"), []byte("owner sends"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -298,6 +303,58 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if beforeRetry.Revision != afterRetry.Revision {
 		t.Fatal("unchanged client created another revision")
 	}
+	teamHas := func(path, want string) {
+		t.Helper()
+		state, _ := readCrewTeamFileState("team-test")
+		v, ok := state.Versions[path]
+		if want == "" {
+			if ok && v.File != nil {
+				t.Fatalf("the team still has %s", path)
+			}
+			return
+		}
+		sum := sha256.Sum256([]byte(want))
+		if !ok || v.File == nil || v.File.Hash != hex.EncodeToString(sum[:]) {
+			t.Fatalf("the team's %s is not %q", path, want)
+		}
+	}
+	// Review 5 Nov #4: a round started from a stale read of the copy's record (the turn and the 5 s loop overlap)
+	// works from the record on disk, so it never sends an old base that would revert a newer edit.
+	stale, err := readCrewTeamLocal(d2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(b1.Root, "sync.md"), []byte("owner v2"), 0600)
+	sync(c1, d1, b1)
+	sync(c2, d2, b2)
+	_ = os.WriteFile(filepath.Join(b1.Root, "sync.md"), []byte("owner v3"), 0600)
+	sync(c1, d1, b1)
+	sync(c2, d2, &stale)
+	teamHas("sync.md", "owner v3")
+	read(b2.Root, "sync.md", "owner v3")
+	b2 = &stale
+	// Review 5 Nov #2: a file this copy leaves out only because of this machine's own ignore rules, or a file the
+	// share's .gitignore newly leaves out while it is still here, is never sent as a removal.
+	_ = os.WriteFile(filepath.Join(b1.Root, "kept.md"), []byte("keep me"), 0600)
+	sync(c1, d1, b1)
+	sync(c2, d2, b2)
+	home := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(home, ".config", "git"), 0700)
+	_ = os.WriteFile(filepath.Join(home, ".config", "git", "ignore"), []byte("kept.md\n"), 0600)
+	_ = os.WriteFile(filepath.Join(filepath.Dir(b2.Root), ".gitignore"), []byte("kept.md\n"), 0600)
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	sync(c2, d2, b2)
+	teamHas("kept.md", "keep me")
+	_ = os.WriteFile(filepath.Join(b1.Root, ".gitignore"), []byte("kept.md\n"), 0600)
+	sync(c1, d1, b1)
+	sync(c2, d2, b2)
+	sync(c1, d1, b1)
+	teamHas("kept.md", "keep me")
+	read(b2.Root, "kept.md", "keep me")
+	_ = os.Remove(filepath.Join(b1.Root, ".gitignore"))
+	sync(c1, d1, b1)
+	sync(c2, d2, b2)
 	fmt.Println("[CREW_TEAM_PROOF] two chunked HTTP clients: interrupted upload resumes, owner to member, member to owner, local edit during download retained, unchanged retry passed")
 	// PR932: directory/file replacements must not strand the next sync after deleting children.
 	if err := os.MkdirAll(filepath.Join(b1.Root, "reports"), 0700); err != nil {
@@ -445,6 +502,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(b3.Root, "not-shared.md"), []byte("stays here"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	sync(c3, d3, b3) // a new copy first receives the folder, then sends its own files
 	sync(c3, d3, b3)
 	w = call("member", "GET", base+"/file?path=other/first-upload.md", "", "")
 	if w.Code != 200 || w.Body.String() != "new folder starts here" {
@@ -527,6 +585,57 @@ func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
 	}
 	if _, err := readCrewTeam("gone-copy"); err == nil {
 		t.Fatal("the old Team record stayed behind")
+	}
+}
+
+// Review 5 Nov #1: a new copy changes nothing on the team before it has received the folder once, and the Crew setup
+// it writes afterwards is the team's, never its own (a new member's blank setup replaced the owner's).
+func TestCrewTeamNewCopyReceivesTheTeamSetupBeforeWriting(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	api := f.api
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
+		t.Fatal(err)
+	}
+	setup := crewTeamSetup{ChatInstructions: "Team instructions written by the owner", SelectedSkills: []string{}}.encode()
+	store, err := crewTeamChunkStore("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := crewTeamChunkReader(bytes.NewReader(setup), int64(len(setup)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = commitCrewTeamChanges(t.Context(), "team", "owner", "setup", crewTransferDigest("setup"), []crewTeamChange{{Path: crewTeamSetupFile, After: &version}}); err != nil {
+		t.Fatal(err)
+	}
+	if current, _, _, ok := api.crewSetupOf(t.Context(), "owner", "team"); !ok || current.ChatInstructions == "Team instructions written by the owner" {
+		t.Fatalf("fixture Crew: %+v %t", current, ok)
+	}
+	dir := t.TempDir()
+	b := &crewTeamLocal{FolderID: "f1", Connection: "server", Project: "team", LocalProject: "team", RemoteUser: "owner", Client: "new-copy", Root: filepath.Join(dir, "files")}
+	if err = os.MkdirAll(b.Root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	claims := &UserClaims{UserID: "owner", Username: "owner"}
+	ctx := context.WithValue(t.Context(), crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: claims})
+	c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: "owner"}}
+	before, _ := readCrewTeamFileState("team")
+	for i := 0; i < 2; i++ {
+		if err = api.crewTeamMacRound(ctx, "owner", c, dir, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after, _ := readCrewTeamFileState("team")
+	if after.Revision != before.Revision || after.Versions[crewTeamSetupFile].File.Hash != version.Hash {
+		t.Fatalf("a new copy changed the team's setup: revision %d -> %d", before.Revision, after.Revision)
+	}
+	if got, _ := os.ReadFile(filepath.Join(b.Root, crewTeamSetupFile)); !bytes.Equal(got, setup) {
+		t.Fatalf("the new copy's setup file: %q", got)
+	}
+	if applied, _, _, ok := api.crewSetupOf(t.Context(), "owner", "team"); !ok || applied.ChatInstructions != "Team instructions written by the owner" {
+		t.Fatalf("the team's setup was not applied to the Crew: %+v %t", applied, ok)
 	}
 }
 

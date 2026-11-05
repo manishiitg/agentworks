@@ -38,11 +38,14 @@ type crewTeamLocal struct {
 	Root         string `json:"local_folder"`
 	// Files is what this copy last had in step with the team, per path: size and modification time (a file whose
 	// size and time are unchanged is not read again) and its version. Revision is the team revision it has received.
-	Files      map[string]crewTeamLocalFile `json:"files"`
-	Revision   uint64                       `json:"revision"`
-	LastSynced string                       `json:"last_synced,omitempty"`
-	Status     string                       `json:"status"`
-	Error      string                       `json:"error,omitempty"`
+	Files    map[string]crewTeamLocalFile `json:"files"`
+	Revision uint64                       `json:"revision"`
+	// Downloaded: this copy has received the whole team folder once. Until then it only downloads and changes nothing
+	// on the team (review 5 Nov: a new member's blank Crew setup replaced the owner's).
+	Downloaded bool   `json:"downloaded,omitempty"`
+	LastSynced string `json:"last_synced,omitempty"`
+	Status     string `json:"status"`
+	Error      string `json:"error,omitempty"`
 	// "Sync it anyway" (owner, 5 Nov): this person's own choice of files that look like they hold passwords or keys,
 	// by exact path; StopSyncing are ones taken back, removed from the shared folder on the next upload (the files
 	// stay here). FolderOnPurpose is what the shared folder holds on purpose, from the server's last answer.
@@ -172,18 +175,10 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 							log.Printf("[CREW_TEAM_LOCAL] project=%s event=binding_failed reason=%q", t.ProjectID, err)
 							continue
 						}
-						round, done := context.WithTimeout(ctx, 20*time.Minute) // a large first sync runs as server jobs the Mac polls
-						local := crewTeamLocalCrew(b)
-						api.reconcileCrewTeamSetup(round, owner, local, b.Root, dir, true) // this Crew's setup changes go up
-						err = syncCrewTeamLocal(round, owner, c, dir, &b)
-						if err == nil {
-							api.reconcileCrewTeamSetup(round, owner, local, b.Root, dir, true) // someone's setup edit came down
-						}
+						round, done := context.WithTimeout(ctx, 20*time.Minute)
+						err = api.crewTeamMacRound(round, owner, c, dir, &b)
 						done()
 						if err != nil {
-							b.Status = "pending"
-							b.Error = crewTeamPlainSyncError(err)
-							_ = saveCrewTeamLocal(dir, b)
 							log.Printf("[CREW_TEAM] project=%s event=sync_failed step=%s shown=%q reason=%q", t.ProjectID, crewTeamStepOf(err), b.Error, err)
 						}
 					}
@@ -199,16 +194,42 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 	return cancel
 }
 
+// crewTeamMacRound is one round of a Mac copy with its Crew's setup (crew_team_setup.go): this Crew's setup changes go
+// up, then someone's setup edit that came down is applied. A copy writes its setup only once it has received the team
+// folder (review 5 Nov: a new member's blank setup replaced the owner's).
+func (api *StreamingAPI) crewTeamMacRound(ctx context.Context, owner string, c desktopConnection, dir string, b *crewTeamLocal) error {
+	local := crewTeamLocalCrew(*b)
+	api.reconcileCrewTeamSetup(ctx, owner, local, b.Root, dir, b.Downloaded)
+	if err := syncCrewTeamLocal(ctx, owner, c, dir, b); err != nil {
+		return err
+	}
+	api.reconcileCrewTeamSetup(ctx, owner, local, b.Root, dir, b.Downloaded)
+	return nil
+}
+
+// syncCrewTeamLocal runs one round for a copy: one round per copy at a time, from the copy's record as it is on disk
+// now. A caller's earlier read can be stale (another round finished meanwhile), and its bases would then revert a newer
+// edit (review 5 Nov).
 func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, dir string, b *crewTeamLocal) error {
 	unlock, e := wf.LockWorkspace(ctx, dir)
 	if e != nil {
 		return e
 	}
 	defer unlock()
-	// The person's on-purpose choices may have changed since the caller read this copy (setCrewTeamSyncAnyway).
 	if fresh, err := readCrewTeamLocal(dir); err == nil {
-		b.SyncAnyway, b.StopSyncing = fresh.SyncAnyway, fresh.StopSyncing
+		*b = fresh
+	} else if !os.IsNotExist(err) {
+		return err
 	}
+	if e = syncCrewTeamRound(ctx, owner, c, dir, b); e != nil {
+		b.Status = "pending"
+		b.Error = crewTeamPlainSyncError(e)
+		_ = saveCrewTeamLocal(dir, *b)
+	}
+	return e
+}
+
+func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, dir string, b *crewTeamLocal) error {
 	if b.Files == nil {
 		b.Files = map[string]crewTeamLocalFile{}
 	}
@@ -233,9 +254,12 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	route := "/api/crew-teams/" + url.PathEscape(b.Project)
 	query := "?folder_id=" + url.QueryEscape(b.FolderID)
 	// 1. What changed here goes up: plan, the chunks the server lacks, commit; at most crewTeamCommitBatch files a time.
-	scan, e := crewTeamScan(ctx, b, team.Folder)
-	if e != nil {
-		return crewTeamStep("scan", e)
+	// A copy that has not yet received the team folder once only downloads.
+	scan := crewTeamScanResult{}
+	if b.Downloaded {
+		if scan, e = crewTeamScan(ctx, b, team.Folder); e != nil {
+			return crewTeamStep("scan", e)
+		}
 	}
 	if len(scan.changes) > 0 {
 		var total int64
@@ -266,8 +290,21 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 		if err != nil {
 			return err
 		}
-		pending = pending || skipped
+		if skipped {
+			// A file changed here meanwhile: this copy stays at its revision, so the team's version comes again next
+			// round, after this copy's change went up (review 5 Nov).
+			pending = true
+			if e = saveCrewTeamLocal(dir, *b); e != nil {
+				return e
+			}
+			break
+		}
 		b.Revision = page.Through
+		if !page.More && !b.Downloaded {
+			// From now on this copy also sends its changes (a copy that already held the team's files adopted them).
+			b.Downloaded = true
+			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=first_download_done files=%d revision=%d", b.Project, b.Client, len(b.Files), b.Revision)
+		}
 		if e = saveCrewTeamLocal(dir, *b); e != nil {
 			return e
 		}
@@ -303,7 +340,7 @@ type crewTeamScanResult struct {
 // anyway, Whole Crew or the chosen folders, .gitignore), as the old capture did.
 func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (crewTeamScanResult, error) {
 	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]crewTeamChunkSource{}}
-	ignored, err := publication.GitIgnored(ctx, b.Root)
+	ignored, err := crewTeamIgnored(ctx, b.Root)
 	if err != nil {
 		return out, err
 	}
@@ -371,9 +408,12 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 	if err != nil {
 		return out, err
 	}
-	// Removed here, or taken back from Sync it anyway (the file stays here): removed from the team.
+	// Removed here, or taken back from Sync it anyway (the file stays here): removed from the team. A file that is
+	// still here but this copy leaves out (ignored, outside the share) is not this copy's to remove (review 5 Nov).
 	for rel, known := range b.Files {
-		if !seen[rel] || slices.Contains(b.StopSyncing, rel) {
+		info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
+		gone := err != nil || !info.Mode().IsRegular()
+		if !seen[rel] && gone || slices.Contains(b.StopSyncing, rel) {
 			out.changes = append(out.changes, crewTeamChange{Path: rel, Before: known.Version.Hash})
 			delete(out.entries, rel)
 		}
@@ -466,13 +506,29 @@ func crewTeamReadSource(root string, source crewTeamChunkSource, id string) ([]b
 // left alone.
 func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, route, query, dir string, b *crewTeamLocal, files []crewTeamRemoteFile) (bool, error) {
 	op := b.onPurpose()
+	// holds: the file here is exactly this version (read only when its size or time differ from what was recorded).
+	holds := func(rel string, known crewTeamLocalFile) bool {
+		info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
+		if err != nil || !info.Mode().IsRegular() {
+			return false
+		}
+		if info.Size() == known.Size && info.ModTime().UnixNano() == known.Mtime {
+			return true
+		}
+		if info.Size() != known.Version.Size || crewTeamHashFile(b.Root, rel) != known.Version.Hash {
+			return false
+		}
+		b.Files[rel] = crewTeamLocalFile{Size: info.Size(), Mtime: info.ModTime().UnixNano(), Version: known.Version} // touched, not changed
+		return true
+	}
+	// unchanged: the file here is as this copy last had it in step with the team (absent if it never had it).
 	unchanged := func(rel string) bool {
 		known, had := b.Files[rel]
-		info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
 		if !had {
+			_, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
 			return os.IsNotExist(err)
 		}
-		return err == nil && info.Mode().IsRegular() && info.Size() == known.Size && info.ModTime().UnixNano() == known.Mtime
+		return holds(rel, known)
 	}
 	skipped := false
 	// Removals first, so a folder that became a file (or a file that became a folder) is out of the way.
@@ -481,6 +537,10 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 			continue
 		}
 		if !unchanged(f.Path) {
+			if !b.Downloaded {
+				delete(b.Files, f.Path) // first download: the file here stays and goes up as this copy's
+				continue
+			}
 			skipped = true
 			continue
 		}
@@ -495,7 +555,16 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		if f.Version == nil || had && known.Version.Hash == f.Version.Hash {
 			continue
 		}
+		if holds(f.Path, crewTeamLocalFile{Size: -1, Version: *f.Version}) {
+			continue // already here (adopted as in step)
+		}
 		if !unchanged(f.Path) {
+			if !b.Downloaded {
+				// First download into a folder that already has this file: it stays, recorded against the team's
+				// version, so it goes up as an edit of it (the team's version stays in history), never silently lost.
+				b.Files[f.Path] = crewTeamLocalFile{Size: -1, Version: *f.Version}
+				continue
+			}
 			skipped = true
 			continue
 		}
@@ -551,6 +620,10 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		for _, f := range writes {
 			// Edited here while the chunks arrived: keep the local edit; it goes up next round.
 			if !unchanged(f.Path) {
+				if !b.Downloaded {
+					b.Files[f.Path] = crewTeamLocalFile{Size: -1, Version: *f.Version}
+					continue
+				}
 				skipped = true
 				continue
 			}
@@ -586,6 +659,20 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 	}
 	endCrewTeamRound(dir, err)
 	return skipped, err
+}
+
+// crewTeamHashFile is the sha256 of a file in this copy, or "" when it cannot be read.
+func crewTeamHashFile(root, rel string) string {
+	f, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	sum := sha256.New()
+	if _, err = io.Copy(sum, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(sum.Sum(nil))
 }
 
 // crewTeamFetchChunks asks the server for chunks until all have arrived (each reply holds at most crewTeamChunkBatch

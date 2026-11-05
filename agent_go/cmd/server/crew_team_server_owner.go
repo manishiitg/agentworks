@@ -57,10 +57,10 @@ func (api *StreamingAPI) syncServerCrewTeamStore(ctx context.Context, t crewTeam
 	}
 	c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: owner}}
 	round := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: claims})
-	api.reconcileCrewTeamSetup(ctx, owner, t.ProjectID, b.Root, dir, true)
+	api.reconcileCrewTeamSetup(ctx, owner, t.ProjectID, b.Root, dir, b.Downloaded)
 	if err = syncCrewTeamLocal(round, owner, c, dir, &b); err != nil {
 		log.Printf("[CREW_TEAM_SERVER] project=%s folder=%q event=owner_copy_sync_failed reason=%q", t.ProjectID, t.Folder.display(), err)
 		return
 	}
-	api.reconcileCrewTeamSetup(ctx, owner, t.ProjectID, b.Root, dir, true)
+	api.reconcileCrewTeamSetup(ctx, owner, t.ProjectID, b.Root, dir, b.Downloaded)
 }
