@@ -25,13 +25,12 @@ import (
 // exchange. The owner decides which tabs, Main included; unshared tabs are never reached.
 
 type macSharedAgent struct {
-	Tab      string   `json:"tab"`
-	Name     string   `json:"name"`
-	Purpose  string   `json:"purpose"`
-	Icon     string   `json:"icon,omitempty"`
-	Audience string   `json:"audience"` // team | everyone | chosen, or "" (only me) on an agent that is only public
-	People   []string `json:"people,omitempty"`
-	Since    string   `json:"since,omitempty"`
+	Tab      string `json:"tab"`
+	Name     string `json:"name"`
+	Purpose  string `json:"purpose"`
+	Icon     string `json:"icon,omitempty"`
+	Audience string `json:"audience"` // team (In team), or "" (Only me) on an agent that is only public
+	Since    string `json:"since,omitempty"`
 	// Address is how other people's agents message it: agent:<owner>/<address>. The server gives it once and keeps it
 	// across renames; Off keeps a turned-off entry only to keep its address for this owner.
 	Address string `json:"address,omitempty"`
@@ -78,6 +77,14 @@ func readAllMacSharedAgents(project string) []macSharedAgent {
 	if json.Unmarshal(raw, &agents) != nil {
 		return nil
 	}
+	// Data saved before In team / Only me (owner, 5 Nov) may still say everyone or chosen: that is Only me now; an
+	// agent with no other reason to be listed keeps only its address (off).
+	for i := range agents {
+		if agents[i].Audience != "" && agents[i].Audience != "team" {
+			agents[i].Audience = ""
+			agents[i].Off = agents[i].Off || !agents[i].AgentBridgePublic
+		}
+	}
 	return agents
 }
 
@@ -96,7 +103,7 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 	// share (a new purpose or name) keeps it working, so people already using an agent are not cut off.
 	opening := func(agent macSharedAgent) bool {
 		old, ok := before[agent.Tab]
-		return !ok || old.Off || old.Audience != agent.Audience || !slices.Equal(old.People, agent.People) || agent.AgentBridgePublic && !old.AgentBridgePublic
+		return !ok || old.Off || old.Audience != agent.Audience || agent.AgentBridgePublic && !old.AgentBridgePublic
 	}
 	out := []macSharedAgent{}
 	for _, agent := range in {
@@ -113,13 +120,8 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 			return nil, fmt.Errorf("give %s an icon to share it: ask it to set its name, purpose and an emoji icon that fits it", agent.Name)
 		case agent.Audience == "" && !agent.AgentBridgePublic:
 			return nil, fmt.Errorf("choose who can message %s, or make it public for agents", agent.Name)
-		case agent.Audience != "" && agent.Audience != "team" && agent.Audience != "everyone" && agent.Audience != "chosen":
-			return nil, fmt.Errorf("choose My team, Chosen people or Everyone in the company for %s", agent.Name)
-		case agent.Audience == "chosen" && (len(agent.People) == 0 || len(agent.People) > 100):
-			return nil, fmt.Errorf("choose who can message %s", agent.Name)
-		}
-		if agent.Audience != "chosen" {
-			agent.People = nil
+		case agent.Audience != "" && agent.Audience != "team":
+			return nil, fmt.Errorf("choose In team or Only me for %s", agent.Name)
 		}
 		if slices.ContainsFunc(out, func(a macSharedAgent) bool { return a.Tab == agent.Tab }) {
 			continue
@@ -169,30 +171,11 @@ func (api *StreamingAPI) shareMacCrewAgents(w http.ResponseWriter, r *http.Reque
 		externalError(w, 409, "wrong_pair", "Share this Crew's agents from the Mac that holds it.")
 		return
 	}
-	directory, _ := loadUserDirectory()
-	for _, agent := range input.Agents {
-		for _, person := range agent.People {
-			if !slices.ContainsFunc(directoryUsers(directory), func(id string) bool { return id == person }) {
-				externalError(w, 400, "unknown_person", "Choose people who have an account here.")
-				return
-			}
-		}
-	}
 	previous := readAllMacSharedAgents(roots.ID)
 	agents, err := cleanMacSharedAgents(input.Agents, previous)
 	if err != nil {
 		externalError(w, 400, "invalid_agents", err.Error())
 		return
-	}
-	// Choosing an agent audience cannot add people to the Team or grant files.
-	members := crewTeamPeople(roots.ID)
-	for _, agent := range agents {
-		for _, person := range agent.People {
-			if !slices.Contains(members, person) {
-				externalError(w, 400, "not_in_team", "Add that person to the Team first, then choose them for this agent.")
-				return
-			}
-		}
 	}
 	agents = assignMacAgentAddresses(r.Context(), claims.UserID, roots.ID, agents, previous)
 	if err = writeMacSharedAgents(roots.ID, agents); err != nil {
@@ -240,8 +223,8 @@ func macSharedAgentAccess(project, tab, caller, owner string, byAgent bool) (mac
 }
 
 // macSharedAudience: whether the shared list lets this caller message the tab. A Mac agent reaches another person
-// only through Team (owner, 5 Nov): Team on, the caller a joined member, the agent In team. An old "everyone" or
-// "chosen" audience grants nothing; with the Team off, members is only the owner, so only Public on AgentBridge counts.
+// only through Team (owner, 5 Nov): Team on, the caller a joined member, the agent In team; with the Team off,
+// members is only the owner, so only Public on AgentBridge counts.
 func macSharedAudience(agents []macSharedAgent, tab, caller, owner string, members []string, byAgent bool) (macSharedAgent, string) {
 	if caller == "" || caller == owner {
 		return macSharedAgent{}, "owner"

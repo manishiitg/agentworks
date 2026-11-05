@@ -122,7 +122,7 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 		public := []macSharedAgent{}
 		for _, agent := range current {
 			if agent.AgentBridgePublic {
-				agent.Audience, agent.People = "", nil
+				agent.Audience = ""
 				public = append(public, agent)
 			}
 		}
