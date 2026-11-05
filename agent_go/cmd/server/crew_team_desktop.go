@@ -1,17 +1,24 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"io/fs"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 func (api *StreamingAPI) handleDesktopTeamFolders(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +125,112 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		status = "offline"
 		message = "Saved on this Mac. Changes will send when connected."
 	}
-	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "skipped": crewTeamSkipped(b.Root), "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": crewTeamRoundFor(dir)})
+	// Skipped files, minus the ones synced on purpose; only single files can be chosen (exact paths, never folders).
+	op := b.onPurpose()
+	skipped, choosable := []string{}, []string{}
+	for _, rel := range crewTeamSkipped(b.Root) {
+		if op[rel] {
+			continue
+		}
+		skipped = append(skipped, rel)
+		if info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel))); err == nil && info.Mode().IsRegular() {
+			choosable = append(choosable, rel)
+		}
+	}
+	mine := []string{}
+	for _, rel := range b.SyncAnyway {
+		if !slices.Contains(b.StopSyncing, rel) {
+			mine = append(mine, rel)
+		}
+	}
+	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced,
+		"skipped": skipped, "skipped_files": choosable, "synced_on_purpose": mine, "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": crewTeamRoundFor(dir)})
+}
+
+// setCrewTeamSyncAnyway is this person's own choice for one file that looks like it holds passwords or keys (owner,
+// 5 Nov): on syncs it to everyone in the Team from the next round; off removes it from the shared folder and keeps it
+// on this computer. Only files the folder skips can be chosen, by exact path.
+func setCrewTeamSyncAnyway(ctx context.Context, dir, rel string, on bool) error {
+	unlock, err := wf.LockWorkspace(ctx, dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	b, err := readCrewTeamLocal(dir)
+	if err != nil {
+		return err
+	}
+	if on {
+		info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
+		if err != nil || !info.Mode().IsRegular() || !slices.Contains(crewTeamSkipped(b.Root), rel) || !crewTeamAllowed(rel, crewTeamOnPurpose{rel: true}) {
+			return fmt.Errorf("choose one of the skipped files in this shared folder")
+		}
+		if !slices.Contains(b.SyncAnyway, rel) {
+			b.SyncAnyway = append(b.SyncAnyway, rel)
+		}
+		b.StopSyncing = slices.DeleteFunc(b.StopSyncing, func(p string) bool { return p == rel })
+	} else {
+		if !slices.Contains(b.SyncAnyway, rel) && !slices.Contains(b.FolderOnPurpose, rel) {
+			return fmt.Errorf("that file is not synced on purpose")
+		}
+		b.SyncAnyway = slices.DeleteFunc(b.SyncAnyway, func(p string) bool { return p == rel })
+		if !slices.Contains(b.StopSyncing, rel) {
+			b.StopSyncing = append(b.StopSyncing, rel)
+		}
+	}
+	b.Status = "pending"
+	if err = saveCrewTeamLocal(dir, b); err != nil {
+		return err
+	}
+	log.Printf("[CREW_TEAM] local project=%s event=sync_anyway path=%q on=%t", b.Project, rel, on)
+	return nil
+}
+
+func (api *StreamingAPI) handleDesktopTeamSyncAnyway(w http.ResponseWriter, r *http.Request) {
+	if !desktopConnectionGate(w, r) {
+		return
+	}
+	var input struct {
+		Path string `json:"path"`
+		On   bool   `json:"on"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&input) != nil || input.Path == "" {
+		externalError(w, 400, "invalid_request", "Choose a skipped file.")
+		return
+	}
+	dir, err := api.crewTeamLocalDirFor(r.Context(), GetUserFromContext(r.Context()).UserID, mux.Vars(r)["connection"], mux.Vars(r)["project"])
+	if err != nil {
+		externalError(w, 409, "team_unavailable", err.Error())
+		return
+	}
+	if err = setCrewTeamSyncAnyway(r.Context(), dir, input.Path, input.On); err != nil {
+		externalError(w, 400, "sync_anyway_failed", err.Error())
+		return
+	}
+	externalJSON(w, map[string]any{"path": input.Path, "on": input.On})
+}
+
+// crewTeamLocalDirFor is this computer's copy of a team's current shared folder.
+func (api *StreamingAPI) crewTeamLocalDirFor(ctx context.Context, owner, connection, project string) (string, error) {
+	c, err := desktopConnectionFor(owner, connection)
+	if err != nil {
+		return "", fmt.Errorf("Connect your company in the app first.")
+	}
+	var t crewTeam
+	if err = crewTeamRemoteJSON(ctx, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project), nil, &t); err != nil {
+		return "", fmt.Errorf("Your company is offline; try again when connected.")
+	}
+	if !t.FolderAccess {
+		return "", fmt.Errorf("This team has no shared folder for you.")
+	}
+	dir, err := crewTeamLocalDir(owner, c, project, t.Folder.ID)
+	if err != nil {
+		return "", err
+	}
+	if _, err = readCrewTeamLocal(dir); err != nil {
+		return "", fmt.Errorf("This shared folder is not on this computer yet.")
+	}
+	return dir, nil
 }
 
 // Names only: excluded bytes never enter shared content or diagnostics.

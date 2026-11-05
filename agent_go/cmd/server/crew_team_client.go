@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"syscall"
 	"time"
@@ -38,6 +39,21 @@ type crewTeamLocal struct {
 	LastSynced   string            `json:"last_synced,omitempty"`
 	Status       string            `json:"status"`
 	Error        string            `json:"error,omitempty"`
+	// "Sync it anyway" (owner, 5 Nov): this person's own choice of files that look like they hold passwords or keys,
+	// by exact path; StopSyncing are ones taken back, removed from the shared folder on the next upload (the files
+	// stay here). FolderOnPurpose is what the shared folder holds on purpose, from the server's last answer.
+	SyncAnyway      []string `json:"sync_anyway,omitempty"`
+	StopSyncing     []string `json:"stop_syncing,omitempty"`
+	FolderOnPurpose []string `json:"folder_on_purpose,omitempty"`
+}
+
+// onPurpose is what this copy syncs on purpose: its own choices and the folder's, minus the ones it took back.
+func (b crewTeamLocal) onPurpose() crewTeamOnPurpose {
+	op := crewTeamOnPurpose{}.with(b.SyncAnyway).with(b.FolderOnPurpose)
+	for _, p := range b.StopSyncing {
+		delete(op, p)
+	}
+	return op
 }
 
 func crewTeamLocalDir(owner string, c desktopConnection, project, folderID string) (string, error) {
@@ -172,6 +188,10 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 		return e
 	}
 	defer unlock()
+	// The person's on-purpose choices may have changed since the caller read this copy (setCrewTeamSyncAnyway).
+	if fresh, err := readCrewTeamLocal(dir); err == nil {
+		b.SyncAnyway, b.StopSyncing = fresh.SyncAnyway, fresh.StopSyncing
+	}
 	info, e := os.Lstat(b.Root)
 	if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("the shared folder moved; open it in Teams to reconnect it")
@@ -208,9 +228,19 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 		if pending.TransferID == "" {
 			pending = crewTeamTransfer{FolderID: b.FolderID, Client: b.Client, TransferID: uuid.NewString(), Direction: direction}
 			if direction == "upload" {
-				snapshot, err := crewTeamCapture(ctx, b.Root, stage, b.LocalBase)
+				snapshot, err := crewTeamCapture(ctx, b.Root, stage, b.LocalBase, b.onPurpose())
 				if err != nil {
 					return err
+				}
+				// Stop syncing removes the file from the shared folder; it stays on this computer.
+				for _, rel := range b.StopSyncing {
+					key := crewTeamKey(rel)
+					before, ok := b.LocalBase[key]
+					if !ok || slices.ContainsFunc(snapshot.Changes, func(c crewsync.Change) bool { return c.Path == key }) {
+						continue
+					}
+					delete(snapshot.Files, key)
+					snapshot.Changes = append(snapshot.Changes, crewsync.Change{Path: key, Before: &before})
 				}
 				if len(snapshot.Changes) == 0 {
 					snapshot.Close()
@@ -231,12 +261,14 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 				}
 				snapshot.Payloads = map[string]crewsync.Payload{"content": payload}
 				pending.Snapshot = &snapshot
+				pending.OnPurpose = slices.Clone(b.SyncAnyway)
 			} else {
 				pending.Action = "pull"
 				pending.Base = b.RemoteBase
 				if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(b.Project)+"/sync?folder_id="+url.QueryEscape(b.FolderID), pending, &pending); e != nil {
 					return e
 				}
+				b.FolderOnPurpose = pending.OnPurpose // the server names what the folder holds on purpose
 			}
 			if pending.Unchanged {
 				continue
@@ -270,6 +302,14 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 					return e
 				}
 				b.LocalBase = snapshot.Files
+				// Sent: the folder now holds this copy's choices and no longer the ones it took back.
+				folder := crewTeamOnPurpose{}.with(b.FolderOnPurpose).with(pending.OnPurpose)
+				for _, p := range b.StopSyncing {
+					if _, kept := snapshot.Files[crewTeamKey(p)]; !kept {
+						delete(folder, p)
+					}
+				}
+				b.FolderOnPurpose, b.StopSyncing = sortedOnPurpose(folder), nil
 			} else {
 				if e = transferCrewTeamBundle(ctx, c, b.Project, pending, filepath.Join(stage, "content")); e != nil {
 					return e
@@ -311,7 +351,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 		}
 		_ = os.Remove(filepath.Join(stage, "content"))
 	}
-	check, e := crewTeamCapture(ctx, b.Root, dir, b.LocalBase)
+	check, e := crewTeamCapture(ctx, b.Root, dir, b.LocalBase, b.onPurpose())
 	if e != nil {
 		return e
 	}
@@ -326,8 +366,8 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	return saveCrewTeamLocal(dir, *b)
 }
 
-func crewTeamCurrentFile(root, rel string) (*crewsync.File, error) {
-	f, e := openCrewTeamFile(root, rel)
+func crewTeamCurrentFile(root, rel string, on ...crewTeamOnPurpose) (*crewsync.File, error) {
+	f, e := openCrewTeamFile(root, rel, on...)
 	if os.IsNotExist(e) || errors.Is(e, syscall.ENOTDIR) || errors.Is(e, syscall.EISDIR) {
 		return nil, nil
 	}
@@ -347,15 +387,16 @@ func crewTeamCurrentFile(root, rel string) (*crewsync.File, error) {
 	return &crewsync.File{Hash: hex.EncodeToString(h.Sum(nil)), Size: n, Executable: info.Mode()&0111 != 0}, nil
 }
 func applyCrewTeamDownload(ctx context.Context, b *crewTeamLocal, s *crewsync.Snapshot) error {
-	if e := validateCrewTeamSnapshot(s); e != nil {
+	op := b.onPurpose()
+	if e := validateCrewTeamSnapshot(s, op); e != nil {
 		return e
 	}
 	if b.LocalBase == nil {
 		b.LocalBase = crewsync.Manifest{}
 	}
 	for _, change := range crewTeamOrderedChanges(s.Changes) {
-		rel, _ := crewTeamRelative(change.Path)
-		actual, e := crewTeamCurrentFile(b.Root, rel)
+		rel, _ := crewTeamRelative(change.Path, op)
+		actual, e := crewTeamCurrentFile(b.Root, rel, op)
 		if e != nil {
 			return e
 		}
@@ -376,7 +417,7 @@ func applyCrewTeamDownload(ctx context.Context, b *crewTeamLocal, s *crewsync.Sn
 				if e != nil {
 					return e
 				}
-				e = writeCrewTeamFile(ctx, b.Root, rel, f, *change.After)
+				e = writeCrewTeamFile(ctx, b.Root, rel, f, *change.After, op)
 				f.Close()
 				if e != nil {
 					return e

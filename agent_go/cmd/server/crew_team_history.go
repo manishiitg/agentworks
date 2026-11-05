@@ -76,7 +76,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		return
 	}
 	allowed := func(p string) bool {
-		if !crewTeamAllowed(p) {
+		if !crewTeamAllowed(p, s.onPurpose()) {
 			return false
 		}
 		return claims.AccessToken == nil || claims.AccessToken.FileGuard == nil || claims.AccessToken.FileGuard.Allows(p, false)
