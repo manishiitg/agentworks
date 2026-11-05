@@ -620,25 +620,6 @@ func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project s
 	}
 }
 
-// handleSharedWithMe is the recipient's "Shared with me" list (PLAT-856-509): each agent someone shared with this
-// person from a Crew on their Mac, decided by the server from each agent's audience. The Crew itself is not listed.
-func (api *StreamingAPI) handleSharedWithMe(w http.ResponseWriter, r *http.Request) {
-	claims := GetUserFromContext(r.Context())
-	if claims == nil || claims.UserID == "" {
-		externalError(w, 401, "sign_in", "Sign in first.")
-		return
-	}
-	agents := []map[string]any{}
-	if !IsLocalMode() {
-		for _, row := range macSharedAgentRows(claims.UserID, false) {
-			agents = append(agents, map[string]any{"workspace_id": crewProfileID + ":" + fmt.Sprint(row["crew_id"]), "chat_id": row["chat_id"], "name": row["name"],
-				"owner_name": row["owner_short"], "crew_name": row["crew_title"], "purpose": row["purpose"], "icon": row["icon"], "available": row["available"], "watch_only": row["watch_only"]})
-		}
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, map[string]any{"agents": agents})
-}
-
 // assignMacAgentAddresses gives each shared agent its address for other people's agents (agent:<owner>/<address>): kept
 // when it already has one (also after a rename or being turned off and on), otherwise made from its name and unique
 // among this owner's agents. Agents turned off stay as reserved entries so their address is never reused.

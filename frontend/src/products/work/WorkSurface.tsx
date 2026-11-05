@@ -37,7 +37,6 @@ import { activateTab } from '../../utils/activateTab'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
 import { workProjectActivity } from './workProjectPresentation'
-import { SharedCrewWorkspace } from './SharedCrewWorkspace'
 import { CreateCrewWizard } from './CreateCrewWizard'
 import { prepareCrewOnboarding } from './crewOnboarding'
 import type { CrewOnboarding } from './crewStarterTypes'
@@ -1471,7 +1470,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                 onToggleChat={() => setChatOpen(value => !value)}
               /> : null}><>
                   {tabId || isWorkSessionRun(selected) ? (
-                    <SharedCrewWorkspace key={selected.id} projectId={selected.id} enabled={isShared}><span hidden data-ui-view-mounted /><WorkWorkspacePane
+                    <><span hidden data-ui-view-mounted /><WorkWorkspacePane
                         key={`${selected.id}:${workspaceViewRefresh}`}
                         workspacePath={selected.workspacePath}
                         filesPath={selected.filesPath}
@@ -1501,7 +1500,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         onWorkflowContextPathsChange={changeWorkflowContextPaths}
                         onUpdateIdentity={changeProjectIdentity}
                         onDeleteRequest={requestDeleteProject}
-                      /></SharedCrewWorkspace>
+                      /></>
                   ) : (
                     <div className="grid h-full place-items-center text-sm text-muted-foreground">Opening workspace…</div>
                   )}

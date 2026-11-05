@@ -1,6 +1,5 @@
 import { ArrowLeft, BarChart3 } from "lucide-react";
 import { ReportView } from "../components/workflow/ReportViewer";
-import { SharedCrewWorkspace } from "../products/work/SharedCrewWorkspace";
 import { isSafeReportWorkspacePath } from "../utils/reportWorkspacePath";
 import { followAppLink } from "../utils/appNavigation";
 
@@ -51,9 +50,7 @@ export function ReportPage({ encodedPath, ownerUid }: ReportPageProps) {
     <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
       {backLink && <nav aria-label="Dashboard navigation" className="flex h-10 shrink-0 items-center border-b border-border px-3">{backLink}</nav>}
       <div className="min-h-0 flex-1">
-        <SharedCrewWorkspace key={workspacePath} workspacePath={workspacePath!} enabled>
-          <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation crewConversationPane hideToolbar />
-        </SharedCrewWorkspace>
+        <ReportView workspacePath={workspacePath!} documentPath={documentPath} allowContentQuestions={false} dashboardConversation crewConversationPane hideToolbar />
       </div>
     </div>
   );

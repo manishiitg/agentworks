@@ -8,23 +8,17 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { connectedLocations, hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
-import { useSharedCrewRows } from './SharedWithMe'
+import { useTeamInviteRows } from './TeamInviteRow'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
 
 const openTeamBoard = (projectId: string) => { window.dispatchEvent(new CustomEvent('agentworks:open-team-board', { detail: { projectId } })); window.dispatchEvent(new Event('close-app-sidebar')) }
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
 
-function OwnershipGroups<T extends SidebarProject>({ projects, render, sharedAgents }: { projects: T[]; render: (project: T) => ReactNode; sharedAgents?: ReactNode[] }) {
-  const groups = [
-    { label: 'Mine', rows: projects.filter(project => project.owned_by_caller === true).map(render) },
-    // Agents others shared with you from their Macs come with the Crews shared with you (the server decides both).
-    { label: 'Shared with me', rows: [...projects.filter(project => project.owned_by_caller === false).map(render), ...(sharedAgents || [])] },
-  ]
-  return <>{groups.map(group => group.rows.length > 0 && <section key={group.label} aria-label={group.label} className="mb-3 space-y-1">
-    <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">{group.label}</h2>
-    {group.rows}
-  </section>)}{projects.filter(project => project.owned_by_caller === undefined).map(render)}</>
+/** One list of Crews and Goals (owner, 5 Nov: "we only have crews.. nothing else now"): another person's Crew (a Team
+ * you joined, or one you co-own) sits with yours and its row names its owner. Team invites come first. */
+function ProjectList<T extends SidebarProject>({ projects, render, invites }: { projects: T[]; render: (project: T) => ReactNode; invites: ReactNode[] }) {
+  return <>{invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}{projects.map(render)}</>
 }
 
 function useWorkHistory(projects: SidebarProject[]) {
@@ -57,8 +51,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     visit(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id))
     openSidebarProject(project.kind, project.id)
   }} />{project.kind === 'crew' && project.selected && <SidebarCrewAgents projectId={project.id} />}</Fragment>
-  const sharedAgentRows = useSharedCrewRows()
-  // One server here: no filter (owner, 4 Nov: the filter is only the server choice; Mine and Shared with me are groups).
+  const invites = useTeamInviteRows()
   const { macs, server } = groupByMac(orderedProjects)
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
     {macs.map(({ mac, rows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
@@ -70,7 +63,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
       {rows.map(renderProject)}
     </section>)}
     {macs.length > 0 && server.length > 0 && <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">On the server</h2>}
-    <div className="space-y-1"><OwnershipGroups projects={server} render={renderProject} sharedAgents={sharedAgentRows} /></div>
+    <div className="space-y-1"><ProjectList projects={server} render={renderProject} invites={invites} /></div>
     {children}
     {window.electronAPI?.getDesktopConnection && <p className="px-2.5 py-2 text-xs text-muted-foreground">Start the app with the desktop launcher to connect another server.</p>}
   </div>
@@ -84,8 +77,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const { refresh, error: directoryError } = state
   const { recent, visit } = useWorkHistory(projects)
   const [filter, setFilter] = useState('all')
-  // Crews whose agents are shared with you on the server this window shows (the local app lists none).
-  const sharedAgentRows = useSharedCrewRows()
+  const invites = useTeamInviteRows()
   useEffect(() => { if (filter !== 'all' && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
   useEffect(() => {
     void refresh()
@@ -106,7 +98,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     const rank = (row: typeof a) => { const index = recent?.indexOf(connectedProjectKey(row.connection.id, row.kind, row.id)) ?? -1; return index < 0 ? Infinity : index }
     return rank(a) - rank(b) || a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id)
   })
-  // The filter is only which server (owner, 4 Nov); Mine and Shared with me stay as the groups below.
+  // The filter is only which server (owner, 4 Nov).
   const visible = rows.filter(row => filter === 'all' || row.connection.id === filter)
   const serverColors = serverIconColors(connections)
   const renderProject = (project: typeof rows[number]) => <Fragment key={`${project.connection.id}:${project.kind}:${project.id}`}><SidebarProjectRow {...project}
@@ -124,7 +116,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       {connections.length > 1 && <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} />}
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      <div className="space-y-1"><OwnershipGroups projects={visible} render={renderProject} sharedAgents={sharedAgentRows} /></div>
+      <div className="space-y-1"><ProjectList projects={visible} render={renderProject} invites={invites} /></div>
       {(filter === 'all' || filter === active) && children}
         {locations.map(connection => {
         const status = inventory[connection.id]?.status

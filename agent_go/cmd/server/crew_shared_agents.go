@@ -2,10 +2,8 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 )
@@ -183,35 +181,6 @@ func recheckSharedCrewAgentContact(ctx context.Context, caller, agent agentMessa
 		return fmt.Errorf("shared agent unavailable or access removed")
 	}
 	return nil
-}
-
-// The website calls the same workspace service as external MCP, with the same
-// authenticated claims. This adapter exposes only listing, reading and asking.
-func (api *StreamingAPI) handleCrewSharedAgents(w http.ResponseWriter, r *http.Request) {
-	var args map[string]any
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 32768)).Decode(&args) != nil {
-		externalError(w, 400, "invalid_arguments", "Give a Crew and agent.")
-		return
-	}
-	switch externalArg(args, "action") {
-	case "chats", "read_chat", "ask", "reply_input":
-	default:
-		externalError(w, 400, "invalid_arguments", "Choose agents, read a conversation or send a message.")
-		return
-	}
-	if externalArg(args, "workspace_id") == "" {
-		target, err := api.dashboardTarget(r.Context(), GetUserFromContext(r.Context()), externalArg(args, "workspace"))
-		if err != nil {
-			externalFailure(w, err)
-			return
-		}
-		if target.Kind != "crew" {
-			externalJSON(w, map[string]any{"chats": []any{}})
-			return
-		}
-		args["workspace_id"] = crewProfileID + ":" + target.ID
-	}
-	api.externalWorkspaceCall(w, r, args)
 }
 
 func logSharedCrewAgent(user, key, action string) {

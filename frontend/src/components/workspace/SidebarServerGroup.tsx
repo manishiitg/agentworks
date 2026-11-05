@@ -5,7 +5,6 @@ import { openAppProduct } from '../../utils/appNavigation'
 import { LayoutDashboard, Laptop } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
-import { useSharedCrewPageStore } from '../../stores/useSharedCrewPageStore'
 
 export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, owned_by_caller, owner_name, stateLine, offline, onMac, shared_agents, onOpen }: { shared_agents?: number; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
   const sharedDashboard = kind === 'crew' && mode === 'run'
@@ -33,7 +32,6 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
 export function openSidebarProject(kind: 'crew' | 'goal', id: string) {
   const surface = kind === 'crew' ? 'work' : 'agentworks'
   window.dispatchEvent(new Event('close-app-sidebar'))
-  useSharedCrewPageStore.getState().open(null)
   openProductWorkspace(surface)
   openAppProduct({ surface, id })
 }
