@@ -1,6 +1,5 @@
 import { createPortal } from 'react-dom'
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
-import { useProjectTeam } from '../../products/work/teamApi'
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -105,9 +104,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const place = useYourComputerSummary(Boolean(placeProject), placeProject)
   // On the website a Crew that lives on its owner's Mac has no tabs of its own online; a new one would be empty.
   const livesOnMac = useCrewLivesOnMac(placeProject)
-  // A Crew with its Team on says so after its name, for its owner and members alike (owner, 5 Nov).
-  const { team } = useProjectTeam(placeProject || '')
-  const teamPeople = team?.on ? 1 + team.people.filter(person => !person.invited).length : 0
   // A Crew on its owner's Mac shows the Mac's own tabs while the Mac is on; with it off, Main only (PLAT-856-509).
   const sideChatsHere = allowSideChats && place !== 'mac_off'
   // A Crew on its owner's Mac shows where it lives only as the colour of the agents arrow (owner, 3 Nov): green with the
@@ -377,7 +373,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
       {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} projectId={placeProject} showName={menuMode || phone} />}
-      {surface === 'work' && teamPeople > 0 && <span title={`Team · ${teamPeople} people`} className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground">Team</span>}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map((tab, index) => {
         const person = tabOwnerLabel(tab)
