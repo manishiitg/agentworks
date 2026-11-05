@@ -310,6 +310,9 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 					return e
 				}
 				b.LocalBase = snapshot.Files
+				// The server now holds what this copy sent, so the download that follows does not send it back
+				// (it re-received 8.3 MB of its own upload, 5 Nov); anything a teammate changed meanwhile still differs.
+				b.RemoteBase = snapshot.Files
 				// Sent: the folder now holds this copy's choices and no longer the ones it took back.
 				folder := crewTeamOnPurpose{}.with(b.FolderOnPurpose).with(pending.OnPurpose)
 				for _, p := range b.StopSyncing {
@@ -507,6 +510,8 @@ func transferCrewTeamBundle(ctx context.Context, c desktopConnection, project st
 		if e != nil || offset < 0 || offset > p.Size || res.Header.Get("X-Sync-Hash") != p.Hash {
 			return fmt.Errorf("invalid saved transfer offset")
 		}
+		// What the server already has counts as sent (a resumed round showed 0 bytes of 11.8 MB at done, 5 Nov).
+		crewTeamRoundBytes(ctx, offset)
 		f, e := os.Open(file)
 		if e != nil {
 			return e
