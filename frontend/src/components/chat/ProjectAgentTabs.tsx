@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom'
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { useProjectTeam } from '../../products/work/teamApi'
-import { ArrowDown, ArrowUp, ChevronDown, Eye, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -118,15 +118,15 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // Grouped by person like the left menu (owner, 5 Nov): your own tabs first, then each other person's under their name.
   const tabOwnerLabel = (tab: ChatTab) => canControl(tab) ? '' : ownerShortName(listedFor(tab)?.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '') || 'Someone'
   const tabPeople = [...new Set(shownTabs.map(tabOwnerLabel))].sort((a, b) => a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))
-  const visibleTabs = tabPeople.flatMap(person => shownTabs.filter(tab => tabOwnerLabel(tab) === person))
+  // The header shows only your own agents (owner, 5 Nov: other people's are in the left menu and Access already); the
+  // one someone else's agent you are watching stays as a tab, with its eye, until you switch away.
+  const visibleTabs = tabPeople.flatMap(person => shownTabs.filter(tab => tabOwnerLabel(tab) === person && (person === '' || tab.tabId === activeTabId)))
   const [moreOpen, setMoreOpen] = useState(false)
   // Which agents others can message and who asked them lately (a Crew on this Mac): marks on each tab's avatar.
   const macHere = livesOnMacHere(place) && !livesOnMac
   const shares = useMacSharedAgents(placeProject, macHere)
   // In the Mac app, the Team members' own agents from the online copy (owner, 5 Nov); they open on the server's page.
   const teamRemote = useTeamRemoteAgents(placeProject, macHere)
-  // Once opened, a member's agent is a watch-only tab here; the strip shows that tab instead of its button.
-  const teamRemoteClosed = teamRemote.filter(agent => !tabs.some(tab => tab.metadata?.agentProfileConversationKey === `${placeProject}:team:${agent.key}`))
   const asking = useCrewAsking(macHere ? placeProject : undefined)
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   const sharedHere = (tab: ChatTab) => { const id = agentId(tab); return Boolean(id && shares[id]) }
@@ -410,17 +410,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         closeStopsSession={!!key}
         onMakeInteractive={onMakeInteractive}
       />{renderAfterTab?.(tab)}</div></Fragment>
-      })}
-      {/* The Team members' agents in the Mac app, under each person's name; each opens on the server's page. */}
-      {teamRemoteClosed.map((agent, index) => {
-        const person = ownerShortName(agent.owner) || 'Teammate'
-        const first = index === 0 || (ownerShortName(teamRemoteClosed[index - 1].owner) || 'Teammate') !== person
-        return <Fragment key={agent.key}>{first && <span className="ml-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-4 w-px bg-border" />{person}:</span>}
-          <button type="button" onClick={agent.open} title={`${person}'s ${agent.name} · watch it here; only ${person} types there`}
-            className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-            <span className="max-w-[10rem] truncate">{agent.name}</span>
-            <Eye role="img" aria-label="Watching: only they type here" className="h-3 w-3 shrink-0" />
-          </button></Fragment>
       })}
       </div>
       {!menuMode && (tabs.length > 1 || phone || livesOnMac) && (
