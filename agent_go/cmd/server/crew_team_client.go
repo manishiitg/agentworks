@@ -287,13 +287,7 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 		}
 	}
 	if len(scan.changes) > 0 {
-		var total int64
-		for _, ch := range scan.changes {
-			if ch.After != nil {
-				total += ch.After.Size
-			}
-		}
-		roundCtx := startCrewTeamRound(ctx, dir, b.Project, "upload", len(scan.changes), total, 0)
+		roundCtx := startCrewTeamRound(ctx, dir, b.Project, "upload", len(scan.changes), 0, 0)
 		e = crewTeamUpload(roundCtx, owner, c, route, query, b, scan)
 		endCrewTeamRound(dir, e)
 		if e != nil {
@@ -456,7 +450,14 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 // crewTeamUpload sends this copy's changes in batches: plan, the missing chunks in frames of at most
 // crewTeamChunkBatch bytes (read from the files again and checked), then commit.
 func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, route, query string, b *crewTeamLocal, scan crewTeamScanResult) error {
-	var sent int64
+	// Every batch is planned first, so the round's total is the bytes the server lacks (review 5 Nov #11).
+	type planned struct {
+		request crewTeamSyncRequest
+		batch   []crewTeamChange
+		missing []string
+	}
+	plans := []planned{}
+	var sent, total int64
 	for start := 0; start < len(scan.changes); start += crewTeamCommitBatch {
 		batch := scan.changes[start:min(start+crewTeamCommitBatch, len(scan.changes))]
 		// The same change set retried (a commit whose reply was lost) carries the same transfer id, so the server's
@@ -468,6 +469,14 @@ func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, rout
 		if e := crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/sync/plan"+query, request, &plan); e != nil {
 			return crewTeamStep("plan", e)
 		}
+		for _, id := range plan.Missing {
+			total += scan.sources[id].size
+		}
+		plans = append(plans, planned{request: request, batch: batch, missing: plan.Missing})
+	}
+	crewTeamRoundTotal(ctx, total)
+	for _, p := range plans {
+		request, batch, plan := p.request, p.batch, struct{ Missing []string }{p.missing}
 		for i := 0; i < len(plan.Missing); {
 			var frames bytes.Buffer
 			for ; i < len(plan.Missing) && (frames.Len() == 0 || int64(frames.Len())+crewTeamChunkMax <= crewTeamChunkBatch); i++ {
