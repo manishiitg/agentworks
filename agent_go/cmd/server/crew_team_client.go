@@ -117,22 +117,6 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	if !IsLocalMode() {
-		records, _ := defaultProjectOwners().All()
-		for _, rec := range records {
-			ids := []string{}
-			for _, a := range readAllMacSharedAgents(rec.ProjectID) {
-				if a.Audience == "chosen" {
-					ids = append(ids, a.People...)
-				}
-			}
-			if len(ids) > 0 {
-				if err := ensureCrewTeamPeople(rec.ProjectID, rec.OwnerID, ids); err != nil {
-					log.Printf("[CREW_TEAM] project=%s event=seed_failed reason=%q", rec.ProjectID, err)
-				}
-			}
-		}
-	}
-	if !IsLocalMode() {
 		api.startCrewTeamServerCopies(ctx)
 		return cancel
 	}

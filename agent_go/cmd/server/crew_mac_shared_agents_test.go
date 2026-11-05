@@ -32,8 +32,7 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}, {UserID: "disabled"}, {UserID: "no-crew"}}}); err != nil {
 		t.Fatal(err)
 	}
-	agents := []macSharedAgent{{Tab: "main", Audience: "team"}, {Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member"}},
-		{Tab: "public01", AgentBridgePublic: true}}
+	agents := []macSharedAgent{{Tab: "main", Audience: "team"}, {Tab: "team01", Audience: "team"}, {Tab: "public01", AgentBridgePublic: true}}
 	if err := writeMacSharedAgents("p", agents); err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +45,6 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 		{"team send", "member", "team01", []string{"messages:send"}, true, true, true},
 		{"team reply read", "member", "main", []string{"messages:read"}, true, false, true},
 		{"outside team", "outsider", "team01", []string{"messages:send"}, true, true, false},
-		{"an old chosen audience grants nothing", "member", "chosen01", []string{"messages:read"}, true, false, false},
 		{"private tab", "member", "private01", []string{"messages:read"}, true, false, false},
 		{"read permission cannot send", "member", "main", []string{"messages:read"}, true, true, false},
 		{"disabled caller", "disabled", "main", []string{"messages:send"}, true, true, false},
@@ -186,8 +184,8 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	agents, err := cleanMacSharedAgents([]macSharedAgent{
-		{Tab: "writer01", Name: "Writer", Purpose: "Drafts posts", Icon: "✍️", Audience: "chosen", People: []string{"a", "c"}},
-		{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Icon: "💬", Audience: "everyone"},
+		{Tab: "writer01", Name: "Writer", Purpose: "Drafts posts", Icon: "✍️", Audience: "team"},
+		{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Icon: "💬", AgentBridgePublic: true},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -198,8 +196,9 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 	for _, tc := range []struct {
 		name, tab, caller, reason string
 	}{
-		{"an old chosen audience grants nothing", "writer01", "a", "not_in_audience"},
-		{"an old everyone audience grants nothing", "helper01", "b", "not_in_audience"},
+		{"In team reaches a member", "writer01", "a", ""},
+		{"In team does not reach outside the Team", "writer01", "b", "not_in_audience"},
+		{"public on AgentBridge is not a people audience", "helper01", "a", "not_in_audience"},
 		{"owner uses their own chat", "writer01", "owner", "owner"},
 		{"Main or an unshared tab", "p", "a", "not_shared"},
 	} {
@@ -207,21 +206,25 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 			t.Fatalf("%s: reason %q, want %q", tc.name, reason, tc.reason)
 		}
 	}
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "../x", Name: "x", Purpose: "x", Icon: "💬", Audience: "everyone"}}, nil); err == nil {
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "../x", Name: "x", Purpose: "x", Icon: "💬", Audience: "team"}}, nil); err == nil {
 		t.Fatal("a tab id with path characters was saved")
 	}
 	// Owner, 4 Nov: an agent is shared only with its name, purpose and icon.
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "everyone"}}, nil); err == nil {
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "team"}}, nil); err == nil {
 		t.Fatal("an agent without an icon was shared")
 	}
 	// An agent already shared before the rule keeps working when its name or purpose changes; a new audience
 	// counts as sharing again and needs the icon.
-	shared := []macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "everyone"}}
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers anything", Audience: "everyone"}}, shared); err != nil {
+	shared := []macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "team"}}
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers anything", Audience: "team"}}, shared); err != nil {
 		t.Fatalf("refreshing an existing share without an icon was refused: %v", err)
 	}
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "team"}}, shared); err == nil {
-		t.Fatal("a new audience for an agent without an icon was accepted")
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "team", AgentBridgePublic: true}}, shared); err == nil {
+		t.Fatal("newly public for an agent without an icon was accepted")
+	}
+	// Owner, 5 Nov: In team or Only me only.
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Icon: "💬", Audience: "everyone"}}, nil); err == nil {
+		t.Fatal("an old everyone audience was saved")
 	}
 
 	// The Mac refuses before any turn when the tab is not one it shares, or the request is malformed.
@@ -290,18 +293,6 @@ func TestMacSharedAgentAddressKeptAndReserved(t *testing.T) {
 	again := assignMacAgentAddresses(t.Context(), "owner", "p", []macSharedAgent{{Tab: "a1", Name: "Editor"}, {Tab: "a2", Name: "Writer"}}, renamed)
 	if again[1].Address != "writer-2" || again[1].Off {
 		t.Fatalf("turning it back on did not reuse its address: %+v", again)
-	}
-}
-
-// PLAT-856-509: sharing from chat names people in words. Only an exact name or email picks someone; any partial match,
-// even a single one, goes back to the person as a question, never a guess.
-func TestMatchNetworkPersonAsksWhenAmbiguous(t *testing.T) {
-	people := []networkPerson{{ID: "1", Username: "anita", Email: "anita@example.com"}, {ID: "2", Username: "anil", Email: "anil.k@example.com"}, {ID: "3", Username: "rakesh", Email: "rakesh@example.com"}}
-	for _, tc := range []struct{ text, want string }{{"Anita", "1"}, {"rakesh@example.com", "3"}, {"anil.k", "2"}, {"rak", ""}, {"ani", ""}, {"zoe", ""}} {
-		got, err := matchNetworkPerson(people, tc.text)
-		if got != tc.want || (tc.want == "") != (err != nil) {
-			t.Fatalf("%q: got %q, %v; want %q", tc.text, got, err, tc.want)
-		}
 	}
 }
 

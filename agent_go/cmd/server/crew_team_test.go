@@ -73,7 +73,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	// The team's agents (a shared room, 5 Nov): members see the owner's In team agents, grouped by person; Only me
 	// agents and non-members see nothing.
-	if err := writeMacSharedAgents("team-test", []macSharedAgent{{Tab: "team01", Name: "Reviewer", Purpose: "Checks invoices", Icon: "🔍", Audience: "team"}, {Tab: "solo01", Name: "Solo", Purpose: "Private", Icon: "🔒", Audience: "chosen", People: []string{"member"}}}); err != nil {
+	if err := writeMacSharedAgents("team-test", []macSharedAgent{{Tab: "team01", Name: "Reviewer", Purpose: "Checks invoices", Icon: "🔍", Audience: "team"}, {Tab: "solo01", Name: "Solo", Purpose: "Private", Icon: "🔒", AgentBridgePublic: true}}); err != nil {
 		t.Fatal(err)
 	}
 	if w = call("member", "GET", base+"/agents", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"Reviewer"`) || strings.Contains(w.Body.String(), `"Solo"`) {
@@ -82,8 +82,8 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w = call("outsider", "GET", base+"/agents", "", ""); w.Code != 403 {
 		t.Fatalf("outsider saw the team's agents: %d %s", w.Code, w.Body.String())
 	}
-	agents := []macSharedAgent{{Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member", "outsider"}}, {Tab: "all01", Audience: "everyone"}}
-	for _, tc := range []struct{ tab, who, reason string }{{"team01", "member", ""}, {"team01", "outsider", "not_in_audience"}, {"chosen01", "member", "not_in_audience"}, {"all01", "member", "not_in_audience"}} {
+	agents := []macSharedAgent{{Tab: "team01", Audience: "team"}, {Tab: "solo01", AgentBridgePublic: true}}
+	for _, tc := range []struct{ tab, who, reason string }{{"team01", "member", ""}, {"team01", "outsider", "not_in_audience"}, {"solo01", "member", "not_in_audience"}} {
 		if _, reason := macSharedAudience(agents, tc.tab, tc.who, "owner", crewTeamPeople("team-test"), false); reason != tc.reason {
 			t.Fatalf("audience %s/%s: %s", tc.tab, tc.who, reason)
 		}

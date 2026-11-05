@@ -82,7 +82,7 @@ func withTeamMain(project string, current []macSharedAgent) ([]macSharedAgent, b
 	if at < 0 {
 		next = append(next, macSharedAgent{Tab: macMainTab, Audience: "team"})
 	} else {
-		next[at].Audience, next[at].People = "team", nil
+		next[at].Audience = "team"
 	}
 	return next, true
 }
@@ -109,7 +109,7 @@ func withAllInTeam(rows []macAgentRow, current []macSharedAgent, mainOnlyMe bool
 		case at < 0:
 			next = append(next, macSharedAgent{Tab: row.Tab, Audience: "team"})
 		case next[at].Audience == "":
-			next[at].Audience, next[at].People = "team", nil
+			next[at].Audience = "team"
 		default:
 			continue
 		}

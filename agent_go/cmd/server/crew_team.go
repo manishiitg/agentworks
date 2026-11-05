@@ -216,49 +216,6 @@ func crewTeamMember(project, user string) bool {
 	return user != "" && slices.Contains(crewTeamPeople(project), user)
 }
 
-// Seed existing chosen-agent audiences once, without granting folder access.
-func ensureCrewTeamPeople(project, owner string, people []string) error {
-	if IsLocalMode() {
-		if b, e := crewroot.ReadSync(project); e == nil && b != nil && b.Side == "local" {
-			c, e := desktopConnectionFor(owner, b.ConnectionID)
-			if e != nil {
-				return e
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			return crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID)+"/seed", nil, nil)
-		}
-	}
-	if owner == "" || ownerOfCrewProjectID(project) != owner {
-		return fmt.Errorf("only the Crew owner can set its team")
-	}
-	dir, e := crewTeamDir(project)
-	if e != nil {
-		return e
-	}
-	if e = agentworksclient.EnsurePrivateDirectory(dir); e != nil {
-		return e
-	}
-	unlock, e := wf.LockWorkspace(context.Background(), dir)
-	if e != nil {
-		return e
-	}
-	defer unlock()
-	if _, e = readCrewTeam(project); e == nil {
-		return nil
-	} else if !os.IsNotExist(e) {
-		return e
-	}
-	t := crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}
-	for _, id := range people {
-		if id != owner && crewTeamAccountActive(id) && !t.member(id) {
-			t.People = append(t.People, crewTeamPerson{UserID: id})
-		}
-	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=seeded people=%d", project, owner, len(t.People))
-	return writeCrewTeam(t)
-}
-
 func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	project := mux.Vars(r)["project"]
@@ -292,21 +249,6 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	}
 	if owner == "" || owner != claims.UserID {
 		externalError(w, 403, "team_owner_required", "Only this Crew's owner can change its team.")
-		return
-	}
-	if mux.Vars(r)["op"] == "seed" {
-		ids := []string{}
-		for _, a := range readAllMacSharedAgents(project) {
-			if a.Audience == "chosen" {
-				ids = append(ids, a.People...)
-			}
-		}
-		if e := ensureCrewTeamPeople(project, owner, ids); e != nil {
-			externalError(w, 409, "team_save_failed", e.Error())
-			return
-		}
-		t, _ := readCrewTeam(project)
-		externalJSON(w, t.view(owner))
 		return
 	}
 	var input crewTeam
