@@ -474,11 +474,18 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		externalError(w, http.StatusConflict, "own_login_required", fmt.Sprintf("Sign in to %s on this server once (Providers), so your agent here runs on your own login.", providerAccountProductName(conversation.Provider)))
 		return
 	}
-	// The member's own copy of the team's shared folder is current before their agent starts (crew_team_server_copy.go).
+	// The member's own copy of the team's shared folder syncs alongside, never before the message is accepted (a 19 s
+	// wait was seen, owner 5 Nov): the copy exists from joining and the 5-second loop keeps it current; this round only
+	// shortens the gap and makes the copy on first use (crew_team_server_copy.go).
 	if caller := productWorkspaceUserID(r.Context()); crewTeamOnlyMember(conversation.WorkspacePath, caller) {
-		sync, done := context.WithTimeout(r.Context(), 30*time.Second)
-		_, _ = api.syncCrewTeamServerCopy(sync, caller, crewResourceProjectID(conversation.ConversationKey), true)
-		done()
+		project := crewResourceProjectID(conversation.ConversationKey)
+		go func() {
+			started := time.Now()
+			sync, done := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
+			defer done()
+			_, err := api.syncCrewTeamServerCopy(sync, caller, project, true)
+			log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=turn_sync seconds=%.1f failed=%t", project, logUsernameForUserID(caller), time.Since(started).Seconds(), err != nil)
+		}()
 	}
 	query, err := prepareProductConversationTurn(r.Context(), productWorkspaceUserID(r.Context()), profile, input, conversation)
 	if err != nil {
