@@ -10,6 +10,7 @@ import { saveTeam, switchTeam, teamError, teamRequest, useTeamTab, type Team, ty
 import { MacSharedAgents } from './MacSharedAgents'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { CrewWhereRow } from './CrewWorksElsewhere'
+import { LentCard } from './LentCard'
 
 type Person = { id: string; username: string; email?: string }
 type Listing = { folders: string[]; path: string; files: number; bytes: number; max_bytes?: number; max_files?: number }
@@ -49,10 +50,7 @@ export function TeamTab({ projectId, connection, macSwitch }: { projectId: strin
       <CrewWhereRow projectId={projectId} />
       <SharesCard view={view} target={target} />
       <AgentsCard view={view} target={target} projectId={projectId} connection={connection} />
-      {team.lent && <section aria-label="Lent to the team" className={card}>
-        <h3 className="font-semibold">Lent to the team</h3>
-        <p className="text-[12.5px] text-muted-foreground">{[team.lent.apps.length ? `Apps: ${team.lent.apps.join(', ')}` : '', team.lent.secrets.length ? `Secrets: ${team.lent.secrets.join(', ')}` : ''].filter(Boolean).join(' · ') || 'Nothing yet'}</p>
-      </section>}
+      {team.lent && <LentCard lent={team.lent} target={target} />}
       {view.mac && <section aria-label="Mac online" className={card}>
         <h3 className="font-semibold">Mac online</h3>
         {view.mac.yours && macSwitch
