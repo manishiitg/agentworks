@@ -15,10 +15,19 @@ const openTeamBoard = (projectId: string) => { window.dispatchEvent(new CustomEv
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
 
-/** One list of Crews and Goals (owner, 5 Nov: "we only have crews.. nothing else now"): another person's Crew (a Team
- * you joined, or one you co-own) sits with yours and its row names its owner. Team invites come first. */
+/** One list of Crews and Goals under two plain headings (owner, 5 Nov): Mine, and Shared with me for another person's
+ * Crew (a Team you joined, or one you co-own; its row names its owner). Team invites come first. */
 function ProjectList<T extends SidebarProject>({ projects, render, invites }: { projects: T[]; render: (project: T) => ReactNode; invites: ReactNode[] }) {
-  return <>{invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}{projects.map(render)}</>
+  const groups = [
+    { label: 'Mine', rows: projects.filter(project => project.owned_by_caller === true).map(render) },
+    { label: 'Shared with me', rows: projects.filter(project => project.owned_by_caller === false).map(render) },
+  ]
+  return <>{invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}
+    {groups.map(group => group.rows.length > 0 && <section key={group.label} aria-label={group.label} className="mb-3 space-y-1">
+      <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">{group.label}</h2>
+      {group.rows}
+    </section>)}
+    {projects.filter(project => project.owned_by_caller === undefined).map(render)}</>
 }
 
 function useWorkHistory(projects: SidebarProject[]) {
