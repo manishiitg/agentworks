@@ -9,7 +9,8 @@ func TestChatPolicyManifestAuthority(t *testing.T) {
 		for _, origin := range []string{"interactive", "scheduled", "pulse", "child", "bot", "notification", "unknown"} {
 			for _, readOnly := range []bool{false, true} {
 				got := ChatCapabilities(mode, origin, readOnly)
-				want := mode == "builder" && (origin == "interactive" || origin == "bot" || origin == "notification") && !readOnly
+				// The person's own scheduled and background turns get what typed turns get (owner, 5 Nov).
+				want := mode == "builder" && (origin == "interactive" || origin == "bot" || origin == "notification" || origin == "scheduled" || origin == "child") && !readOnly
 				if got["mcp_management"] != want || got["user_management"] != want {
 					t.Fatalf("MCP admission %s/%s readOnly=%v: %v", mode, origin, readOnly, got)
 				}
@@ -22,16 +23,16 @@ func TestChatPolicyManifestAuthority(t *testing.T) {
 }
 
 // Run mode (every reader, every Slack channel turn) lists MCP servers
-// without managing them; scheduled, Pulse and child agents do neither.
+// without managing them; scheduled and child turns match typed turns; Pulse does neither.
 func TestMCPInspectionIsDeclaredForRunMode(t *testing.T) {
 	for _, mode := range []string{"builder", "run"} {
 		for _, readOnly := range []bool{false, true} {
-			for _, origin := range []string{"interactive", "bot"} {
+			for _, origin := range []string{"interactive", "bot", "scheduled", "child"} {
 				if !ChatCapabilities(mode, origin, readOnly)["mcp_inspection"] {
 					t.Fatalf("%s/%s readOnly=%v cannot list MCP servers", mode, origin, readOnly)
 				}
 			}
-			for _, origin := range []string{"scheduled", "pulse", "child"} {
+			for _, origin := range []string{"pulse"} {
 				if ChatCapabilities(mode, origin, readOnly)["mcp_inspection"] {
 					t.Fatalf("%s admitted undeclared MCP inspection", origin)
 				}
