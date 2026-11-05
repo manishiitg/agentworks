@@ -2676,6 +2676,8 @@ func runServer(cmd *cobra.Command, args []string) {
 			})
 		})
 	}).Methods("POST", "OPTIONS")
+	// `mcpbridge secret NAME` from a coding CLI's shell (session token only; session_value_read.go).
+	toolsRouter.HandleFunc("/secret", api.handleSessionSecretRead).Methods("POST")
 	toolsRouter.HandleFunc("/virtual/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		executorHandlers.HandlePerToolVirtualRequest(w, r, vars["tool"])
@@ -6104,6 +6106,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		// `mcpbridge secret NAME` resolves this same selection again when a command needs a value (session_value_read.go).
+		secretSource := sessionSecretSource{User: currentUserID, Folder: req.SelectedFolder, WorkspacePath: req.secretsWorkspacePath,
+			RunMode: crewAskOnly, Disabled: secretsTurnDisabled(resolvedProfile), Globals: req.SelectedGlobalSecrets}
+		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+			secretSource.CrewProfile, secretSource.ProfileID = true, resolvedProfile.Definition.ID
+		}
+		recordSessionSecretSource(sessionID, secretSource)
 		// A connected GitHub account: git and gh in the CLI's own shell act as that person (PLAT-746-158 B8).
 		gitcred.AddGitHub(codingAgentSecretEnvironment)
 		nativeShellAPITransport := false
