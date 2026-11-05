@@ -222,6 +222,16 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		api.handleTeamCopy(w, r, mux.Vars(r)["project"], input)
 		return
 	}
+	// A joined Team member reads this Crew's Access line too (owner, 5 Nov: a member saw "Only you"); the place and
+	// pairing stay the owner's. For them it is an online Crew.
+	if r.Method == http.MethodGet && !IsLocalMode() {
+		project, caller := mux.Vars(r)["project"], GetUserIDFromContext(r.Context())
+		if t, e := readCrewTeam(project); e == nil && t.OwnerID != caller && t.member(caller) && ownerOfCrewProjectID(project) == t.OwnerID {
+			w.Header().Set("Cache-Control", "no-store")
+			externalJSON(w, crewSyncReply{ProjectID: project, Place: "online", AccessSummary: crewMemberAccessSummary(t)})
+			return
+		}
+	}
 	out, err := api.crewSync(r.Context(), GetUserFromContext(r.Context()), mux.Vars(r)["project"], input)
 	if err != nil {
 		status := 409

@@ -43,6 +43,17 @@ func crewAccessSummary(team *crewTeam, agents []macSharedAgent, unknown ...bool)
 	return strings.Join(parts, " · ")
 }
 
+// crewMemberAccessSummary is the Access line a Team member sees: "Team · demo's Crew · 2 people" (owner, 5 Nov).
+func crewMemberAccessSummary(t crewTeam) string {
+	people := 1 // the owner
+	for _, p := range t.People {
+		if !p.Invited && p.UserID != t.OwnerID {
+			people++
+		}
+	}
+	return fmt.Sprintf("Team · %s's Crew · %d %s", shareOwnerLabel(t.OwnerID), people, plural(people, "person", "people"))
+}
+
 func countAgents(agents []macSharedAgent, keep func(macSharedAgent) bool) int {
 	n := 0
 	for _, agent := range agents {
