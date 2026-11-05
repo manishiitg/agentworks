@@ -152,7 +152,7 @@ func (s *Service) git(ctx context.Context, stdin []byte, extraEnv []string, args
 	}
 	out, err := cmd.Output()
 	if err != nil {
-		return "", retryErr("BACKUP_UNAVAILABLE", "Git backup is unavailable; check the backend repository configuration.", 3)
+		return "", orGitMissing(retryErr("BACKUP_UNAVAILABLE", "Git backup is unavailable; check the backend repository configuration.", 3))
 	}
 	return strings.TrimSuffix(string(out), "\n"), nil
 }
@@ -171,7 +171,7 @@ func (s *Service) ensureRepo(ctx context.Context) error {
 		cmd := exec.CommandContext(ctx, "git", "-c", "core.hooksPath=/dev/null", "init", "--bare", "--template=", "--", s.repo())
 		cmd.Env = gitEnvironment()
 		if err = cmd.Run(); err != nil {
-			return retryErr("BACKUP_UNAVAILABLE", "Git backup initialization failed.", 3)
+			return orGitMissing(retryErr("BACKUP_UNAVAILABLE", "Git backup initialization failed.", 3))
 		}
 		os.Chmod(s.repo(), 0700)
 		if _, err = s.git(ctx, nil, nil, "remote", "add", "origin", destination.Remote); err != nil {
@@ -251,7 +251,7 @@ func (s *Service) gitBytes(ctx context.Context, args ...string) ([]byte, error) 
 	cmd.Env = gitEnvironment()
 	b, e := cmd.Output()
 	if e != nil {
-		return nil, kbErr("BACKUP_UNAVAILABLE", "Git backup state is unavailable.")
+		return nil, orGitMissing(kbErr("BACKUP_UNAVAILABLE", "Git backup state is unavailable."))
 	}
 	return b, nil
 }

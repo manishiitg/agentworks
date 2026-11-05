@@ -63,6 +63,9 @@ func (s *Service) EnsureGitRepository(ctx context.Context) (GitFolder, error) {
 	if err != nil {
 		return f, err
 	}
+	if missing := gitMissing(); missing != nil {
+		return f, missing
+	}
 	run := func(args ...string) error {
 		cmd := exec.CommandContext(ctx, "git", args...)
 		cmd.Dir = s.live

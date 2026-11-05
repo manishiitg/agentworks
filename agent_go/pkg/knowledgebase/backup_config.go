@@ -153,7 +153,7 @@ func (s *Service) configureBackup(ctx context.Context, p Principal, args map[str
 	command := exec.CommandContext(ctx, "git", "check-ref-format", "refs/heads/"+branch)
 	command.Env = gitEnvironment()
 	if command.Run() != nil {
-		return nil, nil, badArg("Invalid backup branch.")
+		return nil, nil, orGitMissing(badArg("Invalid backup branch."))
 	}
 	destination := backupDestination{Remote: remote, Branch: branch, Username: username}
 	current, err := s.configuredBackupDestination()

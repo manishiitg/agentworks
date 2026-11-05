@@ -113,7 +113,7 @@ func (s *Service) headCommit(ctx context.Context) string {
 
 func (s *Service) listChanges(ctx context.Context, p Principal, a map[string]any) (any, error) {
 	if !s.hasGitHistory() {
-		return nil, kbErr("UNAVAILABLE", "Brain's history is not set up on this server yet.")
+		return nil, orGitMissing(kbErr("UNAVAILABLE", "Brain's history is not set up on this server yet."))
 	}
 	head := s.headCommit(ctx)
 	since := strings.TrimSpace(stringArg(a, "since"))
@@ -181,7 +181,7 @@ func (s *Service) listChanges(ctx context.Context, p Principal, a map[string]any
 
 func (s *Service) noteDiff(ctx context.Context, p Principal, a map[string]any) (any, error) {
 	if !s.hasGitHistory() {
-		return nil, kbErr("UNAVAILABLE", "Brain's history is not set up on this server yet.")
+		return nil, orGitMissing(kbErr("UNAVAILABLE", "Brain's history is not set up on this server yet."))
 	}
 	notePath := strings.Trim(stringArg(a, "path"), "/")
 	since := strings.TrimSpace(stringArg(a, "since"))

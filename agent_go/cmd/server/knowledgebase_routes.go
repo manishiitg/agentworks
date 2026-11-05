@@ -277,6 +277,8 @@ func knowledgebaseHTTPError(w http.ResponseWriter, r *http.Request, stage string
 		knowledgebaseLogUnavailable(r, stage, err)
 	case "LIMIT_EXCEEDED":
 		status = http.StatusRequestEntityTooLarge
+	case "GIT_MISSING": // logged once where it is found
+		status = http.StatusServiceUnavailable
 	}
 	if domain.RetryAfter != nil {
 		w.Header().Set("Retry-After", strconv.Itoa(*domain.RetryAfter))
@@ -348,7 +350,7 @@ func (api *StreamingAPI) handleKnowledgebaseViewer(w http.ResponseWriter, r *htt
 			knowledgebaseHTTPError(w, r, "backup_config", err)
 			return
 		}
-		knowledgebaseWriteJSON(w, map[string]any{"organization_id": cfg.OrganizationID, "profile_id": "knowledgebase", "chat_workspace": "Chats/Knowledgebase", "is_admin": currentUserIsAdmin(r), "identity_id": claims.UserID, "can_write": service.CanWriteSomewhere(knowledgebasePrincipal(r, claims)), "backup_configured": backupConfigured})
+		knowledgebaseWriteJSON(w, map[string]any{"organization_id": cfg.OrganizationID, "profile_id": "knowledgebase", "chat_workspace": "Chats/Knowledgebase", "is_admin": currentUserIsAdmin(r), "identity_id": claims.UserID, "can_write": service.CanWriteSomewhere(knowledgebasePrincipal(r, claims)), "backup_configured": backupConfigured, "git_missing": knowledgebase.GitMissingMessage()})
 		return
 	case "folders":
 		tool = "list_knowledgebase_folders"
