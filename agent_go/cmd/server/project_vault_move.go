@@ -60,6 +60,7 @@ func (api *StreamingAPI) moveProjectVaultSecrets(ctx context.Context) (retry boo
 	vaults := projectVaultsToMove(ctx)
 	if len(vaults) == 0 {
 		api.moveRetiredSecretSelections(ctx, nil)
+		log.Printf("[VAULT_MIGRATE] result=nothing_to_move projects=0")
 		return false, nil
 	}
 	backup, err := api.backupProjectVaultValues(ctx, vaults)
@@ -71,6 +72,7 @@ func (api *StreamingAPI) moveProjectVaultSecrets(ctx context.Context) (retry boo
 			retry = true
 		}
 	}
+	log.Printf("[VAULT_MIGRATE] result=done projects=%d retry=%t", len(vaults), retry)
 	if !retry {
 		// A project that had a vault this time is swept at the next start, once its vault is empty.
 		pending := map[string]bool{}

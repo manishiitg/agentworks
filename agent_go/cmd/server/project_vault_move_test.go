@@ -140,7 +140,8 @@ func TestProjectVaultMoveKeepsOwnerLentRuns(t *testing.T) {
 	}
 
 	logs.Reset()
-	if retry, err := f.api.moveProjectVaultSecrets(ctx); err != nil || retry || strings.Contains(logs.String(), "[VAULT_MIGRATE]") {
+	// A second pass moves nothing and says so in its one summary line.
+	if retry, err := f.api.moveProjectVaultSecrets(ctx); err != nil || retry || strings.Count(logs.String(), "[VAULT_MIGRATE]") != 1 || !strings.Contains(logs.String(), "result=nothing_to_move") {
 		t.Fatalf("a second move found work: retry=%v err=%v\n%s", retry, err, logs.String())
 	}
 }
