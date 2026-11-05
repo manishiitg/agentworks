@@ -248,7 +248,7 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 	return localProjectNativeSession{ID: localNativeSessionKey(source, id), Provider: source.Provider, Account: source.Label, Title: title, UpdatedAt: info.ModTime().UTC().Format(time.RFC3339), NativeID: id, Path: path, Model: model, Source: source}, true
 }
 
-func listLocalNativeSessions(ctx context.Context, project string, sources []localNativeSource) ([]localProjectNativeSession, bool) {
+func listLocalNativeSessions(ctx context.Context, project string, sources []localNativeSource, excluded map[string]bool) ([]localProjectNativeSession, bool) {
 	out := []localProjectNativeSession{}
 	partial, visited := false, 0
 	for _, source := range sources {
@@ -287,7 +287,7 @@ func listLocalNativeSessions(ctx context.Context, project string, sources []loca
 			if source.Provider == "codex-cli" && !strings.HasPrefix(entry.Name(), "rollout-") {
 				return nil
 			}
-			if session, ok := localNativeSessionAt(path, project, source); ok {
+			if session, ok := localNativeSessionAt(path, project, source); ok && !excluded[session.ID] {
 				out = append(out, session)
 			}
 			return nil
@@ -299,6 +299,30 @@ func listLocalNativeSessions(ctx context.Context, project string, sources []loca
 		partial = true
 	}
 	return out, partial
+}
+
+// Native tools must run in the project folder to see its existing instructions.
+// Copies can therefore share the original cwd; private runtime bindings, rather
+// than cwd, identify conversations already imported into this Crew.
+func (api *StreamingAPI) localCrewNativeSessions(r *http.Request, crew crewProjectBinding, root, owner string) ([]localProjectNativeSession, bool, error) {
+	sources, err := api.localNativeSources(r.Context(), owner, crew.Binding.WorkspacePath)
+	if err != nil {
+		return nil, false, err
+	}
+	excluded := map[string]bool{}
+	for _, chat := range api.crewChats(r, owner, crew.Binding.ResourceID, crew.Binding.WorkspacePath) {
+		if chat.OwnerID != owner || !strings.Contains(chat.key, codeChatSideMarker+"import-") {
+			continue
+		}
+		runtime, found, _ := ReadChatHistoryRuntimeForSession(owner, chat.SessionID, crew.Binding.WorkspacePath)
+		if !found || runtime == nil || runtime.AgentSessionHandle == nil {
+			continue
+		}
+		handle := runtime.AgentSessionHandle
+		excluded[localNativeSessionKey(localNativeSource{Provider: runtime.Provider, ConnectionID: handle.ConnectionID}, handle.Provider.NativeSessionID)] = true
+	}
+	sessions, partial := listLocalNativeSessions(r.Context(), root, sources, excluded)
+	return sessions, partial, nil
 }
 
 // Same owner/root/token checks for the website, MCP and Crew chat.
@@ -362,14 +386,13 @@ func (api *StreamingAPI) handleLocalProject(w http.ResponseWriter, r *http.Reque
 	out := recognizeLocalProject(r.Context(), roots.Files)
 	out.SessionsAvailable = cliPersonalMac()
 	if r.URL.Query().Get("sessions") == "true" {
-		sources, err := api.localNativeSources(r.Context(), roots.Owner, crew.Binding.WorkspacePath)
+		sessions, partial, err := api.localCrewNativeSessions(r, crew, roots.Files, roots.Owner)
 		if err != nil {
 			externalError(w, 503, "sessions_unavailable", "Your local conversations could not be checked. Try again.")
 			return
 		}
 		out.SessionsAvailable = cliPersonalMac()
-		var partial bool
-		out.Sessions, partial = listLocalNativeSessions(r.Context(), roots.Files, sources)
+		out.Sessions = sessions
 		out.Partial = out.Partial || partial
 	}
 	log.Printf("[LOCAL_PROJECT] project=%s action=recognize instructions=%d skills=%d sessions=%d partial=%t", roots.ID, len(out.Instructions), len(out.Skills), len(out.Sessions), out.Partial)
