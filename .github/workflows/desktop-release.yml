@@ -77,6 +77,10 @@ jobs:
           cd workspace
           go mod download
           GOOS=darwin GOARCH='${{ matrix.goarch }}' go build -o ../desktop/resources/workspace-server .
+          # Every Mac runs its own Vault (owner, 5 Nov): one pure-Go program, built like the servers' agentworks-vault.
+          cd ../mcp-gateway
+          go mod download
+          CGO_ENABLED=0 GOOS=darwin GOARCH='${{ matrix.goarch }}' go build -o ../desktop/resources/agentworks-vault ./cmd/server
       - name: Bundle native CLI and platform helpers
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export AGENTWORKS_APP_VERSION="${GITHUB_REF#refs/tags/v}"; fi

@@ -150,7 +150,7 @@ fi
 for helper in agentworks mcpbridge tmux; do
   [ -x "$SOURCE/Contents/Resources/bin/$helper" ] || die "The release is missing $helper. Nothing was installed."
 done
-for helper in agent-server workspace-server; do
+for helper in agent-server workspace-server agentworks-vault; do
   [ -x "$SOURCE/Contents/Resources/$helper" ] || die "The release is missing $helper. Nothing was installed."
 done
 app_running() { ps -axo comm= | grep -F "$APP/Contents/MacOS/" >/dev/null; }

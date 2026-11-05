@@ -22,6 +22,8 @@ bash "$ROOT/install.sh" --dmg "${DMGS[0]}" --sha256-file "${DMGS[0]}.sha256" --a
 RESOURCES="$STAGE/Applications/AgentWorks.app/Contents/Resources"
 "$STAGE/bin/agentworks" --version
 "$RESOURCES/bin/tmux" -V
+[ -x "$RESOURCES/agentworks-vault" ] || { echo 'The packaged app has no Vault' >&2; exit 1; }
+printf 'Vault: %s bytes\n' "$(stat -f %z "$RESOURCES/agentworks-vault")"
 "$RESOURCES/bin/rsync" --version
 printf '[]' > "$STAGE/tools.json"
 node - "$RESOURCES/bin/mcpbridge" "$STAGE/tools.json" <<'JS'

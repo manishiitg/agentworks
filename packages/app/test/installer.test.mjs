@@ -18,7 +18,7 @@ test('PLAT-856-434: verified Mac install preserves standalone CLI and requires e
     const resources = join(source, 'Contents/Resources');
     mkdirSync(join(resources, 'bin'), { recursive: true });
     writeFileSync(join(resources, 'app.asar'), 'fixture');
-    for (const file of ['agent-server', 'workspace-server', 'bin/agentworks', 'bin/mcpbridge', 'bin/tmux']) {
+    for (const file of ['agent-server', 'workspace-server', 'agentworks-vault', 'bin/agentworks', 'bin/mcpbridge', 'bin/tmux']) {
       writeFileSync(join(resources, file), '#!/bin/sh\necho fixture\n', { mode: 0o755 });
     }
     const dmg = join(root, 'app with spaces.dmg');

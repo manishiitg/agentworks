@@ -36,6 +36,10 @@
           "to": "workspace-server"
         },
         {
+          "from": "resources/agentworks-vault",
+          "to": "agentworks-vault"
+        },
+        {
           "from": "resources/lib",
           "to": "lib"
         },
