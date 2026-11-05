@@ -451,7 +451,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		if strings.TrimSpace(args.SenderAgent) != "" {
 			sender += "'s agent"
 		}
-		noteMacAsk(project, macAskActivity{Tab: call.Tab, Agent: firstNonEmptyTrimmed(agent.Name, "Main"), Sender: sender, Key: key, Session: conversation.SessionID, Started: time.Now().UTC()})
+		noteMacAsk(project, macAskActivity{Tab: call.Tab, Agent: firstNonEmptyTrimmed(agent.Name, "Main"), Sender: sender, Channel: firstNonEmptyTrimmed(args.SenderChannel, "website"), Key: key, Session: conversation.SessionID, Started: time.Now().UTC()})
 		var receipt map[string]any
 		_ = json.Unmarshal(capture.body.Bytes(), &receipt)
 		return reply(200, map[string]any{"status": "accepted", "query_id": receipt["query_id"]})
