@@ -6,11 +6,32 @@ import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 import { OPEN_TEAM_BOARD_EVENT } from '../chat/ProjectWorkspaceTitle'
+import { teamRequest, useProjectTeam } from '../../products/work/teamApi'
 
 // The phone drawer closes once something is opened from it.
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
 const openTeamBoard = (projectId: string) => { window.dispatchEvent(new CustomEvent(OPEN_TEAM_BOARD_EVENT, { detail: { projectId } })); closeDrawer() }
 const openAgent = (tabId: string) => { activateTab(tabId); closeDrawer() }
+
+const personKey = (name: string) => name.trim().toLowerCase().split('@')[0]
+
+/** The Team's joined people other than you, by name (owner, 5 Nov: every member stays visible to the others, also
+ * when their Main is Only me). Read from the Team's agents list, which the server gives only to members. */
+function useTeamPeopleNames(projectId: string): string[] {
+  const { team, target } = useProjectTeam(projectId)
+  const [names, setNames] = useState<string[]>([])
+  useEffect(() => {
+    setNames([])
+    if (!team?.on || !target) return
+    let live = true
+    const load = () => void teamRequest<{ people?: { name: string; you?: boolean }[] }>({ project: target.project, connection: target.connection }, '/agents')
+      .then(data => { if (live) setNames((data.people || []).filter(person => !person.you && person.name).map(person => person.name)) }).catch(() => {})
+    load()
+    const timer = window.setInterval(load, 30000)
+    return () => { live = false; window.clearInterval(timer) }
+  }, [team?.on, target?.project, target?.connection])
+  return names
+}
 
 /** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its icon,
  * name and a mark at the end only when needed, the agent card on hover, and "…" to manage it. "+" is in the top line. */
@@ -20,6 +41,7 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const activeTabId = useChatStore(state => state.activeTabId)
   const [showHidden, setShowHidden] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
+  const teamPeople = useTeamPeopleNames(projectId)
   // Every agent is listed, the open one highlighted, so the menu matches the top line (owner, 4 Nov: "show that on left also").
   const total = crew.agents.length + crew.closed.length
   if (view === 'tabs' || crew.projectId !== projectId || !crew.agents.length) return null
@@ -29,12 +51,18 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} />
   // A shared room (owner, 5 Nov): with other people's agents here, the list is grouped by person, yours under "You".
   const people = [...new Set(shown.map(agent => agent.owner || ''))]
-  const grouped = people.length > 1
+  // A Team member with nothing shared here still has a heading, so the team sees who is in it.
+  const quiet = teamPeople.filter(name => !people.some(person => person && personKey(person) === personKey(name)))
+  const grouped = people.length > 1 || quiet.length > 0
   return <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
     {grouped ? people.map(person => <div key={person || 'you'} role="group" aria-label={person ? `${person}'s agents` : 'Your agents'}>
       <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{person || 'You'}</p>
       {shown.filter(agent => (agent.owner || '') === person).map(row)}
     </div>) : shown.map(row)}
+    {quiet.map(name => <div key={`quiet:${name}`} role="group" aria-label={`${name}'s agents`}>
+      <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{name}</p>
+      <p className="px-2 py-0.5 text-[11px] text-muted-foreground/70">No shared agents</p>
+    </div>)}
     {hidden.length > 0 && <button type="button" aria-expanded={showHidden} onClick={() => setShowHidden(value => !value)}
       className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHidden ? 'rotate-90' : ''}`} />Hidden agents ({hidden.length})
