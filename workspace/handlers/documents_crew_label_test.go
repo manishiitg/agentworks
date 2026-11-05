@@ -218,10 +218,11 @@ func TestLazyCrewListingsLookAheadAndSearchUnloadedFiles(t *testing.T) {
 }
 
 // Team members' working copies (team-copies/<member>/) never show in a Crew's Files; a member's own Files, opened on
-// their copy, lists it, and nobody else's.
+// their copy, lists it, and nobody else's. The Team setup file (team-setup.json) is listed by neither: the server
+// hides it, not the browser (Showcase, 6 Nov).
 func TestTeamCopiesShowOnlyInTheirMembersFiles(t *testing.T) {
 	docs, project := setupLocalCrewDocuments(t)
-	for _, name := range []string{"team-copies/ann/notes.md", "team-copies/bob/plan.md"} {
+	for _, name := range []string{"team-copies/ann/notes.md", "team-copies/bob/plan.md", "team-copies/ann/team-setup.json", "team-setup.json"} {
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(project, name)), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -242,10 +243,10 @@ func TestTeamCopiesShowOnlyInTheirMembersFiles(t *testing.T) {
 		collect(listDocs(t, router, folder, user).Data)
 		return strings.Join(all, " ")
 	}
-	if got := paths("Crew/example/_files", "owner"); strings.Contains(got, "team-copies") || !strings.Contains(got, "notes.txt") {
+	if got := paths("Crew/example/_files", "owner"); strings.Contains(got, "team-copies") || strings.Contains(got, "team-setup.json") || !strings.Contains(got, "notes.txt") {
 		t.Fatalf("owner's Files = %s", got)
 	}
-	if got := paths("Crew/example/_files/team-copies/ann", "ann"); !strings.Contains(got, "team-copies/ann/notes.md") || strings.Contains(got, "bob") {
+	if got := paths("Crew/example/_files/team-copies/ann", "ann"); !strings.Contains(got, "team-copies/ann/notes.md") || strings.Contains(got, "bob") || strings.Contains(got, "team-setup.json") {
 		t.Fatalf("ann's Files = %s", got)
 	}
 	if got := paths("Crew/example/_files/team-copies/ann", "bob"); strings.Contains(got, "notes.md") {

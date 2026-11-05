@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // A Team works with one Crew setup (owner, 5 Nov): the Crew's chat instructions and selected skills travel in
@@ -19,7 +21,7 @@ import (
 // Crew's setup changes and applies it when someone else's edit arrives, so a web member's edit reaches the owner's Mac.
 // The model, apps and secrets stay as they are (the owner's, lent to the Team).
 
-const crewTeamSetupFile = "team-setup.json"
+const crewTeamSetupFile = crewroot.TeamSetupFile
 
 type crewTeamSetup struct {
 	ChatInstructions string   `json:"chat_instructions"`

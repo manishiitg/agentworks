@@ -230,8 +230,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const [filesView, selectFilesView] = useWorkFilesView(accessKey, workspacePath, activeSessionId || '', view === 'files')
   useWorkspaceViewTarget('files', selectFilesView, view === 'files' && !!activeSessionId)
   // One Files view for everyone (owner, 5 Nov): the server's files_path decides its root, for a Team member the folder
-  // the Team shares. team-setup.json is the Team's internal copy of the Crew setup; it is edited in its normal places.
-  const serverFiles = <FileWorkspacePane showGit workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? ['team-setup.json'] : ['.git', 'node_modules', 'product.json', 'workflow.json', 'team-setup.json']} hideManagedEntriesByDefault={!usesExistingFolder} rootName={filesName} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
+  // the Team shares. The server leaves out team-setup.json, the Team's internal copy of the Crew setup.
+  const serverFiles = <FileWorkspacePane showGit workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? undefined : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} rootName={filesName} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
   const contextPanels = workWorkspacePanels({ profileId: product.profileId, readOnly: Boolean(readOnly), showShell, enabledPanels })
   // The dashboard's only link to the chat beside it: a stable callback, so
   // nothing on the chat side re-renders or re-runs the dashboard.

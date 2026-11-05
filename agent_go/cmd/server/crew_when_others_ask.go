@@ -45,7 +45,7 @@ func crewTeamAgentRuleFor(ctx context.Context, project, person, key string) crew
 	if err != nil {
 		return crewTeamAgentRule{}
 	}
-	return t.agentRule(person, crewTeamAgentKey(ctx, t, person, key))
+	return t.agentRule(person, crewTeamRuleKey(ctx, t, person, strings.TrimSpace(key)))
 }
 
 // withAgentRuleArgs adds the agent person's rule to a call that runs another person's message on a Mac (or a
