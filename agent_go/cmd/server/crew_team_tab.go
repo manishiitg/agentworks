@@ -389,10 +389,7 @@ func crewTeamTabShares(t crewTeam, viewer string) ([]crewTeamTabShare, *crewTeam
 	for i, f := range t.Folder.Folders {
 		shares[i].Path = f
 	}
-	for rel, v := range s.Versions {
-		if v.File == nil {
-			continue
-		}
+	for rel, v := range s.held(t.Folder) {
 		whole.Files++
 		whole.Bytes += v.File.Size
 		for i, f := range t.Folder.Folders {
@@ -416,12 +413,7 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 		return nil
 	}
 	s, _ := readCrewTeamFileState(t.ProjectID)
-	files := 0
-	for _, v := range s.Versions {
-		if v.File != nil {
-			files++
-		}
-	}
+	files := len(s.held(t.Folder))
 	// An open clash stays on the line, by file, until someone sorts it out (owner, 5 Nov).
 	open := crewTeamOpenClashPaths(s.Clashes)
 	clashLine := "no clashes"

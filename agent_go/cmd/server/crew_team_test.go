@@ -516,10 +516,9 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		}
 	}
 	fmt.Println("[CREW_TEAM_PROOF] allowed owner/member writes, history-only clash, retry receipt, outside-folder/private-state/link refusals, owner-only configuration and revocation passed")
-	// Changing the selected folder retains the old source copy/history privately,
-	// and an old client's upload is refused even if it still has Team membership.
+	// Changing the selected folder keeps the Team's store (6 Nov: a new store per change re-uploaded every file): the
+	// files no longer shared stay in the store unseen, nobody can read or write them, and a copy keeps syncing.
 	oldTeam, _ := readCrewTeam("team-test")
-	oldDir, _ := crewTeamContentDir("team-test")
 	w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[{"user_id":"member"}],"folder":{"folders":["other"]}}`, "")
 	if w.Code != 200 {
 		t.Fatal("change folder", w.Code, w.Body.String())
@@ -528,19 +527,16 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w = call("member", "POST", base+"/invite", `{"accept":true}`, ""); w.Code != 200 {
 		t.Fatal("member accept again", w.Code, w.Body.String())
 	}
-	newTeam, _ := readCrewTeam("team-test")
-	if newTeam.Folder.ID == oldTeam.Folder.ID {
-		t.Fatal("folder identity reused")
+	if newTeam, _ := readCrewTeam("team-test"); newTeam.Folder.ID != oldTeam.Folder.ID {
+		t.Fatal("a folder change started a new store")
 	}
-	if _, err := os.Stat(filepath.Join(oldDir, "chunks")); err != nil {
-		t.Fatal("old history not kept", err)
+	if w = call("owner", "PUT", file, "outside the share now", "outside-now"); w.Code != 403 {
+		t.Fatal("a write to a folder no longer shared was admitted", w.Code)
 	}
-	w = call("owner", "PUT", file+"&folder_id="+oldTeam.Folder.ID, "stale old folder bytes", "old-folder-write")
-	if w.Code != 403 {
-		t.Fatal("stale folder write admitted", w.Code)
-	}
-	if err := syncCrewTeamLocal(t.Context(), c1.User.ID, c1, d1, b1); err == nil {
-		t.Fatal("old local binding admitted")
+	beforeNarrowed, _ := readCrewTeamFileState("team-test")
+	sync(c1, d1, b1)
+	if after, _ := readCrewTeamFileState("team-test"); after.Revision != beforeNarrowed.Revision {
+		t.Fatal("a copy sent files after the share was narrowed")
 	}
 	w = call("member", "GET", base+"/files", "", "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"files":[]`) {
