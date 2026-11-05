@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Globe, Hash, MessageSquare, MoreHorizontal, Pencil, Smartphone, Terminal, type LucideIcon } from 'lucide-react'
+import { MoreHorizontal, Pencil } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
@@ -38,7 +38,6 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
   const [supported, setSupported] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [copied, setCopied] = useState('')
   const [openPurpose, setOpenPurpose] = useState('')
   // "All agents in team" (owner, 5 Nov): kept on this Mac; while on, every agent with a purpose and icon is in the team.
   const [allInTeam, setAllInTeam] = useState(false)
@@ -131,10 +130,12 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
         <div className="flex flex-wrap items-center gap-2.5">
           <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">{row.icon?.trim() || row.name.slice(0, 1).toUpperCase()}</span>
           <span title={purpose || undefined} className="min-w-0 truncate">{row.name}</span>
+          {/* The row reads as a state, not only a toggle (owner, 5 Nov: "ui is not clear"). */}
+          {choice === 'team' && <span className="shrink-0 text-xs text-muted-foreground">Shared with the team</span>}
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${place === 'server' || place === 'publishing' ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`}>{place === 'server' ? 'Server' : place === 'publishing' ? 'Moving to the server' : 'Mac'}</span>
           <div role="radiogroup" aria-label={`${row.name} in the team`} className="ml-auto flex overflow-hidden rounded-full border border-border text-xs">
             {AUDIENCES.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy || (value === 'team' && Boolean(blocked) && choice !== 'team')} title={value === 'team' && blocked ? blocked : undefined} onClick={() => { if (choice !== value) choose(row.tab, value) }}
-              className={`px-2.5 py-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${choice === value ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
+              className={`px-2.5 py-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${choice === value ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
           </div>
           <button type="button" aria-label={`More for ${row.name}`} aria-expanded={openPurpose === row.tab} onClick={() => setOpenPurpose(openPurpose === row.tab ? '' : row.tab)} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></button>
         </div>
@@ -145,11 +146,6 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
           {agent ? <>
             <label className="flex items-center gap-2"><Switch aria-label={`${row.name} can make changes for them`} checked={Boolean(agent.can_change)} disabled={busy} onCheckedChange={on => update(row.tab, { can_change: on })} />Can make changes for them</label>
             <p className="text-[11px] text-muted-foreground">{agent.can_change ? 'It can change files, run commands and use your apps and logins for them.' : 'It only answers their questions.'}</p>
-            <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">Use it from
-              {([[Globe, 'Website'], [Smartphone, 'Phone'], [MessageSquare, 'ChatGPT or Claude'], [Hash, 'Slack']] as [LucideIcon, string][]).map(([Icon, label]) => <Icon key={label} role="img" aria-label={label} className="h-3.5 w-3.5"><title>{label}</title></Icon>)}
-              their apps ·<Terminal role="img" aria-label="Claude Code, Codex and other agents" className="h-3.5 w-3.5"><title>Claude Code, Codex and other agents</title></Terminal>their AI agents</p>
-            {agent.address && <p className="flex items-center gap-2"><span className="min-w-0 truncate rounded-full bg-muted px-2.5 py-0.5 font-mono">agent:{agent.address}</span>
-              <button type="button" className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button></p>}
           </> : <p className="text-muted-foreground">Only you can message it. Choose In team to share it with your Team.</p>}
         </div>}
       </div>
