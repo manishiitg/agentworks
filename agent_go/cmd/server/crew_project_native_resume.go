@@ -32,12 +32,11 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 	if !ok {
 		return
 	}
-	sources, err := api.localNativeSources(r.Context(), roots.Owner, crew.Binding.WorkspacePath)
+	sessions, _, err := api.localCrewNativeSessions(r, crew, roots.Files, roots.Owner)
 	if err != nil {
 		externalError(w, 503, "sessions_unavailable", "Your local conversations could not be checked. Try again.")
 		return
 	}
-	sessions, _ := listLocalNativeSessions(r.Context(), roots.Files, sources)
 	var selected *localProjectNativeSession
 	for i := range sessions {
 		if sessions[i].ID == input.ID {
@@ -188,12 +187,11 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 // Preview uses the same owner/account/folder admission as importing. The caller
 // supplies an opaque list key, never a native path or another user's identity.
 func (api *StreamingAPI) previewLocalProjectSession(w http.ResponseWriter, r *http.Request, crew crewProjectBinding, root, owner string) {
-	sources, err := api.localNativeSources(r.Context(), owner, crew.Binding.WorkspacePath)
+	sessions, _, err := api.localCrewNativeSessions(r, crew, root, owner)
 	if err != nil {
 		externalError(w, 503, "sessions_unavailable", "Your local conversations could not be checked. Try again.")
 		return
 	}
-	sessions, _ := listLocalNativeSessions(r.Context(), root, sources)
 	for _, session := range sessions {
 		if session.ID != r.URL.Query().Get("native_id") {
 			continue

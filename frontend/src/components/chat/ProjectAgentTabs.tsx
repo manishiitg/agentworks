@@ -408,7 +408,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}
       </div>
-      {!menuMode && (tabs.length > 1 || phone || livesOnMac || onImportLocalChat) && (
+      {(!menuMode || onImportLocalChat) && (tabs.length > 1 || phone || livesOnMac || onImportLocalChat) && (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
             type="button"

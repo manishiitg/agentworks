@@ -54,7 +54,7 @@ func TestLocalProjectNativeDiscoveryMatchesCwdAccountAndCurrentFile(t *testing.T
 	path := filepath.Join(history, "same-slug", "native-one.jsonl")
 	recognitionWrite(t, path, fmt.Sprintf("{\"type\":\"user\",\"sessionId\":\"native-one\",\"cwd\":%q,\"message\":{\"role\":\"user\",\"content\":\"Explain this project\"}}\n", root))
 	recognitionWrite(t, filepath.Join(history, "similar-slug", "native-other.jsonl"), fmt.Sprintf("{\"type\":\"user\",\"sessionId\":\"native-other\",\"cwd\":%q,\"message\":{\"content\":\"private elsewhere\"}}\n", root+"-other"))
-	got, partial := listLocalNativeSessions(context.Background(), root, []localNativeSource{claude})
+	got, partial := listLocalNativeSessions(context.Background(), root, []localNativeSource{claude}, nil)
 	if partial || len(got) != 1 || got[0].Title != "Explain this project" {
 		t.Fatalf("wrong sessions: %+v partial=%t", got, partial)
 	}
@@ -66,12 +66,12 @@ func TestLocalProjectNativeDiscoveryMatchesCwdAccountAndCurrentFile(t *testing.T
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	if current, _ := listLocalNativeSessions(context.Background(), root, []localNativeSource{claude}); len(current) != 0 {
+	if current, _ := listLocalNativeSessions(context.Background(), root, []localNativeSource{claude}, nil); len(current) != 0 {
 		t.Fatal("removed session still available")
 	}
 	codex := localNativeSource{Provider: "codex-cli", ConnectionID: "global:codex-cli", Root: t.TempDir(), Label: "Your local login"}
 	recognitionWrite(t, filepath.Join(codex.Root, "2026", "10", "27", "rollout-start-native-codex.jsonl"), fmt.Sprintf("{\"type\":\"session_meta\",\"payload\":{\"id\":\"native-codex\",\"cwd\":%q}}\n", root))
-	if rows, _ := listLocalNativeSessions(context.Background(), root, []localNativeSource{codex}); len(rows) != 1 || rows[0].NativeID != "native-codex" {
+	if rows, _ := listLocalNativeSessions(context.Background(), root, []localNativeSource{codex}, nil); len(rows) != 1 || rows[0].NativeID != "native-codex" {
 		t.Fatalf("Codex metadata not found: %+v", rows)
 	}
 }
