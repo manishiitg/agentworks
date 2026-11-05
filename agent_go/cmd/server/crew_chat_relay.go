@@ -651,7 +651,8 @@ func crewTeamMemberTabs(ctx context.Context, project, viewer string) []AgentProf
 	return out
 }
 
-// crewTeamMemberTab is the joined member whose own tab this key is, or "".
+// crewTeamMemberTab is the joined member whose own tab this key is, or "". A tab its member set to Only me is
+// nobody else's to open or message, so it is "" too.
 func crewTeamMemberTab(ctx context.Context, project, key string) string {
 	t, err := readCrewTeam(project)
 	if err != nil || !t.On {
@@ -666,8 +667,12 @@ func crewTeamMemberTab(ctx context.Context, project, key string) string {
 		if err != nil {
 			continue
 		}
+		identities, _ := store.agentIdentities(ctx, p.UserID, crewProfileID, project)
 		for _, record := range records {
 			if record.ConversationKey == strings.TrimSpace(key) {
+				if identities[record.ConversationKey].OnlyMe {
+					return ""
+				}
 				return p.UserID
 			}
 		}
