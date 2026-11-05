@@ -111,7 +111,7 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=where where=%s revision=%d", project, logUsernameForUserID(claims.UserID), in.Where, t.Revision)
 	if in.Where == "mac" {
 		// Their server copy goes now: their agents here work on their Mac, with its copy (crew_team_server_copy.go).
-		go removeStaleCrewTeamServerCopies(context.WithoutCancel(r.Context()))
+		go api.removeStaleCrewTeamServerCopies(context.WithoutCancel(r.Context()))
 	}
 	externalJSON(w, map[string]any{"where": in.Where, "pair": person.MacPair, "team": t.view(claims.UserID)})
 }

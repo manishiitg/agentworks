@@ -540,7 +540,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"folders":["other"]}}`, ""); w.Code != 200 {
 		t.Fatal("remove member", w.Code, w.Body.String())
 	}
-	removeStaleCrewTeamServerCopies(t.Context())
+	api.removeStaleCrewTeamServerCopies(t.Context())
 	if _, err = os.Stat(copyRoot); !os.IsNotExist(err) {
 		t.Fatalf("a removed member's server copy stayed: %v", err)
 	}
@@ -636,6 +636,58 @@ func TestCrewTeamNewCopyReceivesTheTeamSetupBeforeWriting(t *testing.T) {
 	}
 	if applied, _, _, ok := api.crewSetupOf(t.Context(), "owner", "team"); !ok || applied.ChatInstructions != "Team instructions written by the owner" {
 		t.Fatalf("the team's setup was not applied to the Crew: %+v %t", applied, ok)
+	}
+}
+
+// Review 5 Nov #6: a new owner copy of a Crew on the server takes the store as its base: a file people on the website
+// removed from the Crew folder is removed from the team (not written back), and their edit goes up.
+func TestCrewTeamNewServerOwnerCopyKeepsTheCrewFolder(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	api := f.api
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true},
+		People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "member-pair"}}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if !serverCrewTeamStoreNeeded(team) {
+		t.Fatal("fixture: the store is not needed")
+	}
+	claims := &UserClaims{UserID: "owner", Username: "owner"}
+	roots, err := api.crewSyncRoots(context.WithValue(t.Context(), UserContextKey, claims), claims, "team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, _ := crewTeamChunkStore("team")
+	put := func(path, content string) {
+		t.Helper()
+		v, err := crewTeamChunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+		if err == nil {
+			_, err = commitCrewTeamChanges(t.Context(), "team", "other", path, crewTransferDigest(path), []crewTeamChange{{Path: path, After: &v}})
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("notes.md", "from the member's Mac")
+	put("removed-on-web.md", "the web removed this")
+	for path, content := range map[string]string{"notes.md": "edited on the website"} {
+		if err = os.WriteFile(filepath.Join(roots.Files, path), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	api.syncServerCrewTeamStore(t.Context(), team)
+	if _, err = os.Stat(filepath.Join(roots.Files, "removed-on-web.md")); !os.IsNotExist(err) {
+		t.Fatal("a file removed on the website was written back into the Crew folder")
+	}
+	state, _ := readCrewTeamFileState("team")
+	if v := state.Versions["removed-on-web.md"]; v.File != nil {
+		t.Fatal("the team still has the file removed on the website")
+	}
+	sum := sha256.Sum256([]byte("edited on the website"))
+	if v := state.Versions["notes.md"]; v.File == nil || v.File.Hash != hex.EncodeToString(sum[:]) || v.Author != "owner" {
+		t.Fatalf("the website edit did not go up: %+v", v)
 	}
 }
 
