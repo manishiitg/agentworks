@@ -30,7 +30,10 @@ type crewTeamMemberAccess struct {
 
 func (api *StreamingAPI) crewTeamMemberAccess(ctx context.Context, t crewTeam, caller string) *crewTeamMemberAccess {
 	out := &crewTeamMemberAccess{Name: t.Name, People: teamAgentsByPerson(ctx, t, caller), Shared: "Nothing shared yet", OwnAgents: []crewTeamOwnAgent{}}
-	if t.Folder.ID != "" && t.edits(caller) {
+	if t.Folder.ID != "" && t.edits(caller) && !crewRelayTwin(t.ProjectID) {
+		// A Crew on the server: everyone on the web works in its own folder; nothing to copy.
+		out.Shared = t.Folder.display()
+	} else if t.Folder.ID != "" && t.edits(caller) {
 		out.Shared = t.Folder.display()
 		out.CopyStatus = "Your copy is being prepared"
 		if dir, err := crewTeamServerCopyDir(caller, t.ProjectID, t.Folder.ID); err == nil {
@@ -66,7 +69,10 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 		return
 	}
 	t, err := readCrewTeam(project)
-	if err != nil || t.OwnerID == claims.UserID || !t.member(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
+	// On a Crew that lives on the server its owner's agents are server tabs too: In team / Only me works the same way
+	// for the owner (Team for server Crews, owner 5 Nov). A Mac Crew's owner chooses on the Mac.
+	ownerOnServer := err == nil && t.OwnerID == claims.UserID && mux.Vars(r)["op"] == "agent-visibility" && !crewRelayTwin(project)
+	if err != nil || (t.OwnerID == claims.UserID && !ownerOnServer) || !t.member(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
 		externalError(w, 403, "team_member_required", "Only a joined member can change their own participation here.")
 		return
 	}

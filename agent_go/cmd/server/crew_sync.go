@@ -265,6 +265,12 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	out.Role = "owner"
 	if !IsLocalMode() && crewRelayTwin(out.ProjectID) {
 		out.AccessView = "team"
+	} else if !IsLocalMode() && r.Method == http.MethodGet {
+		// A Crew that lives on the server has the same Team (owner, 5 Nov): its owner sees the people and chooses In
+		// team / Only me for their own agents under the normal Access page.
+		if t, e := readCrewTeam(out.ProjectID); e == nil && t.OwnerID == GetUserIDFromContext(r.Context()) {
+			out.MemberAccess = api.crewTeamMemberAccess(r.Context(), t, t.OwnerID)
+		}
 	}
 	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
 	if r.Method == http.MethodGet && out.Place == "" {

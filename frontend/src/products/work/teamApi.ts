@@ -67,7 +67,15 @@ export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {
 export type TeamSwitchResult = { team: Team; shared?: string[]; unshared?: number; folder_created?: boolean; note?: string }
 
 /** The Team tab's switch: the Mac shares the ready agents, makes team/ when no folder is chosen, or turns it all off. */
-export async function switchTeam(target: TeamTarget, on: boolean): Promise<TeamSwitchResult> {
+export async function switchTeam(target: TeamTarget, on: boolean, serverCrew = false): Promise<TeamSwitchResult> {
+  // A Crew that lives on the server (owner, 5 Nov): the same Team, switched on the server; team/ is shared by default.
+  if (serverCrew && !target.connection) {
+    const team = await teamRequest<Team>(target)
+    const chosen = team.folder.whole || Boolean(team.folder.folders?.length)
+    const saved = await teamRequest<Team>(target, '', 'PUT', { ...team, on, folder: on && !chosen ? { folders: ['team'] } : team.folder })
+    window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+    return { team: saved }
+  }
   if (!target.connection || !target.localProject) throw new Error('Turn on Use from phone and web for this Crew first.')
   const result = await desktopRequest<TeamSwitchResult>(`/${encodeURIComponent(target.connection)}/crew-teams/${encodeURIComponent(target.localProject)}/switch`, 'POST', { on })
   window.dispatchEvent(new CustomEvent('agentworks:team-updated'))

@@ -193,6 +193,10 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		if ownMain || !isSideChatConversationKey(record.ConversationKey) || !workspacePathsMatchForUser(userID, record.WorkspacePath, slot.binding.WorkspacePath) {
 			continue
 		}
+		// Another person's agent they keep to themselves (Team Only me) is theirs alone.
+		if tab.OwnerID != userID && tab.Identity.OnlyMe {
+			continue
+		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 		name := firstNonEmptyTrimmed(tab.Identity.Name, "Chat "+id)
 		// Another person's default chat is their Main, never its key ("Chat root-…", owner 5 Nov); the Crew owner's

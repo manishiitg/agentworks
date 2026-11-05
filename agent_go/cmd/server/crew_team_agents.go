@@ -55,8 +55,12 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 	if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
 		owner.MacOn = crewMacSocketFor(t.OwnerID, t.ProjectID, b.PairID) != nil
 	}
+	if !onMac {
+		// A Crew that lives on the server (owner, 5 Nov): its owner's agents are server tabs, In team unless Only me.
+		owner.Agents = memberTeamAgents(ctx, t.ProjectID, t.OwnerID, caller)
+	}
 	for _, agent := range readMacSharedAgents(t.ProjectID) {
-		if !crewTeamInTeam(agent) {
+		if !onMac || !crewTeamInTeam(agent) {
 			continue
 		}
 		place := "server"
