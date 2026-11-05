@@ -638,6 +638,8 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	}
 	req.AgentProfileContext = promptContext
 	req.SelectedSkills = appendUniqueStrings(req.SelectedSkills, profile.Skills...)
+	// The owner's lent secrets and Vault apps for the owner and co-owners, as handleQuery admits them (vault_secrets.go).
+	secretsPerson := api.crewSecretsPerson(userID, workspacePath, "agent_profile")
 	if profile.Runtime.Capabilities.Secrets == agentprofiles.CapabilityDisabled {
 		// Product profiles may explicitly opt out of the shared secret runtime.
 		// Clear both scoped and global selections after saved chat configuration has
@@ -683,9 +685,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			}
 		}
 		if len(selectedNames) > 0 {
-			req.DecryptedSecrets = api.loadSelectedSecrets(ctx, userID, secretWorkspace, selectedNames)
+			req.DecryptedSecrets = api.loadSelectedSecrets(ctx, secretsPerson, secretWorkspace, selectedNames)
 			req.secretsWorkspacePath = secretWorkspace
-			if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, &selectedNames); err != nil {
+			if err := validateVaultSecretSelection(ctx, secretsPerson, req.DecryptedSecrets, &selectedNames); err != nil {
 				return nil, err
 			}
 		} else {
@@ -818,11 +820,11 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			req.Servers = nil
 		}
 	}
-	if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+	if err := validateVaultSecretSelection(ctx, secretsPerson, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
 	mark("mcp")
-	connections := chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder)
+	connections := chatMCPConnections(ctx, profile.ID, secretsPerson, req.SelectedFolder)
 	mark("connections")
 	knowledgeKey := knowledgeRuntimeConfigKey(workspacePath)
 	if publication != nil {

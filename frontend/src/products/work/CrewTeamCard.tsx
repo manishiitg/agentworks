@@ -93,6 +93,8 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
     {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this Crew with people.</p>}
     {team.on && <>
     <p className="text-xs text-muted-foreground">Choose who works with you. Everyone who joins reads and writes what the team shares; each agent's sharing can be changed below.</p>
+    {/* What members' agents in this Crew use of yours (owner, 5 Nov), names only, from the server. */}
+    {team.lent && <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Lent to the team:</span> {[...team.lent.apps, ...team.lent.secrets.map(name => `${name} (secret)`)].join(', ') || 'nothing yet'}. Their agents in this Crew use these as you; values are never shown.</p>}
     {team.people.map(person => <div key={person.user_id} className="flex flex-wrap items-center gap-2 text-xs">
       <span className="min-w-20 flex-1 truncate">{name(person.user_id)} <span className="text-muted-foreground">· {person.invited ? 'Invited' : 'Joined'}</span></span>
       <button type="button" disabled={busy} aria-label={person.invited ? `Cancel ${name(person.user_id)}'s invite` : `Remove ${name(person.user_id)} from team`} title={person.invited ? 'Cancel invite' : 'Remove from team'} onClick={() => void save({ ...team, people: team.people.filter(p => p.user_id !== person.user_id) })} className="rounded p-1 hover:bg-muted"><X className="h-3 w-3" /></button>

@@ -234,7 +234,7 @@ func TestCrewCoOwnersShareSelectedSecretsInChatAndMCP(t *testing.T) {
 		globalSecrets, managedGlobals = oldGlobals, oldManaged
 		managedGlobalsMu.Unlock()
 	})
-	f.write(t, externalCommandCrewRoot+"/workflow.json", `{"id":"team","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
+	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
 	names := []string{"CREW_TOKEN"}
 	for _, person := range []string{"owner", "other"} {
 		ctx := internalBotRequestContext(t.Context(), person)
@@ -250,5 +250,20 @@ func TestCrewCoOwnersShareSelectedSecretsInChatAndMCP(t *testing.T) {
 	// This does not change the co-owner's personal Vault grants.
 	if err := validateVaultSecretSelection(t.Context(), "other", nil, &names); err == nil {
 		t.Fatal("project access widened personal Vault grants")
+	}
+	// A Team's joined member builds in the Crew the same way, in the agent's own turn setup too (owner, 5 Nov: the owner's
+	// tools are lent to the Team); an invited person and a Run person keep their own grants.
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]},{"id":"member","role":"editor","products":["work"]},{"id":"invited","role":"editor","products":["work"]}]}`)
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}, {UserID: "invited", Invited: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.api.crewSecretsPerson("member", externalCommandCrewRoot, "test"); got != "owner" {
+		t.Fatalf("a joined Team member's turn is admitted as %q, want the owner", got)
+	}
+	if err := validateVaultSecretSelection(t.Context(), f.api.crewSecretsPerson("member", externalCommandCrewRoot, "test"), nil, &names); err != nil {
+		t.Fatalf("a joined Team member's turn was refused the owner's selected secret: %v", err)
+	}
+	if got := f.api.crewSecretsPerson("invited", externalCommandCrewRoot, "test"); got != "invited" {
+		t.Fatalf("an invited person was lent the owner's secrets: %q", got)
 	}
 }
