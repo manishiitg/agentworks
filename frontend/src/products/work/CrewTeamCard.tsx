@@ -71,6 +71,15 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
   if (!team || !target || !team.can_manage) return loadError ? <p className="text-xs text-muted-foreground">{loadError}</p> : null
   const tooBig = Boolean(whole && (whole.bytes > (whole.max_bytes || Infinity) || whole.files > (whole.max_files || Infinity)))
   const name = (id: string) => people.find(p => p.id === id)?.username || id
+  // On the website these choices belong to the source Mac, not this browser's laptop integration.
+  if (!target.localProject) return <section aria-label="Team" className="space-y-3 rounded-xl border border-border p-4 text-sm">
+    <div className="flex items-center justify-between"><h3 className="font-semibold">{team.name}</h3><span className="text-muted-foreground">{team.on ? 'Team on' : 'Only you'}</span></div>
+    {team.on && <>
+      {team.people.map(person => <p key={person.user_id}>{name(person.user_id)} <span className="text-muted-foreground">· {person.invited ? 'Invited' : 'Joined'}</span></p>)}
+      <div className="border-t border-border pt-3"><h4 className="font-medium">Shared folder</h4><p className="text-muted-foreground">{team.folder.whole ? 'Whole Crew' : team.folder.folders?.join(', ') || 'Nothing shared yet'}</p></div>
+    </>}
+    <p className="text-xs text-muted-foreground">Change these from the Mac app.</p>
+  </section>
   const save = async (next: Team) => {
     setBusy(true); setError('')
     try { await saveTeam(target, next); refresh() } catch (e) { setError(teamError(e)) } finally { setBusy(false) }

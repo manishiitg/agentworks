@@ -54,6 +54,7 @@ type crewServerCopy struct {
 }
 
 type crewSyncReply struct {
+	AccessView         string                        `json:"access_view,omitempty"`
 	Role               string                        `json:"role,omitempty"`
 	MemberAccess       *crewTeamMemberAccess         `json:"member_access,omitempty"`
 	OnServer           []crewServerCopy              `json:"on_server,omitempty"`
@@ -233,10 +234,22 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		project, caller := mux.Vars(r)["project"], GetUserIDFromContext(r.Context())
 		if t, e := readCrewTeam(project); e == nil && t.OwnerID != caller && t.member(caller) && ownerOfCrewProjectID(project) == t.OwnerID && crewTeamAccountActive(t.OwnerID) {
 			w.Header().Set("Cache-Control", "no-store")
-			externalJSON(w, crewSyncReply{ProjectID: project, Place: "online", Role: "member", MemberAccess: api.crewTeamMemberAccess(r.Context(), t, caller), AccessSummary: crewMemberAccessSummary(t)})
+			externalJSON(w, crewSyncReply{ProjectID: project, Place: "online", Role: "member", AccessView: "team", MemberAccess: api.crewTeamMemberAccess(r.Context(), t, caller), AccessSummary: crewMemberAccessSummary(t)})
 			return
 		}
 	}
+	// A shared server Crew may have Run people or registered co-owners outside a Team.
+	// Use the normal project admission; the summary grants no sync or owner controls.
+	if r.Method == http.MethodGet && !IsLocalMode() && websiteDeviceClaims(GetUserFromContext(r.Context())) {
+		claims := GetUserFromContext(r.Context())
+		project := mux.Vars(r)["project"]
+		if binding, _, ok := api.resolveExternalWorkspace(r.Context(), claims, project); ok && binding.OwnerID != claims.UserID && crewTeamAccountActive(binding.OwnerID) {
+			w.Header().Set("Cache-Control", "no-store")
+			externalJSON(w, crewSyncReply{ProjectID: project, Role: "shared", AccessView: "summary", AccessSummary: "Shared with you by " + shareOwnerLabel(binding.OwnerID)})
+			return
+		}
+	}
+
 	out, err := api.crewSync(r.Context(), GetUserFromContext(r.Context()), mux.Vars(r)["project"], input)
 	if err != nil {
 		status := 409
@@ -248,6 +261,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	out.Role = "owner"
+	if !IsLocalMode() && crewRelayTwin(out.ProjectID) {
+		out.AccessView = "team"
+	}
 	out.RuntimeReadiness = readCrewDependencies(out.ProjectID)
 	if r.Method == http.MethodGet && out.Place == "" {
 		out.Place = crewPlace(GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
