@@ -162,7 +162,7 @@ type projectVaultInventory struct {
 }
 
 func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, workspace string) (projectVaultInventory, error) {
-	out := projectVaultInventory{Vaults: []projectVaultGroup{}, Notices: []string{}}
+	out := projectVaultInventory{Vaults: []projectVaultGroup{}, Notices: vaultRenameNotices(workspace)}
 	r := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 	if mcpCaller(ctx) != person {
 		return out, errors.New("Use your own project chat to open Vault")

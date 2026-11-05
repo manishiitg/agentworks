@@ -11,9 +11,14 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // All in Vault (owner, 5 Nov): every secret still kept in a project's own vault moves into the project owner's own
@@ -288,6 +293,9 @@ func (api *StreamingAPI) moveProjectVault(ctx context.Context, vault projectVaul
 		if err := api.removeManagedGlobalSecretValue(ctx, old); err != nil && err != errGlobalNotFound {
 			retry = true
 		}
+		if item.result == "renamed" {
+			noteVaultRename(vault.Root, item.name, vaultSecretShortName(item.full))
+		}
 		logVaultMove(vault.Root, item.name, vaultSecretShortName(item.full), item.result, "")
 	}
 	markWorkflowSecretsChanged(vault.Root)
@@ -444,4 +452,62 @@ func manifestNames(value any) []string {
 		}
 	}
 	return names
+}
+
+// A secret renamed when it moved (its name was taken in the owner's Vault by a different value) is listed in the
+// project's Secrets panel, so the owner can update scripts that used $SECRET_<old name> (reviewer, 5 Nov).
+type vaultRename struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+func vaultRenamesPath(root string) (string, error) {
+	normalized, err := chathistory.NormalizeWorkflowSecretPath(root)
+	if err != nil {
+		return "", err
+	}
+	state, err := crewroot.StateRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(state, "vault-migration", "renamed", crewTransferDigest(normalized)+".json"), nil
+}
+
+func readVaultRenames(root string) []vaultRename {
+	path, err := vaultRenamesPath(root)
+	if err != nil {
+		return nil
+	}
+	var out []vaultRename
+	if raw, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(raw, &out)
+	}
+	return out
+}
+
+func noteVaultRename(root, from, to string) {
+	path, err := vaultRenamesPath(root)
+	if err != nil {
+		return
+	}
+	list := readVaultRenames(root)
+	if slices.ContainsFunc(list, func(r vaultRename) bool { return r.From == from && r.To == to }) {
+		return
+	}
+	list = append(list, vaultRename{From: from, To: to})
+	if err = os.MkdirAll(filepath.Dir(path), 0o700); err == nil {
+		err = fsutil.WriteJSONAtomic(path, list, 0o600)
+	}
+	if err != nil {
+		log.Printf("[VAULT_MIGRATE] project=%s secret=%s to=%s rename_note_failed=%v", root, from, to, err)
+	}
+}
+
+// vaultRenameNotices are the Secrets panel's lines for the project's renamed secrets.
+func vaultRenameNotices(root string) []string {
+	out := []string{}
+	for _, r := range readVaultRenames(root) {
+		out = append(out, fmt.Sprintf("%s was renamed %s when it moved to your Vault (that name was already used). Scripts now use $SECRET_%s.", r.From, r.To, r.To))
+	}
+	return out
 }
