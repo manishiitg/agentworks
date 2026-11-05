@@ -2,15 +2,10 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log"
-	"path/filepath"
-	"strings"
 	"time"
 
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
 type scheduleGuardRegistrar struct {
@@ -41,38 +36,7 @@ func (api *StreamingAPI) scheduleCollisionCheck(workspacePath, sessionID, trigge
 			}
 		}
 
-		if api.scheduler == nil {
-			return nil
-		}
-		s := api.scheduler
-		s.stateStoreMu.RLock()
-		defer s.stateStoreMu.RUnlock()
-		if s.stateStore == nil {
-			return fmt.Errorf("schedule_state_unavailable: cannot verify workflow ownership; retry when scheduler storage is available")
-		}
-		run, err := s.stateStore.ActiveRunForScope(ctx, "workflow", filepath.Clean(strings.TrimSpace(workspacePath)),
-			"")
-		if err != nil {
-			return fmt.Errorf("schedule_state_unavailable: %w", err)
-		}
-		if run == nil {
-			return nil
-		}
-		// A message schedule running in this Builder tab (PLAT-871-28) runs its own steps here.
-		if run.ScheduleID != "" && s.getRuntimeStateByKey(workflowScheduleRuntimeKey(workspacePath, run.ScheduleID)).LastSessionID == sessionID {
-			return nil
-		}
-		if force, ok := args["force"].(bool); ok && force {
-			log.Printf("[SCHEDULE_GUARD] force override session=%s operation=%s schedule=%s run=%s", sessionID, operation, run.ScheduleID, run.RunID)
-			return nil
-		}
-		body, _ := json.Marshal(map[string]interface{}{
-			"code": "schedule_running", "operation": operation, "workspace_path": workspacePath,
-			"schedule_id": run.ScheduleID, "run_id": run.RunID, "session_id": run.ActiveSessionID,
-			"started_at": run.StartedAt, "lease_expires_at": run.UpdatedAt.Add(schedulerstate.LeaseDuration),
-			"recovery_required": time.Since(run.UpdatedAt) > schedulerstate.LeaseDuration,
-			"message":           "This workflow has an active schedule. No action was performed. Stop the current workflow-mutation batch, including different pending writes. Show one warning to the user and wait for explicit approval before retrying any of those actions with force=true. Do not bypass through shell or a background agent.",
-		})
-		return fmt.Errorf("%s", body)
+		// No schedule-overlap guard: the person's own Builder chat runs its steps while a schedule runs (owner, 5 Nov).
+		return nil
 	}
 }

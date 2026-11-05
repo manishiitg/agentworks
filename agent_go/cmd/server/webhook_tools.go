@@ -16,7 +16,7 @@ import (
 )
 
 func (api *StreamingAPI) registerWebhookTools(reg definitionToolRegistrar, userID, workspace string, policy workflowChatPolicy) error {
-	if policy.Mode != "builder" || policy.Origin != "interactive" || !policy.allows("plan_authoring") {
+	if policy.Mode != "builder" || policy.Origin == "bot" || !policy.allows("plan_authoring") {
 		return nil
 	}
 	if err := api.registerCrewBuilderTools(reg, userID, workspace); err != nil {

@@ -17,10 +17,9 @@ func workflowUICallerAllowed(phase, session string, req QueryRequest, active *Ac
 		return false
 	}
 	policy := resolveWorkflowChatPolicy(session, req, active, false)
-	// Builder authority is broader than control of the user's live workspace UI.
-	// Headless callers can author and maintain workflow state, but only an
-	// interactive human turn may receive a UI-control lease.
-	if policy.Origin != "interactive" {
+	// Every turn of the person's own Builder chat gets the same tools, automatic ones included (owner, 5 Nov);
+	// a Slack bot turn can be someone else.
+	if policy.Origin == "bot" {
 		return false
 	}
 	return policy.allows("workspace_ui")
@@ -39,7 +38,7 @@ func (api *StreamingAPI) registerWorkflowUIForCaller(registrar definitionToolReg
 			}
 		}
 		if policy.allows("bot_management") {
-			if err := api.registerSlackBotTools(registrar, session, workspace, "", policy.Origin == "interactive" && !readOnly && policy.Mode == "builder", !readOnly); err != nil {
+			if err := api.registerSlackBotTools(registrar, session, workspace, "", policy.Origin != "bot" && !readOnly && policy.Mode == "builder", !readOnly); err != nil {
 				return err
 			}
 		}

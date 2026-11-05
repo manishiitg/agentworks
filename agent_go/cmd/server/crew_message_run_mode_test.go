@@ -7,9 +7,9 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-// A Crew has no Run mode for its owner (856-59), but the owner's turn is granted only on positive evidence: everything
-// else, including senders whose mode is simply not recorded, stays restricted.
-func TestCrewMessageRunModeFailsClosed(t *testing.T) {
+// A Crew has no Run mode for its owner (856-59). A message from any of the owner's own agents is the owner's turn
+// (owner, 5 Nov); other people and Run-mode senders stay restricted.
+func TestCrewMessageRunModeOwnAgentsAreBuilder(t *testing.T) {
 	crewDest := agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerCrew}
 	cases := []struct {
 		name         string
@@ -19,9 +19,9 @@ func TestCrewMessageRunModeFailsClosed(t *testing.T) {
 	}{
 		{"owner's own unrestricted connection", crewDest, agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerUser, External: true, OwnerAuthority: true}, "owner-1", false},
 		{"owner's Crew builder chat", crewDest, agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerCrew, Mode: "builder"}, "owner-1", false},
-		{"capped or agent-bound connection (no authority)", crewDest, agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerUser, External: true}, "owner-1", true},
-		{"workflow run with no recorded mode", crewDest, agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerWorkflow}, "owner-1", true},
-		{"Crew session with no recorded mode (evicted or restarted)", crewDest, agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerCrew}, "owner-1", true},
+		{"owner's capped or agent-bound connection", crewDest, agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerUser, External: true}, "owner-1", false},
+		{"owner's workflow run", crewDest, agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerWorkflow}, "owner-1", false},
+		{"owner's Crew session with no recorded mode", crewDest, agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerCrew}, "owner-1", false},
 		{"guest-driven Crew session", crewDest, agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerCrew, Mode: "run"}, "owner-1", true},
 		{"someone else, even with the authority flag", crewDest, agentMessageEndpoint{UserID: "guest-9", Kind: triggerCallerUser, External: true, OwnerAuthority: true}, "guest-9", true},
 		{"receiving chat already restricted", agentMessageEndpoint{UserID: "owner-1", Kind: triggerCallerCrew, Mode: "run"}, agentMessageEndpoint{UserID: "owner-1", OwnerAuthority: true}, "owner-1", true},

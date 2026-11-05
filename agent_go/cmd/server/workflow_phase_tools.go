@@ -73,9 +73,8 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 		return err
 	}
 	// Builder chat can call Crews and other workflows (workflow→crew,
-	// workflow→workflow) under the same interactive authoring gate as
-	// trigger management.
-	if policy.Mode == "builder" && policy.Origin == "interactive" && policy.allows("plan_authoring") {
+	// workflow→workflow) on every turn of the person's own Builder chat (owner, 5 Nov), not a Slack bot turn.
+	if policy.Mode == "builder" && policy.Origin != "bot" && policy.allows("plan_authoring") {
 		if err := api.registerProjectTools(definitionAgent, nil, userID, GetUserFromContext(internalBotRequestContext(ctx, userID))); err != nil {
 			return err
 		}
@@ -158,7 +157,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 				return fmt.Errorf("register Flow Run tools: %w", err)
 			}
 		}
-		if phaseTemplateVars["WorkflowKind"] == "relay" && policy.Origin == "interactive" && policy.allows("plan_authoring") {
+		if phaseTemplateVars["WorkflowKind"] == "relay" && policy.Origin != "bot" && policy.allows("plan_authoring") {
 			if err := api.registerRelayReleaseTools(definitionAgent, phaseWorkspacePath, userID); err != nil {
 				return fmt.Errorf("register Flow release tools: %w", err)
 			}

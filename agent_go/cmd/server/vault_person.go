@@ -61,7 +61,7 @@ const manageMyVaultsDescription = "Your own Vault items: your sign-ins (MCP apps
 	"Operations: project_select {workspace_path, kind, item_id, selected} (tick one app, secret or computer for the project); project {workspace_path} (the project's Vault panel: accessible apps, secret names and computers with actual project selections; no values); laptops (your connected computers and one-time setup steps; choose where to use them with manage_laptop_access); apps (the apps Vault can connect, by catalog name); " +
 	"connect {provider, label} for a server in the Vault catalog (returns the sign-in link for you to open); " +
 	"sign_in {connection_id, client_id?, client_secret?} to finish or renew sign-in in chat; " +
-	"promote_secret {name, confirm} copies a secret of this Crew, Code or workflow into your Vault server-side (you never see the value; confirm as for promote); " +
+	"promote_secret {name} copies a secret of this Crew, Code or workflow into your Vault server-side (you never see the value); " +
 	"set_secret {name, value, replace} stores a value the person gave you (replace=true to overwrite an existing name); the answer names the secret and never repeats the value, and you must not either; remove_secret {name}; " +
 	"github_status shows your GitHub connection. github_connect {method: gh|pat|oauth, login?, token?} offers gh first on a single-user local installation, PAT on local or server, and optional OAuth last. github_status lists gh_accounts on local installs. With multiple accounts, ask which login to use and pass login. gh copies only that account into encrypted storage without switching the terminal account; later gh changes do not change it. pat takes the token you provide. Never repeat the token. github_disconnect removes the saved connection. " +
 	"sync {connection_id}; remove_connection {connection_id}. " +
@@ -208,7 +208,7 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		}
 		return api.mcpConnectionTool(ctx, person, "install_mcp_server", in)
 	case "promote_secret":
-		return api.promoteSecretToVault(ctx, person, vaultID, argString(args, "name"), args["confirm"] == true)
+		return api.promoteSecretToVault(ctx, person, vaultID, argString(args, "name"))
 	case "set_secret":
 		name := argString(args, "name")
 		replace := args["replace"] == true
