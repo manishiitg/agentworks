@@ -142,7 +142,7 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 	if err := writeCrewTeamState(project, func(s *crewTeamLocalState) { s.AllInTeam, s.TeamOn = on, on; s.MainOnlyMe = s.MainOnlyMe && !on }); err != nil {
 		log.Printf("[CREW_TEAM] local project=%s all_in_team not saved: %v", project, err)
 	}
-	crewAccessTeamCache.Delete(project + "\x00" + binding.PeerProjectID) // the Access row says the new state at once
+	dropCrewAccessCache(project, binding.PeerProjectID) // the Access row says the new state at once
 	log.Printf("[CREW_TEAM] local project=%s server_project=%s event=switch on=%t people=%d folder=%q folder_created=%t shared=%d needs_purpose=%d unshared=%d",
 		project, binding.PeerProjectID, on, len(saved.People), saved.Folder.Path, out.FolderCreated, len(out.Shared), len(out.NeedsPurpose), out.Unshared)
 	return out, nil

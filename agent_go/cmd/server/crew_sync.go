@@ -82,6 +82,8 @@ type crewSyncReply struct {
 	TeamCopy *crewTeamCopyStatus `json:"team_copy,omitempty"`
 	// AccessSummary is the Access row's line after where the Crew lives (crew_access_summary.go).
 	AccessSummary string `json:"access_summary,omitempty"`
+	// AccessTree is the side panel's tree under the Access row (crew_access_tree.go).
+	AccessTree []crewAccessLine `json:"access_tree,omitempty"`
 	// TeamNote: Mac online off also turned the Team off (owner, 5 Nov).
 	TeamNote string `json:"team_note,omitempty"`
 }
@@ -249,6 +251,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	if r.Method == http.MethodGet {
 		out.SharedAgents = len(readMacSharedAgents(out.ProjectID))
 		out.AccessSummary = crewAccessSummaryFor(r.Context(), GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
+		out.AccessTree = api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), out.ProjectID, out.Binding)
 		if IsLocalMode() {
 			out.Asking = api.recentMacAsks(out.ProjectID)
 		}

@@ -208,11 +208,14 @@ export function useMacSharedAgents(projectId?: string, enabled = true): Record<s
 }
 
 // Opening Access at one agent's card, from that agent's tab: the Crew menu opens Access, then the card scrolls into view.
-let pendingAccess: { projectId: string; tab: string; opened?: boolean } | null = null
+export type CrewAccessSection = 'mac' | 'publish' | 'team'
+let pendingAccess: { projectId: string; tab: string; section: CrewAccessSection; opened?: boolean } | null = null
 export function hasPendingCrewAccess(projectId: string) { return pendingAccess?.projectId === projectId }
-export function openCrewAccess(projectId: string, tab: string) {
-  pendingAccess = { projectId, tab }
-  window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId } }))
+/** Which Access tab a pending open asks for (Team unless said otherwise). */
+export function pendingCrewAccessSection(projectId: string): CrewAccessSection { return pendingAccess?.projectId === projectId ? pendingAccess.section : 'team' }
+export function openCrewAccess(projectId: string, tab: string, section: CrewAccessSection = 'team') {
+  pendingAccess = { projectId, tab, section }
+  window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section } }))
 }
 /** The side panel's Shared folder row: open Access on its Team tab, scrolled to the shared folder's Sync section. */
 let pendingSync = ''
