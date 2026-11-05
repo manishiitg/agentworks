@@ -64,7 +64,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	switch input.Action {
-	case "status", "server", "relay", "offline", "agents", "share_agents", "team_copy":
+	case "status", "server", "relay", "offline", "agents", "share_agents":
 	default:
 		externalError(w, 400, "invalid_action", "Choose Move online.")
 		return
@@ -242,16 +242,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		externalJSON(w, out)
-		return
-	}
-	// The Team tab's team copy status line, from the online copy that decides it.
-	if input.Action == "team_copy" {
-		reply, status, code, err := api.desktopTeamCopy(r.Context(), claims, roots.ID, binding, connection)
-		if err != nil {
-			externalError(w, status, code, err.Error())
-			return
-		}
-		externalJSON(w, reply)
 		return
 	}
 	// Reach off: the server removes this Crew's empty online copy, then the Mac forgets the pair (crew_where_it_lives.go).
