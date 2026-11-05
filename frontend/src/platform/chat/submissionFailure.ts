@@ -51,10 +51,13 @@ export function submissionFailure(error: unknown): SubmissionFailure {
     'The request could not be started.',
   ) as string
   const status = statusText(response?.status)
+  // A plain refusal the server wrote for people ({"error": {code, message}}) is the whole story: no "Request failed with
+  // status code N" line above it (owner, 5 Nov).
+  const plainRefusal = Boolean(firstText(nestedError?.code) && firstText(nestedError?.message))
   const technicalDetails = firstText(data?.technical_details, data?.technicalDetails)
-    || [status ? `Request failed with status code ${status}` : undefined, responseMessage || fallbackMessage]
+    || (plainRefusal ? undefined : [status ? `Request failed with status code ${status}` : undefined, responseMessage || fallbackMessage]
       .filter((value): value is string => Boolean(value))
-      .join('\n')
+      .join('\n'))
 
   return {
     ...failureHints(data || {}),

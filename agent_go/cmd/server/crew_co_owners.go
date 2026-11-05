@@ -110,8 +110,8 @@ func crewRoleOf(root, userID string) string {
 }
 
 // coOwnerTurnOwner is whose provider accounts and token limits a turn uses when it is not the caller's: a Goal or
-// Flow co-owner's turn runs as that Flow's owner (flowOwnerTurnOwner). A Crew's co-owners, registered or through its
-// Team, run on their own login (owner, 5 Nov: the owner no longer pays for co-owners' turns), so for a Crew it is "".
+// Flow co-owner's turn runs as that Flow's owner (flowOwnerTurnOwner). In a Crew everyone is just another person
+// (owner, 5 Nov): their chat runs on the models they chose, so for a Crew it is "".
 func coOwnerTurnOwner(ctx context.Context, callerID, workspacePath string) string {
 	return flowOwnerTurnOwner(ctx, callerID, workspacePath)
 }
