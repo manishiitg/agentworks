@@ -80,8 +80,8 @@ it('opens each resource directly without a My Vault destination', async () => {
  }
 })
 
-// One Access page (owner, 5 Nov), the same component in the Mac app and on the website; old links still open it.
-it('opens the one Access page from every old Access link', async () => {
+// One Share page (owner, 5 Nov), the same component in the Mac app and on the website; old links still open it.
+it('opens the one Share page from every old Access link', async () => {
  const host = await mount()
  for (const target of ['access', 'share', 'computer', 'sync', 'laptop', 'agents', 'agentbridge']) {
   await act(async () => state.target('connected'))

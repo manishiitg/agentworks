@@ -508,7 +508,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 				return nil, e
 			}
 			if place != nil && (IsLocalMode() || place.Location != "server") {
-				return nil, fmt.Errorf("this agent is %s on the server; open Access → Publish to continue there or finish its publish", place.Location)
+				return nil, fmt.Errorf("this agent is %s on the server; open Share → Publish to continue there or finish its publish", place.Location)
 			}
 		}
 		// The crew's "Native agent tools" switch. Resolve returned a copy, so

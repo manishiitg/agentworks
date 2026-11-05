@@ -15,11 +15,17 @@ type crewAccessText struct {
 	Note string `json:"note,omitempty"`
 }
 
-var crewAccessMacTabs = []crewAccessTab{
-	{ID: "mac", Label: "Mac online", Detail: "you, from anywhere"},
-	{ID: "publish", Label: "Publish", Detail: "agents on the server"},
-	{ID: "team", Label: "Team", Detail: "work with people"},
-}
+// crewPublishTabShown brings back the Share page's Publish tab (owner, 5 Nov: the first release shows Mac online and
+// Team only). The Publish code, and publishing from chat and MCP, stay as they are.
+const crewPublishTabShown = false
+
+var crewAccessMacTabs = func() []crewAccessTab {
+	tabs := []crewAccessTab{{ID: "mac", Label: "Mac online", Detail: "you, from anywhere"}}
+	if crewPublishTabShown {
+		tabs = append(tabs, crewAccessTab{ID: "publish", Label: "Publish", Detail: "agents on the server"})
+	}
+	return append(tabs, crewAccessTab{ID: "team", Label: "Team", Detail: "work with people"})
+}()
 
 var crewAccessTeamTab = []crewAccessTab{{ID: "team", Label: "Team", Detail: "work with people"}}
 
@@ -46,8 +52,10 @@ func crewAccessPage(out *crewSyncReply) {
 		if out.Place == "mac" {
 			line = "Mac online is on: " + mac + " does the work while it is on. Messages pass through this server; your files stay on the Mac."
 		}
-		out.AccessMac = &crewAccessText{Line: line, Note: "Turn Mac online on or off, and choose AgentBridge, in the Mac app: Access, Mac online."}
-		out.AccessPublish = &crewAccessText{Line: "Publish moves this Crew, or one of its agents, from your Mac to this server, so it works with your Mac off.", Note: "Publish from the Mac app: Access, Publish."}
+		out.AccessMac = &crewAccessText{Line: line, Note: "Turn Mac online on or off, and choose AgentBridge, in the Mac app: Share, Mac online."}
+		if crewPublishTabShown {
+			out.AccessPublish = &crewAccessText{Line: "Publish moves this Crew, or one of its agents, from your Mac to this server, so it works with your Mac off.", Note: "Publish from the Mac app: Share, Publish."}
+		}
 	default:
 		// A Crew that lives on this server: its Team tab, laptop access for its owner and who can use it.
 		out.AccessTabs = crewAccessTeamTab

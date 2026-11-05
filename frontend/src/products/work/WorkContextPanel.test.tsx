@@ -23,7 +23,7 @@ vi.mock('./useCrewPanel', () => ({ useCrewPanel: () => {
  if(mocks.status.loaded.includes('mcp:connected')||mocks.status.errors.includes('Connections could not be loaded.')) sections.push({id:'connections',title:'MCPs',rows:mocks.status.apps,error:mocks.status.errors[0]})
  else sections.push({id:'other_apps',title:'Apps',rows:mocks.status.apps})
  const sharing=!mocks.share.can_share?'Shared with you':mocks.share.mode==='everyone'?'Everyone':mocks.share.mode==='people'?`Shared with ${new Set(mocks.share.people.map(p=>p.id)).size}`:'Only you'
- sections.push({id:'access',title:'Access',detail:`Online · ${sharing}`,rows:[],access:{place:'online',role:mocks.share.can_share?'owner':'shared'}})
+ sections.push({id:'access',title:'Share',detail:`Online · ${sharing}`,rows:[],access:{place:'online',role:mocks.share.can_share?'owner':'shared',tree:(mocks as any).tree||[]}})
  return { data:{ project:'example',workspace:'Crew/example',busy:false,mac_elsewhere:false,sections,details },refresh:vi.fn() }
 } }))
 vi.mock('../../components/workspace/ChatChangesRow', () => ({ ChatChangesRow: ({ onOpen }: { onOpen: (repoRoot?: string) => void }) => <><button onClick={() => onOpen()}>Changes</button><button onClick={() => onOpen("tools/web")}>Worktree changes</button></> }))
@@ -36,17 +36,17 @@ import { CREW_STARTER_TYPES, crewStarterShortcuts } from './crewStarterTypes'
 import { crewProjectMenuItems } from './crewProjectMenu'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 beforeEach(() => {
- mocks.user = { id: 'owner', allowed_products: null }; mocks.server = 'local'; mocks.documents = []
+ mocks.user = { id: 'owner', allowed_products: null }; mocks.server = 'local'; mocks.documents = []; (mocks as any).tree = []
  mocks.share = { can_share:true, mode:'private', people:[], unknown_emails:[] }
  mocks.status = { apps: [], automations: [], errors: [], loaded: ['mcp:connected'] }; mocks.browser = { connected:true, label:'Connected', name:'Chrome' }
  window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://example.test' }
 })
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
-const accessDestinations = [['Access','access']]
+const accessDestinations = [['Share','access']]
 const inventory = (features?: Set<string>) => { const value = workWorkspacePanels({ enabledPanels: features, showShell: true }); return [...value.views, ...value.ops, ...value.setup] }
-async function render(check: (host: HTMLDivElement) => Promise<void>) {
+async function render(check: (host: HTMLDivElement) => Promise<void>, panels = inventory()) {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
- try { await act(async () => root.render(<WorkContextPanel reviewSessionId="chat" workspacePath="Crew/example" projectId="example" panels={inventory()} onOpen={mocks.open}/>)); await check(host) }
+ try { await act(async () => root.render(<WorkContextPanel reviewSessionId="chat" workspacePath="Crew/example" projectId="example" panels={panels} onOpen={mocks.open}/>)); await check(host) }
  finally { await act(async () => root.unmount()); host.remove() }
 }
 it('shows actual workspace status without promoting occasional tools, and keeps All tools searchable', async () => {
@@ -102,7 +102,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Full menu"]')!.click())
   expect([...host.querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent === 'Build')?.open).toBe(true)
   expect([...host.querySelectorAll('summary')].map(node => node.textContent)).toEqual(['Build','Use','Share','Integrations','Setup'])
-  for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','GitHub','Access']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
+  for (const label of ['Files','Models','Costs & usage','Terminal','My Slack account','GitHub','Share']) expect([...host.querySelectorAll('button')].some(node => node.textContent === label),label).toBe(true)
   expect(host.querySelector('[aria-label="Back to workspace"]')?.textContent).toBe('Full menu')
   expect(host.textContent).not.toContain('Back to workspace')
   const files = [...host.querySelectorAll('button')].find(node => node.textContent === 'Files')!
@@ -124,9 +124,17 @@ it('groups dashboards, motion and Artifacts without a finished-file registry, pr
   { id:'motion', title:'Spending history', path:'db/reports/history.html', order:1, motion:true },
   { id:'brief', title:'Project brief', path:'db/reports/brief.html', order:2, artifact:true },
  ]
+ // With a Share row the dashboard is one line in the server's Share tree (owner, 5 Nov), not a separate menu.
+ ;(mocks as any).tree = [{ kind:'dashboard', title:'3 dashboards', detail:'Not shared', path:'db/reports/overview.html' }]
  await render(async host => {
-  await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Changes')!.click())
-  expect(mocks.target).toHaveBeenLastCalledWith('files', 'review-uncommitted')
+  expect(host.querySelector('[aria-label="Dashboards"]')).toBeNull()
+  const line = [...host.querySelectorAll('button')].find(node => node.textContent === '3 dashboardsNot shared')!
+  await act(async () => line.click())
+  expect(selectReportDocument).toHaveBeenLastCalledWith('Crew/example', 'db/reports/overview.html')
+  expect(mocks.open).toHaveBeenLastCalledWith('dashboard')
+ })
+ // Run mode has no Share row and keeps the Dashboards menu.
+ await render(async host => {
   expect(host.textContent).not.toContain('Results')
   expect(host.textContent).not.toContain('Finished files')
   expect(host.querySelector('[aria-label="Dashboards"]')?.textContent).toBe('Dashboards3')
@@ -143,7 +151,7 @@ it('groups dashboards, motion and Artifacts without a finished-file registry, pr
   mocks.user={ id:'another-user', allowed_products:null }
   await act(async()=>[...host.querySelectorAll('button')].find(node=>node.textContent==='Project brief')!.click())
   expect(mocks.open).not.toHaveBeenCalled()
- })
+ }, workWorkspacePanels({ readOnly:true }).views)
  const host=document.createElement('div'); const root=createRoot(host)
  try {
   await act(async()=>root.render(<WorkContextPanel workspacePath="Crew/example" panels={[]} onOpen={mocks.open}/>))
@@ -193,10 +201,10 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
   mocks.share = { can_share:true, mode, people:[{id:'a'},{id:'b'},{id:'a'}], unknown_emails:['missing@example.test'] }
   await render(async host => {
    const footer = host.querySelector('footer')!
-   // One Access row: where it lives · who can use it, both from the server.
+   // One Share row: where it lives · who can use it, both from the server.
    await act(async () => {})
-   const accessRow = [...footer.querySelectorAll('button')].find(node => node.textContent?.startsWith('Access'))!
-   expect(accessRow.textContent).toBe(`AccessOnline · ${detail}`)
+   const accessRow = [...footer.querySelectorAll('button')].find(node => node.textContent?.startsWith('ShareOnline'))!
+   expect(accessRow.textContent).toBe(`ShareOnline · ${detail}`)
    for (const gone of ['Sharing', 'Laptop access', 'Where it lives', 'Connected agents']) expect([...footer.querySelectorAll('button')].some(node => node.textContent?.startsWith(gone))).toBe(false)
    mocks.open.mockClear(); mocks.target.mockClear()
    await act(async () => accessRow.click())
@@ -213,10 +221,10 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
  mocks.share = { can_share:false, mode:'private', people:[], unknown_emails:[] }
  await render(async host => {
   const footer = host.querySelector('footer')!
-  // Someone else's Crew: the row still opens Access, and says it is shared with you.
+  // Someone else's Crew: the row still opens Share, and says it is shared with you.
   await act(async () => {})
-  const accessRow = [...footer.querySelectorAll('button')].find(node => node.textContent?.startsWith('Access'))!
-  expect(accessRow.textContent).toBe('AccessOnline · Shared with you')
+  const accessRow = [...footer.querySelectorAll('button')].find(node => node.textContent?.startsWith('ShareOnline'))!
+  expect(accessRow.textContent).toBe('ShareOnline · Shared with you')
   await act(async () => accessRow.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp','access')
  })

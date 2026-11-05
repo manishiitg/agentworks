@@ -39,7 +39,7 @@ export const CREW_STARTER_TYPES = [
     example: 'Help process invoices, answer support questions or onboard customers.',
     shortcuts: [
       { id: 'identity:general', label: 'Instructions & identity' }, { id: 'memory:skills', label: 'Skills' },
-      { id: 'files', label: 'Files' }, { id: 'mcp:access', label: 'Access' },
+      { id: 'files', label: 'Files' }, { id: 'mcp:access', label: 'Share' },
     ],
   },
   {

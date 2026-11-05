@@ -31,7 +31,7 @@ still require the person's provider login or phone.
 | Plan; Files; Database | `panel-plan`, `panel-data`, `panel-data` |
 | Memory; Skills | `panel-data`, `panel-data` |
 | Chat history; named agents and their owners, models, pins or ordering | `panel-runs`, `crew-agents`, `panel-settings` |
-| Access: owners, audience and selected shared agents | `panel-access`, `panel-access` |
+| Share: owners, audience and selected shared agents | `panel-access`, `panel-access` |
 | Suggestions from people using this Crew | `panel-access` |
 | Functions; Schedules; Watchers; Webhooks | `panel-dashboard`, `panel-automations`, `panel-automations`, `panel-automations` |
 | Email inbox or personal Gmail monitoring | `panel-channels`, `panel-channels`, `panel-automations` |

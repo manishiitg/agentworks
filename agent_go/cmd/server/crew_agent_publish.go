@@ -127,7 +127,7 @@ func crewPublishedAgent(project, tab string) (*crewAgentPlacement, error) {
 		return nil, err
 	}
 	if b == nil || b.PairID != entry.PairID {
-		return nil, fmt.Errorf("this agent's server connection changed; reopen Access")
+		return nil, fmt.Errorf("this agent's server connection changed; reopen Share")
 	}
 	return &entry, nil
 }

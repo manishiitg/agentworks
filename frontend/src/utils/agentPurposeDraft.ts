@@ -34,9 +34,15 @@ export type AccessAskCard = keyof typeof ACCESS_ASK_PROMPTS
 
 /** Opens this Crew's Main chat with the Team request in its chat box; false when Main's tab is not open. */
 export function fillAccessAskDraft(projectId: string, card: AccessAskCard): boolean {
+  return fillMainDraft(projectId, ACCESS_ASK_PROMPTS[card])
+}
+
+/** The viewer's own Main opens with the words in its chat box, not sent (the Share tree's Ask, written by the server).
+ * False when their Main's tab is not open. */
+export function fillMainDraft(projectId: string, prompt: string): boolean {
   const main = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
   if (!main) return false
-  fillDraft(main.tabId, ACCESS_ASK_PROMPTS[card])
+  fillDraft(main.tabId, prompt)
   return true
 }
 

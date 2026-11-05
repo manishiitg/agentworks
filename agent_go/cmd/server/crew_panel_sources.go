@@ -30,19 +30,20 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 				People   []struct{ ID string }
 			}
 			err := crewPanelRead(r.WithContext(ctx), api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]string{"workspace": workspace, "action": "share_status"}, &data)
-			detail := "Only you"
+			detail, shared := "Only you", "Not shared"
 			if !data.Owner && !data.CanShare {
-				detail = "Shared with you"
+				detail, shared = "Shared with you", "Shared with you"
 			} else if data.Mode == "everyone" {
-				detail = "Everyone"
+				detail, shared = "Everyone", "Everyone"
 			} else if data.Mode == "people" && len(data.People) > 0 {
 				people := map[string]bool{}
 				for _, person := range data.People {
 					people[person.ID] = true
 				}
 				detail = fmt.Sprintf("Shared with %d", len(people))
+				shared = fmt.Sprintf("%d %s", len(people), plural(len(people), "person", "people"))
 			}
-			return crewPanelSection{Detail: detail}, err
+			return crewPanelSection{Detail: detail, shared: shared}, err
 		}},
 
 		// Git status over a Crew's repos takes longer than the panel's other reads (5 Nov: past 2 s on every refresh).
@@ -371,7 +372,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 			}
 			return section, err
 		}},
-		{id: "access", title: "Access", allowed: true, read: func(ctx context.Context) (crewPanelSection, error) {
+		{id: "access", title: "Share", allowed: true, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data crewSyncReply
 			err := read(ctx, api.handleCrewSync, "/api/crew-sync/"+url.PathEscape(project), nil, &data)
 			access := &crewPanelAccess{Where: data.Where, Place: data.Place, Role: data.Role, View: data.AccessView, Summary: data.AccessSummary, Tree: data.AccessTree, Asking: []crewPanelAsk{}}

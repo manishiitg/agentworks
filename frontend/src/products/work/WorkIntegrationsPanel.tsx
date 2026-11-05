@@ -49,7 +49,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     if (['apps', 'brain', 'folders', 'mac-folders', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)
   })
   useEffect(() => { onAccessPage?.(tab === 'access'); return () => onAccessPage?.(false) }, [tab, onAccessPage])
-  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Access', 'computer-use': 'Computer use', 'message-agents': 'Message other agents' }
+  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', slack: 'Slack bot', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Share', 'computer-use': 'Computer use', 'message-agents': 'Message other agents' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
     {/* The Access page opens straight on its tabs, without a title row (owner, 4 Nov). */}

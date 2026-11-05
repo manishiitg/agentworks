@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bot, CalendarClock, ChevronRight, FolderSync, Globe, Laptop, Link2, RefreshCw, Settings2, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
+import { Bot, CalendarClock, ChevronRight, FolderSync, Globe, Laptop, LayoutDashboard, Link2, RefreshCw, Settings2, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -21,6 +21,7 @@ import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { openCrewAccess, openCrewSync } from './MacSharedAgents'
 import { useChatStore } from '../../stores/useChatStore'
+import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { activateTab } from '../../utils/activateTab'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
@@ -88,7 +89,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     }
     return <WorkspaceContextCard title={{ full: 'Full menu', integrations: 'Integrations', automations: 'Automations' }[menu.view]} onBack={() => setMenu(undefined)}>
       {menu.view !== 'full' ? <div className="space-y-0.5">{(menu.view === 'integrations' ? integrations : automationItems).map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {
-        const items = inventory.filter(item => item.group === group)
+        const items = inventory.filter(item => item.group === group && !(item.id === 'dashboard' && accessItems.length > 0))
         if (!items.length) return null
         const subgroups = [...new Set(items.flatMap(item => item.subgroup ? [item.subgroup] : []))]
         return <Group key={`${scope}:${group}`} title={group} collapsed defaultOpen={group === 'Build'}>
@@ -106,9 +107,16 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const openAsk = (ask: CrewAsk) => { void openCrewAskThread(projectId, ask) }
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.
-  const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, public: Link2, folder: FolderSync, clash: TriangleAlert, where: access?.where === 'mac' ? Laptop : Globe }
+  const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, dashboard: LayoutDashboard, public: Link2, folder: FolderSync, clash: TriangleAlert, where: access?.where === 'mac' ? Laptop : Globe }
   // Each line opens the Access page (WorkSurface listens) at its tab, or at Sync (TeamSyncPanel scrolls to it).
   const openLine = (line: CrewAccessLine) => {
+    // The dashboard line (owner, 5 Nov): opens the dashboard, or with none puts the server's Ask in the person's Main.
+    if (line.kind === 'dashboard') {
+      const dashboard = byId.get('dashboard')
+      if (line.path && dashboard) open({ ...dashboard, reportPath: line.path })
+      else if (line.ask && !fillMainDraft(projectId, line.ask)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error')
+      return
+    }
     if (line.kind === 'folder' || line.kind === 'clash') openCrewSync(projectId)
     else openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
   }
@@ -136,7 +144,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   })
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the server's
   // tree (or, until it has one, the shared folder's line), then who asked; each opens Access at its place.
-  const asksTree = (asking.length > 0 || accessTree.length > 0) && <div role="list" aria-label="Access details" className="ml-3 border-l border-border pl-2 pb-1">
+  const asksTree = (asking.length > 0 || accessTree.length > 0) && <div role="list" aria-label="Share details" className="ml-3 border-l border-border pl-2 pb-1">
     {treeLines}
     {asking.slice(0, 5).map(ask => <button key={`${ask.tab}:${ask.sender}`} role="listitem" type="button" onClick={() => openAsk(ask)} title={`Open ${ask.sender}'s chat with ${ask.agent}`} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${ask.active ? 'bg-emerald-500 motion-safe:animate-pulse' : 'bg-muted-foreground/40'}`} />
@@ -151,7 +159,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <p>Dashboards work once this Crew is online. Move it online from your Mac.</p>
     </div> : <>
     {changes}
-    {byId.has('dashboard') && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
+    {/* With a Share row the dashboard is a line in its tree (owner, 5 Nov: one place); Run mode keeps this menu. */}
+    {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
     {automationItems.length > 0 && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={CalendarClock} detail={data?.details.automations}>
       {automations.map(item => <Row key={item.id} icon={byId.get(item.destination!)?.icon || CalendarClock} hint={byId.get(item.destination!)?.label} detail={item.detail} onClick={() => openID(item.destination!)}>{item.label}</Row>)}
