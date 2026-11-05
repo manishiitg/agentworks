@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -144,38 +142,4 @@ func (api *StreamingAPI) setCrewTeamAll(ctx context.Context, claims *UserClaims,
 	}
 	log.Printf("[CREW_TEAM] local project=%s event=all_in_team on=%t added=%v", project, on, out["added"])
 	return out, nil
-}
-
-// crewTeamAllRefreshed keeps the side panel's frequent status reads from re-reading this Crew's agents more than every
-// 30 s per Crew.
-var crewTeamAllRefreshed sync.Map
-
-// refreshCrewTeamAll applies "All agents in team" (and Main by default) to the Mac's agents now, so an agent added, or
-// allowed by a later rule, joins without the switch being flipped again (owner, 5 Nov: ChatGPT and testing xxx stayed
-// out). On this Mac only, at most every 30 s per Crew.
-func (api *StreamingAPI) refreshCrewTeamAll(ctx context.Context, claims *UserClaims, project string) {
-	if !IsLocalMode() || !readCrewTeamAll(project) {
-		return
-	}
-	if last, ok := crewTeamAllRefreshed.Load(project); ok && time.Since(last.(time.Time)) < 30*time.Second {
-		return
-	}
-	crewTeamAllRefreshed.Store(project, time.Now())
-	_, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
-	if err != nil || binding == nil || binding.Mode != "relay" || binding.Editing != "local" {
-		return
-	}
-	rows, err := api.macAgentRows(ctx, claims, project)
-	if err != nil {
-		return
-	}
-	next, added := withAllInTeam(rows, readMacSharedAgents(project), readCrewTeamState(project).MainOnlyMe)
-	if len(added) == 0 {
-		return
-	}
-	if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, next); err != nil {
-		log.Printf("[CREW_TEAM] local project=%s event=all_in_team_refresh_failed reason=%q", project, err)
-		return
-	}
-	log.Printf("[CREW_TEAM] local project=%s event=all_in_team_refresh added=%v", project, added)
 }
