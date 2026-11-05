@@ -51,6 +51,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		TransferID   string                     `json:"transfer_id,omitempty"`
 		Agents       []macSharedAgent           `json:"agents"`
 		AllInTeam    bool                       `json:"all_in_team"`
+		Key          string                     `json:"key,omitempty"`
 	}
 	if r.Method == http.MethodGet {
 		input.Action = "status"
@@ -64,7 +65,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	switch input.Action {
-	case "status", "server", "relay", "offline", "agents", "share_agents":
+	case "status", "server", "relay", "offline", "agents", "share_agents", "team_all", "lent", "lent_copy", "lent_move":
 	default:
 		externalError(w, 400, "invalid_action", "Choose Move online.")
 		return
@@ -230,6 +231,11 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	// Shared agents (PLAT-856-509): "agents" lists this Crew's side tabs and which are shared; "share_agents" saves the
 	// owner's choice here and on the online copy, which decides who may message them.
+	// The Team card's "only on your Mac" items (crew_team_lent_mac.go).
+	if input.Action == "lent" || input.Action == "lent_copy" || input.Action == "lent_move" {
+		api.desktopCrewTeamLent(w, r, claims, roots, binding, connection, input.Action, input.Key)
+		return
+	}
 	if input.Action == "agents" || input.Action == "share_agents" {
 		api.desktopShareMacCrewAgents(w, r, claims, roots.ID, binding, connection, input.Action, input.Agents)
 		return

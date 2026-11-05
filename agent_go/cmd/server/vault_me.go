@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"regexp"
@@ -19,6 +20,7 @@ func (api *StreamingAPI) registerVaultMeRoutes(r *mux.Router) {
 	r.HandleFunc("/vault/me/tools", api.handleVaultMeTools).Methods("GET")
 	r.HandleFunc("/vault/me/mcp/{conn}", api.handleVaultMeMCP).Methods("GET", "POST", "DELETE")
 	r.HandleFunc("/vault/me/secret/{name}", api.handleVaultMeSecret).Methods("GET")
+	r.HandleFunc("/vault/me/secrets", api.handleVaultMeSecretCopy).Methods("POST")
 	// Vault step 5B (vault_move.go): the server takes a moved sign-in; the Mac app's route moves one there.
 	r.HandleFunc("/vault/me/connections/import", api.handleVaultMeImport).Methods("POST")
 	r.HandleFunc("/desktop-connections/{connection}/vault-apps/{id}/move", api.handleDesktopVaultMove).Methods("POST")
@@ -146,4 +148,45 @@ func (api *StreamingAPI) handleVaultMeSecret(w http.ResponseWriter, r *http.Requ
 	}
 	log.Printf("[VAULT_ME] user=%s secret=%s result=ok", person, name)
 	writeUsersJSON(w, http.StatusOK, map[string]string{"name": match.Name, "value": match.Value})
+}
+
+// handleVaultMeSecretCopy takes a secret the person copies from their Mac (Team card, "Copy to the server"): saved in
+// their own Vault on this server and selected for their Crew here, so the Team's agents use it. Only the Crew's owner
+// (or someone who adds secrets to it, as on the website) can; never from a web page; the value is never logged.
+func (api *StreamingAPI) handleVaultMeSecretCopy(w http.ResponseWriter, r *http.Request) {
+	person, ok := vaultMeCaller(w, r)
+	if !ok {
+		return
+	}
+	if r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
+		writeUsersError(w, http.StatusForbidden, "Secrets are copied from your Mac.")
+		return
+	}
+	var in struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+		Crew  string `json:"crew"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&in) != nil || in.Value == "" || !vaultMeIDPattern.MatchString(in.Crew) {
+		writeUsersError(w, http.StatusBadRequest, "Send the secret's name and value and the Crew.")
+		return
+	}
+	root := crewProjectRootByID(in.Crew)
+	if root == "" {
+		writeUsersError(w, http.StatusNotFound, "That Crew isn't on this server.")
+		return
+	}
+	full, err := api.saveProjectSecret(r.Context(), person, root, in.Name, in.Value)
+	if err == nil {
+		err = selectProjectSecret(r.Context(), crewProfileID, root, full)
+	}
+	if err != nil {
+		log.Printf("[VAULT_ME] user=%s secret=%s crew=%s copy result=error err_type=%T", person, in.Name, in.Crew, err)
+		writeUsersError(w, http.StatusConflict, err.Error())
+		return
+	}
+	log.Printf("[VAULT_ME] user=%s secret=%s crew=%s copy result=ok", person, in.Name, in.Crew)
+	writeUsersJSON(w, http.StatusOK, map[string]string{"name": in.Name})
 }

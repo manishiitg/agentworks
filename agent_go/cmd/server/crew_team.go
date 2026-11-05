@@ -368,7 +368,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		// Exclude disabled/deleted members from all live audience resolutions.
 		t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) })
 		view := t.view(claims.UserID)
-		view.Lent = crewTeamLentNow(r.Context(), t)
+		view.Lent = crewTeamLentNow(r.Context(), t, claims.UserID)
 		externalJSON(w, view)
 		return
 	}
@@ -500,36 +500,61 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	externalJSON(w, input.view(claims.UserID))
 }
 
-// crewTeamLent names what a Team's agents use of the owner's in this Crew (owner, 5 Nov: "my work can depend on mcps
-// and secrets I use"): the owner's server Vault apps in use here and the Crew's selected secrets. A member's turn in the
-// Crew gets them from the owner (crewSecretsPerson, projectSecretsOwner); values never leave Vault.
+// crewTeamLent is what a Team's agents use of the owner's in this Crew (owner, 5 Nov: "my work can depend on mcps
+// and secrets I use"; approved mockup "Team tab: what teammates' agents use from you"): the owner's server Vault apps in
+// use here and the Crew's selected secrets, with the card's words for this viewer. A member's turn in the Crew gets them
+// from the owner (crewSecretsPerson, projectSecretsOwner); values never leave Vault. Yours marks the owner's own view,
+// where the Mac app adds what only the owner's Mac has (crew_team_lent_mac.go).
 type crewTeamLent struct {
-	Apps    []string `json:"apps"`
-	Secrets []string `json:"secrets"`
+	Title string             `json:"title"`
+	Line  string             `json:"line"`
+	Foot  string             `json:"foot,omitempty"`
+	Yours bool               `json:"yours"`
+	Items []crewTeamLentItem `json:"items"`
 }
 
-func crewTeamLentNow(ctx context.Context, t crewTeam) *crewTeamLent {
+type crewTeamLentItem struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"` // "app" or "secret"
+}
+
+func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLent {
 	root := crewProjectRootByID(t.ProjectID)
 	if IsLocalMode() || !t.On || root == "" {
 		return nil
 	}
-	out := &crewTeamLent{Apps: []string{}, Secrets: []string{}}
+	out := &crewTeamLent{Items: []crewTeamLentItem{}, Yours: viewer == t.OwnerID}
+	if out.Yours {
+		out.Title, out.Line = "What teammates' agents use from you", "Their agents in this Crew use these as you. Values are never shown."
+	} else {
+		owner := crewPersonShortName(t.OwnerID)
+		out.Title, out.Line = "What your agents use from "+owner, "Your agents in this Crew use these as "+owner+". Values are never shown."
+		if crewRelayTwin(t.ProjectID) {
+			out.Foot = "Some of " + owner + "'s apps run only on " + owner + "'s Mac; your agents can ask " + owner + "'s agent to use them."
+		}
+	}
+	apps, secrets := []string{}, []string{}
 	if servers, err := vaultServersFor(ctx, t.OwnerID); err == nil {
 		selected, chosenOnly, _ := projectAppSelection(ctx, root)
 		for _, server := range servers {
 			if projectVaultAppInUse(selected, chosenOnly, server.ID) {
-				out.Apps = append(out.Apps, firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID)))
+				apps = append(apps, firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID)))
 			}
 		}
 	}
 	if names, err := productSelectedGlobalSecrets(ctx, crewProfileID, root); err == nil && names != nil {
 		for _, name := range *names {
-			out.Secrets = append(out.Secrets, vaultSecretShortName(name))
+			secrets = append(secrets, vaultSecretShortName(name))
 		}
 	}
-	slices.Sort(out.Apps)
-	slices.Sort(out.Secrets)
-	out.Apps, out.Secrets = slices.Compact(out.Apps), slices.Compact(out.Secrets)
+	slices.Sort(apps)
+	slices.Sort(secrets)
+	for _, name := range slices.Compact(apps) {
+		out.Items = append(out.Items, crewTeamLentItem{Name: name, Kind: "app"})
+	}
+	for _, name := range slices.Compact(secrets) {
+		out.Items = append(out.Items, crewTeamLentItem{Name: name, Kind: "secret"})
+	}
 	return out
 }
 
