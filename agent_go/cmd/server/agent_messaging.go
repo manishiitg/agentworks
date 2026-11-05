@@ -1074,6 +1074,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		// their own turns (PLAT-856-509).
 		if source.UserID != dest.UserID {
 			reqMap["delivery_mode"] = "queue"
+			reqMap["agent_message_from_other_person"] = true
 		}
 	}
 	// Bind the receiving address before its turn: it can explicitly reply from
