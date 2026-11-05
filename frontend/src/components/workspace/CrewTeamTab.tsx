@@ -10,12 +10,14 @@ export function CrewTeamTab({ projectId, connection, network }: { projectId: str
   const teamCopy = useTeamCopyStatus(projectId, connection)
   // With Team off nobody else can ask, so the team copy has nothing to say.
   const { team, target } = useProjectTeam(projectId)
+  // With the Team off the tab is only its card (owner, 5 Nov: "when team is off we should not show all this").
+  if (!team?.on) return <CrewTeamCard projectId={projectId} />
   return <>
     <TeamDataLine network={network} />
     <CrewTeamCard projectId={projectId} />
-    {team?.on && <TeamWhenMacOff {...teamCopy} network={network} />}
+    <TeamWhenMacOff {...teamCopy} network={network} />
     <MacSharedAgents projectId={projectId} connection={connection} />
     {/* The shared folder's sync history lives here, under Access (owner, 5 Nov), not as its own side-panel item. */}
-    {team?.on && team.folder_access && target && <TeamSyncPanel target={target} name={team.name} projectId={projectId} />}
+    {team.folder_access && target && <TeamSyncPanel target={target} name={team.name} projectId={projectId} />}
   </>
 }
