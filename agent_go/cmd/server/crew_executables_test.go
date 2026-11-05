@@ -145,6 +145,21 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	if got := workflowAccessForManifest(&UserClaims{UserID: "builder", Username: "builder"}, manifest); got != WorkflowAccessNone {
 		t.Fatal("revoked co-owner retained access", got)
 	}
+	// PLAT-746-265: the new Team roster must flow through the same live
+	// workflow admission, without changing the saved automation's owner.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	for _, state := range []struct{ on, invited, allowed bool }{{true, true, false}, {true, false, true}, {false, false, false}} {
+		if err := writeCrewTeam(crewTeam{ProjectID: binding.CrewID, OwnerID: "owner", On: state.on, People: []crewTeamPerson{{UserID: "builder", Invited: state.invited}}}); err != nil {
+			t.Fatal(err)
+		}
+		got := workflowAccessForManifest(&UserClaims{UserID: "builder", Username: "builder"}, manifest)
+		if (got == WorkflowAccessOwner) != state.allowed {
+			t.Fatalf("Team on=%v invited=%v workflow access=%s", state.on, state.invited, got)
+		}
+		if got := buildScheduleContext(binding.Root, manifest, WorkflowSchedule{RunAs: "builder"}).OwnerUserID; got != "owner" {
+			t.Fatalf("Team membership changed automation identity to %q", got)
+		}
+	}
 	file, _ := crewExecutableFile(binding.Root)
 	if err := os.WriteFile(file, []byte("{"), 0600); err != nil {
 		t.Fatal(err)

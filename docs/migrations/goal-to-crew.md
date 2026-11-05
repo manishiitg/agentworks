@@ -18,7 +18,7 @@ This reads files and SQLite databases without changing them. It reports the sele
 
 Resolve any reported access, input or data conflict before applying. In particular:
 
-- Destination owner, owners and sharing audience must match. Old editors, Team policies, individually shared destination agents and paired/synced destination Crews need an explicit mapping first.
+- Destination owner, owners (including joined Team members) and sharing audience must match. Invitations alone grant no access. Old editors, source Team policies, individually shared destination agents and paired/synced destination Crews need an explicit mapping first.
 - An old enabled group batch must become one chosen input preset per entry. Function input schemas must map unambiguously to workflow inputs.
 - Saved Python must use `agentworks_db` for managed database access. Code, reports or database objects directly using measurement tables must use the Crew measurement API instead.
 - Existing named outcomes must not be collapsed into one goal; multiple such outcomes need their own mapping first.

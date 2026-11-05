@@ -147,4 +147,39 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if _, err := newCrewStepRunner(svc, "stranger").ResolveCrewAgentConfiguration(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "stranger", Username: "stranger"}), child.Root, chat.ConversationKey); err == nil || err.Error() != "this Crew is unavailable" {
 		t.Fatalf("foreign user did not fail at access: %v", err)
 	}
+	// The new Team/co-owner roster includes other people's agents. Seeing
+	// one must not copy its model/account into the main owner's workflow.
+	identity, _ := projectIdentityOf(crew.WorkspacePath)
+	if _, err := defaultProjectOwners().AddCoOwner(identity.Product, identity.Folder, "stranger"); err != nil {
+		t.Fatal(err)
+	}
+	memberBinding, allowed, err := resolveConversationBindingForUser(strangerCtx, "stranger", profile, crew.CrewID)
+	if err != nil || !allowed {
+		t.Fatal("member fixture unavailable", allowed, err)
+	}
+	memberChat, err := store.resolveOrCreate(strangerCtx, "stranger", profile, memberBinding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	visible, err := crewOwnerChatRecords(ctx, "owner", "work", crew.CrewID, crew.WorkspacePath)
+	if err != nil || len(visible) != 2 {
+		t.Fatal("expected both owners' visible agents", visible, err)
+	}
+	choices, err := crewExecutableAgentChoices(ctx, "owner", "owner", crew.CrewID, crew.WorkspacePath)
+	if err != nil || len(choices) != 1 || choices[0].ID != chat.ConversationKey {
+		t.Fatal("automation offered another person's configuration", choices, err)
+	}
+	if _, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, memberChat.ConversationKey); err == nil {
+		t.Fatal("automation reused a teammate's private account configuration")
+	}
+	if err := store.setAgentOnlyMe(ctx, "owner", "work", chat.ConversationKey, true); err != nil {
+		t.Fatal(err)
+	}
+	choices, err = crewExecutableAgentChoices(strangerCtx, "stranger", "owner", crew.CrewID, crew.WorkspacePath)
+	if err != nil || len(choices) != 0 {
+		t.Fatal("member discovered the owner's Only me agent", choices, err)
+	}
+	if _, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, chat.ConversationKey); err != nil {
+		t.Fatal("owner lost their own agent", err)
+	}
 }

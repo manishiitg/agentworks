@@ -236,7 +236,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		}
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Manifest.Label < entries[j].Manifest.Label })
 		w.Header().Set("Content-Type", "application/json")
-		agents, err := crewExecutableAgentChoices(r.Context(), project.OwnerID, project.Binding.ResourceID, root)
+		agents, err := crewExecutableAgentChoices(r.Context(), caller, project.OwnerID, project.Binding.ResourceID, root)
 		if err != nil {
 			http.Error(w, "Could not load this Crew's agents", http.StatusInternalServerError)
 			return

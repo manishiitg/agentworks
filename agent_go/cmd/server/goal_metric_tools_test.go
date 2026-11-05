@@ -234,6 +234,20 @@ func TestCrewGoalsShareEvidenceWithoutSharingWriteAuthority(t *testing.T) {
 	if _, err := reg.tools["crew_goals"].exec(ctx, map[string]interface{}{"action": "list"}); err != nil {
 		t.Fatal("Crew goals tool unavailable", err)
 	}
+	// Team membership grants Crew authoring only after joining and while on;
+	// the goal HTTP path must use that live authority, not a saved owner list.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	save.Goal.Name = "Sales outcome"
+	save.Metrics[0].Unit = "leads"
+	for _, state := range []struct {
+		on, invited bool
+		status      int
+	}{{true, true, 403}, {true, false, 200}, {false, false, 403}} {
+		if err := writeCrewTeam(crewTeam{ProjectID: crew.CrewID, OwnerID: "owner", On: state.on, People: []crewTeamPerson{{UserID: "stranger", Invited: state.invited}}}); err != nil {
+			t.Fatal(err)
+		}
+		call("stranger", "POST", save, state.status)
+	}
 
 	// Freshness and unavailable readings cannot be converted into success.
 	active := step.CrewGoal{MetricIDs: []string{"leads"}}

@@ -16,13 +16,18 @@ type crewExecutableAgentChoice struct {
 	Name string `json:"name"`
 }
 
-func crewExecutableAgentChoices(ctx context.Context, owner, crewID, root string) ([]crewExecutableAgentChoice, error) {
-	tabs, err := crewOwnerChatRecords(ctx, owner, "work", crewID, root)
+func crewExecutableAgentChoices(ctx context.Context, caller, owner, crewID, root string) ([]crewExecutableAgentChoice, error) {
+	tabs, err := crewOwnerChatRecords(ctx, caller, "work", crewID, root)
 	if err != nil {
 		return nil, err
 	}
 	choices := []crewExecutableAgentChoice{}
 	for _, tab := range tabs {
+		// Watching a teammate's agent is not permission to copy its private
+		// provider account into this owner's automation. Respect Only me too.
+		if tab.OwnerID != owner {
+			continue
+		}
 		choices = append(choices, crewExecutableAgentChoice{ID: tab.Record.ConversationKey, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Main")})
 	}
 	return choices, nil
@@ -56,12 +61,12 @@ func (r *crewStepRunner) ResolveCrewAgentConfiguration(ctx context.Context, work
 	if err != nil || canonicalCrewWorkspaceRoot(project.WorkspacePath) != canonicalCrewWorkspaceRoot(binding.CrewRoot) {
 		return result, fmt.Errorf("the owning Crew is unavailable")
 	}
-	tabs, err := crewOwnerChatRecords(ctx, owner, "work", binding.CrewID, binding.CrewRoot)
+	tabs, err := crewOwnerChatRecords(ctx, r.userID, "work", binding.CrewID, binding.CrewRoot)
 	if err != nil {
 		return result, err
 	}
 	for _, tab := range tabs {
-		if tab.Record.ConversationKey != strings.TrimSpace(agentID) {
+		if tab.OwnerID != owner || tab.Record.ConversationKey != strings.TrimSpace(agentID) {
 			continue
 		}
 		model, err := effectiveProfileChatModel(profile, project, tab.Record, tab.Identity)
