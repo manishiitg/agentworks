@@ -9,7 +9,7 @@ import { teamRequest, useProjectTeam } from './teamApi'
 export function useCrewWorksElsewhere(projectId: string) {
   const { team, target } = useProjectTeam(projectId)
   const onMacApp = Boolean(target?.connection)
-  const elsewhere: 'mac' | 'web' | undefined = !team || team.can_manage || !team.where ? undefined
+  const elsewhere: 'mac' | 'web' | undefined = !team?.where ? undefined
     : onMacApp && team.where === 'web' ? 'web'
     : !onMacApp && team.where === 'mac' ? 'mac'
     : undefined
@@ -50,7 +50,7 @@ export function CrewWhereRow({ projectId }: { projectId: string }) {
   const { team, target } = useProjectTeam(projectId)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  if (!team || team.can_manage || team.where !== 'mac' || !target?.connection) return null
+  if (team?.where !== 'mac' || !target?.connection) return null
   const back = async () => {
     setBusy(true); setError('')
     try {
