@@ -162,6 +162,7 @@ func writeMacSharedAgents(project string, agents []macSharedAgent) (result error
 	defer func() {
 		if result == nil {
 			publishCrewPanelChanged(project)
+			pruneCrewStandby(project) // an agent off the Team's list drops its standby copy
 		}
 	}()
 	path, err := macSharedAgentsPath(project)

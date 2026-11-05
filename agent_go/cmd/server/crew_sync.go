@@ -47,6 +47,8 @@ type crewSyncRequest struct {
 	Editing     string                  `json:"editing,omitempty"`
 	Snapshot    *crewsync.Snapshot      `json:"snapshot,omitempty"`
 	Agents      []macSharedAgent        `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
+	// Standby (standby_check, standby_store): the Mac's standby copy of one In team agent (crew_agent_standby.go).
+	Standby *crewStandbyRequest `json:"standby,omitempty"`
 }
 type crewServerCopy struct {
 	Name   string `json:"name"`
@@ -101,6 +103,8 @@ type crewSyncReply struct {
 	AccessPublish *crewAccessText `json:"access_publish,omitempty"`
 	AccessShare   bool            `json:"access_share,omitempty"`
 	AccessLaptop  bool            `json:"access_laptop,omitempty"`
+	// Standby answers standby_check and standby_store (crew_agent_standby.go).
+	Standby *crewStandbyReply `json:"standby,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -304,6 +308,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id string, input crewSyncRequest) (crewSyncReply, error) {
 	if input.Action == "publish_accounts" || input.Action == "publish_agent" || input.Action == "stage_agent" {
 		return api.receiveCrewAgentPublish(ctx, claims, id, input)
+	}
+	if input.Action == "standby_check" || input.Action == "standby_store" {
+		return api.receiveCrewStandby(ctx, claims, id, input)
 	}
 	if input.Action == "stage" {
 		return api.prepareCrewTransfer(ctx, claims, id, input)
