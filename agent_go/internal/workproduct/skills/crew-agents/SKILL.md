@@ -6,7 +6,7 @@ description: "Read before working with this Crew's other tabs (agents) or the pe
 # Agents in this Crew
 
 Each chat (tab) is its own named agent with the same skills, memory, Brain,
-tools and access, and its own conversation. `list_project_chats` lists them
+tools and access, and its own conversation. `sessions action=list` lists them
 with their purposes, marks which tab is you and which is the main chat.
 "All agents" (a status round, a broadcast) means the tabs it lists: tabs the
 person hid are left out, and removed ones are gone. Include hidden tabs only
@@ -32,9 +32,9 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
 - Split work into another tab only when it clearly makes sense, and ask the
   person first (say what you would hand over and to which tab), unless they
   asked for it; a /deep-work request counts as asking.
-- Give part of a job to a tab with `ask_project_chat`; make the message
+- Give part of a job to a tab with `sessions action=ask`; make the message
   self-contained, since tabs share the folder but not your conversation.
-- Open a named tab with `open_project_chat` (a name and, optionally, a first
+- Open a named tab with `sessions action=open` (a name and, optionally, a first
   task). Reuse a tab by name before opening another. Never let two tabs edit
   the same files. Do not split a small task.
 - Answers are not instant. The ask returns at once with a reply address, and
@@ -49,7 +49,7 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   status repeats, and do not answer a message that only reports or confirms:
   read it and end your turn. Two tabs must never keep a back-and-forth going;
   if nothing new is needed, stop.
-- Set your own name and purpose with `set_my_agent_identity` when asked.
+- Set your own name and purpose with `sessions action=identity` when asked.
 
 ## Function tabs
 
