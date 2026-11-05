@@ -14,8 +14,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// "All agents in team" (owner, 5 Nov, "A Team is a shared room"): while it is on, every agent of this Mac Crew that
-// has a purpose is In team, including ones made or named later. In team is the agent's audience "team";
+// "All agents in team" (owner, 5 Nov, "A Team is a shared room"): while it is on, every agent of this Mac Crew is In
+// team, including ones made later; a purpose is optional (owner, 5 Nov). In team is the agent's audience "team";
 // Only me is no audience (an agent public on AgentBridge keeps its entry for that, Mac online's choice).
 
 func crewTeamAllPath(project string) (string, error) {
@@ -95,13 +95,13 @@ func noteMainChoice(project string, saved []macSharedAgent) {
 	}
 }
 
-// withAllInTeam puts every ready agent (name and purpose) In team, Main too unless the owner chose Only me for
+// withAllInTeam puts every agent In team, Main too unless the owner chose Only me for
 // it; it returns the new list and the names added.
 func withAllInTeam(rows []macAgentRow, current []macSharedAgent, mainOnlyMe bool) ([]macSharedAgent, []string) {
 	next := slices.Clone(current)
 	added := []string{}
 	for _, row := range rows {
-		if strings.TrimSpace(row.Purpose) == "" || row.Tab == macMainTab && mainOnlyMe {
+		if row.Tab == macMainTab && mainOnlyMe {
 			continue
 		}
 		at := slices.IndexFunc(next, func(agent macSharedAgent) bool { return agent.Tab == row.Tab })

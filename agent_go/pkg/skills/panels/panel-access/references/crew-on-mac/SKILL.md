@@ -22,7 +22,7 @@ chat (the owner only, in the Mac app):
   member reads and writes the shared folder. Sync history and clashes → `team_sync recent` / `clashes`.
 - Each agent is **In team** (everyone in the Team sees it and its chat live; their agents can message it) or
   **Only me**: `action=share agent=…` / `action=unshare agent=…`. "All my agents" → `action=team_all on=true`.
-  Main is In team by default. An agent needs a purpose first (`set_my_agent_identity` in its tab).
+  Main is In team by default. A purpose is optional (`set_my_agent_identity` in its tab sets one).
 - By default a shared agent only answers questions; pass `can_make_changes=true` when the owner wants it to work for them.
 - Files that look like they hold passwords or keys are skipped by the sync and stay on this Mac. When the person asks to share one anyway, `action=sync_anyway path=<exact path from the skipped list> on=true`; it then goes to everyone in the Team. `on=false` takes it back (removed from the shared folder, kept on this Mac).
 

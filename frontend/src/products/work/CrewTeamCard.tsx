@@ -51,7 +51,6 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
       const result = await switchTeam(target, on)
       const notes = [result.folder_created ? 'Made an empty team/ folder as the shared folder.' : '',
         result.shared?.length ? `Shared with your team: ${result.shared.join(', ')}.` : '',
-        result.needs_purpose?.length ? `Set a purpose for ${result.needs_purpose.join(', ')} to share ${result.needs_purpose.length === 1 ? 'it' : 'them'} (Set purpose below).` : '',
         result.note || '']
       setSwitchNote(notes.filter(Boolean).join(' '))
       refresh()

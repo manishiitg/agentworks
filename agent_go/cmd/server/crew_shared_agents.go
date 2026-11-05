@@ -100,16 +100,8 @@ func validateCrewAgentShare(ctx context.Context, caller, root string, change cre
 	}
 	out := []string{}
 	for _, key := range keys {
-		agent, found := byID[key]
-		if !found {
+		if _, found := byID[key]; !found {
 			return nil, fmt.Errorf("choose an existing agent from Share")
-		}
-		purpose := agent.Purpose
-		if value, exists := change.Purposes[key]; exists {
-			purpose = strings.TrimSpace(value)
-		}
-		if purpose == "" {
-			return nil, fmt.Errorf("give %s a purpose before sharing it", agent.Name)
 		}
 		if !containsID(out, key) {
 			out = append(out, key)
