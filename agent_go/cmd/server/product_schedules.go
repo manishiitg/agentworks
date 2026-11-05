@@ -1262,6 +1262,12 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	} else {
 		binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, "")
 	}
+	// While the server answers for this agent (Always on, the Mac was off), this Mac's own schedules don't run it either.
+	if bindErr == nil && s.api != nil {
+		if line := s.api.crewStandbyMacRefusal(runCtx, job.Profile.ID, binding.ConversationKey, firstNonEmptyTrimmed(job.AutomationKind, "schedule")); line != "" {
+			bindErr = errors.New(line)
+		}
+	}
 	if bindErr != nil {
 		setupErr := fmt.Errorf("resolve product conversation: %w", bindErr)
 		s.failAutomationSetupRun(job, options, setupErr)
