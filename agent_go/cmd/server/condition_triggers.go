@@ -138,11 +138,14 @@ func (c *conditionService) authorize(ctx context.Context, job productScheduleJob
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+	// A check names a secret as the project uses it: its Vault name or its $SECRET_ name.
 	selected := map[string]bool{}
+	var selection []string
 	for _, names := range []*[]string{manifest.Capabilities.SelectedSecrets, manifest.Capabilities.SelectedGlobalSecretNames} {
 		if names != nil {
 			for _, n := range *names {
-				selected[n] = true
+				selected[n], selected[vaultSecretShortName(n)] = true, true
+				selection = append(selection, n)
 			}
 		}
 	}
@@ -153,7 +156,8 @@ func (c *conditionService) authorize(ctx context.Context, job productScheduleJob
 	}
 	if len(cfg.Secrets) > 0 {
 		selectedValues := c.s.api.loadSelectedSecrets(ctx, job.UserID, job.WorkspacePath, cfg.Secrets)
-		if err := validateVaultSecretSelection(ctx, job.UserID, selectedValues, &cfg.Secrets); err != nil {
+		names := projectSelectedVaultNames(cfg.Secrets, selection)
+		if err := validateVaultSecretSelection(ctx, job.UserID, selectedValues, &names); err != nil {
 			if strings.HasPrefix(err.Error(), "Your groups do not have access") {
 				return conditiontrigger.PermanentError{Err: err}
 			}

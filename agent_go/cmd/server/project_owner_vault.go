@@ -42,6 +42,75 @@ func (api *StreamingAPI) saveProjectSecret(ctx context.Context, actor, root, nam
 	return full, nil
 }
 
+// runSecretsOwner is whose Vault grants a run's selected secrets come from: the project's owner, for the owner, an
+// editor, a schedule and a published Flow version alike (owner-lent). A Flow's release folder answers for its draft.
+func (api *StreamingAPI) runSecretsOwner(ctx context.Context, person, workspace string) string {
+	if draft, err := relayDraftWorkspaceForRelease(ctx, workspace); err == nil && draft != "" {
+		workspace = draft
+	}
+	return api.projectSecretsOwner(person, workspace)
+}
+
+// projectRunSecrets resolves a Goal or Flow run's SECRET_* values: the project's selected secrets, lent by its owner.
+// A selected secret the owner may no longer use stops the run.
+func (api *StreamingAPI) projectRunSecrets(ctx context.Context, person, workspace string, projectNames []string, selection *[]string) ([]resolvedSecret, error) {
+	owner := api.runSecretsOwner(ctx, person, workspace)
+	scoped := api.loadSelectedSecrets(ctx, person, workspace, projectNames)
+	if err := validateVaultSecretSelection(ctx, owner, scoped, selection); err != nil {
+		return nil, err
+	}
+	return api.mergeGlobalSecretsFor(ctx, owner, scoped, selection), nil
+}
+
+// projectSecretSelection is a project's saved secret selection: its own older names and its Vault names.
+func projectSecretSelection(ctx context.Context, root string) ([]string, []string, error) {
+	manifest, err := readProjectSelectionManifest(ctx, root)
+	if err != nil || !manifest.found {
+		return nil, nil, err
+	}
+	capabilities, _ := manifest.doc["capabilities"].(map[string]any)
+	return manifestNames(capabilities["selected_secrets"]), manifestNames(capabilities["selected_global_secret_names"]), nil
+}
+
+// projectSecretValueFor is one secret the project uses, by its Vault name or the $SECRET_ name it is used under, lent
+// by the project's owner as in a run.
+func (api *StreamingAPI) projectSecretValueFor(ctx context.Context, person, root, name string) (string, bool) {
+	own, selection, err := projectSecretSelection(ctx, root)
+	if err != nil {
+		return "", false
+	}
+	rows, err := api.projectRunSecrets(ctx, api.runSecretsOwner(ctx, person, root), root, own, &selection)
+	if err != nil {
+		return "", false
+	}
+	for _, row := range rows {
+		if row.Name == vaultSecretShortName(strings.TrimSpace(name)) && strings.TrimSpace(row.Value) != "" {
+			return row.Value, true
+		}
+	}
+	return "", false
+}
+
+// projectSelectedVaultNames maps the names a check asks for (a selected Vault name, or the $SECRET_ name the project
+// uses it under) to the project's selected Vault names. A name the project does not select maps to itself.
+func projectSelectedVaultNames(wanted, selection []string) []string {
+	out := make([]string, 0, len(wanted))
+	for _, name := range wanted {
+		match := name
+		for _, selected := range selection {
+			if selected == name {
+				match = selected
+				break
+			}
+			if vaultSecretShortName(selected) == name {
+				match = selected
+			}
+		}
+		out = append(out, match)
+	}
+	return out
+}
+
 // prepareCrewSyncSecret makes a Mac Crew's secret available in its owner's My accounts on this server. state is "kept"
 // when the owner's Vault here already has it (the server's value stays), "ready" when the Mac's value was saved, and
 // "missing" when neither has a value.

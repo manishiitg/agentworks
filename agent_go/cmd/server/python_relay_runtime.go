@@ -104,11 +104,11 @@ func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *Schedul
 	if err := json.Unmarshal([]byte(sctx.WebhookInput.Variables["INPUT"]), &input); err != nil || input == nil {
 		return fmt.Errorf("Flow INPUT must be an object")
 	}
-	selected := s.api.loadSelectedSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets)
-	if err := validateVaultSecretSelection(ctx, sctx.OwnerUserID, selected, sctx.Capabilities.SelectedGlobalSecretNames); err != nil {
+	secrets, err := s.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets, sctx.Capabilities.SelectedGlobalSecretNames)
+	if err != nil {
 		return err
 	}
-	for _, secret := range s.api.mergeGlobalSecretsFor(ctx, sctx.OwnerUserID, selected, sctx.Capabilities.SelectedGlobalSecretNames) {
+	for _, secret := range secrets {
 		env["SECRET_"+secret.Name] = secret.Value
 	}
 	common.SetSessionShellEnv(sessionID, env)

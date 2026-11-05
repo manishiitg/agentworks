@@ -55,7 +55,7 @@ func TestStartupRegistersVaultSecretNamesWithoutValues(t *testing.T) {
 	var logs bytes.Buffer
 	log.SetOutput(&logs)
 	defer log.SetOutput(io.Discard)
-	startVaultSecretRegistration()
+	startVaultSecretRegistration(nil)
 	select {
 	case <-got:
 	case <-time.After(5 * time.Second):

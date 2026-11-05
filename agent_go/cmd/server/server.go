@@ -1138,9 +1138,9 @@ func (api *StreamingAPI) resolveBackendNotificationSecret(ctx context.Context, u
 	if api == nil || secretName == "" {
 		return "", false
 	}
-	for _, secret := range api.loadSelectedSecrets(ctx, userID, workflowPath, []string{secretName}) {
-		if secret.Name == secretName && strings.TrimSpace(secret.Value) != "" {
-			return secret.Value, true
+	if strings.TrimSpace(workflowPath) != "" {
+		if value, ok := api.projectSecretValueFor(ctx, userID, workflowPath, secretName); ok {
+			return value, true
 		}
 	}
 	for _, secret := range visibleGlobalSecrets(ctx, userID) {
@@ -2377,8 +2377,9 @@ func runServer(cmd *cobra.Command, args []string) {
 		log.Fatalf("Failed to load managed global secrets: %v", err)
 	}
 	// Register shared secret names with Vault so they are grantable and
-	// revocable without an administrator opening Vault > Secrets first.
-	startVaultSecretRegistration()
+	// revocable without an administrator opening Vault > Secrets first. Then move
+	// any secret still kept in a project's own vault into its owner's Vault.
+	startVaultSecretRegistration(api.startProjectVaultMove)
 
 	// Setup routes
 	router := mux.NewRouter()
@@ -4809,7 +4810,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// Manifest is the source of truth for workflow-selected secrets too.
 				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, resolvedWPath, manifest.Capabilities.SelectedSecrets)
 				req.secretsWorkspacePath = resolvedWPath
-				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, &manifest.Capabilities.SelectedSecrets); err != nil {
+				// Checked against the owner who lends them, as the turn resolves them.
+				secretsOwner := api.projectSecretsOwner(currentUserID, resolvedWPath)
+				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, &manifest.Capabilities.SelectedSecrets); err != nil {
 					http.Error(w, err.Error(), 403)
 					return
 				}
@@ -4826,7 +4829,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.NotificationRunSummaryRecipients = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryRecipients...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, resolvedWPath, &req)
-				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
 					http.Error(w, err.Error(), http.StatusForbidden)
 					return
 				}
@@ -4948,10 +4951,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.SelectedGlobalSecrets = caps.SelectedGlobalSecretNames
 				}
 				// User-stored secrets from manifest are authoritative for workflow UI edits.
-				secretsOwner := currentUserID
-				if isCrewProjectPath(manifestWorkspacePath) && crewProjectOwnedByCaller(currentUserID, manifestWorkspacePath) {
-					secretsOwner = api.projectSecretsOwner(currentUserID, manifestWorkspacePath)
-				}
+				// Checked against the owner who lends them, as the turn resolves them.
+				secretsOwner := api.projectSecretsOwner(currentUserID, manifestWorkspacePath)
 				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), secretsOwner, manifestWorkspacePath, caps.SelectedSecrets)
 				req.secretsWorkspacePath = manifestWorkspacePath
 				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, &caps.SelectedSecrets); err != nil {
@@ -12806,17 +12807,16 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	if presetGlobalSecretNames != nil {
 		effectiveGlobalSecretSelection = presetGlobalSecretNames
 	}
-	scopedSecrets := req.DecryptedSecrets
+	var projectSecretNames []string
 	if workspacePath != "" {
 		if manifest, found, err := ReadWorkflowManifest(context.Background(), workspacePath); err == nil && found {
-			scopedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, workspacePath, manifest.Capabilities.SelectedSecrets)
+			projectSecretNames = manifest.Capabilities.SelectedSecrets
 		}
 	}
-	secretsOwner := api.projectSecretsOwner(currentUserID, workspacePath)
-	if err := validateVaultSecretSelection(ctx, secretsOwner, scopedSecrets, effectiveGlobalSecretSelection); err != nil {
+	allSecrets, err := api.projectRunSecrets(ctx, currentUserID, workspacePath, projectSecretNames, effectiveGlobalSecretSelection)
+	if err != nil {
 		return nil, err
 	}
-	allSecrets := api.mergeGlobalSecretsFor(context.Background(), secretsOwner, scopedSecrets, effectiveGlobalSecretSelection)
 	if len(allSecrets) > 0 {
 		entries := make([]orchestrator.SecretEntry, len(allSecrets))
 		for i, s := range allSecrets {

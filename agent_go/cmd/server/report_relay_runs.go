@@ -338,7 +338,7 @@ func (api *StreamingAPI) relaySecretValues(ctx context.Context, workspace string
 	}
 	selected := api.loadSelectedSecrets(ctx, owner, workspace, manifest.Capabilities.SelectedSecrets)
 	var values []string
-	for _, secret := range api.mergeGlobalSecretsFor(ctx, owner, selected, manifest.Capabilities.SelectedGlobalSecretNames) {
+	for _, secret := range api.mergeGlobalSecretsFor(ctx, api.runSecretsOwner(ctx, owner, workspace), selected, manifest.Capabilities.SelectedGlobalSecretNames) {
 		if len(secret.Value) >= 4 {
 			values = append(values, secret.Value)
 		}

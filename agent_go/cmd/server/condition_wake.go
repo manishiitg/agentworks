@@ -63,7 +63,11 @@ func conditionJobView(job productScheduleJob) map[string]interface{} {
 func (c *conditionService) secretEnvironment(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) (map[string]string, error) {
 	root := agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath)
 	secrets := c.s.api.loadSelectedSecrets(ctx, job.UserID, root, cfg.Secrets)
-	names := append([]string{}, cfg.Secrets...)
+	selection, err := productSelectedGlobalSecrets(ctx, job.Profile.ID, job.WorkspacePath)
+	if err != nil {
+		return nil, err
+	}
+	names := projectSelectedVaultNames(cfg.Secrets, *selection)
 	if err := validateVaultSecretSelection(ctx, job.UserID, secrets, &names); err != nil {
 		return nil, err
 	}
@@ -72,8 +76,8 @@ func (c *conditionService) secretEnvironment(ctx context.Context, job productSch
 		env["SECRET_"+secret.Name] = secret.Value
 	}
 	for _, name := range cfg.Secrets {
-		if env["SECRET_"+name] == "" {
-			return nil, fmt.Errorf("The secret %[1]s has no value yet. Add a value for %[1]s in this Crew's Secrets (or ask the owner to), then try again.", name)
+		if env["SECRET_"+vaultSecretShortName(name)] == "" {
+			return nil, fmt.Errorf("The secret %[1]s has no value yet. Add a value for %[1]s in this Crew's Secrets (or ask the owner to), then try again.", vaultSecretShortName(name))
 		}
 	}
 	return env, nil

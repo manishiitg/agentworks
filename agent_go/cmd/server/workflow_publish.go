@@ -289,9 +289,11 @@ func (api *StreamingAPI) resolvePublishSecretValue(ctx context.Context, userID, 
 	if secretName == "" {
 		return "", false
 	}
-	selected := api.loadSelectedSecrets(ctx, userID, workflowPath, []string{secretName})
+	if value, ok := api.projectSecretValueFor(ctx, userID, workflowPath, secretName); ok {
+		return value, true
+	}
 	selectedGlobals := []string{secretName}
-	for _, secret := range api.mergeGlobalSecretsFor(ctx, userID, selected, &selectedGlobals) {
+	for _, secret := range api.mergeGlobalSecretsFor(ctx, userID, nil, &selectedGlobals) {
 		if secret.Name == secretName && secret.Value != "" {
 			return secret.Value, true
 		}
