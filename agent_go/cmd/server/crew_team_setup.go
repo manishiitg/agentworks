@@ -15,8 +15,8 @@ import (
 // A Team works with one Crew setup (owner, 5 Nov): the Crew's chat instructions and selected skills travel in
 // team-setup.json at the Crew folder's top, and its own skills in skills/. Both are always part of what a Team shares,
 // whatever folders it chose, so every copy has them and edits by anyone sync both ways with the store's history and
-// clash handling. Each Mac copy (the owner's, a member's) writes the file when its Crew's setup changes and applies it
-// when someone else's edit arrives; the server applies it to the online copy, which member turns on the web use.
+// clash handling. Each copy (the owner's Mac, a member's Mac, a web member's server copy) writes the file when its
+// Crew's setup changes and applies it when someone else's edit arrives, so a web member's edit reaches the owner's Mac.
 // The model, apps and secrets stay as they are (the owner's, lent to the Team).
 
 const crewTeamSetupFile = "team-setup.json"
@@ -59,7 +59,7 @@ func (api *StreamingAPI) crewSetupOf(ctx context.Context, person, project string
 }
 
 // reconcileCrewTeamSetup brings this Crew and its team-setup.json together. state is where the last applied version
-// is kept; write is false where only the file is the source (the server's online copy).
+// is kept; write is false until a copy has received the team folder, so a new copy never replaces the Team's setup.
 func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, project, root, state string, write bool) {
 	if project == "" || root == "" || state == "" {
 		return
