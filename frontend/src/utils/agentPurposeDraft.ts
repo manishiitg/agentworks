@@ -46,9 +46,15 @@ export function fillAskFromMyAgentDraft(projectId: string, ownerName: string, ag
  * workspace:work:<serverProject>/agent/<serverChatKey>. The web tab's key is the server key; a Mac app tab carries it
  * after ":team:" (MacSharedAgents openTeamRemoteAgent). */
 export function teammateAgentAddress(watchedKey?: string): string {
-  const key = (watchedKey || '').includes(':team:') ? (watchedKey || '').split(':team:')[1] : watchedKey || ''
-  const project = key.split(':chat:')[0]
-  return project && project !== key ? `workspace:work:${project}/agent/${key}` : ''
+  const watched = watchedKey || ''
+  // In the Mac app the agent is on the server: its id there is team:<this Crew>:<server chat key>, which this Mac's
+  // send_message takes (list_agents names it the same way); a workspace address would not resolve on the Mac.
+  if (watched.includes(':team:')) {
+    const [localProject, serverKey] = watched.split(':team:')
+    return localProject && serverKey ? `team:${localProject}:${serverKey}` : ''
+  }
+  const project = watched.split(':chat:')[0]
+  return project && project !== watched ? `workspace:work:${project}/agent/${watched}` : ''
 }
 
 /** A finished set_my_agent_identity call (native or over MCP, whose name carries a prefix), or a saved Crew identity
