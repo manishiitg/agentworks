@@ -4,12 +4,63 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
 
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/mcpagent/oauth"
 )
+
+// A saved user copy of a server's config kept a client registered for another
+// callback (the Mac's Notion config held one for localhost:8000 and had lost
+// its registration endpoint), so the authorize URL sent that client with this
+// install's callback and Notion answered "Invalid redirect URI". The connect
+// must register a fresh client for the current callback, then reuse it.
+func TestOAuthStartReregistersClientSavedForOtherRedirect(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	registrations := 0
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		registrations++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_id": "fresh-client"})
+	}))
+	t.Cleanup(issuer.Close)
+	dir := t.TempDir()
+	base := filepath.Join(dir, "mcp.json")
+	catalog := &oauth.OAuthConfig{AuthURL: "https://example.com/authorize", TokenURL: "https://example.com/token", RegistrationEndpoint: issuer.URL}
+	if err := mcpclient.SaveConfig(base, &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{"Demo": {URL: "https://example.com/mcp", OAuth: catalog}}}); err != nil {
+		t.Fatal(err)
+	}
+	saved := &oauth.OAuthConfig{AuthURL: catalog.AuthURL, TokenURL: catalog.TokenURL, ClientID: "old-client", RedirectURL: "http://localhost:8000/api/oauth/callback"}
+	if err := mcpclient.SaveConfig(filepath.Join(dir, "mcp_user.json"), &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{"Demo": {URL: "https://example.com/mcp", OAuth: saved}}}); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{logger: loggerv2.NewNoop(), mcpConfigPath: base}
+	const redirect = "http://127.0.0.1:18743/api/oauth/callback"
+	for attempt := 1; attempt <= 2; attempt++ {
+		start, discovery, err := api.beginOAuthFlow("default", "", "Demo", redirect, "", "", nil)
+		if err != nil || discovery != nil || start == nil {
+			t.Fatalf("attempt %d: start=%v discovery=%+v err=%v", attempt, start, discovery, err)
+		}
+		oauthFlowsMu.Lock()
+		delete(oauthFlows, start.State)
+		oauthFlowsMu.Unlock()
+		u, _ := url.Parse(start.AuthURL)
+		if got := u.Query().Get("client_id"); got != "fresh-client" {
+			t.Fatalf("attempt %d: authorize client_id = %q, want the client registered for this callback", attempt, got)
+		}
+		if got := u.Query().Get("redirect_uri"); got != redirect {
+			t.Fatalf("attempt %d: authorize redirect_uri = %q, want %q", attempt, got, redirect)
+		}
+	}
+	if registrations != 1 {
+		t.Fatalf("registrations = %d, want 1 (register once, then reuse for the same callback)", registrations)
+	}
+}
 
 // newDCRServer returns a stub registration endpoint that issues a client_id on
 // every call, plus a counter of how many times it was actually called.

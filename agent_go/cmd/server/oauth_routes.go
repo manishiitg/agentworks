@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -413,6 +414,9 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 	serverName = canonicalName
 
 	platformTokenFile := getUserTokenFilePath(platformMCPTokenUserID, serverName)
+	if dropClientForOtherRedirect(serverConfig.OAuth, redirectURI) {
+		log.Printf("[VAULT_OAUTH] provider=%s saved client was for another callback; registering for %s", serverName, redirectURI)
+	}
 
 	// Apply user-provided client_id if present (from the "needs_client_id" flow)
 	if clientID != "" {
@@ -533,6 +537,8 @@ type oauthFlowTarget struct {
 	AfterExchange  func(*OAuthFlowState) error
 	Notify         func(bool, string)
 	ValidateToken  func(context.Context, *oauth2.Token) error
+	// ForgetClient drops a saved client the provider rejected at token exchange.
+	ForgetClient func()
 }
 
 // runOAuthFlow is the OAuth connect shared by platform and personal servers:
@@ -553,6 +559,12 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 	// Client Registration or needs one registered by hand. Try DCR first, so
 	// only the genuinely manual servers reach the prompt below.
 	var regErr error
+	clientSource := "configured"
+	if serverConfig.OAuth.ClientID == "" && serverConfig.OAuth.RegistrationEndpoint == "" {
+		// An older saved copy of a server's config can lack the registration
+		// endpoint; the catalog entry still has it.
+		serverConfig.OAuth.RegistrationEndpoint = api.catalogRegistrationEndpoint(serverName)
+	}
 	if serverConfig.OAuth.ClientID == "" && serverConfig.OAuth.RegistrationEndpoint != "" {
 		var client *registeredClient
 		client, regErr = api.ensureRegisteredClientAt(target.ClientFile, target.Discoverer, serverName, serverConfig.OAuth.RegistrationEndpoint, redirectURI)
@@ -568,6 +580,10 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 			setRegistrationFailure(serverConfig.OAuth.RegistrationEndpoint, redirectURI, "")
 			serverConfig.OAuth.ClientID = client.ClientID
 			serverConfig.OAuth.ClientSecret = client.ClientSecret
+			clientSource = "registered"
+			if client.Reused {
+				clientSource = "reused"
+			}
 			api.logger.Info(fmt.Sprintf("🪪 Using DCR client_id for %s: %s", serverName, client.ClientID))
 		}
 	}
@@ -612,6 +628,8 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 		api.logger.Error(fmt.Sprintf("Failed to generate auth URL for %s: %v", serverName, err), err)
 		return nil, nil, &oauthStartError{http.StatusInternalServerError, fmt.Sprintf("Failed to generate authorization URL: %v", err)}
 	}
+
+	log.Printf("[VAULT_OAUTH] provider=%s redirect_uri=%s client=%s", serverName, oauthMgr.GetRedirectURI(), clientSource)
 
 	// Log the config being stored in flow
 	api.logger.Info(fmt.Sprintf("🔐 Storing OAuth config in flow for %s: AuthURL=%s, TokenURL=%s, TokenFile=%s",
@@ -714,6 +732,15 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 		}
 		mutex.Unlock()
 		if err != nil {
+			if oauthClientRejected(err) {
+				// The provider no longer accepts this client for this callback:
+				// forget it so the next connect registers a fresh one.
+				_ = os.Remove(target.ClientFile)
+				if target.ForgetClient != nil {
+					target.ForgetClient()
+				}
+				log.Printf("[VAULT_OAUTH] provider=%s redirect_uri=%s client=rejected; next connect registers a new client", serverName, oauthMgr.GetRedirectURI())
+			}
 			api.logger.Error(fmt.Sprintf("❌ Failed to exchange code for token for %s: %v", serverName, err), err)
 			finish(false, fmt.Sprintf("token exchange failed: %v", err))
 			return
@@ -1236,6 +1263,45 @@ type registeredClient struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret,omitempty"`
 	RedirectURI  string `json:"redirect_uri"`
+	Reused       bool   `json:"-"`
+}
+
+// dropClientForOtherRedirect clears a client_id that was saved with a different
+// callback URL. Providers bind a client to the redirect URIs it was registered
+// with (dynamic registration, RFC 7591, or by hand), so reusing it with this
+// install's callback fails on the provider's authorize page ("Invalid redirect
+// URI"). A Mac whose saved MCP config came from another port or host hit this
+// for Notion. Call it before applying an entered or admin sign-in app client.
+func dropClientForOtherRedirect(cfg *oauth.OAuthConfig, redirectURI string) bool {
+	if cfg == nil || cfg.ClientID == "" || cfg.RedirectURL == "" || cfg.RedirectURL == redirectURI {
+		return false
+	}
+	cfg.ClientID, cfg.ClientSecret, cfg.ClientSecretFile = "", "", ""
+	return true
+}
+
+// catalogRegistrationEndpoint is the registration endpoint in the base MCP
+// catalog, which a saved user copy of the server may have lost.
+func (api *StreamingAPI) catalogRegistrationEndpoint(serverName string) string {
+	if api.mcpConfigPath == "" {
+		return ""
+	}
+	base, err := mcpclient.LoadConfig(api.mcpConfigPath, api.logger)
+	if err != nil {
+		return ""
+	}
+	_, cfg, err := base.ResolveServer(serverName)
+	if err != nil || cfg.OAuth == nil {
+		return ""
+	}
+	return cfg.OAuth.RegistrationEndpoint
+}
+
+// oauthClientRejected reports a token-endpoint answer saying the client itself
+// is no longer valid for this callback.
+func oauthClientRejected(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "invalid_client") || strings.Contains(msg, "unauthorized_client") || strings.Contains(msg, "redirect_uri") || strings.Contains(msg, "redirect uri")
 }
 
 // getUserClientFilePath returns the DCR client file path for a user and server.
@@ -1274,6 +1340,7 @@ func (api *StreamingAPI) ensureRegisteredClientAt(clientFile string, disc oauth.
 	if data, err := oauth.ReadTokenFile(clientFile); err == nil {
 		var cached registeredClient
 		if json.Unmarshal(data, &cached) == nil && cached.ClientID != "" && cached.RedirectURI == redirectURI {
+			cached.Reused = true
 			return &cached, nil
 		}
 	}
