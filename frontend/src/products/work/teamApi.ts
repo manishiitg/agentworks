@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
-import type { AgentProfileSideChat } from '../../services/api-types'
+import type { AgentProfileSideChat, SharedProjectFileEntry } from '../../services/api-types'
 import { desktopRequest } from '../../services/desktopConnections'
 import { liveFeed } from '../../services/liveFeed'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
@@ -163,6 +163,21 @@ export function teamAgentForTab(state: TeamTabState, key: string | undefined, ma
   if (!own || !state.target?.localProject) return teamAgentFor(agents, key)
   const tab = main ? 'main' : key.split(':chat:')[1]
   return agents.find(agent => agent.can_change && agent.tab === tab)
+}
+
+/** The server Crew's folders under parent (crew-relative), for the Team's "+ Share this folder" picker: the same
+ * crew file listing shared Crews use, through the Mac app's connection when the Crew is on a connected server. */
+export async function crewServerFolders(target: TeamTarget, profileId: string, parent: string): Promise<string[]> {
+  const route = `/api/agent-profiles/${encodeURIComponent(profileId)}/shared-projects/${encodeURIComponent(target.project)}/files`
+  let files: SharedProjectFileEntry[] = []
+  if (!target.connection) files = (await api.get<{ files?: SharedProjectFileEntry[] }>(route, { skipSessionContext: true })).data.files || []
+  else {
+    const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(target.connection)}${route}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
+    if (!response.ok) throw new Error("Could not list this Crew's folders. Try again.")
+    files = ((await response.json()) as { files?: SharedProjectFileEntry[] }).files || []
+  }
+  return files.filter(f => f.type === 'folder').map(f => f.path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+    .filter(path => path && path.split('/').slice(0, -1).join('/') === parent).sort()
 }
 
 /** The Team members' own agents in the owner's Mac app (owner, 5 Nov): the online copy's side-chat rows the person

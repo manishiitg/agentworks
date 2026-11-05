@@ -6,13 +6,16 @@ interface CreateFolderDialogProps {
   onClose: () => void
   onCreateFolder: (folderPath: string, commitMessage?: string) => Promise<void>
   parentPath?: string
+  /** False hides the optional commit message where the folder is not a versioned workspace (the Team tab). */
+  commitMessage?: boolean
 }
 
 export default function CreateFolderDialog({ 
   isOpen, 
   onClose, 
   onCreateFolder, 
-  parentPath = ''
+  parentPath = '',
+  commitMessage: showCommitMessage = true
 }: CreateFolderDialogProps) {
   const [folderName, setFolderName] = useState('')
   const [commitMessage, setCommitMessage] = useState('')
@@ -128,7 +131,7 @@ export default function CreateFolderDialog({
             )}
           </div>
 
-          <div>
+          {showCommitMessage && <div>
             <label className="block text-sm font-medium text-foreground mb-1">
               Commit Message (Optional)
             </label>
@@ -140,7 +143,7 @@ export default function CreateFolderDialog({
               disabled={isCreating}
               className="w-full px-3 py-2 rounded-md border border-input bg-transparent text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
             />
-          </div>
+          </div>}
 
           {error && (
             <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md p-2">
