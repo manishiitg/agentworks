@@ -435,7 +435,7 @@ func gitWorkspaceBytes(ctx context.Context, dir string, args ...string) ([]byte,
 	out := gitOutputBuffer{limit: 16 << 20}
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
-		return nil, kbErr("GIT_FAILED", "Git could not complete this action. Check for diverged history, repository credentials, or an unavailable branch.")
+		return nil, orGitMissing(kbErr("GIT_FAILED", "Git could not complete this action. Check for diverged history, repository credentials, or an unavailable branch."))
 	}
 	return out.Bytes(), nil
 }

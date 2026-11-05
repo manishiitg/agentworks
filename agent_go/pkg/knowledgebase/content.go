@@ -1071,7 +1071,7 @@ func (s *Service) restoreEntry(ctx context.Context, p Principal, a map[string]an
 		return nil, nil, err
 	}
 	if !s.hasGitHistory() {
-		return nil, nil, kbErr("NO_HISTORY", "Brain has no version history to restore from.")
+		return nil, nil, orGitMissing(kbErr("NO_HISTORY", "Brain has no version history to restore from."))
 	}
 	commit := strings.ToLower(stringArg(a, "commit"))
 	if !restoreCommitPattern.MatchString(commit) {

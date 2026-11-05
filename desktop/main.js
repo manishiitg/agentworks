@@ -48,6 +48,7 @@ ipcMain.on('dismiss-walkthrough', (_event, key) => {
 let dynamicAgentPort = 0;
 let dynamicWorkspacePort = 0;
 let dynamicVaultPort = 0;
+let vaultTokenFile = '';
 let plannedAgentPort = 0;
 const workspaceApiToken = crypto.randomBytes(32).toString('hex');
 let desktopConnectionsInstalled = false;
@@ -1103,6 +1104,7 @@ async function spawnVault(userDataPath) {
   });
   vaultProcess = started;
   dynamicVaultPort = ports.vault;
+  vaultTokenFile = state.tokenFile;
   console.log(`[main] Vault started on port: ${dynamicVaultPort}`);
 }
 
@@ -1222,7 +1224,8 @@ function spawnAgent(userDataPath) {
     // paths. The same docsDir is also passed to workspace-server via --docs-dir
     // in spawnWorkspace().
     const env = {
-      ...localProductEnv(process.env),
+      // The agent reaches this Mac's own Vault, started just before it.
+      ...localProductEnv(process.env, dynamicVaultPort ? { url: `http://127.0.0.1:${dynamicVaultPort}`, tokenFile: vaultTokenFile } : {}),
       // Keep workflow coding-CLI projections stable across app/server restarts
       // and separate from workspace documents. The Go server also has a safe
       // per-user fallback for direct launches, but Desktop owns a more precise

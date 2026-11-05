@@ -98,6 +98,14 @@ func startVaultSecretRegistration() {
 			cancel()
 			if err == nil {
 				log.Printf("[VAULT] registered %d shared secret names", len(getGlobalSecrets()))
+				if IsLocalMode() {
+					// A Mac that turned its own Vault on keeps every shared secret it had: registration grants each
+					// name to the Platform group, which this Mac's person is in.
+					check, done := context.WithTimeout(context.Background(), 15*time.Second)
+					rows, permErr := permittedGlobalSecrets(check, GetDefaultUserID())
+					done()
+					log.Printf("[VAULT] this Mac's person may use %d of %d shared secrets err=%v", len(rows), len(getGlobalSecrets()), permErr)
+				}
 				return
 			}
 			if attempt == 1 || attempt%10 == 0 {
