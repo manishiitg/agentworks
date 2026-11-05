@@ -8,7 +8,9 @@ import { Button } from '../../components/ui/Button'
 import { fillAccessAskDraft, fillAskFromMyAgentDraft, fillWhenOthersAskDraft, type AccessAskCard } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import { activateTab } from '../../utils/activateTab'
-import { changeTeamPeople, saveTeam, switchTeam, teamAgentForTab, teamError, teamRequest, useTeamTab, type Team, type TeamTabAgent, type TeamTabShare, type TeamTabState, type TeamTabView, type TeamTarget } from './teamApi'
+import CreateFolderDialog from '../../components/workspace/CreateFolderDialog'
+import { WORK_PROFILE_ID } from './workData'
+import { changeTeamPeople, crewServerFolders, saveTeam, switchTeam, teamAgentForTab, teamError, teamRequest, useTeamTab, type Team, type TeamTabAgent, type TeamTabShare, type TeamTabState, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
@@ -169,8 +171,9 @@ function FolderRow({ folder, target, server, canRemove, busy, onRemove }: { fold
 }
 
 /** What the team shares: Folders or the Whole Crew. The Crew's owner switches it and stops sharing a folder
- * (can_choose); anyone in the Team adds a folder by name (can_add_folder), which the server makes when missing. The
- * owner's Mac app also picks from the Mac's folders. */
+ * (can_choose); anyone in the Team adds one with "+ Share this folder" (can_add_folder): picked from the Crew's folders
+ * (the owner's Mac app reads the Mac's, a server Crew the server's), or, on a Mac Crew seen elsewhere, named in the
+ * Files view's new-folder dialog and made by the server when missing. */
 function SharesCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
   const { team } = view
   const [busy, setBusy] = useState(false)
@@ -178,10 +181,14 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
   const [picking, setPicking] = useState(false)
   const [parent, setParent] = useState('')
   const [listing, setListing] = useState<Listing>()
-  const [newFolder, setNewFolder] = useState('')
+  const [naming, setNaming] = useState(false)
   const onMac = Boolean(target.connection && target.localProject && view.mac?.yours)
   const choose = view.can_choose
   const pick = choose && onMac
+  // Not on the owner's Mac: a server Crew picks from the server's folders; a Mac Crew's folders are only on the Mac,
+  // so a new one is named instead.
+  const serverPick = view.can_add_folder && !pick && !view.mac_only
+  const makeNew = view.can_add_folder && !pick && Boolean(view.mac_only)
   useEffect(() => {
     if (!picking || !pick) return
     let active = true
@@ -189,6 +196,13 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
       .then(data => { if (active) setListing(data) }).catch(e => { if (active) setError(teamError(e)) })
     return () => { active = false }
   }, [picking, parent, pick, target.connection, target.localProject])
+  useEffect(() => {
+    if (!picking || !serverPick) return
+    let active = true
+    void crewServerFolders({ project: target.project, connection: target.connection }, WORK_PROFILE_ID, parent)
+      .then(found => { if (active) setListing({ folders: found, path: parent, files: 0, bytes: 0 }) }).catch(e => { if (active) setError(teamError(e)) })
+    return () => { active = false }
+  }, [picking, parent, serverPick, target.project, target.connection])
   const localWhole = useShareSize(onMac ? target.connection : undefined, target.localProject, choose ? 'whole=1' : undefined)
   const whole = localWhole || view.whole
   const tooBig = Boolean(localWhole?.too_big)
@@ -216,25 +230,18 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
         {folders.map(folder => <FolderRow key={folder} folder={folder} target={onMac ? target : { project: target.project }} server={view.shares?.find(share => share.path === folder)} canRemove={choose} busy={busy}
           onRemove={() => void save({ ...team, folder: { folders: folders.filter(f => f !== folder) } })} />)}
         {!folders.length && <p className="text-xs text-muted-foreground">Nothing is shared yet{choose ? ': add a folder, or share the Whole Crew' : ''}.</p>}
-        {view.can_add_folder && !pick && <form className="flex items-center gap-2" onSubmit={event => {
-          event.preventDefault()
-          const name = newFolder.trim().replace(/^\/+|\/+$/g, '')
-          if (!name || folders.includes(name)) return
-          void save({ ...team, folder: { folders: [...folders, name] } }).then(() => setNewFolder(''))
-        }}>
-          <input aria-label="Folder to share" value={newFolder} onChange={event => setNewFolder(event.target.value)} placeholder="Add a folder to share, such as notes" className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs" />
-          <Button size="sm" type="submit" disabled={busy || !newFolder.trim()}>Add</Button>
-        </form>}
-        {pick && <button type="button" disabled={busy} onClick={() => { setPicking(!picking); setParent('') }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Share this folder</button>}
-        {view.can_add_folder && !pick && view.mac_only && <p className="text-xs text-muted-foreground">{view.mac_only}</p>}
+        {(pick || serverPick || makeNew) && <button type="button" disabled={busy} title={makeNew ? 'Make a new folder that everyone in the Team shares' : 'Choose a folder of this Crew to share with the Team'}
+          onClick={() => { if (makeNew) setNaming(true); else { setPicking(!picking); setParent('') } }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Share this folder</button>}
         {pick && tooBig && localWhole?.too_big_line && <p className="text-xs text-amber-600">The Whole Crew ({sizeLine(localWhole)}): {localWhole.too_big_line}</p>}
       </div>}
-    {picking && pick && !team.folder.whole && <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-xs">
+    {picking && (pick || serverPick) && !team.folder.whole && <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-xs">
       <div className="flex items-center gap-2"><button type="button" onClick={() => setParent(parent.split('/').slice(0, -1).join('/'))} className="text-primary">{parent ? '← Up' : 'Project'}</button><span>{parent}</span></div>
       {listing?.folders.map(folder => <button key={folder} type="button" onClick={() => setParent(folder)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"><Folder className="h-3.5 w-3.5" />{folder.split('/').pop()}<ChevronRight className="ml-auto h-3 w-3" /></button>)}
-      {parent && listing?.path === parent && <><p>{sizeLine(listing)}</p><Button size="sm" disabled={busy || folders.includes(parent)} onClick={() => { void save({ ...team, folder: { folders: [...folders, parent] } }); setPicking(false) }}>Share this folder</Button></>}
+      {parent && listing?.path === parent && <>{pick && <p>{sizeLine(listing)}</p>}<Button size="sm" disabled={busy || folders.includes(parent)} onClick={() => { void save({ ...team, folder: { folders: [...folders, parent] } }); setPicking(false) }}>Share this folder</Button></>}
     </div>}
     <p className="text-xs text-muted-foreground">Not shared: your chats and memory, app files, passwords and keys.</p>
+    <CreateFolderDialog isOpen={naming} onClose={() => setNaming(false)} commitMessage={false}
+      onCreateFolder={async path => { const name = path.replace(/^\/+|\/+$/g, ''); if (name && !folders.includes(name)) await save({ ...team, folder: { folders: [...folders, name] } }) }} />
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </section>
 }
