@@ -9,7 +9,7 @@ import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompa
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { connectionSummary } from '../../components/workspace/workspaceConnectionStatus'
-import { cloudStateIcon, cloudStateLabel, type CrewAsk, openCrewAskThread, takeCrewAccess, useCrewAsking, useCrewLivesOnMac, useCrewSharedAgentCount, useYourComputerSummary, YourComputerPanel } from './YourComputerPanel'
+import { cloudStateIcon, cloudStateLabel, type CrewAsk, openCrewAskThread, takeCrewAccess, useCrewAsking, useCrewLivesOnMac, useCrewAccessSummary, useYourComputerSummary, YourComputerPanel } from './YourComputerPanel'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useContextMenuWideStore } from '../../stores/useContextMenuWideStore'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
@@ -72,7 +72,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const automationItems = inventory.filter(item => item.view === 'schedules')
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' | 'access' }>()
   const computerState = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:access'), projectId)
-  const sharedAgents = useCrewSharedAgentCount(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
+  const accessSummary = useCrewAccessSummary(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
   const asking = useCrewAsking(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
   const macOnMacHere = useCrewLivesOnMac(projectId)
   const showMenu = (view: 'full' | 'integrations' | 'automations' | 'access') => {
@@ -139,17 +139,24 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // On the website, a Crew that lives on its owner's Mac has only an empty online record: show none of its own
   // changes, dashboards, connections or automations (they would mislead, and could run on the server).
   const macElsewhere = macOnMacHere
-  const sharedText = sharedAgents ? `${sharedAgents} ${sharedAgents === 1 ? 'agent' : 'agents'} shared` : undefined
-  // Offline is the whole answer: on this Mac, reached from nowhere else.
-  const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, computerState === 'offline' ? undefined : sharedText || who].filter(Boolean).join(' · ') || undefined
-  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' && !asking.length ? accessDetail : undefined} onClick={() => item.id === 'mcp:access' && accessInMenu ? showMenu('access') : open(item)}>{item.label}</Row>
+  // Offline is the whole answer: on this Mac, reached from nowhere else. Otherwise the server's summary follows (owner,
+  // 5 Nov: the Team state too, e.g. "Team: 2 people · 3 agents in team").
+  const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, computerState === 'offline' ? undefined : accessSummary || who].filter(Boolean).join(' · ') || undefined
+  const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => item.id === 'mcp:access' && accessInMenu ? showMenu('access') : open(item)}>{item.label}</Row>
   // Someone else asked a shared agent on this Mac in the last 10 minutes: one tree line each under Access (owner, 4 Nov).
   // A click opens that person's own thread with the agent for the owner to read; their messages are never in the owner's tab.
   const ago = (ask: CrewAsk) => ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`
   // Where it came from (owner, 5 Nov: "show from where its calling.. like bridge or web"), named by the server.
   const askChannel = (ask: CrewAsk) => { const where = ({ website: 'web', MCP: 'AI app', AgentBridge: 'AgentBridge' } as Record<string, string>)[ask.channel || ''] || ask.channel; return where ? `${where} · ` : '' }
   const openAsk = (ask: CrewAsk) => { void openCrewAskThread(projectId, ask) }
-  const asksTree = asking.length > 0 && <div role="list" aria-label="Who asked your agents" className="ml-3 border-l border-border pl-2 pb-1">
+  // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
+  // folder's line, then who asked; each opens Access at its place.
+  const asksTree = (asking.length > 0 || sharedFolder) && <div role="list" aria-label="Access details" className="ml-3 border-l border-border pl-2 pb-1">
+    {sharedFolder && <button role="listitem" type="button" onClick={() => openCrewSync(projectId)} title="Open the shared folder's Sync in Access" className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <FolderSync aria-hidden="true" className="h-3 w-3 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate font-medium text-foreground">Shared folder</span>
+      {syncLine && <span className="shrink-0 text-muted-foreground">{syncLine}</span>}
+    </button>}
     {asking.slice(0, 5).map(ask => <button key={`${ask.tab}:${ask.sender}`} role="listitem" type="button" onClick={() => openAsk(ask)} title={`Open ${ask.sender}'s chat with ${ask.agent}`} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${ask.active ? 'bg-emerald-500 motion-safe:animate-pulse' : 'bg-muted-foreground/40'}`} />
       <span className="min-w-0 flex-1 truncate"><span className="font-medium text-foreground">{ask.sender}</span> {ask.active ? 'is asking' : 'asked'} {ask.agent}</span>
@@ -170,7 +177,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <Row icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={() => showMenu('automations')}>Manage automations</Row>
     </WorkspaceCompactGroup>}
     </>}
-    {sharedFolder && <Row icon={FolderSync} detail={syncLine || undefined} onClick={() => openCrewSync(projectId)}>Shared folder</Row>}
     {snapshot?.errors.length ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>Some workspace status is unavailable.</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>
 }

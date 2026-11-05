@@ -46,7 +46,7 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 // Crew lives shares this cache and its single poll, so the header, tabs, menu and panels always agree.
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
-type PlaceEntry = { place?: CloudState; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
+type PlaceEntry = { place?: CloudState; shared?: number; summary?: string; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
 function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
@@ -58,13 +58,15 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
     const load = () => {
       created.abort?.abort()
       created.abort = new AbortController()
-      void api.get<{ place?: CloudState; shared_agents?: number; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
+      void api.get<{ place?: CloudState; shared_agents?: number; access_summary?: string; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
         .then(({ data }) => {
           const shared = data.shared_agents || 0
+          const summary = data.access_summary || ''
           const asking = data.asking || []
-          if (!data.place || (data.place === created.place && shared === created.shared && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
+          if (!data.place || (data.place === created.place && shared === created.shared && summary === created.summary && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
           created.place = data.place
           created.shared = shared
+          created.summary = summary
           created.asking = asking
           created.listeners.forEach(notify => notify(data.place))
         }).catch(() => {})
@@ -98,14 +100,16 @@ export function useYourComputerSummary(enabled: boolean, projectId?: string): Cl
   return state
 }
 
-/** How many of this Crew's agents others can message, from the same reading as its place (PLAT-856-509). */
-export function useCrewSharedAgentCount(projectId?: string): number {
-  const [count, setCount] = useState(0)
+/** The Access row's line after where the Crew lives ("Team: 2 people · 3 agents in team"), written by the server
+ * from the same reading as its place (owner, 5 Nov). */
+export function useCrewAccessSummary(projectId?: string): string {
+  const [summary, setSummary] = useState('')
   useEffect(() => {
+    setSummary('')
     if (!projectId) return
-    return watchCrewPlace(projectId, () => setCount(placeCache.get(projectId)?.shared || 0))
+    return watchCrewPlace(projectId, () => setSummary(placeCache.get(projectId)?.summary || ''))
   }, [projectId])
-  return count
+  return summary
 }
 
 /** Who asked this Crew's shared agents on this Mac lately, newest first (owner, 3 Nov). */
