@@ -20,7 +20,7 @@ import (
 )
 
 // A Team member's own agents on the server (owner, 5 Nov, "A Team is a shared room") work in their own copy of the
-// team's shared folder, kept in the app's private state (their turns run as the app account on their own login).
+// team's shared folder, in the Crew's team-copies/<member>/ with its record in the app's private state (their turns run as the app account on their own login).
 // The copy syncs with the team store through the same protocol a Mac uses, run in process with the member's own
 // claims, so the server's checks (member, folder access, folder generation) stop it at the next round and every
 // change is recorded as theirs. It syncs before each of their turns and every few seconds while it exists.
@@ -62,7 +62,8 @@ func (api *StreamingAPI) crewTeamServerHandler() http.Handler {
 	return router
 }
 
-// crewTeamServerCopyDir is one member's copy of one shared folder (by its generation id), private to the app.
+// crewTeamServerCopyDir is the sync record of one member's copy of one shared folder (by its generation id), private
+// to the app; the copy itself is in the Crew's folder (crewTeamMemberCopyRoot).
 func crewTeamServerCopyDir(member, project, folderID string) (string, error) {
 	state, err := crewroot.StateRoot()
 	if err != nil {
@@ -96,9 +97,21 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 		if !create {
 			return "", nil
 		}
+		// The copy itself is in the Crew's folder, team-copies/<member>/ (crew_team_member_copy.go); a new copy starts
+		// empty (an earlier folder choice's copy is gone with its record).
+		root, err := crewTeamMemberCopyRoot(project, member)
+		if err != nil {
+			return "", err
+		}
 		b = crewTeamLocal{FolderID: t.Folder.ID, Connection: "server", Project: project, RemoteUser: member, Client: uuid.NewString(),
-			Root: filepath.Join(dir, "files"), Status: "pending"}
-		if err = os.MkdirAll(b.Root, 0o700); err != nil {
+			Root: root, Status: "pending"}
+		if err = os.RemoveAll(root); err != nil {
+			return "", err
+		}
+		if err = os.MkdirAll(root, 0o770); err != nil {
+			return "", err
+		}
+		if err = os.MkdirAll(dir, 0o700); err != nil {
 			return "", err
 		}
 		if err = saveCrewTeamLocal(dir, b); err != nil {
@@ -203,6 +216,10 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 			continue
 		}
 		err = os.RemoveAll(dir)
+		// The copy in the Crew's folder goes with it, unless the member's current copy already uses that folder.
+		if err == nil && crewTeamMemberCopyFolder(b.Root) && !crewTeamCopyInUse(t, b, dir) {
+			err = os.RemoveAll(b.Root)
+		}
 		unlock()
 		reason := "no_access"
 		if onMac {
@@ -265,4 +282,17 @@ func crewTeamServerFolders(claims *UserClaims) []workflowtypes.WorkflowFolderGra
 			Access: workflowtypes.FolderAccessReadWrite, Reason: t.Name + " · shared with the team: " + t.Folder.display() + " (your copy; it syncs with the team)"})
 	}
 	return grants
+}
+
+// crewTeamCopyInUse: the member's current copy record (for the Team's current folder) uses this copy folder.
+func crewTeamCopyInUse(t crewTeam, b crewTeamLocal, dir string) bool {
+	if t.ProjectID == "" || t.Folder.ID == "" {
+		return false
+	}
+	current, err := crewTeamServerCopyDir(b.RemoteUser, b.Project, t.Folder.ID)
+	if err != nil || current == dir {
+		return false
+	}
+	c, err := readCrewTeamLocal(current)
+	return err == nil && filepath.Clean(c.Root) == filepath.Clean(b.Root)
 }

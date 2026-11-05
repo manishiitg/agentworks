@@ -76,6 +76,10 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 				return "", false
 			}
 		}
+		// Team members' copies show only to their own member, in their own Files (crew_team_member_copy.go).
+		if crewroot.TeamCopyHidden(issued, searchVirtual, opts.userID) {
+			return "", false
+		}
 		if view != "" && strings.HasPrefix(shown, view+"/") {
 			first := strings.SplitN(strings.TrimPrefix(shown, view+"/"), "/", 2)[0]
 			relative := strings.TrimPrefix(shown, view+"/")

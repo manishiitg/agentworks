@@ -216,3 +216,39 @@ func TestLazyCrewListingsLookAheadAndSearchUnloadedFiles(t *testing.T) {
 	}
 	t.Logf("18 repositories/1800 leaf files: shallow=%s full=%s root_entries=%d", shallowTime, fullTime, len(response.Data))
 }
+
+// Team members' working copies (team-copies/<member>/) never show in a Crew's Files; a member's own Files, opened on
+// their copy, lists it, and nobody else's.
+func TestTeamCopiesShowOnlyInTheirMembersFiles(t *testing.T) {
+	docs, project := setupLocalCrewDocuments(t)
+	for _, name := range []string{"team-copies/ann/notes.md", "team-copies/bob/plan.md"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(project, name)), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(project, name), []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	router := setupRouter(docs)
+	paths := func(folder, user string) string {
+		var all []string
+		var collect func([]models.Document)
+		collect = func(items []models.Document) {
+			for _, item := range items {
+				all = append(all, item.FilePath)
+				collect(item.Children)
+			}
+		}
+		collect(listDocs(t, router, folder, user).Data)
+		return strings.Join(all, " ")
+	}
+	if got := paths("Crew/example/_files", "owner"); strings.Contains(got, "team-copies") || !strings.Contains(got, "notes.txt") {
+		t.Fatalf("owner's Files = %s", got)
+	}
+	if got := paths("Crew/example/_files/team-copies/ann", "ann"); !strings.Contains(got, "team-copies/ann/notes.md") || strings.Contains(got, "bob") {
+		t.Fatalf("ann's Files = %s", got)
+	}
+	if got := paths("Crew/example/_files/team-copies/ann", "bob"); strings.Contains(got, "notes.md") {
+		t.Fatalf("bob sees ann's copy: %s", got)
+	}
+}
