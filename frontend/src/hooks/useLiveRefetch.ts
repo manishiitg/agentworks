@@ -6,6 +6,8 @@ export interface LiveRefetchOptions {
   kinds: readonly LiveFeedKind[]
   // Workflow the panel shows (any path inside it); null = every workflow.
   workflow?: string | null
+  project?: string | null
+  scopeKey?: string
   // Timer used only while the live feed is unavailable (the old poll rate).
   // 0 = no timer.
   fallbackMs: number
@@ -32,7 +34,7 @@ export function useLiveFeedStatus(): LiveFeedStatus {
  * polling whenever the feed is not live.
  */
 export function useLiveRefetch(refetch: () => void, options: LiveRefetchOptions): void {
-  const { kinds, workflow = null, fallbackMs, safetyMs = DEFAULT_SAFETY_MS, minIntervalMs = 0, enabled = true } = options
+  const { kinds, workflow = null, project = null, scopeKey, fallbackMs, safetyMs = DEFAULT_SAFETY_MS, minIntervalMs = 0, enabled = true } = options
   const refetchRef = useRef(refetch)
   refetchRef.current = refetch
   const status = useLiveFeedStatus()
@@ -58,7 +60,7 @@ export function useLiveRefetch(refetch: () => void, options: LiveRefetchOptions)
       refetchRef.current()
     }
 
-    const unsubscribe = liveFeed.subscribe(kindsKey.split(',') as LiveFeedKind[], workflow, run)
+    const unsubscribe = liveFeed.subscribe(kindsKey.split(',') as LiveFeedKind[], workflow, run, project)
     const onVisible = () => {
       if (!document.hidden && dirtyWhileHidden) {
         dirtyWhileHidden = false
@@ -71,7 +73,7 @@ export function useLiveRefetch(refetch: () => void, options: LiveRefetchOptions)
       document.removeEventListener('visibilitychange', onVisible)
       if (trailing) clearTimeout(trailing)
     }
-  }, [enabled, kindsKey, workflow, minIntervalMs])
+  }, [enabled, kindsKey, workflow, project, scopeKey, minIntervalMs])
 
   // Timer: the old poll rate while the feed is down, a slow safety check
   // while it is live. Hidden tabs skip ticks; returning to the tab refetches

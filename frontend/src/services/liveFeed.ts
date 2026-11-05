@@ -6,11 +6,12 @@ import { getApiBaseUrl, getAuthToken } from './api'
 import { readEventStream } from '../../shared/session/eventStream'
 
 // Keep in sync with agent_go/internal/livefeed/livefeed.go.
-export type LiveFeedKind = 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report' | 'plan' | 'ui_control' | 'browser'
+export type LiveFeedKind = 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report' | 'plan' | 'ui_control' | 'browser' | 'crew_panel'
 
 export interface LiveFeedNotice {
   kind: LiveFeedKind
   workflow?: string
+  project?: string
   // Chat session for session-scoped kinds (ui_control); sent to its owner only.
   session?: string
 }
@@ -20,6 +21,7 @@ export type LiveFeedStatus = 'connecting' | 'live' | 'offline'
 type Listener = {
   kinds: ReadonlySet<LiveFeedKind>
   workflow: string | null
+  project: string | null
   // notice is undefined on a resync (anything may have changed).
   onChange: (notice?: LiveFeedNotice) => void
 }
@@ -39,6 +41,7 @@ export function liveFeedWorkflowRoot(path: string | null | undefined): string | 
 
 class LiveFeed {
   private source: AbortController | null = null
+  private connectionKey = ''
   private listeners = new Set<Listener>()
   private statusListeners = new Set<(status: LiveFeedStatus) => void>()
   private status: LiveFeedStatus = 'offline'
@@ -55,8 +58,8 @@ class LiveFeed {
     return () => { this.statusListeners.delete(cb) }
   }
 
-  subscribe(kinds: readonly LiveFeedKind[], workflow: string | null, onChange: (notice?: LiveFeedNotice) => void): () => void {
-    const listener: Listener = { kinds: new Set(kinds), workflow: liveFeedWorkflowRoot(workflow) ?? workflow, onChange }
+  subscribe(kinds: readonly LiveFeedKind[], workflow: string | null, onChange: (notice?: LiveFeedNotice) => void, project: string | null = null): () => void {
+    const listener: Listener = { kinds: new Set(kinds), workflow: liveFeedWorkflowRoot(workflow) ?? workflow, project, onChange }
     this.listeners.add(listener)
     this.ensureOpen()
     return () => {
@@ -72,6 +75,9 @@ class LiveFeed {
   }
 
   private ensureOpen() {
+    const key = `${getApiBaseUrl()}\n${getAuthToken() ?? ''}`
+    if (this.connectionKey && this.connectionKey !== key) this.close()
+    this.connectionKey = key
     if (this.source || this.retryTimer || typeof fetch === 'undefined') return
     this.open()
   }
@@ -106,6 +112,7 @@ class LiveFeed {
           for (const listener of this.listeners) {
             if (!listener.kinds.has(notice.kind)) continue
             if (notice.workflow && listener.workflow && listener.workflow !== notice.workflow) continue
+            if (notice.project && listener.project && listener.project !== notice.project) continue
             listener.onChange(notice)
           }
         }
