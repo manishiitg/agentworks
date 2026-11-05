@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"slices"
@@ -282,4 +283,88 @@ func (api *StreamingAPI) crewMacTeamWatchContext(r *http.Request, project, conve
 	}
 	log.Printf("[CREW_TEAM] project=%s event=member_watch user=%s of=%s tab=%s read=%s", project, logUsernameForUserID(viewer), logUsernameForUserID(person), tab, strings.TrimPrefix(r.URL.Path, "/api/sessions/"))
 	return r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: person, Username: person})), true
+}
+
+// crewMemberMacTarget reads a member's Mac agent from its row key (crewMacTabRow): whose Mac, and which tab.
+func crewMemberMacTarget(project, key string) (string, string, bool) {
+	id := strings.TrimPrefix(strings.TrimSpace(key), project+codeChatSideMarker)
+	rest, ok := strings.CutPrefix(id, "mac-")
+	if !ok {
+		return "", "", false
+	}
+	owner := ownerOfCrewProjectID(project)
+	for _, person := range crewMacPeople(project) {
+		if person == owner {
+			continue
+		}
+		if tab, ok := strings.CutPrefix(rest, sanitizeUserIDForPath(person)+"-"); ok && tab != "" {
+			if tab == "mac-main" {
+				tab = macMainTab
+			}
+			return person, tab, true
+		}
+	}
+	return "", "", false
+}
+
+// crewMemberMacAgentFor is a member's Mac agent the caller may message: the caller is in the Team, not that member,
+// and the agent is not Only me.
+func crewMemberMacAgentFor(ctx context.Context, project, key, caller string) (string, crewMacTeamTab, bool) {
+	person, tab, ok := crewMemberMacTarget(project, key)
+	if !ok || caller == person {
+		return "", crewMacTeamTab{}, false
+	}
+	if t, err := readCrewTeam(project); err != nil || !t.member(caller) {
+		return "", crewMacTeamTab{}, false
+	}
+	for _, t := range crewMacTabsFor(ctx, person, project, caller) {
+		if t.Tab == tab {
+			return person, t, true
+		}
+	}
+	return "", crewMacTeamTab{}, false
+}
+
+// deliverToMemberMacAgent hands an agent message to a Team member's agent on their Mac, like the owner's Mac agents:
+// it runs there in the sender's own thread, the answer comes back to this inbox, and with their Mac off the message
+// waits for it.
+func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
+	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, source.UserID)
+	if !ok {
+		log.Printf("[CREW_TEAM] project=%s event=member_mac_message refused user=%s", dest.ID, logUsernameForUserID(source.UserID))
+		return fmt.Errorf("This agent isn't shared with you.")
+	}
+	pair, _ := crewMacPairFor(person, dest.ID)
+	sender := shareOwnerLabel(source.UserID)
+	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
+		return callCrewMacPair(context.Background(), person, dest.ID, pair, call, timeout)
+	}
+	read := func(after, wait int) (map[string]any, int) {
+		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait, "submission": m.ID})
+		result := run(crewChatCall{Operation: "agent_read", Tab: agent.Tab, Caller: sender, Args: raw}, time.Duration(wait+40)*time.Second)
+		var out map[string]any
+		_ = json.Unmarshal(result.Body, &out)
+		return out, result.Status
+	}
+	_, senderAgent, _ := agentMessageSender(ctx, source, source.UserID)
+	raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge"})
+	ask := crewChatCall{Operation: "agent_ask", Tab: agent.Tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
+	from := 1 - m.From
+	_, status := read(0, 0)
+	if status == http.StatusOK {
+		status = run(ask, 60*time.Second).Status
+	}
+	log.Printf("[CREW_TEAM] project=%s event=member_mac_message of=%s tab=%s user=%s mac_status=%d", dest.ID, logUsernameForUserID(person), agent.Tab, logUsernameForUserID(source.UserID), status)
+	if status == http.StatusServiceUnavailable {
+		if err := holdForPersonMac(dest.ID, person, "mac_off", ask, c.ID, from); err != nil {
+			return fmt.Errorf("Your message could not be saved. Please try again.")
+		}
+		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(person)+"'s Mac is off; your message is delivered when it's back. The answer comes to this inbox.")
+		return nil
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("the agent could not take this message; try again shortly")
+	}
+	go api.awaitMacAgentAnswer(c.ID, m.ID, from, read)
+	return nil
 }
