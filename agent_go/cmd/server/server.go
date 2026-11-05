@@ -7354,11 +7354,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// agent can save a project secret and use it in its very next shell
 				// call. Later turns still reload project secrets from encrypted
 				// storage in resolveAgentProfileForQuery.
-				afterSecretUpsert := func(ctx context.Context, name, value string) error {
+				afterSecretUpsert := func(ctx context.Context, name, vaultName, value string) error {
 					if resolvedProfile != nil && !isGlobalScopedProfile(resolvedProfile) && secretWorkflowPath != "" {
-						if err := updateProductSelectedSecrets(ctx, resolvedProfile.Definition.ID, secretWorkflowPath, func(current []string) []string {
-							return appendUniqueStrings(current, name)
-						}); err != nil {
+						if err := selectProjectSecret(ctx, resolvedProfile.Definition.ID, secretWorkflowPath, vaultName); err != nil {
 							return err
 						}
 					}
@@ -7368,12 +7366,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				afterSecretDelete := func(ctx context.Context, name string) error {
 					if resolvedProfile != nil && !isGlobalScopedProfile(resolvedProfile) && secretWorkflowPath != "" {
-						if err := updateProductSelectedSecrets(ctx, resolvedProfile.Definition.ID, secretWorkflowPath, func(current []string) []string {
-							return removeString(current, name)
-						}); err != nil {
+						if err := unselectProjectSecret(ctx, resolvedProfile.Definition.ID, secretWorkflowPath, name); err != nil {
 							return err
 						}
 					}
+					name = vaultSecretShortName(name)
 					updated := virtualtools.DeleteSessionShellEnv(sessionID, "SECRET_"+name)
 					logfWithContext(queryLogCtx, "[SECRET TOOLS] Removed SECRET_%s from %d live shell client(s) for session %s", name, updated, sessionID)
 					return nil
@@ -12932,19 +12929,10 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		if len(names) == 0 {
 			return nil
 		}
+		// Keyed by the $SECRET_ name, resolved as a run resolves them: owner-lent Vault secrets.
 		out := make(map[string]string, len(names))
-		wanted := make(map[string]bool, len(names))
-		for _, n := range names {
-			wanted[n] = true
-		}
-		// Globals first — they set the baseline. Workflow secrets can override by same name.
-		for _, gs := range visibleGlobalSecrets(ctx, currentUserID) {
-			if wanted[gs.Name] {
-				out[gs.Name] = gs.Value
-			}
-		}
-		decrypted := api.loadSelectedSecrets(ctx, currentUserID, workspacePath, names)
-		for _, s := range decrypted {
+		scoped := api.loadSelectedSecrets(ctx, currentUserID, workspacePath, names)
+		for _, s := range api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(currentUserID, workspacePath), scoped, &names) {
 			out[s.Name] = s.Value
 		}
 		return out

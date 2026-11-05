@@ -227,15 +227,34 @@ func (api *StreamingAPI) handleCrewDependencies(w http.ResponseWriter, r *http.R
 	if input.SourceUnavailable {
 		out.add("vault", "Vault", "missing", "Some connections could not be checked on your Mac. Open its Crew Vault and retry sync.")
 	}
-	results := map[string]secretValueResult{}
-	if len(input.Values) > 0 {
-		rows, status, _ := api.importProjectSecrets(r, "crew", roots.ID, input.Values, false, false)
-		if status != 200 {
-			externalError(w, status, "secrets_unavailable", "Crew secrets could not be prepared. Check this server's Vault and retry sync.")
+	// The Mac's secrets go into the owner's own Vault on this server (My accounts) and the Crew uses them. A value the
+	// server already has is kept.
+	before, e := productSelectedGlobalSecrets(r.Context(), crewProfileID, roots.Virtual)
+	if e != nil {
+		externalError(w, 502, "secrets_unavailable", "Crew secrets could not be prepared. Check this server's Vault and retry sync.")
+		return
+	}
+	for _, name := range input.Names {
+		full, state, e := api.prepareCrewSyncSecret(r.Context(), claims.UserID, roots.Virtual, name, input.Values[name])
+		if e != nil {
+			externalError(w, 502, "secrets_unavailable", "Crew secrets could not be prepared. Check this server's Vault and retry sync.")
 			return
 		}
-		for _, row := range rows {
-			results[row.Name] = row
+		switch state {
+		case "missing":
+			out.add("project_secret", name, "missing", name+" needs a value on this server.")
+			continue
+		case "ready":
+			out.add("project_secret", name, "ready", name+" is available on this server.")
+		default:
+			out.add("project_secret", name, "kept", name+" already set on this server; kept the server's value.")
+		}
+		if !slices.Contains(*before, full) {
+			if e := selectProjectSecret(r.Context(), crewProfileID, roots.Virtual, full); e != nil {
+				externalError(w, 502, "secrets_unavailable", "Select the Crew's secrets in this server's Vault, then retry sync.")
+				return
+			}
+			out.remember("shared_secret", full, "project_secret\x00"+name)
 		}
 	}
 	inventory, e := api.projectVaultInventory(r.Context(), claims.UserID, roots.Virtual)
@@ -245,37 +264,6 @@ func (api *StreamingAPI) handleCrewDependencies(w http.ResponseWriter, r *http.R
 	}
 	if len(inventory.Notices) > 0 {
 		out.add("vault", "Server Vault", "missing", "Some server Vault connections could not be checked. Open Vault on this server and retry sync.")
-	}
-	var selected []any
-	for _, name := range input.Names {
-		available := false
-		for _, g := range inventory.Vaults {
-			for _, item := range g.Items {
-				if item.Kind == "project_secret" && item.ID == name {
-					available = true
-					if !item.Selected || results[name].Status == "added" {
-						out.remember("project_secret", name, "project_secret\x00"+name)
-					}
-				}
-			}
-		}
-		if !available {
-			out.add("project_secret", name, "missing", name+" needs a value on this server.")
-			continue
-		}
-		selected = append(selected, name)
-		if result := results[name]; result.Status == "added" {
-			out.add("project_secret", name, "ready", name+" is available on this server.")
-		} else {
-			out.add("project_secret", name, "kept", name+" already set on this server; kept the server's value.")
-		}
-	}
-	if len(selected) > 0 {
-		status, _ := api.callExternalToolInternal(r, "settings", map[string]any{"action": "update", "crew_id": roots.ID, "secrets": map[string]any{"select": selected}})
-		if status != 200 {
-			externalError(w, status, "secrets_unavailable", "Select the Crew's secrets in this server's Vault, then retry sync.")
-			return
-		}
 	}
 	for _, want := range input.Connections {
 		switch want.Kind {
@@ -368,7 +356,20 @@ func (api *StreamingAPI) prepareCrewDependencies(r *http.Request, roots crewroot
 			}
 		}
 	}
+	// Secrets the Crew uses from the owner's own Vault go to the server by value, into the owner's Vault there.
+	own, e := ownVaultSecretValues(r.Context(), claims.UserID, inventory.Shared)
+	if e != nil {
+		return nil, fmt.Errorf("this Crew's secrets could not be read from your Vault")
+	}
 	seen := map[string]bool{}
+	for _, full := range inventory.Shared {
+		short := vaultSecretShortName(full)
+		if value, ok := own[short]; ok {
+			input.Names = appendUniqueStrings(input.Names, short)
+			input.Values[short] = value
+			seen["shared_secret:"+full] = true
+		}
+	}
 	for _, group := range inventory.Vaults {
 		for _, item := range group.Items {
 			if !item.Selected || seen[item.Kind+":"+item.ID] {

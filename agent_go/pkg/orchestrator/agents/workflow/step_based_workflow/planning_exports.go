@@ -634,10 +634,10 @@ type WorkshopConfig struct {
 	// ListAvailableSecrets returns names of all available secrets (global + workflow-stored).
 	// Used by get_workflow_config to show which secrets can be added.
 	ListAvailableSecrets func(ctx context.Context) ([]string, error)
-	// ResolveSecretValues returns plaintext values for the given secret names, merging
-	// workflow-stored secrets and global env secrets. Missing names are simply absent from
-	// the returned map - never an error. Used by update_workflow_config to refresh the
-	// workshop shell's SECRET_* env vars mid-session without a session restart.
+	// ResolveSecretValues returns plaintext values for the given selected secret names,
+	// keyed by their $SECRET_ name (a Vault secret by the name its owner gave it).
+	// Missing names are simply absent from the returned map - never an error. Used by
+	// update_workflow_config to refresh the workshop shell's SECRET_* env vars mid-session.
 	ResolveSecretValues func(ctx context.Context, names []string) map[string]string
 	// SecretsAttached pushes attached secret values (and removals) into the
 	// builder chat's live shell, whose environment was captured at turn start.
@@ -1080,13 +1080,11 @@ func (s *WorkshopChatSession) Close() {
 }
 
 // AttachSecretToWorkflow adds (or updates the value of) a secret in the workshop's
-// in-memory state, workflow.json manifest, and live workshop shell env so the
-// freshly-stored secret is immediately usable as $SECRET_<NAME> in the SAME
-// session — no new chat or restart required. Intended to be invoked right after
-// set_workflow_secret so storing a secret and making it available is a single
-// user action. The plaintext value is passed in directly
-// (the upsert handler already holds it), avoiding a DB round-trip. Mirrors
-// DetachSecretFromWorkflow.
+// in-memory state and live workshop shell env so a freshly saved secret is usable
+// as $SECRET_<NAME> in the SAME session. The server has already saved the value in
+// the owner's Vault and selected it on the workflow (its Vault name); the Workshop
+// never writes secret selections itself, since its in-memory names are the
+// $SECRET_ names, not the Vault names a selection holds.
 func (s *WorkshopChatSession) AttachSecretToWorkflow(ctx context.Context, name, value string) error {
 	if s == nil || s.controller == nil || name == "" {
 		return nil
@@ -1121,132 +1119,34 @@ func (s *WorkshopChatSession) AttachSecretToWorkflow(ctx context.Context, name, 
 		envRef["SECRET_"+name] = value
 		s.controller.UnlockWorkspaceEnv()
 	}
-
-	// Persist the updated secret-name list to workflow.json so the attachment
-	// survives a session restart. Mirrors DetachSecretFromWorkflow.
-	wsPath := s.controller.GetWorkspacePath()
-	if wsPath == "" {
-		return nil
-	}
-	manifestPath := "workflow.json"
-	content, readErr := s.controller.ReadWorkspaceFile(ctx, manifestPath)
-	if readErr != nil {
-		// No manifest yet — in-memory + env are attached; nothing to persist.
-		return nil
-	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-		return fmt.Errorf("parse workflow.json: %w", err)
-	}
-	caps, _ := manifest["capabilities"].(map[string]interface{})
-	if caps == nil {
-		caps = map[string]interface{}{}
-	}
-	names := make([]string, 0, len(updated))
-	for _, sec := range updated {
-		if sec.Name != "" {
-			names = append(names, sec.Name)
-		}
-	}
-	// Write to BOTH fields - see persistWorkflowConfigToManifest for why (workflow/user
-	// secrets are looked up via selected_secrets; globals via selected_global_secret_names).
-	caps["selected_secrets"] = names
-	caps["selected_global_secret_names"] = names
-	manifest["capabilities"] = caps
-	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-
-	updatedJSON, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal workflow.json: %w", err)
-	}
-	if err := s.controller.WriteWorkspaceFile(ctx, manifestPath, string(updatedJSON)); err != nil {
-		return fmt.Errorf("write workflow.json: %w", err)
-	}
 	return nil
 }
 
-// DetachSecretFromWorkflow removes a secret name from the workshop's in-memory
-// state, workflow.json manifest, and workshop shell env. Safe to call even if
-// the name was never attached — in that case it is a no-op. Intended to be
-// invoked by delete_workflow_secret so a single user action leaves no stale
-// state anywhere (store, manifest, or shell env).
+// DetachSecretFromWorkflow removes a secret from the workshop's in-memory state
+// and shell env after the server unselected it. Safe to call even if the name
+// was never attached.
 func (s *WorkshopChatSession) DetachSecretFromWorkflow(ctx context.Context, name string) error {
 	if s == nil || s.controller == nil || name == "" {
 		return nil
 	}
 
 	current := s.controller.GetSecrets()
-	filtered := current[:0:len(current)]
-	removed := false
+	filtered := make([]orchestrator.SecretEntry, 0, len(current))
 	for _, entry := range current {
-		if entry.Name == name {
-			removed = true
-			continue
+		if entry.Name != name {
+			filtered = append(filtered, entry)
 		}
-		filtered = append(filtered, entry)
 	}
-	if !removed {
-		// Not attached — still clear envRef defensively and return.
-		if envRef := s.controller.GetWorkspaceEnvRef(); envRef != nil {
-			s.controller.LockWorkspaceEnv()
-			delete(envRef, "SECRET_"+name)
-			s.controller.UnlockWorkspaceEnv()
-		}
-		return nil
-	}
-
 	s.controller.SetSecrets(filtered)
 	if s.config != nil {
 		cloned := make([]orchestrator.SecretEntry, len(filtered))
 		copy(cloned, filtered)
 		s.config.Secrets = cloned
 	}
-
 	if envRef := s.controller.GetWorkspaceEnvRef(); envRef != nil {
 		s.controller.LockWorkspaceEnv()
 		delete(envRef, "SECRET_"+name)
 		s.controller.UnlockWorkspaceEnv()
-	}
-
-	// Persist the updated secret-name list to workflow.json. Mirrors the update
-	// block in persistWorkflowConfigToManifest for selected_secrets and selected_global_secret_names.
-	wsPath := s.controller.GetWorkspacePath()
-	if wsPath == "" {
-		return nil
-	}
-	manifestPath := "workflow.json"
-	content, readErr := s.controller.ReadWorkspaceFile(ctx, manifestPath)
-	if readErr != nil {
-		// No manifest yet — nothing to persist.
-		return nil
-	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-		return fmt.Errorf("parse workflow.json: %w", err)
-	}
-	caps, _ := manifest["capabilities"].(map[string]interface{})
-	if caps == nil {
-		return nil
-	}
-	names := make([]string, 0, len(filtered))
-	for _, s := range filtered {
-		if s.Name != "" {
-			names = append(names, s.Name)
-		}
-	}
-	// Write to BOTH fields - see persistWorkflowConfigToManifest for why (workflow/user
-	// secrets are looked up via selected_secrets; globals via selected_global_secret_names).
-	caps["selected_secrets"] = names
-	caps["selected_global_secret_names"] = names
-	manifest["capabilities"] = caps
-	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-
-	updated, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal workflow.json: %w", err)
-	}
-	if err := s.controller.WriteWorkspaceFile(ctx, manifestPath, string(updated)); err != nil {
-		return fmt.Errorf("write workflow.json: %w", err)
 	}
 	return nil
 }

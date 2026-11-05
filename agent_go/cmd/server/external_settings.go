@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -57,13 +58,13 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"tools":              addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
 		"skills":             addRemove("Installed or built-in skills to use or stop using."),
 		"secrets": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
-			"set":         map[string]any{"type": "object", "maxProperties": 20, "additionalProperties": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536}, "description": "NAME: value. Stores the value (write-only, owner only) and selects the secret. To add it to Vault for other projects, then call manage_vault_secret_access operation=share (a Vault administrator)."},
+			"set":         map[string]any{"type": "object", "maxProperties": 20, "additionalProperties": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536}, "description": "NAME: value. Saves the value in the owner's Vault (My accounts; write-only, owner only) and uses it in this project in one step. Saving a name again replaces its value everywhere the owner uses it."},
 			"remove":      names,
 			"select":      names,
 			"unselect":    names,
 			"use_shared":  names,
 			"stop_shared": names,
-		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
+		}, "description": "set saves values in the owner's Vault and uses them here; remove stops using a secret here (its value stays in the owner's Vault); both owner only. select/unselect choose this project's older stored secrets; use_shared/stop_shared choose Vault secrets by name."},
 		"knowledgebase_sources": map[string]any{"type": "array", "maxItems": 20, "description": "Replace linked workflow knowledge sources. Existing sharing and write grants still apply. Empty removes the links.", "items": map[string]any{"type": "object", "additionalProperties": false, "required": []any{"workflow_id", "alias", "access"}, "properties": map[string]any{"workflow_id": externalString("Source workflow ID."), "alias": externalString("Short name for this source."), "access": map[string]any{"type": "string", "enum": []any{"read", "write"}}}}},
 		"kb_write_grants":       names,
 		"browser_mode":          map[string]any{"type": "string", "enum": browser.ConfigurationModes()},
@@ -362,7 +363,7 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 	removeValues := externalSettingsList(args, "secrets", "remove")
 	if len(values) > 0 || len(removeValues) > 0 {
 		if !t.owner {
-			return nil, nil, &externalSettingsError{403, "forbidden", "Only the project's owner can set or remove secret values. Ask the owner to give you the value, or to run `agentworks secret set NAME` for this project in their terminal."}
+			return nil, nil, &externalSettingsError{403, "forbidden", "Only the project's owner can add or remove its secrets; they are saved in the owner's Vault. Ask the owner to add the value, or to run `agentworks secret set NAME` for this project in their terminal."}
 		}
 		named := append([]string{}, removeValues...)
 		for key := range values {
@@ -378,11 +379,15 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 			storedNames[row.Name] = true
 		}
 	}
-	selects := externalSettingsList(args, "secrets", "select")
-	for _, secret := range selects {
-		if _, setting := values[secret]; !storedNames[secret] && !setting {
+	selects := []string{}
+	for _, secret := range externalSettingsList(args, "secrets", "select") {
+		if _, setting := values[secret]; setting {
+			continue // set selects the saved Vault secret below
+		}
+		if !storedNames[secret] {
 			return nil, nil, settingsInvalid("secrets: %q has no stored value; set it first", secret)
 		}
+		selects = append(selects, secret)
 	}
 	shared := externalSettingsList(args, "secrets", "use_shared")
 	if len(shared) > 0 {
@@ -393,16 +398,16 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 			return nil, nil, settingsInvalid("secrets: %v", err)
 		}
 	}
-	for key, value := range values {
-		if err := api.upsertSharedWorkflowSecret(ctx, t.path, key, value); err != nil {
-			return nil, nil, &externalSettingsError{502, "secret_store_failed", fmt.Sprintf("Could not store secret %s.", key)}
+	saved := []string{}
+	for _, key := range sortedSecretNames(values) {
+		full, err := api.saveProjectSecret(ctx, userID, t.path, key, values[key])
+		if errors.Is(err, errProjectSecretOwner) {
+			return nil, nil, &externalSettingsError{403, "forbidden", err.Error() + "."}
 		}
-		selects = settingsWith(selects, key)
-	}
-	for _, key := range removeValues {
-		if err := api.deleteSharedWorkflowSecret(ctx, t.path, key, userID); err != nil {
-			return nil, nil, &externalSettingsError{502, "secret_store_failed", fmt.Sprintf("Could not remove secret %s.", key)}
+		if err != nil {
+			return nil, nil, &externalSettingsError{502, "secret_store_failed", fmt.Sprintf("Could not save secret %s in the owner's Vault.", key)}
 		}
+		saved = append(saved, full)
 	}
 	if len(selects) > 0 {
 		s.Secrets = settingsWith(s.Secrets, selects...)
@@ -410,12 +415,19 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 	if drops := append(externalSettingsList(args, "secrets", "unselect"), removeValues...); len(drops) > 0 {
 		s.Secrets = settingsWithout(s.Secrets, drops)
 	}
-	if stop := externalSettingsList(args, "secrets", "stop_shared"); len(shared) > 0 || len(stop) > 0 {
+	if stop := externalSettingsList(args, "secrets", "stop_shared"); len(shared) > 0 || len(stop) > 0 || len(saved) > 0 || len(removeValues) > 0 {
 		current := []string{}
 		if s.GlobalSecrets != nil {
 			current = *s.GlobalSecrets
 		}
 		next := settingsWithout(settingsWith(current, shared...), stop)
+		for _, full := range saved {
+			next = withProjectSecret(next, full)
+			s.Secrets = settingsWithout(s.Secrets, []string{vaultSecretShortName(full)})
+		}
+		for _, name := range removeValues {
+			next = withoutProjectSecret(next, name)
+		}
 		s.GlobalSecrets = &next
 	}
 	if secretArgs != nil {
