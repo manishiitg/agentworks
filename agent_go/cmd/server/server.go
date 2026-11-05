@@ -6255,8 +6255,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if attendedTurn {
 			questionsUnansweredAfter = codingAgentQuestionUnansweredAfter(&req)
 		}
-		if clarificationAvailable {
+		// Crew chats ask through the program's own question tool (or in plain text), which the handler below
+		// answers; request_clarification (needs_you) is not bridged there. It was bridged only on turns the
+		// person started, so the tool list changed between the person's and scheduled turns (owner, 5 Nov).
+		// A shared-Crew Ask keeps it: its caller answers over MCP, on a session of its own.
+		crewChat := resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID)
+		if clarificationAvailable && (!crewChat || crewAskClarification) {
 			platformBridgeTools = append(platformBridgeTools, "request_clarification")
+		}
+		if clarificationAvailable {
 			streamCtx = llmtypes.WithCodingAgentQuestionHandler(streamCtx, finalProvider, sessionID, func(ctx context.Context, questions map[string]any) (string, error) {
 				return api.waitForCodingAgentClarification(withQuestionUnansweredAfter(ctx, questionsUnansweredAfter), sessionID, finalProvider, questions)
 			})
@@ -7274,7 +7281,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-			if laptopConnectionTurn(req, resolvedProfile) {
+			if req.LaptopConnection != nil {
 				if err := api.registerLaptopTools(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder, req.LaptopConnection); err != nil {
 					sendError(fmt.Sprintf("Failed to register local file tools: %v", err), true)
 					return
@@ -7459,12 +7466,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					if err := guidance.AttachReferenceSurface("multi-agent", llmAgent.AttachSkill); err != nil {
 						logfWithContext(queryLogCtx, "[REFERENCE_DOC] Failed to attach multi-agent reference surface: %v", err)
 					}
-				}
-			}
-			if laptopConnectionTurn(req, resolvedProfile) {
-				if err := llmAgent.AddInstructions(laptopConnectionInstructions()); err != nil {
-					sendError("Failed to apply laptop connection instructions", true)
-					return
 				}
 			}
 			// 2. CONTEXT — skills. Attaching a skill is not an instruction
@@ -14487,8 +14488,8 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	caller := GetUserFromContext(ctx)
 	// Why a turn has no laptop tools: on server B the tools came and went between turns, relaunching the CLI each
 	// time (2026-10-28), and the log could not say which check failed.
-	laptopWhy := fmt.Sprintf("read_only=%t website=%t builder_turn=%t project=%t", crewReadOnly, websiteDeviceClaims(caller), laptopBuilderTurn(*req, resolvedProfile), laptopProjectAllowed(ctx, caller, req.SelectedFolder))
-	if !crewReadOnly && websiteDeviceClaims(caller) && laptopBuilderTurn(*req, resolvedProfile) && laptopProjectAllowed(ctx, caller, req.SelectedFolder) {
+	laptopWhy := fmt.Sprintf("read_only=%t website=%t builder_turn=%t listed=%t project=%t", crewReadOnly, websiteDeviceClaims(caller), laptopBuilderTurn(*req, resolvedProfile), laptopListedTurn(*req, resolvedProfile), laptopProjectAllowed(ctx, caller, req.SelectedFolder))
+	if !crewReadOnly && websiteDeviceClaims(caller) && laptopListedTurn(*req, resolvedProfile) && laptopProjectAllowed(ctx, caller, req.SelectedFolder) {
 		settings, err := readLaptopSettings(currentUserID, req.SelectedFolder)
 		laptopWhy += fmt.Sprintf(" settings_err=%v device=%t folders=%d", err, (&laptopConnectionTarget{DeviceID: settings.DeviceID}).valid(), len(settings.Folders))
 		if err == nil && (&laptopConnectionTarget{DeviceID: settings.DeviceID}).valid() && len(settings.Folders) > 0 {

@@ -28,10 +28,15 @@ func TestLaptopConnectionKeepsCrewOnServer(t *testing.T) {
 			if laptopConnectionTurn(denied, resolved) {
 				t.Fatalf("%s inherited laptop", trigger)
 			}
+			// The Crew chat keeps the same tool list on every turn (a changing list relaunched the CLI,
+			// 5 Nov); the tools still refuse on this turn through laptopConnectionTurn above.
+			if trigger == "cron" && !laptopListedTurn(denied, resolved) {
+				t.Fatal("scheduled turn of the owner's Crew chat dropped the listed laptop tools")
+			}
 		}
 		denied := req
 		denied.PinRunMode = true
-		if laptopConnectionTurn(denied, resolved) {
+		if laptopConnectionTurn(denied, resolved) || laptopListedTurn(denied, resolved) {
 			t.Fatal("Run inherited laptop")
 		}
 	}

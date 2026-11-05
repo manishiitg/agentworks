@@ -63,12 +63,20 @@ func laptopProfileForRequest(req QueryRequest) *resolvedAgentProfile {
 	return &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: req.AgentProfileID}}
 }
 
-func laptopConnectionTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
-	return req.LaptopConnection != nil && laptopBuilderTurn(req, profile)
+// laptopListedTurn decides whether a turn carries the project's laptop connection and lists its tools. In a Crew
+// chat that is every turn of the person's own chat, scheduled and watch turns included, so the tool list and the
+// runtime key stay the same from turn to turn: a list that changed relaunched the CLI and lost the model's prompt
+// cache (5 Nov: 11 relaunches in one chat between the person's turns and a watch's). Using the tools still
+// needs laptopConnectionTurn, checked when a tool is called (laptopTurnAllowed).
+func laptopListedTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
+	if profile != nil && isProjectProfileID(profile.Definition.ID) {
+		return !req.PinRunMode && req.BotPlatform == "" && req.ParentSessionID == "" && req.SessionKind == ""
+	}
+	return laptopBuilderTurn(req, profile)
 }
 
-func laptopConnectionInstructions() string {
-	return "\nThis project runs on the server. Ordinary shell, files, skills, connections, secrets, functions and background work use the server. Choose one of your connected computers and allow folders in the project’s Local laptop settings. Read folders provide list_local_files and copy_local_file_to_project; Read & write folders also provide write_local_file; execute_local_shell_command needs the owner's Run terminal commands switch as well. Each tool lists the allowed folders and their IDs. Use the local shell only when work needs that connected computer; paths are relative to its granted folder. Copy local files explicitly into the project when needed; there is no automatic sync. Local output and copied files reach this server and the model and may be saved in chat history. Never put server secrets, SECRET_* values, AGENTWORKS_* environment values or login data into a laptop command. If the laptop is not connected, explain that the local action is unavailable and continue server work; never retry an uncertain command blindly.\n"
+func laptopConnectionTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
+	return req.LaptopConnection != nil && laptopBuilderTurn(req, profile)
 }
 
 // Retained tool callbacks are reused between turns. Check the live turn and
