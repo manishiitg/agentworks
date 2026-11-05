@@ -154,6 +154,7 @@ func SyncWriteGrants(docs string, writes []string) []string {
 			if locked && !Within(roots.Private, physical) && !roots.syncRuntimePath(physical) {
 				if physical == roots.Resources {
 					for _, runtime := range SyncRuntimeDirectories {
+						ensureRuntimeDirectory(filepath.Join(roots.Resources, runtime))
 						if filepath.IsAbs(grant) {
 							out = append(out, filepath.Join(roots.Resources, runtime))
 						} else {
@@ -196,6 +197,16 @@ func SyncContentAllowed(key string, directory bool) bool {
 		return true
 	}
 	return !publication.ExcludedFromSync(rel, directory)
+}
+
+// ensureRuntimeDirectory makes a runtime folder before it is granted: a relay copy of a Mac Crew has never run here, so
+// its db/, assets/… did not exist, and the slot launcher made each missing write grant as an empty file, which then
+// showed as unopenable files in Files (Showcase, 5 Nov). An empty file left that way becomes the folder again.
+func ensureRuntimeDirectory(dir string) {
+	if info, err := os.Lstat(dir); err == nil && info.Mode().IsRegular() && info.Size() == 0 {
+		_ = os.Remove(dir)
+	}
+	_ = os.Mkdir(dir, 0o770)
 }
 
 var SyncRuntimeDirectories = []string{"db", "assets", "reports", "tool_output_folder", ".calls", "shared", "outputs"}
