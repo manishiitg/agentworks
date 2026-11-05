@@ -38,9 +38,6 @@ import { WorkMemoryPanel } from './WorkMemoryPanel'
 import { WorkPlanPanel } from './WorkPlanPanel'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../../stores/useAuthStore'
-import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
-import { TeamFilesPanel } from './TeamFilesPanel'
-import { useProjectTeam } from './teamApi'
 import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
 import { useWorkFilesView } from './useWorkFilesView'
@@ -226,17 +223,14 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     () => (readOnly ? sharedCrewFileClient(projectId, workspacePath, product.profileId) : null),
     [readOnly, projectId, workspacePath, product.profileId],
   )
-  const [sharedFileRequest, setSharedFileRequest] = useState<{ path: string; nonce: number } | null>(null)
   const [openLocalFilesSettings, setOpenLocalFilesSettings] = useState(false)
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const [filesView, selectFilesView] = useWorkFilesView(accessKey, workspacePath, activeSessionId || '', view === 'files')
-  // A joined member of someone else's Team Crew sees in Files only what the Team shares (owner, 5 Nov); the server says
-  // each member's working location; the creator has no member location and keeps the normal Files view.
-  const crewTeam = useProjectTeam(product.profileId === 'work' && !readOnly ? projectId : '')
-  const teamMember = crewTeam.team && crewTeam.target && crewTeam.team.on && crewTeam.team.where ? { team: crewTeam.team, target: crewTeam.target } : null
   useWorkspaceViewTarget('files', selectFilesView, view === 'files' && !!activeSessionId)
-  const serverFiles = <FileWorkspacePane showGit workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? [] : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
+  // One Files view for everyone (owner, 5 Nov): the server's files_path decides its root, for a Team member the folder
+  // the Team shares. team-setup.json is the Team's internal copy of the Crew setup; it is edited in its normal places.
+  const serverFiles = <FileWorkspacePane showGit workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? ['team-setup.json'] : ['.git', 'node_modules', 'product.json', 'workflow.json', 'team-setup.json']} hideManagedEntriesByDefault={!usesExistingFolder} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
   const contextPanels = workWorkspacePanels({ profileId: product.profileId, readOnly: Boolean(readOnly), showShell, enabledPanels })
   // The dashboard's only link to the chat beside it: a stable callback, so
   // nothing on the chat side re-renders or re-runs the dashboard.
@@ -261,13 +255,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
 
   const openProjectFile = async (filePath: string) => {
     selectFilesView('browse')
-    if (readOnly) {
-      // The proxy refuses cross-user reads, so shared files open in the
-      // mediated browser instead of the workspace viewer.
-      onViewChange('files')
-      setSharedFileRequest(current => ({ path: filePath, nonce: (current?.nonce ?? 0) + 1 }))
-      return
-    }
     const fileName = filePath.split('/').filter(Boolean).pop() || filePath
     const workspace = useWorkspaceStore.getState()
     workspace.setSelectedFile({ name: fileName, path: filePath })
@@ -310,12 +297,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
       <WorkspacePanelHeader workspacePath={workspacePath} view={view} title={view === 'context' ? 'Project menu' : [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup].find(panel => panel.id === view)?.label ?? view} contextAllowed={!readOnly} onBack={() => onViewChange('context')} />
       <div className="min-h-0 flex-1 overflow-hidden">
         {view==='context' && <WorkContextPanel reviewSessionId={activeSessionId} workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
-        {view === 'files' && teamMember && <TeamFilesPanel team={teamMember.team} target={teamMember.target} />}
-        {view === 'files' && !teamMember && (readOnly ? <SharedCrewFilesPanel
-          projectId={projectId}
-          crewRoot={workspacePath}
-          request={sharedFileRequest}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{filesView.kind === 'saved' ? <ReplyFileViewer key={JSON.stringify(filesView.selection)} selection={filesView.selection} tabId={tabId} onBack={() => selectFilesView('review')} /> : filesView.kind === 'reply' ? <ReplyChangesPanel key={`${accessKey}:${activeSessionId}:${filesView.reference.snapshotId}:${filesView.reference.checkoutId || ''}:${filesView.reference.historyScope || ''}`} reference={filesView.reference} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : filesView.kind === 'changes' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${filesView.outsideGit}:${filesView.uncommitted}:${filesView.repoRoot}:${filesView.project}:${filesView.checkoutId}`} projectHistory={filesView.project} allChat={!filesView.project && !filesView.outsideGit && !filesView.uncommitted} initialCheckoutId={filesView.checkoutId} outsideGit={filesView.outsideGit} initialRepoRoot={filesView.repoRoot} initialScope={filesView.uncommitted ? 'uncommitted' : 'chat'} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
+        {view === 'files' && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{filesView.kind === 'saved' ? <ReplyFileViewer key={JSON.stringify(filesView.selection)} selection={filesView.selection} tabId={tabId} onBack={() => selectFilesView('review')} /> : filesView.kind === 'reply' ? <ReplyChangesPanel key={`${accessKey}:${activeSessionId}:${filesView.reference.snapshotId}:${filesView.reference.checkoutId || ''}:${filesView.reference.historyScope || ''}`} reference={filesView.reference} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : filesView.kind === 'changes' && activeSessionId ? <ChatFileReview key={`${accessKey}:${activeSessionId}:${filesView.outsideGit}:${filesView.uncommitted}:${filesView.repoRoot}:${filesView.project}:${filesView.checkoutId}`} projectHistory={filesView.project} allChat={!filesView.project && !filesView.outsideGit && !filesView.uncommitted} initialCheckoutId={filesView.checkoutId} outsideGit={filesView.outsideGit} initialRepoRoot={filesView.repoRoot} initialScope={filesView.uncommitted ? 'uncommitted' : 'chat'} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
 
