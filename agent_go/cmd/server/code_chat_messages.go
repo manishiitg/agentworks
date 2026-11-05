@@ -306,9 +306,11 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			}},
 		{"set_my_agent_identity", "Set this agent's own name and purpose (a few words and one short line; either alone keeps the other) so the other agents and people know what it is for. For Main this is the Crew identity (the same as set_work_identity); for a side tab it is that tab's own. An agent can be shared only with a purpose. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
-				"name":    map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
-				"purpose": map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes},
-				"in_team": map[string]interface{}{"type": "boolean", "description": "In a Crew with a Team: true (the default) lets the others who build this Crew see this agent and its chat; false is Only me. Only when the person asks."},
+				"name":             map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
+				"purpose":          map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes},
+				"in_team":          map[string]interface{}{"type": "boolean", "description": "In a Crew with a Team: true (the default) lets the others who build this Crew see this agent and its chat; false is Only me. Only when the person asks."},
+				"when_others_ask":  map[string]interface{}{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "In a Crew with a Team: the person's own rule for what this agent may do when someone else asks it (\"\" clears it). It is added to those turns only; an instruction, not a lock. Only when the person asks."},
+				"can_make_changes": map[string]interface{}{"type": "boolean", "description": "For an agent on a Mac in a Team: false (the default) answers others only; true may make changes for them. Only when the person asks."},
 			}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				ctx = trusted(ctx)
@@ -320,12 +322,38 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					purpose = &value
 				}
 				inTeam, setTeam := args["in_team"].(bool)
-				if name == nil && purpose == nil && !setTeam {
-					return "", fmt.Errorf("pass a name, a purpose or in_team")
+				var ruleText *string
+				var ruleChanges *bool
+				if value, ok := args["when_others_ask"].(string); ok {
+					ruleText = &value
+				}
+				if value, ok := args["can_make_changes"].(bool); ok {
+					ruleChanges = &value
+				}
+				setRule := ruleText != nil || ruleChanges != nil
+				if name == nil && purpose == nil && !setTeam && !setRule {
+					return "", fmt.Errorf("pass a name, a purpose, in_team, when_others_ask or can_make_changes")
 				}
 				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
 				if err != nil {
 					return "", err
+				}
+				if setRule {
+					// Only the agent's own person, in their own turn: the Team record refuses anyone else's agent, and a
+					// turn another person asked never changes the rule meant for them.
+					api.lastQueryMu.RLock()
+					turn, known := api.lastQueryRequests[sessionID]
+					api.lastQueryMu.RUnlock()
+					if _, _, _, _, other := askerIsNotAgentOwner(ctx, &turn, userID, userID); known && other {
+						return "", fmt.Errorf("only this agent's own person sets what it does when others ask, from their own chat")
+					}
+					rule, err := api.setOwnAgentRule(ctx, userID, project.Self.Key, ruleText, ruleChanges)
+					if err != nil {
+						return "", err
+					}
+					if name == nil && purpose == nil && !setTeam {
+						return jsonOut(map[string]interface{}{"when_others_ask": rule.WhenOthersAsk, "can_make_changes": rule.CanMakeChanges})
+					}
 				}
 				if setTeam {
 					if err := api.setOwnAgentInTeam(ctx, userID, project.Self.Key, inTeam); err != nil {

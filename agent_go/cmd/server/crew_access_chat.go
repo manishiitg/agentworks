@@ -42,7 +42,9 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 			item := map[string]any{"agent": row.Name, "purpose": row.Purpose, "in_team": false}
 			if at := slices.IndexFunc(shared, func(agent macSharedAgent) bool { return agent.Tab == row.Tab }); at >= 0 {
 				agent := shared[at]
-				item["in_team"], item["can_make_changes"], item["public_on_agentbridge"] = teamErr == nil && team.On && crewTeamInTeam(agent) && team.agentInTeam(team.OwnerID, agent.Tab), agent.CanChange, agent.AgentBridgePublic
+				rule := team.agentRule(team.OwnerID, agent.Tab)
+				item["in_team"], item["can_make_changes"], item["public_on_agentbridge"] = teamErr == nil && team.On && crewTeamInTeam(agent) && team.agentInTeam(team.OwnerID, agent.Tab), rule.CanMakeChanges, agent.AgentBridgePublic
+				item["when_others_ask"] = rule.WhenOthersAsk
 				if agent.Address != "" {
 					item["address_for_their_agents"] = "agent:" + agent.Address
 				}
@@ -80,9 +82,17 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 		if action == "unshare" {
 			return api.crewAccessChatAction(ctx, project, "agents", nil)
 		}
-		// It only answers them unless the owner says it can make changes for them (the default, like the screen).
+		// It only answers them unless the owner says it can make changes for them (the default, like the screen); the
+		// choice and the owner's optional "When others ask" rule are kept in the Team record (crew_when_others_ask.go).
 		changes, _ := args["can_make_changes"].(bool)
-		existing.Audience, existing.CanChange = "team", changes
+		var text *string
+		if value, ok := args["when_others_ask"].(string); ok {
+			text = &value
+		}
+		if _, err = api.setOwnAgentRule(ctx, claims.UserID, macSharedAgentChatKey(project, tab), text, &changes); err != nil {
+			return "", err
+		}
+		existing.Audience = "team"
 		next = append(next, existing)
 	}
 	if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, next); err != nil {

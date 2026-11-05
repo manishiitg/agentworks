@@ -611,6 +611,15 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		identityKey = productVars["WORK_IDENTITY_KEY"]
 	}
 	mark("prompt_vars")
+	// When others ask (owner, 5 Nov): another person's ask of this agent gets a note for this turn only.
+	promptContext.OthersAsking = ""
+	if isProjectProfileID(profile.ID) {
+		agentOwner := userID
+		if !crewOwned {
+			agentOwner = firstNonEmptyTrimmed(ownerOfCrewProjectID(crewResourceProjectID(req.AgentProfileConversationKey)), resolveProjectOwner(ctx, crewRoot))
+		}
+		promptContext.OthersAsking = whenOthersAskForTurn(ctx, req, userID, agentOwner, strings.TrimSpace(req.AgentProfileConversationKey))
+	}
 	if err := applyWorkspaceMemoryFeature(&profile); err != nil {
 		return nil, err
 	}

@@ -140,8 +140,11 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const menuGroups = menuPeople.map(person => ({ person, tabs: tabs.filter(tab => tabOwnerId(tab) === person) }))
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   // Your own agent In team, from the Team tab's server reading (the same rows in the Mac app and on the website).
-  const shareOf = (tab: ChatTab) => canControl(tab) && team?.team.on && teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true)?.in_team
-    ? { line: 'my team', canChange: true } : undefined
+  // Answer only / Make changes is the same row's server answer (When others ask).
+  const shareOf = (tab: ChatTab) => {
+    const row = canControl(tab) && team?.team.on ? teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true) : undefined
+    return row?.in_team ? { line: 'my team', canChange: Boolean(row.can_make_changes) } : undefined
+  }
   const sharedHere = (tab: ChatTab) => Boolean(shareOf(tab))
   const agentFace = (tab: ChatTab): ChatTabPillProps['agent'] => {
     // A Crew's agents only (owner, 4 Nov); Goal and Relay chat tabs keep their status dot.

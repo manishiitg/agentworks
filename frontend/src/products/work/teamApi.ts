@@ -49,7 +49,9 @@ async function teamTarget(project: string): Promise<TeamTarget | undefined> {
 /** The Team tab as the server writes it for the signed-in person (crew_team_tab.go): every row, and what they may
  * change. Every screen shows it and sends the person's choices; none decides anything itself. */
 export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean }
-export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; place: 'mac' | 'server'; status_label?: string; tab: string }
+export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; place: 'mac' | 'server'; status_label?: string; tab: string
+  // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
+  uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamTabShare = { path: string; files: number; bytes: number }
 export type TeamTabView = {

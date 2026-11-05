@@ -1075,6 +1075,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		if source.UserID != dest.UserID {
 			reqMap["delivery_mode"] = "queue"
 			reqMap["agent_message_from_other_person"] = true
+			reqMap["asked_by"] = firstNonEmptyTrimmed(source.UserID, source.Label)
 		}
 	}
 	// Bind the receiving address before its turn: it can explicitly reply from

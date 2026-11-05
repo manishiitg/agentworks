@@ -36,9 +36,8 @@ type macSharedAgent struct {
 	// across renames; Off keeps a turned-off entry only to keep its address for this owner.
 	Address string `json:"address,omitempty"`
 	Off     bool   `json:"off,omitempty"`
-	// CanChange: the owner lets other people's messages make changes; off (the default) they get answers only, as one
-	// line after each of their messages (owner, 3 Nov). The agent keeps its own tools either way.
-	CanChange bool `json:"can_change,omitempty"`
+	// Answer only / Make changes now lives in the server's Team record with the agent's "When others ask" rule
+	// (crew_when_others_ask.go), sent with every message to the Mac.
 	// AgentBridgePublic: any agent on the server can find and message it (Mac online's Public). It is not a people
 	// audience: it never lists the agent on anyone's website (owner, 5 Nov, decisions log).
 	AgentBridgePublic bool `json:"agentbridge_public,omitempty"`
@@ -378,7 +377,8 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	if claims.AccessToken != nil {
 		channel = "MCP"
 	}
-	raw, _ := json.Marshal(map[string]any{"sender_id": claims.UserID, "after": externalInt(args, "after", 0), "wait_seconds": externalInt(args, "wait_seconds", 0), "events": events, "sender_channel": channel})
+	raw, _ := json.Marshal(withAgentRuleArgs(r.Context(), map[string]any{"sender_id": claims.UserID, "after": externalInt(args, "after", 0), "wait_seconds": externalInt(args, "wait_seconds", 0), "events": events, "sender_channel": channel},
+		manifest.ID, project.OwnerID, macSharedAgentChatKey(manifest.ID, agent.Tab)))
 	call := crewChatCall{Operation: operation, Tab: agent.Tab, Message: externalArg(args, "message"), Caller: crewOwnerDisplayName(sanitizeUserIDForPath(claims.UserID)), Args: raw,
 		SubmissionID: externalArg(args, "submission_id")}
 	if operation == "agent_ask" && call.SubmissionID == "" {
@@ -850,7 +850,7 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		return out, result.Status
 	}
 	_, senderAgent, _ := agentMessageSender(ctx, source, source.UserID)
-	raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge"})
+	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge"}, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab)))
 	ask := crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
 	from := 1 - m.From
 	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.

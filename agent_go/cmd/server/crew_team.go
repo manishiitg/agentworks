@@ -139,8 +139,11 @@ type crewTeam struct {
 	// agents in team (crew_team_in_team.go): the one place this choice is kept, for every Crew kind. A viewer sees
 	// only their own.
 	AgentChoices map[string]map[string]bool `json:"agent_choices,omitempty"`
-	People       []crewTeamPerson           `json:"people"`
-	Folder       crewTeamFolder             `json:"folder"`
+	// AgentRules is each person's "When others ask" rule and Answer only / Make changes per agent, by the same key
+	// as AgentChoices (crew_when_others_ask.go). Only the agent's own person sets it.
+	AgentRules map[string]map[string]crewTeamAgentRule `json:"agent_rules,omitempty"`
+	People     []crewTeamPerson                        `json:"people"`
+	Folder     crewTeamFolder                          `json:"folder"`
 	// LastFolders are the folders shared before the Whole Crew, for going back to Folders (owner only).
 	LastFolders  []string `json:"last_folders,omitempty"`
 	Revision     uint64   `json:"revision"`
@@ -493,6 +496,12 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	for person, choices := range previous.AgentChoices {
 		if person == owner || slices.ContainsFunc(input.People, func(p crewTeamPerson) bool { return p.UserID == person }) {
 			input.AgentChoices[person] = choices
+		}
+	}
+	input.AgentRules = map[string]map[string]crewTeamAgentRule{}
+	for person, rules := range previous.AgentRules {
+		if person == owner || slices.ContainsFunc(input.People, func(p crewTeamPerson) bool { return p.UserID == person }) {
+			input.AgentRules[person] = rules
 		}
 	}
 	// Team on (owner, 4-5 Nov) starts with All agents in team and, with nothing shared yet, the Crew's team/ folder.

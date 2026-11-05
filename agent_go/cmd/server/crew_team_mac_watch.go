@@ -458,7 +458,7 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 		return out, result.Status
 	}
 	_, senderAgent, _ := agentMessageSender(ctx, source, source.UserID)
-	raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge"})
+	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge"}, dest.ID, person, crewMacTabRow(dest.ID, agent).ConversationKey))
 	ask := crewChatCall{Operation: "agent_ask", Tab: agent.Tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
 	from := 1 - m.From
 	_, status := read(0, 0)
