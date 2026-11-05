@@ -28,7 +28,6 @@ const mocks = vi.hoisted(() => ({
   app: { showWorkflowsOverview: false, showSchedulesOverview: false, adminPage: null },
   openNavigation: vi.fn(() => true),
 }))
-vi.mock('./ConnectedAgentsSidebar', () => ({ default: () => <p data-testid="connected-agent-list">Connected agents · reviewer</p> }))
 vi.mock('../../stores/useAppStore', () => ({ useAppStore: (select: any) => select(mocks.app) }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (select: any) => select({ showLLMModal: false }) }))
 vi.mock('../../utils/quickNavigation', () => ({
