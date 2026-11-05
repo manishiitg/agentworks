@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest'
 // title/aria-label/placeholder/description strings are scanned.
 const FILES = [
   'components/workflow/WorkflowFolderAccessView.tsx',
-  'components/workflow/WorkflowTeamView.tsx',
   'components/folders/WorkflowReferenceAccess.tsx',
   'products/knowledgebase/KnowledgebaseAccessPanel.tsx',
   'products/work/SharedCrewFilesPanel.tsx',

@@ -82,7 +82,6 @@ import {
 import { activateTab } from '../utils/activateTab'
 import { TeamAgentWatchingStatus } from './chat/TeamAgentWatchingStatus'
 import { selectWorkflowPreset } from '../utils/workflowNavigation'
-import { ProductChatSurface } from '../platform/chat/ProductChatSurface'
 import { buildCleanConversationItems } from '../utils/cleanConversation'
 import { submissionFailure } from '../platform/chat/submissionFailure'
 import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths } from '../utils/chatMessageContent'
@@ -439,6 +438,8 @@ export interface ChatContentRendererProps {
   onLoadOlder?: () => void
   landingContent?: ReactNode
   onRetryLastMessage?: () => void | Promise<void>
+  onAnswerCodingAgentQuestion?: CodingAgentQuestionAnswerHandler
+  closedCodingAgentQuestions?: ReadonlySet<string>
   /** Submit a message on the user's behalf (a suggestion pill, a button in the transcript). */
   onSubmitQuery?: (query: string) => void
   /** The pending prompt with this ID is answered above the message box, not in the transcript. */
@@ -519,9 +520,6 @@ interface ChatAreaProps {
   // while keeping the exact same session, streaming, steering, cancellation,
   // persistence, and submission transport underneath.
   contentRenderer?: ComponentType<ChatContentRendererProps>
-  // Product input removes provider/runtime controls while preserving uploads,
-  // send, cancel, and live steering behavior.
-  inputVariant?: 'default' | 'product'
   // Run each submission through the normal server-owned query lifecycle. The
   // coding CLI may still use tmux internally, but the UI receives structured
   // progress and a definitive completion event instead of relying on an idle
@@ -569,13 +567,8 @@ let globalHasRestored = false
 
 // Inner component for chat area
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
-  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath, slashCommands, onSubmitOverride, onQuestionAnswerOverride} = props
+  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath, slashCommands, onSubmitOverride, onQuestionAnswerOverride} = props
   useMcpOAuthChatNotifications(tabId)
-  // Product mode is a complete shared surface, not just a simplified composer.
-  // Products may still supply a renderer for domain-specific presentation, but
-  // every new product gets the durable transcript and normalized error UI by
-  // default simply by selecting inputVariant="product".
-  const EffectiveContentRenderer = ContentRenderer ?? (inputVariant === 'product' ? ProductChatSurface : undefined)
   // null means "inactive — don't subscribe to any tab or run any effects"
   const isInactive = tabId === null
 
@@ -3630,7 +3623,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     (selectedModeCategory === 'multi-agent' && multiAgentSurface === 'active')
   // A product-supplied content renderer owns the whole pane, so it is always
   // full height regardless of which transcript surface is active.
-  const shouldUseFullHeightContent = forcePreviousChats || !!EffectiveContentRenderer || hasActiveTranscript || showNormalPreviousChatsPanel || showWorkflowLandingContent
+  const shouldUseFullHeightContent = forcePreviousChats || !!ContentRenderer || hasActiveTranscript || showNormalPreviousChatsPanel || showWorkflowLandingContent
 
   return (
     <div className="flex flex-col h-full min-w-0" data-testid="chat-area-container" data-chat-find-scope>
@@ -3641,11 +3634,11 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           around the fixed-height terminal box. */}
       <div ref={chatContentRef} className={`flex-1 ${shouldUseFullHeightContent ? 'overflow-hidden' : 'overflow-y-auto'} overflow-x-hidden min-w-0 relative overscroll-y-none ${compact ? 'text-sm' : ''}`} style={{ scrollBehavior: 'auto' }}>
 
-        <div className={`min-w-0 ${shouldUseFullHeightContent ? 'flex h-full flex-col' : 'min-h-full'} ${EffectiveContentRenderer ? '' : compact ? 'px-2 pb-2' : 'px-3 pb-4'}`}>
+        <div className={`min-w-0 ${shouldUseFullHeightContent ? 'flex h-full flex-col' : 'min-h-full'} ${ContentRenderer ? '' : compact ? 'px-2 pb-2' : 'px-3 pb-4'}`}>
           {/* A Crew on a Mac that is off shows what the server kept; the rest of the history is on the Mac. */}
           {macChatOff && <p className="px-1 pt-3 text-center text-[11px] text-muted-foreground">Earlier messages are on your Mac.</p>}
           {/* Loading indicator for historical events */}
-          {!EffectiveContentRenderer && isLoadingHistory && (
+          {!ContentRenderer && isLoadingHistory && (
             <div className={`flex items-center justify-center ${compact ? 'py-4' : 'py-8'}`}>
               <div className="flex items-center gap-3 text-gray-600 dark:text-gray-400">
                 <div className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} border-2 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin`}></div>
@@ -3655,7 +3648,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           )}
 
           {/* Loading indicator for active session checking */}
-          {!EffectiveContentRenderer && isCheckingActiveSessions && (
+          {!ContentRenderer && isCheckingActiveSessions && (
             <div className={`flex items-center justify-center ${compact ? 'py-4' : 'py-8'}`}>
               <div className="flex items-center gap-3 text-gray-600 dark:text-gray-400">
                 <div className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} border-2 border-gray-300 dark:border-gray-600 border-t-green-600 dark:border-t-green-400 rounded-full animate-spin`}></div>
@@ -3665,7 +3658,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           )}
 
           {/* Active session indicator */}
-          {!EffectiveContentRenderer && sessionState === 'active' && (
+          {!ContentRenderer && sessionState === 'active' && (
             <div className={`flex items-center justify-center ${compact ? 'py-2' : 'py-4'}`}>
               <div className={`flex items-center gap-2 ${compact ? 'px-2 py-1' : 'px-3 py-2'} bg-green-100 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg`}>
                 <div className={`${compact ? 'w-1.5 h-1.5' : 'w-2 h-2'} bg-green-500 rounded-full animate-pulse`}></div>
@@ -3675,7 +3668,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           )}
 
           {/* Session error indicator */}
-          {!EffectiveContentRenderer && sessionState === 'error' && (
+          {!ContentRenderer && sessionState === 'error' && (
             <div className={`flex items-center justify-center ${compact ? 'py-2' : 'py-4'}`}>
               <div className={`flex items-center gap-2 ${compact ? 'px-2 py-1' : 'px-3 py-2'} bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg`}>
                 <svg className={`${compact ? 'w-3 h-3' : 'w-4 h-4'} text-red-600 dark:text-red-400`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3702,8 +3695,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             <p>{historyRestore.error}</p>
             <button type="button" className="text-primary hover:underline" onClick={historyRestore.retry}>Try again</button>
           </div>
-        ) : EffectiveContentRenderer && selectedModeCategory !== 'workflow' ? (
-          <EffectiveContentRenderer
+        ) : ContentRenderer && selectedModeCategory !== 'workflow' ? (
+          <ContentRenderer
             runtimeActivity={runtimeActivity}
             events={transcriptEvents}
             isStreaming={activeTabBusy}
@@ -3888,7 +3881,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           onStopStreaming={stopStreaming}
           onNewChat={() => void handleNewChat(targetTabId ?? undefined)}
           tabId={targetTabId}
-          surfaceVariant={inputVariant}
           hideRuntimeStatus={hideRuntimeStatus}
           showProductSteerAction={showProductSteerAction}
           showProductTerminalControl={showProductTerminalControl}

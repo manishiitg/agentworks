@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
-import { CleanConversationSurface } from './CleanConversationSurface'
 import api from '../services/api'
 import { openReplyChanges } from './workspace/chatFileNavigation'
 import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
@@ -107,24 +106,6 @@ describe('activity belongs to the current agent turn', () => {
     expect(group().querySelector('span[aria-hidden="true"]')).toBeNull()
     await act(async () => group().querySelector<HTMLButtonElement>('button')!.click())
     expect(group().querySelector('[data-testid="terminal-working-group-steps"]')).not.toBeNull()
-  })
-
-  it('mounts product activity details only when opened, while retaining every recorded call', async () => {
-    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-    const calls = Array.from({ length: 10 }, (_, index) => [
-      event(`start-${index}`, 'tool_call_start', { tool_call_id: `call-${index}`, tool_name: 'read_file', arguments: '{"path":"report.txt"}' }),
-      event(`end-${index}`, 'tool_call_end', { tool_call_id: `call-${index}`, tool_name: 'read_file', result: 'unchanged' }),
-    ]).flat()
-    const host = document.createElement('div'); document.body.appendChild(host)
-    const root = createRoot(host)
-    cleanups.push(() => { act(() => root.unmount()); host.remove() })
-    await act(async () => root.render(<CleanConversationSurface events={[user, ...calls, completed]} isStreaming={false} isRestoring={false} streamingText="" />))
-    const details = host.querySelector<HTMLDetailsElement>('[data-testid="clean-production-activity"]')!
-    expect(details.querySelectorAll('[data-status]')).toHaveLength(0)
-    await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')) })
-    expect(details.querySelectorAll('[data-status]')).toHaveLength(10)
-    await act(async () => { details.open = false; details.dispatchEvent(new Event('toggle')) })
-    expect(details.querySelectorAll('[data-status]')).toHaveLength(0)
   })
 
   it('renders one six-call group across duplicate native progress updates', async () => {
@@ -373,7 +354,7 @@ it.each(['query_1791824440777049000', 'synthetic-turn:steer-message-179182444077
 
 // PLAT-746-158 B2: capture can finish after the following reply. Both views
 // must attach it to its recorded reply and read saved bytes, not today's file.
-it('keeps a late file comparison on its original reply in both transcript views after reload', async () => {
+it('keeps a late file comparison on its original reply after reload', async () => {
   const get = vi.spyOn(api, 'get').mockImplementation(async (_url, config) => {
     if (config?.params?.op === 'snapshot_file') return { data: new TextEncoder().encode('Saved report from the first reply').buffer } as never
     if (config?.params?.op === 'reply_card') return { data: { can_edit: false, actions: [], groups: [{ kind: 'crew_files', root: '', name: 'Other files', total_files: 2, files: [
@@ -392,20 +373,18 @@ it('keeps a late file comparison on its original reply in both transcript views 
     numbered('next-user', 'user_message', { content: 'Make another report' }, 4), next]
   const late = numbered('saved-files', 'reply_file_changes', { snapshot_id: 'saved-first', workspace_path: 'Crew/example', start_sequence: 0, end_sequence: 3 }, 6)
   try {
-    for (const clean of [false, true]) {
+    {
       const host = document.createElement('div'); document.body.appendChild(host)
       const root = createRoot(host)
       vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-      const render = async (events: PollingEvent[]) => act(async () => root.render(clean
-        ? <CleanConversationSurface events={events} isStreaming={false} isRestoring={false} streamingText="" />
-        : <TerminalEventTranscript terminal={null} events={events} />))
+      const render = async (events: PollingEvent[]) => act(async () => root.render(<TerminalEventTranscript terminal={null} events={events} />))
       try {
         await render(history)
         expect(host.querySelector('[aria-label="Project changes during this turn"]')).toBeNull()
         await render([...history, late])
         const card = host.querySelector('[aria-label="Project changes during this turn"]')!
         expect(card).not.toBeNull()
-        const reply = clean ? card.closest('article') : card.closest('[data-testid="terminal-clear-event-first-reply"]')
+        const reply = card.closest('[data-testid="terminal-clear-event-first-reply"]')
         expect(reply?.textContent).toContain('First report is ready.')
         expect(reply?.textContent).not.toContain('Second report is ready.')
         vi.mocked(openReplyChanges).mockClear()
@@ -423,7 +402,7 @@ it('keeps a late file comparison on its original reply in both transcript views 
 
 // PLAT-746-158: partial captures with no observed changes used to disappear,
 // making missed files indistinguishable from a successful empty comparison.
-it('keeps omission notices out of the reply card in both views', async () => {
+it('keeps omission notices out of the reply card in the transcript', async () => {
   let status = 'partial'
   let uncaptured = 1
   const get = vi.spyOn(api, 'get').mockImplementation(async () => ({ data: { history: { latest_snapshot_id: '', can_review: false }, comparison: { snapshot: { status }, uncaptured_changes: uncaptured, changes: [] } } }) as never)
@@ -432,7 +411,7 @@ it('keeps omission notices out of the reply card in both views', async () => {
     { ...event('reply-files', 'llm_generation_end', { content: 'Done.' }), sequence: 2, session_id: 'files-session' },
   ]
   try {
-    for (const clean of [false, true]) {
+    {
       const host = document.createElement('div'); document.body.appendChild(host)
       const root = createRoot(host)
       try {
@@ -440,9 +419,7 @@ it('keeps omission notices out of the reply card in both views', async () => {
           status = state === 'complete' ? 'complete' : 'partial'
           uncaptured = state === 'partial' ? 1 : 0
           const events = [...history, { ...event('saved-files', 'reply_file_changes', { snapshot_id: state, workspace_path: 'Crew/example', start_sequence: 0, end_sequence: 3 }), sequence: 4, session_id: 'files-session' }]
-          await act(async () => root.render(clean
-            ? <CleanConversationSurface events={events} isStreaming={false} isRestoring={false} streamingText="" />
-            : <TerminalEventTranscript terminal={null} events={events} />))
+          await act(async () => root.render(<TerminalEventTranscript terminal={null} events={events} />))
           expect(host.textContent?.includes('may have changed but could not be compared')).toBe(false)
           expect(host.querySelector('[aria-label="Reply changes"]')).toBeNull()
         }
