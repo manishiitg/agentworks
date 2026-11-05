@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,13 +26,13 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		return nil
 	}
 	gate.Declare("team_sync")
-	return reg.RegisterCustomToolWithTimeout("team_sync", "Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. clashes lists open clashes (two people changed the same lines of a file) with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id from clashes) keeps current, puts the other back (keep=other), restores keep=revision:N, or saves your merged text (content); each change is a NEW revision every copy downloads, and the clash is closed. restore uses revision and saves it as a NEW revision. leave removes you from a joined Team; agent_visibility (agent_key, in_team) changes only your own agent. directory lists company people. configure (the owner or any joined member, like the Team tab): on=true/false is the Team switch (on starts with All agents in team and, with nothing shared, the team/ folder); all_in_team=true/false; people replaces the roster with user_id (the owner always stays); share=whole shares the Whole Crew (everything except chats, memory, app files, node_modules/.git/caches and files that look like passwords or keys) and share=folders with folders=[…] shares one or more existing folders of this Crew (switching back stops syncing the rest; teammates' copies stay); a person added is invited and joins only when they accept, and every member reads and writes the shared folder. status also lists your open invites; accept or decline one with its project (your own answer, from your own chat). This shares the selected folder with those enabled people; other files stay outside the Team folder. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
+	return reg.RegisterCustomToolWithTimeout("team_sync", "Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. clashes lists open clashes (two people changed the same lines of a file) with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id from clashes) keeps current, puts the other back (keep=other), restores keep=revision:N, or saves your merged text (content); each change is a NEW revision every copy downloads, and the clash is closed. restore uses revision and saves it as a NEW revision. leave removes you from a joined Team; agent_visibility (agent_key, in_team) sets one of your own agents In team / Only me, or with all_in_team=true/false your own All my agents in team (Main is always In team). directory lists company people (find a person by name there, then use their user_id). configure, like the Team tab: people replaces the roster with user_id (anyone in the Team; the owner always stays); folders=[…] adds folders to share (anyone in the Team; a missing folder is made); only the Crew's owner turns the Team on or off (on=true/false; on starts with the team/ folder when nothing is shared), switches share=whole / share=folders, or stops sharing a folder. Whole Crew is everything except chats, memory, app files, node_modules/.git/caches and files that look like passwords or keys. A person added is invited and joins only when they accept; every member reads and writes the shared folder. status with project shows the Team, including what your agents use from the owner (lent). status also lists your open invites; accept or decline one with its project (your own answer, from your own chat). This shares the selected folder with those enabled people; other files stay outside the Team folder. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
 		"action":      map[string]any{"type": "string", "enum": []string{"status", "recent", "clashes", "compare", "read_revision", "resolve", "restore", "files", "read_file", "save_file", "directory", "configure", "accept", "decline", "leave", "agent_visibility"}},
 		"network":     map[string]any{"type": "string", "description": "Company name, if this Mac is connected to several companies and this project has no connection."},
 		"agent_key":   map[string]any{"type": "string"},
 		"in_team":     map[string]any{"type": "boolean"},
-		"on":          map[string]any{"type": "boolean", "description": "configure: the Team switch."},
-		"all_in_team": map[string]any{"type": "boolean", "description": "configure: All agents in team."},
+		"on":          map[string]any{"type": "boolean", "description": "configure: the Team switch (the owner only)."},
+		"all_in_team": map[string]any{"type": "boolean", "description": "agent_visibility: your own All my agents in team."},
 		"project":     map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
 		"path":        map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"}, "clash_id": map[string]any{"type": "string", "description": "resolve: the clash's id from clashes."},
 		"share": map[string]any{"type": "string", "enum": []string{"whole", "folders"}}, "folders": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
@@ -153,7 +154,11 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			}
 			op = strings.ReplaceAll(action, "_", "-")
 			method = http.MethodPost
-			body, _ = json.Marshal(map[string]any{"agent_key": externalArg(args, "agent_key"), "in_team": args["in_team"]})
+			key, in := externalArg(args, "agent_key"), args["in_team"]
+			if all, ok := args["all_in_team"].(bool); ok && action == "agent_visibility" {
+				key, in = crewTeamAllMine, all
+			}
+			body, _ = json.Marshal(map[string]any{"agent_key": key, "in_team": in})
 		case "accept", "decline":
 			op = "invite"
 			method = http.MethodPost
@@ -298,10 +303,10 @@ func (api *StreamingAPI) crewTeamConfigureChat(ctx context.Context, caller *User
 			return "", fmt.Errorf("choose people from the directory by user_id")
 		}
 	}
-	// What the team shares (owner, 5 Nov): share=whole for the Whole Crew, or share=folders with folders=[…]; a single
-	// folder="…" is one folder.
+	// What the team shares (owner, 5 Nov): folders=[…] (or one folder="…") adds folders, anyone in the Team;
+	// share=whole for the Whole Crew and share=folders with folders=[…] as the whole list are the owner's.
 	if folder, ok := args["folder"].(string); ok {
-		args["share"], args["folders"] = "folders", []any{folder}
+		args["folders"] = []any{folder}
 		if folder == "whole" {
 			args["share"] = "whole"
 		}
@@ -309,25 +314,28 @@ func (api *StreamingAPI) crewTeamConfigureChat(ctx context.Context, caller *User
 	if on, ok := args["on"].(bool); ok {
 		team.On = on
 	}
-	if all, ok := args["all_in_team"].(bool); ok {
-		team.AgentsOnlyMe = !all
+	list, _ := args["folders"].([]any)
+	folders := []string{}
+	for _, item := range list {
+		if text, ok := item.(string); ok {
+			folders = append(folders, text)
+		}
 	}
 	switch share, _ := args["share"].(string); share {
 	case "whole":
 		team.Folder = crewTeamFolder{Whole: true}
 	case "folders":
-		list, _ := args["folders"].([]any)
-		folders := []string{}
-		for _, item := range list {
-			if text, ok := item.(string); ok {
-				folders = append(folders, text)
-			}
-		}
 		if len(folders) == 0 {
 			return "", fmt.Errorf("name the folders to share, such as folders=[\"team\"]")
 		}
 		team.Folder = crewTeamFolder{Folders: folders}
 	case "":
+		if len(folders) > 0 && team.Folder.Whole {
+			return "", fmt.Errorf("the team shares the Whole Crew already")
+		}
+		if len(folders) > 0 {
+			team.Folder.Folders = append(slices.Clone(team.Folder.Folders), folders...)
+		}
 	default:
 		return "", fmt.Errorf("share is whole or folders")
 	}

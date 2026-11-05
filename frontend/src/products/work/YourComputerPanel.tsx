@@ -13,7 +13,7 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { MacAgentBridge } from './MacAgentBridge'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
-import { TeamTab } from './TeamTab'
+import { AskButton, TeamTab } from './TeamTab'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
@@ -286,6 +286,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
       {(status.on_server || []).map(copy => <p key={copy.name} className="px-1 text-xs"><span className="font-medium">{copy.name}</span> <span className="text-muted-foreground">· {copy.detail}</span></p>)}
     </section>}
     {here && !needsServer && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
+      <div className="flex justify-end"><AskButton projectId={projectId} card="mac" /></div>
       {binding?.connection_id && !online
         ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} network={network} copies={serverCopies} onTeam={() => setSection('team')} />
         : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
@@ -316,6 +317,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
       </div>
     </section>}
     {here && !needsServer && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
+      <div className="flex justify-end"><AskButton projectId={projectId} card="publish" /></div>
       {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
       <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
         <div className="min-w-0 flex-1 basis-48"><p className="font-semibold">Whole Crew</p>

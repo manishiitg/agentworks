@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { desktopRequest } from '../../services/desktopConnections'
 import type { TeamLent, TeamTarget } from './teamApi'
 
@@ -15,7 +15,7 @@ const button = 'ml-auto shrink-0 rounded-full border border-primary bg-primary p
  * from you"). The server writes the card: its title and line, and what is ready for the team. In the owner's Mac app,
  * the Mac's own server adds what only this Mac has, with Copy (a secret) or Move (a signed-in app) to the server.
  */
-export function LentCard({ lent, target }: { lent: TeamLent; target: TeamTarget }) {
+export function LentCard({ lent, target, ask }: { lent: TeamLent; target: TeamTarget; ask?: ReactNode }) {
   const [macOnly, setMacOnly] = useState<MacOnlyItem[]>([])
   const [results, setResults] = useState<Record<string, ItemResult>>({})
   const [busy, setBusy] = useState('')
@@ -42,12 +42,12 @@ export function LentCard({ lent, target }: { lent: TeamLent; target: TeamTarget 
 
   return <section aria-label={lent.title} className={card}>
     <div>
-      <h3 className="font-semibold">{lent.title}</h3>
+      <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">{lent.title}</h3>{ask}</div>
       <p className="text-[12.5px] text-muted-foreground">{lent.line}</p>
     </div>
     <div className={lent.yours ? 'border-t border-border pt-2' : ''}>
       {lent.yours && <p className="mb-1 text-xs text-muted-foreground">Ready for the team</p>}
-      {lent.items.length === 0 && recent.length === 0 && <p className="text-[12.5px] text-muted-foreground">Nothing yet</p>}
+      {lent.items.length === 0 && recent.length === 0 && macOnly.length === 0 && <p className="text-[12.5px] text-muted-foreground">{lent.empty || 'Nothing yet'}</p>}
       {lent.items.map(item => <div key={`${item.kind}:${item.name}`} className="flex items-center gap-2 py-1 text-[13px]">
         <span>{item.name}</span><span className="text-xs text-muted-foreground">· {item.kind}</span>
         {lent.yours && <span className={pill}>On the server</span>}

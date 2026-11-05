@@ -133,11 +133,11 @@ type crewTeam struct {
 	OwnerID    string              `json:"owner_id"`
 	// On is the Team tab's switch (owner, 4 Nov): off, the roster stays saved but only the owner is in the team.
 	On bool `json:"on"`
-	// AgentsOnlyMe is "All agents in team" off: an agent nobody chose for is Only me (crew_team_in_team.go). Off, the
-	// default, every agent is In team unless its own person chose Only me.
+	// AgentsOnlyMe is the old Team-wide All agents in team, read only by migrateCrewTeamRecord.
 	AgentsOnlyMe bool `json:"agents_only_me,omitempty"`
-	// AgentChoices is each person's own In team (true) / Only me (false) per agent key (crew_team_in_team.go): the one
-	// place this choice is kept, for every Crew kind. A viewer sees only their own.
+	// AgentChoices is each person's own In team (true) / Only me (false) per agent key, and under "*" their own All my
+	// agents in team (crew_team_in_team.go): the one place this choice is kept, for every Crew kind. A viewer sees
+	// only their own.
 	AgentChoices map[string]map[string]bool `json:"agent_choices,omitempty"`
 	People       []crewTeamPerson           `json:"people"`
 	Folder       crewTeamFolder             `json:"folder"`
@@ -177,6 +177,7 @@ func readCrewTeam(project string) (crewTeam, error) {
 	if err == nil && (t.ProjectID != project || t.OwnerID == "") {
 		err = fmt.Errorf("team record is unavailable")
 	}
+	migrateCrewTeamRecord(&t)
 	return t, err
 }
 func writeCrewTeam(t crewTeam) error {
@@ -215,6 +216,24 @@ func (t crewTeam) invited(user string) bool {
 // each person's own machine/agent controls remain separate.
 func crewTeamCanManage(t crewTeam, user string) bool {
 	return user != "" && crewTeamAccountActive(user) && (t.member(user) || crewRegistryOwnedByCaller(user, crewProjectRootByID(t.ProjectID)))
+}
+
+// crewTeamOwnerOnlyChange is the refusal for a save by someone other than the Crew's main owner that changes what only
+// the owner decides, or "". input.Folder is already cleaned. Members add people and add shared folders.
+func crewTeamOwnerOnlyChange(previous, input crewTeam, user string) string {
+	if user == previous.OwnerID {
+		return ""
+	}
+	owner := crewPersonShortName(previous.OwnerID)
+	switch {
+	case input.On != previous.On:
+		return fmt.Sprintf("Only %s can turn the Team on or off.", owner)
+	case input.Folder.Whole != previous.Folder.Whole:
+		return fmt.Sprintf("Only %s can switch between Folders and the Whole Crew.", owner)
+	case !input.Folder.Whole && slices.ContainsFunc(previous.Folder.Folders, func(f string) bool { return !slices.Contains(input.Folder.Folders, f) }):
+		return fmt.Sprintf("Only %s can stop sharing a folder.", owner)
+	}
+	return ""
 }
 
 // A lost Team grant ends already-running work as well as refusing new turns.
@@ -445,6 +464,13 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its settings.")
 		return
 	}
+	// The Crew's main owner alone turns the Team on or off, switches Folders / Whole Crew and stops sharing a folder
+	// (owner, 5 Nov). Members add people and folders. Every caller (website, Mac app, chat,
+	// MCP) saves here, so this is the one check.
+	if refusal := crewTeamOwnerOnlyChange(previous, input, claims.UserID); refusal != "" {
+		externalError(w, 403, "team_owner_only", refusal)
+		return
+	}
 	// A person added to the Team is invited until they accept; existing people keep their own state.
 	for i := range input.People {
 		at := slices.IndexFunc(previous.People, func(p crewTeamPerson) bool { return p.UserID == input.People[i].UserID })
@@ -472,12 +498,11 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	// Team on (owner, 4-5 Nov) starts with All agents in team and, with nothing shared yet, the Crew's team/ folder.
 	// The server decides it for every caller (website, Mac app, chat, MCP); the owner's Mac makes the folder there
 	// when it applies the record (crew_team_apply.go).
-	madeFolder := false
+	input.AgentsOnlyMe = false
 	if input.On && !previous.On {
-		input.AgentsOnlyMe = false
+		delete(input.AgentChoices[owner], crewTeamAllMine)
 		if !input.Folder.shared() {
 			input.Folder = crewTeamFolder{Folders: []string{crewTeamDefaultFolder}}
-			madeFolder = !crewRelayTwin(project)
 		}
 	}
 	// Back to Folders from the Whole Crew picks the folders shared before it, or team/ (owner, 5 Nov); the server decides.
@@ -518,11 +543,14 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 400, "invalid_name", "Use a shorter team name.")
 		return
 	}
-	if madeFolder {
-		// A Crew on the server: its own folder is where people work, so team/ is made here.
+	// A shared folder that is not there yet is made (owner, 5 Nov: a member adds one by name): a Crew on the server
+	// here, where people work; a Mac Crew's owner's Mac when it applies the record (crew_team_apply.go).
+	if input.On && !crewRelayTwin(project) {
 		if roots, found, err := crewStorageRoots(crewProjectRootByID(project)); err == nil && found {
-			if err = os.MkdirAll(filepath.Join(roots.Files, crewTeamDefaultFolder), 0o755); err != nil {
-				log.Printf("[CREW_TEAM] project=%s event=team_folder_failed reason=%q", project, err)
+			for _, folder := range input.Folder.Folders {
+				if err = os.MkdirAll(filepath.Join(roots.Files, filepath.FromSlash(folder)), 0o755); err != nil {
+					log.Printf("[CREW_TEAM] project=%s event=team_folder_failed folder=%q reason=%q", project, folder, err)
+				}
 			}
 		}
 	}
@@ -530,7 +558,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t all_in_team=%t people=%d folder=%q revision=%d", project, logUsernameForUserID(claims.UserID), input.On, !input.AgentsOnlyMe, len(input.People), input.Folder.display(), input.Revision)
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t owner_all_in_team=%t people=%d folder=%q revision=%d", project, logUsernameForUserID(claims.UserID), input.On, input.allMine(owner), len(input.People), input.Folder.display(), input.Revision)
 	api.stopRemovedCrewTeamSessions(previous, input)
 	externalJSON(w, input.view(claims.UserID))
 }
@@ -541,9 +569,11 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 // from the owner (crewSecretsPerson, projectSecretsOwner); values never leave Vault. Yours marks the owner's own view,
 // where the Mac app adds what only the owner's Mac has (crew_team_lent_mac.go).
 type crewTeamLent struct {
-	Title string             `json:"title"`
-	Line  string             `json:"line"`
-	Foot  string             `json:"foot,omitempty"`
+	Title string `json:"title"`
+	Line  string `json:"line"`
+	Foot  string `json:"foot,omitempty"`
+	// Empty is the owner's line while nothing is lent; a teammate gets no card then.
+	Empty string             `json:"empty,omitempty"`
 	Yours bool               `json:"yours"`
 	Items []crewTeamLentItem `json:"items"`
 }
@@ -561,12 +591,10 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 	out := &crewTeamLent{Items: []crewTeamLentItem{}, Yours: viewer == t.OwnerID}
 	if out.Yours {
 		out.Title, out.Line = "What teammates' agents use from you", "Their agents in this Crew use these as you. Values are never shown."
+		out.Empty = "Nothing shared yet. Pick apps and secrets for this Crew from your Vault, or ask your agent."
 	} else {
 		owner := crewPersonShortName(t.OwnerID)
 		out.Title, out.Line = "What your agents use from "+owner, "Your agents in this Crew use these as "+owner+". Values are never shown."
-		if crewRelayTwin(t.ProjectID) {
-			out.Foot = "Some of " + owner + "'s apps run only on " + owner + "'s Mac; your agents can ask " + owner + "'s agent to use them."
-		}
 	}
 	apps, secrets := []string{}, []string{}
 	if servers, err := vaultServersFor(ctx, t.OwnerID); err == nil {
@@ -589,6 +617,9 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 	}
 	for _, name := range slices.Compact(secrets) {
 		out.Items = append(out.Items, crewTeamLentItem{Name: name, Kind: "secret"})
+	}
+	if !out.Yours && len(out.Items) == 0 {
+		return nil // a teammate sees the card only when something is lent (owner, 5 Nov)
 	}
 	return out
 }

@@ -5,7 +5,7 @@ import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
-import { fillAskFromMyAgentDraft, fillTeamSetupDraft } from '../../utils/agentPurposeDraft'
+import { fillAccessAskDraft, fillAskFromMyAgentDraft, type AccessAskCard } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import { activateTab } from '../../utils/activateTab'
 import { changeTeamPeople, saveTeam, switchTeam, teamAgentForTab, teamError, teamRequest, useTeamTab, type Team, type TeamTabAgent, type TeamTabShare, type TeamTabState, type TeamTabView, type TeamTarget } from './teamApi'
@@ -21,6 +21,15 @@ const mb = (bytes: number) => `${(bytes / (1 << 20)).toFixed(bytes < 10 << 20 ? 
 const sizeLine = (size?: { files: number; bytes: number }) => size ? `${size.files.toLocaleString()} ${size.files === 1 ? 'file' : 'files'} · ${mb(size.bytes)}` : ''
 const card = 'space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm'
 const shortName = (name: string) => name.split('@')[0] || name
+
+const askTitle = 'Ask your AI agent how to set this up'
+
+/** The small Ask pill at the top right of every Access/Team card (owner, 5 Nov): opens the viewer's own Main with the
+ * card's request in its chat box, not sent. */
+export function AskButton({ projectId, card }: { projectId: string; card: AccessAskCard }) {
+  return <button type="button" title={askTitle} aria-label={askTitle} className="shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted"
+    onClick={() => { if (!fillAccessAskDraft(projectId, card)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask</button>
+}
 
 /** One read of this Mac's Crew folder: a folder's size (path) or the Whole Crew's (whole), by the sync's own rules. */
 function useShareSize(connection?: string, localProject?: string, query?: string) {
@@ -61,17 +70,17 @@ export function TeamTab({ projectId, macSwitch, onTurnOn }: { projectId: string;
     <PeopleCard view={view} target={target} projectId={projectId} />
     {team.on && <>
       <CrewWhereRow projectId={projectId} />
-      <SharesCard view={view} target={target} />
+      <SharesCard view={view} target={target} projectId={projectId} />
       <AgentsCard state={state} view={view} target={target} projectId={projectId} />
-      {team.lent && <LentCard lent={team.lent} target={target} />}
+      {team.lent && <LentCard lent={team.lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} />}
       {view.mac && <section aria-label="Mac online" className={card}>
-        <h3 className="font-semibold">Mac online</h3>
+        <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Mac online</h3><AskButton projectId={projectId} card="mac" /></div>
         {view.mac.yours && macSwitch
           ? <label className="flex items-center justify-between gap-3"><span className="text-[12.5px]">{view.mac.line}</span>{macSwitch}</label>
           : <p className="text-[12.5px]"><Dot on={view.mac.on} />{view.mac.line} · <span className="text-muted-foreground">{view.mac.note}</span></p>}
       </section>}
       {team.folder_access && <section aria-label="Sync" className={card}>
-        <h3 className="font-semibold">Sync</h3>
+        <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
         <TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} />
       </section>}
       {view.can_leave && <LeaveTeam target={target} />}
@@ -117,13 +126,12 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
       setNote(result.folder_created ? 'Made an empty team/ folder to share.' : '')
     } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
-  const askText = 'Ask chat to set up your team: people, what it shares and which agents are shared'
   const known = new Set(view.people.map(person => person.user_id))
   return <section aria-label="Team" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">Team</h3>
       <span className="text-xs text-muted-foreground">{team.on && view.people.length > 1 ? `${view.people.length} people` : 'Only you'}</span>
-      <button type="button" title={askText} aria-label={askText} onClick={() => fillTeamSetupDraft(projectId)} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Ask</button>
+      <AskButton projectId={projectId} card="team" />
       {view.can_switch ? <Switch aria-label="Team" disabled={busy} checked={team.on} onCheckedChange={on => void turn(on)} />
         : <span className="text-xs text-muted-foreground">{team.on ? 'On' : 'Off'}</span>}
     </div>
@@ -158,15 +166,17 @@ function FolderRow({ folder, target, server, canRemove, busy, onRemove }: { fold
   </div>
 }
 
-/** What the team shares: Folders or the Whole Crew, changed from anywhere by whoever manages the Team (can_choose).
- * Picking a new folder reads the Crew's own folder, so for a Mac Crew it is in its owner's Mac app (mac_only). */
-function SharesCard({ view, target }: { view: TeamTabView; target: TeamTarget }) {
+/** What the team shares: Folders or the Whole Crew. The Crew's owner switches it and stops sharing a folder
+ * (can_choose); anyone in the Team adds a folder by name (can_add_folder), which the server makes when missing. The
+ * owner's Mac app also picks from the Mac's folders. */
+function SharesCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
   const { team } = view
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [picking, setPicking] = useState(false)
   const [parent, setParent] = useState('')
   const [listing, setListing] = useState<Listing>()
+  const [newFolder, setNewFolder] = useState('')
   const onMac = Boolean(target.connection && target.localProject && view.mac?.yours)
   const choose = view.can_choose
   const pick = choose && onMac
@@ -188,6 +198,7 @@ function SharesCard({ view, target }: { view: TeamTabView; target: TeamTarget })
   return <section aria-label="What the team shares" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">What the team shares</h3>
+      <AskButton projectId={projectId} card="shares" />
       {!choose ? <span className="text-xs text-muted-foreground">{team.folder.whole ? 'Whole Crew' : 'Folders'}</span>
         : <div role="radiogroup" aria-label="What the team shares" className="flex overflow-hidden rounded-md border border-border text-xs">
         {([[false, 'Folders'], [true, 'Whole Crew']] as const).map(([value, label]) => {
@@ -203,8 +214,17 @@ function SharesCard({ view, target }: { view: TeamTabView; target: TeamTarget })
         {folders.map(folder => <FolderRow key={folder} folder={folder} target={onMac ? target : { project: target.project }} server={view.shares?.find(share => share.path === folder)} canRemove={choose} busy={busy}
           onRemove={() => void save({ ...team, folder: { folders: folders.filter(f => f !== folder) } })} />)}
         {!folders.length && <p className="text-xs text-muted-foreground">Nothing is shared yet{choose ? ': add a folder, or share the Whole Crew' : ''}.</p>}
+        {view.can_add_folder && !pick && <form className="flex items-center gap-2" onSubmit={event => {
+          event.preventDefault()
+          const name = newFolder.trim().replace(/^\/+|\/+$/g, '')
+          if (!name || folders.includes(name)) return
+          void save({ ...team, folder: { folders: [...folders, name] } }).then(() => setNewFolder(''))
+        }}>
+          <input aria-label="Folder to share" value={newFolder} onChange={event => setNewFolder(event.target.value)} placeholder="Add a folder to share, such as notes" className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs" />
+          <Button size="sm" type="submit" disabled={busy || !newFolder.trim()}>Add</Button>
+        </form>}
         {pick && <button type="button" disabled={busy} onClick={() => { setPicking(!picking); setParent('') }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Share this folder</button>}
-        {choose && !pick && view.mac_only && <p className="text-xs text-muted-foreground">{view.mac_only}</p>}
+        {view.can_add_folder && !pick && view.mac_only && <p className="text-xs text-muted-foreground">{view.mac_only}</p>}
         {pick && tooBig && localWhole?.too_big_line && <p className="text-xs text-amber-600">The Whole Crew ({sizeLine(localWhole)}): {localWhole.too_big_line}</p>}
       </div>}
     {picking && pick && !team.folder.whole && <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-xs">
@@ -223,9 +243,11 @@ function SharesCard({ view, target }: { view: TeamTabView; target: TeamTarget })
 function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; view: TeamTabView; target: TeamTarget; projectId: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // The viewer's own All my agents in team (owner, 5 Nov): it never changes anyone else's agents.
   const chooseAll = async (on: boolean) => {
     setBusy(true); setError('')
-    try { await saveTeam(target, { ...view.team, agents_only_me: !on }) } catch (e) { setError(teamError(e)) } finally { setBusy(false) }
+    try { await teamRequest({ project: target.project, connection: target.connection }, '/agent-visibility', 'POST', { agent_key: '*', in_team: on }); window.dispatchEvent(new CustomEvent('agentworks:team-updated')) }
+    catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
   const choose = async (key: string, inTeam: boolean) => {
     setBusy(true); setError('')
@@ -235,9 +257,10 @@ function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; v
   return <section aria-label="Agents" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">Agents</h3>
-      {view.can_switch && <label className="flex items-center gap-2 text-[13px]"><span className="font-medium">All agents in team</span><Switch aria-label="All agents in team" checked={view.all_in_team} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>}
+      <AskButton projectId={projectId} card="agents" />
     </div>
-    {view.can_switch && <p className="text-xs text-muted-foreground">New agents join too, unless their person chose Only me.</p>}
+    {view.can_all_mine && <label className="flex items-center gap-2 text-[13px]"><span className="flex-1 font-medium">All my agents in team</span><Switch aria-label="All my agents in team" checked={view.all_in_team} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>}
+    {view.can_all_mine && <p className="text-xs text-muted-foreground">Your new agents join too, unless you choose Only me. Main is always in team.</p>}
     {view.agents.map(agent => <div key={agent.key} className="flex items-center gap-2 border-t border-border pt-2 text-[13px]">
       <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b> <span className="text-muted-foreground">· {agent.detail}</span></span>
       {agent.place === 'mac' && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">Mac</span>}

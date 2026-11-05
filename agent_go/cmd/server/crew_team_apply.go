@@ -5,28 +5,31 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // applyCrewTeamOnMac makes this Mac follow its Crew's Team record from the company server (owner, 5 Nov: the server
 // decides): Team on lists every agent on the online copy (who sees which is the record's In team / Only me) and makes
-// the team/ folder the server chose; Team off keeps only agents public on AgentBridge (Mac online's choice). It runs
-// when this Mac reads the record: its Team sync loop, its screen and its chat. It returns whether team/ was made.
+// the shared folders the server chose; Team off keeps only agents public on AgentBridge (Mac online's choice). It runs
+// when this Mac reads the record: its Team sync loop, its screen and its chat. It returns whether a folder was made.
 func (api *StreamingAPI) applyCrewTeamOnMac(ctx context.Context, project string, t crewTeam) bool {
 	if !IsLocalMode() {
 		return false
 	}
 	madeFolder := false
-	if t.On && slices.Contains(t.Folder.Folders, crewTeamDefaultFolder) {
+	// Every shared folder the record names is made here when missing: team/ on Team on, and a folder a member added
+	// by name from the website (owner, 5 Nov).
+	if t.On && len(t.Folder.Folders) > 0 {
 		if roots, err := api.crewSyncRoots(ctx, &UserClaims{UserID: GetDefaultUserID(), Username: GetDefaultUserID()}, project); err == nil {
-			dir := filepath.Join(roots.Files, crewTeamDefaultFolder)
-			if _, err := os.Lstat(dir); os.IsNotExist(err) {
-				if err = os.MkdirAll(dir, 0o755); err != nil {
-					log.Printf("[CREW_TEAM] local project=%s event=team_folder_failed reason=%q", project, err)
-				} else {
-					madeFolder = true
+			for _, folder := range t.Folder.Folders {
+				dir := filepath.Join(roots.Files, filepath.FromSlash(folder))
+				if _, err := os.Lstat(dir); os.IsNotExist(err) {
+					if err = os.MkdirAll(dir, 0o755); err != nil {
+						log.Printf("[CREW_TEAM] local project=%s event=team_folder_failed folder=%q reason=%q", project, folder, err)
+					} else {
+						madeFolder = true
+					}
 				}
 			}
 		}

@@ -17,8 +17,10 @@ chat (the owner only, in the Mac app):
 - Whole Crew → tell the person it is one-way, get their yes, then `action=server confirmed=true`.
 
 **Team** (work on this Crew with people):
-- "Turn on the Team" → `action=team on=true` (it also turns Mac online on). Off → `on=false`.
-- People and what the team shares → `team_sync configure`. A person added is invited and joins when they accept; every
+- "Turn on the Team" → `action=team on=true` (it also turns Mac online on). Off → `on=false`. Only the owner.
+- People and what the team shares → `team_sync configure`. Anyone in the Team adds people and folders (`folders=[…]`
+  adds; a missing folder is made); only the owner turns the Team on/off, switches Folders / Whole Crew or stops
+  sharing a folder. A person added is invited and joins when they accept; every
   member reads and writes what is shared. `share=folders folders=[…]` shares one or more of this Crew's folders
   (a new Team starts with an empty `team/`); `share=whole` shares the Whole Crew, everything except chats, memory, app
   files, `node_modules`/`.git`/caches and files that look like passwords or keys. Say its size first (the Team card
@@ -27,8 +29,10 @@ chat (the owner only, in the Mac app):
   agents). Sync history and clashes → `team_sync recent` / `clashes`; sort a clash out with
   `team_sync resolve` (keep=current, keep=other, or merged `content`).
 - Each agent is **In team** (everyone in the Team sees it and its chat live; their agents can message it) or
-  **Only me**: `action=share agent=…` / `action=unshare agent=…`. "All my agents" → `action=team_all on=true`.
-  Main is In team by default. A purpose is optional (`sessions action=identity` in its tab sets one).
+  **Only me**: `action=share agent=…` / `action=unshare agent=…`. "All my agents" → `action=team_all on=true` (only your own
+  agents). Main is always In team. A purpose is optional (`sessions action=identity` in its tab sets one).
+- What teammates' agents use from you → `team_sync status project=…` (lent). Apps and secrets only on this Mac →
+  `action=lent`, then `lent_copy` / `lent_move` with the item's `key`.
 - By default a shared agent only answers questions; pass `can_make_changes=true` when the owner wants it to work for them.
 - Files that look like they hold passwords or keys are skipped by the sync and stay on this Mac. When the person asks to share one anyway, `action=sync_anyway path=<exact path from the skipped list> on=true`; it then goes to everyone in the Team. `on=false` takes it back (removed from the shared folder, kept on this Mac).
 

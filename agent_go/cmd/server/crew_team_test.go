@@ -26,6 +26,15 @@ import (
 
 // PLAT-856-509: actual HTTP/file paths, with an allowed edit before each refusal.
 // Folder membership never grants the source owner's private Crew authority.
+func mustReadCrewTeam(t *testing.T, project string) crewTeam {
+	t.Helper()
+	team, err := readCrewTeam(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return team
+}
+
 func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -128,13 +137,46 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			t.Fatalf("%s changed team: %d %s", who, w.Code, w.Body.String())
 		}
 	}
-	// Members are co-owners of the Team's settings (owner, 5 Nov): one changes All agents in team on this Mac Crew from
-	// the website, the server's record is what counts, and the Crew's owner can never leave or be dropped.
-	if w = call("member", "PUT", base, strings.Replace(config, `"on":true`, `"on":true,"agents_only_me":true`, 1), ""); w.Code != 200 {
-		t.Fatalf("member changed All agents in team: %d %s", w.Code, w.Body.String())
+	// Owner, 5 Nov: only the Crew's main owner turns the Team on/off, switches Folders / Whole Crew and stops sharing a
+	// folder; members add people and folders. The one save path refuses the rest, for every caller.
+	if w = call("member", "PUT", base, strings.Replace(config, `"on":true`, `"on":false`, 1), ""); w.Code != 403 || !strings.Contains(w.Body.String(), "Only owner can turn the Team on or off.") {
+		t.Fatalf("member turned the Team off: %d %s", w.Code, w.Body.String())
 	}
-	if saved, err := readCrewTeam("team-test"); err != nil || !saved.AgentsOnlyMe || saved.agentInTeam("owner", "team01") || !saved.view("member").CanManage {
-		t.Fatalf("member's All agents in team not saved, or not offered: %+v %v", saved, err)
+	folders := func(list string) string {
+		return strings.Replace(config, `"folder":{"whole":true}`, `"folder":{"folders":[`+list+`]}`, 1)
+	}
+	if w = call("member", "PUT", base, folders(`"team"`), ""); w.Code != 403 {
+		t.Fatalf("member switched to Folders: %d %s", w.Code, w.Body.String())
+	}
+	if w = call("owner", "PUT", base, folders(`"team"`), ""); w.Code != 200 {
+		t.Fatalf("owner switched to Folders: %d %s", w.Code, w.Body.String())
+	}
+	if w = call("member", "PUT", base, folders(`"team","notes"`), ""); w.Code != 200 {
+		t.Fatalf("member added a folder: %d %s", w.Code, w.Body.String())
+	}
+	if w = call("member", "PUT", base, folders(`"notes"`), ""); w.Code != 403 {
+		t.Fatalf("member stopped sharing a folder: %d %s", w.Code, w.Body.String())
+	}
+	if saved, _ := readCrewTeam("team-test"); !slices.Equal(saved.Folder.Folders, []string{"notes", "team"}) || !saved.On {
+		t.Fatalf("folders after member changes: %+v", saved.Folder)
+	}
+	memberTab, ownerTab := crewTeamTabFor(t.Context(), mustReadCrewTeam(t, "team-test"), "member"), crewTeamTabFor(t.Context(), mustReadCrewTeam(t, "team-test"), "owner")
+	if memberTab.CanSwitch || memberTab.CanChoose || !memberTab.CanAddFolder || !memberTab.CanAllMine || memberTab.Mac != nil || !ownerTab.CanSwitch || !ownerTab.CanChoose || ownerTab.Mac == nil {
+		t.Fatalf("tab flags: member %+v owner %+v", memberTab, ownerTab)
+	}
+	if w = call("owner", "PUT", base, config, ""); w.Code != 200 {
+		t.Fatalf("owner back to the Whole Crew: %d %s", w.Code, w.Body.String())
+	}
+	// All my agents in team is each person's own (owner, 5 Nov): a member's off hides only their agents, never the
+	// owner's; a Main is always In team.
+	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"*","in_team":false}`, ""); w.Code != 200 {
+		t.Fatalf("member's own All my agents: %d %s", w.Code, w.Body.String())
+	}
+	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"main","in_team":false}`, ""); w.Code != 400 {
+		t.Fatalf("member's Main went Only me: %d %s", w.Code, w.Body.String())
+	}
+	if saved := mustReadCrewTeam(t, "team-test"); !saved.agentInTeam("owner", "team01") || saved.agentInTeam("member", "team-test"+codeChatSideMarker+"notes") || !saved.agentInTeam("member", macMainTab) || saved.allMine("member") {
+		t.Fatalf("member's All my agents changed the wrong agents: %+v", saved.AgentChoices)
 	}
 	if w = call("owner", "POST", base+"/leave", `{}`, ""); w.Code != 403 || !crewTeamMember("team-test", "owner") {
 		t.Fatalf("the owner left their own Team: %d", w.Code)
