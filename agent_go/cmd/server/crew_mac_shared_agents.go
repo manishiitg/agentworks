@@ -715,7 +715,8 @@ func macSharedAgentByAddress(owner, address, subject string) (triggerTarget, boo
 			if agent.Address != address || !crewRelayTwin(project) || ownerOfCrewProjectID(project) != owner {
 				continue
 			}
-			if _, reason := macSharedAgentFor(project, agent.Tab, subject, owner); reason != "" {
+			// An address is reached by the subject's agent, so the agent rule applies: Public on AgentBridge, or In team for a member.
+			if _, reason := macSharedAgentForAgent(project, agent.Tab, subject, owner); reason != "" {
 				log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=address refused reason=%s user=%s", project, agent.Tab, reason, logUsernameForUserID(subject))
 				return triggerTarget{}, false
 			}
