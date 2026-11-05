@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -542,6 +543,24 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})
 }
 
+// errCrewTeamWorking: the server is still running this sync step; ask again with the same transfer.
+var errCrewTeamWorking = errors.New("the server is still working on this sync step")
+
+// crewTeamSyncCall is one sync step, asked again every 2 s while the server answers "still working".
+func crewTeamSyncCall(ctx context.Context, localOwner string, c desktopConnection, route string, input, out any) error {
+	for {
+		e := crewTeamRemoteJSON(ctx, localOwner, c, http.MethodPost, route, input, out)
+		if !errors.Is(e, errCrewTeamWorking) {
+			return e
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("the server took too long; retrying")
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
 func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnection, method, route string, input, out any) error {
 	var body io.Reader
 	if input != nil {
@@ -559,9 +578,18 @@ func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnect
 	req.Header.Set("Content-Type", "application/json")
 	resp, e := crewTeamHTTPClient(ctx).Do(req)
 	if e != nil {
+		if errors.Is(e, context.DeadlineExceeded) || os.IsTimeout(e) {
+			return fmt.Errorf("the server took too long; retrying")
+		}
 		return fmt.Errorf("cannot reach your company's server; local changes stay on this computer")
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusAccepted && resp.Header.Get(crewTeamWorkingHeader) != "" {
+		return errCrewTeamWorking
+	}
+	if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
+		return fmt.Errorf("the server took too long; retrying")
+	}
 	if token := resp.Header.Get("X-Renewed-Token"); token != "" {
 		desktopConnectionsMu.Lock()
 		records, err := readDesktopConnections(localOwner)

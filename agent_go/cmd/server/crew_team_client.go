@@ -159,7 +159,7 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 							log.Printf("[CREW_TEAM_LOCAL] project=%s event=binding_failed reason=%q", t.ProjectID, err)
 							continue
 						}
-						round, done := context.WithTimeout(ctx, 3*time.Minute)
+						round, done := context.WithTimeout(ctx, 20*time.Minute) // a large first sync runs as server jobs the Mac polls
 						err = syncCrewTeamLocal(round, owner, c, dir, &b)
 						done()
 						if err != nil {
@@ -264,7 +264,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 			} else {
 				pending.Action = "pull"
 				pending.Base = b.RemoteBase
-				if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(b.Project)+"/sync?folder_id="+url.QueryEscape(b.FolderID), pending, &pending); e != nil {
+				if e = crewTeamSyncCall(ctx, owner, c, "/api/crew-teams/"+url.PathEscape(b.Project)+"/sync?folder_id="+url.QueryEscape(b.FolderID), pending, &pending); e != nil {
 					return e
 				}
 				b.FolderOnPurpose = pending.OnPurpose // the server names what the folder holds on purpose
@@ -287,14 +287,14 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 			route := "/api/crew-teams/" + url.PathEscape(b.Project) + "/sync?folder_id=" + url.QueryEscape(b.FolderID)
 			if direction == "upload" {
 				pending.Action = "prepare"
-				if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route, pending, nil); e != nil {
+				if e = crewTeamSyncCall(ctx, owner, c, route, pending, nil); e != nil {
 					return e
 				}
 				if e = transferCrewTeamBundle(ctx, c, b.Project, pending, filepath.Join(stage, "content")); e != nil {
 					return e
 				}
 				pending.Action = "apply"
-				if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route, pending, nil); e != nil {
+				if e = crewTeamSyncCall(ctx, owner, c, route, pending, nil); e != nil {
 					return e
 				}
 				if e = store.AckSync(ctx, pair, snapshot.Content); e != nil {
@@ -332,7 +332,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 					return e
 				}
 				pending.Action = "ack"
-				if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route, pending, nil); e != nil {
+				if e = crewTeamSyncCall(ctx, owner, c, route, pending, nil); e != nil {
 					return e
 				}
 			}
@@ -552,6 +552,7 @@ func crewTeamPlainSyncError(err error) string {
 	text := err.Error()
 	for _, known := range []struct{ match, say string }{
 		{"cannot reach your company's server", "your company's server can't be reached"},
+		{"the server took too long", "the server took too long; retrying"},
 		{"the shared folder moved", "the shared folder moved on this Mac; pick it again in the Team tab"},
 		{"belongs to a different saved account", "this folder belongs to a different sign-in"},
 		{"the shared folder changed", "the Team changed what it shares; this copy is no longer shared"},
