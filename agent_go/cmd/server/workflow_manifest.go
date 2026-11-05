@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"io"
 	"log"
 	"net/http"
@@ -17,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -259,7 +260,6 @@ type WorkflowCapabilities struct {
 	ChosenVaultAppsOnly       bool                           `json:"chosen_vault_apps_only,omitempty"`
 	SelectedTools             []string                       `json:"selected_tools"`
 	SelectedSkills            []string                       `json:"selected_skills"`
-	SelectedSecrets           []string                       `json:"selected_secrets"`
 	SelectedGlobalSecretNames *[]string                      `json:"selected_global_secret_names"` // nil = none, [] = none
 	BrowserMode               string                         `json:"browser_mode"`
 	BrowserCDPPort            int                            `json:"browser_cdp_port,omitempty"`
@@ -891,7 +891,6 @@ func NewWorkflowManifest(label string) *WorkflowManifest {
 			SelectedServers:           []string{},
 			SelectedTools:             []string{},
 			SelectedSkills:            []string{},
-			SelectedSecrets:           []string{},
 			SelectedGlobalSecretNames: &noGlobalSecrets,
 			BrowserMode:               browser.DefaultMode(),
 		},
@@ -1421,9 +1420,6 @@ func applyManifestDefaults(m *WorkflowManifest) {
 	}
 	if m.Capabilities.SelectedSkills == nil {
 		m.Capabilities.SelectedSkills = []string{}
-	}
-	if m.Capabilities.SelectedSecrets == nil {
-		m.Capabilities.SelectedSecrets = []string{}
 	}
 	if m.Schedules == nil {
 		m.Schedules = []WorkflowSchedule{}

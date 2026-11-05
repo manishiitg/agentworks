@@ -77,7 +77,7 @@ func externalMyVaultsDefinition(add func(string, string, bool, bool, map[string]
 func (api *StreamingAPI) externalMyVaultsCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	c := GetUserFromContext(r.Context())
 	operation, _ := args["operation"].(string)
-	if !personalLaptopSettingsClaims(c) || !myVaultScreenOperations[operation] && operation != "set_secret" && operation != "promote_secret" {
+	if !personalLaptopSettingsClaims(c) || !myVaultScreenOperations[operation] && operation != "set_secret" {
 		externalError(w, 403, "forbidden", "Use your own sign-in to manage your own Vault items, or open the project's Vault panel.")
 		return
 	}

@@ -35,29 +35,12 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 
 	if err := registerTool(
 		"list_secrets",
-		"List all secrets available to the current user. Returns JSON buckets: 'global' (server-wide, admin-managed) and 'workflow' (encrypted and scoped to the active project/workflow when applicable). Values are never returned — only names. Use this before setting, deleting, or attaching secrets. Admins may supply source_workflow_path to list another accessible Crew project or workflow before global promotion.",
+		"List the Vault secrets you may use ('global', by their Vault names) and the ones this project uses ('project'; scripts read each as $SECRET_<the name after the Vault prefix>). Values are never returned, only names. Use this before saving, removing or selecting secrets.",
 		map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"source_workflow_path": map[string]interface{}{"type": "string", "description": "Admin-only optional source workspace path, e.g. Workflow/latency-report or an exact Crew project path. Defaults to the active project/workflow. Returns names only."},
-			},
+			"type":       "object",
+			"properties": map[string]interface{}{},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			sourcePath := workflowPath
-			if raw, supplied := args["source_workflow_path"]; supplied {
-				if !canManageGlobalSecrets(userID) {
-					return "", errGlobalAdmin
-				}
-				path, ok := raw.(string)
-				if !ok || strings.TrimSpace(path) == "" {
-					return "", fmt.Errorf("source_workflow_path must be a non-empty project or workflow workspace path")
-				}
-				_, readRoots, err := authorizeWorkflowContextPathsWithReadRoots(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: userID}), []string{path})
-				if err != nil {
-					return "", fmt.Errorf("Source project or workflow is unavailable")
-				}
-				sourcePath = readRoots[0]
-			}
 			globals := visibleGlobalSecrets(ctx, userID)
 			globalNames := make([]string, 0, len(globals))
 			for _, gs := range globals {
@@ -65,17 +48,14 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 			}
 			sort.Strings(globalNames)
 
-			workflowNames := []string{}
-			if strings.TrimSpace(sourcePath) != "" {
-				workflowSecrets, err := api.ensureSharedWorkflowSecrets(ctx, sourcePath, userID)
+			projectNames := []string{}
+			if strings.TrimSpace(workflowPath) != "" {
+				selection, err := projectSecretSelection(ctx, workflowPath)
 				if err != nil {
-					return "", fmt.Errorf("failed to list workflow secrets: %w", err)
+					return "", fmt.Errorf("failed to read this project's secrets: %w", err)
 				}
-				workflowNames = make([]string, 0, len(workflowSecrets))
-				for _, ws := range workflowSecrets {
-					workflowNames = append(workflowNames, ws.Name)
-				}
-				sort.Strings(workflowNames)
+				projectNames = append(projectNames, selection...)
+				sort.Strings(projectNames)
 			}
 
 			out, _ := json.MarshalIndent(map[string]interface{}{
@@ -87,13 +67,12 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 					// value is added in the Vault panel.
 					"needs_value": globalSecretNamesWithoutValue(ctx, userID),
 				},
-				"workflow": map[string]interface{}{
-					"read_only":     false,
-					"source":        "encrypted workflow store, shared by every user with access to this workflow",
-					"workflow_path": sourcePath,
-					"names":         workflowNames,
+				"project": map[string]interface{}{
+					"source":        "Vault secrets this project uses, lent by its owner",
+					"workflow_path": workflowPath,
+					"names":         projectNames,
 				},
-				"note": "Secret VALUES are never returned by any tool. A name in global.needs_value exists in Vault for this person but has no stored value yet: it cannot be selected until they add its value in the Vault panel, so tell them that. In a workflow builder, attach an existing name with update_workflow_config(add_secrets=[...]). In an active Crew project, select an existing global with update_project_global_secret_selection(action=\"select\", name=\"...\").",
+				"note": "Secret VALUES are never returned by any tool. A name in global.needs_value exists in Vault for this person but has no stored value yet: it cannot be selected until they add its value in the Vault panel, so tell them that. Save a new value for this project with set_workflow_secret (it goes into the owner's Vault and is used here). In a workflow builder, use an existing Vault secret with update_workflow_config(add_secrets=[...]).",
 			}, "", "  ")
 			return string(out), nil
 		},

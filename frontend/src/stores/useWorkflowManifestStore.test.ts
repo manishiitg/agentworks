@@ -26,7 +26,6 @@ const manifest = (provider: LLMProvider): WorkflowManifest => ({
     selected_servers: [],
     selected_tools: [],
     selected_skills: [],
-    selected_secrets: [],
     selected_global_secret_names: null,
     browser_mode: 'none',
     use_code_execution_mode: false,

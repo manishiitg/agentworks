@@ -353,7 +353,6 @@ Workflow-level manifest. **Required fields**: ` + "`schema_version`" + ` (int, 1
     "selected_servers": ["mcp-server-name"],
     "selected_tools": [],
     "selected_skills": ["skill-folder-name"],
-    "selected_secrets": [],
     "browser_mode": "none",
     "use_code_execution_mode": false,
     "llm_config": null
@@ -366,7 +365,7 @@ Workflow-level manifest. **Required fields**: ` + "`schema_version`" + ` (int, 1
 - ` + "`selected_servers`" + ` — MCP server names the workflow uses (array of strings)
 - ` + "`selected_tools`" + ` — specific tool names to allow-list from those servers (optional)
 - ` + "`selected_skills`" + ` — skill folder names to auto-activate
-- ` + "`selected_secrets`" + ` — secret names the workflow needs; values resolve at runtime from workflow-scoped secrets or GLOBAL_SECRET_* / managed globals
+- ` + "`selected_global_secret_names`" + ` — Vault secret names the workflow uses, lent by its owner; scripts read each as $SECRET_<the name after the Vault prefix>. Save a new one with the settings tool (secrets.set) rather than editing this list.
 - ` + "`browser_mode`" + ` — ` + "`extension`" + ` or this installation’s direct browser (` + "`cdp`" + ` locally, ` + "`headless`" + ` on servers); ` + "`none`" + ` turns access off. Read ` + "`allowed_browser_modes`" + ` from settings for the available choices.
 - ` + "`browser_cdp_port`" + ` — local Chrome debugging port (local installations only).
 - ` + "`use_code_execution_mode`" + ` — ` + "`true`" + ` if steps should run scripted Python; ` + "`false`" + ` for direct tool calls

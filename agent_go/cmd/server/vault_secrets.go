@@ -215,13 +215,10 @@ func visibleGlobalSecrets(ctx context.Context, userID string) []globalSecretEntr
 	}
 	return rows
 }
-func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID string, scoped []struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}, selection *[]string) []struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-} {
+
+// mergeGlobalSecretsFor resolves the selected Vault secrets userID may use, each under the name its owner gave it.
+func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID string, selection *[]string) []resolvedSecret {
+	var scoped []resolvedSecret
 	if selection == nil || len(*selection) == 0 {
 		return scoped
 	}
@@ -231,27 +228,20 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 		wanted[n] = true
 	}
 	taken := map[string]string{} // short name -> the full name that has it
-	for _, s := range scoped {
-		delete(wanted, s.Name)
-		taken[s.Name] = s.Name
-	}
 	for _, s := range rows {
 		if !wanted[s.Name] {
 			continue
 		}
 		// A Vault secret reaches scripts under the name its owner gave it ($SECRET_GITHUB_TOKEN, not
-		// $SECRET_VLT_<vault>__GITHUB_TOKEN; owner 2026-10-20), so moving a project secret into Vault keeps every
-		// script working. The first secret with a name wins; the picker refuses a second one with the same name.
+		// $SECRET_VLT_<vault>__GITHUB_TOKEN; owner 2026-10-20). The first secret with a name wins; the picker refuses a
+		// second one with the same name.
 		name := vaultSecretShortName(s.Name)
 		if prior, clash := taken[name]; clash {
 			log.Printf("[SECRETS] Two selected secrets share the name %s; using %s, skipping %s", name, prior, s.Name)
 			continue
 		}
 		taken[name] = s.Name
-		scoped = append(scoped, struct {
-			Name  string `json:"name"`
-			Value string `json:"value"`
-		}{name, s.Value})
+		scoped = append(scoped, resolvedSecret{Name: name, Value: s.Value})
 	}
 	return scoped
 }
@@ -298,45 +288,27 @@ func (api *StreamingAPI) handleVaultSecretAccess(w http.ResponseWriter, r *http.
 	writeUsersJSON(w, 200, map[string]any{"success": true})
 }
 
-// Workflow secrets are loaded later in handleQuery. The first admission check
-// must use the same server-resolved workspace and encrypted project store,
-// rather than treating the browser's empty decrypted list as authoritative.
+// The first admission check, before handleQuery loads the workspace's settings: the selected secrets are checked
+// against whoever lends them, as the turn resolves them (owner-lent).
 func (api *StreamingAPI) validateQuerySecretSelection(ctx context.Context, userID string, req QueryRequest) error {
-	// Checked against whoever lends the selected secrets, as the turn resolves them (owner-lent).
-	userID = api.projectSecretsOwner(userID, req.SelectedFolder)
-	scoped := req.DecryptedSecrets
-	if (req.AgentMode == "workflow" || req.AgentMode == "workflow_phase") && req.SelectedGlobalSecrets != nil && len(*req.SelectedGlobalSecrets) > 0 {
-		workspace := req.SelectedFolder
-		// Phase execution prefers the preset; headless execution prefers the
-		// explicit folder. Match the respective manifest-loading paths.
-		if req.AgentMode == "workflow_phase" || strings.TrimSpace(workspace) == "" {
-			if resolved, err := api.resolveWorkspacePathFromPreset(ctx, req.PresetQueryID); err == nil && resolved != "" {
-				workspace = resolved
-			}
+	workspace := req.SelectedFolder
+	// Phase execution prefers the preset; headless execution prefers the explicit folder, as the manifest loading does.
+	if req.AgentMode == "workflow_phase" || req.AgentMode == "workflow" && strings.TrimSpace(workspace) == "" {
+		if resolved, err := api.resolveWorkspacePathFromPreset(ctx, req.PresetQueryID); err == nil && resolved != "" {
+			workspace = resolved
 		}
-		scoped = api.loadSelectedSecrets(ctx, userID, workspace, *req.SelectedGlobalSecrets)
 	}
-	return validateVaultSecretSelection(ctx, userID, scoped, req.SelectedGlobalSecrets)
+	return validateVaultSecretSelection(ctx, api.projectSecretsOwner(userID, workspace), req.SelectedGlobalSecrets)
 }
 
-// A requested shared secret must resolve or the run stops before any execution.
-// A same-named project secret retains the established project precedence.
-func validateVaultSecretSelection(ctx context.Context, userID string, scoped []struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}, selection *[]string) error {
+// A requested Vault secret must resolve or the run stops before any execution.
+func validateVaultSecretSelection(ctx context.Context, userID string, selection *[]string) error {
 	if selection == nil || len(*selection) == 0 {
 		return nil
 	}
 	wanted := map[string]bool{}
 	for _, name := range *selection {
 		wanted[name] = true
-	}
-	for _, s := range scoped {
-		delete(wanted, s.Name)
-	}
-	if len(wanted) == 0 {
-		return nil
 	}
 	existing := map[string]bool{}
 	for _, s := range getGlobalSecrets() {

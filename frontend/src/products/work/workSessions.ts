@@ -134,14 +134,12 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary, product: P
     llmConfig: llm,
     selectedServers: row.selected_servers || [],
     selectedSkills: row.selected_skills || [],
-    selectedSecrets: row.selected_secrets || [],
     selectedGlobalSecrets: row.selected_global_secrets || [],
     workflowContextPaths: row.workflow_context_paths || [],
     // Shared rows arrive fully formed. Marking every config initialized
     // keeps the owned-project migration path from ever writing to
     // another owner's manifests.
     selectionConfigInitialized: true,
-    secretSelectionInitialized: true,
     runtimeConfigInitialized: true,
     shared: {
       canBuild: row.can_build === true,

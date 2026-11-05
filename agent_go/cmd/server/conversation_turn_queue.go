@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"net/http"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
@@ -107,10 +108,9 @@ func sanitizedQueuedConversationRequest(ctx context.Context, req QueryRequest) Q
 	if captured {
 		req.BrowserMode, req.CdpPort, req.resolvedCDPPorts = input.Mode, input.Port, input.Ports
 	}
-	// Queue documents live in the workspace. Persist selectors and encrypted
-	// secret names, never resolved values. handleQuery resolves current values
-	// again after the turn is claimed, which also honors rotations and revokes.
-	req.DecryptedSecrets = nil
+	// Queue documents live in the workspace. Persist selectors and secret names,
+	// never resolved values. handleQuery resolves current values again after the
+	// turn is claimed, which also honors rotations and revokes.
 	if req.LLMConfig != nil {
 		config := *req.LLMConfig
 		config.Primary = req.LLMConfig.Primary

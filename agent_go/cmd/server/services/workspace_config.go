@@ -190,7 +190,6 @@ type MultiAgentChatCapabilities struct {
 	SelectedServers           []string                       `json:"selected_servers"`
 	SelectedTools             []string                       `json:"selected_tools"`
 	SelectedSkills            []string                       `json:"selected_skills"`
-	SelectedSecrets           []string                       `json:"selected_secrets"`
 	SelectedGlobalSecretNames *[]string                      `json:"selected_global_secret_names"`
 	BrowserMode               string                         `json:"browser_mode"`
 	UseCodeExecutionMode      bool                           `json:"use_code_execution_mode"`

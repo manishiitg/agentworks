@@ -1167,10 +1167,7 @@ type productProjectManifest struct {
 		// ChosenVaultAppsOnly is "Use all my apps automatically" off (PLAT-856-394).
 		ChosenVaultAppsOnly bool     `json:"chosen_vault_apps_only,omitempty"`
 		SelectedSkills      []string `json:"selected_skills,omitempty"`
-		// Pointer preserves the contract's three relevant states when schedule
-		// updates rewrite the runtime manifest: missing (legacy, migrate once), empty
-		// (explicitly attach none), and populated.
-		SelectedSecrets           *[]string `json:"selected_secrets,omitempty"`
+		// Pointer keeps an explicit empty selection when schedule updates rewrite the runtime manifest.
 		SelectedGlobalSecretNames *[]string `json:"selected_global_secret_names,omitempty"`
 		WorkflowContextPaths      []string  `json:"workflow_context_paths,omitempty"`
 		// The UI writes these on creation; the struct must carry them so

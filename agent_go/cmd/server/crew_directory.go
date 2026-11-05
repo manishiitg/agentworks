@@ -53,7 +53,6 @@ type sharedProjectSummary struct {
 	LLM                  *sharedProjectLLM          `json:"llm,omitempty"`
 	SelectedServers      []string                   `json:"selected_servers,omitempty"`
 	SelectedSkills       []string                   `json:"selected_skills,omitempty"`
-	SelectedSecrets      []string                   `json:"selected_secrets,omitempty"`
 	SelectedGlobalSecret []string                   `json:"selected_global_secrets,omitempty"`
 	WorkflowContextPaths []string                   `json:"workflow_context_paths,omitempty"`
 	Triggers             []sharedProjectTrigger     `json:"triggers,omitempty"`
@@ -387,7 +386,6 @@ func summarizeSharedProject(ctx context.Context, claims *UserClaims, ownerID, pr
 		SelectedServers: savedAppSelection(manifest.Capabilities.SelectedServers),
 		SelectedSkills:  append([]string(nil), manifest.Capabilities.SelectedSkills...),
 	}
-	row.SelectedSecrets = derefSharedProjectSelection(manifest.Capabilities.SelectedSecrets)
 	row.SelectedGlobalSecret = derefSharedProjectSelection(manifest.Capabilities.SelectedGlobalSecretNames)
 	row.LLM = summarizeSharedProjectLLM(manifest.Capabilities.LLMConfig)
 	refs := append([]string(nil), manifest.WorkflowContextPaths...)

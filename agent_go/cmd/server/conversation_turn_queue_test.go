@@ -131,16 +131,12 @@ func TestDurableConversationTurnQueueNeverPersistsResolvedSecrets(t *testing.T) 
 		Primary: orchestrator.LLMModel{Provider: "openai", ModelID: "gpt", APIKey: &secret},
 		APIKeys: &orchestrator.APIKeys{OpenAI: &secret},
 	}}
-	req.DecryptedSecrets = append(req.DecryptedSecrets, struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}{Name: "TOKEN", Value: "workspace-secret"})
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "u1"})
 	if _, _, err := api.enqueueConversationTurn(ctx, "u1", "session-1", req); err != nil {
 		t.Fatal(err)
 	}
 	raw := files[conversationTurnQueuePath("u1")]
-	if strings.Contains(raw, secret) || strings.Contains(raw, "workspace-secret") {
+	if strings.Contains(raw, secret) {
 		t.Fatalf("queue persisted resolved secret: %s", raw)
 	}
 }

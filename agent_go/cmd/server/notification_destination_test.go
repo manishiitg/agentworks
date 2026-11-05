@@ -38,34 +38,22 @@ func TestNotificationDestinationFromQueryKeepsMissingWorkflowWebhookVisible(t *t
 }
 
 func TestResolveNotificationSecretStripsWebhookFromAgentSecrets(t *testing.T) {
-	previousGlobals := globalSecrets
-	globalSecrets = []globalSecretEntry{
-		{Name: "SLACK_NOTIFICATION_WEBHOOK_URL", Value: "global-webhook"},
-		{Name: "GLOBAL_APPLICATION_TOKEN", Value: "global-app-secret"},
-	}
-	t.Cleanup(func() { globalSecrets = previousGlobals })
+	withVaultSecretGrant(t, "owner", "SLACK_NOTIFICATION_WEBHOOK_URL", "APPLICATION_TOKEN")
+	managedGlobalsMu.Lock()
+	previous := managedGlobals
+	managedGlobals = map[string]string{"SLACK_NOTIFICATION_WEBHOOK_URL": "https://hooks.slack.com/services/T123/B456/secret", "APPLICATION_TOKEN": "app-secret"}
+	managedGlobalsMu.Unlock()
+	t.Cleanup(func() { managedGlobalsMu.Lock(); managedGlobals = previous; managedGlobalsMu.Unlock() })
 
-	req := QueryRequest{
-		NotificationSlackWebhookSecretName: "SLACK_NOTIFICATION_WEBHOOK_URL",
-		DecryptedSecrets: []struct {
-			Name  string `json:"name"`
-			Value string `json:"value"`
-		}{
-			{Name: "SLACK_NOTIFICATION_WEBHOOK_URL", Value: "https://hooks.slack.com/services/T123/B456/secret"},
-			{Name: "APPLICATION_TOKEN", Value: "app-secret"},
-		},
-	}
-
+	selected := []string{"SLACK_NOTIFICATION_WEBHOOK_URL", "APPLICATION_TOKEN"}
+	req := QueryRequest{NotificationSlackWebhookSecretName: "SLACK_NOTIFICATION_WEBHOOK_URL", SelectedGlobalSecrets: &selected}
 	api := &StreamingAPI{}
-	api.resolveNotificationSecretForRequest(context.Background(), "", "", &req)
+	api.resolveNotificationSecretForRequest(context.Background(), "owner", "", &req)
 
 	if req.notificationSlackWebhookURL == "" {
 		t.Fatal("notification webhook was not moved to backend-only storage")
 	}
-	if len(req.DecryptedSecrets) != 1 || req.DecryptedSecrets[0].Name != "APPLICATION_TOKEN" {
-		t.Fatalf("agent secrets = %#v, want only APPLICATION_TOKEN", req.DecryptedSecrets)
-	}
-	if req.SelectedGlobalSecrets == nil || len(*req.SelectedGlobalSecrets) != 0 {
-		t.Fatalf("global agent secrets = %#v, want none when omitted", req.SelectedGlobalSecrets)
+	if req.SelectedGlobalSecrets == nil || len(*req.SelectedGlobalSecrets) != 1 || (*req.SelectedGlobalSecrets)[0] != "APPLICATION_TOKEN" {
+		t.Fatalf("agent secrets = %#v, want only APPLICATION_TOKEN", req.SelectedGlobalSecrets)
 	}
 }

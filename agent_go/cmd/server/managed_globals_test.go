@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -14,7 +13,6 @@ import (
 func managedGlobalTestAPI(t *testing.T) *StreamingAPI {
 	t.Helper()
 	api, _ := sharedSecretsTestAPI(t)
-	// A project's own secrets live in a project Vault owned by the workflow's registered owner.
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
 	registerWorkflowOwner(sharedSecretsTestWorkflow, "a1")
 	withManagedVaultPermissions(t)
@@ -23,100 +21,6 @@ func managedGlobalTestAPI(t *testing.T) *StreamingAPI {
 	managedGlobals = map[string]string{}
 	t.Cleanup(func() { managedGlobals = previous })
 	return api
-}
-
-func TestManagedGlobalPromotionPermissionsPersistenceAndResolution(t *testing.T) {
-	api := managedGlobalTestAPI(t)
-	ctx := context.Background()
-	const name = "PROMOTED_TOKEN"
-	const value = "sensitive-test-value"
-	if err := api.upsertSharedWorkflowSecret(ctx, sharedSecretsTestWorkflow, name, value); err != nil {
-		t.Fatal(err)
-	}
-	for _, uid := range []string{"a1", "c3"} {
-		rec := httptest.NewRecorder()
-		api.handleManageGlobalSecret(rec, sharedSecretsRequest(http.MethodPost, "/api/secrets/global", uid, map[string]string{"name": name, "workspace_path": sharedSecretsTestWorkflow}))
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("%s status %d", uid, rec.Code)
-		}
-	}
-	rec := httptest.NewRecorder()
-	api.handleManageGlobalSecret(rec, sharedSecretsRequest(http.MethodPost, "/api/secrets/global", "admin", map[string]string{"name": name, "workspace_path": sharedSecretsTestWorkflow}))
-	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), value) {
-		t.Fatalf("promotion: %d %s", rec.Code, rec.Body.String())
-	}
-	source, err := api.ensureSharedWorkflowSecrets(ctx, sharedSecretsTestWorkflow, "admin")
-	if err != nil || len(source) != 0 {
-		t.Fatalf("source still contains a local copy: %v %v", source, err)
-	}
-	stored, err := api.chatStore.ListUserSecrets(ctx, managedGlobalSecretsUserID)
-	if err != nil || len(stored) != 1 || strings.Contains(stored[0].EncryptedValue, value) {
-		t.Fatalf("expected encrypted global persistence")
-	}
-	managedGlobals = map[string]string{}
-	if err := api.loadManagedGlobalSecrets(ctx); err != nil {
-		t.Fatal(err)
-	}
-	selected := api.loadSelectedSecrets(ctx, "a1", sharedSecretsTestWorkflow, []string{name})
-	if len(selected) != 1 || selected[0].Value != value {
-		t.Fatal("source attachment did not survive promotion/reload")
-	}
-	names := []string{name}
-	merged := api.mergeGlobalSecretsFor(ctx, "admin", nil, &names)
-	if len(merged) != 1 || merged[0].Value != value {
-		t.Fatal("other workflows cannot resolve selected global")
-	}
-	rec = httptest.NewRecorder()
-	api.handleGetGlobalSecrets(rec, sharedSecretsRequest(http.MethodGet, "/api/secrets/global", "c3", nil))
-	if strings.Contains(rec.Body.String(), value) || !strings.Contains(rec.Body.String(), `"managed":true`) {
-		t.Fatal("list must expose metadata only")
-	}
-	if err := api.saveManagedGlobalSecret(ctx, "admin", name, "rotated-value", false); err != nil {
-		t.Fatal(err)
-	}
-	selected = api.loadSelectedSecrets(ctx, "a1", sharedSecretsTestWorkflow, []string{name})
-	if len(selected) != 1 || selected[0].Value != "rotated-value" {
-		t.Fatal("source did not receive global rotation")
-	}
-	if err := api.deleteManagedGlobalSecret(ctx, "a1", name); !errors.Is(err, errGlobalAdmin) {
-		t.Fatal("owner can delete global")
-	}
-	if err := api.deleteManagedGlobalSecret(ctx, "admin", name); err != nil {
-		t.Fatal(err)
-	}
-	if err := api.loadManagedGlobalSecrets(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, exists := managedGlobals[name]; exists {
-		t.Fatal("deleted global survived reload")
-	}
-}
-
-func TestManagedGlobalConflictsDoNotRemoveSource(t *testing.T) {
-	api := managedGlobalTestAPI(t)
-	ctx := context.Background()
-	if err := api.upsertSharedWorkflowSecret(ctx, sharedSecretsTestWorkflow, "COLLISION", "source"); err != nil {
-		t.Fatal(err)
-	}
-	if err := api.saveManagedGlobalSecret(ctx, "admin", "COLLISION", "original", false); err != nil {
-		t.Fatal(err)
-	}
-	if err := api.promoteWorkflowSecret(ctx, "admin", sharedSecretsTestWorkflow, "COLLISION"); !errors.Is(err, errGlobalConflict) {
-		t.Fatalf("conflict: %v", err)
-	}
-	source, _ := api.ensureSharedWorkflowSecrets(ctx, sharedSecretsTestWorkflow, "admin")
-	if len(source) != 1 || managedGlobals["COLLISION"] != "original" {
-		t.Fatal("conflict changed a secret")
-	}
-	previous := globalSecrets
-	globalSecrets = append(globalSecrets, globalSecretEntry{Name: "ENV_LOCKED", Value: "environment"})
-	t.Cleanup(func() { globalSecrets = previous })
-	if err := api.saveManagedGlobalSecret(ctx, "admin", "ENV_LOCKED", "replacement", false); err == nil {
-		t.Fatal("environment global overwritten")
-	}
-	if err := api.deleteManagedGlobalSecret(ctx, "admin", "ENV_LOCKED"); err == nil {
-		t.Fatal("environment global deleted")
-	}
 }
 
 // Shared secrets are Vault secrets, managed in Vault (owner, 2026-10-09:
@@ -139,62 +43,6 @@ func TestManagedGlobalRejectsUnreadableCiphertext(t *testing.T) {
 	api.handleManageGlobalSecret(rec, request)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d", rec.Code)
-	}
-}
-
-func TestListSecretsFromAnotherWorkflowNeedsAdmin(t *testing.T) {
-	api := managedGlobalTestAPI(t)
-	ctx := context.Background()
-	const name = "CROSS_WORKFLOW_TOKEN"
-	const value = "private-source-value"
-	if err := api.upsertSharedWorkflowSecret(ctx, sharedSecretsTestWorkflow, name, value); err != nil {
-		t.Fatal(err)
-	}
-	registrar := &recordingRegistrar{}
-	if err := api.registerSecretManagementTools(registrar, "admin", "Workflow/destination", "secrets", false, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	list := registrar.tools["list_secrets"]
-	output, err := list.exec(ctx, map[string]interface{}{"source_workflow_path": sharedSecretsTestWorkflow})
-	if err != nil || !strings.Contains(output, name) || strings.Contains(output, value) {
-		t.Fatalf("source listing failed or exposed value: %v", err)
-	}
-	for _, invalid := range []interface{}{"", "Workflow/missing", "Workflow/renewals/../destination", 123} {
-		if _, err := list.exec(ctx, map[string]interface{}{"source_workflow_path": invalid}); err == nil {
-			t.Fatalf("listed invalid source %v", invalid)
-		}
-	}
-	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","can_create":true,"products":[]}]}`)
-	if _, err := list.exec(ctx, map[string]interface{}{"source_workflow_path": sharedSecretsTestWorkflow}); !errors.Is(err, errGlobalAdmin) {
-		t.Fatal("demoted admin could list another source")
-	}
-}
-
-func TestManagedGlobalPromotionAcceptsOwnedCrewProject(t *testing.T) {
-	api := managedGlobalTestAPI(t)
-	ctx := context.Background()
-	const publicPath = "Chats/Work/projects/research"
-	const runtimePath = "_users/admin/Chats/Work/projects/research"
-	const name = "CREW_SHARED_TOKEN"
-	const value = "crew-private-value"
-	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
-		runtimePath + "/product.json": `{"schema_version":1,"product":"work","id":"research","title":"Research"}`,
-	}})
-	defer workspace.Close()
-	t.Setenv("WORKSPACE_API_URL", workspace.URL)
-	if err := api.upsertSharedWorkflowSecret(ctx, runtimePath, name, value); err != nil {
-		t.Fatal(err)
-	}
-
-	rec := httptest.NewRecorder()
-	api.handleManageGlobalSecret(rec, sharedSecretsRequest(http.MethodPost, "/api/secrets/global", "admin", map[string]string{"name": name, "workspace_path": publicPath}))
-	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), value) {
-		t.Fatalf("Crew promotion: %d %s", rec.Code, rec.Body.String())
-	}
-	names := []string{name}
-	resolved := api.mergeGlobalSecretsFor(ctx, "admin", nil, &names)
-	if len(resolved) != 1 || resolved[0].Name != name || resolved[0].Value != value {
-		t.Fatalf("destination could not resolve Crew-promoted global: %#v", resolved)
 	}
 }
 

@@ -67,7 +67,7 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 	}
 	w = f.call(t, "owner", "settings", map[string]any{"action": "get", "workflow_id": "invoices"})
 	body := w.Body.String()
-	if w.Code != 200 || strings.Contains(body, value) || !strings.Contains(body, `"shared_selected":["VLT_123456__API_KEY"]`) || !strings.Contains(body, `"browser_mode":"headless"`) {
+	if w.Code != 200 || strings.Contains(body, value) || !strings.Contains(body, `"selected":["VLT_123456__API_KEY"]`) || !strings.Contains(body, `"browser_mode":"headless"`) {
 		t.Fatalf("settings after update: %d %s", w.Code, body)
 	}
 	var view map[string]any

@@ -19,7 +19,6 @@ export type ProductProject<P extends string = string> = {
   llmConfig?: PresetLLMConfig
   selectedServers: string[]
   selectedSkills: string[]
-  selectedSecrets: string[]
   selectedGlobalSecrets: string[]
   workflowContextPaths: string[]
   /** Crew "Native agent tools": capabilities.native_agent_tools in workflow.json, on unless explicitly false. */
@@ -28,7 +27,6 @@ export type ProductProject<P extends string = string> = {
   role?: 'agentworks'
   creationWarnings?: string[]
   selectionConfigInitialized: boolean
-  secretSelectionInitialized: boolean
   runtimeConfigInitialized: boolean
   /**
    * Set when another user owns the project (Crew Run mode). The UI must
@@ -93,7 +91,7 @@ function manifestLLMConfig(raw: ProductManifest): PresetLLMConfig | undefined {
   return parseProductLLMConfig((raw.capabilities as { llm_config?: unknown }).llm_config)
 }
 
-function manifestStringList(raw: ProductManifest, key: 'selected_servers' | 'selected_skills' | 'selected_secrets' | 'selected_global_secret_names' | 'workflow_context_paths'): string[] {
+function manifestStringList(raw: ProductManifest, key: 'selected_servers' | 'selected_skills' | 'selected_global_secret_names' | 'workflow_context_paths'): string[] {
   if (key === 'workflow_context_paths' && Array.isArray(raw.workflow_context_paths)) {
     return [...new Set(raw.workflow_context_paths.map(asString).filter(Boolean))]
   }
@@ -114,12 +112,6 @@ function manifestHasSelectionConfig(raw: ProductManifest): boolean {
   if (!raw.capabilities || typeof raw.capabilities !== 'object') return false
   const capabilities = raw.capabilities as Record<string, unknown>
   return Array.isArray(capabilities.selected_servers) && Array.isArray(capabilities.selected_skills)
-}
-
-function manifestHasSecretSelection(raw: ProductManifest): boolean {
-  return !!raw.capabilities
-    && typeof raw.capabilities === 'object'
-    && Array.isArray((raw.capabilities as Record<string, unknown>).selected_secrets)
 }
 
 export function parseProductProjectManifest<P extends string>(
@@ -153,13 +145,11 @@ export function parseProductProjectManifest<P extends string>(
     llmConfig: manifestLLMConfig(raw),
     selectedServers: manifestStringList(raw, 'selected_servers'),
     selectedSkills: manifestStringList(raw, 'selected_skills'),
-    selectedSecrets: manifestStringList(raw, 'selected_secrets'),
     selectedGlobalSecrets: manifestGlobalSecretSelection(raw),
     workflowContextPaths: manifestStringList(raw, 'workflow_context_paths'),
     nativeAgentTools: manifestNativeAgentTools(raw),
     ...(raw.role === 'agentworks' ? { role: 'agentworks' as const } : {}),
     selectionConfigInitialized: manifestHasSelectionConfig(raw),
-    secretSelectionInitialized: manifestHasSecretSelection(raw),
     runtimeConfigInitialized: true,
   }
 }
@@ -190,12 +180,10 @@ function applyRuntimeManifest<P extends string>(project: ProductProject<P>, cont
     llmConfig: manifestLLMConfig(raw),
     selectedServers: manifestStringList(raw, 'selected_servers'),
     selectedSkills: manifestStringList(raw, 'selected_skills'),
-    selectedSecrets: manifestStringList(raw, 'selected_secrets'),
     selectedGlobalSecrets: manifestGlobalSecretSelection(raw),
     workflowContextPaths: manifestStringList(raw, 'workflow_context_paths'),
     nativeAgentTools: manifestNativeAgentTools(raw),
     selectionConfigInitialized: manifestHasSelectionConfig(raw),
-    secretSelectionInitialized: manifestHasSecretSelection(raw),
     runtimeConfigInitialized: true,
   }
 }
@@ -283,7 +271,6 @@ export async function createProductProject<P extends string>(options: {
     selected_servers: [],
     selected_tools: [],
     selected_skills: [...new Set(options.selectedSkills || [])],
-    selected_secrets: [],
     selected_global_secret_names: [],
     use_code_execution_mode: false,
     ...(options.llmConfig ? { llm_config: options.llmConfig } : {}),
@@ -348,11 +335,9 @@ export async function createProductProject<P extends string>(options: {
     llmConfig: options.llmConfig,
     selectedServers: [],
     selectedSkills: [...new Set(options.selectedSkills || [])],
-    selectedSecrets: [],
     selectedGlobalSecrets: [],
     workflowContextPaths: [],
     selectionConfigInitialized: true,
-    secretSelectionInitialized: true,
     runtimeConfigInitialized: true,
   }
 }
@@ -506,7 +491,7 @@ export async function updateProductProjectNativeAgentTools<P extends string>(
 
 export async function updateProductProjectSelections<P extends string>(
   project: ProductProject<P>,
-  patch: { selectedServers?: string[]; selectedSkills?: string[]; selectedSecrets?: string[]; selectedGlobalSecrets?: string[]; workflowContextPaths?: string[] },
+  patch: { selectedServers?: string[]; selectedSkills?: string[]; selectedGlobalSecrets?: string[]; workflowContextPaths?: string[] },
   commitLabel: string,
   runtimeManifestName?: string,
 ): Promise<ProductProject<P>> {
@@ -521,7 +506,6 @@ export async function updateProductProjectSelections<P extends string>(
     const saved = (key: string): string[] => Array.isArray(capabilities[key]) ? capabilities[key] as string[] : []
     if (patch.selectedServers !== undefined) capabilities.selected_servers = normalize(patch.selectedServers)
     if (patch.selectedSkills !== undefined) capabilities.selected_skills = normalize(patch.selectedSkills)
-    if (patch.selectedSecrets !== undefined) capabilities.selected_secrets = normalize(patch.selectedSecrets)
     if (patch.selectedGlobalSecrets !== undefined) capabilities.selected_global_secret_names = normalize(patch.selectedGlobalSecrets)
     if (patch.workflowContextPaths !== undefined) {
       if (runtimeManifestName) manifest.workflow_context_paths = normalize(patch.workflowContextPaths)
@@ -529,7 +513,6 @@ export async function updateProductProjectSelections<P extends string>(
     }
     const selectedServers = saved('selected_servers')
     const selectedSkills = saved('selected_skills')
-    const selectedSecrets = saved('selected_secrets')
     const selectedGlobalSecrets = saved('selected_global_secret_names')
     const savedContextPaths = runtimeManifestName ? manifest.workflow_context_paths : capabilities.workflow_context_paths
     const workflowContextPaths = Array.isArray(savedContextPaths) ? savedContextPaths as string[] : []
@@ -538,7 +521,7 @@ export async function updateProductProjectSelections<P extends string>(
     manifest.updated_at = updatedAt
     await agentApi.updatePlannerFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
     if (runtimeManifestName && !project.runtimeConfigInitialized) await stripLegacyRuntimeFromProduct(project, commitLabel)
-    return { ...project, selectedServers, selectedSkills, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, selectionConfigInitialized: true, secretSelectionInitialized: true, runtimeConfigInitialized: true, updatedAt }
+    return { ...project, selectedServers, selectedSkills, selectedGlobalSecrets, workflowContextPaths, selectionConfigInitialized: true, runtimeConfigInitialized: true, updatedAt }
   } catch {
     throw new Error('Project configuration is invalid JSON.')
   }

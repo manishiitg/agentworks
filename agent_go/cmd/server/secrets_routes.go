@@ -96,12 +96,8 @@ type secretEncryptResponse struct {
 }
 
 // secretDecryptRequest is the request body for decrypting a secret value.
-// WorkspacePath marks the blob as a shared workflow secret (bound to the
-// workflow, not the caller) and makes the request a reveal that only the
-// workflow's owners may perform.
 type secretDecryptRequest struct {
-	Encrypted     string `json:"encrypted"`
-	WorkspacePath string `json:"workspace_path,omitempty"`
+	Encrypted string `json:"encrypted"`
 }
 
 // secretDecryptResponse is the response body with the decrypted value
@@ -180,32 +176,6 @@ func (api *StreamingAPI) handleDecryptSecret(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if strings.TrimSpace(req.WorkspacePath) != "" {
-		// Reveal of a shared workflow secret: owners only. Readers can run the
-		// workflow with the value but never see it.
-		workspacePath, err := secretWorkspacePathForRequest(r, req.WorkspacePath)
-		if err != nil {
-			http.Error(w, "Invalid workspace_path", http.StatusBadRequest)
-			return
-		}
-		if !requireWorkflowOwner(w, r, workspacePath) {
-			return
-		}
-		aad, err := sharedWorkflowSecretAAD(workspacePath)
-		if err != nil {
-			http.Error(w, "Invalid workspace_path", http.StatusBadRequest)
-			return
-		}
-		plaintext, err := decryptSecretValueWithAAD(req.Encrypted, aad)
-		if err != nil {
-			http.Error(w, "Decryption failed — invalid key or data", http.StatusForbidden)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(secretDecryptResponse{Value: plaintext})
-		return
-	}
-
 	userID := GetUserIDFromContext(r.Context())
 
 	data, err := base64.StdEncoding.DecodeString(req.Encrypted)
@@ -271,7 +241,7 @@ func secretWorkspacePathForRequest(r *http.Request, raw string) (string, error) 
 	return agentProfileRuntimeWorkspace(userID, clean), nil
 }
 
-// storeSecretRequest is the request body for storing a workflow secret server-side
+// storeSecretRequest is the request body for saving a project's secret in its owner's Vault
 type storeSecretRequest struct {
 	Name           string `json:"name"`
 	EncryptedValue string `json:"encrypted_value"`
@@ -355,66 +325,4 @@ func (api *StreamingAPI) handleDeleteWorkflowSecret(w http.ResponseWriter, r *ht
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
-}
-
-// handleListStoredWorkflowSecrets returns the workflow's shared secret names
-// for anyone who can see the workflow. Owners additionally receive the
-// ciphertext so the pane can reveal a value through /api/secrets/decrypt
-// (which re-checks ownership); readers get names only.
-// GET /api/secrets/workflow/stored?workspace_path=Workflow/foo
-func (api *StreamingAPI) handleListStoredWorkflowSecrets(w http.ResponseWriter, r *http.Request) {
-	workspacePath := r.URL.Query().Get("workspace_path")
-	if workspacePath == "" {
-		http.Error(w, "workspace_path is required", http.StatusBadRequest)
-		return
-	}
-	var err error
-	workspacePath, err = secretWorkspacePathForRequest(r, workspacePath)
-	if err != nil {
-		http.Error(w, "Invalid workspace_path", http.StatusBadRequest)
-		return
-	}
-	level := currentUserWorkflowAccess(r, workspacePath)
-	if level == WorkflowAccessNone {
-		writeWorkflowPermissionDenied(w, "read")
-		return
-	}
-	canReveal := level == WorkflowAccessOwner || level == WorkflowAccessWrite
-
-	userID := GetUserIDFromContext(r.Context())
-	secrets, err := api.ensureSharedWorkflowSecrets(r.Context(), workspacePath, userID)
-	if err != nil {
-		log.Printf("[SECRETS] Failed to list workflow secrets: %v", err)
-		http.Error(w, "Failed to list workflow secrets", http.StatusInternalServerError)
-		return
-	}
-
-	type entry struct {
-		Name           string `json:"name"`
-		EncryptedValue string `json:"encrypted_value,omitempty"`
-	}
-	result := make([]entry, len(secrets))
-	for i, s := range secrets {
-		result[i] = entry{Name: s.Name}
-		if canReveal {
-			value, err := decryptSharedWorkflowSecret(workspacePath, s)
-			if err != nil {
-				http.Error(w, "Vault secret unavailable", http.StatusServiceUnavailable)
-				return
-			}
-			aad, err := sharedWorkflowSecretAAD(workspacePath)
-			if err != nil {
-				http.Error(w, "invalid project", 400)
-				return
-			}
-			result[i].EncryptedValue, err = encryptSecretValueWithAAD(value, aad)
-			if err != nil {
-				http.Error(w, "could not prepare secret", 500)
-				return
-			}
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
 }

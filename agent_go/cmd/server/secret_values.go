@@ -138,15 +138,7 @@ func (api *StreamingAPI) importProjectSecrets(r *http.Request, kind, id string, 
 	// A name the project already uses counts as existing (its value is in the owner's Vault).
 	stored := map[string]bool{}
 	if secrets, ok := view["secrets"].(map[string]any); ok {
-		rows, _ := secrets["stored"].([]any)
-		for _, row := range rows {
-			if entry, ok := row.(map[string]any); ok {
-				if name, _ := entry["name"].(string); name != "" {
-					stored[name] = true
-				}
-			}
-		}
-		selected, _ := secrets["shared_selected"].([]any)
+		selected, _ := secrets["selected"].([]any)
 		for _, row := range selected {
 			if name, _ := row.(string); name != "" {
 				stored[vaultSecretShortName(name)] = true

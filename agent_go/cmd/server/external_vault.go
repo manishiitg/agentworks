@@ -298,9 +298,6 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 			logSecretWrite(claims.UserID, "vault", len(results), summary, requestLogID(r))
 			externalJSON(w, map[string]any{"results": results, "summary": summary, "note": "Values are stored and never shown. Refer to each secret by name only."})
 			return
-		case "share":
-			api.vaultShareProjectSecret(w, r, claims, args)
-			return
 		case "delete":
 			secret := externalArg(args, "name")
 			if secret == "" || externalArg(args, "confirm") != secret {
@@ -354,64 +351,6 @@ func (api *StreamingAPI) vaultAdminDo(r *http.Request, method, path string, payl
 	return resp.status, resp.Bytes()
 }
 
-// vaultShareProjectSecret copies a workflow's or Crew's secret into Vault on
-// the server; the value never passes through the caller. The share itself
-// re-checks the admin's read access to the source folder.
-func (api *StreamingAPI) vaultShareProjectSecret(w http.ResponseWriter, r *http.Request, claims *UserClaims, args map[string]any) {
-	ctx := r.Context()
-	workflowID, crewID := externalArg(args, "source_workflow_id"), externalArg(args, "source_crew_id")
-	if sources := btoi(workflowID != "") + btoi(crewID != ""); sources != 1 {
-		externalError(w, 400, "invalid_arguments", "share requires exactly one of source_workflow_id, source_crew_id.")
-		return
-	}
-	root := ""
-	if crewID != "" {
-		if t := claims.AccessToken; t != nil && !t.AllowsCrew(crewID) {
-			externalError(w, 403, "insufficient_scope", "This connection does not allow this Crew.")
-			return
-		}
-		if crew, _, _, ok := api.externalCrewResolve(ctx, claims, crewID); ok {
-			root = crew.Binding.WorkspacePath
-		}
-	} else {
-		if t := claims.AccessToken; t != nil && !t.AllowsWorkflow(workflowID) {
-			externalError(w, 403, "insufficient_scope", "This connection does not allow this workflow.")
-			return
-		}
-		discovered, err := DiscoverWorkflowManifests(ctx)
-		if err == nil {
-			for _, wf := range discovered {
-				if wf.Manifest != nil && wf.Manifest.ID == workflowID {
-					root = wf.WorkspacePath
-					break
-				}
-			}
-		}
-	}
-	if root == "" {
-		externalError(w, 404, "not_found", "Source workflow or Crew not found.")
-		return
-	}
-	ids := []string{}
-	if raw, ok := args["group_ids"].([]any); ok {
-		for _, value := range raw {
-			if id, ok := value.(string); ok {
-				ids = append(ids, id)
-			}
-		}
-	}
-	name, vaultName := externalArg(args, "name"), externalArg(args, "vault_name")
-	overwrite, _ := args["overwrite"].(bool)
-	if err := api.shareWorkflowSecretToVault(ctx, claims.UserID, root, name, vaultName, ids, overwrite); err != nil {
-		vaultSecretFail(w, err)
-		return
-	}
-	if vaultName == "" {
-		vaultName = name
-	}
-	externalJSON(w, map[string]any{"shared": vaultName, "group_ids": ids, "note": "The project copy is unchanged; select the Vault secret in other projects' settings."})
-}
-
 func vaultSecretFail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errGlobalAdmin):
@@ -423,13 +362,6 @@ func vaultSecretFail(w http.ResponseWriter, err error) {
 	default:
 		externalError(w, 400, "vault_secret_failed", err.Error())
 	}
-}
-
-func btoi(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }
 
 // Brain's existing whole-folder ownership checks stay authoritative in Vault chat.
@@ -470,7 +402,7 @@ func (api *StreamingAPI) vaultBrainSecretCall(w http.ResponseWriter, r *http.Req
 			externalError(w, 400, "invalid_arguments", "Repeat the secret name in confirm.")
 			return
 		}
-		if err := api.deleteSharedWorkflowSecret(r.Context(), brainSecretsPath, name, claims.UserID); err != nil {
+		if err := api.deleteBrainSecret(r.Context(), name); err != nil {
 			externalError(w, 400, "invalid_arguments", err.Error())
 			return
 		}

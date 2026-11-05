@@ -7,14 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -40,10 +41,9 @@ type CreateCrewRequest struct {
 	Instructions string
 	Skills       []string
 	Servers      []string
-	// Secrets and GlobalSecrets are references to existing authorized secret
-	// records by name. Values are never accepted: the schema has no
-	// value-bearing fields, so plaintext cannot enter by construction.
-	Secrets       []string
+	// GlobalSecrets are references to existing authorized Vault secrets by
+	// name. Values are never accepted: the schema has no value-bearing
+	// fields, so plaintext cannot enter by construction.
 	GlobalSecrets []string
 	// Alias defaults to the slugified crew title (suffixed when reserved).
 	Alias string
@@ -193,10 +193,6 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 	if err != nil {
 		return CreatedCrew{}, err
 	}
-	secrets, err := s.validateCrewCreationSecrets(ctx, userID, workflowPath, req.Secrets)
-	if err != nil {
-		return CreatedCrew{}, err
-	}
 	globalSecrets, err := s.validateCrewCreationGlobalSecrets(ctx, userID, req.GlobalSecrets)
 	if err != nil {
 		return CreatedCrew{}, err
@@ -250,7 +246,7 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 	if err := applyCrewCreationStarter(ctx, created.WorkspacePath, title, workflowPath, req.Purpose, req.Instructions); err != nil {
 		return CreatedCrew{}, err
 	}
-	if err := applyCrewCreationSelections(ctx, profileID, created.WorkspacePath, skills, servers, secrets, globalSecrets); err != nil {
+	if err := applyCrewCreationSelections(ctx, profileID, created.WorkspacePath, skills, servers, globalSecrets); err != nil {
 		return CreatedCrew{}, err
 	}
 	if err := applyCrewCreationWiring(ctx, s, userID, profileID, workflowPath, created.CrewID, wiring, &created); err != nil {
@@ -427,7 +423,6 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"selected_servers":             []string{},
 		"selected_tools":               []string{},
 		"selected_skills":              []string{},
-		"selected_secrets":             []string{},
 		"selected_global_secret_names": []string{},
 		"browser_mode":                 browser.DefaultMode(),
 		"use_code_execution_mode":      false,
@@ -713,7 +708,7 @@ func applyCrewCreationStarter(ctx context.Context, workspacePath, title, workflo
 // applyCrewCreationSelections records capability selections through the
 // existing product writers with union merges, so re-entry converges without
 // duplicating entries. Empty lists leave the manifest defaults untouched.
-func applyCrewCreationSelections(ctx context.Context, profileID, workspacePath string, skills, servers, secrets, globalSecrets []string) error {
+func applyCrewCreationSelections(ctx context.Context, profileID, workspacePath string, skills, servers, globalSecrets []string) error {
 	merge := func(add []string) func([]string) []string {
 		return func(current []string) []string {
 			seen := make(map[string]struct{}, len(current)+len(add))
@@ -736,11 +731,6 @@ func applyCrewCreationSelections(ctx context.Context, profileID, workspacePath s
 	if len(servers) > 0 {
 		if err := updateProductSelectedServers(ctx, profileID, workspacePath, merge(servers)); err != nil {
 			return fmt.Errorf("select crew servers: %w", err)
-		}
-	}
-	if len(secrets) > 0 {
-		if err := updateProductSelectedSecrets(ctx, profileID, workspacePath, merge(secrets)); err != nil {
-			return fmt.Errorf("select crew secrets: %w", err)
 		}
 	}
 	if len(globalSecrets) > 0 {
@@ -886,7 +876,6 @@ func writeCrewCreationManifest(ctx context.Context, path string, manifest map[st
 // availability checks. Each probe is overrideable so tests run hermetic.
 type crewCreationAvailability struct {
 	MCPServer     func(name string) (canonical string, connected bool, err error)
-	ScopedSecrets func(ctx context.Context, path, userID string) (map[string]bool, error)
 	GlobalSecrets func() map[string]bool
 }
 
@@ -934,57 +923,6 @@ func (s *ProjectActionDispatcher) probeCrewCreationMCPServer(ctx context.Context
 	}
 	canonical, _, err := resolveMCPServerName(catalog, name)
 	return canonical, false, err
-}
-
-// validateCrewCreationSecrets shape-checks requested project secrets and
-// verifies each resolves in a scope the new crew actually reads: the global
-// store. A fresh crew has no scoped secrets of its own yet, and the creating
-// workflow's scoped secrets do not carry over, so a name found only there
-// fails with a targeted hint instead of recording a reference that would
-// resolve empty at runtime.
-func (s *ProjectActionDispatcher) validateCrewCreationSecrets(ctx context.Context, userID, workflowPath string, names []string) ([]string, error) {
-	checked, err := validateCrewCreationNames("secret", names)
-	if err != nil {
-		return nil, err
-	}
-	if len(checked) == 0 {
-		return nil, nil
-	}
-	globals := s.probeCrewCreationGlobalSecrets(ctx, userID)
-	var creatingScope map[string]bool
-	for _, name := range checked {
-		if globals[name] {
-			continue
-		}
-		// Runs at most once: the first non-global name below always returns.
-		creatingScope, err = s.probeCrewCreationScopedSecrets(ctx, workflowPath, userID)
-		if err != nil {
-			return nil, err
-		}
-		if creatingScope[name] {
-			return nil, fmt.Errorf("crew secret %q exists in workflow %q, but workflow secrets do not carry over to a new crew; add it in the Crew UI after creation or drop it", name, workflowPath)
-		}
-		return nil, fmt.Errorf("crew secret %q has no stored value; use a global secret name or add it in the Crew UI after creation, or drop it", name)
-	}
-	return checked, nil
-}
-
-func (s *ProjectActionDispatcher) probeCrewCreationScopedSecrets(ctx context.Context, path, userID string) (map[string]bool, error) {
-	if s != nil && s.crewAvailability != nil && s.crewAvailability.ScopedSecrets != nil {
-		return s.crewAvailability.ScopedSecrets(ctx, path, userID)
-	}
-	if s == nil || s.api == nil {
-		return nil, fmt.Errorf("workflow secret store is unavailable")
-	}
-	stored, err := s.api.ensureSharedWorkflowSecrets(ctx, path, userID)
-	if err != nil {
-		return nil, fmt.Errorf("list workflow secrets: %w", err)
-	}
-	out := make(map[string]bool, len(stored))
-	for _, secret := range stored {
-		out[secret.Name] = true
-	}
-	return out, nil
 }
 
 // validateCrewCreationGlobalSecrets shape-checks requested global secrets
@@ -1053,17 +991,17 @@ func crewCreationFingerprint(userID, workflowPath, profileID string, req CreateC
 		return out
 	}
 	payload := struct {
-		UserID, WorkflowPath, ProfileID         string
-		Title, Purpose, Instructions            string
-		Skills, Servers, Secrets, GlobalSecrets []string
-		Alias, TriggerName, TriggerMessage      string
-		StepID, StepTitle, StepInstruction      string
-		ContextDependencies                     []string
+		UserID, WorkflowPath, ProfileID    string
+		Title, Purpose, Instructions       string
+		Skills, Servers, GlobalSecrets     []string
+		Alias, TriggerName, TriggerMessage string
+		StepID, StepTitle, StepInstruction string
+		ContextDependencies                []string
 	}{
 		UserID: userID, WorkflowPath: workflowPath, ProfileID: profileID,
 		Title:   trimmed(req.Title),
 		Purpose: trimmed(req.Purpose), Instructions: trimmed(req.Instructions),
-		Skills: lists(req.Skills), Servers: lists(req.Servers), Secrets: lists(req.Secrets), GlobalSecrets: lists(req.GlobalSecrets),
+		Skills: lists(req.Skills), Servers: lists(req.Servers), GlobalSecrets: lists(req.GlobalSecrets),
 		Alias: trimmed(req.Alias), TriggerName: trimmed(req.TriggerName), TriggerMessage: trimmed(req.TriggerMessage),
 		StepID: trimmed(req.StepID), StepTitle: trimmed(req.StepTitle), StepInstruction: trimmed(req.StepInstruction),
 		ContextDependencies: lists(req.ContextDependencies),

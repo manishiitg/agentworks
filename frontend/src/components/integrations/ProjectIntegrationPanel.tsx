@@ -18,8 +18,6 @@ export const INTEGRATION_LABELS: Record<IntegrationSection, string> = {
   github: 'GitHub', connected: 'MCPs', available: 'Available MCPs', secrets: 'Secrets', gmail: 'Google apps', 'slack-account': 'Slack', laptop: 'Local laptop',
 }
 export type ProjectSecretControls = {
-  selectedSecrets: string[]
-  onSelectedSecretsChange: (names: string[]) => Promise<unknown> | void
   onSecretSelectionSaved?: (inventory: ProjectVaultInventory) => void
 }
 
@@ -38,7 +36,7 @@ export function ProjectIntegrationPanel(props: Props) {
 function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section = 'connected', canEdit, onAsk, laptop, onAppsSaved, github = false, ...secrets }: Props) {
   const [apps, setApps] = useState<'connected' | 'available'>(section === 'available' ? 'available' : 'connected')
   useEffect(() => { if (section === 'connected' || section === 'available') setApps(section) }, [section])
-  const kinds: Record<IntegrationSection, VaultItemKind[]> = {github:[],connected:['mcp'],available:['mcp'],secrets:['project_secret','shared_secret'],gmail:['google'],'slack-account':['slack'],laptop:['computer']}
+  const kinds: Record<IntegrationSection, VaultItemKind[]> = {github:[],connected:['mcp'],available:['mcp'],secrets:['shared_secret'],gmail:['google'],'slack-account':['slack'],laptop:['computer']}
   if (section === 'github' && (!canEdit || !github)) return <p className="text-sm text-muted-foreground">Open your own Crew to manage your GitHub connection.</p>
   if (!canEdit) return <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled title={INTEGRATION_LABELS[section]} itemKinds={kinds[section]} />
   return <div className="space-y-5" aria-label={INTEGRATION_LABELS[section]}>
@@ -49,7 +47,7 @@ function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section =
     </>}
     {section === 'github' && github && <GitHubVaultCard changeConnectionOpen />}
     {section === 'secrets' && github && <GitHubVaultCard />}
-    {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} selectedSecrets={secrets.selectedSecrets} onSecretChange={secrets.onSelectedSecretsChange} onSelectionSaved={secrets.onSecretSelectionSaved} /></>}
+    {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} onSelectionSaved={secrets.onSecretSelectionSaved} /></>}
     {section === 'gmail' && <><WorkflowEmailPanel workspacePath={workspacePath} /><CompanySignInSetup provider="Google" tabId={tabId} /></>}
     {section === 'slack-account' && <><ProductSlackPanel workspacePath={workspacePath} noun={placeNoun} section="account" allowBots={placeNoun !== 'Flow'} tabId={tabId}/></>}
     {section === 'laptop' && laptop}

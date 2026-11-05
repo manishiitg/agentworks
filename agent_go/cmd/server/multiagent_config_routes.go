@@ -76,7 +76,6 @@ func saveMultiAgentChatCapabilitiesHandler() http.HandlerFunc {
 			} else if found && existing != nil {
 				caps.Notifications = existing.Capabilities.Notifications
 				if caps.Notifications != nil {
-					caps.SelectedSecrets = removeString(caps.SelectedSecrets, caps.Notifications.SlackWebhookSecretName)
 					if caps.SelectedGlobalSecretNames != nil {
 						filtered := removeString(*caps.SelectedGlobalSecretNames, caps.Notifications.SlackWebhookSecretName)
 						caps.SelectedGlobalSecretNames = &filtered
@@ -86,7 +85,6 @@ func saveMultiAgentChatCapabilitiesHandler() http.HandlerFunc {
 		} else if strings.TrimSpace(caps.Notifications.SlackWebhookSecretName) == "" {
 			caps.Notifications = nil
 		} else {
-			caps.SelectedSecrets = removeString(caps.SelectedSecrets, caps.Notifications.SlackWebhookSecretName)
 			if caps.SelectedGlobalSecretNames != nil {
 				filtered := removeString(*caps.SelectedGlobalSecretNames, caps.Notifications.SlackWebhookSecretName)
 				caps.SelectedGlobalSecretNames = &filtered

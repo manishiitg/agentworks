@@ -47,7 +47,7 @@ function terminalTab(id: string): ChatTab {
     createdAt: 0, lastViewedEventCount: 0, lastViewedEventCounts: { micro: 0 },
     metadata: { mode: 'workflow', phaseId: 'workflow-builder', workshopMode: 'workshop' },
     config: { inputText: 'review this file', useCodeExecutionMode: false,
-      selectedServers: [], selectedSkills: [], selectedSecrets: [],
+      selectedServers: [], selectedSkills: [],
       llmConfig: { provider: 'claude-code', model_id: 'claude-code' },
       fileContext: [], workflowContext: [], queuedMessages: [], browserMode: 'none' },
   }
@@ -141,7 +141,7 @@ describe('terminal toolbar shared tools', () => {
         useGlobalPresetStore.setState({ activePresetIds: { ...presets.activePresetIds, workflow: 'goal-one' } })
         useWorkflowManifestStore.setState({ workflows: [{ workspace_path: 'Workflow/project', manifest: {
           schema_version: 1, id: 'goal-one', label: 'Goal', ownership: { employee_id: null }, schedules: [],
-          capabilities: { selected_servers: [], selected_tools: [], selected_skills: [], selected_secrets: [], selected_global_secret_names: [], browser_mode: 'none', use_code_execution_mode: false,
+          capabilities: { selected_servers: [], selected_tools: [], selected_skills: [], selected_global_secret_names: [], browser_mode: 'none', use_code_execution_mode: false,
             llm_config: { schema_version: 2, mode: 'explicit', builder_llm: { provider: 'codex-cli', model_id: 'builder-model' } } },
         } }] })
         useLLMStore.setState({ savedLLMs: [], availableLLMs: [{ provider: 'codex-cli', model: 'builder-model', label: 'Codex · Builder model', description: '' }] })

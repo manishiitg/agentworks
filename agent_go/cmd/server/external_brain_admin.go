@@ -149,7 +149,7 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 				externalError(w, http.StatusBadRequest, "invalid_arguments", "secrets_delete needs name.")
 				return
 			}
-			if err := api.deleteSharedWorkflowSecret(ctx, brainSecretsPath, name, ""); err != nil {
+			if err := api.deleteBrainSecret(ctx, name); err != nil {
 				externalError(w, http.StatusBadRequest, "invalid_arguments", err.Error())
 				return
 			}

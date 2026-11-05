@@ -61,18 +61,16 @@ func conditionJobView(job productScheduleJob) map[string]interface{} {
 // Resolve as the owner on every request: rotating/removing a secret or
 // revoking its Vault grant changes webhook admission immediately.
 func (c *conditionService) secretEnvironment(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) (map[string]string, error) {
-	root := agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath)
-	secrets := c.s.api.loadSelectedSecrets(ctx, job.UserID, root, cfg.Secrets)
 	selection, err := productSelectedGlobalSecrets(ctx, job.Profile.ID, job.WorkspacePath)
 	if err != nil {
 		return nil, err
 	}
 	names := projectSelectedVaultNames(cfg.Secrets, *selection)
-	if err := validateVaultSecretSelection(ctx, job.UserID, secrets, &names); err != nil {
+	if err := validateVaultSecretSelection(ctx, job.UserID, &names); err != nil {
 		return nil, err
 	}
 	env := map[string]string{}
-	for _, secret := range c.s.api.mergeGlobalSecretsFor(ctx, job.UserID, secrets, &names) {
+	for _, secret := range c.s.api.mergeGlobalSecretsFor(ctx, job.UserID, &names) {
 		env["SECRET_"+secret.Name] = secret.Value
 	}
 	for _, name := range cfg.Secrets {

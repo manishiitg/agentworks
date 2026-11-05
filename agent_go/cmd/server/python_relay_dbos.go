@@ -150,7 +150,7 @@ func (s *SchedulerService) executeDurablePythonRelay(ctx context.Context, sctx *
 		if err := authorizePythonRelayInvocation(ctx, sctx); err != nil {
 			return err
 		}
-		if _, err := s.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets, sctx.Capabilities.SelectedGlobalSecretNames); err != nil {
+		if _, err := s.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedGlobalSecretNames); err != nil {
 			return err
 		}
 		return verify(ctx)
@@ -183,7 +183,7 @@ func (s *SchedulerService) executeDurablePythonRelay(ctx context.Context, sctx *
 				delete(cfg.Env, key)
 			}
 		}
-		secrets, err := s.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets, sctx.Capabilities.SelectedGlobalSecretNames)
+		secrets, err := s.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedGlobalSecretNames)
 		if err != nil {
 			return err
 		}

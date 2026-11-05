@@ -553,7 +553,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 	if err := writeCrewSpecFiles(ctx, workspacePath, spec.Files); err != nil {
 		return crewID, err
 	}
-	if err := applyCrewCreationSelections(ctx, profileID, workspacePath, spec.SelectedSkills, nil, nil, nil); err != nil {
+	if err := applyCrewCreationSelections(ctx, profileID, workspacePath, spec.SelectedSkills, nil, nil); err != nil {
 		return crewID, err
 	}
 	if len(spec.Functions) > 0 {

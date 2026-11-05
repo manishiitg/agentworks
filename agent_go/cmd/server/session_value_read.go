@@ -56,33 +56,19 @@ func (api *StreamingAPI) currentSessionSecrets(ctx context.Context, source sessi
 	}
 	ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: source.User, Username: source.User})
 	globals := source.Globals
-	var scoped []resolvedSecret
 	path := strings.TrimSpace(source.WorkspacePath)
 	if caps, found, err := LoadManifestForExecution(ctx, path); path != "" && err == nil && found {
 		// A workflow or Crew turn whose manifest holds its selection (handleQuery's manifest branch).
-		owner := source.User
-		if isCrewProjectPath(path) && crewProjectOwnedByCaller(source.User, path) {
-			owner = api.projectSecretsOwner(source.User, path)
-		}
-		scoped = api.loadSelectedSecrets(ctx, owner, path, caps.SelectedSecrets)
 		if caps.SelectedGlobalSecretNames != nil {
 			globals = caps.SelectedGlobalSecretNames
 		}
 	} else if source.CrewProfile && api.chatStore != nil {
 		// A product chat (agent_profile_runtime.go): its selection is in the product manifest.
-		person := api.crewSecretsPerson(source.User, source.Folder, "agent_profile")
-		store := path
-		if store == "" {
-			store = agentProfileRuntimeWorkspace(source.User, source.Folder)
-		}
 		if selected, err := productSelectedGlobalSecrets(ctx, source.ProfileID, source.Folder); err == nil {
 			globals = selected
 		}
-		if names, _, err := productSelectedSecrets(ctx, source.ProfileID, source.Folder); err == nil && len(names) > 0 {
-			scoped = api.loadSelectedSecrets(ctx, person, store, names)
-		}
 	}
-	merged := api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(source.User, source.Folder), scoped, globals)
+	merged := api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(source.User, source.Folder), globals)
 	// On the Mac, fetched again from the Crew's company server on every read, like the launch.
 	return api.addServerVaultSecrets(ctx, source.User, source.Folder, merged, globals)
 }

@@ -476,14 +476,9 @@ func crewExecutionFilePaths(root string, guard *wf.FolderGuard) (reads, writes, 
 	return
 }
 
-// crewSelectedSecretEnv returns SECRET_<NAME> for each secret selected in the Crew's settings, merged and checked as in a
-// chat turn: the project's own secrets plus the shared Vault ones it selected, Vault grants applied. Nothing is returned
-// when none is selected or the selection cannot be read or validated.
+// crewSelectedSecretEnv returns SECRET_<NAME> for each Vault secret selected in the Crew's settings, lent by its owner and
+// checked as in a chat turn. Nothing is returned when none is selected or the selection cannot be read or validated.
 func (api *StreamingAPI) crewSelectedSecretEnv(ctx context.Context, profileID, workspacePath, secretWorkspace, userID string) map[string]string {
-	names, _, err := productSelectedSecrets(ctx, profileID, workspacePath)
-	if err != nil {
-		return nil
-	}
 	globals, err := productSelectedGlobalSecrets(ctx, profileID, workspacePath)
 	if err != nil {
 		return nil
@@ -492,12 +487,11 @@ func (api *StreamingAPI) crewSelectedSecretEnv(ctx context.Context, profileID, w
 	if owner != userID {
 		log.Printf("[CREW_SECRETS] actor=%s owner=%s surface=mcp", userID, owner)
 	}
-	scoped := api.loadSelectedSecrets(ctx, owner, secretWorkspace, names)
-	if err := validateVaultSecretSelection(ctx, owner, scoped, globals); err != nil {
+	if err := validateVaultSecretSelection(ctx, owner, globals); err != nil {
 		return nil
 	}
 	env := map[string]string{}
-	for _, secret := range api.mergeGlobalSecretsFor(ctx, owner, scoped, globals) {
+	for _, secret := range api.mergeGlobalSecretsFor(ctx, owner, globals) {
 		env["SECRET_"+secret.Name] = secret.Value
 	}
 	return env

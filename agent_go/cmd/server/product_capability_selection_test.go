@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestProductSelectedSecretsUsesSharedCapabilityContractAndPreservesManifest(t *testing.T) {
+func TestProductSecretSelectionUsesSharedCapabilityContractAndPreservesManifest(t *testing.T) {
 	const workspacePath = "_users/user-1/Chats/Work/projects/site"
 	const manifestPath = workspacePath + "/product.json"
 	const runtimePath = workspacePath + "/workflow.json"
@@ -19,18 +19,18 @@ func TestProductSelectedSecretsUsesSharedCapabilityContractAndPreservesManifest(
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
 
-	names, initialized, err := productSelectedSecrets(context.Background(), "work", workspacePath)
-	if err != nil || initialized || len(names) != 0 {
-		t.Fatalf("before migration names=%v initialized=%v err=%v", names, initialized, err)
+	names, err := productSelectedGlobalSecrets(context.Background(), "work", workspacePath)
+	if err != nil || len(*names) != 0 {
+		t.Fatalf("before migration names=%v err=%v", names, err)
 	}
-	if err := updateProductSelectedSecrets(context.Background(), "work", workspacePath, func(current []string) []string {
+	if err := updateProductSelectedGlobalSecrets(context.Background(), "work", workspacePath, func(current []string) []string {
 		return append(current, "GITHUB_TOKEN", "GITHUB_TOKEN", " SENTRY_TOKEN ")
 	}); err != nil {
 		t.Fatal(err)
 	}
-	names, initialized, err = productSelectedSecrets(context.Background(), "work", workspacePath)
-	if err != nil || !initialized || len(names) != 2 || names[0] != "GITHUB_TOKEN" || names[1] != "SENTRY_TOKEN" {
-		t.Fatalf("after update names=%v initialized=%v err=%v", names, initialized, err)
+	names, err = productSelectedGlobalSecrets(context.Background(), "work", workspacePath)
+	if err != nil || len(*names) != 2 || (*names)[0] != "GITHUB_TOKEN" || (*names)[1] != "SENTRY_TOKEN" {
+		t.Fatalf("after update names=%v err=%v", names, err)
 	}
 
 	workspace.mu.Lock()
@@ -62,7 +62,7 @@ func TestProductSelectedSecretsUsesSharedCapabilityContractAndPreservesManifest(
 // which always has one to migrate from. Confirmed live: a ExampleApp parent's
 // saved secret never reached agent_browser because this path returned
 // "product manifest not found" forever instead of creating one on first use.
-func TestProductSelectedSecretsCreatesManifestForFixedWorkspaceProductOnFirstUse(t *testing.T) {
+func TestProductSecretSelectionCreatesManifestForFixedWorkspaceProductOnFirstUse(t *testing.T) {
 	const workspacePath = "Chats/ExampleApp"
 	const manifestPath = workspacePath + "/product.json"
 	workspace := &mockWorkspaceAPI{files: map[string]string{}}
@@ -70,15 +70,12 @@ func TestProductSelectedSecretsCreatesManifestForFixedWorkspaceProductOnFirstUse
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
 
-	names, initialized, err := productSelectedSecrets(context.Background(), "example-app", workspacePath)
-	if err != nil {
-		t.Fatalf("before any manifest exists: names=%v initialized=%v err=%v", names, initialized, err)
-	}
-	if initialized || len(names) != 0 {
-		t.Fatalf("expected an uninitialized (not erroring) read before migration: names=%v initialized=%v", names, initialized)
+	names, err := productSelectedGlobalSecrets(context.Background(), "example-app", workspacePath)
+	if err != nil || len(*names) != 0 {
+		t.Fatalf("before any manifest exists: names=%v err=%v", names, err)
 	}
 
-	if err := updateProductSelectedSecrets(context.Background(), "example-app", workspacePath, func(current []string) []string {
+	if err := updateProductSelectedGlobalSecrets(context.Background(), "example-app", workspacePath, func(current []string) []string {
 		return append(current, "MYRA_VERACROSS_PASSWORD")
 	}); err != nil {
 		t.Fatalf("expected the manifest to be created on first attach, got: %v", err)
@@ -91,25 +88,25 @@ func TestProductSelectedSecretsCreatesManifestForFixedWorkspaceProductOnFirstUse
 		t.Fatalf("expected %s to be created", manifestPath)
 	}
 
-	names, initialized, err = productSelectedSecrets(context.Background(), "example-app", workspacePath)
-	if err != nil || !initialized || len(names) != 1 || names[0] != "MYRA_VERACROSS_PASSWORD" {
-		t.Fatalf("after attach: names=%v initialized=%v err=%v", names, initialized, err)
+	names, err = productSelectedGlobalSecrets(context.Background(), "example-app", workspacePath)
+	if err != nil || len(*names) != 1 || (*names)[0] != "MYRA_VERACROSS_PASSWORD" {
+		t.Fatalf("after attach: names=%v err=%v", names, err)
 	}
 }
 
 func TestProductManifestRoundTripPreservesExplicitEmptySecretSelection(t *testing.T) {
 	var manifest productProjectManifest
-	if err := json.Unmarshal([]byte(`{"capabilities":{"selected_secrets":[]}}`), &manifest); err != nil {
+	if err := json.Unmarshal([]byte(`{"capabilities":{"selected_global_secret_names":[]}}`), &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Capabilities.SelectedSecrets == nil || len(*manifest.Capabilities.SelectedSecrets) != 0 {
-		t.Fatalf("explicit empty selection was not preserved: %#v", manifest.Capabilities.SelectedSecrets)
+	if manifest.Capabilities.SelectedGlobalSecretNames == nil || len(*manifest.Capabilities.SelectedGlobalSecretNames) != 0 {
+		t.Fatalf("explicit empty selection was not preserved: %#v", manifest.Capabilities.SelectedGlobalSecretNames)
 	}
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(encoded) == "" || !jsonContainsField(encoded, "capabilities", "selected_secrets") {
+	if string(encoded) == "" || !jsonContainsField(encoded, "capabilities", "selected_global_secret_names") {
 		t.Fatalf("explicit empty selection disappeared during rewrite: %s", encoded)
 	}
 
@@ -121,7 +118,7 @@ func TestProductManifestRoundTripPreservesExplicitEmptySecretSelection(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if jsonContainsField(encoded, "capabilities", "selected_secrets") {
+	if jsonContainsField(encoded, "capabilities", "selected_global_secret_names") {
 		t.Fatalf("legacy missing selection became explicit during rewrite: %s", encoded)
 	}
 }

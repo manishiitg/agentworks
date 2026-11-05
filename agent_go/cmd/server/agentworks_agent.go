@@ -147,7 +147,7 @@ func (api *StreamingAPI) ensureAgentWorks(ctx context.Context, userID string) (a
 			}
 		}
 		if len(missing) > 0 {
-			if err := applyCrewCreationSelections(ctx, crewProfileID, crew.WorkspacePath, missing, nil, nil, nil); err != nil {
+			if err := applyCrewCreationSelections(ctx, crewProfileID, crew.WorkspacePath, missing, nil, nil); err != nil {
 				log.Printf("[AGENTWORKS] user=%s skills not re-added: %v", userID, err)
 			}
 		}

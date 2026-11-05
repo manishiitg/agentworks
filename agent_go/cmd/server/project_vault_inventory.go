@@ -24,7 +24,7 @@ type projectVaultItem struct {
 	AccountEmail string `json:"account_email,omitempty"`
 	App          string `json:"app,omitempty"`
 	Owner        string `json:"owner,omitempty"`
-	// Source says whose it is, in plain words: "you", a Company group's name, "this project" or "the project's owner".
+	// Source says whose it is, in plain words: "you", a Company group's name or "the project's owner".
 	Source    string `json:"source,omitempty"`
 	Status    string `json:"status"`
 	Selected  bool   `json:"selected"`
@@ -104,16 +104,10 @@ func (api *StreamingAPI) selectProjectVaultItem(ctx context.Context, person, wor
 		if w.Code >= 400 {
 			err = errors.New(laptopActionErrorText(w.Body.String()))
 		}
-	case "project_secret", "shared_secret":
+	case "shared_secret":
 		operation := "unselect"
 		if selected {
 			operation = "select"
-		}
-		if kind == "shared_secret" {
-			operation = "stop_shared"
-			if selected {
-				operation = "use_shared"
-			}
 		}
 		settings["secrets"] = map[string]any{operation: []any{id}}
 	case "mcp":
@@ -163,7 +157,6 @@ type projectVaultInventory struct {
 	Servers []string            `json:"selected_servers"`
 	// UseAllVaultApps is "Use all my apps automatically" (PLAT-856-394).
 	UseAllVaultApps bool               `json:"use_all_vault_apps"`
-	Secrets         []string           `json:"selected_secrets"`
 	Shared          []string           `json:"selected_global_secret_names"`
 	Computer        crewLaptopSettings `json:"-"`
 }
@@ -192,7 +185,6 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 	caps := saved.Capabilities
 	out.Servers = savedAppSelection(caps.SelectedServers)
 	out.UseAllVaultApps = !caps.ChosenVaultAppsOnly
-	out.Secrets = append([]string{}, caps.SelectedSecrets...)
 	out.Shared = []string{}
 	if caps.SelectedGlobalSecretNames != nil {
 		out.Shared = append(out.Shared, (*caps.SelectedGlobalSecretNames)...)
@@ -230,10 +222,12 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 	category := map[string]string{}
 	if data, e := vaultPersonRequest(ctx, person, http.MethodGet, "/api/vaults", nil); e == nil && json.Unmarshal(withVaultSignInErrors(data), &list) == nil {
 		for _, row := range list.Vaults {
-			group := &projectVaultGroup{ID: row.Group.ID, Name: row.Group.Name, Project: row.Group.ProjectRoot != "", Items: []projectVaultItem{}}
+			// A place's own vault (Brain's keystore) is not a product's to use.
+			if row.Group.ProjectRoot != "" {
+				continue
+			}
+			group := &projectVaultGroup{ID: row.Group.ID, Name: row.Group.Name, Items: []projectVaultItem{}}
 			switch {
-			case row.Group.ProjectRoot != "":
-				category[group.ID] = "project"
 			case slices.Contains(row.Group.Owners, person) && len(settingsWith(row.Members, row.Group.Owners...)) <= 1:
 				category[group.ID] = "yours"
 			default:
@@ -247,12 +241,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 				group.Items = append(group.Items, projectVaultItem{ID: c.ID, Name: c.Label, Provider: c.Provider, Kind: "mcp", Status: status, Selected: serverUsed(c.ID), CanSelect: available[c.ID] || lender == person || slices.Contains(out.Servers, vaultServerName(c.ID))})
 			}
 			for _, name := range row.SecretNames {
-				item := projectVaultItem{ID: name, Name: vaultSecretShortName(name), Kind: "shared_secret", Status: "stored", Selected: slices.Contains(out.Shared, name), CanSelect: true}
-				if row.Group.ProjectRoot == root {
-					item.ID, item.Kind = item.Name, "project_secret"
-					item.Selected = slices.Contains(out.Secrets, item.Name)
-				}
-				group.Items = append(group.Items, item)
+				group.Items = append(group.Items, projectVaultItem{ID: name, Name: vaultSecretShortName(name), Kind: "shared_secret", Status: "stored", Selected: slices.Contains(out.Shared, name), CanSelect: true})
 			}
 			groups[group.ID] = group
 		}
@@ -263,14 +252,14 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 	// person-owned vaults. Runtime metadata contains no credential values.
 	if access, e := vaultAccessFor(ctx, person); e == nil {
 		for _, row := range access.Groups {
+			if row.ProjectRoot != "" {
+				continue
+			}
 			group := groups[row.ID]
 			if group == nil {
-				group = &projectVaultGroup{ID: row.ID, Name: row.Name, Project: row.ProjectRoot != "", Items: []projectVaultItem{}}
+				group = &projectVaultGroup{ID: row.ID, Name: row.Name, Items: []projectVaultItem{}}
 				groups[row.ID] = group
 				category[row.ID] = "company"
-				if row.ProjectRoot != "" {
-					category[row.ID] = "project"
-				}
 			}
 			for _, c := range row.Servers {
 				if slices.ContainsFunc(group.Items, func(i projectVaultItem) bool { return i.Kind == "mcp" && i.ID == c.ID }) {
@@ -279,9 +268,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 				group.Items = append(group.Items, projectVaultItem{ID: c.ID, Name: c.Label, Provider: c.Provider, Kind: "mcp", Status: "connected", Selected: serverUsed(c.ID), CanSelect: available[c.ID] || lender == person || slices.Contains(out.Servers, vaultServerName(c.ID))})
 			}
 			for _, secret := range row.Secrets {
-				if slices.ContainsFunc(group.Items, func(i projectVaultItem) bool {
-					return i.ID == secret.Name || i.Kind == "project_secret" && i.Name == vaultSecretShortName(secret.Name)
-				}) {
+				if slices.ContainsFunc(group.Items, func(i projectVaultItem) bool { return i.ID == secret.Name }) {
 					continue
 				}
 				group.Items = append(group.Items, projectVaultItem{ID: secret.Name, Name: vaultSecretShortName(secret.Name), Kind: "shared_secret", Status: "stored", Selected: slices.Contains(out.Shared, secret.Name), CanSelect: true})
@@ -292,6 +279,16 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 	}
 	if lender != person {
 		project := &projectVaultGroup{ID: "project-apps", Name: "the project's owner", Project: true, Items: []projectVaultItem{}}
+		// The owner's secrets this project uses, lent to everyone who builds in it (names only).
+		for _, name := range out.Shared {
+			seen := false
+			for _, group := range groups {
+				seen = seen || slices.ContainsFunc(group.Items, func(i projectVaultItem) bool { return i.Kind == "shared_secret" && i.ID == name })
+			}
+			if !seen {
+				project.Items = append(project.Items, projectVaultItem{ID: name, Name: vaultSecretShortName(name), Kind: "shared_secret", Status: "stored", Selected: true, CanSelect: true})
+			}
+		}
 		category[project.ID] = "project"
 		for _, row := range lenderAccess.Servers {
 			seen := false
@@ -304,27 +301,6 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 		}
 		groups[project.ID] = project
 	}
-	// A co-owner can inspect and change the project's selected secret names
-	// without gaining access to its owner's other personal secrets.
-	projectSecrets := &projectVaultGroup{ID: "project-secrets", Name: "this project", Project: true, Items: []projectVaultItem{}}
-	category[projectSecrets.ID] = "project"
-	for _, row := range api.secretSources(ctx, person, root).Secrets {
-		if !row.ProductStored && !row.ProductSelected && !row.VaultSelected {
-			continue
-		}
-		kind, id, selected := "shared_secret", row.Name, row.VaultSelected
-		if row.ProductStored || row.ProductSelected {
-			kind, selected = "project_secret", row.ProductSelected
-		}
-		seen := false
-		for _, group := range groups {
-			seen = seen || slices.ContainsFunc(group.Items, func(i projectVaultItem) bool { return i.Kind == kind && i.ID == id })
-		}
-		if !seen {
-			projectSecrets.Items = append(projectSecrets.Items, projectVaultItem{ID: id, Name: row.DisplayName, Kind: kind, Status: "stored", Selected: selected, CanSelect: true})
-		}
-	}
-	groups[projectSecrets.ID] = projectSecrets
 	// Shared Google connections use the existing company registry, rather than
 	// personal list_saved. Show the same project-scoped accounts as the Google
 	// tools without making them attachable through personal-account controls.
@@ -419,7 +395,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 	headings := []projectVaultGroup{
 		{ID: "yours", Name: "Yours", Sharing: "Only you, and the projects you build that use them", Items: []projectVaultItem{}},
 		{ID: "company", Name: "Company", Sharing: "Given to you by an administrator", Items: []projectVaultItem{}},
-		{ID: "project", Name: "This project only", Sharing: "Kept with this project", Project: true, Items: []projectVaultItem{}},
+		{ID: "project", Name: "The project's owner", Sharing: "Lent by the project's owner", Project: true, Items: []projectVaultItem{}},
 	}
 	ids := make([]string, 0, len(groups))
 	for id := range groups {

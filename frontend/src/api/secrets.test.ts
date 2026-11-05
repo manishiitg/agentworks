@@ -7,20 +7,18 @@ vi.mock('../services/api', () => ({
 
 import { secretsApi } from './secrets'
 
-// Only two secret types exist: scoped (workflow / project / product box) and
-// global. The per-user ("yours") store and its client methods are gone; this
-// guards the client surface so they cannot creep back.
-describe('secretsApi two-type contract', () => {
-  it('exposes scoped and global secret methods', () => {
+// All in Vault (PLAT-856): a project's secret is saved in its owner's Vault; there is
+// no per-project store to list, reveal, share or promote from. This guards the
+// client surface so the retired methods cannot creep back.
+describe('secretsApi Vault-only contract', () => {
+  it('exposes the Vault secret methods', () => {
     for (const method of [
       'storeWorkflowSecret',
       'deleteWorkflowSecret',
-      'listWorkflowSecrets',
       'getGlobalSecrets',
       'saveGlobalSecret',
       'deleteGlobalSecret',
       'revealGlobalSecret',
-      'promoteWorkflowSecret',
       'encrypt',
       'decrypt',
     ] as const) {
@@ -33,5 +31,8 @@ describe('secretsApi two-type contract', () => {
     expect(client.storeSecret).toBeUndefined()
     expect(client.deleteStoredSecret).toBeUndefined()
     expect(client.listStoredSecrets).toBeUndefined()
+    expect(client.listWorkflowSecrets).toBeUndefined()
+    expect(client.promoteWorkflowSecret).toBeUndefined()
+    expect(client.shareWorkflowSecret).toBeUndefined()
   })
 })

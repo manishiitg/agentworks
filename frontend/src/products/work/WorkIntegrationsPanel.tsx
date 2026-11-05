@@ -3,7 +3,7 @@ import { useMacCrew } from './useMacCrew'
 import { useEffect, useState } from 'react'
 import { Server } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
-import { ProjectIntegrationPanel, INTEGRATION_LABELS, type ProjectSecretControls, type IntegrationSection } from '../../components/integrations/ProjectIntegrationPanel'
+import { ProjectIntegrationPanel, INTEGRATION_LABELS, type IntegrationSection } from '../../components/integrations/ProjectIntegrationPanel'
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { useChatStore } from '../../stores/useChatStore'
 import { ProjectKnowledgebasePanel } from '../../components/workflow/ProjectKnowledgebasePanel'
@@ -27,11 +27,9 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'message-agents'
 
-export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange }: {
+export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange }: {
   accessLoading?: boolean
   onAppsSaved?: () => void
-  selectedSecrets?: string[]
-  onSelectedSecretsChange?: ProjectSecretControls['onSelectedSecretsChange']
   canEdit?: boolean; workspacePath: string; projectId: string; projectTitle: string
   tabId: string; enabledPanels?: Set<string>
   onAsk: (message: string) => Promise<void>
@@ -61,7 +59,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
       <>
         {tab === 'access' && <AccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} canEdit={canEdit} onAsk={draft} />}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
-        {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
+        {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
         {tab === 'folders' && <WorkFoldersSection part={isLocalDeployment() ? 'linked' : 'all'} onOpenComputer={canEdit ? () => setTab('access') : undefined} workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
         {/* In the Mac app this is the folders attached on this Mac (Downloads, your whole Mac, picked folders); on a server it

@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 )
 
 func projectRuntimeManifestPath(profileID, workspacePath string) string {
@@ -86,8 +87,8 @@ func ensureProjectRuntimeManifest(ctx context.Context, profileID, workspacePath 
 	// Fixed-workspace products never run a "create
 	// project" step that would leave a manifest behind, so one must be created
 	// here on first use -- unlike Work, there is no legacy product.json to
-	// migrate from. Without this, every read/write of selected_secrets or
-	// selected_servers for such a profile failed with "product manifest not
+	// migrate from. Without this, every read/write of a secret or app selection
+	// for such a profile failed with "product manifest not
 	// found" forever, silently: a secret saved via the secret tools was stored
 	// but never attached to the conversation, so it never reached the agent's
 	// environment (confirmed live: a product's agent_browser tool could not
@@ -143,48 +144,6 @@ func ensureProjectRuntimeManifest(ctx context.Context, profileID, workspacePath 
 		}
 	}
 	return raw, manifestPath, nil
-}
-
-// productSelectedSecrets reads capabilities.selected_secrets from the product's
-// canonical runtime manifest. Work uses workflow.json; legacy Work projects
-// fall back to product.json until the first mutation creates workflow.json.
-func productSelectedSecrets(ctx context.Context, profileID, workspacePath string) ([]string, bool, error) {
-	raw, found, err := readProjectRuntimeManifest(ctx, profileID, workspacePath)
-	if err != nil {
-		return nil, false, err
-	}
-	if !found {
-		// No manifest yet is the same as "selected_secrets never initialized",
-		// not a hard failure: the caller's not-yet-initialized fallback
-		// migrates any already-stored secrets and persists them, which creates
-		// the manifest (see ensureProjectRuntimeManifest). Treating this as an
-		// error instead left fixed-workspace products unable to attach secrets,
-		// since nothing
-		// ever creates this file for them ahead of time.
-		return nil, false, nil
-	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return nil, false, fmt.Errorf("decode product manifest: %w", err)
-	}
-	capabilities, _ := manifest["capabilities"].(map[string]interface{})
-	value, initialized := capabilities["selected_secrets"]
-	if !initialized {
-		return nil, false, nil
-	}
-	items, ok := value.([]interface{})
-	if !ok {
-		return nil, true, fmt.Errorf("product capabilities.selected_secrets must be an array")
-	}
-	names := make([]string, 0, len(items))
-	for _, item := range items {
-		name, ok := item.(string)
-		if ok {
-			names = appendUniqueStrings(names, strings.TrimSpace(name))
-		}
-	}
-	sort.Strings(names)
-	return names, true, nil
 }
 
 // productSelectedGlobalSecrets reads the explicit global-secret allowlist for
@@ -257,43 +216,6 @@ func updateProductSelectedGlobalSecrets(ctx context.Context, profileID, workspac
 	}
 	sort.Strings(canonical)
 	capabilities["selected_global_secret_names"] = canonical
-	manifest["capabilities"] = capabilities
-	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	encoded, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode product manifest: %w", err)
-	}
-	return writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n")
-}
-
-func updateProductSelectedSecrets(ctx context.Context, profileID, workspacePath string, mutate func([]string) []string) error {
-	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, profileID, workspacePath)
-	if err != nil {
-		return err
-	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return fmt.Errorf("decode product manifest: %w", err)
-	}
-	capabilities, _ := manifest["capabilities"].(map[string]interface{})
-	if capabilities == nil {
-		capabilities = map[string]interface{}{}
-	}
-	current := []string{}
-	if items, ok := capabilities["selected_secrets"].([]interface{}); ok {
-		for _, item := range items {
-			if name, ok := item.(string); ok {
-				current = appendUniqueStrings(current, strings.TrimSpace(name))
-			}
-		}
-	}
-	next := mutate(current)
-	canonical := make([]string, 0, len(next))
-	for _, name := range next {
-		canonical = appendUniqueStrings(canonical, strings.TrimSpace(name))
-	}
-	sort.Strings(canonical)
-	capabilities["selected_secrets"] = canonical
 	manifest["capabilities"] = capabilities
 	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 	encoded, err := json.MarshalIndent(manifest, "", "  ")
@@ -389,8 +311,8 @@ func productAppSelectionRecord(ctx context.Context, profileID, workspacePath str
 		return nil, false, false, err
 	}
 	if !found {
-		// See the matching comment in productSelectedSecrets: no manifest yet
-		// means "never initialized", not an error.
+		// No manifest yet means "never initialized", not an error: the first
+		// selection write creates it (ensureProjectRuntimeManifest).
 		return nil, false, false, nil
 	}
 	var manifest map[string]interface{}

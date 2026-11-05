@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
-	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
@@ -296,23 +297,6 @@ func TestRelayReaderRunsUseOwnerCredentials(t *testing.T) {
 	}
 	if _, err := env.api.admitProviderAccount(context.Background(), scope, "claude-code", reader.ID); err == nil {
 		t.Fatal("reader private account attached to owner run")
-	}
-	for _, tc := range []struct{ user, value string }{{"alice", "owner-value"}, {"bob", "reader-value"}} {
-		encrypted, err := encryptSecretValueWithAAD(tc.value, []byte(tc.user))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if tc.user == "alice" {
-			if err := env.api.chatStore.UpsertWorkflowSecret(context.Background(), tc.user, draft, "TOKEN", encrypted); err != nil {
-				t.Fatal(err)
-			}
-		} else if err := env.api.chatStore.UpsertUserSecret(context.Background(), tc.user, "TOKEN", encrypted); err != nil {
-			t.Fatal(err)
-		}
-	}
-	secrets := env.api.loadSelectedSecrets(context.Background(), sctx.OwnerUserID, release, []string{"TOKEN"})
-	if len(secrets) != 1 || secrets[0].Value != "owner-value" {
-		t.Fatalf("owner secret resolution: %+v", secrets)
 	}
 }
 

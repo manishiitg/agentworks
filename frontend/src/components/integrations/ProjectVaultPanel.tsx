@@ -14,7 +14,7 @@ type Props = { flat?: boolean; renderItemActions?: (item:ProjectVaultItem)=>Reac
 export function vaultItemDraft(item: ProjectVaultItem, vaultName: string): string {
   const name = item.name || item.provider || 'this app'
   if (item.kind === 'computer') return `Help me ${item.status === 'offline' ? 'reconnect' : 'use'} my computer “${name}” for this project. Check its connection and help me choose the folders and commands it can use.`
-  if (item.kind === 'project_secret' || item.kind === 'shared_secret') return `Help me manage the secret “${name}” in “${vaultName}”. Ask what I want to change, store any value securely and never repeat it.`
+  if (item.kind === 'shared_secret') return `Help me manage the secret “${name}” in “${vaultName}”. Ask what I want to change, store any value securely and never repeat it.`
   return `${item.status === 'needs_attention' ? 'Reconnect' : 'Help me manage'} ${item.provider || 'the app'} “${name}” in “${vaultName}”. Use the existing saved account and verify its status. Keep project selections unless I ask to change them.`
 }
 
@@ -31,7 +31,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
   const streaming = useChatStore(state => Boolean(tabId && state.chatTabs[tabId]?.isStreaming))
   const wasStreaming = useRef(false)
   const data = result?.scope === scope ? result.inventory : undefined
-  const secretsOnly = itemKinds?.every(kind => kind === 'shared_secret' || kind === 'project_secret')
+  const secretsOnly = itemKinds?.every(kind => kind === 'shared_secret')
   const groups = data?.vaults.map(vault => ({ ...vault, items: vault.items.filter(item => !itemKinds || itemKinds.includes(item.kind)) })).filter(vault => vault.items.length > 0)
   const refresh = useCallback(async () => {
     const version = ++generation.current
@@ -71,7 +71,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
   }
 
   const row = (item:ProjectVaultItem, groupName:string) => {
-          const secret = item.kind === 'project_secret' || item.kind === 'shared_secret'
+          const secret = item.kind === 'shared_secret'
           const Icon = secret ? KeyRound : item.kind === 'computer' ? Laptop : Plug
           const healthy = item.status === 'connected' || item.status === 'online'
           const status = item.kind === 'computer' ? healthy ? 'Online' : 'Offline' : healthy ? 'Connected' : 'Needs attention'
@@ -79,7 +79,7 @@ export function ProjectVaultPanel({ workspacePath, tabId, disabled = false, item
             <Checkbox aria-label={`Use ${item.name || item.provider} from ${groupName}`} checked={item.selected} disabled={disabled || busy || !item.can_select} onCheckedChange={() => { void toggle(item) }} />
             <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <button type="button" disabled={disabled} onClick={() => { void setup.open(vaultItemDraft(item, groupName)) }} className={`min-w-0 flex-1 truncate text-left hover:underline ${secret ? 'font-mono text-xs' : ''}`} title={item.name || item.provider}>{item.name || item.provider}</button>
-            {(flat||item.source)&&<span className="text-xs text-muted-foreground">{flat?(item.kind==='project_secret'?'This project':item.source||groupName):`(${item.source})`}</span>}
+            {(flat||item.source)&&<span className="text-xs text-muted-foreground">{flat?(item.source||groupName):`(${item.source})`}</span>}
             {renderItemActions?.(item)}
             {!secret && <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={status}><span aria-label={status} className={`h-2 w-2 rounded-full ${healthy ? 'bg-emerald-500' : 'bg-red-500'}`} />{status}</span>}
             {item.used_in && item.used_in.length > 0 && <span className="basis-full pl-10 text-xs text-muted-foreground">Used in: {item.used_in.join(', ')}</span>}

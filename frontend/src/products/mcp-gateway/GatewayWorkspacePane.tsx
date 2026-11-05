@@ -36,7 +36,7 @@ export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSett
       {panel === 'access' && <GatewayGroupsPanel base={base} revision={revision} chatBusy={chatBusy} />}
       {panel === 'people' && (peopleTab === 'users' ? (readOnly ? <ReaderNote>Accounts are managed by administrators. To see what one person can reach, ask in your Crew or Goal chat.</ReaderNote> : <GatewayUsersPanel base={base} />) : <GatewayGroupsPanel base={base} directoryOnly revision={revision} />)}
       {panel === 'secrets' && (readOnly ? <ReaderNote>Secret values are managed by Vault managers. Each group's Secrets tab lists the secret names it can use.</ReaderNote>
-        : <SecretSelectionSection key={revision} mode="vault" selectedSecrets={[]} onSecretChange={() => {}} />)}
+        : <SecretSelectionSection key={revision} mode="vault" />)}
       </GatewayFeedbackBoundary>
       </SettingsCardLayout>
     </WorkspacePageContent>

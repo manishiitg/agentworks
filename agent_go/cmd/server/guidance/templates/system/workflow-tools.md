@@ -245,25 +245,21 @@ Use `settings action=get` to see the workflow's selected skills. Use `skills act
 
 ## Secrets
 
-Secrets are credentials (API keys, tokens, passwords) injected into step agents as `$SECRET_<NAME>` environment variables at execution time. They exist in two buckets:
+Secrets are credentials (API keys, tokens, passwords) injected into step agents as `$SECRET_<NAME>` environment variables at execution time. Every secret lives in Vault; a workflow uses the Vault secrets its settings select, lent by the workflow's owner to every run (an editor's run, a schedule, a published Flow).
 
-- **Workflow secrets** — encrypted server-side, scoped only to this workflow. Use these by default for workflow-specific credentials.
-<!-- product:mcp-gateway -->- **Vault secrets** — managed encrypted shared credentials with group permissions. They are added, rotated, shared and deleted in Vault, not from a Builder chat; a workflow selects the Vault names it uses. `GLOBAL_SECRET_*` environment entries are operator-managed.<!-- /product -->
+**Saving a new secret is one step.** `vault(action="set", name="BUFFER_API_KEY", value="<plaintext>")` saves the value in the owner's own Vault (My accounts), selects it on this workflow and injects it into the active builder shell and future workflow steps. Only the owner can save one, because it goes into their Vault. Saving the same name again replaces its value everywhere the owner uses it.
 
-**Storing a new secret is one step.** `vault(action="set", name="BUFFER_API_KEY", value="<plaintext>")` stores, attaches, and injects the value into the active builder shell and future workflow steps.
-
-**Attaching an already-stored secret is a separate operation.** Call `vault action=list`, then `settings(action="update", secrets={"select":["BUFFER_API_KEY"]})`. The builder can use it immediately as `$SECRET_BUFFER_API_KEY`; no restart or new chat is required. If the requested name does not exist, ask for the value and store it. Never claim that a stored secret is unusable merely because its plaintext cannot be returned—the builder should consume it through the injected environment without displaying it.
+**Using an existing Vault secret is a separate operation.** Call `vault action=list`, then `settings(action="update", secrets={"select":["<its Vault name>"]})`. The builder can use it immediately as `$SECRET_<NAME>` (the name after the Vault prefix); no restart or new chat is required. If the requested name does not exist, ask for the value and save it. Never claim that a stored secret is unusable merely because its plaintext cannot be returned—the builder should consume it through the injected environment without displaying it.
 
 Do **not** give boilerplate advice like `"rotate this secret"` after a normal user-requested save. Recommend rotation only when there is a concrete exposure reason: the value was printed into logs/output, committed to a file, sent to the wrong channel, or the user explicitly asks for security remediation.
 
-<!-- product:mcp-gateway -->**Sharing a project secret to Vault** is done in Vault by a Vault administrator (the **Share to Vault** button in the project's secrets, Vault's chat, or Vault's MCP tools). The backend copies the value without exposing it to any model and keeps the project copy. From a Builder chat, tell the user where to do it. Never read legacy generated .pi/.claude skill files in the project to infer current platform capabilities. Load the attached canonical `builder-reference/references/secret-management.md` instead.<!-- /product -->
+Never read legacy generated .pi/.claude skill files in the project to infer current platform capabilities. Load the attached canonical `builder-reference/references/secret-management.md` instead.
 
 **Other secret ops**:
 
-- **Inspect**: `vault action=list` returns `global` and `workflow` buckets — values are never exposed.
-- **Edit a value**: call `vault action=set` again with the same name — it upserts.
-- **Delete from store**: `vault(action="delete", name)`. Workflow attachments are separate — also run `settings(action="update", secrets={"unselect":["NAME"]})` to detach.
-- **Detach only (keep value)**: `settings(action="update", secrets={"unselect":["NAME"]})`.
+- **Inspect**: `vault action=list` returns the Vault secrets you may use (`global`) and the ones this workflow uses (`project`) — values are never exposed.
+- **Edit a value**: call `vault action=set` again with the same name.
+- **Stop using one here**: `vault(action="delete", name)` or `settings(action="update", secrets={"unselect":["NAME"]})`. Its value stays in the owner's Vault, where they can delete it.
 
 Secret VALUES are never rendered into prompts, logs, or tool outputs. Builder and step agents consume them only through `$SECRET_<NAME>` in `terminal action=execute`. Never echo, print, or hardcode a secret value in descriptions, learnings, or `main.py`.
 

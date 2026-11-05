@@ -313,7 +313,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     return updated
   }, [product, sessions, updateSessions])
 
-  const updateSelections = useCallback(async (projectId: string, patch: { selectedServers?: string[]; selectedSkills?: string[]; selectedSecrets?: string[]; selectedGlobalSecrets?: string[]; workflowContextPaths?: string[] }) => {
+  const updateSelections = useCallback(async (projectId: string, patch: { selectedServers?: string[]; selectedSkills?: string[]; selectedGlobalSecrets?: string[]; workflowContextPaths?: string[] }) => {
     const project = sessions.find(item => item.product === product.profileId && item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     if (isWorkSessionRun(project)) throw new Error(`Only the ${product.noun} owner can change this.`)
@@ -1188,7 +1188,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [workspaceProjectId, updateNativeAgentTools])
   const changeSelectedServers = useCallback((servers: string[]) => updateSelections(workspaceProjectId!, { selectedServers: servers }), [workspaceProjectId, updateSelections])
   const changeSelectedSkills = useCallback((skills: string[]) => updateSelections(workspaceProjectId!, { selectedSkills: skills }), [workspaceProjectId, updateSelections])
-  const changeSelectedSecrets = useCallback((secrets: string[]) => updateSelections(workspaceProjectId!, { selectedSecrets: secrets }), [workspaceProjectId, updateSelections])
   const changeSelectedGlobalSecrets = useCallback((secrets: string[]) => updateSelections(workspaceProjectId!, { selectedGlobalSecrets: secrets }), [workspaceProjectId, updateSelections])
   const changeWorkflowContextPaths = useCallback(async (paths: string[]) => {
     if (!workspaceProjectId) return
@@ -1527,7 +1526,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         shared={sharedWorkspaceOwner}
                         showShell={showShell}
                         projectLLMConfig={selected.llmConfig}
-                        selectedSecrets={selected.selectedSecrets}
                         selectedGlobalSecrets={selected.selectedGlobalSecrets}
                         workflowContextPaths={selected.workflowContextPaths}
                         onRuntimeChange={changeWorkRuntime}
@@ -1536,7 +1534,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         onAppsSaved={() => { void refresh().catch(() => useChatStore.getState().addToast('Apps saved. Refresh the project to update its chat tools.', 'error')) }}
                         onSelectedServersChange={changeSelectedServers}
                         onSelectedSkillsChange={changeSelectedSkills}
-                        onSelectedSecretsChange={changeSelectedSecrets}
                         onSelectedGlobalSecretsChange={changeSelectedGlobalSecrets}
                         onWorkflowContextPathsChange={changeWorkflowContextPaths}
                         onUpdateIdentity={changeProjectIdentity}

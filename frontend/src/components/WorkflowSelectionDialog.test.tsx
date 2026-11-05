@@ -74,11 +74,9 @@ it('lists Crew projects with identity and selects their guarded workspace path',
     updatedAt: '2026-09-18T00:00:00Z',
     selectedServers: [],
     selectedSkills: [],
-    selectedSecrets: [],
     selectedGlobalSecrets: [],
     workflowContextPaths: [],
     selectionConfigInitialized: true,
-    secretSelectionInitialized: true,
     runtimeConfigInitialized: true,
   }])
   const onSelect = vi.fn()
@@ -156,8 +154,8 @@ it('keeps the highlighted Crew when a slow workflow list inserts rows ahead of i
     schemaVersion: 1, product: 'work', id, title: id, description: '',
     sessionId: `work:${id}`, workspacePath: `Chats/Work/projects/${id}`,
     createdAt: '', updatedAt: '', selectedServers: [], selectedSkills: [],
-    selectedSecrets: [], selectedGlobalSecrets: [], workflowContextPaths: [],
-    selectionConfigInitialized: true, secretSelectionInitialized: true, runtimeConfigInitialized: true,
+    selectedGlobalSecrets: [], workflowContextPaths: [],
+    selectionConfigInitialized: true, runtimeConfigInitialized: true,
   })))
   const onSelect = vi.fn()
   const { host } = await mount(onSelect)

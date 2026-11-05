@@ -6,12 +6,10 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 )
 
-// This snapshot explains saved choices. It deliberately never decrypts a
-// value, initializes a manifest, or migrates the legacy per-person store.
+// This snapshot explains a product's saved secret choices: the Vault secrets it selects, lent by its owner. It never
+// reads a value.
 type secretSourceView struct {
 	Status   string            `json:"status"`
 	Note     string            `json:"note"`
@@ -22,12 +20,7 @@ type secretSourceView struct {
 type secretSourceRow struct {
 	Name             string `json:"name"`
 	DisplayName      string `json:"display_name"`
-	ProductStored    bool   `json:"product_stored"`
-	ProductSelected  bool   `json:"product_selected"`
-	VaultSelected    bool   `json:"vault_selected"`
 	VaultAvailable   *bool  `json:"vault_available"`
-	LegacyStored     bool   `json:"legacy_stored"`
-	EnvironmentOwned bool   `json:"environment_owned"`
 	ConfiguredSource string `json:"configured_source"`
 	Explanation      string `json:"explanation"`
 }
@@ -37,144 +30,50 @@ func unavailableSecretSources() secretSourceView {
 }
 
 func (api *StreamingAPI) secretSources(ctx context.Context, userID, workspace string) secretSourceView {
-	view := secretSourceView{Status: "available", Note: "Saved setup, not a running session. Values, account identities and whether a token works are not checked. Vault availability uses your current access.", Warnings: []string{}, Secrets: []secretSourceRow{}}
-	if api.chatStore == nil {
-		return unavailableSecretSources()
-	}
-	// The runtime file is authoritative; older project files are only read,
-	// never converted here. Work and Code use the same runtime filename.
+	view := secretSourceView{Status: "available", Note: "Saved setup, not a running session. Values, account identities and whether a token works are not checked. Secrets come from Vault and are lent by the project's owner.", Warnings: []string{}, Secrets: []secretSourceRow{}}
 	raw, found, err := readProjectRuntimeManifest(ctx, "work", workspace)
 	if err != nil || !found {
 		return unavailableSecretSources()
 	}
 	var saved struct {
-		CreatedBy string `json:"created_by"`
-		Access    struct {
-			Owners []string `json:"owners"`
-		} `json:"access"`
 		Capabilities map[string]json.RawMessage `json:"capabilities"`
 	}
 	if json.Unmarshal([]byte(raw), &saved) != nil {
 		return unavailableSecretSources()
 	}
-	var local, shared []string
-	localRaw, localInitialized := saved.Capabilities["selected_secrets"]
-	if localInitialized && json.Unmarshal(localRaw, &local) != nil {
+	var selected []string
+	if globalRaw, ok := saved.Capabilities["selected_global_secret_names"]; ok && json.Unmarshal(globalRaw, &selected) != nil {
 		return unavailableSecretSources()
 	}
-	if globalRaw, ok := saved.Capabilities["selected_global_secret_names"]; ok && json.Unmarshal(globalRaw, &shared) != nil {
-		return unavailableSecretSources()
-	}
-	stored, err := api.chatStore.ListWorkflowSecrets(ctx, chathistory.SharedWorkflowSecretsUserID, workspace)
-	if err != nil {
-		return unavailableSecretSources()
-	}
-	rows := map[string]*secretSourceRow{}
-	rowFor := func(name string) *secretSourceRow {
-		if rows[name] == nil {
-			rows[name] = &secretSourceRow{Name: name, DisplayName: vaultSecretShortName(name)}
-		}
-		return rows[name]
-	}
-	for _, secret := range stored {
-		rowFor(secret.Name).ProductStored = true
-	}
-	// Project runtimes initialize a missing selection from their stored names.
-	// Workflows require an explicit selection. Report that existing distinction.
-	project := isProductRuntimeManifestWorkspace(workspace)
-	if project && localInitialized && strings.TrimSpace(string(localRaw)) == "null" {
-		return unavailableSecretSources()
-	}
-	if project && !localInitialized {
-		for _, secret := range stored {
-			local = append(local, secret.Name)
-		}
-		view.Warnings = append(view.Warnings, "This project's own secret selection has not been saved yet; its existing setup loads stored copies. This view does not save that selection.")
-	}
-	for _, name := range local {
-		rowFor(name).ProductSelected = true
-	}
-	for _, name := range shared {
-		rowFor(name).VaultSelected = true
-	}
-	// An empty shared document may still have pre-existing legacy copies.
-	// Match the runtime's candidate identities, but do not move or decrypt them.
-	legacyUnavailable := false
-	if len(stored) == 0 {
-		candidates := append([]string{userID, saved.CreatedBy}, saved.Access.Owners...)
-		for _, uid := range appendUniqueStrings(nil, candidates...) {
-			if uid == "" || uid == chathistory.SharedWorkflowSecretsUserID {
-				continue
-			}
-			legacy, readErr := api.chatStore.ListWorkflowSecrets(ctx, uid, workspace)
-			if readErr != nil {
-				view.Status = "partial"
-				legacyUnavailable = true
-				view.Warnings = append(view.Warnings, "Older product copies could not be checked. Their availability is unknown.")
-				continue
-			}
-			for _, secret := range legacy {
-				r := rowFor(secret.Name)
-				r.LegacyStored = true
-				if project && !localInitialized {
-					r.ProductSelected = true
-				}
-			}
-		}
-	}
-	globals, globalErr := permittedGlobalSecrets(ctx, userID)
+	owner := api.projectSecretsOwner(userID, workspace)
+	globals, globalErr := permittedGlobalSecrets(ctx, owner)
 	if globalErr != nil {
 		view.Status = "partial"
-		view.Warnings = append(view.Warnings, "Vault access could not be checked. The company copy and any same-name overlap are unknown; try again after Vault is available.")
+		view.Warnings = append(view.Warnings, "Vault access could not be checked; try again after Vault is available.")
 	}
-	byName := map[string]globalSecretEntry{}
+	usable := map[string]bool{}
 	for _, secret := range globals {
-		byName[secret.Name] = secret
+		usable[secret.Name] = true
 	}
-	for _, r := range rows {
-		secret, available := byName[r.Name]
-		if globalErr == nil {
-			r.VaultAvailable = &available
+	for _, name := range selected {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
 		}
-		r.EnvironmentOwned = available && !secret.Managed
-		r.ConfiguredSource, r.Explanation = "unselected", "Stored here, but not selected for this product."
+		row := secretSourceRow{Name: name, DisplayName: vaultSecretShortName(name), ConfiguredSource: "vault"}
 		switch {
-		case r.ProductSelected && r.ProductStored:
-			r.ConfiguredSource = "product"
-			r.Explanation = "This product's own copy is selected and takes priority when it can be loaded. Its value is not checked."
-			if available {
-				r.Explanation += " A copy also exists in the company Vault."
-				if secret.Managed || r.VaultSelected {
-					r.Explanation += " The company copy is used only if the selected own copy cannot be loaded."
-				} else {
-					r.Explanation += " The company copy is not selected."
-				}
-			}
-		case r.ProductSelected && r.LegacyStored:
-			r.ConfiguredSource, r.Explanation = "legacy", "An older own copy is selected. People with access to this product can see its name only; no person’s identity or value is shown. Whether it can be loaded is not checked; this view leaves it where it is."
-		case r.ProductSelected || r.VaultSelected:
-			if globalErr != nil || r.ProductSelected && legacyUnavailable {
-				r.ConfiguredSource, r.Explanation = "unavailable", "Selected, but the company copy's availability could not be checked."
-			} else if available && (r.VaultSelected || secret.Managed) {
-				r.ConfiguredSource, r.Explanation = "vault", "The company Vault copy is selected. Its value and account are not checked."
-				if r.ProductSelected && !r.VaultSelected {
-					r.Explanation = "No own copy is stored here. The existing setup uses the company Vault copy with this name; its value and account are not checked."
-				}
-				if r.ProductStored {
-					r.Explanation += " An own copy is stored here but is not selected, so it does not take priority."
-				}
-			} else {
-				r.ConfiguredSource, r.Explanation = "unavailable", "Selected, but no usable source is visible with your current access. Check this product's selection and Vault access in Settings."
-			}
+		case globalErr != nil:
+			row.ConfiguredSource, row.Explanation = "unavailable", "Selected, but Vault could not be checked."
+		case usable[name]:
+			available := true
+			row.VaultAvailable = &available
+			row.Explanation = "Selected from Vault and lent by the project's owner. Scripts read it as $SECRET_" + row.DisplayName + ". Its value is not checked."
+		default:
+			available := false
+			row.VaultAvailable = &available
+			row.ConfiguredSource, row.Explanation = "unavailable", "Selected, but the project's owner can no longer use it. Add it again or unselect it."
 		}
-		if isVaultSecretName(r.Name) {
-			r.Explanation = strings.ReplaceAll(r.Explanation, "company Vault", "personal Vault")
-			r.Explanation = strings.ReplaceAll(r.Explanation, "company copy", "personal Vault copy")
-		}
-		if r.EnvironmentOwned {
-			r.Explanation += " The company copy is managed in the server's configuration."
-		}
-		view.Secrets = append(view.Secrets, *r)
+		view.Secrets = append(view.Secrets, row)
 	}
 	sort.Slice(view.Secrets, func(i, j int) bool { return view.Secrets[i].Name < view.Secrets[j].Name })
 	return view
