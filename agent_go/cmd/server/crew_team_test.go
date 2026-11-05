@@ -622,4 +622,18 @@ func TestCrewTeamMemberMacAdmittedOnlyWithTheirRecordedPair(t *testing.T) {
 	if person, _ := crewMacTeamConversation(t.Context(), "team-test", "c-shared"); person != "member" || len(crewMacTabsFor(t.Context(), "member", "team-test", "member")) != 2 {
 		t.Fatal("a member's In team agent was not watchable, or they lost their own Only me agent")
 	}
+	// A Crew that lives on the server (no owner's Mac): a member on their Mac is admitted with their own pair alone,
+	// and their turns there go to their Mac; the owner never gets a Mac pair for it.
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "server-crew", OwnerID: "owner", ProjectID: "server-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "server-crew", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member", Where: "mac", MacPair: "server-member-pair"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.crewRelayAdmit(t.Context(), member, crewRelayCrew{Project: "server-crew", Pair: "server-member-pair"}); err != nil || !crewLivesOnMac("work", "server-crew:chat:mine", "member") || crewLivesOnMac("work", "server-crew:chat:mine", "owner") {
+		t.Fatalf("a member on their Mac in a server Crew: admitted=%v, or turns placed wrongly", err)
+	}
+	if _, ok := crewMacPairFor("owner", "server-crew"); ok {
+		t.Fatal("the owner of a Crew on the server got a Mac pair")
+	}
 }
