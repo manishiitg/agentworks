@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -41,6 +42,11 @@ type vaultRuntimeServer struct {
 
 func vaultServerName(id string) string { return "vault_" + id }
 
+// governedVaultName is a Vault connection's name: this computer's own (vault_*) or, on the Mac, its server's (srv_*).
+func governedVaultName(name string) bool {
+	return strings.HasPrefix(name, "vault_") || strings.HasPrefix(name, serverVaultPrefix)
+}
+
 // The SDK pools live connections globally by server name. Binding the name to
 // the delegation prevents reuse across users, sessions, or token lifetimes.
 func vaultRuntimeName(public string, cfg mcpclient.MCPServerConfig) string {
@@ -49,7 +55,7 @@ func vaultRuntimeName(public string, cfg mcpclient.MCPServerConfig) string {
 }
 func vaultSelectionName(name string) string {
 	public, suffix, ok := strings.Cut(name, "__scope_")
-	if ok && strings.HasPrefix(public, "vault_") && len(suffix) == 32 {
+	if ok && governedVaultName(public) && len(suffix) == 32 {
 		if _, err := hex.DecodeString(suffix); err == nil {
 			return public
 		}
@@ -60,6 +66,10 @@ func vaultSelectionName(name string) string {
 // OpenAPI bridge URLs also normalize tool names. Recover only a unique name
 // from this caller's live inventory; the gateway still authorizes the call.
 func (api *StreamingAPI) vaultBridgeToolName(ctx context.Context, session, server, tool string) (context.Context, string, error) {
+	if strings.HasPrefix(server, serverVaultPrefix) {
+		name, err := serverVaultBridgeToolName(ctx, api.mcpSessionPerson(session), server, tool)
+		return ctx, name, err
+	}
 	vaultPath := strings.HasPrefix(server, "vault_")
 	legacyReportPath := !vaultPath && strings.HasPrefix(session, "report-run-")
 	if !vaultPath && !legacyReportPath {
@@ -412,7 +422,14 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 		}
 		runtimePath = "/api/admin/runtime/builder/mcp"
 	}
-	proxy := &httputil.ReverseProxy{Transport: capLayerTransport, Rewrite: func(pr *httputil.ProxyRequest) {
+	vaultGatewayMCPProxy(target, secret, runtimePath, in).ServeHTTP(w, r)
+}
+
+// vaultGatewayMCPProxy forwards one MCP request to the gateway as in.Person for in.Connector. Callers check who may
+// send it first; the gateway then checks that person's current grants and argument rules on every call.
+func vaultGatewayMCPProxy(target *url.URL, secret, runtimePath string, in vaultDelegation) *httputil.ReverseProxy {
+	return &httputil.ReverseProxy{Transport: capLayerTransport, Rewrite: func(pr *httputil.ProxyRequest) {
+		r := pr.In
 		pr.SetURL(target)
 		pr.Out.URL.Path = strings.TrimRight(target.Path, "/") + runtimePath
 		pr.Out.URL.RawPath = ""
@@ -438,7 +455,6 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 		}
 		return nil
 	}, ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) { http.Error(w, "Vault unavailable", 502) }}
-	proxy.ServeHTTP(w, r)
 }
 
 // resolveGovernedMCP maps a selected name to the user's private connection or
@@ -446,6 +462,9 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server string) (*executor.ResolvedMCPServer, error) {
 	if !activeMCPPerson(person) {
 		return nil, errors.New("active MCP user required")
+	}
+	if strings.HasPrefix(vaultSelectionName(server), serverVaultPrefix) {
+		return api.resolveServerVaultMCP(ctx, person, vaultSelectionName(server), "")
 	}
 	authority, builder, err := api.vaultBuilderAuthority(ctx, person)
 	if err != nil {
@@ -526,6 +545,20 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			names = append(names, vaultServerName(row.ID))
 		}
 	}
+	// On the Mac, a Crew linked to its company's server also gets the lender's own Vault apps there (srv_*), under the
+	// same default rule; each call is forwarded to the server and checked there as that person.
+	ctx, remote := api.withServerVaultInventory(ctx, lender, sessionID)
+	if !picksVault && !explicitNone {
+		for _, row := range remote {
+			names = append(names, row.Name)
+		}
+	}
+	aliasRows := make([]vaultRuntimeServer, 0, len(rows)+len(remote))
+	for _, row := range rows {
+		row.Name = vaultServerName(row.ID)
+		aliasRows = append(aliasRows, row)
+	}
+	aliasRows = append(aliasRows, remote...)
 
 	scoped := mcpclient.RuntimeOverrides{}
 	aliases := map[string]string{}
@@ -539,7 +572,13 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			continue
 		}
 
-		resolved, err := api.resolveGovernedMCP(ctx, lender, name)
+		var resolved *executor.ResolvedMCPServer
+		var err error
+		if strings.HasPrefix(vaultSelectionName(name), serverVaultPrefix) {
+			resolved, err = api.resolveServerVaultMCP(ctx, lender, vaultSelectionName(name), sessionID)
+		} else {
+			resolved, err = api.resolveGovernedMCP(ctx, lender, name)
+		}
 		if err != nil {
 			continue
 		}
@@ -553,7 +592,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: lender, Connector: strings.TrimPrefix(vaultSelectionName(resolved.Name), "vault_"), Session: sessionID, Expires: time.Now().Truncate(time.Hour).Add(24 * time.Hour).Unix()})}
 		}
 		runtimeName := resolved.Name
-		if strings.HasPrefix(runtimeName, "vault_") {
+		if governedVaultName(runtimeName) {
 			runtimeName = vaultRuntimeName(vaultSelectionName(runtimeName), cfg)
 		}
 		if _, seen := scoped[runtimeName]; !seen {
@@ -561,16 +600,16 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		}
 		scoped[runtimeName] = mcpclient.RuntimeConfigOverride{Server: &cfg}
 		aliases[strings.ToLower(name)] = runtimeName
-		if strings.HasPrefix(runtimeName, "vault_") {
+		if governedVaultName(runtimeName) {
 			aliases[strings.ToLower(vaultSelectionName(runtimeName))] = runtimeName
-			for _, row := range rows {
-				if vaultServerName(row.ID) != vaultSelectionName(runtimeName) {
+			for _, row := range aliasRows {
+				if row.Name != vaultSelectionName(runtimeName) {
 					continue
 				}
 				for _, tool := range row.Tools {
 					_, short, ok := strings.Cut(tool.Name, "__")
 					if ok {
-						aliases[strings.ToLower(vaultServerName(row.ID)+":"+short)] = runtimeName + ":" + tool.Name
+						aliases[strings.ToLower(row.Name+":"+short)] = runtimeName + ":" + tool.Name
 					}
 				}
 			}
@@ -594,11 +633,11 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 		return nil, err
 	}
 	allowed := len(selected) == 0
-	if strings.HasPrefix(resolved.Name, "vault_") {
+	if governedVaultName(resolved.Name) {
 		picks := false
 		none := false
 		for _, n := range selected {
-			if strings.HasPrefix(n, "vault_") {
+			if governedVaultName(n) {
 				picks = true
 			}
 			if n == mcpclient.NoServers {
@@ -631,7 +670,7 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 	if len(tools) > 0 {
 		allowed = false
 		upstreamTool := tool
-		if strings.HasPrefix(resolved.Name, "vault_") {
+		if governedVaultName(resolved.Name) {
 			if _, suffix, ok := strings.Cut(tool, "__"); ok {
 				upstreamTool = suffix
 			}
@@ -725,7 +764,15 @@ func (api *StreamingAPI) lentVaultSlackRefusal(r *http.Request, in vaultDelegati
 			break
 		}
 	}
-	if !slack || r.Body == nil {
+	if !slack {
+		return ""
+	}
+	return lentSlackCallRefusal(r, in, caller, root)
+}
+
+// lentSlackCallRefusal checks each tools/call in a lent Slack connection's request body against the send-side rule.
+func lentSlackCallRefusal(r *http.Request, in vaultDelegation, caller, root string) string {
+	if r.Body == nil {
 		return ""
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))

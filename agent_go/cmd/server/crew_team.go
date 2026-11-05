@@ -665,22 +665,9 @@ func crewTeamRemoteDo(ctx context.Context, localOwner string, c desktopConnectio
 		resp.Body.Close()
 		return nil, fmt.Errorf("the server took too long; retrying")
 	}
-	if token := resp.Header.Get("X-Renewed-Token"); token != "" {
-		desktopConnectionsMu.Lock()
-		records, err := readDesktopConnections(localOwner)
-		if err == nil {
-			for i := range records {
-				if records[i].ID == c.ID && records[i].Token == c.Token {
-					records[i].Token = token
-				}
-			}
-			err = writeDesktopConnections(localOwner, records)
-		}
-		desktopConnectionsMu.Unlock()
-		if err != nil {
-			resp.Body.Close()
-			return nil, err
-		}
+	if err := saveRenewedDesktopToken(localOwner, c, resp.Header.Get("X-Renewed-Token")); err != nil {
+		resp.Body.Close()
+		return nil, err
 	}
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))

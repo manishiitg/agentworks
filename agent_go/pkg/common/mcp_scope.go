@@ -49,7 +49,8 @@ func IncludeDefaultVaultTools(tools, scopedServers []string) []string {
 	}
 	defaults := []string{}
 	for _, server := range scopedServers {
-		if strings.HasPrefix(server, "vault_") && strings.Contains(server, "__scope_") && !seen[server+":*"] && !explicitServer[server] {
+		// srv_* are the Mac's company-server Vault connections, governed the same way (cmd/server/server_vault_remote.go).
+		if (strings.HasPrefix(server, "vault_") || strings.HasPrefix(server, "srv_")) && strings.Contains(server, "__scope_") && !seen[server+":*"] && !explicitServer[server] {
 			defaults = append(defaults, server+":*")
 			seen[server+":*"] = true
 		}

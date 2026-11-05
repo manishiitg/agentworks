@@ -82,7 +82,9 @@ func (api *StreamingAPI) currentSessionSecrets(ctx context.Context, source sessi
 			scoped = api.loadSelectedSecrets(ctx, person, store, names)
 		}
 	}
-	return api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(source.User, source.Folder), scoped, globals)
+	merged := api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(source.User, source.Folder), scoped, globals)
+	// On the Mac, fetched again from the Crew's company server on every read, like the launch.
+	return api.addServerVaultSecrets(ctx, source.User, source.Folder, merged, globals)
 }
 
 // sessionSecretsResolver is how the read resolves a session's secrets (replaced in tests only).
@@ -137,12 +139,18 @@ func (api *StreamingAPI) handleSessionSecretRead(w http.ResponseWriter, r *http.
 		reply(http.StatusForbidden, map[string]string{"error": "this chat gets no secrets"})
 		return
 	}
-	for _, secret := range sessionSecretsResolver(api, r.Context(), source) {
+	misses := serverVaultSecretMisses{}
+	for _, secret := range sessionSecretsResolver(api, context.WithValue(r.Context(), serverVaultSecretMissKey{}, misses), source) {
 		if secret.Name == name && secret.Value != "" {
 			log.Printf("[SECRET_READ] session=%s secret=%s result=ok", sessionID, name)
 			reply(http.StatusOK, map[string]string{"value": secret.Value})
 			return
 		}
+	}
+	if reason := misses[name]; reason != "" {
+		log.Printf("[SECRET_READ] session=%s secret=%s result=not_found reason=company_server", sessionID, name)
+		reply(http.StatusServiceUnavailable, map[string]string{"error": reason})
+		return
 	}
 	log.Printf("[SECRET_READ] session=%s secret=%s result=not_found", sessionID, name)
 	reply(http.StatusNotFound, map[string]string{"error": name + " isn't selected for this chat. Add it to this project's secrets in Vault, or ask the project's owner to lend it."})
