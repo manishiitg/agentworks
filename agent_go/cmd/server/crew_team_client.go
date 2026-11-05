@@ -175,7 +175,7 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 							b.Status = "pending"
 							b.Error = crewTeamPlainSyncError(err)
 							_ = saveCrewTeamLocal(dir, b)
-							log.Printf("[CREW_TEAM] project=%s event=sync_failed shown=%q reason=%q", t.ProjectID, b.Error, err)
+							log.Printf("[CREW_TEAM] project=%s event=sync_failed step=%s shown=%q reason=%q", t.ProjectID, crewTeamStepOf(err), b.Error, err)
 						}
 					}
 				}
@@ -238,7 +238,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 			if direction == "upload" {
 				snapshot, err := crewTeamCapture(ctx, b.Root, stage, b.LocalBase, team.Folder, b.onPurpose())
 				if err != nil {
-					return err
+					return crewTeamStep("capture", err)
 				}
 				// Stop syncing removes the file from the shared folder; it stays on this computer.
 				for _, rel := range b.StopSyncing {
@@ -261,7 +261,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 				}
 				snapshot.Close()
 				if err != nil {
-					return err
+					return crewTeamStep("bundle", err)
 				}
 				payload, err := crewTeamPayload(filepath.Join(stage, "content"))
 				if err != nil {
@@ -274,7 +274,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 				pending.Action = "pull"
 				pending.Base = b.RemoteBase
 				if e = crewTeamSyncCall(ctx, owner, c, "/api/crew-teams/"+url.PathEscape(b.Project)+"/sync?folder_id="+url.QueryEscape(b.FolderID), pending, &pending); e != nil {
-					return e
+					return crewTeamStep("pull", e)
 				}
 				b.FolderOnPurpose = pending.OnPurpose // the server names what the folder holds on purpose
 			}
@@ -297,14 +297,14 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 			if direction == "upload" {
 				pending.Action = "prepare"
 				if e = crewTeamSyncCall(ctx, owner, c, route, pending, nil); e != nil {
-					return e
+					return crewTeamStep("prepare", e)
 				}
 				if e = transferCrewTeamBundle(ctx, c, b.Project, pending, filepath.Join(stage, "content")); e != nil {
-					return e
+					return crewTeamStep("send", e)
 				}
 				pending.Action = "apply"
 				if e = crewTeamSyncCall(ctx, owner, c, route, pending, nil); e != nil {
-					return e
+					return crewTeamStep("apply", e)
 				}
 				if e = store.AckSync(ctx, pair, snapshot.Content); e != nil {
 					return e
@@ -320,7 +320,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 				b.FolderOnPurpose, b.StopSyncing = sortedOnPurpose(folder), nil
 			} else {
 				if e = transferCrewTeamBundle(ctx, c, b.Project, pending, filepath.Join(stage, "content")); e != nil {
-					return e
+					return crewTeamStep("receive", e)
 				}
 				snapshot.Content.BundlePath = filepath.Join(stage, "content")
 				if e = store.DecodeSync(ctx, pair, snapshot); e != nil {
@@ -329,7 +329,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 				e = applyCrewTeamDownload(ctx, b, snapshot)
 				snapshot.Close()
 				if e != nil {
-					return e
+					return crewTeamStep("write", e)
 				}
 				if e = store.AckSync(ctx, pair, snapshot.Content); e != nil {
 					return e
@@ -342,7 +342,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 				}
 				pending.Action = "ack"
 				if e = crewTeamSyncCall(ctx, owner, c, route, pending, nil); e != nil {
-					return e
+					return crewTeamStep("ack", e)
 				}
 			}
 			if e = saveCrewTeamLocal(dir, *b); e != nil {
@@ -372,6 +372,30 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	b.LastSynced = time.Now().UTC().Format(time.RFC3339Nano)
 	log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=reconciled status=%s", b.Project, b.Client, b.Status)
 	return saveCrewTeamLocal(dir, *b)
+}
+
+// crewTeamStepError names the sync step that failed, for the log (the shown text stays the plain one).
+type crewTeamStepError struct {
+	step string
+	err  error
+}
+
+func (e crewTeamStepError) Error() string { return e.err.Error() }
+func (e crewTeamStepError) Unwrap() error { return e.err }
+
+func crewTeamStep(step string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return crewTeamStepError{step: step, err: err}
+}
+
+func crewTeamStepOf(err error) string {
+	var step crewTeamStepError
+	if errors.As(err, &step) {
+		return step.step
+	}
+	return "-"
 }
 
 func crewTeamCurrentFile(root, rel string, on ...crewTeamOnPurpose) (*crewsync.File, error) {
