@@ -232,3 +232,80 @@ func crewTeamTestDocs(t *testing.T, folder, project string) {
 		t.Fatal(err)
 	}
 }
+
+// Owner, 5 Nov: two people editing different lines of one shared file both keep their edits. A change sent from an
+// older base is merged by lines into a new revision every copy (the sender's included) downloads; the same line
+// edited by both takes the later side and is a clash; a binary file keeps the whole-file rule (later wins).
+func TestCrewTeamLineMergeOfConcurrentEdits(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	if err := writeCrewTeam(crewTeam{ProjectID: "merge-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
+		t.Fatal(err)
+	}
+	store, err := crewTeamChunkStore("merge-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := func(content string) crewTeamFileVersion {
+		t.Helper()
+		v, err := crewTeamChunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	for _, tc := range []struct {
+		name, base, ours, theirs, want string
+		hunks                          int // overlapping parts; -1 = not merged (whole-file rule)
+	}{
+		{"different lines", "title\nalpha\nbeta\ngamma\ndelta\nend\n", "title\nALPHA by owner\nbeta\ngamma\ndelta\nend\n",
+			"title\nalpha\nbeta\ngamma\nDELTA by member\nend\nnew last line\n", "title\nALPHA by owner\nbeta\ngamma\nDELTA by member\nend\nnew last line\n", 0},
+		{"same line", "title\nalpha\nbeta\ngamma\ndelta\nend\n", "title\nalpha owner\nbeta\ngamma\ndelta\nend\n",
+			"title\nalpha member\nbeta\ngamma\ndelta\nmember end\n", "title\nalpha member\nbeta\ngamma\ndelta\nmember end\n", 1},
+		{"binary", "title\x00base\nend\n", "title\x00base\nowner end\n", "title\x00member\nend\n", "title\x00member\nend\n", -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := strings.ReplaceAll(tc.name, " ", "-") + ".txt"
+			first, ours, theirs := put(tc.base), put(tc.ours), put(tc.theirs)
+			for i, c := range []crewTeamChange{{Path: path, After: &first}, {Path: path, Before: first.Hash, After: &ours}} {
+				transfer := path + "-owner-" + string(rune('a'+i))
+				if _, err := commitCrewTeamChanges(t.Context(), "merge-test", "owner", transfer, crewTransferDigest(transfer), []crewTeamChange{c}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			receipt, err := commitCrewTeamChanges(t.Context(), "merge-test", "member", path+"-member", crewTransferDigest(path+"-member"), []crewTeamChange{{Path: path, Before: first.Hash, After: &theirs}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, _ := crewTeamFilesRoot("merge-test")
+			if got, _ := os.ReadFile(filepath.Join(root, path)); string(got) != tc.want {
+				t.Fatalf("team file %q, want %q", got, tc.want)
+			}
+			state, _ := readCrewTeamFileState("merge-test")
+			current := state.Versions[path]
+			var stored strings.Builder
+			if err = crewTeamAssemble(store, crewTeamFileVersion{Chunks: current.Chunks}, &stored); err != nil || stored.String() != tc.want || current.Author != "member" {
+				t.Fatalf("stored version %q by %s, err %v", stored.String(), current.Author, err)
+			}
+			if clash := slices.Contains(receipt.Conflicts, path); clash != (tc.hunks != 0) {
+				t.Fatalf("conflicts %v for %d overlapping parts", receipt.Conflicts, tc.hunks)
+			}
+			if tc.hunks != 0 {
+				last := state.Clashes[len(state.Clashes)-1]
+				if last.Path != path || last.WinningAuthor != "member" || last.Merged != (tc.hunks > 0) || tc.hunks > 0 && last.Hunks != tc.hunks {
+					t.Fatalf("clash record %+v", last)
+				}
+				if v := state.versionAt(path, last.LosingRevision); v == nil || v.Hash != ours.Hash {
+					t.Fatal("the owner's version is not kept in history")
+				}
+			}
+			// Both copies converge: the new revision goes to every copy, including the member's that sent its own.
+			if paths, _ := crewTeamChangedSince(state, receipt.Revision-1, 100); !slices.Contains(paths, path) {
+				t.Fatalf("the merged revision is not sent out: %v", paths)
+			}
+			if tc.hunks == 0 && (current.File.Hash == theirs.Hash || current.File.Hash == ours.Hash) {
+				t.Fatal("the merge did not produce a new version for both copies to download")
+			}
+		})
+	}
+}

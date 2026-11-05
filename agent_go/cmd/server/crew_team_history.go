@@ -38,6 +38,9 @@ type crewTeamClash struct {
 	WinningAuthor   string `json:"winning_author"`
 	LosingAuthor    string `json:"losing_author"`
 	Resolved        bool   `json:"resolved"`
+	// Merged: the two versions were merged by lines; Hunks overlapping parts took the winning (later) side.
+	Merged bool `json:"merged,omitempty"`
+	Hunks  int  `json:"hunks,omitempty"`
 }
 
 // versionAt is a file's version at a revision, from the events; nil when it did not exist then.

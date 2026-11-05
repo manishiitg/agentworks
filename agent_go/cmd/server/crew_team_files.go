@@ -345,21 +345,39 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 			applied++
 			continue
 		}
+		// Two people editing the same text file from one base: merge by lines (owner, 5 Nov). The merged file is a new
+		// revision, so every copy, the sender's included, downloads it next round; only overlapping lines are a clash.
+		merged, hunks := false, 0
+		var source crewTeamFileVersion
+		if c.After != nil {
+			source = *c.After
+		}
+		if kind == "clash" && after != nil {
+			if v, conflicts, ok := crewTeamMergeVersion(store, state, c.Path, c.Before, current, *c.After); ok {
+				source, after, chunks, hunks, merged = v, v.file(), v.Chunks, conflicts, true
+				kind = "merged"
+				result := "merged"
+				if hunks > 0 {
+					result = "merged_with_clash"
+				}
+				log.Printf("[CREW_TEAM_SYNC] merge project=%s actor=%s path=%q result=%s hunks=%d", project, actor, c.Path, result, hunks)
+			}
+		}
 		if after == nil {
 			if e = removeCrewTeamFile(root, c.Path); e != nil {
 				return partial(e)
 			}
 		} else {
 			reader, writer := io.Pipe()
-			go func(v crewTeamFileVersion) { writer.CloseWithError(crewTeamAssemble(store, v, writer)) }(*c.After)
+			go func(v crewTeamFileVersion) { writer.CloseWithError(crewTeamAssemble(store, v, writer)) }(source)
 			e = writeCrewTeamFile(ctx, root, c.Path, reader, *after, op)
 			reader.Close()
 			if e != nil {
 				return partial(e)
 			}
 		}
-		if kind == "clash" {
-			state.Clashes = append(state.Clashes, crewTeamClash{Path: c.Path, WinningRevision: receipt.Revision, LosingRevision: current.Revision, WinningAuthor: actor, LosingAuthor: current.Author})
+		if kind == "clash" || merged && hunks > 0 {
+			state.Clashes = append(state.Clashes, crewTeamClash{Path: c.Path, WinningRevision: receipt.Revision, LosingRevision: current.Revision, WinningAuthor: actor, LosingAuthor: current.Author, Merged: merged, Hunks: hunks})
 			receipt.Conflicts = append(receipt.Conflicts, c.Path)
 		}
 		state.Events = append(state.Events, crewTeamEvent{Path: c.Path, Kind: kind, Revision: receipt.Revision, Actor: actor, At: now, File: after, Chunks: chunks})

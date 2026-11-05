@@ -143,8 +143,11 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 			if i == 3 {
 				break
 			}
-			lines = append(lines, crewAccessLine{Kind: "clash", Title: fmt.Sprintf("%d %s", len(f.Clashes), plural(len(f.Clashes), "clash", "clashes")),
-				Detail: c.Path + " · " + c.WinningAuthor + " and " + firstNonEmptyTrimmed(c.LosingAuthor, "an earlier version")})
+			detail := c.Path + " · " + c.WinningAuthor + " and " + firstNonEmptyTrimmed(c.LosingAuthor, "an earlier version")
+			if c.Merged {
+				detail += fmt.Sprintf(" · merged; %d %s changed by both kept the later version", c.Hunks, plural(c.Hunks, "part", "parts"))
+			}
+			lines = append(lines, crewAccessLine{Kind: "clash", Title: fmt.Sprintf("%d %s", len(f.Clashes), plural(len(f.Clashes), "clash", "clashes")), Detail: detail})
 		}
 	}
 	return lines
