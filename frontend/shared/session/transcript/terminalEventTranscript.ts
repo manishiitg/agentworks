@@ -269,10 +269,16 @@ function textField(value: unknown): string {
  * They need a compact readable card rather than a narrow right-aligned chat
  * line that makes every wrapped line appear to run backwards.
  */
+const USER_MESSAGE_PREVIEW_LIMIT = 480
+
+export function transcriptUserMessagePreview(content: string): string {
+  return `${content.split(/\r?\n/).slice(0, 6).join('\n').slice(0, USER_MESSAGE_PREVIEW_LIMIT).trimEnd()}…`
+}
+
 export function shouldCollapseTranscriptUserMessage(content: string): boolean {
   const normalized = content.trim()
   if (!normalized) return false
-  return normalized.length > 480 || normalized.split(/\r?\n/).length > 6
+  return normalized.length > USER_MESSAGE_PREVIEW_LIMIT || normalized.split(/\r?\n/).length > 6
 }
 
 /**

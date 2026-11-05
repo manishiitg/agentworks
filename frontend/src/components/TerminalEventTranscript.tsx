@@ -33,6 +33,7 @@ import {
   runActivity,
   isInspectableBackgroundActivity,
   shouldCollapseTranscriptUserMessage,
+  transcriptUserMessagePreview,
   type PairedToolCall,
   selectTerminalEvents,
   type TranscriptItem,
@@ -357,7 +358,6 @@ const TranscriptEvent: React.FC<{
 
 
 
-const USER_MESSAGE_PREVIEW_LIMIT = 480
 
 // The files a person attached to their message: a thumbnail for an image (click to open it larger), a name chip for any
 // other file. The paths come with the message, so the same shows after a reload; the path text itself is not shown.
@@ -405,7 +405,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
     : askAI
       ? askAIDisplayText(content)
       : collapsible
-        ? `${content.slice(0, USER_MESSAGE_PREVIEW_LIMIT).trimEnd()}…`
+        ? transcriptUserMessagePreview(content)
         : content
   // The receipt row appears for a timestamped row or a row carrying a
   // delivery verdict; plain untimestamped rows render exactly as before.

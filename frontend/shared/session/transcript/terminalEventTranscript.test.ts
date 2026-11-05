@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pairToolCalls, runActivity, toolErrorContextByEventID, selectTerminalEvents, buildTranscriptItems, collapseCompletedLifecycleStarts, internalTranscriptMessageTitle, isExecutionPromptTranscriptMessage, isInternalTranscriptMessage, shouldCollapseTranscriptUserMessage, type TranscriptItem } from './terminalEventTranscript'
+import { pairToolCalls, runActivity, toolErrorContextByEventID, selectTerminalEvents, buildTranscriptItems, collapseCompletedLifecycleStarts, internalTranscriptMessageTitle, isExecutionPromptTranscriptMessage, isInternalTranscriptMessage, shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview, type TranscriptItem } from './terminalEventTranscript'
 import type { PollingEvent, TerminalSnapshot } from '../types'
 
 // The rail is the hierarchy: every agent and sub-agent owns its own terminal.
@@ -74,6 +74,9 @@ describe('long user messages', () => {
     expect(shouldCollapseTranscriptUserMessage('Can you check this?')).toBe(false)
     expect(shouldCollapseTranscriptUserMessage(Array.from({ length: 7 }, (_, index) => `line ${index}`).join('\n'))).toBe(true)
     expect(shouldCollapseTranscriptUserMessage('x'.repeat(481))).toBe(true)
+    const tall = Array.from({ length: 7 }, (_, index) => `line ${index}`).join('\n')
+    expect(transcriptUserMessagePreview(tall)).not.toContain('line 6')
+    expect(transcriptUserMessagePreview('x'.repeat(481))).toHaveLength(481)
   })
 })
 
