@@ -1,8 +1,8 @@
 package server
 
 import (
+	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -20,7 +20,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
@@ -30,10 +29,11 @@ import (
 )
 
 type crewTeamVersion struct {
-	File       *crewsync.File `json:"file,omitempty"` // nil is a tombstone
-	Revision   uint64         `json:"revision"`
-	Author     string         `json:"author"`
-	ModifiedAt string         `json:"modified_at"`
+	File       *crewsync.File  `json:"file,omitempty"` // nil is a tombstone
+	Chunks     []crewTeamChunk `json:"chunks,omitempty"`
+	Revision   uint64          `json:"revision"`
+	Author     string          `json:"author"`
+	ModifiedAt string          `json:"modified_at"`
 }
 type crewTeamFileState struct {
 	Revision uint64                     `json:"revision"`
@@ -142,51 +142,6 @@ func (s crewTeamFileState) manifest() crewsync.Manifest {
 	return m
 }
 
-// crewTeamCapture reads what the Team shares from root (the Crew's folder, or a member's copy of it): only paths the
-// share holds are read, so a file a member puts outside it stays on their side.
-func crewTeamCapture(ctx context.Context, root, private string, base crewsync.Manifest, share crewTeamFolder, on ...crewTeamOnPurpose) (crewsync.Snapshot, error) {
-	if e := os.MkdirAll(private, 0700); e != nil {
-		return crewsync.Snapshot{}, e
-	}
-	s, e := crewsync.CaptureSelected(ctx, crewTeamRoots(root), base, private, func(key string, directory bool) bool {
-		rel, ok := strings.CutPrefix(key, "resources/")
-		if directory {
-			return ok && share.walks(rel)
-		}
-		return ok && share.holds(rel)
-	})
-	if e != nil {
-		return s, e
-	}
-	for key := range s.Files {
-		rel, err := crewTeamRelative(key, on...)
-		if err != nil {
-			delete(s.Files, key)
-			continue
-		}
-		f, err := openCrewTeamFile(root, rel, on...)
-		if err != nil {
-			s.Close()
-			return crewsync.Snapshot{}, err
-		}
-		f.Close()
-	}
-	changes := s.Changes[:0]
-	for _, c := range s.Changes {
-		if _, e := crewTeamRelative(c.Path, on...); e == nil {
-			changes = append(changes, c)
-		}
-	}
-	s.Changes = changes
-	omitted := s.Omitted[:0]
-	for _, p := range s.Omitted {
-		if _, e := crewTeamRelative(p, on...); e == nil {
-			omitted = append(omitted, p)
-		}
-	}
-	s.Omitted = omitted
-	return s, nil
-}
 func validCrewTeamHash(value string) bool {
 	b, e := hex.DecodeString(value)
 	return e == nil && len(b) == 32 && value == strings.ToLower(value)
@@ -261,10 +216,19 @@ func validateCrewTeamSnapshot(s *crewsync.Snapshot, on ...crewTeamOnPurpose) err
 	return nil
 }
 
-// The caller holds the team lock and has rechecked current membership. Only this
-// writer mutates canonical bytes; native agents use their own working copies.
-// declared are the paths the uploader chose to sync on purpose in this transfer.
-func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest string, snapshot crewsync.Snapshot, declared ...string) (crewTeamReceipt, error) {
+// crewTeamChange is one file of a commit: its path, the version hash the sender started from ("" = it had none) and its
+// new version (nil deletes it).
+type crewTeamChange struct {
+	Path   string               `json:"path"`
+	Before string               `json:"before,omitempty"`
+	After  *crewTeamFileVersion `json:"after,omitempty"`
+}
+
+// commitCrewTeamChanges records a commit: each changed file's new version (its chunks must already be in the store),
+// a clash when the file moved on since the sender's base (the newer one wins, the other stays in history: keep both),
+// the canonical bytes, events and a receipt (a retry with the same transfer returns it). The caller holds the team
+// lock and has rechecked current membership. declared are the paths the sender chose to sync on purpose.
+func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest string, changes []crewTeamChange, declared ...string) (crewTeamReceipt, error) {
 	dir, e := crewTeamContentDir(project)
 	if e != nil {
 		return crewTeamReceipt{}, e
@@ -274,106 +238,109 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 		return crewTeamReceipt{}, e
 	}
 	receiptKey := crewTransferDigest(actor + "\x00" + transfer)
-	var receipt crewTeamReceipt
 	if old, ok := state.Receipts[receiptKey]; ok {
 		if old.Digest != digest {
 			return old, fmt.Errorf("this transfer ID was already used for different changes")
 		}
 		return old, nil
 	}
-	if transfer == "" || len(transfer) > 257 || !validCrewTeamHash(digest) {
-		return receipt, fmt.Errorf("use a stable transfer identity")
+	if transfer == "" || len(transfer) > 257 || !validCrewTeamHash(digest) || len(changes) > crewTeamCommitBatch {
+		return crewTeamReceipt{}, fmt.Errorf("use a stable transfer identity and at most %d files", crewTeamCommitBatch)
+	}
+	team, e := readCrewTeam(project)
+	if e != nil {
+		return crewTeamReceipt{}, e
+	}
+	store, e := crewTeamChunkStore(project)
+	if e != nil {
+		return crewTeamReceipt{}, e
 	}
 	op := state.onPurpose().with(declared)
-	if e = validateCrewTeamSnapshot(&snapshot, op); e != nil {
-		return receipt, e
-	}
-	// Only what the Team shares is accepted; a member's capture already leaves the rest out.
-	if t, err := readCrewTeam(project); err != nil {
-		return receipt, err
-	} else {
-		for _, c := range snapshot.Changes {
-			if rel, _ := crewTeamRelative(c.Path, op); c.After != nil && !t.Folder.holds(rel) {
-				return receipt, fmt.Errorf("%s is outside what the team shares", rel)
+	next := state.manifest()
+	seen := map[string]bool{}
+	for _, c := range changes {
+		if seen[c.Path] || !crewTeamAllowed(c.Path, op) || c.Before != "" && !validCrewTeamHash(c.Before) {
+			return crewTeamReceipt{}, fmt.Errorf("only ordinary files inside the shared folder can be changed: %s", c.Path)
+		}
+		seen[c.Path] = true
+		if c.After == nil {
+			delete(next, crewTeamKey(c.Path))
+			continue
+		}
+		if !team.Folder.holds(c.Path) {
+			return crewTeamReceipt{}, fmt.Errorf("%s is outside what the team shares", c.Path)
+		}
+		if !c.After.valid() {
+			return crewTeamReceipt{}, fmt.Errorf("invalid shared file metadata: %s", c.Path)
+		}
+		for _, chunk := range c.After.Chunks {
+			if !crewTeamHasChunk(store, chunk) {
+				return crewTeamReceipt{}, fmt.Errorf("send the file's chunks before committing it: %s", c.Path)
 			}
 		}
+		next[crewTeamKey(c.Path)] = *c.After.file()
+	}
+	// The whole next folder stays within the limits, with no file/folder or letter-case collisions.
+	if e = validateCrewTeamSnapshot(&crewsync.Snapshot{Files: next}, op); e != nil {
+		return crewTeamReceipt{}, e
 	}
 	root := filepath.Join(dir, "files")
 	if e = os.MkdirAll(root, 0700); e != nil {
-		return receipt, e
+		return crewTeamReceipt{}, e
 	}
-	// Validate every changed payload before altering any file.
-	for _, c := range snapshot.Changes {
+	receipt := crewTeamReceipt{TransferID: transfer, Digest: digest, Revision: state.Revision + 1, Conflicts: []string{}}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, c := range crewTeamOrderedChanges(changes) {
+		current := state.Versions[c.Path]
+		var after *crewsync.File
+		var chunks []crewTeamChunk
 		if c.After != nil {
-			if e = c.CopyTo(ctx, io.Discard); e != nil {
-				return receipt, e
-			}
+			after, chunks = c.After.file(), c.After.Chunks
 		}
-	}
-	next := state.manifest()
-	for _, c := range snapshot.Changes {
-		if c.After == nil {
-			delete(next, c.Path)
-		} else {
-			next[c.Path] = *c.After
-		}
-	}
-	if e = validateCrewTeamSnapshot(&crewsync.Snapshot{Files: next}, op); e != nil {
-		return receipt, e
-	}
-	receipt = crewTeamReceipt{TransferID: transfer, Digest: digest, Revision: state.Revision + 1, Conflicts: []string{}}
-	changes := crewTeamOrderedChanges(snapshot.Changes)
-	// Save the complete next revision before replacing working bytes. A failed
-	// disk write therefore never discards the previous or incoming version.
-	history := filesnapshots.Store{Root: root, Private: filepath.Join(dir, "history")}
-	if e = history.SaveFolderRevision(ctx, fmt.Sprint(receipt.Revision), fmt.Sprint(state.Revision), crewTeamRoots(root), crewsync.Snapshot{Files: next, Changes: changes}); e != nil {
-		return receipt, e
-	}
-	for _, c := range changes {
-		rel, _ := crewTeamRelative(c.Path, op)
-		current := state.Versions[rel]
 		// A file synced on purpose is recorded with who chose it; removing it ends that.
-		if c.After == nil {
-			if _, was := state.OnPurpose[rel]; was {
-				delete(state.OnPurpose, rel)
-				log.Printf("[CREW_TEAM] project=%s actor=%s event=sync_anyway path=%q on=false", project, actor, rel)
+		if after == nil {
+			if _, was := state.OnPurpose[c.Path]; was {
+				delete(state.OnPurpose, c.Path)
+				log.Printf("[CREW_TEAM] project=%s actor=%s event=sync_anyway path=%q on=false", project, actor, c.Path)
 			}
-		} else if op[rel] && !crewTeamAllowed(rel) && state.OnPurpose[rel] == "" {
+		} else if op[c.Path] && !crewTeamAllowed(c.Path) && state.OnPurpose[c.Path] == "" {
 			if state.OnPurpose == nil {
 				state.OnPurpose = map[string]string{}
 			}
-			state.OnPurpose[rel] = actor
-			log.Printf("[CREW_TEAM] project=%s actor=%s event=sync_anyway path=%q on=true", project, actor, rel)
+			state.OnPurpose[c.Path] = actor
+			log.Printf("[CREW_TEAM] project=%s actor=%s event=sync_anyway path=%q on=true", project, actor, c.Path)
 		}
-		if crewTeamSame(current.File, c.After) {
+		if crewTeamSame(current.File, after) {
 			continue
 		}
 		kind := "sent"
-		if c.After == nil {
+		if after == nil {
 			kind = "removed"
 		}
-		if !crewTeamSame(current.File, c.Before) {
-			kind = "clash"
-			state.Clashes = append(state.Clashes, crewTeamClash{Path: rel, WinningRevision: receipt.Revision, LosingRevision: current.Revision, WinningAuthor: actor, LosingAuthor: current.Author})
-			receipt.Conflicts = append(receipt.Conflicts, rel)
+		currentHash := ""
+		if current.File != nil {
+			currentHash = current.File.Hash
 		}
-		state.Events = append(state.Events, crewTeamEvent{Path: rel, Kind: kind, Revision: receipt.Revision, Actor: actor, At: time.Now().UTC().Format(time.RFC3339Nano), File: c.After})
-		if c.After == nil {
-			if e = removeCrewTeamFile(root, rel); e != nil {
+		if currentHash != c.Before {
+			kind = "clash"
+			state.Clashes = append(state.Clashes, crewTeamClash{Path: c.Path, WinningRevision: receipt.Revision, LosingRevision: current.Revision, WinningAuthor: actor, LosingAuthor: current.Author})
+			receipt.Conflicts = append(receipt.Conflicts, c.Path)
+		}
+		state.Events = append(state.Events, crewTeamEvent{Path: c.Path, Kind: kind, Revision: receipt.Revision, Actor: actor, At: now, File: after, Chunks: chunks})
+		if after == nil {
+			if e = removeCrewTeamFile(root, c.Path); e != nil {
 				return receipt, e
 			}
 		} else {
-			f, e := os.Open(c.DataPath)
-			if e != nil {
-				return receipt, e
-			}
-			e = writeCrewTeamFile(ctx, root, rel, f, *c.After, op)
-			f.Close()
+			reader, writer := io.Pipe()
+			go func(v crewTeamFileVersion) { writer.CloseWithError(crewTeamAssemble(store, v, writer)) }(*c.After)
+			e = writeCrewTeamFile(ctx, root, c.Path, reader, *after, op)
+			reader.Close()
 			if e != nil {
 				return receipt, e
 			}
 		}
-		state.Versions[rel] = crewTeamVersion{File: c.After, Revision: receipt.Revision, Author: actor, ModifiedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+		state.Versions[c.Path] = crewTeamVersion{File: after, Chunks: chunks, Revision: receipt.Revision, Author: actor, ModifiedAt: now}
 	}
 	state.Revision = receipt.Revision
 	state.Receipts[receiptKey] = receipt
@@ -381,13 +348,15 @@ func applyCrewTeamChanges(ctx context.Context, project, actor, transfer, digest 
 		return receipt, e
 	}
 	for _, event := range state.Events {
-		if event.Revision == state.Revision {
+		if event.Revision == state.Revision && len(changes) <= 50 {
 			log.Printf("[CREW_TEAM_EVENT] project=%s actor=%s path=%q kind=%s revision=%d", project, event.Actor, event.Path, event.Kind, event.Revision)
 		}
 	}
 	log.Printf("[CREW_TEAM_FILES] project=%s actor=%s transfer=%s revision=%d changes=%d conflicts=%d", project, actor, transfer, state.Revision, len(changes), len(receipt.Conflicts))
+	publishCrewPanelChanged(project)
 	return receipt, nil
 }
+
 func openCrewTeamFile(root, rel string, on ...crewTeamOnPurpose) (*os.File, error) {
 	if !crewTeamAllowed(rel, on...) {
 		return nil, fmt.Errorf("this path is outside shared content")
@@ -550,32 +519,30 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 		externalError(w, 400, "transfer_required", "Send the file's saved edit identity.")
 		return
 	}
-	var after *crewsync.File
-	var stage string
+	// A saved or uploaded file goes into the chunk store first, then is committed like any synced change.
+	var after *crewTeamFileVersion
 	if r.Method == http.MethodPut {
-		stageDir := filepath.Join(dir, "incoming")
-		if e = os.MkdirAll(stageDir, 0700); e != nil {
-			externalError(w, 409, "team_write_failed", e.Error())
+		store, err := crewTeamChunkStore(project)
+		if err != nil {
+			externalError(w, 409, "team_write_failed", err.Error())
 			return
 		}
-		f, e := os.CreateTemp(stageDir, "file-")
-		if e != nil {
-			externalError(w, 409, "team_write_failed", e.Error())
-			return
+		body := http.MaxBytesReader(w, r.Body, publication.MaxFileBytes)
+		size := r.ContentLength
+		if size < 0 {
+			raw, err := io.ReadAll(body)
+			if err != nil {
+				externalError(w, 400, "invalid_file", "Send a complete file of at most 64 MiB.")
+				return
+			}
+			size, body = int64(len(raw)), io.NopCloser(bytes.NewReader(raw))
 		}
-		stage = f.Name()
-		defer os.Remove(stage)
-		h := sha256.New()
-		n, e := io.Copy(io.MultiWriter(f, h), http.MaxBytesReader(w, r.Body, publication.MaxFileBytes))
-		ce := f.Close()
-		if e == nil {
-			e = ce
-		}
-		if e != nil {
+		version, err := crewTeamChunkReader(body, size, false, func(id string, data []byte) error { return crewTeamPutChunk(store, id, data) })
+		if err != nil {
 			externalError(w, 400, "invalid_file", "Send a complete file of at most 64 MiB.")
 			return
 		}
-		after = &crewsync.File{Hash: hex.EncodeToString(h.Sum(nil)), Size: n}
+		after = &version
 	} else if r.Method != http.MethodDelete {
 		externalError(w, 405, "invalid_action", "Use open, save, upload or delete for this folder.")
 		return
@@ -591,27 +558,8 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
-	state, e := readCrewTeamFileState(project)
-	if e != nil {
-		externalError(w, 409, "team_write_failed", e.Error())
-		return
-	}
-	var before *crewsync.File
-	if base != "" {
-		before = &crewsync.File{Hash: base}
-		if current := state.Versions[rel].File; current != nil && current.Hash == base {
-			before = current
-		}
-	}
-	files := state.manifest()
-	if after == nil {
-		delete(files, crewTeamKey(rel))
-	} else {
-		files[crewTeamKey(rel)] = *after
-	}
-	change := crewsync.Change{Path: crewTeamKey(rel), Before: before, After: after, DataPath: stage}
 	wire, _ := json.Marshal(after)
-	receipt, e := applyCrewTeamChanges(r.Context(), project, claims.UserID, transfer, crewTransferDigest(rel+"\x00"+base+"\x00"+string(wire)), crewsync.Snapshot{Files: files, Changes: []crewsync.Change{change}})
+	receipt, e := commitCrewTeamChanges(r.Context(), project, claims.UserID, transfer, crewTransferDigest(rel+"\x00"+base+"\x00"+string(wire)), []crewTeamChange{{Path: rel, Before: base, After: after}})
 	if e != nil {
 		externalError(w, 409, "team_write_failed", e.Error())
 		return
@@ -622,8 +570,8 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 // A request-scoped identity for a browser upload, also used by chat-tool writes.
 func newCrewTeamTransfer() string { return uuid.NewString() }
 
-func crewTeamOrderedChanges(input []crewsync.Change) []crewsync.Change {
-	changes := append([]crewsync.Change(nil), input...)
+func crewTeamOrderedChanges(input []crewTeamChange) []crewTeamChange {
+	changes := append([]crewTeamChange(nil), input...)
 	sort.SliceStable(changes, func(i, j int) bool {
 		if (changes[i].After == nil) != (changes[j].After == nil) {
 			return changes[i].After == nil

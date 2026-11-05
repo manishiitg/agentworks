@@ -592,24 +592,6 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})
 }
 
-// errCrewTeamWorking: the server is still running this sync step; ask again with the same transfer.
-var errCrewTeamWorking = errors.New("the server is still working on this sync step")
-
-// crewTeamSyncCall is one sync step, asked again every 2 s while the server answers "still working".
-func crewTeamSyncCall(ctx context.Context, localOwner string, c desktopConnection, route string, input, out any) error {
-	for {
-		e := crewTeamRemoteJSON(ctx, localOwner, c, http.MethodPost, route, input, out)
-		if !errors.Is(e, errCrewTeamWorking) {
-			return e
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("the server took too long; retrying")
-		case <-time.After(2 * time.Second):
-		}
-	}
-}
-
 func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnection, method, route string, input, out any) error {
 	var body io.Reader
 	if input != nil {
@@ -619,25 +601,36 @@ func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnect
 		}
 		body = bytes.NewReader(data)
 	}
-	req, e := http.NewRequestWithContext(ctx, method, c.Server+route, body)
+	resp, e := crewTeamRemoteDo(ctx, localOwner, c, method, route, "application/json", body)
 	if e != nil {
 		return e
 	}
+	defer resp.Body.Close()
+	if out != nil {
+		return json.NewDecoder(io.LimitReader(resp.Body, 64<<20)).Decode(out)
+	}
+	return nil
+}
+
+// crewTeamRemoteDo is one request to the team's server with the saved sign-in (renewed when the server says so); a
+// non-2xx answer is an error with the server's plain message. The caller closes the body.
+func crewTeamRemoteDo(ctx context.Context, localOwner string, c desktopConnection, method, route, contentType string, body io.Reader) (*http.Response, error) {
+	req, e := http.NewRequestWithContext(ctx, method, c.Server+route, body)
+	if e != nil {
+		return nil, e
+	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	resp, e := crewTeamHTTPClient(ctx).Do(req)
 	if e != nil {
 		if errors.Is(e, context.DeadlineExceeded) || os.IsTimeout(e) {
-			return fmt.Errorf("the server took too long; retrying")
+			return nil, fmt.Errorf("the server took too long; retrying")
 		}
-		return fmt.Errorf("cannot reach your company's server; local changes stay on this computer")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusAccepted && resp.Header.Get(crewTeamWorkingHeader) != "" {
-		return errCrewTeamWorking
+		return nil, fmt.Errorf("cannot reach your company's server; local changes stay on this computer")
 	}
 	if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
-		return fmt.Errorf("the server took too long; retrying")
+		resp.Body.Close()
+		return nil, fmt.Errorf("the server took too long; retrying")
 	}
 	if token := resp.Header.Get("X-Renewed-Token"); token != "" {
 		desktopConnectionsMu.Lock()
@@ -652,17 +645,16 @@ func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnect
 		}
 		desktopConnectionsMu.Unlock()
 		if err != nil {
-			return err
+			resp.Body.Close()
+			return nil, err
 		}
 	}
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("%s", laptopActionErrorText(string(b)))
+		resp.Body.Close()
+		return nil, fmt.Errorf("%s", laptopActionErrorText(string(b)))
 	}
-	if out != nil {
-		return json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(out)
-	}
-	return nil
+	return resp, nil
 }
 
 func (api *StreamingAPI) handleDesktopCrewTeam(w http.ResponseWriter, r *http.Request) {
@@ -777,7 +769,7 @@ func crewTeamContentDir(project string) (string, error) {
 	if t.Folder.ID == "" || !t.Folder.shared() {
 		return "", fmt.Errorf("choose a shared folder first")
 	}
-	return filepath.Join(d, "folders", crewTransferDigest(t.Folder.ID)), nil
+	return filepath.Join(d, "folders", crewTransferDigest(t.Folder.ID+"\x00"+crewTeamSyncFormat)), nil
 }
 func crewTeamRequestAuthorize(r *http.Request, claims *UserClaims, project, rel string, write, folder bool) (crewTeam, error) {
 	t, err := crewTeamAuthorize(claims, project, rel, write, folder)

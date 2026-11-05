@@ -240,7 +240,7 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 		if dir, err := crewTeamLocalDir(owner, c, b.PeerProjectID, remote.team.Folder.ID); err == nil {
 			f.Progress = crewTeamRoundFor(dir)
 			if local, err := readCrewTeamLocal(dir); err == nil {
-				f.HasLocal, f.LocalFiles, f.LocalError = true, len(local.LocalBase), local.Error
+				f.HasLocal, f.LocalFiles, f.LocalError = true, len(local.Files), local.Error
 				f.LocalSynced, _ = time.Parse(time.RFC3339Nano, local.LastSynced)
 			}
 		}

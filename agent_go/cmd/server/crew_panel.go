@@ -238,17 +238,9 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	api.activeSessionsMux.RUnlock()
-	crewTeamSyncJobs.Range(func(_, value any) bool {
-		job := value.(*crewTeamSyncJob)
-		if job.project == project {
-			select {
-			case <-job.done:
-			default:
-				out.Busy = true
-			}
-		}
-		return !out.Busy
-	})
+	if crewTeamSyncActive(project) {
+		out.Busy = true
+	}
 	for _, section := range sections {
 		out.Busy = out.Busy || section.Busy
 		if section.Access != nil {

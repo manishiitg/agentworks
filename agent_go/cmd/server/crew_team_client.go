@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -8,44 +9,52 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
+	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
+	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 type crewTeamLocal struct {
-	FolderID     string            `json:"folder_id"`
-	Connection   string            `json:"connection"`
-	Project      string            `json:"project_id"`
-	LocalProject string            `json:"local_project_id,omitempty"`
-	RemoteUser   string            `json:"remote_user"`
-	Client       string            `json:"client"`
-	Root         string            `json:"local_folder"`
-	LocalBase    crewsync.Manifest `json:"local_base"`
-	RemoteBase   crewsync.Manifest `json:"remote_base"`
-	LastSynced   string            `json:"last_synced,omitempty"`
-	Status       string            `json:"status"`
-	Error        string            `json:"error,omitempty"`
+	FolderID     string `json:"folder_id"`
+	Connection   string `json:"connection"`
+	Project      string `json:"project_id"`
+	LocalProject string `json:"local_project_id,omitempty"`
+	RemoteUser   string `json:"remote_user"`
+	Client       string `json:"client"`
+	Root         string `json:"local_folder"`
+	// Files is what this copy last had in step with the team, per path: size and modification time (a file whose
+	// size and time are unchanged is not read again) and its version. Revision is the team revision it has received.
+	Files      map[string]crewTeamLocalFile `json:"files"`
+	Revision   uint64                       `json:"revision"`
+	LastSynced string                       `json:"last_synced,omitempty"`
+	Status     string                       `json:"status"`
+	Error      string                       `json:"error,omitempty"`
 	// "Sync it anyway" (owner, 5 Nov): this person's own choice of files that look like they hold passwords or keys,
 	// by exact path; StopSyncing are ones taken back, removed from the shared folder on the next upload (the files
 	// stay here). FolderOnPurpose is what the shared folder holds on purpose, from the server's last answer.
 	SyncAnyway      []string `json:"sync_anyway,omitempty"`
 	StopSyncing     []string `json:"stop_syncing,omitempty"`
 	FolderOnPurpose []string `json:"folder_on_purpose,omitempty"`
+}
+
+type crewTeamLocalFile struct {
+	Size    int64               `json:"size"`
+	Mtime   int64               `json:"mtime"`
+	Version crewTeamFileVersion `json:"version"`
 }
 
 // onPurpose is what this copy syncs on purpose: its own choices and the folder's, minus the ones it took back.
@@ -62,7 +71,7 @@ func crewTeamLocalDir(owner string, c desktopConnection, project, folderID strin
 	if e != nil {
 		return "", e
 	}
-	return filepath.Join(root, "team-working", crewTransferDigest(owner), crewTransferDigest(c.Server+"\x00"+c.User.ID+"\x00"+project+"\x00"+folderID)), nil
+	return filepath.Join(root, "team-working", crewTransferDigest(owner), crewTransferDigest(c.Server+"\x00"+c.User.ID+"\x00"+project+"\x00"+folderID+"\x00"+crewTeamSyncFormat)), nil
 }
 func readCrewTeamLocal(dir string) (crewTeamLocal, error) {
 	var b crewTeamLocal
@@ -95,7 +104,7 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 	if !t.FolderAccess {
 		return dir, crewTeamLocal{}, fmt.Errorf("ask the owner to allow shared folder editing")
 	}
-	b := crewTeamLocal{FolderID: t.Folder.ID, Connection: c.ID, Project: t.ProjectID, RemoteUser: c.User.ID, Client: uuid.NewString(), LocalBase: crewsync.Manifest{}, RemoteBase: crewsync.Manifest{}, Status: "pending"}
+	b := crewTeamLocal{FolderID: t.Folder.ID, Connection: c.ID, Project: t.ProjectID, RemoteUser: c.User.ID, Client: uuid.NewString(), Status: "pending"}
 	// The owner's selected folder stays where it is. A recipient receives a
 	// fresh app-managed folder, never a merge into an unrelated local project.
 	if c.User.ID == t.OwnerID {
@@ -200,6 +209,9 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	if fresh, err := readCrewTeamLocal(dir); err == nil {
 		b.SyncAnyway, b.StopSyncing = fresh.SyncAnyway, fresh.StopSyncing
 	}
+	if b.Files == nil {
+		b.Files = map[string]crewTeamLocalFile{}
+	}
 	info, e := os.Lstat(b.Root)
 	if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("the shared folder moved; open it in Teams to reconnect it")
@@ -207,7 +219,7 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	if c.User.ID != b.RemoteUser {
 		return fmt.Errorf("this folder belongs to a different saved account")
 	}
-	// Recheck before capture, in addition to the server's checks on every chunk.
+	// Recheck before reading anything, in addition to the server's checks on every request.
 	var team crewTeam
 	if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.Project), nil, &team); e != nil {
 		return e
@@ -218,163 +230,394 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	if !team.FolderAccess {
 		return fmt.Errorf("shared folder access was removed; downloaded files stay on this computer")
 	}
-	for _, direction := range []string{"upload", "download"} {
-		stage := filepath.Join(dir, direction)
-		if e = os.MkdirAll(stage, 0700); e != nil {
-			return e
-		}
-		store := filesnapshots.Store{Root: b.Root, Private: stage}
-		meta := filepath.Join(stage, "pending.json")
-		var pending crewTeamTransfer
-		if raw, err := os.ReadFile(meta); err == nil {
-			if e = json.Unmarshal(raw, &pending); e != nil {
-				return e
-			}
-		} else if !os.IsNotExist(err) {
-			return err
-		}
-		if pending.TransferID == "" {
-			pending = crewTeamTransfer{FolderID: b.FolderID, Client: b.Client, TransferID: uuid.NewString(), Direction: direction}
-			if direction == "upload" {
-				snapshot, err := crewTeamCapture(ctx, b.Root, stage, b.LocalBase, team.Folder, b.onPurpose())
-				if err != nil {
-					return crewTeamStep("capture", err)
-				}
-				// Stop syncing removes the file from the shared folder; it stays on this computer.
-				for _, rel := range b.StopSyncing {
-					key := crewTeamKey(rel)
-					before, ok := b.LocalBase[key]
-					if !ok || slices.ContainsFunc(snapshot.Changes, func(c crewsync.Change) bool { return c.Path == key }) {
-						continue
-					}
-					delete(snapshot.Files, key)
-					snapshot.Changes = append(snapshot.Changes, crewsync.Change{Path: key, Before: &before})
-				}
-				if len(snapshot.Changes) == 0 {
-					snapshot.Close()
-					continue
-				}
-				err = store.EncodeFolderSync(ctx, crewTeamPair(b.Project, b.RemoteUser, b.Client, direction), crewTeamRoots(b.Root), &snapshot)
-				if err == nil {
-					err = copyCrewTeamBundle(snapshot.Content.BundlePath, filepath.Join(stage, "content"))
-					_ = os.RemoveAll(filepath.Dir(snapshot.Content.BundlePath))
-				}
-				snapshot.Close()
-				if err != nil {
-					return crewTeamStep("bundle", err)
-				}
-				payload, err := crewTeamPayload(filepath.Join(stage, "content"))
-				if err != nil {
-					return err
-				}
-				snapshot.Payloads = map[string]crewsync.Payload{"content": payload}
-				pending.Snapshot = &snapshot
-				pending.OnPurpose = slices.Clone(b.SyncAnyway)
-			} else {
-				pending.Action = "pull"
-				pending.Base = b.RemoteBase
-				if e = crewTeamSyncCall(ctx, owner, c, "/api/crew-teams/"+url.PathEscape(b.Project)+"/sync?folder_id="+url.QueryEscape(b.FolderID), pending, &pending); e != nil {
-					return crewTeamStep("pull", e)
-				}
-				b.FolderOnPurpose = pending.OnPurpose // the server names what the folder holds on purpose
-			}
-			if pending.Unchanged {
-				continue
-			}
-			if e = fsutil.WriteJSONAtomic(meta, pending, 0600); e != nil {
-				return e
+	route := "/api/crew-teams/" + url.PathEscape(b.Project)
+	query := "?folder_id=" + url.QueryEscape(b.FolderID)
+	// 1. What changed here goes up: plan, the chunks the server lacks, commit; at most crewTeamCommitBatch files a time.
+	scan, e := crewTeamScan(ctx, b, team.Folder)
+	if e != nil {
+		return crewTeamStep("scan", e)
+	}
+	if len(scan.changes) > 0 {
+		var total int64
+		for _, ch := range scan.changes {
+			if ch.After != nil {
+				total += ch.After.Size
 			}
 		}
-		if pending.Snapshot == nil {
-			return fmt.Errorf("saved folder transfer is incomplete")
-		}
-		snapshot := pending.Snapshot
-		// The round's numbers for the progress bar: files in this round and the bundle's bytes (crew_team_progress.go).
-		roundCtx := startCrewTeamRound(ctx, dir, b.Project, direction, len(snapshot.Changes), snapshot.Payloads["content"].Size, crewTeamStagedBytes(filepath.Join(stage, "content"), direction))
-		e = func(ctx context.Context) error {
-			pair := crewTeamPair(b.Project, b.RemoteUser, b.Client, direction)
-			route := "/api/crew-teams/" + url.PathEscape(b.Project) + "/sync?folder_id=" + url.QueryEscape(b.FolderID)
-			if direction == "upload" {
-				pending.Action = "prepare"
-				if e = crewTeamSyncCall(ctx, owner, c, route, pending, nil); e != nil {
-					return crewTeamStep("prepare", e)
-				}
-				if e = transferCrewTeamBundle(ctx, c, b.Project, pending, filepath.Join(stage, "content")); e != nil {
-					return crewTeamStep("send", e)
-				}
-				pending.Action = "apply"
-				if e = crewTeamSyncCall(ctx, owner, c, route, pending, nil); e != nil {
-					return crewTeamStep("apply", e)
-				}
-				if e = store.AckSync(ctx, pair, snapshot.Content); e != nil {
-					return e
-				}
-				b.LocalBase = snapshot.Files
-				// The server now holds what this copy sent, so the download that follows does not send it back
-				// (it re-received 8.3 MB of its own upload, 5 Nov); anything a teammate changed meanwhile still differs.
-				b.RemoteBase = snapshot.Files
-				// Sent: the folder now holds this copy's choices and no longer the ones it took back.
-				folder := crewTeamOnPurpose{}.with(b.FolderOnPurpose).with(pending.OnPurpose)
-				for _, p := range b.StopSyncing {
-					if _, kept := snapshot.Files[crewTeamKey(p)]; !kept {
-						delete(folder, p)
-					}
-				}
-				b.FolderOnPurpose, b.StopSyncing = sortedOnPurpose(folder), nil
-			} else {
-				if e = transferCrewTeamBundle(ctx, c, b.Project, pending, filepath.Join(stage, "content")); e != nil {
-					return crewTeamStep("receive", e)
-				}
-				snapshot.Content.BundlePath = filepath.Join(stage, "content")
-				if e = store.DecodeSync(ctx, pair, snapshot); e != nil {
-					return e
-				}
-				e = applyCrewTeamDownload(ctx, b, snapshot)
-				snapshot.Close()
-				if e != nil {
-					return crewTeamStep("write", e)
-				}
-				if e = store.AckSync(ctx, pair, snapshot.Content); e != nil {
-					return e
-				}
-				b.RemoteBase = snapshot.Files
-				// Save applied paths before acknowledging so retries can distinguish
-				// an arriving server file from an edit made here during the download.
-				if e = saveCrewTeamLocal(dir, *b); e != nil {
-					return e
-				}
-				pending.Action = "ack"
-				if e = crewTeamSyncCall(ctx, owner, c, route, pending, nil); e != nil {
-					return crewTeamStep("ack", e)
-				}
-			}
-			if e = saveCrewTeamLocal(dir, *b); e != nil {
-				return e
-			}
-			if e = os.Remove(meta); e != nil {
-				return e
-			}
-			return nil
-		}(roundCtx)
+		roundCtx := startCrewTeamRound(ctx, dir, b.Project, "upload", len(scan.changes), total, 0)
+		e = crewTeamUpload(roundCtx, owner, c, route, query, b, scan)
 		endCrewTeamRound(dir, e)
 		if e != nil {
 			return e
 		}
-		_ = os.Remove(filepath.Join(stage, "content"))
+		if e = saveCrewTeamLocal(dir, *b); e != nil {
+			return e
+		}
 	}
-	check, e := crewTeamCapture(ctx, b.Root, dir, b.LocalBase, team.Folder, b.onPurpose())
-	if e != nil {
-		return e
+	// 2. What changed on the team comes down, page by page.
+	pending := false
+	for {
+		var page crewTeamChangesReply
+		if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/sync/changes"+query, crewTeamSyncRequest{Client: b.Client, Since: b.Revision}, &page); e != nil {
+			return crewTeamStep("changes", e)
+		}
+		b.FolderOnPurpose = page.OnPurpose // the server names what the folder holds on purpose
+		skipped, err := crewTeamDownload(ctx, owner, c, route, query, dir, b, page.Files)
+		if err != nil {
+			return err
+		}
+		pending = pending || skipped
+		b.Revision = page.Through
+		if e = saveCrewTeamLocal(dir, *b); e != nil {
+			return e
+		}
+		if !page.More {
+			break
+		}
 	}
-	defer check.Close()
 	b.Status = "up_to_date"
-	if len(check.Changes) > 0 {
+	if pending {
 		b.Status = "pending"
 	}
 	b.Error = ""
 	b.LastSynced = time.Now().UTC().Format(time.RFC3339Nano)
-	log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=reconciled status=%s", b.Project, b.Client, b.Status)
+	log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=reconciled status=%s files=%d revision=%d", b.Project, b.Client, b.Status, len(b.Files), b.Revision)
 	return saveCrewTeamLocal(dir, *b)
+}
+
+// crewTeamChunkSource is where a chunk's bytes are in this copy: a file and the range inside it.
+type crewTeamChunkSource struct {
+	path   string
+	offset int64
+	size   int64
+}
+
+type crewTeamScanResult struct {
+	changes []crewTeamChange
+	entries map[string]crewTeamLocalFile // the new state of each changed path (absent for a removal)
+	sources map[string]crewTeamChunkSource
+}
+
+// crewTeamScan finds what changed in this copy since it was last in step: a file whose size and modification time
+// are unchanged is not read; any other is chunked. Only what the share holds is looked at (crewTeamAllowed, Sync it
+// anyway, Whole Crew or the chosen folders, .gitignore), as the old capture did.
+func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (crewTeamScanResult, error) {
+	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]crewTeamChunkSource{}}
+	ignored, err := publication.GitIgnored(ctx, b.Root)
+	if err != nil {
+		return out, err
+	}
+	op := b.onPurpose()
+	seen := map[string]bool{}
+	var count, bytes int64
+	err = filepath.WalkDir(b.Root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if p == b.Root {
+			return nil
+		}
+		rel, _ := filepath.Rel(b.Root, p)
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if !crewsync.Allowed(crewTeamKey(rel), true) || ignored[rel] || !share.walks(rel) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 || !d.Type().IsRegular() || !crewsync.Allowed(crewTeamKey(rel), false) || ignored[rel] || !share.holds(rel) || !crewTeamAllowed(rel, op) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		seen[rel] = true
+		count, bytes = count+1, bytes+info.Size()
+		if count > publication.MaxFiles || bytes > publication.MaxBytes {
+			return fmt.Errorf("shared folder exceeds 256 MiB or 10,000 files")
+		}
+		known, had := b.Files[rel]
+		if had && known.Size == info.Size() && known.Mtime == info.ModTime().UnixNano() {
+			return nil
+		}
+		f, err := openCrewTeamFile(b.Root, rel, op)
+		if err != nil {
+			return nil // a link or a file that went away: not shared this round
+		}
+		defer f.Close()
+		var offset int64
+		version, err := crewTeamChunkReader(f, info.Size(), info.Mode()&0o111 != 0, func(id string, data []byte) error {
+			if _, ok := out.sources[id]; !ok {
+				out.sources[id] = crewTeamChunkSource{path: rel, offset: offset, size: int64(len(data))}
+			}
+			offset += int64(len(data))
+			return nil
+		})
+		if err != nil {
+			return nil // changed while it was read: it goes next round
+		}
+		if had && known.Version.Hash == version.Hash {
+			out.entries[rel] = crewTeamLocalFile{Size: info.Size(), Mtime: info.ModTime().UnixNano(), Version: version}
+			return nil // touched, not changed: only its time is new
+		}
+		out.changes = append(out.changes, crewTeamChange{Path: rel, Before: known.Version.Hash, After: &version})
+		out.entries[rel] = crewTeamLocalFile{Size: info.Size(), Mtime: info.ModTime().UnixNano(), Version: version}
+		return nil
+	})
+	if err != nil {
+		return out, err
+	}
+	// Removed here, or taken back from Sync it anyway (the file stays here): removed from the team.
+	for rel, known := range b.Files {
+		if !seen[rel] || slices.Contains(b.StopSyncing, rel) {
+			out.changes = append(out.changes, crewTeamChange{Path: rel, Before: known.Version.Hash})
+			delete(out.entries, rel)
+		}
+	}
+	// Only touched files: record their new times without sending anything.
+	for rel, entry := range out.entries {
+		if !slices.ContainsFunc(out.changes, func(c crewTeamChange) bool { return c.Path == rel }) {
+			b.Files[rel] = entry
+		}
+	}
+	sort.Slice(out.changes, func(i, j int) bool { return out.changes[i].Path < out.changes[j].Path })
+	return out, nil
+}
+
+// crewTeamUpload sends this copy's changes in batches: plan, the missing chunks in frames of at most
+// crewTeamChunkBatch bytes (read from the files again and checked), then commit.
+func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, route, query string, b *crewTeamLocal, scan crewTeamScanResult) error {
+	var sent int64
+	for start := 0; start < len(scan.changes); start += crewTeamCommitBatch {
+		batch := scan.changes[start:min(start+crewTeamCommitBatch, len(scan.changes))]
+		request := crewTeamSyncRequest{Client: b.Client, TransferID: uuid.NewString(), Changes: batch, OnPurpose: slices.Clone(b.SyncAnyway)}
+		var plan struct {
+			Missing []string `json:"missing"`
+		}
+		if e := crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/sync/plan"+query, request, &plan); e != nil {
+			return crewTeamStep("plan", e)
+		}
+		for i := 0; i < len(plan.Missing); {
+			var frames bytes.Buffer
+			for ; i < len(plan.Missing) && (frames.Len() == 0 || int64(frames.Len())+crewTeamChunkMax <= crewTeamChunkBatch); i++ {
+				id := plan.Missing[i]
+				source, ok := scan.sources[id]
+				if !ok {
+					return crewTeamStep("send", fmt.Errorf("the server asked for a chunk this copy did not send"))
+				}
+				data, err := crewTeamReadSource(b.Root, source, id)
+				if err != nil {
+					return crewTeamStep("send", err)
+				}
+				if err = crewTeamWriteFrame(&frames, id, data); err != nil {
+					return crewTeamStep("send", err)
+				}
+				sent += int64(len(data))
+			}
+			resp, err := crewTeamRemoteDo(ctx, owner, c, http.MethodPut, route+"/chunks"+query, "application/octet-stream", &frames)
+			if err != nil {
+				return crewTeamStep("send", err)
+			}
+			resp.Body.Close()
+			crewTeamRoundBytes(ctx, sent)
+		}
+		var receipt crewTeamReceipt
+		if e := crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/sync/commit"+query, request, &receipt); e != nil {
+			return crewTeamStep("commit", e)
+		}
+		for _, ch := range batch {
+			if entry, ok := scan.entries[ch.Path]; ok && ch.After != nil {
+				b.Files[ch.Path] = entry
+			} else {
+				delete(b.Files, ch.Path)
+			}
+		}
+		// Taken back from Sync it anyway: the file stays here and is no longer the team's.
+		b.StopSyncing = slices.DeleteFunc(b.StopSyncing, func(p string) bool { _, kept := b.Files[p]; return !kept })
+		b.FolderOnPurpose = sortedOnPurpose(crewTeamOnPurpose{}.with(b.FolderOnPurpose).with(b.SyncAnyway))
+	}
+	return nil
+}
+
+// crewTeamReadSource reads one chunk back from this copy and checks it is still the same bytes.
+func crewTeamReadSource(root string, source crewTeamChunkSource, id string) ([]byte, error) {
+	f, err := os.Open(filepath.Join(root, filepath.FromSlash(source.path)))
+	if err != nil {
+		return nil, fmt.Errorf("a file changed while it was sent; it goes next round")
+	}
+	defer f.Close()
+	data := make([]byte, source.size)
+	if _, err = f.ReadAt(data, source.offset); err != nil {
+		return nil, fmt.Errorf("a file changed while it was sent; it goes next round")
+	}
+	if sum := sha256.Sum256(data); hex.EncodeToString(sum[:]) != id {
+		return nil, fmt.Errorf("a file changed while it was sent; it goes next round")
+	}
+	return data, nil
+}
+
+// crewTeamDownload brings one page of the team's changes into this copy. A file changed here since the copy was last
+// in step is left alone (it goes up next round; the server keeps both). Each needed chunk is copied from this copy's
+// own unchanged files or fetched, into private staging, before any file is written. It reports whether a file was
+// left alone.
+func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, route, query, dir string, b *crewTeamLocal, files []crewTeamRemoteFile) (bool, error) {
+	op := b.onPurpose()
+	unchanged := func(rel string) bool {
+		known, had := b.Files[rel]
+		info, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel)))
+		if !had {
+			return os.IsNotExist(err)
+		}
+		return err == nil && info.Mode().IsRegular() && info.Size() == known.Size && info.ModTime().UnixNano() == known.Mtime
+	}
+	skipped := false
+	// Removals first, so a folder that became a file (or a file that became a folder) is out of the way.
+	for _, f := range files {
+		if _, had := b.Files[f.Path]; f.Version != nil || !had {
+			continue
+		}
+		if !unchanged(f.Path) {
+			skipped = true
+			continue
+		}
+		if err := removeCrewTeamFile(b.Root, f.Path); err != nil {
+			return skipped, crewTeamStep("write", err)
+		}
+		delete(b.Files, f.Path)
+	}
+	writes := []crewTeamRemoteFile{}
+	for _, f := range files {
+		known, had := b.Files[f.Path]
+		if f.Version == nil || had && known.Version.Hash == f.Version.Hash {
+			continue
+		}
+		if !unchanged(f.Path) {
+			skipped = true
+			continue
+		}
+		writes = append(writes, f)
+	}
+	if len(writes) == 0 {
+		return skipped, nil
+	}
+	stage := filepath.Join(dir, "incoming")
+	if err := os.MkdirAll(stage, 0o700); err != nil {
+		return skipped, err
+	}
+	defer os.RemoveAll(stage)
+	// Chunks this copy already holds, in files that are still as last synced.
+	local := map[string]crewTeamChunkSource{}
+	for rel, known := range b.Files {
+		if !unchanged(rel) {
+			continue
+		}
+		var offset int64
+		for _, ch := range known.Version.Chunks {
+			if _, ok := local[ch.ID]; !ok {
+				local[ch.ID] = crewTeamChunkSource{path: rel, offset: offset, size: ch.Len}
+			}
+			offset += ch.Len
+		}
+	}
+	need, fetch, seen := []crewTeamChunk{}, []crewTeamChunk{}, map[string]bool{}
+	var total int64
+	for _, f := range writes {
+		for _, ch := range f.Version.Chunks {
+			if !seen[ch.ID] {
+				seen[ch.ID] = true
+				need = append(need, ch)
+			}
+		}
+	}
+	for _, ch := range need {
+		if source, ok := local[ch.ID]; ok {
+			if data, err := crewTeamReadSource(b.Root, source, ch.ID); err == nil {
+				if err = os.WriteFile(filepath.Join(stage, ch.ID), data, 0o600); err != nil {
+					return skipped, err
+				}
+				continue
+			}
+		}
+		fetch = append(fetch, ch)
+		total += ch.Len
+	}
+	roundCtx := startCrewTeamRound(ctx, dir, b.Project, "download", len(writes), total, 0)
+	err := crewTeamFetchChunks(roundCtx, owner, c, route, query, stage, fetch)
+	if err == nil {
+		for _, f := range writes {
+			// Edited here while the chunks arrived: keep the local edit; it goes up next round.
+			if !unchanged(f.Path) {
+				skipped = true
+				continue
+			}
+			reader, writer := io.Pipe()
+			go func(v crewTeamFileVersion) {
+				var copyErr error
+				for _, ch := range v.Chunks {
+					data, err := os.ReadFile(filepath.Join(stage, ch.ID))
+					if err != nil {
+						copyErr = err
+						break
+					}
+					if _, copyErr = writer.Write(data); copyErr != nil {
+						break
+					}
+				}
+				writer.CloseWithError(copyErr)
+			}(*f.Version)
+			err = writeCrewTeamFile(ctx, b.Root, f.Path, reader, *f.Version.file(), op)
+			reader.Close()
+			if err != nil {
+				err = crewTeamStep("write", err)
+				break
+			}
+			info, statErr := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(f.Path)))
+			if statErr != nil {
+				err = crewTeamStep("write", statErr)
+				break
+			}
+			b.Files[f.Path] = crewTeamLocalFile{Size: info.Size(), Mtime: info.ModTime().UnixNano(), Version: *f.Version}
+			log.Printf("[CREW_TEAM_LOCAL] project=%s actor=%s client=%s path=%q event=received", b.Project, b.RemoteUser, b.Client, f.Path)
+		}
+	}
+	endCrewTeamRound(dir, err)
+	return skipped, err
+}
+
+// crewTeamFetchChunks asks the server for chunks until all have arrived (each reply holds at most crewTeamChunkBatch
+// bytes) and stages each, checked, by its id.
+func crewTeamFetchChunks(ctx context.Context, owner string, c desktopConnection, route, query, stage string, chunks []crewTeamChunk) error {
+	var received int64
+	for len(chunks) > 0 {
+		body, _ := json.Marshal(map[string]any{"chunks": chunks})
+		resp, err := crewTeamRemoteDo(ctx, owner, c, http.MethodPost, route+"/chunks"+query, "application/json", bytes.NewReader(body))
+		if err != nil {
+			return crewTeamStep("receive", err)
+		}
+		got := map[string]bool{}
+		err = crewTeamReadFrames(resp.Body, func(id string, data []byte) error {
+			if sum := sha256.Sum256(data); hex.EncodeToString(sum[:]) != id {
+				return fmt.Errorf("a received chunk does not match its id")
+			}
+			got[id] = true
+			received += int64(len(data))
+			crewTeamRoundBytes(ctx, received)
+			return os.WriteFile(filepath.Join(stage, id), data, 0o600)
+		})
+		resp.Body.Close()
+		if err != nil {
+			return crewTeamStep("receive", err)
+		}
+		if len(got) == 0 {
+			return crewTeamStep("receive", fmt.Errorf("the server did not send the shared files' content"))
+		}
+		chunks = slices.DeleteFunc(chunks, func(ch crewTeamChunk) bool { return got[ch.ID] })
+	}
+	return nil
 }
 
 // crewTeamStepError names the sync step that failed, for the log (the shown text stays the plain one).
@@ -401,191 +644,6 @@ func crewTeamStepOf(err error) string {
 	return "-"
 }
 
-func crewTeamCurrentFile(root, rel string, on ...crewTeamOnPurpose) (*crewsync.File, error) {
-	f, e := openCrewTeamFile(root, rel, on...)
-	if os.IsNotExist(e) || errors.Is(e, syscall.ENOTDIR) || errors.Is(e, syscall.EISDIR) {
-		return nil, nil
-	}
-	if e != nil {
-		return nil, e
-	}
-	defer f.Close()
-	info, e := f.Stat()
-	if e != nil {
-		return nil, e
-	}
-	h := sha256.New()
-	n, e := io.Copy(h, f)
-	if e != nil {
-		return nil, e
-	}
-	return &crewsync.File{Hash: hex.EncodeToString(h.Sum(nil)), Size: n, Executable: info.Mode()&0111 != 0}, nil
-}
-func applyCrewTeamDownload(ctx context.Context, b *crewTeamLocal, s *crewsync.Snapshot) error {
-	op := b.onPurpose()
-	if e := validateCrewTeamSnapshot(s, op); e != nil {
-		return e
-	}
-	if b.LocalBase == nil {
-		b.LocalBase = crewsync.Manifest{}
-	}
-	for _, change := range crewTeamOrderedChanges(s.Changes) {
-		rel, _ := crewTeamRelative(change.Path, op)
-		actual, e := crewTeamCurrentFile(b.Root, rel, op)
-		if e != nil {
-			return e
-		}
-		var base *crewsync.File
-		if known, ok := b.LocalBase[change.Path]; ok {
-			base = &known
-		}
-		if !crewTeamSame(actual, change.After) {
-			if !crewTeamSame(actual, base) {
-				continue
-			} // changed here in flight: upload it next round
-			if change.After == nil {
-				if e = removeCrewTeamFile(b.Root, rel); e != nil {
-					return e
-				}
-			} else {
-				f, e := os.Open(change.DataPath)
-				if e != nil {
-					return e
-				}
-				e = writeCrewTeamFile(ctx, b.Root, rel, f, *change.After, op)
-				f.Close()
-				if e != nil {
-					return e
-				}
-			}
-		}
-		log.Printf("[CREW_TEAM_LOCAL] project=%s actor=%s client=%s path=%q event=received deleted=%t", b.Project, b.RemoteUser, b.Client, rel, change.After == nil)
-		if change.After == nil {
-			delete(b.LocalBase, change.Path)
-		} else {
-			b.LocalBase[change.Path] = *change.After
-		}
-	}
-	return nil
-}
-
-func transferCrewTeamBundle(ctx context.Context, c desktopConnection, project string, t crewTeamTransfer, file string) error {
-	p := t.Snapshot.Payloads["content"]
-	if !crewPayloadValid(p) {
-		return fmt.Errorf("invalid file bundle")
-	}
-	request := func(method string, offset int64, body io.Reader, n int64) (*http.Response, error) {
-		q := url.Values{"folder_id": {t.FolderID}, "client": {t.Client}, "direction": {t.Direction}, "offset": {strconv.FormatInt(offset, 10)}}
-		r, e := http.NewRequestWithContext(ctx, method, c.Server+"/api/crew-teams/"+url.PathEscape(project)+"/sync/"+url.PathEscape(t.TransferID)+"?"+q.Encode(), body)
-		if e != nil {
-			return nil, e
-		}
-		r.Header.Set("Authorization", "Bearer "+c.Token)
-		r.ContentLength = n
-		if method == http.MethodGet && offset > 0 {
-			r.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
-		}
-		client := crewTeamHTTPClient(ctx)
-		client.Timeout = 2 * time.Minute
-		res, e := client.Do(r)
-		if e != nil {
-			return nil, e
-		}
-		if res.StatusCode != 200 && res.StatusCode != 204 && res.StatusCode != 206 {
-			res.Body.Close()
-			return nil, fmt.Errorf("shared folder transfer refused (%d); check your current Team access", res.StatusCode)
-		}
-		return res, nil
-	}
-	if t.Direction == "upload" {
-		if e := crewCheckPayloadFile(file, p); e != nil {
-			return e
-		}
-		res, e := request(http.MethodHead, 0, nil, 0)
-		if e != nil {
-			return e
-		}
-		res.Body.Close()
-		offset, e := strconv.ParseInt(res.Header.Get("Upload-Offset"), 10, 64)
-		if e != nil || offset < 0 || offset > p.Size || res.Header.Get("X-Sync-Hash") != p.Hash {
-			return fmt.Errorf("invalid saved transfer offset")
-		}
-		// What the server already has counts as sent (a resumed round showed 0 bytes of 11.8 MB at done, 5 Nov).
-		crewTeamRoundBytes(ctx, offset)
-		f, e := os.Open(file)
-		if e != nil {
-			return e
-		}
-		defer f.Close()
-		for offset < p.Size {
-			n := min(crewSyncPieceBytes, p.Size-offset)
-			res, e = request(http.MethodPut, offset, io.NewSectionReader(f, offset, n), n)
-			if e != nil {
-				return e
-			}
-			res.Body.Close()
-			next, e := strconv.ParseInt(res.Header.Get("Upload-Offset"), 10, 64)
-			if e != nil || next != offset+n {
-				return fmt.Errorf("upload acknowledgement is incomplete")
-			}
-			offset = next
-			crewTeamRoundBytes(ctx, offset)
-		}
-		return nil
-	}
-	offset := int64(0)
-	if info, e := os.Stat(file); e == nil {
-		offset = info.Size()
-	}
-	if offset > p.Size {
-		return fmt.Errorf("saved download is larger than its snapshot")
-	}
-	if offset < p.Size {
-		res, e := request(http.MethodGet, offset, nil, 0)
-		if e != nil {
-			return e
-		}
-		defer res.Body.Close()
-		if offset > 0 && res.StatusCode != 206 {
-			return fmt.Errorf("server did not resume the folder download")
-		}
-		if res.Header.Get("X-Sync-Hash") != p.Hash {
-			return fmt.Errorf("download does not match its saved snapshot")
-		}
-		f, e := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
-		if e != nil {
-			return e
-		}
-		_, e = io.CopyN(f, &crewTeamCountingReader{ctx: ctx, r: res.Body, done: offset}, p.Size-offset)
-		ce := f.Close()
-		if e == nil {
-			e = ce
-		}
-		if e != nil {
-			return e
-		}
-	}
-	if e := crewCheckPayloadFile(file, p); e != nil {
-		_ = os.Remove(file)
-		return e
-	}
-	return nil
-}
-
-// crewTeamStagedBytes is how much of a download is already on disk when a round resumes (an upload's offset comes from
-// the server on its first request).
-func crewTeamStagedBytes(file, direction string) int64 {
-	if direction != "download" {
-		return 0
-	}
-	if info, err := os.Stat(file); err == nil {
-		return info.Size()
-	}
-	return 0
-}
-
-// crewTeamPlainSyncError is what the person sees for a failed sync round ("Can't sync: …", owner 5 Nov): one plain
-// sentence, never a raw error, path, address or ID (the raw one goes to the log).
 func crewTeamPlainSyncError(err error) string {
 	text := err.Error()
 	for _, known := range []struct{ match, say string }{
