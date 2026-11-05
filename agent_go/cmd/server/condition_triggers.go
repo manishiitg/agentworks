@@ -304,6 +304,12 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	if err != nil {
 		return nil, err
 	}
+	// Reading the Crew's Slack, read-only, for this check only (watcher_slack.go).
+	bridge, stopBridge := c.s.api.openWatcherSlackSession(job, job.WorkspacePath)
+	defer stopBridge()
+	for key, value := range bridge {
+		env[key] = value
+	}
 	if len(state) == 0 {
 		state = json.RawMessage(`{}`)
 	}
@@ -345,6 +351,11 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	}
 	if cfg.CheckMode == "inbox" {
 		command += " AGENT_INBOX_FILE=inbox.json"
+	}
+	for _, name := range []string{"MCP_API_URL", "MCP_API_TOKEN", "MCP_SESSION_ID", "MCP_MCP", "MCP_AUTH"} {
+		if bridge[name] != "" {
+			command += " " + name + `="$` + name + `"`
+		}
 	}
 	command += " python3 -I -c " + conditionShellQuote(conditionPythonWrapper) + " check.py"
 	result, err := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{Command: command, WorkingDirectory: runRoot, Timeout: &timeout})
