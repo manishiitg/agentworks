@@ -796,3 +796,47 @@ func (api *StreamingAPI) applyCompactEarlyToClaude(cfg *agent.LLMAgentConfig, se
 	cfg.CodingAgentSecretEnvironment["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = strconv.Itoa(compactEarlyClaudeWindow)
 	log.Printf("[IDLE_COMPACT] session=%s owner=%s action=claude_auto_compact_window window=%d", sessionID, owner, compactEarlyClaudeWindow)
 }
+
+// compactBeforeQueuedAttempts remembers when a chat last compacted between queued messages, so a failed or skipped
+// compaction is not retried before every message.
+var compactBeforeQueuedAttempts sync.Map
+
+// compactBeforeQueuedTurn starts "Compact at 300K"'s compaction ahead of the next queued message when the chat is
+// over the mark: the after-reply check waits for a quiet minute, which a chat with messages back to back never has.
+// Every coding CLI; Claude Code also compacts by itself near the mark (applyCompactEarlyToClaude). It reports true
+// when the compaction holds the chat; its turn's end kicks the queue again.
+func (api *StreamingAPI) compactBeforeQueuedTurn(sessionID string) bool {
+	if api == nil {
+		return false
+	}
+	if last, ok := compactBeforeQueuedAttempts.Load(sessionID); ok && time.Since(last.(time.Time)) < 10*time.Minute {
+		return false
+	}
+	chat, _, refusal := chatCompactRefusal(sessionID)
+	if refusal != "" || idleCompacts.running(sessionID) != nil {
+		return false
+	}
+	owner := api.idleCompactOwner(sessionID, chat.personUser)
+	if !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+		return false
+	}
+	if api.sessionAwaitsBackgroundResults(sessionID) || len(claudeBackgroundTasks(sessionID)) > 0 {
+		return false // background work would lose its results
+	}
+	tokens, _, _ := api.chatContextUsage(sessionID, chat.provider, "", false)
+	if tokens < compactEarlyTokens {
+		return false
+	}
+	run := newIdleCompactRun()
+	run.beforeQueued = true
+	if !idleCompacts.start(sessionID, run, math.MaxInt, time.Now()) {
+		return false
+	}
+	compactBeforeQueuedAttempts.Store(sessionID, time.Now())
+	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=compact reason=compact_early_before_queued", sessionID, chat.provider, owner, tokens)
+	go func() {
+		api.runIdleCompaction(sessionID, owner, chat, tokens, 0, run)
+		api.kickConversationTurnQueue(sessionID) // the queued messages go on after it
+	}()
+	return true
+}

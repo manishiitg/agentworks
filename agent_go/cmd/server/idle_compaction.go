@@ -164,6 +164,9 @@ type idleCompactRun struct {
 	// startTerminal: the same internal turn starts the chat's Claude Code terminal
 	// instead of compacting (the person turned "Native Claude Code terminal" on).
 	startTerminal bool
+	// beforeQueued: "Compact at 300K" compacts a busy chat between two queued messages, so the queue's backlog does
+	// not refuse it (chat_context_options.go compactBeforeQueuedTurn).
+	beforeQueued bool
 }
 
 func newIdleCompactRun() *idleCompactRun { return &idleCompactRun{done: make(chan struct{})} }
