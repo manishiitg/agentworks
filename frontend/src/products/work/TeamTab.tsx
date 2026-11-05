@@ -115,8 +115,10 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
       <h3 className="flex-1 font-semibold">Team</h3>
       <span className="text-xs text-muted-foreground">{team.on && view.people.length > 1 ? `${view.people.length} people` : 'Only you'}</span>
       <button type="button" title={askText} aria-label={askText} onClick={() => fillTeamSetupDraft(projectId)} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Ask</button>
-      <Switch aria-label="Team" disabled={busy || !canSwitch} checked={team.on} onCheckedChange={on => void turn(on)} />
+      {canSwitch ? <Switch aria-label="Team" disabled={busy} checked={team.on} onCheckedChange={on => void turn(on)} />
+        : <span className="text-xs text-muted-foreground">{team.on ? 'On' : 'Off'}</span>}
     </div>
+    {!canSwitch && team.can_manage && view.mac_only && <p className="text-xs text-muted-foreground">{view.mac_only}</p>}
     {note && <p className="text-xs text-muted-foreground">{note}</p>}
     {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this Crew with people.</p>}
     {team.on && <div className="divide-y divide-border">
@@ -175,15 +177,17 @@ function SharesCard({ view, target }: { view: TeamTabView; target: TeamTarget })
   return <section aria-label="What the team shares" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">What the team shares</h3>
-      <div role="radiogroup" aria-label="What the team shares" className="flex overflow-hidden rounded-md border border-border text-xs">
+      {!choose ? <span className="text-xs text-muted-foreground">{team.folder.whole ? 'Whole Crew' : 'Folders'}</span>
+        : <div role="radiogroup" aria-label="What the team shares" className="flex overflow-hidden rounded-md border border-border text-xs">
         {([[false, 'Folders'], [true, 'Whole Crew']] as const).map(([value, label]) => {
           const on = Boolean(team.folder.whole) === value
-          return <button key={label} type="button" role="radio" aria-checked={on} disabled={busy || !choose || (value && tooBig)}
+          return <button key={label} type="button" role="radio" aria-checked={on} disabled={busy || (value && tooBig)}
             onClick={() => { if (!on) void save({ ...team, folder: value ? { whole: true } : { folders: [] } }) }}
             className={`px-2.5 py-0.5 disabled:cursor-not-allowed ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted disabled:opacity-50'}`}>{label}</button>
         })}
-      </div>
+      </div>}
     </div>
+    {!choose && team.can_manage && view.mac_only && <p className="text-xs text-muted-foreground">{view.mac_only}</p>}
     {team.folder.whole ? <p className="text-xs text-muted-foreground">The whole <b className="text-foreground">{team.name}</b> folder{whole ? `: ${sizeLine(whole)}` : ''}. Everyone in the Team reads and edits it.</p>
       : <div className="space-y-1.5">
         {folders.map(folder => <FolderRow key={folder} folder={folder} target={target} canRemove={team.can_manage} busy={busy}

@@ -69,7 +69,9 @@ type crewTeamTabReply struct {
 	Sync   *crewTeamTabSync    `json:"sync,omitempty"`
 	// Switch is where the Team switch and the folder choice work: "server" here, or "mac" (only the owner's Mac app,
 	// which shares its agents and makes team/ when it turns on).
-	Switch   string `json:"switch"`
+	Switch string `json:"switch"`
+	// MacOnly is the line under a setting that only the owner's Mac app changes, shown as text elsewhere.
+	MacOnly  string `json:"mac_only,omitempty"`
 	CanLeave bool   `json:"can_leave"`
 }
 
@@ -104,6 +106,10 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		Intro:    "People work with you here. Everything is kept on the server."}
 	if twin {
 		out.Switch = "mac"
+		out.MacOnly = fmt.Sprintf("Change these from %s's Mac app.", ownerName)
+		if viewer == t.OwnerID {
+			out.MacOnly = "Change these from your Mac app."
+		}
 		out.Intro = "People work with you here. The shared folder is kept on the server. Messages to Mac agents wait while the Mac is off and arrive when it is back."
 		mac := &crewTeamTabMac{Yours: viewer == t.OwnerID}
 		name := ""
