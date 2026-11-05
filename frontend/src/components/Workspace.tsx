@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Upload, FolderPlus, FilePlus, ChevronsDownUp, CheckSquare, X, Trash2, Loader2, Eye, EyeOff, Search, RefreshCw } from 'lucide-react'
+import { Upload, FolderPlus, FilePlus, ChevronsDownUp, CheckSquare, X, Trash2, Loader2, Eye, EyeOff, Search, RefreshCw, FileSearch, TextSearch, CaseSensitive, WholeWord, Regex } from 'lucide-react'
 import { agentApi, workspaceApi } from '../services/api'
 import type { PlannerFile } from '../services/api-types'
 import PlannerFileList from './workspace/PlannerFileList'
@@ -1836,58 +1836,61 @@ export default function Workspace({
                 placeholder={searchInFiles ? 'Search in files' : 'Filter files'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="block w-full rounded-md border border-input bg-transparent py-1 pl-8 pr-8 text-xs leading-5 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className={`block w-full rounded-md border border-input bg-transparent py-1 pl-8 ${searchInFiles ? (searchQuery ? 'pr-36' : 'pr-32') : (searchQuery ? 'pr-20' : 'pr-14')} text-xs leading-5 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`}
               />
-              {searchQuery && (
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+              {/* What to search and how, as icons at the right end of the box (owner, 5 Nov: like VS Code) */}
+              <div className="absolute inset-y-0 right-0 flex items-center gap-0.5 pr-1">
+                {searchQuery && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button
-                        onClick={() => setSearchQuery('')}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-4 w-4" />
+                      <button type="button" aria-label="Clear search" onClick={() => setSearchQuery('')} className="rounded p-0.5 text-muted-foreground hover:text-foreground">
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>
                       <p>Clear search</p>
                     </TooltipContent>
                   </Tooltip>
-                </div>
-              )}
-            </div>
-            <div className="mt-1 flex items-center gap-1 text-xs">
-              <div role="group" aria-label="What to search" className="flex rounded-md border border-input p-0.5">
-                {([[false, 'Names'], [true, 'Text in files']] as const).map(([inFiles, label]) => (
-                  <button
-                    key={label}
-                    type="button"
-                    aria-pressed={searchInFiles === inFiles}
-                    onClick={() => setSearchInFiles(inFiles)}
-                    className={`rounded px-1.5 py-0.5 ${searchInFiles === inFiles ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    {label}
-                  </button>
+                )}
+                {searchInFiles && ([['match_case', CaseSensitive, 'Match case'], ['whole_word', WholeWord, 'Whole word'], ['regex', Regex, 'Use a pattern (regular expression)']] as const).map(([key, Icon, label]) => (
+                  <Tooltip key={key}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={label}
+                        aria-pressed={searchOptions[key]}
+                        onClick={() => setSearchOptions(options => ({ ...options, [key]: !options[key] }))}
+                        className={`rounded p-0.5 ${searchOptions[key] ? 'bg-primary/15 text-foreground ring-1 ring-primary/60' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{label}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 ))}
+                <div role="group" aria-label="What to search" className="ml-0.5 flex items-center gap-0.5 border-l border-input pl-1">
+                  {([[false, FileSearch, 'Search file names'], [true, TextSearch, 'Search text in files']] as const).map(([inFiles, Icon, label]) => (
+                    <Tooltip key={label}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={label}
+                          aria-pressed={searchInFiles === inFiles}
+                          onClick={() => setSearchInFiles(inFiles)}
+                          className={`rounded p-0.5 ${searchInFiles === inFiles ? 'bg-primary/15 text-foreground ring-1 ring-primary/60' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{label}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                </div>
               </div>
-              {searchInFiles && ([['match_case', 'Aa', 'Match case'], ['whole_word', 'ab', 'Whole word'], ['regex', '.*', 'Use a pattern (regular expression)']] as const).map(([key, mark, label]) => (
-                <Tooltip key={key}>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={label}
-                      aria-pressed={searchOptions[key]}
-                      onClick={() => setSearchOptions(options => ({ ...options, [key]: !options[key] }))}
-                      className={`rounded border px-1.5 py-0.5 font-mono ${searchOptions[key] ? 'border-primary bg-primary/10 text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'} ${key === 'whole_word' ? 'underline' : ''}`}
-                    >
-                      {mark}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{label}</p>
-                  </TooltipContent>
-                </Tooltip>
-              ))}
             </div>
           </div>
           {/* Folder Structure - Full Width */}
