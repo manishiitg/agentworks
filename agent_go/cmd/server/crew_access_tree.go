@@ -38,7 +38,6 @@ type crewAccessFacts struct {
 	Team       *crewTeam
 	People     []crewTeamAgentsPerson // everyone in the Team with their in-team agents (crew_team_agents.go)
 	Agents     []macSharedAgent
-	Rows       []macAgentRow // this Crew's agents on the Mac (none on the website, which has no list)
 	LastChange time.Time
 	Clashes    []crewTeamClash
 	Progress   *crewTeamRound
@@ -73,7 +72,8 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	}
 	people := []crewAccessPerson{}
 	for _, p := range f.People {
-		if p.UserID == f.Viewer {
+		// The server marks the viewer's own row ("you"); on the Mac its ids are the server's, not this Mac's.
+		if p.You || p.UserID == f.Viewer {
 			continue
 		}
 		names := []string{}
@@ -84,29 +84,21 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 				status = a.StatusLabel
 			}
 		}
-		people = append(people, crewAccessPerson{Name: crewPersonShortName(p.UserID), Online: p.MacOn, Agents: names, StatusLabel: status})
+		// The name the server gave (this Mac does not know the server's people), cut to its short form.
+		name := strings.SplitN(strings.TrimSpace(firstNonEmptyTrimmed(p.Name, crewPersonShortName(p.UserID))), "@", 2)[0]
+		people = append(people, crewAccessPerson{Name: name, Online: p.MacOn, Agents: names, StatusLabel: status})
 	}
 	// The viewer is not one of the people listed (owner, 5 Nov): their own agents have the lines below.
 	lines = append(lines, crewAccessLine{Kind: "team", Title: fmt.Sprintf("Team · %d other %s", len(people), plural(len(people), "person", "people")), People: people})
-	// Plain lines, names not counts (owner, 5 Nov): what is shared with the team, and what stays only yours.
-	inTeam, team := []string{}, map[string]bool{}
+	// What is shared with the team, by name (owner, 5 Nov: "Shared with the team" is enough).
+	inTeam := []string{}
 	for _, a := range f.Agents {
 		if crewTeamInTeam(a) {
 			inTeam = append(inTeam, firstNonEmptyTrimmed(a.Name, a.Tab))
-			team[a.Tab] = true
-		}
-	}
-	onlyYou := []string{}
-	for _, row := range f.Rows {
-		if !team[row.Tab] {
-			onlyYou = append(onlyYou, row.Name)
 		}
 	}
 	if len(inTeam) > 0 {
 		lines = append(lines, crewAccessLine{Kind: "agents", Title: "Shared with the team", Detail: strings.Join(inTeam, ", ")})
-	}
-	if len(onlyYou) > 0 {
-		lines = append(lines, crewAccessLine{Kind: "agents", Title: "Only you", Detail: strings.Join(onlyYou, ", ")})
 	}
 	lines = append(lines, crewAccessPublicLine(f.Agents)...)
 	if f.Team.Folder.shared() {
@@ -243,9 +235,6 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 				f.LocalSynced, _ = time.Parse(time.RFC3339Nano, local.LastSynced)
 			}
 		}
-	}
-	if rows, err := api.macAgentRows(ctx, claims, project); err == nil {
-		f.Rows = rows
 	}
 	return crewAccessTree(f)
 }
