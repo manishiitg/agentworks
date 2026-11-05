@@ -15,7 +15,7 @@ type Preview = {
 type Reply = { publish?: Preview; placements?: Record<string, AgentPlacement> }
 const size = (bytes: number) => bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 
-export function CrewPublishAgent({ projectId, connection, serverLink, serverName, reportedPlacements, onAgentCount }: { projectId: string; connection: string; serverLink: string; serverName: string; reportedPlacements?: Record<string, AgentPlacement>; onAgentCount?: (count: number) => void }) {
+export function CrewPublishAgent({ projectId, connection, serverLink, serverName, reportedPlacements }: { projectId: string; connection: string; serverLink: string; serverName: string; reportedPlacements?: Record<string, AgentPlacement> }) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [placements, setPlacements] = useState<Record<string, AgentPlacement>>({})
   const [serverSchedules, setServerSchedules] = useState<Record<string, number>>()
@@ -31,10 +31,10 @@ export function CrewPublishAgent({ projectId, connection, serverLink, serverName
     let cancelled = false
     setAgents([]); setPlacements({}); setSelected(''); setPreview(undefined); setError('')
     void desktopRequest<Reply>(endpoint, 'POST', { action: 'publish_agents' }).then(reply => {
-      if (!cancelled) { setAgents(reply.publish?.agents || []); onAgentCount?.((reply.publish?.agents || []).length); setPlacements(reply.placements || {}) }
+      if (!cancelled) { setAgents(reply.publish?.agents || []); setPlacements(reply.placements || {}) }
     }).catch(cause => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load agents.') })
     return () => { cancelled = true }
-  }, [endpoint, onAgentCount])
+  }, [endpoint])
   useEffect(() => { if (reportedPlacements) setPlacements(reportedPlacements) }, [reportedPlacements])
   const publishedState = Object.entries(placements).map(([tab, place]) => `${tab}:${place.location}:${place.transfer_id}`).sort().join('|')
   useEffect(() => {
@@ -85,14 +85,14 @@ export function CrewPublishAgent({ projectId, connection, serverLink, serverName
     finally { setBusy(false) }
   }
   return <div>
-    <p className="pb-1 pt-1 text-[12.5px] text-muted-foreground"><b className="font-semibold text-foreground">Or one agent</b> · the others stay on this Mac</p>
+    <p className="pb-1 pt-1 text-[12.5px] text-muted-foreground"><b className="font-semibold text-foreground">Or one agent</b><span className="block">Moves this agent to {serverName}; your other agents stay on this Mac.</span></p>
     {agents.map(agent => {
       const place = placements[agent.tab]
       const date = place?.since ? new Date(place.since) : undefined
       const since = date && Number.isFinite(date.getTime()) ? date.toLocaleDateString() === new Date().toLocaleDateString() ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
       const schedules = place?.location === 'server' ? serverSchedules?.[agent.tab] : undefined
       return <div key={agent.tab} className="flex flex-wrap items-center gap-2.5 border-t border-border py-2.5 text-sm">
-        <span className="min-w-0 break-words" title={agent.purpose || 'Set a purpose in this agent’s chat first.'}>{agent.name}</span>
+        <span className="min-w-0 break-words" title={agent.purpose || undefined}>{agent.name}</span>
         <span className={`rounded-full px-2 py-0.5 text-xs ${place?.location === 'server' ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300' : place ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`} title={date?.toLocaleString()}>{place?.location === 'server' ? `On the server${since ? ` · since ${since}` : ''}` : place ? 'Publishing…' : 'On this Mac'}</span>
         {schedules !== undefined && schedules > 0 && <span className="text-[12.5px] text-muted-foreground">{schedules} {schedules === 1 ? 'schedule' : 'schedules'} running there</span>}
         {place?.location === 'server' ? <Button size="sm" variant="outline" className="ml-auto h-7 shrink-0 rounded-full px-3" onClick={() => window.open(`${serverLink}?agent=${encodeURIComponent(agent.tab)}`, '_blank', 'noopener,noreferrer')}>Open</Button> : <Button size="sm" className="ml-auto h-7 shrink-0 rounded-full px-3" disabled={busy} onClick={() => { setSelected(agent.tab); setPreview(undefined); setAccount(''); setError('') }}>{place ? 'Finish publish' : 'Publish'}</Button>}

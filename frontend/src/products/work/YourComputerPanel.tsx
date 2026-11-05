@@ -19,7 +19,6 @@ export type { MacAgentShare } from './MacSharedAgents'
 import { useProjectTeam } from './teamApi'
 import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
 import { hasPendingCrewAccess, pendingCrewAccessSection, type CrewAccessSection } from './MacSharedAgents'
-import { schedulerApi } from '../../api/scheduler'
 import { useTeamCopyStatus } from './TeamWhenMacOff'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
@@ -189,20 +188,6 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
   }, [projectId])
   const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
   const name = tab?.metadata?.agentProfileProjectTitle || 'this'
-  const workspace = tab?.metadata?.agentProfileWorkspace
-  const [agentCount, setAgentCount] = useState<number>()
-  const [scheduleCount, setScheduleCount] = useState<number>()
-  useEffect(() => {
-    setAgentCount(undefined); setScheduleCount(undefined)
-  }, [projectId])
-  useEffect(() => {
-    if (section !== 'publish' || !workspace) return
-    let active = true
-    void schedulerApi.listJobs({ entity_type: 'product', limit: 1000 }).then(data => {
-      if (active && data.total <= data.jobs.length) setScheduleCount(data.jobs.filter(job => job.workspace_path?.replace(/\/+$/, '') === workspace.replace(/\/+$/, '')).length)
-    }).catch(() => {})
-    return () => { active = false }
-  }, [section, workspace])
   const connections = useConnectedWorkStore(state => state.connections).filter(item => item.id !== 'local')
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [busy, setBusy] = useState(false)
@@ -335,18 +320,15 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
       </div>
     </section>}
     {!needsServer && section === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
-      <p className="px-1 text-[13px] text-muted-foreground"><span>Publish runs it on {network} from now on, with your Mac on or off: chat, memory, skills, selected files, schedules and triggers go with it, using your AI login on the server. Publish the whole Crew, or just one agent.</span></p>
       {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
       <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
-        <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">🧩</span>
         <div className="min-w-0 flex-1 basis-48"><p className="font-semibold">Whole Crew</p>
-          <p className="text-[12.5px] text-muted-foreground">{online ? `Published on ${network}. Your Mac folder is kept.` : `All ${agentCount === undefined ? 'its agents' : `${agentCount} ${agentCount === 1 ? 'agent' : 'agents'}`}, the Crew folder${facts ? ` (${facts.size})` : ''} and ${scheduleCount === undefined ? 'its schedules' : `its ${scheduleCount} ${scheduleCount === 1 ? 'schedule' : 'schedules'}`}. The Mac folder is kept as a backup.`}</p>
+          <p className="text-[12.5px] text-muted-foreground">{online ? `Runs on ${network}. Your Mac keeps a backup copy.` : `Moves this Crew to ${network} for good: all its agents, chats, memory, skills, files and schedules. It then runs there with your Mac on or off; your Mac keeps a backup copy.`}</p>
           {!online && tooBig && <p className="text-xs text-amber-600">This Crew is too large to publish. Move large folders out first.</p>}
         </div>
         {online ? <Button className="ml-auto h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open Crew</Button> : <Button className="ml-auto h-7 rounded-full px-3" size="sm" disabled={!status || !target || busy} onClick={() => setOpen('move')}>Publish Crew</Button>}
       </div>
-      {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} onAgentCount={setAgentCount} />}
-      <p className="text-[12.5px] text-muted-foreground">Use it for things that should keep running: a workflow, a daily report, a watcher.</p>
+      {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} />}
     </section>}
     {!needsServer && section === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
       {binding && !online && binding.connection_id ? <CrewTeamTab projectId={projectId} connection={binding.connection_id} network={networkName(binding.connection_id)} /> : online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Open Team on the server</Button> : <TeamOffline onTurnOn={async () => {
