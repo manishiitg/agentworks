@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom'
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { useProjectTeam } from '../../products/work/teamApi'
-import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Eye, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -14,7 +14,7 @@ import { AgentWorksChatTabItem } from './AgentWorksChatTabItem'
 import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
-import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useMacSharedAgents, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
+import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useMacSharedAgents, useTeamRemoteAgents, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
@@ -124,6 +124,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // Which agents others can message and who asked them lately (a Crew on this Mac): marks on each tab's avatar.
   const macHere = livesOnMacHere(place) && !livesOnMac
   const shares = useMacSharedAgents(placeProject, macHere)
+  // In the Mac app, the Team members' own agents from the online copy (owner, 5 Nov); they open on the server's page.
+  const teamRemote = useTeamRemoteAgents(placeProject, macHere)
   const asking = useCrewAsking(macHere ? placeProject : undefined)
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   const sharedHere = (tab: ChatTab) => { const id = agentId(tab); return Boolean(id && shares[id]) }
@@ -186,7 +188,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const agentTabs = tabs.filter(isAgentTab)
   const listedInMenu = (tab: ChatTab) => onStrip(tab) || tab.tabId === activeTabId
   const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
-  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index) => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, owner: canControl(tab) ? undefined : listedFor(tab)?.tab_owner_name || undefined, pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })) : []
+  const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, owner: canControl(tab) ? undefined : listedFor(tab)?.tab_owner_name || undefined, pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })).concat(teamRemote.map((agent): CrewAgentRow => ({
+    tabId: `team-remote:${agent.key}`, name: agent.name, main: false, owner: agent.owner, open: agent.open,
+    info: { name: agent.name, icon: agent.icon, purpose: agent.purpose, owner: ownerShortName(agent.owner) || undefined } }))) : []
   // Agents the server lists that have no tab here (closed), for the team board, which lists every agent.
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
@@ -407,6 +411,17 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         closeStopsSession={!!key}
         onMakeInteractive={onMakeInteractive}
       />{renderAfterTab?.(tab)}</div></Fragment>
+      })}
+      {/* The Team members' agents in the Mac app, under each person's name; each opens on the server's page. */}
+      {teamRemote.map((agent, index) => {
+        const person = ownerShortName(agent.owner) || 'Teammate'
+        const first = index === 0 || (ownerShortName(teamRemote[index - 1].owner) || 'Teammate') !== person
+        return <Fragment key={agent.key}>{first && <span className="ml-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-4 w-px bg-border" />{person}:</span>}
+          <button type="button" onClick={agent.open} title={`${person}'s ${agent.name} · opens on the server, where only ${person} types`}
+            className="flex h-7 items-center gap-1.5 rounded px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+            {agent.icon && <span aria-hidden="true">{agent.icon}</span>}<span className="max-w-[10rem] truncate">{agent.name}</span>
+            <Eye role="img" aria-label="Watching: only they type here" className="h-3 w-3 shrink-0" />
+          </button></Fragment>
       })}
       </div>
       {!menuMode && (tabs.length > 1 || phone || livesOnMac) && (
