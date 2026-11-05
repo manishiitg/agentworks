@@ -9,7 +9,23 @@ vi.mock('../../services/api', () => ({ default: { post: async () => ({ data: moc
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: any) => select({ user: mocks.user }), { getState: () => ({ user: mocks.user }) }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ getWorkspaceScopedStorageKey: (key: string) => key, useWorkspaceConnectionStore: Object.assign((select: any) => select({ activeWorkspaceId: mocks.server }), { getState: () => ({ activeWorkspaceId: mocks.server }) }) }))
 vi.mock('../../components/integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled: () => true }))
-vi.mock('./useWorkspaceStatus', () => ({ useWorkspaceStatus: () => ({ snapshot: mocks.status, refresh: vi.fn() }) }))
+vi.mock('./useCrewPanel', () => ({ useCrewPanel: () => {
+ const sections: any[] = [
+  { id:'browser', title:'Browser', rows:[{ id:'browser',label:mocks.browser.name,detail:mocks.browser.label,connected:mocks.browser.connected,destination:'browser' }] },
+  { id:'dashboards',title:'Dashboards',rows:mocks.documents.map(d=>({ ...d,label:d.title })) },
+  { id:'schedules',title:'Schedules',rows:mocks.status.automations },
+ ]
+ const details: Record<string,string> = mocks.status.details || {}
+ for (const row of mocks.status.apps) { details[row.destination]=row.connected?'Connected':row.attention?'Needs attention':'Not connected' }
+ const mcps=mocks.status.apps.filter((a:any)=>a.destination==='mcp:connected')
+ if(mocks.status.loaded.includes('mcp:connected')) { const n=mcps.filter((a:any)=>a.connected).length;const a=mcps.filter((a:any)=>a.attention).length;details['mcp:connected']=`${n} connected${a?` · ${a} need attention`:''}` }
+ if(mocks.status.errors.includes('Connections could not be loaded.')) details['mcp:connected']='Unavailable'
+ if(mocks.status.loaded.includes('mcp:connected')||mocks.status.errors.includes('Connections could not be loaded.')) sections.push({id:'connections',title:'MCPs',rows:mocks.status.apps,error:mocks.status.errors[0]})
+ else sections.push({id:'other_apps',title:'Apps',rows:mocks.status.apps})
+ const sharing=!mocks.share.can_share?'Shared with you':mocks.share.mode==='everyone'?'Everyone':mocks.share.mode==='people'?`Shared with ${new Set(mocks.share.people.map(p=>p.id)).size}`:'Only you'
+ sections.push({id:'access',title:'Access',detail:`Online · ${sharing}`,rows:[],access:{place:'online',role:mocks.share.can_share?'owner':'shared'}})
+ return { data:{ project:'example',workspace:'Crew/example',busy:false,mac_elsewhere:false,sections,details },refresh:vi.fn() }
+} }))
 vi.mock('../../components/workspace/ChatChangesRow', () => ({ ChatChangesRow: ({ onOpen }: { onOpen: (repoRoot?: string) => void }) => <><button onClick={() => onOpen()}>Changes</button><button onClick={() => onOpen("tools/web")}>Worktree changes</button></> }))
 vi.mock('../../hooks/useBrowserToolbarConnection', () => ({ useBrowserToolbarConnection: () => mocks.browser }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: mocks.documents }), selectReportDocument: vi.fn() }))
@@ -35,6 +51,7 @@ async function render(check: (host: HTMLDivElement) => Promise<void>) {
 }
 it('shows actual workspace status without promoting occasional tools, and keeps All tools searchable', async () => {
  mocks.status.apps = [{ id: 'mcp:a', label: 'Notes account', detail: 'MCP · Connected', connected:true, destination: 'mcp:connected' }, { id: 'mcp:b', label: 'Other account', detail: 'MCP · Needs attention', destination: 'mcp:connected', attention:true }, { id:'google:g', label:'Google', detail:'person@example.com · Connected', connected:true, destination:'mcp:gmail' }, { id:'slack:s', label:'My Slack account', detail:'Personal Slack · Connected', connected:true, destination:'mcp:slack-account' }, { id:'bot:b', label:'Project helper', detail:'Project helper · Identity verified', connected:true, destination:'mcp:slack-bot' }, { id:'whatsapp', label:'WhatsApp',detail:'Connected',connected:true,destination:'mcp:whatsapp' }, {id:'github',label:'GitHub',detail:'chosen-account · Connected',connected:true,destination:'mcp:github'}]
+ mocks.status.details = { automations: '2 · Next · 1 Jan 08:00 UTC' }
  mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Paused', destination: 'schedules:schedules' }, { id:'schedule:next',label:'Next summary',detail:'Jan 1, 8:00 AM',nextRunAt:'2099-01-01T08:00:00Z',destination:'schedules:schedules' }]
  await render(async host => {
   await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Changes')!.click())
@@ -43,7 +60,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(mocks.target).toHaveBeenLastCalledWith('files', 'review-uncommitted:tools%2Fweb')
   expect(host.textContent).not.toContain('person@example.com')
   expect(host.textContent).not.toContain('Morning summary')
-  expect(host.querySelector('[aria-label="Automations"]')?.textContent).toContain('2 · Jan 1, 8:00 AM')
+  expect(host.querySelector('[aria-label="Automations"]')?.textContent).toContain(mocks.status.details.automations)
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Slack bot · Project helper · Identity verified"]')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'slack-bot')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="WhatsApp · Connected"]')!.click())

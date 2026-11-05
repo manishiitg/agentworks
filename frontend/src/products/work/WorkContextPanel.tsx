@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Bot, CalendarClock, ChevronRight, FolderSync, Globe, Link2, RefreshCw, Settings2, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
-import { useWorkspaceStatus } from './useWorkspaceStatus'
+import { Bot, CalendarClock, ChevronRight, FolderSync, Globe, Laptop, Link2, RefreshCw, Settings2, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
+import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
@@ -8,14 +8,12 @@ import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
-import { connectionSummary } from '../../components/workspace/workspaceConnectionStatus'
-import { cloudStateIcon, cloudStateLabel, type CrewAsk, openCrewAskThread, takeCrewAccess, useCrewAsking, useCrewLivesOnMac, useCrewAccessSummary, useCrewAccessTree, type CrewAccessLine, useYourComputerSummary, YourComputerPanel } from './YourComputerPanel'
+import { cloudStateIcon, type CrewAsk, openCrewAskThread, takeCrewAccess, type CrewAccessLine, YourComputerPanel } from './YourComputerPanel'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useContextMenuWideStore } from '../../stores/useContextMenuWideStore'
-import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
+import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
-import api from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
@@ -23,8 +21,6 @@ import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPa
 import { CREW_MENU_GROUPS, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
-import { useProjectTeam } from './teamApi'
-import { useTeamSyncSummary } from './TeamSyncPanel'
 import { openCrewAccess, openCrewSync } from './MacSharedAgents'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
@@ -39,46 +35,30 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   dashboardChatTarget?: DashboardChatTarget
   enabledPanels?: Set<string>
 }) {
-  // The shared folder in one short row (owner, 5 Nov); its Sync section lives in Access > Team.
-  const team = useProjectTeam(projectId)
-  const sharedFolder = Boolean(team.target && team.team?.on && team.team.folder_access)
-  const syncLine = useTeamSyncSummary(team.target, sharedFolder)
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', profileId, projectId || workspacePath)
   const incomingEmail = useAgentInboxEnabled()
   const allowed = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
-  const canReadSharing = allowed('dashboard') && allowed('mcp')
-  const [sharing, setSharing] = useState<{ scope: string; allowed: boolean; owner: boolean; detail?: string } | null>(null)
-  useEffect(() => {
-    if (!canReadSharing) return
-    const controller = new AbortController()
-    void api.post<{ can_share: boolean; owner?: boolean; mode?: string; people?: { id: string }[] }>('/api/dashboards', { workspace: workspacePath, action: 'share_status' }, { signal: controller.signal })
-      .then(({ data }) => {
-        if (controller.signal.aborted) return
-        const count = new Set((data.people || []).map(person => person.id)).size
-        // Whose Crew it is comes from the server's owner flag, never from can_share (a Mac Crew blocks sharing).
-        const owner = data.owner === true || data.can_share === true
-        setSharing({ scope, allowed: data.can_share === true, owner, detail: !owner ? 'Shared with you' : data.mode === 'everyone' ? 'Everyone' : data.mode === 'people' && count > 0 ? `Shared with ${count}` : 'Only you' })
-      })
-      .catch(() => { if (!controller.signal.aborted) setSharing({ scope, allowed: false, owner: false }) })
-    return () => controller.abort()
-  }, [scope, workspacePath, canReadSharing])
-  const { documents } = useReportDocuments(allowed('dashboard') ? workspacePath : '')
-  const menuOptions = { panels, enabledPanels, incomingEmail, projectId, canShare: sharing?.scope === scope && sharing.allowed }
+  const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath, reviewSessionId)
+  const section = (id: string) => data?.sections.find(item => item.id === id)
+  const access = section('access')?.access
+  const apps = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('mcp:'))
+  const allAutomations = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('schedules:'))
+  const documents = (section('dashboards')?.rows || []).map((row, order) => ({ id: row.id, title: row.label, path: row.path!, order, motion: row.motion, artifact: row.artifact }))
+  const browserRow = section('browser')?.rows[0]
+  const browser = { connected: browserRow?.connected === true, name: browserRow?.label === 'Browser' ? undefined : browserRow?.label, label: browserRow?.detail || (section('browser')?.error ? 'Unable to check' : 'Checking…') }
+  const menuOptions = { panels, enabledPanels, incomingEmail, projectId }
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const byId = new Map(inventory.map(item => [item.id, item]))
+  const automations = allAutomations.filter(item => byId.has(item.destination!))
   const accessItems = inventory.filter(item => item.group === 'Share' && item.view === 'mcp')
-  const { snapshot, refresh } = useWorkspaceStatus({ scope, workspacePath, projectId, admitted: inventory.map(item => item.id) })
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const automationItems = inventory.filter(item => item.view === 'schedules')
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' | 'access' }>()
-  const computerState = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:access'), projectId)
-  const accessSummary = useCrewAccessSummary(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
-  // The approved Access tree (owner, 5 Nov mockup): the server writes each line; the summary is the fallback.
-  const accessTree = useCrewAccessTree(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
-  const asking = useCrewAsking(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
-  const macOnMacHere = useCrewLivesOnMac(projectId)
+  const computerState = access?.place
+  const accessTree = access?.tree || []
+  const asking = access?.asking || []
   const showMenu = (view: 'full' | 'integrations' | 'automations' | 'access') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     setMenu({ scope, view })
@@ -116,9 +96,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   if (menu?.scope === scope) {
     const renderItem = (item: CrewMenuItem) => {
       if (item.id === 'dashboard') return <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
-      if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} onClick={() => open(item)}/>
-      const connections = menu.view === 'integrations' ? (snapshot?.apps || []).filter(row => row.destination === item.id) : []
-      const status = connectionSummary(connections, item.id === 'mcp:connected' && snapshot?.loaded.includes(item.id) === true && !snapshot.errors.includes('Connections could not be loaded.'))
+      if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} status={browser} onClick={() => open(item)}/>
+      const connections = menu.view === 'integrations' ? apps.filter(row => row.destination === item.id) : []
+      const status = data?.details[item.id]
       const color = connections.some(row => row.attention) ? 'text-amber-600 dark:text-amber-400' : connections.some(row => row.connected) ? 'text-emerald-600 dark:text-emerald-400' : undefined
       return <Row key={item.id} icon={item.icon} hint={connections.length && item.id !== 'mcp:connected' ? connections.map(row => row.detail).join('\n') : undefined} detail={menu.view === 'integrations' && status ? <span className={color}>{status}</span> : undefined} onClick={() => open(item)}>{item.label}</Row>
     }
@@ -134,28 +114,15 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       })}
     </WorkspaceContextCard>
   }
-  const automations = snapshot?.automations || []
-  const nextAutomation = automations.filter(item => item.nextRunAt && Date.parse(item.nextRunAt) > Date.now()).sort((a, b) => Date.parse(a.nextRunAt!) - Date.parse(b.nextRunAt!))[0]
-  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} sessionId={reviewSessionId} onOpen={(repoRoot) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
-  // One Access row (owner, 3 Nov): where it lives · who can use it, both as the server reports them.
-  const who = sharing?.scope === scope ? sharing.detail : undefined
-  const theirs = sharing?.scope === scope && !sharing.owner
-  // On the website, a Crew that lives on its owner's Mac has only an empty online record: show none of its own
-  // changes, dashboards, connections or automations (they would mislead, and could run on the server).
-  const macElsewhere = macOnMacHere
-  // Offline is the whole answer: on this Mac, reached from nowhere else. Otherwise the server's summary follows (owner,
-  // 5 Nov: the Team state too, e.g. "Team: 2 people · 3 agents in team").
-  const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, computerState === 'offline' || accessTree.length > 0 ? undefined : accessSummary || who].filter(Boolean).join(' · ') || undefined
+  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} section={section('changes')} onOpen={(repoRoot) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
+  const theirs = access?.role === 'member' || access?.role === 'shared'
+  const macElsewhere = data?.mac_elsewhere === true
+  const accessDetail = section('access')?.detail || section('sharing')?.detail
   const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => item.id === 'mcp:access' && accessInMenu ? showMenu('access') : open(item)}>{item.label}</Row>
-  // Someone else asked a shared agent on this Mac in the last 10 minutes: one tree line each under Access (owner, 4 Nov).
-  // A click opens that person's own thread with the agent for the owner to read; their messages are never in the owner's tab.
-  const ago = (ask: CrewAsk) => ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`
-  // Where it came from (owner, 5 Nov: "show from where its calling.. like bridge or web"), named by the server.
-  const askChannel = (ask: CrewAsk) => { const where = ({ website: 'web', MCP: 'AI app', AgentBridge: 'AgentBridge' } as Record<string, string>)[ask.channel || ''] || ask.channel; return where ? `${where} · ` : '' }
   const openAsk = (ask: CrewAsk) => { void openCrewAskThread(projectId, ask) }
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.
-  const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, public: Link2, folder: FolderSync, clash: TriangleAlert }
+  const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, public: Link2, folder: FolderSync, clash: TriangleAlert, where: access?.where === 'mac' ? Laptop : Globe }
   const openLine = (line: CrewAccessLine) => line.kind === 'folder' || line.kind === 'clash' ? openCrewSync(projectId) : openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
   // A person in the Team: their agent in this Crew's tabs (watch only), else Access at the Team tab.
   const openPerson = (name: string) => {
@@ -181,17 +148,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   })
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the server's
   // tree (or, until it has one, the shared folder's line), then who asked; each opens Access at its place.
-  const asksTree = (asking.length > 0 || sharedFolder || accessTree.length > 0) && <div role="list" aria-label="Access details" className="ml-3 border-l border-border pl-2 pb-1">
+  const asksTree = (asking.length > 0 || accessTree.length > 0) && <div role="list" aria-label="Access details" className="ml-3 border-l border-border pl-2 pb-1">
     {treeLines}
-    {sharedFolder && !accessTree.length && <button role="listitem" type="button" onClick={() => openCrewSync(projectId)} title="Open the shared folder's Sync in Access" className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <FolderSync aria-hidden="true" className="h-3 w-3 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate font-medium text-foreground">Shared folder</span>
-      {syncLine && <span className="shrink-0 text-muted-foreground">{syncLine}</span>}
-    </button>}
     {asking.slice(0, 5).map(ask => <button key={`${ask.tab}:${ask.sender}`} role="listitem" type="button" onClick={() => openAsk(ask)} title={`Open ${ask.sender}'s chat with ${ask.agent}`} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${ask.active ? 'bg-emerald-500 motion-safe:animate-pulse' : 'bg-muted-foreground/40'}`} />
-      <span className="min-w-0 flex-1 truncate"><span className="font-medium text-foreground">{ask.sender}</span> {ask.active ? 'is asking' : 'asked'} {ask.agent}</span>
-      <span className="shrink-0 text-muted-foreground">{askChannel(ask)}{ago(ask)}</span>
+      <span className="min-w-0 flex-1 truncate">{ask.label}</span>
+      <span className="shrink-0 text-muted-foreground">{ask.detail}</span>
     </button>)}
     {asking.length > 5 && <p className="px-1.5 text-[11px] text-muted-foreground">+{asking.length - 5} more</p>}
   </div>
@@ -202,12 +164,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     </div> : <>
     {changes}
     {byId.has('dashboard') && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
-    <WorkspaceConnectionsMenu key={scope} workspacePath={workspacePath} profileId={profileId} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={(snapshot?.apps || []).filter(item => byId.has(item.destination))} loading={snapshot?.loaded.includes('mcp:connected') !== true} unavailable={snapshot?.errors.includes('Connections could not be loaded.') === true} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
-    {automationItems.length > 0 && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={CalendarClock} detail={automations.length === 1 ? automations[0].detail : automations.length > 1 ? `${automations.length}${nextAutomation ? ` · ${nextAutomation.detail}` : ''}` : undefined}>
-      {automations.map(item => <Row key={item.id} icon={byId.get(item.destination)?.icon || CalendarClock} hint={byId.get(item.destination)?.label} detail={item.detail} onClick={() => openID(item.destination)}>{item.label}</Row>)}
+    <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
+    {automationItems.length > 0 && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={CalendarClock} detail={data?.details.automations}>
+      {automations.map(item => <Row key={item.id} icon={byId.get(item.destination!)?.icon || CalendarClock} hint={byId.get(item.destination!)?.label} detail={item.detail} onClick={() => openID(item.destination!)}>{item.label}</Row>)}
       <Row icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={() => showMenu('automations')}>Manage automations</Row>
     </WorkspaceCompactGroup>}
     </>}
-    {snapshot?.errors.length ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>Some workspace status is unavailable.</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
+    {error || data?.sections.some(item => item.error || item.stale) ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>{error || (data?.sections.some(item => item.stale) ? 'Showing the last update for some sections.' : 'Some workspace status is unavailable.')}</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>
 }

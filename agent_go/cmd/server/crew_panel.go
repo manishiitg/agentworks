@@ -18,16 +18,17 @@ import (
 // contracts. These readers call those same guarded handlers, never a new
 // account/Team policy. Only display fields are retained in the response/cache.
 type crewPanelRow struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Detail      string `json:"detail,omitempty"`
-	Destination string `json:"destination,omitempty"`
-	Connected   bool   `json:"connected,omitempty"`
-	Attention   bool   `json:"attention,omitempty"`
-	Path        string `json:"path,omitempty"`
-	UsedInChat  bool   `json:"used_in_chat,omitempty"`
-	Motion      bool   `json:"motion,omitempty"`
-	Artifact    bool   `json:"artifact,omitempty"`
+	nextRun     time.Time // Server-only ordering for the automation summary.
+	ID          string    `json:"id"`
+	Label       string    `json:"label"`
+	Detail      string    `json:"detail,omitempty"`
+	Destination string    `json:"destination,omitempty"`
+	Connected   bool      `json:"connected,omitempty"`
+	Attention   bool      `json:"attention,omitempty"`
+	Path        string    `json:"path,omitempty"`
+	UsedInChat  bool      `json:"used_in_chat,omitempty"`
+	Motion      bool      `json:"motion,omitempty"`
+	Artifact    bool      `json:"artifact,omitempty"`
 }
 type crewPanelSection struct {
 	ID     string           `json:"id"`
@@ -40,6 +41,7 @@ type crewPanelSection struct {
 	Access *crewPanelAccess `json:"access,omitempty"`
 }
 type crewPanelAccess struct {
+	Where   string                `json:"where,omitempty"`
 	Place   string                `json:"place,omitempty"`
 	Role    string                `json:"role,omitempty"`
 	View    string                `json:"view,omitempty"`
@@ -97,12 +99,14 @@ func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection) {
 			delete(c.entries, k)
 		}
 	}
+	section.Rows = append([]crewPanelRow{}, section.Rows...)
 	c.entries[key] = crewPanelCached{now, section}
 }
 func (c *crewPanelCache) previous(key crewPanelCacheKey) (crewPanelSection, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	v, ok := c.entries[key]
+	v.section.Rows = append([]crewPanelRow{}, v.section.Rows...)
 	return v.section, ok && time.Since(v.at) < crewPanelCacheTTL
 }
 func (c *crewPanelCache) remove(key crewPanelCacheKey) {
@@ -234,6 +238,17 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	api.activeSessionsMux.RUnlock()
+	crewTeamSyncJobs.Range(func(_, value any) bool {
+		job := value.(*crewTeamSyncJob)
+		if job.project == project {
+			select {
+			case <-job.done:
+			default:
+				out.Busy = true
+			}
+		}
+		return !out.Busy
+	})
 	for _, section := range sections {
 		out.Busy = out.Busy || section.Busy
 		if section.Access != nil {
@@ -335,6 +350,17 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 		details["automations"] = automations[0].Detail
 	} else if len(automations) > 1 {
 		details["automations"] = fmt.Sprint(len(automations))
+		var next *crewPanelRow
+		now := time.Now()
+		for i := range automations {
+			row := &automations[i]
+			if row.nextRun.After(now) && (next == nil || row.nextRun.Before(next.nextRun)) {
+				next = row
+			}
+		}
+		if next != nil {
+			details["automations"] += " · " + next.Detail
+		}
 	}
 	return details
 }

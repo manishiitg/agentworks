@@ -124,10 +124,11 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 	// "still working" and the caller asks again with the same transfer (Showcase, 5 Nov: a 7,184-file apply ran past the
 	// 20 s the company gateway and the Mac allow, was cut, and the Mac looped). Each finished result is handed out once.
 	key := stage + "\x00" + in.Action
-	job := &crewTeamSyncJob{done: make(chan struct{})}
+	job := &crewTeamSyncJob{done: make(chan struct{}), project: project}
 	if running, loaded := crewTeamSyncJobs.LoadOrStore(key, job); loaded {
 		job = running.(*crewTeamSyncJob)
 	} else {
+		publishCrewPanelChanged(project)
 		detached := r.WithContext(context.WithoutCancel(r.Context()))
 		go func() {
 			start, result := time.Now(), httptest.NewRecorder()
@@ -139,6 +140,7 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=%s files=%d changes=%d base=%d status=%d ms=%d", project, logUsernameForUserID(claims.UserID), in.Action, files, changes, len(in.Base), result.Code, time.Since(start).Milliseconds())
 			job.result = result
 			close(job.done)
+			publishCrewPanelChanged(project)
 		}()
 	}
 	select {
@@ -165,8 +167,9 @@ const crewTeamSyncWait = 10 * time.Second
 const crewTeamWorkingHeader = "X-Team-Working"
 
 type crewTeamSyncJob struct {
-	done   chan struct{}
-	result *httptest.ResponseRecorder
+	project string
+	done    chan struct{}
+	result  *httptest.ResponseRecorder
 }
 
 // crewTeamSyncJobs are the running (or finished, not yet handed out) sync steps, by transfer folder and action.

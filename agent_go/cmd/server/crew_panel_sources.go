@@ -17,7 +17,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 	_, connectionErr := personalConnectionItemScope(r, workspace, true, "Vault", "Vault")
 	connections := connectionErr == nil
 	q := url.Values{"workspace_path": {workspace}, "profile_id": {"work"}}
-	vars := map[string]string{"project": project, "project_id": project, "id": "work"}
+	vars := map[string]string{"project": project, "project_id": project}
 	read := func(ctx context.Context, handler http.HandlerFunc, route string, query url.Values, out any) error {
 		return crewPanelRead(r.WithContext(ctx), handler, http.MethodGet, route, vars, query, nil, out)
 	}
@@ -271,7 +271,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 					Data struct{ Accessibility struct{ State string } }
 				}
 			}
-			err := read(ctx, api.handleCrewComputerUse, "/api/agent-profiles/work/projects/"+url.PathEscape(project)+"/computer-use", nil, &data)
+			err := crewPanelRead(r.WithContext(ctx), api.handleCrewComputerUse, http.MethodGet, "/api/agent-profiles/work/projects/"+url.PathEscape(project)+"/computer-use", map[string]string{"id": "work", "project_id": project}, nil, nil, &data)
 			section := crewPanelSection{}
 			if data.Enabled {
 				label := "Needs setup"
@@ -322,7 +322,11 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 					label = "Running now"
 					section.Busy = true
 				}
-				section.Rows = append(section.Rows, crewPanelRow{ID: "schedule:" + job.ID, Label: job.Name, Detail: label, Destination: "schedules:schedules"})
+				row := crewPanelRow{ID: "schedule:" + job.ID, Label: job.Name, Detail: label, Destination: "schedules:schedules"}
+				if job.Enabled && job.NextRunAt != nil {
+					row.nextRun = *job.NextRunAt
+				}
+				section.Rows = append(section.Rows, row)
 			}
 			section.Detail = crewPanelCount(len(section.Rows), "schedule")
 			return section, err
@@ -369,7 +373,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 		{id: "access", title: "Access", allowed: true, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data crewSyncReply
 			err := read(ctx, api.handleCrewSync, "/api/crew-sync/"+url.PathEscape(project), nil, &data)
-			access := &crewPanelAccess{Place: data.Place, Role: data.Role, View: data.AccessView, Summary: data.AccessSummary, Tree: data.AccessTree, Member: data.MemberAccess, Asking: []crewPanelAsk{}}
+			access := &crewPanelAccess{Where: data.Where, Place: data.Place, Role: data.Role, View: data.AccessView, Summary: data.AccessSummary, Tree: data.AccessTree, Member: data.MemberAccess, Asking: []crewPanelAsk{}}
 			section := crewPanelSection{Access: access, Busy: data.Place == "moving"}
 			place := map[string]string{"mac": "On this Mac", "mac_off": "Mac off", "moving": "Publishing…", "online": "Online", "offline": "On this Mac · Offline"}[data.Place]
 			section.Detail = place

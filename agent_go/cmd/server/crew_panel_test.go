@@ -30,6 +30,16 @@ func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 		<-ctx.Done()
 		return crewPanelSection{}, ctx.Err()
 	}
+	// Empty sections must remain JSON arrays on a last-good response; null
+	// breaks the panel's row iteration after a source timeout.
+	empty := quick
+	empty.id = "empty"
+	empty.read = func(context.Context) (crewPanelSection, error) { return crewPanelSection{}, nil }
+	cache.collect(t.Context(), key, []crewPanelSource{empty}, time.Second)
+	empty.read = slow.read
+	if got := cache.collect(t.Context(), key, []crewPanelSource{empty}, time.Millisecond); !got[0].Stale || got[0].Rows == nil {
+		t.Fatal("empty last-good section lost its row array")
+	}
 	other := quick
 	other.id = "dashboards"
 	start := time.Now()
@@ -43,6 +53,12 @@ func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 			t.Fatal("cached private data crossed scope")
 		}
 	}
+	uncacheable := slow
+	uncacheable.noCache = true
+	if got := cache.collect(t.Context(), key, []crewPanelSource{uncacheable}, time.Millisecond); len(got[0].Rows) != 0 || got[0].Stale {
+		t.Fatal("Vault permissions require a fresh read")
+	}
+	cache.collect(t.Context(), key, []crewPanelSource{quick}, time.Second)
 	denied := quick
 	denied.read = func(context.Context) (crewPanelSection, error) {
 		return crewPanelSection{}, crewPanelReadError{http.StatusForbidden}
@@ -114,5 +130,21 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 	}
 	if f.api.crewPanelNoticeAllowed(t.Context(), other, notice) {
 		t.Fatal("revoked Crew notice leaked")
+	}
+}
+
+// PLAT-856-542: moving labels to the server must retain the next run beside
+// the count, skipping past/paused jobs and using the earliest future job.
+func TestCrewPanelAutomationSummaryKeepsNextRun(t *testing.T) {
+	now := time.Now()
+	rows := []crewPanelRow{
+		{Destination: "schedules:schedules", Detail: "Paused"},
+		{Destination: "schedules:schedules", Detail: "Past", nextRun: now.Add(-time.Hour)},
+		{Destination: "schedules:schedules", Detail: "Later", nextRun: now.Add(2 * time.Hour)},
+		{Destination: "schedules:schedules", Detail: "Next", nextRun: now.Add(time.Hour)},
+	}
+	got := crewPanelDetails([]crewPanelSection{{Rows: rows}})
+	if got["automations"] != "4 · Next" {
+		t.Fatalf("lost next run: %v", got)
 	}
 }
