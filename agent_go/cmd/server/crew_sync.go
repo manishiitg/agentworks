@@ -278,7 +278,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	}
 	if r.Method == http.MethodGet {
 		out.SharedAgents = len(readMacSharedAgents(out.ProjectID))
-		out.AccessSummary = crewAccessSummaryFor(r.Context(), GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
+		out.AccessSummary = api.crewAccessSummaryFor(r.Context(), GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
 		out.AccessTree = api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), out.ProjectID, out.Binding)
 		out.Where = crewTeamWhereFor(out.ProjectID, GetUserIDFromContext(r.Context()))
 		if IsLocalMode() {

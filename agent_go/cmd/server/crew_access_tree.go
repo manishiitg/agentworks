@@ -302,5 +302,4 @@ func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string,
 // dropCrewAccessCache makes the next Access read fresh after a Team change on this Mac.
 func dropCrewAccessCache(project, peer string) {
 	crewAccessRemoteCache.Delete(project + "\x00" + peer)
-	crewAccessTeamCache.Delete(project + "\x00" + peer)
 }

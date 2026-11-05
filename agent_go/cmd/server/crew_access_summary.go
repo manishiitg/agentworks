@@ -3,11 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/url"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -71,18 +67,9 @@ func plural(n int, one, many string) string {
 	return many
 }
 
-// crewAccessTeamCache keeps the Mac's last read of its Crew's Team for a short while: the Access row reads its summary
-// every few seconds, and the Team itself changes rarely.
-var crewAccessTeamCache sync.Map
-
-type crewAccessTeamRead struct {
-	team *crewTeam
-	at   time.Time
-}
-
-// crewAccessSummaryFor builds the summary for this Crew where this server stands: on the Mac its Team comes from the
-// online copy through the Mac's connection; online it is read directly.
-func crewAccessSummaryFor(ctx context.Context, owner, project string, b *crewroot.SyncBinding) string {
+// crewAccessSummaryFor builds the summary for this Crew where this server stands: online the Team is read directly;
+// on the Mac it comes from the same cached read of the online copy as the Access tree (crewAccessRemoteRead).
+func (api *StreamingAPI) crewAccessSummaryFor(ctx context.Context, owner, project string, b *crewroot.SyncBinding) string {
 	agents := readMacSharedAgents(project)
 	if !IsLocalMode() {
 		if team, err := readCrewTeam(project); err == nil {
@@ -93,24 +80,13 @@ func crewAccessSummaryFor(ctx context.Context, owner, project string, b *crewroo
 	if b == nil || b.Side != "local" || b.PeerProjectID == "" {
 		return crewAccessSummary(nil, agents)
 	}
-	key := project + "\x00" + b.PeerProjectID
-	if cached, ok := crewAccessTeamCache.Load(key); ok && time.Since(cached.(crewAccessTeamRead).at) < 20*time.Second {
-		return crewAccessSummary(cached.(crewAccessTeamRead).team, agents)
-	}
 	c, err := desktopConnectionFor(owner, b.ConnectionID)
 	if err != nil {
 		return crewAccessSummary(nil, agents, true)
 	}
-	var read crewTeam
-	round, done := context.WithTimeout(ctx, 5*time.Second)
-	err = crewTeamRemoteJSON(round, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID), nil, &read)
-	done()
-	if err != nil {
-		if cached, ok := crewAccessTeamCache.Load(key); ok {
-			return crewAccessSummary(cached.(crewAccessTeamRead).team, agents)
-		}
+	remote := api.crewAccessRemoteRead(ctx, owner, c, project, b.PeerProjectID)
+	if remote.team == nil {
 		return crewAccessSummary(nil, agents, true)
 	}
-	crewAccessTeamCache.Store(key, crewAccessTeamRead{team: &read, at: time.Now()})
-	return crewAccessSummary(&read, agents)
+	return crewAccessSummary(remote.team, agents)
 }
