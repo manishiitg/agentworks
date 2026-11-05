@@ -281,6 +281,12 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		}
 		operation := ""
 		suffix := strings.TrimPrefix(r.URL.Path, "/api/sessions/"+session+"/")
+		// A Team member watches the owner's In team Mac agent: reads only, and only that conversation (crew_team_mac_watch.go).
+		if r.Method == "GET" && (suffix == "events/stream" || suffix == "events" || suffix == "status") {
+			if watch, ok := api.crewMacTeamWatchContext(r, project, generation); ok {
+				r = watch
+			}
+		}
 		switch {
 		case r.Method == "GET" && suffix == "events/stream":
 			api.serveCrewMacEvents(w, r, project, generation)

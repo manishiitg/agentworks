@@ -48,7 +48,7 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 		return
 	}
 	projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
-	if mux.Vars(r)["id"] == crewProfileID && api.routeCrewMacTabs(w, r, projectID) {
+	if mux.Vars(r)["id"] == crewProfileID && (api.routeCrewMemberMacTabs(w, r, projectID) || api.routeCrewMacTabs(w, r, projectID)) {
 		return
 	}
 	userID, slot, ok := api.agentProfileConversationSlot(w, r, projectID)
