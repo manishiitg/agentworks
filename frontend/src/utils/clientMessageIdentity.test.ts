@@ -111,11 +111,11 @@ describe('store ordering (project-a A/B incident)', () => {
     store.setTabEvents(SESSION, [durable('a', 'this ticket <url>')])
     store._addTabEventsImmediate(SESSION, [provisional('b', 'whats the title of this ticket?')])
     store._addTabEventsImmediate(SESSION, [answer('answer-a', 'This is WEB-1681 ...')])
-    store._addTabEventsImmediate(SESSION, [durable('b', 'whats the title of this ticket?')])
+    store._addTabEventsImmediate(SESSION, [{ ...durable('b', 'whats the title of this ticket?'), id: 'observer:session:turn:one:user_message' }])
     store._addTabEventsImmediate(SESSION, [answer('answer-b', 'Centralize shared database migrations in lib-core')])
 
     const events = useChatStore.getState().getTabEvents(SESSION)
-    expect(events.map(event => event.id)).toEqual(['user:a', 'answer-a', 'user:b', 'answer-b'])
+    expect(events.map(event => event.id)).toEqual(['user:a', 'answer-a', 'observer:session:turn:one:user_message', 'answer-b'])
     expect(metadataOf(events[2]).provisional).toBeUndefined()
   }, 60000)
 
