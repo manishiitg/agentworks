@@ -70,10 +70,11 @@ it('keeps shared projects in the active server beside the owner navigation', asy
   try {
     await act(async () => root.render(<DesktopConnections projects={[{ id: 'owned', name: 'Owned crew', kind: 'crew' }, { id: 'weekly', name: 'Weekly goal', kind: 'goal' }]} />))
     const group = host.querySelector('[aria-label="Connected work"]')!
-    expect(group.querySelector('[aria-label="Mine"]')?.textContent).toContain('Owned crew')
-    expect(group.querySelector('[aria-label="Shared with me"]')?.textContent).toContain('Shared crew')
-    expect(group.querySelector('[aria-label="Shared with me"]')?.textContent).toContain('Project owner')
-    expect(group.querySelector('[aria-label="Mine"]')?.textContent).not.toContain('Shared crew')
+    // One list (owner, 5 Nov: "we only have crews"): another person's Crew sits with yours and names its owner.
+    expect(group.textContent).toContain('Owned crew')
+    expect(group.textContent).toContain('Shared crew')
+    expect(group.textContent).toContain('Project owner')
+    expect(group.textContent).not.toContain('Shared with me')
     expect(group.textContent).toContain('Weekly goal')
     expect(group.textContent?.match(/Owned crew/g)).toHaveLength(1)
   } finally {

@@ -289,14 +289,18 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 			if navigation && !binding.OwnedByCaller {
 				continue
 			}
-			// A Crew that lives on its owner's Mac is the owner's alone online: never listed for co-owners or Run
-			// people (PLAT-856-509). Once moved online it is an ordinary server Crew.
+			// A Crew that lives on its owner's Mac is listed online for its owner and for the people who joined its
+			// Team (owner, 5 Nov: "we only have crews"); no other co-owner or Run person (PLAT-856-509). Once moved
+			// online it is an ordinary server Crew.
 			relay, _ := crewroot.ReadSync(doc.ID)
 			if relay != nil && (relay.Side != "server" || relay.Editing != "local") {
 				relay = nil
 			}
 			if relay != nil && binding.OwnerID != claims.UserID {
-				continue
+				if t, err := readCrewTeam(doc.ID); err != nil || !t.member(claims.UserID) {
+					continue
+				}
+				relay = nil // its Mac is the owner's: the member's row is an ordinary Crew row
 			}
 			seen[key] = true
 			item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "icon": doc.Identity.Icon, "owned_by_caller": binding.OwnerID == claims.UserID, "owner_name": strings.SplitN(logUsernameForUserID(binding.OwnerID), "@", 2)[0], "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}

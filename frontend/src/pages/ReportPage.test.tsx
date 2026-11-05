@@ -1,14 +1,10 @@
 // @vitest-environment happy-dom
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../components/workflow/ReportViewer", () => ({
   ReportView: ({ workspacePath, allowContentQuestions, hideToolbar, dashboardConversation, crewConversationPane }: { workspacePath: string; allowContentQuestions?: boolean; hideToolbar?: boolean; dashboardConversation?: boolean; crewConversationPane?: boolean }) => <div data-questions={String(allowContentQuestions)} data-project-conversation={String(dashboardConversation)} data-crew-conversation-pane={String(crewConversationPane)} data-toolbar-hidden={String(hideToolbar)}>Dashboard runtime {workspacePath}</div>,
-}));
-
-vi.mock("../products/work/SharedCrewWorkspace", () => ({
-  SharedCrewWorkspace: ({ workspacePath, children }: { workspacePath: string; children: React.ReactNode }) => <div data-shared-agents-root={workspacePath}>{children}</div>,
 }));
 
 import { ReportPage } from "./ReportPage";
@@ -30,7 +26,6 @@ describe("standalone report page", () => {
     const view = await renderReport("Chats/Work/projects/demo", "work-user", "work-user");
     try {
       expect(view.host.textContent).toContain("Dashboard runtime _users/work-user/Chats/Work/projects/demo");
-      expect(view.host.querySelector('[data-shared-agents-root]')?.getAttribute('data-shared-agents-root')).toBe("_users/work-user/Chats/Work/projects/demo");
       expect(view.host.querySelector('[data-questions]')?.getAttribute('data-questions')).toBe('false');
       // Managed publications resolve their own server-authorized project Ask.
       expect(view.host.querySelector('[data-project-conversation]')?.getAttribute('data-project-conversation')).toBe('true');
@@ -86,7 +81,6 @@ describe("standalone report page", () => {
     const view = await renderReport("Chats/Work/projects/demo", "work-user", "other-user");
     try {
       expect(view.host.textContent).toContain("Dashboard runtime _users/work-user/Chats/Work/projects/demo");
-      expect(view.host.querySelector('[data-shared-agents-root]')?.getAttribute('data-shared-agents-root')).toBe("_users/work-user/Chats/Work/projects/demo");
       expect(view.host.querySelector('[data-questions]')?.getAttribute('data-questions')).toBe('false');
     } finally {
       await act(async () => view.root.unmount());

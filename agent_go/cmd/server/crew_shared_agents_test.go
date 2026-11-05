@@ -17,7 +17,7 @@ import (
 )
 
 // Real workspace HTTP and persisted registry/history, with only the paid model
-// turn replaced. Pin the shared-tab decision across native chat, website and MCP.
+// turn replaced. Pin the shared-tab decision across native chat and MCP.
 func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
@@ -72,33 +72,23 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		t.Fatalf("native selection: %v", got)
 	}
 	reader := &UserClaims{UserID: "other", Username: "Colleague", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read", "crews:run", "dashboards:read"}, CrewIDs: []string{"team"}}}
-	call := func(action string, extra map[string]any, website bool) *httptest.ResponseRecorder {
+	call := func(action string, extra map[string]any) *httptest.ResponseRecorder {
 		t.Helper()
 		args := map[string]any{"action": action, "workspace_id": "work:team"}
 		for k, v := range extra {
 			args[k] = v
 		}
-		if _, byRoot := args["workspace"]; byRoot {
-			delete(args, "workspace_id")
-		}
 		w := httptest.NewRecorder()
-		if website {
-			body, _ := json.Marshal(args)
-			req := httptest.NewRequest(http.MethodPost, "/api/crew-agents", strings.NewReader(string(body)))
-			req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "other", Username: "Colleague"}))
-			f.api.handleCrewSharedAgents(w, req)
-		} else {
-			body, _ := json.Marshal(map[string]any{"name": "workspace", "arguments": args})
-			req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", strings.NewReader(string(body)))
-			req = req.WithContext(context.WithValue(req.Context(), UserContextKey, reader))
-			f.api.handleExternalCall(w, req)
-		}
+		body, _ := json.Marshal(map[string]any{"name": "workspace", "arguments": args})
+		req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", strings.NewReader(string(body)))
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, reader))
+		f.api.handleExternalCall(w, req)
 		return w
 	}
-	for _, web := range []bool{false, true} {
-		w := call("chats", nil, web)
+	{
+		w := call("chats", nil)
 		if w.Code != 200 || !strings.Contains(w.Body.String(), "Coach") || !strings.Contains(w.Body.String(), "practical next steps") || strings.Contains(w.Body.String(), "Private planning") || strings.Contains(w.Body.String(), "provider_connections") {
-			t.Fatalf("filtered list web=%t: %d %s", web, w.Code, w.Body.String())
+			t.Fatalf("filtered list: %d %s", w.Code, w.Body.String())
 		}
 	}
 	// The agent retains old context; shared readers see only the current sharing period.
@@ -116,21 +106,18 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	// not another sender's message.
 	transcript := fmt.Sprintf(`{"ui_events":[{"sequence":1,"timestamp":%q,"type":"user_message","data":{"data":{"content":"Private earlier context"}}},{"sequence":2,"timestamp":%q,"type":"user_message","data":{"data":{"content":"Shared owner context"}}},{"sequence":3,"timestamp":%q,"type":"user_message","data":{"data":{"content":"internal envelope","metadata":{"turn_id":"t-other","source":"agent_message","sender_label":"Colleague","sender_user_id":"other","display_content":"Please review this"}}}},{"sequence":4,"timestamp":%q,"type":"unified_completion","data":{"data":{"final_result":"Reviewed for you","metadata":{"turn_id":"t-other"}}}},{"sequence":5,"timestamp":%q,"type":"user_message","data":{"data":{"content":"third envelope","metadata":{"turn_id":"t-third","source":"agent_message","sender_label":"Third","sender_user_id":"third","display_content":"Third person's note"}}}}]}`, since.Add(-time.Hour).Format(time.RFC3339Nano), since.Format(time.RFC3339Nano), since.Format(time.RFC3339Nano), since.Format(time.RFC3339Nano), since.Format(time.RFC3339Nano))
 	f.write(t, externalCommandCrewState+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json", transcript)
-	for _, web := range []bool{false, true} {
-		w := call("read_chat", map[string]any{"chat_id": coach.ConversationKey}, web)
+	{
+		w := call("read_chat", map[string]any{"chat_id": coach.ConversationKey})
 		body := w.Body.String()
 		if w.Code != 200 || strings.Contains(body, "Private earlier context") || strings.Contains(body, "Shared owner context") || strings.Contains(body, "Third person's note") || strings.Contains(body, `"role":"you"`) || !strings.Contains(body, `"sender":"Colleague"`) || !strings.Contains(body, "Please review this") || !strings.Contains(body, "Reviewed for you") || strings.Contains(body, "internal envelope") {
-			t.Fatalf("shared transcript web=%t: %d %s", web, w.Code, w.Body.String())
+			t.Fatalf("shared transcript: %d %s", w.Code, w.Body.String())
 		}
-		w = call("read_chat", map[string]any{"chat_id": private.ConversationKey}, web)
+		w = call("read_chat", map[string]any{"chat_id": private.ConversationKey})
 		if w.Code < 400 {
-			t.Fatalf("unselected history web=%t: %s", web, w.Body.String())
+			t.Fatalf("unselected history: %s", w.Body.String())
 		}
 	}
-	if w := call("read_chat", map[string]any{"workspace": externalCommandCrewRoot, "chat_id": coach.ConversationKey}, true); w.Code != 200 || !strings.Contains(w.Body.String(), "Please review this") || strings.Contains(w.Body.String(), "Shared owner context") {
-		t.Fatalf("standalone dashboard reads the same shared conversation: %d %s", w.Code, w.Body.String())
-	}
-	if w := call("read_chat", map[string]any{"session_id": coach.SessionID}, false); w.Code != 200 || strings.Contains(w.Body.String(), "Shared owner context") || !strings.Contains(w.Body.String(), "Please review this") {
+	if w := call("read_chat", map[string]any{"session_id": coach.SessionID}); w.Code != 200 || strings.Contains(w.Body.String(), "Shared owner context") || !strings.Contains(w.Body.String(), "Please review this") {
 		t.Fatalf("session read must use the same shared transcript: %d %s", w.Code, w.Body.String())
 	}
 	otherCtx := internalBotRequestContext(t.Context(), "other")
@@ -154,7 +141,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		}
 	}
 	for _, action := range []string{"stop", "close_chat", "rename_chat"} {
-		w := call(action, map[string]any{"chat_id": coach.ConversationKey, "name": "Takeover"}, false)
+		w := call(action, map[string]any{"chat_id": coach.ConversationKey, "name": "Takeover"})
 		if w.Code < 400 {
 			t.Fatalf("shared recipient acquired %s: %s", action, w.Body.String())
 		}
@@ -166,7 +153,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	// Read/run consent can use agents but cannot edit even the caller's own project.
 	reader.UserID = "owner"
 	for _, action := range []string{"open_chat", "rename_chat", "stop", "chat_tool", "update"} {
-		w := call(action, map[string]any{"chat_id": "coach", "name": "New name", "tool_name": "perform_ui_action", "changes": map[string]any{"purpose": "Changed"}}, false)
+		w := call(action, map[string]any{"chat_id": "coach", "name": "New name", "tool_name": "perform_ui_action", "changes": map[string]any{"purpose": "Changed"}})
 		if w.Code < 400 {
 			t.Fatalf("run-only connection acquired owner action %s: %s", action, w.Body.String())
 		}
@@ -198,10 +185,10 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	t.Cleanup(func() { agentMessageTurn = old })
 	var receipt map[string]any
-	for _, web := range []bool{true, false} {
-		w := call("ask", map[string]any{"chat_id": coach.ConversationKey, "message": "Please help with this feedback.", "submission_id": fmt.Sprintf("shared-agent-message-%t", web)}, web)
+	for n := range 2 {
+		w := call("ask", map[string]any{"chat_id": coach.ConversationKey, "message": "Please help with this feedback.", "submission_id": fmt.Sprintf("shared-agent-message-%d", n)})
 		if w.Code != 200 {
-			t.Fatalf("send web=%t: %d %s", web, w.Code, w.Body.String())
+			t.Fatalf("send %d: %d %s", n, w.Code, w.Body.String())
 		}
 		select {
 		case <-delivered:
@@ -262,7 +249,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		t.Fatal("queued work retained revoked agent grant")
 	}
 	for _, action := range []string{"ask", "read_chat"} {
-		if w := call(action, map[string]any{"chat_id": coach.ConversationKey, "message": "old contact"}, false); w.Code < 400 {
+		if w := call(action, map[string]any{"chat_id": coach.ConversationKey, "message": "old contact"}); w.Code < 400 {
 			t.Fatalf("revoked %s: %s", action, w.Body.String())
 		}
 	}
@@ -275,18 +262,11 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if got := crewSharedAgentSince(externalCommandCrewRoot, coach.ConversationKey); !got.After(since) {
 		t.Fatal("re-sharing did not start a fresh history boundary")
 	}
-	if w := call("read_chat", map[string]any{"chat_id": coach.ConversationKey}, true); w.Code != 200 || strings.Contains(w.Body.String(), "Shared owner context") {
+	if w := call("read_chat", map[string]any{"chat_id": coach.ConversationKey}); w.Code != 200 || strings.Contains(w.Body.String(), "Shared owner context") {
 		t.Fatalf("re-shared history: %d %s", w.Code, w.Body.String())
 	}
 	if got := f.read(t, externalCommandCrewState+"/builder/conversation/2026-10-24/session-"+coach.SessionID+"-conversation.json"); !strings.Contains(got, "Private earlier context") {
 		t.Fatal("sharing changed the original agent context")
-	}
-	// A saved dashboard URL does not retain access after its Crew becomes private.
-	if err := defaultProjectOwners().SetAudience("work", "test-team", true, nil); err != nil {
-		t.Fatal(err)
-	}
-	if w := call("read_chat", map[string]any{"workspace": externalCommandCrewRoot, "chat_id": coach.ConversationKey}, true); w.Code < 400 {
-		t.Fatalf("dashboard URL retained private Crew access: %s", w.Body.String())
 	}
 
 }

@@ -82,7 +82,6 @@ export async function answerTeamInvite(invite: TeamInvite, accept: boolean) {
   window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
 }
 
-export function useTeams() { return useTeamLists().teams }
 export function useTeamInvites() { return useTeamLists().invites }
 
 function useTeamLists() {
