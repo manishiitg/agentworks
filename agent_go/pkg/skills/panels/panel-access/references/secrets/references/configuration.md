@@ -14,7 +14,7 @@ the UI action confirms success.
   tools immediately in the current chat and remains available in later turns.
 - Your own native shell (Bash) keeps the `SECRET_*` it started with. For a
   secret's current value, including one added or changed during this chat, use
-  `$("$VAR_AGENTWORKS_BRIDGE" secret NAME)` inside the command that needs it;
+  `$(~/.agentworks/bin/mcpbridge secret NAME)` inside the command that needs it;
   never print it. `$SECRET_<NAME>` stays for scripts.
   Continue the requested work in the same chat; do not ask the user to start a
   new chat or session. Verify availability without printing the secret value.
