@@ -60,6 +60,14 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 			if info, statErr := os.Stat(state); statErr == nil && info.IsDir() {
 				stateRoot = state
 				runtimeOwner = owner
+				if roots, bound, rootsErr := crewStorageRoots(folder); bound && rootsErr == nil {
+					// The Crew's whole folder: its files are a subfolder of it when they are kept apart.
+					top := roots.Resources
+					if !strings.HasPrefix(roots.Files+string(filepath.Separator), top+string(filepath.Separator)) {
+						top = roots.Files
+					}
+					repairCrewSlotModesOnce(roots.ID, slot, top)
+				}
 			}
 		}
 	}

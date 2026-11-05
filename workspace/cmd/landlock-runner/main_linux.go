@@ -45,6 +45,26 @@ func main() {
 		}
 		return
 	}
+	// `landlock-runner repair-git-modes`: give this account's group back its own bits on the account's files in the
+	// .git trees under the current folder. The platform runs it as the Crew owner's slot, once per Crew.
+	if len(os.Args) == 2 && os.Args[1] == security.RepairGitModesArg {
+		if os.Getuid() == 0 {
+			fmt.Fprintln(os.Stderr, "refused: not run as root")
+			os.Exit(2)
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		n, err := security.RepairOwnGitModes(cwd)
+		fmt.Printf("files=%d\n", n)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	configPath := flag.String("config", "", "path to a Landlock policy")
 	flag.Parse()
 	if *configPath == "" || flag.NArg() < 1 {
