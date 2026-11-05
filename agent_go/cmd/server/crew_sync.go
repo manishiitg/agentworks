@@ -80,6 +80,8 @@ type crewSyncReply struct {
 	Asking []macAskActivity `json:"asking,omitempty"`
 	// TeamCopy is the Team tab's "When your Mac is off" and its status line (PLAT-856-509).
 	TeamCopy *crewTeamCopyStatus `json:"team_copy,omitempty"`
+	// AccessSummary is the Access row's line after where the Crew lives (crew_access_summary.go).
+	AccessSummary string `json:"access_summary,omitempty"`
 	// TeamNote: Mac online off also turned the Team off (owner, 5 Nov).
 	TeamNote string `json:"team_note,omitempty"`
 }
@@ -236,6 +238,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	}
 	if r.Method == http.MethodGet {
 		out.SharedAgents = len(readMacSharedAgents(out.ProjectID))
+		out.AccessSummary = crewAccessSummaryFor(r.Context(), GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
 		if IsLocalMode() {
 			out.Asking = api.recentMacAsks(out.ProjectID)
 		}
