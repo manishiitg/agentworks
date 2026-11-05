@@ -353,8 +353,8 @@ func (api *StreamingAPI) crewAgentPublishRecord(ctx context.Context, claims *Use
 	if !ok || canonicalCrewWorkspaceRoot(record.WorkspacePath) != roots.Virtual || record.ProfileID != crewProfileID || hiddenFromTabStrip(record.ConversationKey) {
 		return record, identity, fmt.Errorf("choose one of your Crew's agents")
 	}
-	if (tab != macMainTab && strings.TrimSpace(identity.Name) == "") || strings.TrimSpace(identity.Purpose) == "" {
-		return record, identity, fmt.Errorf("give this agent a name and purpose before publishing; ask it to set its identity")
+	if tab != macMainTab && strings.TrimSpace(identity.Name) == "" {
+		return record, identity, fmt.Errorf("give this agent a name before publishing; ask it to set its name")
 	}
 	if api.crewAgentTurnRunning(record.SessionID) {
 		return record, identity, fmt.Errorf("finish or stop this agent's reply before publishing")

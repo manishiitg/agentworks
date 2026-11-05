@@ -64,7 +64,7 @@ export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {
   return saved
 }
 
-export type TeamSwitchResult = { team: Team; shared?: string[]; needs_purpose?: string[]; unshared?: number; folder_created?: boolean; note?: string }
+export type TeamSwitchResult = { team: Team; shared?: string[]; unshared?: number; folder_created?: boolean; note?: string }
 
 /** The Team tab's switch: the Mac shares the ready agents, makes team/ when no folder is chosen, or turns it all off. */
 export async function switchTeam(target: TeamTarget, on: boolean): Promise<TeamSwitchResult> {

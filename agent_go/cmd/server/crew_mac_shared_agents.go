@@ -104,8 +104,8 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 			return nil, fmt.Errorf("choose one of this Crew's tabs")
 		case agent.Name == "":
 			return nil, fmt.Errorf("an agent needs a name")
-		case agent.Purpose == "" || len([]rune(agent.Purpose)) > productAgentPurposeMaxRunes:
-			return nil, fmt.Errorf("set %s's purpose to share it (one line, at most %d characters)", agent.Name, productAgentPurposeMaxRunes)
+		case len([]rune(agent.Purpose)) > productAgentPurposeMaxRunes:
+			return nil, fmt.Errorf("%s's purpose is longer than one line (at most %d characters)", agent.Name, productAgentPurposeMaxRunes)
 		case agent.Audience == "" && !agent.AgentBridgePublic:
 			return nil, fmt.Errorf("choose who can message %s, or make it public for agents", agent.Name)
 		case agent.Audience != "" && agent.Audience != "team":
@@ -482,17 +482,8 @@ func (api *StreamingAPI) macAgentRows(ctx context.Context, claims *UserClaims, p
 	if err != nil {
 		return nil, err
 	}
-	// Main first: the owner decides which agents to share, Main included (owner, 3 Nov). Main is In team by default
-	// (owner, 5 Nov), so it never waits for a purpose: the Crew's name stands in.
-	purpose := strings.TrimSpace(main.Purpose)
-	if purpose == "" {
-		name := "Main"
-		if _, manifest, ok := api.resolveExternalWorkspace(ctx, claims, project); ok {
-			name = firstNonEmptyTrimmed(manifest.displayTitle(), name)
-		}
-		purpose = name
-	}
-	rows := []macAgentRow{{Tab: macMainTab, Name: "Main", Purpose: purpose}}
+	// Main first: the owner decides which agents to share, Main included (owner, 3 Nov). A purpose is optional.
+	rows := []macAgentRow{{Tab: macMainTab, Name: "Main", Purpose: strings.TrimSpace(main.Purpose)}}
 	for _, tab := range tabs {
 		if _, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker); ok {
 			rows = append(rows, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose})
@@ -592,7 +583,7 @@ func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project s
 	if err != nil {
 		return
 	}
-	// "All agents in team": an agent that just got its purpose joins the team (crew_team_all.go); Main is In
+	// "All agents in team": a new agent joins the team (crew_team_all.go); Main is In
 	// team by default while the Team is on.
 	next, added := readMacSharedAgents(project), []string(nil)
 	if all {

@@ -6,7 +6,7 @@ Use `ui action=capabilities`, then the admitted `ui` with view=mcp, action=open,
 
 ## Shared Crew agents
 
-Share has one audience for the dashboard, published functions and selected existing agents. Inspect sharing first. For a Crew, `shared_agents` replaces the selected stable chat IDs from the returned agents list; an empty list clears them and omission preserves them. `agent_purposes` changes the saved one-line purpose by chat ID, only for tabs this person controls. Every selected agent needs a purpose. Read the saved selection back.
+Share has one audience for the dashboard, published functions and selected existing agents. Inspect sharing first. For a Crew, `shared_agents` replaces the selected stable chat IDs from the returned agents list; an empty list clears them and omission preserves them. `agent_purposes` changes the saved one-line purpose by chat ID, only for tabs this person controls. Read the saved selection back.
 
 People in the audience can read a selected agent's conversation from sharing onward, and send requests as themselves from the website, another Crew or MCP. Messages enter that same existing tab and use its configured context and working tools. Use `workspace action=chats` to discover selected agents, `read_chat` with its chat_id for the transcript (before_seq reads earlier messages), and `ask` to send an attributed request. `messages action=list_agents` and `send` expose the same targets; use the returned target/chat_id or complete agent address. Generic Crew Ask and published functions keep their current behavior.
 

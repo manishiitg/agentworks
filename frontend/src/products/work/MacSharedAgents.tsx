@@ -30,7 +30,7 @@ function agentChatTabId(projectId: string, tab: string) {
 }
 
 /** Your agents in the Team (owner, 5 Nov, "A Team is a shared room"): each agent is In team or Only me. Joining needs
- * the agent's purpose, set from its own chat. Saved as you go. */
+ * nothing; a purpose is optional (owner, 5 Nov). Saved as you go. */
 export function MacSharedAgents({ projectId, connection }: { projectId: string; connection: string }) {
   const [rows, setRows] = useState<AgentRow[] | null>(null)
   // Where each agent answers: a published agent is on the server (the server decides; absent means this Mac).
@@ -40,7 +40,7 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [openPurpose, setOpenPurpose] = useState('')
-  // "All agents in team" (owner, 5 Nov): kept on this Mac; while on, every agent with a purpose is in the team.
+  // "All agents in team" (owner, 5 Nov): kept on this Mac; while on, every agent is in the team.
   const [allInTeam, setAllInTeam] = useState(false)
   const endpoint = `/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`
   useEffect(() => {
@@ -67,14 +67,11 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
     card?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
   }, [rows, supported, projectId])
   if (!supported || !rows) return null
-  // Sharing needs the agent's purpose (the server refuses it otherwise).
-  const readyOf = (tab: string) => Boolean(rows.find(item => item.tab === tab)?.purpose?.trim())
   const purposeOf = (tab: string) => rows.find(row => row.tab === tab)?.purpose?.trim() || ''
-  // Saves the whole list; only agents with a purpose are sent (the server refuses others).
+  // Saves the whole list.
   const save = async (next: SharedAgent[]) => {
     setShared(next)
-    const ready = next.filter(agent => readyOf(agent.tab))
-      .map(({ tab, audience, can_change, agentbridge_public }) => ({ tab, audience, can_change: Boolean(can_change), agentbridge_public: Boolean(agentbridge_public) }))
+    const ready = next.map(({ tab, audience, can_change, agentbridge_public }) => ({ tab, audience, can_change: Boolean(can_change), agentbridge_public: Boolean(agentbridge_public) }))
     setBusy(true); setError('')
     try {
       const data = await desktopRequest<{ agents: SharedAgent[] }>(endpoint, 'POST', { action: 'share_agents', agents: ready })
@@ -116,7 +113,7 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
   }
   return <section ref={cards} aria-label="Your agents in the team">
     <div className="border-t border-border px-0.5 py-2.5 text-sm">
-      <label className="flex items-center gap-2"><span className="font-medium">All agents in team</span><span className="text-xs text-muted-foreground">new agents join too, once they have a purpose</span><Switch aria-label="All agents in team" className="ml-auto" checked={allInTeam} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>
+      <label className="flex items-center gap-2"><span className="font-medium">All agents in team</span><span className="text-xs text-muted-foreground">new agents join too</span><Switch aria-label="All agents in team" className="ml-auto" checked={allInTeam} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>
       <p className="mt-1 text-xs text-muted-foreground">In team: everyone in this Crew's Team sees this agent and its chat live, and their agents can message it. Only me: just you.</p>
     </div>
     {rows.map(row => {
@@ -124,8 +121,6 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
       const purpose = purposeOf(row.tab)
       const place = placements[row.tab]?.location
       const choice = agent?.audience === 'team' ? 'team' : 'none'
-      // An agent without a purpose cannot be shared: its row always says so (owner, 5 Nov).
-      const blocked = readyOf(row.tab) ? '' : 'Give this agent a purpose before sharing it'
       return <div key={row.tab} data-shared-agent-card={row.tab} className="border-t border-border px-0.5 py-2.5 text-sm">
         <div className="flex flex-wrap items-center gap-2.5">
           <span title={purpose || undefined} className="min-w-0 truncate">{row.name}</span>
@@ -133,12 +128,11 @@ export function MacSharedAgents({ projectId, connection }: { projectId: string; 
           {choice === 'team' && <span className="shrink-0 text-xs text-muted-foreground">Shared with the team</span>}
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${place === 'server' || place === 'publishing' ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`}>{place === 'server' ? 'Server' : place === 'publishing' ? 'Moving to the server' : 'Mac'}</span>
           <div role="radiogroup" aria-label={`${row.name} in the team`} className="ml-auto flex overflow-hidden rounded-full border border-border text-xs">
-            {AUDIENCES.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy || (value === 'team' && Boolean(blocked) && choice !== 'team')} title={value === 'team' && blocked ? blocked : undefined} onClick={() => { if (choice !== value) choose(row.tab, value) }}
+            {AUDIENCES.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy} onClick={() => { if (choice !== value) choose(row.tab, value) }}
               className={`px-2.5 py-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${choice === value ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
           </div>
           <button type="button" aria-label={`More for ${row.name}`} aria-expanded={openPurpose === row.tab} onClick={() => setOpenPurpose(openPurpose === row.tab ? '' : row.tab)} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></button>
         </div>
-        {blocked && <p className="mt-1.5 flex flex-wrap items-center gap-2 pl-8 text-[12.5px] text-amber-600">{blocked}.<button type="button" onClick={() => setPurpose(row.tab)} className="text-primary hover:underline">Set it in its chat</button></p>}
         {openPurpose === row.tab && <div className="ml-8 mt-2 space-y-2 rounded-xl border border-border bg-popover p-3 text-xs">
           <p className="flex items-start gap-1.5 text-muted-foreground"><span className="min-w-0 whitespace-pre-wrap break-words">{purpose || 'No purpose yet.'}</span>
             <button type="button" aria-label={purpose ? `Change ${row.name}'s purpose` : `Set ${row.name}'s purpose`} title={purpose ? 'Change purpose' : 'Set purpose'} onClick={() => setPurpose(row.tab)} className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button></p>

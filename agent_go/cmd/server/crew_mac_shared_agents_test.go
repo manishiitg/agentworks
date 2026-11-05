@@ -209,12 +209,9 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "../x", Name: "x", Purpose: "x", Audience: "team"}}, nil); err == nil {
 		t.Fatal("a tab id with path characters was saved")
 	}
-	// Owner, 5 Nov: an agent is shared with its name and purpose; it has no icon.
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Audience: "team"}}, nil); err == nil {
-		t.Fatal("an agent without a purpose was shared")
-	}
-	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "team", AgentBridgePublic: true}}, nil); err != nil {
-		t.Fatalf("an agent with a name and purpose was refused: %v", err)
+	// Owner, 5 Nov: sharing needs nothing; a purpose is optional and an agent has no icon.
+	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Audience: "team", AgentBridgePublic: true}}, nil); err != nil {
+		t.Fatalf("an agent without a purpose was refused: %v", err)
 	}
 	// Owner, 5 Nov: In team or Only me only.
 	if _, err = cleanMacSharedAgents([]macSharedAgent{{Tab: "helper01", Name: "Helper", Purpose: "Answers questions", Audience: "everyone"}}, nil); err == nil {

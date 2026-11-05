@@ -29,7 +29,6 @@ const crewTeamDefaultFolder = "team"
 type crewTeamSwitchResult struct {
 	Team          crewTeam `json:"team"`
 	Shared        []string `json:"shared,omitempty"`
-	NeedsPurpose  []string `json:"needs_purpose,omitempty"`
 	Unshared      int      `json:"unshared,omitempty"`
 	FolderCreated bool     `json:"folder_created,omitempty"`
 	Note          string   `json:"note,omitempty"`
@@ -102,10 +101,6 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 			if slices.ContainsFunc(current, func(agent macSharedAgent) bool { return agent.Tab == row.Tab }) {
 				continue
 			}
-			if strings.TrimSpace(row.Purpose) == "" {
-				out.NeedsPurpose = append(out.NeedsPurpose, row.Name)
-				continue
-			}
 			next = append(next, macSharedAgent{Tab: row.Tab, Audience: "team"})
 			out.Shared = append(out.Shared, row.Name)
 		}
@@ -143,8 +138,8 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 		log.Printf("[CREW_TEAM] local project=%s all_in_team not saved: %v", project, err)
 	}
 	dropCrewAccessCache(project, binding.PeerProjectID) // the Access row says the new state at once
-	log.Printf("[CREW_TEAM] local project=%s server_project=%s event=switch on=%t people=%d folder=%q folder_created=%t shared=%d needs_purpose=%d unshared=%d",
-		project, binding.PeerProjectID, on, len(saved.People), saved.Folder.Path, out.FolderCreated, len(out.Shared), len(out.NeedsPurpose), out.Unshared)
+	log.Printf("[CREW_TEAM] local project=%s server_project=%s event=switch on=%t people=%d folder=%q folder_created=%tshared=%d unshared=%d",
+		project, binding.PeerProjectID, on, len(saved.People), saved.Folder.Path, out.FolderCreated, len(out.Shared), out.Unshared)
 	return out, nil
 }
 
