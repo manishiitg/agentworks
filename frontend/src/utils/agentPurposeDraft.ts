@@ -34,6 +34,16 @@ export function fillTeamSetupDraft(projectId: string): boolean {
   return true
 }
 
+/** "Ask from my agent" on a teammate's agent you are watching (owner, 5 Nov, "A Team is a shared room"): your own
+ * Main opens with the request started; you finish it and send it, and your agent reaches theirs. False when your
+ * Main's tab is not open. */
+export function fillAskFromMyAgentDraft(projectId: string, ownerName: string, agentName: string): boolean {
+  const main = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
+  if (!main) return false
+  fillDraft(main.tabId, `Ask ${ownerName}'s ${agentName} agent: `)
+  return true
+}
+
 /** A finished set_my_agent_identity call (native or over MCP, whose name carries a prefix), or a saved Crew identity
  * (Main's name, purpose and icon are the Crew's): the agents list is stale. */
 export function agentIdentitySaved(event: PollingEvent): boolean {

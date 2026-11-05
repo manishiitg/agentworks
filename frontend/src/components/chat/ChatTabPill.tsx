@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, Loader2, MessageSquare, MessageSquareText, Pencil, PinOff, X } from 'lucide-react'
+import { ChevronDown, Eye, Loader2, MessageSquare, MessageSquareText, Pencil, PinOff, X } from 'lucide-react'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -179,13 +179,18 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
         />
       ) : (
         <>
-          {ownerName && !yourTab && <span aria-hidden="true" title={`Owned by ${ownerName}`} className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold leading-4 text-primary">{ownerInitials(ownerName) || '·'}</span>}
+          {/* Another person's agent (owner, 5 Nov): its icon, and a watch mark since only they type there; their name
+              is the strip's group label, not a tile on each tab. */}
+          {ownerName && !yourTab && (agent?.info?.icon
+            ? <span aria-hidden="true" className="shrink-0 text-xs leading-4">{agent.info.icon}</span>
+            : <span aria-hidden="true" title={`Owned by ${ownerName}`} className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold leading-4 text-primary">{ownerInitials(ownerName) || '·'}</span>)}
           <AgentHoverCard info={agent?.info}><span
             className={`block min-w-0 truncate whitespace-nowrap ${productSurface ? 'max-w-[18rem] font-semibold' : 'max-w-[14rem]'}`}
             title={agent?.info ? undefined : tooltip}
           >
             {displayName}
           </span></AgentHoverCard>
+          {ownerName && !yourTab && <Eye role="img" aria-label="Watching: only they type here" className="h-3 w-3 shrink-0 text-muted-foreground"><title>Watching: only {ownerName} types here</title></Eye>}
         </>
       )}
       <ShowChatButton tabId={tab.tabId} />
