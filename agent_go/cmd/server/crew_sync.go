@@ -37,12 +37,15 @@ type crewSyncRequest struct {
 	Action                string                     `json:"action"`
 	PairID                string                     `json:"pair_id,omitempty"`
 	SourceID              string                     `json:"source_id,omitempty"`
-	Name                  string                     `json:"name,omitempty"`
-	MacName               string                     `json:"mac_name,omitempty"`
-	Editing               string                     `json:"editing,omitempty"`
-	Snapshot              *crewsync.Snapshot         `json:"snapshot,omitempty"`
-	Agents                []macSharedAgent           `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
-	TeamCopy              *crewTeamCopyRecord        `json:"team_copy,omitempty"`
+	// PreviousProjectID (create): the online copy this Mac Crew had before Mac online was turned off; its Team moves to
+	// the new copy, so people and the shared folder survive off and on (owner, 5 Nov).
+	PreviousProjectID string              `json:"previous_project_id,omitempty"`
+	Name              string              `json:"name,omitempty"`
+	MacName           string              `json:"mac_name,omitempty"`
+	Editing           string              `json:"editing,omitempty"`
+	Snapshot          *crewsync.Snapshot  `json:"snapshot,omitempty"`
+	Agents            []macSharedAgent    `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
+	TeamCopy          *crewTeamCopyRecord `json:"team_copy,omitempty"`
 }
 type crewServerCopy struct {
 	Name   string `json:"name"`
@@ -77,6 +80,8 @@ type crewSyncReply struct {
 	Asking []macAskActivity `json:"asking,omitempty"`
 	// TeamCopy is the Team tab's "When your Mac is off" and its status line (PLAT-856-509).
 	TeamCopy *crewTeamCopyStatus `json:"team_copy,omitempty"`
+	// TeamNote: Mac online off also turned the Team off (owner, 5 Nov).
+	TeamNote string `json:"team_note,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -274,6 +279,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 		binding.MacName, binding.MacID = input.MacName, input.MacID
 		if err = crewroot.WriteSync(created, binding); err != nil {
 			return crewSyncReply{}, err
+		}
+		if input.PreviousProjectID != "" {
+			moveCrewTeamToTwin(claims.UserID, input.PreviousProjectID, created)
 		}
 		return crewSyncReply{ProjectID: created, Binding: &binding}, nil
 	}

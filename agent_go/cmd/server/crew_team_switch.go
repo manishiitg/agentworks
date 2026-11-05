@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -34,13 +35,26 @@ type crewTeamSwitchResult struct {
 	Note          string   `json:"note,omitempty"`
 }
 
-func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims, project string, on bool) (crewTeamSwitchResult, error) {
+func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims, project string, on bool, connectionHint string) (crewTeamSwitchResult, error) {
 	var out crewTeamSwitchResult
 	roots, err := api.crewSyncRoots(ctx, claims, project)
 	if err != nil {
 		return out, err
 	}
 	binding, err := crewroot.ReadSync(roots.ID)
+	if err == nil && binding == nil && on {
+		// Team works through Mac online's connection (owner, 5 Nov): Team on turns Mac online on, no extra step.
+		if err = api.turnMacOnlineOnForTeam(ctx, claims, roots.ID, connectionHint); err != nil {
+			return out, err
+		}
+		binding, err = crewroot.ReadSync(roots.ID)
+		if binding != nil {
+			log.Printf("[CREW_TEAM] local project=%s server_project=%s event=online_tied mac_online=on team=on", roots.ID, binding.PeerProjectID)
+		}
+	}
+	if err == nil && binding == nil && !on {
+		return out, nil // Mac online is off, so the Team already is
+	}
 	if err != nil || binding == nil || binding.Side != "local" {
 		return out, fmt.Errorf("Turn on Use from phone and web for this Crew first.")
 	}
@@ -123,13 +137,47 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 			out.Unshared = len(current) - len(public)
 		}
 	}
-	// Team on starts with "All agents in team"; off ends it (crew_team_all.go).
-	if err := writeCrewTeamAll(project, on); err != nil {
+	// Team on starts with "All agents in team" and Main In team (a fresh start clears an earlier Only me for Main);
+	// off ends both (crew_team_all.go).
+	if err := writeCrewTeamState(project, func(s *crewTeamLocalState) { s.AllInTeam, s.TeamOn = on, on; s.MainOnlyMe = s.MainOnlyMe && !on }); err != nil {
 		log.Printf("[CREW_TEAM] local project=%s all_in_team not saved: %v", project, err)
 	}
 	log.Printf("[CREW_TEAM] local project=%s server_project=%s event=switch on=%t people=%d folder=%q folder_created=%t shared=%d needs_purpose=%d unshared=%d",
 		project, binding.PeerProjectID, on, len(saved.People), saved.Folder.Path, out.FolderCreated, len(out.Shared), len(out.NeedsPurpose), out.Unshared)
 	return out, nil
+}
+
+// turnMacOnlineOnForTeam turns on Mac online through the given connection, or the only saved one, with the same code
+// as Mac online's own switch.
+func (api *StreamingAPI) turnMacOnlineOnForTeam(ctx context.Context, claims *UserClaims, project, connection string) error {
+	if connection == "" {
+		saved, err := readDesktopConnections(claims.UserID)
+		if err != nil || len(saved) == 0 {
+			return fmt.Errorf("Sign in to a network in the AgentWorks app first.")
+		}
+		if len(saved) > 1 {
+			names := []string{}
+			for _, item := range saved {
+				names = append(names, desktopConnectionLabel(item))
+			}
+			return fmt.Errorf("Which network should the team use? %s. Turn on Mac online with that network, then the Team.", strings.Join(names, ", "))
+		}
+		connection = saved[0].ID
+	}
+	body, _ := json.Marshal(map[string]string{"action": "relay"})
+	request, err := http.NewRequestWithContext(context.WithValue(ctx, UserContextKey, claims), http.MethodPost, "http://localhost/api/desktop-connections/"+url.PathEscape(connection)+"/crew-sync/"+url.PathEscape(project), bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request = mux.SetURLVars(request, map[string]string{"project": project, "connection": connection})
+	capture := &internalResponseCapture{}
+	api.runDesktopCrewSync(capture, request, false)
+	if capture.status >= 300 {
+		var failure map[string]any
+		_ = json.Unmarshal(capture.body.Bytes(), &failure)
+		return fmt.Errorf("%s", externalErrorMessage(failure, "Mac online could not be turned on. Try again."))
+	}
+	return nil
 }
 
 // handleDesktopCrewTeamSwitch is the Team tab's switch on the Mac.
@@ -149,11 +197,12 @@ func (api *StreamingAPI) handleDesktopCrewTeamSwitch(w http.ResponseWriter, r *h
 		externalError(w, 403, "team_owner_required", "Only this Crew's owner can turn its Team on or off.")
 		return
 	}
-	if b, e := crewroot.ReadSync(mux.Vars(r)["project"]); e != nil || b == nil || b.ConnectionID != mux.Vars(r)["connection"] {
+	// With Mac online off, Team on turns it on through this connection; a Crew online elsewhere is refused.
+	if b, e := crewroot.ReadSync(mux.Vars(r)["project"]); e != nil || b != nil && b.ConnectionID != mux.Vars(r)["connection"] {
 		externalError(w, 409, "team_connection_required", "Turn on this Crew's connection to your company first.")
 		return
 	}
-	out, err := api.switchCrewTeam(r.Context(), claims, mux.Vars(r)["project"], input.On)
+	out, err := api.switchCrewTeam(r.Context(), claims, mux.Vars(r)["project"], input.On, mux.Vars(r)["connection"])
 	if err != nil {
 		externalError(w, 409, "team_switch_failed", err.Error())
 		return

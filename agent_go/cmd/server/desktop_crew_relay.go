@@ -47,7 +47,8 @@ func (api *StreamingAPI) createDesktopCrewRelayTwin(ctx context.Context, owner s
 	}
 	pair := uuid.NewString()
 	macName := desktopMacDisplayName()
-	remote, err := desktopCrewSyncCall(ctx, owner, &connection, "new", crewSyncRequest{Action: "create", Mode: "relay", SplitFiles: roots.SeparateFiles(), PairID: pair, SourceID: roots.ID, Name: name, MacName: macName, MacID: connection.ID})
+	previous := readCrewTeamState(roots.ID).PreviousProject
+	remote, err := desktopCrewSyncCall(ctx, owner, &connection, "new", crewSyncRequest{Action: "create", Mode: "relay", SplitFiles: roots.SeparateFiles(), PairID: pair, SourceID: roots.ID, Name: name, MacName: macName, MacID: connection.ID, PreviousProjectID: previous})
 	if err != nil {
 		return err
 	}
@@ -58,7 +59,10 @@ func (api *StreamingAPI) createDesktopCrewRelayTwin(ctx context.Context, owner s
 	if err = crewroot.WriteSync(roots.ID, crewroot.SyncBinding{Mode: "relay", SplitFiles: roots.SeparateFiles(), PairID: pair, Side: "local", Editing: "local", ConnectionID: connection.ID, PeerProjectID: remote.ProjectID, PeerServer: connection.Server, MacName: macName}); err != nil {
 		return err
 	}
-	log.Printf("[CREW_RELAY] twin project=%s server_project=%s server=%s", roots.ID, remote.ProjectID, connection.Server)
+	if previous != "" {
+		_ = writeCrewTeamState(roots.ID, func(s *crewTeamLocalState) { s.PreviousProject = "" })
+	}
+	log.Printf("[CREW_RELAY] twin project=%s server_project=%s server=%s previous_project=%s", roots.ID, remote.ProjectID, connection.Server, previous)
 	return nil
 }
 
