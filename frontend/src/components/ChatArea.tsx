@@ -3901,7 +3901,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         <span className="inline-flex min-w-0 items-center gap-2"><span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
           <span className="min-w-0">Watching {activeTab?.metadata?.agentProfileTabOwnerName || 'another person'}'s {activeTab?.name || 'agent'} live. Only they type here.</span></span>
         {activeTab?.metadata?.agentProfileProjectId && <button type="button" className="ml-auto shrink-0 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
-          onClick={() => { if (!fillAskFromMyAgentDraft(activeTab.metadata!.agentProfileProjectId!, activeTab.metadata?.agentProfileTabOwnerName || 'their', activeTab.name || 'agent')) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask from my agent</button>}
+          onClick={() => { if (!fillAskFromMyAgentDraft(activeTab.metadata!.agentProfileProjectId!, activeTab.metadata?.agentProfileTabOwnerName || 'their', activeTab.name || 'agent', activeTab.metadata?.agentProfileConversationKey)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask from my agent</button>}
       </div>}
 
       {/* Scheduled runs show a compact stop action beside the terminal toggle.
