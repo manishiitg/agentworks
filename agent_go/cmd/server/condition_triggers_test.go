@@ -2,10 +2,13 @@ package server
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
 
 func conditionCodeFixture(t *testing.T) (triggerLinkEnv, context.Context, string) {
@@ -52,5 +55,28 @@ func TestConditionAgentTargetChatChoices(t *testing.T) {
 	}
 	if got := len([]rune(newWatcherChatName(strings.Repeat("w", 200), "e"))); got != 120 {
 		t.Fatalf("tab name not capped: %d", got)
+	}
+}
+
+// PLAT-861: watchers of one Crew due on the same minute failed with "watcher
+// checks are at capacity". A full pool now waits for a slot, and a check that
+// never gets one is a quiet skip, not a failure.
+func TestConditionCheckWaitsForSlot(t *testing.T) {
+	slots := make(chan struct{}, 1)
+	hold := acquireConditionSlot(context.Background(), slots, time.Second)
+	if hold == nil {
+		t.Fatal("empty pool did not give a slot")
+	}
+	if acquireConditionSlot(context.Background(), slots, 20*time.Millisecond) != nil {
+		t.Fatal("full pool gave a second slot")
+	}
+	go func() { time.Sleep(20 * time.Millisecond); hold() }()
+	release := acquireConditionSlot(context.Background(), slots, time.Second)
+	if release == nil {
+		t.Fatal("check did not get the slot freed while it waited")
+	}
+	release()
+	if !errors.Is(errConditionBusy{}, productschedule.ErrSkip) {
+		t.Fatal("busy check must be a skip")
 	}
 }

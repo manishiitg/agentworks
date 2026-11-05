@@ -124,7 +124,7 @@ func goalScheduleDestinationView(manifest *WorkflowManifest, workspace string, s
 	default:
 		destination = runDestinationNew
 	}
-	choices = []ScheduleRunDestination{{ID: runDestinationNew, Label: "New conversation each time"}, {ID: "main", Label: "Main chat"}}
+	choices = []ScheduleRunDestination{{ID: runDestinationNew, Label: "New conversation each time"}, {ID: runDestinationChat, Label: "Main chat"}}
 	if chats, err := goalScheduleChats(context.Background(), owner, manifest.ID, workspace); err == nil {
 		for _, chat := range chats {
 			if !chat.Main {

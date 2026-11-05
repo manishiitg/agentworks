@@ -518,12 +518,12 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     } catch { /* ignore */ }
   }
 
-  // destination is "main", "isolated", "new" (Goals) or a tab's chat id (the server lists the choices).
+  // destination is "chat" (main chat), "isolated", "new" (Goals) or a tab's chat id (the server lists the choices).
   const handleRunDestination = async (job: ScheduledJob, destination: string) => {
     try {
       const request: UpdateScheduledJobRequest = destination === 'isolated' || destination === 'new'
         ? { run_destination: destination as 'isolated' | 'new' }
-        : { run_destination: 'chat', chat_id: destination === 'main' ? '' : destination }
+        : { run_destination: 'chat', chat_id: destination === 'chat' ? '' : destination }
       const updated = await schedulerApi.updateJob(job.id, request)
       setJobs(previous => previous.map(candidate => candidate.id === job.id ? retainDurationAverage(updated, candidate) : candidate))
       const label = job.run_destinations?.find(item => item.id === destination)?.label
@@ -531,7 +531,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
         ? `“${job.name}” will run in its own automation conversation.`
         : destination === 'new'
           ? `“${job.name}” will start a new conversation each time.`
-          : destination === 'main'
+          : destination === 'chat'
             ? `“${job.name}” will run in the main chat.`
             : `“${job.name}” will run in the ${label || 'chosen'} tab.`, 'success')
     } catch (error) {

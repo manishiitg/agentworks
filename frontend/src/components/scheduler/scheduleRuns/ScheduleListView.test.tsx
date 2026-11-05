@@ -60,7 +60,7 @@ describe('ScheduleListView run destination', () => {
     const { host, unmount } = await renderList([
       job({
         id: 'p', name: 'Upwork check', entity_type: 'product', run_destination: 'chat', chat_id: 'abc12345',
-        run_destinations: [{ id: 'main', label: 'Main chat' }, { id: 'abc12345', label: 'Upwork' }, { id: 'isolated', label: 'Own conversation' }],
+        run_destinations: [{ id: 'chat', label: 'Main chat' }, { id: 'abc12345', label: 'Upwork' }, { id: 'isolated', label: 'Own conversation' }],
       }),
     ])
     try {
