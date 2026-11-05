@@ -6,7 +6,10 @@ import { Button } from '../../components/ui/Button'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { teamError, teamRequest } from './teamApi'
+import { CrewTeamCard } from './CrewTeamCard'
+import { TeamSyncPanel } from './TeamSyncPanel'
+import { useTeamAgents } from './useTeamAgents'
+import { teamError, teamRequest, useProjectTeam } from './teamApi'
 import type { TeamAgentPerson } from './useTeamAgents'
 
 type MemberAccess = {
@@ -16,7 +19,7 @@ type MemberAccess = {
   copy_status: string
   own_agents: { key: string; name: string; in_team: boolean }[]
 }
-type Access = { role: 'owner' | 'member'; member_access?: MemberAccess }
+type Access = { role: 'owner' | 'member' | 'shared'; access_view?: 'team' | 'summary'; access_summary?: string; place?: string; member_access?: MemberAccess }
 
 /** PLAT-856: the server decides which Access page this signed-in person can use. */
 export function TeamMemberAccess({ projectId, children }: { projectId: string; children: ReactNode }) {
@@ -50,7 +53,8 @@ export function TeamMemberAccess({ projectId, children }: { projectId: string; c
     finally { setBusy(false) }
   }
   if (!access) return <div className="space-y-3"><WorkspaceViewHeader icon={Users} title="Access" />{error ? <><p role="alert">{error}</p><Button variant="outline" onClick={() => setRefresh(v => v + 1)}>Try again</Button></> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>}</div>
-  if (access.role === 'owner') return children
+  if (access.access_view === 'summary') return <div className="space-y-4"><WorkspaceViewHeader icon={Users} title="Access" /><p className="text-sm text-muted-foreground">{access.access_summary}</p></div>
+  if (access.role === 'owner') return access.access_view === 'team' ? <OwnerTeamAccess projectId={projectId} place={access.place} /> : children
   const member = access.member_access
   if (!member) return <p role="alert">Your Team access could not be loaded. Open the Team again.</p>
   return <div className="space-y-6">
@@ -66,5 +70,19 @@ export function TeamMemberAccess({ projectId, children }: { projectId: string; c
     <section aria-label="Your agents"><h4 className="mb-2 font-medium">Your agents</h4>{member.own_agents.map(agent => <div key={agent.key} className="flex items-center justify-between gap-3 py-2"><span>{agent.name}</span><select aria-label={`${agent.name} visibility`} value={agent.in_team ? 'team' : 'me'} disabled={busy} onChange={e => void act('/agent-visibility', { agent_key: agent.key, in_team: e.target.value === 'team' })} className="rounded-md border border-border bg-background px-3 py-2 text-sm"><option value="team">In team</option><option value="me">Only me</option></select></div>)}</section>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <Button variant="outline" disabled={busy} onClick={() => void act('/leave')}>Leave Team</Button>
+  </div>
+}
+
+/** The online copy of a Mac Crew shows its Team, not this browser's laptop integration. */
+function OwnerTeamAccess({ projectId, place }: { projectId: string; place?: string }) {
+  const { team, target, error } = useProjectTeam(projectId)
+  const people = useTeamAgents(projectId)
+  return <div className="space-y-5">
+    <WorkspaceViewHeader icon={Users} title="Team" />
+    <p role="status" className="text-sm text-muted-foreground">{place === 'mac' ? 'Your Mac is online' : 'Your Mac is offline'}</p>
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    <CrewTeamCard projectId={projectId} />
+    {team?.on && <section aria-label="Team agents" className="divide-y divide-border">{people.map(person => <div key={person.user_id} className="py-3"><h3 className="font-medium">{person.name}{person.you ? ' · You' : ''}</h3><p className="mt-1 text-sm text-muted-foreground">{person.agents.map(agent => agent.name).join(' · ') || 'No agents in team'}</p></div>)}</section>}
+    {team?.on && team.folder_access && target && <TeamSyncPanel target={target} name={team.name} projectId={projectId} />}
   </div>
 }
