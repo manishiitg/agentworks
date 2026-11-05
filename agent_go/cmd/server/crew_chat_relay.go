@@ -167,6 +167,10 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		externalError(w, 409, "publishing", "This agent is being published. Finish the publish from your Mac, then reopen it here.")
 		return true
 	}
+	// A Team member's own tab lives on the server, not on the owner's Mac (owner, 5 Nov): the owner opens it here.
+	if crewTeamMemberTab(r.Context(), project, key) != "" {
+		return false
+	}
 	// A side tab of a Crew that lives on the Mac is the Mac's own tab (PLAT-856-509); the server keeps none.
 	if base, tab, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker); ok {
 		if base != project || !crewMacTabID(tab) {
@@ -603,8 +607,72 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 			tabs = append(tabs, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, ChatLocation: "server", Name: identity.Name, Purpose: identity.Purpose, Icon: identity.Icon, Position: identity.Position, Pinned: !identity.Unpinned, TabOwnerID: owner, CanWrite: true})
 		}
 	}
+	// The Team's members' own agents (owner, 5 Nov: "I need to see the other user's agent"): watch-only for the owner.
+	tabs = append(tabs, crewTeamMemberTabs(r.Context(), project, owner)...)
 	writeAgentProfileJSON(w, http.StatusOK, tabs)
 	return true
+}
+
+// crewTeamMemberTabs are the joined members' own tabs in this Crew's online copy, for someone else in the Crew to
+// watch: each member's Main (their default chat) and side tabs, never one they set to Only me.
+func crewTeamMemberTabs(ctx context.Context, project, viewer string) []AgentProfileSideChat {
+	t, err := readCrewTeam(project)
+	if err != nil || !t.On {
+		return nil
+	}
+	store := defaultProductConversationRegistryStore()
+	out := []AgentProfileSideChat{}
+	for _, p := range t.People {
+		if p.Invited || p.UserID == viewer || p.UserID == t.OwnerID || !crewTeamAccountActive(p.UserID) {
+			continue
+		}
+		records, err := store.projectChats(ctx, p.UserID, crewProfileID, project)
+		if err != nil {
+			continue
+		}
+		identities, _ := store.agentIdentities(ctx, p.UserID, crewProfileID, project)
+		for _, record := range records {
+			identity := identities[record.ConversationKey]
+			if identity.OnlyMe || hiddenFromTabStrip(record.ConversationKey) || record.SessionID == "" {
+				continue
+			}
+			main := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, p.UserID)
+			if !main && !isSideChatConversationKey(record.ConversationKey) {
+				continue
+			}
+			name := firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
+			if main {
+				name = "Main"
+			}
+			out = append(out, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name,
+				Icon: identity.Icon, Purpose: identity.Purpose, Pinned: true, TabOwnerID: p.UserID, TabOwnerName: crewOwnerDisplayName(p.UserID), ChatLocation: "server"})
+		}
+	}
+	return out
+}
+
+// crewTeamMemberTab is the joined member whose own tab this key is, or "".
+func crewTeamMemberTab(ctx context.Context, project, key string) string {
+	t, err := readCrewTeam(project)
+	if err != nil || !t.On {
+		return ""
+	}
+	store := defaultProductConversationRegistryStore()
+	for _, p := range t.People {
+		if p.Invited || p.UserID == t.OwnerID {
+			continue
+		}
+		records, err := store.projectChats(ctx, p.UserID, crewProfileID, project)
+		if err != nil {
+			continue
+		}
+		for _, record := range records {
+			if record.ConversationKey == strings.TrimSpace(key) {
+				return p.UserID
+			}
+		}
+	}
+	return ""
 }
 
 // crewMacTwinForOwner: the owner's website copy of a Crew that lives on the Mac, whose tabs are the Mac's.
