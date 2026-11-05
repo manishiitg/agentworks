@@ -545,7 +545,7 @@ chat:
       # AgentBridge administration (users:manage, admins; every change needs a reason and is audited).
       - server_product
       - bullpen_admin
-      # Brain without the app: backup health, Brain's secrets, the person's Organize Brain schedule, what's new.
+      # Brain without the app: backup health, Brain's secrets, what's new.
       - brain_admin
       # Cross-product recorded token attribution, including named automation source
       # breakdown/detail with opaque source references, under current sharing and consent.

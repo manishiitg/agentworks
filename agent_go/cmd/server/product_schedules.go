@@ -56,7 +56,7 @@ type productScheduleUserState struct {
 	// CadenceHours overrides a cadence schedule's interval for this person (for example Organize Brain every 72h
 	// instead of weekly, PLAT-618). Ignored for cron and one-time schedules.
 	CadenceHours *int `json:"cadence_hours,omitempty"`
-	// Messages replaces the schedule's messages for this person (the Brain chat's brain_schedule set_message).
+	// Messages replaces the schedule's messages for this person.
 	Messages []string `json:"messages,omitempty"`
 	// ActivatedAt is the persisted first-seen baseline for legacy/built-in
 	// cron definitions that predate Schedule.CreatedAt.
@@ -609,61 +609,6 @@ func (s *ProjectActionDispatcher) SetEnabled(ctx context.Context, userID, jobID 
 	}
 	if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
 		st.Enabled = &enabled
-	}); err != nil {
-		return job, err
-	}
-	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s project=%s job=%s action=update_state", GetUserIDFromContext(ctx), job.UserID, job.ProjectID, jobID)
-	return s.Job(ctx, userID, jobID)
-}
-
-// Cadence limits for a person's override: at least every hour, at most every 90 days.
-const minScheduleCadenceHours, maxScheduleCadenceHours = 1, 24 * 90
-
-// SetCadence sets one person's interval for a cadence schedule (PLAT-618).
-func (s *ProjectActionDispatcher) SetCadence(ctx context.Context, userID, jobID string, hours int) (productScheduleJob, error) {
-	job, err := s.Job(ctx, userID, jobID)
-	if err != nil {
-		return job, err
-	}
-	if job.Schedule.CadenceHours <= 0 {
-		return job, fmt.Errorf("schedule %q does not run on a cadence", jobID)
-	}
-	if hours < minScheduleCadenceHours || hours > maxScheduleCadenceHours {
-		return job, fmt.Errorf("cadence must be between %d and %d hours", minScheduleCadenceHours, maxScheduleCadenceHours)
-	}
-	if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
-		st.CadenceHours = &hours
-	}); err != nil {
-		return job, err
-	}
-	scheduleLogf("[CREW_SCHEDULE] actor=%s owner=%s project=%s job=%s action=update_state", GetUserIDFromContext(ctx), job.UserID, job.ProjectID, jobID)
-	return s.Job(ctx, userID, jobID)
-}
-
-// maxScheduleMessageBytes bounds a person's own schedule message.
-const maxScheduleMessageBytes = 8000
-
-// SetMessage sets what one person's run of a schedule asks for; empty restores the product's message (PLAT-618).
-func (s *ProjectActionDispatcher) SetMessage(ctx context.Context, userID, jobID, message string) (productScheduleJob, error) {
-	job, err := s.Job(ctx, userID, jobID)
-	if err != nil {
-		return job, err
-	}
-	message = strings.TrimSpace(message)
-	if len(message) > maxScheduleMessageBytes {
-		return job, fmt.Errorf("the schedule message is limited to %d bytes", maxScheduleMessageBytes)
-	}
-	if job.ProjectID != "" {
-		if message == "" {
-			return job, fmt.Errorf("provide a schedule message, or turn the schedule off")
-		}
-		return s.UpdateProjectSchedule(ctx, userID, jobID, func(schedule *productschedule.Schedule) { schedule.Messages = []string{message} })
-	}
-	if err := s.updateStateByKey(ctx, job.UserID, scheduleStateKey(job), func(st *productScheduleUserState) {
-		st.Messages = nil
-		if message != "" {
-			st.Messages = []string{message}
-		}
 	}); err != nil {
 		return job, err
 	}
@@ -1397,7 +1342,6 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		st.LastAttemptAt = startedAt.Format(time.RFC3339)
 	})
 
-	// A person may set their own messages for a schedule (Brain: what Organize Brain should do, PLAT-618).
 	messages := job.Effective().Messages
 	scheduleLogf("[PRODUCT-SCHEDULE] 🚀 %s (%s) for user %s: %d message(s), session %s", job.ID(), job.Schedule.Name, job.UserID, len(messages), sessionID)
 	var runErr error

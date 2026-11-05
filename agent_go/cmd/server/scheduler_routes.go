@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -408,19 +407,6 @@ func SchedulerRoutes(router *mux.Router, svc *SchedulerService) {
 	apiRouter.HandleFunc("/jobs/{id}", deleteScheduledJobHandler(svc)).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/enable", enableScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/disable", disableScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
-	// A person's own interval and message for a product schedule (PLAT-618, Organize Brain every N days, doing X).
-	for _, action := range []string{"cadence", "message"} {
-		action := action
-		apiRouter.HandleFunc("/jobs/{id}/"+action, func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			if !handleProductScheduleJob(w, r, svc, mux.Vars(r)["id"], action) {
-				http.Error(w, "this applies to product schedules only", http.StatusNotFound)
-			}
-		}).Methods("POST", "OPTIONS")
-	}
 	apiRouter.HandleFunc("/jobs/{id}/trigger", triggerScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/stop", stopScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/jobs/{id}/reset-history", resetHistoryScheduledJobHandler(svc)).Methods("POST", "OPTIONS")
@@ -1416,34 +1402,6 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 		updated, err := ps.SetEnabled(ctx, userID, id, action == "enable")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return true
-		}
-		respond(updated)
-	case "message":
-		var body struct {
-			Message string `json:"message"`
-		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 16384)).Decode(&body); err != nil {
-			http.Error(w, "message is required", http.StatusBadRequest)
-			return true
-		}
-		updated, err := ps.SetMessage(ctx, userID, id, body.Message)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return true
-		}
-		respond(updated)
-	case "cadence":
-		var body struct {
-			CadenceHours int `json:"cadence_hours"`
-		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil {
-			http.Error(w, "cadence_hours is required", http.StatusBadRequest)
-			return true
-		}
-		updated, err := ps.SetCadence(ctx, userID, id, body.CadenceHours)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
 			return true
 		}
 		respond(updated)
