@@ -103,12 +103,12 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Live chat is enabled. Accept steering while a turn is running and keep each durable project conversation resumable.",
 	},
 	"coding": {
-		Tools:           []string{"diff_patch_workspace_file", "execute_shell_command", "read_image"},
+		Tools:           []string{"diff_patch_workspace_file", "execute_shell_command"},
 		Skills:          []string{"code-reviewer"},
 		PromptExtension: "Coding tools are enabled. Inspect existing files before editing, keep changes scoped to the request, and validate in proportion to risk.",
 	},
 	"files": {
-		Tools:           []string{"diff_patch_workspace_file", "read_image"},
+		Tools:           []string{"diff_patch_workspace_file"},
 		UIPanels:        []string{"files"},
 		PromptExtension: "Files are enabled. Treat the current project folder as the durable source of truth and preserve unrelated user files.",
 	},

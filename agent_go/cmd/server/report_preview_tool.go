@@ -20,7 +20,7 @@ import (
 // a reviewer would otherwise only learn by opening the tab: did the page
 // settle, did its script throw, which tabs exist, which "Loading…"
 // placeholders never got replaced, how tall it is -- plus screenshots per
-// theme and width the agent can read_image. validate_report_html is the fast
+// theme and width the agent can open with its own image viewer. validate_report_html is the fast
 // static/SQL check; this is the slow, true-render one.
 
 const (

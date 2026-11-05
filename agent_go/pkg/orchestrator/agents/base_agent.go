@@ -26,15 +26,6 @@ const orchestratorIDKey contextKey = "orchestrator_id"
 
 func boolPointer(value bool) *bool { return &value }
 
-func platformBridgeToolsFromDirectTools(directTools []mcpagent.ToolDefinition) []string {
-	for _, tool := range directTools {
-		if tool.Name == "read_image" {
-			return []string{tool.Name}
-		}
-	}
-	return nil
-}
-
 // newProjectedAgent preserves the source definition for later identity updates,
 // and gives every constructed runtime the same admitted public tool catalog.
 func newProjectedAgent(ctx context.Context, definition mcpagent.AgentDefinition, runtime mcpagent.RuntimeConfig, provider string) (*mcpagent.Agent, error) {
@@ -283,7 +274,6 @@ func NewBaseAgent(
 			MCP:    mcpSources,
 		},
 	}
-	platformBridgeTools := platformBridgeToolsFromDirectTools(directTools)
 	runtime := mcpagent.RuntimeConfig{
 		Model:         llm,
 		MCPConfigPath: configPath,
@@ -291,10 +281,6 @@ func NewBaseAgent(
 		Tools: mcpagent.ToolRuntimeConfig{
 			SelectedTools: selectedTools, SelectedServers: serverNames,
 			CodeExecution: useCodeExecutionMode, ParallelExecution: enableParallelToolExecution,
-			// read_image is a platform executor. Mount it directly for coding
-			// agents (including Muse structured workflow steps) when it exists in
-			// this agent's admitted direct-tool registry.
-			AdditionalBridge: platformBridgeTools,
 		},
 		Coding: mcpagent.CodingRuntimeConfig{
 			AgentToolsMode:       workflowExecutionNativeToolsMode(agentType, forceStructuredCodingAgent, isolateCodingAgentWorkspace, strings.TrimSpace(codingAgentOutputDir) != ""),

@@ -60,7 +60,7 @@ Workflow mode dynamically configures the folder guard for **each individual step
 #### Tool Classification & Rules
 | Tool Type | Allowed Paths | Blocked Paths |
 | :--- | :--- | :--- |
-| **Read Tools** (`execute_shell_command`, `read_image`; legacy basic read tools when explicitly registered by library users) | `readPaths` + `writePaths` (combined) | `blockedPaths` (denied) |
+| **Read Tools** (`execute_shell_command`; legacy basic read tools when explicitly registered by library users) | `readPaths` + `writePaths` (combined) | `blockedPaths` (denied) |
 | **Write Tools** (`diff_patch_workspace_file`; legacy basic write tools when explicitly registered by library users) | `writePaths` only | `blockedPaths` (denied) |
 | **Shell Tools** (`execute_shell_command`) | Environment sanitized + Filesystem isolated | `blockedPaths` references |
 

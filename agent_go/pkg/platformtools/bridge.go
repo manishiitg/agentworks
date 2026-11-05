@@ -1,6 +1,10 @@
 package platformtools
 
-import mcpagent "github.com/manishiitg/mcpagent/agent"
+import (
+	"slices"
+
+	mcpagent "github.com/manishiitg/mcpagent/agent"
+)
 
 // coreBridgeFamilies are the projected tools every coding CLI gets natively:
 // the working tools a chat uses on most turns. Every other admitted platform
@@ -11,8 +15,9 @@ var coreBridgeFamilies = map[string]bool{"terminal": true, "browser": true, "fil
 
 // BridgeRuntime exposes the core projected tools plus the caller's explicit
 // bridge tools to coding CLIs. Source names retired by projection are never
-// bridge aliases.
-func BridgeRuntime(projected []mcpagent.ToolDefinition, runtime mcpagent.RuntimeConfig) mcpagent.RuntimeConfig {
+// bridge aliases. omitCore names core families the CLI does not get natively
+// (files under Full CLI); they stay in the catalog for search_tools/call_tool.
+func BridgeRuntime(projected []mcpagent.ToolDefinition, runtime mcpagent.RuntimeConfig, omitCore ...string) mcpagent.RuntimeConfig {
 	inCatalog := map[string]bool{}
 	for _, tool := range projected {
 		inCatalog[tool.Name] = true
@@ -20,7 +25,7 @@ func BridgeRuntime(projected []mcpagent.ToolDefinition, runtime mcpagent.Runtime
 	bridge := []string{}
 	seen := map[string]bool{}
 	for _, tool := range projected {
-		if coreBridgeFamilies[tool.Name] && !seen[tool.Name] {
+		if coreBridgeFamilies[tool.Name] && !seen[tool.Name] && !slices.Contains(omitCore, tool.Name) {
 			bridge = append(bridge, tool.Name)
 			seen[tool.Name] = true
 		}

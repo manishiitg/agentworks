@@ -28,4 +28,15 @@ func TestBridgeRuntimeKeepsOnlyCoreAndExplicitTools(t *testing.T) {
 		t.Fatalf("admission must follow the bridge: vault=%v execute_shell_command=%v terminal=%v",
 			admit("vault"), admit("execute_shell_command"), admit("terminal"))
 	}
+
+	// Full CLI (owner, 5 Nov: "files should be removed for sure in full cli"): an RTS Full CLI chat made
+	// 1,374 model calls and no direct files call, while the tool cost about 7.8 KB per call. files leaves the
+	// bridge, but stays in the projected catalog that search_tools and call_tool serve.
+	full := BridgeRuntime(projected, runtime, "files")
+	if slices.Contains(full.Tools.AdditionalBridge, "files") || full.Coding.BridgeToolAdmit("files") {
+		t.Fatalf("Full CLI bridge still offers files: %v", full.Tools.AdditionalBridge)
+	}
+	if !slices.ContainsFunc(projected, func(tool mcpagent.ToolDefinition) bool { return tool.Name == "files" }) || !full.Coding.BridgeToolAdmit("terminal") {
+		t.Fatal("Full CLI must keep files in the catalog and the other core tools on the bridge")
+	}
 }

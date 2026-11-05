@@ -275,7 +275,7 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
     if (WORKSPACE_SUB_CATEGORIES.includes(category) && isCategoryEnabled('workspace_tools', enabledTools)) return true;
     // Check if sub-category is enabled (e.g., workspace_advanced:*)
     if (isCategoryEnabled(category, enabledTools)) return true;
-    // Check if specific tool is enabled (e.g., workspace_advanced:read_image)
+    // Check if specific tool is enabled (e.g., workspace_advanced:execute_shell_command)
     return enabledTools.includes(formatToolEntry(category, toolName));
   };
 

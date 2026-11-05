@@ -276,7 +276,6 @@ interface WorkflowStore {
   // Execution options
   saveValidationResponses: boolean  // If true, save validation responses to workspace validation folder
   disableShellExecAccess: boolean  // If true, disable all execute_shell_command tool access globally
-  disableReadImageAccess: boolean  // If true, disable all read_image tool access globally
   // Variables manifest (for batch execution with multiple groups)
   variablesManifest: VariablesManifest | null
 
@@ -338,7 +337,6 @@ interface WorkflowStore {
   buildExecutionOptions: () => ExecutionOptions
   setSaveValidationResponses: () => void
   setDisableShellExecAccess: (enabled: boolean) => void
-  setDisableReadImageAccess: (enabled: boolean) => void
 
   // Variables manifest
   setVariablesManifest: (manifest: VariablesManifest | null) => void
@@ -442,8 +440,6 @@ export const useWorkflowStore = create<WorkflowStore>()(
       saveValidationResponses: true,
       // Disable shell exec access (defaults to false, not persisted)
       disableShellExecAccess: false,
-      // Disable read image access (defaults to false, not persisted)
-      disableReadImageAccess: false,
 
       // Variables manifest
       variablesManifest: null,
@@ -814,10 +810,6 @@ export const useWorkflowStore = create<WorkflowStore>()(
         // No longer persisted to localStorage
       },
       
-      setDisableReadImageAccess: (enabled: boolean) => {
-        set({ disableReadImageAccess: enabled })
-        // No longer persisted to localStorage
-      },
 
       setVariablesManifest: (manifest: VariablesManifest | null) => {
         set({ variablesManifest: manifest })

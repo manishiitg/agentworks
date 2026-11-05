@@ -108,7 +108,7 @@ if len(config.SelectedServers) > 0 {
 
 **Internal Category Names:**
 - `workspace_tools`: Backward-compatible alias for the current workspace registry.
-- `workspace_advanced`: Current workspace tools (`execute_shell_command`, `diff_patch_workspace_file`, `read_image`, `generate_text_llm`, `search_web_llm`, plus the media generators `image_gen` / `image_edit` / `generate_video` / `text_to_speech` / `speech_to_text` / `generate_music`)
+- `workspace_advanced`: Current workspace tools (`execute_shell_command`, `diff_patch_workspace_file`, `generate_text_llm`, `search_web_llm`, plus the media generators `image_gen` / `image_edit` / `generate_video` / `text_to_speech` / `speech_to_text` / `generate_music`)
 - Legacy basic file tools such as `list_workspace_files`, `read_workspace_file`, `update_workspace_file`, `delete_workspace_file`, and `move_workspace_file` are not part of the current workflow-builder registry. Use shell and diff tools instead.
 - `human_tools`: workflow execution agents receive only the narrow baseline: `human_feedback` (short-lived blocking input), `create_human_input_request` (durable decision), `send_email` and `send_slack_message` (addressed sends). Administrative, decision-consumer, Slack CLI and Google Workspace tools must be selected explicitly. The owning pool and connection/access gates still apply. Legacy `human_tools:*` step configuration is normalized to the same baseline rather than expanding the category.
 - `workspace_browser`: `agent_browser`

@@ -306,7 +306,6 @@ chat:
       - query_workflow_costs
       - query_workflow_db
       - read_agent_messages
-      - read_image
       - record_goal_observations
       - project_functions_reply
       - report_function_progress
@@ -330,7 +329,6 @@ chat:
       # These bridge tools stay out of the direct external Run API below.
       - execute_shell_command
       - diff_patch_workspace_file
-      - read_image
       - list_llm_capabilities
       - get_goal_metrics
       - query_workflow_db
@@ -411,7 +409,6 @@ chat:
     external_denylist:
       - execute_shell_command
       - diff_patch_workspace_file
-      - read_image
       - list_llm_capabilities
       - get_goal_metrics
       - query_workflow_db

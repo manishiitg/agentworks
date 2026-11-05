@@ -139,8 +139,8 @@ Do not read or write tier-config storage with shell/file tools. Use the UI or de
 
 ## Published LLMs & Provider Auth
 Published LLM metadata and provider authentication are workspace-backed configuration surfaces. Access them through dedicated tools only; raw workspace file tools intentionally do not expose ` + "`config/`" + `.
-- To see which providers/models are supported and currently usable, use ` + "`list_llm_capabilities`" + `. It covers ` + "`chat`" + `, ` + "`search_web`" + `, and ` + "`read_image`" + `, including auth/runtime availability and static pricing metadata where available.
-- When choosing a concrete provider-backed model for search or image reading, call ` + "`list_llm_capabilities(capability=\"...\", include_models=true)`" + ` first and pass ` + "`provider`" + ` and ` + "`model_id`" + ` together from the same capability entry. Do not pass only ` + "`model_id`" + ` and rely on provider inference. ` + "`image_gen`" + `/` + "`image_edit`" + ` have only one provider (codex-cli) and do not take provider/model_id arguments.
+- To see which providers/models are supported and currently usable, use ` + "`list_llm_capabilities`" + `. It covers ` + "`chat`" + ` and ` + "`search_web`" + `, including auth/runtime availability and static pricing metadata where available.
+- When choosing a concrete provider-backed model for search, call ` + "`list_llm_capabilities(capability=\"...\", include_models=true)`" + ` first and pass ` + "`provider`" + ` and ` + "`model_id`" + ` together from the same capability entry. Do not pass only ` + "`model_id`" + ` and rely on provider inference. ` + "`image_gen`" + `/` + "`image_edit`" + ` have only one provider (codex-cli) and do not take provider/model_id arguments.
 - Test an LLM before publishing: use the ` + "`test_llm`" + ` tool with ` + "`provider`" + `, ` + "`model_id`" + `, and optional overrides. It uses workspace-backed provider auth by default.
 - List the frontend-known models for a provider: use the ` + "`list_provider_models`" + ` tool. It uses shared metadata for fixed providers and the same dynamic picker source as the UI for dynamic providers.
 - List published LLMs with ` + "`list_published_llms`" + `.
@@ -150,7 +150,7 @@ Published LLM metadata and provider authentication are workspace-backed configur
 - Verify provider auth by running ` + "`test_llm`" + ` for the provider/model you want to use.
 - Use dedicated tools for all published LLM and provider-auth operations; raw workspace file tools intentionally do not have ` + "`config/`" + ` access.
 
-Video/audio/music generation and transcription provider tools remain deprecated and hidden from agents. ` + "`read_image`" + `, ` + "`image_gen`" + `, and ` + "`image_edit`" + ` are active.
+Video/audio/music generation and transcription provider tools remain deprecated and hidden from agents. ` + "`image_gen`" + ` and ` + "`image_edit`" + ` are active. To look at an image, open the file with your own file or image viewer.
 
 ## Image Generation Defaults
 Image generation defaults are workspace-backed configuration. Provider authentication is managed separately through ` + "`set_provider_auth`" + `.
@@ -160,14 +160,6 @@ Image generation defaults are workspace-backed configuration. Provider authentic
 - Keep provider auth updated with the ` + "`set_provider_auth`" + ` tool; do not hand-edit encrypted auth files.
 - Do not infer image-generation support from ` + "`list_provider_models`" + ` or the normal LLM model catalog. Those lists are for chat/text models, not image models.
 - ` + "`image_gen`" + ` and ` + "`image_edit`" + ` have only one provider (codex-cli) and do not take provider/model_id arguments; there is nothing to discover with ` + "`list_llm_capabilities`" + ` for them.
-
-## Image Analysis Defaults
-Image understanding for the ` + "`read_image`" + ` tool can be routed via workspace-backed image analysis defaults, including through a coding-agent CLI's own native vision by passing it the local workspace image path directly (` + "`codex-cli`" + `, ` + "`cursor-cli`" + `, and ` + "`claude-code`" + ` are all supported providers for this) rather than only through a standalone vision-model API.
-- Do not read or write saved defaults with shell/file tools. Use per-call ` + "`read_image`" + ` overrides, or the dedicated UI/API configuration path when changing saved defaults.
-- If this file exists, ` + "`read_image`" + ` uses its ` + "`primary`" + ` with workspace provider auth.
-- If this file does not exist, ` + "`read_image`" + ` uses the current chat model.
-- For one-off ` + "`read_image`" + ` calls, use ` + "`list_llm_capabilities(capability=\"read_image\", include_models=true)`" + ` and pass ` + "`provider`" + ` with the matching ` + "`model_id`" + ` when overriding defaults.
-- Keep provider auth updated with the ` + "`set_provider_auth`" + ` tool; do not hand-edit encrypted auth files.
 
 ## Workflows
 List workflows with ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/\")`" + `.

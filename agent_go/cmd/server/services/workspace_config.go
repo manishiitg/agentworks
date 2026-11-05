@@ -58,10 +58,6 @@ type ImageGenerationConfig struct {
 	Primary *ImageGenerationModelConfig `json:"primary,omitempty"`
 }
 
-type ImageAnalysisConfig struct {
-	Primary *ImageGenerationModelConfig `json:"primary,omitempty"`
-}
-
 // readWorkspaceFile reads a file from the workspace API using the given workspaceURL.
 // Returns (content, true, nil) if found, ("", false, nil) if not found, or ("", false, err) on error.
 func readWorkspaceFile(ctx context.Context, workspaceURL, filePath string) (string, bool, error) {
@@ -274,29 +270,6 @@ func LoadImageGenerationConfig(ctx context.Context, workspaceURL string) (*Image
 	}
 
 	cfg := &ImageGenerationConfig{}
-	if stored.Primary != nil {
-		if primary := sanitizeImageGenerationModelConfig(stored.Primary); primary != nil {
-			cfg.Primary = primary
-		}
-	}
-
-	return cfg, true, nil
-}
-
-// LoadImageAnalysisConfig reads image analysis defaults (plain JSON) from the workspace.
-// Returns (nil, false, nil) if the file doesn't exist.
-func LoadImageAnalysisConfig(ctx context.Context, workspaceURL string) (*ImageAnalysisConfig, bool, error) {
-	content, exists, err := readWorkspaceFile(ctx, workspaceURL, "config/image-analysis-config.json")
-	if err != nil || !exists {
-		return nil, exists, err
-	}
-
-	var stored ImageAnalysisConfig
-	if err := json.Unmarshal([]byte(content), &stored); err != nil {
-		return nil, false, fmt.Errorf("failed to parse image analysis config: %w", err)
-	}
-
-	cfg := &ImageAnalysisConfig{}
 	if stored.Primary != nil {
 		if primary := sanitizeImageGenerationModelConfig(stored.Primary); primary != nil {
 			cfg.Primary = primary

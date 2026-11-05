@@ -512,7 +512,6 @@ export function cleanConversationActivity(events: PollingEvent[], fallback: stri
     if (name === 'show_video') return 'Preparing the finished video'
     if (name === 'run_full_workflow' || name === 'execute_step') return 'Running the production workflow'
     if (name === 'read_skill') return 'Preparing the production checklist'
-    if (name === 'read_image') return 'Reviewing the video frames'
     if (name === 'execute_shell_command') return 'Checking the video output'
     if (name === 'generate_video' || name === 'create_video' || name === 'render_video') return 'Rendering the video'
     if (name === 'generate_image' || name === 'image_generation') return 'Creating the visual assets'

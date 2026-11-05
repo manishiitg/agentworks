@@ -453,10 +453,6 @@ describe('cleanConversationActivity', () => {
     ], 'Creating')).toBe('Preparing the production checklist')
 
     expect(cleanConversationActivity([
-      event('image', 'tool_call_start', { tool_name: 'read_image' }),
-    ], 'Creating')).toBe('Reviewing the video frames')
-
-    expect(cleanConversationActivity([
       event('shell', 'tool_call_start', { tool_name: 'execute_shell_command' }),
     ], 'Creating')).toBe('Checking the video output')
   })

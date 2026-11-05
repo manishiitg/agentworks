@@ -159,7 +159,7 @@ func TestCrewReaderDeniedToolsGate(t *testing.T) {
 		}
 	}
 	for _, allowed := range []string{
-		"execute_shell_command", "read_image", "generate_text_llm",
+		"execute_shell_command", "generate_text_llm",
 		"get_file_link", "list_secrets", "list_accessible_workflows",
 		"list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run",
 		"list_project_schedules", "list_project_triggers",
@@ -1309,7 +1309,7 @@ func TestReadOnlyShellHint(t *testing.T) {
 	if got := run("execute_shell_command", "cat: nope: No such file or directory\n"); strings.Contains(got, "Run mode") {
 		t.Fatalf("an unrelated failure was annotated: %s", got)
 	}
-	if got := run("read_image", "sh: x: Operation not permitted\n"); strings.Contains(got, "Run mode") {
+	if got := run("diff_patch_workspace_file", "sh: x: Operation not permitted\n"); strings.Contains(got, "Run mode") {
 		t.Fatalf("another tool was annotated: %s", got)
 	}
 }
