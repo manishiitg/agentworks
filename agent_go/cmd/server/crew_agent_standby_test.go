@@ -132,6 +132,8 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 // teammate's message to it runs on the server from its standby copy, as the teammate (the asker the "When others ask"
 // rule sees), and the server becomes its writer. An Only me agent is never answered from the server: it waits.
 func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
+	crewAlwaysOnAnswering = true // off by default until handing back (step 3) is in
+	t.Cleanup(func() { crewAlwaysOnAnswering = false })
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
