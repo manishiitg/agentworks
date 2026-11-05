@@ -8,6 +8,8 @@ export interface LiveRefetchOptions {
   workflow?: string | null
   project?: string | null
   scopeKey?: string
+  // Refresh after external edits when the person returns to this view.
+  refreshOnFocus?: boolean
   // Timer used only while the live feed is unavailable (the old poll rate).
   // 0 = no timer.
   fallbackMs: number
@@ -34,7 +36,7 @@ export function useLiveFeedStatus(): LiveFeedStatus {
  * polling whenever the feed is not live.
  */
 export function useLiveRefetch(refetch: () => void, options: LiveRefetchOptions): void {
-  const { kinds, workflow = null, project = null, scopeKey, fallbackMs, safetyMs = DEFAULT_SAFETY_MS, minIntervalMs = 0, enabled = true } = options
+  const { kinds, workflow = null, project = null, scopeKey, refreshOnFocus = false, fallbackMs, safetyMs = DEFAULT_SAFETY_MS, minIntervalMs = 0, enabled = true } = options
   const refetchRef = useRef(refetch)
   refetchRef.current = refetch
   const status = useLiveFeedStatus()
@@ -62,18 +64,20 @@ export function useLiveRefetch(refetch: () => void, options: LiveRefetchOptions)
 
     const unsubscribe = liveFeed.subscribe(kindsKey.split(',') as LiveFeedKind[], workflow, run, project)
     const onVisible = () => {
-      if (!document.hidden && dirtyWhileHidden) {
+      if (!document.hidden && (dirtyWhileHidden || refreshOnFocus)) {
         dirtyWhileHidden = false
         run()
       }
     }
+    if (refreshOnFocus) window.addEventListener('focus', run)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       unsubscribe()
+      window.removeEventListener('focus', run)
       document.removeEventListener('visibilitychange', onVisible)
       if (trailing) clearTimeout(trailing)
     }
-  }, [enabled, kindsKey, workflow, project, scopeKey, minIntervalMs])
+  }, [enabled, kindsKey, workflow, project, scopeKey, refreshOnFocus, minIntervalMs])
 
   // Timer: the old poll rate while the feed is down, a slow safety check
   // while it is live. Hidden tabs skip ticks; returning to the tab refetches

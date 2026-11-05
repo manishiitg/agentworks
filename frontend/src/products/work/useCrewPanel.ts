@@ -41,7 +41,7 @@ export function useCrewPanel(scope: string, project: string, workspace: string, 
   useLiveRefetch(() => refreshRef.current(), {
     kinds: ['crew_panel', 'sessions', 'schedules', 'report', 'plan', 'browser'],
     project, workflow: workspace, scopeKey: scope, enabled: !!project,
-    fallbackMs: data?.busy ? 2_000 : 15_000, safetyMs: 0, minIntervalMs: 500,
+    refreshOnFocus: true, fallbackMs: data?.busy ? 2_000 : 15_000, safetyMs: 0, minIntervalMs: 500,
   })
   return { data, error: state?.key === key ? state.error : undefined, refresh: () => refreshRef.current() }
 }
