@@ -212,6 +212,11 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 		cfg.OAuth.ClientSecret = ""
 		cfg.OAuth.ClientSecretFile = ""
 	}
+	// A client saved with another callback (an older config from another port
+	// or host) cannot sign in here; register a fresh one instead.
+	if dropClientForOtherRedirect(cfg.OAuth, redirect) {
+		log.Printf("[VAULT_OAUTH] provider=%s connection=%s saved client was for another callback; registering for %s", name, id, redirect)
+	}
 	if clientID != "" {
 		cfg.OAuth.ClientID = clientID
 		cfg.OAuth.ClientSecret = strings.TrimSpace(clientSecret)
@@ -248,6 +253,8 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 	notificationID := "vault-oauth:" + id + ":" + newSteerMessageID()
 	start, discovery, flowErr := api.runOAuthFlow(sessionID, redirect, oauthFlowTarget{
 		Name: name, Config: cfg, ClientFile: getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), ConnectionID: id, LockKey: "vault:" + id,
+		// BeforeExchange saved the rejected client as this connection's setup; drop it so the next connect registers again.
+		ForgetClient: func() { _ = os.Remove(vaultCredentialConfigPath(id)) },
 		BeforeExchange: func(flow *OAuthFlowState) error {
 			if currentVaultOAuthGeneration(id) != generation || !api.vaultActorCanManage(context.Background(), userID, id) {
 				return errors.New("this connection was signed out or removed while the sign-in was open, or your access changed")
