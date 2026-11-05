@@ -8,12 +8,19 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // crewTeamClashNotice is one clash just recorded, for the notification to both people.
@@ -22,38 +29,74 @@ type crewTeamClashNotice struct {
 	removed bool // the losing side was a stale delete; the winner's edit stays
 }
 
-// notifyCrewTeamClashes tells the two people of each clash, once per clash (never per sync round), in plain words with
-// display names. The owner is told only when they are one of the two.
-func notifyCrewTeamClashes(project string, team crewTeam, notices []crewTeamClashNotice) {
+// crewTeamClashNoticeWindow: a person hears about one copy's sync round once, however many files clashed in it.
+const crewTeamClashNoticeWindow = 10 * time.Minute
+
+// notifyCrewTeamClashes tells the two people of each clash in plain words with display names: at most one message per
+// person per sync round (round names the sending copy), naming the file, or how many files when there are several
+// (6 Nov: one message per file sent 7,571). A clash is never told twice. The owner is told only when one of the two.
+func notifyCrewTeamClashes(project, round string, team crewTeam, notices []crewTeamClashNotice) {
 	if len(notices) == 0 {
 		return
 	}
 	title := "Clash in " + firstNonEmptyTrimmed(team.Name, "your team's shared folder")
 	route := "/crew/projects/" + url.PathEscape(project)
-	job := notifyJob{event: "team_clash"}
+	type told struct {
+		bodies []string
+		paths  []string
+		others []string
+	}
+	people := map[string]*told{}
+	order := []string{}
 	for _, n := range notices {
 		c := n.clash
+		if c.WinningAuthor == c.LosingAuthor || c.LosingAuthor == "" {
+			continue // one person's own copies: the later version wins, nobody to tell
+		}
 		if _, seen := notifyAsked.LoadOrStore(fmt.Sprintf("team_clash\x00%s\x00%s\x00%d", project, c.Path, c.WinningRevision), time.Now()); seen {
 			continue
 		}
 		winner, loser := c.WinningAuthor, c.LosingAuthor
-		add := func(user, body string) {
-			if user != "" {
-				job.direct = append(job.direct, notifyDirect{user: user, msg: notifyMessage{Title: title, Body: body, Route: route}})
+		w, l := crewPersonShortName(winner), crewPersonShortName(loser)
+		add := func(user, other, body string) {
+			p := people[user]
+			if p == nil {
+				p = &told{}
+				people[user] = p
+				order = append(order, user)
+			}
+			p.bodies, p.paths = append(p.bodies, body), append(p.paths, c.Path)
+			if !slices.Contains(p.others, other) {
+				p.others = append(p.others, other)
 			}
 		}
-		w, l := crewPersonShortName(winner), crewPersonShortName(loser)
-		switch {
-		case winner == loser || loser == "":
-			add(winner, fmt.Sprintf("%s was changed in two places at once. The later version is in the file; the earlier one is kept. Ask your agent to sort it out.", c.Path))
-		case n.removed:
-			add(loser, fmt.Sprintf("You removed %s while %s changed it. %s's version stays in the file. Ask your agent to sort it out.", c.Path, w, w))
-			add(winner, fmt.Sprintf("%s removed %s while you changed it. Your version stays in the file. Ask your agent to sort it out.", l, c.Path))
-		default:
-			add(loser, fmt.Sprintf("You and %s both changed %s. %s's version is in the file; yours is kept. Ask your agent to sort it out.", w, c.Path, w))
-			add(winner, fmt.Sprintf("You and %s both changed %s. Your version is in the file; %s's is kept. Ask your agent to sort it out.", l, c.Path, l))
+		if n.removed {
+			add(loser, w, fmt.Sprintf("You removed %s while %s changed it. %s's version stays in the file. Ask your agent to sort it out.", c.Path, w, w))
+			add(winner, l, fmt.Sprintf("%s removed %s while you changed it. Your version stays in the file. Ask your agent to sort it out.", l, c.Path))
+		} else {
+			add(loser, w, fmt.Sprintf("You and %s both changed %s. %s's version is in the file; yours is kept. Ask your agent to sort it out.", w, c.Path, w))
+			add(winner, l, fmt.Sprintf("You and %s both changed %s. Your version is in the file; %s's is kept. Ask your agent to sort it out.", l, c.Path, l))
 		}
-		log.Printf("[CREW_TEAM_SYNC] clash_notified project=%s path=%q revision=%d winner=%s loser=%s", project, c.Path, c.WinningRevision, winner, loser)
+	}
+	job := notifyJob{event: "team_clash"}
+	for _, user := range order {
+		p := people[user]
+		key := fmt.Sprintf("team_clash_round\x00%s\x00%s\x00%s", project, user, round)
+		if at, seen := notifyAsked.Load(key); seen && time.Since(at.(time.Time)) < crewTeamClashNoticeWindow {
+			log.Printf("[CREW_TEAM_SYNC] clash_notice_skipped project=%s user=%s files=%d reason=already_told_this_round", project, logUsernameForUserID(user), len(p.paths))
+			continue
+		}
+		notifyAsked.Store(key, time.Now())
+		body := p.bodies[0]
+		if len(p.paths) > 1 {
+			shown, more := p.paths[:min(len(p.paths), 3)], ""
+			if len(p.paths) > len(shown) {
+				more = fmt.Sprintf(" and %d more", len(p.paths)-len(shown))
+			}
+			body = fmt.Sprintf("%d files changed by both you and %s: %s%s. The later version of each is in the file; the other is kept. Ask your agent to sort them out.", len(p.paths), strings.Join(p.others, ", "), strings.Join(shown, ", "), more)
+		}
+		job.direct = append(job.direct, notifyDirect{user: user, msg: notifyMessage{Title: title, Body: body, Route: route}})
+		log.Printf("[CREW_TEAM_SYNC] clash_notified project=%s user=%s files=%d", project, logUsernameForUserID(user), len(p.paths))
 	}
 	if len(job.direct) > 0 {
 		notifyEnqueue(job)
@@ -161,4 +204,77 @@ func (s crewTeamFileState) crewTeamOpenClash(path string, id uint64) (crewTeamCl
 		}
 	}
 	return crewTeamClash{}, false
+}
+
+// falseCrewTeamClash: an open clash that never was one, recorded before 6 Nov: both sides by the same person (two of
+// their own copies), no earlier version, or both versions with the same content.
+func (s crewTeamFileState) falseCrewTeamClash(c crewTeamClash) bool {
+	if c.Resolved {
+		return false
+	}
+	if c.WinningAuthor == c.LosingAuthor || c.LosingAuthor == "" || c.LosingRevision == 0 {
+		return true
+	}
+	if s.crewTeamClashRemoved(c) {
+		return false
+	}
+	won, lost := s.versionAt(c.Path, c.WinningRevision), s.versionAt(c.Path, c.LosingRevision)
+	return won != nil && lost != nil && won.Hash == lost.Hash
+}
+
+// clearFalseCrewTeamClashes closes, once at startup, the false clashes each Team's store still shows (6 Nov: a folder
+// change left "7571 clashes to sort out"), after a backup of the store's record.
+func clearFalseCrewTeamClashes(ctx context.Context) {
+	for _, t := range crewTeamsOnServer() {
+		lockDir, err := crewTeamDir(t.ProjectID)
+		if err != nil {
+			continue
+		}
+		unlock, err := wf.LockWorkspace(ctx, lockDir)
+		if err != nil {
+			continue
+		}
+		n, err := clearFalseCrewTeamClashesIn(t.ProjectID)
+		unlock()
+		if err != nil {
+			log.Printf("[CREW_TEAM_SYNC] cleared_false_clashes_failed project=%s reason=%q", t.ProjectID, err)
+		} else if n > 0 {
+			log.Printf("[CREW_TEAM_SYNC] cleared_false_clashes project=%s n=%d", t.ProjectID, n)
+		}
+	}
+}
+
+// clearFalseCrewTeamClashesIn closes one store's false clashes; the caller holds the team lock.
+func clearFalseCrewTeamClashesIn(project string) (int, error) {
+	state, err := readCrewTeamFileState(project)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for i, c := range state.Clashes {
+		if state.falseCrewTeamClash(c) {
+			state.Clashes[i].Resolved = true
+			n++
+		}
+	}
+	if n == 0 {
+		return 0, nil
+	}
+	dir, err := crewTeamContentDir(project)
+	if err != nil {
+		return 0, err
+	}
+	record := filepath.Join(dir, "files.json")
+	raw, err := os.ReadFile(record)
+	if err != nil {
+		return 0, err
+	}
+	if err = os.WriteFile(record+".before-clash-cleanup-"+time.Now().UTC().Format("20060102T150405Z"), raw, 0o600); err != nil {
+		return 0, err
+	}
+	if err = fsutil.WriteJSONAtomic(record, state, 0o600); err != nil {
+		return 0, err
+	}
+	publishCrewPanelChanged(project)
+	return n, nil
 }

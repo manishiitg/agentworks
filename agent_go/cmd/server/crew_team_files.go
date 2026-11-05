@@ -142,6 +142,54 @@ func (s crewTeamFileState) manifest() crewsync.Manifest {
 	return m
 }
 
+// held is the files the Team shares now (folder): a folder no longer shared keeps its files in the store, unseen, so
+// sharing it again needs no upload (announceCrewTeamSharedAgain).
+func (s crewTeamFileState) held(folder crewTeamFolder) map[string]crewTeamVersion {
+	out := map[string]crewTeamVersion{}
+	for rel, v := range s.Versions {
+		if v.File != nil && folder.holds(rel) {
+			out[rel] = v
+		}
+	}
+	return out
+}
+
+// announceCrewTeamSharedAgain records, at a new revision, every file the store already has under folders the Team
+// shares now but did not before, so every copy receives them (a copy that already has a file adopts it without a
+// write). The caller holds the team lock and has saved the new Team record.
+func announceCrewTeamSharedAgain(project, actor string, previous, current crewTeamFolder) error {
+	state, err := readCrewTeamFileState(project)
+	if err != nil {
+		return err
+	}
+	dir, err := crewTeamContentDir(project)
+	if err != nil {
+		return err
+	}
+	paths := []string{}
+	for rel := range state.Versions {
+		if current.holds(rel) && !previous.holds(rel) {
+			paths = append(paths, rel)
+		}
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	sort.Strings(paths)
+	revision, now := state.Revision+1, time.Now().UTC().Format(time.RFC3339Nano)
+	for _, rel := range paths {
+		v := state.Versions[rel]
+		state.Events = append(state.Events, crewTeamEvent{Path: rel, Kind: "shared", Revision: revision, Actor: actor, Author: v.Author, At: now, File: v.File, Chunks: v.Chunks})
+	}
+	state.Revision = revision
+	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), state, 0600); err != nil {
+		return err
+	}
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=shared_again files=%d revision=%d", project, logUsernameForUserID(actor), len(paths), revision)
+	publishCrewPanelChanged(project)
+	return nil
+}
+
 func validCrewTeamHash(value string) bool {
 	b, e := hex.DecodeString(value)
 	return e == nil && len(b) == 32 && value == strings.ToLower(value)
@@ -256,7 +304,11 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 		return crewTeamReceipt{}, e
 	}
 	op := state.onPurpose().with(declared)
-	next := state.manifest()
+	// The limits apply to what the Team shares now; files of a folder no longer shared stay in the store unseen.
+	next := crewsync.Manifest{}
+	for rel, v := range state.held(team.Folder) {
+		next[crewTeamKey(rel)] = *v.File
+	}
 	seen := map[string]bool{}
 	for _, c := range changes {
 		if seen[c.Path] || !crewTeamAllowed(c.Path, op) || c.Before != "" && !validCrewTeamHash(c.Before) {
@@ -334,7 +386,11 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 		if current.File != nil {
 			currentHash = current.File.Hash
 		}
-		if currentHash != c.Before {
+		// A clash needs two people and two contents (6 Nov: 7,571 false clashes after a folder change). The same
+		// bytes the store already has, the sender's own newer version (another of their copies: the later wins), or
+		// a file the store never had are plain changes.
+		sameContent := after != nil && currentHash == after.Hash
+		if currentHash != c.Before && !sameContent && current.Author != actor && current.Revision != 0 {
 			kind = "clash"
 		}
 		if kind == "clash" && after == nil {
@@ -399,7 +455,8 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 	}
 	log.Printf("[CREW_TEAM_FILES] project=%s actor=%s transfer=%s revision=%d changes=%d conflicts=%d", project, actor, transfer, state.Revision, len(changes), len(receipt.Conflicts))
 	publishCrewPanelChanged(project)
-	notifyCrewTeamClashes(project, team, notices)
+	round, _, _ := strings.Cut(transfer, "/") // the sending copy: one notice per person per round
+	notifyCrewTeamClashes(project, round, team, notices)
 	return receipt, nil
 }
 
@@ -509,7 +566,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 		}
 		files := []map[string]any{}
 		for name, v := range s.Versions {
-			if v.File == nil || !crewTeamAllowed(name, s.onPurpose()) {
+			if v.File == nil || !crewTeamAllowed(name, s.onPurpose()) || !t.Folder.holds(name) {
 				continue
 			}
 			if token := claims.AccessToken; token != nil && token.FileGuard != nil && !token.FileGuard.Allows(name, false) {

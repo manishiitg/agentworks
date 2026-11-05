@@ -46,8 +46,10 @@ type crewTeamInvite struct {
 }
 
 // crewTeamFolder is what the Team shares (owner, 5 Nov): one or more of the Crew's folders, or the Whole Crew. Files
-// sync relative to the Crew's own folder, so a teammate's copy has the same layout (team/…, code/…). ID is the
-// generation: a new choice starts a new one, and the previous files stay where they are.
+// sync relative to the Crew's own folder, so a teammate's copy has the same layout (team/…, code/…). ID names the
+// Team's file store. It stays the same when the choice changes (6 Nov: a new store for every added folder made every
+// copy upload all its files again, thousands of false clashes): only what holds() admits changes, so files still
+// shared stay in step and nothing is uploaded again.
 type crewTeamFolder struct {
 	ID      string   `json:"id"`
 	Whole   bool     `json:"whole,omitempty"`
@@ -100,23 +102,34 @@ func (f crewTeamFolder) same(g crewTeamFolder) bool {
 	return f.Whole == g.Whole && slices.Equal(f.Folders, g.Folders)
 }
 
-// cleanCrewTeamFolders checks a folder choice and keeps it short: sorted, no repeats, no folder inside another.
-func cleanCrewTeamFolders(in []string) ([]string, error) {
+// cleanCrewTeamFolders checks a folder choice and keeps it short: sorted, no repeats, no folder inside another. A
+// newly added folder inside one already shared is refused (6 Nov: adding team/e2e-check beside team/ was saved as no
+// change); a folder shared before that a new parent now covers is folded into it. Errors are the sentences people see.
+func cleanCrewTeamFolders(in, previous []string) ([]string, error) {
 	if len(in) > crewTeamMaxFolders {
-		return nil, fmt.Errorf("choose at most %d folders", crewTeamMaxFolders)
+		return nil, fmt.Errorf("Choose at most %d folders.", crewTeamMaxFolders)
 	}
 	out := []string{}
 	for _, folder := range in {
 		folder = strings.Trim(strings.TrimSpace(folder), "/")
 		if _, e := publication.CleanPath(folder); e != nil || publication.ExcludedDirectory(folder) || !crewTeamAllowed(folder+"/file.txt") || !(crewTeamFolder{Whole: true}).holds(folder+"/file.txt") {
-			return nil, fmt.Errorf("choose project subfolders, outside private state and credentials")
+			if folder == "" {
+				return nil, fmt.Errorf("Choose a folder inside this Crew to share.")
+			}
+			return nil, fmt.Errorf("%s/ is not a folder the team can share. Choose a folder inside this Crew, outside private state and credentials.", folder)
 		}
 		out = append(out, folder)
 	}
 	slices.Sort(out)
 	out = slices.Compact(out)
+	for _, folder := range out {
+		at := slices.IndexFunc(out, func(parent string) bool { return strings.HasPrefix(folder, parent+"/") })
+		if at >= 0 && !slices.Contains(previous, folder) {
+			return nil, fmt.Errorf("%s/ already shares that folder.", out[at])
+		}
+	}
 	return slices.DeleteFunc(out, func(folder string) bool {
-		return slices.ContainsFunc(out, func(parent string) bool { return parent != folder && strings.HasPrefix(folder, parent+"/") })
+		return slices.ContainsFunc(out, func(parent string) bool { return strings.HasPrefix(folder, parent+"/") })
 	}), nil
 }
 
@@ -269,10 +282,8 @@ func (t crewTeam) view(user string) crewTeam {
 	if t.edits(user) {
 		if s, e := readCrewTeamFileState(t.ProjectID); e == nil {
 			d := &crewTeamServerData{Kind: "team_folder", Name: t.Folder.display(), TeamProjectID: t.ProjectID}
-			for _, v := range s.Versions {
-				if v.File != nil {
-					d.SizeBytes += v.File.Size
-				}
+			for _, v := range s.held(t.Folder) {
+				d.SizeBytes += v.File.Size
 			}
 			t.ServerData = d
 		}
@@ -434,14 +445,6 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		}
 		seen[p.UserID] = true
 	}
-	if input.Folder.Whole {
-		input.Folder.Folders = nil
-	} else if folders, e := cleanCrewTeamFolders(input.Folder.Folders); e != nil {
-		externalError(w, 400, "invalid_folder", strings.ToUpper(e.Error()[:1])+e.Error()[1:]+".")
-		return
-	} else {
-		input.Folder.Folders = folders
-	}
 	dir, e := crewTeamDir(project)
 	if e == nil {
 		e = agentworksclient.EnsurePrivateDirectory(dir)
@@ -467,6 +470,14 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	if previous.OwnerID != owner || !crewTeamCanManage(previous, claims.UserID) {
 		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its settings.")
 		return
+	}
+	if input.Folder.Whole {
+		input.Folder.Folders = nil
+	} else if folders, e := cleanCrewTeamFolders(input.Folder.Folders, previous.Folder.Folders); e != nil {
+		externalError(w, 400, "invalid_folder", e.Error())
+		return
+	} else {
+		input.Folder.Folders = folders
 	}
 	// The Crew's main owner alone turns the Team on or off, switches Folders / Whole Crew and stops sharing a folder
 	// (owner, 5 Nov). Members add people and folders. Every caller (website, Mac app, chat,
@@ -526,10 +537,11 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			input.Folder.Folders = []string{crewTeamDefaultFolder}
 		}
 	}
+	// The same store for a changed choice (crewTeamFolder): copies keep what is still shared, nothing goes up again.
 	input.Folder.ID = previous.Folder.ID
-	if !previous.Folder.same(input.Folder) {
-		input.Folder.ID = uuid.NewString()
-		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder whole=%t folders=%d generation=%s", project, logUsernameForUserID(claims.UserID), input.Folder.Whole, len(input.Folder.Folders), input.Folder.ID)
+	folderChanged := !previous.Folder.same(input.Folder)
+	if folderChanged {
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder whole=%t folders=%d store=%s", project, logUsernameForUserID(claims.UserID), input.Folder.Whole, len(input.Folder.Folders), input.Folder.ID)
 	}
 	if input.Folder.shared() && input.Folder.ID == "" {
 		input.Folder.ID = uuid.NewString()
@@ -569,6 +581,11 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t owner_all_in_team=%t people=%d folder=%q revision=%d", project, logUsernameForUserID(claims.UserID), input.On, input.allMine(owner), len(input.People), input.Folder.display(), input.Revision)
+	if folderChanged && input.Folder.ID != "" && input.Folder.ID == previous.Folder.ID {
+		if err := announceCrewTeamSharedAgain(project, claims.UserID, previous.Folder, input.Folder); err != nil {
+			log.Printf("[CREW_TEAM] project=%s event=shared_again_failed reason=%q", project, err)
+		}
+	}
 	api.stopRemovedCrewTeamSessions(previous, input)
 	externalJSON(w, input.view(claims.UserID))
 }

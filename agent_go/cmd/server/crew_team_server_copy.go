@@ -149,6 +149,7 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 		return
 	}
 	go func() {
+		clearFalseCrewTeamClashes(ctx)
 		for ctx.Err() == nil {
 			api.removeStaleCrewTeamServerCopies(ctx)
 			for _, t := range crewTeamsOnServer() {
