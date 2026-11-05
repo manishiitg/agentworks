@@ -131,6 +131,10 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 		for ctx.Err() == nil {
 			removeStaleCrewTeamServerCopies(ctx)
 			for _, t := range crewTeamsOnServer() {
+				// A Crew on the server: its own folder is the Team store's copy for members on their Mac.
+				round, done := context.WithTimeout(ctx, 2*time.Minute)
+				api.syncServerCrewTeamStore(round, t)
+				done()
 				for _, p := range t.People {
 					if p.Invited {
 						continue
@@ -165,6 +169,17 @@ func removeStaleCrewTeamServerCopies(ctx context.Context) {
 		}
 		t, err := readCrewTeam(b.Project)
 		_, onMac := t.memberMac(b.RemoteUser)
+		// The owner's copy of a Crew on the server is the Crew folder itself: kept while it serves Mac members, and
+		// only its sync record goes when it is no longer needed (the Crew folder is never removed).
+		if err == nil && b.RemoteUser == t.OwnerID && !crewRelayTwin(b.Project) {
+			if serverCrewTeamStoreNeeded(t) && t.Folder.ID == b.FolderID {
+				continue
+			}
+			if e := os.RemoveAll(dir); e == nil {
+				log.Printf("[CREW_TEAM_SERVER] project=%s event=owner_copy_stopped", b.Project)
+			}
+			continue
+		}
 		if err == nil && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID == b.FolderID && t.edits(b.RemoteUser) && !onMac && crewRelayTwin(b.Project) {
 			continue
 		}
