@@ -41,6 +41,9 @@ type crewStandbySendItem struct {
 	Key          string                   `json:"key"`
 	Fingerprint  string                   `json:"fingerprint"`
 	Conversation *crewHandoffConversation `json:"conversation,omitempty"`
+	// Diverged (handback_done): the Mac had changed this conversation too, so it kept its own and saved the server's
+	// aside (crew_agent_handback.go).
+	Diverged bool `json:"diverged,omitempty"`
 }
 
 type crewStandbyReply struct {
@@ -53,6 +56,12 @@ type crewStandbyReply struct {
 	// Writer is "server" while the server answers for the agent from its copy (step 2, crew_agent_always_on.go): the
 	// Mac then neither runs the agent nor sends copies of it until it is handed back.
 	Writer string `json:"writer,omitempty"`
+	// Hand back (Always on, step 3, crew_agent_handback.go). Busy: a server turn of the agent is running, ask again
+	// later. Keys (handback_pull without a session): the agent's conversations on the server, as the Mac names them.
+	// Handback (handback_pull with one key): that conversation, its native bundle staged for the pull.
+	Busy     bool                 `json:"busy,omitempty"`
+	Keys     []string             `json:"keys,omitempty"`
+	Handback *crewStandbySendItem `json:"handback,omitempty"`
 }
 
 // crewAgentStandby is one agent's standby copy on the server: "standby" means the server holds a current copy and the
@@ -69,6 +78,9 @@ type crewAgentStandby struct {
 	Writer         string `json:"writer,omitempty"`
 	WriterRevision uint64 `json:"writer_revision,omitempty"`
 	WriterSince    string `json:"writer_since,omitempty"`
+	// KeptAt: the last hand back found the agent had answered on both the Mac and the server; both versions were kept
+	// and the owner was told (crew_agent_handback.go).
+	KeptAt string `json:"kept_at,omitempty"`
 }
 
 type crewAgentStandbySession struct {

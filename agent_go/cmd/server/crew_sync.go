@@ -103,7 +103,8 @@ type crewSyncReply struct {
 	AccessPublish *crewAccessText `json:"access_publish,omitempty"`
 	AccessShare   bool            `json:"access_share,omitempty"`
 	AccessLaptop  bool            `json:"access_laptop,omitempty"`
-	// Standby answers standby_check and standby_store (crew_agent_standby.go).
+	// Standby answers standby_check and standby_store (crew_agent_standby.go), handback_pull and handback_done
+	// (crew_agent_handback.go).
 	Standby *crewStandbyReply `json:"standby,omitempty"`
 }
 
@@ -311,6 +312,9 @@ func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id st
 	}
 	if input.Action == "standby_check" || input.Action == "standby_store" {
 		return api.receiveCrewStandby(ctx, claims, id, input)
+	}
+	if input.Action == "handback_pull" || input.Action == "handback_done" {
+		return api.receiveCrewHandback(ctx, claims, id, input)
 	}
 	if input.Action == "stage" {
 		return api.prepareCrewTransfer(ctx, claims, id, input)

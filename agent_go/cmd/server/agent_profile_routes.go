@@ -450,7 +450,11 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	// due schedule back. Scheduled runs enter through Run, never here, so a
 	// check-in's own turns are not mistaken for family activity.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
-	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode}) {
+	// Always on: a send routed to an agent's server copy stays in flight for a hand back until this handler has admitted
+	// its turn (crew_agent_always_on.go).
+	flight := &crewStandbyFlightHolder{}
+	defer flight.release()
+	if api.routeCrewMainChat(w, r.WithContext(context.WithValue(r.Context(), crewStandbyFlightHolderKey{}, flight)), profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode}) {
 		return
 	}
 	// Always on: while the server answers for this agent from its standby copy, the owner's Mac does not run it.

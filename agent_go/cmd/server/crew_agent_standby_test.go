@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
@@ -132,7 +133,7 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 // teammate's message to it runs on the server from its standby copy, as the teammate (the asker the "When others ask"
 // rule sees), and the server becomes its writer. An Only me agent is never answered from the server: it waits.
 func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
-	crewAlwaysOnAnswering = true // off by default until handing back (step 3) is in
+	crewAlwaysOnAnswering = true // off by default (AGENTWORKS_ALWAYS_ON=1 turns it on)
 	t.Cleanup(func() { crewAlwaysOnAnswering = false })
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -237,4 +238,225 @@ func heldTabs(t *testing.T) []string {
 		out = append(out, held.Tab)
 	}
 	return out
+}
+
+// PLAT-856 Always on, step 3: once the owner's Mac is back and no server turn of the agent runs, the Mac takes the
+// server's newer conversation (imported with the same native session id) and the agent is handed back (writer=mac). A
+// teammate thread that starts on the server during the hand back holds the flip until it is taken too. When the Mac
+// also changed the conversation, both versions are kept, the owner is told and nothing is imported. Only the owner on
+// the Crew's own pair, with the Mac online, can take an agent back, over the sync request and the native pull alike.
+func TestCrewHandbackTakesServerCopyKeepsBothAndRefusesOthers(t *testing.T) {
+	crewAlwaysOnAnswering = true // off by default (AGENTWORKS_ALWAYS_ON=1 turns it on)
+	t.Cleanup(func() { crewAlwaysOnAnswering = false })
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	api := f.api
+	const tab, macKey, serverKey = "helper01", "mac-crew:chat:helper01", "team:chat:helper01"
+	const native = "0f8fad5b-d9cb-469f-a165-70867728950e"
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatalf("pair fixture: %v", err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true}); err != nil {
+		t.Fatalf("team fixture: %v", err)
+	}
+	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: tab, Name: "Helper", Audience: "team"}}); err != nil {
+		t.Fatalf("shared agents fixture: %v", err)
+	}
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	ctx := context.WithValue(t.Context(), UserContextKey, owner)
+	roots, err := api.crewSyncRoots(ctx, owner, "team")
+	if err != nil {
+		t.Fatalf("owner Crew roots: %v", err)
+	}
+	serverWriter := func() {
+		t.Helper()
+		if err := writeCrewStandby("team", map[string]crewAgentStandby{tab: {Tab: tab, Location: "standby", PairID: "owner-pair", Revision: 1, Writer: "server", WriterRevision: 1,
+			Sessions: map[string]crewAgentStandbySession{macKey: {Dir: "copy", ConversationID: "conversation-helper", Provider: "claude-code", Revision: 1, Imported: 1}}}}); err != nil {
+			t.Fatalf("standby fixture: %v", err)
+		}
+	}
+	serverWriter()
+	// The server's own chat with the agent, as step 2 left it.
+	addServerChat := func(key, session string) {
+		t.Helper()
+		store, path := defaultProductConversationRegistryStore(), productConversationRegistryPath("owner")
+		doc, err := store.loadDocument(ctx, path)
+		if err == nil {
+			doc.Entries[productConversationRegistryEntryKey(crewProfileID, key)] = ProductConversationRecord{ConversationKey: key, ConversationID: "conversation-" + session, ProfileID: crewProfileID, SessionID: session, WorkspacePath: roots.Virtual, Provider: "claude-code"}
+			err = store.writeDocument(ctx, path, doc)
+		}
+		if err != nil {
+			t.Fatalf("server chat fixture: %v", err)
+		}
+	}
+	addServerChat(serverKey, "srv-1")
+	// A journal in dir, or in this session's native stage when dir is empty (where the server's capture leaves it).
+	bundle := func(dir, journal string) *sessiontransfer.Bundle {
+		t.Helper()
+		sum := sha256.Sum256([]byte(journal))
+		b := &sessiontransfer.Bundle{Provider: "claude-code", Format: "claude-jsonl", Transport: "structured", SessionID: native, Workspace: "/work/crew",
+			Files: map[string]sessiontransfer.File{"session.jsonl": {Size: int64(len(journal)), SHA256: hex.EncodeToString(sum[:])}}, Root: dir}
+		if dir == "" {
+			stage, err := crewNativeStage(roots, b)
+			if err != nil {
+				t.Fatalf("native stage: %v", err)
+			}
+			b.Root = stage
+		}
+		if err := os.WriteFile(filepath.Join(b.Root, "session.jsonl"), []byte(journal), 0o600); err != nil {
+			t.Fatalf("journal: %v", err)
+		}
+		return b
+	}
+	first := `{"sessionId":"` + native + `","n":1}` + "\n"
+	serverJournal := first + `{"sessionId":"` + native + `","n":"server"}` + "\n"
+	macJournal := first
+	// The server's capture and the Mac's own version need a provider runtime; the test stands in for both.
+	crewHandbackCaptureForTest = func(_ string, record ProductConversationRecord) (*crewHandoffConversation, error) {
+		if record.ConversationKey != serverKey {
+			return nil, nil // a thread with no saved turn yet
+		}
+		return &crewHandoffConversation{ConversationID: "conversation-helper", Native: bundle("", serverJournal)}, nil
+	}
+	crewHandbackMineForTest = func(_ crewroot.Roots, key string) (*ProductConversationRecord, *sessiontransfer.Bundle) {
+		if key != macKey {
+			return nil, nil
+		}
+		return &ProductConversationRecord{ConversationKey: key, SessionID: "mac-1"}, bundle(t.TempDir(), macJournal)
+	}
+	imported := []string{}
+	threadKey := sharedThreadKey("team", tab, "other")
+	crewHandbackImportForTest = func(_ crewroot.Roots, key string, c *crewHandoffConversation) error {
+		imported = append(imported, key+"/"+c.Native.SessionID)
+		if len(imported) == 1 {
+			addServerChat(threadKey, "srv-thread") // a teammate's new ask runs on the server during the hand back
+		}
+		return nil
+	}
+	crewHandbackRetry = time.Millisecond
+	t.Cleanup(func() {
+		crewHandbackCaptureForTest, crewHandbackMineForTest, crewHandbackImportForTest = nil, nil, nil
+		crewHandbackRetry = 15 * time.Second
+	})
+	call := func(claims *UserClaims, pair string) func(string, []crewStandbySendItem) (*crewStandbyReply, error) {
+		return func(action string, sessions []crewStandbySendItem) (*crewStandbyReply, error) {
+			out, err := api.crewSync(context.WithValue(t.Context(), UserContextKey, claims), claims, "team", crewSyncRequest{Action: action, PairID: pair, Standby: &crewStandbyRequest{Tab: tab, Sessions: sessions}})
+			return out.Standby, err
+		}
+	}
+	macRoots := roots
+	macRoots.ID = "mac-crew"
+	pull := func(b *sessiontransfer.Bundle) error { return bindCrewNativeStage(roots, b) } // one machine: the stage is shared
+	handBack := func() (bool, int, error) {
+		return api.runCrewHandback(t.Context(), "mac-crew", tab, macRoots, call(owner, "owner-pair"), pull, "owner-pair")
+	}
+	writer := func() string {
+		t.Helper()
+		rows, err := readCrewStandby("team")
+		if err != nil {
+			t.Fatalf("standby record: %v", err)
+		}
+		return rows[tab].Writer
+	}
+
+	// The Mac is still off: nothing changes, the server keeps answering.
+	if done, _, err := handBack(); done || crewHandbackReason(err) != "mac_offline" || writer() != "server" {
+		t.Fatalf("with the Mac off the agent must stay on the server: done=%t err=%v writer=%q", done, err, writer())
+	}
+	crewMacSockets.Lock()
+	crewMacSockets.byDevice["owner-mac"] = &crewMacSocket{owner: "owner", device: "owner-mac", twins: map[string]string{"team": "owner-pair"}, lastSeen: time.Now()}
+	crewMacSockets.Unlock()
+	t.Cleanup(func() { crewMacSockets.Lock(); delete(crewMacSockets.byDevice, "owner-mac"); crewMacSockets.Unlock() })
+
+	// Refusals come from the owner and pair rules, on the sync request and on the native pull.
+	other := &UserClaims{UserID: "other", Username: "other"}
+	if _, err := call(other, "owner-pair")("handback_pull", nil); err == nil {
+		t.Fatal("someone other than the Crew's owner listed the agent's conversations")
+	}
+	if _, err := call(owner, "another-pair")("handback_pull", nil); err == nil {
+		t.Fatal("another pair listed the agent's conversations")
+	}
+	for _, c := range []struct {
+		claims *UserClaims
+		pair   string
+		want   int
+	}{{other, "owner-pair", http.StatusForbidden}, {owner, "another-pair", http.StatusConflict}} {
+		r := httptest.NewRequest(http.MethodGet, "/api/crew-sync/team/native?direction=pull&pair="+c.pair, nil).WithContext(context.WithValue(t.Context(), UserContextKey, c.claims))
+		r = mux.SetURLVars(r, map[string]string{"project": "team"})
+		w := httptest.NewRecorder()
+		api.handleCrewNativeSync(w, r)
+		if w.Code != c.want {
+			t.Fatalf("native pull by %s on %s: got %d, want %d (%s)", c.claims.UserID, c.pair, w.Code, c.want, w.Body.String())
+		}
+	}
+
+	// A server turn of the agent is running: the hand back waits for it.
+	api.activeSessionsMux.Lock()
+	if api.activeSessions == nil {
+		api.activeSessions = map[string]*ActiveSessionInfo{}
+	}
+	api.activeSessions["srv-1"] = &ActiveSessionInfo{SessionID: "srv-1", Status: "running"}
+	api.activeSessionsMux.Unlock()
+	if reply, err := call(owner, "owner-pair")("handback_pull", nil); err != nil || reply == nil || !reply.Busy {
+		t.Fatalf("a running server turn must hold the hand back: %+v %v", reply, err)
+	}
+	api.activeSessionsMux.Lock()
+	delete(api.activeSessions, "srv-1")
+	api.activeSessionsMux.Unlock()
+
+	// A teammate's ask was routed to the server copy but its turn is not running or queued yet: the flip must wait for
+	// it, or the turn would finish only on the server. Once the turn is admitted, the flip may go ahead.
+	crewStandbyImportForTest = func(_, _, _, _ string) error { return nil }
+	crewStandbyRunForTest = func(context.Context, string, crewChatCall) crewChatResult {
+		return crewChatResult{Status: http.StatusOK}
+	}
+	t.Cleanup(func() { crewStandbyImportForTest, crewStandbyRunForTest = nil, nil })
+	if !api.crewStandbyRoute(t.Context(), "owner", "team", tab, "other", true) {
+		t.Fatal("while the server is the writer, a teammate's ask must be routed to the server copy")
+	}
+	if reply, err := call(owner, "owner-pair")("handback_done", nil); err != nil || reply == nil || !reply.Busy || writer() != "server" {
+		t.Fatalf("a routed call still in flight must hold the flip: %+v %v writer=%q", reply, err, writer())
+	}
+	api.standbyAgentCall(t.Context(), "owner", "team", crewChatCall{Operation: "agent_ask", Tab: tab, Args: json.RawMessage(`{"sender_id":"other"}`)}, false)
+	if crewStandbyInFlight("team", tab) {
+		t.Fatal("an admitted turn must no longer count as in flight")
+	}
+
+	// The server only continued the Mac's conversation: it is imported with the same native session id, the thread that
+	// started meanwhile is taken too, and the agent is the Mac's again.
+	done, diverged, err := handBack()
+	if err != nil || !done || diverged != 0 || writer() != "" {
+		t.Fatalf("hand back: done=%t diverged=%d err=%v writer=%q", done, diverged, err, writer())
+	}
+	if api.crewStandbyRoute(t.Context(), "owner", "team", tab, "other", true) || crewStandbyInFlight("team", tab) {
+		t.Fatal("after the hand back, with the Mac online, an ask must go to the Mac")
+	}
+	if len(imported) != 2 || imported[0] != macKey+"/"+native || imported[1] != macKey+"/"+native {
+		t.Fatalf("the server's conversation must be imported with its native session id (again after the thread started): %v", imported)
+	}
+
+	// Both changed: the Mac ran turns while it was offline. Both versions are kept, nothing is imported, the owner is told.
+	serverWriter()
+	imported = []string{"seen"}
+	macJournal = first + `{"sessionId":"` + native + `","n":"mac"}` + "\n"
+	done, diverged, err = handBack()
+	if err != nil || !done || diverged != 1 || writer() != "" || len(imported) != 1 {
+		t.Fatalf("diverged hand back: done=%t diverged=%d err=%v writer=%q imported=%v", done, diverged, err, writer(), imported)
+	}
+	kept, _ := filepath.Glob(filepath.Join(crewHandbackKeptDir(macRoots, tab), "*", "native", "session.jsonl"))
+	if len(kept) != 1 {
+		t.Fatalf("the server's version must be saved aside on the Mac: %v", kept)
+	}
+	if got, err := os.ReadFile(kept[0]); err != nil || string(got) != serverJournal {
+		t.Fatalf("the kept copy is not the server's version: %q %v", got, err)
+	}
+	rows, _ := readCrewStandby("team")
+	if rows[tab].KeptAt == "" || rows[tab].Sessions[macKey].Imported != 0 || crewHandbackKeptNote("team", tab) == "" {
+		t.Fatalf("the owner must be told both versions were kept: %+v", rows[tab])
+	}
+	doc, _ := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))
+	if current := doc.Entries[productConversationRegistryEntryKey(crewProfileID, serverKey)]; current.SessionID == "srv-1" || current.SessionID == "" {
+		t.Fatalf("the server's chat must start from the Mac's next copy, its own version kept as an earlier one: %+v", current)
+	}
 }

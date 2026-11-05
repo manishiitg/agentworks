@@ -223,6 +223,8 @@ func (api *StreamingAPI) crewRelayHandle(ctx context.Context, sock *crewMacSocke
 	case "hello":
 		api.crewRelayOffer(ctx, sock, msg.Crews)
 		api.deliverCrewMacWaitingAll(sock)
+		// Always on: agents the server answered for while this Mac was off go back to it (crew_agent_handback.go).
+		offerCrewHandbacks(sock)
 		return
 	case "ack":
 		if msg.Result == nil {

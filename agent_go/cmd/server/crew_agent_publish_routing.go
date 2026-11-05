@@ -24,6 +24,10 @@ func (api *StreamingAPI) publishedAgentCall(ctx context.Context, owner, project 
 func (api *StreamingAPI) standbyAgentCall(ctx context.Context, owner, project string, call crewChatCall, byAgent bool) crewChatResult {
 	started := time.Now()
 	result := api.serverAgentCall(ctx, owner, project, call, byAgent, true)
+	if call.Operation != "agent_read" {
+		// The turn is running or queued now (or was refused): the routed call is no longer in flight for a hand back.
+		releaseCrewStandbyFlight(project, call.Tab)
+	}
 	if call.Operation == "agent_ask" {
 		crewAlwaysOnLog(project, call.Tab, "answered_on_server", fmt.Sprintf("status_%d", result.Status), started)
 	}
