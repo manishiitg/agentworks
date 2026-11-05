@@ -64,6 +64,9 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if slot.profile.ID == crewProfileID && !IsLocalMode() && !crewRelayTwin(projectID) {
+		out = withServerCrewMacTabs(r.Context(), projectID, GetUserIDFromContext(r.Context()), out)
+	}
 	writeAgentProfileJSON(w, http.StatusOK, out)
 }
 

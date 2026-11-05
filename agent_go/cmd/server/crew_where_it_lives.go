@@ -84,8 +84,12 @@ func crewOnMacRefusalFor(conversationKey, caller string) string {
 // its server runtime available; the other agents continue through the Mac relay.
 func crewLivesOnMac(profileID, conversationKey, caller string) bool {
 	project := crewResourceProjectID(conversationKey)
-	if IsLocalMode() || profileID != crewProfileID || !crewRelayTwin(project) {
+	if IsLocalMode() || profileID != crewProfileID {
 		return false
+	}
+	if !crewRelayTwin(project) {
+		// A Crew on the server: only a member who works on their Mac has their turns there (crew_team_where.go).
+		return caller != "" && crewTeamMemberOnMac(project, caller)
 	}
 	// A Team member's own agents run on the server, as them (owner, 5 Nov); only the owner's agents live on the Mac.
 	// After "Add to my Mac" a member's own agents work on their Mac instead (crew_team_where.go).

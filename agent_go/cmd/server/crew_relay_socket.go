@@ -76,7 +76,8 @@ func (api *StreamingAPI) crewRelayAdmit(ctx context.Context, claims *UserClaims,
 	}
 	b, err := crewroot.ReadSync(crew.Project)
 	// A Team member's Mac offers their working copy with the pair the server recorded for them (crew_team_where.go).
-	if t, e := readCrewTeam(crew.Project); e == nil && err == nil && b != nil && b.Side == "server" && ownerOfCrewProjectID(crew.Project) == t.OwnerID {
+	// On a Crew that lives on the server there is no owner's binding: the member's pair alone admits their Mac.
+	if t, e := readCrewTeam(crew.Project); e == nil && err == nil && (b == nil || b.Side == "server") && ownerOfCrewProjectID(crew.Project) == t.OwnerID {
 		if pair, ok := t.memberMac(claims.UserID); ok {
 			if pair != crew.Pair {
 				return fmt.Errorf("not this member's pair")

@@ -88,6 +88,9 @@ func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string
 	// A Team member whose agents work on their Mac reads (only reads) their own Mac's chats here, through their pair.
 	if pair, ok := crewTeamMemberMacRead(r, project, c.UserID); ok {
 		b, err := crewroot.ReadSync(project)
+		if err == nil && b == nil {
+			b = &crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local"} // a Crew on the server
+		}
 		if err != nil || b == nil || b.Side != "server" {
 			return nil, fmt.Errorf("This Crew is not currently connected to its Mac conversation. Reopen the Crew.")
 		}

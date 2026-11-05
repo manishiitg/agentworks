@@ -1001,6 +1001,10 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		if !IsLocalMode() && crewRelayTwin(dest.ID) {
 			return session, api.deliverToMacSharedAgent(ctx, c, m, source, dest)
 		}
+		// A Team member's agent on their Mac, in a Crew on the server (crew_team_mac_watch.go).
+		if _, _, onMac := crewMemberMacTarget(dest.ID, dest.ChatKey); !IsLocalMode() && onMac {
+			return session, api.deliverToMemberMacAgent(ctx, c, m, source, dest)
+		}
 		profile, err := api.agentProfiles.Resolve("work", 0, dest.UserID)
 		if err != nil {
 			return session, err

@@ -41,11 +41,15 @@ var crewMacTeamTabsCache sync.Map
 // from the Team record once their agents work on their Mac.
 func crewMacPairFor(person, project string) (string, bool) {
 	b, err := crewroot.ReadSync(project)
-	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" || b.PendingAction != "" {
-		return "", false
-	}
+	twin := err == nil && b != nil && b.Side == "server" && b.Editing == "local" && b.PendingAction == ""
 	if person == ownerOfCrewProjectID(project) {
+		if !twin {
+			return "", false // a Crew on the server has no owner's Mac
+		}
 		return b.PairID, b.PairID != ""
+	}
+	if !twin && (err != nil || b != nil) {
+		return "", false // a Crew in the middle of a move, or unreadable
 	}
 	t, err := readCrewTeam(project)
 	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID {
@@ -270,7 +274,7 @@ func (api *StreamingAPI) routeCrewMemberMacTabs(w http.ResponseWriter, r *http.R
 // keeps the caller's own context.
 func (api *StreamingAPI) crewMacTeamWatchContext(r *http.Request, project, conversation string) (*http.Request, bool) {
 	viewer := GetUserIDFromContext(r.Context())
-	if IsLocalMode() || !crewRelayTwin(project) {
+	if IsLocalMode() {
 		return r, false
 	}
 	t, err := readCrewTeam(project)
@@ -367,4 +371,24 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	}
 	go api.awaitMacAgentAnswer(c.ID, m.ID, from, read)
 	return nil
+}
+
+// withServerCrewMacTabs adds, on a Crew that lives on the server, the agents of members who work on their Mac: the
+// viewer's own (watch only here; their server tabs give way to them) and the others', never their Only me ones.
+func withServerCrewMacTabs(ctx context.Context, project, viewer string, rows []AgentProfileSideChat) []AgentProfileSideChat {
+	people := crewMacPeople(project)
+	if len(people) < 2 { // the owner only: nobody works on their Mac
+		return rows
+	}
+	onMac := people[1:]
+	out := slices.DeleteFunc(rows, func(row AgentProfileSideChat) bool {
+		// A member on their Mac has no server agents here.
+		return slices.Contains(onMac, firstNonEmptyTrimmed(row.TabOwnerID, viewer))
+	})
+	for _, person := range onMac {
+		for _, tab := range crewMacTabsFor(ctx, person, project, viewer) {
+			out = append(out, crewMacTabRow(project, tab))
+		}
+	}
+	return out
 }
