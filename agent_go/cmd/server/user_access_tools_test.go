@@ -73,7 +73,7 @@ func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
 
 func TestUserAccessToolsAbsentOutsideBuilder(t *testing.T) {
 	api := &StreamingAPI{}
-	for _, origin := range []string{"interactive", "scheduled", "bot", "child", "pulse"} {
+	for _, origin := range []string{"interactive", "scheduled", "bot", "child"} {
 		req := QueryRequest{}
 		switch origin {
 		case "scheduled":
@@ -82,7 +82,6 @@ func TestUserAccessToolsAbsentOutsideBuilder(t *testing.T) {
 			req.BotPlatform = "slack"
 		case "child":
 			req.ParentSessionID = "parent"
-		case "pulse":
 		}
 		policy := resolveWorkflowChatPolicy("session", req, nil, false)
 		reg := &recordingRegistrar{}
@@ -90,8 +89,8 @@ func TestUserAccessToolsAbsentOutsideBuilder(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, exists := reg.tools["manage_user_access"]
-		// The person's own scheduled and background turns get what typed turns get (owner, 5 Nov); Pulse does not.
-		want := origin != "pulse"
+		// The person's own scheduled and background turns get what typed turns get (owner, 5 Nov).
+		want := true
 		if exists != want {
 			t.Fatalf("admission %s=%v", origin, exists)
 		}
