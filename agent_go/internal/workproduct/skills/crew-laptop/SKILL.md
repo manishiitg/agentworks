@@ -73,9 +73,11 @@ Keep existing instructions and configuration in place.
 
 On the local Mac app, `sessions action=native_list` finds the person's own
 Claude/Codex conversations for this exact folder and shows the original account.
-When the person asks to continue one, pass its returned opaque `native_id` to
-`sessions action=native_resume`. It opens a separate private chat tab; the next
-message resumes the native conversation with the Crew's current tools and
-permissions. Never copy native history between accounts, select a different
+Use `sessions action=native_preview` with its opaque `native_id` to preview the history.
+When the person asks to continue one, pass that `native_id` to
+`sessions action=native_resume`. It copies the native conversation to a new session ID in a separate private
+chat tab, including its saved history. The original is untouched. The next
+message resumes this independent copy with the Crew's current tools and
+permissions. Both chats still work on the same project files. Never copy native history between accounts, select a different
 folder's conversation or imply that opening a tab ran the agent. Other people's
 or shared-account owners' private chats are not listed.

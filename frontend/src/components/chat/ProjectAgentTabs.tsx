@@ -36,7 +36,7 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
-  onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
+  onImportLocalChat, onOrder, onPin, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
@@ -46,6 +46,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   onRename: (tab: ChatTab, name: string) => Promise<boolean | void>; onOpen: (name: string) => Promise<boolean | void>
   /** Opens a listed agent that has no tab here again and switches to it; without it, onOpen by name. */
   onReopen?: (chat: AgentProfileSideChat) => Promise<void>
+  onImportLocalChat?: () => void
   onCloseTab: (tabId: string) => void; onSelectTab: (tabId: string) => void
   projectActivity?: 'running' | 'waiting' | null
   renderAfterTab?: (tab: ChatTab) => ReactNode; isTabActive?: (tab: ChatTab) => boolean; onMakeInteractive?: (tabId: string) => void
@@ -407,7 +408,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}
       </div>
-      {!menuMode && (tabs.length > 1 || phone || livesOnMac) && (
+      {!menuMode && (tabs.length > 1 || phone || livesOnMac || onImportLocalChat) && (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
             type="button"
@@ -500,6 +501,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
               </div>
               {sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
                 className="mt-1 flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-2.5 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New agent</button>}
+              {onImportLocalChat && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); onImportLocalChat() }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground">Continue a local chat</button>}
             </div>, document.body
           )}
         </div>
