@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { GitCompareArrows, RefreshCw } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { useChatStore } from '../../stores/useChatStore'
@@ -6,8 +6,52 @@ import { activateTab } from '../../utils/activateTab'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../../utils/workspacePaneChat'
 import { desktopRequest } from '../../services/desktopConnections'
 import { teamError, teamRequest, type TeamClash, type TeamEvent, type TeamTarget } from './teamApi'
+import { takeCrewSync } from './MacSharedAgents'
 
-export function TeamSyncPanel({ target, name, onSummary, onAsk }: { target: TeamTarget; name?: string; onSummary?: (clashes: number, today: number) => void; onAsk?: () => void }) {
+/** One sync round: one person's files sent (or removed) together, so a first upload is one row, not hundreds (owner,
+ * 5 Nov). Events come newest first; a gap of over a minute, another person or another kind starts a new round.
+ * Clashes stay one row each. */
+type SyncRound = { author: string; kind: string; time: string; events: TeamEvent[] }
+export function syncRounds(events: TeamEvent[]): SyncRound[] {
+  const rounds: SyncRound[] = []
+  for (const event of events) {
+    const last = rounds[rounds.length - 1]
+    const previous = last?.events[last.events.length - 1]
+    if (last && event.kind !== 'clash' && last.kind === event.kind && last.author === event.author && previous && Math.abs(new Date(previous.time).getTime() - new Date(event.time).getTime()) <= 60_000) last.events.push(event)
+    else rounds.push({ author: event.author, kind: event.kind, time: event.time, events: [event] })
+  }
+  return rounds
+}
+
+const verb = (kind: string) => kind === 'clash' ? 'clash saved in history' : kind === 'removed' ? 'removed' : 'sent'
+const clock = (time: string) => new Date(time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+/** The shared folder in a few words for the Crew's side panel: open clashes, or how long ago the last change came. */
+export function useTeamSyncSummary(target?: TeamTarget, enabled = true): string {
+  const [line, setLine] = useState('')
+  useEffect(() => {
+    setLine('')
+    if (!target || !enabled) return
+    let active = true
+    const load = async () => {
+      try {
+        const [a, b] = await Promise.all([teamRequest<{ clashes: TeamClash[] }>(target, '/clashes'), teamRequest<{ events: TeamEvent[] }>(target, '/events')])
+        if (!active) return
+        const minutes = b.events[0] ? Math.max(0, Math.round((Date.now() - new Date(b.events[0].time).getTime()) / 60_000)) : -1
+        setLine(a.clashes.length ? `${a.clashes.length} ${a.clashes.length === 1 ? 'clash' : 'clashes'}`
+          : minutes < 0 ? 'nothing synced yet' : minutes < 1 ? 'last change just now' : minutes < 60 ? `last change ${minutes} min ago` : `last change ${clock(b.events[0].time)}`)
+      } catch { if (active) setLine('') }
+    }
+    void load(); const timer = window.setInterval(() => { if (!document.hidden) void load() }, 30000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [target?.project, target?.connection, target?.folderId, enabled])
+  return line
+}
+
+export function TeamSyncPanel({ target, name, projectId, onSummary, onAsk }: { target: TeamTarget; name?: string; projectId?: string; onSummary?: (clashes: number, today: number) => void; onAsk?: () => void }) {
+  // Opened from the side panel's Shared folder row: scroll here once it is on screen.
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (projectId && takeCrewSync(projectId)) window.setTimeout(() => root.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 300) }, [projectId])
   const [clashes, setClashes] = useState<TeamClash[]>([])
   const [events, setEvents] = useState<TeamEvent[]>([])
   const [skipped, setSkipped] = useState<string[]>([])
@@ -50,7 +94,7 @@ export function TeamSyncPanel({ target, name, onSummary, onAsk }: { target: Team
     store.setTabConfig(tab.tabId, { inputText: existing ? `${existing}\n\n${prompt}` : prompt })
     activateTab(tab.tabId); onAsk?.(); window.setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_FOCUS_COMPOSER_EVENT)), 50)
   }
-  return <div className="space-y-5 text-sm">
+  return <div ref={root} data-team-sync className="space-y-5 text-sm">
     <div className="flex items-center justify-between"><p className="text-xs text-muted-foreground">Latest arrival is current. Earlier versions stay in history.</p><button type="button" aria-label="Refresh Sync" onClick={() => setVersion(v => v + 1)} className="rounded p-1 hover:bg-muted"><RefreshCw className="h-4 w-4" /></button></div>
     <section aria-label="Open clashes" className="space-y-3"><h3 className="font-semibold">{clashes.length ? `${clashes.length} ${clashes.length === 1 ? 'clash' : 'clashes'}` : 'No open clashes'}</h3>
       {clashes.map(c => <article key={`${c.path}:${c.winning_revision}`} className="space-y-2 rounded-xl border border-amber-500/40 p-3">
@@ -60,7 +104,11 @@ export function TeamSyncPanel({ target, name, onSummary, onAsk }: { target: Team
       </article>)}
     </section>
     {comparison && <section className="space-y-2"><div className="flex justify-between gap-2 text-xs"><span className="break-all">{comparison.path}</span><button onClick={() => setComparison(undefined)} className="text-primary">Close comparison</button></div><pre className="max-h-80 overflow-auto rounded-lg bg-muted p-3 text-[11px]">{comparison.diff || 'These versions have the same contents.'}</pre></section>}
-    <section aria-label="Recent sync activity"><h3 className="mb-2 font-semibold">Recent</h3>{events.length ? events.slice(0, 100).map((e, i) => <div key={`${e.revision}:${e.path}:${i}`} className="border-b border-border py-2 text-xs"><p className="break-all">{e.path}</p><p className="mt-0.5 text-muted-foreground">{e.author} · {e.kind === 'clash' ? 'clash saved in history' : e.kind === 'removed' ? 'removed' : 'sent'} · {new Date(e.time).toLocaleString()}</p></div>) : <p className="text-xs text-muted-foreground">Changes will appear here when files sync.</p>}</section>
+    <section aria-label="Recent sync activity"><h3 className="mb-2 font-semibold">Recent</h3>{events.length ? syncRounds(events).slice(0, 100).map((round, i) => round.events.length === 1
+      ? <div key={`${round.time}:${i}`} className="border-b border-border py-2 text-xs"><p className="break-all">{round.events[0].path}</p><p className="mt-0.5 text-muted-foreground">{round.author} · {verb(round.kind)} · {clock(round.time)}</p></div>
+      : <details key={`${round.time}:${i}`} className="border-b border-border py-2 text-xs"><summary className="cursor-pointer">{round.author} {verb(round.kind)} {round.events.length} files · <span className="text-muted-foreground">{clock(round.time)}</span></summary>
+        <ul className="mt-1 max-h-64 space-y-0.5 overflow-y-auto pl-4 text-muted-foreground">{round.events.map((e, j) => <li key={`${e.revision}:${e.path}:${j}`} className="break-all">{e.path}</li>)}</ul></details>)
+      : <p className="text-xs text-muted-foreground">Changes will appear here when files sync.</p>}</section>
     {skipped.length > 0 && <section><h3 className="mb-1 font-semibold">Skipped private files</h3><ul className="space-y-1 text-xs text-muted-foreground">{skipped.map(path => <li key={path} className="break-all">{path}</li>)}</ul></section>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
