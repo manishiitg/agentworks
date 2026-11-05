@@ -63,6 +63,13 @@ it('shows a revoked project refusal once, without retrying or restoring a duplic
   expect(isAccessRefusal(submissionFailure(new Error('Network Error')))).toBe(false)
 })
 
+// Owner, 5 Nov: a plain server refusal shows its own sentence only, never "Request failed with status code 409" above it.
+it('shows a plain server refusal without the transport status line', () => {
+  const failure = submissionFailure({ message: 'Request failed with status code 409', response: { status: 409, data: { error: { code: 'tab_owner', message: 'Only its owner types in this tab.' } } } })
+  expect(failure.message).toBe('Only its owner types in this tab.')
+  expect(failure.technicalDetails).toBeUndefined()
+})
+
 // PLAT-746-158 A4: a durable 409 must be reconciled, never blindly resent.
 it('keeps uncertain delivery out of the retry path', () => {
   const failure = submissionFailure({ response: { status: 409, data: {
