@@ -43,6 +43,11 @@ func (api *StreamingAPI) handleLiveFeed(w http.ResponseWriter, r *http.Request) 
 
 	sub := livefeed.Default.Subscribe()
 	defer livefeed.Default.Unsubscribe(sub)
+	if claims != nil {
+		// The Team's "active now" dot (crew_team_active.go).
+		noteWebOpen(claims.UserID, 1)
+		defer noteWebOpen(claims.UserID, -1)
+	}
 
 	// Subscribe before telling the client to resync, so nothing published
 	// between its refetch and our first flush is lost.
@@ -98,6 +103,9 @@ func (api *StreamingAPI) handleLiveFeed(w http.ResponseWriter, r *http.Request) 
 		case <-heartbeat.C:
 			if _, err := fmt.Fprintf(w, ": heartbeat\n\n"); err != nil {
 				return
+			}
+			if claims != nil {
+				noteWebOpen(claims.UserID, 0)
 			}
 			flusher.Flush()
 		}

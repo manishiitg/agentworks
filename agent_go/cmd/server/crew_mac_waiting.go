@@ -378,26 +378,6 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 	}
 }
 
-const teamMacSeenWithin = 2 * time.Minute
-
-// teamMacsSeen is when each team member's Mac last synced the team folder, in memory only.
-var teamMacsSeen = struct {
-	sync.Mutex
-	at map[string]time.Time
-}{at: map[string]time.Time{}}
-
-func noteTeamMacSeen(project, user string) {
-	teamMacsSeen.Lock()
-	teamMacsSeen.at[project+"/"+user] = time.Now()
-	teamMacsSeen.Unlock()
-}
-
-func teamMacSeen(project, user string) time.Time {
-	teamMacsSeen.Lock()
-	defer teamMacsSeen.Unlock()
-	return teamMacsSeen.at[project+"/"+user]
-}
-
 func (api *StreamingAPI) deliverCrewMacWaitingAll(sock *crewMacSocket) {
 	sock.mu.Lock()
 	twins := map[string]string{}

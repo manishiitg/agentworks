@@ -64,7 +64,7 @@ export function TeamMemberAccess({ projectId, children }: { projectId: string; c
     <h3 className="text-lg font-semibold">{member.name}</h3>
     <section aria-label="People" className="divide-y divide-border">
       {member.people.map(person => <div key={person.user_id} className="py-3">
-        <div className="flex items-center justify-between gap-3"><span className="font-medium">{person.name}{person.you ? ' · You' : ''}</span><span className="text-sm text-muted-foreground">{person.mac_on ? 'Mac online' : 'Mac offline'}</span></div>
+        <div className="flex items-center justify-between gap-3"><span className="font-medium">{person.name}{person.you ? ' · You' : ''}</span><span className="text-sm text-muted-foreground">{person.active_label}</span></div>
         {!person.you && <p className="mt-1 text-sm text-muted-foreground">{person.agents.map(agent => agent.name).join(' · ') || 'No agents in team'}</p>}
       </div>)}
     </section>

@@ -19,6 +19,7 @@ import (
 type crewAccessPerson struct {
 	Name        string   `json:"name"`
 	Online      bool     `json:"online"`
+	OnlineLabel string   `json:"online_label,omitempty"` // the dot's words, from the server
 	Agents      []string `json:"agents,omitempty"`
 	StatusLabel string   `json:"status_label,omitempty"`
 }
@@ -60,13 +61,10 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	case f.ServerCrew:
 		// A Crew on the server has no Mac (owner, 5 Nov): its tree starts with the Team.
 	case f.MacOnline:
-		detail := "Web, phone and AI apps"
-		if teamOn {
-			detail += " · Team uses it"
-		}
-		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Mac online", Detail: detail})
+		// One line, no detail (owner, 5 Nov).
+		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Mac online"})
 	default:
-		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Mac online off", Detail: "Turn on to use it from the web, phone or a team"})
+		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Mac online off"})
 	}
 	if !f.TeamKnown {
 		return append(lines, crewAccessPublicLine(f.Agents)...)
@@ -93,7 +91,7 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 		}
 		// The name the server gave (this Mac does not know the server's people), cut to its short form.
 		name := strings.SplitN(strings.TrimSpace(firstNonEmptyTrimmed(p.Name, crewPersonShortName(p.UserID))), "@", 2)[0]
-		people = append(people, crewAccessPerson{Name: name, Online: p.MacOn, Agents: names, StatusLabel: status})
+		people = append(people, crewAccessPerson{Name: name, Online: p.Active, OnlineLabel: p.ActiveLabel, Agents: names, StatusLabel: status})
 	}
 	// The viewer is not one of the people listed (owner, 5 Nov): their own agents have the lines below.
 	lines = append(lines, crewAccessLine{Kind: "team", Title: fmt.Sprintf("Team · %d other %s", len(people), plural(len(people), "person", "people")), People: people})
