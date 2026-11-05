@@ -51,17 +51,18 @@ func TestWorkUIUsesPublicWorkspaceForUserScopedProductConversation(t *testing.T)
 	}
 }
 
-func TestWorkUIOnlyRegistersForInteractiveWorkChat(t *testing.T) {
+// The person's own Crew chat keeps one tool set on every turn, automatic ones included (owner, 5 Nov).
+func TestWorkUIRegistersForEveryOwnCrewChatTurn(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		req  QueryRequest
 		want bool
 	}{
 		{name: "interactive", req: QueryRequest{AgentProfileID: "work"}, want: true},
-		{name: "manual interactive", req: QueryRequest{AgentProfileID: "work", TriggeredBy: "manual"}, want: true},
-		{name: "cron", req: QueryRequest{AgentProfileID: "work", TriggeredBy: "cron"}},
+		{name: "cron", req: QueryRequest{AgentProfileID: "work", TriggeredBy: "cron"}, want: true},
+		{name: "background child", req: QueryRequest{AgentProfileID: "work", ParentSessionID: "parent"}, want: true},
 		{name: "bot", req: QueryRequest{AgentProfileID: "work", BotPlatform: "slack"}},
-		{name: "background child", req: QueryRequest{AgentProfileID: "work", ParentSessionID: "parent"}},
+		{name: "other person's agent", req: QueryRequest{AgentProfileID: "work", AgentMessageFromOtherPerson: true}},
 		{name: "other product", req: QueryRequest{AgentProfileID: "example-product"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

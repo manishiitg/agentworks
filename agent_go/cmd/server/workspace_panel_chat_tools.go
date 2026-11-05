@@ -104,8 +104,8 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 			api.lastQueryMu.RLock()
 			turn := api.lastQueryRequests[session]
 			api.lastQueryMu.RUnlock()
-			if turn.userID != user || !workspacePathsMatchForUser(user, turn.SelectedFolder, root) || api.isSyntheticTurn(session) {
-				return "", errors.New("These settings need your current interactive Builder turn in this project.")
+			if turn.userID != user || !workspacePathsMatchForUser(user, turn.SelectedFolder, root) || turn.AgentMessageFromOtherPerson {
+				return "", errors.New("These settings need your own Builder chat in this project.")
 			}
 			if api.eventStore != nil {
 				if owner := api.eventStore.GetSessionOwner(session); owner != "" && owner != user {

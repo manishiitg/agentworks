@@ -27,12 +27,7 @@ func projectUIControlContract(workspace string, builder bool) uiContract {
 // server-derived and owner-scoped; no path from the request body is trusted.
 func restoredWorkUIScope(userID, session string, active *ActiveSessionInfo) string {
 	if active == nil || !(strings.HasPrefix(session, "work:project:") || strings.HasPrefix(session, workproduct.ProfileID+":project:")) ||
-		strings.TrimSpace(active.BotPlatform) != "" || strings.TrimSpace(active.ParentSessionID) != "" ||
-		strings.TrimSpace(active.SessionKind) != "" || active.IsSyntheticTurn {
-		return ""
-	}
-	trigger := strings.ToLower(strings.TrimSpace(active.TriggeredBy))
-	if trigger != "" && trigger != "manual" {
+		strings.TrimSpace(active.BotPlatform) != "" {
 		return ""
 	}
 	if !isActiveWorkProjectWorkspace(userID, active.WorkspacePath) {
@@ -41,12 +36,10 @@ func restoredWorkUIScope(userID, session string, active *ActiveSessionInfo) stri
 	return canonicalChatHistoryWorkspacePath(userID, active.WorkspacePath)
 }
 
+// registerWorkUIAllowed: every turn of the person's own Crew chat, automatic ones included, so the tool set is
+// one per chat (owner, 5 Nov); never a Slack reply or another person's agent's message.
 func registerWorkUIAllowed(req QueryRequest) bool {
-	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
-	return isProjectProfileID(req.AgentProfileID) &&
-		(trigger == "" || trigger == "manual" || req.UserInteractiveContinuation) && strings.TrimSpace(req.BotPlatform) == "" &&
-		strings.TrimSpace(req.ParentSessionID) == "" && strings.TrimSpace(req.SessionKind) == "" &&
-		!req.IsAutoNotification
+	return isProjectProfileID(req.AgentProfileID) && strings.TrimSpace(req.BotPlatform) == "" && !req.AgentMessageFromOtherPerson
 }
 
 func (api *StreamingAPI) registerOpenWorkWorkspaceViewTool(registrar definitionToolRegistrar, userID, session, workspace string, builder bool) error {

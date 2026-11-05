@@ -277,10 +277,8 @@ func publicationSourceForProfile(profile *resolvedAgentProfile) string {
 }
 
 func publishedBuilderHandoff(req *QueryRequest, readOnly bool) bool {
-	if req == nil || readOnly || req.PinRunMode || req.CrewAskReadOnly || req.IsAutoNotification || req.ParentSessionID != "" || req.BotPlatform != "" || req.SessionKind != "" {
-		return false
-	}
-	return req.TriggeredBy == "" || req.TriggeredBy == "interactive"
+	// Every turn of the person's own chat, automatic ones included (owner, 5 Nov); never for other people.
+	return req != nil && !readOnly && !req.PinRunMode && !req.CrewAskReadOnly && req.BotPlatform == "" && !req.AgentMessageFromOtherPerson
 }
 
 func publicationHistorySummary(record *publishedProject) string {

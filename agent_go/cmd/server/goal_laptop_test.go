@@ -71,20 +71,34 @@ func TestGoalBuilderLaptopUsesSharedGrantsOnlyInInteractiveTurns(t *testing.T) {
 	if _, err := setup.execute(ctx, map[string]any{"action": "get"}); err != nil {
 		t.Fatalf("Goal chat setup failed: %v", err)
 	}
-	for _, source := range []string{"step", "schedule", "run", "run_mode", "child", "connector"} {
+	// The Builder chat's own automatic turns keep the laptop (owner, 5 Nov: everything for automatic agents, Goals too).
+	for _, source := range []string{"schedule", "child", "auto_notification"} {
+		own := base
+		switch source {
+		case "schedule":
+			own.TriggeredBy = "schedule"
+		case "child":
+			own.ParentSessionID = "parent"
+		case "auto_notification":
+			own.IsAutoNotification = true
+		}
+		own.LaptopConnection = req.LaptopConnection
+		if own = admit(own); own.LaptopConnection == nil {
+			t.Fatalf("own Builder chat %s turn lost the laptop", source)
+		}
+	}
+	for _, source := range []string{"step", "run", "run_mode", "other_person", "connector"} {
 		t.Run(source, func(t *testing.T) {
 			next := base
 			switch source {
 			case "step":
 				next.PhaseID = "execution"
-			case "schedule":
-				next.TriggeredBy = "schedule"
 			case "run":
 				next.PinRunMode = true
 			case "run_mode":
 				next.ExecutionOptions = &ExecutionOptions{WorkshopMode: "run"}
-			case "child":
-				next.ParentSessionID = "parent"
+			case "other_person":
+				next.AgentMessageFromOtherPerson = true
 			case "connector":
 				next.BotPlatform = "slack"
 			}
