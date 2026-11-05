@@ -708,6 +708,12 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 		return ProductConversationRecord{}, capErr
 	}
 	defer unlock()
+	if isNew && IsLocalMode() && profile.ID == crewProfileID {
+		// A new agent on the Mac joins the Team when All agents in team is on, also without a later identity save
+		// (crew_team_all.go); after this returns, so the new tab is in the list it reads.
+		project := binding.ResourceID
+		defer func() { go api.refreshMacSharedPurposes(context.WithoutCancel(r.Context()), project) }()
+	}
 	if isNew {
 		if strings.TrimSpace(name) == "" {
 			return ProductConversationRecord{}, fmt.Errorf("Give the new tab a name, a few words saying what this agent is for.")
