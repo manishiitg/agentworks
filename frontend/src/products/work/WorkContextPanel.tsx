@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarClock, ChevronRight, FolderSync, RefreshCw, Settings2 } from 'lucide-react'
+import { Bot, CalendarClock, ChevronRight, FolderSync, Globe, Link2, RefreshCw, Settings2, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -9,7 +9,7 @@ import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompa
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { connectionSummary } from '../../components/workspace/workspaceConnectionStatus'
-import { cloudStateIcon, cloudStateLabel, type CrewAsk, openCrewAskThread, takeCrewAccess, useCrewAsking, useCrewLivesOnMac, useCrewAccessSummary, useYourComputerSummary, YourComputerPanel } from './YourComputerPanel'
+import { cloudStateIcon, cloudStateLabel, type CrewAsk, openCrewAskThread, takeCrewAccess, useCrewAsking, useCrewLivesOnMac, useCrewAccessSummary, useCrewAccessTree, type CrewAccessLine, useYourComputerSummary, YourComputerPanel } from './YourComputerPanel'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useContextMenuWideStore } from '../../stores/useContextMenuWideStore'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
@@ -25,7 +25,9 @@ import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { useProjectTeam } from './teamApi'
 import { useTeamSyncSummary } from './TeamSyncPanel'
-import { openCrewSync } from './MacSharedAgents'
+import { openCrewAccess, openCrewSync } from './MacSharedAgents'
+import { useChatStore } from '../../stores/useChatStore'
+import { activateTab } from '../../utils/activateTab'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
@@ -73,6 +75,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' | 'access' }>()
   const computerState = useYourComputerSummary(accessItems.some(item => item.id === 'mcp:access'), projectId)
   const accessSummary = useCrewAccessSummary(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
+  // The approved Access tree (owner, 5 Nov mockup): the server writes each line; the summary is the fallback.
+  const accessTree = useCrewAccessTree(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
   const asking = useCrewAsking(accessItems.some(item => item.id === 'mcp:access') ? projectId : undefined)
   const macOnMacHere = useCrewLivesOnMac(projectId)
   const showMenu = (view: 'full' | 'integrations' | 'automations' | 'access') => {
@@ -141,7 +145,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const macElsewhere = macOnMacHere
   // Offline is the whole answer: on this Mac, reached from nowhere else. Otherwise the server's summary follows (owner,
   // 5 Nov: the Team state too, e.g. "Team: 2 people · 3 agents in team").
-  const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, computerState === 'offline' ? undefined : accessSummary || who].filter(Boolean).join(' · ') || undefined
+  const accessDetail = [computerState ? cloudStateLabel[computerState] : undefined, computerState === 'offline' || accessTree.length > 0 ? undefined : accessSummary || who].filter(Boolean).join(' · ') || undefined
   const accessRow = (item: CrewMenuItem) => <Row key={item.id} icon={item.id === 'mcp:access' ? cloudStateIcon(computerState, theirs) : item.icon} detail={item.id === 'mcp:access' ? accessDetail : undefined} onClick={() => item.id === 'mcp:access' && accessInMenu ? showMenu('access') : open(item)}>{item.label}</Row>
   // Someone else asked a shared agent on this Mac in the last 10 minutes: one tree line each under Access (owner, 4 Nov).
   // A click opens that person's own thread with the agent for the owner to read; their messages are never in the owner's tab.
@@ -151,8 +155,35 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const openAsk = (ask: CrewAsk) => { void openCrewAskThread(projectId, ask) }
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.
-  const asksTree = (asking.length > 0 || sharedFolder) && <div role="list" aria-label="Access details" className="ml-3 border-l border-border pl-2 pb-1">
-    {sharedFolder && <button role="listitem" type="button" onClick={() => openCrewSync(projectId)} title="Open the shared folder's Sync in Access" className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+  const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, public: Link2, folder: FolderSync, clash: TriangleAlert }
+  const openLine = (line: CrewAccessLine) => line.kind === 'folder' || line.kind === 'clash' ? openCrewSync(projectId) : openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
+  // A person in the Team: their agent in this Crew's tabs (watch only), else Access at the Team tab.
+  const openPerson = (name: string) => {
+    const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileProjectId === projectId && item.metadata?.agentProfileTabCanWrite === false && (item.metadata?.agentProfileTabOwnerName || '').split('@')[0] === name.split('@')[0])
+    if (tab) activateTab(tab.tabId); else openCrewAccess(projectId, '', 'team')
+  }
+  const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  const treeLines = accessTree.map((line, index) => {
+    const Icon = lineIcon[line.kind] || Globe
+    return <div key={`${line.kind}:${index}`} role="listitem">
+      <button type="button" onClick={() => openLine(line)} className={lineButton}>
+        <Icon aria-hidden="true" className={`mt-0.5 h-3 w-3 shrink-0 ${line.kind === 'clash' ? 'text-amber-600' : 'text-muted-foreground'}`} />
+        <span className="min-w-0 flex-1"><span className="block break-words font-medium text-foreground">{line.title}</span>
+          {line.detail && <span className="block break-words text-muted-foreground">{line.detail}</span>}
+          {line.progress && line.progress.bytes_total > 0 && <span aria-hidden="true" className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.round(line.progress.bytes_done * 100 / line.progress.bytes_total))}%` }} /></span>}
+        </span>
+      </button>
+      {line.people?.map(person => <button key={person.name} type="button" onClick={() => openPerson(person.name)} className={`${lineButton} pl-6`}>
+        <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${person.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
+        <span className="min-w-0 flex-1 break-words text-muted-foreground"><span className="text-foreground">{person.name}</span>{person.agents?.length ? ` · ${person.agents.join(', ')}` : ''}</span>
+      </button>)}
+    </div>
+  })
+  // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the server's
+  // tree (or, until it has one, the shared folder's line), then who asked; each opens Access at its place.
+  const asksTree = (asking.length > 0 || sharedFolder || accessTree.length > 0) && <div role="list" aria-label="Access details" className="ml-3 border-l border-border pl-2 pb-1">
+    {treeLines}
+    {sharedFolder && !accessTree.length && <button role="listitem" type="button" onClick={() => openCrewSync(projectId)} title="Open the shared folder's Sync in Access" className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <FolderSync aria-hidden="true" className="h-3 w-3 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-medium text-foreground">Shared folder</span>
       {syncLine && <span className="shrink-0 text-muted-foreground">{syncLine}</span>}

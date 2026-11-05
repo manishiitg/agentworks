@@ -18,7 +18,7 @@ export { useMacTabShareLine, useMacSharedAgents, openCrewAccess, takeCrewAccess,
 export type { MacAgentShare } from './MacSharedAgents'
 import { useProjectTeam } from './teamApi'
 import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
-import { hasPendingCrewAccess } from './MacSharedAgents'
+import { hasPendingCrewAccess, pendingCrewAccessSection, type CrewAccessSection } from './MacSharedAgents'
 import { schedulerApi } from '../../api/scheduler'
 import { useTeamCopyStatus } from './TeamWhenMacOff'
 
@@ -46,7 +46,9 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 // Crew lives shares this cache and its single poll, so the header, tabs, menu and panels always agree.
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
-type PlaceEntry = { place?: CloudState; shared?: number; summary?: string; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
+/** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
+export type CrewAccessLine = { kind: 'mac' | 'team' | 'agents' | 'public' | 'folder' | 'clash'; title: string; detail?: string; people?: { name: string; online: boolean; agents?: string[] }[]; progress?: { direction: string; bytes_done: number; bytes_total: number } }
+type PlaceEntry = { place?: CloudState; shared?: number; summary?: string; tree?: CrewAccessLine[]; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
 function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
@@ -58,12 +60,14 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
     const load = () => {
       created.abort?.abort()
       created.abort = new AbortController()
-      void api.get<{ place?: CloudState; shared_agents?: number; access_summary?: string; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
+      void api.get<{ place?: CloudState; shared_agents?: number; access_summary?: string; access_tree?: CrewAccessLine[]; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
         .then(({ data }) => {
           const shared = data.shared_agents || 0
           const summary = data.access_summary || ''
+          const tree = data.access_tree || []
           const asking = data.asking || []
-          if (!data.place || (data.place === created.place && shared === created.shared && summary === created.summary && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
+          if (!data.place || (data.place === created.place && shared === created.shared && summary === created.summary && JSON.stringify(tree) === JSON.stringify(created.tree || []) && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
+          created.tree = tree
           created.place = data.place
           created.shared = shared
           created.summary = summary
@@ -110,6 +114,17 @@ export function useCrewAccessSummary(projectId?: string): string {
     return watchCrewPlace(projectId, () => setSummary(placeCache.get(projectId)?.summary || ''))
   }, [projectId])
   return summary
+}
+
+/** The Access tree's lines (server-written), from the same reading as its place. */
+export function useCrewAccessTree(projectId?: string): CrewAccessLine[] {
+  const [tree, setTree] = useState<CrewAccessLine[]>([])
+  useEffect(() => {
+    setTree([])
+    if (!projectId) return
+    return watchCrewPlace(projectId, () => setTree(placeCache.get(projectId)?.tree || []))
+  }, [projectId])
+  return tree
 }
 
 /** Who asked this Crew's shared agents on this Mac lately, newest first (owner, 3 Nov). */
@@ -160,15 +175,15 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
   const team = useProjectTeam(projectId)
   // The last Access tab is remembered per Crew in this browser (owner, 5 Nov); an agent asking for its sharing still opens Team.
   const tabKey = `agentworks:crew-access-tab:${projectId}`
-  const [section, setSectionState] = useState<'mac' | 'publish' | 'team'>(() => {
-    if (hasPendingCrewAccess(projectId)) return 'team'
+  const [section, setSectionState] = useState<CrewAccessSection>(() => {
+    if (hasPendingCrewAccess(projectId)) return pendingCrewAccessSection(projectId)
     try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'publish' || saved === 'team') return saved } catch { /* storage unavailable */ }
     return 'mac'
   })
-  const setSection = (next: 'mac' | 'publish' | 'team') => { setSectionState(next); try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
+  const setSection = (next: CrewAccessSection) => { setSectionState(next); try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
   const [publishConnection, setPublishConnection] = useState('')
   useEffect(() => {
-    const openTeam = (event: Event) => { if ((event as CustomEvent<{ projectId: string }>).detail?.projectId === projectId) setSection('team') }
+    const openTeam = (event: Event) => { const detail = (event as CustomEvent<{ projectId: string; section?: CrewAccessSection }>).detail; if (detail?.projectId === projectId) setSection(detail.section || 'team') }
     window.addEventListener('agentworks:open-crew-access', openTeam)
     return () => window.removeEventListener('agentworks:open-crew-access', openTeam)
   }, [projectId])
