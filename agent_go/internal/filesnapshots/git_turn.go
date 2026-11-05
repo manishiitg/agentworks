@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -28,31 +29,41 @@ type turnBlob struct {
 	data []byte
 }
 
-func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurnRepo, error) {
-	out := map[string]gitTurnRepo{}
+// turnRepos reads each checkout's changed paths. A checkout Git cannot read
+// (a broken .git folder, an index the server account cannot open) is skipped
+// and named in the log, so one bad checkout never fails the whole reply.
+func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurnRepo, map[string]bool, error) {
+	out, skipped := map[string]gitTurnRepo{}, map[string]bool{}
 	for _, dir := range dirs {
 		rel, err := filepath.Rel(s.Root, dir)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return nil, errors.New("checkout outside workspace")
+			return nil, nil, errors.New("checkout outside workspace")
 		}
 		if rel == "." {
 			rel = ""
 		}
 		rel = filepath.ToSlash(rel)
+		skip := func(err error) {
+			skipped[rel] = true
+			log.Printf("[SNAPSHOT] checkout_skipped dir=%q reason=%q", rel, gitReason(err))
+		}
 		raw, err := gitIn(ctx, s.Root, dir, "status", "--porcelain=v1", "-z", "--untracked-files=all").Output()
 		if err != nil {
-			return nil, fmt.Errorf("read checkout changes: %w", err)
+			skip(err)
+			continue
 		}
 		head, _ := gitIn(ctx, s.Root, dir, "rev-parse", "--verify", "HEAD").Output()
 		branch, _ := gitIn(ctx, s.Root, dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
 		remote, _ := gitIn(ctx, s.Root, dir, "config", "--get", "remote.origin.url").Output()
 		gitdir, err := gitIn(ctx, s.Root, dir, "rev-parse", "--absolute-git-dir").Output()
 		if err != nil {
-			return nil, err
+			skip(err)
+			continue
 		}
 		identity, err := checkoutIdentity(strings.TrimSpace(string(gitdir)))
 		if err != nil {
-			return nil, err
+			skip(err)
+			continue
 		}
 		repo := gitTurnRepo{Head: strings.TrimSpace(string(head)), Label: CheckoutLabel{ID: identity, Root: rel, Name: filepath.Base(dir), Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}}
 		if repo.Label.Branch == "" && len(repo.Head) >= 8 {
@@ -72,7 +83,22 @@ func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurn
 		}
 		out[rel] = repo
 	}
-	return out, nil
+	return out, skipped, nil
+}
+
+// gitReason is the first line of Git's error output (never file contents).
+func gitReason(err error) string {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		if line, _, _ := strings.Cut(strings.TrimSpace(string(exit.Stderr)), "\n"); line != "" {
+			err = errors.New(line)
+		}
+	}
+	reason := err.Error()
+	if len(reason) > 160 {
+		reason = reason[:160]
+	}
+	return reason
 }
 func turnPath(root, p string) string { return path.Join(root, p) }
 func validTurnPath(p string) bool {
@@ -149,7 +175,7 @@ func (s Store) BeginGitTurn(ctx context.Context, execution string, dirs []string
 		return Record{}, err
 	}
 	r := Record{ID: ID(execution), ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing", BeforeHeads: map[string]string{}}
-	r.GitTurn, err = s.turnRepos(ctx, dirs)
+	r.GitTurn, _, err = s.turnRepos(ctx, dirs)
 	if err != nil {
 		return r, err
 	}
@@ -193,7 +219,7 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string, dirs []strin
 	if err != nil || r.Status != "capturing" {
 		return r, err
 	}
-	repos, err := s.turnRepos(ctx, dirs)
+	repos, unreadable, err := s.turnRepos(ctx, dirs)
 	if err != nil {
 		return r, err
 	}
@@ -203,6 +229,11 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string, dirs []strin
 		skipped[p] = true
 	}
 	r.Review = &savedReview{Roots: turnKeys(repos), Spans: []reviewSpan{}}
+	for _, root := range turnKeys(r.GitTurn) {
+		if unreadable[root] { // read at the start, unreadable now: its edits are unknown
+			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
+		}
+	}
 	var total int64
 	changedRoots := map[string]bool{}
 	for _, root := range turnKeys(repos) {
@@ -233,7 +264,8 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string, dirs []strin
 			}
 			raw, e := gitIn(ctx, s.Root, dir, "diff", "--name-only", "--no-renames", "--no-ext-diff", "--no-textconv", "-z", start.Head, end.Head, "--").Output()
 			if e != nil {
-				return r, e
+				r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
+				continue
 			}
 			for _, p := range bytes.Split(raw, []byte{0}) {
 				if len(p) > 0 {
@@ -244,7 +276,8 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string, dirs []strin
 		if start.Head == "" && end.Head != "" {
 			raw, e := gitIn(ctx, s.Root, dir, "ls-tree", "-r", "--name-only", "-z", end.Head).Output()
 			if e != nil {
-				return r, e
+				r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
+				continue
 			}
 			for _, p := range bytes.Split(raw, []byte{0}) {
 				if len(p) > 0 {

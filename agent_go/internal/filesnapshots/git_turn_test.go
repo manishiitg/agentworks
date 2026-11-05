@@ -106,13 +106,18 @@ func TestGitTurnEmptyRepositoryAndNewWorktree(t *testing.T) {
 	f.put("fresh/new.txt", "initial\n")
 	f.git("fresh", "init", "--quiet")
 	dir := filepath.Join(f.s.Root, "fresh")
-	if _, err := f.s.BeginGitTurn(t.Context(), "first", []string{dir}); err != nil {
+	// A checkout Git cannot read (broken .git folder) is skipped, not a failed reply.
+	broken := filepath.Join(f.s.Root, "broken")
+	if err := os.MkdirAll(filepath.Join(broken, ".git"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.BeginGitTurn(t.Context(), "first", []string{dir, broken}); err != nil {
 		t.Fatal(err)
 	}
 	f.git("fresh", "add", "-A")
 	f.git("fresh", "commit", "--quiet", "-m", "first")
 	f.put("fresh/new.txt", "edited\n")
-	r, err := f.s.FinishGitTurn(t.Context(), "first", []string{dir})
+	r, err := f.s.FinishGitTurn(t.Context(), "first", []string{dir, broken})
 	if err != nil {
 		t.Fatal(err)
 	}
