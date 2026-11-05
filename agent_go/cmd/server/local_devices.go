@@ -46,28 +46,15 @@ func (target *laptopConnectionTarget) valid() bool {
 	return target != nil && localfiles.ValidID(target.DeviceID)
 }
 
-// A connection is extra authority for the person's own chat. In a Crew chat every turn of that chat has it,
-// automatic ones too (schedules, watches, the person's own agents' messages, background agents; owner, 5 Nov:
-// "allow everything for automatic agents"), so the tools never change between turns. Turns for other people
-// never have it: Run people, Slack bot replies, shared-Crew Ask and another person's agent's message. A Goal
-// keeps it to the person's own Builder turns; its steps and schedules stay on the server.
+// A connection is extra authority for the person's own chat: a Crew chat or a Goal's Builder chat. Every turn
+// of that chat has it, automatic ones too (schedules, watches, the person's own agents' messages,
+// auto-notifications, background agents; owner, 5 Nov: "allow everything for automatic agents", Goals too), so
+// the tools never change between turns. Turns that work for other people never have it: Run people, Slack bot
+// replies, shared-Crew Ask (read-only, refused at admission) and another person's agent's message.
 func laptopBuilderTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
-	if profile != nil && isProjectProfileID(profile.Definition.ID) {
-		return !req.PinRunMode && req.BotPlatform == "" && !req.AgentMessageFromOtherPerson
-	}
+	crew := profile != nil && isProjectProfileID(profile.Definition.ID)
 	goal := profile == nil && (req.AgentMode == "workflow_phase" || req.admittedWorkflowPhase) && req.PhaseID == "workflow-builder" && workflowCLIMode(&req, false) != "run"
-	return goal && !req.PinRunMode && req.BotPlatform == "" &&
-		(strings.TrimSpace(req.TriggeredBy) == "" || req.TriggeredBy == "interactive") &&
-		req.ParentSessionID == "" && req.SessionKind == "" && !req.IsAutoNotification
-}
-
-// laptopSyntheticTurnRefused keeps a Goal's synthetic turns off the laptop; a Crew chat's are its own turns.
-func (api *StreamingAPI) laptopSyntheticTurnRefused(sessionID string, req QueryRequest) bool {
-	profile := laptopProfileForRequest(req)
-	if profile != nil && isProjectProfileID(profile.Definition.ID) {
-		return false
-	}
-	return api.isSyntheticTurn(sessionID)
+	return (crew || goal) && !req.PinRunMode && req.BotPlatform == "" && !req.AgentMessageFromOtherPerson
 }
 
 func laptopProfileForRequest(req QueryRequest) *resolvedAgentProfile {
@@ -87,7 +74,7 @@ func (api *StreamingAPI) laptopTurnAllowed(sessionID, owner string, target lapto
 	api.lastQueryMu.RLock()
 	req, ok := api.lastQueryRequests[sessionID]
 	api.lastQueryMu.RUnlock()
-	if !ok || req.userID != owner || req.LaptopConnection == nil || *req.LaptopConnection != target || api.laptopSyntheticTurnRefused(sessionID, req) {
+	if !ok || req.userID != owner || req.LaptopConnection == nil || *req.LaptopConnection != target {
 		return false
 	}
 	return laptopConnectionTurn(req, laptopProfileForRequest(req))

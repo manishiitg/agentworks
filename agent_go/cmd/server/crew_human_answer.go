@@ -11,12 +11,11 @@ import (
 )
 
 // Crew suggestions use the same decision lifecycle as workflow decisions, but
-// only the person's own interactive Builder turn may record their answer.
+// only a turn of the person's own Builder chat may record their answer (automatic turns included, owner 5 Nov).
 func crewHumanAnswerTurn(session string, req QueryRequest, active *ActiveSessionInfo, readOnly bool) bool {
 	policy := resolveWorkflowChatPolicy(session, req, active, readOnly)
 	return isProjectProfileID(req.AgentProfileID) && !req.PinRunMode && registerWorkUIAllowed(req) &&
-		policy.Mode == "builder" && policy.Origin == "interactive" &&
-		(active == nil || !active.IsSyntheticTurn)
+		policy.Mode == "builder" && !req.AgentMessageFromOtherPerson
 }
 
 func (api *StreamingAPI) crewHumanAnswerScope(ctx context.Context, session, requested string) (string, *UserClaims, bool, error) {

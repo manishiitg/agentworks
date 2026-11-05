@@ -197,8 +197,9 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	if response := readSaved(other, 7, 7); response.Code < 400 {
 		t.Fatal("revoked Builder continued reading saved chat")
 	}
-	if !publishedBuilderHandoff(&QueryRequest{}, false) || publishedBuilderHandoff(&QueryRequest{}, true) || publishedBuilderHandoff(&QueryRequest{TriggeredBy: "function"}, false) {
-		t.Fatal("private handoff crossed interactive Builder boundary")
+	if !publishedBuilderHandoff(&QueryRequest{}, false) || !publishedBuilderHandoff(&QueryRequest{TriggeredBy: "cron"}, false) ||
+		publishedBuilderHandoff(&QueryRequest{}, true) || publishedBuilderHandoff(&QueryRequest{AgentMessageFromOtherPerson: true}, false) {
+		t.Fatal("private handoff must follow the owner's own chat, automatic turns included, and never another person")
 	}
 }
 
