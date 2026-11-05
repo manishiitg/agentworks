@@ -5,6 +5,7 @@ import { ConnectedServersMenuItem } from './ConnectedServersMenuItem'
 import { ProductSettingsMenu } from './ProductSettingsMenu'
 import ProvidersControl from '../topbar/ProvidersControl'
 import UsersControl from '../topbar/UsersControl'
+import NotificationsControl from '../topbar/NotificationsControl'
 import AccountControl from '../topbar/AccountControl'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
@@ -37,6 +38,7 @@ export function WorkspaceAccountMenu() {
       <ConnectedServersMenuItem />
       <ProvidersControl />
       <UsersControl />
+      <NotificationsControl />
     </AccountControl>
   </ProductSettingsMenu>
 }

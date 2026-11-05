@@ -23,7 +23,7 @@ export function WorkspacePageHeader({ title, icon: Icon, description, onBack, on
   showBack?: boolean
   below?: ReactNode
   productMenuItems?: readonly ProductMenuItem[]
-  page?: 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vaults'
+  page?: 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'notifications' | 'vaults'
 }) {
   const surface = useProductSurfaceStore(state => state.productSurface)
   const currentPage = useAppStore(state => state.adminPage ?? (state.showSchedulesOverview ? 'schedules' : state.showWorkflowsOverview ? 'activity' : null))
@@ -31,7 +31,7 @@ export function WorkspacePageHeader({ title, icon: Icon, description, onBack, on
   // Visited pages intentionally stay mounted (including an in-progress provider login).
   // Only the page being shown may register the shared navigation slots.
   const navigationActive = providers ? page === 'providers' : page ? page === currentPage : currentPage === null
-  const globalSetup = page && ['providers', 'users', 'mcp', 'vaults'].includes(page)
+  const globalSetup = page && ['providers', 'users', 'mcp', 'notifications', 'vaults'].includes(page)
   return <header {...props} className={cn('shrink-0 border-b border-border', className)}>
     <WorkspaceTopToolbar navigationKind="page" navigationActive={navigationActive} className="w-full border-b-0 bg-transparent">
       {showBack && (page === 'activity' || page === 'schedules') && <button type="button" aria-label={`Back to ${PRODUCT_SURFACE_LABELS[surface]}`} title={`Back to ${PRODUCT_SURFACE_LABELS[surface]}`} onClick={() => { if (onBack) onBack(); else if (workspaceSettingsPage()) closeWorkspaceSettings(); else openProductWorkspace(surface) }} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4" aria-hidden="true" /><span>Back</span></button>}
