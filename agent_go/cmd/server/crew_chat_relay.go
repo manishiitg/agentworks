@@ -649,6 +649,9 @@ func crewTeamMemberTabs(ctx context.Context, project, viewer string) []AgentProf
 		if p.Invited || p.UserID == viewer || p.UserID == t.OwnerID || !crewTeamAccountActive(p.UserID) {
 			continue
 		}
+		if _, onMac := t.memberMac(p.UserID); onMac {
+			continue // their agents here work on their Mac (crewTeamMacMemberTabs below)
+		}
 		records, err := store.projectChats(ctx, p.UserID, crewProfileID, project)
 		if err != nil {
 			continue
@@ -671,7 +674,7 @@ func crewTeamMemberTabs(ctx context.Context, project, viewer string) []AgentProf
 				Purpose: identity.Purpose, Pinned: true, TabOwnerID: p.UserID, TabOwnerName: crewOwnerDisplayName(p.UserID), ChatLocation: "server"})
 		}
 	}
-	return out
+	return append(out, crewTeamMacMemberTabs(ctx, project, viewer)...)
 }
 
 // crewTeamMemberTab is the joined member whose own tab this key is, or "". A tab its member set to Only me is

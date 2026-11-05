@@ -77,7 +77,22 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		if p.Invited || !crewTeamAccountActive(p.UserID) {
 			continue
 		}
-		out = append(out, crewTeamAgentsPerson{UserID: p.UserID, Name: crewPersonShortName(p.UserID), You: p.UserID == caller, MacOn: time.Since(teamMacSeen(t.ProjectID, p.UserID)) <= teamMacSeenWithin, Agents: memberTeamAgents(ctx, t.ProjectID, p.UserID, caller)})
+		person := crewTeamAgentsPerson{UserID: p.UserID, Name: crewPersonShortName(p.UserID), You: p.UserID == caller, MacOn: time.Since(teamMacSeen(t.ProjectID, p.UserID)) <= teamMacSeenWithin}
+		if pair, onMac := t.memberMac(p.UserID); onMac {
+			// Their agents here work on their Mac (crew_team_where.go): listed from it, marked when it is off.
+			person.MacOn = crewMacSocketFor(p.UserID, t.ProjectID, pair) != nil
+			person.Agents = []crewTeamAgent{}
+			for _, tab := range personMacTabs(ctx, p.UserID, t.ProjectID) {
+				row := crewTeamAgent{Tab: tab.Tab, Name: tab.Name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey}
+				if !person.MacOn {
+					row.StatusLabel = "Mac off"
+				}
+				person.Agents = append(person.Agents, row)
+			}
+		} else {
+			person.Agents = memberTeamAgents(ctx, t.ProjectID, p.UserID, caller)
+		}
+		out = append(out, person)
 	}
 	return out
 }
