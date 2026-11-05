@@ -9,25 +9,19 @@ import (
 )
 
 // registerSecretManagementTools registers list_secrets on the given agent. In
-// workflow contexts it also registers set_workflow_secret and
-// delete_workflow_secret. Global secrets are server-wide; admins can manage
-// encrypted globals. Workflow secrets support CRUD on encrypted values.
+// project contexts it also registers set_workflow_secret (save in the owner's
+// Vault and use here) and delete_workflow_secret (stop using here).
 // toolCategory groups the tools in the agent's tool registry (e.g. "secret_tools").
-// afterUpsert, if non-nil, is invoked after a successful set_workflow_secret
-// so callers can auto-attach the secret to workspace state (workflow.json
-// manifest + live workshop shell env) — collapsing the old store-then-attach
-// two-step into one action so $SECRET_<NAME> is immediately available in the
-// same session. It receives the plaintext value (the handler already holds
-// it) to avoid a DB re-resolve. Errors are surfaced to the agent but do NOT
-// fail the store (the value is already persisted).
-// afterDelete, if non-nil, is invoked after a successful
-// delete_workflow_secret so callers can clean up workspace state (e.g.
-// detach from workflow.json + refresh workshop shell env). Errors returned
-// by afterDelete are surfaced to the agent.
+// afterUpsert, if non-nil, is invoked after set_workflow_secret saved the value
+// in the owner's Vault: it selects vaultName on the project and pushes
+// SECRET_<name> into the live shell, so it is usable in the same session.
+// Errors are surfaced to the agent but do NOT fail the save.
+// afterDelete, if non-nil, unselects the secret and clears it from the live
+// shell; without it delete_workflow_secret changes nothing.
 // readOnly (PLAT-262), when true, registers only list_secrets — the two
 // mutating tools (set_workflow_secret, delete_workflow_secret) are skipped entirely so a read-only session never
 // sees them in its tool catalog.
-func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegistrar, userID, workflowPath, toolCategory string, readOnly bool, afterUpsert func(ctx context.Context, name, value string) error, afterDelete func(ctx context.Context, name string) error) error {
+func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegistrar, userID, workflowPath, toolCategory string, readOnly bool, afterUpsert func(ctx context.Context, name, vaultName, value string) error, afterDelete func(ctx context.Context, name string) error) error {
 	if agent == nil {
 		return fmt.Errorf("agent is nil")
 	}
@@ -114,7 +108,7 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 	if strings.TrimSpace(workflowPath) != "" {
 		if err := registerTool(
 			"set_workflow_secret",
-			"Create or update a secret scoped only to the active workflow. The value is AES-256-GCM encrypted and stored server-side in the workflow's own store, shared by every user with access to this workflow (owners manage it; read-only users can run with it but never see the value); other workflows cannot list or attach it. The secret is AUTO-ATTACHED to the active workflow and injected into the live shell env, so $SECRET_<NAME> is usable immediately in this session — no separate update_workflow_config call needed.",
+			"Save a secret for this project (owner only). The value is saved in the owner's own Vault (My accounts) and this project uses it in the same step; everyone who uses the project gets it lent by the owner without seeing the value. Saving a name again replaces its value everywhere the owner uses it. $SECRET_<NAME> is usable immediately in this session.",
 			map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -139,16 +133,17 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 				if value == "" {
 					return "Error: 'value' is required (use delete_workflow_secret to remove a workflow secret).", nil
 				}
-				if err := api.upsertSharedWorkflowSecret(ctx, workflowPath, name, value); err != nil {
-					return "", fmt.Errorf("store workflow secret: %w", err)
+				full, err := api.saveProjectSecret(ctx, userID, workflowPath, name, value)
+				if err != nil {
+					return "", fmt.Errorf("save secret: %w", err)
 				}
 				if afterUpsert != nil {
-					if hookErr := afterUpsert(ctx, name, value); hookErr != nil {
-						return fmt.Sprintf("✅ Stored workflow secret %q (encrypted) for %s, but auto-attach failed: %v\nAttach it manually with update_workflow_config(add_secrets=[%q]) so steps receive $SECRET_%s.", name, workflowPath, hookErr, name, name), nil
+					if hookErr := afterUpsert(ctx, name, full, value); hookErr != nil {
+						return fmt.Sprintf("Saved %q in your Vault, but this project could not be set to use it: %v\nTick it in the project's Secrets list so it receives $SECRET_%s.", name, hookErr, name), nil
 					}
-					return fmt.Sprintf("✅ Stored workflow secret %q (encrypted) for %s and attached it. $SECRET_%s is available in this session now.", name, workflowPath, name), nil
+					return fmt.Sprintf("Saved %q in your Vault and used it in this project. $SECRET_%s is available in this session now.", name, name), nil
 				}
-				return fmt.Sprintf("✅ Stored workflow-scoped secret %q (encrypted) for %s. Attach it with update_workflow_config add_secrets=[%q] so steps receive $SECRET_%s.", name, workflowPath, name, name), nil
+				return fmt.Sprintf("Saved %q in your Vault. Choose it in the project's Secrets list so it receives $SECRET_%s.", name, name), nil
 			},
 		); err != nil {
 			return fmt.Errorf("register set_workflow_secret: %w", err)
@@ -156,13 +151,13 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 
 		if err := registerTool(
 			"delete_workflow_secret",
-			"Delete a workflow-scoped secret from the encrypted store. Does NOT detach the name from workflows that reference it — call update_workflow_config remove_secrets separately if needed.",
+			"Stop using a secret in this project. Its value stays in the owner's Vault, where they can delete it.",
 			map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"name": map[string]interface{}{
 						"type":        "string",
-						"description": "Name of the workflow-scoped secret to delete.",
+						"description": "Name of the secret this project should stop using.",
 					},
 				},
 				"required": []string{"name"},
@@ -173,20 +168,13 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 				if name == "" {
 					return "Error: 'name' is required.", nil
 				}
-				if err := api.deleteSharedWorkflowSecret(ctx, workflowPath, name, userID); err != nil {
-					return "", fmt.Errorf("delete workflow secret: %w", err)
+				if afterDelete == nil {
+					return "Remove it from the project's Secrets list.", nil
 				}
-				detached := false
-				if afterDelete != nil {
-					if hookErr := afterDelete(ctx, name); hookErr != nil {
-						return fmt.Sprintf("✅ Deleted workflow secret %q from store, but workshop cleanup failed: %v\nYou may need to run update_workflow_config(remove_secrets=[%q]) manually.", name, hookErr, name), nil
-					}
-					detached = true
+				if hookErr := afterDelete(ctx, name); hookErr != nil {
+					return "", fmt.Errorf("remove secret from this project: %w", hookErr)
 				}
-				if detached {
-					return fmt.Sprintf("✅ Deleted workflow secret %q and detached from the active workflow. $SECRET_%s is no longer available in this session.", name, name), nil
-				}
-				return fmt.Sprintf("✅ Deleted workflow secret %q. If this workflow still references it, run update_workflow_config(remove_secrets=[%q]) to detach.", name, name), nil
+				return fmt.Sprintf("This project no longer uses %q; $SECRET_%s is gone from this session. Its value is still in the owner's Vault.", name, vaultSecretShortName(name)), nil
 			},
 		); err != nil {
 			return fmt.Errorf("register delete_workflow_secret: %w", err)

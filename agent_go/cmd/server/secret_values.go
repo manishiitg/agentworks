@@ -123,9 +123,9 @@ func externalErrorMessage(body map[string]any, fallback string) string {
 	return fallback
 }
 
-// importProjectSecrets stores values on a workflow, Relay or Crew through update_settings secrets.set (owner only, and
-// the secret is selected for the project, as there). Existing names are skipped unless overwrite is set. A non-200
-// answer returns its status and message.
+// importProjectSecrets saves values for a workflow, Relay or Crew through update_settings secrets.set: in the owner's
+// Vault (My accounts), used by the project (owner only). Names the project already uses are skipped unless overwrite is
+// set. A non-200 answer returns its status and message.
 func (api *StreamingAPI) importProjectSecrets(r *http.Request, kind, id string, values map[string]string, overwrite, dryRun bool) ([]secretValueResult, int, string) {
 	key := "workflow_id"
 	if kind == "crew" {
@@ -135,6 +135,7 @@ func (api *StreamingAPI) importProjectSecrets(r *http.Request, kind, id string, 
 	if status != http.StatusOK {
 		return nil, status, externalErrorMessage(view, "Could not read that project's settings.")
 	}
+	// A name the project already uses counts as existing (its value is in the owner's Vault).
 	stored := map[string]bool{}
 	if secrets, ok := view["secrets"].(map[string]any); ok {
 		rows, _ := secrets["stored"].([]any)
@@ -143,6 +144,12 @@ func (api *StreamingAPI) importProjectSecrets(r *http.Request, kind, id string, 
 				if name, _ := entry["name"].(string); name != "" {
 					stored[name] = true
 				}
+			}
+		}
+		selected, _ := secrets["shared_selected"].([]any)
+		for _, row := range selected {
+			if name, _ := row.(string); name != "" {
+				stored[vaultSecretShortName(name)] = true
 			}
 		}
 	}

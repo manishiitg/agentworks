@@ -927,6 +927,80 @@ func notificationRecipientSummary(recipients []string) string {
 	return strings.Join(recipients, ", ")
 }
 
+// vaultSecretEnvName is the $SECRET_ name of a selected secret: a Vault secret
+// VLT_<vault>__NAME is used as NAME.
+func vaultSecretEnvName(name string) string {
+	if strings.HasPrefix(name, "VLT_") {
+		if i := strings.Index(name, "__"); i >= 0 {
+			return name[i+2:]
+		}
+	}
+	return name
+}
+
+// editWorkflowSecretSelection adds and removes names in workflow.json's secret
+// selection and returns the saved selection. A removed name matches a selected
+// Vault secret by its full or its $SECRET_ name.
+func (iwm *InteractiveWorkshopManager) editWorkflowSecretSelection(ctx context.Context, add, remove []string) ([]string, error) {
+	content, err := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
+	if err != nil {
+		return nil, fmt.Errorf("read workflow.json: %w", err)
+	}
+	var manifest map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &manifest); err != nil {
+		return nil, fmt.Errorf("parse workflow.json: %w", err)
+	}
+	caps, _ := manifest["capabilities"].(map[string]interface{})
+	if caps == nil {
+		caps = map[string]interface{}{}
+	}
+	edit := func(field string) []string {
+		current := []string{}
+		if items, ok := caps[field].([]interface{}); ok {
+			for _, item := range items {
+				if name, ok := item.(string); ok && strings.TrimSpace(name) != "" {
+					current = append(current, strings.TrimSpace(name))
+				}
+			}
+		}
+		next := make([]string, 0, len(current)+len(add))
+		for _, name := range current {
+			drop := false
+			for _, gone := range remove {
+				if name == gone || vaultSecretEnvName(name) == vaultSecretEnvName(gone) {
+					drop = true
+				}
+			}
+			if !drop && !containsString(next, name) {
+				next = append(next, name)
+			}
+		}
+		for _, name := range add {
+			if !containsString(next, name) {
+				next = append(next, name)
+			}
+		}
+		caps[field] = next
+		return next
+	}
+	selection := edit("selected_global_secret_names")
+	for _, name := range edit("selected_secrets") {
+		if !containsString(selection, name) {
+			selection = append(selection, name)
+		}
+	}
+	manifest["capabilities"] = caps
+	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode workflow.json: %w", err)
+	}
+	if err := iwm.controller.writeManagedWorkflowManifest(ctx, string(encoded)); err != nil {
+		return nil, fmt.Errorf("write workflow.json: %w", err)
+	}
+	return selection, nil
+}
+
 // persistWorkflowConfigToManifest writes the current in-memory workflow config
 // (servers, tools, skills, secrets) back to workflow.json so changes survive
 // session end.
@@ -959,21 +1033,9 @@ func (iwm *InteractiveWorkshopManager) persistWorkflowConfigToManifest(ctx conte
 	caps["selected_tools"] = iwm.controller.GetSelectedTools()
 	caps["selected_skills"] = iwm.controller.GetSelectedSkills()
 
-	// Update secrets (names only, never values). Write to BOTH manifest fields:
-	//   - selected_secrets           → used by loadSelectedSecrets to decrypt workflow/user-stored values
-	//   - selected_global_secret_names → used by mergeGlobalSecrets to filter GLOBAL_SECRET_* env vars
-	// Each loader path ignores names it can't resolve in its own bucket, so writing the
-	// union to both fields lets user and global names each resolve via their own path.
-	// Writing to only one field is the bug the builder chat hit: user secrets attached via
-	// update_workflow_config never reached step runtime because selected_secrets stayed empty.
-	secretNames := make([]string, 0)
-	for _, s := range iwm.controller.GetSecrets() {
-		if s.Name != "" {
-			secretNames = append(secretNames, s.Name)
-		}
-	}
-	caps["selected_secrets"] = secretNames
-	caps["selected_global_secret_names"] = secretNames
+	// Secret selections are not rewritten here: they hold Vault names, while the
+	// in-memory list holds $SECRET_ names. add_secrets/remove_secrets edit them
+	// directly (editWorkflowSecretSelection).
 
 	caps["use_code_execution_mode"] = iwm.controller.GetUseCodeExecutionMode()
 	if mode := strings.ToLower(strings.TrimSpace(iwm.controller.GetBrowserMode())); mode != "" {
@@ -4352,12 +4414,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				"add_secrets": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
-					"description": "Secret names to attach to the workflow. Each name MUST already have a stored value — either a GLOBAL_SECRET_* env var or a workflow secret (store via set_workflow_secret) — otherwise the request is rejected. Attaching only wires the name: runtime injects $SECRET_<NAME> with the looked-up value. Use list_secrets to see what's available.",
+					"description": "Vault secret names (from list_secrets) to use in the workflow. Each must already have a stored value, otherwise the request is rejected; save a new one with set_workflow_secret, which also uses it here. Runtime injects $SECRET_<NAME> under the name its owner gave it.",
 				},
 				"remove_secrets": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
-					"description": "Secret names to remove/disable from the workflow",
+					"description": "Secret names to stop using in the workflow (their values stay in Vault)",
 				},
 				"break_alerts": map[string]interface{}{
 					"type": "boolean", "description": "Tell me when something breaks: show run failures in Needs you. Enabled by default. Does not change configured team messages or decisions that need an answer.",
@@ -4630,15 +4692,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			addSecrets := extractStringArray("add_secrets")
 			removeSecrets := extractStringArray("remove_secrets")
 			if len(addSecrets) > 0 || len(removeSecrets) > 0 {
-				currentSecrets := iwm.controller.GetSecrets()
-				changed := false
-
 				if len(addSecrets) > 0 {
 					// Attaching a name without a stored value is a silent foot-gun: runtime
-					// drops the empty entry and $SECRET_<NAME> ends up unset, masking the
-					// real "no value stored" error with a downstream graceful-fallback.
-					// Reject up front if any requested name has no value in workflow store,
-					// user store, or global env. The caller must store the value first.
+					// drops the empty entry and $SECRET_<NAME> ends up unset. Reject up front
+					// if any requested name is not one this workflow can use.
 					availableNames := map[string]bool{}
 					if iwm.listAvailableSecrets != nil {
 						if names, listErr := iwm.listAvailableSecrets(ctx); listErr == nil {
@@ -4660,108 +4717,84 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					if len(missing) > 0 {
 						return fmt.Sprintf(
 							"Error: cannot attach secret(s) with no stored value: %v.\n\n"+
-								"These names have no value in the workflow secret store or matching GLOBAL_SECRET_* env var. "+
+								"These names are not in a Vault this workflow can use. "+
 								"Attaching them would set $SECRET_<NAME> to an empty string at runtime and silently break any step that reads them.\n\n"+
-								"Fix:\n"+
-								"  1. Store the value first: set_workflow_secret(name=\"%s\", value=\"<plaintext>\") for this workflow.\n"+
-								"  2. Then use settings action=update with secrets.select.",
+								"Fix: save the value first with set_workflow_secret(name=\"%s\", value=\"<plaintext>\"), which also uses it in this workflow.",
 							missing, missing[0],
 						), nil
 					}
+				}
 
-					existSet := make(map[string]bool, len(currentSecrets))
-					for _, s := range currentSecrets {
-						existSet[s.Name] = true
+				selection, editErr := iwm.editWorkflowSecretSelection(ctx, addSecrets, removeSecrets)
+				if editErr != nil {
+					return fmt.Sprintf("Error: could not save the secret selection: %v", editErr), nil
+				}
+				// Resolve the values of the saved selection so the workshop shell's
+				// SECRET_* env vars stay in sync with workflow.json mid-session. Step runs
+				// rebuild their env per step; the builder shell does not.
+				previous := iwm.controller.GetSecrets()
+				var currentSecrets []orchestrator.SecretEntry
+				if iwm.resolveSecretValues != nil {
+					values := iwm.resolveSecretValues(ctx, selection)
+					envNames := make([]string, 0, len(values))
+					for name := range values {
+						envNames = append(envNames, name)
 					}
-					for _, name := range addSecrets {
-						if !existSet[name] {
-							currentSecrets = append(currentSecrets, orchestrator.SecretEntry{Name: name, Value: ""})
-							existSet[name] = true
-							changed = true
-						}
+					sort.Strings(envNames)
+					for _, name := range envNames {
+						currentSecrets = append(currentSecrets, orchestrator.SecretEntry{Name: name, Value: values[name]})
+					}
+				}
+				kept := make(map[string]bool, len(currentSecrets))
+				for _, entry := range currentSecrets {
+					kept[entry.Name] = true
+				}
+				var removedEnv []string
+				for _, entry := range previous {
+					if !kept[entry.Name] {
+						removedEnv = append(removedEnv, entry.Name)
 					}
 				}
 
-				if len(removeSecrets) > 0 {
-					removeSet := make(map[string]bool, len(removeSecrets))
-					for _, s := range removeSecrets {
-						removeSet[s] = true
-					}
-					filtered := currentSecrets[:0]
-					for _, s := range currentSecrets {
-						if !removeSet[s.Name] {
-							filtered = append(filtered, s)
-						} else {
-							changed = true
-						}
-					}
-					currentSecrets = filtered
+				iwm.controller.SetSecrets(currentSecrets)
+				if iwm.workshopConfig != nil {
+					cloned := make([]orchestrator.SecretEntry, len(currentSecrets))
+					copy(cloned, currentSecrets)
+					iwm.workshopConfig.Secrets = cloned
 				}
 
-				if changed {
-					// Resolve plaintext values for every attached name so the workshop shell's
-					// SECRET_* env vars stay in sync with workflow.json mid-session. Without
-					// this, add_secrets would silently give you an empty $SECRET_<NAME> in
-					// the workshop's own execute_shell_command (step runs still see values
-					// because their env is rebuilt per-step, but builder shell does not).
-					if iwm.resolveSecretValues != nil {
-						names := make([]string, 0, len(currentSecrets))
-						for _, s := range currentSecrets {
-							names = append(names, s.Name)
-						}
-						values := iwm.resolveSecretValues(ctx, names)
-						for i, s := range currentSecrets {
-							if v, ok := values[s.Name]; ok {
-								currentSecrets[i].Value = v
-							}
+				// Sync SECRET_* into the workshop shell's persistent env map, so
+				// `execute_shell_command` from the builder agent picks up new keys
+				// without a session restart. Also strips removed secrets.
+				if envRef := iwm.controller.GetWorkspaceEnvRef(); envRef != nil {
+					iwm.controller.LockWorkspaceEnv()
+					for _, entry := range currentSecrets {
+						envRef["SECRET_"+entry.Name] = entry.Value
+					}
+					for k := range envRef {
+						if strings.HasPrefix(k, "SECRET_") && !kept[strings.TrimPrefix(k, "SECRET_")] {
+							delete(envRef, k)
 						}
 					}
-
-					iwm.controller.SetSecrets(currentSecrets)
-					if iwm.workshopConfig != nil {
-						cloned := make([]orchestrator.SecretEntry, len(currentSecrets))
-						copy(cloned, currentSecrets)
-						iwm.workshopConfig.Secrets = cloned
-					}
-
-					// Sync SECRET_* into the workshop shell's persistent env map, so
-					// `execute_shell_command` from the builder agent picks up new keys
-					// without a session restart. Also strips removed secrets.
-					if envRef := iwm.controller.GetWorkspaceEnvRef(); envRef != nil {
-						nameSet := make(map[string]bool, len(currentSecrets))
-						iwm.controller.LockWorkspaceEnv()
-						for _, s := range currentSecrets {
-							if s.Name == "" {
-								continue
-							}
-							nameSet[s.Name] = true
-							envRef["SECRET_"+s.Name] = s.Value
-						}
-						for k := range envRef {
-							if strings.HasPrefix(k, "SECRET_") && !nameSet[strings.TrimPrefix(k, "SECRET_")] {
-								delete(envRef, k)
-							}
-						}
-						iwm.controller.UnlockWorkspaceEnv()
-						logger.Info(fmt.Sprintf("Refreshed workshop shell env with %d SECRET_* entries", len(currentSecrets)))
-					}
-					// The builder chat's own shell captured its environment at turn
-					// start; push the change there too so the next shell command in
-					// this same turn sees it (server A 2026-09-25: an attached
-					// SENTRY_AUTH_TOKEN stayed unset until the user sent another message).
-					notifySecretsAttached(iwm.secretsAttached, currentSecrets, removeSecrets)
-
-					anyChanged = true
-					sb.WriteString("\n### Secrets (updated)\n")
-					if len(currentSecrets) == 0 {
-						sb.WriteString("No secrets configured.\n")
-					} else {
-						for _, s := range currentSecrets {
-							sb.WriteString(fmt.Sprintf("- %s\n", s.Name))
-						}
-					}
-					logger.Info(fmt.Sprintf("Updated workflow secrets: %d entries", len(currentSecrets)))
+					iwm.controller.UnlockWorkspaceEnv()
+					logger.Info(fmt.Sprintf("Refreshed workshop shell env with %d SECRET_* entries", len(currentSecrets)))
 				}
+				// The builder chat's own shell captured its environment at turn
+				// start; push the change there too so the next shell command in
+				// this same turn sees it (server A 2026-09-25: an attached
+				// SENTRY_AUTH_TOKEN stayed unset until the user sent another message).
+				notifySecretsAttached(iwm.secretsAttached, currentSecrets, removedEnv)
+
+				anyChanged = true
+				sb.WriteString("\n### Secrets (updated)\n")
+				if len(selection) == 0 {
+					sb.WriteString("No secrets configured.\n")
+				} else {
+					for _, name := range selection {
+						sb.WriteString(fmt.Sprintf("- %s\n", name))
+					}
+				}
+				logger.Info(fmt.Sprintf("Updated workflow secrets: %d selected", len(selection)))
 			}
 
 			// --- Informational run failure alerts ---

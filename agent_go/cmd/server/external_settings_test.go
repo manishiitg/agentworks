@@ -22,8 +22,7 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 		t.Fatal(err)
 	}
 	f.api.chatStore = store
-	// Project secrets now live in Vault; the old fixture supplied only the
-	// retired per-workflow store and could never exercise a successful write.
+	// A project secret is saved in its owner's own Vault (My accounts) and selected by its Vault name.
 	managedGlobalsMu.Lock()
 	previous := managedGlobals
 	managedGlobals = map[string]string{}
@@ -36,15 +35,15 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 			return
 		}
 		switch r.URL.Path {
-		case "/api/project-vaults":
-			w.Write([]byte(`{"id":"v-123456"}`))
+		case "/api/vaults":
+			_ = json.NewEncoder(w).Encode(map[string]any{"vaults": []any{map[string]any{"group": map[string]any{"ID": "v-123456", "Name": personalVaultName}, "role": "owner", "secret_names": names}}})
 		case "/api/vaults/v-123456/secrets":
 			var in struct{ Name string }
 			_ = json.NewDecoder(r.Body).Decode(&in)
 			names = append(names, in.Name)
 			w.Write([]byte(`{}`))
 		case "/api/vaults/v-123456":
-			_ = json.NewEncoder(w).Encode(map[string]any{"secret_names": names})
+			_ = json.NewEncoder(w).Encode(map[string]any{"role": "owner", "secret_names": names})
 		default:
 			w.Write([]byte(`{"vaults":[],"servers":[],"groups":[],"secrets":[]}`))
 		}
@@ -68,7 +67,7 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 	}
 	w = f.call(t, "owner", "settings", map[string]any{"action": "get", "workflow_id": "invoices"})
 	body := w.Body.String()
-	if w.Code != 200 || strings.Contains(body, value) || !strings.Contains(body, `{"name":"API_KEY","selected":true}`) || !strings.Contains(body, `"browser_mode":"headless"`) {
+	if w.Code != 200 || strings.Contains(body, value) || !strings.Contains(body, `"shared_selected":["VLT_123456__API_KEY"]`) || !strings.Contains(body, `"browser_mode":"headless"`) {
 		t.Fatalf("settings after update: %d %s", w.Code, body)
 	}
 	var view map[string]any

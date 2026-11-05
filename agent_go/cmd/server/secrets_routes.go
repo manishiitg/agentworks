@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -277,13 +278,11 @@ type storeSecretRequest struct {
 	WorkspacePath  string `json:"workspace_path,omitempty"`
 }
 
-// handleStoreWorkflowSecret upserts a workflow secret in the shared,
-// workflow-scoped store (see workflow_shared_secrets.go). Owners only.
+// handleStoreWorkflowSecret saves a secret for a Crew, Goal, Flow or Code project in its owner's Vault (My accounts) and
+// uses it in the project (project_owner_vault.go). Owner only.
 // PUT /api/secrets/workflow/store
 //
-// The client keeps sending encrypted_value from /api/secrets/encrypt (bound to
-// the caller); it is re-bound to the workflow here so every user with access
-// resolves it.
+// The client sends encrypted_value from /api/secrets/encrypt (bound to the caller).
 func (api *StreamingAPI) handleStoreWorkflowSecret(w http.ResponseWriter, r *http.Request) {
 	var req storeSecretRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -309,9 +308,19 @@ func (api *StreamingAPI) handleStoreWorkflowSecret(w http.ResponseWriter, r *htt
 		http.Error(w, "encrypted_value must be produced by /api/secrets/encrypt in this session", http.StatusBadRequest)
 		return
 	}
-	if err := api.upsertSharedWorkflowSecret(r.Context(), workspacePath, req.Name, plaintext); err != nil {
-		log.Printf("[SECRETS] Failed to store workflow secret: %v", err)
-		http.Error(w, "Failed to store workflow secret", http.StatusInternalServerError)
+	full, err := api.saveProjectSecret(r.Context(), userID, workspacePath, req.Name, plaintext)
+	if errors.Is(err, errProjectSecretOwner) {
+		http.Error(w, err.Error()+".", http.StatusForbidden)
+		return
+	}
+	if err != nil {
+		log.Printf("[SECRETS] Failed to save a project secret in the owner's Vault: %v", err)
+		http.Error(w, "Could not save this secret in your Vault", http.StatusInternalServerError)
+		return
+	}
+	if err := selectProjectSecret(r.Context(), crewProfileID, workspacePath, full); err != nil {
+		log.Printf("[SECRETS] Saved a project secret but could not select it: %v", err)
+		http.Error(w, "The secret was saved in your Vault, but this project could not be set to use it. Tick it in the list.", http.StatusInternalServerError)
 		return
 	}
 
@@ -319,7 +328,7 @@ func (api *StreamingAPI) handleStoreWorkflowSecret(w http.ResponseWriter, r *htt
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
-// handleDeleteWorkflowSecret deletes a shared workflow secret. Owners only.
+// handleDeleteWorkflowSecret stops a project using a secret; its value stays in the owner's Vault. Owners only.
 // DELETE /api/secrets/workflow/store/{name}?workspace_path=Workflow/foo
 func (api *StreamingAPI) handleDeleteWorkflowSecret(w http.ResponseWriter, r *http.Request) {
 	name := mux.Vars(r)["name"]
@@ -338,10 +347,9 @@ func (api *StreamingAPI) handleDeleteWorkflowSecret(w http.ResponseWriter, r *ht
 		return
 	}
 
-	userID := GetUserIDFromContext(r.Context())
-	if err := api.deleteSharedWorkflowSecret(r.Context(), workspacePath, name, userID); err != nil {
-		log.Printf("[SECRETS] Failed to delete workflow secret: %v", err)
-		http.Error(w, "Failed to delete workflow secret", http.StatusInternalServerError)
+	if err := unselectProjectSecret(r.Context(), crewProfileID, workspacePath, name); err != nil {
+		log.Printf("[SECRETS] Failed to remove a secret from a project: %v", err)
+		http.Error(w, "Could not remove this secret from the project", http.StatusInternalServerError)
 		return
 	}
 

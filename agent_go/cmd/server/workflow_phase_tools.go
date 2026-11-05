@@ -372,7 +372,11 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			log.Printf("[WORKFLOW_PHASE] Registered workshop execution tools for %s (execute_step, query_step, stop_step, list_steps, etc.)", workflowPhaseID)
 
 			builderSession := workshopSession
-			afterUpsert := func(ctx context.Context, name, value string) error {
+			afterUpsert := func(ctx context.Context, name, vaultName, value string) error {
+				// The server saves the selection (the Vault name); the Workshop only refreshes its live copy.
+				if err := selectProjectSecret(ctx, crewProfileID, phaseWorkspacePath, vaultName); err != nil {
+					return err
+				}
 				// The Workshop side (steps) reads a live map; the chat agent's own
 				// shell client took a snapshot at turn start, so push the value
 				// there too or a shell command later in this same turn misses it.
@@ -385,6 +389,10 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 				return builderSession.AttachSecretToWorkflow(ctx, name, value)
 			}
 			afterDelete := func(ctx context.Context, name string) error {
+				if err := unselectProjectSecret(ctx, crewProfileID, phaseWorkspacePath, name); err != nil {
+					return err
+				}
+				name = vaultSecretShortName(name)
 				virtualtools.DeleteSessionShellEnv(sessionID, "SECRET_"+name)
 				if builderSession == nil {
 					return nil

@@ -56,14 +56,11 @@ export function SecretSelectionSection({selectedSecrets,onSecretChange,selectedG
   try{
    const name=secretName.trim()
    const {encrypted}=await secretsApi.encrypt(secretValue)
+   // The server saves it in the owner's Vault and selects it for this project.
    await secretsApi.storeWorkflowSecret(workflowPath,name,encrypted)
    closeEditor()
    setRevealed(old=>{const next={...old};delete next[name];return next})
    await load()
-   if(!selectedSecrets.includes(name)){
-    try{await onSecretChange([...selectedSecrets,name])}
-    catch{setError('The secret was saved. Tick its name to use it in this project.')}
-   }
    window.dispatchEvent(new Event(PROJECT_SECRETS_REFRESH_EVENT))
   }catch(cause){setError(cause instanceof Error?cause.message:'Could not save this secret.')}
   finally{setSaving(false)}
@@ -71,7 +68,7 @@ export function SecretSelectionSection({selectedSecrets,onSecretChange,selectedG
  const removeSecret=async(name:string)=>{
   if(!canManage||shared)return
   setSaving(true);setError('')
-  try{await secretsApi.deleteWorkflowSecret(workflowPath,name);await onSecretChange(selectedSecrets.filter(item=>item!==name));setRevealed(old=>{const next={...old};delete next[name];return next});await load();window.dispatchEvent(new Event(PROJECT_SECRETS_REFRESH_EVENT))}
+  try{await secretsApi.deleteWorkflowSecret(workflowPath,name);setRevealed(old=>{const next={...old};delete next[name];return next});await load();window.dispatchEvent(new Event(PROJECT_SECRETS_REFRESH_EVENT))}
   catch(cause){setError(cause instanceof Error?cause.message:'Could not remove this secret.')}
   finally{setSaving(false)}
  }
@@ -93,7 +90,7 @@ export function SecretSelectionSection({selectedSecrets,onSecretChange,selectedG
   {editing!==null&&<form aria-label={editing?`Replace ${editing}`:'Add project secret'} className="space-y-3 rounded-lg border border-border p-3" onSubmit={event=>{event.preventDefault();void saveSecret()}}>
    <label className="block text-xs">Secret name<Input aria-label="Secret name" value={secretName} disabled={Boolean(editing)||saving} onChange={event=>setSecretName(event.target.value)} /></label>
    <SecretField label="Secret value" value={secretValue} onChange={setSecretValue} disabled={saving} />
-   <p className="text-xs text-muted-foreground">The value is encrypted before saving and is not loaded back into this form.</p>
+   <p className="text-xs text-muted-foreground">Saved in your Vault and used by this project. The value is encrypted and is not loaded back into this form.</p>
    <div className="flex gap-2"><Button size="sm" type="submit" disabled={saving||!secretName.trim()||!secretValue}>{saving?'Saving…':'Save secret'}</Button><Button size="sm" variant="ghost" type="button" disabled={saving} onClick={closeEditor}>Cancel</Button></div>
   </form>}
   {workflowPath&&<details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Where these secrets are used</summary><div className="mt-2"><SecretSourceView workflowPath={workflowPath}/></div></details>}
