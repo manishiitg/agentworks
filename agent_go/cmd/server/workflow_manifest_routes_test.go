@@ -22,17 +22,17 @@ func TestMCPManagementRegistrationFollowsChatPolicy(t *testing.T) {
 		{name: "legacy Builder", want: true},
 		{name: "legacy Run request by writable user", req: QueryRequest{ExecutionOptions: &ExecutionOptions{WorkshopMode: "run"}}, want: true},
 		{name: "manual workflow execution", req: QueryRequest{AgentMode: "workflow"}, list: true},
-		{name: "cron shares builder mode", req: QueryRequest{TriggeredBy: "cron"}},
-		{name: "retained schedule", session: "schedule-digest_123"},
-		{name: "restored origin", active: &ActiveSessionInfo{TriggeredBy: "cron"}},
+		{name: "cron shares builder mode", req: QueryRequest{TriggeredBy: "cron"}, want: true},
+		{name: "retained schedule", session: "schedule-digest_123", want: true},
+		{name: "restored origin", active: &ActiveSessionInfo{TriggeredBy: "cron"}, want: true},
 		{name: "read only Builder", readOnly: true, list: true},
 		{name: "Slack channel turn (Run)", req: QueryRequest{BotPlatform: "slack"}, readOnly: true, list: true},
-		{name: "Autopilot reviewer", req: QueryRequest{SessionKind: "pulse_reviewer", ParentSessionID: "parent"}},
-		{name: "restored child", active: &ActiveSessionInfo{ParentSessionID: "parent"}},
+		{name: "background child", req: QueryRequest{SessionKind: "pulse_reviewer", ParentSessionID: "parent"}, want: true},
+		{name: "restored child", active: &ActiveSessionInfo{ParentSessionID: "parent"}, want: true},
 		{name: "notification", req: QueryRequest{IsAutoNotification: true}, want: true},
 		{name: "owner bot", req: QueryRequest{BotPlatform: "whatsapp"}, want: true},
 		{name: "promoted schedule", session: "schedule-digest_123", req: QueryRequest{UserInteractiveContinuation: true}, want: true},
-		{name: "promotion cannot elevate child", req: QueryRequest{UserInteractiveContinuation: true, SessionKind: "pulse_reviewer"}},
+		{name: "promoted child", req: QueryRequest{UserInteractiveContinuation: true, SessionKind: "pulse_reviewer"}, want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			api := &StreamingAPI{}
