@@ -135,6 +135,6 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 	}
 	api.stopRemovedCrewTeamSessions(previous, t)
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=left revision=%d", project, logUsernameForUserID(claims.UserID), t.Revision)
-	go removeStaleCrewTeamServerCopies(context.WithoutCancel(r.Context()))
+	go api.removeStaleCrewTeamServerCopies(context.WithoutCancel(r.Context()))
 	externalJSON(w, map[string]bool{"left": true})
 }

@@ -269,7 +269,10 @@ func (api *StreamingAPI) handleCrewTeamChunks(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Type", "application/octet-stream")
 	sent, bytes := 0, int64(0)
 	for _, c := range in.Chunks {
-		if !validCrewTeamHash(c.ID) || !readable[c.ID] || bytes > 0 && bytes+c.Len > crewTeamChunkBatch {
+		if !validCrewTeamHash(c.ID) || !readable[c.ID] {
+			continue // not part of a file the caller may read now (its version moved on): the caller skips that file
+		}
+		if bytes > 0 && bytes+c.Len > crewTeamChunkBatch {
 			break
 		}
 		data, err := crewTeamReadChunk(store, c)

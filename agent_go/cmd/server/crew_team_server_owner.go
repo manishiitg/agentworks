@@ -44,6 +44,20 @@ func (api *StreamingAPI) syncServerCrewTeamStore(ctx context.Context, t crewTeam
 	if os.IsNotExist(err) {
 		b = crewTeamLocal{FolderID: t.Folder.ID, Connection: "server", Project: t.ProjectID, LocalProject: t.ProjectID, RemoteUser: owner, Client: uuid.NewString(),
 			Root: roots.Files, Status: "pending"}
+		// The Crew folder is where people on the website work, so a new owner copy takes the store as it is now as its
+		// base and applies nothing from it (review 5 Nov #6): its first round sends what differs in the Crew folder
+		// (each file read once), and nothing the team removed comes back.
+		state, stateErr := readCrewTeamFileState(t.ProjectID)
+		if stateErr != nil {
+			log.Printf("[CREW_TEAM_SERVER] project=%s event=owner_copy_failed reason=%q", t.ProjectID, stateErr)
+			return
+		}
+		b.Files, b.Revision, b.Downloaded = map[string]crewTeamLocalFile{}, state.Revision, true
+		for p, v := range state.Versions {
+			if v.File != nil {
+				b.Files[p] = crewTeamLocalFile{Size: -1, Version: crewTeamFileVersion{Hash: v.File.Hash, Size: v.File.Size, Exec: v.File.Executable, Chunks: v.Chunks}}
+			}
+		}
 		if err = os.MkdirAll(dir, 0o700); err == nil {
 			err = saveCrewTeamLocal(dir, b)
 		}
@@ -51,7 +65,7 @@ func (api *StreamingAPI) syncServerCrewTeamStore(ctx context.Context, t crewTeam
 			log.Printf("[CREW_TEAM_SERVER] project=%s event=owner_copy_failed reason=%q", t.ProjectID, err)
 			return
 		}
-		log.Printf("[CREW_TEAM_SERVER] project=%s folder=%q event=owner_copy_created", t.ProjectID, t.Folder.display())
+		log.Printf("[CREW_TEAM_SERVER] project=%s folder=%q event=owner_copy_created base_revision=%d files=%d", t.ProjectID, t.Folder.display(), b.Revision, len(b.Files))
 	} else if err != nil {
 		return
 	}

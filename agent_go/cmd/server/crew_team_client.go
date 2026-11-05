@@ -134,6 +134,10 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 		}
 	}
 	if b.Root == "" {
+		// A member keeps the folder they chose for this Crew when the Team's shared folder changes (review 5 Nov #5).
+		b.Root = previousCrewTeamMemberRoot(filepath.Dir(dir), b)
+	}
+	if b.Root == "" {
 		b.Root = filepath.Join(dir, "files")
 	}
 	if e = os.MkdirAll(b.Root, 0700); e != nil {
@@ -143,6 +147,27 @@ func (api *StreamingAPI) ensureCrewTeamLocal(ctx context.Context, owner string, 
 		return dir, b, e
 	}
 	return dir, b, saveCrewTeamLocal(dir, b)
+}
+
+// previousCrewTeamMemberRoot is the folder a member's earlier copy of the same Team used (on the same saved sign-in),
+// the most recent one that still exists.
+func previousCrewTeamMemberRoot(parent string, b crewTeamLocal) string {
+	records, _ := filepath.Glob(filepath.Join(parent, "*", "binding.json"))
+	root, newest := "", time.Time{}
+	for _, record := range records {
+		old, err := readCrewTeamLocal(filepath.Dir(record))
+		info, statErr := os.Stat(record)
+		if err != nil || statErr != nil || old.Project != b.Project || old.Connection != b.Connection || old.RemoteUser != b.RemoteUser || old.Root == "" {
+			continue
+		}
+		if dirInfo, err := os.Lstat(old.Root); err != nil || !dirInfo.IsDir() || dirInfo.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		if info.ModTime().After(newest) {
+			root, newest = old.Root, info.ModTime()
+		}
+	}
+	return root
 }
 
 func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
@@ -434,7 +459,9 @@ func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, rout
 	var sent int64
 	for start := 0; start < len(scan.changes); start += crewTeamCommitBatch {
 		batch := scan.changes[start:min(start+crewTeamCommitBatch, len(scan.changes))]
-		request := crewTeamSyncRequest{Client: b.Client, TransferID: uuid.NewString(), Changes: batch, OnPurpose: slices.Clone(b.SyncAnyway)}
+		// The same change set retried (a commit whose reply was lost) carries the same transfer id, so the server's
+		// receipt answers it instead of applying a stale base over a newer edit (review 5 Nov #7).
+		request := crewTeamSyncRequest{Client: b.Client, TransferID: crewTeamChangeSetID(b.Client, b.Revision, batch), Changes: batch, OnPurpose: slices.Clone(b.SyncAnyway)}
 		var plan struct {
 			Missing []string `json:"missing"`
 		}
@@ -615,9 +642,14 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		total += ch.Len
 	}
 	roundCtx := startCrewTeamRound(ctx, dir, b.Project, "download", len(writes), total, 0)
-	err := crewTeamFetchChunks(roundCtx, owner, c, route, query, stage, fetch)
+	moved, err := crewTeamFetchChunks(roundCtx, owner, c, route, query, stage, fetch)
 	if err == nil {
 		for _, f := range writes {
+			// Its version moved on while this page was read (review 5 Nov #8): the newer version comes in a later page.
+			if slices.ContainsFunc(f.Version.Chunks, func(ch crewTeamChunk) bool { return moved[ch.ID] }) {
+				log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s path=%q event=moved_on", b.Project, b.Client, f.Path)
+				continue
+			}
 			// Edited here while the chunks arrived: keep the local edit; it goes up next round.
 			if !unchanged(f.Path) {
 				if !b.Downloaded {
@@ -676,14 +708,16 @@ func crewTeamHashFile(root, rel string) string {
 }
 
 // crewTeamFetchChunks asks the server for chunks until all have arrived (each reply holds at most crewTeamChunkBatch
-// bytes) and stages each, checked, by its id.
-func crewTeamFetchChunks(ctx context.Context, owner string, c desktopConnection, route, query, stage string, chunks []crewTeamChunk) error {
+// bytes) and stages each, checked, by its id. It returns the chunks the server no longer serves: their file's version
+// moved on since the page was read.
+func crewTeamFetchChunks(ctx context.Context, owner string, c desktopConnection, route, query, stage string, chunks []crewTeamChunk) (map[string]bool, error) {
 	var received int64
+	moved := map[string]bool{}
 	for len(chunks) > 0 {
 		body, _ := json.Marshal(map[string]any{"chunks": chunks})
 		resp, err := crewTeamRemoteDo(ctx, owner, c, http.MethodPost, route+"/chunks"+query, "application/json", bytes.NewReader(body))
 		if err != nil {
-			return crewTeamStep("receive", err)
+			return moved, crewTeamStep("receive", err)
 		}
 		got := map[string]bool{}
 		err = crewTeamReadFrames(resp.Body, func(id string, data []byte) error {
@@ -697,14 +731,32 @@ func crewTeamFetchChunks(ctx context.Context, owner string, c desktopConnection,
 		})
 		resp.Body.Close()
 		if err != nil {
-			return crewTeamStep("receive", err)
+			return moved, crewTeamStep("receive", err)
 		}
 		if len(got) == 0 {
-			return crewTeamStep("receive", fmt.Errorf("the server did not send the shared files' content"))
+			for _, ch := range chunks {
+				moved[ch.ID] = true
+			}
+			return moved, nil
 		}
 		chunks = slices.DeleteFunc(chunks, func(ch crewTeamChunk) bool { return got[ch.ID] })
 	}
-	return nil
+	return moved, nil
+}
+
+// crewTeamChangeSetID names one batch of changes from one copy at the revision it had received: the same batch retried
+// has the same id; the same edit made again later is sent from a later revision, so it is a new transfer.
+func crewTeamChangeSetID(client string, revision uint64, batch []crewTeamChange) string {
+	var key strings.Builder
+	key.WriteString(fmt.Sprintf("%s\x00%d", client, revision))
+	for _, ch := range batch {
+		after := ""
+		if ch.After != nil {
+			after = ch.After.Hash
+		}
+		key.WriteString("\x00" + ch.Path + "\x00" + ch.Before + "\x00" + after)
+	}
+	return crewTransferDigest(key.String())
 }
 
 // crewTeamStepError names the sync step that failed, for the log (the shown text stays the plain one).
