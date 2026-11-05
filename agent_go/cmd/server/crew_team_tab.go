@@ -189,7 +189,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	bridges := crewTeamBridgesFor(ctx, t)
 	if viewer == t.OwnerID && twin {
 		out.AgentsMacOnly = "Change these from your Mac app."
-		out.AgentsLine = crewAlwaysOnAgentsLine
+		if crewAlwaysOnAnswering {
+			out.AgentsLine = crewAlwaysOnAgentsLine
+		}
 	}
 	if !t.On {
 		// Team off: only AgentBridge is left to choose, on the owner's own agents.

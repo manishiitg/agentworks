@@ -43,8 +43,13 @@ func crewAlwaysOnLog(project, tab, event, reason string, started time.Time) {
 
 // crewStandbyServerWriter: the server answers for this agent now (it ran a turn from the standby copy and has not
 // handed the agent back to the Mac yet).
+// crewAlwaysOnAnswering turns on answering from the server copy (step 2) and the Mac's matching refusal. Off until
+// handing back to the Mac (step 3) is in: until then the standby copy is only kept fresh (step 1). AGENTWORKS_ALWAYS_ON=1
+// turns it on for a test.
+var crewAlwaysOnAnswering = os.Getenv("AGENTWORKS_ALWAYS_ON") == "1"
+
 func crewStandbyServerWriter(project, tab string) bool {
-	if IsLocalMode() || project == "" || tab == "" {
+	if !crewAlwaysOnAnswering || IsLocalMode() || project == "" || tab == "" {
 		return false
 	}
 	rows, err := readCrewStandby(project)
@@ -80,7 +85,7 @@ func crewStandbyTabForKey(project, key string) string {
 // crewStandbyCanAnswer is the server's routing decision without any work: the server already answers for the agent,
 // or the owner's Mac is off and the agent is In team with a current copy of its owner's chat.
 func crewStandbyCanAnswer(project, owner, tab string) bool {
-	if IsLocalMode() || owner == "" || !crewMacTabID(tab) {
+	if !crewAlwaysOnAnswering || IsLocalMode() || owner == "" || !crewMacTabID(tab) {
 		return false
 	}
 	rows, err := readCrewStandby(project)
