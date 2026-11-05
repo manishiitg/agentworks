@@ -122,8 +122,10 @@ chat_policy:
     # The owner (or an editor) over MCP is the same Builder as on the website.
     external_builder: *builder_capabilities
     interactive: *builder_capabilities
-    scheduled: &scheduled_capabilities [plan_authoring, report_authoring, secret_management, knowledgebase_maintenance, improvement_proposals, workflow_suggestions]
-    child: [plan_authoring, report_authoring, secret_management, knowledgebase_maintenance, improvement_proposals]
+    # The person's own automatic turns get everything their typed turns get (owner, 5 Nov), so a chat's
+    # tools never change by who started the turn.
+    scheduled: *builder_capabilities
+    child: *builder_capabilities
     bot: *builder_capabilities
     notification: *builder_capabilities
   read_only: [workspace_ui, bot_management, workflow_suggestions, mcp_inspection]

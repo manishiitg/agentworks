@@ -1269,6 +1269,11 @@ func crewMessageRunMode(dest, source agentMessageEndpoint, guest string) bool {
 	if dest.Mode == "run" || strings.TrimSpace(dest.Guest) != "" {
 		return true
 	}
+	// A message between the person's own agents is their own turn: Builder, like their typed turns (owner, 5 Nov).
+	// A sender chat in Run mode is a Run person using the Crew, so it stays restricted.
+	if source.UserID != "" && source.UserID == dest.UserID && source.Mode != "run" {
+		return false
+	}
 	trustedOwner := source.OwnerAuthority || source.Kind == triggerCallerCrew && !source.External && source.Mode == "builder"
 	if trustedOwner && strings.TrimSpace(guest) != "" && strings.TrimSpace(guest) == strings.TrimSpace(dest.UserID) {
 		return false

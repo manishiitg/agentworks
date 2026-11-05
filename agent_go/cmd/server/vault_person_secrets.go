@@ -104,8 +104,9 @@ func (api *StreamingAPI) removeVaultSecret(ctx context.Context, person, vaultID,
 }
 
 // promoteSecretToVault copies a secret of this chat's Crew, Code or workflow into a vault the person owns. The agent
-// names the secret and confirms; the value moves server-side and is never shown. The original stays where it is.
-func (api *StreamingAPI) promoteSecretToVault(ctx context.Context, person, vaultID, name string, confirm bool) (string, error) {
+// names the secret; it is copied on that call (owner, 5 Nov: no second confirm). The value moves server-side and is
+// never shown. The original stays where it is.
+func (api *StreamingAPI) promoteSecretToVault(ctx context.Context, person, vaultID, name string) (string, error) {
 	place := api.projectRootForSession(sessionIDFromContextForVaults(ctx))
 	if place == "" {
 		return "", errors.New("promote a secret from a Crew, Code or workflow chat")
@@ -116,9 +117,6 @@ func (api *StreamingAPI) promoteSecretToVault(ctx context.Context, person, vault
 	name = strings.TrimSpace(name)
 	if !vaultOwnerOf(ctx, person, vaultID) {
 		return "", errors.New("you can promote only into a vault you own")
-	}
-	if !confirm {
-		return fmt.Sprintf("Promoting the secret %q copies its value into your vault %s. Everyone you add to that vault can then use it (not read it as text), and only you and the vault's other owners can change or remove it. The original secret stays where it is. Call promote_secret again with confirm=true to go ahead.", name, vaultID), nil
 	}
 	value, err := api.projectSecretValue(place, name)
 	if err != nil {

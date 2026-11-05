@@ -132,19 +132,11 @@ func (p workflowChatPolicy) sessionKey() string {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	roleOrigin := p.Origin
-	if p.RoleOrigin != "" {
-		roleOrigin = p.RoleOrigin
-	}
-
-	// An auto-notification is a message into the same interactive chat. As its own role it threw the
-	// coding CLI's session away whenever a notification and a typed message alternated, so the chat
-	// kept showing "Conversation restored" (Upwork chat, 2026-10-05). The capability set below still
-	// starts a fresh session if a notification turn ever gets different tools.
-	if roleOrigin == "notification" {
-		roleOrigin = "interactive"
-	}
-	identity := p.Mode + "|" + roleOrigin + "|" + strings.Join(names, ",")
+	// Who started the turn is not part of the chat's role: a schedule, notification or background turn in the
+	// Builder tab is the same chat with the same tools (owner, 5 Nov). An origin in the key threw the coding CLI's
+	// session away whenever turn kinds alternated (2026-10-05 and 2026-11-05). A turn that really
+	// gets different tools still starts a fresh session through the capability set.
+	identity := p.Mode + "|" + strings.Join(names, ",")
 	if p.ChatInstructionsKey != "" {
 		identity += "|chat_instructions:" + p.ChatInstructionsKey
 	}
