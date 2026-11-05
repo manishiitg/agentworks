@@ -82,7 +82,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 			// Their agents here work on their Mac (crew_team_where.go): listed from it, marked when it is off.
 			person.MacOn = crewMacSocketFor(p.UserID, t.ProjectID, pair) != nil
 			person.Agents = []crewTeamAgent{}
-			for _, tab := range personMacTabs(ctx, p.UserID, t.ProjectID) {
+			for _, tab := range crewMacTabsFor(ctx, p.UserID, t.ProjectID, caller) {
 				row := crewTeamAgent{Tab: tab.Tab, Name: tab.Name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey}
 				if !person.MacOn {
 					row.StatusLabel = "Mac off"

@@ -253,3 +253,53 @@ func dropCrewMacPair(user, project, pair string) {
 		sock.mu.Unlock()
 	}
 }
+
+// setCrewTeamMacOnlyMe sets In team / Only me for one of the member's own agents on their Mac (its row key from
+// crewMacTabRow); false when the key is not one, so the caller handles server agents.
+func setCrewTeamMacOnlyMe(w http.ResponseWriter, r *http.Request, project, user, key string, onlyMe bool) bool {
+	tab, ok := strings.CutPrefix(key, project+codeChatSideMarker+"mac-"+sanitizeUserIDForPath(user)+"-")
+	if !ok || tab == "" {
+		return false
+	}
+	if tab == "mac-main" {
+		tab = macMainTab
+	}
+	if tab != macMainTab && !crewMacTabID(tab) {
+		externalError(w, 400, "invalid_agent", "Choose your agent and In team or Only me.")
+		return true
+	}
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		externalError(w, 400, "invalid_team", err.Error())
+		return true
+	}
+	unlock, err := wf.LockWorkspace(r.Context(), dir)
+	if err != nil {
+		externalError(w, 409, "agent_update_failed", err.Error())
+		return true
+	}
+	defer unlock()
+	t, err := readCrewTeam(project)
+	at := -1
+	if err == nil {
+		at = slices.IndexFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user })
+	}
+	if _, onMac := t.memberMac(user); at < 0 || !onMac {
+		externalError(w, 403, "agent_not_yours", "Choose one of your own agents in this Team.")
+		return true
+	}
+	person := &t.People[at]
+	person.OnlyMe = slices.DeleteFunc(person.OnlyMe, func(id string) bool { return id == tab })
+	if onlyMe {
+		person.OnlyMe = append(person.OnlyMe, tab)
+	}
+	t.Revision++
+	if err = writeCrewTeam(t); err != nil {
+		externalError(w, 409, "agent_update_failed", err.Error())
+		return true
+	}
+	crewMacTeamTabsCache.Delete(project + "\x00" + user)
+	log.Printf("[CREW_TEAM] agent visibility user=%s tab=%s in_team=%t place=mac", logUsernameForUserID(user), tab, !onlyMe)
+	externalJSON(w, map[string]any{"in_team": !onlyMe})
+	return true
+}
