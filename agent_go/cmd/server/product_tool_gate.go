@@ -339,3 +339,18 @@ func groupedActionMembers(name string) []string {
 	}
 	return nil
 }
+
+// fullCLIDuplicateTools are the platform actions a coding CLI with its own tools does natively (Full CLI): listing,
+// searching, reading, writing and patching project files, and running a command on the server or its slot.
+var fullCLIDuplicateTools = map[string]bool{
+	"list_files": true, "list_crew_files": true, "read_project_files__list": true,
+	"search_files": true, "search_crew_files": true, "read_project_files__search": true,
+	"read_file": true, "read_crew_file": true, "read_project_files__read": true,
+	"write_file": true, "diff_patch_workspace_file": true, "patch_crew_file": true, "crew_files__patch": true,
+	"execute_shell_command": true,
+	// Their registered source tools (one tool, several actions): mkdir, move and delete go with them, as Bash does
+	// those; dashboard reading is for Ask chats, which never run Full CLI.
+	"read_project_files": true, "crew_files": true,
+}
+
+func fullCLIDuplicateTool(name string) bool { return fullCLIDuplicateTools[strings.TrimSpace(name)] }

@@ -6170,6 +6170,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		toolGate.DenyWhere(func(name string) bool {
 			return !builderProductSelection(GetUserFromContext(r.Context())).AllowsTool(name)
 		})
+		// Full CLI (owner, 5 Nov): the CLI's own Read, Edit, Write, Grep, Glob and Bash do these jobs, so it sees one
+		// way to do each. Its native access is the same folder grants (Landlock reads and writes); running on the
+		// person's laptop and the actions only AgentWorks has (copy, link, image, folders, snapshots, git) stay. Only
+		// once the CLI really has Full CLI (set after applyCLILandlock): a chat that falls back to bridge tools only
+		// keeps the bridge file tools, so it never ends up with neither. The bridge tool list is admitted at launch.
+		fullCLIOn := false
+		toolGate.DenyWhere(func(name string) bool { return fullCLIOn && fullCLIDuplicateTool(name) })
 		toolGate.AllowWorkflowNotifications(isWorkflowPhase && !relayChat && workflowNotificationsForPath(workflowPhaseFolder))
 		claims := GetUserFromContext(r.Context())
 		workflowRun := isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && currentUserIsReadOnly && !relayChat
@@ -6876,6 +6883,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			// PLAT-364: the guard above is final, so the CLI can be confined to it.
 			applyCLILandlock(llmAgent, sessionID, currentUserID, finalProvider, chatWorkingDir, cliSecurityPolicy, chatRuntimeDir)
+			if fullCLIOn = profileAgentToolsMode == "full" && isCodingAgentProvider(finalProvider, finalModelID) && llmAgent.CodingAgentToolsMode() == "full"; fullCLIOn {
+				log.Printf("[PRODUCT_TOOL_GATE] session=%s full_cli=true duplicate_file_and_terminal_actions=off", sessionID)
+			}
 			if resolvedProfile != nil && resolvedProfile.IsolateCodeCLI {
 				log.Printf("[PROJECT_CLI] session=%s actor=%s profile=code mode=%s cwd=%s linked_project=%s", sessionID, sanitizeUserIDForPath(currentUserID), llmAgent.CodingAgentToolsMode(), chatWorkingDir, sharedChatWorkingDir)
 			}
