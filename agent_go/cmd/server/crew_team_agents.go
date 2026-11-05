@@ -41,6 +41,17 @@ func crewTeamInTeam(agent macSharedAgent) bool { return !agent.Off && agent.Audi
 func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTeamAgentsPerson {
 	owner := crewTeamAgentsPerson{UserID: t.OwnerID, Name: crewPersonShortName(t.OwnerID), Owner: true, You: t.OwnerID == caller, Agents: []crewTeamAgent{}}
 	onMac := crewRelayTwin(t.ProjectID)
+	// Website tabs use the Main conversation's physical key, while AgentBridge
+	// addresses it by project. Return the actual tab identity to the browser.
+	mainKey := t.ProjectID
+	if records, err := defaultProductConversationRegistryStore().projectChats(ctx, t.OwnerID, crewProfileID, t.ProjectID); err == nil {
+		for _, record := range records {
+			if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(t.ProjectID, t.OwnerID) {
+				mainKey = record.ConversationKey
+				break
+			}
+		}
+	}
 	if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
 		owner.MacOn = crewMacSocketFor(t.OwnerID, t.ProjectID, b.PairID) != nil
 	}
@@ -53,6 +64,9 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 			place = "mac"
 		}
 		row := crewTeamAgent{Tab: agent.Tab, Name: agent.Name, Purpose: agent.Purpose, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab)}
+		if agent.Tab == macMainTab {
+			row.ChatKey = mainKey
+		}
 		if place == "mac" && !owner.MacOn {
 			row.StatusLabel = "Mac off"
 		}
