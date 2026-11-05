@@ -115,12 +115,25 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 	}
 
 	baseline := api.lastQueryRequests["local-code"]
-	for _, trigger := range []string{"code_chat", "auto_notification", "cron", "bot:slack"} {
+	// The person's own automatic turns pass the laptop check (owner, 5 Nov); turns for other people do not.
+	for _, trigger := range []string{"code_chat", "auto_notification", "cron"} {
 		changed := baseline
 		changed.TriggeredBy = trigger
 		api.lastQueryRequests["local-code"] = changed
+		if _, err := registrar.tools["execute_local_shell_command"].exec(t.Context(), map[string]interface{}{"command": "true"}); err != nil && strings.Contains(err.Error(), "interactive Builder") {
+			t.Fatalf("own %s turn refused: %v", trigger, err)
+		}
+	}
+	for name, other := range map[string]func(*QueryRequest){
+		"slack":                func(r *QueryRequest) { r.BotPlatform = "slack" },
+		"run":                  func(r *QueryRequest) { r.PinRunMode = true },
+		"other person's agent": func(r *QueryRequest) { r.AgentMessageFromOtherPerson = true },
+	} {
+		changed := baseline
+		other(&changed)
+		api.lastQueryRequests["local-code"] = changed
 		if _, err := registrar.tools["execute_local_shell_command"].exec(t.Context(), map[string]interface{}{"command": "touch unauthorized"}); err == nil || !strings.Contains(err.Error(), "interactive Builder") {
-			t.Fatalf("retained callback accepted %s: %v", trigger, err)
+			t.Fatalf("retained callback accepted %s: %v", name, err)
 		}
 	}
 	api.lastQueryRequests["local-code"] = baseline
