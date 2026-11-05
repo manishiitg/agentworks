@@ -8,6 +8,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
@@ -73,6 +74,20 @@ func (api *StreamingAPI) reconcileAcceptedNativeCompletions(sessionID, nativeID 
 	}
 }
 
+// retainedSessionIdleChecksToRelease is how many consecutive watchdog checks
+// must find the native Session without an active turn before the retained
+// mark is released.
+const retainedSessionIdleChecksToRelease = 2
+
+// lookupRetainedSession is the native Session lookup; tests replace it.
+var lookupRetainedSession = func(sessionID string) (interface{ ActiveTurnID() string }, bool) {
+	session, ok := mcpagent.LookupSession(sessionID)
+	if !ok || session == nil {
+		return nil, false
+	}
+	return session, true
+}
+
 // The SDK owns success. This backstop can only report failure, never infer an
 // answer from a quiet pane or a previous sidecar result.
 func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID string, snapshot terminals.Snapshot, startedAt time.Time) {
@@ -84,7 +99,7 @@ func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	misses := 0
+	misses, idleChecks := 0, 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -96,6 +111,18 @@ func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID
 			api.retainedMainTurnsMu.Unlock()
 			if !tracked || !owned || !current.Equal(startedAt) {
 				return
+			}
+			// The Session owns this turn's completion. When it reports no
+			// active turn and no foreground turn runs, none will ever come
+			// (a natively steered input answered inside its Run); release
+			// after two checks instead of keeping the chat running.
+			if native, ok := lookupRetainedSession(sessionID); ok && native.ActiveTurnID() == "" && !api.hasActiveTurnCancel(sessionID) {
+				if idleChecks++; idleChecks >= retainedSessionIdleChecksToRelease {
+					api.releaseStaleRetainedMainTurn(sessionID, "session_has_no_active_turn")
+					return
+				}
+			} else {
+				idleChecks = 0
 			}
 			// The main snapshot may be structured/tmux-less, or the provider may
 			// have rebound its pane since this watcher started. Only a current,

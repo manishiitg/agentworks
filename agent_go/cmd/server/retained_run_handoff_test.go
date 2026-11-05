@@ -222,3 +222,35 @@ func TestStopReleasesRetainedTurnNothingEnds(t *testing.T) {
 		t.Fatal("Stop left the retained turn open")
 	}
 }
+
+// Owner's Mac 2026-11-05 (Claude SDK): a message sent while a reply ran was
+// steered into that Run and answered by it. The Run's completion has no
+// live-input follow-up flag (native steering never produces a follow-up), so the
+// retained mark stayed forever and every next message queued behind it with
+// "no_active_session" retries. The next message must start a new turn.
+func TestRetainedSteeredRunCompletionFreesChatForNextMessage(t *testing.T) {
+	for _, missedCompletion := range []bool{false, true} {
+		t.Run(fmt.Sprint("missed-completion-", missedCompletion), func(t *testing.T) {
+			const sessionID = "sdk-steered-run"
+			api := newRunHandoffAPI(t, sessionID, "mlp-claude-sdk-steered")
+			t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
+			acceptRunHandoffInput(t, api, sessionID, "steer", "run-one")
+			if api.conversationTurnOccupiedBy(sessionID) != "retained_main_turn" {
+				t.Fatal("setup: live input should open the retained turn")
+			}
+			if missedCompletion {
+				// The CLI then reports no active turn for the next message.
+				if !api.releaseStaleRetainedMainTurn(sessionID, "no_active_session") {
+					t.Fatal("no_active_session did not release the stale retained mark")
+				}
+			} else {
+				run := canonicalRunHandoff(sessionID, "run-one")
+				delete(run.Data.Data.(*unifiedevents.UnifiedCompletionEvent).Metadata, mcpagent.LiveInputFollowupMetadataKey)
+				api.eventStore.AddEvent(sessionID, run)
+			}
+			if by := api.conversationTurnOccupiedBy(sessionID); by != "" || api.isSessionBusy(sessionID) || trackedStatus(api, "steer") != trackedExecutionStatusCompleted {
+				t.Fatalf("next message would queue behind %q (busy=%v status=%s)", by, api.isSessionBusy(sessionID), trackedStatus(api, "steer"))
+			}
+		})
+	}
+}
