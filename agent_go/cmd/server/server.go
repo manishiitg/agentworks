@@ -2263,6 +2263,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		api.observeTurnInactivity(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)
 		api.settleNativeForeground(sessionID, event)
+		api.notifyNeedsYou(sessionID, event)
 		if event.Data != nil {
 			if call, ok := unifiedevents.ToolCallRecordFromEvent(event.Data.Data); ok {
 				api.logPersonalSlackCall(context.Background(), sessionID, call.ServerName, call.ToolName, call.Status)
@@ -2805,6 +2806,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workspace-access", api.handleWorkspaceAccess).Methods("GET")
 	apiRouter.HandleFunc("/workspace-state", api.handleWorkspaceReturnState).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/chat-preferences", api.handleChatPreferences).Methods("GET", "PUT")
+	api.registerNotificationRoutes(apiRouter)
+	apiRouter.HandleFunc("/desktop/notify-stream", api.handleDesktopNotifyStream).Methods("GET") // the Mac app's own process: its person's sign-in and start secret
 	apiRouter.HandleFunc("/sessions/{session_id}/events", api.handleGetSessionEvents).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/chat-artifacts/{artifact_id}", api.handleGetChatArtifact).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/ui-control", api.handleUIControl).Methods("POST")
@@ -3211,6 +3214,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	migrateMacSharedAudiences()
 	stopTeamSync := api.startCrewTeamSync()
 	defer stopTeamSync()
+	notifyCtx, stopNotifier := context.WithCancel(context.Background())
+	defer stopNotifier()
+	api.startNotifier(notifyCtx)
 	stopDesktopCrewChats := api.startDesktopCrewChats()
 	defer stopDesktopCrewChats()
 	stopMacWaiting := api.startCrewMacWaiting()
@@ -10710,8 +10716,12 @@ func (api *StreamingAPI) updateSessionActivity(sessionID string) {
 // updateSessionStatus updates the status of an active session in memory.
 func (api *StreamingAPI) updateSessionStatus(sessionID, status string) {
 	changed, workspacePath, scheduled := false, "", false
+	previous, info := "", (*ActiveSessionInfo)(nil)
 	api.activeSessionsMux.Lock()
 	if session, exists := api.activeSessions[sessionID]; exists {
+		previous = session.Status
+		copied := *session
+		info = &copied
 		changed = session.Status != status
 		workspacePath = session.WorkspacePath
 		scheduled = liveFeedScheduledSession(sessionID, session.TriggeredBy)
@@ -10722,6 +10732,7 @@ func (api *StreamingAPI) updateSessionStatus(sessionID, status string) {
 	api.activeSessionsMux.Unlock()
 	api.observeRuntimeSnapshot(sessionID)
 	if changed {
+		api.notifyTurnEnded(sessionID, previous, status, info) // notifications.go: the server decides every send
 		publishSessionsChanged()
 		if liveFeedTerminalStatus(status) {
 			if scheduled {

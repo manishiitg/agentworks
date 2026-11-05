@@ -36,6 +36,8 @@ type desktopBootstrap struct {
 	Host       string `json:"host"`
 	AuthSecret string `json:"auth_secret"`
 	AppOrigin  string `json:"app_origin"`
+	// NotifySecret admits the Mac app's own notification stream (notifications.go).
+	NotifySecret string `json:"notify_secret,omitempty"`
 }
 
 func consumeDesktopBootstrap() desktopBootstrap {

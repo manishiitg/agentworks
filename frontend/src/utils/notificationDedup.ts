@@ -1,9 +1,8 @@
 /**
  * Notification deduplication utility.
- * Persists to localStorage so sounds/notifications don't replay on page refresh.
+ * Persists to localStorage so an answered request stays closed on page refresh.
  */
 
-const NOTIFIED_KEY = 'mcp_notified_request_ids'
 const SUBMITTED_FEEDBACK_KEY = 'mcp_submitted_feedback'
 export const HUMAN_FEEDBACK_SUBMITTED_EVENT = 'agentworks:human-feedback-submitted'
 // Entries older than 1 hour are purged
@@ -33,19 +32,6 @@ function saveMap<T>(key: string, map: Map<string, TimestampedEntry<T>>): void {
   } catch {
     // localStorage full or unavailable — ignore
   }
-}
-
-// --- Notification dedup (has this request already triggered a sound?) ---
-
-export function hasBeenNotified(requestId: string): boolean {
-  const map = loadMap<boolean>(NOTIFIED_KEY)
-  return map.has(requestId)
-}
-
-export function markNotified(requestId: string): void {
-  const map = loadMap<boolean>(NOTIFIED_KEY)
-  map.set(requestId, { value: true, ts: Date.now() })
-  saveMap(NOTIFIED_KEY, map)
 }
 
 // --- Submitted feedback marker (persisted across page reloads) ---

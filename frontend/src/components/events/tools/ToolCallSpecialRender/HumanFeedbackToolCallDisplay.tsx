@@ -1,8 +1,6 @@
 import React from 'react'
 import type { ToolCallStartEvent } from '../../../../generated/event-types'
 import { MarkdownRenderer } from '../../../ui/MarkdownRenderer'
-import { playNotificationSound } from '../../../../utils/sound'
-import { hasBeenNotified, markNotified } from '../../../../utils/notificationDedup'
 
 interface HumanFeedbackToolCallDisplayProps {
   event: ToolCallStartEvent
@@ -14,7 +12,6 @@ export const HumanFeedbackToolCallDisplay: React.FC<HumanFeedbackToolCallDisplay
   const [error, setError] = React.useState<string | null>(null)
   const [isSubmitted, setIsSubmitted] = React.useState(false)
   const [submittedFeedback, setSubmittedFeedback] = React.useState('')
-  const [notificationPermission, setNotificationPermission] = React.useState<NotificationPermission>('default')
 
   // Extract parameters from tool arguments (matches backend human_feedback tool schema)
   // Memoize to avoid re-parsing on every render (prevents cascading re-renders during streaming)
@@ -48,63 +45,6 @@ export const HumanFeedbackToolCallDisplay: React.FC<HumanFeedbackToolCallDisplay
   }, [event.tool_params?.arguments])
 
   const hasMultipleOptions = toolParams.options.length > 0
-
-  // Request notification permission on component mount
-  React.useEffect(() => {
-    if ('Notification' in window) {
-      setNotificationPermission(Notification.permission)
-
-      if (Notification.permission === 'default') {
-        Notification.requestPermission().then((permission) => {
-          setNotificationPermission(permission)
-        }).catch((error) => {
-          console.error('[HUMAN_FEEDBACK] Permission request failed:', error)
-        })
-      }
-    }
-  }, [])
-
-  // Show browser notification when component mounts (feedback request)
-  // Skip if already notified (e.g. page refresh replaying events)
-  React.useEffect(() => {
-    const uniqueId = toolParams.unique_id
-    const enabled = localStorage.getItem('mcp_notifications_enabled') !== 'false'
-    if (!enabled || (uniqueId && hasBeenNotified(uniqueId))) return
-    if (!('Notification' in window) || Notification.permission !== 'granted') return
-
-    try {
-      playNotificationSound()
-      if (uniqueId) markNotified(uniqueId)
-
-      const notification = new Notification('Human Feedback Required', {
-        body: 'A workflow is waiting for your response in AgentWorks.',
-        icon: '/logo.svg',
-        tag: `human-feedback-${uniqueId}`,
-        requireInteraction: true,
-        silent: false
-      })
-
-      notification.onclick = () => {
-        window.focus()
-        notification.close()
-      }
-
-      notification.onerror = (error) => {
-        console.error('[HUMAN_FEEDBACK] Notification error:', error)
-      }
-
-      // Auto-close notification after 30 seconds
-      setTimeout(() => {
-        notification.close()
-      }, 30000)
-
-      return () => {
-        notification.close()
-      }
-    } catch (error) {
-      console.error('[HUMAN_FEEDBACK] Failed to create notification:', error)
-    }
-  }, [toolParams.message_for_user, toolParams.unique_id])
 
   const submitFeedback = async (value: string, displayValue?: string) => {
     if (!value.trim()) return
@@ -202,25 +142,7 @@ export const HumanFeedbackToolCallDisplay: React.FC<HumanFeedbackToolCallDisplay
             )
           })
         ) : (
-          <>
-            {notificationPermission === 'granted' && (
-              <span className="text-[10px] text-indigo-500 dark:text-indigo-400">Notifications on</span>
-            )}
-            {notificationPermission === 'default' && (
-              <button
-                onClick={() => {
-                  if ('Notification' in window) {
-                    Notification.requestPermission().then((permission) => {
-                      setNotificationPermission(permission)
-                    })
-                  }
-                }}
-                className="text-[10px] text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 underline"
-              >
-                Enable notifications
-              </button>
-            )}
-          </>
+          null
         )}
       </div>
 

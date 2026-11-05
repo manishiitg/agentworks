@@ -52,6 +52,13 @@ function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, get
     // continues on its server. The connection never comes from an app URL.
     await getWindow().loadURL(getAppOrigin() + route);
   });
+  // The main process opens a chat from a notification the same way (lib/notify.js chose the route).
+  return {
+    open: async (id, route) => {
+      connection = id;
+      await getWindow()?.loadURL(getAppOrigin() + route);
+    },
+  };
 }
 // Neither child starts with signing credentials or app proof in its environment.
 // Unsetting them inside Go is too late: macOS ps can read the initial environment.
