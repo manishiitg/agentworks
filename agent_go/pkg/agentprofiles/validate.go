@@ -316,5 +316,8 @@ func RenderPrompt(profile Profile, promptContext PromptContext) (string, error) 
 	if err := parsed.Execute(&rendered, promptContext); err != nil {
 		return "", fmt.Errorf("render system prompt: %w", err)
 	}
+	if note := strings.TrimSpace(promptContext.OthersAsking); note != "" {
+		return rendered.String() + "\n\n" + note, nil
+	}
 	return rendered.String(), nil
 }

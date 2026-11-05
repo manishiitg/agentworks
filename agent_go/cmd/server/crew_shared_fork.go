@@ -21,7 +21,11 @@ import (
 // with that agent, which their turn starts from (owner, 4 Nov, decisions log: "use it for everyone").
 type crewMacSharedAsk struct {
 	Sender string
-	Owner  ProductConversationRecord
+	// SenderName is how the server named the sender; WhenOthersAsk is the owner's rule for this agent from the
+	// server's Team record. Both reach this turn's "When others ask" note (askerIsNotAgentOwner).
+	SenderName    string
+	WhenOthersAsk string
+	Owner         ProductConversationRecord
 }
 
 // forkOwnerSessionForSender gives a sender's thread a copy of the owner's own native session for that agent (the CLI's

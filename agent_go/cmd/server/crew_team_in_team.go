@@ -165,6 +165,29 @@ func crewTeamAgentKey(ctx context.Context, t crewTeam, person, key string) strin
 // errCrewTeamAgentNotYours: the agent is not one of the caller's own in this Team (or they are not in it).
 var errCrewTeamAgentNotYours = errors.New("choose one of your own agents in this Team")
 
+// crewTeamOwnAgent reads the Team (the caller holds its lock) and names one of person's own agents in it by its
+// AgentChoices key: only the agent's own person changes its settings; a server agent must be one of their chats here.
+func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTeam, string, error) {
+	t, err := readCrewTeam(project)
+	if err != nil || !t.member(person) || ownerOfCrewProjectID(project) != t.OwnerID {
+		return t, "", errCrewTeamAgentNotYours
+	}
+	stored := crewTeamAgentKey(ctx, t, person, key)
+	if stored == "" || stored == crewTeamAllMine {
+		return t, "", errCrewTeamAgentNotYours
+	}
+	if !crewTeamAgentOnMac(t, person) {
+		records, err := defaultProductConversationRegistryStore().projectChats(ctx, person, crewProfileID, project)
+		if err != nil {
+			return t, "", fmt.Errorf("your agents could not be read; try again")
+		}
+		if !slices.ContainsFunc(records, func(record ProductConversationRecord) bool { return record.ConversationKey == stored }) {
+			return t, "", errCrewTeamAgentNotYours
+		}
+	}
+	return t, stored, nil
+}
+
 // setCrewTeamAgentChoice saves the person's own In team / Only me for one of their agents, or with key "*" their own All
 // my agents in team. Only the agent's own person chooses (owner, 5 Nov: Only me is per person); a server agent must be
 // one of their chats in this Crew; a Main stays In team.

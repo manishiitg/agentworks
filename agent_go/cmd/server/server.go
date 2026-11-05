@@ -967,6 +967,9 @@ type QueryRequest struct {
 	// AgentMessageFromOtherPerson marks an agent message whose sender belongs to another person: that turn works for
 	// them, so it never gets the receiving person's laptop.
 	AgentMessageFromOtherPerson bool `json:"agent_message_from_other_person,omitempty"`
+	// AskedBy is the person behind another person's agent message (set by agent_messaging.go). It only adds the
+	// "When others ask" note to the turn (askerIsNotAgentOwner); it never changes access.
+	AskedBy string `json:"asked_by,omitempty"`
 	// Internal/system callers can force a real server-tracked turn instead of the
 	// retained coding-CLI live-input shortcut. Scheduler sequences rely on this so
 	// the next cron message waits for turn completion instead of racing a tmux

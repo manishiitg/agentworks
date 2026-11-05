@@ -40,6 +40,15 @@ export function fillAccessAskDraft(projectId: string, card: AccessAskCard): bool
   return true
 }
 
+/** The Team tab's "Ask AI to set this up" on an agent's details (owner, 5 Nov, "When others ask"): the viewer's own
+ * Main opens with the question started. False when their Main's tab is not open. */
+export function fillWhenOthersAskDraft(projectId: string, agentName: string): boolean {
+  const main = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
+  if (!main) return false
+  fillDraft(main.tabId, `Help me set what my ${agentName} agent may do when others ask: `)
+  return true
+}
+
 /** "Ask from my agent" on a teammate's agent you are watching (owner, 5 Nov, "A Team is a shared room"): your own
  * Main opens with the request started; you finish it and send it, and your agent reaches theirs at the address the
  * server gave it (the Team agents list). False when your Main's tab is not open. */

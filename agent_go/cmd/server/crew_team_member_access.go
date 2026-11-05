@@ -26,6 +26,11 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 		externalError(w, 403, "team_member_required", "Join this Crew's Team first.")
 		return
 	}
+	// The caller's own agent's "When others ask" rule and Answer only / Make changes (crew_when_others_ask.go).
+	if mux.Vars(r)["op"] == "agent-rule" {
+		handleCrewTeamAgentRule(w, r, project, claims.UserID)
+		return
+	}
 	// In team / Only me for one of the caller's own agents, the owner's included, for every Crew kind (crew_team_in_team.go).
 	if mux.Vars(r)["op"] == "agent-visibility" {
 		var in struct {

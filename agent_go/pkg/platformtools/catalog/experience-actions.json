@@ -469,6 +469,22 @@
   },
   {
     "family": "workspace",
+    "name": "team_agents",
+    "member": "crew_team_sync__agents",
+    "description": "Use the current workspace team agents operation.",
+    "source": "crew_team_sync",
+    "source_action": "agents"
+  },
+  {
+    "family": "workspace",
+    "name": "team_agent_rule",
+    "member": "crew_team_sync__agent_rule",
+    "description": "Use the current workspace team agent rule operation.",
+    "source": "crew_team_sync",
+    "source_action": "agent_rule"
+  },
+  {
+    "family": "workspace",
     "name": "rename",
     "member": "manage_project__rename",
     "description": "Use the current workspace rename operation.",

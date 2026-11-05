@@ -505,6 +505,10 @@ type PromptContext struct {
 	// value sent by the client is discarded. Templates read it as
 	// {{.Product.NAME}}.
 	Product map[string]string `json:"product,omitempty"`
+	// OthersAsking is this turn's note when someone other than the agent's own person asks it (owner, 5 Nov: "When
+	// others ask"). Only the server sets it, for one turn, never from the request body; it is added after the rendered
+	// prompt and is not part of the chat's saved instructions.
+	OthersAsking string `json:"-"`
 }
 
 // PromptVariablesProvider computes a profile's Product prompt variables for

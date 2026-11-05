@@ -26,15 +26,17 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		return nil
 	}
 	gate.Declare("team_sync")
-	return reg.RegisterCustomToolWithTimeout("team_sync", "Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. clashes lists open clashes (two people changed the same lines of a file) with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id from clashes) keeps current, puts the other back (keep=other), restores keep=revision:N, or saves your merged text (content); each change is a NEW revision every copy downloads, and the clash is closed. restore uses revision and saves it as a NEW revision. leave removes you from a joined Team; agent_visibility (agent_key, in_team) sets one of your own agents In team / Only me, or with all_in_team=true/false your own All my agents in team (Main is always In team). directory lists company people (find a person by name there, then use their user_id). configure, like the Team tab: people replaces the roster with user_id (anyone in the Team; the owner always stays); folders=[…] adds folders to share (anyone in the Team; a missing folder is made); only the Crew's owner turns the Team on or off (on=true/false; on starts with the team/ folder when nothing is shared), switches share=whole / share=folders, or stops sharing a folder. Whole Crew is everything except chats, memory, app files, node_modules/.git/caches and files that look like passwords or keys. A person added is invited and joins only when they accept; every member reads and writes the shared folder. status with project shows the Team, including what your agents use from the owner (lent). status also lists your open invites; accept or decline one with its project (your own answer, from your own chat). This shares the selected folder with those enabled people; other files stay outside the Team folder. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
-		"action":      map[string]any{"type": "string", "enum": []string{"status", "recent", "clashes", "compare", "read_revision", "resolve", "restore", "files", "read_file", "save_file", "directory", "configure", "accept", "decline", "leave", "agent_visibility"}},
-		"network":     map[string]any{"type": "string", "description": "Company name, if this Mac is connected to several companies and this project has no connection."},
-		"agent_key":   map[string]any{"type": "string"},
-		"in_team":     map[string]any{"type": "boolean"},
-		"on":          map[string]any{"type": "boolean", "description": "configure: the Team switch (the owner only)."},
-		"all_in_team": map[string]any{"type": "boolean", "description": "agent_visibility: your own All my agents in team."},
-		"project":     map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
-		"path":        map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"}, "clash_id": map[string]any{"type": "string", "description": "resolve: the clash's id from clashes."},
+	return reg.RegisterCustomToolWithTimeout("team_sync", "Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. clashes lists open clashes (two people changed the same lines of a file) with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id from clashes) keeps current, puts the other back (keep=other), restores keep=revision:N, or saves your merged text (content); each change is a NEW revision every copy downloads, and the clash is closed. restore uses revision and saves it as a NEW revision. leave removes you from a joined Team; agent_visibility (agent_key, in_team) sets one of your own agents In team / Only me, or with all_in_team=true/false your own All my agents in team (Main is always In team). agent_rule (agent_key, when_others_ask and/or can_make_changes) sets what your own agent does when someone else asks it. directory lists company people (find a person by name there, then use their user_id). configure, like the Team tab: people replaces the roster with user_id (anyone in the Team; the owner always stays); folders=[…] adds folders to share (anyone in the Team; a missing folder is made); only the Crew's owner turns the Team on or off (on=true/false; on starts with the team/ folder when nothing is shared), switches share=whole / share=folders, or stops sharing a folder. Whole Crew is everything except chats, memory, app files, node_modules/.git/caches and files that look like passwords or keys. A person added is invited and joins only when they accept; every member reads and writes the shared folder. status with project shows the Team, including what your agents use from the owner (lent). status also lists your open invites; accept or decline one with its project (your own answer, from your own chat). This shares the selected folder with those enabled people; other files stay outside the Team folder. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
+		"action":           map[string]any{"type": "string", "enum": []string{"status", "recent", "clashes", "compare", "read_revision", "resolve", "restore", "files", "read_file", "save_file", "directory", "configure", "accept", "decline", "leave", "agent_visibility", "agent_rule"}},
+		"network":          map[string]any{"type": "string", "description": "Company name, if this Mac is connected to several companies and this project has no connection."},
+		"agent_key":        map[string]any{"type": "string"},
+		"in_team":          map[string]any{"type": "boolean"},
+		"when_others_ask":  map[string]any{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "agent_rule: what your own agent may do when someone else asks it (empty clears it). An instruction, not a lock."},
+		"can_make_changes": map[string]any{"type": "boolean", "description": "agent_rule: for an agent on a Mac, false answers others only (the default), true may make changes for them."},
+		"on":               map[string]any{"type": "boolean", "description": "configure: the Team switch (the owner only)."},
+		"all_in_team":      map[string]any{"type": "boolean", "description": "agent_visibility: your own All my agents in team."},
+		"project":          map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
+		"path":             map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"}, "clash_id": map[string]any{"type": "string", "description": "resolve: the clash's id from clashes."},
 		"share": map[string]any{"type": "string", "enum": []string{"whole", "folders"}}, "folders": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		"folder": map[string]any{"type": "string", "description": "One folder; the same as share=folders folders=[folder]."}, "people": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"user_id": map[string]any{"type": "string"}}, "required": []string{"user_id"}}},
 		"keep": map[string]any{"type": "string", "description": "resolve: current, other or revision:N."}, "content": map[string]any{"type": "string", "description": "save_file: the file's text. resolve: the merged text to save instead of keep."}, "base": map[string]any{"type": "string", "description": "Last hash from files; empty for a new file."},
@@ -47,7 +49,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			return "", fmt.Errorf("Open Sync in your own project chat to use this team's folder")
 		}
 		action := externalArg(args, "action")
-		writes := action == "resolve" || action == "restore" || action == "save_file" || action == "configure" || action == "leave" || action == "agent_visibility"
+		writes := action == "resolve" || action == "restore" || action == "save_file" || action == "configure" || action == "leave" || action == "agent_visibility" || action == "agent_rule"
 		if writes && readOnly {
 			return "", fmt.Errorf("This agent can explain the clash. Ask the owner to allow it to make changes, or resolve it in your own chat")
 		}
@@ -159,6 +161,18 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 				key, in = crewTeamAllMine, all
 			}
 			body, _ = json.Marshal(map[string]any{"agent_key": key, "in_team": in})
+		case "agent_rule":
+			if sharedSender != "" {
+				return "", fmt.Errorf("Change your agent's rule in your own chat")
+			}
+			op, method = "agent-rule", http.MethodPost
+			rule := map[string]any{"agent_key": externalArg(args, "agent_key")}
+			for _, key := range []string{"when_others_ask", "can_make_changes"} {
+				if value, ok := args[key]; ok {
+					rule[key] = value
+				}
+			}
+			body, _ = json.Marshal(rule)
 		case "accept", "decline":
 			op = "invite"
 			method = http.MethodPost
@@ -229,7 +243,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			r = mux.SetURLVars(r, map[string]string{"project": project, "op": op})
 			w := httptest.NewRecorder()
 			switch op {
-			case "leave", "agent-visibility":
+			case "leave", "agent-visibility", "agent-rule":
 				api.handleCrewTeamMemberAction(w, r)
 			case "", "invite":
 				api.handleCrewTeam(w, r)

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { desktopRequest } from '../../services/desktopConnections'
 import { Button } from '../../components/ui/Button'
 
-type SharedAgent = { tab: string; audience: 'team' | ''; address?: string; can_change?: boolean; agentbridge_public?: boolean }
+type SharedAgent = { tab: string; audience: 'team' | ''; address?: string; agentbridge_public?: boolean }
 type AgentRow = { tab: string; name: string; purpose: string }
 type Placement = { location: 'publishing' | 'server' }
 
@@ -35,7 +35,7 @@ export function MacAgentBridge({ projectId, connection, crewName }: { projectId:
     const others = shared.filter(agent => agent.tab !== tab)
     // Only the Public flag changes; an agent with no people audience and no Public leaves the list.
     const mine: SharedAgent[] = publicOn || current?.audience ? [{ ...(current || { tab, audience: '' }), agentbridge_public: publicOn }] : []
-    const next = [...others, ...mine].map(({ tab, audience, can_change, agentbridge_public }) => ({ tab, audience, can_change: Boolean(can_change), agentbridge_public: Boolean(agentbridge_public) }))
+    const next = [...others, ...mine].map(({ tab, audience, agentbridge_public }) => ({ tab, audience, agentbridge_public: Boolean(agentbridge_public) }))
     setBusy(true); setError('')
     try {
       const data = await desktopRequest<{ agents: SharedAgent[] }>(endpoint, 'POST', { action: 'share_agents', agents: next })

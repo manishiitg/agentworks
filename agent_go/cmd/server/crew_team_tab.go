@@ -47,6 +47,15 @@ type crewTeamTabAgent struct {
 	StatusLabel string `json:"status_label,omitempty"`
 	// Tab is the agent's tab in its person's copy ("main" for a Mac's Main), so the Mac app finds its own tabs' rows.
 	Tab string `json:"tab"`
+	// When others ask (crew_when_others_ask.go), the row's details: what it uses (names only; the owner's own sign-ins
+	// only to the owner, marked personal), its person's rule, Answer only / Make changes (an agent on a Mac only; nil
+	// elsewhere), whether the viewer may edit them (the agent's own person), and the line the screen shows.
+	Uses           []crewTeamAgentUse `json:"uses"`
+	WhenOthersAsk  string             `json:"when_others_ask"`
+	HasRule        bool               `json:"has_rule"`
+	CanMakeChanges *bool              `json:"can_make_changes,omitempty"`
+	CanEditRule    bool               `json:"can_edit_rule"`
+	WhenOthersLine string             `json:"when_others_line"`
 }
 
 // crewTeamTabShare is one shared folder with its size as the server holds it.
@@ -170,8 +179,10 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 		person(p.UserID, note, true)
 	}
+	uses := crewTeamUses(ctx, t)
 	for _, p := range byPerson {
 		mine := p.UserID == viewer
+		onMac := crewTeamAgentOnMac(t, p.UserID)
 		for _, a := range p.Agents {
 			detail := []string{p.Name}
 			if mine {
@@ -197,6 +208,14 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			} else {
 				row.Fixed, row.Address = "In team · theirs to change", a.Address
 			}
+			rule := t.agentRule(p.UserID, crewTeamAgentKey(ctx, t, p.UserID, a.ChatKey))
+			row.Uses = crewTeamRowUses(uses, p.UserID, t.OwnerID, viewer)
+			row.WhenOthersAsk, row.HasRule, row.CanEditRule = rule.WhenOthersAsk, rule.WhenOthersAsk != "", mine
+			if onMac {
+				changes := rule.CanMakeChanges
+				row.CanMakeChanges = &changes
+			}
+			row.WhenOthersLine = crewTeamWhenOthersLine(rule, p.Name, mine)
 			out.Agents = append(out.Agents, row)
 		}
 	}

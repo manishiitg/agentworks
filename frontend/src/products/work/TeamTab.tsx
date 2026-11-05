@@ -5,7 +5,7 @@ import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
-import { fillAccessAskDraft, fillAskFromMyAgentDraft, type AccessAskCard } from '../../utils/agentPurposeDraft'
+import { fillAccessAskDraft, fillAskFromMyAgentDraft, fillWhenOthersAskDraft, type AccessAskCard } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import { activateTab } from '../../utils/activateTab'
 import { changeTeamPeople, saveTeam, switchTeam, teamAgentForTab, teamError, teamRequest, useTeamTab, type Team, type TeamTabAgent, type TeamTabShare, type TeamTabState, type TeamTabView, type TeamTarget } from './teamApi'
@@ -26,9 +26,11 @@ const askTitle = 'Ask your AI agent how to set this up'
 
 /** The small Ask pill at the top right of every Access/Team card (owner, 5 Nov): opens the viewer's own Main with the
  * card's request in its chat box, not sent. */
-export function AskButton({ projectId, card }: { projectId: string; card: AccessAskCard }) {
-  return <button type="button" title={askTitle} aria-label={askTitle} className="shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted"
-    onClick={() => { if (!fillAccessAskDraft(projectId, card)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask</button>
+export function AskButton({ projectId, card, agentName }: { projectId: string; card: AccessAskCard; agentName?: string }) {
+  // An agent's details ask about that agent's "When others ask" instead of the card's request.
+  const fill = () => agentName === undefined ? fillAccessAskDraft(projectId, card) : fillWhenOthersAskDraft(projectId, agentName)
+  return <button type="button" title={askTitle} aria-label={agentName === undefined ? askTitle : `${askTitle}: ${agentName}`} className="shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted"
+    onClick={() => { if (!fill()) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>{agentName === undefined ? 'Ask' : 'Ask AI to set this up'}</button>
 }
 
 /** One read of this Mac's Crew folder: a folder's size (path) or the Whole Crew's (whole), by the sync's own rules. */
@@ -243,6 +245,7 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
 function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; view: TeamTabView; target: TeamTarget; projectId: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [opened, setOpened] = useState('')
   // The viewer's own All my agents in team (owner, 5 Nov): it never changes anyone else's agents.
   const chooseAll = async (on: boolean) => {
     setBusy(true); setError('')
@@ -261,7 +264,11 @@ function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; v
     </div>
     {view.can_all_mine && <label className="flex items-center gap-2 text-[13px]"><span className="flex-1 font-medium">All my agents in team</span><Switch aria-label="All my agents in team" checked={view.all_in_team} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>}
     {view.can_all_mine && <p className="text-xs text-muted-foreground">Your new agents join too, unless you choose Only me. Main is always in team.</p>}
-    {view.agents.map(agent => <div key={agent.key} className="flex items-center gap-2 border-t border-border pt-2 text-[13px]">
+    {view.agents.map(agent => <div key={agent.key} className="border-t border-border pt-2">
+    <div className="flex items-center gap-2 text-[13px]">
+      <button type="button" aria-label={`${opened === agent.key ? 'Hide' : 'Show'} details for ${agent.name}`} aria-expanded={opened === agent.key} onClick={() => setOpened(opened === agent.key ? '' : agent.key)} className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground">
+        <ChevronRight className={`h-3.5 w-3.5 transition-transform ${opened === agent.key ? 'rotate-90' : ''}`} />
+      </button>
       <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b> <span className="text-muted-foreground">· {agent.detail}</span></span>
       {agent.place === 'mac' && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">Mac</span>}
       {agent.can_change
@@ -274,10 +281,59 @@ function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; v
         </div>
         : <span className="shrink-0 text-xs text-muted-foreground">{agent.fixed}</span>}
       <AgentMenu agent={agent} state={state} projectId={projectId} />
+    </div>
+    {opened === agent.key && <AgentDetails agent={agent} target={target} projectId={projectId} />}
     </div>)}
     {!view.agents.length && <p className="text-xs text-muted-foreground">No agents in the team yet.</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </section>
+}
+
+/** One agent's details (owner, 5 Nov mockup "When others ask"): what it uses, as the server lists it (the person's own
+ * sign-ins marked yours, sent only to them), and what it does when someone else asks. Its own person edits the rule
+ * and Answer only / Make changes; everyone else reads the server's summary line. */
+function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; target: TeamTarget; projectId: string }) {
+  const [rule, setRule] = useState(agent.when_others_ask || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => { setRule(agent.when_others_ask || '') }, [agent.when_others_ask])
+  const save = async (change: { when_others_ask?: string; can_make_changes?: boolean }) => {
+    setBusy(true); setError('')
+    try { await teamRequest({ project: target.project, connection: target.connection }, '/agent-rule', 'POST', { agent_key: agent.key, ...change }); window.dispatchEvent(new CustomEvent('agentworks:team-updated')) }
+    catch (e) { setError(teamError(e)) } finally { setBusy(false) }
+  }
+  const label = 'mb-1 mt-2.5 text-xs text-muted-foreground'
+  const uses = agent.uses || []
+  return <div className="mb-1 ml-7 mt-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-[13px]">
+    <div className="flex items-center gap-2">
+      <p className="flex-1 text-xs text-muted-foreground">Uses</p>
+      {agent.can_edit_rule && <AskButton projectId={projectId} card="agents" agentName={agent.name} />}
+    </div>
+    <div className="mt-1 flex flex-wrap gap-1.5">
+      {uses.map(use => <span key={`${use.kind}:${use.name}`} className="rounded-full border border-border px-2 py-px text-xs">{use.name}{use.personal ? ' · yours' : ''}</span>)}
+      {!uses.length && <span className="text-xs text-muted-foreground">No apps or secrets.</span>}
+    </div>
+    <p className={label}>{agent.can_edit_rule ? 'When someone else asks' : 'When you ask it'}</p>
+    <p className="rounded-md bg-muted/60 px-2.5 py-2 text-[12.5px] text-muted-foreground">{agent.when_others_line}</p>
+    {agent.can_edit_rule && <>
+      <p className={label}>Your extra rule (optional)</p>
+      <textarea aria-label={`${agent.name}: your extra rule when others ask`} value={rule} maxLength={1000} disabled={busy} placeholder="e.g. Only answer questions about the website project, not billing."
+        onChange={e => setRule(e.target.value)} onBlur={() => { if (rule.trim() !== (agent.when_others_ask || '')) void save({ when_others_ask: rule }) }}
+        className="min-h-[58px] w-full rounded-md border border-border bg-background px-2 py-1.5 text-[13px]" />
+      <p className="mt-1 text-xs text-muted-foreground">Added only when someone else asks. The agent follows it; it isn't a lock.</p>
+      {agent.can_make_changes !== undefined && <>
+        <p className={label}>When someone else asks, it can</p>
+        <div role="radiogroup" aria-label={`${agent.name} when someone else asks`} className="flex w-max overflow-hidden rounded-md border border-border text-xs">
+          {([[false, 'Answer only'], [true, 'Make changes']] as const).map(([value, text]) => {
+            const on = agent.can_make_changes === value
+            return <button key={text} type="button" role="radio" aria-checked={on} disabled={busy} onClick={() => { if (!on) void save({ can_make_changes: value }) }}
+              className={`px-2 py-0.5 ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{text}</button>
+          })}
+        </div>
+      </>}
+    </>}
+    {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
+  </div>
 }
 
 /** ⋯ for one agent: open its tab here, or ask it from your own agent when it is someone else's. */

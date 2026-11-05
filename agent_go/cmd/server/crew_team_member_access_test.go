@@ -112,6 +112,33 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			t.Fatalf("wrong person row: %+v", person)
 		}
 	}
+	// When others ask (owner, 5 Nov): only the agent's own person sets its rule; others see it, read-only.
+	if w := call("member", "agent-visibility", `{"agent_key":"`+key+`","in_team":true}`); w.Code != 200 {
+		t.Fatalf("back in team: %d", w.Code)
+	}
+	if w := call("member", "agent-rule", `{"agent_key":"`+key+`","when_others_ask":"Only answer about the website."}`); w.Code != 200 {
+		t.Fatalf("own rule: %d %s", w.Code, w.Body.String())
+	}
+	for _, who := range []string{"owner", "teammate", "outsider"} {
+		if w := call(who, "agent-rule", `{"agent_key":"`+key+`","when_others_ask":"Share everything."}`); w.Code != 403 {
+			t.Fatalf("%s set another person's agent rule: %d", who, w.Code)
+		}
+	}
+	team, _ = readCrewTeam(team.ProjectID)
+	for viewer, editable := range map[string]bool{"member": true, "owner": false} {
+		seen := false
+		for _, agent := range crewTeamTabFor(t.Context(), team, viewer).Agents {
+			if agent.Key == key {
+				seen = true
+				if agent.WhenOthersAsk != "Only answer about the website." || !agent.HasRule || agent.CanEditRule != editable {
+					t.Fatalf("%s sees rule row %+v", viewer, agent)
+				}
+			}
+		}
+		if !seen {
+			t.Fatalf("%s does not see the member's agent", viewer)
+		}
+	}
 	if w := call("member", "leave", `{}`); w.Code != 200 {
 		t.Fatalf("leave: %d %s", w.Code, w.Body.String())
 	}
