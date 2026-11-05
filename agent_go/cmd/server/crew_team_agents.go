@@ -19,7 +19,9 @@ type crewTeamAgent struct {
 	Name    string `json:"name"`
 	Purpose string `json:"purpose,omitempty"`
 	// Place is where it runs: "mac" (its maker's Mac) or "server" (published).
-	Place string `json:"place"`
+	Place       string `json:"place"`
+	ChatKey     string `json:"chat_key"`
+	StatusLabel string `json:"status_label,omitempty"`
 }
 
 type crewTeamAgentsPerson struct {
@@ -38,6 +40,7 @@ func crewTeamInTeam(agent macSharedAgent) bool { return !agent.Off && agent.Audi
 // from their own tabs in the server copy (they run on the server; Only me ones are left out for everyone else).
 func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTeamAgentsPerson {
 	owner := crewTeamAgentsPerson{UserID: t.OwnerID, Name: crewPersonShortName(t.OwnerID), Owner: true, You: t.OwnerID == caller, Agents: []crewTeamAgent{}}
+	onMac := crewRelayTwin(t.ProjectID)
 	if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
 		owner.MacOn = crewMacSocketFor(t.OwnerID, t.ProjectID, b.PairID) != nil
 	}
@@ -45,11 +48,15 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		if !crewTeamInTeam(agent) {
 			continue
 		}
-		place := "mac"
-		if crewPublishedTarget(t.ProjectID, agent.Tab) {
-			place = "server"
+		place := "server"
+		if onMac && !crewPublishedTarget(t.ProjectID, agent.Tab) {
+			place = "mac"
 		}
-		owner.Agents = append(owner.Agents, crewTeamAgent{Tab: agent.Tab, Name: agent.Name, Purpose: agent.Purpose, Place: place})
+		row := crewTeamAgent{Tab: agent.Tab, Name: agent.Name, Purpose: agent.Purpose, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab)}
+		if place == "mac" && !owner.MacOn {
+			row.StatusLabel = "Mac off"
+		}
+		owner.Agents = append(owner.Agents, row)
 	}
 	out := []crewTeamAgentsPerson{owner}
 	for _, p := range t.People {
@@ -85,7 +92,7 @@ func memberTeamAgents(ctx context.Context, project, member, caller string) []cre
 		if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, member) || strings.HasPrefix(tab, "root-") {
 			name = "Main"
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server"})
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey})
 	}
 	return out
 }

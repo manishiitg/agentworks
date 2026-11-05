@@ -1,4 +1,4 @@
-import { agentApi } from '../services/api'
+import api, { agentApi } from '../services/api'
 import { buildWorkflowPresetsFromManifests, useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
@@ -39,7 +39,18 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
       loadSharedWorkSessions(product),
     ])
     const item = [...owned, ...shared].find(item => item.id === route.id)
-    if (!item) throw new ProductUnavailable()
+    if (!item) {
+      // The server gives a plain, non-identifying reason. Missing inventory is
+      // not a browser-side decision about membership or why it was removed.
+      try {
+        await api.get(`/api/crew-teams/${encodeURIComponent(route.id)}`, { signal, skipSessionContext: true })
+      } catch (error) {
+        const detail = (error as { response?: { data?: { error?: { code?: string; message?: string } } } })?.response?.data?.error
+        if (detail?.code === 'team_forbidden' && detail.message) throw new ProductUnavailable(detail.message)
+        throw error
+      }
+      throw new ProductUnavailable()
+    }
     const { normalizeWorkWorkspaceView, SHARED_CREW_WORKSPACE_PANELS } = await import('../products/work/WorkSurface')
     // An unknown or not-allowed view name falls back to the product default
     // instead of making the whole project link "not available".

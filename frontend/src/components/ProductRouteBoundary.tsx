@@ -23,7 +23,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
   const [attempt, setAttempt] = useState(0)
   const permissionKey = allowedProducts == null ? 'unrestricted' : JSON.stringify([...allowedProducts].map(value => value.toLowerCase()).sort())
   const activeResolution = useRef<AbortController | null>(null)
-  const [resolution, setResolution] = useState<{ location: string; account?: string; status: Status; attempt: number; permissionKey: string; workspace?: string }>({ location: '', status: 'loading', attempt: 0, permissionKey: '' })
+  const [resolution, setResolution] = useState<{ location: string; account?: string; status: Status; attempt: number; permissionKey: string; workspace?: string; message?: string }>({ location: '', status: 'loading', attempt: 0, permissionKey: '' })
   const status = resolution.location === location && resolution.account === account && resolution.workspace === workspace && resolution.attempt === attempt && resolution.permissionKey === permissionKey ? resolution.status : 'loading'
   useLayoutEffect(() => {
     const onPop = () => {
@@ -44,7 +44,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
   useEffect(() => {
     const controller = new AbortController()
     activeResolution.current = controller
-    const finish = (status: Status) => { if (!controller.signal.aborted) setResolution({ location, account, workspace, status, attempt, permissionKey }) }
+    const finish = (status: Status, message?: string) => { if (!controller.signal.aborted) setResolution({ location, account, workspace, status, attempt, permissionKey, message }) }
     const settings = workspaceSettingsPage()
     if (settings) {
       syncWorkspaceSettings(settings)
@@ -145,7 +145,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         })
         return
       }
-      finish(error instanceof ProductUnavailable || code === 403 || code === 404 ? 'unavailable' : 'error')
+      finish(error instanceof ProductUnavailable || code === 403 || code === 404 ? 'unavailable' : 'error', error instanceof ProductUnavailable ? error.message : undefined)
     })
     return () => { controller.abort(); cancelPendingWorkflowNavigation() }
   }, [location, account, workspace, permissionKey, attempt])
@@ -153,6 +153,6 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     if (!['agentworks', 'relays', 'work', 'code'].includes(route.surface)) queueWorkspaceState({ surface: route.surface, view: route.view })
   }) : undefined, [status, location, account])
   if (status === 'ready') return <>{children}</>
-  const text = status === 'loading' ? 'Opening link…' : status === 'disabled' ? 'This product is not enabled on this server.' : status === 'error' ? 'Could not open this link. Please try again.' : 'This item is not available. You may not have access.'
+  const text = status === 'loading' ? 'Opening link…' : status === 'disabled' ? 'This product is not enabled on this server.' : status === 'error' ? 'Could not open this link. Please try again.' : resolution.message || 'This item is not available. You may not have access.'
   return <main className="grid min-h-screen place-items-center p-6"><div className="max-w-md space-y-4 text-center"><p role={status === 'loading' ? 'status' : 'alert'}>{text}</p>{status !== 'loading' && <div className="flex justify-center gap-4"><a className="underline" href="/">Return to workspace</a>{status === 'error' && <button className="underline" onClick={() => { activeResolution.current?.abort(); setAttempt(value => value + 1) }}>Retry</button>}</div>}</div></main>
 }

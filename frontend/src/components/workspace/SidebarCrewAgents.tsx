@@ -6,7 +6,7 @@ import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 import { OPEN_TEAM_BOARD_EVENT } from '../chat/ProjectWorkspaceTitle'
-import { teamRequest, useProjectTeam } from '../../products/work/teamApi'
+import { teamAgentStatus, useTeamAgents } from '../../products/work/useTeamAgents'
 
 // The phone drawer closes once something is opened from it.
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
@@ -14,24 +14,6 @@ const openTeamBoard = (projectId: string) => { window.dispatchEvent(new CustomEv
 const openAgent = (tabId: string) => { activateTab(tabId); closeDrawer() }
 
 const personKey = (name: string) => name.trim().toLowerCase().split('@')[0]
-
-/** The Team's joined people other than you, by name (owner, 5 Nov: every member stays visible to the others, also
- * when their Main is Only me). Read from the Team's agents list, which the server gives only to members. */
-function useTeamPeopleNames(projectId: string): string[] {
-  const { team, target } = useProjectTeam(projectId)
-  const [names, setNames] = useState<string[]>([])
-  useEffect(() => {
-    setNames([])
-    if (!team?.on || !target) return
-    let live = true
-    const load = () => void teamRequest<{ people?: { name: string; you?: boolean }[] }>({ project: target.project, connection: target.connection }, '/agents')
-      .then(data => { if (live) setNames((data.people || []).filter(person => !person.you && person.name).map(person => person.name)) }).catch(() => {})
-    load()
-    const timer = window.setInterval(load, 30000)
-    return () => { live = false; window.clearInterval(timer) }
-  }, [team?.on, target?.project, target?.connection])
-  return names
-}
 
 /** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its
  * name (no icon, owner 5 Nov) and a mark at the end only when needed, the agent card on hover, and "…" to manage it. "+" is in the top line. */
@@ -41,14 +23,16 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const activeTabId = useChatStore(state => state.activeTabId)
   const [showHidden, setShowHidden] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
-  const teamPeople = useTeamPeopleNames(projectId)
+  const peopleStatus = useTeamAgents(projectId)
+  const tabs = useChatStore(state => state.chatTabs)
+  const teamPeople = peopleStatus.filter(person => !person.you).map(person => person.name)
   // Every agent is listed, the open one highlighted, so the menu matches the top line (owner, 4 Nov: "show that on left also").
   const total = crew.agents.length + crew.closed.length
   if (view === 'tabs' || crew.projectId !== projectId || !crew.agents.length) return null
   // Hidden agents (unpinned, as on the tab bar) sit at the end; the open one always stays in view.
   const shown = crew.agents.filter(agent => agent.pinned !== false || agent.tabId === activeTabId)
   const hidden = crew.agents.filter(agent => agent.pinned === false && agent.tabId !== activeTabId)
-  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} />
+  const row = (agent: CrewAgentRow) => <AgentRow key={agent.tabId} agent={agent} status={teamAgentStatus(peopleStatus, tabs[agent.tabId]?.metadata?.agentProfileTabOwnerID, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)} active={agent.tabId === activeTabId} dragging={dragging} onDrag={setDragging} />
   // A shared room (owner, 5 Nov): with other people's agents here, the list is grouped by person, yours under "You".
   const people = [...new Set(shown.map(agent => agent.owner || ''))]
   // A Team member with nothing shared here still has a heading, so the team sees who is in it.
@@ -73,7 +57,7 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   </div>
 }
 
-function AgentRow({ agent, active, dragging, onDrag }: { agent: CrewAgentRow; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
+function AgentRow({ agent, status, active, dragging, onDrag }: { agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
   const [menu, setMenu] = useState(false)
   const [over, setOver] = useState(false)
@@ -97,6 +81,7 @@ function AgentRow({ agent, active, dragging, onDrag }: { agent: CrewAgentRow; ac
         className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         <span className="min-w-0 truncate">{agent.name}</span>
         <AgentSharedMark shared={agent.info?.sharedWith} />
+        {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}
         {agent.owner && <Eye role="img" aria-label="Watching: only its owner types here" className="h-3 w-3 shrink-0 text-muted-foreground" />}
         <span className="flex-1" />
         {agent.shortcut && <span className="hidden shrink-0 text-[10px] text-muted-foreground group-hover:inline">{AGENT_KEY}{agent.shortcut}</span>}

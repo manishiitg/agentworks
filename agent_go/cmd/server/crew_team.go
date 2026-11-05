@@ -300,7 +300,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			e = nil
 		}
 		if e != nil || !t.member(claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
-			externalError(w, 403, "team_forbidden", "This team is not shared with you. Ask its owner to add you.")
+			externalError(w, 403, "team_forbidden", "This Crew isn't shared with you right now. Ask its owner to add you to its Team.")
 			return
 		}
 		// Exclude disabled/deleted members from all live audience resolutions.
