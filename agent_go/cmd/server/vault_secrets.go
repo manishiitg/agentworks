@@ -290,16 +290,7 @@ func (api *StreamingAPI) handleVaultSecretAccess(w http.ResponseWriter, r *http.
 // must use the same server-resolved workspace and encrypted project store,
 // rather than treating the browser's empty decrypted list as authoritative.
 func (api *StreamingAPI) validateQuerySecretSelection(ctx context.Context, userID string, req QueryRequest) error {
-	// Crew owners build with the project's selected credentials, including
-	// when their own personal Vault grants differ. Other callers retain their
-	// existing admission identity; project access is checked by the turn.
-	if isCrewProjectPath(req.SelectedFolder) && crewProjectOwnedByCaller(userID, req.SelectedFolder) {
-		owner := api.projectSecretsOwner(userID, req.SelectedFolder)
-		if owner != userID {
-			log.Printf("[CREW_SECRETS] actor=%s owner=%s surface=chat", userID, owner)
-		}
-		userID = owner
-	}
+	userID = api.crewSecretsPerson(userID, req.SelectedFolder, "chat")
 	scoped := req.DecryptedSecrets
 	if (req.AgentMode == "workflow" || req.AgentMode == "workflow_phase") && req.SelectedGlobalSecrets != nil && len(*req.SelectedGlobalSecrets) > 0 {
 		workspace := req.SelectedFolder
@@ -363,6 +354,20 @@ func validateVaultSecretSelection(ctx context.Context, userID string, scoped []s
 		}
 	}
 	return nil
+}
+
+// crewSecretsPerson is whose Vault grants admit a turn's selected secrets and apps: the Crew's owner for the owner and
+// its co-owners (a Team's joined members too, owner 5 Nov), who build with the project's selected credentials even when
+// their own Vault grants differ. Other callers keep their own admission; project access is checked by the turn.
+func (api *StreamingAPI) crewSecretsPerson(userID, root, surface string) string {
+	if !isCrewProjectPath(root) || !crewProjectOwnedByCaller(userID, root) {
+		return userID
+	}
+	owner := api.projectSecretsOwner(userID, root)
+	if owner != userID {
+		log.Printf("[CREW_SECRETS] actor=%s owner=%s surface=%s", userID, owner, surface)
+	}
+	return owner
 }
 
 // projectSecretsOwner is the person whose Vault a project's selected secrets come from: the Crew's owner, for everyone

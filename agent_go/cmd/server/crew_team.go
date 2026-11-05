@@ -128,6 +128,8 @@ type crewTeam struct {
 	OwnerName    string           `json:"owner_name,omitempty"`
 	CanManage    bool             `json:"can_manage"`
 	FolderAccess bool             `json:"folder_access"`
+	// Lent is what the owner lends the Team's agents in this Crew (names only, from the server, never saved).
+	Lent *crewTeamLent `json:"lent,omitempty"`
 }
 
 func crewTeamDir(project string) (string, error) {
@@ -165,6 +167,7 @@ func writeCrewTeam(t crewTeam) error {
 		return err
 	}
 	t.ServerData = nil
+	t.Lent = nil
 	t.CanManage = false
 	t.FolderAccess = false
 	t.OwnerName = ""
@@ -305,7 +308,9 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		}
 		// Exclude disabled/deleted members from all live audience resolutions.
 		t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) })
-		externalJSON(w, t.view(claims.UserID))
+		view := t.view(claims.UserID)
+		view.Lent = crewTeamLentNow(r.Context(), t)
+		externalJSON(w, view)
 		return
 	}
 	if mux.Vars(r)["op"] == "invite" {
@@ -407,6 +412,42 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	}
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t people=%d revision=%d", project, owner, input.On, len(input.People), input.Revision)
 	externalJSON(w, input.view(owner))
+}
+
+// crewTeamLent names what a Team's agents use of the owner's in this Crew (owner, 5 Nov: "my work can depend on mcps
+// and secrets I use"): the owner's server Vault apps in use here and the Crew's selected secrets. A member's turn in the
+// Crew gets them from the owner (crewSecretsPerson, projectSecretsOwner); values never leave Vault.
+type crewTeamLent struct {
+	Apps    []string `json:"apps"`
+	Secrets []string `json:"secrets"`
+}
+
+func crewTeamLentNow(ctx context.Context, t crewTeam) *crewTeamLent {
+	root := crewProjectRootByID(t.ProjectID)
+	if IsLocalMode() || !t.On || root == "" {
+		return nil
+	}
+	out := &crewTeamLent{Apps: []string{}, Secrets: []string{}}
+	if servers, err := vaultServersFor(ctx, t.OwnerID); err == nil {
+		selected, chosenOnly, _ := projectAppSelection(ctx, root)
+		for _, server := range servers {
+			if projectVaultAppInUse(selected, chosenOnly, server.ID) {
+				out.Apps = append(out.Apps, firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID)))
+			}
+		}
+	}
+	if names, _, err := productSelectedSecrets(ctx, crewProfileID, root); err == nil {
+		out.Secrets = append(out.Secrets, names...)
+	}
+	if names, err := productSelectedGlobalSecrets(ctx, crewProfileID, root); err == nil && names != nil {
+		for _, name := range *names {
+			out.Secrets = append(out.Secrets, vaultSecretShortName(name))
+		}
+	}
+	slices.Sort(out.Apps)
+	slices.Sort(out.Secrets)
+	out.Apps, out.Secrets = slices.Compact(out.Apps), slices.Compact(out.Secrets)
+	return out
 }
 
 // answerCrewTeamInvite is the invited person's own answer: accept makes them a member, decline takes them off the roster.
