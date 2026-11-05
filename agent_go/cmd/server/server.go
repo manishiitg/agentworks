@@ -10050,6 +10050,68 @@ func completionMetadataString(event events.Event, key string) string {
 	return value
 }
 
+// retainedSteeredRunCompletion reports whether event is the Session.Run
+// completion that answered a natively steered live input (SDK/app-server/ACP
+// transports). Those inputs join the running turn, so no follow-up completion
+// ever comes: unlike the tmux shape it has no live_input_followup flag. Only
+// the exact accepted turn ID may settle (Mac 2026-11-05: Claude SDK steer kept
+// the chat "running" forever after its Run answered it).
+func retainedSteeredRunCompletion(event events.Event, expected retainedTurnIdentity) bool {
+	return expected.ID != "" && completionMetadataFlag(event, "canonical_turn_completion") &&
+		!completionMetadataFlag(event, mcpagent.LiveInputFollowupMetadataKey) &&
+		!retainedSessionCompletion(event) && expected.matchesCompletion(event)
+}
+
+// releaseStaleRetainedMainTurn ends a retained main turn that nothing can
+// settle any more: the native Session has no active turn and no foreground
+// turn runs, so no completion will arrive. Its inputs were answered by the
+// previous reply (or never started); the chat returns to idle and queued
+// messages run. Returns whether a mark was released.
+func (api *StreamingAPI) releaseStaleRetainedMainTurn(sessionID, reason string) bool {
+	if api == nil || api.hasActiveTurnCancel(sessionID) {
+		return false
+	}
+	if retained, ok := lookupRetainedSession(sessionID); ok && retained.ActiveTurnID() != "" {
+		return false
+	}
+	api.retainedMainTurnsMu.Lock()
+	if _, tracked := api.retainedMainTurns[sessionID]; !tracked {
+		api.retainedMainTurnsMu.Unlock()
+		return false
+	}
+	watchCancel := api.retainedMainTurnWatchCancels[sessionID]
+	executionIDs := append([]string{api.retainedMainTurnExecutionIDs[sessionID]}, api.retainedMainTurnPendingExecutionIDs[sessionID]...)
+	for _, id := range executionIDs {
+		delete(api.retainedMainTurnCanonicalIDs, id)
+	}
+	delete(api.retainedMainTurns, sessionID)
+	delete(api.retainedMainTurnExecutionIDs, sessionID)
+	delete(api.retainedMainTurnPendingExecutionIDs, sessionID)
+	delete(api.retainedMainTurnWatchCancels, sessionID)
+	delete(api.retainedMainTurnCompletionEmitted, sessionID)
+	api.retainedMainTurnsMu.Unlock()
+	if watchCancel != nil {
+		watchCancel()
+	}
+	for _, id := range executionIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			api.completeTrackedExecution(id, trackedExecutionStatusCompleted, "", nil)
+		}
+	}
+	if api.terminalStore != nil {
+		for _, snapshot := range api.terminalStore.ListRaw(sessionID) {
+			if codingAgentSnapshotIsMainAgent(snapshot) {
+				api.terminalStore.MarkTurnCompleted(snapshot.TerminalID)
+			}
+		}
+	}
+	api.setSessionBusy(sessionID, false)
+	api.updateSessionStatus(sessionID, "completed")
+	log.Printf("[RETAINED_TURN] Released stale retained turn session=%s reason=%s inputs=%d", sessionID, reason, len(executionIDs))
+	api.kickConversationTurnQueue(sessionID)
+	return true
+}
+
 // retainedMainTurnTracked reports whether a retained main-agent turn is open.
 func (api *StreamingAPI) retainedMainTurnTracked(sessionID string) bool {
 	if api == nil {
@@ -10112,7 +10174,8 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		return
 	}
 	handoff := nativeKnown && retainedRunHandoff(event, expectedNativeID)
-	if nativeKnown && !retainedSessionCompletion(event) && !handoff {
+	steeredRun := nativeKnown && retainedSteeredRunCompletion(event, expectedNativeID)
+	if nativeKnown && !retainedSessionCompletion(event) && !handoff && !steeredRun {
 		return
 	}
 	if nativeID := retainedCompletionTurnID(event); retainedSessionCompletion(event) && nativeKnown && !handoff && !expectedNativeID.matchesCompletion(event) && completionMetadataString(event, "source") != "retained_session_watchdog" {
@@ -10147,7 +10210,7 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		// AgentWorks terminal identity to attach to it. Resolve the main terminal
 		// from the already-tracked owner session only for the explicit Session
 		// completion source. This keeps child completions from settling the turn.
-		if !mcpAgentSessionCompletion(event) {
+		if !mcpAgentSessionCompletion(event) && !steeredRun {
 			return
 		}
 		ok = false
@@ -10182,11 +10245,11 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		}
 		watchCancel = api.retainedMainTurnWatchCancels[sessionID]
 		pending := api.retainedMainTurnPendingExecutionIDs[sessionID]
-		if _, known := api.retainedMainTurnCanonicalIDs[executionID]; known && !retainedSessionCompletion(event) {
+		if _, known := api.retainedMainTurnCanonicalIDs[executionID]; known && !retainedSessionCompletion(event) && !steeredRun {
 			api.retainedMainTurnsMu.Unlock()
 			return
 		}
-		if retainedSessionCompletion(event) {
+		if retainedSessionCompletion(event) || steeredRun {
 			if nativeID := retainedCompletionTurnID(event); nativeID != "" {
 				if expected, known := api.retainedMainTurnCanonicalIDs[executionID]; known && !expected.matchesCompletion(event) && completionMetadataString(event, "source") != "retained_session_watchdog" {
 					api.retainedMainTurnsMu.Unlock()
@@ -10306,7 +10369,9 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	// the chat's only source: the CLI's own transcript is never merged back in
 	// (PLAT-525). A follow-up answered by the previous response carries no text of
 	// its own; that response is already persisted.
-	if !completionMetadataFlag(event, mcpagent.AnsweredByPreviousResponseMetadataKey) &&
+	// A natively steered input was answered inside the foreground Run, which
+	// saves that reply itself.
+	if !steeredRun && !completionMetadataFlag(event, mcpagent.AnsweredByPreviousResponseMetadataKey) &&
 		!api.persistRetainedStructuredCompletion(sessionID, event) {
 		log.Printf("[CHAT_HISTORY] Retained turn completion carried no final reply to save session=%s event=%s", sessionID, event.ID)
 	}
@@ -11571,6 +11636,9 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			if err != nil {
 				if liveInputErrorProvesNoTarget(err) {
 					api.recoverUnsentLiveInput(sessionID, err, recovered)
+					// The CLI has no turn, so a retained mark left by earlier live
+					// input can never settle; it would queue this message forever.
+					api.releaseStaleRetainedMainTurn(sessionID, "no_active_session")
 					log.Printf("[QUERY->LIVE] No live target for session %s; starting a new turn: %v", sessionID, err)
 					return false
 				}
