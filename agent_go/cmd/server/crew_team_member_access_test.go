@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // PLAT-856: a member's Access page must never expose owner computer settings;
@@ -27,7 +28,9 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	store := defaultProductConversationRegistryStore()
 	key := "member-access:chat:own"
-	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): {ProfileID: crewProfileID, ConversationKey: key, SessionID: "member-session"}}}
+	memberMain := crewOwnerDefaultChatKey("member-access", "member")
+	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): {ProfileID: crewProfileID, ConversationKey: key, SessionID: "member-session"},
+		productConversationRegistryEntryKey(crewProfileID, memberMain): {ProfileID: crewProfileID, ConversationKey: memberMain, SessionID: "member-main-session"}}}
 	if err := store.writeDocument(t.Context(), productConversationRegistryPath("member"), doc); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +103,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			if !agent.CanChange || agent.InTeam {
 				t.Fatalf("own agent row: %+v", agent)
 			}
-		} else if agent.CanChange || agent.Fixed == "" || agent.AgentBridge != nil || agent.CanSetPurpose {
+		} else if agent.OwnerID != "member" && (agent.CanChange || agent.Fixed == "" || agent.AgentBridge != nil || agent.CanSetPurpose) {
 			t.Fatalf("member can change another person's agent: %+v", agent)
 		}
 	}
@@ -138,6 +141,37 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 		if !seen {
 			t.Fatalf("%s does not see the member's agent", viewer)
 		}
+	}
+	// Showcase, 6 Nov: on a Mac Crew's online copy every "When others ask" save was 403 agent_not_yours, the owner's
+	// Mac agents and a member's Main alike, although the Team tab offered the edit. What the tab lets a person edit,
+	// that person saves; everyone else's agents stay refused.
+	if err := crewroot.WriteSync(team.ProjectID, crewroot.SyncBinding{Side: "server", Editing: "local", Mode: "relay", PairID: "pair", PeerProjectID: "mac-copy"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMacSharedAgents(team.ProjectID, []macSharedAgent{{Tab: macMainTab, Name: "Main", Audience: "team"}, {Tab: "e139c703", Name: "Helper", Audience: "team"}}); err != nil {
+		t.Fatal(err)
+	}
+	team, _ = readCrewTeam(team.ProjectID)
+	for _, who := range []string{"owner", "member"} {
+		editable := 0
+		for _, agent := range crewTeamTabFor(t.Context(), team, who).Agents {
+			w := call(who, "agent-rule", `{"agent_key":"`+agent.Key+`","when_others_ask":"Ask me first."}`)
+			if agent.CanEditRule {
+				editable++
+				if w.Code != 200 {
+					t.Fatalf("%s could not save the rule the tab offers for %q: %d %s", who, agent.Key, w.Code, w.Body.String())
+				}
+			} else if w.Code != 403 {
+				t.Fatalf("%s saved the rule of someone else's agent %q: %d", who, agent.Key, w.Code)
+			}
+		}
+		if editable < 2 { // the owner's Mac Main and Helper; the member's Main and own agent
+			t.Fatalf("%s edits %d of their agents", who, editable)
+		}
+	}
+	saved, _ := readCrewTeam(team.ProjectID)
+	if saved.agentRule("owner", "e139c703").WhenOthersAsk != "Ask me first." || saved.agentRule("member", memberMain).WhenOthersAsk != "Ask me first." {
+		t.Fatalf("rules not kept: %+v", saved.AgentRules)
 	}
 	if w := call("member", "leave", `{}`); w.Code != 200 {
 		t.Fatalf("leave: %d %s", w.Code, w.Body.String())

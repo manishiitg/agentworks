@@ -121,7 +121,7 @@ func CheckSyncWrite(docs, physical string) error {
 	if err != nil || !locked {
 		return err
 	}
-	if Within(roots.Private, physical) || roots.syncRuntimePath(physical) {
+	if Within(roots.Private, physical) || roots.syncRuntimePath(physical) || roots.teamCopyPath(physical) {
 		return nil
 	}
 	return fmt.Errorf("this Crew is moving online; open its online copy when the move finishes")
@@ -152,7 +152,7 @@ func SyncWriteGrants(docs string, writes []string) []string {
 			if e != nil {
 				continue
 			}
-			if locked && !Within(roots.Private, physical) && !roots.syncRuntimePath(physical) {
+			if locked && !Within(roots.Private, physical) && !roots.syncRuntimePath(physical) && !roots.teamCopyPath(physical) {
 				if physical == roots.Resources {
 					for _, runtime := range SyncRuntimeDirectories {
 						ensureRuntimeDirectory(filepath.Join(roots.Resources, runtime))
@@ -230,6 +230,23 @@ func TeamCopyHidden(entry, listing, user string) bool {
 	return !inside(entry) || !inside(listing)
 }
 
+// TeamSetupFile is the Team's copy of the Crew setup (crew_team_setup.go) at the top of the Crew and of each member's
+// copy. Team sync keeps it; the setup is edited in its normal places, so a Files listing never shows it.
+const TeamSetupFile = "team-setup.json"
+
+// TeamSetupHidden: entry (a workspace path) is the Team setup file at a Crew's top or at the top of a member's copy.
+func TeamSetupHidden(entry string) bool {
+	parts := strings.Split(strings.Trim(filepath.ToSlash(entry), "/"), "/")
+	if len(parts) < 3 || !strings.EqualFold(parts[0], "Crew") || parts[len(parts)-1] != TeamSetupFile {
+		return false
+	}
+	rest := parts[2:]
+	if rest[0] == FilesSegment {
+		rest = rest[1:]
+	}
+	return len(rest) == 1 || len(rest) == 3 && rest[0] == TeamCopiesFolder
+}
+
 // ensureRuntimeDirectory makes a runtime folder before it is granted: a relay copy of a Mac Crew has never run here, so
 // its db/, assets/… did not exist, and the slot launcher made each missing write grant as an empty file, which then
 // showed as unopenable files in Files (Showcase, 5 Nov). An empty file left that way becomes the folder again.
@@ -241,6 +258,12 @@ func ensureRuntimeDirectory(dir string) {
 }
 
 var SyncRuntimeDirectories = []string{"db", "assets", "reports", "tool_output_folder", ".calls", "shared", "outputs"}
+
+// teamCopyPath: members' copies (team-copies/<member>/) are synced by Team sync, never by crew sync, so the Crew's
+// editing location does not lock them; a member writes their own copy while the owner's Mac edits the Crew.
+func (r Roots) teamCopyPath(physical string) bool {
+	return r.Files != "" && Within(filepath.Join(r.Files, TeamCopiesFolder), physical)
+}
 
 func (r Roots) syncRuntimePath(physical string) bool {
 	for _, name := range SyncRuntimeDirectories {

@@ -250,7 +250,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			} else {
 				row.Fixed, row.Address = "In team · theirs to change", a.Address
 			}
-			rule := t.agentRule(p.UserID, crewTeamAgentKey(ctx, t, p.UserID, a.ChatKey))
+			rule := t.agentRule(p.UserID, crewTeamRuleKey(ctx, t, p.UserID, a.ChatKey))
 			row.Uses = crewTeamRowUses(uses, p.UserID, t.OwnerID, viewer)
 			row.WhenOthersAsk, row.HasRule, row.CanEditRule = rule.WhenOthersAsk, rule.WhenOthersAsk != "", mine
 			if onMac {
@@ -363,7 +363,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 	name := crewPersonShortName(t.OwnerID)
 	out := []crewTeamTabAgent{}
 	for _, a := range agents {
-		rule := t.agentRule(t.OwnerID, crewTeamAgentKey(ctx, t, t.OwnerID, a.ChatKey))
+		rule := t.agentRule(t.OwnerID, crewTeamRuleKey(ctx, t, t.OwnerID, a.ChatKey))
 		row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: "you", Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Place: a.Place, Tab: a.Tab,
 			Uses: []crewTeamAgentUse{}, WhenOthersAsk: rule.WhenOthersAsk, HasRule: rule.WhenOthersAsk != "", CanEditRule: true,
 			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, CanSetPurpose: true,

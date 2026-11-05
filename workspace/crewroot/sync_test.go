@@ -51,6 +51,23 @@ func TestSourceLockedCrewGrantsRuntimeFoldersAsFolders(t *testing.T) {
 			t.Fatalf("runtime grant %s is not a folder: %v", runtime, err)
 		}
 	}
+	// Showcase, 6 Nov: a member saving their own copy through Files got 409 "moving online". Team sync owns
+	// team-copies/, so the Mac editing lock leaves it writable; the rest of the Crew folder stays locked.
+	if err = os.MkdirAll(filepath.Join(root, TeamCopiesFolder, "member"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for virtual, allowed := range map[string]bool{"Crew/example/" + TeamCopiesFolder + "/member/merge.txt": true, "Crew/example/notes.md": false} {
+		physical, found, err := Resolve(docs, virtual)
+		if err != nil || !found {
+			t.Fatalf("resolve %s: %v %v", virtual, found, err)
+		}
+		if err = CheckSyncWrite(docs, physical); (err == nil) != allowed {
+			t.Fatalf("write %s while the Mac edits: %v", virtual, err)
+		}
+	}
+	if grants := SyncWriteGrants(docs, []string{"Crew/example/" + TeamCopiesFolder + "/member/"}); len(grants) != 1 {
+		t.Fatalf("member copy grant dropped: %v", grants)
+	}
 }
 
 // PLAT-856-509: a member's copy folder is named by the path-safe form of their id (team-copies/<sanitized id>), but

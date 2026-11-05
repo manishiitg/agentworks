@@ -165,27 +165,58 @@ func crewTeamAgentKey(ctx context.Context, t crewTeam, person, key string) strin
 // errCrewTeamAgentNotYours: the agent is not one of the caller's own in this Team (or they are not in it).
 var errCrewTeamAgentNotYours = errors.New("choose one of your own agents in this Team")
 
-// crewTeamOwnAgent reads the Team (the caller holds its lock) and names one of person's own agents in it by its
-// AgentChoices key: only the agent's own person changes its settings; a server agent must be one of their chats here.
+// crewTeamRuleKey is where the rule of a Team tab row (by its key) is kept: the agent's AgentChoices key, else the
+// row's own key. The tab reads it and the rule endpoint saves it through this one function.
+func crewTeamRuleKey(ctx context.Context, t crewTeam, person, rowKey string) string {
+	if stored := crewTeamAgentKey(ctx, t, person, rowKey); stored != "" {
+		return stored
+	}
+	return rowKey
+}
+
+// crewTeamOwnRowKeys are the keys of person's own agents exactly as their Team tab lists them (crewTeamTabFor).
+func crewTeamOwnRowKeys(ctx context.Context, t crewTeam, person string) []string {
+	var keys []string
+	if !t.On {
+		if person == t.OwnerID {
+			for _, row := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(ctx, t)) {
+				keys = append(keys, row.Key)
+			}
+		}
+		return keys
+	}
+	for _, p := range teamAgentsByPerson(ctx, t, person) {
+		if p.UserID == person {
+			for _, a := range p.Agents {
+				keys = append(keys, a.ChatKey)
+			}
+		}
+	}
+	return keys
+}
+
+// crewTeamOwnAgent reads the Team (the caller holds its lock) and names one of person's own agents in it by the key
+// its rule is kept under. Only the agent's own person changes its settings, and every agent their Team tab offers
+// them to edit is found here from the same rows (Showcase, 6 Nov: a Mac Crew's online copy refused every rule save,
+// the owner's Mac agents and a member's Main alike, while the tab offered the edit). A chat key or Mac tab naming the
+// same agent as a row (the agent's own chat) is accepted too.
 func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTeam, string, error) {
 	t, err := readCrewTeam(project)
 	if err != nil || !t.member(person) || ownerOfCrewProjectID(project) != t.OwnerID {
 		return t, "", errCrewTeamAgentNotYours
 	}
-	stored := crewTeamAgentKey(ctx, t, person, key)
-	if stored == "" || stored == crewTeamAllMine {
+	key = strings.TrimSpace(key)
+	if key == "" || key == crewTeamAllMine {
 		return t, "", errCrewTeamAgentNotYours
 	}
-	if !crewTeamAgentOnMac(t, person) {
-		records, err := defaultProductConversationRegistryStore().projectChats(ctx, person, crewProfileID, project)
-		if err != nil {
-			return t, "", fmt.Errorf("your agents could not be read; try again")
-		}
-		if !slices.ContainsFunc(records, func(record ProductConversationRecord) bool { return record.ConversationKey == stored }) {
-			return t, "", errCrewTeamAgentNotYours
+	asked := crewTeamAgentKey(ctx, t, person, key)
+	for _, row := range crewTeamOwnRowKeys(ctx, t, person) {
+		if row == key || asked != "" && crewTeamAgentKey(ctx, t, person, row) == asked {
+			return t, crewTeamRuleKey(ctx, t, person, row), nil
 		}
 	}
-	return t, stored, nil
+	log.Printf("[CREW_TEAM] project=%s event=agent_rule_refused user=%s agent=%q on_mac=%t", project, logUsernameForUserID(person), key, crewTeamAgentOnMac(t, person))
+	return t, "", errCrewTeamAgentNotYours
 }
 
 // setCrewTeamAgentChoice saves the person's own In team / Only me for one of their agents, or with key "*" their own All
