@@ -46,8 +46,11 @@ type sharedProjectSummary struct {
 	// WorkspacePath is the owner's physical crew root. The UI needs it
 	// to scope chat history; file reads for shared crews go through the
 	// mediated endpoints, never through the proxy with this path.
-	WorkspacePath        string                     `json:"workspace_path"`
-	FilesPath            string                     `json:"files_path"`
+	WorkspacePath string `json:"workspace_path"`
+	FilesPath     string `json:"files_path"`
+	// FilesName is the Files root's name when FilesPath is not the Crew's own folder name: a Team member's copy
+	// (team-copies/<member>) shows as the Crew, never as their account id (owner, 5 Nov).
+	FilesName            string                     `json:"files_name,omitempty"`
 	CreatedAt            string                     `json:"created_at,omitempty"`
 	UpdatedAt            string                     `json:"updated_at,omitempty"`
 	LLM                  *sharedProjectLLM          `json:"llm,omitempty"`
@@ -385,6 +388,9 @@ func summarizeSharedProject(ctx context.Context, claims *UserClaims, ownerID, pr
 		UpdatedAt:       strings.TrimSpace(manifest.UpdatedAt),
 		SelectedServers: savedAppSelection(manifest.Capabilities.SelectedServers),
 		SelectedSkills:  append([]string(nil), manifest.Capabilities.SelectedSkills...),
+	}
+	if crewTeamMemberCopyFolder(row.FilesPath) {
+		row.FilesName = row.Title
 	}
 	row.SelectedGlobalSecret = derefSharedProjectSelection(manifest.Capabilities.SelectedGlobalSecretNames)
 	row.LLM = summarizeSharedProjectLLM(manifest.Capabilities.LLMConfig)

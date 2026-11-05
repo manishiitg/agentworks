@@ -48,6 +48,17 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 		router.ServeHTTP(w, r)
 		return w
 	}
+	// A Team is a shared room (owner, 5 Nov): the owner (also from their Mac app through its sign-in) and the other
+	// members watch a member's In team agent; nobody else does, and Only me (below) ends it. The owner's Mac read
+	// a member's chat as 404 (an empty chat stuck on "Reconnecting…") before this rule.
+	watching := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{"member-session": {UserID: "member", Status: "completed"}}}
+	watches := func(who string) bool {
+		r := httptest.NewRequest("GET", "/api/sessions/member-session/events", nil)
+		return watching.crewSessionTabView(r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who, Username: who})), "member-session")
+	}
+	if !watches("owner") || !watches("teammate") || watches("outsider") {
+		t.Fatalf("Team watch: owner=%t teammate=%t outsider=%t", watches("owner"), watches("teammate"), watches("outsider"))
+	}
 	w := call("member", "agent-visibility", `{"agent_key":"`+key+`","in_team":false}`)
 	if w.Code != 200 {
 		t.Fatalf("own visibility: %d %s", w.Code, w.Body.String())
@@ -55,6 +66,9 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	identities, err := store.agentIdentities(t.Context(), "member", crewProfileID, team.ProjectID)
 	if err != nil || !identities[key].OnlyMe {
 		t.Fatalf("own agent not private: %v", err)
+	}
+	if watches("owner") {
+		t.Fatal("owner still watches an Only me agent")
 	}
 	for _, who := range []string{"owner", "outsider"} {
 		if w := call(who, "agent-visibility", `{"agent_key":"`+key+`","in_team":true}`); w.Code != 403 {

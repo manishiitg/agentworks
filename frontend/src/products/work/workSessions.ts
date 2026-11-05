@@ -129,6 +129,7 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary, product: P
     sessionId: '',
     workspacePath: row.workspace_path,
     filesPath: row.files_path,
+    filesName: row.files_name,
     createdAt: row.created_at || '',
     updatedAt: row.updated_at || '',
     llmConfig: llm,

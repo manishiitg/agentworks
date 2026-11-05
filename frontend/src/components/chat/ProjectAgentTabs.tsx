@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Eye, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Pin, PinOff, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -115,9 +115,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // Grouped by person like the left menu (owner, 5 Nov): your own tabs first, then each other person's under their name.
   const tabOwnerLabel = (tab: ChatTab) => canControl(tab) ? '' : ownerShortName(listedFor(tab)?.tab_owner_name || tab.metadata?.agentProfileTabOwnerName || '') || 'Someone'
   const tabPeople = [...new Set(shownTabs.map(tabOwnerLabel))].sort((a, b) => a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))
-  // The header shows only your own agents (owner, 5 Nov: other people's are in the left menu and Access already); the
-  // one someone else's agent you are watching stays as a tab, with its eye, until you switch away.
-  const visibleTabs = tabPeople.flatMap(person => shownTabs.filter(tab => tabOwnerLabel(tab) === person && (person === '' || tab.tabId === activeTabId)))
+  // The header shows the same agents as the left menu (owner, 5 Nov: "why is server different from local"): yours,
+  // then each teammate's shared ones under their name, with the eye.
+  const visibleTabs = tabPeople.flatMap(person => shownTabs.filter(tab => tabOwnerLabel(tab) === person))
   const [moreOpen, setMoreOpen] = useState(false)
   // Which agents others can message and who asked them lately (a Crew on this Mac): marks on each tab's avatar.
   const macHere = livesOnMacHere(place) && !livesOnMac
@@ -125,6 +125,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // In the Mac app, the Team members' own agents from the online copy (owner, 5 Nov); they open on the server's page.
   const teamRemote = useTeamRemoteAgents(placeProject, macHere)
   const asking = useCrewAsking(macHere ? placeProject : undefined)
+  // The Agents menu is grouped by person like the left menu (owner, 5 Nov): You, then each teammate, their agents marked
+  // with the eye; in the Mac app the teammates' agents on the server are listed there too.
+  const remoteOwner = (owner: string) => ownerShortName(owner) || 'Someone'
+  const menuPeople = [...new Set([...tabs.map(tabOwnerLabel), ...teamRemote.map(agent => remoteOwner(agent.owner))])].sort((a, b) => a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))
+  const menuGrouped = menuPeople.length > 1 || menuPeople[0] !== ''
+  const menuGroups = menuPeople.map(person => ({ person, tabs: tabs.filter(tab => tabOwnerLabel(tab) === person), remote: teamRemote.filter(agent => remoteOwner(agent.owner) === person) }))
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   const sharedHere = (tab: ChatTab) => { const id = agentId(tab); return Boolean(id && shares[id]) }
   const agentFace = (tab: ChatTab): ChatTabPillProps['agent'] => {
@@ -408,7 +414,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}
       </div>
-      {(!menuMode || onImportLocalChat) && (tabs.length > 1 || phone || livesOnMac || onImportLocalChat) && (
+      {(!menuMode || onImportLocalChat) && (tabs.length > 1 || teamRemote.length > 0 || phone || livesOnMac || onImportLocalChat) && (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
             type="button"
@@ -435,7 +441,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
               </div>
               {reordering && <p className="shrink-0 px-2 py-2 text-[11px] text-muted-foreground">Drag agents or use the arrows to change their order.</p>}
               <div className="workspace-menu-scroll min-h-0 overflow-y-auto overscroll-contain pt-1">
-              {tabs.map(tab => {
+              {menuGroups.map(group => <Fragment key={`person:${group.person}`}>
+              {menuGrouped && <p className="px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground">{group.person || 'You'}</p>}
+              {group.tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
                 // Anyone may pin another person's tab on their own strip; renaming and ordering stay with its owner.
                 const pinKey = tab.tabId === canonicalTabId ? undefined : sideChatKey(tab)
@@ -469,7 +477,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                     title={[label, tab.metadata?.agentProfileTabOwnerName].filter(Boolean).join(' · ')}
                     className={`min-w-0 flex-1 rounded py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-foreground/85'}`}
                   >
-                    <span className="flex min-w-0 items-center gap-2"><span className="truncate text-[13px]">{label}</span>{sharedHere(tab) && <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium leading-4 text-primary">Shared</span>}{phone && <AgentMenuStateWord tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} />}</span>
+                    <span className="flex min-w-0 items-center gap-2"><span className="truncate text-[13px]">{label}</span>{!canControl(tab) && <Eye role="img" aria-label="Watching: only its owner types here" className="h-3 w-3 shrink-0 text-muted-foreground" />}{sharedHere(tab) && <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium leading-4 text-primary">Shared</span>}{phone && <AgentMenuStateWord tabId={tab.tabId} workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined} />}</span>
                     {!isAgentTab(tab) ? <span className="block text-[10px] font-normal text-muted-foreground">Activity</span>
                       : purposeOf(tab) ? <span className="block truncate text-[11px] font-normal text-muted-foreground">{purposeOf(tab)}</span> : null}
                   </button>}
@@ -498,6 +506,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                   </>}
                 </div>
               })}
+              {group.remote.map(agent => <button key={`team-remote:${agent.key}`} type="button" onClick={() => { setMoreOpen(false); agent.open() }} title={`${agent.name} · ${agent.owner}`}
+                className="flex min-h-11 w-full items-center gap-2 rounded-xl px-1.5 text-left text-xs text-foreground/85 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span className="w-4 shrink-0" /><span className="min-w-0 flex-1 py-2"><span className="flex min-w-0 items-center gap-2"><span className="truncate text-[13px]">{agent.name}</span><Eye role="img" aria-label="Watching: only its owner types here" className="h-3 w-3 shrink-0 text-muted-foreground" /></span>
+                {agent.purpose && <span className="block truncate text-[11px] font-normal text-muted-foreground">{agent.purpose}</span>}</span>
+              </button>)}
+              </Fragment>)}
               </div>
               {sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
                 className="mt-1 flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-2.5 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New agent</button>}

@@ -14,6 +14,8 @@ export type ProductProject<P extends string = string> = {
   workspacePath: string
   /** Opaque logical file root supplied by the server for a bound local folder. */
   filesPath?: string
+  /** The Files root's name from the server, when it is not the folder's own (a Team member's copy). */
+  filesName?: string
   createdAt: string
   updatedAt: string
   llmConfig?: PresetLLMConfig

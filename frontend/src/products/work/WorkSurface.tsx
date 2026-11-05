@@ -1514,6 +1514,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         key={`${selected.id}:${workspaceViewRefresh}`}
                         workspacePath={selected.workspacePath}
                         filesPath={selected.filesPath}
+                        filesName={selected.filesName}
                         projectId={selected.id}
                         projectTitle={selected.title}
                         projectDescription={selected.description}

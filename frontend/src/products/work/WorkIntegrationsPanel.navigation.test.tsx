@@ -2,7 +2,8 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ allowed_products: null as string[] | null, target: (_value: string) => {}, ask: vi.fn(), save: vi.fn() }))
+const state = vi.hoisted(() => ({ allowed_products: null as string[] | null, target: (_value: string) => {}, ask: vi.fn(), save: vi.fn(), accessView: 'server_crew' }))
+vi.mock('../../services/api', async importOriginal => ({ ...await importOriginal<object>(), default: { get: async () => ({ data: { access_view: state.accessView } }) } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (s: unknown) => unknown) => selector({ user: { allowed_products: state.allowed_products } }) }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ useWorkspaceViewTarget: (_view: string, apply: (target: string) => void) => { state.target = apply } }))
 vi.mock('../../components/workflow/WorkspaceViewHeader', () => ({ WorkspaceViewHeader: ({ title, below, tabs, actions }: any) => <header><h2>{title}</h2>{below}{tabs && <div aria-label={tabs.ariaLabel}>{tabs.options.map((tab: any) => <button key={tab.value} onClick={() => tabs.onChange(tab.value)}>{tab.label}</button>)}</div>}{actions}</header> }))
@@ -22,7 +23,7 @@ vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMc
 vi.mock('./ComputerUsePanel', () => ({ ComputerUsePanel: () => <div data-content="computer-use">Local computer</div> }))
 vi.mock('./YourComputerPanel', () => ({ YourComputerPanel: () => <div data-computer="">Sync and laptop access</div> }))
 vi.mock('./useMacCrew', () => ({ useMacCrew: () => ({ livesOnMac: false }) }))
-vi.mock('./TeamTab', () => ({ TeamTab: () => null }))
+vi.mock('./TeamTab', () => ({ TeamTab: () => <div data-content="team">Team tab</div> }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
 vi.mock('../../components/integrations/ProjectIntegrationPanel', () => ({ INTEGRATION_LABELS: {github:'GitHub',connected:'MCPs',available:'Available MCPs',secrets:'Secrets',gmail:'Google apps','slack-account':'Slack account',laptop:'Local laptop'}, ProjectIntegrationPanel: ({section}: any) => <section data-content={section} data-integration-section={section}>Native integration</section> }))
@@ -36,6 +37,7 @@ beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'code', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'https://example.com' }
   state.allowed_products = null
+  state.accessView = 'server_crew'
 })
 afterEach(() => { cleanup.splice(0).forEach(fn => fn()); delete window.__APP_RUNTIME_CONFIG__; vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.clearAllMocks() })
 async function mount(product = CREW_PRODUCT, enabledPanels?: Set<string>, canEdit = true) {
@@ -88,7 +90,19 @@ it('opens where it lives and sharing together on the Access page', async () => {
   await act(async () => state.target(target))
   expect(host.querySelector('[data-computer]')).not.toBeNull()
   expect(host.querySelector('[data-content="sharing"]')).not.toBeNull()
+  expect(host.querySelector('[data-content="team"]')).not.toBeNull()
  }
+})
+
+// The website's owner of a Mac Crew got the Mac app's old page (Laptop access, "move it online first") because the
+// website's workspace id reads 'local' too; the server's access_view decides it: the Team tab alone (owner, 5 Nov).
+it('shows the server-chosen Team tab alone for the website copy of a Mac Crew', async () => {
+ state.accessView = 'team'
+ const host = await mount()
+ await act(async () => state.target('access'))
+ expect(host.querySelector('[data-content="team"]')).not.toBeNull()
+ expect(host.querySelector('[data-computer]')).toBeNull()
+ expect(host.querySelector('[data-content="sharing"]')).toBeNull()
 })
 
 // PLAT-856: remote/shared project navigation cannot advertise desktop control.

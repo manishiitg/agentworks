@@ -273,7 +273,7 @@ export function useTeamRemoteAgents(projectId?: string, enabled = true): TeamRem
       const next = (rows || []).filter(row => row.can_write === false && row.tab_owner_id && row.session_id).map(row => {
         const owner = row.tab_owner_name || 'Teammate'
         return { key: row.conversation_key, name: row.name, purpose: row.purpose, owner,
-          open: () => { void openTeamRemoteAgent(projectId, connection, { key: row.conversation_key, session: row.session_id!, name: row.name, owner }) } }
+          open: () => { void openTeamRemoteAgent(projectId, connection, { key: row.conversation_key, session: row.session_id!, name: row.name, owner, ownerId: row.tab_owner_id! }) } }
       })
       if (live) setAgents(current => JSON.stringify(current.map(a => [a.key, a.name, a.owner])) === JSON.stringify(next.map(a => [a.key, a.name, a.owner])) ? current : next)
     }
@@ -287,27 +287,31 @@ export function useTeamRemoteAgents(projectId?: string, enabled = true): TeamRem
 }
 
 /** Opens a Team member's agent as a watch-only tab in this Mac Crew; its chat streams from the server. */
-async function openTeamRemoteAgent(projectId: string, connection: string, agent: { key: string; session: string; name: string; owner: string }) {
+async function openTeamRemoteAgent(projectId: string, connection: string, agent: { key: string; session: string; name: string; owner: string; ownerId: string }) {
   registerRemoteSession(agent.session, connection)
   const store = useChatStore.getState()
   const tabs = Object.values(store.chatTabs)
   const main = tabs.find(row => row.metadata?.agentProfileProjectId === projectId && row.metadata?.agentProfileIsMainChat && !row.metadata?.isViewOnly)
   if (!main) return
-  const existing = tabs.find(row => row.sessionId === agent.session)
-  const tabId = existing?.tabId || await store.createChatTab(agent.name, {
-    ...main.metadata,
+  // The tab is the member's, named by the server's row (owner, 5 Nov: it read "Watching demo's Main"): its owner's id
+  // and name replace the Main tab's, also on a tab kept from an earlier open.
+  const watch = {
     agentProfileIsMainChat: false,
     agentProfileBuilder: false,
     agentProfileConversationKey: `${projectId}:team:${agent.key}`,
     agentProfileConversationId: undefined,
     agentProfileChatLocation: undefined,
     agentProfileTabCanWrite: false,
+    agentProfileTabOwnerID: agent.ownerId,
     agentProfileTabOwnerName: agent.owner,
     isViewOnly: true,
     viewOnlyWriter: agent.owner,
-    readOnlyRestoredAt: Date.now(),
     userInteractiveContinuation: false,
-  }, agent.session)
+  }
+  const existing = tabs.find(row => row.sessionId === agent.session)
+  let tabId = existing?.tabId
+  if (tabId) store.setTabMetadata(tabId, watch)
+  else tabId = await store.createChatTab(agent.name, { ...main.metadata, ...watch, readOnlyRestoredAt: Date.now() }, agent.session)
   store.setTabCanSteer(tabId, false)
   await hydrateTabEvents(agent.session, {})
   activateTab(tabId)
