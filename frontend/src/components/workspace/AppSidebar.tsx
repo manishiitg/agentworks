@@ -57,11 +57,24 @@ export function AppSidebar() {
   const peekIn = () => { window.clearTimeout(peekTimer.current); setPeek(true) }
   const peekOut = () => { window.clearTimeout(peekTimer.current); peekTimer.current = window.setTimeout(() => setPeek(false), 250) }
   useEffect(() => { if (open) setPeek(false) }, [open])
+  const peekPanel = useRef<HTMLElement>(null)
   useEffect(() => {
     if (!peeking) return
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && !event.defaultPrevented) setPeek(false) }
+    // The menu slides out under a still pointer, so the browser may never send it mouseleave: watch where the pointer
+    // is instead. Off the menu (and not in a menu or popover it opened) starts the same short close.
+    const move = (event: MouseEvent) => {
+      const panel = peekPanel.current
+      const target = event.target as Element | null
+      if (!panel || panel.contains(target) || target?.closest?.('[data-radix-popper-content-wrapper],[role="menu"],[role="dialog"]')) {
+        window.clearTimeout(peekTimer.current)
+        return
+      }
+      if (event.clientX > panel.getBoundingClientRect().right) peekOut()
+    }
     document.addEventListener('keydown', key)
-    return () => document.removeEventListener('keydown', key)
+    document.addEventListener('mousemove', move)
+    return () => { document.removeEventListener('keydown', key); document.removeEventListener('mousemove', move) }
   }, [peeking])
   useEffect(() => () => window.clearTimeout(peekTimer.current), [])
   useEffect(() => {
@@ -138,7 +151,7 @@ export function AppSidebar() {
           <aside aria-label="Chat navigation" className="flex h-full w-full pb-[env(safe-area-inset-bottom)]">
             <Suspense fallback={<div className="w-full border-r border-border">{toggle}</div>}><WorkspaceChatsSidebar toggle={toggle} footer={<div ref={registerSidebarSettings} data-sidebar-setup-slot />} /></Suspense>
           </aside>
-        </div></div> : <aside aria-label="Chat navigation" onMouseEnter={peeking ? peekIn : undefined} onMouseLeave={peeking ? peekOut : undefined}
+        </div></div> : <aside ref={peekPanel} aria-label="Chat navigation" onMouseEnter={peeking ? peekIn : undefined} onMouseLeave={peeking ? peekOut : undefined}
           className={`${shown ? 'flex' : 'hidden'} absolute inset-y-0 left-0 w-[var(--chat-sidebar-width)] bg-background ${peeking ? 'z-50 h-full border-r border-border shadow-2xl' : 'md:relative md:h-full'}`}>
           <Suspense fallback={<div className="w-full border-r border-border">{toggle}</div>}><WorkspaceChatsSidebar toggle={toggle} footer={<div ref={registerSidebarSettings} data-sidebar-setup-slot />} /></Suspense>
         </aside>}
