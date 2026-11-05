@@ -118,7 +118,7 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		status = "offline"
 		message = "Saved on this Mac. Changes will send when connected."
 	}
-	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "skipped": crewTeamSkipped(b.Root), "previous_folders": crewTeamPreviousLocalFolders(dir, b)})
+	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "skipped": crewTeamSkipped(b.Root), "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": crewTeamRoundFor(dir)})
 }
 
 // Names only: excluded bytes never enter shared content or diagnostics.

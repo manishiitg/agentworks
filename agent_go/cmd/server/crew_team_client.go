@@ -265,55 +265,64 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 			return fmt.Errorf("saved folder transfer is incomplete")
 		}
 		snapshot := pending.Snapshot
-		pair := crewTeamPair(b.Project, b.RemoteUser, b.Client, direction)
-		route := "/api/crew-teams/" + url.PathEscape(b.Project) + "/sync?folder_id=" + url.QueryEscape(b.FolderID)
-		if direction == "upload" {
-			pending.Action = "prepare"
-			if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route, pending, nil); e != nil {
-				return e
+		// The round's numbers for the progress bar: files in this round and the bundle's bytes (crew_team_progress.go).
+		roundCtx := startCrewTeamRound(ctx, dir, b.Project, direction, len(snapshot.Changes), snapshot.Payloads["content"].Size, crewTeamStagedBytes(filepath.Join(stage, "content"), direction))
+		e = func(ctx context.Context) error {
+			pair := crewTeamPair(b.Project, b.RemoteUser, b.Client, direction)
+			route := "/api/crew-teams/" + url.PathEscape(b.Project) + "/sync?folder_id=" + url.QueryEscape(b.FolderID)
+			if direction == "upload" {
+				pending.Action = "prepare"
+				if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route, pending, nil); e != nil {
+					return e
+				}
+				if e = transferCrewTeamBundle(ctx, c, b.Project, pending, filepath.Join(stage, "content")); e != nil {
+					return e
+				}
+				pending.Action = "apply"
+				if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route, pending, nil); e != nil {
+					return e
+				}
+				if e = store.AckSync(ctx, pair, snapshot.Content); e != nil {
+					return e
+				}
+				b.LocalBase = snapshot.Files
+			} else {
+				if e = transferCrewTeamBundle(ctx, c, b.Project, pending, filepath.Join(stage, "content")); e != nil {
+					return e
+				}
+				snapshot.Content.BundlePath = filepath.Join(stage, "content")
+				if e = store.DecodeSync(ctx, pair, snapshot); e != nil {
+					return e
+				}
+				e = applyCrewTeamDownload(ctx, b, snapshot)
+				snapshot.Close()
+				if e != nil {
+					return e
+				}
+				if e = store.AckSync(ctx, pair, snapshot.Content); e != nil {
+					return e
+				}
+				b.RemoteBase = snapshot.Files
+				// Save applied paths before acknowledging so retries can distinguish
+				// an arriving server file from an edit made here during the download.
+				if e = saveCrewTeamLocal(dir, *b); e != nil {
+					return e
+				}
+				pending.Action = "ack"
+				if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route, pending, nil); e != nil {
+					return e
+				}
 			}
-			if e = transferCrewTeamBundle(ctx, c, b.Project, pending, filepath.Join(stage, "content")); e != nil {
-				return e
-			}
-			pending.Action = "apply"
-			if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route, pending, nil); e != nil {
-				return e
-			}
-			if e = store.AckSync(ctx, pair, snapshot.Content); e != nil {
-				return e
-			}
-			b.LocalBase = snapshot.Files
-		} else {
-			if e = transferCrewTeamBundle(ctx, c, b.Project, pending, filepath.Join(stage, "content")); e != nil {
-				return e
-			}
-			snapshot.Content.BundlePath = filepath.Join(stage, "content")
-			if e = store.DecodeSync(ctx, pair, snapshot); e != nil {
-				return e
-			}
-			e = applyCrewTeamDownload(ctx, b, snapshot)
-			snapshot.Close()
-			if e != nil {
-				return e
-			}
-			if e = store.AckSync(ctx, pair, snapshot.Content); e != nil {
-				return e
-			}
-			b.RemoteBase = snapshot.Files
-			// Save applied paths before acknowledging so retries can distinguish
-			// an arriving server file from an edit made here during the download.
 			if e = saveCrewTeamLocal(dir, *b); e != nil {
 				return e
 			}
-			pending.Action = "ack"
-			if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route, pending, nil); e != nil {
+			if e = os.Remove(meta); e != nil {
 				return e
 			}
-		}
-		if e = saveCrewTeamLocal(dir, *b); e != nil {
-			return e
-		}
-		if e = os.Remove(meta); e != nil {
+			return nil
+		}(roundCtx)
+		endCrewTeamRound(dir, e)
+		if e != nil {
 			return e
 		}
 		_ = os.Remove(filepath.Join(stage, "content"))
@@ -458,6 +467,7 @@ func transferCrewTeamBundle(ctx context.Context, c desktopConnection, project st
 				return fmt.Errorf("upload acknowledgement is incomplete")
 			}
 			offset = next
+			crewTeamRoundBytes(ctx, offset)
 		}
 		return nil
 	}
@@ -484,7 +494,7 @@ func transferCrewTeamBundle(ctx context.Context, c desktopConnection, project st
 		if e != nil {
 			return e
 		}
-		_, e = io.CopyN(f, res.Body, p.Size-offset)
+		_, e = io.CopyN(f, &crewTeamCountingReader{ctx: ctx, r: res.Body, done: offset}, p.Size-offset)
 		ce := f.Close()
 		if e == nil {
 			e = ce
@@ -498,4 +508,16 @@ func transferCrewTeamBundle(ctx context.Context, c desktopConnection, project st
 		return e
 	}
 	return nil
+}
+
+// crewTeamStagedBytes is how much of a download is already on disk when a round resumes (an upload's offset comes from
+// the server on its first request).
+func crewTeamStagedBytes(file, direction string) int64 {
+	if direction != "download" {
+		return 0
+	}
+	if info, err := os.Stat(file); err == nil {
+		return info.Size()
+	}
+	return 0
 }
