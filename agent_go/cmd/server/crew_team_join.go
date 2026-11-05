@@ -113,7 +113,9 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 	crewTeamJoining.Store(key, true)
 	defer crewTeamJoining.Delete(key)
 	var team crewTeam
-	if err = crewTeamRemoteJSON(r.Context(), claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/invite", map[string]bool{"accept": true}, &team); err != nil {
+	if err = crewTeamRemoteJSON(r.Context(), claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/invite", map[string]bool{"accept": true}, &team); err != nil &&
+		// Already a member (they accepted on the web): Add to my Mac moves their working copy here.
+		crewTeamRemoteJSON(r.Context(), claims.UserID, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project), nil, &team) != nil {
 		externalError(w, 409, "invite_failed", err.Error())
 		return
 	}
@@ -145,6 +147,15 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 		}
 		out["folder"] = folder
 	}
+	// One working copy (owner, 5 Nov): after Add to my Mac this member's agents in this Crew work on this Mac.
+	folder, _ := out["folder"].(string)
+	local, err := api.addCrewTeamToMac(r.Context(), claims, c, project, team, folder)
+	if err != nil {
+		log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_copy_failed reason=%q", project, err)
+		externalError(w, 409, "mac_copy_failed", "Joined the team, but its Crew could not be set up on this Mac: "+err.Error())
+		return
+	}
+	out["project_id"], out["where"] = local, "mac"
 	log.Printf("[CREW_TEAM_LOCAL] project=%s event=joined_on_mac folder_set=%t", project, out["folder"] != nil)
 	externalJSON(w, out)
 }

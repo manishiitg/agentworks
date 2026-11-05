@@ -455,7 +455,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	}
 	// A Mac Crew runs on its Mac; published agents have their own server workspace.
 	if crewLivesOnMac(profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context())) {
-		writeAgentProfileError(w, http.StatusConflict, crewOnMacRefusal)
+		writeAgentProfileError(w, http.StatusConflict, crewOnMacRefusalFor(input.ConversationKey, productWorkspaceUserID(r.Context())))
 		return
 	}
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, "")

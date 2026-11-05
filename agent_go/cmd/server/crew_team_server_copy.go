@@ -82,6 +82,9 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 	if err != nil || member == t.OwnerID || t.Folder.ID == "" || !t.edits(member) {
 		return "", nil
 	}
+	if _, onMac := t.memberMac(member); onMac {
+		return "", nil // their agents here work on their Mac, with its copy
+	}
 	dir, err := crewTeamServerCopyDir(member, project, t.Folder.ID)
 	if err != nil {
 		return "", err
@@ -156,7 +159,8 @@ func removeStaleCrewTeamServerCopies(ctx context.Context) {
 			continue
 		}
 		t, err := readCrewTeam(b.Project)
-		if err == nil && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID == b.FolderID && t.edits(b.RemoteUser) {
+		_, onMac := t.memberMac(b.RemoteUser)
+		if err == nil && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID == b.FolderID && t.edits(b.RemoteUser) && !onMac {
 			continue
 		}
 		unlock, err := wf.LockWorkspace(ctx, dir)
@@ -165,7 +169,11 @@ func removeStaleCrewTeamServerCopies(ctx context.Context) {
 		}
 		err = os.RemoveAll(dir)
 		unlock()
-		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=removed err=%v", b.Project, logUsernameForUserID(b.RemoteUser), err)
+		reason := "no_access"
+		if onMac {
+			reason = "on_mac" // their agents here work on their Mac, with its own copy
+		}
+		log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=removed reason=%s err=%v", b.Project, logUsernameForUserID(b.RemoteUser), reason, err)
 	}
 }
 

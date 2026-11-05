@@ -288,7 +288,7 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 	}
 	if json.Unmarshal(body, &target) == nil && crewLivesOnMac(target.Profile, target.Key, userID) {
 		log.Printf("[CREW_RELAY] refused server turn owner=%s project=%s reason=crew_on_mac", userID, crewResourceProjectID(target.Key))
-		return internalSessionTurnResult{}, fmt.Errorf("%s", crewOnMacRefusal)
+		return internalSessionTurnResult{}, fmt.Errorf("%s", crewOnMacRefusalFor(target.Key, userID))
 	}
 	var queuedTurnID string
 	var queuedWaiter <-chan queuedConversationTurnResult

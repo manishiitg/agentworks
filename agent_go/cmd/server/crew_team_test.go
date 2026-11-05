@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
@@ -529,5 +530,67 @@ func TestCrewTeamSyncsCredentialFileOnlyWhenChosenOnPurpose(t *testing.T) {
 	}
 	if state, _ = readCrewTeamFileState("purpose-test"); state.OnPurpose["express/.npmrc"] != "" {
 		t.Fatal("the on-purpose record stayed after the file was removed")
+	}
+}
+
+// One working copy per Team member (owner, 5 Nov): a member's Mac is admitted to relay this Crew only with the pair
+// the server recorded for them once their agents work on their Mac, never with the owner's pair, and from then on
+// the server refuses their turns here.
+func TestCrewTeamMemberMacAdmittedOnlyWithTheirRecordedPair(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"member","username":"member","can_create":true,"products":["work"]}]}`)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "team-test", OwnerID: "owner", ProjectID: "team-test"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync("team-test", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	member := &UserClaims{UserID: "member", Username: "member"}
+	team := crewTeam{ProjectID: "team-test", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if api.crewRelayAdmit(t.Context(), member, crewRelayCrew{Project: "team-test", Pair: "owner-pair"}) == nil || crewLivesOnMac("work", "team-test:chat:mine", "member") {
+		t.Fatal("a member on the web was admitted as the Crew's Mac, or lost their server turns")
+	}
+	team.People[0].Where, team.People[0].MacPair = "mac", "member-pair"
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if api.crewRelayAdmit(t.Context(), member, crewRelayCrew{Project: "team-test", Pair: "owner-pair"}) == nil {
+		t.Fatal("a member's Mac was admitted with the owner's pair")
+	}
+	if err := api.crewRelayAdmit(t.Context(), member, crewRelayCrew{Project: "team-test", Pair: "member-pair"}); err != nil {
+		t.Fatalf("a member on their Mac was refused their own pair: %v", err)
+	}
+	if !crewLivesOnMac("work", "team-test:chat:mine", "member") || crewOnMacRefusalFor("team-test:chat:mine", "member") != crewOnYourMacRefusal {
+		t.Fatal("a member on their Mac still gets server turns here, or the wrong refusal")
+	}
+	// A second Mac of the same member takes the one working copy: it gets a new pair and the first Mac is refused.
+	router := mux.NewRouter()
+	api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
+	where := func(body string) string {
+		t.Helper()
+		r := httptest.NewRequest("POST", "/api/crew-teams/team-test/where", strings.NewReader(body)).WithContext(context.WithValue(t.Context(), UserContextKey, member))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		var out struct {
+			Pair string `json:"pair"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
+			t.Fatalf("where: %d %s", w.Code, w.Body.String())
+		}
+		return out.Pair
+	}
+	if got := where(`{"where":"mac","pair":"member-pair"}`); got != "member-pair" {
+		t.Fatalf("the Mac that holds the copy lost its pair: %q", got)
+	}
+	second := where(`{"where":"mac"}`)
+	if second == "" || second == "member-pair" || api.crewRelayAdmit(t.Context(), member, crewRelayCrew{Project: "team-test", Pair: "member-pair"}) == nil ||
+		api.crewRelayAdmit(t.Context(), member, crewRelayCrew{Project: "team-test", Pair: second}) != nil {
+		t.Fatal("a second Mac did not replace the first one's working copy")
 	}
 }

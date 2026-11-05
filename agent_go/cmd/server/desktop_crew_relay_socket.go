@@ -554,6 +554,11 @@ func (api *StreamingAPI) repairDesktopCrewTwin(ctx context.Context, local, pair,
 	if err != nil || b == nil || b.Side != "local" || b.Editing != "local" || b.PendingAction != "" || b.PairID != pair {
 		return
 	}
+	// A member's working copy belongs to the owner's online copy; a refusal means the server no longer takes it here.
+	if readCrewTeamState(local).MemberOf != "" {
+		log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_pair_refused", local)
+		return
+	}
 	state, err := workflowCLIStateRoot()
 	if err != nil {
 		return
