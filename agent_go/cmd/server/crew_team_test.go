@@ -34,6 +34,10 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "team-test", OwnerID: "owner", ProjectID: "team-test"}); err != nil {
 		t.Fatal(err)
 	}
+	// The online copy of a Crew that lives on its owner's Mac (a Crew on the server has no Mac agents list).
+	if err := crewroot.WriteSync("team-test", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatal(err)
+	}
 	api := &StreamingAPI{}
 	router := mux.NewRouter()
 	api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())

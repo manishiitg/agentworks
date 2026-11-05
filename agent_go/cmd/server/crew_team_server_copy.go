@@ -85,6 +85,9 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 	if _, onMac := t.memberMac(member); onMac {
 		return "", nil // their agents here work on their Mac, with its copy
 	}
+	if !crewRelayTwin(project) {
+		return "", nil // a Crew on the server: members on the web work in its own folder, like co-owners
+	}
 	dir, err := crewTeamServerCopyDir(member, project, t.Folder.ID)
 	if err != nil {
 		return "", err
@@ -162,7 +165,7 @@ func removeStaleCrewTeamServerCopies(ctx context.Context) {
 		}
 		t, err := readCrewTeam(b.Project)
 		_, onMac := t.memberMac(b.RemoteUser)
-		if err == nil && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID == b.FolderID && t.edits(b.RemoteUser) && !onMac {
+		if err == nil && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID == b.FolderID && t.edits(b.RemoteUser) && !onMac && crewRelayTwin(b.Project) {
 			continue
 		}
 		unlock, err := wf.LockWorkspace(ctx, dir)

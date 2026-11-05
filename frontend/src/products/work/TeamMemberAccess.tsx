@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { openAppPage } from '../../utils/appNavigation'
+import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { Folder, Users } from 'lucide-react'
 import api from '../../services/api'
 import { Button } from '../../components/ui/Button'
@@ -54,7 +55,8 @@ export function TeamMemberAccess({ projectId, children }: { projectId: string; c
   }
   if (!access) return <div className="space-y-3"><WorkspaceViewHeader icon={Users} title="Access" />{error ? <><p role="alert">{error}</p><Button variant="outline" onClick={() => setRefresh(v => v + 1)}>Try again</Button></> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>}</div>
   if (access.access_view === 'summary') return <div className="space-y-4"><WorkspaceViewHeader icon={Users} title="Access" /><p className="text-sm text-muted-foreground">{access.access_summary}</p></div>
-  if (access.role === 'owner') return access.access_view === 'team' ? <OwnerTeamAccess projectId={projectId} place={access.place} /> : children
+  if (access.role === 'owner') return access.access_view === 'team' ? <OwnerTeamAccess projectId={projectId} place={access.place} />
+    : getRawActiveWorkspaceId() === 'local' ? children : <>{children}<ServerCrewTeam projectId={projectId} access={access.member_access} busy={busy} error={error} onVisibility={(key, inTeam) => void act('/agent-visibility', { agent_key: key, in_team: inTeam })} /></>
   const member = access.member_access
   if (!member) return <p role="alert">Your Team access could not be loaded. Open the Team again.</p>
   return <div className="space-y-6">
@@ -71,6 +73,20 @@ export function TeamMemberAccess({ projectId, children }: { projectId: string; c
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <Button variant="outline" disabled={busy} onClick={() => void act('/leave')}>Leave Team</Button>
   </div>
+}
+
+/** A Crew that lives on the server has the same Team (owner, 5 Nov): under its owner's Access page, the switch and
+ * people, and In team / Only me for the owner's own agents (server tabs, like a member's). */
+function ServerCrewTeam({ projectId, access, busy, error, onVisibility }: { projectId: string; access?: MemberAccess; busy: boolean; error: string; onVisibility: (key: string, inTeam: boolean) => void }) {
+  const { team } = useProjectTeam(projectId)
+  return <section aria-label="Team" className="mt-6 space-y-4">
+    <CrewTeamCard projectId={projectId} serverCrew />
+    {team?.on && access && <>
+      <section aria-label="Team agents" className="divide-y divide-border">{access.people.filter(person => !person.you).map(person => <div key={person.user_id} className="py-3"><h3 className="font-medium">{person.name}</h3><p className="mt-1 text-sm text-muted-foreground">{person.agents.map(agent => agent.name).join(' · ') || 'No agents in team'}</p></div>)}</section>
+      <section aria-label="Your agents"><h4 className="mb-2 font-medium">Your agents</h4>{access.own_agents.map(agent => <div key={agent.key} className="flex items-center justify-between gap-3 py-2"><span>{agent.name}</span><select aria-label={`${agent.name} visibility`} value={agent.in_team ? 'team' : 'me'} disabled={busy} onChange={e => onVisibility(agent.key, e.target.value === 'team')} className="rounded-md border border-border bg-background px-3 py-2 text-sm"><option value="team">In team</option><option value="me">Only me</option></select></div>)}</section>
+    </>}
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+  </section>
 }
 
 /** The online copy of a Mac Crew shows its Team, not this browser's laptop integration. */

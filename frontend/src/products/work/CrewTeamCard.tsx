@@ -36,7 +36,7 @@ function FolderRow({ folder, connection, localProject, busy, onRemove }: { folde
   </div>
 }
 
-export function CrewTeamCard({ projectId }: { projectId: string }) {
+export function CrewTeamCard({ projectId, serverCrew = false }: { projectId: string; serverCrew?: boolean }) {
   const { team, target, error: loadError, refresh } = useProjectTeam(projectId)
   const [people, setPeople] = useState<Person[]>([])
   const [adding, setAdding] = useState(false)
@@ -87,7 +87,7 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
   const turn = async (on: boolean) => {
     setBusy(true); setError(''); setSwitchNote('')
     try {
-      const result = await switchTeam(target, on)
+      const result = await switchTeam(target, on, serverCrew)
       const notes = [result.folder_created ? 'Made an empty team/ folder to share.' : '',
         result.shared?.length ? `Shared with your team: ${result.shared.join(', ')}.` : '',
         result.note || '']
@@ -97,7 +97,7 @@ export function CrewTeamCard({ projectId }: { projectId: string }) {
   }
   const askText = 'Ask chat to set up your team: people, what it shares and which agents are shared'
   return <section aria-label="Team" className="mt-4 space-y-3 rounded-xl border border-border px-4 py-3">
-    <div className="flex items-center gap-2"><Users className="h-4 w-4" /><h3 className="text-sm font-semibold">Team</h3><span className="ml-auto text-xs text-muted-foreground">{team.on && team.people.length ? `${team.people.length} people` : 'Only you'}</span><button type="button" title={askText} aria-label={askText} onClick={() => fillTeamSetupDraft(projectId)} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Ask</button><Switch aria-label="Team" disabled={busy || !target.localProject} checked={team.on} onCheckedChange={on => void turn(on)} /></div>
+    <div className="flex items-center gap-2"><Users className="h-4 w-4" /><h3 className="text-sm font-semibold">Team</h3><span className="ml-auto text-xs text-muted-foreground">{team.on && team.people.length ? `${team.people.length} people` : 'Only you'}</span><button type="button" title={askText} aria-label={askText} onClick={() => fillTeamSetupDraft(projectId)} className="rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Ask</button><Switch aria-label="Team" disabled={busy || (!serverCrew && !target.localProject)} checked={team.on} onCheckedChange={on => void turn(on)} /></div>
     {switchNote && <p className="text-xs text-muted-foreground">{switchNote}</p>}
     {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this Crew with people.</p>}
     {team.on && <>
