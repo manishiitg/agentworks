@@ -35,7 +35,6 @@ export function buildWorkflowPresetsFromManifests(workflows = useWorkflowManifes
       selectedServers: caps?.selected_servers || [],
       selectedTools: caps?.selected_tools || [],
       selectedSkills: caps?.selected_skills || [],
-      selectedSecrets: caps?.selected_secrets || [],
       selectedGlobalSecretNames: caps?.selected_global_secret_names ?? [],
       browserMode: caps?.browser_mode,
       useCodeExecutionMode: caps?.use_code_execution_mode || false,
@@ -75,7 +74,7 @@ interface GlobalPresetState {
   // Actions for manifest management
   refreshPresets: () => Promise<void>
   deleteWorkflow: (workspacePath: string) => Promise<void>
-  savePreset: (label: string, query?: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, id?: string, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => Promise<CustomPreset | null>
+  savePreset: (label: string, query?: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, id?: string, selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => Promise<CustomPreset | null>
   duplicatePreset: (presetId: string) => Promise<CustomPreset | null>
 
   // Actions for preset application
@@ -181,17 +180,12 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
         return refreshPromise
       },
       
-      savePreset: async (label, query, selectedServers, selectedTools, selectedSkills, agentMode, selectedFolder, llmConfig, useCodeExecutionMode, id, selectedSecrets, selectedGlobalSecretNames, browserMode, icon, workflowKind) => {
+      savePreset: async (label, query, selectedServers, selectedTools, selectedSkills, agentMode, selectedFolder, llmConfig, useCodeExecutionMode, id, selectedGlobalSecretNames, browserMode, icon, workflowKind) => {
         const toolsForBackend = selectedTools?.filter(t => !t.endsWith(':*')) || []
         const existingPreset = id ? get().workflowPresets.find(p => p.id === id) : undefined
         const globalSecretNamesForBackend = selectedGlobalSecretNames === undefined
           ? (existingPreset?.selectedGlobalSecretNames === undefined ? [] : existingPreset.selectedGlobalSecretNames)
           : selectedGlobalSecretNames
-
-        // Selections are secret names; the server resolves them from the
-        // workflow box and globals.
-        const secretNamesForBackend = selectedSecrets
-          ?.filter((n): n is string => !!n) || []
 
         // Multi-agent chat has a single file-backed capability profile, parallel
         // to workflow.json capabilities rather than DB presets.
@@ -200,7 +194,6 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
             selected_servers: selectedServers || [],
             selected_tools: toolsForBackend,
             selected_skills: selectedSkills || [],
-            selected_secrets: secretNamesForBackend,
             selected_global_secret_names: globalSecretNamesForBackend,
             browser_mode: browserMode,
             use_code_execution_mode: useCodeExecutionMode ?? false,
@@ -216,7 +209,6 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
             selectedServers: selectedServers || [],
             selectedTools: toolsForBackend,
             selectedSkills: selectedSkills || [],
-            selectedSecrets: secretNamesForBackend,
             selectedGlobalSecretNames: globalSecretNamesForBackend,
             browserMode: browserMode,
             useCodeExecutionMode: useCodeExecutionMode ?? false,
@@ -246,8 +238,7 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
                 selected_servers: selectedServers || [],
                 selected_tools: toolsForBackend,
                 selected_skills: selectedSkills || [],
-                selected_secrets: secretNamesForBackend,
-                selected_global_secret_names: globalSecretNamesForBackend,
+                    selected_global_secret_names: globalSecretNamesForBackend,
                 browser_mode: browserMode,
                 use_code_execution_mode: useCodeExecutionMode ?? false,
                 llm_config: llmConfig || undefined,
@@ -264,8 +255,7 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
                 selected_servers: selectedServers || [],
                 selected_tools: toolsForBackend,
                 selected_skills: selectedSkills || [],
-                selected_secrets: secretNamesForBackend,
-                selected_global_secret_names: globalSecretNamesForBackend,
+                    selected_global_secret_names: globalSecretNamesForBackend,
                 use_code_execution_mode: useCodeExecutionMode ?? false,
                 llm_config: llmConfig || undefined,
               },
@@ -441,7 +431,6 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
             originalPreset.llmConfig,
             originalPreset.useCodeExecutionMode,
             undefined, // id (new preset)
-            originalPreset.selectedSecrets, // Copy secret selections
             originalPreset.selectedGlobalSecretNames, // Copy global secret selection
             originalPreset.browserMode,
             originalPreset.icon

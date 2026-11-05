@@ -7,20 +7,16 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/sealbox"
 )
 
-// Project tools retain their existing scope and authorization. Vault is the
-// sole metadata and encrypted-value store, partitioned by stable project root.
-// Legacy ciphertext helpers are retained only for migration and owner reveal.
+// A product's secrets live in its owner's own Vault (project_owner_vault.go). The one vault that still belongs to a
+// place rather than a person is Brain's keystore: a system setting the administrator holds (its backup token).
 
-// sharedWorkflowSecretAAD is the AES-GCM additional data for a shared
-// workflow secret: the store's canonical workflow path. Binding to the path
-// means a ciphertext lifted from one workflow's document cannot be replayed
-// into another's.
+// sharedWorkflowSecretAAD is the AES-GCM additional data the retired per-workflow store bound a value to: the store's
+// canonical workflow path. Only key rotation and the one-off import of old documents still read such values.
 func sharedWorkflowSecretAAD(workflowPath string) ([]byte, error) {
 	normalized, err := chathistory.NormalizeWorkflowSecretPath(workflowPath)
 	if err != nil {
@@ -43,54 +39,64 @@ func decryptSecretValueWithAAD(encryptedBase64 string, aad []byte) (string, erro
 	return sealbox.Open(deriveSecretsKey(), encryptedBase64, aad)
 }
 
-// upsertSharedWorkflowSecret stores plaintext for everyone with access to the
-// workflow.
-
-func (api *StreamingAPI) projectVault(ctx context.Context, root, actor string) (string, string, error) {
-	normalized, err := chathistory.NormalizeWorkflowSecretPath(root)
+// brainVault is Brain's keystore vault and the administrator who holds it (the first active one, by ID).
+func brainVault(ctx context.Context) (string, string, error) {
+	root, err := chathistory.NormalizeWorkflowSecretPath(brainSecretsPath)
 	if err != nil {
 		return "", "", err
 	}
-	if actor == "" {
-		actor = mcpCaller(ctx)
-	}
-	if actor == "" && !IsMultiUserMode() {
-		actor = GetDefaultUserID()
-	}
-	owner := api.projectSecretsOwner(actor, normalized)
-	if normalized == brainSecretsPath {
-		if directory, e := readUserDirectoryFile(); e == nil {
-			var admins []string
-			for _, u := range directory.Users {
-				if a := userAccessForClaims(&UserClaims{UserID: u.ID}); a.Admin && !a.Disabled {
-					admins = append(admins, u.ID)
-				}
-			}
-			sort.Strings(admins)
-			if len(admins) > 0 {
-				owner = admins[0]
+	owner := ""
+	if directory, e := readUserDirectoryFile(); e == nil {
+		var admins []string
+		for _, u := range directory.Users {
+			if a := userAccessForClaims(&UserClaims{UserID: u.ID}); a.Admin && !a.Disabled {
+				admins = append(admins, u.ID)
 			}
 		}
+		sort.Strings(admins)
+		if len(admins) > 0 {
+			owner = admins[0]
+		}
 	}
-
+	if owner == "" && !IsMultiUserMode() {
+		owner = GetDefaultUserID()
+	}
 	if owner == "" || !activeMCPPerson(owner) {
-		return "", "", fmt.Errorf("an active project owner is required")
+		return "", "", fmt.Errorf("an active Brain administrator is required")
 	}
-	data, err := vaultPersonRequest(ctx, owner, http.MethodPost, "/api/project-vaults", vaultPromoteJSON(map[string]string{"workspace_root": normalized}))
+	data, err := vaultPersonRequest(ctx, owner, http.MethodPost, "/api/project-vaults", vaultPromoteJSON(map[string]string{"workspace_root": root}))
 	if err != nil {
 		return "", "", err
 	}
 	var result struct{ ID string }
 	if json.Unmarshal(data, &result) != nil || result.ID == "" {
-		return "", "", fmt.Errorf("project Vault identity unavailable")
+		return "", "", fmt.Errorf("Brain's Vault identity unavailable")
 	}
 	return result.ID, owner, nil
 }
 
-// Project tools keep their existing permissions and names; Vault is their only
-// resource store. Values use the same encrypted Vault value store as shared keys.
-func (api *StreamingAPI) upsertSharedWorkflowSecret(ctx context.Context, workflowPath, name, plaintext string) error {
-	id, owner, err := api.projectVault(ctx, workflowPath, mcpCaller(ctx))
+// brainVaultNames lists the full Vault names of Brain's secrets.
+func brainVaultNames(ctx context.Context) ([]string, string, string, error) {
+	id, owner, err := brainVault(ctx)
+	if err != nil {
+		return nil, "", "", err
+	}
+	data, err := vaultPersonRequest(ctx, owner, http.MethodGet, "/api/vaults/"+url.PathEscape(id), nil)
+	if err != nil {
+		return nil, "", "", err
+	}
+	var view struct {
+		Names []string `json:"secret_names"`
+	}
+	if err = json.Unmarshal(data, &view); err != nil {
+		return nil, "", "", err
+	}
+	return view.Names, id, owner, nil
+}
+
+// storeBrainSecret saves one Brain secret in its keystore vault.
+func (api *StreamingAPI) storeBrainSecret(ctx context.Context, name, value string) error {
+	id, owner, err := brainVault(ctx)
 	if err != nil {
 		return err
 	}
@@ -98,62 +104,18 @@ func (api *StreamingAPI) upsertSharedWorkflowSecret(ctx context.Context, workflo
 	if err != nil {
 		return err
 	}
-	if err = api.storeManagedGlobalSecret(ctx, full, plaintext, false); err != nil {
+	if err = api.storeManagedGlobalSecret(ctx, full, value, false); err != nil {
 		return err
 	}
-	if _, err = vaultPersonRequest(ctx, owner, http.MethodPost, "/api/vaults/"+url.PathEscape(id)+"/secrets", vaultPromoteJSON(map[string]string{"Name": full})); err != nil {
-		return err
-	}
-	markWorkflowSecretsChanged(workflowPath)
-	return nil
+	_, err = vaultPersonRequest(ctx, owner, http.MethodPost, "/api/vaults/"+url.PathEscape(id)+"/secrets", vaultPromoteJSON(map[string]string{"Name": full}))
+	return err
 }
 
-func (api *StreamingAPI) deleteSharedWorkflowSecret(ctx context.Context, workflowPath, name, callerUserID string) error {
-	id, owner, err := api.projectVault(ctx, workflowPath, callerUserID)
+// deleteBrainSecret removes one Brain secret from its keystore vault and the value store.
+func (api *StreamingAPI) deleteBrainSecret(ctx context.Context, name string) error {
+	id, owner, err := brainVault(ctx)
 	if err != nil {
 		return err
 	}
-	if err = api.removeVaultSecret(ctx, owner, id, name); err != nil {
-		return err
-	}
-	markWorkflowSecretsChanged(workflowPath)
-	return nil
-}
-
-func decryptSharedWorkflowSecret(workflowPath string, s chathistory.UserSecret) (string, error) {
-	if s.VaultName == "" {
-		return "", fmt.Errorf("secret has not been migrated to Vault")
-	}
-	managedGlobalsMu.RLock()
-	value, ok := managedGlobals[s.VaultName]
-	managedGlobalsMu.RUnlock()
-	if !ok {
-		return "", fmt.Errorf("Vault secret value unavailable")
-	}
-	return value, nil
-}
-
-func (api *StreamingAPI) ensureSharedWorkflowSecrets(ctx context.Context, workflowPath, requestingUserID string) ([]chathistory.UserSecret, error) {
-	if strings.TrimSpace(workflowPath) == "" {
-		return nil, nil
-	}
-	id, owner, err := api.projectVault(ctx, workflowPath, requestingUserID)
-	if err != nil {
-		return nil, err
-	}
-	data, err := vaultPersonRequest(ctx, owner, http.MethodGet, "/api/vaults/"+url.PathEscape(id), nil)
-	if err != nil {
-		return nil, err
-	}
-	var view struct {
-		Names []string `json:"secret_names"`
-	}
-	if err = json.Unmarshal(data, &view); err != nil {
-		return nil, err
-	}
-	rows := make([]chathistory.UserSecret, 0, len(view.Names))
-	for _, full := range view.Names {
-		rows = append(rows, chathistory.UserSecret{Name: vaultSecretShortName(full), VaultName: full, WorkflowPath: workflowPath})
-	}
-	return rows, nil
+	return api.removeVaultSecret(ctx, owner, id, name)
 }

@@ -16,7 +16,7 @@ afterEach(() => { cleanup.splice(0).forEach(fn => fn()); vi.clearAllMocks(); moc
 const app = { id: 'slack', name: 'Team chat', kind: 'slack', provider: 'Slack', status: 'needs_attention', selected: false, can_select: true }
 const inventory = { notices: [], vaults: [
   { id: 'mine', name: 'My accounts', sharing: 'Only you', project: false, items: [app, { id: 'laptop', name: 'My laptop', kind: 'computer', status: 'offline', selected: true, can_select: true }] },
-  { id: 'project', name: 'Project vault', sharing: 'You + 1 person', project: true, items: [{ id: 'KEY', name: 'KEY', kind: 'project_secret', status: 'stored', selected: true, can_select: true }] },
+  { id: 'project', name: 'Project vault', sharing: 'You + 1 person', project: true, items: [{ id: 'VLT_A00001__KEY', name: 'KEY', kind: 'shared_secret', status: 'stored', selected: true, can_select: true }] },
 ] }
 async function mount() {
   mocks.load.mockResolvedValue(inventory)

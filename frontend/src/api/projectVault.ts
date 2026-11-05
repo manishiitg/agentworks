@@ -1,9 +1,9 @@
 import { agentApi } from '../services/api'
 
-export type VaultItemKind = 'mcp' | 'project_secret' | 'shared_secret' | 'google' | 'slack' | 'computer'
+export type VaultItemKind = 'mcp' | 'shared_secret' | 'google' | 'slack' | 'computer'
 export interface ProjectVaultItem {
   id: string; name: string; kind: VaultItemKind; provider?: string; owner?: string
-  /** Whose it is, in plain words: "you", a Company group's name, "this project" or "the project's owner". */
+  /** Whose it is, in plain words: "you", a Company group's name or "the project's owner". */
   source?: string
   account_email?: string
   app?: string
@@ -17,7 +17,7 @@ export interface ProjectVaultGroup {
 }
 export interface ProjectVaultInventory {
   vaults: ProjectVaultGroup[]; notices: string[]
-  selected_servers: string[]; selected_secrets: string[]; selected_global_secret_names: string[]
+  selected_servers: string[]; selected_global_secret_names: string[]
   /** "Use all my apps automatically": on = every permitted Vault app, off = only the chosen ones. */
   use_all_vault_apps: boolean
 }

@@ -101,10 +101,6 @@ func TestWithoutVaultSharedSecretsBehaveAsBeforeVault(t *testing.T) {
 	api := &StreamingAPI{}
 	both := []string{"ENV_ONE", "MANAGED_ONE"}
 	missing := []string{"NOPE"}
-	project := []struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}{{"ENV_ONE", "project-value"}}
 	empty := []string{}
 
 	if vaultConfigured() {
@@ -123,30 +119,26 @@ func TestWithoutVaultSharedSecretsBehaveAsBeforeVault(t *testing.T) {
 		t.Fatal("visible:", rows)
 	}
 	for name, tc := range map[string]struct {
-		scoped    any
 		selection *[]string
 		want      int
 	}{
-		"nil selection keeps the current behaviour (no inherited globals)": {nil, nil, 0},
-		"empty selection":             {nil, &empty, 0},
-		"selected globals are merged": {nil, &both, 2},
-		"unknown name is skipped":     {nil, &missing, 0},
+		"nil selection keeps the current behaviour (no inherited globals)": {nil, 0},
+		"empty selection":             {&empty, 0},
+		"selected globals are merged": {&both, 2},
+		"unknown name is skipped":     {&missing, 0},
 	} {
-		got := api.mergeGlobalSecretsFor(ctx, "anyone", nil, tc.selection)
+		got := api.mergeGlobalSecretsFor(ctx, "anyone", tc.selection)
 		if len(got) != tc.want {
 			t.Errorf("%s: got %d secrets, want %d", name, len(got), tc.want)
 		}
 	}
-	if got := api.mergeGlobalSecretsFor(ctx, "anyone", project, &both); len(got) != 2 || got[0].Value != "project-value" {
-		t.Errorf("project secret must win over a shared secret of the same name: %v", got)
-	}
-	if err := validateVaultSecretSelection(ctx, "anyone", nil, &both); err != nil {
+	if err := validateVaultSecretSelection(ctx, "anyone", &both); err != nil {
 		t.Error("admission refused with no Vault:", err)
 	}
-	if err := validateVaultSecretSelection(ctx, "anyone", nil, nil); err != nil {
+	if err := validateVaultSecretSelection(ctx, "anyone", nil); err != nil {
 		t.Error(err)
 	}
-	if err := validateVaultSecretSelection(ctx, "anyone", nil, &missing); err != nil {
+	if err := validateVaultSecretSelection(ctx, "anyone", &missing); err != nil {
 		t.Error("a missing secret must not stop the run (the workflow shows a banner instead):", err)
 	}
 	if inv, err := vaultAccessFor(ctx, "anyone"); err != nil || len(inv.Servers) != 0 || len(inv.Secrets) != 0 {
@@ -185,7 +177,7 @@ func TestConfiguredButUnreachableVaultStillFailsClosed(t *testing.T) {
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	withSharedSecretsForTest(t, []globalSecretEntry{{Name: "ENV_ONE", Value: "env-value"}}, map[string]string{})
 	names := []string{"ENV_ONE"}
-	if err := validateVaultSecretSelection(context.Background(), "alice", nil, &names); err == nil {
+	if err := validateVaultSecretSelection(context.Background(), "alice", &names); err == nil {
 		t.Fatal("unreachable Vault admitted the run")
 	}
 }

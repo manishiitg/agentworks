@@ -1,12 +1,10 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"path/filepath"
 	"sort"
-	"time"
 )
 
 // The server-owned attachment index links a user's private MCP to a project.
@@ -164,23 +162,3 @@ func forgetPlaceConnections(root string) {
 // errPlaceMCPUnavailable is returned by the bridge for a personal-shaped
 // server name that is not one of this place's connections.
 var errPlaceMCPUnavailable = fmt.Errorf("this MCP connection is not available here")
-
-// projectSecretValue reads one secret of a workflow, Crew or Code from the
-// shared project secret store (the same store Setup > Secrets writes).
-func (api *StreamingAPI) projectSecretValue(root, name string) (string, error) {
-	if api.chatStore == nil {
-		return "", fmt.Errorf("project secrets are unavailable")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	secrets, err := api.ensureSharedWorkflowSecrets(ctx, root, api.projectSecretsOwner(mcpCaller(ctx), root))
-	if err != nil {
-		return "", err
-	}
-	for _, secret := range secrets {
-		if secret.Name == name {
-			return decryptSharedWorkflowSecret(root, secret)
-		}
-	}
-	return "", fmt.Errorf("this connection needs the secret %q; add it under Setup > Secrets", name)
-}

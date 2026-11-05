@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 
@@ -55,8 +56,7 @@ func newCrewCreationTestEnvWithOptions(t *testing.T, providerOptions []agentprof
 	}
 	svc := NewProjectActionDispatcher(nil, registry)
 	// Hermetic availability fixtures: github is connected, gitlab is
-	// configured but disconnected, SHARED_GH is global, and the creating
-	// workflow holds no scoped secrets.
+	// configured but disconnected, and SHARED_GH is a Vault secret.
 	svc.crewAvailability = &crewCreationAvailability{
 		MCPServer: func(name string) (string, bool, error) {
 			switch name {
@@ -67,9 +67,6 @@ func newCrewCreationTestEnvWithOptions(t *testing.T, providerOptions []agentprof
 			default:
 				return "", false, fmt.Errorf("MCP server %q is not configured; use list_mcp_servers or search_mcp_catalog first", name)
 			}
-		},
-		ScopedSecrets: func(context.Context, string, string) (map[string]bool, error) {
-			return map[string]bool{}, nil
 		},
 		GlobalSecrets: func() map[string]bool {
 			return map[string]bool{"SHARED_GH": true}
@@ -147,7 +144,7 @@ func TestCreateCrewProjectWritesUILayout(t *testing.T) {
 	if caps["browser_mode"] != browser.DefaultMode() { // the deployment's default since PLAT-788
 		t.Fatalf("browser_mode = %v, want %s", caps["browser_mode"], browser.DefaultMode())
 	}
-	for _, key := range []string{"selected_secrets", "selected_global_secret_names"} {
+	for _, key := range []string{"selected_global_secret_names"} {
 		raw, _ := caps[key].([]interface{})
 		if len(raw) != 0 {
 			t.Fatalf("%s = %v, want explicit empty", key, raw)
@@ -299,7 +296,7 @@ func TestCreateCrewProjectSeedsStarterAndSelections(t *testing.T) {
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
 		Purpose: "Own release quality", Instructions: "Check the changelog first.",
 		Skills: []string{"agent-browser"}, Servers: []string{"github"},
-		Secrets: []string{"SHARED_GH"}, GlobalSecrets: []string{"SHARED_GH"},
+		GlobalSecrets:   []string{"SHARED_GH"},
 		StepInstruction: "Review the release.", IdempotencyKey: "proposal-1",
 	})
 	if err != nil {
@@ -333,14 +330,13 @@ func TestCreateCrewProjectSeedsStarterAndSelections(t *testing.T) {
 	}
 	assertStringSet("selected_skills", "agent-browser")
 	assertStringSet("selected_servers", "github")
-	assertStringSet("selected_secrets", "SHARED_GH")
 	assertStringSet("selected_global_secret_names", "SHARED_GH")
 	// Re-entry converges without duplicating selections.
 	if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
 		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Release Reviewer",
 		Purpose: "Own release quality", Instructions: "Check the changelog first.",
 		Skills: []string{"agent-browser"}, Servers: []string{"github"},
-		Secrets: []string{"SHARED_GH"}, GlobalSecrets: []string{"SHARED_GH"},
+		GlobalSecrets:   []string{"SHARED_GH"},
 		StepInstruction: "Review the release.", IdempotencyKey: "proposal-1",
 	}); err != nil {
 		t.Fatal(err)
@@ -384,7 +380,7 @@ func TestCreateCrewProjectRejectsUnknownSkillAndBadNames(t *testing.T) {
 		t.Fatalf("unknown skill err = %v, want install-first failure", err)
 	}
 	for name, req := range map[string]CreateCrewRequest{
-		"secret path":   {UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Purpose: "P", StepInstruction: "S", Secrets: []string{"a/b"}, IdempotencyKey: "k"},
+		"secret path":   {UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Purpose: "P", StepInstruction: "S", GlobalSecrets: []string{"a/b"}, IdempotencyKey: "k"},
 		"server dotdot": {UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Purpose: "P", StepInstruction: "S", Servers: []string{".."}, IdempotencyKey: "k"},
 		"empty global":  {UserID: "owner", WorkflowPath: "Workflow/build", Title: "T", Purpose: "P", StepInstruction: "S", GlobalSecrets: []string{" "}, IdempotencyKey: "k"},
 	} {
@@ -735,29 +731,6 @@ func TestCreateCrewProjectAvailability(t *testing.T) {
 		raw, _ := caps["selected_servers"].([]interface{})
 		if len(raw) != 1 || raw[0] != "gitlab" {
 			t.Fatalf("selected_servers = %v, want gitlab recorded", raw)
-		}
-	})
-	t.Run("unknown secret fails", func(t *testing.T) {
-		svc, _, ctx := newEnv(t)
-		if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
-			UserID: "owner", WorkflowPath: "Workflow/build", Title: "T",
-			Secrets: []string{"GHOST"}, Purpose: "P", StepInstruction: "S",
-			IdempotencyKey: "k",
-		}); err == nil || !strings.Contains(err.Error(), "no stored value") {
-			t.Fatalf("unknown secret err = %v, want no-stored-value", err)
-		}
-	})
-	t.Run("workflow scoped secret does not carry over", func(t *testing.T) {
-		svc, _, ctx := newEnv(t)
-		svc.crewAvailability.ScopedSecrets = func(context.Context, string, string) (map[string]bool, error) {
-			return map[string]bool{"WF_ONLY": true}, nil
-		}
-		if _, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
-			UserID: "owner", WorkflowPath: "Workflow/build", Title: "T",
-			Secrets: []string{"WF_ONLY"}, Purpose: "P", StepInstruction: "S",
-			IdempotencyKey: "k",
-		}); err == nil || !strings.Contains(err.Error(), "do not carry over") {
-			t.Fatalf("scoped secret err = %v, want a carry-over hint", err)
 		}
 	})
 	t.Run("unknown global fails", func(t *testing.T) {

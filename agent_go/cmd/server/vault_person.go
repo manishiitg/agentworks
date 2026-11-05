@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
@@ -61,11 +62,10 @@ const manageMyVaultsDescription = "Your own Vault items: your sign-ins (MCP apps
 	"Operations: project_select {workspace_path, kind, item_id, selected} (tick one app, secret or computer for the project); project {workspace_path} (the project's Vault panel: accessible apps, secret names and computers with actual project selections; no values); laptops (your connected computers and one-time setup steps; choose where to use them with manage_laptop_access); apps (the apps Vault can connect, by catalog name); " +
 	"connect {provider, label} for a server in the Vault catalog (returns the sign-in link for you to open); " +
 	"sign_in {connection_id, client_id?, client_secret?} to finish or renew sign-in in chat; " +
-	"promote_secret {name} copies a secret of this Crew, Code or workflow into your Vault server-side (you never see the value); " +
 	"set_secret {name, value, replace} stores a value the person gave you (replace=true to overwrite an existing name); the answer names the secret and never repeats the value, and you must not either; remove_secret {name}; " +
 	"github_status shows your GitHub connection. github_connect {method: gh|pat|oauth, login?, token?} offers gh first on a single-user local installation, PAT on local or server, and optional OAuth last. github_status lists gh_accounts on local installs. With multiple accounts, ask which login to use and pass login. gh copies only that account into encrypted storage without switching the terminal account; later gh changes do not change it. pat takes the token you provide. Never repeat the token. github_disconnect removes the saved connection. " +
 	"sync {connection_id}; remove_connection {connection_id}. " +
-	"A person can give you a secret value to store with set_secret, or run `agentworks secret set NAME` in their terminal, or promote an existing one."
+	"A person can give you a secret value to store with set_secret, or run `agentworks secret set NAME` in their terminal."
 
 func manageMyVaultsParameters() map[string]interface{} {
 	str := func(desc string) map[string]interface{} {
@@ -75,12 +75,12 @@ func manageMyVaultsParameters() map[string]interface{} {
 		"type": "object", "additionalProperties": false,
 		"required": []string{"operation"},
 		"properties": map[string]interface{}{
-			"operation":      map[string]interface{}{"type": "string", "enum": []string{"project", "project_select", "laptops", "github_status", "github_connect", "github_disconnect", "apps", "connect", "sign_in", "promote_secret", "set_secret", "remove_secret", "sync", "remove_connection"}},
-			"kind":           str("project_select: mcp, project_secret, shared_secret, google, slack or computer; all_vault_apps with selected true/false turns 'Use all my apps automatically' on or off."),
+			"operation":      map[string]interface{}{"type": "string", "enum": []string{"project", "project_select", "laptops", "github_status", "github_connect", "github_disconnect", "apps", "connect", "sign_in", "set_secret", "remove_secret", "sync", "remove_connection"}},
+			"kind":           str("project_select: mcp, shared_secret, google, slack or computer; all_vault_apps with selected true/false turns 'Use all my apps automatically' on or off."),
 			"item_id":        str("project_select: exact item ID from project inventory."),
 			"selected":       map[string]interface{}{"type": "boolean", "description": "project_select: whether this project uses the item."},
 			"workspace_path": str("project / project_select: the Crew or Goal folder; defaults to this chat's project. Access is rechecked."),
-			"name":           str("promote_secret / set_secret / remove_secret: the secret's name. connect with url: the custom server's name."),
+			"name":           str("set_secret / remove_secret: the secret's name. connect with url: the custom server's name."),
 			"provider":       str("connect: the catalog server's name."),
 			"method":         str("github_connect: gh (local owner only), pat (personal access token), or oauth (browser sign-in)."),
 			"login":          str("github_connect with method=gh: account name from github_status.gh_accounts; required when multiple accounts are signed in."),
@@ -88,7 +88,6 @@ func manageMyVaultsParameters() map[string]interface{} {
 			"url":            str("Verified custom MCP URL, with name instead of provider."),
 			"label":          str("connect: an account label, e.g. Notion · Engineering."),
 			"connection_id":  str("The connection's ID (c-...) from project."),
-			"confirm":        map[string]interface{}{"type": "boolean", "description": "promote: true after the explanation has been shown."},
 			"value":          str("set_secret: the secret value the person gave you. Stored on the server; never repeat it."),
 			"api_key":        str("User-provided connection key; encrypted in Vault, never repeat."),
 			"api_key_header": str("Provider's documented API-key header."), "api_key_format": str("Header format, such as Bearer {}."),
@@ -124,7 +123,7 @@ func argString(args map[string]interface{}, key string) string {
 func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, args map[string]interface{}) (string, error) {
 	// In a project's own chat the project is the chat's; callers often leave workspace_path out.
 	if op := argString(args, "operation"); (op == "project" || op == "project_select") && argString(args, "workspace_path") == "" {
-		if root := api.projectRootForSession(sessionIDFromContextForVaults(ctx)); root != "" {
+		if root := api.projectRootForSession(executor.SessionIDFromContext(ctx)); root != "" {
 			args["workspace_path"] = root
 		}
 	}
@@ -207,8 +206,6 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 			}
 		}
 		return api.mcpConnectionTool(ctx, person, "install_mcp_server", in)
-	case "promote_secret":
-		return api.promoteSecretToVault(ctx, person, vaultID, argString(args, "name"))
 	case "set_secret":
 		name := argString(args, "name")
 		replace := args["replace"] == true

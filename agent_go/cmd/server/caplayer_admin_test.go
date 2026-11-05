@@ -3,13 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 func TestCapLayerUsesProductAdminRoleAndHidesServiceCredential(t *testing.T) {
@@ -253,10 +254,6 @@ func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) 
 	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: profile.ID, SelectedFolder: caplayerproduct.WorkspaceRoot,
 		AgentProfileContext:   agentprofiles.PromptContext{ProjectTitle: "CapLayer"},
 		SelectedGlobalSecrets: &selectedGlobals}
-	req.DecryptedSecrets = append(req.DecryptedSecrets, struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}{Name: "EXAMPLE_SECRET", Value: "test-only"})
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "admin"})
 	resolved, err := api.resolveAgentProfileForQuery(ctx, &req, "admin", "caplayer-test")
 	if err != nil {
@@ -265,7 +262,7 @@ func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) 
 	if agentProfileToolsMode(resolved) != "full" {
 		t.Fatal("Vault did not request the shared full native CLI runtime")
 	}
-	if len(req.DecryptedSecrets) != 0 || req.SelectedGlobalSecrets == nil || len(*req.SelectedGlobalSecrets) != 0 || len(resolved.ChatSecrets) != 0 {
+	if req.SelectedGlobalSecrets == nil || len(*req.SelectedGlobalSecrets) != 0 || len(resolved.ChatSecrets) != 0 {
 		t.Fatal("inherited secrets reached the CLI runtime")
 	}
 	// Full native tools are controlled by the provider runtime, not this

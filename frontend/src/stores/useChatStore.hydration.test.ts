@@ -283,7 +283,6 @@ describe('useChatStore hydration bootstrap', () => {
               useCodeExecutionMode: true,
               selectedServers: [],
               selectedSkills: [],
-              selectedSecrets: [],
               llmConfig: { provider: 'codex-cli', model_id: 'gpt-5.6-sol' },
               fileContext: [],
               browserMode: 'none',

@@ -68,7 +68,6 @@ func TestWorkspacePanelChatToolsBindCurrentBuilder(t *testing.T) {
 	}
 	// PLAT-825-113: a canonical save must revoke live secret/sender choices in
 	// the same turn, not leave stale credentials for the next shell/child run.
-	manifest.Capabilities.SelectedSecrets = []string{"RETIRED_EXAMPLE"}
 	manifest.Capabilities.SelectedGlobalSecretNames = &[]string{}
 	if err := WriteWorkflowManifest(ctx, root, manifest); err != nil {
 		t.Fatal(err)

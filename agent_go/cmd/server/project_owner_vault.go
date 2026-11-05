@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 // All in Vault (owner, 5 Nov): a secret added to a Crew, Goal, Flow or Code project is saved in its owner's own Vault
@@ -53,33 +54,32 @@ func (api *StreamingAPI) runSecretsOwner(ctx context.Context, person, workspace 
 
 // projectRunSecrets resolves a Goal or Flow run's SECRET_* values: the project's selected secrets, lent by its owner.
 // A selected secret the owner may no longer use stops the run.
-func (api *StreamingAPI) projectRunSecrets(ctx context.Context, person, workspace string, projectNames []string, selection *[]string) ([]resolvedSecret, error) {
+func (api *StreamingAPI) projectRunSecrets(ctx context.Context, person, workspace string, selection *[]string) ([]resolvedSecret, error) {
 	owner := api.runSecretsOwner(ctx, person, workspace)
-	scoped := api.loadSelectedSecrets(ctx, person, workspace, projectNames)
-	if err := validateVaultSecretSelection(ctx, owner, scoped, selection); err != nil {
+	if err := validateVaultSecretSelection(ctx, owner, selection); err != nil {
 		return nil, err
 	}
-	return api.mergeGlobalSecretsFor(ctx, owner, scoped, selection), nil
+	return api.mergeGlobalSecretsFor(ctx, owner, selection), nil
 }
 
-// projectSecretSelection is a project's saved secret selection: its own older names and its Vault names.
-func projectSecretSelection(ctx context.Context, root string) ([]string, []string, error) {
+// projectSecretSelection is a project's saved selection of Vault secrets.
+func projectSecretSelection(ctx context.Context, root string) ([]string, error) {
 	manifest, err := readProjectSelectionManifest(ctx, root)
 	if err != nil || !manifest.found {
-		return nil, nil, err
+		return nil, err
 	}
 	capabilities, _ := manifest.doc["capabilities"].(map[string]any)
-	return manifestNames(capabilities["selected_secrets"]), manifestNames(capabilities["selected_global_secret_names"]), nil
+	return manifestNames(capabilities["selected_global_secret_names"]), nil
 }
 
 // projectSecretValueFor is one secret the project uses, by its Vault name or the $SECRET_ name it is used under, lent
 // by the project's owner as in a run.
 func (api *StreamingAPI) projectSecretValueFor(ctx context.Context, person, root, name string) (string, bool) {
-	own, selection, err := projectSecretSelection(ctx, root)
+	selection, err := projectSecretSelection(ctx, root)
 	if err != nil {
 		return "", false
 	}
-	rows, err := api.projectRunSecrets(ctx, api.runSecretsOwner(ctx, person, root), root, own, &selection)
+	rows, err := api.projectRunSecrets(ctx, person, root, &selection)
 	if err != nil {
 		return "", false
 	}
@@ -89,6 +89,17 @@ func (api *StreamingAPI) projectSecretValueFor(ctx context.Context, person, root
 		}
 	}
 	return "", false
+}
+
+// projectSecretValue is one secret a project uses, for an MCP connection's header (projectSecretReader): its selected
+// Vault secret by name, lent by the project's owner.
+func (api *StreamingAPI) projectSecretValue(root, name string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if value, ok := api.projectSecretValueFor(ctx, "", root, name); ok {
+		return value, nil
+	}
+	return "", fmt.Errorf("this connection needs the secret %q; add it to this project's Secrets", name)
 }
 
 // projectSelectedVaultNames maps the names a check asks for (a selected Vault name, or the $SECRET_ name the project
@@ -186,17 +197,10 @@ func withoutProjectSecret(selection []string, name string) []string {
 // selectProjectSecret saves full as selected in the project's runtime manifest (profileID chooses it as for any product
 // selection; Crews, Code, Goals and Flows keep it in workflow.json).
 func selectProjectSecret(ctx context.Context, profileID, root, full string) error {
-	if err := updateProductSelectedGlobalSecrets(ctx, profileID, root, func(current []string) []string { return withProjectSecret(current, full) }); err != nil {
-		return err
-	}
-	// Until the project secrets are moved, a same-named project copy would win over the saved value.
-	return updateProductSelectedSecrets(ctx, profileID, root, func(current []string) []string { return removeString(current, vaultSecretShortName(full)) })
+	return updateProductSelectedGlobalSecrets(ctx, profileID, root, func(current []string) []string { return withProjectSecret(current, full) })
 }
 
 // unselectProjectSecret removes name from the project's selection; the value stays in its Vault.
 func unselectProjectSecret(ctx context.Context, profileID, root, name string) error {
-	if err := updateProductSelectedGlobalSecrets(ctx, profileID, root, func(current []string) []string { return withoutProjectSecret(current, name) }); err != nil {
-		return err
-	}
-	return updateProductSelectedSecrets(ctx, profileID, root, func(current []string) []string { return removeString(current, vaultSecretShortName(name)) })
+	return updateProductSelectedGlobalSecrets(ctx, profileID, root, func(current []string) []string { return withoutProjectSecret(current, name) })
 }

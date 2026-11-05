@@ -66,7 +66,6 @@ const EMPTY_CAPABILITIES: WorkflowCapabilities = {
   selected_servers: [],
   selected_tools: [],
   selected_skills: [],
-  selected_secrets: [],
   selected_global_secret_names: [],
   use_code_execution_mode: false,
 }
@@ -362,9 +361,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 </> : <>
                 {activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <ProjectIntegrationPanel workspacePath={workspacePath} tabId={vaultTabId} placeNoun={relayMode ? 'Flow' : 'Goal'} section={integrationSection} canEdit={canWriteWorkflow} onAsk={askInCurrentChat}
                   onAppsSaved={selected_servers => syncVaultSelections({ selected_servers })}
-                  selectedSecrets={capabilities.selected_secrets}
-                  onSelectedSecretsChange={async selected_secrets => { const next = { ...latest.current.capabilities, selected_secrets }; await persist(next, true); setCapabilities(next) }}
-                  onSecretSelectionSaved={inventory => syncVaultSelections({ selected_secrets: inventory.selected_secrets, selected_global_secret_names: inventory.selected_global_secret_names })}
+                  onSecretSelectionSaved={inventory => syncVaultSelections({ selected_global_secret_names: inventory.selected_global_secret_names })}
                   laptop={!relayMode ? <CodeLocalFilesSettings workflowPath={workspacePath} /> : undefined} />}
                 {activeMcpTab === 'apps' && workspacePath && pluginTab === 'skills' && <ProjectPluginsPanel tab="skills" skills={<SkillsManagerPanel
                       compact

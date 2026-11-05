@@ -7,8 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -321,154 +319,6 @@ func TestResolveAgentProfileRejectsWorkspaceEscape(t *testing.T) {
 	}
 }
 
-func TestResolveAgentProfileInjectsProjectScopedSecretsIntoNativeEnvironment(t *testing.T) {
-	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
-	store, err := chathistory.NewFilesystemStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	const userID = "user-1"
-	const workspacePath = "Chats/Example Product/projects/launch"
-	workspace := &mockWorkspaceAPI{files: map[string]string{
-		workspacePath + "/product.json": `{"schema_version":1,"product":"example-product","capabilities":{"selected_secrets":["PEXELS_API_KEY"]}}`,
-	}}
-	host := httptest.NewServer(workspace)
-	defer host.Close()
-	t.Setenv("WORKSPACE_API_URL", host.URL)
-	if err := store.UpsertWorkflowSecret(context.Background(), userID, agentProfileRuntimeWorkspace(userID, workspacePath), "PEXELS_API_KEY", encryptProfileSecretForTest(t, userID, "test-key")); err != nil {
-		t.Fatalf("store project secret: %v", err)
-	}
-
-	registry := agentprofiles.NewRegistry()
-	if err := registry.RegisterProfile(agentprofiles.Profile{
-		ID: "example-product", Name: "Example Product", Version: 1, BuiltIn: true,
-		SystemPromptTemplate: "{{.ProjectTitle}}",
-		Runtime:              agentprofiles.RuntimePolicy{Transport: "structured", Capabilities: agentprofiles.RuntimeCapabilities{Secrets: agentprofiles.CapabilityRequired}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	api := &StreamingAPI{agentProfiles: registry, chatStore: store}
-	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "example-product", SelectedFolder: workspacePath, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Launch"}}
-	if _, err := api.resolveAgentProfileForQuery(context.Background(), &req, userID, "session-1"); err != nil {
-		t.Fatal(err)
-	}
-	if len(req.DecryptedSecrets) != 1 || req.DecryptedSecrets[0].Name != "PEXELS_API_KEY" || req.DecryptedSecrets[0].Value != "test-key" {
-		t.Fatalf("profile secret selection = %#v, want only the project-scoped secret", req.DecryptedSecrets)
-	}
-}
-
-// Settings saves fixed-product secrets under the user's physical workspace.
-// Profile admission must read that same store for both explicit attachments
-// and the first-turn migration that discovers already-saved names.
-func TestFixedProductProfileLoadsSecretsFromSettingsWorkspace(t *testing.T) {
-	for _, initialized := range []bool{true, false} {
-		name := "discover saved attachments"
-		if initialized {
-			name = "explicit attachments"
-		}
-		t.Run(name, func(t *testing.T) {
-			t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
-			t.Setenv("MULTI_USER_MODE", "true")
-			withMemoryUserDirectory(t, `{"users":[{"id":"user-1","username":"owner","can_create":true,"products":["example-app"]}]}`)
-			// Settings now stores project secrets in Vault. Keep its external
-			// boundary keyed by workspace so the unowned alias cannot win.
-			roots := map[string]string{}
-			names := map[string][]string{}
-			vault := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if !strings.HasPrefix(r.URL.Path, "/api/admin/") && r.Header.Get("X-CapLayer-Actor") != "user-1" {
-					w.WriteHeader(http.StatusForbidden)
-					return
-				}
-				switch {
-				case r.URL.Path == "/api/project-vaults":
-					var in struct {
-						Root string `json:"workspace_root"`
-					}
-					if json.NewDecoder(r.Body).Decode(&in) != nil {
-						w.WriteHeader(400)
-						return
-					}
-					id := roots[in.Root]
-					if id == "" {
-						id = fmt.Sprintf("v-%06d", len(roots)+1)
-						roots[in.Root] = id
-					}
-					json.NewEncoder(w).Encode(map[string]string{"id": id})
-				case strings.HasPrefix(r.URL.Path, "/api/vaults/"):
-					parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/vaults/"), "/")
-					if len(parts) == 2 && parts[1] == "secrets" && r.Method == http.MethodPost {
-						var in struct{ Name string }
-						json.NewDecoder(r.Body).Decode(&in)
-						names[parts[0]] = append(names[parts[0]], in.Name)
-						json.NewEncoder(w).Encode(map[string]any{})
-					} else if len(parts) == 1 {
-						json.NewEncoder(w).Encode(map[string]any{"secret_names": names[parts[0]]})
-					} else {
-						w.WriteHeader(404)
-					}
-				case r.URL.Path == "/api/admin/runtime/secrets":
-					json.NewEncoder(w).Encode(map[string]any{"secrets": []any{}})
-				case strings.HasPrefix(r.URL.Path, "/api/admin/secrets"):
-					w.WriteHeader(http.StatusNoContent)
-				default:
-					w.WriteHeader(404)
-				}
-			}))
-			defer vault.Close()
-			t.Setenv("CAPLAYER_SERVICE_URL", vault.URL)
-			t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
-			t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
-			managedGlobalsMu.Lock()
-			oldManaged := managedGlobals
-			managedGlobals = map[string]string{}
-			managedGlobalsMu.Unlock()
-			t.Cleanup(func() { managedGlobalsMu.Lock(); managedGlobals = oldManaged; managedGlobalsMu.Unlock() })
-			const userID = "user-1"
-			const logical = "Chats/ExampleApp"
-			physical := agentProfileRuntimeWorkspace(userID, logical)
-			manifest := `{"capabilities":{}}`
-			if initialized {
-				manifest = `{"capabilities":{"selected_secrets":["PORTAL_PASSWORD"]}}`
-			}
-			workspace := &mockWorkspaceAPI{files: map[string]string{logical + "/product.json": manifest}}
-			host := httptest.NewServer(workspace)
-			defer host.Close()
-			t.Setenv("WORKSPACE_API_URL", host.URL)
-			store, err := chathistory.NewFilesystemStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			registry := agentprofiles.NewRegistry()
-			if err := registry.RegisterProfile(agentprofiles.Profile{
-				ID: "example-app", Name: "ExampleApp", Version: 1, BuiltIn: true,
-				SystemPromptTemplate: "{{.ProjectTitle}}",
-				Runtime:              agentprofiles.RuntimePolicy{Transport: "structured"},
-			}); err != nil {
-				t.Fatal(err)
-			}
-			api := &StreamingAPI{agentProfiles: registry, chatStore: store}
-			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: userID, Username: "owner"})
-			if err := api.upsertSharedWorkflowSecret(ctx, physical, "PORTAL_PASSWORD", "settings-value"); err != nil {
-				t.Fatal(err)
-			}
-			// A same-named value at the old unowned alias must not win.
-			if err := api.upsertSharedWorkflowSecret(ctx, logical, "PORTAL_PASSWORD", "wrong-store-value"); err != nil {
-				t.Fatal(err)
-			}
-			req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "example-app", SelectedFolder: logical, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "ExampleApp"}}
-			if _, err := api.resolveAgentProfileForQuery(ctx, &req, userID, "session-1"); err != nil {
-				t.Fatal(err)
-			}
-			if len(req.DecryptedSecrets) != 1 || req.DecryptedSecrets[0].Name != "PORTAL_PASSWORD" || req.DecryptedSecrets[0].Value != "settings-value" {
-				t.Fatal("profile did not load the credential saved by Settings")
-			}
-			if req.secretsWorkspacePath != physical {
-				t.Fatalf("secret source = %q, want %q", req.secretsWorkspacePath, physical)
-			}
-		})
-	}
-}
-
 func TestResolveCrewProfileUsesOnlyExplicitlySelectedGlobalSecrets(t *testing.T) {
 	withVaultSecretGrant(t, "user-1", "SHARED_TOKEN")
 	store, err := chathistory.NewFilesystemStore(t.TempDir())
@@ -481,7 +331,7 @@ func TestResolveCrewProfileUsesOnlyExplicitlySelectedGlobalSecrets(t *testing.T)
 	workspacePath := registerTestCrew(t, "site", userID, false)
 	workspace := &mockWorkspaceAPI{files: map[string]string{
 		workspacePath + "/product.json":  `{"schema_version":1,"product":"work","id":"site","title":"Site","session_id":"work:site"}`,
-		workspacePath + "/workflow.json": `{"capabilities":{"selected_secrets":[],"selected_global_secret_names":["SHARED_TOKEN"]}}`,
+		workspacePath + "/workflow.json": `{"capabilities":{"selected_global_secret_names":["SHARED_TOKEN"]}}`,
 	}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
@@ -517,7 +367,7 @@ func TestResolveCrewProfileUsesOnlyExplicitlySelectedGlobalSecrets(t *testing.T)
 	if req.SelectedGlobalSecrets == nil || len(*req.SelectedGlobalSecrets) != 1 || (*req.SelectedGlobalSecrets)[0] != "SHARED_TOKEN" {
 		t.Fatalf("Crew global selection = %#v", req.SelectedGlobalSecrets)
 	}
-	resolved := api.mergeGlobalSecretsFor(context.Background(), userID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
+	resolved := api.mergeGlobalSecretsFor(context.Background(), userID, req.SelectedGlobalSecrets)
 	if len(resolved) != 1 || resolved[0].Name != "SHARED_TOKEN" || resolved[0].Value != "selected-value" {
 		t.Fatalf("Crew received globals outside its explicit allowlist: %#v", resolved)
 	}

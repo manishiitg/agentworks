@@ -230,7 +230,7 @@ func TestWebhookConcurrentOutcomeIsolation(t *testing.T) {
 
 func TestWebhookRejectsProtectedAndUndeclaredVariables(t *testing.T) {
 	manifest := NewWorkflowManifest("test")
-	manifest.Capabilities.SelectedSecrets = []string{"DB_URL"}
+	manifest.Capabilities.SelectedGlobalSecretNames = &[]string{"VLT_A00001__DB_URL"}
 	raw, _ := json.Marshal(manifest)
 	mock := &mockWorkspaceAPI{files: map[string]string{manifestPath("Workflow/test"): string(raw), "Workflow/test/variables/variables.json": `{"variables":[{"name":"base_url"},{"name":"DB_URL"},{"name":"PATH"},{"name":"access_token"}]}`}}
 	ws := httptest.NewServer(mock)

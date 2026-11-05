@@ -124,39 +124,6 @@ func (api *StreamingAPI) deleteManagedGlobalSecret(ctx context.Context, userID, 
 	return nil
 }
 
-func (api *StreamingAPI) promoteWorkflowSecret(ctx context.Context, userID, workspacePath, name string) error {
-	if !canManageGlobalSecrets(userID) {
-		return errGlobalAdmin
-	}
-	claims := &UserClaims{UserID: userID}
-	_, readRoots, err := authorizeWorkflowContextPathsWithReadRoots(context.WithValue(ctx, UserContextKey, claims), []string{workspacePath})
-	if err != nil {
-		return errors.New("Source project or workflow is unavailable")
-	}
-	workspacePath = readRoots[0]
-	secrets, err := api.ensureSharedWorkflowSecrets(ctx, workspacePath, userID)
-	if err != nil {
-		return errors.New("Could not read source secrets")
-	}
-	for _, secret := range secrets {
-		if secret.Name != name {
-			continue
-		}
-		value, err := decryptSharedWorkflowSecret(workspacePath, secret)
-		if err != nil {
-			return errors.New("Could not decrypt source secret")
-		}
-		if err := api.saveManagedGlobalSecret(ctx, userID, name, value, true); err != nil {
-			return err
-		}
-		if err := api.deleteSharedWorkflowSecret(ctx, workspacePath, name, userID); err != nil {
-			return errors.New("Global secret was saved, but the source copy could not be removed. Remove the workflow copy to finish promotion")
-		}
-		return nil
-	}
-	return errGlobalNotFound
-}
-
 func globalSecretError(w http.ResponseWriter, err error) {
 	status := http.StatusBadRequest
 	if errors.Is(err, errGlobalAdmin) {
@@ -185,7 +152,6 @@ func (api *StreamingAPI) handleManageGlobalSecret(w http.ResponseWriter, r *http
 	} else {
 		var req struct {
 			Name           string `json:"name"`
-			WorkspacePath  string `json:"workspace_path"`
 			EncryptedValue string `json:"encrypted_value"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
@@ -193,17 +159,11 @@ func (api *StreamingAPI) handleManageGlobalSecret(w http.ResponseWriter, r *http
 			return
 		}
 		req.Name = strings.TrimSpace(req.Name)
-		var err error
-		if r.Method == http.MethodPost {
-			err = api.promoteWorkflowSecret(r.Context(), userID, req.WorkspacePath, req.Name)
+		value, err := decryptSecretValue(req.EncryptedValue, userID)
+		if err != nil {
+			err = errors.New("Invalid encrypted secret")
 		} else {
-			var value string
-			value, err = decryptSecretValue(req.EncryptedValue, userID)
-			if err != nil {
-				err = errors.New("Invalid encrypted secret")
-			} else {
-				err = api.saveManagedGlobalSecret(r.Context(), userID, req.Name, value, false)
-			}
+			err = api.saveManagedGlobalSecret(r.Context(), userID, req.Name, value, false)
 		}
 		if err != nil {
 			globalSecretError(w, err)

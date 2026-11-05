@@ -21,27 +21,29 @@ var brainSecretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 var brainSecretsAPI *StreamingAPI
 
 func (api *StreamingAPI) brainSecretNames(ctx context.Context) ([]string, error) {
-	secrets, err := api.ensureSharedWorkflowSecrets(ctx, brainSecretsPath, mcpCaller(ctx))
+	full, _, _, err := brainVaultNames(ctx)
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(secrets))
-	for _, s := range secrets {
-		names = append(names, s.Name)
+	names := make([]string, 0, len(full))
+	for _, name := range full {
+		names = append(names, vaultSecretShortName(name))
 	}
 	sort.Strings(names)
 	return names, nil
 }
 
 func (api *StreamingAPI) brainSecretValue(ctx context.Context, name string) (string, bool) {
-	secrets, err := api.ensureSharedWorkflowSecrets(ctx, brainSecretsPath, mcpCaller(ctx))
+	full, _, _, err := brainVaultNames(ctx)
 	if err != nil {
 		return "", false
 	}
-	for _, s := range secrets {
-		if s.Name == name {
-			value, err := decryptSharedWorkflowSecret(brainSecretsPath, s)
-			return value, err == nil && value != ""
+	for _, vaultName := range full {
+		if vaultSecretShortName(vaultName) == name {
+			managedGlobalsMu.RLock()
+			value := managedGlobals[vaultName]
+			managedGlobalsMu.RUnlock()
+			return value, value != ""
 		}
 	}
 	return "", false
@@ -54,7 +56,7 @@ func (api *StreamingAPI) setBrainSecret(ctx context.Context, name, value string)
 	if strings.TrimSpace(value) == "" {
 		return fmt.Errorf("the secret value is empty")
 	}
-	return api.upsertSharedWorkflowSecret(ctx, brainSecretsPath, name, value)
+	return api.storeBrainSecret(ctx, name, value)
 }
 
 // knowledgebaseBackupSecret resolves a secret Brain's backup names (pat_secret): Brain's own first. A token that so
@@ -119,7 +121,7 @@ func (api *StreamingAPI) handleBrainSecrets(w http.ResponseWriter, r *http.Reque
 		}
 	case http.MethodDelete:
 		name := mux.Vars(r)["name"]
-		if err := api.deleteSharedWorkflowSecret(ctx, brainSecretsPath, name, ""); err != nil {
+		if err := api.deleteBrainSecret(ctx, name); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -166,7 +168,7 @@ func (api *StreamingAPI) registerBrainSecretsTool(registrar definitionToolRegist
 				return "", err
 			}
 		case "delete":
-			if err := api.deleteSharedWorkflowSecret(ctx, brainSecretsPath, name, ""); err != nil {
+			if err := api.deleteBrainSecret(ctx, name); err != nil {
 				return "", err
 			}
 		case "list":

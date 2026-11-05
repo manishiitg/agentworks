@@ -522,9 +522,6 @@ func crewTeamLentNow(ctx context.Context, t crewTeam) *crewTeamLent {
 			}
 		}
 	}
-	if names, _, err := productSelectedSecrets(ctx, crewProfileID, root); err == nil {
-		out.Secrets = append(out.Secrets, names...)
-	}
 	if names, err := productSelectedGlobalSecrets(ctx, crewProfileID, root); err == nil && names != nil {
 		for _, name := range *names {
 			out.Secrets = append(out.Secrets, vaultSecretShortName(name))

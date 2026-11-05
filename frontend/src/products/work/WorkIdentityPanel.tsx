@@ -268,7 +268,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
+export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
@@ -281,7 +281,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
   modelsOnly?: boolean
   openLocalFilesSettings?: boolean
   onLocalFilesSettingsOpened?: () => void
-  selectedSecrets: string[]
   selectedGlobalSecrets: string[]
   projectLLMConfig?: PresetLLMConfig
   enabledPanels?: Set<string>
@@ -289,7 +288,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
   nativeAgentTools?: boolean
   /** Omitted for readers: only the Crew owner can change it. */
   onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>
-  onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>
   onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
   onDeleteRequest: () => void

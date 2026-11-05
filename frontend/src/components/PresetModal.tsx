@@ -29,7 +29,7 @@ import { useChatStore } from '../stores/useChatStore';
 interface PresetModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (label: string, query: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => boolean | void | Promise<boolean | void>;
+  onSave: (label: string, query: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => boolean | void | Promise<boolean | void>;
   editingPreset?: CustomPreset | null;
   availableServers?: string[];
   hideAgentModeSelection?: boolean;
@@ -57,7 +57,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
   const [selectedServers, setSelectedServers] = useState<string[]>([]);
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [selectedSecrets, setSelectedSecrets] = useState<string[]>([]);
   // Per-preset global secret selection (null = all selected, [] = none, [...] = specific)
   const [selectedGlobalSecrets, setSelectedGlobalSecrets] = useState<string[] | null>([]);
   const [internalAgentMode, setInternalAgentMode] = useState<'multi-agent' | 'workflow'>('multi-agent');
@@ -236,7 +235,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       setSelectedServers(editingPreset.selectedServers || []);
       setSelectedTools(editingPreset.selectedTools || []); // NEW
       setSelectedSkills(editingPreset.selectedSkills || []);
-      setSelectedSecrets(editingPreset.selectedSecrets || []);
       setSelectedGlobalSecrets(editingPreset.selectedGlobalSecretNames ?? null);
       setInternalAgentMode(editingPreset.agentMode || 'workflow'); // Default to workflow
       setWorkflowKind(editingPreset.workflowKind || 'workflow');
@@ -265,7 +263,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       setSelectedServers([]);
       setSelectedTools([]); // NEW
       setSelectedSkills([]);
-      setSelectedSecrets([]);
       setSelectedGlobalSecrets([]);
       // Default to workflow mode as chat presets are disabled
       const defaultMode = 'workflow';
@@ -435,7 +432,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         selectedFolder || undefined,
         stripRetiredLLMFallbacks(finalLLMConfig),
         false, // useCodeExecutionMode — backend determines mode from browser selection
-        selectedSecrets, // Secret names for workflow injection
         selectedGlobalSecrets, // Per-preset global secret selection (null=all)
         browserMode,
         icon.trim(),
@@ -458,7 +454,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
     } finally {
       setIsSavingPreset(false);
     }
-  }, [label, icon, query, effectiveAgentMode, selectedFolder, selectedServers, selectedTools, selectedSkills, selectedSecrets, selectedGlobalSecrets, llmConfig, builderLLM, effectiveBuilderLLM, maintenanceLLM, effectiveMaintenanceLLM, backgroundLLM, effectiveBackgroundLLM, browserMode, editingPreset, onSave, onClose, defaultAgentLLM, effectiveTier1LLM, effectiveTier2LLM, effectiveTier3LLM, showWorkflowLLMAdvanced, unsavedCredentialProvider, showRunsOn, runsOn, workflowKind]);
+  }, [label, icon, query, effectiveAgentMode, selectedFolder, selectedServers, selectedTools, selectedSkills, selectedGlobalSecrets, llmConfig, builderLLM, effectiveBuilderLLM, maintenanceLLM, effectiveMaintenanceLLM, backgroundLLM, effectiveBackgroundLLM, browserMode, editingPreset, onSave, onClose, defaultAgentLLM, effectiveTier1LLM, effectiveTier2LLM, effectiveTier3LLM, showWorkflowLLMAdvanced, unsavedCredentialProvider, showRunsOn, runsOn, workflowKind]);
 
   // Close modal on escape key
   useEffect(() => {

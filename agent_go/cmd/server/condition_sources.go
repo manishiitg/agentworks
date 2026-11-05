@@ -123,7 +123,7 @@ func (c *conditionService) authorizeProductSource(ctx context.Context, job produ
 	// Resolve only the caller's current Vault selection. Never pass the
 	// associated product's workspace to credential resolution.
 	names := append([]string{}, cfg.Secrets...)
-	if err := validateVaultSecretSelection(ctx, job.UserID, nil, &names); err != nil {
+	if err := validateVaultSecretSelection(ctx, job.UserID, &names); err != nil {
 		return conditiontrigger.PermanentError{Err: err}
 	}
 	return nil

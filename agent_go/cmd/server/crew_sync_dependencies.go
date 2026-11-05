@@ -149,7 +149,7 @@ func matchCrewConnection(want crewDependencyConnection, inventory projectVaultIn
 // An unrelated app status lookup does not make a removed dependency unknown.
 func crewDependencyInventoryUnavailable(inventory projectVaultInventory, kind string) bool {
 	for _, notice := range inventory.Notices {
-		if ((kind == "mcp" || kind == "project_secret" || kind == "shared_secret") && strings.HasPrefix(notice, "Vaults could not")) ||
+		if ((kind == "mcp" || kind == "secret" || kind == "shared_secret") && strings.HasPrefix(notice, "Vaults could not")) ||
 			(kind == "mcp" && strings.HasPrefix(notice, "Project app access")) ||
 			((kind == "mcp" || kind == "shared_secret") && strings.HasPrefix(notice, "Shared Vault access")) ||
 			(kind == "google" && strings.HasPrefix(notice, "Google account status")) ||
@@ -189,7 +189,7 @@ func (api *StreamingAPI) handleCrewDependencies(w http.ResponseWriter, r *http.R
 	// Only undo selections this pairing added; keep existing server choices.
 	wanted := map[string]bool{}
 	for _, name := range input.Names {
-		wanted["project_secret\x00"+name] = true
+		wanted["secret\x00"+name] = true
 	}
 	for _, item := range input.Connections {
 		wanted[crewDependencyKey(item)] = true
@@ -242,19 +242,19 @@ func (api *StreamingAPI) handleCrewDependencies(w http.ResponseWriter, r *http.R
 		}
 		switch state {
 		case "missing":
-			out.add("project_secret", name, "missing", name+" needs a value on this server.")
+			out.add("secret", name, "missing", name+" needs a value on this server.")
 			continue
 		case "ready":
-			out.add("project_secret", name, "ready", name+" is available on this server.")
+			out.add("secret", name, "ready", name+" is available on this server.")
 		default:
-			out.add("project_secret", name, "kept", name+" already set on this server; kept the server's value.")
+			out.add("secret", name, "kept", name+" already set on this server; kept the server's value.")
 		}
 		if !slices.Contains(*before, full) {
 			if e := selectProjectSecret(r.Context(), crewProfileID, roots.Virtual, full); e != nil {
 				externalError(w, 502, "secrets_unavailable", "Select the Crew's secrets in this server's Vault, then retry sync.")
 				return
 			}
-			out.remember("shared_secret", full, "project_secret\x00"+name)
+			out.remember("shared_secret", full, "secret\x00"+name)
 		}
 	}
 	inventory, e := api.projectVaultInventory(r.Context(), claims.UserID, roots.Virtual)
@@ -341,21 +341,7 @@ func (api *StreamingAPI) prepareCrewDependencies(r *http.Request, roots crewroot
 	if e != nil {
 		return nil, fmt.Errorf("open this Crew's Vault and retry sync")
 	}
-	input := crewDependencyRequest{PairID: b.PairID, Names: inventory.Secrets, Values: map[string]string{}, SourceUnavailable: len(inventory.Notices) > 0}
-	if len(input.Names) > 0 {
-		rows, e := api.ensureSharedWorkflowSecrets(r.Context(), roots.Virtual, claims.UserID)
-		if e != nil {
-			return nil, fmt.Errorf("this Crew's selected secret names could not be checked")
-		}
-		for _, row := range rows {
-			if slices.Contains(input.Names, row.Name) {
-				value, e := decryptSharedWorkflowSecret(roots.Virtual, row)
-				if e == nil {
-					input.Values[row.Name] = value
-				}
-			}
-		}
-	}
+	input := crewDependencyRequest{PairID: b.PairID, Names: []string{}, Values: map[string]string{}, SourceUnavailable: len(inventory.Notices) > 0}
 	// Secrets the Crew uses from the owner's own Vault go to the server by value, into the owner's Vault there.
 	own, e := ownVaultSecretValues(r.Context(), claims.UserID, inventory.Shared)
 	if e != nil {

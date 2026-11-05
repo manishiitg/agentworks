@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
-
-	"github.com/manishiitg/mcpagent/executor"
 )
 
 // Vault owns secret metadata and encrypted values. People can supply values
@@ -103,40 +100,6 @@ func (api *StreamingAPI) removeVaultSecret(ctx context.Context, person, vaultID,
 	return nil
 }
 
-// promoteSecretToVault copies a secret of this chat's Crew, Code or workflow into a vault the person owns. The agent
-// names the secret; it is copied on that call (owner, 5 Nov: no second confirm). The value moves server-side and is
-// never shown. The original stays where it is.
-func (api *StreamingAPI) promoteSecretToVault(ctx context.Context, person, vaultID, name string) (string, error) {
-	place := api.projectRootForSession(sessionIDFromContextForVaults(ctx))
-	if place == "" {
-		return "", errors.New("promote a secret from a Crew, Code or workflow chat")
-	}
-	if !canManageProjectApps(ctx, person, place) {
-		return "", errors.New("only someone who can edit this place can copy its secrets into a vault")
-	}
-	name = strings.TrimSpace(name)
-	if !vaultOwnerOf(ctx, person, vaultID) {
-		return "", errors.New("you can promote only into a vault you own")
-	}
-	value, err := api.projectSecretValue(place, name)
-	if err != nil {
-		return "", fmt.Errorf("read the secret %q here: %w", name, err)
-	}
-	if err := api.setVaultSecret(ctx, person, vaultID, name, value, false); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("Copied %q into your vault %s. Members can use it as the secret %s. The original is unchanged.", name, vaultID, mustVaultSecretName(vaultID, name)), nil
-}
-
-func mustVaultSecretName(vaultID, name string) string {
-	full, _ := vaultSecretName(vaultID, name)
-	return full
-}
-
-func sessionIDFromContextForVaults(ctx context.Context) string {
-	return executor.SessionIDFromContext(ctx)
-}
-
 func (api *StreamingAPI) checkVaultSecretProjectScope(ctx context.Context, person, vaultID string) error {
 	data, err := vaultPersonRequest(ctx, person, http.MethodGet, "/api/vaults/"+url.PathEscape(vaultID), nil)
 	if err != nil {
@@ -157,8 +120,6 @@ func (api *StreamingAPI) checkVaultSecretProjectScope(ctx context.Context, perso
 		}
 		return nil
 	}
-	if api.projectSecretsOwner(person, root) != person || !canManageProjectApps(ctx, person, root) {
-		return errors.New("project secret access follows its current owner")
-	}
-	return nil
+	// The retired per-project vaults are emptied into their owners' Vaults at startup; nothing is added to them.
+	return errors.New("this project's own vault is retired; save the secret in your Vault")
 }

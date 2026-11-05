@@ -10,7 +10,6 @@ export interface CustomPreset {
   selectedServers?: string[];
   selectedTools?: string[]; // NEW: Array of "server:tool" strings
   selectedSkills?: string[]; // Skill folder names for workflow
-  selectedSecrets?: string[]; // Secret names for workflow injection
   selectedGlobalSecretNames?: string[] | null; // null=none, []=none, [...]=specific
   agentMode?: 'multi-agent' | 'workflow';
   workflowKind?: 'relay' | 'workflow';

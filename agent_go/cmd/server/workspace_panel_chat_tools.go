@@ -196,8 +196,7 @@ func (api *StreamingAPI) refreshBoundWorkflowSettings(ctx context.Context, user,
 		return errors.New("Saved settings could not be reloaded. Reopen this project's Builder chat.")
 	}
 	caps := manifest.Capabilities
-	scoped := api.loadSelectedSecrets(ctx, user, root, caps.SelectedSecrets)
-	resolved := api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(user, root), scoped, caps.SelectedGlobalSecretNames)
+	resolved := api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(user, root), caps.SelectedGlobalSecretNames)
 	entries := make([]orchestrator.SecretEntry, 0, len(resolved))
 	for _, secret := range resolved {
 		entries = append(entries, orchestrator.SecretEntry{Name: secret.Name, Value: secret.Value})

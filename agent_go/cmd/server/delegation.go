@@ -8,6 +8,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
@@ -23,11 +29,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/subagents"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
-	"log"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
@@ -932,7 +933,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		}
 
 		// Merge global secrets with parent's decrypted secrets — inject names into prompt (values are in env vars)
-		allDelegationSecrets := api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(subAgentUserID, parentReq.SelectedFolder), parentReq.DecryptedSecrets, parentReq.SelectedGlobalSecrets)
+		allDelegationSecrets := api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(subAgentUserID, parentReq.SelectedFolder), parentReq.SelectedGlobalSecrets)
 		if len(allDelegationSecrets) > 0 {
 			_ = subAgent.AddInstructions(buildSecretNamesPrompt(allDelegationSecrets))
 			log.Printf("[DELEGATION] Injected %d secret names (not values) into sub-agent system prompt", len(allDelegationSecrets))
@@ -988,7 +989,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		toolCategories := workspaceRegistry.Categories
 		log.Printf("[USER_ID_DEBUGGING] Sub-agent workspace executors: created with explicit userID=%q sessionID=%q", subAgentUserID, sessionID)
 		// Inject secrets as environment variables for sub-agent shell execution (SECRET_ prefix for whitelist)
-		delegationSecrets := api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(subAgentUserID, parentReq.SelectedFolder), parentReq.DecryptedSecrets, parentReq.SelectedGlobalSecrets)
+		delegationSecrets := api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(subAgentUserID, parentReq.SelectedFolder), parentReq.SelectedGlobalSecrets)
 		if subAgentEnv != nil && len(delegationSecrets) > 0 {
 			for _, s := range delegationSecrets {
 				subAgentEnv["SECRET_"+s.Name] = s.Value

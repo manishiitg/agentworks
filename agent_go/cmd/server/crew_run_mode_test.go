@@ -630,7 +630,6 @@ const crewRunModeOwnerRuntime = `{
     "llm_config": {"connection_id": "owner-conn-1", "builder_llm": {"provider": "openai", "model_id": "gpt-4o", "connection_id": "owner-conn-1", "options": {"reasoning_effort": "high"}}},
     "selected_servers": ["github"],
     "selected_skills": ["code-review"],
-    "selected_secrets": ["deploy-token"],
     "selected_global_secret_names": ["company-key"],
     "workflow_context_paths": ["Workflow/shared", "Workflow/private"]
   },
@@ -832,7 +831,7 @@ func TestListSharedProjects(t *testing.T) {
 	if row.LLM == nil || row.LLM.Provider != "openai" || row.LLM.ModelID != "gpt-4o" || row.LLM.ReasoningEffort != "high" {
 		t.Fatalf("llm = %+v", row.LLM)
 	}
-	if len(row.SelectedServers) != 1 || len(row.SelectedSecrets) != 1 || len(row.Schedules) != 1 || len(row.Triggers) != 2 {
+	if len(row.SelectedServers) != 1 || len(row.SelectedGlobalSecret) != 1 || len(row.Schedules) != 1 || len(row.Triggers) != 2 {
 		t.Fatalf("row selections = %+v", row)
 	}
 	if len(row.WorkflowContextPaths) != 1 || row.WorkflowContextPaths[0] != "Workflow/shared" {

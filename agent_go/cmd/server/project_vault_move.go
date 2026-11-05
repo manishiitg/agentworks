@@ -54,6 +54,7 @@ func (api *StreamingAPI) moveProjectVaultSecrets(ctx context.Context) (retry boo
 	}
 	vaults := projectVaultsToMove(ctx)
 	if len(vaults) == 0 {
+		api.moveRetiredSecretSelections(ctx, nil)
 		return false, nil
 	}
 	backup, err := api.backupProjectVaultValues(ctx, vaults)
@@ -65,7 +66,71 @@ func (api *StreamingAPI) moveProjectVaultSecrets(ctx context.Context) (retry boo
 			retry = true
 		}
 	}
+	if !retry {
+		// A project that had a vault this time is swept at the next start, once its vault is empty.
+		pending := map[string]bool{}
+		for _, vault := range vaults {
+			pending[vault.Root] = true
+		}
+		api.moveRetiredSecretSelections(ctx, pending)
+	}
 	return retry, nil
+}
+
+// moveRetiredSecretSelections moves names a project listed in its retired selected_secrets that are Vault secrets
+// (a secret promoted to Vault, or a Crew created with a Vault secret) into its Vault selection, once. A name that
+// still has a project copy waiting to move is left alone.
+func (api *StreamingAPI) moveRetiredSecretSelections(ctx context.Context, pending map[string]bool) {
+	roots := []string{}
+	if workflows, err := DiscoverWorkflowManifests(ctx); err == nil {
+		for _, item := range workflows {
+			roots = append(roots, item.WorkspacePath)
+		}
+	}
+	if records, err := defaultProjectOwners().All(); err == nil {
+		for _, rec := range records {
+			if rec.Product == crewProfileID && rec.Shared && strings.TrimSpace(rec.Folder) != "" {
+				roots = append(roots, "Crew/"+rec.Folder)
+			}
+		}
+	}
+	backup := ""
+	for _, root := range roots {
+		if pending[root] {
+			continue
+		}
+		manifest, err := readProjectSelectionManifest(ctx, root)
+		if err != nil || !manifest.found {
+			continue
+		}
+		capabilities, _ := manifest.doc["capabilities"].(map[string]any)
+		if capabilities == nil {
+			continue
+		}
+		changed := false
+		for _, name := range manifestNames(capabilities["selected_secrets"]) {
+			managedGlobalsMu.RLock()
+			_, isVault := managedGlobals[name]
+			managedGlobalsMu.RUnlock()
+			if isVault && manifest.swap(name, name) {
+				changed = true
+				logVaultMove(root, name, name, "selected_existing", "")
+			}
+		}
+		if !changed {
+			continue
+		}
+		if backup == "" {
+			state, err := workflowCLIStateRoot()
+			if err != nil || strings.TrimSpace(state) == "" {
+				return
+			}
+			backup = filepath.Join(state, "vault-migration-backups", time.Now().UTC().Format("20060102T150405Z")+"-selections")
+		}
+		if err := manifest.save(ctx, backup); err != nil {
+			log.Printf("[VAULT_MIGRATE] project=%s selection not saved err=%v", root, err)
+		}
+	}
 }
 
 // projectVaultsToMove lists, for every person, the project vaults they hold that still have secrets.
@@ -331,7 +396,11 @@ func (m *projectSelectionManifest) swap(name, full string) bool {
 	if !containsExactString(project, name) {
 		return false
 	}
-	capabilities["selected_secrets"] = removeString(project, name)
+	if rest := removeString(project, name); len(rest) > 0 {
+		capabilities["selected_secrets"] = rest
+	} else {
+		delete(capabilities, "selected_secrets") // the retired list goes once nothing is left in it
+	}
 	capabilities["selected_global_secret_names"] = withProjectSecret(manifestNames(capabilities["selected_global_secret_names"]), full)
 	return true
 }
@@ -344,6 +413,11 @@ func (m *projectSelectionManifest) save(ctx context.Context, backup string) erro
 	if err := os.WriteFile(copyPath, []byte(m.raw), 0o600); err != nil {
 		return err
 	}
+	return m.write(ctx)
+}
+
+// write saves the edited manifest.
+func (m *projectSelectionManifest) write(ctx context.Context) error {
 	m.doc["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 	encoded, err := json.MarshalIndent(m.doc, "", "  ")
 	if err != nil {

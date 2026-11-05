@@ -14,16 +14,17 @@ var topicBracePattern = regexp.MustCompile(`((?:[a-z0-9]+-)+)\{([^}]*)\}`)
 
 var builderReferenceReadPattern = regexp.MustCompile(`"name":"builder-reference","path":"(references/[^"]+\.md)"`)
 
-func TestBuilderSecretReferencesDescribeManagedVaultSharing(t *testing.T) {
+// All in Vault (PLAT-856): the attached references describe secrets saved in the owner's Vault, never a project copy.
+func TestBuilderSecretReferencesDescribeOwnerVault(t *testing.T) {
 	for _, mode := range []string{"workshop", "multi-agent"} {
 		t.Run(mode, func(t *testing.T) {
 			text := materializedFileContent(t, MaterializeReferenceSkill(mode), "references/secret-management.md")
-			for _, want := range []string{"Share to Vault", "manage_vault_secret_access", "project copy stays", "search_tools/get_api_spec"} {
+			for _, want := range []string{"owner's Vault", "manage_vault_secret_access", "search_tools/get_api_spec"} {
 				if !strings.Contains(text, want) {
 					t.Errorf("attached secret reference omits %q", want)
 				}
 			}
-			for _, stale := range []string{"set_user_secret", "Global secrets** — operator-managed", "global** (read-only)"} {
+			for _, stale := range []string{"set_user_secret", "Share to Vault", "project copy", "Workflow secrets**"} {
 				if strings.Contains(text, stale) {
 					t.Errorf("attached secret reference retains stale guidance %q", stale)
 				}
@@ -31,8 +32,8 @@ func TestBuilderSecretReferencesDescribeManagedVaultSharing(t *testing.T) {
 		})
 	}
 	workflow := materializedFileContent(t, MaterializeReferenceSkill("workshop"), "references/workflow-tools.md")
-	if !strings.Contains(workflow, "Share to Vault") || !strings.Contains(workflow, "keeps the project copy") {
-		t.Fatal("workflow tools reference omits managed Vault copy semantics")
+	if !strings.Contains(workflow, "owner's own Vault") || strings.Contains(workflow, "Share to Vault") {
+		t.Fatal("workflow tools reference does not describe saving in the owner's Vault")
 	}
 }
 

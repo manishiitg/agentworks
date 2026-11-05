@@ -63,34 +63,27 @@ func TestVaultSecretsRuntimeIsExplicitAuthorizedAndFailClosed(t *testing.T) {
 	if _, err := vaultPersonRequest(ctx, "bob", http.MethodGet, "/api/vaults/v-fixture", nil); err == nil {
 		t.Fatal("project/person service refusal ignored")
 	}
-	if got := api.mergeGlobalSecretsFor(ctx, "alice", nil, nil); len(got) != 0 {
+	if got := api.mergeGlobalSecretsFor(ctx, "alice", nil); len(got) != 0 {
 		t.Fatal("nil inherited globals")
 	}
-	if got := api.mergeGlobalSecretsFor(ctx, "alice", nil, &names); len(got) != 1 || got[0].Value != "dummy-secret" {
+	if got := api.mergeGlobalSecretsFor(ctx, "alice", &names); len(got) != 1 || got[0].Value != "dummy-secret" {
 		t.Fatal("authorized explicit secret missing")
 	}
-	if got := api.mergeGlobalSecretsFor(ctx, "bob", nil, &names); len(got) != 0 {
+	if got := api.mergeGlobalSecretsFor(ctx, "bob", &names); len(got) != 0 {
 		t.Fatal("cross-user exposure")
 	}
-	if err := validateVaultSecretSelection(ctx, "bob", nil, &names); err == nil {
+	if err := validateVaultSecretSelection(ctx, "bob", &names); err == nil {
 		t.Fatal("run not blocked")
 	}
-	scoped := []struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}{{"KEY", "project-value"}}
-	if got := api.mergeGlobalSecretsFor(ctx, "alice", scoped, &names); len(got) != 1 || got[0].Value != "project-value" {
-		t.Fatal("project precedence lost")
-	}
 	allowed = false
-	if got := api.mergeGlobalSecretsFor(ctx, "alice", nil, &names); len(got) != 0 {
+	if got := api.mergeGlobalSecretsFor(ctx, "alice", &names); len(got) != 0 {
 		t.Fatal("revocation ignored")
 	}
 	srv.Close()
-	if got := api.mergeGlobalSecretsFor(ctx, "alice", nil, &names); len(got) != 0 {
+	if got := api.mergeGlobalSecretsFor(ctx, "alice", &names); len(got) != 0 {
 		t.Fatal("service failure leaked globals")
 	}
-	if err := validateVaultSecretSelection(ctx, "alice", nil, &names); err == nil {
+	if err := validateVaultSecretSelection(ctx, "alice", &names); err == nil {
 		t.Fatal("outage didn't block run")
 	}
 }
@@ -117,21 +110,11 @@ func TestDisabledVaultCannotExposeStoredGlobals(t *testing.T) {
 	}
 	names := []string{"SHARED"}
 	api := &StreamingAPI{}
-	if rows := api.mergeGlobalSecretsFor(ctx, "default", nil, &names); len(rows) != 0 {
+	if rows := api.mergeGlobalSecretsFor(ctx, "default", &names); len(rows) != 0 {
 		t.Fatal("disabled Vault injected stored values")
 	}
-	if err := validateVaultSecretSelection(ctx, "default", nil, &names); err == nil {
+	if err := validateVaultSecretSelection(ctx, "default", &names); err == nil {
 		t.Fatal("stale selected Vault value authorized while disabled")
-	}
-	project := []struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}{{"SHARED", "project-dummy"}}
-	if err := validateVaultSecretSelection(ctx, "default", project, &names); err != nil {
-		t.Fatal("project copy stopped working", err)
-	}
-	if rows := api.mergeGlobalSecretsFor(ctx, "default", project, &names); len(rows) != 1 || rows[0].Value != "project-dummy" {
-		t.Fatal("project copy was replaced")
 	}
 }
 
@@ -190,7 +173,7 @@ func TestCrewCoOwnersShareSelectedSecretsInChatAndMCP(t *testing.T) {
 		}
 	}
 	// This does not change the co-owner's personal Vault grants.
-	if err := validateVaultSecretSelection(t.Context(), "other", nil, &names); err == nil {
+	if err := validateVaultSecretSelection(t.Context(), "other", &names); err == nil {
 		t.Fatal("project access widened personal Vault grants")
 	}
 	// A Team's joined member builds in the Crew the same way, in the agent's own turn setup too (owner, 5 Nov: the owner's
@@ -202,7 +185,7 @@ func TestCrewCoOwnersShareSelectedSecretsInChatAndMCP(t *testing.T) {
 	if got := f.api.crewSecretsPerson("member", externalCommandCrewRoot, "test"); got != "owner" {
 		t.Fatalf("a joined Team member's turn is admitted as %q, want the owner", got)
 	}
-	if err := validateVaultSecretSelection(t.Context(), f.api.crewSecretsPerson("member", externalCommandCrewRoot, "test"), nil, &names); err != nil {
+	if err := validateVaultSecretSelection(t.Context(), f.api.crewSecretsPerson("member", externalCommandCrewRoot, "test"), &names); err != nil {
 		t.Fatalf("a joined Team member's turn was refused the owner's selected secret: %v", err)
 	}
 	if got := f.api.crewSecretsPerson("invited", externalCommandCrewRoot, "test"); got != "invited" {

@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtrigger"
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtrigger"
 )
 
 func keysWebhookVariables(values map[string]string) []string {
@@ -149,8 +150,10 @@ func validateWebhookVariableNames(ctx context.Context, workspace string, names [
 		return fmt.Errorf("cannot validate secret boundaries")
 	}
 	blocked := map[string]bool{}
-	for _, v := range manifest.Capabilities.SelectedSecrets {
-		blocked[v] = true
+	if selected := manifest.Capabilities.SelectedGlobalSecretNames; selected != nil {
+		for _, v := range *selected {
+			blocked[vaultSecretShortName(v)] = true
+		}
 	}
 	for _, v := range getGlobalSecrets() {
 		blocked[v.Name] = true

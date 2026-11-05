@@ -739,7 +739,7 @@ function GroupSecretPermissions({ base, groupId, attempt, onChanged }: {
   </div>
   return <div>
     {error && <ConsoleStale message={error} onRetry={onChanged} />}
-    <SecretSelectionSection mode="group" selectedSecrets={[]} onSecretChange={() => {}} groupSelectedNames={names}
+    <SecretSelectionSection mode="group" groupSelectedNames={names}
       onGroupAccessChange={async (name, allowed) => {
         await secretsApi.setVaultSecretAccess(groupId, name, allowed)
         setNames(current => allowed ? [...new Set([...current, name])] : current.filter(n => n !== name))

@@ -92,10 +92,10 @@ func TestProjectVaultMoveKeepsOwnerLentRuns(t *testing.T) {
 		if err != nil || !found {
 			t.Fatal("manifest unavailable", err)
 		}
-		if len(manifest.Capabilities.SelectedSecrets) != 0 {
-			t.Fatalf("%s still selects project copies: %v", workspace, manifest.Capabilities.SelectedSecrets)
+		if raw, _, _ := readFileFromWorkspace(ctx, workspace+"/workflow.json"); strings.Contains(raw, "selected_secrets") {
+			t.Fatalf("%s still lists the retired project selection", workspace)
 		}
-		rows, err := f.api.projectRunSecrets(ctx, person, workspace, manifest.Capabilities.SelectedSecrets, manifest.Capabilities.SelectedGlobalSecretNames)
+		rows, err := f.api.projectRunSecrets(ctx, person, workspace, manifest.Capabilities.SelectedGlobalSecretNames)
 		if err != nil {
 			t.Fatalf("%s run as %s refused: %v", workspace, person, err)
 		}
@@ -108,7 +108,7 @@ func TestProjectVaultMoveKeepsOwnerLentRuns(t *testing.T) {
 			t.Fatal(err)
 		}
 		sctx := buildScheduleContext(workspace, manifest, WorkflowSchedule{RunAs: runAs})
-		rows, err := f.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets, sctx.Capabilities.SelectedGlobalSecretNames)
+		rows, err := f.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedGlobalSecretNames)
 		if err != nil {
 			t.Fatalf("%s schedule (run as %q) refused: %v", workspace, runAs, err)
 		}
@@ -135,7 +135,7 @@ func TestProjectVaultMoveKeepsOwnerLentRuns(t *testing.T) {
 		t.Fatalf("the Crew owner's turn lost its secrets: got %v, selection %v", names, *selected)
 	}
 	// Someone the owner did not lend it to does not get it through their own grants.
-	if err := validateVaultSecretSelection(ctx, "other", nil, &[]string{vault.vaultName(t, "owner", "API_KEY")}); err == nil {
+	if err := validateVaultSecretSelection(ctx, "other", &[]string{vault.vaultName(t, "owner", "API_KEY")}); err == nil {
 		t.Fatal("the moved secret widened another person's own grants")
 	}
 

@@ -34,16 +34,6 @@ export const secretsApi = {
   setVaultSecretAccess: async (groupId: string, name: string, allowed: boolean): Promise<void> => {
     await api.post('/api/secrets/vault/access', { group_id: groupId, name, allowed });
   },
-  getVaultShareGroups: async (): Promise<{ groups: { ID: string; Name: string; Description?: string }[] }> => {
-    const response = await api.get('/api/secrets/vault/share');
-    return response.data;
-  },
-  shareWorkflowSecret: async (workspacePath: string, name: string, vaultName: string, groupIds: string[]): Promise<void> => {
-    await api.post('/api/secrets/vault/share', { workspace_path: workspacePath, name, vault_name: vaultName, group_ids: groupIds });
-  },
-  promoteWorkflowSecret: async (workspacePath: string, name: string): Promise<void> => {
-    await api.post('/api/secrets/global', { workspace_path: workspacePath, name });
-  },
   saveGlobalSecret: async (name: string, value: string): Promise<void> => {
     const { encrypted } = await secretsApi.encrypt(value);
     await api.put('/api/secrets/global', { name, encrypted_value: encrypted });
@@ -60,14 +50,8 @@ export const secretsApi = {
     return response.data;
   },
 
-  // workspacePath marks a shared workflow secret (bound to the workflow rather
-  // than the caller); the server treats that as a reveal and allows it for the
-  // workflow's owners only.
-  decrypt: async (encrypted: string, workspacePath?: string): Promise<{ value: string }> => {
-    const response = await api.post(
-      '/api/secrets/decrypt',
-      workspacePath ? { encrypted, workspace_path: workspacePath } : { encrypted },
-    );
+  decrypt: async (encrypted: string): Promise<{ value: string }> => {
+    const response = await api.post('/api/secrets/decrypt', { encrypted });
     return response.data;
   },
 
@@ -76,6 +60,7 @@ export const secretsApi = {
     return response.data;
   },
 
+  // Saves a project's secret in its owner's Vault (My accounts) and uses it in the project.
   storeWorkflowSecret: async (workspacePath: string, name: string, encryptedValue: string): Promise<{ success: boolean }> => {
     const response = await api.put('/api/secrets/workflow/store', {
       workspace_path: workspacePath,
@@ -85,15 +70,9 @@ export const secretsApi = {
     return response.data;
   },
 
+  // Stops a project using a secret; its value stays in the owner's Vault.
   deleteWorkflowSecret: async (workspacePath: string, name: string): Promise<{ success: boolean }> => {
     const response = await api.delete(`/api/secrets/workflow/store/${encodeURIComponent(name)}`, {
-      params: { workspace_path: workspacePath },
-    });
-    return response.data;
-  },
-
-  listWorkflowSecrets: async (workspacePath: string): Promise<{ name: string; encrypted_value?: string }[]> => {
-    const response = await api.get('/api/secrets/workflow/stored', {
       params: { workspace_path: workspacePath },
     });
     return response.data;

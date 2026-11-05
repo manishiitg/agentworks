@@ -125,8 +125,6 @@ export interface AgentQueryRequest {
   selected_skills?: string[] // Array of skill folder names
   // Delegation tier configuration: Maps reasoning levels to specific provider/model pairs
   delegation_tier_config?: DelegationTierConfig
-  // Decrypted secrets to pass to backend (injected into agent system prompt, never in query text)
-  decrypted_secrets?: Array<{ name: string; value: string }>
   // Selected global secret names to include (if omitted, no global secrets are included)
   selected_global_secrets?: string[]
   // Workspace paths of workflows to inject context for (via # selector in chat)
@@ -374,7 +372,6 @@ export interface SharedProjectSummary {
   llm?: SharedProjectLLM
   selected_servers?: string[]
   selected_skills?: string[]
-  selected_secrets?: string[]
   selected_global_secrets?: string[]
   workflow_context_paths?: string[]
   triggers?: SharedProjectTrigger[]
@@ -3007,7 +3004,6 @@ export interface WorkflowCapabilities {
   selected_servers: string[]
   selected_tools: string[]
   selected_skills: string[]
-  selected_secrets: string[]
   selected_global_secret_names: string[] | null // null = none, [] = none
   browser_mode?: 'none' | 'extension' | 'headless' | 'cdp'
   use_code_execution_mode: boolean

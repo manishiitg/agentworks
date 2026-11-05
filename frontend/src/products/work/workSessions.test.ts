@@ -46,7 +46,7 @@ createServerProject.mockImplementation(async (product: string, spec: { name: str
   const id = 'server-project'
   const root = 'Crew/server-project'
   const manifest = { schema_version: 1, product, id, title: spec.name, description: spec.purpose, identity: { name: spec.name, icon: spec.icon }, session_id: `${product}:project:${id}` }
-  const runtime = { capabilities: { selected_servers: [], selected_skills: spec.selected_skills || [], selected_secrets: [], selected_global_secret_names: [], llm_config: spec.llm_config }, workflow_context_paths: [] }
+  const runtime = { capabilities: { selected_servers: [], selected_skills: spec.selected_skills || [], selected_global_secret_names: [], llm_config: spec.llm_config }, workflow_context_paths: [] }
   serverFiles.set(`${root}/product.json`, JSON.stringify(manifest))
   serverFiles.set(`${root}/workflow.json`, JSON.stringify(runtime))
   for (const [path, content] of Object.entries(spec.files || {})) serverFiles.set(`${root}/${path}`, content as string)
@@ -73,7 +73,6 @@ describe('parseSessionManifest', () => {
     capabilities: {
       selected_servers: ['github'],
       selected_skills: ['code-reviewer'],
-      selected_secrets: ['GITHUB_TOKEN'],
       selected_global_secret_names: ['SHARED_API_TOKEN'],
       workflow_context_paths: ['Workflow/reference'],
       llm_config: {
@@ -92,9 +91,7 @@ describe('parseSessionManifest', () => {
     expect(session?.llmConfig?.builder_llm?.provider).toBe('muse-cli')
     expect(session?.selectedServers).toEqual(['github'])
     expect(session?.selectedSkills).toEqual(['code-reviewer'])
-    expect(session?.selectedSecrets).toEqual(['GITHUB_TOKEN'])
     expect(session?.selectedGlobalSecrets).toEqual(['SHARED_API_TOKEN'])
-    expect(session?.secretSelectionInitialized).toBe(true)
     expect(session?.workflowContextPaths).toEqual(['Workflow/reference'])
   })
 
@@ -177,7 +174,6 @@ function sharedRow(overrides: Partial<SharedProjectSummary> = {}): SharedProject
     llm: { provider: 'muse-cli', model_id: 'muse-spark-1.3-contributor', reasoning_effort: 'max' },
     selected_servers: ['github'],
     selected_skills: ['code-reviewer'],
-    selected_secrets: ['GITHUB_TOKEN'],
     selected_global_secrets: ['SHARED_API_TOKEN'],
     workflow_context_paths: ['Workflow/reference'],
     triggers: [{ id: 'trig-1', name: 'Nightly', enabled: true }],
@@ -199,11 +195,9 @@ function ownedSession(overrides: Partial<WorkSession> = {}): WorkSession {
     updatedAt: '',
     selectedServers: [],
     selectedSkills: [],
-    selectedSecrets: [],
     selectedGlobalSecrets: [],
     workflowContextPaths: [],
     selectionConfigInitialized: true,
-    secretSelectionInitialized: true,
     runtimeConfigInitialized: true,
     ...overrides,
   }
@@ -227,11 +221,9 @@ describe('sharedProjectToWorkSession', () => {
     expect(session.llmConfig?.builder_llm).toMatchObject({ provider: 'muse-cli', model_id: 'muse-spark-1.3-contributor' })
     expect(session.selectedServers).toEqual(['github'])
     expect(session.selectedSkills).toEqual(['code-reviewer'])
-    expect(session.selectedSecrets).toEqual(['GITHUB_TOKEN'])
     expect(session.selectedGlobalSecrets).toEqual(['SHARED_API_TOKEN'])
     expect(session.workflowContextPaths).toEqual(['Workflow/reference'])
     expect(session.selectionConfigInitialized).toBe(true)
-    expect(session.secretSelectionInitialized).toBe(true)
     expect(session.runtimeConfigInitialized).toBe(true)
     expect(session.shared).toEqual({
       canBuild: false,
@@ -287,16 +279,16 @@ describe('updateWorkSessionIdentity', () => {
 describe('updateProductProjectSelections', () => {
   it('keeps native Vault selections when saving a different field from a stale project list', async () => {
     const project = parseSessionManifest(JSON.stringify({ schema_version: 1, product: 'work', id: 'abc', title: 'Example', session_id: 'work:project:abc', capabilities: { selected_servers: ['NO_SERVERS'] } }), 'Crew/example')!
-    getPlannerFileContent.mockResolvedValueOnce({ success: true, data: { content: JSON.stringify({ capabilities: { selected_servers: ['vault_saved'], selected_skills: ['saved-skill'], selected_secrets: [], selected_global_secret_names: ['SAVED_SHARED'] }, workflow_context_paths: ['Crew/reference'] }) } })
-    const updated = await updateProductProjectSelections(project, { selectedSecrets: ['NEW_KEY'] }, 'Update secrets', 'workflow.json')
+    getPlannerFileContent.mockResolvedValueOnce({ success: true, data: { content: JSON.stringify({ capabilities: { selected_servers: ['vault_saved'], selected_skills: ['saved-skill'], selected_global_secret_names: ['SAVED_SHARED'] }, workflow_context_paths: ['Crew/reference'] }) } })
+    const updated = await updateProductProjectSelections(project, { selectedGlobalSecrets: ['VLT_A00001__NEW_KEY'] }, 'Update secrets', 'workflow.json')
     const manifest = JSON.parse(updatePlannerFile.mock.calls.at(-1)![1] as string)
-    expect(manifest.capabilities).toEqual({ selected_servers: ['vault_saved'], selected_skills: ['saved-skill'], selected_secrets: ['NEW_KEY'], selected_global_secret_names: ['SAVED_SHARED'] })
+    expect(manifest.capabilities).toEqual({ selected_servers: ['vault_saved'], selected_skills: ['saved-skill'], selected_global_secret_names: ['VLT_A00001__NEW_KEY'] })
     expect(manifest.workflow_context_paths).toEqual(['Crew/reference'])
     expect(updated.selectedServers).toEqual(['vault_saved'])
     getPlannerFileContent.mockResolvedValueOnce({ success: true, data: { content: JSON.stringify({ capabilities: {} }) } })
-    await updateProductProjectSelections(project, { selectedSecrets: ['NEW_KEY'] }, 'Update secrets', 'workflow.json')
+    await updateProductProjectSelections(project, { selectedGlobalSecrets: ['VLT_A00001__NEW_KEY'] }, 'Update secrets', 'workflow.json')
     const minimal = JSON.parse(updatePlannerFile.mock.calls.at(-1)![1] as string)
-    expect(minimal.capabilities).toEqual({ selected_secrets: ['NEW_KEY'] })
+    expect(minimal.capabilities).toEqual({ selected_global_secret_names: ['VLT_A00001__NEW_KEY'] })
     expect(minimal).not.toHaveProperty('workflow_context_paths')
   })
 
@@ -322,14 +314,12 @@ describe('updateProductProjectSelections', () => {
     const updated = await updateProductProjectSelections(project, {
       selectedServers: ['google_sheets', 'google_sheets'],
       selectedSkills: ['work-dashboard'],
-      selectedSecrets: ['GITHUB_TOKEN', 'GITHUB_TOKEN'],
       selectedGlobalSecrets: ['SHARED_API_TOKEN', 'SHARED_API_TOKEN'],
       workflowContextPaths: ['Workflow/reference', 'Workflow/reference'],
     }, 'Update integrations', 'workflow.json')
 
     expect(updated.selectedServers).toEqual(['google_sheets'])
     expect(updated.selectedSkills).toEqual(['work-dashboard'])
-    expect(updated.selectedSecrets).toEqual(['GITHUB_TOKEN'])
     expect(updated.selectedGlobalSecrets).toEqual(['SHARED_API_TOKEN'])
     expect(updated.workflowContextPaths).toEqual(['Workflow/reference'])
     const [path, content] = updatePlannerFile.mock.calls.at(-1)!
@@ -338,7 +328,6 @@ describe('updateProductProjectSelections', () => {
     expect(manifest.capabilities.custom_feature).toEqual({ enabled: true })
     expect(manifest.capabilities.selected_servers).toEqual(['google_sheets'])
     expect(manifest.capabilities.selected_skills).toEqual(['work-dashboard'])
-    expect(manifest.capabilities.selected_secrets).toEqual(['GITHUB_TOKEN'])
     expect(manifest.capabilities.selected_global_secret_names).toEqual(['SHARED_API_TOKEN'])
     expect(manifest.workflow_context_paths).toEqual(['Workflow/reference'])
   })

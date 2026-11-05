@@ -165,24 +165,31 @@ func (api *StreamingAPI) migrateLegacySecretDocuments(ctx context.Context, apply
 				rows = append(rows, row)
 				continue
 			}
-			acting := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: actor})
-			existing, e := api.ensureSharedWorkflowSecrets(acting, doc.WorkflowPath, actor)
+			// A project's secret goes into its owner's own Vault, kept beside a different value of the same name, and
+			// the project uses it where it selected the name (as the startup move does).
+			if !personVaultActive(actor) {
+				return rows, fmt.Errorf("the owner of %s cannot keep a Vault", doc.WorkflowPath)
+			}
+			personal, e := ensurePersonalVault(ctx, actor)
 			if e != nil {
 				return rows, e
 			}
-			found := false
-			for _, current := range existing {
-				if current.Name == name {
-					found = true
-					break
+			manifest, e := readProjectSelectionManifest(ctx, doc.WorkflowPath)
+			if e != nil {
+				return rows, e
+			}
+			full, _, e := api.placeInOwnerVault(ctx, actor, personal, name, projectVaultLabel(doc.WorkflowPath, manifest), value)
+			if e != nil {
+				return rows, e
+			}
+			if manifest.found && manifest.swap(name, full) {
+				if e := writeFileToWorkspace(ctx, path.Join(backup, manifest.file), manifest.raw); e != nil {
+					return rows, e
+				}
+				if e := manifest.write(ctx); e != nil {
+					return rows, e
 				}
 			}
-			if !found {
-				if err := api.upsertSharedWorkflowSecret(acting, doc.WorkflowPath, name, value); err != nil {
-					return rows, err
-				}
-			}
-			// A previously imported Vault value is canonical; retrying never overwrites a rotation.
 			if err := api.chatStore.DeleteWorkflowSecret(ctx, sourceUser, doc.WorkflowPath, name); err != nil {
 				return rows, err
 			}

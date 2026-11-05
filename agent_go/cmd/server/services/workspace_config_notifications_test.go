@@ -8,7 +8,6 @@ import (
 func TestMultiAgentChatCapabilitiesDecodeNotificationReference(t *testing.T) {
 	var caps MultiAgentChatCapabilities
 	if err := json.Unmarshal([]byte(`{
-		"selected_secrets":["CHIEF_SLACK_WEBHOOK"],
 		"notifications":{"slack_webhook_secret_name":"CHIEF_SLACK_WEBHOOK"}
 	}`), &caps); err != nil {
 		t.Fatalf("unmarshal capabilities: %v", err)

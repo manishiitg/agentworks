@@ -223,7 +223,6 @@ func createWorkflowAutoNotificationFixture(workspaceDocs string, keep bool, prov
 			"selected_servers":             []string{},
 			"selected_tools":               []string{},
 			"selected_skills":              []string{},
-			"selected_secrets":             []string{},
 			"selected_global_secret_names": noGlobalSecrets,
 			"browser_mode":                 "none",
 			"use_code_execution_mode":      false,

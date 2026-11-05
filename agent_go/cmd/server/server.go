@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"log"
 	"maps"
 	"net"
@@ -24,6 +23,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
 
@@ -791,7 +792,7 @@ type QueryRequest struct {
 	// DeliveryMode is a person’s choice for this message; empty preserves steering.
 	DeliveryMode               string `json:"delivery_mode,omitempty"`
 	ExternalBuilderOperationID string `json:"-"` // Set from authenticated execution claims.
-	// secretsWorkspacePath is the workflow/project whose stored secrets this turn loaded (PLAT-658): a retained CLI
+	// secretsWorkspacePath is the workflow/project whose selected secrets this turn loaded (PLAT-658): a retained CLI
 	// launched with them is not steered once they change.
 	secretsWorkspacePath string
 	// admittedWorkflowPhase records, once and server-side, that this request was admitted as a Workflow phase chat.
@@ -900,16 +901,11 @@ type QueryRequest struct {
 	NotificationExcludeChannels        []string `json:"notification_exclude_channels,omitempty"`
 	NotificationGmailConnectionID      string   `json:"notification_gmail_connection_id,omitempty"`
 	NotificationRunSummaryRecipients   []string `json:"notification_run_summary_recipients,omitempty"`
-	// Internal-only resolved notification credentials. Unlike DecryptedSecrets,
+	// Internal-only resolved notification credentials. Unlike selected secrets,
 	// these values are never serialized, prompted, or injected as SECRET_*.
 	notificationSlackWebhookURL string `json:"-"`
 	// Delegation tier configuration: Maps reasoning levels (high/medium/low) to specific provider/model pairs
 	DelegationTierConfig *virtualtools.DelegationTierConfig `json:"delegation_tier_config,omitempty"`
-	// Decrypted secrets to inject into agent system prompt
-	DecryptedSecrets []struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	} `json:"decrypted_secrets,omitempty"`
 	// Selected global secret names to include (if nil/absent, no global secrets are included)
 	SelectedGlobalSecrets *[]string `json:"selected_global_secrets,omitempty"`
 	// Workspace paths of workflows to inject context for (via # selector in chat)
@@ -1058,7 +1054,7 @@ func notificationDestinationFromQuery(req QueryRequest, userID string) *services
 }
 
 // resolveNotificationSecretForRequest resolves a configured webhook into an
-// internal delivery-only field and removes the same name from DecryptedSecrets.
+// internal delivery-only field and removes the same name from the turn's selected secrets.
 // This is the boundary that prevents notification credentials from becoming
 // agent-visible SECRET_* environment variables.
 func (api *StreamingAPI) resolveNotificationSecretForRequest(ctx context.Context, userID, workflowPath string, req *QueryRequest) {
@@ -1079,19 +1075,6 @@ func (api *StreamingAPI) resolveNotificationSecretForRequest(ctx context.Context
 	}
 	resolved := make(map[string]string, len(secretNames))
 
-	filtered := req.DecryptedSecrets[:0]
-	for _, secret := range req.DecryptedSecrets {
-		name := strings.TrimSpace(secret.Name)
-		if wanted[name] {
-			if resolved[name] == "" {
-				resolved[name] = secret.Value
-			}
-			continue
-		}
-		filtered = append(filtered, secret)
-	}
-	req.DecryptedSecrets = filtered
-
 	// nil means "no global secrets", so retain an explicit empty
 	// allow-list before removing the notification credentials. Otherwise a
 	// GLOBAL_SECRET_<NAME> webhook would still leak through mergeGlobalSecrets.
@@ -1101,7 +1084,7 @@ func (api *StreamingAPI) resolveNotificationSecretForRequest(ctx context.Context
 	} else {
 		filteredGlobals := *req.SelectedGlobalSecrets
 		for _, name := range secretNames {
-			filteredGlobals = removeString(filteredGlobals, name)
+			filteredGlobals = withoutProjectSecret(filteredGlobals, name)
 		}
 		req.SelectedGlobalSecrets = &filteredGlobals
 	}
@@ -2238,8 +2221,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	api.restoreNativeCodingObservers()
 	events.SetTurnDiagnostics(api.turnDiagnostics)
 	mcpagent.SetAccountPhraseResolver(api.accountPhraseForSession)
-	// An MCP connection's header secrets are its Crew's, Code's or workflow's
-	// own project secrets (Setup > Secrets).
+	// An MCP connection's header secrets are the Vault secrets its Crew, Code or
+	// workflow selects, lent by the owner (projectSecretValue).
 	if productEnabled("mcp-gateway") && strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != "" {
 		if err := registerVaultManagementTools(profileRegistry, api); err != nil {
 			log.Fatalf("Failed to register Vault management tools: %v", err)
@@ -2759,16 +2742,14 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Secrets encryption API routes (from secrets_routes.go)
 	apiRouter.HandleFunc("/secrets/encrypt", api.handleEncryptSecret).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/decrypt", api.handleDecryptSecret).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/secrets/vault/share", api.handleShareVaultSecret).Methods("GET", "POST")
 	apiRouter.HandleFunc("/secrets/vault/access", api.handleVaultSecretAccess).Methods("GET", "POST")
 	apiRouter.HandleFunc("/secrets/global", api.handleGetGlobalSecrets).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/my-vaults/op", api.handleMyVaultsOp).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/secrets/global", api.handleManageGlobalSecret).Methods("POST", "PUT", "DELETE")
+	apiRouter.HandleFunc("/secrets/global", api.handleManageGlobalSecret).Methods("PUT", "DELETE")
 	apiRouter.HandleFunc("/secrets/global/reveal", api.handleRevealGlobalSecret).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/workflow/store", api.handleStoreWorkflowSecret).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/workflow/store/{name}", api.handleDeleteWorkflowSecret).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/workflow/sources", api.handleSecretSources).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/secrets/workflow/stored", api.handleListStoredWorkflowSecrets).Methods("GET", "OPTIONS")
 
 	// Provider API keys (encrypted file storage for scheduled runs)
 	apiRouter.HandleFunc("/provider-keys", api.handleSaveProviderKeys).Methods("PUT", "OPTIONS")
@@ -3547,104 +3528,6 @@ func latestAssistantTextFromHistory(history []llmtypes.MessageContent) string {
 		}
 	}
 	return ""
-}
-
-func (api *StreamingAPI) loadSelectedSecrets(ctx context.Context, userID, workflowPath string, selectedNames []string) []struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-} {
-	if userID == "" || len(selectedNames) == 0 {
-		return nil
-	}
-	var identityErr error
-	workflowPath, identityErr = relayDraftWorkspaceForRelease(ctx, workflowPath)
-	if identityErr != nil {
-		log.Printf("[SECRETS] Flow release identity unavailable: %v", identityErr)
-		return nil
-	}
-
-	selectedSet := make(map[string]bool, len(selectedNames))
-	for _, name := range selectedNames {
-		selectedSet[name] = true
-	}
-
-	// Track which selected names were actually resolved so we can surface orphans.
-	// An orphan is a name attached to the workflow with no value in the workflow
-	// store and no matching GLOBAL_SECRET_* env var — runtime would silently set
-	// $SECRET_<NAME> to empty, masking downstream failures.
-	resolved := make(map[string]bool, len(selectedNames))
-
-	resultByName := make(map[string]string, len(selectedNames))
-	var resultOrder []string
-	addResult := func(name, value string) {
-		if _, exists := resultByName[name]; !exists {
-			resultOrder = append(resultOrder, name)
-		}
-		resultByName[name] = value
-	}
-
-	if strings.TrimSpace(workflowPath) != "" {
-		// Workflow secrets are shared by everyone with access to the workflow
-		// (PLAT-272): they are read from the workflow's own document and bound
-		// to the workflow path, so the value is the same whether this run was
-		// started by the owner, a read-only user, or the scheduler.
-		workflowSecrets, err := api.ensureSharedWorkflowSecrets(ctx, workflowPath, userID)
-		if err != nil {
-			log.Printf("[SECRETS] Failed to list workflow secrets for %s: %v", workflowPath, err)
-		} else {
-			for _, s := range workflowSecrets {
-				if !selectedSet[s.Name] {
-					continue
-				}
-				plaintext, err := decryptSharedWorkflowSecret(workflowPath, s)
-				if err != nil {
-					log.Printf("[SECRETS] Failed to decrypt workflow secret %q for workflow %s: %v", s.Name, workflowPath, err)
-					continue
-				}
-				addResult(s.Name, plaintext)
-				resolved[s.Name] = true
-			}
-		}
-	}
-
-	// A promoted secret keeps working through the source workflow's existing
-	// selected_secrets attachment. Its value now resolves from the global store.
-	for _, secret := range visibleGlobalSecrets(ctx, userID) {
-		if secret.Managed && selectedSet[secret.Name] && !resolved[secret.Name] {
-			addResult(secret.Name, secret.Value)
-			resolved[secret.Name] = true
-		}
-	}
-
-	var result []struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}
-	for _, name := range resultOrder {
-		result = append(result, struct {
-			Name  string `json:"name"`
-			Value string `json:"value"`
-		}{Name: name, Value: resultByName[name]})
-	}
-
-	// Also treat globals as resolved — mergeGlobalSecrets layers these in separately.
-	for _, gs := range visibleGlobalSecrets(ctx, userID) {
-		if selectedSet[gs.Name] {
-			resolved[gs.Name] = true
-		}
-	}
-
-	var orphans []string
-	for _, name := range selectedNames {
-		if !resolved[name] {
-			orphans = append(orphans, name)
-		}
-	}
-	if len(orphans) > 0 {
-		log.Printf("[SECRETS] ⚠️  Workflow attaches secret name(s) with no stored value for user %s workflow %s: %v — $SECRET_<NAME> will be EMPTY at runtime. Store a value with set_workflow_secret or detach via update_workflow_config(remove_secrets=[...]).", userID, workflowPath, orphans)
-	}
-
-	return result
 }
 
 // CORS middleware
@@ -4807,15 +4690,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if req.SelectedGlobalSecrets == nil && manifest.Capabilities.SelectedGlobalSecretNames != nil {
 					req.SelectedGlobalSecrets = manifest.Capabilities.SelectedGlobalSecretNames
 				}
-				// Manifest is the source of truth for workflow-selected secrets too.
-				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, resolvedWPath, manifest.Capabilities.SelectedSecrets)
 				req.secretsWorkspacePath = resolvedWPath
 				// Checked against the owner who lends them, as the turn resolves them.
 				secretsOwner := api.projectSecretsOwner(currentUserID, resolvedWPath)
-				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, &manifest.Capabilities.SelectedSecrets); err != nil {
-					http.Error(w, err.Error(), 403)
-					return
-				}
 				// A bot session already carries its arrival connection, which
 				// wins over the manifest selection for that conversation.
 				if strings.TrimSpace(req.BotConnectionID) == "" {
@@ -4829,7 +4706,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.NotificationRunSummaryRecipients = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryRecipients...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, resolvedWPath, &req)
-				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.SelectedGlobalSecrets); err != nil {
 					http.Error(w, err.Error(), http.StatusForbidden)
 					return
 				}
@@ -4950,15 +4827,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if caps.SelectedGlobalSecretNames != nil {
 					req.SelectedGlobalSecrets = caps.SelectedGlobalSecretNames
 				}
-				// User-stored secrets from manifest are authoritative for workflow UI edits.
 				// Checked against the owner who lends them, as the turn resolves them.
 				secretsOwner := api.projectSecretsOwner(currentUserID, manifestWorkspacePath)
-				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), secretsOwner, manifestWorkspacePath, caps.SelectedSecrets)
 				req.secretsWorkspacePath = manifestWorkspacePath
-				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, &caps.SelectedSecrets); err != nil {
-					http.Error(w, err.Error(), 403)
-					return
-				}
 				// A bot session already carries its arrival connection, which
 				// wins over the manifest selection for that conversation.
 				if strings.TrimSpace(req.BotConnectionID) == "" {
@@ -4972,7 +4843,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, manifestWorkspacePath, &req)
-				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.SelectedGlobalSecrets); err != nil {
 					http.Error(w, err.Error(), http.StatusForbidden)
 					return
 				}
@@ -5123,15 +4994,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[SKILLS] Applied %d skills to workflow orchestrator: %v", len(selectedSkills), selectedSkills)
 		}
 
-		// Merge global secrets with user-supplied secrets, then set on orchestrator
-		allSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		// The selected Vault secrets, lent by the project's owner, set on the orchestrator
+		allSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 		if len(allSecrets) > 0 {
 			entries := make([]orchestrator.SecretEntry, len(allSecrets))
 			for i, s := range allSecrets {
 				entries[i] = orchestrator.SecretEntry{Name: s.Name, Value: s.Value}
 			}
 			workflowOrchestrator.SetSecrets(entries)
-			log.Printf("[SECRETS] Applied %d secrets (%d global + %d scoped) to workflow orchestrator", len(entries), len(entries)-len(req.DecryptedSecrets), len(req.DecryptedSecrets))
+			log.Printf("[SECRETS] Applied %d secrets to workflow orchestrator", len(entries))
 		}
 
 		// Replace workspace advanced executors with session-aware versions that include secrets.
@@ -6112,7 +5983,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				codingAgentSecretEnvironment[name] = value
 			}
 		}
-		codingAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		codingAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 		// On the Mac, a selected secret its Vault lacks comes from the lender's Vault on the Crew's company server.
 		codingAgentSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, codingAgentSecrets, req.SelectedGlobalSecrets)
 		for _, secret := range codingAgentSecrets {
@@ -6508,10 +6379,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// step-execution controller. Without this the workflow builder could
 			// set_workflow_secret but never read the value back (its own shell had
 			// no SECRET_* env), even though attached secrets reach real step runs.
-			// req.DecryptedSecrets is loaded from the workflow manifest above
-			// (workflow_phase), so it picks up secrets attached in earlier turns;
-			// multi-agent chat without loaded secrets yields an empty map (no-op).
-			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
+			// req.SelectedGlobalSecrets is loaded from the workflow manifest above
+			// (workflow_phase), so it picks up secrets selected in earlier turns;
+			// multi-agent chat without a selection yields an empty map (no-op).
+			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 			chatAgentSecretEnv := make(map[string]string, len(chatAgentSecrets))
 			for _, s := range chatAgentSecrets {
 				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
@@ -7899,7 +7770,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
 					// Secrets
-					phaseSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
+					phaseSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 					if len(phaseSecrets) > 0 {
 						entries := make([]orchestrator.SecretEntry, len(phaseSecrets))
 						for i, s := range phaseSecrets {
@@ -8006,7 +7877,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					LLMConfig:                   req.LLMConfig,
 					ExecutionOptions:            req.ExecutionOptions,
 					SelectedGlobalSecrets:       req.SelectedGlobalSecrets,
-					DecryptedSecrets:            req.DecryptedSecrets,
 					PresetQueryID:               req.PresetQueryID,
 				}
 				if err := api.installWorkflowPhaseTools(
@@ -8029,7 +7899,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Secret values stay in the tool environment; only their names belong in
 		// the immutable identity. Assemble that section before finalization.
-		identitySecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		identitySecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 		if len(identitySecrets) > 0 && req.PhaseID == "" {
 			if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
 				_ = llmAgent.AddInstructions(buildSecretNamesPrompt(identitySecrets))
@@ -8404,7 +8274,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// diverge (e.g. a request with PhaseID set but a non-workflow_phase mode).
 		// Keep that in mind before relying on either one in this block.
 		isWorkflowPhase := req.PhaseID != ""
-		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 		if !isWorkflowPhase {
 			allChatSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, allChatSecrets, req.SelectedGlobalSecrets)
 		}
@@ -12807,13 +12677,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	if presetGlobalSecretNames != nil {
 		effectiveGlobalSecretSelection = presetGlobalSecretNames
 	}
-	var projectSecretNames []string
-	if workspacePath != "" {
-		if manifest, found, err := ReadWorkflowManifest(context.Background(), workspacePath); err == nil && found {
-			projectSecretNames = manifest.Capabilities.SelectedSecrets
-		}
-	}
-	allSecrets, err := api.projectRunSecrets(ctx, currentUserID, workspacePath, projectSecretNames, effectiveGlobalSecretSelection)
+	allSecrets, err := api.projectRunSecrets(ctx, currentUserID, workspacePath, effectiveGlobalSecretSelection)
 	if err != nil {
 		return nil, err
 	}
@@ -12910,14 +12774,6 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		for _, gs := range visibleGlobalSecrets(ctx, currentUserID) {
 			nameSet[gs.Name] = true
 		}
-		if workspacePath != "" {
-			workflowSecrets, err := api.ensureSharedWorkflowSecrets(ctx, workspacePath, currentUserID)
-			if err == nil {
-				for _, ws := range workflowSecrets {
-					nameSet[ws.Name] = true
-				}
-			}
-		}
 		names := make([]string, 0, len(nameSet))
 		for name := range nameSet {
 			names = append(names, name)
@@ -12931,8 +12787,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		}
 		// Keyed by the $SECRET_ name, resolved as a run resolves them: owner-lent Vault secrets.
 		out := make(map[string]string, len(names))
-		scoped := api.loadSelectedSecrets(ctx, currentUserID, workspacePath, names)
-		for _, s := range api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(currentUserID, workspacePath), scoped, &names) {
+		for _, s := range api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(currentUserID, workspacePath), &names) {
 			out[s.Name] = s.Value
 		}
 		return out

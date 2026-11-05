@@ -377,7 +377,6 @@ export interface ChatTabConfig {
   useCodeExecutionMode: boolean  // Code execution mode toggle
   selectedServers: string[]  // Selected MCP servers
   selectedSkills: string[]  // Selected skills to include in chat
-  selectedSecrets: string[]  // Selected secret IDs to inject into chat
   llmConfig: ExtendedLLMConfiguration  // LLM configuration (provider, model, etc.)
   fileContext: FileContextItem[]  // Files/folders in context
   browserMode?: 'none' | 'extension' | 'headless' | 'cdp'  // Browser choice; absent uses the server default
@@ -560,7 +559,6 @@ const getDefaultTabConfig = (mode: 'workflow' | 'multi-agent' = 'multi-agent'): 
     // Default to false (simple mode) - user can toggle to true (code exec mode) via ChatInput
     useCodeExecutionMode: false,
     selectedServers,
-    selectedSecrets: [],
     workflowContext: [],
     llmConfig: llmConfig || {
       provider: 'codex-cli',

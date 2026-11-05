@@ -132,12 +132,14 @@ func (api *StreamingAPI) handleCrewSyncReadiness(w http.ResponseWriter, r *http.
 		externalError(w, 409, "sync_unavailable", "Could not check this Crew's folder: "+err.Error())
 		return
 	}
-	// What the Crew uses from the Mac's Vault: selected secrets are copied to the server, apps and
+	// What the Crew uses from the Mac's Vault: secrets selected from the owner's own Vault are copied to the server, apps and
 	// accounts need the same connection there (checked when Cloud turns on).
 	secrets, connections := 0, []map[string]string{}
 	if vaultConfigured() {
 		if inventory, e := api.projectVaultInventory(r.Context(), roots.Owner, roots.Virtual); e == nil {
-			secrets = len(inventory.Secrets)
+			if own, e := ownVaultSecretValues(r.Context(), roots.Owner, inventory.Shared); e == nil {
+				secrets = len(own)
+			}
 			seen := map[string]bool{}
 			for _, group := range inventory.Vaults {
 				for _, item := range group.Items {

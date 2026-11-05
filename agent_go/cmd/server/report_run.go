@@ -59,7 +59,6 @@ type reportRunScope struct {
 type reportRunSelection struct {
 	servers       []string
 	tools         []string
-	secrets       []string
 	globalSecrets *[]string
 	variables     bool
 }
@@ -75,10 +74,6 @@ func isReportRunWorkflowRoot(workspacePath string) bool {
 func reportRunSelectionFor(ctx context.Context, workspacePath string) (reportRunSelection, error) {
 	if product, _, isProject := projectProductForPath(workspacePath); isProject {
 		servers, _, err := productSelectedServers(ctx, product.ProfileID, workspacePath)
-		if err != nil {
-			return reportRunSelection{}, err
-		}
-		secrets, _, err := productSelectedSecrets(ctx, product.ProfileID, workspacePath)
 		if err != nil {
 			return reportRunSelection{}, err
 		}
@@ -98,14 +93,14 @@ func reportRunSelectionFor(ctx context.Context, workspacePath string) (reportRun
 				return reportRunSelection{}, err
 			}
 		}
-		return reportRunSelection{servers: servers, tools: manifest.Capabilities.SelectedTools, secrets: secrets, globalSecrets: globals}, nil
+		return reportRunSelection{servers: servers, tools: manifest.Capabilities.SelectedTools, globalSecrets: globals}, nil
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
 	if err != nil || !found {
 		return reportRunSelection{}, fmt.Errorf("workflow.json is missing or unreadable")
 	}
 	caps := manifest.Capabilities
-	return reportRunSelection{servers: caps.RuntimeServers(), tools: caps.SelectedTools, secrets: caps.SelectedSecrets, globalSecrets: caps.SelectedGlobalSecretNames, variables: true}, nil
+	return reportRunSelection{servers: caps.RuntimeServers(), tools: caps.SelectedTools, globalSecrets: caps.SelectedGlobalSecretNames, variables: true}, nil
 }
 
 // reportRunScriptPath accepts only a script in the workflow's code/ folder.
@@ -347,7 +342,7 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 	defer api.reportRunSessions.Delete(sessionID)
 
 	// Like a scheduled run, the script gets the project's selected secrets lent by its owner.
-	if _, err := api.projectRunSecrets(ctx, userID, workspacePath, selection.secrets, selection.globalSecrets); err != nil {
+	if _, err := api.projectRunSecrets(ctx, userID, workspacePath, selection.globalSecrets); err != nil {
 		return map[string]any{"success": false, "error": err.Error()}
 	}
 	env := api.reportRunEnv(ctx, userID, workspacePath, selection, sessionID)
@@ -462,11 +457,11 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 }
 
 // reportRunEnv gives the script what a scheduled run of this workflow would
-// have: selected workflow + global secrets, the unambiguous variable values,
+// have: its selected Vault secrets (lent by the owner), the unambiguous variable values,
 // and an MCP bridge session scoped to the workflow's selected servers.
 func (api *StreamingAPI) reportRunEnv(ctx context.Context, userID, workspacePath string, selection reportRunSelection, sessionID string) map[string]string {
 	env := map[string]string{}
-	secrets, _ := api.projectRunSecrets(ctx, userID, workspacePath, selection.secrets, selection.globalSecrets)
+	secrets, _ := api.projectRunSecrets(ctx, userID, workspacePath, selection.globalSecrets)
 	for _, secret := range secrets {
 		env["SECRET_"+secret.Name] = secret.Value
 	}

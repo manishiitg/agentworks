@@ -104,7 +104,7 @@ func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *Schedul
 	if err := json.Unmarshal([]byte(sctx.WebhookInput.Variables["INPUT"]), &input); err != nil || input == nil {
 		return fmt.Errorf("Flow INPUT must be an object")
 	}
-	secrets, err := s.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets, sctx.Capabilities.SelectedGlobalSecretNames)
+	secrets, err := s.api.projectRunSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedGlobalSecretNames)
 	if err != nil {
 		return err
 	}

@@ -293,7 +293,7 @@ func (api *StreamingAPI) resolvePublishSecretValue(ctx context.Context, userID, 
 		return value, true
 	}
 	selectedGlobals := []string{secretName}
-	for _, secret := range api.mergeGlobalSecretsFor(ctx, userID, nil, &selectedGlobals) {
+	for _, secret := range api.mergeGlobalSecretsFor(ctx, userID, &selectedGlobals) {
 		if secret.Name == secretName && secret.Value != "" {
 			return secret.Value, true
 		}

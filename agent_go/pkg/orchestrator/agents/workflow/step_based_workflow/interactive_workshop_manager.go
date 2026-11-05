@@ -984,11 +984,6 @@ func (iwm *InteractiveWorkshopManager) editWorkflowSecretSelection(ctx context.C
 		return next
 	}
 	selection := edit("selected_global_secret_names")
-	for _, name := range edit("selected_secrets") {
-		if !containsString(selection, name) {
-			selection = append(selection, name)
-		}
-	}
 	manifest["capabilities"] = caps
 	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 	encoded, err := json.MarshalIndent(manifest, "", "  ")

@@ -193,7 +193,7 @@ export function WorkBrowserPanel({ tabId, workspacePath }: { tabId: string; work
   )
 }
 
-export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, filesPath, projectId, projectTitle, projectDescription, projectIdentity, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onAppsSaved, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, onOpenChat, showShell = false }: { showShell?: boolean; workspacePath: string; filesPath?: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onAppsSaved?: () => void; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; onOpenChat?: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
+export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, filesPath, projectId, projectTitle, projectDescription, projectIdentity, tabId, view, enabledPanels, projectLLMConfig, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onAppsSaved, onSelectedServersChange, onSelectedSkillsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, onOpenChat, showShell = false }: { showShell?: boolean; workspacePath: string; filesPath?: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onAppsSaved?: () => void; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; onOpenChat?: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
   const readOnly = Boolean(shared)
   const accountKey = useAuthStore(state => `${state.user?.id || ''}:${state.user?.can_edit}`)
   const serverKey = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
@@ -244,14 +244,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     tab.metadata?.agentProfileConversationKey === projectId &&
     tab.metadata?.isViewOnly !== true,
   )?.sessionId)
-
-  const updateSecretSelection = async (secrets: string[]) => {
-    try {
-      await onSelectedSecretsChange(secrets)
-    } catch (cause) {
-      useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not save project secret selection.', 'error')
-    }
-  }
 
   const openProjectFile = async (filePath: string) => {
     selectFilesView('browse')
@@ -310,14 +302,12 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           tabId={tabId}
           openLocalFilesSettings={openLocalFilesSettings}
           onLocalFilesSettingsOpened={() => setOpenLocalFilesSettings(false)}
-          selectedSecrets={selectedSecrets}
           selectedGlobalSecrets={selectedGlobalSecrets}
           projectLLMConfig={projectLLMConfig}
           enabledPanels={enabledPanels}
           onRuntimeChange={onRuntimeChange}
           nativeAgentTools={nativeAgentTools}
           onNativeAgentToolsChange={shared ? undefined : onNativeAgentToolsChange}
-          onSelectedSecretsChange={updateSecretSelection}
           onSelectedGlobalSecretsChange={onSelectedGlobalSecretsChange}
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
@@ -335,8 +325,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         {view === 'mcp' && <WorkIntegrationsPanel
           canEdit={canEditConnections}
           accessLoading={!shared && projectAccess?.key !== accessKey}
-          selectedSecrets={selectedSecrets} onAppsSaved={onAppsSaved}
-          onSelectedSecretsChange={onSelectedSecretsChange}
+          onAppsSaved={onAppsSaved}
           key={workspacePath}
           workspacePath={workspacePath}
           projectId={projectId}

@@ -638,60 +638,27 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	}
 	req.AgentProfileContext = promptContext
 	req.SelectedSkills = appendUniqueStrings(req.SelectedSkills, profile.Skills...)
-	// The owner's lent secrets and Vault apps for the owner and co-owners, as handleQuery admits them (vault_secrets.go).
+	// The owner's lent Vault apps for the owner and co-owners, as handleQuery admits them (vault_secrets.go).
 	secretsPerson := api.crewSecretsPerson(userID, workspacePath, "agent_profile")
 	if profile.Runtime.Capabilities.Secrets == agentprofiles.CapabilityDisabled {
 		// Product profiles may explicitly opt out of the shared secret runtime.
-		// Clear both scoped and global selections after saved chat configuration has
-		// been applied, so a profile cannot inherit credentials accidentally.
-		req.DecryptedSecrets = nil
+		// Clear the selection after saved chat configuration has been applied,
+		// so a profile cannot inherit credentials accidentally.
 		noGlobalSecrets := []string{}
 		req.SelectedGlobalSecrets = &noGlobalSecrets
 	} else if !isGlobalScope && api.chatStore != nil && userID != "" {
-		// Secret storage is keyed by the private runtime path, just like the
-		// Settings endpoints. The logical Chats/... alias is a different key.
-		secretWorkspace := agentProfileRuntimeWorkspace(userID, workspacePath)
-		// Product runtime manifests use the same selected_secrets contract.
-		// Values stay in encrypted storage; only explicitly attached names enter
-		// the coding-agent environment. For an older product manifest, preserve
-		// the previous behavior once by attaching its existing project secrets.
+		// Only the Vault secrets the product's runtime manifest selects enter the
+		// coding-agent environment, lent by the project's owner.
 		selectedGlobals, globalSecretErr := productSelectedGlobalSecrets(ctx, profile.ID, workspacePath)
 		if globalSecretErr != nil {
-			log.Printf("[SECRETS] Failed to read product global secret attachments for %s (%s): %v", userID, workspacePath, globalSecretErr)
+			log.Printf("[SECRETS] Failed to read product secret selection for %s (%s): %v", userID, workspacePath, globalSecretErr)
 			noGlobalSecrets := []string{}
 			req.SelectedGlobalSecrets = &noGlobalSecrets
 		} else {
 			req.SelectedGlobalSecrets = selectedGlobals
-		}
-		selectedNames, initialized, secretErr := productSelectedSecrets(ctx, profile.ID, workspacePath)
-		if secretErr != nil {
-			log.Printf("[SECRETS] Failed to read product secret attachments for %s (%s): %v", userID, workspacePath, secretErr)
-		} else if !initialized {
-			stored, listErr := api.ensureSharedWorkflowSecrets(ctx, secretWorkspace, userID)
-			if listErr != nil {
-				log.Printf("[SECRETS] Failed to migrate product secret attachments for %s (%s): %v", userID, workspacePath, listErr)
-			} else {
-				for _, secret := range stored {
-					selectedNames = appendUniqueStrings(selectedNames, secret.Name)
-				}
-				// Crew Run mode: a reader's turn attaches the stored names
-				// in memory only. Persisting the migration would write the
-				// owner's manifest from someone else's turn.
-				if crewOwned {
-					if writeErr := updateProductSelectedSecrets(ctx, profile.ID, workspacePath, func([]string) []string { return selectedNames }); writeErr != nil {
-						log.Printf("[SECRETS] Failed to persist migrated product secret attachments for %s (%s): %v", userID, workspacePath, writeErr)
-					}
-				}
+			if len(*selectedGlobals) > 0 {
+				req.secretsWorkspacePath = agentProfileRuntimeWorkspace(userID, workspacePath)
 			}
-		}
-		if len(selectedNames) > 0 {
-			req.DecryptedSecrets = api.loadSelectedSecrets(ctx, secretsPerson, secretWorkspace, selectedNames)
-			req.secretsWorkspacePath = secretWorkspace
-			if err := validateVaultSecretSelection(ctx, secretsPerson, req.DecryptedSecrets, &selectedNames); err != nil {
-				return nil, err
-			}
-		} else {
-			req.DecryptedSecrets = nil
 		}
 	}
 	mark("secrets")
@@ -821,7 +788,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 	// The selected secrets are checked against whoever lends them, as the turn's SECRET_* are resolved (owner-lent).
-	if err := validateVaultSecretSelection(ctx, api.projectSecretsOwner(userID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+	if err := validateVaultSecretSelection(ctx, api.projectSecretsOwner(userID, req.SelectedFolder), req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
 	mark("mcp")
@@ -875,7 +842,7 @@ func (api *StreamingAPI) chatSecretNames(ctx context.Context, userID string, req
 		return nil
 	}
 	var names []string
-	for _, secret := range api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(userID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets) {
+	for _, secret := range api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(userID, req.SelectedFolder), req.SelectedGlobalSecrets) {
 		names = append(names, secret.Name)
 	}
 	return names

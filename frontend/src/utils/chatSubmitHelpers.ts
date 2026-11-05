@@ -117,7 +117,6 @@ export function buildQueryRequestPayload(params: {
   chatPresetId: string | null
   filteredPresetTools: string[]
   hasActivePreset: boolean
-  decryptedSecrets?: Array<{ name: string; value: string }>
   selectedGlobalSecrets?: string[] | null
   restoredConversationPath?: string
 }): AgentQueryRequest {
@@ -126,7 +125,7 @@ export function buildQueryRequestPayload(params: {
     enabledTools, effectiveServers, currentTab, effectiveLLMConfig,
     llmConfigWithApiKeys, useCodeExecutionMode,
     executionOptions, workflowPresetId, chatPresetId,
-    filteredPresetTools, hasActivePreset, decryptedSecrets,
+    filteredPresetTools, hasActivePreset,
     selectedGlobalSecrets,
     restoredConversationPath,
   } = params
@@ -174,7 +173,6 @@ export function buildQueryRequestPayload(params: {
     selected_skills: isChatWithExtras && currentTab?.config?.selectedSkills?.length
       ? currentTab.config.selectedSkills
       : undefined,
-    decrypted_secrets: (isChatWithExtras || selectedModeCategory === 'workflow') && decryptedSecrets?.length ? decryptedSecrets : undefined,
     selected_global_secrets: (isChatWithExtras || selectedModeCategory === 'workflow')
       ? (selectedGlobalSecrets ?? undefined)
       : undefined,

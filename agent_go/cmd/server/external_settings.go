@@ -45,9 +45,9 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"crew_id":     externalString("Crew ID from workspace action=list. Pass this or workflow_id."),
 		}
 	}
-	add("get_settings", "Read a workflow's, Flow's or Crew's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode, notifications (workflows and Flows), plus a version for settings action=update. Builders also receive the names-only project Vault panel inventory under vault.", false, false, target())
+	add("get_settings", "Read a workflow's, Flow's or Crew's settings: models per role, MCP servers and tools, skills, secrets (the Vault secrets it uses and the ones available; never values), browser mode, notifications (workflows and Flows), plus a version for settings action=update. Builders also receive the names-only project Vault panel inventory under vault.", false, false, target())
 	sourceTarget := target()
-	add("get_secret_sources", "Explain this product's saved secret choices by name: its own copy, the company Vault copy and which takes priority. Values, token validity and account identities are not checked. Does not change selections or stored copies. Pass workflow_id or crew_id.", false, false, sourceTarget)
+	add("get_secret_sources", "Explain this product's saved secret choices by name: the Vault secrets it uses, lent by its owner, and whether the owner can still use each. Values, token validity and account identities are not checked. Does not change selections. Pass workflow_id or crew_id.", false, false, sourceTarget)
 	props := target()
 	for key, value := range map[string]any{
 		"chat_instructions":  map[string]any{"type": "string", "maxLength": workflowtypes.ChatInstructionsLimit, "description": "Optional short instructions for the app chat: behavior, tone and what to do first. Visible to people who can use the app; no secrets. Empty clears. Owner only; never grants tools or permissions."},
@@ -58,13 +58,10 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"tools":              addRemove("Tools to allow or disallow, as server:tool. The server must be attached."),
 		"skills":             addRemove("Installed or built-in skills to use or stop using."),
 		"secrets": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
-			"set":         map[string]any{"type": "object", "maxProperties": 20, "additionalProperties": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536}, "description": "NAME: value. Saves the value in the owner's Vault (My accounts; write-only, owner only) and uses it in this project in one step. Saving a name again replaces its value everywhere the owner uses it."},
-			"remove":      names,
-			"select":      names,
-			"unselect":    names,
-			"use_shared":  names,
-			"stop_shared": names,
-		}, "description": "set saves values in the owner's Vault and uses them here; remove stops using a secret here (its value stays in the owner's Vault); both owner only. select/unselect choose this project's older stored secrets; use_shared/stop_shared choose Vault secrets by name."},
+			"set":      map[string]any{"type": "object", "maxProperties": 20, "additionalProperties": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536}, "description": "NAME: value. Saves the value in the owner's Vault (My accounts; write-only, owner only) and uses it in this project in one step. Saving a name again replaces its value everywhere the owner uses it."},
+			"select":   names,
+			"unselect": names,
+		}, "description": "set saves values in the owner's Vault and uses them here (owner only). select uses Vault secrets by their Vault name (from secrets.available); unselect stops using one here, by its Vault name or the name scripts see, and its value stays in Vault."},
 		"knowledgebase_sources": map[string]any{"type": "array", "maxItems": 20, "description": "Replace linked workflow knowledge sources. Existing sharing and write grants still apply. Empty removes the links.", "items": map[string]any{"type": "object", "additionalProperties": false, "required": []any{"workflow_id", "alias", "access"}, "properties": map[string]any{"workflow_id": externalString("Source workflow ID."), "alias": externalString("Short name for this source."), "access": map[string]any{"type": "string", "enum": []any{"read", "write"}}}}},
 		"kb_write_grants":       names,
 		"browser_mode":          map[string]any{"type": "string", "enum": browser.ConfigurationModes()},
@@ -100,7 +97,6 @@ type externalSettingsState struct {
 	ChosenVaultAppsOnly bool      `json:"chosen_vault_apps_only,omitempty"`
 	Tools               []string  `json:"selected_tools,omitempty"`
 	Skills              []string  `json:"selected_skills,omitempty"`
-	Secrets             []string  `json:"selected_secrets,omitempty"`
 	GlobalSecrets       *[]string `json:"selected_global_secret_names,omitempty"`
 	BrowserMode         string    `json:"browser_mode,omitempty"`
 	BrowserCDPPort      int       `json:"browser_cdp_port,omitempty"`
@@ -121,18 +117,7 @@ type externalSettingsTarget struct {
 	skillCheck func(context.Context, []string) error
 }
 
-type externalSettingsSecret struct {
-	Name     string `json:"name"`
-	Selected bool   `json:"selected"`
-}
-
 func (api *StreamingAPI) externalSettingsView(ctx context.Context, userID string, t externalSettingsTarget, s externalSettingsState, notifications map[string]any) map[string]any {
-	stored := []externalSettingsSecret{}
-	if rows, err := api.ensureSharedWorkflowSecrets(ctx, t.path, userID); err == nil {
-		for _, row := range rows {
-			stored = append(stored, externalSettingsSecret{Name: row.Name, Selected: slices.Contains(s.Secrets, row.Name)})
-		}
-	}
 	shared := []string{}
 	if s.GlobalSecrets != nil {
 		shared = append(shared, (*s.GlobalSecrets)...)
@@ -145,8 +130,8 @@ func (api *StreamingAPI) externalSettingsView(ctx context.Context, userID string
 		"kind": t.kind, "version": s.version(), "my_access": t.access, "chat_instructions": s.ChatInstructions,
 		"models": s.LLMConfig, "mcp_servers": nonNilStrings(savedAppSelection(s.Servers)), "use_all_vault_apps": !s.ChosenVaultAppsOnly, "tools": nonNilStrings(s.Tools),
 		"skills": nonNilStrings(s.Skills),
-		"secrets": map[string]any{"stored": stored, "shared_selected": shared, "shared_available": available,
-			"note": "Values are never returned. Only owners may set or remove values."},
+		"secrets": map[string]any{"selected": shared, "available": available,
+			"note": "Values are never returned. Scripts see each secret under the name after its Vault prefix ($SECRET_NAME). Only owners may set values."},
 		"browser_mode": s.BrowserMode, "browser_cdp_port": s.BrowserCDPPort, "allowed_browser_modes": browser.VisibleModes(),
 	}
 	if notifications != nil {
@@ -352,7 +337,8 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		changed = settingsWith(changed, "skills")
 	}
 
-	// Secrets: validate everything before storing any value.
+	// Secrets: validate everything before storing any value. A project uses Vault secrets by name; set saves a value in
+	// the owner's own Vault (My accounts) and uses it here in one step.
 	secretArgs, _ := args["secrets"].(map[string]any)
 	values := map[string]string{}
 	if set, ok := secretArgs["set"].(map[string]any); ok {
@@ -360,12 +346,11 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 			values[strings.TrimSpace(key)], _ = value.(string)
 		}
 	}
-	removeValues := externalSettingsList(args, "secrets", "remove")
-	if len(values) > 0 || len(removeValues) > 0 {
+	if len(values) > 0 {
 		if !t.owner {
-			return nil, nil, &externalSettingsError{403, "forbidden", "Only the project's owner can add or remove its secrets; they are saved in the owner's Vault. Ask the owner to add the value, or to run `agentworks secret set NAME` for this project in their terminal."}
+			return nil, nil, &externalSettingsError{403, "forbidden", "Only the project's owner can add its secrets; they are saved in the owner's Vault. Ask the owner to add the value, or to run `agentworks secret set NAME` for this project in their terminal."}
 		}
-		named := append([]string{}, removeValues...)
+		named := []string{}
 		for key := range values {
 			named = append(named, key)
 		}
@@ -373,28 +358,12 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 			return nil, nil, settingsInvalid("secrets: %v", err)
 		}
 	}
-	storedNames := map[string]bool{}
-	if rows, err := api.ensureSharedWorkflowSecrets(ctx, t.path, userID); err == nil {
-		for _, row := range rows {
-			storedNames[row.Name] = true
-		}
-	}
-	selects := []string{}
-	for _, secret := range externalSettingsList(args, "secrets", "select") {
-		if _, setting := values[secret]; setting {
-			continue // set selects the saved Vault secret below
-		}
-		if !storedNames[secret] {
-			return nil, nil, settingsInvalid("secrets: %q has no stored value; set it first", secret)
-		}
-		selects = append(selects, secret)
-	}
-	shared := externalSettingsList(args, "secrets", "use_shared")
-	if len(shared) > 0 {
+	selects := externalSettingsList(args, "secrets", "select")
+	if len(selects) > 0 {
 		if api.projectActions == nil {
-			return nil, nil, &externalSettingsError{503, "secrets_unavailable", "Shared secrets are unavailable."}
+			return nil, nil, &externalSettingsError{503, "secrets_unavailable", "Vault secrets are unavailable."}
 		}
-		if _, err := api.projectActions.validateCrewCreationGlobalSecrets(ctx, userID, shared); err != nil {
+		if _, err := api.projectActions.validateCrewCreationGlobalSecrets(ctx, userID, selects); err != nil {
 			return nil, nil, settingsInvalid("secrets: %v", err)
 		}
 	}
@@ -409,24 +378,16 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 		}
 		saved = append(saved, full)
 	}
-	if len(selects) > 0 {
-		s.Secrets = settingsWith(s.Secrets, selects...)
-	}
-	if drops := append(externalSettingsList(args, "secrets", "unselect"), removeValues...); len(drops) > 0 {
-		s.Secrets = settingsWithout(s.Secrets, drops)
-	}
-	if stop := externalSettingsList(args, "secrets", "stop_shared"); len(shared) > 0 || len(stop) > 0 || len(saved) > 0 || len(removeValues) > 0 {
-		current := []string{}
+	if unselect := externalSettingsList(args, "secrets", "unselect"); len(selects) > 0 || len(unselect) > 0 || len(saved) > 0 {
+		next := []string{}
 		if s.GlobalSecrets != nil {
-			current = *s.GlobalSecrets
+			next = append(next, *s.GlobalSecrets...)
 		}
-		next := settingsWithout(settingsWith(current, shared...), stop)
-		for _, full := range saved {
-			next = withProjectSecret(next, full)
-			s.Secrets = settingsWithout(s.Secrets, []string{vaultSecretShortName(full)})
-		}
-		for _, name := range removeValues {
+		for _, name := range unselect {
 			next = withoutProjectSecret(next, name)
+		}
+		for _, full := range append(selects, saved...) {
+			next = withProjectSecret(next, full)
 		}
 		s.GlobalSecrets = &next
 	}
@@ -453,8 +414,8 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 	if _, ok := args["free_text_ask"]; ok {
 		return nil, nil, settingsInvalid("free_text_ask was removed: Ask is always open to everyone the project is shared with. Control access by sharing.")
 	}
-	if len(values) > 0 || len(removeValues) > 0 {
-		log.Printf("[EXTERNAL_SETTINGS] user=%s path=%s secrets_set=%d secrets_removed=%d", userID, t.path, len(values), len(removeValues))
+	if len(values) > 0 {
+		log.Printf("[EXTERNAL_SETTINGS] user=%s path=%s secrets_set=%d", userID, t.path, len(values))
 	}
 	return changed, pending, nil
 }
@@ -500,7 +461,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	caps := manifest.Capabilities
 	state := externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: savedAppSelection(caps.SelectedServers), ChosenVaultAppsOnly: caps.ChosenVaultAppsOnly,
 		Tools: append([]string{}, caps.SelectedTools...), Skills: append([]string{}, caps.SelectedSkills...),
-		Secrets: append([]string{}, caps.SelectedSecrets...), GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode, BrowserCDPPort: caps.BrowserCDPPort}
+		GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode, BrowserCDPPort: caps.BrowserCDPPort}
 	notifications := func(c WorkflowCapabilities) map[string]any {
 		if n := c.Notifications; n != nil {
 			return map[string]any{"run_instructions": n.RunSummaryInstructions, "run_channels": n.RunSummaryChannels, "run_recipients": n.RunSummaryRecipients, "gmail_connection_id": n.GmailConnectionID, "exclude_channels": n.ExcludeChannels, "break_alerts": n.BreakAlertsEnabled(), "wake_tab": n.WakeTab}
@@ -536,7 +497,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	}
 	caps.LLMConfig, caps.SelectedServers, caps.SelectedTools, caps.SelectedSkills = state.LLMConfig, savedAppSelection(state.Servers), state.Tools, state.Skills
 	caps.ChosenVaultAppsOnly = state.ChosenVaultAppsOnly
-	caps.SelectedSecrets, caps.SelectedGlobalSecretNames, caps.BrowserMode = state.Secrets, state.GlobalSecrets, state.BrowserMode
+	caps.SelectedGlobalSecretNames, caps.BrowserMode = state.GlobalSecrets, state.BrowserMode
 	caps.BrowserCDPPort = state.BrowserCDPPort
 	req := UpdateWorkflowManifestRequest{WorkspacePath: workflow.WorkspacePath, Capabilities: &caps}
 	if raw, present := args["knowledgebase_sources"]; present {
@@ -627,7 +588,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		manifest = updated
 	}
 	view := api.externalSettingsView(ctx, claims.UserID, target, externalSettingsState{ChatInstructions: manifest.ChatInstructions, LLMConfig: caps.LLMConfig, Servers: savedAppSelection(caps.SelectedServers), ChosenVaultAppsOnly: caps.ChosenVaultAppsOnly,
-		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, Secrets: caps.SelectedSecrets, GlobalSecrets: caps.SelectedGlobalSecretNames,
+		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, GlobalSecrets: caps.SelectedGlobalSecretNames,
 		BrowserMode: caps.BrowserMode, BrowserCDPPort: caps.BrowserCDPPort}, notifications(caps))
 	addWorkflowSettingsView(view, manifest)
 	view["backup"] = map[string]any{"config": manifest.Backup}
@@ -770,7 +731,7 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		case "skills":
 			capabilities["selected_skills"] = nonNilStrings(state.Skills)
 		case "secrets":
-			capabilities["selected_secrets"] = nonNilStrings(state.Secrets)
+			delete(capabilities, "selected_secrets")
 			if state.GlobalSecrets != nil {
 				capabilities["selected_global_secret_names"] = nonNilStrings(*state.GlobalSecrets)
 			}
