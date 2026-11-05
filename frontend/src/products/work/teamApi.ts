@@ -69,7 +69,7 @@ export type TeamTabSync = { line: string; problem?: boolean; last?: string; prog
 export type TeamTabView = {
   team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
   mac?: { on: boolean; line: string; note: string; yours: boolean }
-  sync?: TeamTabSync; switch: 'server' | 'mac'; can_leave: boolean
+  sync?: TeamTabSync; switch: 'server' | 'mac'; mac_only?: string; can_leave: boolean
 }
 
 export function useTeamTab(project: string) {
