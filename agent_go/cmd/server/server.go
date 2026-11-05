@@ -692,6 +692,8 @@ type StreamingAPI struct {
 	workshopChatSessions sync.Map
 	// reportRunSessions: live window.report.run MCP bridge sessions (report_run.go).
 	reportRunSessions sync.Map
+	// watcherSlackSessions are Watcher checks' read-only Slack bridge sessions (watcher_slack.go).
+	watcherSlackSessions sync.Map
 
 	// Cron scheduler service for scheduled workflow executions
 	scheduler           *SchedulerService
