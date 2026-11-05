@@ -38,6 +38,8 @@ import { WorkPlanPanel } from './WorkPlanPanel'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
+import { TeamFilesPanel } from './TeamFilesPanel'
+import { useProjectTeam } from './teamApi'
 import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
 import { useWorkFilesView } from './useWorkFilesView'
@@ -227,6 +229,10 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const [filesView, selectFilesView] = useWorkFilesView(accessKey, workspacePath, activeSessionId || '', view === 'files')
+  // A joined member of someone else's Team Crew sees in Files only what the Team shares (owner, 5 Nov); the server says
+  // who manages the Team, so the owner's Files is unchanged.
+  const crewTeam = useProjectTeam(product.profileId === 'work' && !readOnly ? projectId : '')
+  const teamMember = crewTeam.team && crewTeam.target && crewTeam.team.on && !crewTeam.team.can_manage ? { team: crewTeam.team, target: crewTeam.target } : null
   useWorkspaceViewTarget('files', selectFilesView, view === 'files' && !!activeSessionId)
   const serverFiles = <FileWorkspacePane showGit workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? [] : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
   const contextPanels = workWorkspacePanels({ profileId: product.profileId, readOnly: Boolean(readOnly), showShell, enabledPanels })
@@ -302,7 +308,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
       <WorkspacePanelHeader workspacePath={workspacePath} view={view} title={view === 'context' ? 'Project menu' : [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup].find(panel => panel.id === view)?.label ?? view} contextAllowed={!readOnly} onBack={() => onViewChange('context')} />
       <div className="min-h-0 flex-1 overflow-hidden">
         {view==='context' && <WorkContextPanel reviewSessionId={activeSessionId} workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
-        {view === 'files' && (readOnly ? <SharedCrewFilesPanel
+        {view === 'files' && teamMember && <TeamFilesPanel team={teamMember.team} target={teamMember.target} />}
+        {view === 'files' && !teamMember && (readOnly ? <SharedCrewFilesPanel
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
