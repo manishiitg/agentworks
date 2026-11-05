@@ -29,10 +29,10 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	if !crewRelayTwin("p") {
 		t.Fatal("fixture must be a valid Mac Crew twin")
 	}
-	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}, {UserID: "disabled"}, {UserID: "no-crew"}}}); err != nil {
 		t.Fatal(err)
 	}
-	agents := []macSharedAgent{{Tab: "main", Audience: "everyone"}, {Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member"}},
+	agents := []macSharedAgent{{Tab: "main", Audience: "team"}, {Tab: "team01", Audience: "team"}, {Tab: "chosen01", Audience: "chosen", People: []string{"member"}},
 		{Tab: "public01", AgentBridgePublic: true}}
 	if err := writeMacSharedAgents("p", agents); err != nil {
 		t.Fatal(err)
@@ -43,18 +43,16 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 		scopes               []string
 		bound, send, allowed bool
 	}{
-		{"public send", "outsider", "main", []string{"messages:send", "messages:read"}, true, true, true},
-		{"public reply read", "outsider", "main", []string{"messages:read"}, true, false, true},
 		{"team send", "member", "team01", []string{"messages:send"}, true, true, true},
-		{"chosen reply read", "member", "chosen01", []string{"messages:read"}, true, false, true},
+		{"team reply read", "member", "main", []string{"messages:read"}, true, false, true},
 		{"outside team", "outsider", "team01", []string{"messages:send"}, true, true, false},
-		{"not chosen", "outsider", "chosen01", []string{"messages:read"}, true, false, false},
+		{"an old chosen audience grants nothing", "member", "chosen01", []string{"messages:read"}, true, false, false},
 		{"private tab", "member", "private01", []string{"messages:read"}, true, false, false},
 		{"read permission cannot send", "member", "main", []string{"messages:read"}, true, true, false},
 		{"disabled caller", "disabled", "main", []string{"messages:send"}, true, true, false},
 		{"no Crew product", "no-crew", "main", []string{"messages:send"}, true, true, false},
-		{"unbound Crew permission", "outsider", "main", []string{"crews:run"}, false, true, true},
-		{"unbound messaging alone", "outsider", "main", []string{"messages:send"}, false, true, false},
+		{"unbound Crew permission", "member", "main", []string{"crews:run"}, false, true, true},
+		{"unbound messaging alone", "member", "main", []string{"messages:send"}, false, true, false},
 		{"public on AgentBridge, not in audience", "outsider", "public01", []string{"messages:send"}, true, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -94,6 +92,34 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	if result := api.publishedAgentCall(t.Context(), "owner", "p", forged, false); result.Status != http.StatusForbidden || !strings.Contains(string(result.Body), "no longer shared") {
 		t.Fatalf("a person's ask claiming AgentBridge reached a public-only agent: status %d %s", result.Status, result.Body)
 	}
+	// Owner, 5 Nov: a Mac agent reaches people only through Team. With the Team off, Main's old "everyone" grants a person nothing
+	// (no ask, no Shared with me row); being public on AgentBridge still lets an agent message it.
+	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", People: []crewTeamPerson{{UserID: "member"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMacSharedAgents("p", []macSharedAgent{{Tab: "main", Audience: "everyone", AgentBridgePublic: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, reason := macSharedAgentFor("p", "main", "outsider", "owner"); reason == "" {
+		t.Fatal("Team off: an everyone audience admitted a person's ask")
+	}
+	for _, row := range macSharedAgentRows("outsider", false) {
+		t.Fatalf("Team off: listed %v for a person", row["chat_id"])
+	}
+	main := agentMessageEndpoint{Kind: triggerCallerCrew, ID: "p", UserID: "owner", ChatKey: macSharedAgentChatKey("p", "main")}
+	if err := api.externalAuthorizeMessagePeer(t.Context(), &UserClaims{UserID: "outsider", AccessToken: &accesstokens.Token{BoundAgentID: "attached-agent", Scopes: []string{"messages:send"}}}, main, true); err != nil {
+		t.Fatalf("Team off: an agent could not message a public agent: %v", err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}, {UserID: "disabled"}, {UserID: "no-crew"}}}); err != nil {
+		t.Fatal(err)
+	}
+	// Team on: an old "everyone" still reaches no one outside the Team.
+	if _, reason := macSharedAgentFor("p", "main", "outsider", "owner"); reason == "" {
+		t.Fatal("Team on: an everyone audience admitted a person outside the Team")
+	}
+	if err := writeMacSharedAgents("p", agents); err != nil {
+		t.Fatal(err)
+	}
 	// PLAT-856-536: the Mac answered, but native delivery/validation held its reply
 	// because this shared Crew endpoint has no named-agent ShareID.
 	store := agentMessageStore{}
@@ -108,7 +134,7 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 		user, tab string
 		allowed   bool
 	}{
-		{"outsider", "main", true}, {"member", "team01", true}, {"member", "chosen01", true},
+		{"member", "main", true}, {"member", "team01", true}, {"member", "chosen01", false}, {"outsider", "main", false},
 		{"outsider", "team01", false}, {"outsider", "chosen01", false}, {"member", "private01", false},
 		{"disabled", "main", false}, {"no-crew", "main", false},
 	} {
@@ -120,7 +146,7 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	}
 	public := reply("member", "main")
 	if store.shareSenderAllowed(public, 1, "outsider", now) {
-		t.Fatal("a public audience let another person read this inbox's reply")
+		t.Fatal("a team audience let someone outside the team read this inbox's reply")
 	}
 	for _, change := range []struct {
 		name string
@@ -172,9 +198,8 @@ func TestMacSharedAgentAudienceAndPrivateExchange(t *testing.T) {
 	for _, tc := range []struct {
 		name, tab, caller, reason string
 	}{
-		{"chosen person", "writer01", "a", ""},
-		{"not chosen", "writer01", "b", "not_in_audience"},
-		{"everyone", "helper01", "b", ""},
+		{"an old chosen audience grants nothing", "writer01", "a", "not_in_audience"},
+		{"an old everyone audience grants nothing", "helper01", "b", "not_in_audience"},
 		{"owner uses their own chat", "writer01", "owner", "owner"},
 		{"Main or an unshared tab", "p", "a", "not_shared"},
 	} {
