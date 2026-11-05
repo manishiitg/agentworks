@@ -108,6 +108,25 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 		return query
 	}
 	run(personal.ID)
+	// A schedule has no browser to send the tab's saved choice: it ran on the Crew's account and was refused
+	// "This chat's provider account changed" (409). It runs on the saved choice; run() keeps the refusal of a
+	// request naming another account.
+	scheduled, err := store.resolveOrCreate(ctx, "other", profile, binding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scheduled.ConnectionID = ""
+	scheduled.ProjectLLMConfig = &workflowtypes.PresetLLMConfig{}
+	if err := json.Unmarshal([]byte(`{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"codex-cli","model_id":"gpt-6-astra","connection_id":"global:codex-cli"}}`), scheduled.ProjectLLMConfig); err != nil {
+		t.Fatal(err)
+	}
+	sched, applied, err := automationProductChatQuery(ctx, "other", profile, "Daily wrap-up", scheduled)
+	if err != nil || !applied || sched.ConnectionID != personal.ID {
+		t.Fatalf("scheduled turn ignored the tab's saved choice: %t %v %+v", applied, err, sched)
+	}
+	if own, err := crewChatUsesPersonalAccountScope(ctx, "other", scheduled.SessionID, sched, resolved, sched.Provider, sched.ConnectionID); err != nil || !own {
+		t.Fatalf("scheduled turn refused: %t %v", own, err)
+	}
 	// Company account selection uses the same MCP handler and actual person.
 	req := sharedSecretsRequest(http.MethodPost, "/", "other", nil)
 	w = httptest.NewRecorder()
