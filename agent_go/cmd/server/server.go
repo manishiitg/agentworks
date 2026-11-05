@@ -10677,6 +10677,7 @@ func (api *StreamingAPI) updateSessionStatus(sessionID, status string) {
 		api.notifyTurnEnded(sessionID, previous, status, info) // notifications.go: the server decides every send
 		publishSessionsChanged()
 		if liveFeedTerminalStatus(status) {
+			api.noteCrewStandbyTurn(sessionID, workspacePath) // Always on: refresh an In team agent's server copy
 			if scheduled {
 				publishWorkflowSettled(workspacePath)
 			} else {

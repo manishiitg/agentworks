@@ -1,0 +1,226 @@
+package server
+
+// Always on, step 1, the Mac's side (crew_agent_standby.go has the server's): after a turn of an In team agent ends
+// (the owner's own tab or a teammate's thread on it), wait until the agent has been idle for a while, then refresh the
+// server's standby copy of each changed conversation through Publish's capture and native sync. Only the Crew owner's
+// Mac sends, only while Mac online and the Team are on; the server decides which agents are In team. Routing does not
+// change: the Mac keeps answering.
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+)
+
+// crewStandbyDelay is how long an agent stays idle after its last finished turn before its copy is sent.
+var crewStandbyDelay = 30 * time.Second
+
+type crewStandbyAgent struct {
+	timer *time.Timer
+	// dirty: sessions with a finished turn not yet copied. Primed: every session was offered once since the app
+	// started, so later sends offer only dirty ones (the server still skips unchanged copies).
+	dirty  map[string]bool
+	primed bool
+}
+
+var crewStandbyMu sync.Mutex
+var crewStandbyAgents = map[string]*crewStandbyAgent{}
+var crewStandbySending sync.Map
+
+// noteCrewStandbyTurn runs when a session's turn ends (updateSessionStatus). It only remembers the session and
+// (re)starts the agent's wait; all checks and work run when the wait ends.
+func (api *StreamingAPI) noteCrewStandbyTurn(session, workspace string) {
+	if !IsLocalMode() || session == "" || !strings.HasPrefix(canonicalCrewWorkspaceRoot(workspace), "Crew/") {
+		return
+	}
+	go func() {
+		roots, found, err := crewStorageRoots(canonicalCrewWorkspaceRoot(workspace))
+		if err != nil || !found || roots.Owner != GetDefaultUserID() {
+			return
+		}
+		if b, err := crewroot.ReadSync(roots.ID); err != nil || b == nil || b.Side != "local" || b.Mode != "relay" {
+			return
+		}
+		if state := readCrewTeamState(roots.ID); !state.TeamOn || state.MemberOf != "" {
+			return
+		}
+		tab := ""
+		for _, record := range crewStandbyRecords(roots) {
+			if record.SessionID == session && !isUserViewConversationKey(record.ConversationKey) {
+				tab = crewAgentPublishTab(record.ConversationKey)
+			}
+		}
+		if tab == "" {
+			return
+		}
+		api.scheduleCrewStandby(roots.ID, tab, session, crewStandbyDelay)
+	}()
+}
+
+func (api *StreamingAPI) scheduleCrewStandby(project, tab, session string, wait time.Duration) {
+	crewStandbyMu.Lock()
+	defer crewStandbyMu.Unlock()
+	key := project + "\x00" + tab
+	agent := crewStandbyAgents[key]
+	if agent == nil {
+		agent = &crewStandbyAgent{dirty: map[string]bool{}}
+		crewStandbyAgents[key] = agent
+	}
+	if session != "" {
+		agent.dirty[session] = true
+	}
+	if agent.timer != nil {
+		agent.timer.Stop()
+	}
+	agent.timer = time.AfterFunc(wait, func() { api.sendCrewStandby(project, tab) })
+}
+
+// crewStandbyRecords are the owner's conversations in this Crew, from this Mac's chat registry.
+func crewStandbyRecords(roots crewroot.Roots) []ProductConversationRecord {
+	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(roots.Owner))
+	if err != nil {
+		return nil
+	}
+	out := []ProductConversationRecord{}
+	for _, record := range doc.Entries {
+		if record.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(record.WorkspacePath) == roots.Virtual && record.SessionID != "" {
+			out = append(out, record)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ConversationKey < out[j].ConversationKey })
+	return out
+}
+
+// sendCrewStandby refreshes one agent's standby copy: its own tab first, then each teammate thread on it, one at a
+// time (an owner's tab and its threads share a native session id, so each uses the native stage in turn).
+func (api *StreamingAPI) sendCrewStandby(project, tab string) {
+	running, _ := crewStandbySending.LoadOrStore(project, &sync.Mutex{})
+	lock := running.(*sync.Mutex)
+	if !lock.TryLock() {
+		api.scheduleCrewStandby(project, tab, "", crewStandbyDelay)
+		return
+	}
+	defer lock.Unlock()
+	crewStandbyMu.Lock()
+	agent := crewStandbyAgents[project+"\x00"+tab]
+	if agent == nil {
+		crewStandbyMu.Unlock()
+		return
+	}
+	dirty, primed := agent.dirty, agent.primed
+	agent.dirty = map[string]bool{}
+	crewStandbyMu.Unlock()
+	retry := func(session string) {
+		crewStandbyMu.Lock()
+		agent.dirty[session] = true
+		crewStandbyMu.Unlock()
+	}
+	skip := func(reason string) {
+		log.Printf("[ALWAYS_ON] project=%s tab=%s event=skipped reason=%s", project, tab, reason)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+	claims, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
+	if err != nil || binding.Mode != "relay" {
+		return // Mac online is off for this Crew
+	}
+	if state := readCrewTeamState(project); !state.TeamOn || state.MemberOf != "" {
+		return
+	}
+	if placements, err := readCrewAgentPlacements(project); err != nil || placements[tab].Tab != "" {
+		return // a published agent already runs on the server
+	}
+	roots, err := api.crewSyncRoots(ctx, claims, project)
+	if err != nil {
+		return
+	}
+	call := func(action string, sessions []crewStandbySendItem) (*crewStandbyReply, error) {
+		reply, err := desktopCrewSyncCall(ctx, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: action, PairID: binding.PairID, Standby: &crewStandbyRequest{Tab: tab, Sessions: sessions}})
+		if err != nil {
+			return nil, err
+		}
+		if reply.Standby == nil {
+			return nil, fmt.Errorf("server_not_updated")
+		}
+		return reply.Standby, nil
+	}
+	// The server decides: Team on, In team, not published. Not eligible drops the server's copy.
+	if answer, err := call("standby_check", nil); err != nil {
+		for session := range dirty {
+			retry(session)
+		}
+		skip("server_unavailable")
+		return
+	} else if !answer.Eligible {
+		skip("not_in_team")
+		return
+	}
+	failed := false
+	for _, record := range crewStandbyRecords(roots) {
+		if crewAgentPublishTab(record.ConversationKey) != tab || primed && !dirty[record.SessionID] {
+			continue
+		}
+		started := time.Now()
+		// Between turns only: the native writer has finished this session's turn and nothing runs in it.
+		if api.crewAgentTurnRunning(record.SessionID) {
+			retry(record.SessionID)
+			api.scheduleCrewStandby(project, tab, "", crewStandbyDelay)
+			continue
+		}
+		conversation, err := api.captureCrewHandoffConversation(ctx, claims, roots, record, true)
+		if err != nil || conversation == nil || conversation.Native == nil {
+			skip("no_native_session")
+			continue
+		}
+		if api.crewAgentTurnRunning(record.SessionID) {
+			retry(record.SessionID)
+			api.scheduleCrewStandby(project, tab, "", crewStandbyDelay)
+			continue
+		}
+		item := crewStandbySendItem{Key: record.ConversationKey, Fingerprint: crewStandbyFingerprint(conversation)}
+		answer, err := call("standby_check", []crewStandbySendItem{item})
+		if err != nil {
+			retry(record.SessionID)
+			failed = true
+			skip("server_unavailable")
+			break
+		}
+		if !answer.Eligible {
+			skip("not_in_team")
+			return
+		}
+		if len(answer.Need) == 0 {
+			log.Printf("[ALWAYS_ON] project=%s tab=%s event=unchanged bytes=0 ms=%d", project, tab, time.Since(started).Milliseconds())
+			continue
+		}
+		var bytes int64
+		for _, file := range conversation.Native.Files {
+			bytes += file.Size
+		}
+		if err = bindCrewNativeStage(roots, conversation.Native); err == nil {
+			err = desktopCrewNativeSync(ctx, roots, connection, binding, conversation.Native)
+		}
+		if err == nil {
+			item.Conversation = conversation
+			answer, err = call("standby_store", []crewStandbySendItem{item})
+		}
+		if err != nil {
+			retry(record.SessionID)
+			failed = true
+			skip("send_failed")
+			break
+		}
+		log.Printf("[ALWAYS_ON] project=%s tab=%s event=standby_sent bytes=%d ms=%d result=%s revision=%d", project, tab, bytes, time.Since(started).Milliseconds(), answer.Event, answer.Revision)
+	}
+	if !failed {
+		crewStandbyMu.Lock()
+		agent.primed = true
+		crewStandbyMu.Unlock()
+	}
+}

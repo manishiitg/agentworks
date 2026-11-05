@@ -199,6 +199,7 @@ func writeCrewTeam(t crewTeam) error {
 	err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
 	if err == nil {
 		publishCrewPanelChanged(t.ProjectID)
+		pruneCrewStandby(t.ProjectID) // Team off or an agent turned Only me drops its standby copy
 	}
 	return err
 }
