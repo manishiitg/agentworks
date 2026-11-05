@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -24,7 +25,7 @@ func TestWatcherSlackSessionReadsOnlyAndOnlyItsOwnCheck(t *testing.T) {
 	}
 	api := &StreamingAPI{}
 	session := watcherSlackSessionPrefix + "check-a"
-	api.watcherSlackSessions.Store(session, watcherSlackScope{jobID: "job-a", userID: "owner", workspacePath: "Crew/example"})
+	api.watcherSlackSessions.Store(session, watcherSlackScope{jobID: "job-a", userID: "owner", workspacePath: "Crew/example", expires: time.Now().Add(time.Minute)})
 	if _, isWatcher, err := api.resolveWatcherSlackMCPServer(context.Background(), session, "vault_slack", "slack_c-35605e3f__slack_send_message"); !isWatcher || err == nil {
 		t.Fatal("a Watcher check could send a Slack message")
 	}
@@ -34,6 +35,12 @@ func TestWatcherSlackSessionReadsOnlyAndOnlyItsOwnCheck(t *testing.T) {
 	api.watcherSlackSessions.Delete(session)
 	if _, isWatcher, err := api.resolveWatcherSlackMCPServer(context.Background(), session, "vault_slack", "slack_read_channel"); !isWatcher || err == nil {
 		t.Fatal("a finished check's session still reads Slack")
+	}
+	// A check killed before its stop ran: the session still ends at the check's time limit.
+	stale := watcherSlackSessionPrefix + "check-killed"
+	api.watcherSlackSessions.Store(stale, watcherSlackScope{jobID: "job-a", userID: "owner", workspacePath: "Crew/example", expires: time.Now().Add(-time.Second)})
+	if person, _ := api.watcherSlackPerson(stale); person != "" {
+		t.Fatal("an expired check's session still runs as its owner")
 	}
 	if _, isWatcher, _ := api.resolveWatcherSlackMCPServer(context.Background(), "chat-session", "vault_slack", "slack_read_channel"); isWatcher {
 		t.Fatal("an ordinary chat session was treated as a Watcher check")
