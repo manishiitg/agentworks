@@ -836,18 +836,18 @@ func (api *StreamingAPI) awaitMacAgentAnswer(inbox, submission string, from int,
 }
 
 // appendMacAgentReply adds the Mac agent's words to the inbox as a message from the agent's side, like any reply.
-func (api *StreamingAPI) appendMacAgentReply(inbox string, from int, text string) {
+func (api *StreamingAPI) appendMacAgentReply(inbox string, from int, text string) error {
 	ctx := context.Background()
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(ctx)
 	if err != nil {
 		agentMessageMu.Unlock()
-		return
+		return err
 	}
 	index := slices.IndexFunc(s.Conversations, func(c agentConversation) bool { return c.ID == inbox })
 	if index < 0 {
 		agentMessageMu.Unlock()
-		return
+		return os.ErrNotExist
 	}
 	c := &s.Conversations[index]
 	if len(c.Messages) >= agentMessageKeep {
@@ -868,6 +868,7 @@ func (api *StreamingAPI) appendMacAgentReply(inbox string, from int, text string
 	if err == nil {
 		api.kickAgentMessages(inbox)
 	}
+	return err
 }
 
 // macSharedAgentDirectoryItems lists, among the agents a person's agents can message, those shared from Mac Crews to

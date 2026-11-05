@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +29,18 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}}); err != nil {
 		t.Fatal(err)
 	}
+	// The watched Main tab uses its physical key, not the AgentBridge address.
+	mainKey := originalMainChatKey("team", "main-conversation")
+	f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+mainKey+`"}`)
+	registry := defaultProductConversationRegistryStore()
+	document, err := registry.loadDocument(t.Context(), productConversationRegistryPath("owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	document.Entries[productConversationRegistryEntryKey(crewProfileID, mainKey)] = ProductConversationRecord{ProfileID: crewProfileID, ResourceID: "team", ConversationKey: mainKey, ConversationID: "main-conversation", SessionID: "main-session", WorkspacePath: externalCommandCrewRoot}
+	if err := registry.writeDocument(t.Context(), productConversationRegistryPath("owner"), document); err != nil {
+		t.Fatal(err)
+	}
 	store := agentMessageStore{}
 	for _, user := range []string{"other", "removed"} {
 		store.Agents = append(store.Agents, namedMessageAgent{ID: "agent-" + user, Name: user, UserID: user})
@@ -45,10 +59,31 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	if got := len(readCrewMacWaiting("team").Waiting); got != 2 {
+	waitingCount := func() int {
+		t.Helper()
+		s, err := readCrewMacWaiting("team")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(s.Waiting)
+	}
+	if got := waitingCount(); got != 2 {
 		t.Fatalf("offline asks not retained: %d", got)
 	}
-	if people := teamAgentsByPerson(t.Context(), team, "other"); len(people) == 0 || len(people[0].Agents) == 0 || people[0].Agents[0].StatusLabel == "" {
+	// A broken record is not evidence of revocation: retain the original asks.
+	sharedPath, _ := macSharedAgentsPath("team")
+	sharedBytes, _ := os.ReadFile(sharedPath)
+	if err := os.WriteFile(sharedPath, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f.api.deliverCrewMacWaiting("owner", "team", "pair")
+	if waitingCount() != 2 {
+		t.Fatal("transient record failure discarded waiting mail")
+	}
+	if err := os.WriteFile(sharedPath, sharedBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if people := teamAgentsByPerson(t.Context(), team, "other"); len(people) == 0 || len(people[0].Agents) == 0 || people[0].Agents[0].StatusLabel == "" || people[0].Agents[0].ChatKey != mainKey {
 		t.Fatal("disconnected Mac agent was not marked offline for its teammate")
 	}
 	team.People = team.People[:1]
@@ -89,9 +124,12 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			answered := false
+			answered, refused := false, false
 			for _, c := range s.Conversations {
 				for _, m := range c.Messages {
+					if c.ID == "inbox-removed" && m.From == 1 && strings.Contains(m.Text, "isn't shared with you anymore") {
+						refused = true
+					}
 					if m.Text == "answer from original Mac" {
 						if c.ID != "inbox-other" || m.From != 1 || m.Delivery != "stored" {
 							t.Fatalf("answer routed incorrectly: %+v", m)
@@ -100,7 +138,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 					}
 				}
 			}
-			if answered && len(readCrewMacWaiting("team").Waiting) == 0 {
+			if answered && refused && waitingCount() == 0 {
 				return
 			}
 		case <-ctx.Done():

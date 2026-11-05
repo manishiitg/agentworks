@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -50,20 +51,30 @@ func crewMacWaitingPath(project string) (string, error) {
 	return filepath.Join(state, "crew-sync", project+"-mac-waiting.json"), err
 }
 
-func readCrewMacWaiting(project string) crewMacWaitingState {
+func readCrewMacWaiting(project string) (crewMacWaitingState, error) {
 	var s crewMacWaitingState
-	if p, err := crewMacWaitingPath(project); err == nil {
-		if raw, err := os.ReadFile(p); err == nil {
-			_ = json.Unmarshal(raw, &s)
-		}
+	p, err := crewMacWaitingPath(project)
+	if err != nil {
+		return s, err
 	}
-	return s
+	raw, err := os.ReadFile(p)
+	if os.IsNotExist(err) {
+		return s, nil
+	}
+	if err != nil {
+		return s, err
+	}
+	err = json.Unmarshal(raw, &s)
+	return s, err
 }
 
 func updateCrewMacWaiting(project string, change func(*crewMacWaitingState)) (crewMacWaitingState, error) {
 	crewMacWaitingMu.Lock()
 	defer crewMacWaitingMu.Unlock()
-	s := readCrewMacWaiting(project)
+	s, err := readCrewMacWaiting(project)
+	if err != nil {
+		return s, err
+	}
 	change(&s)
 	p, err := crewMacWaitingPath(project)
 	if err != nil {
@@ -97,23 +108,51 @@ func holdForMac(project, reason string, call crewChatCall, inbox string, from in
 }
 
 // Recheck current sharing before a queued message reaches the Mac.
-func (api *StreamingAPI) heldMacMessageAllowed(owner, project string, held crewMacWaitingMessage) bool {
+func (api *StreamingAPI) heldMacMessageAllowed(owner, project string, held crewMacWaitingMessage) (allowed, permanent bool) {
 	if owner == "" {
-		return false
+		return false, false
 	}
 	var args struct {
 		SenderID string `json:"sender_id"`
 	}
 	if json.Unmarshal(held.Args, &args) != nil || args.SenderID == "" {
-		return false
+		return false, false
+	}
+	// The audience helpers treat an unreadable record as empty. For queued mail,
+	// distinguish that from a confirmed removal before deciding to discard it.
+	path, err := macSharedAgentsPath(project)
+	if err != nil {
+		return false, false
+	}
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, true
+	}
+	if err != nil {
+		return false, false
+	}
+	var shared []macSharedAgent
+	if json.Unmarshal(raw, &shared) != nil {
+		return false, false
+	}
+	if _, err := readCrewTeam(project); err != nil && !os.IsNotExist(err) {
+		return false, false
+	}
+	var reason string
+	if held.Inbox == "" {
+		_, reason = macSharedAgentFor(project, held.Tab, args.SenderID, owner)
+	} else {
+		_, reason = macSharedAgentForAgent(project, held.Tab, args.SenderID, owner)
+	}
+	if reason != "" {
+		return false, true
 	}
 	if held.Inbox == "" {
-		_, reason := macSharedAgentFor(project, held.Tab, args.SenderID, owner)
-		return reason == ""
+		return true, false
 	}
 	store, err := readAgentMessageSnapshot(context.Background())
 	if err != nil {
-		return false
+		return false, false
 	}
 	for _, c := range store.Conversations {
 		if c.ID != held.Inbox {
@@ -124,11 +163,15 @@ func (api *StreamingAPI) heldMacMessageAllowed(owner, project string, held crewM
 				continue
 			}
 			source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
-			return source.UserID == args.SenderID && dest.UserID == owner && dest.ID == project &&
-				macSharedAgentTab(project, dest.ChatKey) == held.Tab && api.recheckAgentMessageAdmission(context.Background(), c, m) == nil
+			if source.UserID != args.SenderID || dest.UserID != owner || dest.ID != project || macSharedAgentTab(project, dest.ChatKey) != held.Tab {
+				return false, true
+			}
+			// Admission can fail on a transient runtime/store error. Only a confirmed
+			// audience or identity removal above discards the waiting message.
+			return api.recheckAgentMessageAdmission(context.Background(), c, m) == nil, false
 		}
 	}
-	return false
+	return false, true
 }
 
 // Deliver held messages when the Mac reconnects or an agent has been published.
@@ -136,7 +179,11 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 	if IsLocalMode() {
 		return
 	}
-	s := readCrewMacWaiting(project)
+	s, err := readCrewMacWaiting(project)
+	if err != nil {
+		log.Printf("[CREW_MAC_WAITING] project=%s action=retry reason=read_failed err=%q", project, err.Error())
+		return
+	}
 	if len(s.Waiting) == 0 {
 		return
 	}
@@ -147,11 +194,25 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 	defer crewMacDelivering.Delete(project)
 	// Without the Mac, only what now belongs to a published agent moves on: its held messages go to it on the server.
 	macOn := crewMacSocketFor(owner, project, pair) != nil
-	s = readCrewMacWaiting(project)
+	s, err = readCrewMacWaiting(project)
+	if err != nil {
+		return
+	}
 	delivered := map[string]bool{}
 	for _, held := range s.Waiting {
 		// An agent published while the message waited is answered on the server from then on.
-		if !api.heldMacMessageAllowed(owner, project, held) {
+		if allowed, permanent := api.heldMacMessageAllowed(owner, project, held); !allowed {
+			if !permanent {
+				log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=retry inbox=%q reason=admission_unavailable", project, held.Tab, held.Inbox)
+				continue
+			}
+			if held.Inbox != "" {
+				err := api.appendMacAgentReply(held.Inbox, held.From, "This agent didn't get your message because it isn't shared with you anymore. Ask its owner to share it again.")
+				if err != nil && !errors.Is(err, os.ErrNotExist) {
+					log.Printf("[CREW_MAC_WAITING] project=%s action=retry inbox=%q reason=notice_failed", project, held.Inbox)
+					continue
+				}
+			}
 			delivered[held.ID] = true
 			log.Printf("[CREW_MAC_WAITING] project=%s tab=%s action=refused inbox=%q reason=access_removed", project, held.Tab, held.Inbox)
 			continue
@@ -188,7 +249,7 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 			go api.awaitMacAgentAnswer(held.Inbox, held.SubmissionID, held.From, read)
 		}
 	}
-	_, err := updateCrewMacWaiting(project, func(next *crewMacWaitingState) {
+	_, err = updateCrewMacWaiting(project, func(next *crewMacWaitingState) {
 		next.Waiting = slices.DeleteFunc(next.Waiting, func(w crewMacWaitingMessage) bool { return delivered[w.ID] })
 	})
 	if err != nil {
@@ -253,8 +314,12 @@ func (api *StreamingAPI) sweepCrewMacWaiting(ctx context.Context) {
 		files, _ := filepath.Glob(filepath.Join(state, "crew-sync", "*-mac-waiting.json"))
 		for _, file := range files {
 			project := strings.TrimSuffix(filepath.Base(file), "-mac-waiting.json")
-			held := readCrewMacWaiting(project).Waiting
-			if len(held) == 0 {
+			state, err := readCrewMacWaiting(project)
+			if err != nil {
+				log.Printf("[CREW_MAC_WAITING] project=%s action=retry reason=read_failed err=%q", project, err.Error())
+				continue
+			}
+			if len(state.Waiting) == 0 {
 				continue
 			}
 			if b, err := crewroot.ReadSync(project); err == nil && b != nil {
