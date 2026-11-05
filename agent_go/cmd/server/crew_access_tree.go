@@ -47,6 +47,8 @@ type crewAccessFacts struct {
 	LocalError  string
 	HasLocal    bool
 	Viewer      string
+	// Where the viewer's own agents work, when they are a Team member: "mac" or "web" (crew_team_where.go).
+	Where string
 }
 
 func crewAccessTree(f crewAccessFacts) []crewAccessLine {
@@ -90,6 +92,13 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	}
 	// The viewer is not one of the people listed (owner, 5 Nov): their own agents have the lines below.
 	lines = append(lines, crewAccessLine{Kind: "team", Title: fmt.Sprintf("Team · %d other %s", len(people), plural(len(people), "person", "people")), People: people})
+	// One working copy per member (owner, 5 Nov): where this member's own agents work.
+	switch f.Where {
+	case "mac":
+		lines = append(lines, crewAccessLine{Kind: "where", Title: "On your Mac", Detail: "Your agents here work on your Mac"})
+	case "web":
+		lines = append(lines, crewAccessLine{Kind: "where", Title: "On the web", Detail: "Your agents here work on the website"})
+	}
 	// What is shared with the team, by name (owner, 5 Nov: "Shared with the team" is enough).
 	inTeam := []string{}
 	for _, a := range f.Agents {
@@ -192,7 +201,7 @@ type crewAccessRemote struct {
 // crewAccessTreeFor builds the tree where this server stands, like crewAccessSummaryFor.
 func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClaims, project string, b *crewroot.SyncBinding) []crewAccessLine {
 	owner := claims.UserID
-	f := crewAccessFacts{Agents: readMacSharedAgents(project), Viewer: owner}
+	f := crewAccessFacts{Agents: readMacSharedAgents(project), Viewer: owner, Where: crewTeamWhereFor(project, owner)}
 	if !IsLocalMode() {
 		// The website: this server holds the Team and the shared folder of the Crew's online copy.
 		f.MacOnline = b != nil && b.Mode == "relay"

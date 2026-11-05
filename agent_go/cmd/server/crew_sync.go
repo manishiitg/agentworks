@@ -54,6 +54,8 @@ type crewServerCopy struct {
 }
 
 type crewSyncReply struct {
+	// Where the caller's own agents in this Crew work when they are a Team member: "mac" or "web" (crew_team_where.go).
+	Where              string                        `json:"where,omitempty"`
 	AccessView         string                        `json:"access_view,omitempty"`
 	Role               string                        `json:"role,omitempty"`
 	MemberAccess       *crewTeamMemberAccess         `json:"member_access,omitempty"`
@@ -272,6 +274,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		out.SharedAgents = len(readMacSharedAgents(out.ProjectID))
 		out.AccessSummary = crewAccessSummaryFor(r.Context(), GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
 		out.AccessTree = api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), out.ProjectID, out.Binding)
+		out.Where = crewTeamWhereFor(out.ProjectID, GetUserIDFromContext(r.Context()))
 		go api.refreshCrewTeamAll(context.WithoutCancel(r.Context()), GetUserFromContext(r.Context()), out.ProjectID) // never slows this read
 		if IsLocalMode() {
 			out.Asking = api.recentMacAsks(out.ProjectID)

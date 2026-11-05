@@ -142,6 +142,8 @@ type crewTeam struct {
 	FolderAccess bool     `json:"folder_access"`
 	// Lent is what the owner lends the Team's agents in this Crew (names only, from the server, never saved).
 	Lent *crewTeamLent `json:"lent,omitempty"`
+	// Where the caller's own agents in this Crew work, for a member: "mac" or "web" (crew_team_where.go; never saved).
+	Where string `json:"where,omitempty"`
 }
 
 func crewTeamDir(project string) (string, error) {
@@ -204,6 +206,13 @@ func (t crewTeam) invited(user string) bool {
 
 func (t crewTeam) view(user string) crewTeam {
 	t.CanManage = t.OwnerID == user
+	t.Where = ""
+	if t.member(user) && user != t.OwnerID {
+		t.Where = "web"
+		if _, onMac := t.memberMac(user); onMac {
+			t.Where = "mac"
+		}
+	}
 	t.FolderAccess = t.edits(user)
 	t.OwnerName = shareOwnerLabel(t.OwnerID)
 	if t.edits(user) {
