@@ -3204,8 +3204,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	defer stopTeamSync()
 	stopDesktopCrewChats := api.startDesktopCrewChats()
 	defer stopDesktopCrewChats()
-	stopTeamCopy := api.startTeamCopyRecords()
-	defer stopTeamCopy()
+	stopMacWaiting := api.startCrewMacWaiting()
+	defer stopMacWaiting()
 	SetShareTunnelServerPort(actualPort)
 
 	// Dynamically serve runtime-config.js so the frontend learns the real ports.

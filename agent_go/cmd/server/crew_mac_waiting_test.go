@@ -1,0 +1,104 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+)
+
+// PLAT-856-509: the actual relay and mailbox hold an offline ask, deliver it on
+// reconnect and put its answer in the original inbox. Revocation stops a queued ask.
+// The Mac transport replies are a fixture; this does not run a native AI program.
+func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"other","products":["work"]},{"id":"removed","products":["work"]}]}`)
+	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "server", Editing: "local", Mode: "relay", PairID: "pair", PeerProjectID: "local-team"}); err != nil {
+		t.Fatal(err)
+	}
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}, {UserID: "removed"}}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}}); err != nil {
+		t.Fatal(err)
+	}
+	store := agentMessageStore{}
+	for _, user := range []string{"other", "removed"} {
+		store.Agents = append(store.Agents, namedMessageAgent{ID: "agent-" + user, Name: user, UserID: user})
+		store.Conversations = append(store.Conversations, agentConversation{ID: "inbox-" + user, Next: 1,
+			Endpoints: [2]agentMessageEndpoint{
+				{UserID: user, Kind: triggerCallerUser, ID: user, External: true, NamedAgentID: "agent-" + user},
+				{UserID: "owner", Kind: triggerCallerCrew, Profile: "work", ID: "team", Path: externalCommandCrewRoot, ChatKey: "team"},
+			}, Messages: []agentMessage{{ID: "ask-" + user, From: 0, Sequence: 1, Text: "answer this", SentAt: time.Now(), Delivery: "delivered"}},
+		})
+	}
+	if err := saveAgentMessageStore(t.Context(), store); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range store.Conversations {
+		if err := f.api.deliverToMacSharedAgent(t.Context(), c, c.Messages[0], c.Endpoints[0], c.Endpoints[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := len(readCrewMacWaiting("team").Waiting); got != 2 {
+		t.Fatalf("offline asks not retained: %d", got)
+	}
+	team.People = team.People[:1]
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	commands := make(chan crewRelayMessage, 8)
+	sock, err := f.api.crewRelayRegister(t.Context(), &UserClaims{UserID: "owner"}, crewRelayMessage{Type: "hello", DeviceID: "mac", Crews: []crewRelayCrew{{Project: "team", Pair: "pair"}}}, func(m crewRelayMessage) error { commands <- m; return nil }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sock.unregister()
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+	defer cancel()
+	for {
+		select {
+		case m := <-commands:
+			if m.Call == nil {
+				continue
+			}
+			var args struct {
+				Sender string `json:"sender_id"`
+			}
+			_ = json.Unmarshal(m.Call.Args, &args)
+			if args.Sender != "other" {
+				t.Fatalf("revoked sender reached the Mac: %s", args.Sender)
+			}
+			body := json.RawMessage(`{"ok":true}`)
+			if m.Call.Operation == "agent_read" {
+				body = json.RawMessage(`{"working":false,"messages":[{"role":"assistant","text":"answer from original Mac"}]}`)
+			}
+			f.api.crewRelayHandle(ctx, sock, crewRelayMessage{Type: "ack", Result: &crewChatResult{ID: m.Call.ID, Status: 200, Body: body}})
+		case <-time.After(20 * time.Millisecond):
+			s, err := readAgentMessageSnapshot(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			answered := false
+			for _, c := range s.Conversations {
+				for _, m := range c.Messages {
+					if m.Text == "answer from original Mac" {
+						if c.ID != "inbox-other" || m.From != 1 || m.Delivery != "stored" {
+							t.Fatalf("answer routed incorrectly: %+v", m)
+						}
+						answered = true
+					}
+				}
+			}
+			if answered && len(readCrewMacWaiting("team").Waiting) == 0 {
+				return
+			}
+		case <-ctx.Done():
+			t.Fatalf("queued ask did not complete its round trip: %v", ctx.Err())
+		}
+	}
+}

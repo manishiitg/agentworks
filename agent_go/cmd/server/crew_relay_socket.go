@@ -104,7 +104,7 @@ func (api *StreamingAPI) crewRelayRegister(ctx context.Context, claims *UserClai
 		old.close()
 	}
 	log.Printf("[CREW_RELAY] connect owner=%s device=%s crews=%d", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, len(sock.twins))
-	api.teamCopyMacBackAll(sock)
+	api.deliverCrewMacWaitingAll(sock)
 	return sock, nil
 }
 
@@ -195,7 +195,7 @@ func (api *StreamingAPI) crewRelayHandle(ctx context.Context, sock *crewMacSocke
 		return
 	case "hello":
 		api.crewRelayOffer(ctx, sock, msg.Crews)
-		api.teamCopyMacBackAll(sock)
+		api.deliverCrewMacWaitingAll(sock)
 		return
 	case "ack":
 		if msg.Result == nil {

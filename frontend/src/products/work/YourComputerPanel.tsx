@@ -19,7 +19,6 @@ export type { MacAgentShare } from './MacSharedAgents'
 import { useProjectTeam } from './teamApi'
 import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
 import { hasPendingCrewAccess, pendingCrewAccessSection, type CrewAccessSection } from './MacSharedAgents'
-import { useTeamCopyStatus } from './TeamWhenMacOff'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 // Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
@@ -291,7 +290,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
     {needsServer && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
     {!needsServer && section === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
       {binding?.connection_id && !online
-        ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} projectId={projectId} connection={binding.connection_id} network={network} copies={serverCopies} onTeam={() => setSection('team')} />
+        ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} network={network} copies={serverCopies} onTeam={() => setSection('team')} />
         : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
       <div className="px-0.5">
         {status && !online && !moving && <label className="flex items-center justify-between gap-3 py-2.5">
@@ -358,9 +357,8 @@ function TeamOffline({ onTurnOn, busy }: { onTurnOn: () => void; busy: boolean }
 
 // The Mac online line speaks only about the Mac (owner, 4 Nov: keep the tabs' ideas apart). When the server keeps
 // something for Team or Publish, one link says so and the Team tab lists it.
-function MacOnlineDataLine({ projectId, connection, network, copies, onTeam }: { projectId: string; connection: string; network: string; copies: ServerCopy[]; onTeam: () => void }) {
-  const { status } = useTeamCopyStatus(projectId, connection)
-  const kept = copies.length > 0 || Boolean(status?.ready)
+function MacOnlineDataLine({ network, copies, onTeam }: { network: string; copies: ServerCopy[]; onTeam: () => void }) {
+  const kept = copies.length > 0
   return <MacDataLine>Your Mac does the work while it is on. Messages pass through {network}. Your files stay on this Mac.
     {kept && <> <button type="button" className="underline underline-offset-2" onClick={onTeam}>Some agent data is kept on the server for your team</button>.</>}</MacDataLine>
 }

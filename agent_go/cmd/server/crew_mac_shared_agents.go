@@ -337,7 +337,7 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	if action == "reply_input" {
 		call.Answer, _ = json.Marshal(map[string]any{"provider": args["provider"], "prompt_id": args["request_id"], "answers": args["answers"], "auto": args["auto"]})
 	}
-	// A published agent lives on the server now: only it answers, never the Mac or a team copy (856-523).
+	// A published agent lives on the server now: only it answers, never the Mac (856-523).
 	if crewPublishedTarget(manifest.ID, agent.Tab) {
 		result := api.publishedAgentCall(r.Context(), project.OwnerID, manifest.ID, call, false)
 		log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%s action=%s published_status=%d", manifest.ID, logUsernameForUserID(claims.UserID), agent.Tab, action, result.Status)
@@ -352,15 +352,15 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 	}
 	result := callCrewMacFor(r.Context(), project.OwnerID, manifest.ID, call, externalCrewWait(args)+40*time.Second)
 	log.Printf("[CREW_SHARED_AGENT] project=%s user=%s tab=%s action=%s mac_status=%d", manifest.ID, logUsernameForUserID(claims.UserID), agent.Tab, action, result.Status)
-	// The Mac is off: its team copy answers, or the message waits for the Mac, as the owner chose (crew_team_copy.go).
-	if result.Status == http.StatusServiceUnavailable && !IsLocalMode() {
-		if route, reason := teamCopyRoute(manifest.ID, agent.Tab); route == teamCopyAnswer {
-			result = api.teamCopyCall(r.Context(), project.OwnerID, manifest.ID, call)
-		} else if action == "ask" && holdForMac(manifest.ID, reason, call, "", 0) == nil {
-			externalJSON(w, map[string]any{"status": "waiting", "workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": macSharedAgentChatKey(manifest.ID, agent.Tab), "name": agent.Name,
-				"message": "Its owner's Mac is off. Your message waits, and " + firstNonEmptyTrimmed(agent.Name, "the agent") + " answers it when the Mac is back; read this chat then."})
+	// A shared agent stays on the Mac. Only an explicit Publish moves it to the server.
+	if result.Status == http.StatusServiceUnavailable && !IsLocalMode() && action == "ask" {
+		if err := holdForMac(manifest.ID, "mac_off", call, "", 0); err != nil {
+			externalError(w, 503, "message_not_saved", "Your message could not be saved. Please try again.")
 			return true
 		}
+		externalJSON(w, map[string]any{"status": "waiting", "workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": macSharedAgentChatKey(manifest.ID, agent.Tab), "name": agent.Name,
+			"message": shareOwnerLabel(project.OwnerID) + "'s Mac is off; your message is delivered when it's back. Read this chat for its answer."})
+		return true
 	}
 	if result.Status == http.StatusServiceUnavailable {
 		externalError(w, 503, "owner_mac_off", "Its owner's Mac is off. Try again later.")
@@ -407,8 +407,6 @@ func macSharedAgentRows(caller string, byAgent bool) []map[string]any {
 				presence, available = "Answers now, on the server", true
 			} else if online {
 				presence = "Answers now, on its owner's Mac"
-			} else if route, _ := teamCopyRoute(project, agent.Tab); route == teamCopyAnswer {
-				presence, available = "Its owner's Mac is off; its team copy answers", true
 			}
 			target := "workspace:" + crewProfileID + ":" + project
 			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
@@ -762,14 +760,11 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		return fmt.Errorf("This agent isn't shared with you.")
 	}
 	sender := shareOwnerLabel(source.UserID)
-	// Where this message is answered: the Mac, or its team copy while the Mac is off. The answer is read from the same place.
-	teamCopy, published := false, crewPublishedTarget(dest.ID, tab)
+	// The answer is read from the same Mac, or the agent's published server workspace.
+	published := crewPublishedTarget(dest.ID, tab)
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
 		if published {
 			return api.publishedAgentCall(context.Background(), dest.UserID, dest.ID, call, true)
-		}
-		if teamCopy {
-			return api.teamCopyCall(context.Background(), dest.UserID, dest.ID, call)
 		}
 		return callCrewMacFor(context.Background(), dest.UserID, dest.ID, call, timeout)
 	}
@@ -786,21 +781,15 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	from := 1 - m.From
 	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.
 	_, status := read(0, 0)
-	if status == http.StatusServiceUnavailable && !IsLocalMode() {
-		if route, reason := teamCopyRoute(dest.ID, tab); route == teamCopyAnswer {
-			teamCopy = true
-			_, status = read(0, 0)
-		} else if holdForMac(dest.ID, reason, ask, c.ID, from) == nil {
-			go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s Mac is off. Your message waits; the answer comes here when the Mac is back.")
-			return nil
-		}
-	}
 	if status == http.StatusOK {
 		status = run(ask, 60*time.Second).Status
 	}
-	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d team_copy=%t published=%t", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status, teamCopy, published)
-	if status == http.StatusServiceUnavailable {
-		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s Mac is off. Try again later.")
+	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d published=%t", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status, published)
+	if status == http.StatusServiceUnavailable && !IsLocalMode() && !published {
+		if err := holdForMac(dest.ID, "mac_off", ask, c.ID, from); err != nil {
+			return fmt.Errorf("Your message could not be saved. Please try again.")
+		}
+		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s Mac is off; your message is delivered when it's back. The answer comes to this inbox.")
 		return nil
 	}
 	if status != http.StatusOK {

@@ -453,8 +453,8 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode}) {
 		return
 	}
-	// The team copy answers in the Crew's online copy while its Mac is off (crew_team_copy.go).
-	if crewLivesOnMac(profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context())) && !teamCopyTurn(r.Context()) {
+	// A Mac Crew runs on its Mac; published agents have their own server workspace.
+	if crewLivesOnMac(profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context())) {
 		writeAgentProfileError(w, http.StatusConflict, crewOnMacRefusal)
 		return
 	}

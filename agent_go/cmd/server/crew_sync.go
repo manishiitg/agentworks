@@ -47,7 +47,6 @@ type crewSyncRequest struct {
 	Editing     string                  `json:"editing,omitempty"`
 	Snapshot    *crewsync.Snapshot      `json:"snapshot,omitempty"`
 	Agents      []macSharedAgent        `json:"agents,omitempty"` // share_agents: the Mac Crew's shared agents
-	TeamCopy    *crewTeamCopyRecord     `json:"team_copy,omitempty"`
 }
 type crewServerCopy struct {
 	Name   string `json:"name"`
@@ -80,8 +79,6 @@ type crewSyncReply struct {
 	SharedAgents int `json:"shared_agents,omitempty"`
 	// Asking is who asked this Crew's shared agents on this Mac in the last ten minutes (the owner's own Mac only).
 	Asking []macAskActivity `json:"asking,omitempty"`
-	// TeamCopy is the Team tab's "When your Mac is off" and its status line (PLAT-856-509).
-	TeamCopy *crewTeamCopyStatus `json:"team_copy,omitempty"`
 	// AccessSummary is the Access row's line after where the Crew lives (crew_access_summary.go).
 	AccessSummary string `json:"access_summary,omitempty"`
 	// AccessTree is the side panel's tree under the Access row (crew_access_tree.go).
@@ -226,10 +223,6 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	}
 	if input.Action == "team_message" {
 		api.crewTeamMessage(w, r, mux.Vars(r)["project"], input)
-		return
-	}
-	if input.Action == "team_copy" || input.Action == "team_copy_record" {
-		api.handleTeamCopy(w, r, mux.Vars(r)["project"], input)
 		return
 	}
 	// A joined Team member reads this Crew's Access line too (owner, 5 Nov: a member saw "Only you"); the place and
