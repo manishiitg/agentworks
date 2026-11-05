@@ -746,6 +746,7 @@ type macAskActivity struct {
 	Tab     string    `json:"tab"`
 	Agent   string    `json:"agent"`
 	Sender  string    `json:"sender"`
+	Channel string    `json:"channel"`          // how it came: website, MCP (their AI app) or AgentBridge (their agent); set by the server
 	Key     string    `json:"conversation_key"` // this sender's own thread with the agent, opened for the owner to view
 	Session string    `json:"session_id"`
 	Started time.Time `json:"started_at"`

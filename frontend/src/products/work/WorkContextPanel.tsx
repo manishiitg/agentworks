@@ -144,12 +144,14 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // Someone else asked a shared agent on this Mac in the last 10 minutes: one tree line each under Access (owner, 4 Nov).
   // A click opens that person's own thread with the agent for the owner to read; their messages are never in the owner's tab.
   const ago = (ask: CrewAsk) => ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`
+  // Where it came from (owner, 5 Nov: "show from where its calling.. like bridge or web"), named by the server.
+  const askChannel = (ask: CrewAsk) => { const where = ({ website: 'web', MCP: 'AI app', AgentBridge: 'AgentBridge' } as Record<string, string>)[ask.channel || ''] || ask.channel; return where ? `${where} · ` : '' }
   const openAsk = (ask: CrewAsk) => { void openCrewAskThread(projectId, ask) }
   const asksTree = asking.length > 0 && <div role="list" aria-label="Who asked your agents" className="ml-3 border-l border-border pl-2 pb-1">
     {asking.slice(0, 5).map(ask => <button key={`${ask.tab}:${ask.sender}`} role="listitem" type="button" onClick={() => openAsk(ask)} title={`Open ${ask.sender}'s chat with ${ask.agent}`} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${ask.active ? 'bg-emerald-500 motion-safe:animate-pulse' : 'bg-muted-foreground/40'}`} />
       <span className="min-w-0 flex-1 truncate"><span className="font-medium text-foreground">{ask.sender}</span> {ask.active ? 'is asking' : 'asked'} {ask.agent}</span>
-      <span className="shrink-0 text-muted-foreground">{ago(ask)}</span>
+      <span className="shrink-0 text-muted-foreground">{askChannel(ask)}{ago(ask)}</span>
     </button>)}
     {asking.length > 5 && <p className="px-1.5 text-[11px] text-muted-foreground">+{asking.length - 5} more</p>}
   </div>

@@ -45,7 +45,7 @@ export type CloudState = 'mac' | 'mac_off' | 'moving' | 'online' | 'offline'
 // One reading per Crew for the whole page (owner, 3 Nov: the page takes ONE flag): every panel that asks where a
 // Crew lives shares this cache and its single poll, so the header, tabs, menu and panels always agree.
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
-export type CrewAsk = { tab: string; agent: string; sender: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
+export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 type PlaceEntry = { place?: CloudState; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
