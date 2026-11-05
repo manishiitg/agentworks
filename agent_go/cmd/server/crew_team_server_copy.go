@@ -16,7 +16,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -69,7 +68,7 @@ func crewTeamServerCopyDir(member, project, folderID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(state, "team-working", "server", crewTransferDigest(member), crewTransferDigest(project+"\x00"+folderID)), nil
+	return filepath.Join(state, "team-working", "server", crewTransferDigest(member), crewTransferDigest(project+"\x00"+folderID+"\x00"+crewTeamSyncFormat)), nil
 }
 
 // syncCrewTeamServerCopy brings a member's copy of the team folder up to date both ways; create makes it on first use.
@@ -98,7 +97,7 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 			return "", nil
 		}
 		b = crewTeamLocal{FolderID: t.Folder.ID, Connection: "server", Project: project, RemoteUser: member, Client: uuid.NewString(),
-			Root: filepath.Join(dir, "files"), LocalBase: crewsync.Manifest{}, RemoteBase: crewsync.Manifest{}, Status: "pending"}
+			Root: filepath.Join(dir, "files"), Status: "pending"}
 		if err = os.MkdirAll(b.Root, 0o700); err != nil {
 			return "", err
 		}

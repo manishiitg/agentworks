@@ -7,7 +7,6 @@ import (
 	"slices"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
 // Team for a Crew that lives on the server (owner, 5 Nov): people on the website work in the Crew's own folder, like
@@ -44,7 +43,7 @@ func (api *StreamingAPI) syncServerCrewTeamStore(ctx context.Context, t crewTeam
 	b, err := readCrewTeamLocal(dir)
 	if os.IsNotExist(err) {
 		b = crewTeamLocal{FolderID: t.Folder.ID, Connection: "server", Project: t.ProjectID, LocalProject: t.ProjectID, RemoteUser: owner, Client: uuid.NewString(),
-			Root: roots.Files, LocalBase: crewsync.Manifest{}, RemoteBase: crewsync.Manifest{}, Status: "pending"}
+			Root: roots.Files, Status: "pending"}
 		if err = os.MkdirAll(dir, 0o700); err == nil {
 			err = saveCrewTeamLocal(dir, b)
 		}

@@ -15,7 +15,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
 // "Add to my Mac" for a Team invite (owner, 5 Nov, the decisions log): this Mac accepts the invite on the server and
@@ -139,7 +138,7 @@ func (api *StreamingAPI) handleDesktopCrewTeamJoin(w http.ResponseWriter, r *htt
 		}
 		if err == nil {
 			err = saveCrewTeamLocal(dir, crewTeamLocal{FolderID: team.Folder.ID, Connection: c.ID, Project: project, RemoteUser: c.User.ID, Client: uuid.NewString(),
-				Root: folder, LocalBase: crewsync.Manifest{}, RemoteBase: crewsync.Manifest{}, Status: "pending"})
+				Root: folder, Status: "pending"})
 		}
 		if err != nil {
 			externalError(w, 500, "folder_unavailable", "Joined the team, but its folder could not be set up on this Mac: "+err.Error())

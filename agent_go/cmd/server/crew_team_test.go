@@ -3,11 +3,10 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -21,7 +20,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
 // PLAT-856-509: actual HTTP/file paths, with an allowed edit before each refusal.
@@ -176,6 +174,12 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	// Chunks are served only for files the caller may read now: an old version's chunk is not fetched by its hash
+	// (reviewer, 5 Nov); its history stays readable through the history route.
+	w = call("member", "POST", base+"/chunks", `{"chunks":[{"id":"`+first+`","n":5}]}`, "")
+	if w.Code != 200 || w.Body.Len() != 0 {
+		t.Fatalf("an old version's chunk was served by hash: %d %d bytes", w.Code, w.Body.Len())
+	}
 	// Every joined member edits the shared folder; there is no per-person switch (owner, 5 Nov).
 	if w = call("teammate", "PUT", base+"/file?path=teammate.md", "teammate wrote", "teammate-write"); w.Code != 200 {
 		t.Fatalf("joined teammate could not write the shared folder: %d %s", w.Code, w.Body.String())
@@ -198,34 +202,24 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if _, err := api.crewSyncRoots(t.Context(), &UserClaims{UserID: "member"}, "team-test"); err == nil {
 		t.Fatal("folder member acquired whole Crew sync authority")
 	}
-	// Reject a payload before a private-state path or native archive can be imported.
-	invalid := `{"action":"prepare","client":"mac","transfer_id":"bad","snapshot":{"files":{},"payloads":{"state":{"size":1,"hash":"` + strings.Repeat("a", 64) + `"}}}}`
-	w = call("member", "POST", base+"/sync", invalid, "")
+	// A sync plan naming private state is refused before any chunk is taken.
+	invalid := `{"client":"mac","changes":[{"path":".env","after":{"hash":"` + strings.Repeat("a", 64) + `","size":1,"chunks":[{"id":"` + strings.Repeat("a", 64) + `","n":1}]}}]}`
+	w = call("member", "POST", base+"/sync/plan", invalid, "")
 	if w.Code != 409 {
-		t.Fatalf("state payload accepted: %d %s", w.Code, w.Body.String())
+		t.Fatalf("private-state plan accepted: %d %s", w.Code, w.Body.String())
 	}
-	// Two actual clients, real HTTP bytes and private Git bundles, no mocked
-	// content transport. The interrupted download edits a local file in flight.
+	// Two actual clients over real HTTP with the chunked protocol, no mocked content transport. The interrupted
+	// chunk upload is cut in half; the download edits a local file while its chunks arrive.
 	var onDownload atomic.Bool
 	var interruptUpload atomic.Bool
-	var lastDownload atomic.Value
 	var dirtyPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		who := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/sync") {
+		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/chunks") && interruptUpload.CompareAndSwap(true, false) {
 			raw, _ := io.ReadAll(r.Body)
-			r.Body = io.NopCloser(bytes.NewReader(raw))
-			var tr crewTeamTransfer
-			if json.Unmarshal(raw, &tr) == nil && who == "member" && tr.Action == "pull" {
-				lastDownload.Store(tr.TransferID)
-			}
+			r.Body = io.NopCloser(bytes.NewReader(raw[:len(raw)/2]))
 		}
-		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/sync/") && interruptUpload.CompareAndSwap(true, false) {
-			raw, _ := io.ReadAll(io.LimitReader(r.Body, r.ContentLength/2))
-			r.Body = io.NopCloser(bytes.NewReader(raw))
-		}
-
-		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/sync/") && onDownload.CompareAndSwap(true, false) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/chunks") && who == "member" && onDownload.CompareAndSwap(true, false) {
 			_ = os.WriteFile(dirtyPath, []byte("member edited while downloading"), 0600)
 		}
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who, Username: who}))
@@ -240,7 +234,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		}
 		c := desktopConnection{ID: who, Server: server.URL, Token: who, User: UserInfo{ID: who}}
 		team, _ := readCrewTeam("team-test")
-		b := &crewTeamLocal{FolderID: team.Folder.ID, Connection: who, Project: "team-test", RemoteUser: who, Client: who + "-mac", Root: root, LocalBase: map[string]crewsync.File{}, RemoteBase: map[string]crewsync.File{}}
+		b := &crewTeamLocal{FolderID: team.Folder.ID, Connection: who, Project: "team-test", RemoteUser: who, Client: who + "-mac", Root: root}
 		return c, dir, b
 	}
 	c1, d1, b1 := newClient("owner")
@@ -265,9 +259,6 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if err := syncCrewTeamLocal(t.Context(), "owner", c1, d1, b1); err == nil {
 		t.Fatal("interrupted upload unexpectedly completed")
 	}
-	if _, err := os.Stat(filepath.Join(d1, "upload", "pending.json")); err != nil {
-		t.Fatal("interrupted upload lost its pending descriptor", err)
-	}
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
 	read(b2.Root, "sync.md", "owner sends")
@@ -291,7 +282,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if beforeRetry.Revision != afterRetry.Revision {
 		t.Fatal("unchanged client created another revision")
 	}
-	fmt.Println("[CREW_TEAM_PROOF] two HTTP/Git clients: interrupted upload resumes, owner to member, member to owner, local edit during download retained, unchanged retry passed")
+	fmt.Println("[CREW_TEAM_PROOF] two chunked HTTP clients: interrupted upload resumes, owner to member, member to owner, local edit during download retained, unchanged retry passed")
 	// PR932: directory/file replacements must not strand the next sync after deleting children.
 	if err := os.MkdirAll(filepath.Join(b1.Root, "reports"), 0700); err != nil {
 		t.Fatal(err)
@@ -322,18 +313,37 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	sync(c2, d2, b2)
 	sync(c1, d1, b1)
 	read(b1.Root, "reports/new.md", "directory again")
-	// Idle rounds create neither bundles nor manifests; completed metadata is bounded per client/direction.
+	// Idle rounds send nothing and make no revision.
+	idle, _ := readCrewTeamFileState("team-test")
 	for i := 0; i < 4; i++ {
 		sync(c2, d2, b2)
 	}
-	contentDir, _ := crewTeamContentDir("team-test")
-	transfers := filepath.Join(contentDir, "transfers", crewTransferDigest("member\x00"+b2.Client), "download")
-	metadata, _ := filepath.Glob(filepath.Join(transfers, "*", "snapshot.json"))
-	payloads, _ := filepath.Glob(filepath.Join(transfers, "*", "content"))
-	if len(metadata) > 2 || len(payloads) != 0 {
-		t.Fatalf("completed downloads retained metadata=%d payloads=%d", len(metadata), len(payloads))
+	if after, _ := readCrewTeamFileState("team-test"); after.Revision != idle.Revision {
+		t.Fatal("idle rounds made a revision")
 	}
-	t.Log("[CREW_TEAM_PROOF] idle_transfer_retention=bounded directory_file_transitions=both_directions")
+	// A large file with a small edit sends only the changed chunks (the chunked design, 5 Nov).
+	big := make([]byte, 3<<20)
+	rand.New(rand.NewSource(7)).Read(big) // real content has cut points; a repeating pattern has none
+	if err := os.WriteFile(filepath.Join(b1.Root, "big.bin"), big, 0600); err != nil {
+		t.Fatal(err)
+	}
+	sync(c1, d1, b1)
+	store, _ := crewTeamChunkStore("team-test")
+	chunksBefore, _ := filepath.Glob(filepath.Join(store, "*", "*"))
+	big = append(big[:len(big)/2], append([]byte("a small insert"), big[len(big)/2:]...)...)
+	if err := os.WriteFile(filepath.Join(b1.Root, "big.bin"), big, 0600); err != nil {
+		t.Fatal(err)
+	}
+	sync(c1, d1, b1)
+	chunksAfter, _ := filepath.Glob(filepath.Join(store, "*", "*"))
+	if added := len(chunksAfter) - len(chunksBefore); added < 1 || added > 3 {
+		t.Fatalf("a small insert in a 3 MB file stored %d new chunks", added)
+	}
+	sync(c2, d2, b2)
+	if got, _ := os.ReadFile(filepath.Join(b2.Root, "big.bin")); !bytes.Equal(got, big) {
+		t.Fatal("the edited large file did not arrive whole")
+	}
+	t.Log("[CREW_TEAM_PROOF] idle rounds make no revision; a small insert in a large file moves only its chunks")
 	// Canonical reads reject symlinks and hardlinks even when a host process plants one.
 	dir, _ := crewTeamContentDir("team-test")
 	outside := filepath.Join(t.TempDir(), "outside.txt")
@@ -361,13 +371,10 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if id, _ := lastDownload.Load().(string); id != "" {
-		w = call("member", "GET", base+"/sync/"+id+"?client=member-mac&direction=download", "", "")
-		if w.Code != 403 {
-			t.Fatal("revoked member read old staged bytes", w.Code, w.Body.String())
+	for _, path := range []string{"/sync/changes", "/chunks"} {
+		if w = call("member", "POST", base+path, `{"client":"member-mac","chunks":[]}`, ""); w.Code != 403 {
+			t.Fatal("revoked member still syncs", path, w.Code, w.Body.String())
 		}
-	} else {
-		t.Fatal("no completed member download to test revocation")
 	}
 	if crewTeamMember("team-test", "member") {
 		t.Fatal("revoked member remained in the audience")
@@ -395,7 +402,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if newTeam.Folder.ID == oldTeam.Folder.ID {
 		t.Fatal("folder identity reused")
 	}
-	if _, err := os.Stat(filepath.Join(oldDir, "history")); err != nil {
+	if _, err := os.Stat(filepath.Join(oldDir, "chunks")); err != nil {
 		t.Fatal("old history not kept", err)
 	}
 	w = call("owner", "PUT", file+"&folder_id="+oldTeam.Folder.ID, "stale old folder bytes", "old-folder-write")
@@ -516,15 +523,16 @@ func TestCrewTeamSyncsCredentialFileOnlyWhenChosenOnPurpose(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := []byte("//registry.example.com/:_authToken=${TOKEN}\n")
-	src := filepath.Join(t.TempDir(), "npmrc")
-	if err := os.WriteFile(src, data, 0600); err != nil {
+	store, err := crewTeamChunkStore("purpose-test")
+	if err != nil {
 		t.Fatal(err)
 	}
-	sum := sha256.Sum256(data)
-	file := crewsync.File{Hash: hex.EncodeToString(sum[:]), Size: int64(len(data))}
-	key := crewTeamKey("express/.npmrc")
+	version, err := crewTeamChunkReader(bytes.NewReader(data), int64(len(data)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	send := func(transfer string, declared ...string) error {
-		_, err := applyCrewTeamChanges(t.Context(), "purpose-test", "member", transfer, crewTransferDigest(transfer), crewsync.Snapshot{Files: crewsync.Manifest{key: file}, Changes: []crewsync.Change{{Path: key, After: &file, DataPath: src}}}, declared...)
+		_, err := commitCrewTeamChanges(t.Context(), "purpose-test", "member", transfer, crewTransferDigest(transfer), []crewTeamChange{{Path: "express/.npmrc", After: &version}}, declared...)
 		return err
 	}
 	if err := send("undeclared"); err == nil {
@@ -540,7 +548,7 @@ func TestCrewTeamSyncsCredentialFileOnlyWhenChosenOnPurpose(t *testing.T) {
 	if state.OnPurpose["express/.npmrc"] != "member" || state.Versions["express/.npmrc"].File == nil {
 		t.Fatalf("not recorded on purpose: %+v", state.OnPurpose)
 	}
-	if _, err := applyCrewTeamChanges(t.Context(), "purpose-test", "member", "stop", crewTransferDigest("stop"), crewsync.Snapshot{Files: crewsync.Manifest{}, Changes: []crewsync.Change{{Path: key, Before: &file}}}); err != nil {
+	if _, err := commitCrewTeamChanges(t.Context(), "purpose-test", "member", "stop", crewTransferDigest("stop"), []crewTeamChange{{Path: "express/.npmrc", Before: version.Hash}}); err != nil {
 		t.Fatalf("stop syncing: %v", err)
 	}
 	if state, _ = readCrewTeamFileState("purpose-test"); state.OnPurpose["express/.npmrc"] != "" {

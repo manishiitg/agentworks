@@ -42,7 +42,7 @@ func (api *StreamingAPI) crewTeamMemberAccess(ctx context.Context, t crewTeam, c
 				case b.Error != "":
 					out.CopyStatus = "Can't sync: " + b.Error
 				case b.Status == "up_to_date":
-					out.CopyStatus = fmt.Sprintf("Up to date · %d files", len(b.LocalBase))
+					out.CopyStatus = fmt.Sprintf("Up to date · %d files", len(b.Files))
 				default:
 					out.CopyStatus = "Syncing your copy"
 				}

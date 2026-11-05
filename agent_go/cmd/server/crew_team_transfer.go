@@ -1,567 +1,287 @@
 package server
 
 import (
-	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"maps"
 	"net/http"
-	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-type crewTeamTransfer struct {
-	Unchanged  bool               `json:"unchanged,omitempty"`
-	FolderID   string             `json:"folder_id"`
-	Action     string             `json:"action"`
-	Client     string             `json:"client"`
-	TransferID string             `json:"transfer_id"`
-	Direction  string             `json:"direction"`
-	Snapshot   *crewsync.Snapshot `json:"snapshot,omitempty"`
-	Base       crewsync.Manifest  `json:"base,omitempty"`
-	// OnPurpose: on upload, the files the uploader chose to sync despite credential-looking names; on download, the
-	// files the shared folder holds on purpose (owner, 5 Nov, "Sync it anyway").
+// The chunked sync protocol (crew_team_chunks.go). Every request is bounded (a commit carries at most
+// crewTeamCommitBatch files, a chunk request or reply at most crewTeamChunkBatch bytes), so none runs into the 20 s the
+// company gateway and the Mac allow; Team membership is checked on every request.
+
+// crewTeamSyncRequest is a plan or a commit: the changed files (and, for a commit, the sender's transfer id).
+type crewTeamSyncRequest struct {
+	Client     string           `json:"client"`
+	TransferID string           `json:"transfer_id,omitempty"`
+	Changes    []crewTeamChange `json:"changes"`
+	// OnPurpose are files the sender chose to sync despite credential-looking names (owner, 5 Nov, "Sync it anyway").
 	OnPurpose []string `json:"on_purpose,omitempty"`
+	// Since is, for changes, the last revision the copy has.
+	Since uint64 `json:"since,omitempty"`
 }
 
-// crewTeamTransferOnPurpose is what a transfer may carry on purpose: the folder's on-purpose files and, for an upload,
-// the uploader's own choices saved with that transfer.
-func crewTeamTransferOnPurpose(project, stage string) (crewTeamOnPurpose, []string) {
-	state, _ := readCrewTeamFileState(project)
-	var declared []string
-	if raw, err := os.ReadFile(filepath.Join(stage, "on_purpose.json")); err == nil {
-		_ = json.Unmarshal(raw, &declared)
-	}
-	return state.onPurpose().with(declared), declared
+// crewTeamRemoteFile is one file the copy should have: its current version, or nil when it was removed.
+type crewTeamRemoteFile struct {
+	Path    string               `json:"path"`
+	Version *crewTeamFileVersion `json:"version,omitempty"`
 }
 
-func crewTeamPair(project, actor, client, direction string) string {
-	return project + "/" + actor + "/" + client + "/" + direction
+// crewTeamChangesReply lists what changed after the copy's revision, up to Through (more pages while More).
+type crewTeamChangesReply struct {
+	Revision  uint64               `json:"revision"`
+	Through   uint64               `json:"through"`
+	More      bool                 `json:"more,omitempty"`
+	Files     []crewTeamRemoteFile `json:"files"`
+	OnPurpose []string             `json:"on_purpose,omitempty"`
 }
-func crewTeamTransferDir(project, actor, client, direction, transfer string) (string, error) {
-	if client == "" || len(client) > 128 || transfer == "" || len(transfer) > 128 || (direction != "upload" && direction != "download") {
-		return "", fmt.Errorf("invalid folder transfer")
+
+// crewTeamSyncBusy counts the sync requests a Team's server is serving now (a commit, chunks in or out), for the Crew
+// panel's Busy; each start and end tells the panel to read again.
+var crewTeamSyncBusy sync.Map // project -> *atomic.Int64
+
+func crewTeamSyncWork(project string) func() {
+	value, _ := crewTeamSyncBusy.LoadOrStore(project, new(atomic.Int64))
+	counter := value.(*atomic.Int64)
+	counter.Add(1)
+	publishCrewPanelChanged(project)
+	return func() {
+		counter.Add(-1)
+		publishCrewPanelChanged(project)
 	}
-	d, e := crewTeamContentDir(project)
-	if e != nil {
-		return "", e
-	}
-	return filepath.Join(d, "transfers", crewTransferDigest(actor+"\x00"+client), direction, crewTransferDigest(transfer)), nil
 }
-func crewTeamSnapshotStore(project, actor, client, direction string) (filesnapshots.Store, error) {
-	d, e := crewTeamContentDir(project)
-	if e != nil {
-		return filesnapshots.Store{}, e
-	}
-	root := filepath.Join(d, "files")
-	if e = os.MkdirAll(root, 0700); e != nil {
-		return filesnapshots.Store{}, e
-	}
-	return filesnapshots.Store{Root: root, Private: filepath.Join(d, "transfers", crewTransferDigest(actor+"\x00"+client), direction)}, nil
+
+func crewTeamSyncActive(project string) bool {
+	value, ok := crewTeamSyncBusy.Load(project)
+	return ok && value.(*atomic.Int64).Load() > 0
 }
-func crewTeamSnapshotScope(claims *UserClaims, s *crewsync.Snapshot, on ...crewTeamOnPurpose) error {
-	if e := validateCrewTeamSnapshot(s, on...); e != nil {
-		return e
-	}
-	if claims.AccessToken != nil && claims.AccessToken.FileGuard != nil {
-		g := claims.AccessToken.FileGuard
-		for key := range s.Files {
-			rel, _ := crewTeamRelative(key, on...)
-			if !g.Allows(rel, false) {
-				return fmt.Errorf("this connection cannot transfer the whole shared folder")
-			}
-		}
-		for _, c := range s.Changes {
-			rel, _ := crewTeamRelative(c.Path, on...)
-			if !g.Allows(rel, true) {
-				return fmt.Errorf("this connection cannot change that shared file")
-			}
-		}
-	}
-	return nil
+
+// crewTeamGuardAllows applies a scoped connection's file guard to one path.
+func crewTeamGuardAllows(claims *UserClaims, rel string, write bool) bool {
+	return claims.AccessToken == nil || claims.AccessToken.FileGuard == nil || claims.AccessToken.FileGuard.Allows(rel, write)
 }
 
 func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
-	project := mux.Vars(r)["project"]
-	if _, e := crewTeamRequestAuthorize(r, claims, project, ".", true, true); e != nil {
+	project, op := mux.Vars(r)["project"], mux.Vars(r)["op"]
+	write := op != "changes"
+	if _, e := crewTeamRequestAuthorize(r, claims, project, ".", write, true); e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
 	noteTeamMacSeen(project, claims.UserID) // each member's Mac syncs the team folder every few seconds while it is on
-	var in crewTeamTransfer
-	if json.NewDecoder(io.LimitReader(r.Body, 16<<20)).Decode(&in) != nil {
-		externalError(w, 400, "invalid_transfer", "Send a shared-folder transfer.")
+	if op == "commit" {
+		defer crewTeamSyncWork(project)()
+	}
+	start := time.Now()
+	var in crewTeamSyncRequest
+	if json.NewDecoder(io.LimitReader(r.Body, 32<<20)).Decode(&in) != nil || len(in.Changes) > crewTeamCommitBatch || !crewTeamClientID(in.Client) {
+		externalError(w, 400, "invalid_transfer", fmt.Sprintf("Send at most %d changed files with this copy's id.", crewTeamCommitBatch))
 		return
 	}
-	if in.Action == "prepare" || in.Action == "apply" {
-		in.Direction = "upload"
+	done := func(status int, files, chunks int) {
+		log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=%s files=%d chunks=%d status=%d ms=%d", project, logUsernameForUserID(claims.UserID), op, files, chunks, status, time.Since(start).Milliseconds())
 	}
-	if in.Action == "pull" {
-		in.Direction = "download"
-	}
-	stage, e := crewTeamTransferDir(project, claims.UserID, in.Client, in.Direction, in.TransferID)
-	if e != nil {
-		externalError(w, 400, "invalid_transfer", e.Error())
-		return
-	}
-	// A step runs as a job that outlives the request: the request waits up to crewTeamSyncWait, then answers
-	// "still working" and the caller asks again with the same transfer (Showcase, 5 Nov: a 7,184-file apply ran past the
-	// 20 s the company gateway and the Mac allow, was cut, and the Mac looped). Each finished result is handed out once.
-	key := stage + "\x00" + in.Action
-	job := &crewTeamSyncJob{done: make(chan struct{}), project: project}
-	if running, loaded := crewTeamSyncJobs.LoadOrStore(key, job); loaded {
-		job = running.(*crewTeamSyncJob)
-	} else {
-		publishCrewPanelChanged(project)
-		detached := r.WithContext(context.WithoutCancel(r.Context()))
-		go func() {
-			start, result := time.Now(), httptest.NewRecorder()
-			api.crewTeamSyncStep(result, detached, claims, project, in, stage)
-			files, changes := 0, 0
-			if in.Snapshot != nil {
-				files, changes = len(in.Snapshot.Files), len(in.Snapshot.Changes)
-			}
-			log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=%s files=%d changes=%d base=%d status=%d ms=%d", project, logUsernameForUserID(claims.UserID), in.Action, files, changes, len(in.Base), result.Code, time.Since(start).Milliseconds())
-			job.result = result
-			close(job.done)
-			publishCrewPanelChanged(project)
-		}()
-	}
-	select {
-	case <-job.done:
-		crewTeamSyncJobs.CompareAndDelete(key, job)
-		for name, values := range job.result.Header() {
-			w.Header()[name] = values
-		}
-		w.WriteHeader(job.result.Code)
-		_, _ = w.Write(job.result.Body.Bytes())
-	case <-time.After(crewTeamSyncWait):
-		w.Header().Set(crewTeamWorkingHeader, "1")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"working":true}`))
-	case <-r.Context().Done():
-	}
-}
-
-// crewTeamSyncWait is how long a sync request waits for its step before answering "still working".
-const crewTeamSyncWait = 10 * time.Second
-
-// crewTeamWorkingHeader marks a 202 that means "the step is still running; ask again with the same transfer".
-const crewTeamWorkingHeader = "X-Team-Working"
-
-type crewTeamSyncJob struct {
-	project string
-	done    chan struct{}
-	result  *httptest.ResponseRecorder
-}
-
-// crewTeamSyncJobs are the running (or finished, not yet handed out) sync steps, by transfer folder and action.
-var crewTeamSyncJobs sync.Map
-
-// crewTeamSyncStep is one sync step under the team lock: prepare, pull, apply or ack.
-func (api *StreamingAPI) crewTeamSyncStep(w http.ResponseWriter, r *http.Request, claims *UserClaims, project string, in crewTeamTransfer, stage string) {
-	var e error
-	dir, _ := crewTeamContentDir(project)
-	if e = os.MkdirAll(stage, 0700); e != nil {
-		externalError(w, 409, "transfer_failed", e.Error())
-		return
-	}
-	lockDir, _ := crewTeamDir(project)
-	unlock, e := wf.LockWorkspace(r.Context(), lockDir)
+	state, e := readCrewTeamFileState(project)
 	if e != nil {
 		externalError(w, 409, "transfer_failed", e.Error())
 		return
 	}
-	defer unlock()
-	if _, e = crewTeamRequestAuthorize(r, claims, project, ".", true, true); e != nil {
-		externalError(w, 403, "team_folder_forbidden", e.Error())
-		return
-	}
-	store, e := crewTeamSnapshotStore(project, claims.UserID, in.Client, in.Direction)
-	if e != nil {
-		externalError(w, 409, "transfer_failed", e.Error())
-		return
-	}
-	pair := crewTeamPair(project, claims.UserID, in.Client, in.Direction)
-	meta := filepath.Join(stage, "snapshot.json")
-	fail := func(e error) { externalError(w, 409, "transfer_failed", e.Error()) }
-	switch in.Action {
-	case "prepare":
-		state, _ := readCrewTeamFileState(project)
-		if e = crewTeamSnapshotScope(claims, in.Snapshot, state.onPurpose().with(in.OnPurpose)); e != nil {
-			fail(e)
-			return
-		}
-		// The uploader's on-purpose choices stay with this transfer for its apply.
-		if len(in.OnPurpose) > 0 {
-			if e = fsutil.WriteJSONAtomic(filepath.Join(stage, "on_purpose.json"), in.OnPurpose, 0600); e != nil {
-				fail(e)
-				return
-			}
-		}
-		if in.Snapshot.Content == nil || len(in.Snapshot.Payloads) != 1 || !crewPayloadValid(in.Snapshot.Payloads["content"]) {
-			fail(fmt.Errorf("send one verified file-content bundle"))
-			return
-		}
-		encoded, _ := json.Marshal(in.Snapshot)
-		if old, err := os.ReadFile(meta); err == nil {
-			var saved crewsync.Snapshot
-			if json.Unmarshal(old, &saved) != nil {
-				fail(fmt.Errorf("saved transfer is unavailable"))
-				return
-			}
-			before, _ := json.Marshal(saved)
-			if string(before) != string(encoded) {
-				fail(fmt.Errorf("this transfer already has different contents"))
-				return
-			}
-		} else if !os.IsNotExist(err) {
-			fail(err)
-			return
-		} else if e = fsutil.WriteJSONAtomic(meta, in.Snapshot, 0600); e != nil {
-			fail(e)
-			return
-		}
-		// The uploader already has its snapshot; echoing it back cost a 3 MB reply every round for 7,000 files.
-		externalJSON(w, map[string]bool{"prepared": true})
-	case "pull":
-		state, _ := readCrewTeamFileState(project)
-		op := state.onPurpose()
-		in.OnPurpose = sortedOnPurpose(op)
-		var snapshot crewsync.Snapshot
-		if raw, err := os.ReadFile(meta); err == nil {
-			if e = json.Unmarshal(raw, &snapshot); e != nil {
-				fail(e)
-				return
-			}
-			in.Snapshot = &snapshot
-			externalJSON(w, in)
-			return
-		} else if !os.IsNotExist(err) {
-			fail(err)
-			return
-		}
-		// The caller's base may still name a file someone stopped syncing on purpose: it is only compared against,
-		// never sent, so it is not refused (the reply no longer has it).
-		baseOp := crewTeamOnPurpose{}.with(sortedOnPurpose(op))
-		for key := range in.Base {
-			if rel, ok := strings.CutPrefix(key, "resources/"); ok {
-				baseOp[rel] = true
-			}
-		}
-		if e = validateCrewTeamSnapshot(&crewsync.Snapshot{Files: in.Base}, baseOp); e != nil {
-			fail(e)
-			return
-		}
-		// Nothing changed since the caller's last download: the team's own record says so, without reading and hashing
-		// every shared file again (11-14 s for 7,000 files, under the team lock, every few seconds).
-		if len(in.Base) > 0 && maps.Equal(in.Base, state.manifest()) {
-			_ = os.RemoveAll(stage)
-			in.Snapshot, in.Base, in.Unchanged = nil, nil, true
-			externalJSON(w, in)
-			return
-		}
-		root := filepath.Join(dir, "files")
-		if e = os.MkdirAll(root, 0700); e != nil {
-			fail(e)
-			return
-		}
+	switch op {
+	case "plan":
 		team, _ := readCrewTeam(project)
-		snapshot, e = crewTeamCapture(r.Context(), root, stage, in.Base, team.Folder, op)
+		store, e := crewTeamChunkStore(project)
 		if e != nil {
-			fail(e)
+			externalError(w, 409, "transfer_failed", e.Error())
 			return
 		}
-		defer snapshot.Close()
-		if e = crewTeamSnapshotScope(claims, &snapshot, op); e != nil {
-			fail(e)
-			return
+		onPurpose := state.onPurpose().with(in.OnPurpose)
+		missing, seen := []string{}, map[string]bool{}
+		for _, c := range in.Changes {
+			if !crewTeamAllowed(c.Path, onPurpose) || !crewTeamGuardAllows(claims, c.Path, true) || c.After != nil && (!team.Folder.holds(c.Path) || !c.After.valid()) {
+				done(409, len(in.Changes), 0)
+				externalError(w, 409, "transfer_failed", c.Path+" is not a file this team shares")
+				return
+			}
+			if c.After == nil {
+				continue
+			}
+			for _, chunk := range c.After.Chunks {
+				if !seen[chunk.ID] && !crewTeamHasChunk(store, chunk) {
+					missing = append(missing, chunk.ID)
+				}
+				seen[chunk.ID] = true
+			}
 		}
-		if len(snapshot.Changes) == 0 {
-			snapshot.Close()
-			_ = os.RemoveAll(stage)
-			in.Snapshot = nil
-			in.Base = nil
-			in.Unchanged = true
-			externalJSON(w, in)
-			return
+		done(200, len(in.Changes), len(missing))
+		externalJSON(w, map[string]any{"missing": missing})
+	case "commit":
+		for _, c := range in.Changes {
+			if !crewTeamGuardAllows(claims, c.Path, true) {
+				externalError(w, 403, "team_folder_forbidden", "This connection cannot change that shared file.")
+				return
+			}
 		}
-		if e = store.EncodeFolderSync(r.Context(), pair, crewTeamRoots(root), &snapshot); e != nil {
-			fail(e)
-			return
-		}
-		generated := snapshot.Content.BundlePath
-		defer os.RemoveAll(filepath.Dir(generated))
-		if e = copyCrewTeamBundle(generated, filepath.Join(stage, "content")); e != nil {
-			fail(e)
-			return
-		}
-		payload, e := crewTeamPayload(filepath.Join(stage, "content"))
+		lockDir, _ := crewTeamDir(project)
+		unlock, e := wf.LockWorkspace(r.Context(), lockDir)
 		if e != nil {
-			fail(e)
+			externalError(w, 409, "transfer_failed", e.Error())
 			return
 		}
-		snapshot.Payloads = map[string]crewsync.Payload{"content": payload}
-		snapshot.Content.BundlePath = ""
-		if e = fsutil.WriteJSONAtomic(meta, snapshot, 0600); e != nil {
-			fail(e)
+		defer unlock()
+		if _, e = crewTeamRequestAuthorize(r, claims, project, ".", true, true); e != nil {
+			externalError(w, 403, "team_folder_forbidden", e.Error())
 			return
 		}
-		in.Snapshot = &snapshot
-		in.Base = nil
-		externalJSON(w, in)
-	case "apply", "ack":
-		var snapshot crewsync.Snapshot
-		raw, err := os.ReadFile(meta)
-		if err != nil {
-			fail(err)
-			return
-		}
-		if e = json.Unmarshal(raw, &snapshot); e != nil {
-			fail(e)
-			return
-		}
-		op, declared := crewTeamTransferOnPurpose(project, stage)
-		if e = crewTeamSnapshotScope(claims, &snapshot, op); e != nil {
-			fail(e)
-			return
-		}
-		if in.Action == "ack" {
-			if in.Direction != "download" {
-				fail(fmt.Errorf("only a downloaded folder can be acknowledged"))
-				return
-			}
-			if e = store.AckSync(r.Context(), pair, snapshot.Content); e != nil {
-				fail(e)
-				return
-			}
-			completeCrewTeamTransfer(stage)
-			externalJSON(w, map[string]bool{"acknowledged": true})
-			return
-		}
-		digestData, _ := json.Marshal(snapshot)
-		digest := crewTransferDigest(string(digestData))
-		state, err := readCrewTeamFileState(project)
-		if err != nil {
-			fail(err)
-			return
-		}
-		if receipt, ok := state.Receipts[crewTransferDigest(claims.UserID+"\x00"+in.Client+"/"+in.TransferID)]; ok {
-			if receipt.Digest != digest {
-				fail(fmt.Errorf("transfer receipt does not match"))
-				return
-			}
-			if e = store.AckSync(r.Context(), pair, snapshot.Content); e != nil {
-				fail(e)
-				return
-			}
-			completeCrewTeamTransfer(stage)
-			externalJSON(w, receipt)
-			return
-		}
-		snapshot.Content.BundlePath = filepath.Join(stage, "content")
-		if e = crewCheckPayloadFile(snapshot.Content.BundlePath, snapshot.Payloads["content"]); e != nil {
-			fail(e)
-			return
-		}
-		if e = store.DecodeSync(r.Context(), pair, &snapshot); e != nil {
-			fail(e)
-			return
-		}
-		defer snapshot.Close()
-		receipt, e := applyCrewTeamChanges(r.Context(), project, claims.UserID, in.Client+"/"+in.TransferID, digest, snapshot, declared...)
+		wire, _ := json.Marshal(in.Changes)
+		receipt, e := commitCrewTeamChanges(r.Context(), project, claims.UserID, in.Client+"/"+in.TransferID, crewTransferDigest(string(wire)), in.Changes, in.OnPurpose...)
 		if e != nil {
-			fail(e)
+			done(409, len(in.Changes), 0)
+			externalError(w, 409, "transfer_failed", e.Error())
 			return
 		}
-		if e = store.AckSync(r.Context(), pair, snapshot.Content); e != nil {
-			fail(e)
-			return
-		}
-		completeCrewTeamTransfer(stage)
+		done(200, len(in.Changes), 0)
 		externalJSON(w, receipt)
-	default:
-		externalError(w, 400, "invalid_action", "Choose prepare, pull, apply or ack for this folder.")
+	case "changes":
+		since := in.Since
+		if since > state.Revision {
+			since = 0 // a copy from another generation starts over
+		}
+		out := crewTeamChangesReply{Revision: state.Revision, Through: state.Revision, Files: []crewTeamRemoteFile{}, OnPurpose: sortedOnPurpose(state.onPurpose())}
+		paths, through := crewTeamChangedSince(state, since, crewTeamCommitBatch)
+		if through < state.Revision {
+			out.Through, out.More = through, true
+		}
+		op := state.onPurpose()
+		team, _ := readCrewTeam(project)
+		for _, p := range paths {
+			if !crewTeamAllowed(p, op) || !team.Folder.holds(p) || !crewTeamGuardAllows(claims, p, false) {
+				continue
+			}
+			file := crewTeamRemoteFile{Path: p}
+			if v := state.Versions[p]; v.File != nil {
+				file.Version = &crewTeamFileVersion{Hash: v.File.Hash, Size: v.File.Size, Exec: v.File.Executable, Chunks: v.Chunks}
+			}
+			out.Files = append(out.Files, file)
+		}
+		done(200, len(out.Files), 0)
+		externalJSON(w, out)
 	}
 }
 
-func crewTeamPayload(file string) (crewsync.Payload, error) {
-	f, e := os.Open(file)
-	if e != nil {
-		return crewsync.Payload{}, e
+// crewTeamChangedSince lists the paths changed after since, a whole revision at a time, stopping once limit paths are
+// listed; through is the last revision included.
+func crewTeamChangedSince(state crewTeamFileState, since uint64, limit int) ([]string, uint64) {
+	byRevision := map[uint64][]string{}
+	revisions := []uint64{}
+	for _, e := range state.Events {
+		if e.Revision <= since {
+			continue
+		}
+		if _, ok := byRevision[e.Revision]; !ok {
+			revisions = append(revisions, e.Revision)
+		}
+		byRevision[e.Revision] = append(byRevision[e.Revision], e.Path)
 	}
-	defer f.Close()
-	h := sha256.New()
-	n, e := io.Copy(h, f)
-	if e != nil {
-		return crewsync.Payload{}, e
+	sort.Slice(revisions, func(i, j int) bool { return revisions[i] < revisions[j] })
+	seen, paths, through := map[string]bool{}, []string{}, state.Revision
+	for i, rev := range revisions {
+		if len(paths) >= limit && i > 0 {
+			through = revisions[i-1]
+			break
+		}
+		for _, p := range byRevision[rev] {
+			if !seen[p] {
+				seen[p] = true
+				paths = append(paths, p)
+			}
+		}
 	}
-	return crewsync.Payload{Size: n, Hash: fmt.Sprintf("%x", h.Sum(nil))}, nil
-}
-func copyCrewTeamBundle(src, dst string) error {
-	in, e := os.Open(src)
-	if e != nil {
-		return e
-	}
-	defer in.Close()
-	out, e := os.CreateTemp(filepath.Dir(dst), "bundle-")
-	if e != nil {
-		return e
-	}
-	defer os.Remove(out.Name())
-	_, e = io.Copy(out, in)
-	if e == nil {
-		e = out.Sync()
-	}
-	ce := out.Close()
-	if e == nil {
-		e = ce
-	}
-	if e != nil {
-		return e
-	}
-	return os.Rename(out.Name(), dst)
+	sort.Strings(paths)
+	return paths, through
 }
 
-// Chunk offsets and hashes reuse the Crew transfer protocol. Folder authority,
-// actor/client staging and allowed payloads are deliberately separate.
-func (api *StreamingAPI) handleCrewTeamPiece(w http.ResponseWriter, r *http.Request) {
+// handleCrewTeamChunks receives chunks (PUT: frames, verified and stored once) or sends the chunks asked for (POST
+// {ids}: frames, at most crewTeamChunkBatch bytes per reply; the caller asks again for the rest).
+func (api *StreamingAPI) handleCrewTeamChunks(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	project := mux.Vars(r)["project"]
-	q := r.URL.Query()
-	client, direction := q.Get("client"), q.Get("direction")
-	transfer := mux.Vars(r)["transfer"]
-	if _, e := crewTeamRequestAuthorize(r, claims, project, ".", r.Method != http.MethodGet, true); e != nil {
+	write := r.Method == http.MethodPut
+	if _, e := crewTeamRequestAuthorize(r, claims, project, ".", write, true); e != nil {
 		externalError(w, 403, "team_folder_forbidden", e.Error())
 		return
 	}
-	stage, e := crewTeamTransferDir(project, claims.UserID, client, direction, transfer)
-	if e != nil {
-		externalError(w, 400, "invalid_transfer", e.Error())
-		return
-	}
-	lockDir, _ := crewTeamDir(project)
-	unlock, e := wf.LockWorkspace(r.Context(), lockDir)
+	store, e := crewTeamChunkStore(project)
 	if e != nil {
 		externalError(w, 409, "transfer_failed", e.Error())
 		return
 	}
-	defer unlock()
-	if _, e = crewTeamRequestAuthorize(r, claims, project, ".", r.Method != http.MethodGet, true); e != nil {
-		externalError(w, 403, "team_folder_forbidden", e.Error())
-		return
-	}
-	var s crewsync.Snapshot
-	raw, e := os.ReadFile(filepath.Join(stage, "snapshot.json"))
-	if e != nil || json.Unmarshal(raw, &s) != nil {
-		externalError(w, 404, "transfer_missing", "Restart the shared-folder transfer.")
-		return
-	}
-	op, _ := crewTeamTransferOnPurpose(project, stage)
-	if e = crewTeamSnapshotScope(claims, &s, op); e != nil {
-		externalError(w, 403, "team_folder_forbidden", e.Error())
-		return
-	}
-	payload := s.Payloads["content"]
-	if !crewPayloadValid(payload) {
-		externalError(w, 400, "invalid_transfer", "Transfer metadata is unavailable.")
-		return
-	}
-	file := filepath.Join(stage, "content")
-	offset := int64(0)
-	if info, e := os.Lstat(file); e == nil {
-		if !info.Mode().IsRegular() || info.Size() > payload.Size {
-			externalError(w, 409, "invalid_transfer", "Transfer bytes do not match.")
-			return
-		}
-		offset = info.Size()
-	} else if !os.IsNotExist(e) {
-		externalError(w, 409, "transfer_failed", "Transfer bytes are unavailable.")
-		return
-	}
-	if direction == "upload" {
-		if _, err := os.Stat(filepath.Join(stage, "complete")); err == nil {
-			offset = payload.Size
-		}
-	}
-	w.Header().Set("Upload-Offset", strconv.FormatInt(offset, 10))
-	w.Header().Set("X-Sync-Size", strconv.FormatInt(payload.Size, 10))
-	w.Header().Set("X-Sync-Hash", payload.Hash)
-	if r.Method == http.MethodHead {
-		w.WriteHeader(200)
-		return
-	}
-	if direction == "download" && r.Method == http.MethodGet {
-		f, e := os.Open(file)
+	defer crewTeamSyncWork(project)()
+	start := time.Now()
+	if write {
+		stored, bytes := 0, 0
+		e = crewTeamReadFrames(io.LimitReader(r.Body, crewTeamChunkBatch+crewTeamChunkMax+64<<10), func(id string, data []byte) error {
+			stored, bytes = stored+1, bytes+len(data)
+			return crewTeamPutChunk(store, id, data)
+		})
+		log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=send chunks=%d bytes=%d ms=%d err=%v", project, logUsernameForUserID(claims.UserID), stored, bytes, time.Since(start).Milliseconds(), e)
 		if e != nil {
-			externalError(w, 404, "transfer_missing", "Prepare the folder download first.")
+			externalError(w, 400, "transfer_failed", e.Error())
 			return
 		}
-		defer f.Close()
-		info, _ := f.Stat()
-		w.Header().Set("Content-Type", "application/octet-stream")
-		http.ServeContent(w, r, "content.bundle", info.ModTime(), f)
+		externalJSON(w, map[string]int{"stored": stored})
 		return
 	}
-	if direction != "upload" || r.Method != http.MethodPut {
-		externalError(w, 405, "invalid_action", "Use the matching upload or download operation.")
+	var in struct {
+		Chunks []crewTeamChunk `json:"chunks"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&in) != nil || len(in.Chunks) > 20000 {
+		externalError(w, 400, "invalid_transfer", "Ask for the chunks by id and size.")
 		return
 	}
-	wanted, e := strconv.ParseInt(q.Get("offset"), 10, 64)
-	if e != nil || wanted != offset || r.ContentLength <= 0 || r.ContentLength > crewSyncPieceBytes || offset+r.ContentLength > payload.Size {
-		externalError(w, 409, "transfer_offset", "Resume from the saved offset with a bounded piece.")
-		return
-	}
-	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(2 * time.Minute))
-	f, e := os.OpenFile(file, os.O_CREATE|os.O_WRONLY, 0600)
+	// Only chunks of a file the caller may read now: a current version, inside what the team shares, not private, and
+	// within their connection's file guard (not any old chunk by its hash).
+	state, e := readCrewTeamFileState(project)
 	if e != nil {
-		externalError(w, 409, "transfer_failed", "Could not save the file transfer.")
+		externalError(w, 409, "transfer_failed", e.Error())
 		return
 	}
-	_, e = f.Seek(offset, io.SeekStart)
-	var n int64
-	if e == nil {
-		n, e = io.CopyN(f, r.Body, r.ContentLength)
-	}
-	se := f.Sync()
-	ce := f.Close()
-	if e == nil {
-		e = se
-	}
-	if e == nil {
-		e = ce
-	}
-	offset += n
-	w.Header().Set("Upload-Offset", strconv.FormatInt(offset, 10))
-	if offset == payload.Size {
-		if check := crewCheckPayloadFile(file, payload); check != nil {
-			_ = os.Remove(file)
-			externalError(w, 409, "transfer_checksum", "The upload checksum did not match. Retry this transfer.")
-			return
+	team, _ := readCrewTeam(project)
+	readable, op := map[string]bool{}, state.onPurpose()
+	for p, v := range state.Versions {
+		if v.File == nil || !crewTeamAllowed(p, op) || !team.Folder.holds(p) || !crewTeamGuardAllows(claims, p, false) {
+			continue
+		}
+		for _, c := range v.Chunks {
+			readable[c.ID] = true
 		}
 	}
-	if e != nil {
-		externalError(w, 409, "transfer_interrupted", "Resume this folder upload from its saved offset.")
-		return
+	w.Header().Set("Content-Type", "application/octet-stream")
+	sent, bytes := 0, int64(0)
+	for _, c := range in.Chunks {
+		if !validCrewTeamHash(c.ID) || !readable[c.ID] || bytes > 0 && bytes+c.Len > crewTeamChunkBatch {
+			break
+		}
+		data, err := crewTeamReadChunk(store, c)
+		if err != nil {
+			break // the caller asks again for what did not arrive
+		}
+		if err = crewTeamWriteFrame(w, c.ID, data); err != nil {
+			return
+		}
+		sent, bytes = sent+1, bytes+int64(len(data))
 	}
-	w.WriteHeader(204)
+	log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=receive chunks=%d bytes=%d ms=%d", project, logUsernameForUserID(claims.UserID), sent, bytes, time.Since(start).Milliseconds())
 }
 
 func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
@@ -575,8 +295,8 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/crew-teams/{project}/{op:file}", api.handleCrewTeamFiles).Methods("GET", "PUT", "DELETE")
 	r.HandleFunc("/crew-teams/{project}/{op:events|clashes|history|compare}", api.handleCrewTeamHistory).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/{op:resolve}", api.handleCrewTeamHistory).Methods("POST")
-	r.HandleFunc("/crew-teams/{project}/sync", api.handleCrewTeamSync).Methods("POST")
-	r.HandleFunc("/crew-teams/{project}/sync/{transfer}", api.handleCrewTeamPiece).Methods("GET", "PUT", "HEAD")
+	r.HandleFunc("/crew-teams/{project}/sync/{op:plan|commit|changes}", api.handleCrewTeamSync).Methods("POST")
+	r.HandleFunc("/crew-teams/{project}/chunks", api.handleCrewTeamChunks).Methods("PUT", "POST")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/folders", api.handleDesktopTeamFolders).Methods("GET")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/local", api.handleDesktopTeamStatus).Methods("GET")
 	r.HandleFunc("/desktop-connections/{connection}/crew-teams/{project}/sync-anyway", api.handleDesktopTeamSyncAnyway).Methods("POST")
@@ -590,34 +310,6 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 // Keep request identifiers usable in private state without accepting a path.
 func crewTeamClientID(value string) bool {
 	return value != "" && len(value) <= 128 && !strings.ContainsAny(value, "/\\\x00")
-}
-
-// Supported clients keep one pending transfer per direction. Keep two completed
-// metadata receipts for retries, remove verified payloads after acknowledgement.
-func completeCrewTeamTransfer(stage string) {
-	if os.WriteFile(filepath.Join(stage, "complete"), []byte("ok"), 0600) != nil {
-		return
-	}
-	_ = os.Remove(filepath.Join(stage, "content"))
-	type done struct {
-		path string
-		at   time.Time
-	}
-	completed := []done{}
-	entries, _ := os.ReadDir(filepath.Dir(stage))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		p := filepath.Join(filepath.Dir(stage), entry.Name())
-		if info, err := os.Stat(filepath.Join(p, "complete")); err == nil {
-			completed = append(completed, done{p, info.ModTime()})
-		}
-	}
-	sort.Slice(completed, func(i, j int) bool { return completed[i].at.After(completed[j].at) })
-	for i := 2; i < len(completed); i++ {
-		_ = os.RemoveAll(completed[i].path)
-	}
 }
 
 func sortedOnPurpose(op crewTeamOnPurpose) []string {

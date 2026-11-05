@@ -1,17 +1,18 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -26,6 +27,8 @@ type crewTeamEvent struct {
 	Author   string         `json:"author,omitempty"`
 	At       string         `json:"time"`
 	File     *crewsync.File `json:"file,omitempty"`
+	// Chunks are that version's content in the Team's chunk store (crew_team_chunks.go).
+	Chunks []crewTeamChunk `json:"chunks,omitempty"`
 }
 type crewTeamClash struct {
 	Source          string `json:"source"`
@@ -37,11 +40,15 @@ type crewTeamClash struct {
 	Resolved        bool   `json:"resolved"`
 }
 
-func (s crewTeamFileState) fileAt(path string, revision uint64) *crewsync.File {
+// versionAt is a file's version at a revision, from the events; nil when it did not exist then.
+func (s crewTeamFileState) versionAt(path string, revision uint64) *crewTeamFileVersion {
 	for i := len(s.Events) - 1; i >= 0; i-- {
 		e := s.Events[i]
 		if e.Path == path && e.Revision <= revision {
-			return e.File
+			if e.File == nil {
+				return nil
+			}
+			return &crewTeamFileVersion{Hash: e.File.Hash, Size: e.File.Size, Exec: e.File.Executable, Chunks: e.Chunks}
 		}
 	}
 	return nil
@@ -75,8 +82,10 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		externalError(w, 409, "team_history_unavailable", e.Error())
 		return
 	}
+	team, _ := readCrewTeam(project)
 	allowed := func(p string) bool {
-		if !crewTeamAllowed(p, s.onPurpose()) {
+		// History and restores are of files the caller may read now: inside what the team shares, not private.
+		if !crewTeamAllowed(p, s.onPurpose()) || !team.Folder.holds(p) {
 			return false
 		}
 		return claims.AccessToken == nil || claims.AccessToken.FileGuard == nil || claims.AccessToken.FileGuard.Allows(p, false)
@@ -113,8 +122,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 			externalError(w, 400, "invalid_revision", "Choose a file and two revisions from Sync.")
 			return
 		}
-		store := filesnapshots.Store{Root: filepath.Join(dir, "files"), Private: filepath.Join(dir, "history")}
-		diff, err := store.CompareFolderRevisions(r.Context(), fmt.Sprint(left), fmt.Sprint(right), crewTeamKey(rel))
+		diff, err := crewTeamCompareVersions(r.Context(), project, dir, s.versionAt(rel, left), s.versionAt(rel, right), rel)
 		if err != nil {
 			externalError(w, 409, "team_history_unavailable", "These versions are unavailable.")
 			return
@@ -126,10 +134,15 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 			externalError(w, 400, "invalid_revision", "Choose a file and revision from Sync.")
 			return
 		}
-		file := s.fileAt(rel, revision)
+		file := s.versionAt(rel, revision)
 		if file == nil {
 			w.Header().Set("X-Team-Deleted", "true")
 			w.WriteHeader(204)
+			return
+		}
+		store, err := crewTeamChunkStore(project)
+		if err != nil {
+			externalError(w, 409, "team_history_unavailable", err.Error())
 			return
 		}
 		// Finish the read into private staging first, so a missing/corrupt object
@@ -141,8 +154,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		}
 		defer os.Remove(f.Name())
 		defer f.Close()
-		store := filesnapshots.Store{Root: filepath.Join(dir, "files"), Private: filepath.Join(dir, "history")}
-		if e = store.CopyFolderRevision(r.Context(), fmt.Sprint(revision), crewTeamKey(rel), f); e != nil {
+		if e = crewTeamAssemble(store, *file, f); e != nil {
 			externalError(w, 409, "team_history_unavailable", "This version is unavailable.")
 			return
 		}
@@ -179,34 +191,17 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 				externalError(w, 400, "invalid_revision", "Choose one of the saved revisions.")
 				return
 			}
-			file := s.fileAt(in.Path, revision)
-			change := crewsync.Change{Path: crewTeamKey(in.Path), Before: s.Versions[in.Path].File, After: file}
-			if file != nil {
-				f, err := os.CreateTemp(dir, "history-restore-")
-				if err != nil {
-					externalError(w, 409, "team_history_unavailable", err.Error())
-					return
-				}
-				defer os.Remove(f.Name())
-				store := filesnapshots.Store{Root: filepath.Join(dir, "files"), Private: filepath.Join(dir, "history")}
-				err = store.CopyFolderRevision(r.Context(), fmt.Sprint(revision), change.Path, f)
-				closeErr := f.Close()
-				if err == nil {
-					err = closeErr
-				}
-				if err != nil {
-					externalError(w, 409, "team_history_unavailable", "This version is unavailable.")
-					return
-				}
-				change.DataPath = f.Name()
+			// The kept version's chunks are still in the store: restoring is a new revision with them.
+			before := ""
+			if current := s.Versions[in.Path].File; current != nil {
+				before = current.Hash
 			}
-			files := s.manifest()
-			if file == nil {
-				delete(files, change.Path)
-			} else {
-				files[change.Path] = *file
+			change := crewTeamChange{Path: in.Path, Before: before, After: s.versionAt(in.Path, revision)}
+			if change.After != nil && len(change.After.Chunks) == 0 && change.After.Size > 0 {
+				externalError(w, 409, "team_history_unavailable", "This version is unavailable.")
+				return
 			}
-			if _, e = applyCrewTeamChanges(r.Context(), project, claims.UserID, in.TransferID, crewTransferDigest("restore\x00"+in.Path+"\x00"+in.Keep), crewsync.Snapshot{Files: files, Changes: []crewsync.Change{change}}); e != nil {
+			if _, e = commitCrewTeamChanges(r.Context(), project, claims.UserID, in.TransferID, crewTransferDigest("restore\x00"+in.Path+"\x00"+in.Keep), []crewTeamChange{change}); e != nil {
 				externalError(w, 409, "team_restore_failed", e.Error())
 				return
 			}
@@ -227,4 +222,51 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		}
 		externalJSON(w, map[string]any{"resolved": true, "revision": s.Revision})
 	}
+}
+
+// crewTeamCompareVersions is a unified diff of two versions of one file, built from the chunk store (git diff of two
+// private temp files, as the history compare showed before).
+func crewTeamCompareVersions(ctx context.Context, project, dir string, left, right *crewTeamFileVersion, rel string) (string, error) {
+	store, err := crewTeamChunkStore(project)
+	if err != nil {
+		return "", err
+	}
+	tmp, err := os.MkdirTemp(dir, "compare-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmp)
+	write := func(name string, v *crewTeamFileVersion) (string, error) {
+		path := filepath.Join(tmp, name)
+		f, err := os.Create(path)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+		if v != nil {
+			if err = crewTeamAssemble(store, *v, f); err != nil {
+				return "", err
+			}
+		}
+		return path, nil
+	}
+	a, err := write("a", left)
+	if err != nil {
+		return "", err
+	}
+	b, err := write("b", right)
+	if err != nil {
+		return "", err
+	}
+	out, err := exec.CommandContext(ctx, "git", "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-color", a, b).Output()
+	var exit *exec.ExitError
+	if err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1) { // 1 means "they differ"
+		return "", err
+	}
+	text := strings.ReplaceAll(string(out), a, rel)
+	text = strings.ReplaceAll(text, b, rel)
+	if len(text) > 1<<20 {
+		text = text[:1<<20]
+	}
+	return text, nil
 }
