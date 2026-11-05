@@ -1073,6 +1073,8 @@ function spawnWorkspace(userDataPath) {
 // ports they used last time; when one is busy a free one is saved instead and
 // the person is told that an app signed in through Vault may need signing in again.
 async function spawnVault(userDataPath) {
+  // The Windows app does not ship Vault yet (Windows comes later): it runs without one, as before.
+  if (process.platform === 'win32') return;
   const bin = getBinaryPath('agentworks-vault');
   if (!fs.existsSync(bin)) {
     throw new Error(`Vault binary not found at ${bin}. Run desktop/dev-setup.sh to build it.`);
