@@ -12,6 +12,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
 // A coding CLI's shell reads a secret's current value with `mcpbridge secret NAME` (owner, 5 Nov, the decisions log):
@@ -94,10 +95,23 @@ func (api *StreamingAPI) handleSessionSecretRead(w http.ResponseWriter, r *http.
 		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(body)
 	}
-	// Only the chat's own session token: the process-wide token never reads a secret.
-	sessionID, ok := common.VerifyBridgeToken(strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")))
-	if !ok {
-		reply(http.StatusUnauthorized, map[string]string{"error": "this needs the chat's own session token"})
+	// Only the chat's own read-only token ("<session>#secret-read", minted for its shell): the process-wide token and
+	// the bridge's tool token never read a secret, and the read-only token reaches no tool route.
+	tokenSession, ok := common.VerifyBridgeToken(strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")))
+	sessionID, readOnly := strings.CutSuffix(tokenSession, mcpagent.SecretReadTokenSuffix)
+	if !ok || !readOnly || sessionID == "" {
+		reply(http.StatusUnauthorized, map[string]string{"error": "this needs the chat's own secret-read token"})
+		return
+	}
+	// The token lives with the chat's reply: only while a turn runs in it, and never once it is a Run turn.
+	if !api.sessionTurnRunning(sessionID) {
+		log.Printf("[SECRET_READ] session=%s result=refused reason=no_running_turn", sessionID)
+		reply(http.StatusForbidden, map[string]string{"error": "secrets can be read only while this chat's reply is running"})
+		return
+	}
+	if cfg := common.GetSessionShellConfig(sessionID); cfg != nil && cfg.CrewAskReadOnly {
+		log.Printf("[SECRET_READ] session=%s result=refused reason=run_turn", sessionID)
+		reply(http.StatusForbidden, map[string]string{"error": "this chat gets no secrets"})
 		return
 	}
 	var in struct {
