@@ -14,6 +14,7 @@ import { useLocalFileDevices } from './codeLocalFiles'
 import { MacAgentBridge } from './MacAgentBridge'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
 import { TeamTab } from './TeamTab'
+import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 export { useMacTabShareLine, useMacSharedAgents, useTeamRemoteAgents, openCrewAccess, takeCrewAccess, openCrewAskThread } from './MacSharedAgents'
 export type { MacAgentShare } from './MacSharedAgents'
 import { useProjectTeam } from './teamApi'
@@ -27,7 +28,12 @@ type MoveReport = { phase?: MovePhase; place?: CloudState; bytes_done?: number; 
 // What of this Crew the server keeps (owner, 4 Nov "Where your data is"): the server lists it by name, e.g. an agent's
 // always-online copy or a team's shared folder; empty while everything stays on this Mac.
 type ServerCopy = { name: string; detail: string }
-type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number; placements?: Record<string, AgentPlacement> }
+/** The Access page's shape, written by the server (crew_access_page.go): which tabs, whether this app holds the Mac's
+ * controls ("mac") or shows the Mac-only rows as text, those rows' text, and the extra sections. */
+type AccessTab = { id: CrewAccessSection; label: string; detail?: string }
+type AccessText = { line: string; note?: string }
+type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number; placements?: Record<string, AgentPlacement>
+  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: AccessText; access_publish?: AccessText; access_share?: boolean; access_laptop?: boolean }
 // The move's own steps, as the server reports them (astra, PLAT-856-509).
 type MovePhase = 'files' | 'database' | 'chats' | 'schedules_watchers' | 'dashboards_functions' | 'activating' | 'done'
 const MOVE_PHASES: MovePhase[] = ['files', 'database', 'chats', 'schedules_watchers', 'dashboards_functions', 'activating', 'done']
@@ -132,16 +138,15 @@ export function cloudStateIcon(state?: CloudState, theirs = false): LucideIcon {
 }
 const tintedIcons = new Map<string, LucideIcon>()
 
-export function YourComputerPanel({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; canEdit: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
-  if (!crewCloudMode()) return <div><LaptopCard sessionId={sessionId} /></div>
-  // A Crew opened from a connected server lives online.
-  if (getRawActiveWorkspaceId() !== 'local') return <section aria-label="Where it lives" className="space-y-3 text-sm">
-    <p role="status" className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4 text-emerald-500" />Online</p>
-  </section>
-  return <div><WhereItLivesCard projectId={projectId} sessionId={sessionId} onFullScreen={onFullScreen} onBack={onBack} /></div>
+/** The one Access page (owner, 5 Nov: "one Access page, not two"), the same in the Mac app and on the website. The
+ * server's crew-sync reply decides it: the tabs, and whether this app holds the Mac's controls (the Mac app's own Crew)
+ * or shows those rows as text (the website, or a Crew from a server); then the Team tab, Who can use it and laptop
+ * access where the server lists them. */
+export function YourComputerPanel({ projectId, sessionId, onFullScreen, onBack, workspacePath, tabId, onAsk }: { projectId: string; sessionId?: string; canEdit?: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void; workspacePath?: string; tabId?: string; onAsk?: (message: string) => void | Promise<unknown> }) {
+  return <div><CrewAccessPage projectId={projectId} sessionId={sessionId} onFullScreen={onFullScreen} onBack={onBack} workspacePath={workspacePath} tabId={tabId} onAsk={onAsk} /></div>
 }
 
-function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
+function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspacePath, tabId, onAsk }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void; workspacePath?: string; tabId?: string; onAsk?: (message: string) => void | Promise<unknown> }) {
   const team = useProjectTeam(projectId)
   // The last Access tab is remembered per Crew in this browser (owner, 5 Nov); an agent asking for its sharing still opens Team.
   const tabKey = `agentworks:crew-access-tab:${projectId}`
@@ -174,19 +179,22 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
     load()
     const timer = window.setInterval(load, 5000)
-    return () => { window.clearInterval(timer); abort.abort() }
+    window.addEventListener('agentworks:team-updated', load)
+    return () => { window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', load); abort.abort() }
   }, [projectId, reload])
+  // This app holds the Mac's controls only when the server says so (its own local backend); elsewhere they are text.
+  const here = status?.access_here === 'mac'
   const binding = status?.binding
   const online = binding?.editing === 'server'
   const moving = busyAction === 'server' || binding?.pending_action === 'server' || status?.place === 'moving'
   // Before moving online, the Mac says whether this Crew fits (the server decides the numbers).
   const [readiness, setReadiness] = useState<Readiness>()
   useEffect(() => {
-    if (online) return
+    if (online || !here) return
     const abort = new AbortController()
     void api.get<Readiness>(`/api/crew-sync/${encodeURIComponent(projectId)}/readiness`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setReadiness(data) }).catch(() => {})
     return () => abort.abort()
-  }, [projectId, online])
+  }, [projectId, online, here])
   const tooBig = !online && readiness?.fits === false
   const target = binding?.connection_id || publishConnection || (connections.length === 1 ? connections[0].id : '')
   // A network is named by its server's address, such as agents.example.com.
@@ -219,7 +227,8 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
   // Move online takes the whole page (owner, 3 Nov mockup): the step, then its progress, then done.
   const [doneSeen, setDoneSeen] = useState(false)
   const done = online && Boolean(moved) && !doneSeen
-  const step: MoveStep | '' = open === 'move' && !online ? 'confirm' : moving ? 'moving' : done ? 'done' : ''
+  // Publish's full-page steps run where the Mac's controls are (the Mac app).
+  const step: MoveStep | '' = !here ? '' : open === 'move' && !online ? 'confirm' : moving ? 'moving' : done ? 'done' : ''
   useEffect(() => { onFullScreen?.(step !== ''); return () => onFullScreen?.(false) }, [step, onFullScreen])
   // Esc goes back too, unless the person is typing or a dialog is open.
   useEffect(() => {
@@ -235,32 +244,41 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
   if (step) return <PublishCrewScreen step={step} name={name} facts={facts} tooBig={tooBig} status={status} backup={moved?.backup_path || status?.backup_path} error={error}
     onCancel={() => setOpen('')} onMove={() => void move(false)} onOpen={() => { setDoneSeen(true); if (link) window.open(link, '_blank', 'noopener,noreferrer') }} />
   const network = networkName(target) || 'your server'
-  const tabs = [
-    { id: 'mac', label: 'Mac online', detail: 'you, from anywhere', tone: 'bg-background text-foreground shadow-sm ring-1 ring-border' },
-    { id: 'publish', label: 'Publish', detail: 'agents on the server', tone: 'bg-background text-foreground shadow-sm ring-1 ring-border' },
-    { id: 'team', label: 'Team', detail: 'work with people', tone: 'bg-background text-foreground shadow-sm ring-1 ring-border' },
-  ] as const
-  const needsServer = !connections.length && !online
+  const tone = 'bg-background text-foreground shadow-sm ring-1 ring-border'
+  const tabs = (status?.access_tabs || []).map(item => ({ ...item, tone }))
+  // A tab the server does not list for this person (a teammate has the Team tab only) falls back to its first one.
+  const shown: CrewAccessSection | undefined = tabs.some(item => item.id === section) ? section : tabs[0]?.id
+  const needsServer = here && !connections.length && !online
+  if (!status) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
+  if (status.access_view === 'summary') return <p className="text-sm text-muted-foreground">{status.access_summary}</p>
+  // A row only the Mac can change, as the server words it here.
+  const macText = (text?: AccessText) => text ? <div className="space-y-1.5 px-1"><MacDataLine>{text.line}</MacDataLine>{text.note && <p className="text-xs text-muted-foreground">{text.note}</p>}</div> : null
   const serverCopies = [...(status?.on_server || []), ...(team.team?.server_data ? [{ name: `Shared with the team: ${team.team.server_data.name}`, detail: 'kept on the server so your team can sync it' }] : [])]
   return <div className="space-y-3.5 text-sm">
     {/* No title row (owner, 4 Nov): a small back arrow beside the tabs, and Esc, return to the workspace. */}
     <div className="flex items-stretch gap-2">
     {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
-    <div role="tablist" aria-label="Crew access" className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-xl border border-border bg-muted/30 p-1">
-      {tabs.map((item, index) => <button key={item.id} type="button" role="tab" id={`crew-access-${projectId}-${item.id}`} aria-controls={`crew-access-panel-${projectId}-${item.id}`} aria-selected={section === item.id} tabIndex={section === item.id ? 0 : -1}
+    {tabs.length > 1 && <div role="tablist" aria-label="Crew access" className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-xl border border-border bg-muted/30 p-1">
+      {tabs.map((item, index) => <button key={item.id} type="button" role="tab" id={`crew-access-${projectId}-${item.id}`} aria-controls={`crew-access-panel-${projectId}-${item.id}`} aria-selected={shown === item.id} tabIndex={shown === item.id ? 0 : -1}
         onClick={() => setSection(item.id)} onKeyDown={event => {
           const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1
           if (next < 0) return
           event.preventDefault(); setSection(tabs[next].id); document.getElementById(`crew-access-${projectId}-${tabs[next].id}`)?.focus()
-        }} className={`min-w-0 rounded-lg px-2 py-2 text-center ${section === item.id ? item.tone : 'text-muted-foreground hover:bg-muted'}`}>
+        }} className={`min-w-0 rounded-lg px-2 py-2 text-center ${shown === item.id ? item.tone : 'text-muted-foreground hover:bg-muted'}`}>
         <span className="block font-semibold">{item.label}</span><span className="mt-0.5 block text-[11px]">{item.detail}</span>
       </button>)}
-    </div>
+    </div>}
     </div>
     {/* No server connected yet (owner, 4 Nov): one sign-in card here, so the person never leaves Access; the tabs show
         their content once the connection exists. Browser approval stays the person's own step. */}
     {needsServer && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
-    {!needsServer && section === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
+    {!here && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">{macText(status.access_mac)}</section>}
+    {!here && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
+      {macText(status.access_publish)}
+      {(status.on_server || []).map(copy => <p key={copy.name} className="px-1 text-xs"><span className="font-medium">{copy.name}</span> <span className="text-muted-foreground">· {copy.detail}</span></p>)}
+    </section>}
+    {!here && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3"><TeamTab projectId={projectId} /></section>}
+    {here && !needsServer && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
       {binding?.connection_id && !online
         ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} network={network} copies={serverCopies} onTeam={() => setSection('team')} />
         : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
@@ -290,7 +308,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
         {!binding && !online && <p className="mt-1 text-xs text-muted-foreground">Turn on Use from phone and web to connect your other apps.</p>}
       </div>
     </section>}
-    {!needsServer && section === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
+    {here && !needsServer && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
       {!binding && connections.length > 1 && <label className="block space-y-1 text-xs">Server<select className="block w-full rounded-lg border border-border bg-background p-2 text-sm" value={publishConnection} onChange={event => setPublishConnection(event.target.value)}><option value="">Choose a server</option>{connections.map(item => <option key={item.id} value={item.id}>{networkName(item.id)}</option>)}</select></label>}
       <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-sky-500/25 p-3">
         <div className="min-w-0 flex-1 basis-48"><p className="font-semibold">Whole Crew</p>
@@ -301,7 +319,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
       </div>
       {!online && binding?.connection_id && <CrewPublishAgent key={projectId} projectId={projectId} connection={binding.connection_id} serverLink={link} serverName={network} reportedPlacements={status?.placements} />}
     </section>}
-    {!needsServer && section === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
+    {here && !needsServer && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
       {binding && !online && binding.connection_id ? <TeamTab projectId={projectId} connection={binding.connection_id}
         macSwitch={<Switch aria-label="Mac online" checked disabled={busy} onCheckedChange={on => { if (!on) void run('offline') }} />} /> : online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Open Team on the server</Button> : <TeamOffline onTurnOn={async () => {
           // Team on also turns Mac online on (owner, 5 Nov); with several networks the person picks one there first.
@@ -312,6 +330,8 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
           finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId); team.refresh() }
         }} busy={busy} />}
     </section>}
+    {status.access_laptop && <LaptopCard sessionId={sessionId} />}
+    {status.access_share && workspacePath && tabId && onAsk && <section aria-label="Who can use it"><h3 className="mb-2 text-xs font-medium text-muted-foreground">Who can use it</h3><ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
   </div>
 }

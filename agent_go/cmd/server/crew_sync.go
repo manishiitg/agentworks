@@ -93,6 +93,14 @@ type crewSyncReply struct {
 	InboxID string `json:"inbox_id,omitempty"`
 	// TeamNote: Mac online off also turned the Team off (owner, 5 Nov).
 	TeamNote string `json:"team_note,omitempty"`
+	// The Access page's shape (crew_access_page.go): whether this app holds the Mac's controls ("mac"), its tabs,
+	// the Mac-only rows as text elsewhere, and its Who can use it and laptop access sections.
+	AccessHere    string          `json:"access_here,omitempty"`
+	AccessTabs    []crewAccessTab `json:"access_tabs,omitempty"`
+	AccessMac     *crewAccessText `json:"access_mac,omitempty"`
+	AccessPublish *crewAccessText `json:"access_publish,omitempty"`
+	AccessShare   bool            `json:"access_share,omitempty"`
+	AccessLaptop  bool            `json:"access_laptop,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -240,8 +248,10 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 			// The side panel's Access row gets the same short tree as the owner (owner, 5 Nov: a long one-line summary was
 			// cut off), written for the member.
 			b, _ := crewroot.ReadSync(project)
-			externalJSON(w, crewSyncReply{ProjectID: project, Place: "online", Role: "member", AccessView: "team", AccessSummary: crewMemberAccessSummary(t),
-				AccessTree: api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), project, b), Where: crewTeamWhereFor(project, caller)})
+			reply := crewSyncReply{ProjectID: project, Place: "online", Role: "member", AccessView: "team", AccessSummary: crewMemberAccessSummary(t),
+				AccessTree: api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), project, b), Where: crewTeamWhereFor(project, caller)}
+			crewAccessPage(&reply)
+			externalJSON(w, reply)
 			return
 		}
 	}
@@ -286,6 +296,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		if IsLocalMode() {
 			out.Asking = api.recentMacAsks(out.ProjectID)
 		}
+		crewAccessPage(&out)
 	}
 	externalJSON(w, out)
 }
