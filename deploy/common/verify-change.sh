@@ -131,12 +131,13 @@ if [[ "$go_needed" == true ]]; then
   existing=""
   for pkg in $pkgs; do [[ -d "$pkg" ]] && existing="$existing $pkg"; done
   [[ -z "$existing" ]] || run "go vet$existing" go vet $existing
-  if grep -E '^agent_go/' "$WORK/changed.txt" | grep -qvE '^agent_go/cmd/server/'; then
+  # The laptop CLI also builds shared workspace packages (crewroot and others), so a change there builds it too.
+  if grep -E '^(agent_go|workspace)/' "$WORK/changed.txt" | grep -qvE '^agent_go/cmd/server/'; then
     for arch in arm64 amd64; do
       run "macOS CLI build and vet ($arch)" env GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 bash -c 'go build -o /dev/null ./cmd/agentworks && go vet ./cmd/agentworks ./pkg/agentworksclient'
     done
   else
-    echo "macOS CLI skipped: nothing outside agent_go/cmd/server changed (the laptop CLI does not import it)."
+    echo "macOS CLI skipped: nothing outside agent_go/cmd/server changed in agent_go or workspace (the laptop CLI does not import it)."
   fi
   while IFS= read -r file; do
     [[ -n "$file" ]] || continue
