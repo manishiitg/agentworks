@@ -290,6 +290,18 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 	}
 	receipt := crewTeamReceipt{TransferID: transfer, Digest: digest, Revision: state.Revision + 1, Conflicts: []string{}}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	// A write that fails part way keeps the record in step with the files already written (review 5 Nov #10): what
+	// went in is saved as this revision without a receipt, so the retry applies only the rest.
+	applied := 0
+	partial := func(e error) (crewTeamReceipt, error) {
+		if applied > 0 {
+			state.Revision = receipt.Revision
+			if saveErr := fsutil.WriteJSONAtomic(filepath.Join(dir, "files.json"), state, 0600); saveErr != nil {
+				log.Printf("[CREW_TEAM] project=%s event=partial_commit_unsaved reason=%q", project, saveErr)
+			}
+		}
+		return receipt, e
+	}
 	for _, c := range crewTeamOrderedChanges(changes) {
 		current := state.Versions[c.Path]
 		var after *crewsync.File
@@ -323,13 +335,10 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 		}
 		if currentHash != c.Before {
 			kind = "clash"
-			state.Clashes = append(state.Clashes, crewTeamClash{Path: c.Path, WinningRevision: receipt.Revision, LosingRevision: current.Revision, WinningAuthor: actor, LosingAuthor: current.Author})
-			receipt.Conflicts = append(receipt.Conflicts, c.Path)
 		}
-		state.Events = append(state.Events, crewTeamEvent{Path: c.Path, Kind: kind, Revision: receipt.Revision, Actor: actor, At: now, File: after, Chunks: chunks})
 		if after == nil {
 			if e = removeCrewTeamFile(root, c.Path); e != nil {
-				return receipt, e
+				return partial(e)
 			}
 		} else {
 			reader, writer := io.Pipe()
@@ -337,10 +346,16 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 			e = writeCrewTeamFile(ctx, root, c.Path, reader, *after, op)
 			reader.Close()
 			if e != nil {
-				return receipt, e
+				return partial(e)
 			}
 		}
+		if kind == "clash" {
+			state.Clashes = append(state.Clashes, crewTeamClash{Path: c.Path, WinningRevision: receipt.Revision, LosingRevision: current.Revision, WinningAuthor: actor, LosingAuthor: current.Author})
+			receipt.Conflicts = append(receipt.Conflicts, c.Path)
+		}
+		state.Events = append(state.Events, crewTeamEvent{Path: c.Path, Kind: kind, Revision: receipt.Revision, Actor: actor, At: now, File: after, Chunks: chunks})
 		state.Versions[c.Path] = crewTeamVersion{File: after, Chunks: chunks, Revision: receipt.Revision, Author: actor, ModifiedAt: now}
+		applied++
 	}
 	state.Revision = receipt.Revision
 	state.Receipts[receiptKey] = receipt

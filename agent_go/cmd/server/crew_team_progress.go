@@ -34,6 +34,22 @@ func startCrewTeamRound(ctx context.Context, dir, project, direction string, fil
 	return context.WithValue(ctx, crewTeamRoundKey{}, dir)
 }
 
+// crewTeamRoundTotal sets how many bytes this round moves, once that is known (an upload asks the server first).
+func crewTeamRoundTotal(ctx context.Context, total int64) {
+	dir, _ := ctx.Value(crewTeamRoundKey{}).(string)
+	if dir == "" {
+		return
+	}
+	crewTeamRoundsMu.Lock()
+	defer crewTeamRoundsMu.Unlock()
+	if v, ok := crewTeamRounds.Load(dir); ok {
+		round := *v.(*crewTeamRound)
+		round.BytesTotal = total
+		crewTeamRounds.Store(dir, &round)
+		publishCrewPanelRoundChanged(dir)
+	}
+}
+
 func crewTeamRoundBytes(ctx context.Context, done int64) {
 	dir, _ := ctx.Value(crewTeamRoundKey{}).(string)
 	if dir == "" {
