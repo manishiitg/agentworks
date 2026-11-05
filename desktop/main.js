@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, nativeTheme, Menu, Tray, ipcMain, nativeImage, session } = require('electron');
+const { app, BrowserWindow, dialog, shell, nativeTheme, Menu, Tray, ipcMain, nativeImage, session, Notification } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
@@ -14,6 +14,7 @@ const {
   installSignalShutdown,
   spawnServer,
 } = require('./lib');
+const { localPorts, vaultState, vaultEnv, startVault } = require('./lib/vault');
 
 // Keep the historical data path while presenting the AgentWorks name to macOS.
 // Changing userData would make existing installs appear empty after the rename.
@@ -46,6 +47,8 @@ ipcMain.on('dismiss-walkthrough', (_event, key) => {
 // Dynamic ports (assigned at runtime)
 let dynamicAgentPort = 0;
 let dynamicWorkspacePort = 0;
+let dynamicVaultPort = 0;
+let plannedAgentPort = 0;
 const workspaceApiToken = crypto.randomBytes(32).toString('hex');
 let desktopConnectionsInstalled = false;
 let desktopAgentReady = false;
@@ -103,6 +106,7 @@ const AGENT_PROMPT_LOG_MAX_SESSIONS = parseNonNegativeIntegerEnv(
 
 let workspaceProcess = null;
 let agentProcess = null;
+let vaultProcess = null;
 // PLAT-856-502: a local server that stops on its own is restarted, a few times at most.
 let appQuitting = false;
 let localServerRestarts = [];
@@ -538,6 +542,7 @@ function restartServers() {
     const userDataPath = app.getPath('userData');
     startAgentPromptLogPruning(userDataPath);
     const started = process.env.AGENTWORKS_DEV_AGENT_BINARY ? spawnDevelopmentAgent() : spawnWorkspace(userDataPath)
+      .then(() => spawnVault(userDataPath))
       .then(() => spawnAgent(userDataPath))
       .then(() => {
         const agentHealthUrl = `http://127.0.0.1:${dynamicAgentPort}/api/health`;
@@ -1060,6 +1065,41 @@ function spawnWorkspace(userDataPath) {
   });
 }
 
+// Every Mac runs its own Vault (owner, 5 Nov). The agent and Vault keep the
+// ports they used last time; when one is busy a free one is saved instead and
+// the person is told that an app signed in through Vault may need signing in again.
+async function spawnVault(userDataPath) {
+  const bin = getBinaryPath('agentworks-vault');
+  if (!fs.existsSync(bin)) {
+    throw new Error(`Vault binary not found at ${bin}. Run desktop/dev-setup.sh to build it.`);
+  }
+  const settings = loadSettings();
+  const ports = await localPorts(settings.localPorts);
+  if (settings.localPorts?.agent !== ports.agent || settings.localPorts?.vault !== ports.vault) {
+    saveSettings({ ...settings, localPorts: { agent: ports.agent, vault: ports.vault } });
+  }
+  if (ports.moved) {
+    diagLog(`[main] local ports moved: agent ${ports.agent}, vault ${ports.vault}`);
+    if (Notification.isSupported()) {
+      new Notification({ title: 'AgentWorks', body: 'The usual address on this Mac was busy, so AgentWorks moved. If an app you connected in Vault stops working, connect it again there.' }).show();
+    }
+  }
+  plannedAgentPort = ports.agent;
+  const state = vaultState(process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'));
+  const env = vaultEnv({
+    inherited: process.env, port: ports.vault, agentPort: ports.agent, stateDir: state.dir, tokenFile: state.tokenFile,
+    docsDir: process.env.RUNLOOP_DOCS_DIR || path.join(userDataPath, 'workspace-docs'),
+  });
+  let started = null;
+  started = await startVault({
+    bin, env, log: createBoundedLogWriter(path.join(userDataPath, 'logs', 'vault.log')),
+    onExit: (code, signal) => handleLocalServerExit('vault', started, code, signal),
+  });
+  vaultProcess = started;
+  dynamicVaultPort = ports.vault;
+  console.log(`[main] Vault started on port: ${dynamicVaultPort}`);
+}
+
 async function spawnDevelopmentAgent() {
   const { startDevelopmentAgent } = require('./lib/devAgent');
   developmentAuthSecret ??= fs.readFileSync(0, 'utf8').trim();
@@ -1214,7 +1254,7 @@ function spawnAgent(userDataPath) {
 
     let started = null;
     spawnServer({
-      name: 'agent', bin, args, preferredPort: 45678, cwd,
+      name: 'agent', bin, args, preferredPort: plannedAgentPort || 45678, cwd,
       bootstrap: port => ({ secret: desktopConnectionSecret, host: `127.0.0.1:${port}`, auth_secret: env.AUTH_SECRET }),
       env: (port) => ({
         ...withoutDesktopBootstrap(env),
@@ -1244,6 +1284,7 @@ function waitForHealth(agentUrl, workspaceUrl) {
     checks: [
       { name: 'agent (port ' + dynamicAgentPort + ')', url: agentUrl },
       { name: 'workspace (port ' + dynamicWorkspacePort + ')', url: workspaceUrl },
+      ...(dynamicVaultPort ? [{ name: 'Vault (port ' + dynamicVaultPort + ')', url: `http://127.0.0.1:${dynamicVaultPort}/healthz` }] : []),
     ],
     timeoutMs: HEALTH_TIMEOUT_MS,
     pollMs: HEALTH_POLL_MS,
@@ -1596,6 +1637,13 @@ function killChildren() {
     } catch (_) {}
     agentProcess = null;
   }
+  if (vaultProcess) {
+    try {
+      vaultProcess.kill('SIGTERM');
+    } catch (_) {}
+    vaultProcess = null;
+  }
+  dynamicVaultPort = 0;
   if (agentPromptLogPruneInterval) {
     clearInterval(agentPromptLogPruneInterval);
     agentPromptLogPruneInterval = null;
@@ -1606,9 +1654,9 @@ function killChildren() {
 // current one, so only a server that stopped on its own is restarted. Without
 // this, a crash left the window blank until the person quit and reopened.
 function handleLocalServerExit(name, child, code, signal) {
-  const current = name === 'agent' ? agentProcess : workspaceProcess;
+  const current = { agent: agentProcess, vault: vaultProcess, workspace: workspaceProcess }[name];
   if (!child || appQuitting || current !== child) return;
-  if (name === 'agent') agentProcess = null; else workspaceProcess = null;
+  if (name === 'agent') agentProcess = null; else if (name === 'vault') vaultProcess = null; else workspaceProcess = null;
   desktopAgentReady = false;
   const now = Date.now();
   localServerRestarts = localServerRestarts.filter(t => now - t < 10 * 60 * 1000);
@@ -1814,6 +1862,7 @@ app.whenReady().then(async () => {
     startAgentPromptLogPruning(userDataPath);
     console.log('[main] Spawning local servers...');
     await spawnWorkspace(userDataPath);
+    await spawnVault(userDataPath);
     await spawnAgent(userDataPath);
   } catch (err) {
     showErrorAndExit(err.message || String(err));
