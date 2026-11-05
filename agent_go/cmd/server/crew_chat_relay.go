@@ -201,6 +201,10 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		}
 		if call.Operation == "send" {
 			crewAlwaysOnLog(project, tab, "answered_on_server", "owner_chat", started)
+			// The chat handler that called this releases the flight once the turn is admitted (else it expires).
+			if holder, ok := r.Context().Value(crewStandbyFlightHolderKey{}).(*crewStandbyFlightHolder); ok {
+				holder.project, holder.tab = project, tab
+			}
 		}
 		return true
 	}
