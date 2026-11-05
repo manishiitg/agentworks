@@ -47,6 +47,8 @@ type crewAccessFacts struct {
 	LocalError  string
 	HasLocal    bool
 	Viewer      string
+	// ServerCrew: a Crew that lives on the server (not a Mac Crew or its online copy): it has no Mac line.
+	ServerCrew bool
 	// Where the viewer's own agents work, when they are a Team member: "mac" or "web" (crew_team_where.go).
 	Where string
 }
@@ -54,20 +56,23 @@ type crewAccessFacts struct {
 func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	lines := []crewAccessLine{}
 	teamOn := f.TeamKnown && f.Team != nil && f.Team.On
-	if f.MacOnline {
+	switch {
+	case f.ServerCrew:
+		// A Crew on the server has no Mac (owner, 5 Nov): its tree starts with the Team.
+	case f.MacOnline:
 		detail := "Web, phone and AI apps"
 		if teamOn {
 			detail += " · Team uses it"
 		}
 		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Mac online", Detail: detail})
-	} else {
+	default:
 		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Mac online off", Detail: "Turn on to use it from the web, phone or a team"})
 	}
 	if !f.TeamKnown {
 		return append(lines, crewAccessPublicLine(f.Agents)...)
 	}
 	if !teamOn {
-		if f.MacOnline {
+		if f.MacOnline || f.ServerCrew {
 			lines = append(lines, crewAccessLine{Kind: "team", Title: "Team off", Detail: "Turn on to work on this Crew with people"})
 		}
 		return append(lines, crewAccessPublicLine(f.Agents)...)
@@ -205,6 +210,7 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 	if !IsLocalMode() {
 		// The website: this server holds the Team and the shared folder of the Crew's online copy.
 		f.MacOnline = b != nil && b.Mode == "relay"
+		f.ServerCrew = !crewRelayTwin(project)
 		f.TeamKnown = true // no Team record means the Team is off
 		if t, err := readCrewTeam(project); err == nil {
 			f.Team = &t
