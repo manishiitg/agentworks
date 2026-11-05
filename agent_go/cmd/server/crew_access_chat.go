@@ -112,6 +112,9 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 	if _, _, err = api.pushMacSharedAgents(ctx, claims, project, binding, connection, rows, next); err != nil {
 		return "", err
 	}
+	if action == "share" || action == "unshare" {
+		noteMainChoice(project, next)
+	}
 	return api.crewAccessChatAction(ctx, project, "agents", nil)
 }
 

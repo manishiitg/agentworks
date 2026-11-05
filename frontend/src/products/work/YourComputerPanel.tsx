@@ -25,7 +25,7 @@ import { useTeamCopyStatus } from './TeamWhenMacOff'
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 // Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
 // and, when it finished, where the Mac folder is kept.
-type MoveReport = { phase?: MovePhase; place?: CloudState; bytes_done?: number; bytes_total?: number; schedules_paused?: boolean; message?: string; backup_path?: string; local_folder_kept?: string }
+type MoveReport = { phase?: MovePhase; place?: CloudState; bytes_done?: number; bytes_total?: number; schedules_paused?: boolean; message?: string; backup_path?: string; local_folder_kept?: string; team_note?: string }
 // What of this Crew the server keeps (owner, 4 Nov "Where your data is"): the server lists it by name, e.g. an agent's
 // always-online copy or a team's shared folder; empty while everything stays on this Mac.
 type ServerCopy = { name: string; detail: string }
@@ -223,6 +223,9 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
     try {
       const reply = await desktopRequest<MoveReport>(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
       if (action === 'server' && reply?.place === 'online') setMoved(reply)
+      // Mac online off also turned the Team off (the server says so, owner 5 Nov).
+      if (reply?.team_note) setError(reply.team_note)
+      if (action !== 'server') team.refresh()
       return true
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It did not finish. Your work is kept.'); return false }
@@ -288,7 +291,7 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
         : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
       <div className="px-0.5">
         {status && !online && !moving && <label className="flex items-center justify-between gap-3 py-2.5">
-          <span><span className="font-semibold">You</span> <span className="text-[12.5px] text-muted-foreground">· from anywhere while your Mac is on</span></span>
+          <span><span className="font-semibold">You</span> <span className="text-[12.5px] text-muted-foreground">· from anywhere while your Mac is on{team.team?.on ? ' · Team uses it' : ''}</span></span>
           <Switch aria-label="Use from phone and web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
         </label>}
         {asking && !binding && <div role="group" aria-label="Which network?" className="space-y-1.5 border-t border-border py-3">
@@ -327,7 +330,14 @@ function WhereItLivesCard({ projectId, sessionId, onFullScreen, onBack }: { proj
       <p className="text-[12.5px] text-muted-foreground">Use it for things that should keep running: a workflow, a daily report, a watcher.</p>
     </section>}
     {!needsServer && section === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      {binding && !online && binding.connection_id ? <CrewTeamTab projectId={projectId} connection={binding.connection_id} network={networkName(binding.connection_id)} /> : online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Open Team on the server</Button> : <p className="text-[13px] text-muted-foreground">Connect this Crew to a server from <button type="button" className="text-primary underline" onClick={() => setSection('mac')}>Mac online</button> first.</p>}
+      {binding && !online && binding.connection_id ? <CrewTeamTab projectId={projectId} connection={binding.connection_id} network={networkName(binding.connection_id)} /> : online ? <Button className="rounded-full" size="sm" variant="outline" disabled={!link} onClick={() => window.open(`${link}?view=share`, '_blank', 'noopener,noreferrer')}>Open Team on the server</Button> : <TeamOffline onTurnOn={async () => {
+          // Team on also turns Mac online on (owner, 5 Nov); with several networks the person picks one there first.
+          if (!target) { setSection('mac'); setAsking(true); return }
+          setBusy(true); setError('')
+          try { await desktopRequest(`/${encodeURIComponent(target)}/crew-teams/${encodeURIComponent(projectId)}/switch`, 'POST', { on: true }); window.dispatchEvent(new CustomEvent('agentworks:team-updated')) }
+          catch (cause) { setError(cause instanceof Error ? cause.message : 'The Team could not be turned on. Try again.') }
+          finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId); team.refresh() }
+        }} busy={busy} />}
     </section>}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
   </div>
@@ -337,6 +347,14 @@ const allOnMac = (network: string) => `Everything is on this Mac. Use it from yo
 function MacDataLine({ children }: { children: ReactNode }) {
   return <p className="px-1 text-[13px] text-muted-foreground">{children}</p>
 }
+/** The Team tab while Mac online is off: one switch; turning it on turns Mac online on too (the server does both). */
+function TeamOffline({ onTurnOn, busy }: { onTurnOn: () => void; busy: boolean }) {
+  return <label className="flex items-center justify-between gap-3 px-0.5 py-2.5 text-sm">
+    <span><span className="font-semibold">Team</span> <span className="text-[12.5px] text-muted-foreground">· off · turning it on also turns on Mac online</span></span>
+    <Switch aria-label="Team" checked={false} disabled={busy} onCheckedChange={on => { if (on) onTurnOn() }} />
+  </label>
+}
+
 // The Mac online line speaks only about the Mac (owner, 4 Nov: keep the tabs' ideas apart). When the server keeps
 // something for Team or Publish, one link says so and the Team tab lists it.
 function MacOnlineDataLine({ projectId, connection, network, copies, onTeam }: { projectId: string; connection: string; network: string; copies: ServerCopy[]; onTeam: () => void }) {

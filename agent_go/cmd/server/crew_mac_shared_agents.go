@@ -512,8 +512,20 @@ func (api *StreamingAPI) macAgentRows(ctx context.Context, claims *UserClaims, p
 	if err != nil {
 		return nil, err
 	}
-	// Main first: the owner decides which agents to share, Main included (owner, 3 Nov).
-	rows := []macAgentRow{{Tab: macMainTab, Name: "Main", Purpose: main.Purpose, Icon: main.Icon}}
+	// Main first: the owner decides which agents to share, Main included (owner, 3 Nov). Main is In team by default
+	// (owner, 5 Nov), so it never waits for a purpose or icon: the Crew's name and its first letter stand in.
+	purpose, icon := strings.TrimSpace(main.Purpose), strings.TrimSpace(main.Icon)
+	if purpose == "" || icon == "" {
+		name := "Main"
+		if _, manifest, ok := api.resolveExternalWorkspace(ctx, claims, project); ok {
+			name = firstNonEmptyTrimmed(manifest.displayTitle(), name)
+		}
+		purpose = firstNonEmptyTrimmed(purpose, name)
+		if icon == "" {
+			icon = strings.ToUpper(string([]rune(name)[:1]))
+		}
+	}
+	rows := []macAgentRow{{Tab: macMainTab, Name: "Main", Purpose: purpose, Icon: icon}}
 	for _, tab := range tabs {
 		if _, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker); ok {
 			rows = append(rows, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose, Icon: tab.Icon})
@@ -570,10 +582,16 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 			externalError(w, status, code, err.Error())
 			return
 		}
-	} else if macSharedPurposesStale(rows, readMacSharedAgents(project)) && binding != nil && binding.Mode == "relay" {
-		// A purpose changed in its tab since it was shared: the online copy gets the new line too.
-		if _, _, err := api.pushMacSharedAgents(r.Context(), claims, project, binding, connection, rows, readMacSharedAgents(project)); err != nil {
-			log.Printf("[CREW_SHARED_AGENT] local project=%s purpose refresh failed: %v", project, err)
+		noteMainChoice(project, agents) // the owner's own choice: Main Only me is kept from now on
+	} else if binding != nil && binding.Mode == "relay" {
+		// A purpose changed in its tab since it was shared, or Main joins the Team by default: the online copy follows.
+		next, mainJoined := withTeamMain(project, readMacSharedAgents(project))
+		if mainJoined || macSharedPurposesStale(rows, next) {
+			if _, _, err := api.pushMacSharedAgents(r.Context(), claims, project, binding, connection, rows, next); err != nil {
+				log.Printf("[CREW_SHARED_AGENT] local project=%s refresh failed: %v", project, err)
+			} else if mainJoined {
+				log.Printf("[CREW_TEAM] local project=%s event=main_in_team_by_default", project)
+			}
 		}
 	}
 	// Where each agent answers (856-523): a published agent is on the server; any other is on this Mac.
@@ -596,7 +614,7 @@ func macSharedPurposesStale(rows []macAgentRow, agents []macSharedAgent) bool {
 // refreshMacSharedPurposes follows a purpose change of a shared agent on this Mac to its online copy.
 func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project string) {
 	all := readCrewTeamAll(project)
-	if !IsLocalMode() || len(readMacSharedAgents(project)) == 0 && !all {
+	if !IsLocalMode() || len(readMacSharedAgents(project)) == 0 && !all && !readCrewTeamState(project).TeamOn {
 		return
 	}
 	claims, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
@@ -607,10 +625,14 @@ func (api *StreamingAPI) refreshMacSharedPurposes(ctx context.Context, project s
 	if err != nil {
 		return
 	}
-	// "All agents in team": an agent that just got its purpose and icon joins the team (crew_team_all.go).
+	// "All agents in team": an agent that just got its purpose and icon joins the team (crew_team_all.go); Main is In
+	// team by default while the Team is on.
 	next, added := readMacSharedAgents(project), []string(nil)
 	if all {
-		next, added = withAllInTeam(rows, next)
+		next, added = withAllInTeam(rows, next, readCrewTeamState(project).MainOnlyMe)
+	}
+	if withMain, joined := withTeamMain(project, next); joined {
+		next, added = withMain, append(added, "Main")
 	}
 	if len(added) == 0 && !macSharedPurposesStale(rows, next) {
 		return

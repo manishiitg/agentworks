@@ -435,3 +435,36 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatalf("a removed member's server copy stayed: %v", err)
 	}
 }
+
+// Owner, 5 Nov: a Mac Crew's Team survives Mac online off and on. It moves to the new online copy only from a copy that
+// is gone, only for its own owner, and never over a Team the new copy already has.
+func TestCrewTeamMovesToNewOnlineCopyOnlyFromAGoneCopy(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	for _, id := range []string{"new-copy", "live-copy"} {
+		if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: id, OwnerID: "owner", ProjectID: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	team := func(project, owner string) crewTeam {
+		return crewTeam{ProjectID: project, OwnerID: owner, On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Path: "team"}}
+	}
+	for _, t0 := range []crewTeam{team("gone-copy", "owner"), team("live-copy", "owner"), team("someone-else", "other")} {
+		if err := writeCrewTeam(t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	moveCrewTeamToTwin("owner", "live-copy", "new-copy") // the old copy still exists: not moved
+	moveCrewTeamToTwin("owner", "someone-else", "new-copy")
+	if _, err := readCrewTeam("new-copy"); err == nil {
+		t.Fatal("a Team moved from a live copy or from another owner's")
+	}
+	moveCrewTeamToTwin("owner", "gone-copy", "new-copy")
+	moved, err := readCrewTeam("new-copy")
+	if err != nil || moved.On || len(moved.People) != 1 || moved.People[0].Invited || moved.Folder.ID != "f1" {
+		t.Fatalf("moved Team: %+v %v", moved, err)
+	}
+	if _, err := readCrewTeam("gone-copy"); err == nil {
+		t.Fatal("the old Team record stayed behind")
+	}
+}

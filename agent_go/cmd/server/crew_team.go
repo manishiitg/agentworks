@@ -581,6 +581,10 @@ func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Reque
 		externalError(w, 409, "team_unavailable", e.Error())
 		return
 	}
+	// This Mac remembers whether the Team is on, for Main In team by default (crew_team_all.go).
+	if err := writeCrewTeamState(roots.ID, func(s *crewTeamLocalState) { s.TeamOn = out.On }); err != nil {
+		log.Printf("[CREW_TEAM] local project=%s team state not saved: %v", roots.ID, err)
+	}
 	externalJSON(w, out)
 }
 
@@ -637,4 +641,36 @@ func crewTeamRequestAuthorize(r *http.Request, claims *UserClaims, project, rel 
 		return crewTeam{}, fmt.Errorf("the shared folder changed; reopen it before continuing")
 	}
 	return t, nil
+}
+
+// moveCrewTeamToTwin moves a Mac Crew's Team from its previous online copy to the new one when Mac online is turned on
+// again (owner, 5 Nov: people and the shared folder survive Mac online off and on). Only the Team's own owner moves it,
+// only from a copy that no longer exists, and never over a Team the new copy already has. It stays off; the owner turns
+// it on again.
+func moveCrewTeamToTwin(owner, previous, created string) {
+	old, err := readCrewTeam(previous)
+	if err != nil || old.OwnerID != owner || ownerOfCrewProjectID(previous) != "" || ownerOfCrewProjectID(created) != owner {
+		return
+	}
+	from, err := crewTeamDir(previous)
+	if err != nil {
+		return
+	}
+	to, err := crewTeamDir(created)
+	if err != nil {
+		return
+	}
+	if _, err = os.Lstat(to); !os.IsNotExist(err) {
+		return
+	}
+	if err = os.Rename(from, to); err != nil {
+		log.Printf("[CREW_TEAM] project=%s event=moved_failed from=%s reason=%q", created, previous, err)
+		return
+	}
+	old.ProjectID, old.On = created, false
+	if err = writeCrewTeam(old); err != nil {
+		log.Printf("[CREW_TEAM] project=%s event=moved_failed from=%s reason=%q", created, previous, err)
+		return
+	}
+	log.Printf("[CREW_TEAM] project=%s event=moved from=%s people=%d folder=%q", created, previous, len(old.People), old.Folder.Path)
 }
