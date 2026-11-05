@@ -1,6 +1,6 @@
 import { YourComputerPanel } from './YourComputerPanel'
 import { useMacCrew } from './useMacCrew'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Server } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ProjectIntegrationPanel, INTEGRATION_LABELS, type ProjectSecretControls, type IntegrationSection } from '../../components/integrations/ProjectIntegrationPanel'
@@ -21,6 +21,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { integrationProductAvailable } from '../../components/integrations/integrationSections'
 import { isLocalDeployment } from '../productSurfaceConfig'
 import { ComputerUsePanel } from './ComputerUsePanel'
+import { TeamMemberAccess } from './TeamMemberAccess'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'message-agents'
 
@@ -56,7 +57,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
     {tab !== 'access' && <WorkspaceViewHeader icon={Server} title={labels[tab]} />}
     <div data-ui-view-section={tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       <>
-        {tab === 'access' && <AccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} canEdit={canEdit} onAsk={draft} laptopForRun={<ProjectIntegrationPanel workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section="laptop" canEdit={false} onAsk={draft} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} />} />}
+        {tab === 'access' && <AccessPage projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} canEdit={canEdit} onAsk={draft} />}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
         {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
@@ -75,17 +76,16 @@ export function WorkIntegrationsPanel({ accessLoading = false, selectedSecrets =
   </div>
 }
 
-/** One Access page (owner, 3 Nov): where the Crew lives and who can use it. Its agents are the chat's tabs. */
-function AccessPage({ projectId, sessionId, workspacePath, tabId, canEdit, onAsk, laptopForRun }: { projectId: string; sessionId?: string; workspacePath: string; tabId: string; canEdit: boolean; onAsk: (message: string) => void | Promise<unknown>; laptopForRun: ReactNode }) {
+/** Members see their Team; the owner's computer controls stay with the owner. */
+function AccessPage(props: { projectId: string; sessionId?: string; workspacePath: string; tabId: string; canEdit: boolean; onAsk: (message: string) => void | Promise<unknown> }) {
+  return <TeamMemberAccess projectId={props.projectId}><OwnerAccessPage {...props} /></TeamMemberAccess>
+}
+
+function OwnerAccessPage({ projectId, sessionId, workspacePath, tabId, canEdit, onAsk }: { projectId: string; sessionId?: string; workspacePath: string; tabId: string; canEdit: boolean; onAsk: (message: string) => void | Promise<unknown> }) {
   const { livesOnMac } = useMacCrew(projectId, 15000)
-  const heading = (text: string) => <h3 className="mb-2 text-xs font-medium text-muted-foreground">{text}</h3>
-  // Move online takes the whole page while it is open (owner, 3 Nov).
   const [moveScreen, setMoveScreen] = useState(false)
   return <div className="max-w-2xl space-y-6">
-    <section aria-label="Where it lives">
-      {canEdit ? <YourComputerPanel projectId={projectId} sessionId={sessionId} canEdit={canEdit} onFullScreen={setMoveScreen} /> : laptopForRun}
-    </section>
-    {/* A Crew on this Mac shows Who can use it inside its Where it lives card. */}
-    {!livesOnMac && !moveScreen && <section aria-label="Who can use it">{heading('Who can use it')}<ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
+    {canEdit && <YourComputerPanel projectId={projectId} sessionId={sessionId} canEdit={canEdit} onFullScreen={setMoveScreen} />}
+    {!livesOnMac && !moveScreen && <section aria-label="Who can use it"><h3 className="mb-2 text-xs font-medium text-muted-foreground">Who can use it</h3><ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
   </div>
 }
