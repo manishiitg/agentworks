@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 )
 
 func gitPost(t *testing.T, user string, body map[string]any) (int, map[string]any) {
@@ -299,5 +301,52 @@ func TestWorkspaceGitBlame(t *testing.T) {
 	}
 	if code, _ := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"blame"}, "repo": {"app"}, "file": {"nope.txt"}}); code != http.StatusNotFound {
 		t.Fatalf("blame of an untracked file: %d", code)
+	}
+}
+
+// PLAT-856-544: real Git writes must wake the Crew summary, including changes
+// that bypass normal file writes. Refused writes must not publish a change.
+func TestCrewGitMutationsRefreshPanel(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	repo := filepath.Join(f.docs, externalCommandCrewRoot)
+	gitRun(t, repo, "init", "-q", "-b", "main")
+	writeFile(t, filepath.Join(repo, "tracked.txt"), "before")
+	gitRun(t, repo, "add", "tracked.txt")
+	gitRun(t, repo, "commit", "-q", "-m", "initial")
+	gitRun(t, repo, "branch", "review")
+	writeFile(t, filepath.Join(repo, "tracked.txt"), "after")
+	writeFile(t, filepath.Join(repo, "loose.txt"), "loose")
+	sub := livefeed.Default.Subscribe()
+	defer livefeed.Default.Unsubscribe(sub)
+	for _, body := range []map[string]any{
+		{"op": "stage", "files": []string{"tracked.txt"}},
+		{"op": "commit", "message": "changed"},
+		{"op": "checkout", "branch": "review"},
+		{"op": "discard", "files": []string{"loose.txt"}},
+	} {
+		body["workspace_path"] = externalCommandCrewRoot
+		body["repo"] = ""
+		code, out := gitPost(t, "owner", body)
+		if code != 200 {
+			t.Fatalf("%s: %d %v", body["op"], code, out)
+		}
+		notices, _ := sub.Drain()
+		found := false
+		for _, notice := range notices {
+			if notice.Kind == livefeed.CrewPanel && notice.Project == "team" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s left panel stale: %v", body["op"], notices)
+		}
+	}
+	code, _ := gitPost(t, "other", map[string]any{"workspace_path": externalCommandCrewRoot, "op": "commit", "message": "refused"})
+	if code != 403 {
+		t.Fatalf("expected permission refusal: %d", code)
+	}
+	if notices, _ := sub.Drain(); len(notices) != 0 {
+		t.Fatalf("refusal published a change: %v", notices)
 	}
 }

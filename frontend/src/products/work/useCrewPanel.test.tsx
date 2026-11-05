@@ -46,3 +46,25 @@ it('uses notices while live, faster fallback only while busy, and returns to not
   await act(async()=>vi.advanceTimersByTimeAsync(30_000));expect(mocks.get).toHaveBeenCalledTimes(before)
  }finally{await act(async()=>root.unmount())}
 })
+
+// PLAT-856-544: external Git edits have no server notice. Returning to the
+// window/tab must refresh even when the stream stayed healthy.
+it('refreshes on return after external edits without adding live polling',async()=>{
+ mocks.get.mockResolvedValue({data:panel()})
+ function Probe(){useCrewPanel('account','example','Crew/example');return null}
+ const root=createRoot(document.createElement('div'))
+ try {
+  await act(async()=>root.render(<Probe/>))
+  await act(async()=>window.dispatchEvent(new Event('focus')))
+  expect(mocks.get).toHaveBeenCalledTimes(2)
+  Object.defineProperty(document,'hidden',{configurable:true,value:true})
+  await act(async()=>document.dispatchEvent(new Event('visibilitychange')))
+  expect(mocks.get).toHaveBeenCalledTimes(2)
+  await act(async()=>vi.advanceTimersByTimeAsync(1000))
+  Object.defineProperty(document,'hidden',{configurable:true,value:false})
+  await act(async()=>document.dispatchEvent(new Event('visibilitychange')))
+  expect(mocks.get).toHaveBeenCalledTimes(3)
+  await act(async()=>vi.advanceTimersByTimeAsync(30_000))
+  expect(mocks.get).toHaveBeenCalledTimes(3)
+ }finally{await act(async()=>root.unmount())}
+})

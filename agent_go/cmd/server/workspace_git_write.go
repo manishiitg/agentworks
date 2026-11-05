@@ -236,11 +236,11 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 		return
 	}
 
-	serveWorkspaceGitAction(w, r, repoDir, req, claims)
+	serveWorkspaceGitAction(w, r, canonical, repoDir, req, claims)
 }
 
 // Shared action implementation; callers must authorize and select the repository.
-func serveWorkspaceGitAction(w http.ResponseWriter, r *http.Request, repoDir string, req workspaceGitActionRequest, claims *UserClaims) {
+func serveWorkspaceGitAction(w http.ResponseWriter, r *http.Request, canonical, repoDir string, req workspaceGitActionRequest, claims *UserClaims) {
 	if err := crewroot.CheckSyncWrite(workspaceGitDocsRoot(), repoDir); err != nil {
 		writeWorkspaceGitJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
@@ -481,6 +481,8 @@ func serveWorkspaceGitAction(w http.ResponseWriter, r *http.Request, repoDir str
 		return
 	}
 
+	// Git index/tree writes do not pass through the file-mutation hooks.
+	publishCrewPanelPathChanged(canonical)
 	repo, err := workspaceGitStatus(ctx, repoDir)
 	if err != nil {
 		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"ok": true})
