@@ -276,14 +276,14 @@ function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; v
       <AskButton projectId={projectId} card="agents" />
     </div>
     {view.can_all_mine && view.team.on && <label className="flex items-center gap-2 text-[13px]"><span className="flex-1 font-medium">All my agents in team</span><Switch aria-label="All my agents in team" checked={view.all_in_team} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>}
-    {view.can_all_mine && view.team.on && <p className="text-xs text-muted-foreground">Your new agents join too, unless you choose Only me. Main is always in team.</p>}
+    {view.can_all_mine && view.team.on && <p className="text-xs text-muted-foreground">{view.agents_line || 'Your new agents join too, unless you choose Only me. Main is always in team.'}</p>}
     {view.agents.map(agent => <div key={agent.key} className="border-t border-border pt-2">
     <div className="flex items-center gap-2 text-[13px]">
       <button type="button" aria-label={`${opened === agent.key ? 'Hide' : 'Show'} details for ${agent.name}`} aria-expanded={opened === agent.key} onClick={() => setOpened(opened === agent.key ? '' : agent.key)} className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground">
         <ChevronRight className={`h-3.5 w-3.5 transition-transform ${opened === agent.key ? 'rotate-90' : ''}`} />
       </button>
       <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b> <span className="text-muted-foreground">· {agent.detail}</span></span>
-      {agent.place === 'mac' && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">Mac</span>}
+      {(agent.place_label || agent.place === 'mac') && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${agent.place_server ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'bg-muted text-muted-foreground'}`}>{agent.place_label || 'Mac'}</span>}
       {agent.can_change
         ? <div role="radiogroup" aria-label={`${agent.name} in the team`} className="flex shrink-0 overflow-hidden rounded-md border border-border text-xs">
           {([[true, 'In team'], [false, 'Only me']] as const).map(([value, label]) => {

@@ -21,6 +21,10 @@ type crewTeamAgent struct {
 	Place       string `json:"place"`
 	ChatKey     string `json:"chat_key"`
 	StatusLabel string `json:"status_label,omitempty"`
+	// PlaceLabel is where an agent of the owner's Mac answers now (Always on): "Mac", "Mac off · answering from the
+	// server" or "Mac off · waits for your Mac"; PlaceServer is set when the server answers for it.
+	PlaceLabel  string `json:"place_label,omitempty"`
+	PlaceServer bool   `json:"place_server,omitempty"`
 	// InTeam: everyone in the Team sees it (its maker chose In team); false only on the viewer's own Only me agents.
 	InTeam bool `json:"in_team"`
 	// Address is how another agent messages it (send_message target), written here so no screen builds it.
@@ -84,8 +88,12 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		if agent.Tab == macMainTab {
 			row.ChatKey = mainKey
 		}
-		if place == "mac" && !owner.MacOn {
-			row.StatusLabel = "Mac off"
+		if place == "mac" {
+			// Always on: an In team agent answers from the server while the Mac is off; an Only me one waits for it.
+			row.PlaceLabel, row.PlaceServer = crewAlwaysOnPlaceLabel(t.ProjectID, t.OwnerID, agent.Tab, owner.MacOn, caller == t.OwnerID)
+			if !owner.MacOn && !row.PlaceServer {
+				row.StatusLabel = "Mac off"
+			}
 		}
 		owner.Agents = append(owner.Agents, row)
 	}

@@ -50,6 +50,8 @@ async function teamTarget(project: string): Promise<TeamTarget | undefined> {
  * change. Every screen shows it and sends the person's choices; none decides anything itself. */
 export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean }
 export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; place: 'mac' | 'server'; status_label?: string; tab: string
+  // Always on (crew_agent_always_on.go): where an agent of the owner's Mac answers now, worded by the server.
+  place_label?: string; place_server?: boolean
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
   uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer may ask its chat to set one, and its Public on
@@ -61,7 +63,7 @@ export type TeamTabShare = { path: string; files: number; bytes: number }
 export type TeamTabView = {
   team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
   mac?: { on: boolean; line: string; note: string; yours: boolean }
-  sync?: TeamTabSync; can_switch: boolean; all_in_team: boolean; can_all_mine: boolean; mac_only?: string; agents_mac_only?: string; can_leave: boolean
+  sync?: TeamTabSync; can_switch: boolean; all_in_team: boolean; can_all_mine: boolean; mac_only?: string; agents_mac_only?: string; agents_line?: string; can_leave: boolean
   can_choose: boolean; can_add_folder: boolean; shares?: TeamTabShare[]; whole?: TeamTabShare
 }
 /** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */

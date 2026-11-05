@@ -184,11 +184,34 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 	if crewTeamMemberTab(r.Context(), project, key) != "" {
 		return false
 	}
+	// An agent the server answers for from its standby copy (Always on): its chats, teammates' threads on it included,
+	// run here until it is handed back to the Mac.
+	if crewStandbyServesKey(key) {
+		return false
+	}
+	// Always on: while the Mac is off, the owner's In team agent answers here from its standby copy (or already does).
+	// Opening it brings the copy in; sending makes the server its writer. A new chat stays the Mac's to start.
+	standby := func(tab string) bool {
+		if call.Operation != "send" && call.Operation != "resolve" {
+			return false
+		}
+		started := time.Now()
+		if !api.crewStandbyRoute(r.Context(), GetUserIDFromContext(r.Context()), project, tab, "", call.Operation == "send") {
+			return false
+		}
+		if call.Operation == "send" {
+			crewAlwaysOnLog(project, tab, "answered_on_server", "owner_chat", started)
+		}
+		return true
+	}
 	// A side tab of a Crew that lives on the Mac is the Mac's own tab (PLAT-856-509); the server keeps none.
 	if base, tab, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker); ok {
 		if base != project || !crewMacTabID(tab) {
 			externalError(w, 400, "invalid_tab", "This tab is unavailable.")
 			return true
+		}
+		if standby(crewStandbyTabForKey(project, key)) {
+			return false
 		}
 		call.Tab = tab
 		if call.Operation == "resolve" {
@@ -201,6 +224,9 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		}
 		binding, _, err := resolveConversationBindingForUser(r.Context(), GetUserIDFromContext(r.Context()), resolved, key)
 		if err != nil || binding.ConversationKey != binding.ProjectMainChatKey {
+			return false
+		}
+		if standby(macMainTab) {
 			return false
 		}
 	}
@@ -595,7 +621,8 @@ func callCrewMacFor(ctx context.Context, owner, project string, call crewChatCal
 }
 
 // routeCrewMacTabs lists a Mac Crew's own side tabs for its owner on the website (PLAT-856-509): the Mac's tab keys with
-// the project part swapped to this server's copy. With the Mac off there are none here; Main still shows.
+// the project part swapped to this server's copy. With the Mac off only published agents and In team agents answering
+// from their standby copy are here; Main still shows.
 func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request, project string) bool {
 	if IsLocalMode() || !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
 		return false
@@ -623,7 +650,7 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 			if !ok || base != b.PeerProjectID || !crewMacTabID(id) || row.ConversationID == "" {
 				continue
 			}
-			if _, published := placements[id]; published {
+			if _, published := placements[id]; published || crewStandbyServerWriter(project, id) {
 				continue
 			}
 			tabs = append(tabs, AgentProfileSideChat{TabOwnerID: owner, TabOwnerName: GetUserFromContext(r.Context()).Username, CanWrite: true,
@@ -631,11 +658,27 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 				ChatLocation: "mac", Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned})
 		}
 	}
-	if len(placements) > 0 {
+	// Always on: an In team agent the server answers for (its Mac off, or not handed back yet) is opened here, from its
+	// standby copy.
+	serving := map[string]bool{}
+	if rows, e := readCrewStandby(project); e == nil {
+		for tab := range rows {
+			if tab == macMainTab || placements[tab].Tab != "" {
+				continue
+			}
+			if api.crewStandbyRoute(r.Context(), owner, project, tab, "", false) {
+				serving[tab] = true
+			}
+		}
+	}
+	if len(placements) > 0 || len(serving) > 0 {
 		doc, e := defaultProductConversationRegistryStore().loadDocument(r.Context(), productConversationRegistryPath(owner))
 		if e != nil {
 			externalError(w, 409, "publish_unavailable", e.Error())
 			return true
+		}
+		for tab := range serving {
+			placements[tab] = crewAgentPlacement{Tab: tab, Location: "server"}
 		}
 		for tab, place := range placements {
 			if place.Location != "server" || tab == macMainTab {
