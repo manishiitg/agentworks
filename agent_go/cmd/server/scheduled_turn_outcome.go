@@ -1,11 +1,13 @@
 package server
 
 import (
+	"context"
 	"strings"
 	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	agentevents "github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
 )
 
 // scheduledTurnFailureEventTypes are the events a turn emits when it could not
@@ -57,12 +59,89 @@ func scheduledTurnFailure(store *storeevents.EventStore, sessionID string, since
 		if !scheduledTurnFailureEventTypes[event.Type] {
 			continue
 		}
-		if detail := strings.TrimSpace(event.Error); detail != "" {
+		if detail := scheduledEventErrorText(event); detail != "" {
 			return detail
+		}
+		// The terminal failure can carry no text while the model's own error
+		// (e.g. "codex-cli/... [network]: EOF") sits on an earlier event of the
+		// same turn. Name that cause instead of only the event type.
+		for j := i - 1; j >= 0; j-- {
+			earlier := result.Events[j]
+			if !since.IsZero() && earlier.Timestamp.Before(since) {
+				break
+			}
+			if scheduledTurnFailureEventTypes[earlier.Type] || earlier.Type == "llm_generation_error" {
+				if detail := scheduledEventErrorText(earlier); detail != "" {
+					return "turn ended with " + event.Type + ": " + detail
+				}
+			}
 		}
 		return "turn ended with " + event.Type
 	}
 	return ""
+}
+
+// scheduledEventErrorText is an error event's text, from the stored field or
+// its payload (a restored event keeps it only in the payload).
+func scheduledEventErrorText(event storeevents.Event) string {
+	if detail := strings.TrimSpace(event.Error); detail != "" {
+		return detail
+	}
+	if event.Data == nil {
+		return ""
+	}
+	switch payload := event.Data.Data.(type) {
+	case *agentevents.ConversationErrorEvent:
+		return strings.TrimSpace(payload.Error)
+	case *agentevents.AgentErrorEvent:
+		return strings.TrimSpace(payload.Error)
+	case *agentevents.LLMGenerationErrorEvent:
+		return strings.TrimSpace(payload.Error)
+	case *storeevents.GenericEventData:
+		text, _ := payload.Fields["error"].(string)
+		return strings.TrimSpace(text)
+	}
+	return ""
+}
+
+// scheduledTurnNetworkRetryDelays are the waits before re-running a scheduled
+// turn whose model call dropped on the network. Several schedules due the same
+// minute can all lose the provider connection at once; one immediate retry
+// failed the same way, so wait 30s, then 2 minutes.
+var scheduledTurnNetworkRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute}
+
+// isScheduledTurnNetworkError matches the provider's network kind. The error
+// crossed the event store as text, so it is matched by the kind's "[network]"
+// tag that llmerrors.Error prints.
+func isScheduledTurnNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if llmerrors.KindOf(err) == llmerrors.KindNetwork {
+		return true
+	}
+	return strings.Contains(err.Error(), "["+string(llmerrors.KindNetwork)+"]")
+}
+
+// runScheduledTurnWithNetworkRetry runs one scheduled turn and re-runs it after
+// scheduledTurnNetworkRetryDelays while it fails with a network-kind error.
+func runScheduledTurnWithNetworkRetry(ctx context.Context, label string, run func() (internalSessionTurnResult, error)) (internalSessionTurnResult, error) {
+	result, err := run()
+	for attempt, delay := range scheduledTurnNetworkRetryDelays {
+		if !isScheduledTurnNetworkError(err) {
+			break
+		}
+		scheduleLogf("[PRODUCT-SCHEDULE] %s: network error, retry %d/%d in %s: %v", label, attempt+1, len(scheduledTurnNetworkRetryDelays), delay, err)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return result, err
+		case <-timer.C:
+		}
+		result, err = run()
+	}
+	return result, err
 }
 
 // scheduledTurnProducedResponse recognizes only a successful main-agent

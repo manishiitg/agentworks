@@ -1449,7 +1449,9 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 			route = "chat"
 		}
 		scheduleLogf("[PRODUCT-SCHEDULE] handoff job=%s user=%s profile=%s project=%s session=%s turn=%d route=%s", job.ID(), job.UserID, job.Profile.ID, job.ProjectID, sessionID, i+1, route)
-		turnResult, err := s.executeAutomationTurn(deliveryCtx, reqMap, sessionID, job.UserID)
+		turnResult, err := runScheduledTurnWithNetworkRetry(runCtx, job.ID(), func() (internalSessionTurnResult, error) {
+			return s.executeAutomationTurn(deliveryCtx, reqMap, sessionID, job.UserID)
+		})
 		scheduleLogf("[PRODUCT-SCHEDULE] handoff-result job=%s user=%s session=%s query=%s error=%v", job.ID(), job.UserID, sessionID, turnResult.QueryID, err)
 		if err != nil {
 			runErr = fmt.Errorf("message %d/%d: %w", i+1, len(messages), err)

@@ -200,7 +200,8 @@ func TestIsStuckBrowserError(t *testing.T) {
 			t.Errorf("%q should count as stuck", msg)
 		}
 	}
-	for _, msg := range []string{"element not found", "net::ERR_NAME_NOT_RESOLVED"} {
+	// "Wait timed out" is an explicit wait whose condition never came true while the page answered (renderer idle).
+	for _, msg := range []string{"element not found", "net::ERR_NAME_NOT_RESOLVED", "Wait timed out after 25000ms"} {
 		if isStuckBrowserError(stuckMsg(msg)) {
 			t.Errorf("%q must not count as stuck", msg)
 		}
