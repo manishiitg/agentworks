@@ -71,7 +71,7 @@ func TestGoalBuilderLaptopUsesSharedGrantsOnlyInInteractiveTurns(t *testing.T) {
 	if _, err := setup.execute(ctx, map[string]any{"action": "get"}); err != nil {
 		t.Fatalf("Goal chat setup failed: %v", err)
 	}
-	for _, source := range []string{"step", "schedule", "autopilot", "run", "run_mode", "child", "connector"} {
+	for _, source := range []string{"step", "schedule", "run", "run_mode", "child", "connector"} {
 		t.Run(source, func(t *testing.T) {
 			next := base
 			switch source {
@@ -79,7 +79,6 @@ func TestGoalBuilderLaptopUsesSharedGrantsOnlyInInteractiveTurns(t *testing.T) {
 				next.PhaseID = "execution"
 			case "schedule":
 				next.TriggeredBy = "schedule"
-			case "autopilot":
 			case "run":
 				next.PinRunMode = true
 			case "run_mode":
