@@ -9,12 +9,10 @@ import { fillAgentPurposeDraft } from '../../utils/agentPurposeDraft'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { activateTab } from '../../utils/activateTab'
 import { Switch } from '../../components/ui/Switch'
-import { useProjectTeam } from './teamApi'
 import type { CrewAsk } from './YourComputerPanel'
 
-type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'team' | 'everyone' | 'chosen' | ''; people?: string[]; address?: string; can_change?: boolean; agentbridge_public?: boolean }
+type SharedAgent = { tab: string; name?: string; purpose?: string; audience: 'team' | ''; address?: string; can_change?: boolean; agentbridge_public?: boolean }
 type AgentRow = { tab: string; name: string; purpose: string; icon?: string }
-type Person = { id: string; username: string; email?: string }
 
 // Reads one JSON reply from the Crew's network through the Mac's saved sign-in.
 async function viaConnection<T>(connection: string, path: string): Promise<T> {
@@ -30,19 +28,14 @@ function agentChatTabId(projectId: string, tab: string) {
   return found?.tabId
 }
 
-/** Who can message your agents (owner, 3 Nov mockup mac-share-card): one card per agent with three plain questions:
- * is it shared (switch), who (chosen people from a list, or everyone), how they reach it (themselves always; their AI
- * agents by a switch that shows the address). The purpose is the tab's own, set from its chat. Saved as you go. */
-export function MacSharedAgents({ projectId, connection, network }: { projectId: string; connection: string; network: string }) {
+/** Your agents in the Team (owner, 5 Nov, "A Team is a shared room"): each agent is In team or Only me. Joining needs
+ * the agent's purpose and icon, set from its own chat. Saved as you go. */
+export function MacSharedAgents({ projectId, connection }: { projectId: string; connection: string }) {
   const [rows, setRows] = useState<AgentRow[] | null>(null)
   // Where each agent answers: a published agent is on the server (the server decides; absent means this Mac).
   const [placements, setPlacements] = useState<Record<string, { location: 'publishing' | 'server' }>>({})
   const [shared, setShared] = useState<SharedAgent[]>([])
-  const [people, setPeople] = useState<Person[]>([])
-  const { team } = useProjectTeam(projectId)
   const [supported, setSupported] = useState(false)
-  const [adding, setAdding] = useState('')
-  const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState('')
@@ -53,7 +46,6 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
   useEffect(() => {
     let live = true
     void viaConnection<{ shared_agents?: boolean }>(connection, '/api/crew-sync-capabilities').then(caps => { if (live) setSupported(Boolean(caps.shared_agents)) }).catch(() => {})
-    void viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(data => { if (live) setPeople(data.users || []) }).catch(() => {})
     // A purpose set from a tab's chat shows here on the next read.
     const load = () => desktopRequest<{ tabs: AgentRow[]; agents: SharedAgent[]; placements?: Record<string, { location: 'publishing' | 'server' }>; all_in_team?: boolean }>(endpoint, 'POST', { action: 'agents' })
       .then(data => { if (!live) return; setRows(data.tabs || []); setPlacements(data.placements || {}); setAllInTeam(Boolean(data.all_in_team)); setShared(current => busyRef.current ? current : data.agents || []) })
@@ -75,34 +67,41 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
     card?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
   }, [rows, supported, projectId])
   if (!supported || !rows) return null
+  // Sharing needs the agent's purpose and icon (the server refuses it otherwise).
+  const readyOf = (tab: string) => { const row = rows.find(item => item.tab === tab); return Boolean(row?.purpose?.trim() && row.icon?.trim()) }
   const purposeOf = (tab: string) => rows.find(row => row.tab === tab)?.purpose?.trim() || ''
-  // Saves the whole list; an agent waits to be saved until its tab has a purpose and, for chosen people, someone.
+  // Saves the whole list; only agents with a purpose and icon are sent (the server refuses others).
   const save = async (next: SharedAgent[]) => {
     setShared(next)
-    const ready = next.filter(agent => purposeOf(agent.tab) && (agent.audience !== 'chosen' || agent.people?.length))
-      .map(({ tab, audience, people, can_change, agentbridge_public }) => ({ tab, audience, people, can_change: Boolean(can_change), agentbridge_public: Boolean(agentbridge_public) }))
+    const ready = next.filter(agent => readyOf(agent.tab))
+      .map(({ tab, audience, can_change, agentbridge_public }) => ({ tab, audience, can_change: Boolean(can_change), agentbridge_public: Boolean(agentbridge_public) }))
     setBusy(true); setError('')
     try {
       const data = await desktopRequest<{ agents: SharedAgent[] }>(endpoint, 'POST', { action: 'share_agents', agents: ready })
-      // Saved agents come back with their address; ones still waiting for a purpose or a person stay on screen.
-      setShared([...(data?.agents || []), ...next.filter(agent => !ready.some(item => item.tab === agent.tab))])
+      setShared(data?.agents || [])
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'It was not saved. Try again.') }
     finally { setBusy(false) }
   }
   const update = (tab: string, change: Partial<SharedAgent> | null, persist = true) => {
     const current = shared.find(agent => agent.tab === tab)
-    const base: SharedAgent = current || { tab, audience: 'team', people: [] }
-    // Only me keeps an agent that is public on AgentBridge (Mac online's choice), with no people audience.
-    const off: SharedAgent[] = current?.agentbridge_public ? [{ ...current, audience: '', people: [] }] : []
+    const base: SharedAgent = current || { tab, audience: 'team' }
+    // Only me keeps an agent that is public on AgentBridge (Mac online's choice), with no audience.
+    const off: SharedAgent[] = current?.agentbridge_public ? [{ ...current, audience: '' }] : []
     const next = change === null ? [...shared.filter(agent => agent.tab !== tab), ...off] : [...shared.filter(agent => agent.tab !== tab), { ...base, ...change }]
     if (persist) void save(next); else setShared(next)
   }
   const setPurpose = (tab: string) => { const id = agentChatTabId(projectId, tab); if (id) fillAgentPurposeDraft(id) }
-  const personName = (id: string) => people.find(person => person.id === id)?.username || id
-  const choices = (agent: SharedAgent) => people.filter(person => team?.people.some(member => member.user_id === person.id) && !agent.people?.includes(person.id) && `${person.username} ${person.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
   // A Team is a shared room (owner, 5 Nov): each agent is In team (everyone in the team sees it and its chat live) or
   // Only me. Agents public on AgentBridge are Mac online's choice.
+  const choose = (tab: string, value: 'team' | 'none') => {
+    if (value === 'none') {
+      if (allInTeam) void desktopRequest(endpoint, 'POST', { action: 'team_all', all_in_team: false }).then(() => setAllInTeam(false)).catch(() => {})
+      update(tab, null)
+      return
+    }
+    update(tab, { audience: 'team' })
+  }
   const AUDIENCES = [['team', 'In team'], ['none', 'Only me']] as const
   const chooseAll = async (on: boolean) => {
     setBusy(true); setError('')
@@ -116,40 +115,30 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
     finally { setBusy(false) }
   }
   return <section ref={cards} aria-label="Your agents in the team">
-    <label className="flex items-center gap-2 border-t border-border px-0.5 py-2.5 text-sm"><span className="font-medium">All agents in team</span><span className="text-xs text-muted-foreground">new agents join too, once they have a purpose and icon</span><Switch aria-label="All agents in team" className="ml-auto" checked={allInTeam} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>
+    <div className="border-t border-border px-0.5 py-2.5 text-sm">
+      <label className="flex items-center gap-2"><span className="font-medium">All agents in team</span><span className="text-xs text-muted-foreground">new agents join too, once they have a purpose and icon</span><Switch aria-label="All agents in team" className="ml-auto" checked={allInTeam} disabled={busy} onCheckedChange={on => void chooseAll(on)} /></label>
+      <p className="mt-1 text-xs text-muted-foreground">In team: everyone in this Crew's Team sees this agent and its chat live, and their agents can message it. Only me: just you.</p>
+    </div>
     {rows.map(row => {
       const agent = shared.find(item => item.tab === row.tab)
       const purpose = purposeOf(row.tab)
       const place = placements[row.tab]?.location
-      // An older people setting stays true on screen until it is replaced (people audiences go in a later step).
-      const legacy = agent?.audience === 'everyone' ? 'Everyone (old setting)' : agent?.audience === 'chosen' ? 'Chosen people (old setting)' : ''
-      const choice = agent?.audience === 'team' ? 'team' : legacy ? 'legacy' : 'none'
+      const choice = agent?.audience === 'team' ? 'team' : 'none'
+      // An agent without a purpose or icon cannot be shared: its row always says so (owner, 5 Nov).
+      const missing = readyOf(row.tab) ? '' : !purpose && !row.icon?.trim() ? 'a purpose and icon' : !purpose ? 'a purpose' : 'an icon'
+      const blocked = missing ? `Give this agent ${missing} before sharing it` : ''
       return <div key={row.tab} data-shared-agent-card={row.tab} className="border-t border-border px-0.5 py-2.5 text-sm">
         <div className="flex flex-wrap items-center gap-2.5">
           <span aria-hidden="true" className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-muted text-xs">{row.icon?.trim() || row.name.slice(0, 1).toUpperCase()}</span>
           <span title={purpose || undefined} className="min-w-0 truncate">{row.name}</span>
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${place === 'server' || place === 'publishing' ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`}>{place === 'server' ? 'Server' : place === 'publishing' ? 'Moving to the server' : 'Mac'}</span>
-          {legacy && <span className="ml-auto text-xs text-muted-foreground">{legacy}</span>}
-          <div role="radiogroup" aria-label={`${row.name} in the team`} className={`${legacy ? '' : 'ml-auto '}flex overflow-hidden rounded-full border border-border text-xs`}>
-            {AUDIENCES.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy} onClick={() => { if (choice === value) return; if (value === 'none' && allInTeam) void desktopRequest(endpoint, 'POST', { action: 'team_all', all_in_team: false }).then(() => setAllInTeam(false)).catch(() => {}); update(row.tab, value === 'none' ? null : { audience: value }) }}
-              className={`px-2.5 py-0.5 ${choice === value ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
+          <div role="radiogroup" aria-label={`${row.name} in the team`} className="ml-auto flex overflow-hidden rounded-full border border-border text-xs">
+            {AUDIENCES.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy || (value === 'team' && Boolean(blocked) && choice !== 'team')} title={value === 'team' && blocked ? blocked : undefined} onClick={() => { if (choice !== value) choose(row.tab, value) }}
+              className={`px-2.5 py-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${choice === value ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}
           </div>
           <button type="button" aria-label={`More for ${row.name}`} aria-expanded={openPurpose === row.tab} onClick={() => setOpenPurpose(openPurpose === row.tab ? '' : row.tab)} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></button>
         </div>
-        {agent && !purpose && <p className="mt-1.5 flex items-center gap-2 pl-8 text-[12.5px] text-amber-600">Set this agent's purpose to share it.<button type="button" onClick={() => setPurpose(row.tab)} className="text-primary hover:underline">Set purpose</button></p>}
-        {agent?.audience === 'chosen' && <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-8">
-          {(agent.people || []).map(id => <span key={id} className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-xs">{personName(id)}<button type="button" aria-label={`Remove ${personName(id)}`} onClick={() => update(row.tab, { people: (agent.people || []).filter(person => person !== id) })} className="text-muted-foreground hover:text-foreground">×</button></span>)}
-          <button type="button" aria-expanded={adding === row.tab} onClick={() => { setAdding(adding === row.tab ? '' : row.tab); setSearch('') }} className="rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-primary hover:bg-muted">+ Person</button>
-        </div>}
-        {agent?.audience === 'chosen' && adding === row.tab && <div className="ml-8 mt-1.5 w-64 max-w-[calc(100%-2rem)] overflow-hidden rounded-2xl border border-border bg-popover shadow">
-          <input autoFocus aria-label="Search people" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setAdding(''); setSearch('') } }} placeholder="Search people" className="w-full border-b border-border bg-transparent px-3 py-1.5 text-xs outline-none" />
-          <div className="max-h-56 overflow-y-auto">
-            {choices(agent).map(person => <button key={person.id} type="button" onClick={() => { update(row.tab, { people: [...(agent.people || []), person.id] }); setSearch('') }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted">
-              <span className="truncate">{person.username}</span>{person.email && person.email !== person.username && <span className="ml-auto truncate text-muted-foreground">{person.email}</span>}
-            </button>)}
-            {!choices(agent).length && <p className="px-3 py-1.5 text-xs text-muted-foreground">{team?.people.length ? 'Nobody found' : 'Add people to the Team above'}</p>}
-          </div>
-        </div>}
+        {blocked && <p className="mt-1.5 flex flex-wrap items-center gap-2 pl-8 text-[12.5px] text-amber-600">{blocked}.<button type="button" onClick={() => setPurpose(row.tab)} className="text-primary hover:underline">Set it in its chat</button></p>}
         {openPurpose === row.tab && <div className="ml-8 mt-2 space-y-2 rounded-xl border border-border bg-popover p-3 text-xs">
           <p className="flex items-start gap-1.5 text-muted-foreground"><span className="min-w-0 whitespace-pre-wrap break-words">{purpose || 'No purpose yet.'}</span>
             <button type="button" aria-label={purpose ? `Change ${row.name}'s purpose` : `Set ${row.name}'s purpose`} title={purpose ? 'Change purpose' : 'Set purpose'} onClick={() => setPurpose(row.tab)} className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-muted hover:text-foreground"><Pencil aria-hidden="true" className="h-3 w-3" /></button></p>
@@ -158,10 +147,10 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
             <p className="text-[11px] text-muted-foreground">{agent.can_change ? 'It can change files, run commands and use your apps and logins for them.' : 'It only answers their questions.'}</p>
             <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">Use it from
               {([[Globe, 'Website'], [Smartphone, 'Phone'], [MessageSquare, 'ChatGPT or Claude'], [Hash, 'Slack']] as [LucideIcon, string][]).map(([Icon, label]) => <Icon key={label} role="img" aria-label={label} className="h-3.5 w-3.5"><title>{label}</title></Icon>)}
-              their apps ·<Terminal role="img" aria-label="Claude Code, Codex and other agents" className="h-3.5 w-3.5"><title>Claude Code, Codex and other agents</title></Terminal>their AI agents{agent.audience === 'everyone' && network ? ` · everyone on ${network}` : ''}</p>
+              their apps ·<Terminal role="img" aria-label="Claude Code, Codex and other agents" className="h-3.5 w-3.5"><title>Claude Code, Codex and other agents</title></Terminal>their AI agents</p>
             {agent.address && <p className="flex items-center gap-2"><span className="min-w-0 truncate rounded-full bg-muted px-2.5 py-0.5 font-mono">agent:{agent.address}</span>
               <button type="button" className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] hover:bg-muted" onClick={() => void navigator.clipboard?.writeText(`agent:${agent.address}`).then(() => { setCopied(row.tab); window.setTimeout(() => setCopied(''), 1500) })}>{copied === row.tab ? 'Copied' : 'Copy'}</button></p>}
-          </> : <p className="text-muted-foreground">Only you can message it. Choose Team, Chosen or Everyone to share it.</p>}
+          </> : <p className="text-muted-foreground">Only you can message it. Choose In team to share it with your Team.</p>}
         </div>}
       </div>
     })}
@@ -170,8 +159,8 @@ export function MacSharedAgents({ projectId, connection, network }: { projectId:
   </section>
 }
 
-/** For a Mac Crew's tab in the Mac app: who it is shared with, in a few words ("Shared with user2"), or '' when it is
- * not shared. Read from this Mac's own shared list and its network's people. */
+/** For a Mac Crew's tab in the Mac app: "Shared with my team" while it is In team, else ''. Read from this Mac's own
+ * shared list. */
 export function useMacTabShareLine(projectId?: string, conversationKey?: string): string {
   const [line, setLine] = useState('')
   useEffect(() => {
@@ -186,12 +175,7 @@ export function useMacTabShareLine(projectId?: string, conversationKey?: string)
       if (!connection || !live) return
       const { agents } = await desktopRequest<{ agents: SharedAgent[] }>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action: 'agents' })
       const agent = agents?.find(item => item.tab === tab)
-      if (!agent || !live) return
-      if (agent.audience === 'everyone') { setLine('Shared with everyone'); return }
-      if (agent.audience === 'team') { setLine('Shared with my team'); return }
-      const people = await viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(result => result.users || []).catch(() => [] as Person[])
-      const names = (agent.people || []).map(id => people.find(person => person.id === id)?.username || 'someone')
-      if (live) setLine(`Shared with ${names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and ')}`)
+      if (live && agent?.audience === 'team') setLine('Shared with my team')
     })().catch(() => {})
     return () => { live = false }
   }, [projectId, conversationKey])
@@ -201,8 +185,8 @@ export function useMacTabShareLine(projectId?: string, conversationKey?: string)
 /** How one of a Mac Crew's agents is shared, for its tab and the agents menu. */
 export type MacAgentShare = { line: string; canChange: boolean }
 
-/** Which of a Mac Crew's agents others can message ("main" or a side tab's id) and with whom ("tester-b", "everyone in
- * the company"), from this Mac's own shared list and its network's people. Empty while Reach is off. */
+/** Which of a Mac Crew's agents are In team ("main" or a side tab's id), from this Mac's own shared list. Empty while
+ * Reach is off. */
 export function useMacSharedAgents(projectId?: string, enabled = true): Record<string, MacAgentShare> {
   const [shares, setShares] = useState<Record<string, MacAgentShare>>({})
   useEffect(() => {
@@ -214,13 +198,8 @@ export function useMacSharedAgents(projectId?: string, enabled = true): Record<s
       const connection = data.binding?.connection_id
       if (!connection) { if (live) setShares({}); return }
       const { agents } = await desktopRequest<{ agents: SharedAgent[] }>(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action: 'agents' })
-      const chosen = (agents || []).some(agent => agent.audience !== 'everyone')
-      const people = chosen ? await viaConnection<{ users: Person[] }>(connection, '/api/users/directory').then(result => result.users || []).catch(() => [] as Person[]) : []
       const next: Record<string, MacAgentShare> = {}
-      for (const agent of agents || []) {
-        const names = (agent.people || []).map(id => people.find(person => person.id === id)?.username || 'someone')
-        next[agent.tab] = { canChange: Boolean(agent.can_change), line: agent.audience === 'everyone' ? 'everyone in the company' : agent.audience === 'team' ? 'my team' : names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and ') }
-      }
+      for (const agent of agents || []) if (agent.audience === 'team') next[agent.tab] = { canChange: Boolean(agent.can_change), line: 'my team' }
       if (live) setShares(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
     }
     const reload = () => { void load().catch(() => {}) }
@@ -238,6 +217,17 @@ export function hasPendingCrewAccess(projectId: string) { return pendingAccess?.
 export function openCrewAccess(projectId: string, tab: string) {
   pendingAccess = { projectId, tab }
   window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId } }))
+}
+/** The side panel's Shared folder row: open Access on its Team tab, scrolled to the shared folder's Sync section. */
+let pendingSync = ''
+export function openCrewSync(projectId: string) {
+  pendingSync = projectId
+  openCrewAccess(projectId, '')
+}
+export function takeCrewSync(projectId: string) {
+  if (pendingSync !== projectId) return false
+  pendingSync = ''
+  return true
 }
 /** True once for a pending request: the Crew menu opens Access for it, and Back is not overridden afterwards. */
 export function takeCrewAccess(projectId?: string) {

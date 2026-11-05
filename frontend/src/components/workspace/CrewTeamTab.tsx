@@ -14,8 +14,8 @@ export function CrewTeamTab({ projectId, connection, network }: { projectId: str
     <TeamDataLine network={network} />
     <CrewTeamCard projectId={projectId} />
     {team?.on && <TeamWhenMacOff {...teamCopy} network={network} />}
-    <MacSharedAgents projectId={projectId} connection={connection} network={network} />
+    <MacSharedAgents projectId={projectId} connection={connection} />
     {/* The shared folder's sync history lives here, under Access (owner, 5 Nov), not as its own side-panel item. */}
-    {team?.on && team.folder_access && target && <TeamSyncPanel target={target} name={team.name} />}
+    {team?.on && team.folder_access && target && <TeamSyncPanel target={target} name={team.name} projectId={projectId} />}
   </>
 }

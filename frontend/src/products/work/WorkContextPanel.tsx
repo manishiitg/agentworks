@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarClock, ChevronRight, RefreshCw, Settings2 } from 'lucide-react'
+import { CalendarClock, ChevronRight, FolderSync, RefreshCw, Settings2 } from 'lucide-react'
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -23,6 +23,9 @@ import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPa
 import { CREW_MENU_GROUPS, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
+import { useProjectTeam } from './teamApi'
+import { useTeamSyncSummary } from './TeamSyncPanel'
+import { openCrewSync } from './MacSharedAgents'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
@@ -34,6 +37,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   dashboardChatTarget?: DashboardChatTarget
   enabledPanels?: Set<string>
 }) {
+  // The shared folder in one short row (owner, 5 Nov); its Sync section lives in Access > Team.
+  const team = useProjectTeam(projectId)
+  const sharedFolder = Boolean(team.target && team.team?.on && team.team.folder_access)
+  const syncLine = useTeamSyncSummary(team.target, sharedFolder)
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', profileId, projectId || workspacePath)
@@ -163,6 +170,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <Row icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={() => showMenu('automations')}>Manage automations</Row>
     </WorkspaceCompactGroup>}
     </>}
+    {sharedFolder && <Row icon={FolderSync} detail={syncLine || undefined} onClick={() => openCrewSync(projectId)}>Shared folder</Row>}
     {snapshot?.errors.length ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>Some workspace status is unavailable.</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>
 }
