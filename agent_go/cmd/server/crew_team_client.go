@@ -73,7 +73,11 @@ func readCrewTeamLocal(dir string) (crewTeamLocal, error) {
 	return b, e
 }
 func saveCrewTeamLocal(dir string, b crewTeamLocal) error {
-	return fsutil.WriteJSONAtomic(filepath.Join(dir, "binding.json"), b, 0600)
+	err := fsutil.WriteJSONAtomic(filepath.Join(dir, "binding.json"), b, 0600)
+	if err == nil {
+		publishCrewPanelChanged(b.LocalProject)
+	}
+	return err
 }
 
 // The server remains the authority. A local binding stores only a working path,

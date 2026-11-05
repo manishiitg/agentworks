@@ -30,6 +30,7 @@ type crewTeamRoundKey struct{}
 func startCrewTeamRound(ctx context.Context, dir, project, direction string, files int, total, done int64) context.Context {
 	crewTeamRounds.Store(dir, &crewTeamRound{Direction: direction, Files: files, BytesDone: done, BytesTotal: total, Started: time.Now(), project: project})
 	log.Printf("[CREW_TEAM] project=%s round=%s event=started files=0/%d bytes=%d/%d", project, direction, files, done, total)
+	publishCrewPanelRoundChanged(dir)
 	return context.WithValue(ctx, crewTeamRoundKey{}, dir)
 }
 
@@ -44,6 +45,7 @@ func crewTeamRoundBytes(ctx context.Context, done int64) {
 		round := *v.(*crewTeamRound)
 		round.BytesDone = done
 		crewTeamRounds.Store(dir, &round)
+		publishCrewPanelRoundChanged(dir)
 	}
 }
 
@@ -53,6 +55,7 @@ func endCrewTeamRound(dir string, err error) {
 		return
 	}
 	round := v.(*crewTeamRound)
+	publishCrewPanelRoundChanged(dir)
 	event, files := "done", round.Files
 	if err != nil {
 		event, files = "stopped", 0

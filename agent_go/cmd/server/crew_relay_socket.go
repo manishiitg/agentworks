@@ -116,6 +116,11 @@ func (api *StreamingAPI) crewRelayRegister(ctx context.Context, claims *UserClai
 		old.close()
 	}
 	log.Printf("[CREW_RELAY] connect owner=%s device=%s crews=%d", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, len(sock.twins))
+	sock.mu.Lock()
+	for project := range sock.twins {
+		publishCrewPanelChanged(project)
+	}
+	sock.mu.Unlock()
 	api.deliverCrewMacWaitingAll(sock)
 	return sock, nil
 }
@@ -142,7 +147,13 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 		}
 	}
 	sock.mu.Lock()
+	for project := range sock.twins {
+		publishCrewPanelChanged(project)
+	}
 	sock.twins = twins
+	for project := range twins {
+		publishCrewPanelChanged(project)
+	}
 	sock.mu.Unlock()
 }
 
@@ -154,6 +165,9 @@ func (sock *crewMacSocket) unregister() {
 	}
 	crewMacSockets.Unlock()
 	sock.mu.Lock()
+	for project := range sock.twins {
+		publishCrewPanelChanged(project)
+	}
 	for id, result := range sock.pending {
 		select {
 		case result <- crewChatResult{ID: id, Status: 503, Body: json.RawMessage(`{"error":"Your Mac disconnected. Reopen the chat to check whether your message arrived before sending it again."}`)}:
@@ -237,11 +251,13 @@ func (api *StreamingAPI) crewRelayHandle(ctx context.Context, sock *crewMacSocke
 		if owner := ownerOfCrewProjectID(msg.Project); owner != "" && owner != sock.owner {
 			return // the Crew's Mac state is its owner's Mac; a member's Mac reports through its own agents
 		}
+		defer publishCrewPanelChanged(msg.Project)
 		saveCrewMacState(msg.Project, crewMacState{State: msg.State, LastLine: msg.LastLine, At: msg.At})
 		if msg.State == "working" {
 			crewRelaySubmissions.working(sock.owner, msg.Project)
 		}
 	case "crew.removed":
+		defer publishCrewPanelChanged(msg.Project)
 		sock.mu.Lock()
 		delete(sock.twins, msg.Project)
 		sock.mu.Unlock()

@@ -81,6 +81,9 @@ func (api *StreamingAPI) handleLiveFeed(w http.ResponseWriter, r *http.Request) 
 				if !liveFeedNoticeForUser(n, claims) {
 					continue
 				}
+				if !api.crewPanelNoticeAllowed(ctx, claims, n) {
+					continue
+				}
 				if n.Workflow != "" && !access.visible(ctx, n.Workflow) {
 					continue
 				}

@@ -183,7 +183,11 @@ func writeCrewTeam(t crewTeam) error {
 	t.CanManage = false
 	t.FolderAccess = false
 	t.OwnerName = ""
-	return fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	if err == nil {
+		publishCrewPanelChanged(t.ProjectID)
+	}
+	return err
 }
 func (t crewTeam) member(user string) bool {
 	return user != "" && (user == t.OwnerID || t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && !p.Invited }))
