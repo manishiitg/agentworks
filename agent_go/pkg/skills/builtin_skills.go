@@ -20,7 +20,7 @@ var (
 func init() {
 	err := RegisterBuiltin(&llmtypes.Skill{
 		Name:        "agent-browser",
-		Description: "Use managed agent_browser for interactive browsing, CDP tab ownership, downloads and capture; open when browsing is needed.",
+		Description: "Use the browser tool (`browser` in a coding CLI, agent_browser elsewhere) for interactive browsing, tabs, downloads and capture; open when browsing is needed.",
 		Content:     agentBrowserSkillContent,
 		Source:      llmtypes.SkillSource{Origin: "builtin"},
 	})

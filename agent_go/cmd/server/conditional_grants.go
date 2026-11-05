@@ -75,10 +75,7 @@ var conditionalGrants = []ConditionalWriteGrant{
 		Trigger: func(req QueryRequest) bool {
 			return req.AgentProfileID == "work"
 		},
-		PromptSection: func() string {
-			return `## Custom skill authoring
-When the user explicitly asks to preserve or improve a reusable procedure, the Work agent may create or update a focused custom skill under skills/<skill-name>/ in the current workspace. Use the workspace's existing write permissions. Keep the normal Work identity. Inspect existing skills first, update rather than duplicate when appropriate, and never store secrets in a skill.`
-		},
+		// No prompt text: the skill-authoring rule is already in the project constraints and memory sections.
 	},
 	{
 		Name: "skill-creator",
