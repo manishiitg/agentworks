@@ -160,7 +160,12 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 							continue
 						}
 						round, done := context.WithTimeout(ctx, 20*time.Minute) // a large first sync runs as server jobs the Mac polls
+						local := crewTeamLocalCrew(b)
+						api.reconcileCrewTeamSetup(round, owner, local, b.Root, dir, true) // this Crew's setup changes go up
 						err = syncCrewTeamLocal(round, owner, c, dir, &b)
+						if err == nil {
+							api.reconcileCrewTeamSetup(round, owner, local, b.Root, dir, true) // someone's setup edit came down
+						}
 						done()
 						if err != nil {
 							b.Status = "pending"
