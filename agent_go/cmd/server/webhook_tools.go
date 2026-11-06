@@ -135,7 +135,7 @@ func (api *StreamingAPI) manageWorkflowWebhook(ctx context.Context, workspace st
 			}
 			payload[key] = v
 		}
-		for _, key := range []string{"input_preset", "inputs", "input_mode", "allowed_variables", "step_id", "payload_mappings", "kind", "caller", "function"} {
+		for _, key := range []string{"chat_id", "input_preset", "inputs", "input_mode", "allowed_variables", "step_id", "payload_mappings", "kind", "caller", "function"} {
 			if v, ok := args[key]; ok {
 				payload[key] = v
 			}
