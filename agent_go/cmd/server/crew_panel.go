@@ -295,7 +295,7 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 // reads (owner, 5 Nov: the side menu's separate Dashboards item moved here).
 func crewPanelDashboardLine(sections []crewPanelSection) {
 	var access *crewPanelAccess
-	shared, listed, paths := "", false, []string{}
+	shared, listed, items := "", false, []crewAccessDashboard{}
 	for i := range sections {
 		switch s := &sections[i]; s.ID {
 		case "access":
@@ -308,7 +308,7 @@ func crewPanelDashboardLine(sections []crewPanelSection) {
 			listed = s.Error == ""
 			for _, row := range s.Rows {
 				if row.Path != "" {
-					paths = append(paths, row.Path)
+					items = append(items, crewAccessDashboard{Title: row.Label, Path: row.Path})
 				}
 			}
 		}
@@ -316,7 +316,7 @@ func crewPanelDashboardLine(sections []crewPanelSection) {
 	if access == nil || !listed {
 		return
 	}
-	access.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(paths, shared))
+	access.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(items, shared))
 }
 
 func crewPanelRead(r *http.Request, handler http.HandlerFunc, method, route string, vars map[string]string, query url.Values, body, out any) error {

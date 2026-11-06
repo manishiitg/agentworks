@@ -107,6 +107,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // folder's line, then who asked; each opens Access at its place.
   const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, dashboard: LayoutDashboard, public: Link2, folder: FolderSync, clash: TriangleAlert, where: access?.where === 'mac' ? Laptop : Globe }
   // Each line opens the Access page (WorkSurface listens) at its tab, or at Sync (TeamSyncPanel scrolls to it).
+  const openDashboard = (path: string) => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }
   const openLine = (line: CrewAccessLine) => {
     // The dashboard line (owner, 5 Nov): opens the dashboard, or with none puts the server's Ask in the person's Main.
     if (line.kind === 'dashboard') {
@@ -134,6 +135,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
           {line.progress && line.progress.bytes_total > 0 && <span aria-hidden="true" className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.round(line.progress.bytes_done * 100 / line.progress.bytes_total))}%` }} /></span>}
         </span>
       </button>
+      {(line as CrewAccessLine & { dashboards?: { title: string; path: string }[] }).dashboards?.map(item => <button key={item.path} type="button" onClick={() => openDashboard(item.path)} className={`${lineButton} pl-6`}>
+        <span className="min-w-0 flex-1 break-words text-foreground">{item.title}</span>
+      </button>)}
       {line.people?.map(person => <button key={person.user_id} type="button" onClick={() => openPerson(person.user_id)} title={person.online_label} className={`${lineButton} pl-6`}>
         <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${person.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
         <span className="min-w-0 flex-1 break-words text-muted-foreground"><span className="text-foreground">{person.name}</span>{person.status_label && <span> · {person.status_label}</span>}{person.agents?.length ? ` · ${person.agents.join(', ')}` : ''}</span>
