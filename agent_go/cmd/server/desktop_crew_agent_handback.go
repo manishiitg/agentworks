@@ -9,7 +9,6 @@ package server
 // the writer, the Mac refuses to run the agent and the server keeps answering, so no message is lost.
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
