@@ -19,11 +19,11 @@ func crewDiagnosticPage[T any](items []T, limit, offset int) map[string]any {
 }
 
 func externalCrewDiagnosticsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("crew_diagnostics", "Read this Crew's browser status and scoped browser sessions (action=browser), or its attached MCP connection status (action=connections). Pass an exact connection name for cached tool metadata; include_tools adds schemas for the Crew owner only. limit/offset page browser sessions, connections, or the named connection's tools. Metadata is cached, not a live reachability check; refresh it with crew_mcp action=discover. Chrome extension status follows account ownership. No browser starts, commands, credentials or server-wide logs. Requires crews:read and current Crew access.", false, false, map[string]any{
+	add("crew_diagnostics", "Read this Crew's browser status and scoped browser sessions (action=browser), or its attached MCP connection status (action=connections). Pass an exact connection name for cached tool metadata; include_tools adds schemas for the people who build this Crew (its owner and Team) only. limit/offset page browser sessions, connections, or the named connection's tools. Metadata is cached, not a live reachability check; refresh it with crew_mcp action=discover. Chrome extension status follows account ownership. No browser starts, commands, credentials or server-wide logs. Requires crews:read and current Crew access.", false, false, map[string]any{
 		"crew_id":       externalString("Crew ID from crew action=list."),
 		"action":        map[string]any{"type": "string", "enum": []any{"browser", "connections"}},
 		"name":          externalString("Exact attached connection name; connections only. Omit to list connection summaries."),
-		"include_tools": map[string]any{"type": "boolean", "description": "Crew owner only: include cached parameter schemas for a named connection. Default false."},
+		"include_tools": map[string]any{"type": "boolean", "description": "Builders only (the Crew's owner and its Team): include cached parameter schemas for a named connection. Default false."},
 		"limit":         externalInteger(1, 100), "offset": externalInteger(0, 100000),
 	}, "crew_id", "action")
 }
@@ -125,7 +125,7 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 		return
 	}
 	if include, _ := args["include_tools"].(bool); include && !crew.OwnedByCaller {
-		externalError(w, 403, "forbidden", "Only the Crew owner can read full connection parameter schemas. Omit include_tools for tool names and descriptions.")
+		externalError(w, 403, "forbidden", "Only the people who build this Crew (its owner and Team) can read full connection parameter schemas. Omit include_tools for tool names and descriptions.")
 		return
 	}
 	inventory, err := vaultServersFor(r.Context(), api.projectSecretsOwner(claims.UserID, root))
