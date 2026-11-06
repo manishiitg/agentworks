@@ -91,7 +91,34 @@ func (api *StreamingAPI) crewTeamMacOnly(ctx context.Context, owner string, root
 		}
 		out = append(out, crewTeamMacOnlyItem{Key: "local:" + name, Name: name, Kind: "app on your Mac", Note: crewTeamMacLocalNote})
 	}
-	return out, nil
+	return crewTeamMacOnlyOneRowPerApp(out), nil
+}
+
+// crewTeamAppKey: one app under two spellings ("Context7" in the Vault, "context7" as a Mac program) is one app.
+func crewTeamAppKey(name string) string {
+	return strings.NewReplacer(" ", "", "-", "", "_", "").Replace(strings.ToLower(strings.TrimSpace(name)))
+}
+
+// crewTeamMacOnlyOneRowPerApp keeps one row per app, in place of its first spelling; a row the owner can act on (Copy,
+// Move) wins over one that only tells them to add it themselves.
+func crewTeamMacOnlyOneRowPerApp(items []crewTeamMacOnlyItem) []crewTeamMacOnlyItem {
+	out := []crewTeamMacOnlyItem{}
+	rowOf := map[string]int{}
+	for _, item := range items {
+		if item.Kind == "secret" {
+			out = append(out, item)
+			continue
+		}
+		key := crewTeamAppKey(item.Name)
+		row, seen := rowOf[key]
+		if !seen {
+			rowOf[key] = len(out)
+			out = append(out, item)
+		} else if out[row].Action == "" && item.Action != "" {
+			out[row] = item
+		}
+	}
+	return out
 }
 
 // desktopCrewTeamLent answers the owner's Mac app: "lent" lists what only this Mac has; "lent_copy" copies one secret

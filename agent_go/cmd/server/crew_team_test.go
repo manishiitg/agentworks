@@ -992,3 +992,20 @@ func TestCrewTeamMemberMacAdmittedOnlyWithTheirRecordedPair(t *testing.T) {
 		t.Fatal("the owner of a Crew on the server got a Mac pair")
 	}
 }
+
+// Live Team tab, 6 Nov: "Context7" (Vault) and "context7" (a Mac program) showed as two rows. One app keeps one row, and
+// the row with an action wins; an app and a secret of the same name stay apart.
+func TestCrewTeamListsOneRowPerApp(t *testing.T) {
+	got := crewTeamMacOnlyOneRowPerApp([]crewTeamMacOnlyItem{
+		{Key: "app:a", Name: "Context7", Kind: "app", Note: "Add it in your Vault on the server."},
+		{Key: "secret:context7", Name: "context7", Kind: "secret", Action: "copy"},
+		{Key: "app:b", Name: "context7 ", Kind: "app, signed in", Action: "move"},
+		{Key: "local:context-7", Name: "context-7", Kind: "app on your Mac", Note: crewTeamMacLocalNote},
+	})
+	if len(got) != 2 || got[0].Key != "app:b" || got[1].Key != "secret:context7" {
+		t.Fatalf("rows = %+v", got)
+	}
+	if names := crewTeamOneNamePerApp([]string{"context7", "Slack", "Context7"}); !slices.Equal(names, []string{"Context7", "Slack"}) {
+		t.Fatalf("server list = %v", names)
+	}
+}
