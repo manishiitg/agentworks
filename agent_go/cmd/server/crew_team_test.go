@@ -391,6 +391,46 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 			}
 		}
 	}
+	// PR1234 review: a writer that never settles must not starve stable
+	// uploads or incoming teammate changes. Split real bytes, then mutate
+	// that one file before its post-read stat, on every round.
+	func() {
+		originalSplit := chunkReader
+		defer func() { chunkReader = originalSplit }()
+		busy := filepath.Join(b1.Root, "busy.md")
+		if err := os.WriteFile(busy, []byte("busy bytes"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		chunkReader = func(r io.Reader, size int64, executable bool, each func(string, []byte) error) (chunkedFile, error) {
+			version, err := originalSplit(r, size, executable, each)
+			if f, ok := r.(*os.File); ok && filepath.Base(f.Name()) == "busy.md" {
+				if writeErr := os.WriteFile(busy, []byte("rewritten busy bytes"), 0600); writeErr != nil {
+					return version, writeErr
+				}
+			}
+			return version, err
+		}
+		for _, suffix := range []string{"A", "B"} {
+			if err := os.WriteFile(filepath.Join(b1.Root, "calm.md"), []byte("calm "+suffix), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(b2.Root, "peer.md"), []byte("peer "+suffix), 0600); err != nil {
+				t.Fatal(err)
+			}
+			fullSync(c2, d2, b2)
+			fullSync(c1, d1, b1)
+			if _, acknowledged := b1.Files["busy.md"]; acknowledged || b1.Status != "pending" {
+				t.Fatalf("unstable bytes were acknowledged or marked done: %+v", b1.Files["busy.md"])
+			}
+			read(b1.Root, "peer.md", "peer "+suffix)
+			sync(c2, d2, b2)
+			read(b2.Root, "calm.md", "calm "+suffix)
+		}
+		if err := os.Remove(busy); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	fullSync(c1, d1, b1)
 	_ = os.WriteFile(filepath.Join(b2.Root, "sync.md"), []byte("member returns"), 0600)
 	sync(c2, d2, b2)
 	sync(c1, d1, b1)
