@@ -485,6 +485,10 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	if caller := productWorkspaceUserID(r.Context()); crewTeamOnlyMember(conversation.WorkspacePath, caller) {
 		project := crewResourceProjectID(conversation.ConversationKey)
 		go func() {
+			if crewTeamFirstDownloadPending(caller, project) {
+				log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=turn_sync skipped=first_download", project, logUsernameForUserID(caller))
+				return
+			}
 			started := time.Now()
 			sync, done := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
 			defer done()

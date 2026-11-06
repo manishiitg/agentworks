@@ -143,6 +143,38 @@ func TestCrewTeamDownloadPageLargerThanARoundCompletesOverRounds(t *testing.T) {
 	}
 }
 
+// PLAT-856-509 (Showcase, 6 Nov): a chat turn leaves a copy's first download to the background loop, and syncs only a
+// copy that has its files, or makes a copy that does not exist yet.
+func TestCrewTeamTurnSkipsSyncOnlyDuringAFirstDownload(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	if err := writeCrewTeam(crewTeam{ProjectID: "first-download", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if crewTeamFirstDownloadPending("member", "first-download") {
+		t.Fatal("a copy that does not exist yet must be made by the turn")
+	}
+	dir, err := crewTeamServerCopyDir("member", "first-download", "f1")
+	if err == nil {
+		err = os.MkdirAll(dir, 0o700)
+	}
+	if err == nil {
+		err = saveCrewTeamLocal(dir, crewTeamLocal{Project: "first-download"})
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !crewTeamFirstDownloadPending("member", "first-download") {
+		t.Fatal("a turn did not leave the first download alone")
+	}
+	if err = saveCrewTeamLocal(dir, crewTeamLocal{Project: "first-download", Downloaded: true}); err != nil {
+		t.Fatal(err)
+	}
+	if crewTeamFirstDownloadPending("member", "first-download") {
+		t.Fatal("a finished copy must sync on a turn")
+	}
+}
+
 // PLAT-856-509 (Team sync lighter, 6 Nov): a watched round reads only the folders that changed, yet still sends an
 // edit, a removal and a new folder's file; a folder nothing changed in is not read.
 func TestCrewTeamWatchedRoundReadsOnlyChangedFolders(t *testing.T) {
