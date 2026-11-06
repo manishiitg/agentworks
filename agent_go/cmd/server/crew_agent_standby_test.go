@@ -132,8 +132,6 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 // teammate's message to it runs on the server from its standby copy, as the teammate (the asker the "When others ask"
 // rule sees), and the server becomes its writer. An Only me agent is never answered from the server: it waits.
 func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
-	crewAlwaysOnAnswering = true // off by default (AGENTWORKS_ALWAYS_ON=1 turns it on)
-	t.Cleanup(func() { crewAlwaysOnAnswering = false })
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
@@ -245,8 +243,6 @@ func heldTabs(t *testing.T) []string {
 // also changed the conversation, both versions are kept, the owner is told and nothing is imported. Only the owner on
 // the Crew's own pair, with the Mac online, can take an agent back, over the sync request and the native pull alike.
 func TestCrewHandbackTakesServerCopyKeepsBothAndRefusesOthers(t *testing.T) {
-	crewAlwaysOnAnswering = true // off by default (AGENTWORKS_ALWAYS_ON=1 turns it on)
-	t.Cleanup(func() { crewAlwaysOnAnswering = false })
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
