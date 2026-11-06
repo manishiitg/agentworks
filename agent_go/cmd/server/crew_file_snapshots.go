@@ -306,6 +306,7 @@ var crewSnapshotUnavailableText = map[string]string{
 	"busy":       "File changes for this reply weren't saved (the project was too busy to snapshot in time).",
 	"failed":     "File changes for this reply weren't saved (the file snapshot failed).",
 	"budget":     "File changes exceeded the capture size limit; some changes could not be saved.",
+	"incomplete": "Some file changes could not be saved for this reply.",
 }
 
 // crewSetupNoticeShown remembers chats (per Crew store) that already got the
@@ -350,7 +351,8 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	checkCtx, cancelCheck := context.WithTimeout(context.Background(), 5*time.Second)
 	unchanged := snapshot.store.Unchanged(checkCtx, record)
 	cancelCheck()
-	if unchanged {
+	incomplete := record.Review != nil && len(record.Review.IncompleteRoots) > 0
+	if unchanged && !incomplete {
 		log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s snapshot=%s skipped=no_changes", snapshot.sessionID, snapshot.executionID, record.ID)
 		return
 	}
@@ -372,6 +374,15 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	summaryCtx, cancelSummary := context.WithTimeout(context.Background(), 5*time.Second)
 	summary, ok := replyFileSummary(summaryCtx, snapshot.store, roots, record.ID)
 	cancelSummary()
+	// This owning-chat notice contains no repository/path/count. File-scoped
+	// compare/history still require saved, authorized witnesses for details.
+	if incomplete {
+		if !ok || summary["files"] == 0 {
+			api.publishCrewSnapshotUnavailable(snapshot, "incomplete")
+			return
+		}
+		summary["note"] = crewSnapshotUnavailableText["incomplete"]
+	}
 	if record.BeforeCapture.BudgetSkipped > 0 || record.AfterCapture.BudgetSkipped > 0 {
 		if !ok || summary["files"] == 0 {
 			api.publishCrewSnapshotUnavailable(snapshot, "budget")
