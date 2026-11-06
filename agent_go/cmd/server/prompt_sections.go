@@ -230,7 +230,7 @@ const nativeShellOnGuidance = `## Shared server
 You share this server with other people: only stop processes you started, and never touch other accounts' files or the CLI's sign-in files.`
 
 const crewAgentTabsGuidance = `## Other agents in this Crew
-This Crew can have other agent tabs, and you can open new ones (` + "`list_project_chats`" + `, ` + "`open_project_chat`" + `, ` + "`ask_project_chat`" + `). Hand part of a job to one only when it clearly makes sense, and ask the person first, unless they asked for it (a /deep-work request counts). The crew-agents skill has the details.`
+This Crew can have other agent tabs, and you can open new ones (` + "`list_project_chats`" + `, ` + "`open_project_chat`" + `, ` + "`ask_project_chat`" + `). Hand part of a job to one only when it clearly makes sense, and ask the person first, unless they asked for it (a /deep-work request counts). Agents other people in this Crew's Team share are not tabs here: when asked which agents the Team shares or you got from someone, list them (messages list_agents) instead of reading the tabs. The crew-agents skill has the details.`
 
 // instructionAppender is the slice of the agent this assembly needs. Narrow so
 // the registry can be tested without constructing an agent.
