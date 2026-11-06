@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/spf13/viper"
 )
@@ -41,6 +43,29 @@ func noSymlinks(root *os.Root, p string) error {
 	return nil
 }
 
+// localCrewAssetScope is where one file of a Crew in a folder the person chose really is: that Crew is not under the
+// workspace, so its virtual root opens nothing. It returns the folder to confine the read to and the path inside it, or
+// "" for everything else. Folder listings stay on the virtual root: their guards name paths from it.
+func localCrewAssetScope(docs, rootPath, p string) (scope, relative string, err error) {
+	roots, bound, err := crewroot.Lookup(docs, rootPath)
+	if err != nil || !bound || !roots.Local {
+		return "", "", err
+	}
+	full, _, err := crewroot.Resolve(docs, path.Join(rootPath, p))
+	if err != nil {
+		return "", "", err
+	}
+	scope = roots.Resources
+	if !crewroot.Within(scope, full) {
+		scope = roots.Files
+	}
+	if !crewroot.Within(scope, full) {
+		return "", "", fs.ErrPermission
+	}
+	relative, err = filepath.Rel(scope, full)
+	return scope, filepath.ToSlash(relative), err
+}
+
 // SharedAssets is service-token-only. The agent server authorizes the scope
 // root. OpenRoot confines subsequent reads even while files are being changed.
 func SharedAssets(c *gin.Context) {
@@ -64,7 +89,18 @@ func SharedAssets(c *gin.Context) {
 		c.AbortWithStatus(403)
 		return
 	}
-	base, err := os.OpenRoot(viper.GetString("docs-dir"))
+	docs := viper.GetString("docs-dir")
+	if req.Operation == "stat" || req.Operation == "read" {
+		scope, relative, err := localCrewAssetScope(docs, rootPath, p)
+		if err != nil {
+			c.AbortWithStatus(404)
+			return
+		}
+		if scope != "" {
+			docs, rootPath, p = scope, ".", relative
+		}
+	}
+	base, err := os.OpenRoot(docs)
 	if err != nil {
 		c.AbortWithStatus(503)
 		return
