@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -277,6 +278,7 @@ func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.R
 		}
 		merged, added, ok := crewHandbackMergeHistory(claims.UserID, *record, conversation.History)
 		if !ok {
+			log.Printf("[ALWAYS_ON] project=%s tab=%s event=handback_diverged_history key=%s server_messages=%d", roots.ID, tab, item.Key, len(conversation.History))
 			return "diverged", bytes, keepCrewHandbackAside(roots, tab, item.Key, &conversation)
 		}
 		if added == 0 {
@@ -313,6 +315,7 @@ func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.R
 	case "unchanged", "mac_newer":
 		return event, bytes, nil
 	case "diverged":
+		log.Printf("[ALWAYS_ON] project=%s tab=%s event=handback_diverged_native key=%s %s", roots.ID, tab, item.Key, crewHandbackDivergence(mine, &server))
 		return event, bytes, keepCrewHandbackAside(roots, tab, item.Key, &conversation)
 	}
 	if record == nil && !isSharedThreadKey(item.Key) {
@@ -539,4 +542,21 @@ func keepCrewHandbackAside(roots crewroot.Roots, tab, key string, conversation *
 	}
 	log.Printf("[ALWAYS_ON] project=%s tab=%s event=handback_kept_server_version copy=%s", roots.ID, tab, filepath.Base(dir))
 	return nil
+}
+
+// crewHandbackDivergence says, per file, how the Mac's native version relates to the server's (names, sizes and whether
+// each starts the other; never content), so a "changed on both" call can be read from the log.
+func crewHandbackDivergence(mine, server *sessiontransfer.Bundle) string {
+	parts := []string{fmt.Sprintf("mac_to_server=%v server_to_mac=%v", sessiontransfer.Ancestor(mine, server), sessiontransfer.Ancestor(server, mine))}
+	for name, m := range mine.Files {
+		sv, ok := server.Files[name]
+		parts = append(parts, fmt.Sprintf("%s mac=%d server=%d same=%t", name, m.Size, sv.Size, ok && sv.SHA256 == m.SHA256))
+	}
+	for name, sv := range server.Files {
+		if _, ok := mine.Files[name]; !ok {
+			parts = append(parts, fmt.Sprintf("%s only_on_server=%d", name, sv.Size))
+		}
+	}
+	slices.Sort(parts[1:])
+	return strings.Join(parts, " ")
 }
