@@ -273,14 +273,13 @@ const toneChip: Record<string, string> = { ok: 'bg-emerald-500/10 text-emerald-7
 const toneDot: Record<string, string> = { ok: 'bg-emerald-500', wait: 'bg-amber-500', server: 'bg-sky-500' }
 
 /** One of the viewer's own agents: its name, where it is (the server's chip) and its "Shared with the team" switch;
- * while shared, its purpose (edited in place) and what teammates can do, with its rule when others ask. Every save
+ * while shared, what teammates can do, with its rule when others ask (purpose stays in the agent's own chat, owner
+ * 6 Nov: "remove purpose from here.. this make the ui confusing"). Every save
  * goes to the server (agent-visibility, agent-rule); the server says when a switch cannot go off and why. */
 function AgentRow({ agent, target, projectId, switching, busy, onShare }: { agent: TeamTabAgent; target: TeamTarget; projectId: string; switching: boolean; busy: boolean; onShare: (on: boolean) => void }) {
-  const [purpose, setPurpose] = useState(agent.purpose || '')
   const [rules, setRules] = useState(false)
   const { pending, error, run } = useSave()
-  useEffect(() => { setPurpose(agent.purpose || '') }, [agent.purpose])
-  const save = (key: string, change: { purpose?: string; can_make_changes?: boolean }) => run(key, async () => {
+  const save = (key: string, change: { can_make_changes?: boolean }) => run(key, async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/agent-rule', 'POST', { agent_key: agent.key, ...change })
     window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   })
@@ -299,12 +298,6 @@ function AgentRow({ agent, target, projectId, switching, busy, onShare }: { agen
     </div>
     {!agent.in_team && agent.not_shared_line && <p className="text-xs text-muted-foreground">{agent.not_shared_line}</p>}
     {agent.in_team && <>
-      {agent.can_set_purpose ? <div>
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">Purpose<Saving on={pending === 'purpose'}>{null}</Saving></p>
-        <input aria-label={`${agent.name}: purpose`} value={purpose} maxLength={300} disabled={pending === 'purpose'} placeholder="Add a purpose so teammates know when to ask this agent…"
-          onChange={e => setPurpose(e.target.value)} onBlur={() => { if (purpose.trim() !== (agent.purpose || '').trim()) void save('purpose', { purpose }) }}
-          className="mt-0.5 w-full rounded-md border border-border bg-background px-2 py-1 text-[13px]" />
-      </div> : agent.purpose && <p className="text-[12.5px] text-muted-foreground">{agent.purpose}</p>}
       {agent.can_edit_rule && <div className="flex flex-wrap items-center gap-2 text-xs">
         {agent.can_make_changes !== undefined && <>
           <span className="text-muted-foreground">Teammates can</span>
