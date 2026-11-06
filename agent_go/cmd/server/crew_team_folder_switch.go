@@ -100,6 +100,29 @@ func crewTeamNameList(names []string) string {
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
+// crewTeamCopyPlaces says where the members' copies live, for the confirm lines: a member whose agents work on the
+// server keeps theirs on the server, one whose agents work on a Mac keeps theirs on that computer.
+func crewTeamCopyPlaces(t crewTeam) string {
+	mac, server := false, false
+	for _, p := range t.People {
+		if p.UserID == t.OwnerID || p.Invited || !crewTeamAccountActive(p.UserID) {
+			continue
+		}
+		if _, onMac := t.memberMac(p.UserID); onMac {
+			mac = true
+		} else {
+			server = true
+		}
+	}
+	switch {
+	case mac && server:
+		return "on the server for people whose agents work there, on their computers for the others"
+	case mac:
+		return "on their computers"
+	}
+	return "on the server"
+}
+
 // crewTeamFolderChangePreview is the confirm box for switching t to the Whole Crew (whole) or back to Folders. keep
 // names the folders to share instead of the server's choice (chat's share=folders folders=[…]).
 func crewTeamFolderChangePreview(ctx context.Context, t crewTeam, whole bool, keep []string) (crewTeamFolderChange, error) {
@@ -144,7 +167,7 @@ func crewTeamFolderChangePreview(ctx context.Context, t crewTeam, whole bool, ke
 		if len(names) > 0 {
 			who = crewTeamNameList(names)
 		}
-		out.Means = append(out.Means, "Other folders stop syncing for "+who+".", "Their copies of those files stay on their computers but no longer update.")
+		out.Means = append(out.Means, "Other folders stop syncing for "+who+".", "Their copies of those files stay where they are ("+crewTeamCopyPlaces(t)+") but no longer update.")
 		out.ConfirmLabel = "Share folders only"
 		return out, nil
 	}
@@ -176,7 +199,7 @@ func crewTeamFolderChangePreview(ctx context.Context, t crewTeam, whole bool, ke
 			}
 		}
 		out.Means = append(out.Means, "The whole Crew: "+crewTeamSizeText(count, bytes)+" (Git history and package folders are never shared).",
-			"The first sync copies about "+crewTeamBytesText(max(bytes-shared, 0))+" to each person's computer.")
+			"The first sync copies about "+crewTeamBytesText(max(bytes-shared, 0))+" to each person's copy.")
 	} else {
 		out.Means = append(out.Means, "Your Mac is offline, so the whole Crew can't be measured now; its files start syncing when your Mac is back.")
 	}
@@ -185,7 +208,7 @@ func crewTeamFolderChangePreview(ctx context.Context, t crewTeam, whole bool, ke
 		home = "your Mac"
 	}
 	out.Means = append(out.Means, "Their edits come back to "+home+"; a same-line clash is fixed through an agent.", "Their agents can read these files when they ask your agents.")
-	out.Note = "Still private: your chats and memory, app files, passwords and keys. You can go back to Folders any time; files already copied stay on their computers."
+	out.Note = "Still private: your chats and memory, app files, passwords and keys. You can go back to Folders any time; files already copied stay where they are (" + crewTeamCopyPlaces(t) + ")."
 	out.ConfirmLabel = "Share the whole Crew"
 	return out, nil
 }

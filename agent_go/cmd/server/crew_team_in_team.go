@@ -247,6 +247,10 @@ func setCrewTeamAgentChoice(ctx context.Context, project, person, key string, in
 	if err != nil || !t.member(person) || ownerOfCrewProjectID(project) != t.OwnerID {
 		return errCrewTeamAgentNotYours
 	}
+	// The agent's name works too ("Main"), looked up among the caller's own agents only (crewTeamOwnAgent).
+	if _, named, e := crewTeamOwnAgent(ctx, project, person, key); e == nil {
+		key = named
+	}
 	stored := crewTeamAgentKey(ctx, t, person, key)
 	if stored == "" {
 		return errCrewTeamAgentNotYours

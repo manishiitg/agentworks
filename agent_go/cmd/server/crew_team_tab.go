@@ -429,7 +429,7 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 	if len(open) > 0 {
 		clashLine = crewTeamClashLine(open)
 	}
-	out := &crewTeamTabSync{Problem: len(open) > 0}
+	out := &crewTeamTabSync{} // open clashes are on the line, not a failure
 	if n := len(s.Events); n > 0 {
 		e := s.Events[n-1]
 		if at, err := time.Parse(time.RFC3339Nano, e.At); err == nil {

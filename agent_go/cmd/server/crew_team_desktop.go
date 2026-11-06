@@ -124,7 +124,7 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		if crewTeamRemoteJSON(r.Context(), owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/clashes?folder_id="+url.QueryEscape(t.Folder.ID), nil, &open) == nil {
 			slices.Reverse(open.Clashes) // the server lists newest first
 			if paths := crewTeamOpenClashPaths(open.Clashes); len(paths) > 0 {
-				line, problem = line+" · "+crewTeamClashLine(paths), true
+				line += " · " + crewTeamClashLine(paths) // a clash is on the line, not a failure
 			}
 		}
 	}
