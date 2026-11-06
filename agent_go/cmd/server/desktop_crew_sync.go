@@ -50,7 +50,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		PublishAgent *crewAgentPublishSelection `json:"publish_agent,omitempty"`
 		TransferID   string                     `json:"transfer_id,omitempty"`
 		Agents       []macSharedAgent           `json:"agents"`
-		AllInTeam    bool                       `json:"all_in_team"`
 		Key          string                     `json:"key,omitempty"`
 	}
 	if r.Method == http.MethodGet {
@@ -65,7 +64,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	switch input.Action {
-	case "status", "server", "relay", "offline", "agents", "share_agents", "public", "only_my_agents", "team_all", "lent", "lent_copy", "lent_move":
+	case "status", "server", "relay", "offline", "agents", "share_agents", "public", "only_my_agents", "lent", "lent_copy", "lent_move":
 	default:
 		externalError(w, 400, "invalid_action", "Choose Move online.")
 		return
@@ -248,16 +247,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	if input.Action == "agents" || input.Action == "share_agents" {
 		api.desktopShareMacCrewAgents(w, r, claims, roots.ID, binding, connection, input.Action, input.Agents)
-		return
-	}
-	// "All agents in team" on the Team tab (crew_team_all.go).
-	if input.Action == "team_all" {
-		out, err := api.setCrewTeamAll(r.Context(), roots.ID, input.AllInTeam)
-		if err != nil {
-			externalError(w, 409, "team_all_failed", err.Error())
-			return
-		}
-		externalJSON(w, out)
 		return
 	}
 	// Reach off: the server removes this Crew's empty online copy, then the Mac forgets the pair (crew_where_it_lives.go).

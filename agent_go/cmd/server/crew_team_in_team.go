@@ -18,22 +18,19 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-// In team / Only me (owner, 5 Nov, "A Team is a shared room"): every agent of every person in a Team Crew is In team
-// unless its own person chose Only me, or turned their own "All my agents in team" off and never chose for it. Each
-// person's Main is always In team. The choice is kept in one
+// In team / Only me (owner, 5 Nov, "A Team is a shared room"; 6 Nov: no "Share all my agents", each agent's own
+// switch is the only control): every agent of every person in a Team Crew is In team, new ones too, unless its own
+// person chose Only me for it. Main is an ordinary agent (owner, 6 Nov: "i can turn main off"), but each person
+// keeps at least one agent shared. The choice is kept in one
 // place, the server's Team record (crewTeam.AgentChoices), for every Crew kind: a Crew on the server, the owner's Mac
 // Crew and a member's Mac copy. Every reader asks the same function: the Team tab and agents list, watching,
 // notifications, messages and the tab strips.
 //
-// An agent's key in AgentChoices: an agent on a Mac by its tab ("main" or the Mac tab id), an agent on the server by
-// its chat key.
+// An agent's key in AgentChoices: a Main by "main" whatever it is called where it is read, another agent on a Mac by
+// its Mac tab id, another agent on the server by its chat key.
 
-// crewTeamAllMine is the AgentChoices key of a person's own "All my agents in team" (owner, 5 Nov): it applies only to
-// their own agents they never chose for. Unset is In team.
-const crewTeamAllMine = "*"
-
-// crewTeamMainAgent: the key is the person's Main, which is always In team so each person shares at least one agent
-// (owner, 5 Nov): a Mac Main tab, their default chat, the owner's Crew Main, or a root tab (named Main in the list).
+// crewTeamMainAgent: the key is one of the names of the person's Main: a Mac Main tab, their default chat, the
+// owner's Crew Main (the bare project key AgentBridge uses), or a root tab (named Main in the list).
 func crewTeamMainAgent(t crewTeam, person, key string) bool {
 	if key == macMainTab || key == crewOwnerDefaultChatKey(t.ProjectID, person) || person == t.OwnerID && key == t.ProjectID {
 		return true
@@ -42,52 +39,49 @@ func crewTeamMainAgent(t crewTeam, person, key string) bool {
 	return ok && strings.HasPrefix(tab, "root-")
 }
 
-// agentInTeam: a Main is always In team; otherwise the person's own choice for the agent, else their own All my
-// agents in team.
-func (t crewTeam) agentInTeam(person, key string) bool {
+// crewTeamChoiceKey is the AgentChoices key for one of person's agents: every name of their Main is "main", so a
+// Main turned off is off wherever it is read.
+func crewTeamChoiceKey(t crewTeam, person, key string) string {
 	if crewTeamMainAgent(t, person, key) {
-		return true
+		return macMainTab
 	}
-	if in, ok := t.AgentChoices[person][key]; ok {
+	return key
+}
+
+// agentInTeam: the person's own choice for the agent, else In team (new agents are shared).
+func (t crewTeam) agentInTeam(person, key string) bool {
+	if in, ok := t.AgentChoices[person][crewTeamChoiceKey(t, person, key)]; ok {
 		return in
-	}
-	if all, ok := t.AgentChoices[person][crewTeamAllMine]; ok {
-		return all
 	}
 	return true
 }
 
-// allMine is the person's own All my agents in team.
-func (t crewTeam) allMine(person string) bool {
-	all, ok := t.AgentChoices[person][crewTeamAllMine]
-	return !ok || all
-}
+// errCrewTeamLastShared: a person's last shared agent cannot be turned off (owner, 6 Nov: "all agents cannot be off").
+var errCrewTeamLastShared = errors.New("Keep at least one agent shared with the Team. Share another agent first.")
 
-// errCrewTeamMainShared: a Main cannot be Only me.
-var errCrewTeamMainShared = errors.New("Main is always shared with the team.")
-
-// migrateCrewTeamRecord moves a record saved before per-person defaults (owner, 5 Nov): the Team-wide All agents in
-// team off becomes the owner's own, and an Only me on a Main is dropped (Main is always In team). Delete it with
-// AgentsOnlyMe once every server has saved its Teams again.
-func migrateCrewTeamRecord(t *crewTeam) {
-	if t.AgentsOnlyMe {
-		if t.AgentChoices == nil {
-			t.AgentChoices = map[string]map[string]bool{}
+// crewTeamSharedKeys are the AgentChoices keys of person's own agents that are In team now, as their Team tab lists them.
+func crewTeamSharedKeys(ctx context.Context, t crewTeam, person string) []string {
+	var keys []string
+	for _, p := range teamAgentsByPerson(ctx, t, person) {
+		if p.UserID != person {
+			continue
 		}
-		if t.AgentChoices[t.OwnerID] == nil {
-			t.AgentChoices[t.OwnerID] = map[string]bool{}
-		}
-		if _, set := t.AgentChoices[t.OwnerID][crewTeamAllMine]; !set {
-			t.AgentChoices[t.OwnerID][crewTeamAllMine] = false
-		}
-		t.AgentsOnlyMe = false
-	}
-	for person, choices := range t.AgentChoices {
-		for key := range choices {
-			if key != crewTeamAllMine && crewTeamMainAgent(*t, person, key) {
-				delete(choices, key)
+		for _, a := range p.Agents {
+			if a.InTeam {
+				keys = append(keys, crewTeamChoiceKey(t, person, crewTeamRuleKey(ctx, t, person, a.ChatKey)))
 			}
 		}
+	}
+	return keys
+}
+
+// migrateCrewTeamRecord drops what older records kept (owner, 6 Nov: no "Share all my agents"): the Team-wide
+// AgentsOnlyMe and each person's "*" choice go, so an agent nobody chose for is In team. Delete it with AgentsOnlyMe
+// once every server has saved its Teams again.
+func migrateCrewTeamRecord(t *crewTeam) {
+	t.AgentsOnlyMe = false
+	for _, choices := range t.AgentChoices {
+		delete(choices, "*")
 	}
 }
 
@@ -180,7 +174,7 @@ func crewTeamOwnRows(ctx context.Context, t crewTeam, person string) []crewTeamA
 	var rows []crewTeamAgent
 	if !t.On {
 		if person == t.OwnerID {
-			for _, row := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(ctx, t), crewTabSetupSource{}) {
+			for _, row := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(t), crewTabSetupSource{}) {
 				rows = append(rows, crewTeamAgent{ChatKey: row.Key, Name: row.Name, Tab: row.Tab})
 			}
 		}
@@ -207,7 +201,7 @@ func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTea
 		return t, "", errCrewTeamAgentNotYours
 	}
 	key = strings.TrimSpace(key)
-	if key == "" || key == crewTeamAllMine {
+	if key == "" {
 		return t, "", errCrewTeamAgentNotYours
 	}
 	asked := crewTeamAgentKey(ctx, t, person, key)
@@ -236,9 +230,9 @@ func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTea
 	return t, "", errCrewTeamAgentNotYours
 }
 
-// setCrewTeamAgentChoice saves the person's own In team / Only me for one of their agents, or with key "*" their own All
-// my agents in team. Only the agent's own person chooses (owner, 5 Nov: Only me is per person); a server agent must be
-// one of their chats in this Crew; a Main stays In team.
+// setCrewTeamAgentChoice saves the person's own In team / Only me for one of their agents. Only the agent's own
+// person chooses (owner, 5 Nov: Only me is per person); a server agent must be one of their chats in this Crew; their
+// last shared agent stays In team (owner, 6 Nov), for every caller (Team tab, chat, MCP).
 func setCrewTeamAgentChoice(ctx context.Context, project, person, key string, inTeam bool) error {
 	dir, err := crewTeamDir(project)
 	if err != nil {
@@ -253,20 +247,12 @@ func setCrewTeamAgentChoice(ctx context.Context, project, person, key string, in
 	if err != nil || !t.member(person) || ownerOfCrewProjectID(project) != t.OwnerID {
 		return errCrewTeamAgentNotYours
 	}
-	stored := crewTeamAllMine
-	if key != crewTeamAllMine {
-		stored = crewTeamAgentKey(ctx, t, person, key)
-	}
+	stored := crewTeamAgentKey(ctx, t, person, key)
 	if stored == "" {
 		return errCrewTeamAgentNotYours
 	}
-	if crewTeamMainAgent(t, person, stored) {
-		if !inTeam {
-			return errCrewTeamMainShared
-		}
-		return nil
-	}
-	if stored != crewTeamAllMine && !crewTeamAgentOnMac(t, person) {
+	main := crewTeamMainAgent(t, person, stored)
+	if !main && !crewTeamAgentOnMac(t, person) {
 		records, err := defaultProductConversationRegistryStore().projectChats(ctx, person, crewProfileID, project)
 		if err != nil {
 			return fmt.Errorf("your agents could not be read; try again")
@@ -274,6 +260,10 @@ func setCrewTeamAgentChoice(ctx context.Context, project, person, key string, in
 		if !slices.ContainsFunc(records, func(record ProductConversationRecord) bool { return record.ConversationKey == stored }) {
 			return errCrewTeamAgentNotYours
 		}
+	}
+	stored = crewTeamChoiceKey(t, person, stored)
+	if !inTeam && t.agentInTeam(person, stored) && !slices.ContainsFunc(crewTeamSharedKeys(ctx, t, person), func(k string) bool { return k != stored }) {
+		return errCrewTeamLastShared
 	}
 	if t.AgentChoices == nil {
 		t.AgentChoices = map[string]map[string]bool{}

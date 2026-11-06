@@ -97,7 +97,7 @@ type crewSyncReply struct {
 	// the Mac-only rows as text elsewhere, and its Who can use it and laptop access sections.
 	AccessHere string          `json:"access_here,omitempty"`
 	AccessTabs []crewAccessTab `json:"access_tabs,omitempty"`
-	AccessMac  *crewAccessText `json:"access_mac,omitempty"`
+	AccessMac  *crewAccessMacCard `json:"access_mac,omitempty"`
 	// AccessMacLocked: Mac online stays on while the Team is on (owner, 6 Nov); the line its switch shows, locked on.
 	AccessMacLocked string          `json:"access_mac_locked,omitempty"`
 	AccessPublish   *crewAccessText `json:"access_publish,omitempty"`

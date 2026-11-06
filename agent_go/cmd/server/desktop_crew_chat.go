@@ -84,6 +84,23 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	if call.Operation == "team_folders" {
 		return api.desktopCrewTeamFolders(ctx, claims, project, call)
 	}
+	// This Crew's schedules, watchers and webhooks for the agent tabs (crew_tab_setup.go).
+	if call.Operation == "automations" {
+		data, _ := json.Marshal(api.projectActions.crewAutomationsByTab(ctx, claims.UserID, project))
+		return crewChatResult{ID: call.ID, Status: 200, Body: data}
+	}
+	// Public on AgentBridge from the website (crew_team_agentbridge.go): the same path as the Mac app's switch and the
+	// owner's chat, so its checks (a purpose first) are the same.
+	if call.Operation == "agentbridge" {
+		if call.Action != "public" && call.Action != "only_my_agents" {
+			return fail(400, "Choose public or only my agents.")
+		}
+		if _, err := api.crewAccessChatAction(ctx, project, call.Action, map[string]any{"agent": call.Tab}); err != nil {
+			return fail(409, err.Error())
+		}
+		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=agentbridge action=%s tab=%s request=%s", project, call.Action, call.Tab, call.ID)
+		return crewChatResult{ID: call.ID, Status: 200, Body: json.RawMessage(`{}`)}
+	}
 	profile, err := api.agentProfiles.Resolve("work", 0, claims.UserID)
 	if err != nil {
 		return fail(404, "The local Crew is unavailable.")

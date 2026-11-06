@@ -1,45 +1,50 @@
 import { useState } from 'react'
+import { Globe } from 'lucide-react'
 import { desktopRequest } from '../../services/desktopConnections'
 import { Switch } from '../../components/ui/Switch'
-import { useTeamTab } from './teamApi'
+import { teamError, teamRequest, useTeamTab } from './teamApi'
+import { AskButton, Saving, teamCard } from './TeamTab'
+import { askAgentPurpose } from './AgentSharingRow'
 
-/** Public on AgentBridge, on the Mac online tab only (owner, 6 Nov; decisions log "AgentBridge (Mac online tab)"). The
- * rows are the owner's own agents from the server's Team tab reply (crew_team_tab.go agentbridge), the same in the Mac
- * app and on the website. Only the owner's Mac app switches them (crew-sync public / only_my_agents); the server decides
- * the rules (a purpose first) and its reply shows after the click. Elsewhere the switch shows the setting, and the
- * server's line says where to change it. */
+/** The Mac online tab's AgentBridge card (owner, 6 Nov, approved mockup): the owner's own agents from the server's
+ * Team tab reply (crew_team_tab.go agentbridge), the same on the Mac app and the website. Only the switch is
+ * clickable; an agent with no purpose shows Set purpose instead (the server says which). The Mac app switches on its
+ * own Mac (crew-sync public / only_my_agents); the website asks the server, which passes it to the Mac and refuses
+ * with a plain line while the Mac is offline (crew_team_agentbridge.go). */
 export function MacAgentBridge({ projectId }: { projectId: string }) {
   const state = useTeamTab(projectId)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
-  const view = state.view
-  const rows = (view?.agents || []).filter(agent => agent.agentbridge)
-  if (!rows.length) return null
-  const { connection, localProject: local } = state.target || {}
+  const rows = (state.view?.agents || []).filter(agent => agent.mine && agent.agentbridge)
+  if (!state.target || !rows.length) return null
+  const { connection, localProject: local, project } = state.target
   const setPublic = async (tab: string, on: boolean) => {
-    if (!connection || !local) return
     setBusy(tab); setError('')
     try {
-      await desktopRequest(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(local)}`, 'POST', { action: on ? 'public' : 'only_my_agents', key: tab })
+      if (connection && local) await desktopRequest(`/${encodeURIComponent(connection)}/crew-sync/${encodeURIComponent(local)}`, 'POST', { action: on ? 'public' : 'only_my_agents', key: tab })
+      else await teamRequest({ project, connection }, '/agentbridge', 'POST', { tab, public: on })
       window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'It was not saved. Try again.') } finally { setBusy('') }
+    } catch (cause) { setError(teamError(cause)) } finally { setBusy('') }
   }
-  const macOnly = rows.some(agent => agent.agentbridge?.mac_only) && !(connection && local)
-  return <div aria-label="AgentBridge" className="mt-4">
-    <p className="py-2.5"><span className="font-semibold">AgentBridge</span> <span className="text-[12.5px] text-muted-foreground">· agents that can message your agents</span></p>
-    {rows.map(agent => {
-      const bridge = agent.agentbridge!
-      const canSwitch = bridge.can_change && (!bridge.mac_only || Boolean(connection && local))
-      return <div key={agent.key} className="border-t border-border py-2.5 pl-3">
-        <div className="flex items-center gap-2.5">
-          <span title={agent.purpose || undefined} className="min-w-0 flex-1 truncate">{agent.name}</span>
-          <span className="text-[12.5px] text-muted-foreground">Public</span>
-          <Switch aria-label={`${agent.name}: Public on AgentBridge`} checked={bridge.public} disabled={!canSwitch || busy !== ''} onCheckedChange={on => void setPublic(agent.tab, on)} />
+  return <section aria-label="AgentBridge" className={teamCard}>
+    <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">AgentBridge</h3><AskButton projectId={projectId} card="agentbridge" /></div>
+    <p className="text-[12.5px] text-muted-foreground">A public agent can be found and messaged by other people's agents on this server. It answers as you, with your rules for "when others ask".</p>
+    <div className="divide-y divide-border">
+      {rows.map(agent => {
+        const bridge = agent.agentbridge!
+        return <div key={agent.key} className="flex items-center gap-2.5 py-2.5">
+          <Globe aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${bridge.public ? 'text-emerald-500' : 'text-muted-foreground'}`} />
+          <div className="min-w-0 flex-1">
+            <p className="flex min-w-0 items-center gap-1.5 text-[13px]"><b className="truncate">{agent.name}</b>
+              {bridge.state && <span className={`shrink-0 rounded-full px-2 py-px text-[11px] ${bridge.state.includes('offline') ? 'bg-muted text-muted-foreground' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{bridge.state}</span>}</p>
+            <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet. Other agents need one to know what to ask it.'}</p>
+          </div>
+          {bridge.needs_purpose
+            ? <button type="button" className="shrink-0 text-[12.5px] text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button>
+            : <Saving on={busy === agent.tab}><Switch aria-label={`${agent.name}: Public on AgentBridge`} checked={bridge.public} disabled={!bridge.can_change || busy !== ''} onCheckedChange={on => void setPublic(agent.tab, on)} /></Saving>}
         </div>
-        {bridge.public && (bridge.line || agent.address) && <p className="mt-0.5 text-xs text-muted-foreground">{bridge.line}{agent.address && <> <code className="rounded bg-muted px-1 py-0.5">agent:{agent.address}</code></>}</p>}
-      </div>
-    })}
-    {macOnly && view?.agents_mac_only && <p className="border-t border-border pt-2 pl-3 text-xs text-muted-foreground">{view.agents_mac_only}</p>}
-    {error && <p role="alert" className="pl-3 text-xs text-amber-600">{error}</p>}
-  </div>
+      })}
+    </div>
+    {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
+  </section>
 }

@@ -154,10 +154,6 @@ func (api *StreamingAPI) desktopCrewTeamFolders(ctx context.Context, claims *Use
 		data, _ := json.Marshal(v)
 		return crewChatResult{ID: call.ID, Status: status, Body: data}
 	}
-	// The Team tab's other Mac read: this Crew's schedules, watchers and webhooks for the agent tabs (crew_tab_setup.go).
-	if call.Action == "automations" {
-		return reply(200, api.projectActions.crewAutomationsByTab(ctx, claims.UserID, project))
-	}
 	roots, err := api.crewSyncRoots(ctx, claims, project)
 	if err != nil {
 		return reply(409, map[string]string{"error": "This Crew's folder is unavailable on the Mac."})

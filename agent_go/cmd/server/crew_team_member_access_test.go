@@ -187,6 +187,14 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	if saved.agentRule("owner", "e139c703").WhenOthersAsk != "Ask me first." || saved.agentRule("member", memberMain).WhenOthersAsk != "Ask me first." {
 		t.Fatalf("rules not kept: %+v", saved.AgentRules)
 	}
+	// Public on AgentBridge from the website (owner, 6 Nov): only the Crew's owner switches it, through their Mac; a
+	// Team member is refused by the owner rule, and the owner is told plainly while the Mac is offline (no Mac here).
+	if w := call("member", "agentbridge", `{"tab":"e139c703","public":true}`); w.Code != 403 || !strings.Contains(w.Body.String(), "agentbridge_owner_only") {
+		t.Fatalf("member switched the owner's AgentBridge: %d %s", w.Code, w.Body.String())
+	}
+	if w := call("owner", "agentbridge", `{"tab":"e139c703","public":true}`); w.Code != 409 || !strings.Contains(w.Body.String(), crewAgentBridgeMacOffline) {
+		t.Fatalf("owner's AgentBridge with the Mac offline: %d %s", w.Code, w.Body.String())
+	}
 	if w := call("member", "leave", `{}`); w.Code != 200 {
 		t.Fatalf("leave: %d %s", w.Code, w.Body.String())
 	}
