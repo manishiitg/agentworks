@@ -671,8 +671,15 @@ func TestCrewHandbackFromHistoryTakesExtendsKeepsBoth(t *testing.T) {
 	if event := apply(); event != "unchanged" || len(imported) != 1 {
 		t.Fatalf("the same history must change nothing: event=%s imported=%v", event, imported)
 	}
-	macHistory = say("remember pineapple", "ok", "something only the Mac saw", "ok") // both changed
-	if event := apply(); event != "diverged" || len(imported) != 1 {
+	// The server saved only its latest messages (live test: it trims the oldest when it saves a turn): the Mac keeps
+	// its full history and adds what came after its own last message.
+	macHistory = say("an old question", "an old answer", "remember pineapple", "ok")
+	server = say("remember pineapple", "ok", "also mango (asked on the website)", "ok, pineapple and mango")
+	if event := apply(); event != "imported" || len(imported) != 2 || imported[1] != 6 {
+		t.Fatalf("a trimmed server history must add only its new turns to the Mac's full history: event=%s imported=%v", event, imported)
+	}
+	macHistory = say("remember pineapple", "ok", "something only the Mac saw", "noted on the Mac") // both changed
+	if event := apply(); event != "diverged" || len(imported) != 2 {
 		t.Fatalf("when both changed the Mac keeps its own and the server's is kept aside: event=%s imported=%v", event, imported)
 	}
 }

@@ -276,17 +276,18 @@ func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.R
 		if record == nil {
 			return "no_tab", bytes, nil
 		}
-		if !crewHandbackHistoryExtends(claims.UserID, *record, conversation.History) {
+		merged, added, ok := crewHandbackMergeHistory(claims.UserID, *record, conversation.History)
+		if !ok {
 			return "diverged", bytes, keepCrewHandbackAside(roots, tab, item.Key, &conversation)
 		}
-		if crewHandbackHistorySame(claims.UserID, *record, conversation.History) {
+		if added == 0 {
 			return "unchanged", bytes, nil
 		}
 		if api.crewAgentTurnRunning(record.SessionID) {
 			return "", 0, errCrewNativeDestinationBusy
 		}
 		history := conversation
-		history.Native = nil
+		history.Native, history.History = nil, merged
 		sum := sha256.Sum256([]byte(item.Key))
 		transfer := fmt.Sprintf("always-on/%s/%s/%s", tab, hex.EncodeToString(sum[:8]), item.Fingerprint)
 		if crewHandbackImportForTest != nil {
@@ -378,30 +379,39 @@ var crewHandbackMacHistory = func(owner string, record ProductConversationRecord
 	return doc.History, true, nil
 }
 
-// crewHandbackHistoryExtends: this Mac's saved history of the conversation is the start of the server's, so the server
-// only added turns (the Mac did not answer in it meanwhile).
-func crewHandbackHistoryExtends(owner string, record ProductConversationRecord, server []llmtypes.MessageContent) bool {
+// crewHandbackMergeHistory joins the server's turns onto this Mac's saved history. The server's saved history may start
+// later than the Mac's (it trims the oldest messages when it saves a turn), so the Mac's last message is looked up in
+// it: everything after it is new, and the Mac keeps its own full history in front. When the Mac's last message is not
+// in the server's history the Mac answered too (both changed): ok is false. A Mac with no saved history takes the
+// server's as it is.
+func crewHandbackMergeHistory(owner string, record ProductConversationRecord, server []llmtypes.MessageContent) (merged []llmtypes.MessageContent, added int, ok bool) {
 	mine, found, err := crewHandbackMacHistory(owner, record)
-	if err != nil || len(mine) > len(server) {
-		return false
+	if err != nil {
+		return nil, 0, false
 	}
-	if !found {
-		return true
+	if !found || len(mine) == 0 {
+		return server, len(server), true
 	}
-	for i := range mine {
-		a, _ := json.Marshal(mine[i])
-		b, _ := json.Marshal(server[i])
-		if !bytes.Equal(a, b) {
-			return false
+	same := func(a, b llmtypes.MessageContent) bool {
+		x, _ := json.Marshal(a)
+		y, _ := json.Marshal(b)
+		return bytes.Equal(x, y)
+	}
+	last := mine[len(mine)-1]
+	for at := len(server) - 1; at >= 0; at-- {
+		if !same(server[at], last) {
+			continue
 		}
+		// The messages before it must match too, as far back as both go.
+		for back := 1; back <= at && back < len(mine); back++ {
+			if !same(server[at-back], mine[len(mine)-1-back]) {
+				return nil, 0, false
+			}
+		}
+		added = len(server) - 1 - at
+		return append(append([]llmtypes.MessageContent{}, mine...), server[at+1:]...), added, true
 	}
-	return true
-}
-
-// crewHandbackHistorySame: this Mac's saved history already is the server's (nothing was answered there).
-func crewHandbackHistorySame(owner string, record ProductConversationRecord, server []llmtypes.MessageContent) bool {
-	mine, found, err := crewHandbackMacHistory(owner, record)
-	return err == nil && found && len(mine) == len(server) && crewHandbackHistoryExtends(owner, record, server)
+	return nil, 0, false
 }
 
 // crewHandbackMineForTest stands in for finding and capturing the Mac's own version (it needs a provider runtime) in
