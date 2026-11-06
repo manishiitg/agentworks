@@ -364,7 +364,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(fmt.Errorf("the pending transfer is unavailable; restore its private sync record before continuing"))
 				return
 			}
-			if transfer.Snapshot == nil || transfer.Snapshot.Content == nil {
+			if transfer.Snapshot == nil || transfer.Snapshot.Payloads["content"].Hash != "" {
 				fail(fmt.Errorf("%s", crewSyncResetMessage))
 				return
 			}
@@ -475,7 +475,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				fail(e)
 				return
 			}
-			latest, e := crewsync.Capture(r.Context(), roots, transfer.Snapshot.Files, stageRoot)
+			latest, e := captureCrewFiles(r.Context(), roots, transfer.Snapshot.Files, stageRoot, nil)
 			defer latest.Close()
 			if e != nil {
 				fail(e)
@@ -526,7 +526,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			fail(e)
 			return
 		}
-		log.Printf("[CREW_SYNC] project=%s pair=%s phase=receipt direction=upload bytes=%d paths=%d duration_ms=%d transfer=%s", roots.ID, binding.PairID, transfer.Snapshot.Payloads["content"].Size, len(transfer.Snapshot.Changes), time.Since(started).Milliseconds(), transfer.TransferID)
+		log.Printf("[CREW_SYNC] project=%s pair=%s phase=receipt direction=upload bytes=%d paths=%d duration_ms=%d transfer=%s", roots.ID, binding.PairID, crewContentBytes(transfer.Snapshot), len(transfer.Snapshot.Changes), time.Since(started).Milliseconds(), transfer.TransferID)
 		binding.Editing = remote.Binding.Editing
 		binding.LastTransfer = transfer.TransferID
 		conversationNotice = remote.ConversationNotice

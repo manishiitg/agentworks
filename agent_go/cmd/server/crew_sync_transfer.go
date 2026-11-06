@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
+	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -59,7 +61,7 @@ func crewTransferDir(id, pair, transfer, direction string) (string, error) {
 	return dir, nil
 }
 func crewPayloadName(name string) bool {
-	return name == "content" || name == "git" || name == "index" || name == "state" || name == "database"
+	return name == "git" || name == "index" || name == "state" || name == "database"
 }
 func crewPayloadValid(p crewsync.Payload) bool {
 	b, e := hex.DecodeString(p.Hash)
@@ -70,9 +72,7 @@ func crewPayloadAllowed(name string, p crewsync.Payload) bool {
 		return false
 	}
 	switch name {
-	case "content", "state", "database":
-		return true
-	case "git":
+	case "state", "database", "git":
 		return true
 	case "index":
 		return p.Size <= 64<<20
@@ -96,9 +96,6 @@ func crewPayloadPaths(s *crewsync.Snapshot) map[string]*string {
 	}
 	if s.StatePath != "" || s.Payloads["state"].Hash != "" {
 		out["state"] = &s.StatePath
-	}
-	if s.Content != nil {
-		out["content"] = &s.Content.BundlePath
 	}
 	if s.Git != nil {
 		out["git"] = &s.Git.BundlePath
@@ -198,19 +195,89 @@ func freezeCrewPayloads(id, pair, transfer, direction string, s *crewsync.Snapsh
 		*source = ""
 	}
 
-	if _, ok := s.Payloads["content"]; !ok {
-		return fmt.Errorf("sync content artifact is missing")
+	// The changed files' private copies stay with the transfer, so it can resume after the working files moved on.
+	for i, change := range s.Changes {
+		if change.After == nil || change.DataPath == "" {
+			continue
+		}
+		target := filepath.Join(dir, crewContentName(change.Path))
+		if e = os.MkdirAll(filepath.Dir(target), 0700); e != nil {
+			return e
+		}
+		if e = os.Rename(change.DataPath, target); e != nil {
+			return e
+		}
+		s.Changes[i].DataPath = ""
 	}
 	return nil
 }
+
+// crewContentName is where a changed file's bytes are in a transfer's folder.
+func crewContentName(key string) string { return "content/" + crewTransferDigest(key) }
+
+// crewContentFiles are the changed files of a snapshot as chunked versions, by their name in the transfer.
+func crewContentFiles(s *crewsync.Snapshot) map[string]chunkedFile {
+	out := map[string]chunkedFile{}
+	for _, change := range s.Changes {
+		if change.After != nil {
+			out[crewContentName(change.Path)] = chunkedFile{Hash: change.After.Hash, Size: change.After.Size, Exec: change.After.Executable, Chunks: change.Chunks}
+		}
+	}
+	return out
+}
+
+// validateCrewContent is the one check of a snapshot's file list, before any byte is assembled: every path the sync
+// admits, no two names differing only by case, each change matching the list, with well-formed chunks.
+func validateCrewContent(s *crewsync.Snapshot) error {
+	folded := map[string]string{}
+	for key := range s.Files {
+		if !crewsync.Allowed(key, false) {
+			return fmt.Errorf("unsupported or excluded project path")
+		}
+		for p := key; p != "."; p = path.Dir(p) {
+			lower := strings.ToLower(p)
+			if old, ok := folded[lower]; ok && old != p {
+				return fmt.Errorf("project paths differ only by case")
+			}
+			folded[lower] = p
+		}
+	}
+	seen := map[string]bool{}
+	for _, change := range s.Changes {
+		if seen[change.Path] || !crewsync.Allowed(change.Path, false) {
+			return fmt.Errorf("invalid project change")
+		}
+		seen[change.Path] = true
+		file, listed := s.Files[change.Path]
+		if change.After == nil {
+			if listed || len(change.Chunks) > 0 {
+				return fmt.Errorf("deleted file remains in snapshot")
+			}
+			continue
+		}
+		version := chunkedFile{Hash: change.After.Hash, Size: change.After.Size, Chunks: change.Chunks}
+		if !listed || file != *change.After || !version.Valid() || change.After.Size > publication.MaxFileBytes {
+			return fmt.Errorf("invalid project file content")
+		}
+	}
+	return nil
+}
+
 func hydrateCrewPayloads(id, pair, transfer, direction string, s *crewsync.Snapshot) error {
 	dir, e := crewTransferDir(id, pair, transfer, direction)
 	if e != nil {
 		return e
 	}
 	fields := crewPayloadPaths(s)
-	if _, ok := s.Payloads["content"]; !ok {
-		return fmt.Errorf("sync content artifact is missing; restart this transfer")
+	for i, change := range s.Changes {
+		if change.After == nil {
+			continue
+		}
+		file := filepath.Join(dir, crewContentName(change.Path))
+		if e = crewCheckPayloadFile(file, crewsync.Payload{Hash: change.After.Hash, Size: change.After.Size}); e != nil {
+			return e
+		}
+		s.Changes[i].DataPath = file
 	}
 	for name, p := range s.Payloads {
 		dst, ok := fields[name]
@@ -229,6 +296,9 @@ func dropCrewPayloadBytes(s *crewsync.Snapshot) {
 	if s != nil {
 		for _, path := range crewPayloadPaths(s) {
 			*path = ""
+		}
+		for i := range s.Changes {
+			s.Changes[i].DataPath = ""
 		}
 	}
 }
@@ -288,11 +358,11 @@ func (api *StreamingAPI) crewTransferBinding(ctx context.Context, claims *UserCl
 	return roots, b, nil
 }
 func validateCrewPayloads(s *crewsync.Snapshot) error {
-	if s == nil || s.Content == nil || len(s.Payloads) == 0 || len(s.Payloads) > 5 || len(s.Files) > crewsync.SyncMaxFiles || len(s.Changes) > crewsync.SyncMaxFiles {
+	if s == nil || len(s.Payloads) == 0 || len(s.Payloads) > 4 || len(s.Files) > crewsync.SyncMaxFiles || len(s.Changes) > crewsync.SyncMaxFiles {
 		return fmt.Errorf("send a snapshot with binary artifact descriptors")
 	}
-	if _, ok := s.Payloads["content"]; !ok {
-		return fmt.Errorf("content artifact is missing")
+	if e := validateCrewContent(s); e != nil {
+		return e
 	}
 	fields := crewPayloadPaths(s)
 	for name, p := range s.Payloads {
@@ -499,10 +569,18 @@ func (api *StreamingAPI) handleCrewMoveChunks(w http.ResponseWriter, r *http.Req
 		}
 		files = append(files, v)
 	}
+	// The changed files come from the admitted snapshot, never from this request.
+	all := crewContentFiles(&s)
+	for _, v := range all {
+		files = append(files, v)
+	}
+	for name, v := range in.Files {
+		all[name] = v
+	}
 	switch op {
 	case "plan":
 		// The planned chunks are the move's progress until the payloads are written (crewMoveBytes).
-		if e = fsutil.WriteJSONAtomic(filepath.Join(dir, "chunks.json"), in.Files, 0600); e != nil {
+		if e = fsutil.WriteJSONAtomic(filepath.Join(dir, "chunks.json"), all, 0600); e != nil {
 			fail(e)
 			return
 		}
@@ -510,7 +588,9 @@ func (api *StreamingAPI) handleCrewMoveChunks(w http.ResponseWriter, r *http.Req
 		log.Printf("[CREW_SYNC] project=%s transfer=%s op=move_plan payloads=%d missing=%d", id, in.TransferID, len(files), len(missing))
 		externalJSON(w, map[string]any{"missing": missing})
 	case "commit":
-		e = assembleFiles(in.Files, func(name string) (string, error) { return filepath.Join(dir, name), nil }, func(c transferChunk) ([]byte, error) { return readChunk(store, c) })
+		if e = os.MkdirAll(filepath.Join(dir, "content"), 0700); e == nil {
+			e = assembleFiles(all, func(name string) (string, error) { return filepath.Join(dir, filepath.FromSlash(name)), nil }, func(c transferChunk) ([]byte, error) { return readChunk(store, c) })
+		}
 		if e != nil {
 			fail(e)
 			return
@@ -551,6 +631,15 @@ func desktopCrewPayloads(ctx context.Context, owner, id string, c desktopConnect
 	if e != nil {
 		return e
 	}
+	// The changed files were cut when they were captured; their chunks lie in the transfer's private copies.
+	content := crewContentFiles(s)
+	for name, v := range content {
+		var offset int64
+		for _, c := range v.Chunks {
+			sources[c.ID] = chunkSource{path: name, offset: offset, size: c.Len}
+			offset += c.Len
+		}
+	}
 	route := "/api/crew-sync/" + url.PathEscape(b.PeerProjectID) + "/move"
 	query := "?" + url.Values{"pair": {b.PairID}}.Encode()
 	request := crewMoveRequest{PairID: b.PairID, TransferID: transfer, Files: files}
@@ -579,10 +668,13 @@ func desktopCrewPayloads(ctx context.Context, owner, id string, c desktopConnect
 	if e = call("commit", nil); e != nil {
 		return e
 	}
-	all := make([]chunkedFile, 0, len(files))
+	all := make([]chunkedFile, 0, len(files)+len(content))
 	for _, v := range files {
 		all = append(all, v)
 	}
-	logChunkTransfer("move", id, "up", len(files), distinctChunks(all), sent, size, started)
+	for _, v := range content {
+		all = append(all, v)
+	}
+	logChunkTransfer("move", id, "up", len(all), distinctChunks(all), sent, size, started)
 	return nil
 }

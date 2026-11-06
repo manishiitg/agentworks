@@ -73,6 +73,21 @@ func crewMoveBytes(roots crewroot.Roots, binding *crewroot.SyncBinding) (done, t
 			}
 		}
 	}
+	for name, v := range planned {
+		if !strings.HasPrefix(name, "content/") {
+			continue
+		}
+		total += v.Size
+		if info, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(name))); err == nil && info.Mode().IsRegular() && info.Size() == v.Size {
+			done += v.Size
+			continue
+		}
+		for _, c := range v.Chunks {
+			if store != "" && hasChunk(store, c) {
+				done += c.Len
+			}
+		}
+	}
 	for _, bundle := range progress.Native {
 		if bundle.Validate() != nil {
 			return 0, 0

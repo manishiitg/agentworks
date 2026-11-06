@@ -8,10 +8,8 @@ import (
 	"os"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
 type crewAgentPublishPlan struct {
@@ -115,7 +113,7 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 			fail(e)
 			return
 		}
-		snapshot, e := crewsync.CaptureSelected(r.Context(), roots, nil, stage, func(key string, dir bool) bool { return crewAgentPublishIncludes(selection, key, dir) })
+		snapshot, e := captureCrewFiles(r.Context(), roots, nil, stage, func(key string, dir bool) bool { return crewAgentPublishIncludes(selection, key, dir) })
 		defer snapshot.Close()
 		if e != nil {
 			fail(e)
@@ -175,13 +173,6 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 		}
 		if len(request.Native) != 1 {
 			fail(fmt.Errorf("choose an agent with one current native conversation"))
-			return
-		}
-		// A fresh per-transfer content baseline cannot pull another agent's files
-		// into the bundle. Native journals move as chunks, like the Team folder (crew_sync_native.go).
-		contentPair := binding.PairID + "/agent/" + selection.Tab + "/" + transfer
-		if e = (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).EncodeSync(r.Context(), contentPair, roots, &snapshot); e != nil {
-			fail(e)
 			return
 		}
 		if e = freezeCrewPayloads(id, binding.PairID, transfer, "upload", &snapshot); e != nil {

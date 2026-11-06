@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
@@ -522,7 +521,7 @@ func captureCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, previous
 	if err != nil {
 		return crewsync.Snapshot{}, err
 	}
-	snapshot, err := crewsync.Capture(ctx, roots, previous, stageRoot)
+	snapshot, err := captureCrewFiles(ctx, roots, previous, stageRoot, nil)
 	if err != nil {
 		return snapshot, err
 	}
@@ -541,8 +540,42 @@ func captureCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, previous
 	if binding == nil {
 		return snapshot, fmt.Errorf("pair this Crew before syncing")
 	}
-	err = (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).EncodeSync(ctx, binding.PairID, roots, &snapshot)
+	return snapshot, nil
+}
+
+// captureCrewFiles captures the Crew's files with its warm cache (what was read before, hashes and chunk ids only), so
+// an unchanged file is not read again, and writes one line of what the capture did.
+func captureCrewFiles(ctx context.Context, roots crewroot.Roots, previous crewsync.Manifest, stageRoot string, include func(string, bool) bool) (crewsync.Snapshot, error) {
+	p, err := crewSyncManifestPath(roots.ID)
+	if err != nil {
+		return crewsync.Snapshot{}, err
+	}
+	cache, err := crewsync.LoadCache(p + ".cache")
+	if err != nil {
+		return crewsync.Snapshot{}, err
+	}
+	started := time.Now()
+	snapshot, err := crewsync.CaptureCached(ctx, roots, previous, stageRoot, include, cache)
+	gaveUp := ""
+	var busy *crewsync.BusyFileError
+	if errors.As(err, &busy) {
+		gaveUp = busy.Key
+	}
+	log.Printf("[CHUNK_TRANSFER] kind=capture project=%s files=%d read=%d reused=%d copied=%d changes=%d retried=%d gave_up=%q ms=%d", roots.ID, len(snapshot.Files), snapshot.Read, snapshot.Reused, snapshot.Copied, len(snapshot.Changes), snapshot.Retried, gaveUp, time.Since(started).Milliseconds())
+	if saveErr := cache.Save(p + ".cache"); err == nil {
+		err = saveErr
+	}
 	return snapshot, err
+}
+
+// crewContentBytes is the size of a snapshot's changed files.
+func crewContentBytes(s *crewsync.Snapshot) (size int64) {
+	for _, change := range s.Changes {
+		if change.After != nil {
+			size += change.After.Size
+		}
+	}
+	return size
 }
 func saveCrewSyncSnapshot(roots crewroot.Roots, snapshot crewsync.Snapshot) error {
 	id := roots.ID
@@ -552,9 +585,6 @@ func saveCrewSyncSnapshot(roots crewroot.Roots, snapshot crewsync.Snapshot) erro
 	}
 	if binding == nil {
 		return fmt.Errorf("Crew is not paired")
-	}
-	if err = (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).AckSync(context.Background(), binding.PairID, snapshot.Content); err != nil {
-		return err
 	}
 	if err := saveCrewSyncManifest(id, snapshot.Files); err != nil {
 		return err
@@ -589,14 +619,11 @@ func (api *StreamingAPI) crewSyncIdle(roots crewroot.Roots) error {
 
 func applyCrewSyncSnapshot(ctx context.Context, roots crewroot.Roots, pair string, snapshot *crewsync.Snapshot) (err error) {
 	started := time.Now()
-	size := snapshot.Payloads["content"].Size
+	size := crewContentBytes(snapshot)
 	defer func() {
 		log.Printf("[CREW_SYNC] owner=%s project=%s pair=%s phase=apply bytes=%d paths=%d duration_ms=%d success=%t reason=%q", GetUserIDFromContext(ctx), roots.ID, pair, size, len(snapshot.Changes), time.Since(started).Milliseconds(), err == nil, fmt.Sprint(err))
 	}()
 	defer snapshot.Close()
-	if err := (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).DecodeSync(ctx, pair, snapshot); err != nil {
-		return err
-	}
 	return crewsync.Apply(ctx, roots, *snapshot)
 }
 func crewSnapshotChanged(snapshot crewsync.Snapshot) bool {
