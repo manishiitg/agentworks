@@ -159,7 +159,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	}
 	bridges := crewTeamBridgesFor(t)
 	setups := crewTabSetupSourceFor(ctx, t, twin)
-	if viewer == t.OwnerID && twin && crewAlwaysOnAnswering {
+	if viewer == t.OwnerID && twin {
 		out.AgentsLine = crewAlwaysOnAgentsLine
 	}
 	if !t.On {
