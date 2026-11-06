@@ -326,26 +326,35 @@ func macSharedAgentTab(project, chatID string) string {
 	if !crewMacTabID(chatID) {
 		return ""
 	}
-	// The Crew owner's Main on its online copy lives under a physical root key (originalMainChatKey); the shared list
-	// names it "main". Only the owner's own record maps, never a member's root key.
-	if strings.HasPrefix(chatID, "root-") && crewOwnerRootMain(project, project+codeChatSideMarker+chatID) {
+	// Main follows the saved role pointer, including a migrated Builder chat.
+	if project+codeChatSideMarker+chatID == crewOwnerMainChatKey(project) {
 		return macMainTab
 	}
 	return chatID
 }
 
-// crewOwnerRootMain: key is the Crew owner's own Main record under its root key.
-func crewOwnerRootMain(project, key string) bool {
-	owner := ownerOfCrewProjectID(project)
-	if owner == "" {
-		return false
+// crewOwnerMainChatKey returns only the manifest's Main backed by the owner's own registry.
+// A registered side chat or another person's Main is never enough.
+func crewOwnerMainChatKey(project string) string {
+	owner, root := ownerOfCrewProjectID(project), crewProjectRootByID(project)
+	if owner == "" || root == "" {
+		return ""
 	}
-	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(owner))
+	ctx := context.Background()
+	manifest, err := readCrewProjectManifests(ctx, crewProfileID, root)
+	if err != nil || manifest.ID != project || manifest.MainChatKey == "" {
+		return ""
+	}
+	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(owner))
 	if err != nil {
-		return false
+		return ""
 	}
+	key := manifest.MainChatKey
 	record, ok := doc.Entries[productConversationRegistryEntryKey(crewProfileID, key)]
-	return ok && record.ConversationKey == key
+	if !ok || record.ConversationKey != key || !validProjectMainRecord(owner, crewProfileID, project, root, record) {
+		return ""
+	}
+	return key
 }
 
 // externalMacSharedAgent answers another person's ask or read for an agent shared from a Crew on its owner's Mac.

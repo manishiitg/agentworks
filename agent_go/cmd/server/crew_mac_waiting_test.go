@@ -63,6 +63,29 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if tab := crewStandbyTabForKey("team", mainKey); tab != macMainTab {
 		t.Fatalf("the owner's Main under its root key must be Main, got %q", tab)
 	}
+	// PLAT-746-355: promoting an imported Builder keeps its physical key and session.
+	// Both relay paths must follow the saved Main pointer, without promoting side chats.
+	promotedKey := "team" + codeChatSideMarker + "imported-builder"
+	promoted := document.Entries[productConversationRegistryEntryKey(crewProfileID, mainKey)]
+	promoted.ConversationKey = promotedKey
+	document.Entries[productConversationRegistryEntryKey(crewProfileID, promotedKey)] = promoted
+	if err := registry.writeDocument(t.Context(), productConversationRegistryPath("owner"), document); err != nil {
+		t.Fatal(err)
+	}
+	for _, pointer := range []string{promotedKey, originalMainChatKey("team", "another-owner"), mainKey} {
+		f.write(t, externalCommandCrewState+"/product.json", `{"product":"work","id":"team","main_chat_key":"`+pointer+`"}`)
+		for name, route := range map[string]func(string, string) string{"standby": crewStandbyTabForKey, "shared": macSharedAgentTab} {
+			if got := route("team", promotedKey); (got == macMainTab) != (pointer == promotedKey) {
+				t.Fatalf("%s promoted chat with pointer %q routed as %q", name, pointer, got)
+			}
+			if got := route("team", sideKey); got != "0986645f" {
+				t.Fatalf("%s side chat routed as %q", name, got)
+			}
+			if pointer != mainKey && route("team", mainKey) == macMainTab {
+				t.Fatalf("%s former Main still routed as Main after changing its pointer", name)
+			}
+		}
+	}
 	// Main off (owner, 6 Nov): a message to the Crew itself reaches the first shared agent, not an unshared Main. A key
 	// naming Main stays Main, and a Main public on AgentBridge is still shared.
 	mainOff := team
