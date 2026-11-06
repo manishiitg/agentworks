@@ -70,14 +70,14 @@ it('retains the explicit browser-setup event without a menu entry', async () => 
 })
 it.each([false, true])('keeps permitted products and dismissal in the account menu (sidebar=%s)', async sidebar => {
   window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['work', 'agentworks', 'relays', 'knowledgebase', 'bullpen', 'mcp-gateway'], gatewayUrl: 'https://example.com' }
-  auth.user.allowed_products = ['work', 'bullpen']
+  auth.user.allowed_products = ['work', 'knowledgebase', 'mcp-gateway', 'bullpen']
   await render(async (host, destination) => {
     const container = sidebar ? destination : host
     const trigger = container.querySelector<HTMLButtonElement>('[aria-label="Account & settings"]')!
     await act(async () => trigger.click())
     const menu = container.querySelector<HTMLElement>('[role="menu"]')!
     expect(menu.hidden).toBe(false)
-    expect([...menu.querySelectorAll('[data-product-option]')].map(item => item.getAttribute('aria-label'))).toEqual(['Crew', 'AgentBridge', 'Dashboards', 'CLI / MCP'])
+    expect([...menu.querySelectorAll('[data-product-option]')].map(item => item.getAttribute('aria-label'))).toEqual(['Crew', 'Vault', 'Brain', 'AgentBridge', 'Dashboards', 'CLI / MCP'])
     expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBe(sidebar ? destination : null)
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(menu.hidden).toBe(true)
