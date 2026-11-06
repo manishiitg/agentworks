@@ -317,12 +317,11 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
             {open === 'code' && reachLink && <div id={`crew-phone-code-${projectId}`} className="flex justify-center p-3"><LinkCode link={reachLink} /></div>}
             {way('ChatGPT or Claude', `Then say “ask my ${name} Crew to…”`, <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!reachServer} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
             {open === 'ai' && reachServer && <div className="py-3"><ConnectAiApp endpoint={`${reachServer}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
-            {way('Claude Code, Codex, Cursor', 'One line to paste in your coding app', <CopySetupLine crewName={team?.name || name} />)}
           </div>
           {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to reach this Crew from your other apps.</p>}
         </section>
         {/* Public on AgentBridge is chosen per agent here, on Mac online only (owner, 6 Nov). */}
-        <MacAgentBridge projectId={projectId} />
+        <MacAgentBridge projectId={projectId} crewName={team?.name || name} />
       </>}
     </section>}
     {here && !needsServer && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
@@ -350,21 +349,6 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
 
 function MacDataLine({ children }: { children: ReactNode }) {
   return <p className="px-1 text-[13px] text-muted-foreground">{children}</p>
-}
-
-/** One line your coding app (Claude Code, Codex, Cursor) pastes to reach this Crew's agents through AgentWorks. */
-function CopySetupLine({ crewName }: { crewName: string }) {
-  const [copied, setCopied] = useState(false)
-  const [fallback, setFallback] = useState('')
-  const line = `Connect to AgentWorks, then ask the ${JSON.stringify(crewName)} Crew's agents to help me.`
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(line); setCopied(true); window.setTimeout(() => setCopied(false), 1500) }
-    catch { setFallback(line) }
-  }
-  return <>
-    <Button className="h-7 rounded-full px-3" size="sm" variant="outline" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy line'}</Button>
-    {fallback && <p className="w-full text-xs text-muted-foreground">Copy this into your coding app: {fallback}</p>}
-  </>
 }
 
 /** The Access page before this Mac has a server: why, then the same connect form as Servers. */

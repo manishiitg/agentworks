@@ -130,8 +130,8 @@ var crewTeamAskPrompts = map[string]string{
 	"lent":    "List the apps and secrets I lend to this Crew's Team (names only, never values) and which teammates' agents use them. Point out which are my personal accounts and suggest what to keep lending or stop.",
 	"sync":    "Check this Crew's Team sync: when each person last synced, files still waiting, and any clashes where two people changed the same lines. For each clash show both versions and help me keep mine, keep theirs, or merge them.",
 	"mac":         "Check this Crew's Mac online: is my Mac online now, when was it last seen, and does it stay on because the Team is on. Explain what works while my Mac is off and what is kept on the server, in plain words. Change it when I say so.",
-	"reach":       "Show me how I can reach this Crew from anywhere: the website and phone link, connecting ChatGPT or Claude, and the line to paste in Claude Code, Codex or Cursor. Walk me through the one I want to set up.",
-	"agentbridge": "List my agents in this Crew with their purpose and whether each is public on AgentBridge. Explain what public means (other people's agents on this server can find and message it, and it answers as me with my rules for when others ask), suggest which to make public and which purposes to improve, and change it when I say so.",
+	"reach":       "Show me how I can reach this Crew from anywhere: the website and phone link, and connecting ChatGPT or Claude. Walk me through the one I want to set up.",
+	"agentbridge": "List my agents in this Crew with their purpose and whether each is public on AgentBridge. Explain what public means (other people's agents on this server can find and message it, and it answers as me with my rules for when others ask), suggest which to make public and which purposes to improve, and change it when I say so. Also explain the line to paste in Claude Code, Codex or Cursor so my coding app can reach these agents.",
 	"publish": "Help me publish this Crew to the server.",
 	// An agent card's Automations…, sent to that agent's own chat (crew_tab_setup.go).
 	"automations": "Show this agent's schedules, watchers and webhooks and help me change them.",
