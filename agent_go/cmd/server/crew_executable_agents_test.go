@@ -147,10 +147,10 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if _, err := newCrewStepRunner(svc, "stranger").ResolveCrewAgentConfiguration(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "stranger", Username: "stranger"}), child.Root, chat.ConversationKey); err == nil || err.Error() != "this Crew is unavailable" {
 		t.Fatalf("foreign user did not fail at access: %v", err)
 	}
-	// The new Team/co-owner roster includes other people's agents. Seeing
+	// The Team roster includes other people's agents. Seeing
 	// one must not copy its model/account into the main owner's workflow.
-	identity, _ := projectIdentityOf(crew.WorkspacePath)
-	if _, err := defaultProjectOwners().AddCoOwner(identity.Product, identity.Folder, "stranger"); err != nil {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	if err := writeCrewTeam(crewTeam{ProjectID: crew.CrewID, OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "stranger"}}}); err != nil {
 		t.Fatal(err)
 	}
 	memberBinding, allowed, err := resolveConversationBindingForUser(strangerCtx, "stranger", profile, crew.CrewID)
