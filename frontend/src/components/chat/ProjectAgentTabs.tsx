@@ -420,6 +420,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         titleOverride={tab.tabId === canonicalTabId ? projectName : key ? sideChatName(tab) : undefined}
         onTabClick={selectTab}
         onCloseTab={hideOrCloseTab}
+        onRenameTab={key && canControl(tab) ? renameSideChat : undefined}
         closeStopsSession={!!key}
         onMakeInteractive={onMakeInteractive}
       />{renderAfterTab?.(tab)}</div></Fragment>
@@ -521,7 +522,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
               </div>
               {sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
                 className="mt-1 flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-2.5 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New agent</button>}
-              {onImportLocalChat && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); onImportLocalChat() }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground">Continue a local chat</button>}
+              {onImportLocalChat && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); onImportLocalChat() }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground"><span aria-label="Claude and Codex" className="flex shrink-0 -space-x-1">{['claude.ico', 'codex.png'].map(icon => <span key={icon} className="grid h-5 w-5 place-items-center rounded-full bg-popover ring-2 ring-popover"><img alt="" src={`/provider-icons/${icon}`} className="h-4 w-4 object-contain" /></span>)}</span>Continue a local chat</button>}
             </div>, document.body
           )}
         </div>
