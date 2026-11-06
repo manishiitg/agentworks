@@ -173,4 +173,13 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if _, present := files.files[script.Root+"/variables/variables.json"]; present {
 		t.Fatal("script wrote a duplicate input definition")
 	}
+	// PLAT-746: a closed destination must block running, but never block Pause.
+	projected.Schedules[0].ChatID = "closed-chat"
+	if err := WriteWorkflowManifest(context.Background(), script.Root, projected); err == nil {
+		t.Fatal("enabled timer accepted an unavailable chat")
+	}
+	projected.Schedules[0].Enabled = false
+	if err := WriteWorkflowManifest(context.Background(), script.Root, projected); err != nil {
+		t.Fatalf("could not pause timer after its chat closed: %v", err)
+	}
 }

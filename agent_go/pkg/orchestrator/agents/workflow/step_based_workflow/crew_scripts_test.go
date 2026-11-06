@@ -64,7 +64,12 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	defer cancel()
 	run := func(workspace string, args map[string]interface{}) string {
 		t.Helper()
-		session, err := NewWorkshopChatSession(ctx, &WorkshopConfig{WorkspacePath: workspace, Logger: loggerv2.NewNoop(), CrewRunner: resolver})
+		cfg := &WorkshopConfig{WorkspacePath: workspace, Logger: loggerv2.NewNoop(), CrewRunner: resolver}
+		if workspace == "Workflow/second" {
+			// PLAT-746: scheduler options must retain the saved-script resolver.
+			cfg.ScheduleInvocation = &ScheduleInvocation{ScheduleID: "timer", RunID: "scheduled-script", RunFolder: "run-scheduled-script"}
+		}
+		session, err := NewWorkshopChatSession(ctx, cfg)
 		if err != nil {
 			t.Fatal(err)
 		}

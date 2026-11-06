@@ -755,6 +755,7 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	}
 	if cfg.ScheduleInvocation != nil {
 		controller.SetExecutionOptions(&ExecutionOptions{
+			CrewRunner:        cfg.CrewRunner,
 			SelectedRunFolder: cfg.ScheduleInvocation.BoundRunFolder(),
 			RunKind:           cfg.ScheduleInvocation.RunKind(), ScheduleRunID: cfg.ScheduleInvocation.BoundRunID(),
 			ScheduleID: cfg.ScheduleInvocation.ScheduleID, TriggerSource: cfg.ScheduleInvocation.TriggerSource,

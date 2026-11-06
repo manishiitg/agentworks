@@ -347,6 +347,32 @@ func TestRetiredScheduleGroupsRefusedBeforeLaunch(t *testing.T) {
 
 }
 
+func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
+	svc, _, ctx := newCrewCreationTestEnv(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"}]}`)
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Automation lab", Purpose: "Reports", StepInstruction: "Prepare reports", IdempotencyKey: "account-edit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{projectActions: svc}
+	for _, role := range []string{"creator", "viewer", "creator"} {
+		*directory = `{"users":[{"id":"owner","username":"owner","role":"` + role + `"}]}`
+		invalidateUserDirectoryCache()
+		before, _ := readCrewExecutables()
+		w := httptest.NewRecorder()
+		api.handleCrewExecutables(w, httptest.NewRequest(http.MethodPost, "/api/crew-executables?crew_id="+crew.CrewID, strings.NewReader(`{"name":"Report","kind":"script"}`)).WithContext(ctx))
+		after, _ := readCrewExecutables()
+		if role == "viewer" {
+			if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "account cannot edit") || len(after) != len(before) {
+				t.Fatalf("demoted owner: HTTP%d %s", w.Code, w.Body)
+			}
+		} else if w.Code != http.StatusCreated || len(after) != len(before)+1 {
+			t.Fatalf("editable owner: HTTP%d %s", w.Code, w.Body)
+		}
+	}
+}
+
 // PLAT-746-265: parking Relay must stop new Crew Relay creation without
 // hiding existing automation from its owner or changing its saved definition.
 func TestCrewWorkflowsKeepRelayDataWhileFlowIsDisabled(t *testing.T) {

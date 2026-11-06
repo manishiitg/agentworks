@@ -247,6 +247,10 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 	if refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(root), caller) {
 		return
 	}
+	if !workflowPermissionInfoForClaims(GetUserFromContext(r.Context())).CanWriteWorkflows {
+		http.Error(w, "Your account cannot edit workflows. Ask an administrator to restore edit access.", http.StatusForbidden)
+		return
+	}
 	var input struct {
 		Name string `json:"name"`
 		Kind string `json:"kind"`
