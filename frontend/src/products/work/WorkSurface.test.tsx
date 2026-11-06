@@ -121,8 +121,16 @@ describe('Crew native tab dragging', () => {
     try {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
       expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
-      expect(host.querySelector('[data-chat-tab-id="research"] [role="button"]')?.getAttribute('aria-label')).toContain('alex.taylor@example.com')
       expect(host.textContent).not.toContain('me@example.com')
+      // Another person is one chip on the strip, not a tab per agent (owner, 6 Nov mockup); it opens their agents.
+      expect(host.querySelector('[data-chat-tab-id="research"]')).toBeNull()
+      const chip = host.querySelector<HTMLButtonElement>('[data-person-chip]')!
+      expect(chip.getAttribute('aria-label')).toContain('(2)')
+      await act(async () => chip.click())
+      const theirs = document.querySelector('[role="menu"]')!
+      await act(async () => [...theirs.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.includes('Research'))!.click())
+      expect(useChatStore.getState().activeTabId).toBe('research')
+      expect(host.querySelector('[data-person-chip]')?.textContent).toContain('Research')
       await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!.click())
       const menu = document.querySelector('[role="dialog"][aria-label="Agents"]')!
       expect(menu.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)

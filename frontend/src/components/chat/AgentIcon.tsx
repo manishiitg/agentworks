@@ -22,11 +22,13 @@ export function AgentSetupMark({ setup }: { setup?: TeamTabSetup }) {
   </span>
 }
 
-/** The dot by a teammate's name (owner, 6 Nov): green with their Mac on, grey with it off, nothing when the server gives
- * no presence (their agents work on the server). */
-export function PersonPresenceDot({ presence }: { presence?: TeamTabPresence }) {
+/** The dot by a teammate's name (owner, 6 Nov): green with their Mac on, blue with it off while their shared agents
+ * answer from the server, grey when they wait for it; nothing when the server gives no presence (their agents work on
+ * the server). The server picks the tone (crew_team_tab.go). */
+export function PersonPresenceDot({ presence, className = 'h-1.5 w-1.5' }: { presence?: TeamTabPresence; className?: string }) {
   if (!presence) return null
-  return <span role="img" aria-label={presence.line} title={presence.line} className={`h-1.5 w-1.5 shrink-0 rounded-full ${presence.online ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} />
+  const tone = presence.online ? 'bg-emerald-500' : presence.tone === 'server' ? 'bg-sky-500' : 'bg-muted-foreground/50'
+  return <span role="img" aria-label={presence.line} title={presence.line} className={`${className} shrink-0 rounded-full ${tone}`} />
 }
 
 /** The one mark an agent shows, the same as the chat tabs have always shown (owner, 4 Nov): a spinner while it works,
