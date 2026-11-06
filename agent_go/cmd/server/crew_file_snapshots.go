@@ -33,7 +33,8 @@ const crewSnapshotTimeout = 15 * time.Second
 // edits before the capture reaches it is missing from that reply's card, its
 // Undo and the chat's changes; never a false change, no data loss. The
 // capture is bounded by crewSnapshotBeforeLimit and saves only paths reported
-// dirty by project Git; it never warms a whole-workspace index.
+// dirty by project Git plus ordinary files outside checkouts; it never warms
+// a whole-workspace index or enumerates clean checkout contents.
 const crewSnapshotBeforeLimit = time.Minute
 
 type crewTurnSnapshot struct {
@@ -105,7 +106,7 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotBeforeLimit)
 		defer cancel()
-		snapshot.record, snapshot.beforeErr = snapshot.store.BeginGitTurn(ctx, executionID, workspaceGitFindRepos(roots.Files))
+		snapshot.record, snapshot.beforeErr = snapshot.store.BeginGitTurn(ctx, executionID)
 		close(snapshot.beforeDone)
 		api.logCrewBeforeCapture(snapshot)
 	}()
@@ -193,7 +194,7 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotTimeout)
 		defer cancel()
 		started := time.Now()
-		record, err := snapshot.store.FinishGitTurn(ctx, snapshot.executionID, workspaceGitFindRepos(snapshot.store.Root))
+		record, err := snapshot.store.FinishGitTurn(ctx, snapshot.executionID)
 		log.Printf("[FILE_SNAPSHOT] phase=after session=%s execution=%s snapshot=%s status=%s output_done=%t elapsed_ms=%d success=%t error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, snapshot.outputDone.Load(), time.Since(started).Milliseconds(), err == nil, err, record.AfterCapture)
 		switch {
 		case err == nil && (record.Status == "complete" || record.Status == "partial"):
@@ -302,6 +303,7 @@ var crewSnapshotUnavailableText = map[string]string{
 	"setting_up": "File changes for this reply weren't saved (setting up file tracking for this Crew).",
 	"busy":       "File changes for this reply weren't saved (the project was too busy to snapshot in time).",
 	"failed":     "File changes for this reply weren't saved (the file snapshot failed).",
+	"budget":     "File changes exceeded the capture size limit; some changes could not be saved.",
 }
 
 // crewSetupNoticeShown remembers chats (per Crew store) that already got the
@@ -368,6 +370,13 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	summaryCtx, cancelSummary := context.WithTimeout(context.Background(), 5*time.Second)
 	summary, ok := replyFileSummary(summaryCtx, snapshot.store, roots, record.ID)
 	cancelSummary()
+	if record.BeforeCapture.BudgetSkipped > 0 || record.AfterCapture.BudgetSkipped > 0 {
+		if !ok || summary["files"] == 0 {
+			api.publishCrewSnapshotUnavailable(snapshot, "budget")
+			return
+		}
+		summary["note"] = crewSnapshotUnavailableText["budget"]
+	}
 	go api.sendClaudeModChanges(snapshot, roots, record.ID)
 	if ok {
 		fields["summary"] = summary

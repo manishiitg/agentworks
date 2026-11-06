@@ -214,6 +214,9 @@ func (s Store) Unchanged(ctx context.Context, r Record) bool {
 	if r.Before == "" || r.After == "" {
 		return false
 	}
+	if r.BeforeCapture.BudgetSkipped > 0 || r.AfterCapture.BudgetSkipped > 0 {
+		return false // An exceeded capture limit is not proof of no file changes.
+	}
 	// A file left uncaptured (too large, over budget) with a different size/time
 	// on each side is a change the trees cannot show; the card reports it.
 	for _, p := range r.Skipped {

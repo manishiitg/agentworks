@@ -290,7 +290,7 @@ func (s Store) writeCheckout(ctx context.Context, c *checkout) error {
 
 // compose writes one commit holding every checkout tree under its
 // Crew-relative prefix plus the loose files, and moves headRef to it.
-func (s Store) compose(ctx context.Context, ref string, checkouts []*checkout) error {
+func (s Store) compose(ctx context.Context, ref, indexHead string, checkouts []*checkout) error {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "commit %s\nmark :1\ncommitter AgentWorks <snapshot@example.com> %d +0000\ndata 14\nFile snapshot\n\ndeleteall\n", ref, time.Now().Unix())
 	var loose *checkout
@@ -350,8 +350,8 @@ func (s Store) compose(ctx context.Context, ref string, checkouts []*checkout) e
 			}
 		}
 	}
-	if ref != headRef {
-		fmt.Fprintf(&b, "\nreset %s\nfrom :1\n", headRef)
+	if ref != indexHead {
+		fmt.Fprintf(&b, "\nreset %s\nfrom :1\n", indexHead)
 	}
 	b.WriteString("\ndone\n")
 	cmd := s.command(ctx, "fast-import", "--quiet", "--done", "--force", "--date-format=raw")
@@ -378,10 +378,6 @@ func (s Store) capture(ctx context.Context, ref, prior string, stats *CaptureSta
 // captureRepos is capture that also fills repos (when non-nil) with the Git
 // checkouts it listed: Crew-relative folder -> absolute work tree.
 func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string, budget int64, repos map[string]string) (string, []string, []string, error) {
-	s.cleanStale()
-	if err := os.MkdirAll(s.indexDir(), 0700); err != nil {
-		return "", nil, nil, err
-	}
 	phaseStart := time.Now()
 	checkouts, omitted, err := s.candidates(ctx, stats)
 	stats.DiscoveryMS = time.Since(phaseStart).Milliseconds()
@@ -393,11 +389,23 @@ func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *Captu
 			repos[c.prefix] = c.dir
 		}
 	}
+	return s.captureListed(ctx, ref, prior, stats, skippedState, budget, checkouts, omitted, true)
+}
+
+// captureListed reuses the same private Git stat indexes for a validated subset
+// of files. Reply capture supplies only loose files, leaving checkout contents
+// to Git's changed-path list and retaining the other existing private indexes.
+func (s Store) captureListed(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string, budget int64, checkouts []*checkout, omitted []string, removeOtherIndexes bool) (string, []string, []string, error) {
+	s.cleanStale()
+	if err := os.MkdirAll(s.indexDir(), 0700); err != nil {
+		return "", nil, nil, err
+	}
 	root, err := os.OpenRoot(s.Root)
 	if err != nil {
 		return "", nil, nil, err
 	}
 	defer root.Close()
+	phaseStart := time.Now()
 	all := []string{}
 	for _, c := range checkouts {
 		for _, f := range c.files {
@@ -494,7 +502,13 @@ func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *Captu
 	for _, c := range checkouts {
 		stats.Removed += len(c.remove)
 	}
-	if err := s.compose(ctx, ref, checkouts); err != nil {
+	indexHead := headRef
+	if !removeOtherIndexes {
+		// A loose-only capture must not drop the full capture's reachability
+		// anchor while its other persisted indexes still name those blobs.
+		indexHead = "refs/snapshot-index/loose"
+	}
+	if err := s.compose(ctx, ref, indexHead, checkouts); err != nil {
 		if ctx.Err() == nil {
 			for _, c := range checkouts {
 				_ = os.Remove(s.indexFile(c.key)) // a tree is unusable: rebuild
@@ -518,7 +532,7 @@ func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *Captu
 			}
 		}
 	}
-	if entries, err := os.ReadDir(s.indexDir()); err == nil {
+	if entries, err := os.ReadDir(s.indexDir()); err == nil && removeOtherIndexes {
 		for _, e := range entries {
 			if strings.HasSuffix(e.Name(), ".idx") && !keep[e.Name()] {
 				_ = os.Remove(filepath.Join(s.indexDir(), e.Name())) // checkout gone
