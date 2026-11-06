@@ -32,7 +32,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
   if (!where || !tab) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading dashboards…</p>
   return <section aria-label="Dashboards" className={teamCard}>
     <h3 className="font-semibold">Dashboards</h3>
-    <p className="text-xs text-muted-foreground">{tab.intro}</p>
+    {tab.intro && <p className="text-xs text-muted-foreground">{tab.intro}</p>}
     {tab.filters.length > 1 && <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
       {tab.filters.map(filter => <button key={filter.key} type="button" aria-pressed={tab.filter === filter.key} onClick={() => setKind(filter.key)}
         className={`rounded-full border px-2.5 py-0.5 text-xs ${tab.filter === filter.key ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>{filter.label} {filter.count}</button>)}
@@ -40,8 +40,11 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
     {tab.note && <p className="text-xs text-muted-foreground">{tab.note}</p>}
     {tab.put_online && <div><Button size="sm" variant="outline" className="h-7 rounded-full px-3" onClick={() => openAccess(projectId, 'mac')}>Put it online</Button></div>}
     {tab.empty && <div className="space-y-1.5 rounded-lg bg-muted/40 px-3 py-3 text-[13px]">
-      <p className="font-medium">{tab.empty.title}</p>
+      {tab.empty.title && <p className="font-medium">{tab.empty.title}</p>}
       <p className="text-muted-foreground">{tab.empty.line}</p>
+      {tab.empty.kinds && <ul className="space-y-0.5 text-muted-foreground">
+        {tab.empty.kinds.map(kind => <li key={kind.name}><span className="font-medium text-foreground">{kind.name}</span>: {kind.line}</li>)}
+      </ul>}
       {tab.empty.ask && <AskButton projectId={projectId} prompt={tab.empty.ask} label="Ask your agent to make one" />}
       {tab.empty.example && <p className="text-xs text-muted-foreground">{tab.empty.example}</p>}
     </div>}

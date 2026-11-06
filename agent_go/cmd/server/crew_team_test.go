@@ -55,6 +55,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	call := func(user, method, route, body, transfer string) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(method, route, strings.NewReader(body))
+		r.Header.Set(crewMacPairHeader, "owner-pair") // the owner's calls here are the Mac's own
 		if !r.URL.Query().Has("folder_id") {
 			if team, err := readCrewTeam("team-test"); err == nil {
 				q := r.URL.Query()

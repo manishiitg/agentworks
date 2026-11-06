@@ -242,7 +242,7 @@ export type CrewDashboardsTab = {
   workspace: string; intro: string; can_change: boolean; on_mac?: boolean; put_online?: boolean; note?: string; filter: string
   filters: { key: string; label: string; count: number }[]
   items: { id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; public_link?: PublicLink }[]
-  empty?: { title: string; line: string; ask?: string; example?: string }
+  empty?: { title: string; line: string; kinds?: { name: string; line: string }[]; ask?: string; example?: string }
 }
 export function crewDashboardsTab(target: TeamTarget, kind: string): Promise<CrewDashboardsTab> {
   return teamRequest<CrewDashboardsTab>({ project: target.project, connection: target.connection }, `/dashboards-tab?kind=${encodeURIComponent(kind)}`)

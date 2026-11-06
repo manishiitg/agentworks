@@ -34,10 +34,17 @@ type crewDashboardsTabFilter struct {
 }
 
 type crewDashboardsTabEmpty struct {
-	Title   string `json:"title"`
-	Line    string `json:"line"`
-	Ask     string `json:"ask,omitempty"`
-	Example string `json:"example,omitempty"`
+	Title string `json:"title"`
+	Line  string `json:"line"`
+	// Kinds says in short what can be published, for the owner who has nothing yet.
+	Kinds   []crewDashboardsTabKind `json:"kinds,omitempty"`
+	Ask     string                  `json:"ask,omitempty"`
+	Example string                  `json:"example,omitempty"`
+}
+
+type crewDashboardsTabKind struct {
+	Name string `json:"name"`
+	Line string `json:"line"`
 }
 
 type crewDashboardsTab struct {
@@ -166,9 +173,15 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		tab.Note = crewDashboardsMacOwnerNote
 	}
 	if len(rows) == 0 {
-		tab.Empty = &crewDashboardsTabEmpty{Title: "Nothing published yet", Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this Crew yet."}
+		// Nothing to open: no lines about items that are not there, and one line for a teammate.
+		tab.Intro, tab.Note, tab.PutOnline = "", "", false
+		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this Crew yet."}
 		if owner {
-			tab.Empty = &crewDashboardsTabEmpty{Title: "No dashboards yet", Line: "Your agents can turn this Crew's work into a dashboard, a document or a short video, ready to share.", Ask: "Help me make a dashboard for this Crew", Example: "make a dashboard of this week's sales"}
+			tab.Empty = &crewDashboardsTabEmpty{Title: "No dashboards yet", Line: "Show this Crew's work to people in a form they can open and use. Your agents make these for you.", Kinds: []crewDashboardsTabKind{
+				{Name: "Dashboard", Line: "live numbers and buttons people can use"},
+				{Name: "Artifact", Line: "a document or page to read"},
+				{Name: "Motion", Line: "a short video"},
+			}, Ask: "Help me make a dashboard for this Crew", Example: "make a dashboard of this week's sales"}
 		}
 	}
 	return tab, true
