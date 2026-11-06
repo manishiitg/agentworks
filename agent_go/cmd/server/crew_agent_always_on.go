@@ -484,6 +484,9 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 	lock.Unlock()
 	current.handoffAgentToolsMode = main.handoffAgentToolsMode
 	transfer := fmt.Sprintf("standby/%s/%s/%d", tab, session.Dir, session.Revision)
+	// A member's copy is imported to be run as the member: its native session lands in their slot's runtime (or none),
+	// so it is marked before the import (the server's own route: crewStandbyRoute, never a caller's request).
+	markCrewStandbySession(withCrewStandbyTurn(ctx), roots.ID, claims.UserID, crewHandoffImportSession(claims.UserID, roots.ID, binding.PairID, transfer))
 	if err = api.importCrewHandoffConversation(ctx, claims, roots, binding.PairID, transfer, &conversation, current, crewImportNativeElseHistory); err != nil {
 		return "", err
 	}

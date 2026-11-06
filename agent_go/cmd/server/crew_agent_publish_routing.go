@@ -85,6 +85,9 @@ func (api *StreamingAPI) serverAgentCall(ctx context.Context, owner, project str
 	}
 	claims := &UserClaims{UserID: owner, Username: owner}
 	ctx = context.WithValue(ctx, UserContextKey, claims)
+	if member {
+		ctx = withCrewStandbyTurn(ctx) // the only place a member's turn is marked as theirs (crew_standby_runas.go)
+	}
 	profile, err := api.agentProfiles.Resolve(crewProfileID, 0, owner)
 	if err != nil {
 		return fail(409, "This agent is unavailable.")

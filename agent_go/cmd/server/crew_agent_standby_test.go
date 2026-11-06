@@ -1091,12 +1091,12 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	shared := codingAgentWorkspaceWorkingDir(crew)
-	runsAs := func(caller, slot string) (user, got string) {
+	runsAs := func(caller, session, slot string) (user, got string) {
 		dir := filepath.Join(slotState, slot, "runtime")
 		if slot == "" {
 			dir = filepath.Join(root, "app", "runtime")
 		}
-		r := decideTurnRunAs(context.Background(), turnRunAsInput{ProfileID: "work", WorkingFolder: crew, CLIWorkingDir: dir, SharedWorkingDir: shared, CallerID: caller, ConnectionID: "global:claude-code"}, defaultRunAsDeps())
+		r := decideTurnRunAs(context.Background(), turnRunAsInput{ProfileID: "work", WorkingFolder: crew, CLIWorkingDir: dir, SharedWorkingDir: shared, CallerID: caller, SessionID: session, ConnectionID: "global:claude-code"}, defaultRunAsDeps())
 		return r.User, r.Slot
 	}
 
@@ -1107,17 +1107,33 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 	if id := crewStandbyRunAs("team", "other"); !id.Member || id.Slot != "slot02" || id.Account() != "member_slot" {
 		t.Fatalf("member with a slot: %+v", id)
 	}
-	if slot, person := crewTurnSlot(crew, "other"); slot != "slot02" || person != "other" {
-		t.Fatalf("member's turn slot: %q %q", slot, person)
+	// Only a session marked by a standby turn (serverAgentCall's context) is the member's. Without that context nothing
+	// marks it, so a caller cannot make a turn theirs; the member's own other sessions keep the old owner rules.
+	const standbySession, memberRunSession = "sess-standby", "sess-member-run"
+	markCrewStandbySession(t.Context(), "team", "other", standbySession)
+	markCrewStandbySession(withCrewStandbyTurn(t.Context()), "team", "third", standbySession+"-third") // no standby copy: not marked
+	markCrewStandbySession(withCrewStandbyTurn(t.Context()), "team", "other", standbySession)
+	if _, marked := crewStandbySessionIdentity(standbySession + "-third"); marked {
+		t.Fatal("a person with no standby copy was marked")
 	}
-	if user, slot := runsAs("other", "slot02"); user != "other" || slot != "slot02" {
-		t.Fatalf("member's turn declared as user=%q slot=%q", user, slot)
+	if slot, person := crewTurnSlot(crew, standbySession); slot != "slot02" || person != "other" {
+		t.Fatalf("member's standby turn slot: %q %q", slot, person)
 	}
-	for _, caller := range []string{"owner", "third"} { // the owner's agent, and a Run person (a Team person with no standby copy)
-		if slot, person := crewTurnSlot(crew, caller); slot != "slot01" || person != "owner" {
+	if user, slot := runsAs("other", standbySession, "slot02"); user != "other" || slot != "slot02" {
+		t.Fatalf("member's standby turn declared as user=%q slot=%q", user, slot)
+	}
+	// The same member's NON-standby server turn (an MCP ask, a dashboard Ask) is a Run person's: the owner's slot.
+	if slot, person := crewTurnSlot(crew, memberRunSession); slot != "slot01" || person != "owner" {
+		t.Fatalf("the member's ordinary turn must keep the Crew owner's slot: %q %q", slot, person)
+	}
+	if user, slot := runsAs("other", memberRunSession, "slot01"); user != "owner" || slot != "slot01" {
+		t.Fatalf("the member's ordinary turn declared as user=%q slot=%q", user, slot)
+	}
+	for _, caller := range []string{"owner", "third"} { // the owner's agent, and a Run person
+		if slot, person := crewTurnSlot(crew, "sess-"+caller); slot != "slot01" || person != "owner" {
 			t.Fatalf("%s's turn must keep the Crew owner's slot: %q %q", caller, slot, person)
 		}
-		if user, slot := runsAs(caller, "slot01"); user != "owner" || slot != "slot01" {
+		if user, slot := runsAs(caller, "sess-"+caller, "slot01"); user != "owner" || slot != "slot01" {
 			t.Fatalf("%s's turn declared as user=%q slot=%q", caller, user, slot)
 		}
 	}
@@ -1125,13 +1141,21 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 		t.Fatal("the owner's agent must stay the owner's")
 	}
 	api := &StreamingAPI{}
-	if got := api.projectSecretsOwner("other", crew); got != "other" {
-		t.Fatalf("the member's agent must use the member's Vault, got %q", got)
+	// Vault: the standby turn lends the member's; everything else, saveProjectSecret and settings secrets.set included
+	// (they ask projectSecretsOwner), the Crew owner's, also for this member with a standby row.
+	if got := api.turnSecretsOwner(standbySession, "other", crew); got != "other" {
+		t.Fatalf("the member's standby turn must use the member's Vault, got %q", got)
 	}
-	for _, caller := range []string{"owner", "third"} {
+	if got := api.turnSecretsOwner(memberRunSession, "other", crew); got != "owner" {
+		t.Fatalf("the member's ordinary turn must use the Crew's Vault, got %q", got)
+	}
+	for _, caller := range []string{"owner", "third", "other"} {
 		if got := api.projectSecretsOwner(caller, crew); got != "owner" {
-			t.Fatalf("%s must keep the Crew's Vault lender, got %q", caller, got)
+			t.Fatalf("%s must keep the Crew's Vault lender outside a standby turn, got %q", caller, got)
 		}
+	}
+	if got := api.crewSecretsPerson("other", crew, "settings"); got != "owner" {
+		t.Fatalf("a member's builds keep the project's selected credentials, got %q", got)
 	}
 	if note := crewStandbyServerNote("team", "other", "main"); !strings.Contains(note, "own login on this server") || strings.Contains(note, "shared AI account") {
 		t.Fatalf("the note must say the member's own login ran: %s", note)
@@ -1148,10 +1172,12 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 	if id := crewStandbyRunAs("team", "other"); !id.Member || id.Slot != "" || id.Account() != "shared_account" {
 		t.Fatalf("member without a slot: %+v", id)
 	}
-	if slot, person := crewTurnSlot(crew, "other"); slot != "" || person != "other" {
+	crewStandbyTurnSessions.Delete(standbySession)
+	markCrewStandbySession(withCrewStandbyTurn(t.Context()), "team", "other", standbySession) // re-marked: the slot table changed
+	if slot, person := crewTurnSlot(crew, standbySession); slot != "" || person != "other" {
 		t.Fatalf("a member with no slot must not get the owner's: %q %q", slot, person)
 	}
-	if user, slot := runsAs("other", ""); user != "" || slot != "" {
+	if user, slot := runsAs("other", standbySession, ""); user != "" || slot != "" {
 		t.Fatalf("member without a slot declared as user=%q slot=%q, want the app account", user, slot)
 	}
 	if note := crewStandbyServerNote("team", "other", "main"); !strings.Contains(note, "shared AI account") || strings.Contains(note, "own login") {

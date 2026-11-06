@@ -11,19 +11,18 @@ package server
 // The Crew owner's own agents keep the owner's (crewStandbyRunAs returns Member=false and nothing else changes).
 //
 // crewStandbyRunAs is the ONE place that says whom a standby turn runs as. Every identity point asks it through
-// crewMemberStandbyTurn / crewMemberStandbyTurnAt, so there is no second copy of the rule:
+// the session marker below (crewStandbySessionIdentity), so there is no second copy of the rule:
 //   crewTurnSlot (the slot and runtime folder of the CLI), decideTurnRunAs (the declared account), projectSecretsOwner
 //   (whose Vault), coOwnerTurnOwner (whose AI account limits), the import of the member's copy
 //   (importCrewStandby), the note the agent is given (crewStandbyServerNote) and the member's copy of the Team files
 //   (crewStandbyCopyWanted).
-// The rule is read from the Team record and the member's standby rows on every call, never remembered, so it holds
-// after a restart and is gone the moment the member no longer works on their Mac with a copy here.
+// Only a MARKED standby turn is the member's (see the marker below); eligibility is re-read at every mark.
 
 import (
 	"context"
 	"log"
 	"slices"
-	"strings"
+	"sync"
 )
 
 // crewStandbyIdentity is whom a server turn of person's agent runs as.
@@ -76,26 +75,69 @@ func crewMemberStandbyTurn(project, user string) (crewStandbyIdentity, bool) {
 	return crewStandbyRunAs(project, user), true
 }
 
-// crewMemberStandbyTurnAt is crewMemberStandbyTurn for a Crew named by a workspace path.
-func crewMemberStandbyTurnAt(workspacePath, user string) (crewStandbyIdentity, bool) {
-	if IsLocalMode() || user == "" || strings.TrimSpace(workspacePath) == "" {
-		return crewStandbyIdentity{}, false
-	}
-	rec, ok := crewOwnerRecordAt(workspacePath)
-	if !ok || rec.ProjectID == "" || sanitizeUserIDForPath(rec.OwnerID) == sanitizeUserIDForPath(user) {
-		return crewStandbyIdentity{}, false
-	}
-	return crewMemberStandbyTurn(rec.ProjectID, user)
+// The marker. Who a turn runs as is NOT a property of the person: a member's own settings, their ordinary Run turns in
+// the Crew (MCP ask, dashboard Ask) and the Vault screens all keep the Crew owner's rules. Only a standby turn
+// (another person's ask of the member's agent, answered from the server) is the member's, and only
+// serverAgentCall can start one: it puts crewStandbyTurnKey in the context, desktopMacSharedAgent and the import of the
+// member's copy read it and mark the SESSIONS of that turn (crewStandbyTurnSessions). The identity points that
+// launch the CLI, pick the Vault lender or the AI account ask by session (crewStandbySessionIdentity); a session that was
+// not marked here keeps the old owner resolver. Nothing a caller sends over HTTP or MCP can mark a session.
+type crewStandbyTurnKey struct{}
+
+var crewStandbyTurnSessions sync.Map // session id -> crewStandbyIdentity (Member only)
+
+// withCrewStandbyTurn: the context of a standby turn started by serverAgentCall.
+func withCrewStandbyTurn(ctx context.Context) context.Context {
+	return context.WithValue(ctx, crewStandbyTurnKey{}, true)
 }
 
-// crewTurnSlot is the slot a Crew turn of user runs in and the person it runs as: the Crew owner's for everyone (a Run
-// person's turn included, AGENTS.md), except a member's own agent answering from the server (a standby turn), which
-// is the member's slot, or none (the shared app account) when the member holds none.
-func crewTurnSlot(folder, user string) (slot, person string) {
-	if id, ok := crewMemberStandbyTurnAt(folder, user); ok {
+// markCrewStandbySession marks a session as part of a member's standby turn (its thread, the conversation it starts
+// from, the imported copy). It does nothing outside a standby turn or for a person who is not such a member.
+func markCrewStandbySession(ctx context.Context, project, user, session string) {
+	if on, _ := ctx.Value(crewStandbyTurnKey{}).(bool); !on || session == "" {
+		return
+	}
+	if id, ok := crewMemberStandbyTurn(project, user); ok {
+		crewStandbyTurnSessions.Store(session, id)
+	}
+}
+
+// crewStandbySessionIdentity is the member a marked session runs as.
+func crewStandbySessionIdentity(session string) (crewStandbyIdentity, bool) {
+	if session == "" {
+		return crewStandbyIdentity{}, false
+	}
+	v, ok := crewStandbyTurnSessions.Load(session)
+	if !ok {
+		return crewStandbyIdentity{}, false
+	}
+	id, _ := v.(crewStandbyIdentity)
+	return id, id.Member
+}
+
+// crewStandbyMemberTurn: this session is the standby turn of user's own agent.
+func crewStandbyMemberTurn(session, user string) bool {
+	id, ok := crewStandbySessionIdentity(session)
+	return ok && id.Person == user
+}
+
+// crewTurnSlot is the slot a Crew turn runs in and the person it runs as: the Crew owner's for everyone (a Run person's
+// turn included, AGENTS.md), except a marked standby turn of a member's agent, which is the member's slot, or none
+// (the shared app account) when the member holds none.
+func crewTurnSlot(folder, session string) (slot, person string) {
+	if id, ok := crewStandbySessionIdentity(session); ok {
 		return id.Slot, id.Person
 	}
 	return crewOwnerSlot(folder)
+}
+
+// turnSecretsOwner is projectSecretsOwner for a turn: the member for the marked standby turn of their agent, else the
+// Crew's usual lender.
+func (api *StreamingAPI) turnSecretsOwner(session, userID, workspacePath string) string {
+	if crewStandbyMemberTurn(session, userID) {
+		return userID
+	}
+	return api.projectSecretsOwner(userID, workspacePath)
 }
 
 // crewStandbyTurnLog is the one line per standby turn: ids and roles only.

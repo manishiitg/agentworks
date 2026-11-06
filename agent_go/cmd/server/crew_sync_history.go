@@ -143,6 +143,11 @@ const (
 	crewImportNativeElseHistory
 )
 
+// crewHandoffImportSession is the session an imported conversation gets: the same for the same transfer.
+func crewHandoffImportSession(user, project, pair, transfer string) string {
+	return "product-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(user+"/"+project+"/"+pair+"/"+transfer)).String()
+}
+
 func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, pair, transfer string, in *crewHandoffConversation, current ProductConversationRecord, mode crewImportMode) error {
 	// strict: one agent's own conversation (Publish, Always on), checked and replaced as that one chat.
 	strict := mode != crewImportAny
@@ -156,7 +161,7 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 		return errCrewNativeDestinationBusy
 	}
 	in.Notice = "The next reply will continue from saved conversation history."
-	session := "product-" + uuid.NewSHA1(uuid.NameSpaceOID, []byte(claims.UserID+"/"+roots.ID+"/"+pair+"/"+transfer)).String()
+	session := crewHandoffImportSession(claims.UserID, roots.ID, pair, transfer)
 	store := defaultProductConversationRegistryStore()
 	registryPath := productConversationRegistryPath(claims.UserID)
 	lock := productConversationRegistryMutex(registryPath)

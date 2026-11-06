@@ -656,6 +656,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	req.SelectedSkills = appendUniqueStrings(req.SelectedSkills, profile.Skills...)
 	// The owner's lent Vault apps for the owner and co-owners, as handleQuery admits them (vault_secrets.go).
 	secretsPerson := api.crewSecretsPerson(userID, workspacePath, "agent_profile")
+	if id, ok := crewStandbySessionIdentity(sessionID); ok && id.Person == userID {
+		secretsPerson = id.Person // a member's standby turn: the member's Vault apps, not the Crew owner's
+	}
 	if profile.Runtime.Capabilities.Secrets == agentprofiles.CapabilityDisabled {
 		// Product profiles may explicitly opt out of the shared secret runtime.
 		// Clear the selection after saved chat configuration has been applied,
@@ -804,7 +807,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 	// The selected secrets are checked against whoever lends them, as the turn's SECRET_* are resolved (owner-lent).
-	if err := validateVaultSecretSelection(ctx, api.projectSecretsOwner(userID, req.SelectedFolder), req.SelectedGlobalSecrets); err != nil {
+	if err := validateVaultSecretSelection(ctx, api.turnSecretsOwner(sessionID, userID, req.SelectedFolder), req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
 	mark("mcp")

@@ -142,7 +142,7 @@ func (api *StreamingAPI) vaultBridgeToolName(ctx context.Context, session, serve
 	// A Crew's Vault apps are its owner's for everyone who uses it (scopeAgentMCP).
 	lender := person
 	if root := api.projectRootForSession(session); root != "" && person != "" {
-		lender = api.projectSecretsOwner(person, root)
+		lender = api.turnSecretsOwner(session, person, root)
 	}
 	if strings.HasPrefix(server, serverVaultPrefix) {
 		name, err := serverVaultBridgeToolName(ctx, lender, server, tool)
@@ -595,7 +595,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	// personal Slack is limited to its send side for anyone else (lentVaultSlackRefusal).
 	lender := person
 	if root := api.projectRootForSession(sessionID); root != "" && person != "" {
-		lender = api.projectSecretsOwner(person, root)
+		lender = api.turnSecretsOwner(sessionID, person, root)
 	}
 	// A product that picks Vault connections gets only those (MCPs come from Vault, owner 2026-10-20); one that picks
 	// none keeps every authorized Vault connection as its default. Cache discovery once; live calls still recheck the
