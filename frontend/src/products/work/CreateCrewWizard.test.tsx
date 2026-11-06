@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.mock('./RunsOnPicker', () => ({ RunsOnPicker: ({ saveAccount }: { saveAccount: string }) => <span data-testid="provider-picker">{saveAccount}</span> }))
 const location = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ agentApi: { getProjectCreationLocation: location } }))
-vi.mock('./LocalChatPicker', () => ({ LocalChatPicker: ({ onSelected, onClose }: { onSelected: (chat: unknown) => void; onClose: () => void }) => <button type="button" onClick={() => { onSelected({ id: 'previous', title: 'Original chat', provider: 'claude-code', account: 'Your login', updated_at: '' }); onClose() }}>Select previous</button> }))
+vi.mock('./LocalChatPicker', async importOriginal => ({ ...await importOriginal<typeof import('./LocalChatPicker')>(), LocalChatPicker: ({ onSelected, onClose }: { onSelected: (chat: unknown) => void; onClose: () => void }) => <button type="button" onClick={() => { onSelected({ id: 'previous', title: 'Original chat', provider: 'claude-code', account: 'Your login', updated_at: '' }); onClose() }}>Select previous</button> }))
 import { CreateCrewWizard } from './CreateCrewWizard'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
