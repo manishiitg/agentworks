@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, Eye, MoreHorizontal } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useAgentsViewStore, useCrewAgentsStore, type CrewAgentRow } from '../chat/AgentCard'
-import { AGENT_KEY, AgentMark, AgentSharedMark } from '../chat/AgentIcon'
+import { AGENT_KEY, AgentMark, AgentSetupMark } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
@@ -83,7 +83,7 @@ function AgentRow({ agent, status, active, dragging, onDrag }: { agent: CrewAgen
       <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => openAgent(agent.tabId)}
         className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
         <span className="min-w-0 truncate">{agent.name}</span>
-        <AgentSharedMark shared={agent.info?.sharedWith} />
+        <AgentSetupMark setup={agent.info?.setup} />
         {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}
         {agent.owner && <Eye role="img" aria-label="Watching: only its owner types here" className="h-3 w-3 shrink-0 text-muted-foreground" />}
         <span className="flex-1" />

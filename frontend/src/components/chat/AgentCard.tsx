@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowUp, Eye, EyeOff, Info, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { AGENT_KEY } from './AgentIcon'
+import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
+import type { TeamTabSetup } from '../../products/work/teamApi'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 
 // A Crew agent's details (owner, 4 Nov, tab option B): the tab strip shows names only; hovering a name (~400 ms, or a
@@ -22,6 +24,18 @@ export interface AgentCardInfo {
   onRemove?: () => void
   /** Opens Access at this agent; only where sharing can be set from here. */
   onSharing?: () => void
+  /** Its tab, for the Now row (the same state as the mark left of its name); activity is a Crew Main's own. */
+  tabId?: string
+  activity?: 'running' | 'waiting' | null
+  /** Its setup icon and rows, from the server (crew_tab_setup.go). */
+  setup?: TeamTabSetup
+  /** Sends the server's Automations… message to this agent's own chat; only on your own agents. */
+  onAutomations?: () => void
+}
+
+function AgentNowRow({ tabId, activity }: { tabId: string; activity?: 'running' | 'waiting' | null }) {
+  const state = useAgentMenuState(tabId, activity)
+  return <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Now</span><span className={state === 'running' ? 'text-[hsl(var(--info))]' : 'text-muted-foreground'}>{state ? AGENT_STATE_WORD[state] : 'Idle'}</span></div>
 }
 
 /** The open tab's agent, for the purpose line above its chat; the tab strip sets it. */
@@ -114,15 +128,22 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         : 'fixed z-[100] w-80 rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg'}>
       <p className="flex items-center gap-2 text-sm font-semibold"><span className="min-w-0 flex-1 truncate">{info.name}</span>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}</p>
       <p className={`mb-2 mt-1 ${info.purpose ? 'text-muted-foreground' : 'text-muted-foreground/70'}`}>{info.purpose || (info.owner ? 'No purpose yet.' : 'No purpose yet. Others see it when you share this agent.')}</p>
+      {info.tabId && <AgentNowRow tabId={info.tabId} activity={info.activity} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>
         : <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>}
       {info.sharedWith && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>For them it</span><span className="text-muted-foreground">{info.canChange ? 'can make changes' : 'answers only'}</span></div>}
       {info.lastAsked && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Last asked</span>
         <button type="button" onClick={() => finish(info.lastAsked!.open)} className="min-w-0 truncate text-primary hover:underline">{info.lastAsked.who} · {info.lastAsked.when}</button></div>}
+      {info.setup?.agentbridge_line && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>AgentBridge</span><span className="text-emerald-500">{info.setup.agentbridge_line}</span></div>}
+      {!!info.setup?.automations.length && <div className="border-t border-border py-1.5">
+        <div className="flex justify-between gap-3"><span>Starts on its own</span><span className="text-muted-foreground">{info.setup.automations.length}</span></div>
+        <ul className="mt-1 space-y-0.5 text-muted-foreground">{info.setup.automations.map((item, index) => <li key={index} className="break-words"><span className="text-foreground">{item.kind}</span> · {item.name} · {item.line}</li>)}</ul>
+      </div>}
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 max-md:[&>button]:min-h-10">
         {onRename && <button type="button" onClick={() => finish(onRename)} className="inline-flex items-center gap-1 text-primary hover:underline"><Pencil aria-hidden="true" className="h-3 w-3" />Rename</button>}
         {info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="text-primary hover:underline">{info.purpose ? 'Change purpose' : 'Set purpose'}</button>}
         {info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
+        {info.onAutomations && <button type="button" onClick={() => finish(info.onAutomations!)} className="text-primary hover:underline">Automations…</button>}
       </div>
       {info.onRemove && <div className="mt-2 flex items-center gap-3 border-t border-border pt-1.5">
         {removing ? <>

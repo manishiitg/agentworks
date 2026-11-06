@@ -35,6 +35,15 @@ export function sendToMain(projectId: string, prompt: string): boolean {
   return true
 }
 
+/** An agent card's Automations… (owner, 6 Nov): sends the server's message to that agent's own chat, the same way the
+ * Team cards' Ask buttons send theirs. */
+export function sendToTab(tabId: string, prompt: string): boolean {
+  if (!prompt.trim() || !useChatStore.getState().chatTabs[tabId]) return false
+  useChatStore.getState().setTabConfig(tabId, { inputText: prompt, autoRun: true })
+  activateTab(tabId)
+  return true
+}
+
 /** The viewer's own Main opens with the words in its chat box, not sent (the Share tree's Ask, written by the server).
  * False when their Main's tab is not open. */
 export function fillMainDraft(projectId: string, prompt: string): boolean {

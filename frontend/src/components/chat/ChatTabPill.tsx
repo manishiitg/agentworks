@@ -10,7 +10,7 @@ import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { compactOwnerChatName } from './chatTabName'
 import { AgentPurposeButton } from './AgentPurposeButton'
 import { AgentHoverCard, type AgentCardInfo } from './AgentCard'
-import { AgentMark, AgentSharedMark } from './AgentIcon'
+import { AgentMark, AgentSetupMark } from './AgentIcon'
 
 export interface ChatTabPillProps {
   tab: Pick<ChatTab, 'tabId' | 'name' | 'isStreaming' | 'hasRunningBgAgents' | 'hasUnreadCompletion' | 'metadata'> & { sessionId?: string | null }
@@ -177,7 +177,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           >
             {displayName}
           </span></AgentHoverCard>
-          <AgentSharedMark shared={agent?.info?.sharedWith} />
+          <AgentSetupMark setup={agent?.info?.setup} />
           {/* Another person's agent (owner, 5 Nov): a watch mark, since only they type there; their name is the strip's group label. */}
           {ownerName && !yourTab && <Eye role="img" aria-label="Watching: only they type here" className="h-3 w-3 shrink-0 text-muted-foreground"><title>Watching: only {ownerName} types here</title></Eye>}
         </>
