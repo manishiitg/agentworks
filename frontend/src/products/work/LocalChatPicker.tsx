@@ -4,11 +4,12 @@ import ModalPortal from '../../components/ui/ModalPortal'
 import api from '../../services/api'
 
 export type LocalChat = { id: string; title: string; provider: string; account: string; updated_at: string; in_use?: boolean }
-export const localChatProgram = (provider: string) => ({
+const localChatPrograms: Record<string, { name: string; icon: string }> = {
   'claude-code': { name: 'Claude', icon: 'claude.ico' },
   'codex-cli': { name: 'Codex', icon: 'codex.png' },
   'cursor-cli': { name: 'Cursor', icon: 'cursor.svg' },
-}[provider] || { name: 'Agent', icon: 'codex.png' })
+}
+export const localChatProgram = (provider: string) => localChatPrograms[provider] || { name: 'Agent', icon: 'codex.png' }
 type Preview = { messages: { role: string; text: string }[]; total_messages: number }
 export type ImportedLocalChat = { conversation_key: string; conversation_id: string; session_id: string; name: string; provider: string; connection_id: string; engine: string; model_id: string }
 
