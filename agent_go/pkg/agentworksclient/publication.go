@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chunks"
+	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 )
 
 // Publication uses the normal saved sign-in and bounded, resumable upload route.

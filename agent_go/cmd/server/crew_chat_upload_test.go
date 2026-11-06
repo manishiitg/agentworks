@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chunks"
+	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 )
 
 // Exercise the chat route and actual guarded workspace writer, with different

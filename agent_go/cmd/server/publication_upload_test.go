@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chunks"
+	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
 
