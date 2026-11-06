@@ -73,6 +73,22 @@ func crewTeamServerCopyDir(member, project, folderID string) (string, error) {
 	return filepath.Join(state, "team-working", "server", crewTransferDigest(member), crewTransferDigest(project+"\x00"+folderID+"\x00"+crewTeamSyncFormat)), nil
 }
 
+// crewTeamFirstDownloadPending: the member's copy exists and has not received the team folder yet. The background loop
+// owns that download, one round at a time, so a chat turn leaves it alone instead of waiting on the copy and failing
+// (Showcase, 6 Nov).
+func crewTeamFirstDownloadPending(member, project string) bool {
+	t, err := readCrewTeam(project)
+	if err != nil || t.Folder.ID == "" {
+		return false
+	}
+	dir, err := crewTeamServerCopyDir(member, project, t.Folder.ID)
+	if err != nil {
+		return false
+	}
+	b, err := readCrewTeamLocal(dir)
+	return err == nil && !b.Downloaded
+}
+
 // syncCrewTeamServerCopy brings a member's copy of the team folder up to date both ways; create makes it on first use.
 // It returns the copy's folder, or "" when the member has no shared folder in this team.
 func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, project string, create bool) (string, error) {
