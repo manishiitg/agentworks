@@ -680,6 +680,13 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if grants := crewTeamServerFolders(&UserClaims{UserID: "outsider"}); len(grants) != 0 {
 		t.Fatalf("outsider got a team folder: %+v", grants)
 	}
+	// The turn is told where the caller's own copy is (an agent once searched the disk for it); nobody else's.
+	if line := crewTeamFilesLine(&UserClaims{UserID: "member"}); !strings.Contains(line, "shared files are in "+copyRoot+"; work there.") {
+		t.Fatalf("a member's turn must name their copy: %q", line)
+	}
+	if line := crewTeamFilesLine(&UserClaims{UserID: "outsider"}); line != "" {
+		t.Fatalf("someone else was told a copy: %q", line)
+	}
 	// PLAT-856-509: Folders -> Whole Crew while the member's agent has an edit not yet sent. The old copy's record
 	// can no longer send; its folder used to be wiped. The folder is kept and the edit reaches the team.
 	if err = os.WriteFile(filepath.Join(copyRoot, "other", "unsent.md"), []byte("not sent yet"), 0600); err != nil {

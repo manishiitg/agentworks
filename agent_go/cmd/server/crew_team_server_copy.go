@@ -367,6 +367,18 @@ func crewTeamServerFolders(claims *UserClaims) []workflowtypes.WorkflowFolderGra
 	return grants
 }
 
+// crewTeamFilesLine is the plain first fact for a turn of a member (or an owner answering from the server) who has a
+// copy of the Team's shared folder here: where it is. The turn starts in the Crew's folder, where the shared files are
+// not, and an agent once spent 273 s searching the disk for its copy (staging test, 6 Nov). Only the caller's own
+// copies are named (crewTeamServerFolders), never another member's.
+func crewTeamFilesLine(claims *UserClaims) string {
+	var b strings.Builder
+	for _, g := range crewTeamServerFolders(claims) {
+		fmt.Fprintf(&b, "\nYour team's shared files are in %s; work there.\n", g.Path)
+	}
+	return b.String()
+}
+
 // crewTeamCopyInUse: the member's current copy record (for the Team's current folder) uses this copy folder.
 func crewTeamCopyInUse(t crewTeam, b crewTeamLocal, dir string) bool {
 	if t.ProjectID == "" || t.Folder.ID == "" {
