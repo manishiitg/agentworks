@@ -95,6 +95,69 @@ func TestAuthMiddlewareRenewsAnInUseSignIn(t *testing.T) {
 	}
 }
 
+// Showcase: POST /api/auth/logout returned 200 and the same Bearer token kept working. Signing out ends that sign-in
+// (the token and an older one it was renewed from, also after a restart); the person's other sign-in stays.
+func TestLogoutEndsThatSignInOnly(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	api := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	logout := AuthMiddleware(http.HandlerFunc((&StreamingAPI{}).handleLogout))
+	call := func(handler http.Handler, method, path, token string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		return rr
+	}
+	refused := func(when, token string) {
+		t.Helper()
+		if rr := call(api, http.MethodGet, "/api/terminals", token); rr.Code != http.StatusUnauthorized || !strings.Contains(rr.Body.String(), "expired") {
+			t.Fatalf("%s: status %d %q, want 401 with the wording that shows the login screen", when, rr.Code, rr.Body.String())
+		}
+	}
+	signedOut, err := GenerateJWT("default", "user", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := GenerateJWT("default", "user", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	issued := time.Now().Add(-2 * 24 * time.Hour)
+	older, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &UserClaims{UserID: "default", Username: "user",
+		RegisteredClaims: jwt.RegisteredClaims{ID: "renewed-session", IssuedAt: jwt.NewNumericDate(issued), ExpiresAt: jwt.NewNumericDate(issued.Add(sessionLifetime))}}).SignedString(GetAuthSecret())
+	if err != nil {
+		t.Fatal(err)
+	}
+	renewed := call(api, http.MethodGet, "/api/terminals", older).Header().Get(renewedTokenHeader)
+	if renewed == "" {
+		t.Fatal("the older token was not renewed")
+	}
+	for _, token := range []string{signedOut, renewed} {
+		if rr := call(logout, http.MethodPost, "/api/auth/logout", token); rr.Code != http.StatusOK {
+			t.Fatalf("logout: status %d", rr.Code)
+		}
+	}
+	check := func(when string) {
+		t.Helper()
+		refused(when+": signed-out token", signedOut)
+		refused(when+": renewed token", renewed)
+		refused(when+": token it was renewed from", older)
+		if rr := call(api, http.MethodGet, "/api/terminals", other); rr.Code != http.StatusNoContent {
+			t.Fatalf("%s: the person's other sign-in got status %d", when, rr.Code)
+		}
+	}
+	check("after logout")
+	revokedSessions.Lock()
+	revokedSessions.until = map[string]time.Time{}
+	revokedSessions.Unlock()
+	if err := loadRevokedSessions(); err != nil {
+		t.Fatal(err)
+	}
+	check("after a restart")
+}
+
 func TestSingleUserProductWorkspaceMapsGatewayIdentityToDefaultOwner(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("DEFAULT_USER_ID", "default")

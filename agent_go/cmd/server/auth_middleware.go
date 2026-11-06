@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
@@ -292,6 +293,12 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, `{"error": "Invalid token"}`, http.StatusUnauthorized)
 			return
 		}
+		// A signed-out session (auth_revoked_sessions.go). "expired" is what the frontend keys on to show the login screen.
+		sessionID := sessionRevocationID(claims, tokenString)
+		if sessionRevoked(sessionID) {
+			http.Error(w, `{"error": "Session expired: you signed out, please sign in again"}`, http.StatusUnauthorized)
+			return
+		}
 		if strings.HasPrefix(claims.Scope, serverProductUIScopePrefix) ||
 			(cookieScope != "" && (claims.Scope != "" || !serverProductUIRequestAllowed(r))) {
 			http.Error(w, "product browser session not valid for this request", http.StatusForbidden)
@@ -339,7 +346,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// A sign-in renews while it is used: a plain browser session older than a
 		// day gets a fresh one, so only a week without use signs a person out.
 		if headerCredential && plainSessionClaims(claims) && claims.IssuedAt != nil && time.Since(claims.IssuedAt.Time) > sessionRenewAfter {
-			if renewed, err := GenerateJWTWithProvider(claims.UserID, claims.Username, claims.Email, claims.Provider); err == nil {
+			if renewed, err := generateSessionJWT(claims.UserID, claims.Username, claims.Email, claims.Provider, sessionID); err == nil {
 				w.Header().Set(renewedTokenHeader, renewed)
 			}
 		}
@@ -454,6 +461,11 @@ func GenerateJWT(userID, username, email string) (string, error) {
 
 // GenerateJWTWithProvider creates a new JWT token for a user with provider information
 func GenerateJWTWithProvider(userID, username, email, provider string) (string, error) {
+	return generateSessionJWT(userID, username, email, provider, uuid.NewString())
+}
+
+// generateSessionJWT signs a token of one sign-in: a new one for a login, the same session id for a renewal.
+func generateSessionJWT(userID, username, email, provider, sessionID string) (string, error) {
 	if err := ValidateConfiguredAuthSecret(); err != nil {
 		return "", err
 	}
@@ -464,6 +476,7 @@ func GenerateJWTWithProvider(userID, username, email, provider string) (string, 
 		Email:    email,
 		Provider: provider,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        sessionID,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(sessionLifetime)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
