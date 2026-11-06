@@ -145,7 +145,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const stripTabs = personChips ? visibleTabs.filter(tab => tabOwnerId(tab) === '') : visibleTabs
   const chipAgent = (tab: ChatTab) => {
     const row = teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, false, false)
-    return { tabId: tab.tabId, name: tabLabel(tab), status: row?.place_label || row?.status_label || '', tone: row?.place_label ? row.place_tone : undefined }
+    return { tabId: tab.tabId, name: tabLabel(tab), status: row?.place_label || row?.status_label || '', tone: row?.place_label ? row.place_tone : undefined, running: row?.activity === 'running' }
   }
   const chipPeople = personChips ? menuGroups.filter(group => group.person !== '').map(group => {
     const agents = group.tabs.filter(isAgentTab).map(chipAgent)
@@ -584,7 +584,19 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   )
 }
 
-type PersonChipAgent = { tabId: string; name: string; status: string; tone?: string }
+type PersonChipAgent = { tabId: string; name: string; status: string; tone?: string; running?: boolean }
+
+/** Another person's agent: the server's "working" (their Mac's relayed events, or its own queue) shows even when this
+ * browser holds no live turn for it; this browser's own signal (needs you, failed, a reply to read) wins. */
+function useAgentMenuStateOrServer(tabId: string, running?: boolean) {
+  const own = useAgentMenuState(tabId)
+  return own ?? (running ? 'running' as const : null)
+}
+function PersonAgentMark({ tabId, running }: { tabId: string; running?: boolean }) { return <AgentMark state={useAgentMenuStateOrServer(tabId, running)} /> }
+function PersonAgentWord({ tabId, running }: { tabId: string; running?: boolean }) {
+  const state = useAgentMenuStateOrServer(tabId, running)
+  return state ? <span className="ml-auto shrink-0 pl-2 text-[10px] font-normal text-muted-foreground">{AGENT_STATE_WORD[state]}</span> : null
+}
 const STATUS_TONE: Record<string, string> = { ok: 'text-emerald-600 dark:text-emerald-400', wait: 'text-amber-600 dark:text-amber-400', server: 'text-sky-600 dark:text-sky-400' }
 
 /** Another person in the Crew's tab strip (owner, 6 Nov, approved mockup): one chip with their initial, name, how many
@@ -624,7 +636,7 @@ function PersonChip({ name, presence, agents, watching, onPick }: {
       {!watching && <span className="text-muted-foreground">{agents.length}</span>}
       {/* What their agents are doing now (owner, 6 Nov: "when their agent is online/offline/working/loading I want to see
           that"): one mark each, only while it is working, needs them, failed or has a reply not read yet. */}
-      <span className="flex shrink-0 items-center gap-0.5">{agents.map(agent => <AgentMenuActivity key={agent.tabId} tabId={agent.tabId} />)}</span>
+      <span className="flex shrink-0 items-center gap-0.5">{agents.map(agent => <PersonAgentMark key={agent.tabId} tabId={agent.tabId} running={agent.running} />)}</span>
       <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
     </button>
     {open && createPortal(
@@ -635,11 +647,11 @@ function PersonChip({ name, presence, agents, watching, onPick }: {
         </div>
         {agents.map(agent => <button key={agent.tabId} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(agent.tabId) }}
           className={`flex min-h-9 w-full min-w-0 items-center gap-2 rounded-xl px-2 text-left text-[13px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching?.tabId === agent.tabId ? 'bg-muted/70 font-semibold' : ''}`}>
-          <span className="flex w-3 shrink-0 justify-center"><AgentMenuActivity tabId={agent.tabId} /></span>
+          <span className="flex w-3 shrink-0 justify-center"><PersonAgentMark tabId={agent.tabId} running={agent.running} /></span>
           <span className="min-w-0 truncate">{agent.name}</span>
           {watching?.tabId === agent.tabId && <span className="shrink-0 text-[11px] font-normal text-muted-foreground">watching</span>}
           <span className="ml-auto flex shrink-0 items-center">
-            <AgentMenuStateWord tabId={agent.tabId} />
+            <PersonAgentWord tabId={agent.tabId} running={agent.running} />
             {agent.status && <span className={`shrink-0 pl-2 text-[11px] font-normal ${STATUS_TONE[agent.tone || ''] || 'text-muted-foreground'}`}>{agent.status}</span>}
           </span>
         </button>)}

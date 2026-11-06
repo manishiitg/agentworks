@@ -66,6 +66,8 @@ type crewTeamTabAgent struct {
 	// on, crewAlwaysOnPlaceLabel), shown as the row's chip; the tone ("ok", "wait", "server" or "") only picks its colour.
 	PlaceLabel string `json:"place_label,omitempty"`
 	PlaceTone  string `json:"place_tone,omitempty"`
+	// Activity is "running" while a turn is going in the agent now (crew_team_activity.go): the chip's working mark.
+	Activity string `json:"activity,omitempty"`
 	// NotSharedLine is the one muted line of the viewer's own agent that is not shared (owner, 6 Nov mockup).
 	NotSharedLine string `json:"not_shared_line,omitempty"`
 	// Tab is the agent's tab in its person's copy ("main" for a Mac's Main), so the Mac app finds its own tabs' rows.
@@ -247,7 +249,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				}
 			}
 			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
-				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceTone: a.PlaceTone, Tab: a.Tab}
+				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceTone: a.PlaceTone, Activity: a.Activity, Tab: a.Tab}
 			if mine && !a.InTeam {
 				row.NotSharedLine = crewTeamNotSharedLine(a.Place == "mac")
 			}
