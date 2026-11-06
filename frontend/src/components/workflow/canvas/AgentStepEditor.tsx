@@ -1,3 +1,4 @@
+import axios from "axios";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import type {
@@ -89,7 +90,13 @@ export function AgentStepEditor({
   const outputs = Array.from(
     new Set(
       steps
-        .slice(0, Math.max(0, steps.findIndex((s) => s.id === step.id)))
+        .slice(
+          0,
+          Math.max(
+            0,
+            steps.findIndex((s) => s.id === step.id),
+          ),
+        )
         .flatMap((s) =>
           Array.isArray(s.context_output)
             ? s.context_output
@@ -143,7 +150,14 @@ export function AgentStepEditor({
       );
       setSaved(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save this step.");
+      const detail = axios.isAxiosError(e) ? e.response?.data : undefined;
+      setError(
+        typeof detail === "string"
+          ? detail
+          : detail?.error?.message ||
+              detail?.error ||
+              (e instanceof Error ? e.message : "Could not save this step."),
+      );
     } finally {
       setSaving(false);
     }
@@ -471,7 +485,10 @@ export function AgentStepEditor({
           <button
             className="inline-flex items-center gap-1 text-sm"
             onClick={() =>
-              setInputs([...inputs, { key: crypto.randomUUID(), name: "", binding: { value: "" } }])
+              setInputs([
+                ...inputs,
+                { key: crypto.randomUUID(), name: "", binding: { value: "" } },
+              ])
             }
           >
             <Plus className="h-4 w-4" />

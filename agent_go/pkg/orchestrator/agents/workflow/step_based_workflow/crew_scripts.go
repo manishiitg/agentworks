@@ -72,7 +72,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) hydrateCrewScripts(ctx context.Contex
 	if plan == nil {
 		return nil
 	}
-	for _, info := range collectAllSteps(plan.Steps) {
+	steps := append(append([]PlanStepInterface{}, plan.Steps...), plan.OrphanSteps...)
+	for _, info := range collectAllSteps(steps) {
 		step, ok := info.Step.(*ScriptedPlanStep)
 		if !ok || step.Script == "" || step.crewScript != nil {
 			continue

@@ -75,6 +75,12 @@ func resolveSequenceScripts(item AgentItem, plan *PlanningResponse) ([]resolvedS
 		if !ok || !isScriptedStep(step) {
 			return nil, fmt.Errorf("scripted item %q call %q: %q must reference a scripted step in orphan_steps; agentic workers are not supported", item.ID, call.ID, call.StepID)
 		}
+		if step.Script != "" {
+			// A reusable script owns its types and output checks. The shared
+			// runner validates its resolved definition before any Python runs.
+			resolved = append(resolved, resolvedSequenceScript{Call: call, Step: step})
+			continue
+		}
 		if step.ValidationSchema == nil || (len(step.ValidationSchema.Files) == 0 && len(step.ValidationSchema.DB) == 0) {
 			return nil, fmt.Errorf("scripted step %q requires a non-empty validation_schema", step.ID)
 		}
@@ -206,10 +212,25 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentScripts(ctx context.Conte
 	if err != nil {
 		return "", err
 	}
+	runPath := hcpo.GetWorkspacePath()
+	if hcpo.selectedRunFolder != "" {
+		runPath = filepath.Join(runPath, "runs", hcpo.selectedRunFolder)
+	}
+	executionRoot := filepath.Join(runPath, "execution")
 	// Preflight every definition before launching any side effects.
 	for _, call := range calls {
 		if err := ctx.Err(); err != nil {
 			return "", err
+		}
+		if shared := call.Step.crewScript; shared != nil {
+			if strings.TrimSpace(shared.Files["main.py"]) == "" {
+				return "", fmt.Errorf("scripted call %q: saved main.py unavailable", call.Call.ID)
+			}
+			callCtx := withScriptedDelegationContext(ctx, "", call.Call.ID, "", call.Call.Parameters)
+			if _, err := hcpo.crewScriptParameters(callCtx, call.Step, stepIndex, stepPath, session.scriptedPlan.Steps, executionRoot); err != nil {
+				return "", err
+			}
+			continue
 		}
 		source, err := hcpo.ReadWorkspaceFile(ctx, hcpo.scriptedSourceDir(call.Step.ID)+"/main.py")
 		if ctx.Err() != nil {
@@ -219,11 +240,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentScripts(ctx context.Conte
 			return "", fmt.Errorf("scripted call %q: saved main.py unavailable for %q; author and test it in Workshop", call.Call.ID, call.Step.ID)
 		}
 	}
-	runPath := hcpo.GetWorkspacePath()
-	if hcpo.selectedRunFolder != "" {
-		runPath = filepath.Join(runPath, "runs", hcpo.selectedRunFolder)
-	}
-	executionRoot := filepath.Join(runPath, "execution")
 	itemPath := filepath.Join(
 		getExecutionFolderPath(executionRoot, step.ID, stepPath),
 		"scripts", "items", workflowSafeIDPart(item.ID, "item"),

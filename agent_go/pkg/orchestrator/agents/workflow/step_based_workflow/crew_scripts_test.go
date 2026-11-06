@@ -152,4 +152,39 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			}
 		}
 	}
+	// PLAT-746-353: a required script inside an agent must use the same saved
+	// definition and typed runner, without a duplicate inline parameter schema.
+	const requiredRoot = "Workflow/required"
+	write(requiredRoot+"/workflow.json", `{"code_layout_version":1}`)
+	write(requiredRoot+"/planning/plan.json", `{"steps":[{"id":"agent","type":"agent","title":"Agent","description":"Read inputs","items":[{"id":"batch","type":"scripted","scripted_steps":[{"id":"one","step_id":"saved","parameters":{"count":9}}]}]}],"orphan_steps":[{"id":"saved","type":"scripted","title":"Saved","description":"Use saved source","script":"qualify","script_only":true}]}`)
+	session, err := NewWorkshopChatSession(ctx, &WorkshopConfig{WorkspacePath: requiredRoot, Logger: loggerv2.NewNoop(), CrewRunner: resolver})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	plan, err := session.controller.ReadCurrentPlan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := plan.Steps[0].(*AgentPlanStep)
+	runtime := &agentSequenceSession{scriptedPlan: plan}
+	session.controller.selectedRunFolder = "run-required"
+	item := parent.Items[0]
+	item.ScriptedSteps[0].Parameters["count"] = "invalid"
+	if _, err := session.controller.executeAgentScripts(ctx, parent, item, 0, "agent", runtime); err == nil {
+		t.Fatal("required script accepted wrong input type")
+	}
+	item.ScriptedSteps[0].Parameters["count"] = 9
+	if _, err := session.controller.executeAgentScripts(ctx, parent, item, 0, "agent", runtime); err != nil {
+		t.Fatal(err)
+	}
+	outputs, _ := filepath.Glob(filepath.Join(docs, requiredRoot, "runs/run-required/execution/*/scripts/items/batch/calls/one/result.json"))
+	if len(outputs) != 1 {
+		t.Fatalf("required script result missing: %v", outputs)
+	}
+	result, _ := os.ReadFile(outputs[0])
+	if !strings.Contains(string(result), `"count": 9`) {
+		t.Fatalf("required script result: %s", result)
+	}
+
 }
