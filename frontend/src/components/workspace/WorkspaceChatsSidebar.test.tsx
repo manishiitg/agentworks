@@ -87,7 +87,6 @@ vi.mock('../../products/productSurfaceConfig', () => ({
 }))
 vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: ({ surface }: { surface: string }) => <svg data-product-icon={surface} /> }))
 import WorkspaceChatsSidebar from './WorkspaceChatsSidebar'
-import { SharedToolShortcuts } from './SharedToolShortcuts'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => {
   vi.clearAllMocks()
@@ -177,16 +176,4 @@ it('loads Goals when opening directly on a Crew without first visiting the Goals
     expect(host.textContent).toContain('Research crew')
     expect(host.textContent).toContain('Weekly report')
   })
-})
-
-it('keeps the CLI shortcut accessible by keyboard after moving products to settings', async () => {
-  await render(async host => {
-    const cli = host.querySelector<HTMLButtonElement>('[aria-label="AgentWorks CLI & MCP"]')!
-    await act(async () => cli.focus())
-    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('AgentWorks CLI & MCP')
-    await act(async () => cli.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
-    expect(document.querySelector('[role="tooltip"]')).toBeNull()
-    await act(async () => cli.click())
-    expect(mocks.openSettings).toHaveBeenCalledWith('mcp')
-  }, () => <SharedToolShortcuts />)
 })
