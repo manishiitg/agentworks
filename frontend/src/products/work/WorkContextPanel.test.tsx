@@ -127,13 +127,17 @@ it('groups dashboards, motion and Artifacts without a finished-file registry, pr
   { id:'brief', title:'Project brief', path:'db/reports/brief.html', order:2, artifact:true },
  ]
  // With a Share row the dashboard is one line in the server's Share tree (owner, 5 Nov), not a separate menu.
- ;(mocks as any).tree = [{ kind:'dashboard', title:'3 dashboards', detail:'Not shared', path:'db/reports/overview.html' }]
+ ;(mocks as any).tree = [{ kind:'dashboard', title:'3 dashboards', detail:'Not shared', path:'db/reports/overview.html', target:'dashboards' }]
  await render(async host => {
   expect(host.querySelector('[aria-label="Dashboards"]')).toBeNull()
+  // The line opens the Share page's Dashboards tab (owner, 6 Nov), where the server lists them.
+  const opened: unknown[] = []
+  const listen = (event: Event) => opened.push((event as CustomEvent).detail)
+  window.addEventListener('agentworks:open-crew-access', listen)
   const line = [...host.querySelectorAll('button')].find(node => node.textContent === '3 dashboardsNot shared')!
   await act(async () => line.click())
-  expect(selectReportDocument).toHaveBeenLastCalledWith('Crew/example', 'db/reports/overview.html')
-  expect(mocks.open).toHaveBeenLastCalledWith('dashboard')
+  window.removeEventListener('agentworks:open-crew-access', listen)
+  expect(opened).toEqual([expect.objectContaining({ section: 'dashboards' })])
  })
  // Run mode has no Share row and keeps the Dashboards menu.
  await render(async host => {

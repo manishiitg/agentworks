@@ -40,10 +40,18 @@ var crewAccessMacTabs = func() []crewAccessTab {
 	if crewPublishTabShown {
 		tabs = append(tabs, crewAccessTab{ID: "publish", Label: "Publish", Detail: "agents on the server"})
 	}
-	return append(tabs, crewAccessTab{ID: "team", Label: "Team", Detail: "work with people"})
+	return append(tabs, crewAccessPeopleTabs...)
 }()
 
-var crewAccessTeamTab = []crewAccessTab{{ID: "team", Label: "Team", Detail: "work with people"}}
+// The Share page's two Crew tabs (owner, 6 Nov, approved mockups): People (who works here and how: the Team and the
+// Share as one list; its id stays "team") and Dashboards (what the Crew publishes). A Crew on the server, and a Team
+// member, have these two; a Crew on a Mac has Mac online before them.
+var crewAccessPeopleTabs = []crewAccessTab{
+	{ID: "team", Label: "People", Detail: "who works here"},
+	{ID: "dashboards", Label: "Dashboards", Detail: "what you publish"},
+}
+
+var crewAccessTeamTab = crewAccessPeopleTabs
 
 // crewAccessPage fills the Access page's fields of a crew-sync status reply, from what the reply already says.
 func crewAccessPage(out *crewSyncReply) {
