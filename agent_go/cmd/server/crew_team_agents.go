@@ -29,6 +29,8 @@ type crewTeamAgent struct {
 	PlaceServer bool   `json:"place_server,omitempty"`
 	// InTeam: everyone in the Team sees it (its maker chose In team); false only on the viewer's own Only me agents.
 	InTeam bool `json:"in_team"`
+	// Activity is "running" while a turn is going in it (crew_team_activity.go), "" otherwise.
+	Activity string `json:"activity,omitempty"`
 	// Address is how another agent messages it (send_message target), written here so no screen builds it.
 	Address string `json:"address,omitempty"`
 }
@@ -73,6 +75,13 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		// A Crew that lives on the server (owner, 5 Nov): its owner's agents are server tabs, In team unless Only me.
 		owner.Agents = memberTeamAgents(ctx, t, t.OwnerID, caller)
 	}
+	// The Mac conversations of the owner's agents, by tab, for what is running in them.
+	ownerConversations := map[string]string{}
+	if onMac {
+		for _, tab := range crewMacTabsFor(ctx, t.OwnerID, t.ProjectID, caller) {
+			ownerConversations[tab.Tab] = tab.ConversationID
+		}
+	}
 	for _, agent := range readMacSharedAgents(t.ProjectID) {
 		if !onMac || !crewTeamInTeam(agent) || !t.seesAgent(caller, t.OwnerID, agent.Tab) {
 			continue
@@ -98,6 +107,11 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 				row.StatusLabel = "Mac off"
 			}
 		}
+		if place == "mac" {
+			if owner.MacOn && crewMacConversationRunning(t.OwnerID, t.ProjectID, ownerConversations[agent.Tab]) || crewStandbyServedRunning(t.OwnerID, t.ProjectID, agent.Tab) {
+				row.Activity = "running"
+			}
+		}
 		owner.Agents = append(owner.Agents, row)
 	}
 	owner.Active, owner.ActiveLabel = teamActive(owner.UserID, owner.MacOn || (onMac && IsLocalMode()))
@@ -120,6 +134,8 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 				row := crewTeamAgent{Tab: tab.Tab, Name: name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey, InTeam: !tab.OnlyMe}
 				if !person.MacOn {
 					row.StatusLabel = "Mac off"
+				} else if crewMacConversationRunning(p.UserID, t.ProjectID, tab.ConversationID) {
+					row.Activity = "running"
 				}
 				person.Agents = append(person.Agents, row)
 			}
@@ -162,7 +178,11 @@ func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []
 		if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, member) || strings.HasPrefix(tab, "root-") {
 			name = "Main"
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, InTeam: t.agentInTeam(member, record.ConversationKey)})
+		activity := ""
+		if crewServerChatRunning(record.SessionID) {
+			activity = "running"
+		}
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity})
 	}
 	return out
 }

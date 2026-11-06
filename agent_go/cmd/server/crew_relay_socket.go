@@ -403,6 +403,9 @@ type crewRelayStream struct {
 	batches []crewRelayBatch
 	bytes   int
 	last    time.Time
+	// running: a turn is going in this chat (its latest lifecycle event is a start); since is when that event arrived.
+	running bool
+	since   time.Time
 	subs    map[chan crewRelayBatch]struct{}
 }
 
@@ -437,6 +440,13 @@ func (s *crewRelayStreamSet) append(owner, project, conversation string, batch c
 	stream.batches = append(stream.batches, batch)
 	stream.bytes += len(batch.Body)
 	stream.last = time.Now()
+	if batch.Kind == "event" {
+		if now, known := crewRelayBatchRunning(batch.Body); known && now != stream.running {
+			stream.running, stream.since = now, time.Now()
+			// The Team tab reads this state: tell it the moment an agent starts or stops working.
+			go publishCrewPanelChanged(project)
+		}
+	}
 	for len(stream.batches) > 1000 || stream.bytes > 8<<20 {
 		stream.bytes -= len(stream.batches[0].Body)
 		stream.batches = stream.batches[1:]

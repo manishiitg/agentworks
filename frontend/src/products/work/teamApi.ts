@@ -60,6 +60,8 @@ export type TeamTabAgent = { key: string; name: string; detail: string; in_team:
   // stands, worded by the server; place_tone only picks the chip's colour. not_shared_line: the muted line of the
   // viewer's own agent that is not shared.
   place_label?: string; place_tone?: 'ok' | 'wait' | 'server' | ''; not_shared_line?: string
+  // activity: "running" while a turn is going in the agent now, as the server reads it (their Mac's relayed events, or its own queue).
+  activity?: 'running' | ''
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
   uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
   // The rule editor's Ask message (the viewer's own agent).

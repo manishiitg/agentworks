@@ -756,3 +756,40 @@ func TestOwnerTeamCopyIsAttachedToServerTurnsAndNamedInTheNote(t *testing.T) {
 		t.Fatalf("the server note must point at the attached copy: %s", note)
 	}
 }
+
+// Owner, 6 Nov: "when their agent is online/offline/working/loading I want to see that". The Team tab says an agent is
+// working while a turn is going in it; for a Mac agent that is read from the events its Mac relays, ended by the
+// turn's completion, and a turn whose end never came stops counting.
+func TestCrewRelayedEventsSayWhetherAMacAgentIsWorking(t *testing.T) {
+	batch := func(types ...string) json.RawMessage {
+		events := []map[string]string{}
+		for _, ty := range types {
+			events = append(events, map[string]string{"type": ty})
+		}
+		raw, _ := json.Marshal(map[string]any{"events": events})
+		return raw
+	}
+	if running, known := crewRelayBatchRunning(batch("user_message", "tool_call_start")); !running || !known {
+		t.Fatalf("a started turn must read as working: %t %t", running, known)
+	}
+	if running, known := crewRelayBatchRunning(batch("user_message", "unified_completion")); running || !known {
+		t.Fatalf("a finished turn must not read as working: %t %t", running, known)
+	}
+	if _, known := crewRelayBatchRunning(batch("tool_call_start", "tool_call_end")); known {
+		t.Fatal("events with no turn start or end say nothing about the turn")
+	}
+	key := "owner/team/conversation-x"
+	crewRelayStreams.Lock()
+	crewRelayStreams.streams[key] = &crewRelayStream{running: true, since: time.Now()}
+	crewRelayStreams.Unlock()
+	t.Cleanup(func() { crewRelayStreams.Lock(); delete(crewRelayStreams.streams, key); crewRelayStreams.Unlock() })
+	if !crewMacConversationRunning("owner", "team", "conversation-x") {
+		t.Fatal("a turn that started now must read as working")
+	}
+	crewRelayStreams.Lock()
+	crewRelayStreams.streams[key].since = time.Now().Add(-2 * crewActivityStale)
+	crewRelayStreams.Unlock()
+	if crewMacConversationRunning("owner", "team", "conversation-x") {
+		t.Fatal("a turn whose end never came must stop counting as working")
+	}
+}
