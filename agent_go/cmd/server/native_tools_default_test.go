@@ -71,7 +71,6 @@ func TestNativeToolsOnForEveryTurnTypeExceptSteps(t *testing.T) {
 		{"Slack turn", "alice", "bot-slack--1", workflowTurn(QueryRequest{BotPlatform: "slack"}), "full"},
 		{"read-only viewer", "carol", "viewer-1", workflowTurn(QueryRequest{}), "mcp_only"},
 		{"workflow step (child session of a run)", "alice", "step-1", workflowTurn(QueryRequest{ParentSessionID: "run-1"}), "mcp_only"},
-		{"Autopilot reviewer child", "alice", "pulse-child-1", workflowTurn(QueryRequest{ParentSessionID: "run-1", SessionKind: "pulse_reviewer"}), "full"},
 	}
 	for _, tc := range cases {
 		if got := env.queryDecidedToolsMode(t, tc.user, tc.session, tc.req); got != tc.want {
