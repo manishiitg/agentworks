@@ -38,7 +38,7 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 			InTeam *bool  `json:"in_team"`
 		}
 		if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in) != nil || in.InTeam == nil {
-			externalError(w, 400, "invalid_agent", "Choose your agent and In team or Only me.")
+			externalError(w, 400, "invalid_agent", "Choose your agent and whether it is shared.")
 			return
 		}
 		if err = setCrewTeamAgentChoice(r.Context(), project, claims.UserID, in.Key, *in.InTeam); errors.Is(err, errCrewTeamMainShared) {

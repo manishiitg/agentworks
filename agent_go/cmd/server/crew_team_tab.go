@@ -4,13 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // The Team tab (owner, 5 Nov, approved mockup "Single Team Tab"): one tab for the owner and every teammate, in the Mac
@@ -59,6 +55,10 @@ type crewTeamTabAgent struct {
 	CanMakeChanges *bool              `json:"can_make_changes,omitempty"`
 	CanEditRule    bool               `json:"can_edit_rule"`
 	WhenOthersLine string             `json:"when_others_line"`
+	// PermissionsLine is the one-line summary under the purpose (owner, 6 Nov): "Others can: answer only · 1 extra rule".
+	// PermissionsPrompt is what its Permissions' "Ask AI to set this up" sends to the viewer's Main (their own agent).
+	PermissionsLine   string `json:"permissions_line"`
+	PermissionsPrompt string `json:"permissions_prompt,omitempty"`
 	// The agent sharing list (owner, 5 Nov, approved mockup "Agent Sharing List"): its one-line purpose, whether the
 	// viewer may ask its chat to set one (their own agent), and its Public on AgentBridge (only on the Crew owner's own
 	// rows, for the owner; everyone else reads it in Fixed).
@@ -84,22 +84,6 @@ type crewTeamTabBridge struct {
 	Workspace string `json:"workspace,omitempty"`
 }
 
-// crewTeamTabShare is one shared folder with its size as the server holds it.
-type crewTeamTabShare struct {
-	Path  string `json:"path"`
-	Files int    `json:"files"`
-	Bytes int64  `json:"bytes"`
-}
-
-// crewTeamTabMac is the Crew owner's Mac (a Mac Crew only; a Crew on the server has no Mac).
-type crewTeamTabMac struct {
-	On   bool   `json:"on"`
-	Line string `json:"line"` // "On · MacBook Air"
-	Note string `json:"note"` // who can change it and where
-	// Yours: the viewer owns this Mac, so their Mac app shows its switch instead of the note.
-	Yours bool `json:"yours"`
-}
-
 // crewTeamTabSync is the shared folder's state as this server sees it for the viewer.
 type crewTeamTabSync struct {
 	Line     string         `json:"line"`
@@ -113,7 +97,6 @@ type crewTeamTabReply struct {
 	Intro  string              `json:"intro"`
 	People []crewTeamTabPerson `json:"people"`
 	Agents []crewTeamTabAgent  `json:"agents"`
-	Mac    *crewTeamTabMac     `json:"mac,omitempty"`
 	Sync   *crewTeamTabSync    `json:"sync,omitempty"`
 	// The Team's settings are the server's record, changed from the website, the Mac app, chat or MCP; the owner's Mac
 	// applies it when it syncs (crew_team_apply.go). CanSwitch: the Team on/off switch, the Crew's main owner only
@@ -121,8 +104,6 @@ type crewTeamTabReply struct {
 	CanSwitch  bool `json:"can_switch"`
 	AllInTeam  bool `json:"all_in_team"`
 	CanAllMine bool `json:"can_all_mine"`
-	// MacOnly is the line under the folder choice of a Mac Crew: its folders are listed from the owner's Mac.
-	MacOnly string `json:"mac_only,omitempty"`
 	// AgentsMacOnly is the Agents list's last line for the owner of a Mac Crew: Public on AgentBridge is switched in
 	// their Mac app (its screen there leaves the line out).
 	AgentsMacOnly string `json:"agents_mac_only,omitempty"`
@@ -130,29 +111,31 @@ type crewTeamTabReply struct {
 	AgentsLine string `json:"agents_line,omitempty"`
 	CanLeave   bool   `json:"can_leave"`
 	// CanChoose: the viewer switches Folders / Whole Crew and stops sharing a folder, the main owner only (owner, 5 Nov).
-	// CanAddFolder: the viewer adds a folder to share by name, anyone in the Team; a missing one is made. The owner's
-	// Mac app also picks from the Mac's folders.
-	CanChoose    bool `json:"can_choose"`
-	CanAddFolder bool `json:"can_add_folder"`
-	// Shares are the shared folders' sizes as kept here (Whole for the Whole Crew); zero before the first sync.
-	Shares []crewTeamTabShare `json:"shares,omitempty"`
-	Whole  *crewTeamTabShare  `json:"whole,omitempty"`
+	// CanAddFolder: the viewer adds a folder to share, anyone in the Team, picked from the Crew's folders (GET
+	// /folders, crew_team_folders.go) or by name while a Mac Crew's Mac is off; a missing one is made.
+	// CanRemoveFolder: the owner stops sharing a folder; never the last one (Folders shares at least one, 6 Nov).
+	CanChoose       bool `json:"can_choose"`
+	CanAddFolder    bool `json:"can_add_folder"`
+	CanRemoveFolder bool `json:"can_remove_folder"`
+	// Asks are the cards' Ask messages, sent to the viewer's own Main (crewTeamAskPrompts).
+	Asks map[string]string `json:"asks"`
+}
+
+// crewTeamAskPrompts are the Access and Team cards' Ask messages (owner, 6 Nov: each looks at the current state
+// first, explains it plainly, suggests, and changes only when the person says so). The screen sends them as given.
+var crewTeamAskPrompts = map[string]string{
+	"team":    "Look at this Crew's Team: who is in it, who was invited and hasn't joined yet, and whether the Team is on. Explain it in plain words, tell me what each person can see and do, then help me add or remove people.",
+	"shares":  "Show me what this Crew's Team shares now: each shared folder with its size, or the whole Crew. Go through the Crew's other folders and what is in them, point out anything private or too big to share (keys, personal notes, large data), and suggest what to share. Change it when I say so.",
+	"agents":  "List my agents in this Crew: for each, its purpose, whether it's shared with the Team, and what it uses (apps, secret names, my personal accounts, folders). Suggest which to share and which to keep to myself, and why. Change it when I say so.",
+	"lent":    "List the apps and secrets I lend to this Crew's Team (names only, never values) and which teammates' agents use them. Point out which are my personal accounts and suggest what to keep lending or stop.",
+	"sync":    "Check this Crew's Team sync: when each person last synced, files still waiting, and any clashes where two people changed the same lines. For each clash show both versions and help me keep mine, keep theirs, or merge them.",
+	"mac":     "Explain Mac online for this Crew: is it on, what can reach my Mac (website, phone, ChatGPT or Claude, AgentBridge), and which of my agents are public on AgentBridge. Help me change it.",
+	"publish": "Help me publish this Crew to the server.",
 }
 
 func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Request) {
-	claims := GetUserFromContext(r.Context())
-	project := mux.Vars(r)["project"]
-	if !crewTeamClaims(claims, project, false) {
-		externalError(w, 403, "team_forbidden", "Use your own account to open this team.")
-		return
-	}
-	owner := ownerOfCrewProjectID(project)
-	t, err := readCrewTeam(project)
-	if os.IsNotExist(err) && crewRegistryOwnedByCaller(claims.UserID, crewProjectRootByID(project)) {
-		t, err = crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}, nil
-	}
-	if err != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
-		externalError(w, 403, "team_forbidden", "This Crew isn't shared with you right now. Ask its owner to add you to its Team.")
+	t, claims, ok := crewTeamForTab(w, r, false)
+	if !ok {
 		return
 	}
 	t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) })
@@ -164,27 +147,11 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	view := t.view(viewer)
 	view.Lent = crewTeamLentNow(ctx, t, viewer)
 	twin := crewRelayTwin(t.ProjectID)
-	ownerName := crewPersonShortName(t.OwnerID)
-	out := crewTeamTabReply{Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, CanSwitch: view.CanManage && viewer == t.OwnerID,
+	out := crewTeamTabReply{Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, Asks: crewTeamAskPrompts, CanSwitch: view.CanManage && viewer == t.OwnerID,
 		AllInTeam: t.allMine(viewer), CanAllMine: t.member(viewer), CanLeave: viewer != t.OwnerID && t.member(viewer),
 		Intro: "People work with you here. Everything is kept on the server."}
 	if twin {
-		out.MacOnly = fmt.Sprintf("A folder you add is made on %s's Mac and shared.", ownerName)
-		if viewer == t.OwnerID {
-			out.MacOnly = "A folder added here is made on your Mac and shared."
-		}
-		out.Intro = "People work with you here. The shared folder is kept on the server. While the Mac is off, In team agents answer from the server; Only me agents wait for it."
-		mac := &crewTeamTabMac{Yours: viewer == t.OwnerID}
-		name := ""
-		if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
-			mac.On = crewMacSocketFor(t.OwnerID, t.ProjectID, b.PairID) != nil
-			name = b.MacName
-		}
-		mac.Line = map[bool]string{true: "On", false: "Off"}[mac.On] + " · " + firstNonEmptyTrimmed(name, ownerName+"'s Mac")
-		mac.Note = "Change it from the Mac app."
-		if mac.Yours { // teammates see the owner's Mac in the people row (owner, 5 Nov)
-			out.Mac = mac
-		}
+		out.Intro = "People work with you here. The shared folder is kept on the server. While the Mac is off, shared agents answer from the server; agents that are not shared wait for it."
 	}
 	bridges := crewTeamBridgesFor(ctx, t)
 	if viewer == t.OwnerID && twin {
@@ -244,17 +211,17 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			}
 			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
 				OwnerID: p.UserID, OwnerName: p.Name, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceServer: a.PlaceServer, Tab: a.Tab}
-			// Only me is per person (owner, 5 Nov): each person chooses for their own agents, the owner's Mac ones too.
-			// Each person's Main is always In team (owner, 5 Nov).
+			// Shared is per person (owner, 5-6 Nov): each person switches their own agents, the owner's Mac ones too.
+			// Each person's Main is always shared; someone else's agent just reads Shared.
 			if a.Tab == macMainTab || crewTeamMainAgent(t, p.UserID, a.ChatKey) {
-				row.InTeam, row.Fixed = true, "Always in team"
+				row.InTeam, row.Fixed = true, "Main is always shared"
 				if !mine {
-					row.Address = a.Address
+					row.Fixed, row.Address = "Shared", a.Address
 				}
 			} else if mine {
 				row.CanChange = true
 			} else {
-				row.Fixed, row.Address = "In team · theirs to change", a.Address
+				row.Fixed, row.Address = "Shared", a.Address
 			}
 			rule := t.agentRule(p.UserID, crewTeamRuleKey(ctx, t, p.UserID, a.ChatKey))
 			row.Uses = crewTeamRowUses(uses, p.UserID, t.OwnerID, viewer)
@@ -263,14 +230,14 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				changes := rule.CanMakeChanges
 				row.CanMakeChanges = &changes
 			}
-			row.WhenOthersLine = crewTeamWhenOthersLine(rule, p.Name, mine)
+			row.WhenOthersLine, row.PermissionsLine = crewTeamWhenOthersLine(rule, p.Name, mine), crewTeamPermissionsLine(rule)
+			if mine {
+				row.PermissionsPrompt = crewTeamPermissionsPrompt(a.Name)
+			}
 			row.Purpose, row.CanSetPurpose = a.Purpose, mine
-			if p.UserID == t.OwnerID {
-				if b := bridges.row(t, a, viewer, onMac && rule.CanMakeChanges); b != nil && mine {
-					row.AgentBridge = b
-				} else if b != nil && b.Public {
-					row.Fixed = strings.SplitN(row.Fixed, " · ", 2)[0] + " · public on AgentBridge"
-				}
+			// Public on AgentBridge is switched on the Mac online tab (owner, 6 Nov); the row keeps it for that screen.
+			if p.UserID == t.OwnerID && mine {
+				row.AgentBridge = bridges.row(t, a, viewer, onMac && rule.CanMakeChanges)
 			}
 			out.Agents = append(out.Agents, row)
 		}
@@ -278,7 +245,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	out.Sync = crewTeamTabSyncFor(t, viewer)
 	out.CanChoose = view.CanManage && viewer == t.OwnerID
 	out.CanAddFolder = view.CanManage
-	out.Shares, out.Whole = crewTeamTabShares(t, viewer)
+	out.CanRemoveFolder = out.CanChoose && len(t.Folder.Folders) > 1
 	return out
 }
 
@@ -381,36 +348,6 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 		out = append(out, row)
 	}
 	return out
-}
-
-// crewTeamTabShares sizes what the Team shares from the files this server keeps for it.
-func crewTeamTabShares(t crewTeam, viewer string) ([]crewTeamTabShare, *crewTeamTabShare) {
-	if !t.edits(viewer) {
-		return nil, nil
-	}
-	s, err := readCrewTeamFileState(t.ProjectID)
-	if err != nil {
-		return nil, nil
-	}
-	whole := &crewTeamTabShare{}
-	shares := make([]crewTeamTabShare, len(t.Folder.Folders))
-	for i, f := range t.Folder.Folders {
-		shares[i].Path = f
-	}
-	for rel, v := range s.held(t.Folder) {
-		whole.Files++
-		whole.Bytes += v.File.Size
-		for i, f := range t.Folder.Folders {
-			if rel == f || strings.HasPrefix(rel, f+"/") {
-				shares[i].Files++
-				shares[i].Bytes += v.File.Size
-			}
-		}
-	}
-	if t.Folder.Whole {
-		return nil, whole
-	}
-	return shares, nil
 }
 
 // crewTeamTabSyncFor is the shared folder's state for the viewer from this server: a teammate working on the website

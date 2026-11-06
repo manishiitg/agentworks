@@ -19,39 +19,28 @@ function fillDraft(tabId: string, prompt: string) {
 /** Opens the tab with the purpose request ready in its chat box, cursor at the end (owner, 3 Nov: no form). */
 export function fillAgentPurposeDraft(tabId: string) { fillDraft(tabId, AGENT_PURPOSE_PROMPT) }
 
-/** Each Access/Team card's Ask (owner, 5 Nov): the viewer's own Main sets it up from chat (team_sync, manage_crew_sync);
- * the question says what the person wants, so the agent proceeds. */
-export const ACCESS_ASK_PROMPTS = {
-  team: "Help me set up who's in this Crew's Team.",
-  shares: 'Help me set up what this Crew\'s Team shares.',
-  agents: 'Help me choose which of my agents are in this Crew\'s Team.',
-  lent: 'Help me share my apps and secrets with this Crew\'s Team.',
-  sync: 'Help me check this Crew\'s Team sync and fix any clashes.',
-  mac: 'Help me set up Mac online for this Crew.',
-  publish: 'Help me publish this Crew to the server.',
-} as const
-export type AccessAskCard = keyof typeof ACCESS_ASK_PROMPTS
+/** The viewer's own Main tab in this Crew, when it is open here. */
+function ownMainTab(projectId: string) {
+  return Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
+}
 
-/** Opens this Crew's Main chat with the Team request in its chat box; false when Main's tab is not open. */
-export function fillAccessAskDraft(projectId: string, card: AccessAskCard): boolean {
-  return fillMainDraft(projectId, ACCESS_ASK_PROMPTS[card])
+/** Each Access/Team card's Ask (owner, 6 Nov): sends the server's message (the /tab reply's asks, or an agent's
+ * permissions_prompt) to the viewer's own Main, which looks first and changes only when the person says so. False when
+ * their Main's tab is not open. */
+export function sendToMain(projectId: string, prompt: string): boolean {
+  const main = ownMainTab(projectId)
+  if (!main || !prompt.trim()) return false
+  useChatStore.getState().setTabConfig(main.tabId, { inputText: prompt, autoRun: true })
+  activateTab(main.tabId)
+  return true
 }
 
 /** The viewer's own Main opens with the words in its chat box, not sent (the Share tree's Ask, written by the server).
  * False when their Main's tab is not open. */
 export function fillMainDraft(projectId: string, prompt: string): boolean {
-  const main = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
+  const main = ownMainTab(projectId)
   if (!main) return false
   fillDraft(main.tabId, prompt)
-  return true
-}
-
-/** The Team tab's "Ask AI to set this up" on an agent's details (owner, 5 Nov, "When others ask"): the viewer's own
- * Main opens with the question started. False when their Main's tab is not open. */
-export function fillWhenOthersAskDraft(projectId: string, agentName: string): boolean {
-  const main = Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
-  if (!main) return false
-  fillDraft(main.tabId, `Help me set what my ${agentName} agent may do when others ask: `)
   return true
 }
 

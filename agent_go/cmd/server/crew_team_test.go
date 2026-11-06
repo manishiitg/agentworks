@@ -107,6 +107,14 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w = call("outsider", "GET", base+"/agents", "", ""); w.Code != 403 {
 		t.Fatalf("outsider saw the team's agents: %d %s", w.Code, w.Body.String())
 	}
+	// One folder picker on the Mac app and the website (owner, 6 Nov): anyone in the Team lists through the server;
+	// with the owner's Mac off it says so instead of listing. Someone outside the Team is refused.
+	if w = call("member", "GET", base+"/folders?path=", "", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"offline"`) {
+		t.Fatalf("member folder listing with the Mac off: %d %s", w.Code, w.Body.String())
+	}
+	if w = call("outsider", "GET", base+"/folders?path=", "", ""); w.Code != 403 {
+		t.Fatalf("outsider listed the Crew's folders: %d %s", w.Code, w.Body.String())
+	}
 	agents := []macSharedAgent{{Tab: "team01", Audience: "team"}, {Tab: "solo01", AgentBridgePublic: true}}
 	for _, tc := range []struct{ tab, who, reason string }{{"team01", "member", ""}, {"team01", "outsider", "not_in_audience"}, {"solo01", "member", "not_in_audience"}} {
 		if _, reason := macSharedAudience(agents, tc.tab, tc.who, "owner", crewTeamPeople("team-test"), false); reason != tc.reason {
@@ -161,7 +169,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatalf("folders after member changes: %+v", saved.Folder)
 	}
 	memberTab, ownerTab := crewTeamTabFor(t.Context(), mustReadCrewTeam(t, "team-test"), "member"), crewTeamTabFor(t.Context(), mustReadCrewTeam(t, "team-test"), "owner")
-	if memberTab.CanSwitch || memberTab.CanChoose || !memberTab.CanAddFolder || !memberTab.CanAllMine || memberTab.Mac != nil || !ownerTab.CanSwitch || !ownerTab.CanChoose || ownerTab.Mac == nil {
+	if memberTab.CanSwitch || memberTab.CanChoose || !memberTab.CanAddFolder || !memberTab.CanAllMine || memberTab.CanRemoveFolder || !ownerTab.CanSwitch || !ownerTab.CanChoose || !ownerTab.CanRemoveFolder {
 		t.Fatalf("tab flags: member %+v owner %+v", memberTab, ownerTab)
 	}
 	if w = call("owner", "PUT", base, config, ""); w.Code != 200 {
@@ -620,6 +628,10 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	if back, _ := readCrewTeam("team-test"); back.Folder.Whole || !slices.Equal(back.Folder.Folders, []string{"other"}) {
 		t.Fatalf("back to Folders: %+v", back.Folder)
+	}
+	// Owner, 6 Nov: Folders always shares at least one, so the last one is not stopped.
+	if w = call("owner", "PUT", base, `{"name":"Example","on":true,"people":[],"folder":{"folders":[]}}`, ""); w.Code != 400 {
+		t.Fatalf("stopped sharing the last folder: %d %s", w.Code, w.Body.String())
 	}
 }
 

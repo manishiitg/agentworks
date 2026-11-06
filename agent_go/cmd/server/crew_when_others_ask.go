@@ -300,6 +300,21 @@ func crewTeamRowUses(all []crewTeamAgentUse, rowOwner, crewOwner, viewer string)
 }
 
 // crewTeamWhenOthersLine is the row's fixed line: to the agent's person, what it won't do; to anyone else, a summary.
+// crewTeamPermissionsLine is an agent's permissions in one line, under its purpose on the Team tab.
+func crewTeamPermissionsLine(rule crewTeamAgentRule) string {
+	line := "Others can: " + map[bool]string{true: "make changes", false: "answer only"}[rule.CanMakeChanges]
+	if rule.WhenOthersAsk != "" {
+		line += " · 1 extra rule"
+	}
+	return line
+}
+
+// crewTeamPermissionsPrompt asks the person's own Main to look at what the agent reaches before its rule is chosen.
+// The rule is free text and every turn names who asks (whenOthersAskNote), so it may differ per teammate.
+func crewTeamPermissionsPrompt(agent string) string {
+	return fmt.Sprintf("Help me decide what my %[1]s agent may do when teammates ask it. First list, for %[1]s: the apps (MCP) and secret names it uses (never values), which of them are my personal accounts (Gmail, Drive, Slack and others) and what personal information they reach, and the files and folders it can read and change. Then help me choose, per teammate if needed, what it may share and what it must protect, and whether it may only answer or also make changes. Save the result as its rule when others ask (team_sync agent_rule).", agent)
+}
+
 func crewTeamWhenOthersLine(rule crewTeamAgentRule, rowOwnerName string, yours bool) string {
 	can := map[bool]string{true: "make changes", false: "answer only"}[rule.CanMakeChanges]
 	if yours {
