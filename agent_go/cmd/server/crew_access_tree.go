@@ -106,9 +106,8 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	switch f.Where {
 	case "mac":
 		lines = append(lines, crewAccessLine{Kind: "where", Title: "On your Mac", Detail: "Your agents here work on your Mac"})
-	case "web":
-		lines = append(lines, crewAccessLine{Kind: "where", Title: "On the web", Detail: "Your agents here work on the website"})
 	}
+	// Working on the website says itself (owner, 6 Nov: "if a user opens on web it is working on web"): no line for it.
 	// What is shared with the team, by name (owner, 5 Nov: "Shared with the team" is enough).
 	inTeam := []string{}
 	for _, a := range f.Agents {
