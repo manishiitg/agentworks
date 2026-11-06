@@ -48,7 +48,7 @@ var crewAccessMacTabs = func() []crewAccessTab {
 // member, have these two; a Crew on a Mac has Mac online before them.
 var crewAccessPeopleTabs = []crewAccessTab{
 	{ID: "team", Label: "People", Detail: "who works here"},
-	{ID: "dashboards", Label: "Dashboards", Detail: "what you publish"},
+	{ID: "dashboards", Label: "Dashboards", Detail: "what this Crew publishes"},
 }
 
 var crewAccessTeamTab = crewAccessPeopleTabs

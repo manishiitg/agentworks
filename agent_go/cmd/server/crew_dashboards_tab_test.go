@@ -111,9 +111,9 @@ func TestCrewDashboardsTabIsServerWrittenForEachCrewKindAndViewer(t *testing.T) 
 			if kind.mac != nil {
 				toMac(t, f, *kind.mac)
 			}
-			// The owner: can change, sees the kind's note and, on a server Crew only, may have public link rows.
+			// The owner: can change (a Mac Crew only from the Mac, not through this server), sees the kind's note and, on a server Crew only, may have public link rows.
 			status, owner := read(t, f, "owner", "")
-			if status != 200 || owner.Workspace == "" || !owner.CanChange || owner.OnMac != kind.onMac || owner.PutOnline != kind.put || owner.Note != kind.line || owner.Filter != "all" {
+			if status != 200 || owner.Workspace == "" || owner.CanChange == (kind.mac != nil && *kind.mac) || owner.OnMac != kind.onMac || owner.PutOnline != kind.put || owner.Note != kind.line || owner.Filter != "all" {
 				t.Fatalf("owner: %d %+v", status, owner)
 			}
 			if len(owner.Items) != 1 || owner.Items[0].Title != "Sales report" || owner.Items[0].Kind != "dashboard" || !strings.HasPrefix(owner.Items[0].Line, "Dashboard") || !strings.HasPrefix(owner.Items[0].Who, "people who work with you") {
@@ -150,7 +150,7 @@ func TestCrewDashboardsTabIsServerWrittenForEachCrewKindAndViewer(t *testing.T) 
 		if _, owner := read(t, f, "owner", ""); owner.Empty == nil || owner.Empty.Title != "No dashboards yet" || owner.Empty.Ask == "" || len(owner.Items) != 0 {
 			t.Fatalf("owner empty state: %+v", owner)
 		}
-		if _, mate := read(t, f, "other", ""); mate.Empty == nil || mate.Empty.Title != "Nothing published yet" || !strings.Contains(mate.Empty.Line, "hasn't published anything from this Crew yet") {
+		if _, mate := read(t, f, "other", ""); mate.Empty == nil || mate.Empty.Title != "" || mate.Note != "" || !strings.Contains(mate.Empty.Line, "hasn't published anything from this Crew yet") {
 			t.Fatalf("teammate empty state: %+v", mate)
 		}
 	})

@@ -51,6 +51,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
 	call := func(who, op, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", "/api/crew-teams/member-access/"+op, strings.NewReader(body))
+		r.Header.Set(crewMacPairHeader, "pair") // the owner's calls here are the Mac's own
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who, Username: who}))
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, r)
@@ -253,6 +254,7 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 				body = `{"name":"Example","on":false,"people":[{"user_id":"member"}]}`
 			}
 			r := httptest.NewRequest(method, route, strings.NewReader(body))
+			r.Header.Set(crewMacPairHeader, "pair") // the owner's calls here are the Mac's own
 			r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who}))
 			router := mux.NewRouter()
 			api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())

@@ -1,8 +1,8 @@
 package server
 
 import (
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -158,22 +158,28 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 		t.Fatalf("the old add shorthand: %d %s", w.Code, w.Body.String())
 	}
 
-	// A Crew on a Mac that is online: Works with me only; dashboards only needs the Crew online first.
+	// A Crew on a Mac that is online: its owner changes it on the Mac, so over this server's MCP the list only reads.
 	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatal(err)
 	}
 	_, view = call("owner", map[string]any{})
-	levels := view["levels"].([]any)
-	if view["kind"] != crewKindMacOnline || view["put_online"] != crewPeoplePutOnlineLine || levels[0].(map[string]any)["available"] != true || levels[1].(map[string]any)["available"] != false || view["can_share"] != false {
+	if view["kind"] != crewKindMacOnline || view["change_on_mac"] != crewChangeOnMacLine || view["can_add"] == true {
 		t.Fatalf("a Mac Crew's People list: %v", view)
 	}
-	if code, out := level("owner", "newbie", "dashboards", true); code != http.StatusConflict || out["error"] == nil || shareHas("newbie") {
-		t.Fatalf("dashboards only on a Mac Crew: %d %v", code, out)
+	if code, _ := level("owner", "outsider", "works", true); code != http.StatusForbidden || teamHas("outsider") {
+		t.Fatalf("the owner changed a Mac Crew's people through the server: %d", code)
 	}
-	if code, out := level("owner", "everyone", "dashboards", true); code != http.StatusConflict || everyoneOn() {
-		t.Fatalf("everyone on a Mac Crew: %d %v", code, out)
+	if code, _ := level("owner", "everyone", "dashboards", true); code != http.StatusForbidden || everyoneOn() {
+		t.Fatalf("everyone on a Mac Crew through the server: %d", code)
 	}
-	change("owner", "newbie", "works", func() bool { return teamHas("newbie") })
+	current, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current.People = append(current.People, crewTeamPerson{UserID: "newbie"})
+	if err := writeCrewTeam(current); err != nil {
+		t.Fatal(err)
+	}
 	if err := crewroot.ReplaceSync("team", crewroot.SyncBinding{Side: "server"}); err != nil {
 		t.Fatal(err)
 	}
