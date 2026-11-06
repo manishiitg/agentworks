@@ -1,7 +1,7 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Settings, Sparkles, Target, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Zap, Settings, Sparkles, Target, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
-import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
+import { projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
 import { isLocalDeployment, visibleProductSurfaceIDs } from '../productSurfaceConfig'
 import { isWorkIdentityTabEnabled, isWorkIntegrationTabEnabled } from './workViewGating'
 import { PROJECT_MENU_GROUPS } from '../../components/workspace/projectMenuGroups'
@@ -26,14 +26,11 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     if (has(view)) items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
   }
   add('dashboard', 'Build', 'Dashboards', LayoutDashboard)
-  if (has('schedules')) for (const item of projectAutomationSections({ incomingEmail, triggers: enabledPanels?.has('triggers') !== false })) {
-    add('schedules', item.id === 'functions' ? 'Build' : 'Use', item.id === 'email' ? 'Email inbox' : item.label, item.icon, item.id, item.id === 'functions' ? undefined : item.id === 'email' ? 'Use from other apps' : 'Run automatically')
-  }
+  add('schedules', 'Build', 'Automations', Zap)
   if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Build', 'Skills', Sparkles, 'skills')
   add('files', 'Build', 'Files', Files)
   add('database', 'Build', 'Database', Database)
   add('goals', 'Build', 'Goals', Target)
-  add('plan', 'Build', 'Workflows', Route)
   add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {

@@ -55,7 +55,7 @@ const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ d
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
 
-export type WorkWorkspaceView = 'context' | 'dashboard' | 'goals' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
+export type WorkWorkspaceView = 'context' | 'dashboard' | 'goals' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
@@ -316,7 +316,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onDeleteRequest={onDeleteRequest}
         />}
         {view === 'goals' && <CrewGoalsPanel key={projectId} projectId={projectId} onAsk={message => { void ask(message) }} />}
-        {view === 'plan' && (canEditConnections ? <CrewExecutablesPanel key={projectId} projectId={projectId} chatTabId={tabId} /> : <p className="p-6 text-sm text-muted-foreground">{!shared && projectAccess?.key !== accessKey ? 'Loading…' : 'Open this Crew’s chat or dashboard.'}</p>)}
         {view === 'mcp' && <WorkIntegrationsPanel
           canEdit={canEditConnections}
           accessLoading={!shared && projectAccess?.key !== accessKey}
@@ -378,6 +377,9 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
               onSelectSession={openHistoryChat}
             /></div>}
           {view === 'schedules' && <AutomationHubPanel
+            initialSection="workflows"
+            workflowContent={canEditConnections ? <CrewExecutablesPanel key={`${projectId}:workflows`} projectId={projectId} chatTabId={tabId} kind="workflow" /> : <p className="p-6 text-sm text-muted-foreground">{projectAccess?.key !== accessKey ? 'Loading…' : 'Open this Crew’s chat or dashboard.'}</p>}
+            scriptContent={canEditConnections ? <CrewExecutablesPanel key={`${projectId}:scripts`} projectId={projectId} chatTabId={tabId} kind="script" /> : <p className="p-6 text-sm text-muted-foreground">{projectAccess?.key !== accessKey ? 'Loading…' : 'Open this Crew’s chat or dashboard.'}</p>}
             entityType="product"
             workspacePath={workspacePath}
             // A Code's schedules and triggers are its owner's: they run as the

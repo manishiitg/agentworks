@@ -13,12 +13,11 @@ function failureMessage(error: unknown, fallback: string) {
 }
 
 /** Crew owns the definitions; their existing editors and runners remain authoritative. */
-export function CrewExecutablesPanel({ projectId, chatTabId }: { projectId: string; chatTabId: string }) {
+export function CrewExecutablesPanel({ projectId, chatTabId, kind }: { projectId: string; chatTabId: string; kind: 'workflow' | 'script' }) {
   const [selected, setSelected] = useState<Executable | null>(null)
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([])
   const [items, setItems] = useState<Executable[]>([])
   const [name, setName] = useState('')
-  const [kind, setKind] = useState<'workflow' | 'script'>('workflow')
   const [existingRelays, setExistingRelays] = useState<Array<{ id: string; label: string }>>([])
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -54,21 +53,21 @@ export function CrewExecutablesPanel({ projectId, chatTabId }: { projectId: stri
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not open.') }
     finally { setBusy(false) }
   }
+  const visibleItems = items.filter(item => item.kind === kind)
   if (selected) return <CrewExecutableEditor key={selected.id} item={selected} crewAgents={agents} crewScripts={items.filter(item => item.kind === 'script').map(item => ({ id: item.id, name: item.manifest.label }))} chatTabId={chatTabId} onBack={() => setSelected(null)} />
   return <div className="mx-auto w-full max-w-3xl space-y-6 p-6">
     <div className="flex items-center justify-between gap-4">
-      <p className="text-sm text-muted-foreground">Save a script or repeat a sequence of agents and scripts.</p>
-      <button onClick={() => setCreating(true)} className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm"><Plus className="h-4 w-4" />Add</button>
+      <p className="text-sm text-muted-foreground">{kind === 'script' ? 'Run saved Python directly or reuse it in a workflow.' : 'Repeat a sequence of agents and scripts.'}</p>
+      <button onClick={() => setCreating(true)} className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm"><Plus className="h-4 w-4" />{kind === 'script' ? 'Add script' : 'Add workflow'}</button>
     </div>
     {existingRelays.length > 0 && <p className="text-sm text-muted-foreground">Flows are turned off. Your saved Relay data is kept.</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {creating && <form onSubmit={e => { e.preventDefault(); void create() }} className="space-y-3 rounded-lg border p-4">
-      <label className="block text-sm">Add<select aria-label="What to add" value={kind} onChange={event => setKind(event.target.value as typeof kind)} className="ml-2 rounded border bg-background p-2"><option value="workflow">Workflow</option><option value="script">Script</option></select></label>
       <label className="block text-sm">Name<input autoFocus required maxLength={120} value={name} onChange={e => setName(e.target.value)} className="mt-1 w-full rounded-md border bg-background p-2" /></label>
       <div className="flex gap-3"><button disabled={busy || !name.trim()} className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground">{busy ? 'Saving…' : 'Create'}</button><button type="button" onClick={() => setCreating(false)} className="text-sm">Cancel</button></div>
     </form>}
     {!loaded && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
-    {loaded && items.length === 0 && !creating && <p className="text-sm text-muted-foreground">Nothing added yet. Your Crew can keep working in chat without a workflow.</p>}
-    <ul className="divide-y divide-border">{items.map(item => <li key={item.id}><button disabled={busy} onClick={() => void open(item)} className="flex w-full items-center gap-3 py-4 text-left hover:text-primary">{item.kind === 'script' ? <FileCode2 className="h-5 w-5" /> : <Route className="h-5 w-5" />}<span className="flex-1">{item.manifest.label}</span><span className="text-xs text-muted-foreground">{item.kind === 'script' ? 'Script' : 'Workflow'}</span></button></li>)}</ul>
+    {loaded && visibleItems.length === 0 && !creating && <p className="text-sm text-muted-foreground">No {kind === 'script' ? 'scripts' : 'workflows'} yet. Add one when you have work to repeat.</p>}
+    <ul className="divide-y divide-border">{visibleItems.map(item => <li key={item.id}><button disabled={busy} onClick={() => void open(item)} className="flex w-full items-center gap-3 py-4 text-left hover:text-primary">{item.kind === 'script' ? <FileCode2 className="h-5 w-5" /> : <Route className="h-5 w-5" />}<span className="flex-1">{item.manifest.label}</span></button></li>)}</ul>
   </div>
 }
