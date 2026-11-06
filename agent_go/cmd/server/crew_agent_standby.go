@@ -139,8 +139,9 @@ func readCrewStandby(project string) (map[string]crewAgentStandby, error) {
 	return out, nil
 }
 
-// crewStandbyHistoryEvents is the saved dialogue of the stored copy of one of this Crew's Mac conversations, as chat
-// events, for reading it while the Mac is off.
+// crewStandbyHistoryEvents is the saved dialogue of the stored copy of one of this Crew's Mac agents' own
+// conversations, as chat events, for reading it while the Mac is off. A teammate's private thread with an agent is
+// never served here, whoever asks.
 func crewStandbyHistoryEvents(project, conversationID string) []json.RawMessage {
 	rows, err := readCrewStandby(project)
 	if err != nil || conversationID == "" {
@@ -151,8 +152,8 @@ func crewStandbyHistoryEvents(project, conversationID string) []json.RawMessage 
 		return nil
 	}
 	for tab, row := range rows {
-		for _, session := range row.Sessions {
-			if session.ConversationID != conversationID {
+		for key, session := range row.Sessions {
+			if session.ConversationID != conversationID || isSharedThreadKey(key) {
 				continue
 			}
 			raw, err := os.ReadFile(filepath.Join(dir, tab, session.Dir, "conversation.json"))
@@ -183,8 +184,8 @@ func (api *StreamingAPI) crewStandbyServedEvents(owner, project, conversationID 
 	}
 	serving := false
 	for _, row := range rows {
-		for _, session := range row.Sessions {
-			serving = serving || row.Writer == "server" && session.ConversationID == conversationID
+		for key, session := range row.Sessions {
+			serving = serving || row.Writer == "server" && session.ConversationID == conversationID && !isSharedThreadKey(key)
 		}
 	}
 	if !serving {

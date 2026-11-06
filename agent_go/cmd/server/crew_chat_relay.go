@@ -402,8 +402,12 @@ func (api *StreamingAPI) crewMacOffRead(owner, project, generation, operation st
 	}
 	// Always on: an agent with a copy on this server shows that copy's conversation, so a teammate (or the owner on
 	// the website) sees the chat while the Mac is off, also after this server restarted and its relay cache is empty.
+	// Only for the Crew's owner (a Team member watching reads as the owner, for the one conversation it may watch);
+	// a member's read of their own Mac never reaches the owner's copies.
 	onMac := true
-	if served := api.crewStandbyServedEvents(owner, project, generation); len(served) > 0 {
+	if owner != ownerOfCrewProjectID(project) {
+		// keep the relay cache only
+	} else if served := api.crewStandbyServedEvents(owner, project, generation); len(served) > 0 {
 		events, onMac = served, false // the server answers for the agent now: its own chat has the newest turns
 	} else if len(events) == 0 {
 		if copied := crewStandbyHistoryEvents(project, generation); len(copied) > 0 {
