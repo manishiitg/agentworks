@@ -398,7 +398,7 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 			t.Fatalf("%s gained another person's watch: %d %s", name, w.Code, w.Body.String())
 		}
 	}
-	for _, revocation := range []string{"only-me", "removed", "team-off"} {
+	for _, revocation := range []string{"only-me", "removed", "team-off", "chat-private"} {
 		t.Run(revocation, func(t *testing.T) {
 			seed(revocation)
 			session := crewChatSessionID("team", revocation)
@@ -437,6 +437,10 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 				err = writeCrewTeam(revoked)
 			case "team-off":
 				revoked.On = false
+				err = writeCrewTeam(revoked)
+			case "chat-private":
+				hidden := false
+				revoked.AgentRules = map[string]map[string]crewTeamAgentRule{"owner": {macMainTab: {ChatVisible: &hidden}}}
 				err = writeCrewTeam(revoked)
 			}
 			if err != nil {

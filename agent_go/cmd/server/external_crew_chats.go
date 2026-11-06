@@ -334,6 +334,10 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 				return
 			}
 		}
+		if private := api.crewSessionChatPrivate(r, sessionID); private != nil {
+			private.refuse(w, claims.UserID)
+			return
+		}
 		data, err := ReadChatHistoryConversation(claims.UserID, sessionID, workspace)
 		if err != nil {
 			externalError(w, 404, "chat_not_found", "The chat's history is unavailable.")

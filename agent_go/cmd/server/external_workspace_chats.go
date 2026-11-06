@@ -92,6 +92,12 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab, or message_chat to communicate with its agent.")
 		return
 	}
+	if action == "read_chat" {
+		if private := api.crewSessionChatPrivate(r, chat.SessionID); private != nil {
+			private.refuse(w, claims.UserID)
+			return
+		}
+	}
 	after := externalInt(args, "after", 0)
 	out := map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": chat.ID}
 	queryID := strings.TrimSpace(externalArg(args, "query_id"))

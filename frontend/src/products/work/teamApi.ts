@@ -64,6 +64,9 @@ export type TeamTabAgent = { key: string; name: string; detail: string; in_team:
   activity?: 'running' | ''
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
   uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
+  // Teammates can read this chat (crew_team_chat_private.go): chat_visible_label is the switch's line on the viewer's own
+  // agent; chat_private_line replaces the chat on someone else's agent; watch_key is its tab's key where that differs.
+  chat_visible: boolean; chat_visible_label?: string; chat_private_line?: string; watch_key?: string
   // The rule editor's Ask message (the viewer's own agent).
   permissions_prompt?: string
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer edits it (POST agent-rule {purpose}), and its Public on
@@ -189,7 +192,7 @@ export async function switchTeam(target: TeamTarget, on: boolean, ownMac = false
  * ":team:" (teamSideChats). */
 export function teamAgentFor(agents: TeamTabAgent[] | undefined, chatKey?: string) {
   if (!chatKey) return undefined
-  return agents?.find(item => item.key === chatKey || chatKey.endsWith(`:team:${item.key}`))
+  return agents?.find(item => item.key === chatKey || item.watch_key === chatKey || chatKey.endsWith(`:team:${item.key}`))
 }
 
 /** The Team tab's row for one chat tab here: someone else's by its key; one of the person's own by its key on the

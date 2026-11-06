@@ -18,7 +18,7 @@ import (
 const externalCrewTeamSyncTool = "crew_team_sync"
 
 func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewTeamSyncTool, "A Crew Team: agents lists its agents as the Team tab shows them (what each uses, its person's \"When others ask\" rule, Answer only / Make changes); agent_rule (agent_key, when_others_ask and/or can_make_changes) sets them for one of your own agents only. directory lists the people who can be added; people (add or remove, one user_id) adds a builder to the Crew's Team or removes one: the owner or a joined member may, and a person added is invited and joins when they accept. Open clashes in a Crew Team's shared folder (two people changed the same lines of a file) and how to resolve them. clashes lists each with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id) keeps current, puts the other back (keep=other), or saves merged text (content) as a new revision every copy downloads, and closes the clash.", true, false, map[string]any{
+	add(externalCrewTeamSyncTool, "A Crew Team: agents lists its agents as the Team tab shows them (what each uses, its person's \"When others ask\" rule, Answer only / Make changes, whether teammates can read its chat); agent_rule (agent_key, when_others_ask, can_make_changes and/or chat_visible) sets them for one of your own agents only. directory lists the people who can be added; people (add or remove, one user_id) adds a builder to the Crew's Team or removes one: the owner or a joined member may, and a person added is invited and joins when they accept. Open clashes in a Crew Team's shared folder (two people changed the same lines of a file) and how to resolve them. clashes lists each with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id) keeps current, puts the other back (keep=other), or saves merged text (content) as a new revision every copy downloads, and closes the clash.", true, false, map[string]any{
 		"crew_id":          externalString("Crew ID from workspace action=list."),
 		"action":           map[string]any{"type": "string", "enum": []any{"clashes", "resolve", "agents", "agent_rule", "directory", "people"}},
 		"add":              externalString("people: the user_id of one person to add to the Team (find them with directory). They are invited and join when they accept."),
@@ -26,6 +26,7 @@ func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[str
 		"agent_key":        externalString("agent_rule: one of your own agents: its key from agents, or its name."),
 		"when_others_ask":  map[string]any{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "agent_rule: what your own agent may do when someone else asks it (empty clears it). An instruction, not a lock."},
 		"can_make_changes": map[string]any{"type": "boolean", "description": "agent_rule: for an agent on a Mac, false answers others only (default), true may make changes for them."},
+		"chat_visible":     map[string]any{"type": "boolean", "description": "agent_rule: true (the default) lets teammates read your own agent's chat; false keeps it private, and they can still ask the agent."},
 		"path":             externalString("resolve: the clashed file's path in the shared folder."),
 		"clash_id":         externalString("resolve: the clash's id from clashes."),
 		"keep":             map[string]any{"type": "string", "enum": []any{"current", "other"}, "description": "resolve: keep the file as it is now, or put the other person's version back."},
@@ -70,7 +71,7 @@ func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http
 		return
 	case "agent_rule":
 		in := map[string]any{"agent_key": externalArg(args, "agent_key")}
-		for _, key := range []string{"when_others_ask", "can_make_changes"} {
+		for _, key := range []string{"when_others_ask", "can_make_changes", "chat_visible"} {
 			if value, ok := args[key]; ok {
 				in[key] = value
 			}

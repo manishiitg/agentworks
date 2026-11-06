@@ -308,6 +308,13 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			session = r.Header.Get("X-Session-ID")
 		}
 		if !strings.HasPrefix(session, pairedMacSessionPrefix) {
+			// Every session route of a chat kept on this server; admins' audited reviews keep their own rule.
+			if !strings.HasPrefix(r.URL.Path, "/api/admin/") {
+				if private := api.crewSessionChatPrivate(r, mux.Vars(r)["session_id"]); private != nil {
+					private.refuse(w, GetUserIDFromContext(r.Context()))
+					return
+				}
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -320,6 +327,10 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		project, generation := crewChatSessionParts(session)
 		if project == "" || generation == "" {
 			externalError(w, 409, "reopen_mac_chat", "Reopen this Crew to continue its current Mac conversation.")
+			return
+		}
+		if private := api.crewMacChatPrivate(r, project, generation); private != nil {
+			private.refuse(w, GetUserIDFromContext(r.Context()))
 			return
 		}
 		operation := ""
