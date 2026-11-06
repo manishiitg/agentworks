@@ -356,7 +356,7 @@ func TestCrewMacDashboardsAreReadFromTheCopy(t *testing.T) {
 	}
 	card := httptest.NewRecorder()
 	f.api.handleCrewTeamDashboards(card, adminRequest(http.MethodGet, "/api/crew-teams/team/dashboards", "", claims, map[string]string{"project": "team"}))
-	if card.Code != 200 || !strings.Contains(card.Body.String(), `"updated":"Updated`) || !strings.Contains(card.Body.String(), "need the owner's Mac") {
+	if card.Code != 200 || !strings.Contains(card.Body.String(), `"updated":"Updated`) || !strings.Contains(card.Body.String(), "work on the owner's Mac") {
 		t.Fatalf("card: %d %s", card.Code, card.Body.String())
 	}
 }
