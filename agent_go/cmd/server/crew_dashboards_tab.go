@@ -41,7 +41,9 @@ type crewDashboardsTabEmpty struct {
 }
 
 type crewDashboardsTab struct {
-	Intro string `json:"intro"`
+	// Workspace is the Crew's folder, which the card opens a row's file in.
+	Workspace string `json:"workspace"`
+	Intro     string `json:"intro"`
 	// CanChange: this person is the Crew's main owner (who can open it and the public link are theirs).
 	CanChange bool `json:"can_change"`
 	// OnMac: the Crew lives on its owner's Mac, so its public link and sharing outside the Team need it online first.
@@ -120,7 +122,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	default:
 		filter = "all"
 	}
-	tab := crewDashboardsTab{Intro: "Everything published from this Crew.", CanChange: owner, OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
+	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner, OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
 	who := api.crewDashboardsTabWho(r, root, owner && !onMac)
 	updatedOnMac := ""
 	if updated, ok := crewMacDashboardsUpdated(t.ProjectID); ok && crewRelayTwin(t.ProjectID) {

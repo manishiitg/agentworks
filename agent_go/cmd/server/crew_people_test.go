@@ -120,12 +120,12 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 	if rec, _ := defaultProjectOwners().Lookup("work", "test-team"); len(rec.RunPeople) != 0 || !rec.Private {
 		t.Fatalf("the last dashboards-only person left but the Share still names people: %+v", rec)
 	}
-	// The Team tab's own add and remove (kept until the card replaces them) still save at once.
+	// The old add/remove shorthand is gone: a change names a person and a level, and nothing is saved without them.
 	body, _ := json.Marshal(map[string]string{"add": "anita"})
 	w := httptest.NewRecorder()
 	f.api.handleCrewTeamPeople(w, adminRequest(http.MethodPost, "/api/crew-teams/team/people", string(body), &UserClaims{UserID: "owner", Username: "owner"}, map[string]string{"project": "team"}))
-	if w.Code != 200 || !teamHas("anita") {
-		t.Fatalf("the Team tab's add: %d %s", w.Code, w.Body.String())
+	if w.Code != http.StatusBadRequest || teamHas("anita") {
+		t.Fatalf("the old add shorthand: %d %s", w.Code, w.Body.String())
 	}
 
 	// A Crew on a Mac that is online: Works with me only; dashboards only needs the Crew online first.

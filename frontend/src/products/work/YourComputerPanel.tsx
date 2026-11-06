@@ -12,6 +12,7 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
 import { AskButton, TeamTab, teamCard } from './TeamTab'
+import { CrewDashboardsTab } from './CrewDashboardsTab'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
@@ -153,7 +154,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {
     if (hasPendingCrewAccess(projectId)) return pendingCrewAccessSection(projectId)
-    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'publish' || saved === 'team') return saved } catch { /* storage unavailable */ }
+    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'publish' || saved === 'team' || saved === 'dashboards') return saved } catch { /* storage unavailable */ }
     return 'mac'
   })
   const setSection = (next: CrewAccessSection) => { setSectionState(next); try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
@@ -334,6 +335,9 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
         Mac online switch, and turns the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
       <TeamTab projectId={projectId} onTurnOn={here ? () => void turnOnTeam() : undefined} />
+    </section>}
+    {!(here && needsServer) && shown === 'dashboards' && <section role="tabpanel" id={`crew-access-panel-${projectId}-dashboards`} aria-labelledby={`crew-access-${projectId}-dashboards`} className="space-y-3">
+      <CrewDashboardsTab projectId={projectId} />
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}
     {status.access_share && workspacePath && tabId && onAsk && <section aria-label="Who can use it"><h3 className="mb-2 text-xs font-medium text-muted-foreground">Who can use it</h3><ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
