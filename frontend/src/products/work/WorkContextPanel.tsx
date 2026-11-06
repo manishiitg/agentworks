@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { Bot, CalendarClock, FolderSync, Globe, Laptop, LayoutDashboard, Link2, RefreshCw, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
+import { Bot, FolderSync, Globe, Laptop, LayoutDashboard, Link2, RefreshCw, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
-import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { cloudStateIcon, type CrewAsk, openCrewAskThread, type CrewAccessLine } from './YourComputerPanel'
@@ -50,7 +49,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const byId = new Map(inventory.map(item => [item.id, item]))
   const accessItems = inventory.filter(item => item.group === 'Share' && item.view === 'mcp')
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
-  const automationItems = inventory.filter(item => item.view === 'schedules')
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' }>()
   const computerState = access?.place
   const accessTree = access?.tree || []
@@ -155,10 +153,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {/* With a Share row the dashboard is a line in its tree (owner, 5 Nov: one place); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
-    {/* One row per kind with the server's count (owner, 6 Nov: no "Manage automations" hop for a handful of kinds). */}
-    {automationItems.length > 0 && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={CalendarClock} detail={data?.details.automations}>
-      {automationItems.map(item => <Row key={item.id} icon={item.icon} detail={data?.details[item.id]} onClick={() => open(item)}>{item.label}</Row>)}
-    </WorkspaceCompactGroup>}
+    {inventory.filter(item => item.view === 'goals' || item.view === 'schedules').map(item =>
+      <Row key={item.id} icon={item.icon} detail={item.view === 'schedules' ? data?.details.automations : undefined} onClick={() => open(item)}>{item.label}</Row>)}
     </>}
     {error || data?.sections.some(item => item.error || item.stale) ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>{error || (data?.sections.some(item => item.stale) ? 'Showing the last update for some sections.' : 'Some workspace status is unavailable.')}</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>

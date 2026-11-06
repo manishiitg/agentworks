@@ -46,7 +46,7 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
     await flush()
   }
   try {
-    await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" />))
+    await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" kind="workflow" />))
     await flush()
     // The workflow form has one kind; retained Relays link to their existing
     // data is retained without a link or a stale standalone selection.
@@ -56,8 +56,7 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
       {crew_id:'crew',workspace_path:'Workflow/retained-relay',manifest:{id:'retained-relay',kind:'relay',label:'Existing Relay'}},
     ] as unknown as DiscoveredWorkflow[]
     expect(buildWorkflowPresetsFromManifests(manifests).map(preset => preset.id)).toEqual([])
-    await click('Add')
-    expect([...host.querySelectorAll('option')].map(option => option.value)).toEqual(['workflow', 'script'])
+    await click('Add workflow')
     const name = host.querySelector<HTMLInputElement>('input')!
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(name,'Reports')
@@ -66,7 +65,7 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
     await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
     await flush()
     expect(api.post).toHaveBeenCalledWith('/api/crew-executables',{name:'Reports',kind:'workflow'},{params:{crew_id:'crew'}})
-    await click('ReportsWorkflow')
+    await click('Reports')
     expect(useChatStore.getState().activeTabId).toBe('crew-chat')
     expect(useWorkflowStore.getState().selectedRunFolder).toBe('unrelated-run')
     expect(useWorkflowStore.getState().runFolders.map(folder => folder.name)).toEqual(['unrelated-run'])
@@ -95,8 +94,8 @@ it('opens and saves the shared script source from its Crew', async () => {
   const host = document.createElement('div'); const root = createRoot(host)
   const flush = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   try {
-    await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" />)); await flush()
-    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'QualifyScript')!.click()); await flush()
+    await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" kind="script" />)); await flush()
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Qualify')!.click()); await flush()
     expect(host.querySelector('[data-view="steps"]')).toBeNull()
     expect(host.querySelector('textarea')?.value).toBe("print('saved script')")
     const save = [...host.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Save')!

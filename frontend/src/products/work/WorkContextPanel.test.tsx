@@ -44,6 +44,7 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
 const accessDestinations = [['Share','access']]
 const inventory = (features?: Set<string>) => { const value = workWorkspacePanels({ enabledPanels: features, showShell: true }); return [...value.views, ...value.ops, ...value.setup] }
+const automationRow = (host: HTMLElement) => [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Automations') ?? null
 async function render(check: (host: HTMLDivElement) => Promise<void>, panels = inventory()) {
  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
  try { await act(async () => root.render(<WorkContextPanel reviewSessionId="chat" workspacePath="Crew/example" projectId="example" panels={panels} onOpen={mocks.open}/>)); await check(host) }
@@ -60,7 +61,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(mocks.target).toHaveBeenLastCalledWith('files', 'review-uncommitted:tools%2Fweb')
   expect(host.textContent).not.toContain('person@example.com')
   expect(host.textContent).not.toContain('Morning summary')
-  expect(host.querySelector('[aria-label="Automations"]')?.textContent).toContain(mocks.status.details.automations)
+  expect(automationRow(host)?.textContent).toContain(mocks.status.details.automations)
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Slack bot · Project helper · Identity verified"]')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'slack-bot')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="WhatsApp · Connected"]')!.click())
@@ -71,12 +72,11 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Google · person@example.com · Connected"]')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'gmail')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand connections"]')!.click())
-  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Automations"]')!.click())
+  await act(async () => automationRow(host)!.click())
   expect(host.textContent).toContain('MCPs1 connected · 1 need attention')
   expect(host.textContent).not.toContain('Notes account'); expect(host.textContent).not.toContain('Other account')
   expect(host.textContent).toContain('Googleperson@example.com · Connected')
-  // One row per kind with the server's count, not each automation.
-  expect(host.textContent).toContain('Schedules2')
+  expect(mocks.open).toHaveBeenLastCalledWith('schedules')
   expect(host.textContent).not.toContain('Morning summary')
   expect(host.textContent).toContain('Slack botProject helper · Identity verified')
   expect(host.textContent).toContain('My Slack accountPersonal Slack · Connected')
@@ -163,7 +163,7 @@ it('groups dashboards, motion and Artifacts without a finished-file registry, pr
   await act(async()=>root.render(<WorkContextPanel workspacePath="Crew/example" panels={[]} onOpen={mocks.open}/>))
   expect(host.textContent).not.toContain('Overview'); expect(host.textContent).not.toContain('Project brief')
   expect(host.textContent).not.toContain('Manage integrations')
-  expect(host.querySelector('[aria-label="Automations"]')).toBeNull()
+  expect(automationRow(host)).toBeNull()
  } finally { await act(async()=>root.unmount()) }
 })
 it('keeps every starter destination in the admitted All tools inventory and Run mode limited to dashboard', () => {
@@ -239,17 +239,13 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
 
 it('opens automation setup before any jobs exist and keeps native destination guards', async () => {
  await render(async host => {
-  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Automations"]')!.click())
-  // The kinds are listed in the group itself (no "Manage automations" step).
-  expect([...host.querySelectorAll('button')].some(node => node.textContent === 'Manage automations')).toBe(false)
-  expect(mocks.open).not.toHaveBeenCalled(); expect(mocks.target).not.toHaveBeenCalled()
-  for (const [label,target] of [['Schedules','schedules'],['Watchers','conditions'],['Webhooks','triggers'],['Functions','functions'],['Email inbox','email']]) {
-   const row = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label)!
-   await act(async () => row.click())
-   expect(mocks.target).toHaveBeenLastCalledWith('workshop', target)
-   expect(mocks.open).toHaveBeenLastCalledWith('schedules')
-  }
-  const staleRow = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Schedules')!
+  await act(async () => automationRow(host)!.click())
+  expect(mocks.open).toHaveBeenLastCalledWith('schedules')
+  expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Workflows')).toBe(false)
+  const goals = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Goals')!
+  await act(async () => goals.click())
+  expect(mocks.open).toHaveBeenLastCalledWith('goals')
+  const staleRow = automationRow(host)!
   mocks.open.mockClear(); mocks.server = 'another-server'
   await act(async () => staleRow.click())
   expect(mocks.open).not.toHaveBeenCalled()

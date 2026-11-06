@@ -93,7 +93,7 @@ export function CrewExecutableEditor({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
-        <button className={button} onClick={onBack} aria-label="Back to workflows">
+        <button className={button} onClick={onBack} aria-label={item.kind === 'script' ? 'Back to scripts' : 'Back to workflows'}>
           <ArrowLeft className="h-4 w-4" />
         </button>
         <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{item.manifest.label}</h2>
