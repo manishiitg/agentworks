@@ -190,10 +190,10 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 	}
 
 	// Add query parameters
-	// Use max_depth=2 to list nested folders (iteration-X/group-Y)
+	// Include recorded children of historical runs, without walking their artifacts.
 	q := req.URL.Query()
 	q.Add("folder", runsPath)
-	q.Add("max_depth", "2")
+	q.Add("max_depth", "3")
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := workspaceHTTPClient.Do(req)
@@ -756,7 +756,7 @@ func (api *StreamingAPI) listRunFolderNames(ctx context.Context, workspacePath s
 
 	q := req.URL.Query()
 	q.Add("folder", runsPath)
-	q.Add("max_depth", "2")
+	q.Add("max_depth", "3")
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := workspaceHTTPClient.Do(req)
