@@ -2416,13 +2416,14 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   // Fit the full plan on first render so the workflow shape is visible by default.
   React.useEffect(() => {
     if (toolbarOnly) return
+    if (embeddedPlanOnly) return // React Flow fits embedded plans after measuring their nodes.
     if (!hasInitializedView.current && !triggers.loading && nodes.length > 0) {
       const fitTimer = window.setTimeout(() => {
         window.requestAnimationFrame(() => {
           // Restore the saved pan/zoom for this workspace instead of
           // re-fitting: a refresh should keep the user where they were.
           // Tablet and embedded views keep their own framing.
-          if (previewDevice !== 'tablet' && !embeddedPlanOnly) {
+          if (previewDevice !== 'tablet') {
             const saved = readSavedViewport(getViewportStorageKey(), FLOW_FIT_MIN_ZOOM, 2)
             if (saved) {
               setViewport(saved, { duration: 0 })
@@ -2447,14 +2448,12 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
             hasInitializedView.current = true
             return
           }
-          const embeddedFocusNodes = embeddedPlanOnly ? nodes.slice(0, Math.min(nodes.length, 8)) : undefined
           Promise.resolve(
             fitView({
-              padding: embeddedPlanOnly ? 0.12 : FLOW_FIT_PADDING,
+              padding: FLOW_FIT_PADDING,
               duration: 350,
-              minZoom: embeddedPlanOnly ? 0.18 : FLOW_FIT_MIN_ZOOM,
-              maxZoom: embeddedPlanOnly ? 0.7 : FLOW_FIT_MAX_ZOOM,
-              nodes: embeddedFocusNodes,
+              minZoom: FLOW_FIT_MIN_ZOOM,
+              maxZoom: FLOW_FIT_MAX_ZOOM,
             })
           ).finally(() => {
             viewportStateRef.current = getViewport()
@@ -2675,7 +2674,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
           onViewportChange={onViewportChange}
           nodeTypes={canvasNodeTypes}
           edgeTypes={edgeTypes}
-          fitView={false}
+          fitView={embeddedPlanOnly}
           fitViewOptions={{ padding: FLOW_FIT_PADDING, minZoom: FLOW_FIT_MIN_ZOOM, maxZoom: FLOW_FIT_MAX_ZOOM }}
           minZoom={FLOW_FIT_MIN_ZOOM}
           maxZoom={2}
