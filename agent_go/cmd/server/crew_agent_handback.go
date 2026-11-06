@@ -159,9 +159,13 @@ func (api *StreamingAPI) receiveCrewHandback(ctx context.Context, claims *UserCl
 			conversation, err = crewHandbackCaptureForTest(id, s.record)
 		} else if _, e := ReadChatHistoryConversation(owner, s.record.SessionID, s.record.WorkspacePath); !errors.Is(e, errChatHistoryConversationNotFound) {
 			ownerClaims := &UserClaims{UserID: owner, Username: owner}
-			conversation, err = api.captureCrewHandoffConversation(context.WithValue(ctx, UserContextKey, ownerClaims), ownerClaims, roots, s.record, true)
-			if err == nil && (conversation == nil || conversation.Native == nil) {
-				err = fmt.Errorf("no native session")
+			ownerCtx := context.WithValue(ctx, UserContextKey, ownerClaims)
+			conversation, err = api.captureCrewHandoffConversation(ownerCtx, ownerClaims, roots, s.record, true)
+			if err != nil || conversation == nil || conversation.Native == nil {
+				// A chat this server ran from saved history (it lacks the Mac's program), or one that never ran here, has no
+				// native session: its history goes back, and the Mac continues it on its own program.
+				log.Printf("[ALWAYS_ON] project=%s tab=%s event=handback_history reason=%q", id, tab, fmt.Sprint(err))
+				conversation, err = api.captureCrewHandoffConversation(ownerCtx, ownerClaims, roots, s.record)
 			}
 		}
 		if err == nil && conversation == nil {
@@ -178,8 +182,10 @@ func (api *StreamingAPI) receiveCrewHandback(ctx context.Context, claims *UserCl
 		}
 		item.Conversation = conversation
 		var bytes int64
-		for _, file := range conversation.Native.Files {
-			bytes += file.Size
+		if conversation.Native != nil {
+			for _, file := range conversation.Native.Files {
+				bytes += file.Size
+			}
 		}
 		crewHandbackLog(id, tab, "handback_staged", "", bytes, started)
 		return out, nil

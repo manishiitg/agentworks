@@ -68,11 +68,17 @@ func (api *StreamingAPI) handBackCrewStandby(project, tab string) {
 		}
 		return reply.Standby, nil
 	}
-	// The outcome is in the [ALWAYS_ON] log lines.
-	_, _, _ = api.runCrewHandback(ctx, project, tab, roots, call, func(b *sessiontransfer.Bundle) error {
+	// The outcome is in the [ALWAYS_ON] log lines. A failed hand back tries again by itself (the next attempt first asks
+	// whether the server still answers for the agent), so the owner never has to do anything.
+	if _, _, err = api.runCrewHandback(ctx, project, tab, roots, call, func(b *sessiontransfer.Bundle) error {
 		return desktopCrewNativePull(ctx, roots, connection, binding, b)
-	}, binding.PairID)
+	}, binding.PairID); err != nil {
+		time.AfterFunc(crewHandbackAgain, func() { api.handBackCrewStandby(project, tab) })
+	}
 }
+
+// crewHandbackAgain is how long a failed hand back waits before it tries again.
+var crewHandbackAgain = 2 * time.Minute
 
 // runCrewHandback is the hand back's loop, with the server calls and the native pull passed in.
 func (api *StreamingAPI) runCrewHandback(ctx context.Context, project, tab string, roots crewroot.Roots, call func(string, []crewStandbySendItem) (*crewStandbyReply, error), pull func(*sessiontransfer.Bundle) error, pair string) (done bool, diverged int, err error) {
@@ -195,17 +201,21 @@ func (api *StreamingAPI) resendCrewStandby(project, tab string) {
 // did not change it; the Mac did), diverged (both changed: the Mac keeps its own, the server's is saved aside) or
 // no_native (nothing to take). The bytes are the server copy's size.
 func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.Roots, tab, pair string, item crewStandbySendItem, pull func(*sessiontransfer.Bundle) error) (string, int64, error) {
-	if item.Conversation == nil || item.Conversation.Native == nil {
+	// A conversation the server ran from saved history (it lacked the Mac's program) comes back as history only.
+	if item.Conversation == nil || item.Conversation.Native == nil && len(item.Conversation.History) == 0 {
 		return "no_native", 0, nil
 	}
 	if crewStandbyKeyTab(roots.ID, item.Key) != tab {
 		return "", 0, fmt.Errorf("a conversation does not belong to this agent")
 	}
 	conversation := *item.Conversation
-	server := *conversation.Native
-	conversation.Native = &server
-	if err := server.Validate(); err != nil {
-		return "", 0, err
+	var server sessiontransfer.Bundle
+	if conversation.Native != nil {
+		server = *conversation.Native
+		conversation.Native = &server
+		if err := server.Validate(); err != nil {
+			return "", 0, err
+		}
 	}
 	if err := validateCrewHandoffConversation(&conversation); err != nil {
 		return "", 0, err
@@ -254,9 +264,23 @@ func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.R
 	// start of the server's, the chat continues with all of it and the next turn starts a fresh native conversation on
 	// this Mac's program from the usual continuity notice, as "Fresh chat" does; otherwise both changed and the server's
 	// version is kept aside.
-	if macProgram := crewHandbackMacProgram(record, mine); macProgram != "" && macProgram != server.Provider {
-		if record == nil || !crewHandbackHistoryExtends(claims.UserID, *record, conversation.History) {
+	if macProgram := crewHandbackMacProgram(record, mine); conversation.Native == nil || macProgram != "" && macProgram != server.Provider {
+		if record == nil && isSharedThreadKey(item.Key) && crewHandbackImportForTest == nil {
+			// A teammate's thread that started on the server while the Mac was off: this Mac makes its record.
+			created, e := api.crewHandbackThread(ctx, claims, item.Key)
+			if e != nil {
+				return "", 0, e
+			}
+			record = &created
+		}
+		if record == nil {
+			return "no_tab", bytes, nil
+		}
+		if !crewHandbackHistoryExtends(claims.UserID, *record, conversation.History) {
 			return "diverged", bytes, keepCrewHandbackAside(roots, tab, item.Key, &conversation)
+		}
+		if crewHandbackHistorySame(claims.UserID, *record, conversation.History) {
+			return "unchanged", bytes, nil
 		}
 		if api.crewAgentTurnRunning(record.SessionID) {
 			return "", 0, errCrewNativeDestinationBusy
@@ -356,6 +380,18 @@ func crewHandbackHistoryExtends(owner string, record ProductConversationRecord, 
 		}
 	}
 	return true
+}
+
+// crewHandbackHistorySame: this Mac's saved history already is the server's (nothing was answered there).
+func crewHandbackHistorySame(owner string, record ProductConversationRecord, server []llmtypes.MessageContent) bool {
+	raw, err := ReadChatHistoryConversation(owner, record.SessionID, record.WorkspacePath)
+	if err != nil {
+		return false
+	}
+	var doc struct {
+		History []llmtypes.MessageContent `json:"conversation_history"`
+	}
+	return json.Unmarshal(raw, &doc) == nil && len(doc.History) == len(server) && crewHandbackHistoryExtends(owner, record, server)
 }
 
 // crewHandbackMineForTest stands in for finding and capturing the Mac's own version (it needs a provider runtime) in
