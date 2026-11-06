@@ -27,7 +27,9 @@ type crewTeamTabAgent struct {
 	// Key is the agent's chat key: In team / Only me sends it (agent-visibility).
 	Key  string `json:"key"`
 	Name string `json:"name"`
-	// Detail is whose it is and where it works: "Manish", "tester-b · On their Mac", "you · On your Mac".
+	// Detail is whose it is and where it works: "Manish", "tester-b · On their Mac". The viewer's own rows (the Agents
+	// card lists only those, all in the same place) carry only a state worth reading, such as "Mac off · answering
+	// from the server", never "you" or "Mac" (owner, 6 Nov).
 	Detail string `json:"detail"`
 	InTeam bool   `json:"in_team"`
 	// CanChange: the viewer chooses In team / Only me for it here. Otherwise Fixed is shown instead of the choice.
@@ -47,9 +49,6 @@ type crewTeamTabAgent struct {
 	// Place is where it runs ("mac" or "server"); StatusLabel is its availability ("Mac off"), "" when it can answer.
 	Place       string `json:"place"`
 	StatusLabel string `json:"status_label,omitempty"`
-	// PlaceLabel / PlaceServer: where an agent of the owner's Mac answers now (Always on), shown as the row's label.
-	PlaceLabel  string `json:"place_label,omitempty"`
-	PlaceServer bool   `json:"place_server,omitempty"`
 	// Tab is the agent's tab in its person's copy ("main" for a Mac's Main), so the Mac app finds its own tabs' rows.
 	Tab string `json:"tab"`
 	// When others ask (crew_when_others_ask.go), the row's details: what it uses (names only; the owner's own sign-ins
@@ -206,14 +205,19 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			}
 		}
 		for _, a := range p.Agents {
-			detail := []string{p.Name}
-			if mine {
-				detail[0] = "you"
+			detail := []string{}
+			if !mine {
+				detail = append(detail, p.Name)
+				if a.Place == "mac" && !p.Owner {
+					detail = append(detail, "On their Mac")
+				}
 			}
-			if a.Place == "mac" && !p.Owner {
-				detail = append(detail, map[bool]string{true: "On your Mac", false: "On their Mac"}[mine])
-			}
-			if a.StatusLabel != "" && a.PlaceLabel == "" { // the place label already says the Mac is off
+			// Always on: where an agent of the owner's Mac answers while that differs from its place ("Mac off ·
+			// answering from the server"); a plain "Mac" says nothing here.
+			switch {
+			case a.PlaceLabel != "" && a.PlaceLabel != "Mac":
+				detail = append(detail, a.PlaceLabel)
+			case a.StatusLabel != "" && a.PlaceLabel == "":
 				detail = append(detail, a.StatusLabel)
 			}
 			// Always on: a hand back that found the agent had answered on both the Mac and the server (owner only).
@@ -223,7 +227,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				}
 			}
 			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
-				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceServer: a.PlaceServer, Tab: a.Tab}
+				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, Tab: a.Tab}
 			// Shared is per person (owner, 5-6 Nov): each person switches their own agents, Main too, but keeps one
 			// shared (setCrewTeamAgentChoice); someone else's agent just reads Shared.
 			if mine {
@@ -345,7 +349,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 	out := []crewTeamTabAgent{}
 	for _, a := range agents {
 		rule := t.agentRule(t.OwnerID, crewTeamRuleKey(ctx, t, t.OwnerID, a.ChatKey))
-		row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: "you", Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
+		row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
 			Uses: []crewTeamAgentUse{}, WhenOthersAsk: rule.WhenOthersAsk, HasRule: rule.WhenOthersAsk != "", CanEditRule: true,
 			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, CanSetPurpose: true,
 			AgentBridge: bridges.row(t, a, t.OwnerID)}

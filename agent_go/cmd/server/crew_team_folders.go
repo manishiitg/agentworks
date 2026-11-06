@@ -90,30 +90,11 @@ func crewTeamTooBigLine(what string, count, bytes int64) string {
 	return ""
 }
 
-// crewTeamWholeSize measures the Whole Crew where the Crew is: its folder on the server, or its owner's Mac over the
-// Mac online relay. ok is false when it cannot be measured now (the Mac is off).
+// crewTeamWholeSize measures the Whole Crew where the Crew is (crewTeamWholeListing). ok is false when it cannot be
+// measured now (the Mac is off).
 func crewTeamWholeSize(ctx context.Context, owner, project string) (count, bytes int64, ok bool) {
-	if !crewRelayTwin(project) {
-		roots, found, err := crewStorageRoots(crewProjectRootByID(project))
-		if err != nil || !found {
-			return 0, 0, false
-		}
-		count, bytes = crewTeamShareSize(roots.Files, crewTeamFolder{Whole: true})
-		return count, bytes, true
-	}
-	pair, found := crewMacPairFor(owner, project)
-	if !found {
-		return 0, 0, false
-	}
-	result := callCrewMacPair(ctx, owner, project, pair, crewChatCall{Operation: "team_folders", Query: url.Values{"whole": {"1"}}}, 20*time.Second)
-	var size struct {
-		Files int64 `json:"files"`
-		Bytes int64 `json:"bytes"`
-	}
-	if result.Status != http.StatusOK || json.Unmarshal(result.Body, &size) != nil {
-		return 0, 0, false
-	}
-	return size.Files, size.Bytes, true
+	_, count, bytes, ok = crewTeamWholeListing(ctx, owner, project)
+	return count, bytes, ok
 }
 
 // handleCrewTeamFolders is GET /crew-teams/{project}/folders?path=&whole=1, the Team tab's folder picker and sizes.

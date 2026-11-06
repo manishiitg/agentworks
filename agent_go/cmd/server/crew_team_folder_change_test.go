@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -265,5 +267,67 @@ func TestCrewTeamStartupClearsFalseClashes(t *testing.T) {
 	}
 	if backups, _ := filepath.Glob(filepath.Join(dir, "files.json.before-clash-cleanup-*")); len(backups) != 1 {
 		t.Fatalf("no backup of the record: %v", backups)
+	}
+}
+
+// Owner, 6 Nov (approved mockup "Whole Crew asks first"): switching to the Whole Crew first shows the server's lines
+// (who gets it, the folders added) and changes nothing; only the Crew's owner gets them, and chat switches only when
+// called again with confirm=true.
+func TestCrewTeamWholeCrewAsksFirst(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("MULTI_USER_MODE", "true")
+	crewTeamTestDocs(t, "whole-ask", "whole-ask")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"member","username":"member","can_create":true,"products":["work"]}]}`)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "whole-ask", OwnerID: "owner", ProjectID: "whole-ask"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "whole-ask", Name: "Example", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
+		t.Fatal(err)
+	}
+	roots, found, err := crewStorageRoots(crewProjectRootByID("whole-ask"))
+	if err != nil || !found {
+		t.Fatal("crew folder", found, err)
+	}
+	for _, rel := range []string{"team/a.md", "code/c.md"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(roots.Files, rel)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(roots.Files, rel), []byte(rel), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	api := &StreamingAPI{}
+	router := mux.NewRouter()
+	api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
+	ask := func(user string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/api/crew-teams/whole-ask/folder-change?whole=1", nil)
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		return w
+	}
+	if w := ask("member"); w.Code != 403 {
+		t.Fatalf("a member got the owner's switch: %d %s", w.Code, w.Body.String())
+	}
+	w := ask("owner")
+	var change crewTeamFolderChange
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &change) != nil {
+		t.Fatal("owner preview", w.Code, w.Body.String())
+	}
+	if change.ConfirmLabel == "" || change.Refusal != "" || !slices.Contains(change.FoldersAdded, "code/") || slices.Contains(change.FoldersAdded, "team/") || !slices.Equal(change.People, []string{"member"}) || len(change.Means) == 0 {
+		t.Fatalf("preview: %+v", change)
+	}
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	ctx := context.WithValue(t.Context(), UserContextKey, owner)
+	text, err := api.crewTeamConfigureChat(ctx, owner, nil, "whole-ask", "whole-ask", "configure", map[string]any{"share": "whole"})
+	if team, _ := readCrewTeam("whole-ask"); err != nil || !strings.Contains(text, "confirm_needed") || team.Folder.Whole {
+		t.Fatalf("chat switched without confirm: %v %s whole=%t", err, text, team.Folder.Whole)
+	}
+	if _, err := api.crewTeamConfigureChat(ctx, owner, nil, "whole-ask", "whole-ask", "configure", map[string]any{"share": "whole", "confirm": true}); err != nil {
+		t.Fatal("confirmed switch", err)
+	}
+	if team, _ := readCrewTeam("whole-ask"); !team.Folder.Whole {
+		t.Fatal("confirm=true did not switch")
 	}
 }
