@@ -31,6 +31,11 @@ type crewTeamMessageRequest struct {
 func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request, project string, input crewSyncRequest) {
 	claims := GetUserFromContext(r.Context())
 	in := input.TeamMessage
+	if claims != nil && ownerOfCrewProjectID(project) != claims.UserID {
+		// A Team member's Mac cannot send into the owner's agents yet; say what works instead of pointing at a Mac they don't have.
+		externalError(w, 409, "wrong_pair", "Messaging the owner's agents from your Mac isn't available yet. Open their agent from the Team bar to ask it.")
+		return
+	}
 	b, err := crewroot.ReadSync(project)
 	if in == nil || err != nil || b == nil || b.Mode != "relay" || b.Side != "server" || b.Editing != "local" || input.PairID == "" || b.PairID != input.PairID ||
 		claims == nil || ownerOfCrewProjectID(project) != claims.UserID {

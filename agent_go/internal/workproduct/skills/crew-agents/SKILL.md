@@ -55,6 +55,14 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   If they wrote nothing after it, suggest a name and purpose from the work in
   this chat, save them, and tell the person in one line so they can change it.
 
+## Agents your Team shares
+
+Agents that other people in this Crew's Team share are not tabs of this chat,
+so `sessions action=list` never shows them. When the person asks which agents
+they got from a teammate, or which agents the Team shares, list them with
+`messages action=list_agents` (or `team_sync action=agents` for the Team tab's
+own list) and answer from that, not from the tabs.
+
 ## Function tabs
 
 A Crew function runs in its own tab (named after the function, or its agent
