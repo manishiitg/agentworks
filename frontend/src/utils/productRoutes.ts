@@ -1,6 +1,6 @@
 import type { ProductSurface } from '../products/productSurfaceConfig'
 
-export type ProductRoute = { surface: ProductSurface; id?: string; view?: string; folder?: string; overview?: boolean }
+export type ProductRoute = { surface: ProductSurface; id?: string; view?: string; folder?: string; overview?: boolean; agent?: string }
 export const PRODUCT_PATHS: Record<ProductSurface, string> = {
   agentworks: '/goals', relays: '/relays', work: '/crew',
   knowledgebase: '/brain', 'mcp-gateway': '/vault', 'llm-gateway': '/llm-gateway', bullpen: '/agentbridge',
@@ -46,8 +46,10 @@ export function parseProductRoute(value: string): ProductRoute | null | undefine
   let id: string | undefined
   let view = url.searchParams.get('view') || undefined
   const folder = url.searchParams.has('folder') ? url.searchParams.get('folder')! : undefined
+  const agent = url.searchParams.get('agent') || undefined
   if (view && !/^[a-z][a-z0-9-]{0,63}$/.test(view)) return undefined
   if (folder !== undefined && (surface !== 'knowledgebase' || !relativeBrainFolder(folder))) return undefined
+  if (agent && (surface !== 'work' || !segment(agent))) return undefined
   if (parts.length > 1) {
     if (surface === 'bullpen' && parts.length === 2 && parts[1] === 'connect') view = 'setup'
     else {
@@ -63,7 +65,7 @@ export function parseProductRoute(value: string): ProductRoute | null | undefine
       }
     }
   }
-  return { surface, ...(id ? { id } : {}), ...(view ? { view } : {}), ...(folder !== undefined ? { folder } : {}), ...(overview && !id ? { overview: true } : {}) }
+  return { surface, ...(id ? { id } : {}), ...(view ? { view } : {}), ...(folder !== undefined ? { folder } : {}), ...(overview && !id ? { overview: true } : {}), ...(agent ? { agent } : {}) }
 }
 
 export function productRoutePath(route: ProductRoute): string {
@@ -77,6 +79,7 @@ export function productRoutePath(route: ProductRoute): string {
   else if (route.id && (route.view === 'dashboard' || route.view === 'report')) path += '/dashboard'
   else if (route.view) params.set('view', route.view)
   if (route.folder) params.set('folder', route.folder)
+  if (route.agent) params.set('agent', route.agent)
   return path + (params.size ? '?' + params.toString() : '')
 }
 

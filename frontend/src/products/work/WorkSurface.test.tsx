@@ -56,6 +56,29 @@ describe('fresh deep links keep their view', () => {
 describe('Crew native tab dragging', () => {
   // The tab strip exists only when the person chose Tabs; Left menu is the default.
   beforeEach(() => useAgentsViewStore.getState().set('tabs'))
+  it('opens a newly imported chat deep link in an already mounted Crew', async () => {
+    // PLAT-746-336: Create selects the Crew before the native import completes.
+    const main = { tabId: 'main', sessionId: 'session-main', name: 'Main', config: {}, metadata: {
+      agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: true, agentProfileConversationKey: 'crew',
+    } } as ChatTab
+    useChatStore.setState({ chatTabs: { main }, activeTabId: 'main' })
+    const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([])
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
+      list.mockResolvedValue([{ conversation_key: 'crew:chat:import-one', session_id: 'independent', name: 'Original work' }])
+      await act(async () => {
+        window.history.pushState(null, '', '/crew/projects/crew?agent=import-one')
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      })
+      const state = useChatStore.getState()
+      expect(state.chatTabs[state.activeTabId!]?.sessionId).toBe('independent')
+      expect(new URLSearchParams(window.location.search).has('agent')).toBe(false)
+    } finally {
+      await act(async () => root.unmount()); host.remove(); list.mockRestore(); window.history.replaceState(null, '', '/')
+    }
+  })
   it('restores all tab names without loading background histories or changing selection', async () => {
     // PLAT-746-245: a slow history for the first side chat must not hide later tabs.
     const main = { tabId: 'main', sessionId: 'session-main', name: 'Main', config: {}, metadata: {

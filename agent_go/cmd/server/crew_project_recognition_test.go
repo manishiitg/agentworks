@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,6 +132,38 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	}
 	recognitionWrite(t, filepath.Join(sharedHome, ".claude", "projects", "example", "private-shared.jsonl"), fmt.Sprintf(`{"type":"user","sessionId":"private-shared","cwd":%q,"message":{"content":"Other person's private chat"}}`+"\n", root))
 	owner := crewWriter("default")
+	// PLAT-746-336: preview a chosen folder before creation with the same own
+	// account rules; no Crew resources or native session may be written.
+	newRoot, _ := filepath.EvalSymlinks(t.TempDir())
+	newPath := filepath.Join(home, ".claude", "projects", claudeNativeTranscriptProjectSlug(newRoot), "22222222-2222-4222-8222-222222222222.jsonl")
+	recognitionWrite(t, newPath, fmt.Sprintf("{\"type\":\"user\",\"sessionId\":\"22222222-2222-4222-8222-222222222222\",\"cwd\":%q,\"message\":{\"role\":\"user\",\"content\":\"Before creating a Crew\"}}\n", newRoot))
+	folderQuery := "?root_path=" + url.QueryEscape(newRoot)
+	beforeCreate := request(http.MethodGet, folderQuery+"&sessions=true", "", owner)
+	var beforeData localProjectRecognition
+	if err := json.Unmarshal(beforeCreate.Body.Bytes(), &beforeData); err != nil || beforeCreate.Code != 200 || len(beforeData.Sessions) != 1 {
+		t.Fatalf("folder discovery: %d %s %v", beforeCreate.Code, beforeCreate.Body.String(), err)
+	}
+	previewQuery := folderQuery + "&native_id=" + beforeData.Sessions[0].ID
+	if preview := request(http.MethodGet, previewQuery, "", owner); preview.Code != 200 || !strings.Contains(preview.Body.String(), "Before creating a Crew") {
+		t.Fatalf("folder preview: %d %s", preview.Code, preview.Body.String())
+	}
+	readOnly := crewWriter("default")
+	readOnly.AccessToken = &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}
+	if denied := request(http.MethodGet, previewQuery, "", readOnly); denied.Code != 403 {
+		t.Fatalf("read token previewed unbound folder: %d", denied.Code)
+	}
+	wmNew := httptest.NewRecorder()
+	rNew := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(context.Background(), UserContextKey, owner))
+	f.api.externalCrewChatsCall(wmNew, rNew, map[string]any{"root_path": newRoot, "action": "native_list"})
+	if wmNew.Code != 200 || !strings.Contains(wmNew.Body.String(), beforeData.Sessions[0].ID) {
+		t.Fatalf("folder MCP: %d %s", wmNew.Code, wmNew.Body.String())
+	}
+	if wrongFolder := request(http.MethodGet, "?root_path="+url.QueryEscape(t.TempDir())+"&native_id="+beforeData.Sessions[0].ID, "", owner); wrongFolder.Code != 404 {
+		t.Fatalf("preview matched another folder: %d", wrongFolder.Code)
+	}
+	if _, err := os.Stat(filepath.Join(newRoot, ".agentworks")); !os.IsNotExist(err) {
+		t.Fatal("preview created Crew resources")
+	}
 	w := request(http.MethodGet, "?project_id="+project+"&sessions=true", "", owner)
 	if w.Code != 200 {
 		t.Fatalf("list: %d %s", w.Code, w.Body.String())

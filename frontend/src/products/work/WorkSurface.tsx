@@ -1,4 +1,4 @@
-import { LocalChatPicker, type ImportedLocalChat } from './LocalChatPicker'
+import { LocalChatPicker, type ImportedLocalChat, type LocalChat } from './LocalChatPicker'
 import { listenForProjectIntegrationNavigation } from '../../utils/projectIntegrationNavigation'
 import { chatFilesNavigationEvent } from '../../components/workspace/chatFileNavigation'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -740,10 +740,14 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     const timer = window.setInterval(() => { void sync() }, 15000)
     const onFocus = () => { void sync() }
     window.addEventListener('focus', onFocus)
+    // Create can select the new Crew before its native copy finishes. The
+    // subsequent agent deep link must refresh this already-mounted strip too.
+    window.addEventListener('popstate', onFocus)
     return () => {
       cancelled = true
       window.clearInterval(timer)
       window.removeEventListener('focus', onFocus)
+      window.removeEventListener('popstate', onFocus)
     }
   }, [allowSideChats, canonicalTabId, profileId, projectId])
   // An agent here that saved its name or purpose (set_my_agent_identity): list again so every place shows it now.
@@ -1326,7 +1330,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (persist) writeWorkSplitRatio(selected?.id, ratio)
   }, [selected?.id])
 
-  const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, onboarding?: CrewOnboarding, rootPath?: string) => {
+  const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, onboarding?: CrewOnboarding, rootPath?: string, localChat?: LocalChat) => {
     if (creating) return
     const startedAtHome = window.location.pathname === '/home'
     const user = useAuthStore.getState().user
@@ -1339,6 +1343,19 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       const created = await create(title, description, icon, runsOn, rootPath)
       if (!isCurrent()) return
       if (created.creationWarnings?.length) useChatStore.getState().addToast(created.creationWarnings.join(' '), 'warning')
+      let imported: ImportedLocalChat | undefined
+      if (localChat && rootPath) {
+        try {
+          const { data } = await api.post<ImportedLocalChat>('/api/agent-profiles/work/local-project', { project_id: created.id, id: localChat.id })
+          if (!isCurrent()) return
+          imported = data
+        } catch {
+          if (!isCurrent()) return
+          // Creation succeeded. Keep that project rather than presenting a
+          // failed Create action that would make the person create it twice.
+          useChatStore.getState().addToast('Your project is ready, but the previous chat could not be copied. Use Continue a local chat from the agent menu to try again.', 'warning')
+        }
+      }
       if (onboarding) {
         const next = await prepareCrewOnboarding({
           scope: projectMenuHistoryScope(server || 'local', user?.id || 'pending', product.profileId, created.id),
@@ -1346,11 +1363,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         })
         if (next === 'stale') return
         setPanelOpen(true)
-        setWorkspaceView('context')
-        writeWorkWorkspaceView(created.id, product.profileId, 'context')
+        if (!imported) {
+          setWorkspaceView('context')
+          writeWorkWorkspaceView(created.id, product.profileId, 'context')
+        }
       }
       setCreateOpen(false)
-      if (startedAtHome && window.location.pathname === '/home') openAppProduct({ surface: 'work', id: created.id })
+      if (imported || startedAtHome && window.location.pathname === '/home') openAppProduct({ surface: 'work', id: created.id, ...(imported ? { agent: imported.conversation_key.split(':chat:')[1] } : {}) })
     } catch (cause) {
       setCreateError(localFileError(cause))
     } finally {
@@ -1420,7 +1439,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       {createOpen ? (
         <CreateCrewWizard
           onClose={() => { if (!creating) setCreateOpen(false) }}
-          onCreate={(title, purpose, runsOn, onboarding, rootPath) => createProject(title, purpose, undefined, runsOn, onboarding, rootPath)}
+          onCreate={(title, purpose, runsOn, onboarding, rootPath, localChat) => createProject(title, purpose, undefined, runsOn, onboarding, rootPath, localChat)}
           allowExistingFolder={isLocalDeployment() && getActiveWorkspaceProfile().type === 'local'}
           submitting={creating}
           error={createError}

@@ -74,6 +74,11 @@ Keep existing instructions and configuration in place.
 On the local Mac app, `sessions action=native_list` finds the person's own
 Claude/Codex conversations for this exact folder and shows the original account.
 Use `sessions action=native_preview` with its opaque `native_id` to preview the history.
+Before creating a project, the same `native_list` and `native_preview` actions
+accept `root_path` instead of `crew_id` for the chosen existing Mac folder.
+Previewing makes no changes. Create the Crew with that folder, then use the
+chosen `native_id` with `native_resume` and the new Crew ID. In New project,
+choose a folder and use Continue a previous chat to do this in one flow.
 When the person asks to continue one, pass that `native_id` to
 `sessions action=native_resume`. It copies the native conversation to a new session ID in a separate private
 chat tab, including its saved history. The original is untouched. The next

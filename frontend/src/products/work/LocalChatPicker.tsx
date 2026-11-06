@@ -3,13 +3,15 @@ import { ArrowRight, Loader2, RefreshCw, X } from 'lucide-react'
 import ModalPortal from '../../components/ui/ModalPortal'
 import api from '../../services/api'
 
-type LocalChat = { id: string; title: string; provider: string; account: string; updated_at: string }
+export type LocalChat = { id: string; title: string; provider: string; account: string; updated_at: string }
 type Preview = { messages: { role: string; text: string }[]; total_messages: number }
 export type ImportedLocalChat = { conversation_key: string; conversation_id: string; session_id: string; name: string; provider: string; connection_id: string; engine: string; model_id: string }
 
-export function LocalChatPicker({ projectId, onClose, onImported }: {
-  projectId: string; onClose: () => void; onImported: (chat: ImportedLocalChat) => Promise<void>
-}) {
+type LocalChatPickerProps = { onClose: () => void } & (
+  { projectId: string; onImported: (chat: ImportedLocalChat) => Promise<void>; folder?: never; onSelected?: never } |
+  { folder: string; onSelected: (chat: LocalChat) => void; projectId?: never; onImported?: never }
+)
+export function LocalChatPicker({ projectId, folder, onClose, onImported, onSelected }: LocalChatPickerProps) {
   const [chats, setChats] = useState<LocalChat[]>([])
   const [selected, setSelected] = useState('')
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -21,7 +23,7 @@ export function LocalChatPicker({ projectId, onClose, onImported }: {
   const [partial, setPartial] = useState(false)
   const dialog = useRef<HTMLDivElement>(null)
   const current = chats.find(chat => chat.id === selected)
-  const params = { project_id: projectId }
+  const params = projectId ? { project_id: projectId } : { root_path: folder }
   const message = (cause: unknown) => {
     const response = (cause as { response?: { data?: { error?: string | { message?: string } } } })?.response?.data?.error
     return typeof response === 'string' ? response : response?.message || 'Could not read your local chats. Try refreshing.'
@@ -35,28 +37,29 @@ export function LocalChatPicker({ projectId, onClose, onImported }: {
   useEffect(() => {
     const abort = new AbortController()
     setLoading(true); setError(''); setPreview(null)
-    void api.get('/api/agent-profiles/work/local-project', { params: { project_id: projectId, sessions: true }, signal: abort.signal }).then(({ data }) => {
+    void api.get('/api/agent-profiles/work/local-project', { params: { ...params, sessions: true }, signal: abort.signal }).then(({ data }) => {
       if (abort.signal.aborted) return
       const found: LocalChat[] = data.sessions || []
       setChats(found); setSelected(id => found.some(chat => chat.id === id) ? id : found[0]?.id || ''); setPartial(!!data.partial)
     }).catch(cause => { if (!abort.signal.aborted) setError(message(cause)) }).finally(() => { if (!abort.signal.aborted) setLoading(false) })
     return () => abort.abort()
-  }, [projectId, refresh])
+  }, [projectId, folder, refresh])
   useEffect(() => {
     if (!selected || loading) return
     const abort = new AbortController()
     setPreviewLoading(true); setPreview(null); setError('')
-    void api.get('/api/agent-profiles/work/local-project', { params: { project_id: projectId, native_id: selected }, signal: abort.signal }).then(({ data }) => {
+    void api.get('/api/agent-profiles/work/local-project', { params: { ...params, native_id: selected }, signal: abort.signal }).then(({ data }) => {
       if (!abort.signal.aborted) setPreview(data)
     }).catch(cause => { if (!abort.signal.aborted) setError(message(cause)) }).finally(() => { if (!abort.signal.aborted) setPreviewLoading(false) })
     return () => abort.abort()
-  }, [projectId, selected, loading, refresh])
+  }, [projectId, folder, selected, loading, refresh])
   const continueChat = async () => {
     if (!selected || importing) return
+    if (onSelected && current) { onSelected(current); onClose(); return }
     setImporting(true); setError('')
     try {
       const { data } = await api.post<ImportedLocalChat>('/api/agent-profiles/work/local-project', { ...params, id: selected })
-      await onImported(data)
+      await onImported!(data)
       onClose()
     } catch (cause) { setError(message(cause)) } finally { setImporting(false) }
   }
@@ -87,7 +90,7 @@ export function LocalChatPicker({ projectId, onClose, onImported }: {
           {previewLoading ? <p role="status" className="text-sm text-muted-foreground">Loading history…</p> : preview && <><p className="mb-3 text-xs text-muted-foreground">{current?.provider === 'claude-code' ? 'Claude' : 'Codex'} · {current?.account}{preview.total_messages > preview.messages.length ? ` · Latest ${preview.messages.length} messages` : ''}</p>{preview.messages.map((item, index) => <div key={index} className="border-b border-border py-4 last:border-b-0"><p className="mb-2 text-xs text-muted-foreground">{item.role === 'human' || item.role === 'user' ? 'You' : 'Assistant'}</p><p className="whitespace-pre-wrap break-words text-sm">{item.text}</p></div>)}</>}
         </section>
       </div>
-      <footer className="mt-5 flex flex-wrap items-center justify-between gap-4"><p className="text-xs text-muted-foreground">Opens a separate chat tab. Your original conversation stays unchanged.<br />The project files are shared.</p><button type="button" disabled={!preview?.messages.length || loading || previewLoading || importing} onClick={() => void continueChat()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Continue in AgentWorks<ArrowRight className="h-4 w-4" /></button></footer>
+      <footer className="mt-5 flex flex-wrap items-center justify-between gap-4"><p className="text-xs text-muted-foreground">{onSelected ? 'A separate copy opens after creation.' : 'Opens a separate chat tab.'} Your original conversation stays unchanged.<br />The project files are shared.</p><button type="button" disabled={!preview?.messages.length || loading || previewLoading || importing} onClick={() => void continueChat()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{onSelected ? 'Use this chat' : 'Continue in AgentWorks'}<ArrowRight className="h-4 w-4" /></button></footer>
     </div>
   </div></ModalPortal>
 }

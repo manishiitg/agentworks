@@ -371,6 +371,10 @@ func (api *StreamingAPI) handleLocalProject(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	id := r.URL.Query().Get("project_id")
+	if id == "" && r.URL.Query().Get("root_path") != "" {
+		api.previewNewProjectChats(w, r)
+		return
+	}
 	crew, roots, ok := api.localProjectAccess(w, r, id, r.URL.Query().Get("availability") == "true" || r.URL.Query().Get("native_id") != "")
 	if !ok {
 		return
@@ -397,4 +401,39 @@ func (api *StreamingAPI) handleLocalProject(w http.ResponseWriter, r *http.Reque
 	}
 	log.Printf("[LOCAL_PROJECT] project=%s action=recognize instructions=%d skills=%d sessions=%d partial=%t", roots.ID, len(out.Instructions), len(out.Skills), len(out.Sessions), out.Partial)
 	writeAgentProfileJSON(w, 200, out)
+}
+
+// Before creation there is no Crew binding. Reuse the create permission and
+// folder validation, and admit only the person's own native accounts. This
+// read never creates a Crew, a folder or a native conversation.
+func (api *StreamingAPI) previewNewProjectChats(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserFromContext(r.Context())
+	if !cliPersonalMac() || !IsLocalMode() || IsMultiUserMode() {
+		externalError(w, 404, "not_found", "Local conversations are available on your own computer.")
+		return
+	}
+	if status, message := projectCreationGate(claims, "work"); status != 0 {
+		externalError(w, status, "forbidden", message)
+		return
+	}
+	if token := claims.AccessToken; token != nil && token.FileGuard != nil {
+		externalError(w, 403, "insufficient_scope", "Use a connection with full access to your local conversations.")
+		return
+	}
+	root, err := validateNewLocalCrewRoot(r.URL.Query().Get("root_path"))
+	if err != nil {
+		externalError(w, 400, "invalid_folder", err.Error())
+		return
+	}
+	sources, err := api.localNativeSources(r.Context(), claims.UserID, root)
+	if err != nil {
+		externalError(w, 503, "sessions_unavailable", "Your local conversations could not be checked. Try again.")
+		return
+	}
+	sessions, partial := listLocalNativeSessions(r.Context(), root, sources, nil)
+	if r.URL.Query().Get("native_id") != "" {
+		writeLocalProjectPreview(w, r, sessions)
+		return
+	}
+	writeAgentProfileJSON(w, 200, map[string]any{"sessions": sessions, "partial": partial})
 }
