@@ -21,7 +21,7 @@ func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[str
 	add(externalCrewTeamSyncTool, "A Crew Team: agents lists its agents as the Team tab shows them (what each uses, its person's \"When others ask\" rule, Answer only / Make changes); agent_rule (agent_key, when_others_ask and/or can_make_changes) sets them for one of your own agents only. Open clashes in a Crew Team's shared folder (two people changed the same lines of a file) and how to resolve them. clashes lists each with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id) keeps current, puts the other back (keep=other), or saves merged text (content) as a new revision every copy downloads, and closes the clash.", true, false, map[string]any{
 		"crew_id":          externalString("Crew ID from workspace action=list."),
 		"action":           map[string]any{"type": "string", "enum": []any{"clashes", "resolve", "agents", "agent_rule"}},
-		"agent_key":        externalString("agent_rule: one of your own agents' key from agents."),
+		"agent_key":        externalString("agent_rule: one of your own agents: its key from agents, or its name."),
 		"when_others_ask":  map[string]any{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "agent_rule: what your own agent may do when someone else asks it (empty clears it). An instruction, not a lock."},
 		"can_make_changes": map[string]any{"type": "boolean", "description": "agent_rule: for an agent on a Mac, false answers others only (default), true may make changes for them."},
 		"path":             externalString("resolve: the clashed file's path in the shared folder."),

@@ -174,32 +174,33 @@ func crewTeamRuleKey(ctx context.Context, t crewTeam, person, rowKey string) str
 	return rowKey
 }
 
-// crewTeamOwnRowKeys are the keys of person's own agents exactly as their Team tab lists them (crewTeamTabFor).
-func crewTeamOwnRowKeys(ctx context.Context, t crewTeam, person string) []string {
-	var keys []string
+// crewTeamOwnRows are person's own agents exactly as their Team tab lists them (crewTeamTabFor): key, name and tab.
+// The owner's Mac agents come from the list the Mac last pushed, so they stay here while the Mac is off (Always on).
+func crewTeamOwnRows(ctx context.Context, t crewTeam, person string) []crewTeamAgent {
+	var rows []crewTeamAgent
 	if !t.On {
 		if person == t.OwnerID {
 			for _, row := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(ctx, t), crewTabSetupSource{}) {
-				keys = append(keys, row.Key)
+				rows = append(rows, crewTeamAgent{ChatKey: row.Key, Name: row.Name, Tab: row.Tab})
 			}
 		}
-		return keys
+		return rows
 	}
 	for _, p := range teamAgentsByPerson(ctx, t, person) {
 		if p.UserID == person {
-			for _, a := range p.Agents {
-				keys = append(keys, a.ChatKey)
-			}
+			rows = append(rows, p.Agents...)
 		}
 	}
-	return keys
+	return rows
 }
 
 // crewTeamOwnAgent reads the Team (the caller holds its lock) and names one of person's own agents in it by the key
 // its rule is kept under. Only the agent's own person changes its settings, and every agent their Team tab offers
 // them to edit is found here from the same rows (Showcase, 6 Nov: a Mac Crew's online copy refused every rule save,
-// the owner's Mac agents and a member's Main alike, while the tab offered the edit). A chat key or Mac tab naming the
-// same agent as a row (the agent's own chat) is accepted too.
+// the owner's Mac agents and a member's Main alike, while the tab offered the edit). Besides a row's key, a chat or
+// MCP caller may name the agent as its Mac knows it (its tab, the Mac's own chat key, the Mac's project for Main) or
+// by its name, case-insensitive; all are looked up among the caller's own agents only (Showcase, 6 Nov: the owner's
+// Main named "testing xxx" by its tab, its Mac chat key and its name, and every save was refused).
 func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTeam, string, error) {
 	t, err := readCrewTeam(project)
 	if err != nil || !t.member(person) || ownerOfCrewProjectID(project) != t.OwnerID {
@@ -210,12 +211,28 @@ func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTea
 		return t, "", errCrewTeamAgentNotYours
 	}
 	asked := crewTeamAgentKey(ctx, t, person, key)
-	for _, row := range crewTeamOwnRowKeys(ctx, t, person) {
-		if row == key || asked != "" && crewTeamAgentKey(ctx, t, person, row) == asked {
-			return t, crewTeamRuleKey(ctx, t, person, row), nil
+	tab := key
+	if _, rest, ok := strings.Cut(key, codeChatSideMarker); ok {
+		tab = rest // a chat key from the agent's Mac carries the Mac's own project id
+	} else if b, err := crewroot.ReadSync(project); err == nil && b != nil && b.PeerProjectID != "" && key == b.PeerProjectID && person == t.OwnerID {
+		tab = macMainTab // the Mac names its Main by its own project id
+	}
+	rows := crewTeamOwnRows(ctx, t, person)
+	for _, row := range rows {
+		if row.ChatKey == key || row.Tab != "" && row.Tab == tab || asked != "" && crewTeamAgentKey(ctx, t, person, row.ChatKey) == asked {
+			return t, crewTeamRuleKey(ctx, t, person, row.ChatKey), nil
 		}
 	}
-	log.Printf("[CREW_TEAM] project=%s event=agent_rule_refused user=%s agent=%q on_mac=%t", project, logUsernameForUserID(person), key, crewTeamAgentOnMac(t, person))
+	var named []crewTeamAgent
+	for _, row := range rows {
+		if strings.EqualFold(strings.TrimSpace(row.Name), key) {
+			named = append(named, row)
+		}
+	}
+	if len(named) == 1 {
+		return t, crewTeamRuleKey(ctx, t, person, named[0].ChatKey), nil
+	}
+	log.Printf("[CREW_TEAM] project=%s event=agent_rule_refused user=%s agent=%q on_mac=%t own_agents=%d same_name=%d", project, logUsernameForUserID(person), key, crewTeamAgentOnMac(t, person), len(rows), len(named))
 	return t, "", errCrewTeamAgentNotYours
 }
 
