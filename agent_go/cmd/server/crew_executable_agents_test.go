@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // PLAT-746-265: selecting an agent reuses configuration only, and an ID from
@@ -273,4 +274,20 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if _, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, privateChat.ConversationKey); err != nil {
 		t.Fatal("owner lost their own agent", err)
 	}
+	// The same configuration operations refuse a server turn for a Mac-owned
+	// Crew, but remain usable on the owner's local copy.
+	if err := crewroot.WriteSync(crew.CrewID, crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "local-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []string{"manage_schedules", "manage_webhooks"} {
+		_, err := edit(ctx, map[string]interface{}{"action": "edit", "workspace_path": child.Root, "operation": operation, "arguments": map[string]interface{}{"action": "list"}})
+		if err == nil || err.Error() != crewChangeOnMacLine {
+			t.Fatalf("%s bypassed Mac configuration rule: %v", operation, err)
+		}
+	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	for _, operation := range []string{"manage_schedules", "manage_webhooks"} {
+		configure(operation, map[string]interface{}{"action": "list"})
+	}
+
 }
