@@ -399,4 +399,4 @@ func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours bool) (labe
 }
 
 // crewAlwaysOnAgentsLine is the Agents card's line for the owner of a Mac Crew with the Team on.
-const crewAlwaysOnAgentsLine = "In-team agents are always on: when your Mac is off, they answer from the server. New agents join too, unless their person chose Only me."
+const crewAlwaysOnAgentsLine = "Shared agents are always on: when your Mac is off, they answer from the server. New agents are shared too, unless their person turns sharing off."

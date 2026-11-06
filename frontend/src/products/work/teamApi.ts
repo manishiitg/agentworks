@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
-import type { AgentProfileSideChat, SharedProjectFileEntry } from '../../services/api-types'
+import type { AgentProfileSideChat } from '../../services/api-types'
 import { desktopRequest } from '../../services/desktopConnections'
 import { liveFeed } from '../../services/liveFeed'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
@@ -54,17 +54,19 @@ export type TeamTabAgent = { key: string; name: string; detail: string; in_team:
   place_label?: string; place_server?: boolean
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
   uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
+  // Permissions (owner, 6 Nov): the one-line summary under the purpose, and its Ask message (the viewer's own agent).
+  permissions_line: string; permissions_prompt?: string
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer may ask its chat to set one, and its Public on
   // AgentBridge (the Crew owner's own rows only). mac_only: switched only in the owner's Mac app; elsewhere text.
   purpose: string; can_set_purpose: boolean
   agentbridge?: { public: boolean; can_change: boolean; mac_only?: boolean; needs_purpose?: boolean; line?: string; text: string; share_key?: string; workspace?: string } }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
-export type TeamTabShare = { path: string; files: number; bytes: number }
 export type TeamTabView = {
   team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
-  mac?: { on: boolean; line: string; note: string; yours: boolean }
-  sync?: TeamTabSync; can_switch: boolean; all_in_team: boolean; can_all_mine: boolean; mac_only?: string; agents_mac_only?: string; agents_line?: string; can_leave: boolean
-  can_choose: boolean; can_add_folder: boolean; shares?: TeamTabShare[]; whole?: TeamTabShare
+  sync?: TeamTabSync; can_switch: boolean; all_in_team: boolean; can_all_mine: boolean; agents_mac_only?: string; agents_line?: string; can_leave: boolean
+  can_choose: boolean; can_add_folder: boolean; can_remove_folder: boolean
+  // The cards' Ask messages, written by the server and sent as given (crew_team_tab.go crewTeamAskPrompts).
+  asks: Record<string, string>
 }
 /** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */
 export type TeamTabState = { view?: TeamTabView; target?: TeamTarget; unbound?: boolean; error: string }
@@ -171,19 +173,12 @@ export function teamAgentForTab(state: TeamTabState, key: string | undefined, ma
   return agents.find(agent => agent.can_change && agent.tab === tab)
 }
 
-/** The server Crew's folders under parent (crew-relative), for the Team's "+ Share this folder" picker: the same
- * crew file listing shared Crews use, through the Mac app's connection when the Crew is on a connected server. */
-export async function crewServerFolders(target: TeamTarget, profileId: string, parent: string): Promise<string[]> {
-  const route = `/api/agent-profiles/${encodeURIComponent(profileId)}/shared-projects/${encodeURIComponent(target.project)}/files`
-  let files: SharedProjectFileEntry[] = []
-  if (!target.connection) files = (await api.get<{ files?: SharedProjectFileEntry[] }>(route, { skipSessionContext: true })).data.files || []
-  else {
-    const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(target.connection)}${route}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
-    if (!response.ok) throw new Error("Could not list this Crew's folders. Try again.")
-    files = ((await response.json()) as { files?: SharedProjectFileEntry[] }).files || []
-  }
-  return files.filter(f => f.type === 'folder').map(f => f.path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
-    .filter(path => path && path.split('/').slice(0, -1).join('/') === parent).sort()
+/** One folder of the Crew for the Team's "+ Share this folder" and the shared folders' sizes (path=, or whole=1),
+ * the same for the Mac app and the website: the server reads it where the Crew is (its own folder, or the owner's
+ * Mac over Mac online) and, with that Mac off, says so in offline (crew_team_folders.go). */
+export type TeamFolderListing = { folders: string[]; path: string; files: number; bytes: number; too_big?: boolean; too_big_line?: string; offline?: string }
+export function teamFolders(target: TeamTarget, query: string): Promise<TeamFolderListing> {
+  return teamRequest<TeamFolderListing>({ project: target.project, connection: target.connection }, `/folders?${query}`)
 }
 
 /** The Team members' own agents in the owner's Mac app (owner, 5 Nov): the online copy's side-chat rows the person

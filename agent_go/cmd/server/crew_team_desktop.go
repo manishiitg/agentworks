@@ -16,63 +16,9 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
-
-func (api *StreamingAPI) handleDesktopTeamFolders(w http.ResponseWriter, r *http.Request) {
-	if !desktopConnectionGate(w, r) {
-		return
-	}
-	claims := GetUserFromContext(r.Context())
-	roots, e := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"])
-	if e != nil {
-		externalError(w, 403, "team_forbidden", e.Error())
-		return
-	}
-	b, e := crewroot.ReadSync(roots.ID)
-	if e != nil || b == nil || b.ConnectionID != mux.Vars(r)["connection"] {
-		externalError(w, 403, "team_forbidden", "Use this project's connected company.")
-		return
-	}
-	rel := r.URL.Query().Get("path")
-	folder := roots.Files
-	if rel != "" {
-		folder, e = crewTeamFolderPath(roots.Files, rel)
-		if e != nil {
-			externalError(w, 400, "invalid_folder", e.Error())
-			return
-		}
-	}
-	entries, e := os.ReadDir(folder)
-	if e != nil {
-		externalError(w, 409, "folder_unavailable", "This folder is unavailable.")
-		return
-	}
-	folders := []string{}
-	for _, entry := range entries {
-		p := filepath.ToSlash(filepath.Join(rel, entry.Name()))
-		if entry.IsDir() && entry.Type()&os.ModeSymlink == 0 && crewTeamAllowed(p+"/file.txt") && !publication.ExcludedDirectory(p) {
-			folders = append(folders, p)
-		}
-	}
-	// The size line before a choice (owner, 5 Nov): one folder's, or the Whole Crew's with whole=1.
-	var count, bytes int64
-	switch {
-	case rel != "":
-		count, bytes = crewTeamShareSize(roots.Files, crewTeamFolder{Folders: []string{rel}})
-	case r.URL.Query().Get("whole") == "1":
-		count, bytes = crewTeamShareSize(roots.Files, crewTeamFolder{Whole: true})
-	}
-	// Whether it is too big to share is decided here, with the words to show (the screen keeps no limits of its own).
-	tooBig := count > publication.MaxFiles || bytes > publication.MaxBytes
-	out := map[string]any{"folders": folders, "path": rel, "files": count, "bytes": bytes, "too_big": tooBig}
-	if tooBig {
-		out["too_big_line"] = fmt.Sprintf("Too big to share: at most %d MB and %d files.", publication.MaxBytes>>20, publication.MaxFiles)
-	}
-	externalJSON(w, out)
-}
 
 // crewTeamShareSize counts the files a share choice would sync from this Crew's folder, by the same rules as a sync.
 func crewTeamShareSize(root string, share crewTeamFolder) (count, bytes int64) {

@@ -537,6 +537,11 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			input.Folder.Folders = []string{crewTeamDefaultFolder}
 		}
 	}
+	// Folders always shares at least one (owner, 6 Nov): stopping the last one is refused for every caller.
+	if previous.Folder.shared() && !input.Folder.shared() {
+		externalError(w, 400, "last_folder", "The Team shares at least one folder. Share another folder first, or switch to Whole Crew.")
+		return
+	}
 	// The same store for a changed choice (crewTeamFolder): copies keep what is still shared, nothing goes up again.
 	input.Folder.ID = previous.Folder.ID
 	folderChanged := !previous.Folder.same(input.Folder)

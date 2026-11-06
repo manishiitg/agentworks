@@ -328,8 +328,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
     {/* One Team tab everywhere (owner, 5 Nov): the server's /tab reply decides its rows. The Mac app's own Crew adds its
         Mac online switch, and turns the Team on through the Mac while Mac online is off. */}
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
-      <TeamTab projectId={projectId} onTurnOn={here ? () => void turnOnTeam() : undefined}
-        macSwitch={here && binding?.connection_id && !online ? <Switch aria-label="Mac online" checked disabled={busy} onCheckedChange={on => { if (!on) void run('offline') }} /> : undefined} />
+      <TeamTab projectId={projectId} onTurnOn={here ? () => void turnOnTeam() : undefined} />
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}
     {status.access_share && workspacePath && tabId && onAsk && <section aria-label="Who can use it"><h3 className="mb-2 text-xs font-medium text-muted-foreground">Who can use it</h3><ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}

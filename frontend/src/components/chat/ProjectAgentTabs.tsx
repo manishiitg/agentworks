@@ -114,7 +114,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   // Someone else's Mac Crew (a teammate's view) names its owner's Mac, from the server's Team reading.
   const teamState = useTeamTab(placeProject)
   const team = teamState.view
-  const crewOwner = team?.mac && !team.mac.yours ? team.people.find(person => person.note === 'owner')?.name : undefined
+  const crewOwner = team && !team.can_switch ? team.people.find(person => person.note === 'owner')?.name : undefined
   const placeWord = crewOwner
     ? place === 'mac' ? `On ${crewOwner}'s Mac` : place === 'mac_off' ? `${crewOwner}'s Mac is off` : ''
     : place === 'mac' ? 'On your Mac' : place === 'mac_off' ? 'Mac off' : place === 'moving' ? 'Moving online' : ''

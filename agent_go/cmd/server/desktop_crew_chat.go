@@ -80,6 +80,10 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		return fail(403, "This Mac is no longer editing the paired Crew.")
 	}
 	ctx = context.WithValue(ctx, UserContextKey, claims)
+	// The Team tab's folder picker and sizes from any screen (crew_team_folders.go).
+	if call.Operation == "team_folders" {
+		return api.desktopCrewTeamFolders(ctx, claims, project, call)
+	}
 	profile, err := api.agentProfiles.Resolve("work", 0, claims.UserID)
 	if err != nil {
 		return fail(404, "The local Crew is unavailable.")
