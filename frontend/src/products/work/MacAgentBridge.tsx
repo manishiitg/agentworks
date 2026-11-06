@@ -12,8 +12,9 @@ import { askAgentPurpose } from './AgentSharingRow'
  * clickable; an agent with no purpose shows Set purpose instead (the server says which). The Mac app switches on its
  * own Mac (crew-sync public / only_my_agents); the website asks the server, which passes it to the Mac and refuses
  * with a plain line while the Mac is offline (crew_team_agentbridge.go). The card always shows (owner, 6 Nov), with a
- * plain line while there are no rows, and ends with the coding-app line: coding apps reach the agents through it. */
-export function MacAgentBridge({ projectId, crewName }: { projectId: string; crewName: string }) {
+ * plain line while there are no rows. Each row has its own Copy line for the owner's coding apps (owner, 6 Nov: one
+ * line per agent), worded by the server (copy_line), disabled with the server's reason when there is none. */
+export function MacAgentBridge({ projectId }: { projectId: string }) {
   const state = useTeamTab(projectId)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -30,7 +31,8 @@ export function MacAgentBridge({ projectId, crewName }: { projectId: string; cre
   }
   return <section aria-label="AgentBridge" className={teamCard}>
     <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">AgentBridge</h3><AskButton projectId={projectId} card="agentbridge" /></div>
-    <p className="text-[12.5px] text-muted-foreground">A public agent can be found and messaged by other people's agents on this server. It answers as you, with your rules for "when others ask".</p>
+    <p className="text-[12.5px] text-muted-foreground">AgentBridge lets AI agents message each other. Your own coding apps (Claude Code, Codex, Cursor) can always reach each agent with its Copy line.</p>
+    <p className="text-[12.5px] text-muted-foreground">Turn an agent Public and other people's agents on this server can find it by its purpose and ask it things. It answers as you, following your rules for when others ask.</p>
     {!rows.length && <p className="text-[12.5px] text-muted-foreground">{state.view ? 'No agents yet.' : 'Your agents will appear here once this Crew is online.'}</p>}
     <div className="divide-y divide-border">
       {rows.map(agent => {
@@ -42,31 +44,25 @@ export function MacAgentBridge({ projectId, crewName }: { projectId: string; cre
               {bridge.state && <span className={`shrink-0 rounded-full px-2 py-px text-[11px] ${bridge.state.includes('offline') ? 'bg-muted text-muted-foreground' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{bridge.state}</span>}</p>
             <p className="truncate text-[12.5px] text-muted-foreground">{agent.purpose || 'No purpose yet. Other agents need one to know what to ask it.'}</p>
           </div>
+          <CopyLine line={bridge.copy_line} why={bridge.copy_line_why} name={agent.name} />
           {bridge.needs_purpose
             ? <button type="button" className="shrink-0 text-[12.5px] text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>Set purpose</button>
             : <Saving on={busy === agent.tab}><Switch aria-label={`${agent.name}: Public on AgentBridge`} checked={bridge.public} disabled={!bridge.can_change || busy !== ''} onCheckedChange={on => void setPublic(agent.tab, on)} /></Saving>}
         </div>
       })}
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 py-2.5 text-sm">
-        <div className="min-w-0 flex-1"><p className="font-semibold">Claude Code, Codex, Cursor</p><p className="text-[12.5px] text-muted-foreground">One line to paste in your coding app</p></div>
-        <div className="flex flex-wrap items-center gap-1.5"><CopySetupLine crewName={crewName} /></div>
-      </div>
     </div>
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
   </section>
 }
 
-/** One line your coding app (Claude Code, Codex, Cursor) pastes to reach this Crew's agents through AgentWorks. */
-function CopySetupLine({ crewName }: { crewName: string }) {
+/** One agent's line for the owner's coding app (Claude Code, Codex, Cursor), as the server words it. */
+function CopyLine({ line, why, name }: { line?: string; why?: string; name: string }) {
   const [copied, setCopied] = useState(false)
-  const [fallback, setFallback] = useState('')
-  const line = `Connect to AgentWorks, then ask the ${JSON.stringify(crewName)} Crew's agents to help me.`
   const copy = async () => {
+    if (!line) return
     try { await navigator.clipboard.writeText(line); setCopied(true); window.setTimeout(() => setCopied(false), 1500) }
-    catch { setFallback(line) }
+    catch { window.prompt('Copy this into your coding app:', line) }
   }
-  return <>
-    <Button className="h-7 rounded-full px-3" size="sm" variant="outline" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy line'}</Button>
-    {fallback && <p className="w-full text-xs text-muted-foreground">Copy this into your coding app: {fallback}</p>}
-  </>
+  return <Button className="h-7 shrink-0 rounded-full px-3" size="sm" variant="outline" disabled={!line} title={line ? 'Paste in Claude Code, Codex or Cursor' : why}
+    aria-label={`${name}: copy line for your coding app`} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy line'}</Button>
 }
