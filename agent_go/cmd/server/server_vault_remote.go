@@ -278,7 +278,7 @@ func (api *StreamingAPI) handleServerVaultMCP(w http.ResponseWriter, r *http.Req
 		// The session's own person, or the owner of its Crew lending its Vault apps (scopeAgentMCP).
 		owner := api.mcpSessionPerson(in.Session)
 		if owner != in.Person {
-			if owner == "" || root == "" || api.projectSecretsOwner(owner, root) != in.Person {
+			if owner == "" || root == "" || api.turnSecretsOwner(in.Session, owner, root) != in.Person {
 				http.Error(w, "session ownership changed", http.StatusForbidden)
 				return
 			}

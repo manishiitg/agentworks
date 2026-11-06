@@ -21,6 +21,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -128,7 +129,7 @@ func crewStandbySessionsLoadLocked() (map[string]crewStandbyMark, error) {
 		return nil, err
 	}
 	if err == nil && json.Unmarshal(raw, &marks) != nil {
-		return nil, fmt.Errorf("the standby sessions file cannot be read")
+		return nil, fmt.Errorf("the standby sessions file %s cannot be read; delete it to continue", path)
 	}
 	crewStandbySessions.path, crewStandbySessions.marks = path, marks
 	return marks, nil
@@ -185,42 +186,62 @@ func markCrewStandbySession(ctx context.Context, project, user, session string) 
 	return nil
 }
 
-// crewStandbySessionIdentity is the member a marked session runs as.
-func crewStandbySessionIdentity(session string) (crewStandbyIdentity, bool) {
+// errCrewStandbyCaller refuses a launch on a marked session by anyone but the member it was marked for: it must not run
+// in the member's slot, and must not fall back to the owner's either.
+var errCrewStandbyCaller = errors.New("this conversation belongs to another person's agent")
+
+// crewStandbySessionIdentity is the member a marked session runs as, for user. A marked session asked for by anyone
+// else is marked=true with errCrewStandbyCaller. An unreadable marks file is an error too.
+func crewStandbySessionIdentity(session, user string) (id crewStandbyIdentity, marked bool, err error) {
 	if session == "" {
-		return crewStandbyIdentity{}, false
+		return crewStandbyIdentity{}, false, nil
 	}
 	crewStandbySessions.Lock()
 	marks, err := crewStandbySessionsLoadLocked()
 	mark, ok := marks[session]
 	crewStandbySessions.Unlock()
-	if err != nil || !ok {
-		return crewStandbyIdentity{}, false
+	if err != nil {
+		return crewStandbyIdentity{}, false, err
 	}
-	id := crewStandbyRunAs(mark.Project, mark.Person)
-	return id, id.Member
+	if !ok {
+		return crewStandbyIdentity{}, false, nil
+	}
+	if mark.Person != user {
+		return crewStandbyIdentity{}, true, errCrewStandbyCaller
+	}
+	id = crewStandbyRunAs(mark.Project, mark.Person)
+	return id, id.Member, nil
 }
 
-// crewStandbyMemberTurn: this session is the standby turn of user's own agent.
+// crewStandbyMemberTurn: this session is the marked standby turn of user's own agent.
 func crewStandbyMemberTurn(session, user string) bool {
-	id, ok := crewStandbySessionIdentity(session)
-	return ok && id.Person == user
+	_, ok, err := crewStandbySessionIdentity(session, user)
+	return ok && err == nil
 }
 
-// crewTurnSlot is the slot a Crew turn runs in and the person it runs as: the Crew owner's for everyone (a Run person's
-// turn included, AGENTS.md), except a marked standby turn of a member's agent, which is the member's slot, or none
-// (the shared app account) when the member holds none.
-func crewTurnSlot(folder, session string) (slot, person string) {
-	if id, ok := crewStandbySessionIdentity(session); ok {
-		return id.Slot, id.Person
+// crewTurnSlot is the slot a Crew turn of user runs in and the person it runs as: the Crew owner's for everyone (a Run
+// person's turn included, AGENTS.md), except a marked standby turn of a member's agent, which is the member's slot, or
+// none (the shared app account) when the member holds none. A marked session of someone else, or marks that cannot be
+// read, is an error: never the member's slot and never the owner's.
+func crewTurnSlot(folder, session, user string) (slot, person string, err error) {
+	id, marked, err := crewStandbySessionIdentity(session, user)
+	if err != nil {
+		return "", "", err
 	}
-	return crewOwnerSlot(folder)
+	if marked {
+		return id.Slot, id.Person, nil
+	}
+	slot, person = crewOwnerSlot(folder)
+	return slot, person, nil
 }
 
 // turnSecretsOwner is projectSecretsOwner for a turn: the member for the marked standby turn of their agent, else the
-// Crew's usual lender.
+// Crew's usual lender. A marked session asked for by someone else lends nothing but the caller's own (the launch is
+// refused anyway).
 func (api *StreamingAPI) turnSecretsOwner(session, userID, workspacePath string) string {
-	if crewStandbyMemberTurn(session, userID) {
+	if _, marked, err := crewStandbySessionIdentity(session, userID); marked {
+		return userID
+	} else if err != nil {
 		return userID
 	}
 	return api.projectSecretsOwner(userID, workspacePath)

@@ -50,7 +50,7 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	// personal Slack to its send side for anyone else (lentVaultSlackRefusal).
 	lender := person
 	if root := api.projectRootForSession(sessionID); root != "" && person != "" {
-		lender = api.projectSecretsOwner(person, root)
+		lender = api.turnSecretsOwner(sessionID, person, root)
 	}
 	if root := api.projectRootForSession(sessionID); root != "" {
 		manifest, found, e := ReadWorkflowManifest(ctx, root)

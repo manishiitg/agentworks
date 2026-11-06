@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1113,19 +1114,44 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 	markCrewStandbySession(t.Context(), "team", "other", standbySession)
 	markCrewStandbySession(withCrewStandbyTurn(t.Context()), "team", "third", standbySession+"-third") // no standby copy: not marked
 	markCrewStandbySession(withCrewStandbyTurn(t.Context()), "team", "other", standbySession)
-	if _, marked := crewStandbySessionIdentity(standbySession + "-third"); marked {
+	if _, marked, _ := crewStandbySessionIdentity(standbySession+"-third", "third"); marked {
 		t.Fatal("a person with no standby copy was marked")
+	}
+	// Only the member it was marked for may launch on a marked session: anyone else gets neither the member's slot nor
+	// the owner's, but a refusal (checked at the launch, in the working dir and in the declared account).
+	if _, _, err := crewTurnSlot(crew, standbySession, "third"); !errors.Is(err, errCrewStandbyCaller) {
+		t.Fatalf("another caller on a marked session must be refused by the caller rule, got %v", err)
+	}
+	if _, err := declareTurnRunAs(context.Background(), turnRunAsInput{ProfileID: "work", WorkingFolder: crew, SessionID: standbySession, CallerID: "third"}); !errors.Is(err, errCrewStandbyCaller) {
+		t.Fatalf("a launch by another caller on a marked session must be refused, got %v", err)
+	}
+	if user, slot := runsAs("third", standbySession, "slot02"); slot == "slot02" || user == "other" {
+		t.Fatalf("another caller ran in the member's slot: user=%q slot=%q", user, slot)
+	}
+	// Tools, sub-agents and a secrets re-read of the session lend the member's Vault, never the owner's; the same
+	// member's unmarked session and any other caller get the usual lender.
+	recordSessionSecretSource(standbySession, sessionSecretSource{User: "other", Folder: crew})
+	recordSessionSecretSource(memberRunSession, sessionSecretSource{User: "other", Folder: crew})
+	for session, want := range map[string]string{standbySession: "other", memberRunSession: "owner"} {
+		raw, _ := sessionSecretSources.Load(session)
+		src := raw.(sessionSecretSource)
+		if got := (&StreamingAPI{}).turnSecretsOwner(src.Session, src.User, src.Folder); got != want {
+			t.Fatalf("session %s lends %q, want %q", session, got, want)
+		}
+	}
+	if got := (&StreamingAPI{}).turnSecretsOwner(standbySession, "third", crew); got == "other" || got == "owner" {
+		t.Fatalf("another caller on a marked session was lent %q's Vault", got)
 	}
 	// A server restart forgets memory, never the marks: the queued standby turn is still the member's, and the same
 	// member's unmarked session is still the owner's.
 	crewStandbySessionsReset()
-	if slot, person := crewTurnSlot(crew, standbySession); slot != "slot02" || person != "other" {
+	if slot, person, err := crewTurnSlot(crew, standbySession, "other"); err != nil || slot != "slot02" || person != "other" {
 		t.Fatalf("member's standby turn slot after a restart: %q %q", slot, person)
 	}
 	if got := (&StreamingAPI{}).turnSecretsOwner(standbySession, "other", crew); got != "other" {
 		t.Fatalf("member's standby turn Vault after a restart: %q", got)
 	}
-	if slot, person := crewTurnSlot(crew, memberRunSession); slot != "slot01" || person != "owner" {
+	if slot, person, err := crewTurnSlot(crew, memberRunSession, "other"); err != nil || slot != "slot01" || person != "owner" {
 		t.Fatalf("an unmarked session of the member after a restart: %q %q", slot, person)
 	}
 	// A marks file that cannot be read refuses Crew launches instead of falling back to the owner's identity.
@@ -1141,21 +1167,21 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	crewStandbySessionsReset()
-	if slot, person := crewTurnSlot(crew, standbySession); slot != "slot02" || person != "other" {
+	if slot, person, err := crewTurnSlot(crew, standbySession, "other"); err != nil || slot != "slot02" || person != "other" {
 		t.Fatalf("member's standby turn slot: %q %q", slot, person)
 	}
 	if user, slot := runsAs("other", standbySession, "slot02"); user != "other" || slot != "slot02" {
 		t.Fatalf("member's standby turn declared as user=%q slot=%q", user, slot)
 	}
 	// The same member's NON-standby server turn (an MCP ask, a dashboard Ask) is a Run person's: the owner's slot.
-	if slot, person := crewTurnSlot(crew, memberRunSession); slot != "slot01" || person != "owner" {
+	if slot, person, err := crewTurnSlot(crew, memberRunSession, "other"); err != nil || slot != "slot01" || person != "owner" {
 		t.Fatalf("the member's ordinary turn must keep the Crew owner's slot: %q %q", slot, person)
 	}
 	if user, slot := runsAs("other", memberRunSession, "slot01"); user != "owner" || slot != "slot01" {
 		t.Fatalf("the member's ordinary turn declared as user=%q slot=%q", user, slot)
 	}
 	for _, caller := range []string{"owner", "third"} { // the owner's agent, and a Run person
-		if slot, person := crewTurnSlot(crew, "sess-"+caller); slot != "slot01" || person != "owner" {
+		if slot, person, err := crewTurnSlot(crew, "sess-"+caller, caller); err != nil || slot != "slot01" || person != "owner" {
 			t.Fatalf("%s's turn must keep the Crew owner's slot: %q %q", caller, slot, person)
 		}
 		if user, slot := runsAs(caller, "sess-"+caller, "slot01"); user != "owner" || slot != "slot01" {
@@ -1197,7 +1223,7 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 	if id := crewStandbyRunAs("team", "other"); !id.Member || id.Slot != "" || id.Account() != "shared_account" {
 		t.Fatalf("member without a slot: %+v", id)
 	}
-	if slot, person := crewTurnSlot(crew, standbySession); slot != "" || person != "other" {
+	if slot, person, err := crewTurnSlot(crew, standbySession, "other"); err != nil || slot != "" || person != "other" {
 		t.Fatalf("a member with no slot must not get the owner's: %q %q", slot, person)
 	}
 	if user, slot := runsAs("other", standbySession, ""); user != "" || slot != "" {

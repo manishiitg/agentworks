@@ -656,7 +656,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	req.SelectedSkills = appendUniqueStrings(req.SelectedSkills, profile.Skills...)
 	// The owner's lent Vault apps for the owner and co-owners, as handleQuery admits them (vault_secrets.go).
 	secretsPerson := api.crewSecretsPerson(userID, workspacePath, "agent_profile")
-	if id, ok := crewStandbySessionIdentity(sessionID); ok && id.Person == userID {
+	if id, ok, err := crewStandbySessionIdentity(sessionID, userID); ok && err == nil {
 		secretsPerson = id.Person // a member's standby turn: the member's Vault apps, not the Crew owner's
 	}
 	if profile.Runtime.Capabilities.Secrets == agentprofiles.CapabilityDisabled {

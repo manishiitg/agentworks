@@ -55,7 +55,11 @@ func crewCLIWorkingDir(folder, user, session, provider string, readOnly bool) (s
 	// session started there to the slot's own server). Otherwise the app's private state, as before.
 	// Every AI program runs there (owner 2 Nov: "slots should be default only", PLAT-872-86); a slot without its state
 	// folder on this host keeps the app account.
-	if slot, owner := crewTurnSlot(folder, session); slot != "" {
+	slot, owner, slotErr := crewTurnSlot(folder, session, user)
+	if slotErr != nil {
+		return "", slotErr
+	}
+	if slot != "" {
 		if state, stateErr := slots.StateDirFor(slot); stateErr == nil {
 			if info, statErr := os.Stat(state); statErr == nil && info.IsDir() {
 				stateRoot = state

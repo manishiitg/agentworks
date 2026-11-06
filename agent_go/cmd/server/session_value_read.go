@@ -26,6 +26,7 @@ import (
 
 type sessionSecretSource struct {
 	User          string
+	Session       string    // the session this was recorded for: a standby turn lends the member's Vault (turnSecretsOwner)
 	Folder        string    // req.SelectedFolder: whose project secrets and lent Vault apply (projectSecretsOwner)
 	WorkspacePath string    // req.secretsWorkspacePath: where this turn's selected secrets are stored
 	ProfileID     string    // a product profile's ID for a Crew chat
@@ -40,6 +41,7 @@ var sessionSecretSources sync.Map
 // recordSessionSecretSource notes, where a turn builds its CLI's SECRET_* environment, how to resolve it again.
 func recordSessionSecretSource(sessionID string, source sessionSecretSource) {
 	if strings.TrimSpace(sessionID) != "" {
+		source.Session = sessionID
 		sessionSecretSources.Store(sessionID, source)
 	}
 }
@@ -68,7 +70,7 @@ func (api *StreamingAPI) currentSessionSecrets(ctx context.Context, source sessi
 			globals = selected
 		}
 	}
-	merged := api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(source.User, source.Folder), globals)
+	merged := api.mergeGlobalSecretsFor(ctx, api.turnSecretsOwner(source.Session, source.User, source.Folder), globals)
 	// On the Mac, fetched again from the Crew's company server on every read, like the launch.
 	return api.addServerVaultSecrets(ctx, source.User, source.Folder, merged, globals)
 }
