@@ -11,12 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
 // A native conversation is an explicit choice for this exact folder and account.
-// AgentWorks continues an independent native copy, never the original writer.
+// Claude/Codex open independent copies; Cursor explicitly continues the original CLI conversation.
 func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		ProjectID string `json:"project_id"`
@@ -96,13 +97,7 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 		externalFailure(w, err)
 		return
 	} else if !found {
-		var messages []builderConversationMessage
-		var readErr error
-		if selected.Provider == "claude-code" {
-			messages, _, readErr = readNewClaudeTranscriptMessages(selected.Path, time.Time{})
-		} else {
-			messages, _, readErr = readCodexTranscriptMessages(selected.Path)
-		}
+		messages, readErr := readLocalNativeMessages(*selected)
 		if readErr != nil || len(messages) == 0 {
 			externalError(w, 404, "session_unavailable", "This session is no longer available on this computer. Refresh the session list.")
 			return
@@ -131,37 +126,14 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 			externalFailure(w, err)
 			return
 		}
-		// Stage only this conversation, without account configuration or credentials.
-		staging, err := os.MkdirTemp(roots.Private, "local-chat-fork-")
-		if err != nil {
-			externalFailure(w, err)
-			return
+		var runtime *ChatHistoryAgentRuntime
+		if selected.Provider == "cursor-cli" {
+			runtime, err = api.continueLocalCursorRuntime(r, roots, conversation, *selected, model)
+		} else {
+			runtime, err = api.copyLocalNativeRuntime(r, roots, conversation, *selected, model)
 		}
-		defer os.RemoveAll(staging)
-		transport := "sdk"
-		if selected.Provider == "codex-cli" {
-			transport = "app-server"
-		}
-		bundle, err := sessiontransfer.ExportJSONL(selected.Provider, transport, filepath.Dir(selected.Source.Root), roots.Files, selected.NativeID, filepath.Join(staging, "source"))
 		if err != nil {
-			externalError(w, 422, "fork_unavailable", "This conversation could not be copied. Refresh and try again.")
-			return
-		}
-		cwd, err := crewCLIWorkingDir(roots.Virtual, roots.Owner, conversation.SessionID, selected.Provider, false)
-		if err != nil {
-			externalFailure(w, err)
-			return
-		}
-		fork, err := sessiontransfer.ForkJSONL(bundle, filepath.Join(staging, "fork"), cwd)
-		if err != nil {
-			externalFailure(w, err)
-			return
-		}
-		destination := conversation
-		destination.Provider, destination.ModelID, destination.ConnectionID = selected.Provider, model, selected.Source.ConnectionID
-		runtime, err := api.importCrewNativeInto(r.Context(), GetUserFromContext(r.Context()), roots, destination, conversation.SessionID, fork, "")
-		if err != nil {
-			externalFailure(w, err)
+			externalError(w, 422, "resume_unavailable", err.Error())
 			return
 		}
 		runtime.WorkshopMode, runtime.AgentToolsMode = mode, normalizeAgentToolsMode(profile.Runtime.AgentTools.Mode)
@@ -179,9 +151,13 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 			externalFailure(w, err)
 			return
 		}
-		log.Printf("[LOCAL_PROJECT] project=%s action=fork provider=%s source_native=%s native=%s session=%s account=%s", roots.ID, selected.Provider, selected.NativeID, fork.SessionID, conversation.SessionID, selected.Source.ConnectionID)
+		log.Printf("[LOCAL_PROJECT] project=%s action=continue provider=%s source_native=%s native=%s session=%s account=%s", roots.ID, selected.Provider, selected.NativeID, runtime.ExternalSessionID, conversation.SessionID, selected.Source.ConnectionID)
 	}
-	writeAgentProfileJSON(w, 200, map[string]any{"conversation_key": key, "conversation_id": conversation.ConversationID, "session_id": conversation.SessionID, "provider": selected.Provider, "connection_id": selected.Source.ConnectionID, "name": selected.Title, "account": selected.Account, "engine": engine, "model_id": model, "next": "A copy is open in its own tab, with the original history. Your original conversation is unchanged. Project files are shared; the Crew's current permissions apply."})
+	next := "A copy is open in its own tab, with the original history. Your original conversation is unchanged. Project files are shared; the Crew's current permissions apply."
+	if selected.Provider == "cursor-cli" {
+		next = "The same Cursor CLI conversation is open in its own tab, with its saved history. Close it in Cursor before sending here. The Crew's current permissions apply."
+	}
+	writeAgentProfileJSON(w, 200, map[string]any{"conversation_key": key, "conversation_id": conversation.ConversationID, "session_id": conversation.SessionID, "provider": selected.Provider, "connection_id": selected.Source.ConnectionID, "name": selected.Title, "account": selected.Account, "engine": engine, "model_id": model, "next": next})
 }
 
 // Preview uses the same owner/account/folder admission as importing. The caller
@@ -200,13 +176,7 @@ func writeLocalProjectPreview(w http.ResponseWriter, r *http.Request, sessions [
 		if session.ID != r.URL.Query().Get("native_id") {
 			continue
 		}
-		var messages []builderConversationMessage
-		var err error
-		if session.Provider == "claude-code" {
-			messages, _, err = readNewClaudeTranscriptMessages(session.Path, time.Time{})
-		} else {
-			messages, _, err = readCodexTranscriptMessages(session.Path)
-		}
+		messages, err := readLocalNativeMessages(session)
 		if err != nil {
 			externalError(w, 404, "session_unavailable", "This conversation is no longer available. Refresh the list.")
 			return
@@ -266,4 +236,31 @@ func localProjectRecognitionAction(api *StreamingAPI, w http.ResponseWriter, r *
 	u.RawQuery = query.Encode()
 	request.URL = &u
 	api.handleLocalProject(w, request)
+}
+
+func (api *StreamingAPI) copyLocalNativeRuntime(r *http.Request, roots crewroot.Roots, conversation ProductConversationRecord, selected localProjectNativeSession, model string) (*ChatHistoryAgentRuntime, error) {
+	staging, err := os.MkdirTemp(roots.Private, "local-chat-fork-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(staging)
+	transport := "sdk"
+	if selected.Provider == "codex-cli" {
+		transport = "app-server"
+	}
+	bundle, err := sessiontransfer.ExportJSONL(selected.Provider, transport, filepath.Dir(selected.Source.Root), roots.Files, selected.NativeID, filepath.Join(staging, "source"))
+	if err != nil {
+		return nil, err
+	}
+	cwd, err := crewCLIWorkingDir(roots.Virtual, roots.Owner, conversation.SessionID, selected.Provider, false)
+	if err != nil {
+		return nil, err
+	}
+	fork, err := sessiontransfer.ForkJSONL(bundle, filepath.Join(staging, "fork"), cwd)
+	if err != nil {
+		return nil, err
+	}
+	destination := conversation
+	destination.Provider, destination.ModelID, destination.ConnectionID = selected.Provider, model, selected.Source.ConnectionID
+	return api.importCrewNativeInto(r.Context(), GetUserFromContext(r.Context()), roots, destination, conversation.SessionID, fork, "")
 }

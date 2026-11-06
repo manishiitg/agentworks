@@ -317,7 +317,11 @@ func (api *StreamingAPI) importCrewNativeInto(ctx context.Context, claims *UserC
 		return nil, e
 	}
 	log.Printf("[CREW_HANDOFF] project=%s phase=import mode=native_candidate provider=%s transport=%s native_session=%s", roots.ID, b.Provider, b.Transport, b.SessionID)
-	return &ChatHistoryAgentRuntime{Kind: "coding_agent", Provider: b.Provider, ModelID: current.ModelID, ExternalSessionID: b.SessionID, ResumeSupported: true, WorkspacePath: current.WorkspacePath, NativeHandoff: true, AgentToolsMode: current.handoffAgentToolsMode, WorkshopMode: normalizeChatHistoryWorkshopMode(crewCLIMode(false)), AgentSessionHandle: &mcpagent.AgentSessionHandle{ConnectionID: current.ConnectionID, SessionID: session, OwnerID: session, Scope: "coding_agent", Provider: llmtypes.CodingProviderSessionHandle{Provider: b.Provider, Transport: b.Transport, NativeFormat: b.Format, NativeSessionID: b.SessionID, WorkingDir: cwd, RuntimeDir: runtimeDir, ProjectDirID: cwd, Model: current.ModelID}}}, nil
+	return crewNativeRuntime(current, session, b, cwd, runtimeDir), nil
+}
+
+func crewNativeRuntime(current ProductConversationRecord, session string, b *sessiontransfer.Bundle, cwd, runtimeDir string) *ChatHistoryAgentRuntime {
+	return &ChatHistoryAgentRuntime{Kind: "coding_agent", Provider: b.Provider, ModelID: current.ModelID, ExternalSessionID: b.SessionID, ResumeSupported: true, WorkspacePath: current.WorkspacePath, NativeHandoff: true, AgentToolsMode: current.handoffAgentToolsMode, WorkshopMode: normalizeChatHistoryWorkshopMode(crewCLIMode(false)), AgentSessionHandle: &mcpagent.AgentSessionHandle{ConnectionID: current.ConnectionID, SessionID: session, OwnerID: session, Scope: "coding_agent", Provider: llmtypes.CodingProviderSessionHandle{Provider: b.Provider, Transport: b.Transport, NativeFormat: b.Format, NativeSessionID: b.SessionID, WorkingDir: cwd, RuntimeDir: runtimeDir, ProjectDirID: cwd, Model: current.ModelID}}}
 }
 
 // Source IDs are not portable authority. Keep the destination-selected account
