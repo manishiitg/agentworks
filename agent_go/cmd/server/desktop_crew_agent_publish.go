@@ -178,7 +178,7 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 			return
 		}
 		// A fresh per-transfer content baseline cannot pull another agent's files
-		// into the bundle. Native journals use the existing rsync delta channel.
+		// into the bundle. Native journals move as chunks, like the Team folder (crew_sync_native.go).
 		contentPair := binding.PairID + "/agent/" + selection.Tab + "/" + transfer
 		if e = (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).EncodeSync(r.Context(), contentPair, roots, &snapshot); e != nil {
 			fail(e)
