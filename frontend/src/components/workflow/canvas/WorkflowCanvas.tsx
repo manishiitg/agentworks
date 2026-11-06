@@ -1442,8 +1442,9 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
 
   // Callback for opening variables sidebar
   const handleOpenVariablesSidebar = useCallback(() => {
+    if (scope?.onEditInputs) { scope.onEditInputs(); return }
     setShowVariablesSidebar(true)
-  }, [])
+  }, [scope])
 
   // Callback for when variables are updated
   const handleVariablesUpdate = useCallback((manifest: VariablesManifest) => {
@@ -2484,14 +2485,14 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   const onNodeClick = useCallback((_: React.MouseEvent, node: WorkflowNode) => {
     if (node.type === 'workflow-trigger' || node.type === 'workflow-trigger-heading') return
     if (node.type === 'variables') {
-      setShowVariablesSidebar(true)
+      handleOpenVariablesSidebar()
       setSelectedFlowNodeID(null)
       return
     }
     setSelectedFlowNodeID(current => current?.workspace === workspacePath && current.id === node.id
       ? null
       : { workspace: workspacePath, id: node.id })
-  }, [workspacePath])
+  }, [workspacePath, handleOpenVariablesSidebar])
   const onPaneClick = useCallback(() => {
     setSelectedTrigger(null)
     setRouteTrace(null)

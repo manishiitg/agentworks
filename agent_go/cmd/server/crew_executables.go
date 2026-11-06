@@ -28,6 +28,8 @@ type crewExecutableBinding = crewroot.ExecutableBinding
 
 var crewExecutablesMu sync.Mutex
 
+var errCrewWorkflowExists = errors.New("this Crew already has a workflow; edit its existing steps or add a route")
+
 func crewExecutablesPath() (string, error) {
 	root, err := workflowCLIStateRoot()
 	if err != nil {
@@ -167,6 +169,17 @@ func registerCrewExecutable(binding crewExecutableBinding) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	if binding.Kind == "workflow" {
+		records, err := readCrewExecutables()
+		if err != nil {
+			return err
+		}
+		for _, existing := range records {
+			if existing.CrewID == binding.CrewID && existing.Kind == "workflow" {
+				return fmt.Errorf("%w (%s)", errCrewWorkflowExists, existing.Root)
+			}
+		}
+	}
 	data, err := json.MarshalIndent(binding, "", "  ")
 	if err != nil {
 		return err
@@ -298,7 +311,11 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 	manifest.Access = &WorkflowAccess{Owners: []string{project.OwnerID}, Readers: []string{}}
 	manifest.Capabilities.LLMConfig = productDefaultWorkflowLLMConfig(r.Context())
 	if err := registerCrewExecutable(binding); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, errCrewWorkflowExists) {
+			status = http.StatusConflict
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	registerWorkflowOwner(binding.Root, project.OwnerID)

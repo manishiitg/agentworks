@@ -141,7 +141,7 @@ function MetricCard({
       )}
       <button type="button" disabled={!onAskBuilder}
         onClick={() => onAskBuilder?.(`Explain progress for "${metric.name}" (metric ${metric.id}, goal ${metric.goal_name || metric.goal_id || 'workflow goal'}). Check its latest observations, source, measurement periods and evidence. What changed, what is missing, and what should we do next?`)}
-        className="mt-3 text-xs font-medium text-primary disabled:opacity-50">Ask Builder about this metric</button>
+        className="mt-3 text-xs font-medium text-primary disabled:opacity-50">Discuss this metric in chat</button>
       <details className="mt-3 text-xs">
         <summary className="cursor-pointer text-muted-foreground">
           Measurement details and history
@@ -286,7 +286,7 @@ export function GoalProgress({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold">{group.name}</h3>
                 <button type="button" disabled={!onAskBuilder} onClick={() => onAskBuilder?.(`How are we doing on "${group.name}"? Review its goals, primary and supporting metrics, evidence and blockers, then recommend the next action.`)}
-                  className="text-xs font-medium text-primary disabled:opacity-50">Ask Builder about this goal</button>
+                  className="text-xs font-medium text-primary disabled:opacity-50">Discuss this goal in chat</button>
               </div>
               {group.primaries.map(({ metric, supporting }) => (
                 <PrimaryMetricGroup

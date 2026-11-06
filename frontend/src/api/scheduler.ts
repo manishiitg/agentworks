@@ -40,7 +40,7 @@ export const schedulerApi = {
 
   // Several panels list jobs together on page open; identical requests
   // share one call. Any job write drops the shared result.
-  listJobs: (params?: { entity_type?: string; enabled?: boolean; limit?: number; offset?: number; mode?: string }) =>
+  listJobs: (params?: { workspace_path?: string; entity_type?: string; enabled?: boolean; limit?: number; offset?: number; mode?: string }) =>
     dedupedGet(`${SCHEDULER_JOBS_KEY}${JSON.stringify(params ?? {})}`, () =>
       api.get<ListScheduledJobsResponse>('/api/scheduler/jobs', { params }).then(r => r.data)),
 

@@ -3,6 +3,8 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 
+vi.mock('../../services/api', async importOriginal => ({ ...await importOriginal<typeof import('../../services/api')>(), default: { get: vi.fn(async () => ({ data: { executables: [] } })) } }))
+
 const storeState = { workspaceViewTarget: null as null | { view: string; target: string; token: number } }
 const openWorkspaceView = vi.fn()
 

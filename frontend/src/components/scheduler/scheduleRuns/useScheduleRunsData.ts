@@ -164,6 +164,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
       const [resp, config] = await Promise.all([
         schedulerApi.listJobs({
           entity_type: entityType,
+          workspace_path: scopePath ?? undefined,
           limit: WORKFLOW_SCHEDULE_PANEL_LIMIT,
         }),
         schedulerApi.getConfig().catch(() => null),
@@ -179,7 +180,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     } finally {
       if (showLoading) setIsLoading(false)
     }
-  }, [entityType, productProfileId, onJobsLoaded])
+  }, [entityType, productProfileId, onJobsLoaded, scopePath])
 
   useEffect(() => {
     if (!active) return

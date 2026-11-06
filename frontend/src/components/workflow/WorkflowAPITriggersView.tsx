@@ -17,7 +17,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update API triggers'
 }
 
-export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk }: { workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
+export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false }: { embedded?: boolean; workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const canWrite = useCanWriteWorkflow(workspacePath)
   const [options, setOptions] = useState<APITriggerOptions>(emptyOptions)
   const [issued, setIssued] = useState<WorkflowAPITrigger | null>(null)
@@ -28,7 +28,8 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
   const requestGeneration = useRef(0)
 
   const refresh = useCallback(async () => {
-    if (!workspacePath) return
+    if (embedded && !error && webhooks.length === 0) return null
+  if (!workspacePath) return
     const generation = ++requestGeneration.current
     try {
       const result = await workflowWebhooksApi.list(workspacePath)
@@ -57,7 +58,8 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
   }, [onCounts, activeTriggers, webhooks.length])
 
   const afterSave = async () => {
-    if (!workspacePath) return
+    if (embedded && !error && webhooks.length === 0) return null
+  if (!workspacePath) return
     await refresh()
     await useWorkflowManifestStore.getState().refreshWorkflows()
   }
@@ -89,9 +91,10 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
     catch { setError('Clipboard access failed. Select and copy the displayed value.') }
   }
 
+  if (embedded && !error && webhooks.length === 0) return null
   if (!workspacePath) return <p className="p-4 text-sm text-muted-foreground">Select a workflow to configure API triggers.</p>
   return (
-    <div className="flex h-full min-h-0 w-full max-w-none flex-col bg-background">
+    <div className={`flex ${embedded ? '' : 'h-full'} min-h-0 w-full max-w-none flex-col bg-background`}>
       {!hideHeader && <WorkspaceViewHeader
         icon={Webhook}
         title="Triggers"

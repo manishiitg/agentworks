@@ -371,6 +371,15 @@ func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
 			t.Fatalf("editable owner: HTTP%d %s", w.Code, w.Body)
 		}
 	}
+	// One workflow per Crew; additional tasks use routes. Scripts stay independent.
+	for _, status := range []int{http.StatusCreated, http.StatusConflict} {
+		w := httptest.NewRecorder()
+		api.handleCrewExecutables(w, httptest.NewRequest(http.MethodPost, "/api/crew-executables?crew_id="+crew.CrewID, strings.NewReader(`{"name":"Daily work","kind":"workflow"}`)).WithContext(ctx))
+		if w.Code != status {
+			t.Fatalf("workflow creation: HTTP%d %s, want %d", w.Code, w.Body, status)
+		}
+	}
+
 }
 
 // PLAT-746-265: parking Relay must stop new Crew Relay creation without
@@ -484,6 +493,65 @@ func TestCrewAutomationNativeCommitUsesMovedSource(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(docs, b.Root, rel)); !os.IsNotExist(err) {
 				t.Fatal("recreated old source", rel)
 			}
+		}
+	}
+}
+
+// PLAT-746: the Crew's single Schedules tab must retain its workflow timers,
+// without including another Crew or granting a stranger access.
+func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
+	svc, _, ctx := newCrewCreationTestEnv(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"},{"id":"stranger","username":"stranger","role":"creator"}]}`)
+	manifests := map[string]*WorkflowManifest{}
+	for _, name := range []string{"one", "two"} {
+		root := "Crew/" + name
+		if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: name, ProjectID: name, OwnerID: "owner", Private: true, AudienceConfigured: true}); err != nil {
+			t.Fatal(err)
+		}
+		binding := crewExecutableBinding{ID: name, CrewID: name, CrewRoot: root, Root: "Workflow/" + name, Kind: "workflow"}
+		if err := registerCrewExecutable(binding); err != nil {
+			t.Fatal(err)
+		}
+		manifest := NewWorkflowManifest(name)
+		manifest.ID, manifest.CreatedBy, manifest.crewExecutable = name, "owner", &binding
+		manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
+		manifest.Schedules = []WorkflowSchedule{{ID: "timer-" + name, Name: "Daily work", Mode: "workshop", Enabled: false}}
+		manifests[binding.Root] = manifest
+	}
+	previous := workflowManifests
+	workflowManifests = &workflowManifestIndex{
+		list: func(context.Context) ([]string, map[string]manifestStamp, error) {
+			return []string{"Workflow/one", "Workflow/two"}, nil, nil
+		},
+		read: func(_ context.Context, path string) (*WorkflowManifest, bool, error) {
+			m, ok := manifests[path]
+			return m, ok, nil
+		},
+	}
+	t.Cleanup(func() { workflowManifests = previous })
+	scheduler := NewSchedulerService(&StreamingAPI{projectActions: svc})
+	for _, user := range []string{"owner", "stranger"} {
+		request := httptest.NewRequest(http.MethodGet, "/api/scheduler/jobs?entity_type=product&workspace_path=Crew%2Fone", nil).WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: user, Username: user}))
+		response := httptest.NewRecorder()
+		listScheduledJobsHandler(scheduler)(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s HTTP%d %s", user, response.Code, response.Body)
+		}
+		var result struct {
+			Jobs []ScheduledJobResponse `json:"jobs"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if user == "stranger" {
+			if len(result.Jobs) != 0 {
+				t.Fatal("stranger saw private timers")
+			}
+			continue
+		}
+		if len(result.Jobs) != 1 || result.Jobs[0].CrewWorkspacePath != "Crew/one" || result.Jobs[0].WorkspacePath != "Workflow/one" {
+			t.Fatalf("parent list lost or mixed child schedules: %+v", result.Jobs)
 		}
 	}
 }

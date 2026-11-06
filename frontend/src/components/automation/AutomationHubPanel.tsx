@@ -1,5 +1,6 @@
 import { cloneElement, isValidElement, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react'
 import { Bot, Braces, CalendarClock, Mail, MessageSquareText, Webhook, Zap, Route, FileCode2 } from 'lucide-react'
+import api from '../../services/api'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { TriggerDeliveryHistoryPanel } from './TriggerDeliveryHistoryPanel'
@@ -38,7 +39,7 @@ type AutomationHubPanelProps = {
 }
 
 const SECTION_DEFS = [
-  { id: 'workflows', label: 'Workflows', icon: Route },
+  { id: 'workflows', label: 'Workflow', icon: Route },
   { id: 'scripts', label: 'Scripts', icon: FileCode2 },
   { id: 'schedules', label: 'Schedules', icon: CalendarClock },
   { id: 'triggers', label: 'Webhooks', icon: Webhook },
@@ -91,6 +92,19 @@ export function AutomationHubPanel({
   initialSection = 'schedules',
   onAskAI,
 }: AutomationHubPanelProps) {
+  const [children, setChildren] = useState<Array<{ id: string; workspace_path: string; manifest: { label: string } }>>([])
+  const [childrenError, setChildrenError] = useState('')
+  const [childFunctionCounts, setChildFunctionCounts] = useState<Record<string, number>>({})
+  const [childWebhookCounts, setChildWebhookCounts] = useState<Record<string, { active: number; paused: number }>>({})
+  const crewID = entityType === 'product' && productTriggerScope?.profileId === 'work' && canManage !== false ? productTriggerScope.projectId : undefined
+  useEffect(() => {
+    const controller = new AbortController()
+    setChildren([]); setChildrenError(''); setChildFunctionCounts({}); setChildWebhookCounts({})
+    if (crewID) void api.get('/api/crew-executables', { params: { crew_id: crewID }, signal: controller.signal }).then(response => {
+      if (!controller.signal.aborted) setChildren(response.data.executables)
+    }).catch(() => { if (!controller.signal.aborted) setChildrenError('Could not load workflow automations. Reopen Automations to try again.') })
+    return () => controller.abort()
+  }, [crewID])
   const incomingEnabled = useAgentInboxEnabled()
   const isWorkflow = entityType === 'workflow'
   const [schedulesRefreshToken, setSchedulesRefreshToken] = useState(0)
@@ -173,9 +187,9 @@ export function AutomationHubPanel({
           : section === 'triggers' && relayMode && functionsCounts ? (
             <span className="text-xs text-muted-foreground">{functionsCounts.functions} functions</span>
           ) : section === 'triggers' && triggersCounts ? (
-            <span className="text-xs text-muted-foreground">{triggersCounts.active} active · {triggersCounts.paused} paused</span>
+            <span className="text-xs text-muted-foreground">{triggersCounts.active + Object.values(childWebhookCounts).reduce((sum, count) => sum + count.active, 0)} active · {triggersCounts.paused + Object.values(childWebhookCounts).reduce((sum, count) => sum + count.paused, 0)} paused</span>
           ) : section === 'functions' && functionsCounts ? (
-            <span className="text-xs text-muted-foreground">{functionsCounts.functions} functions · {functionsCounts.running} running</span>
+            <span className="text-xs text-muted-foreground">{functionsCounts.functions + Object.values(childFunctionCounts).reduce((sum, count) => sum + count, 0)} functions · {functionsCounts.running} running</span>
           ) : undefined
         }
 
@@ -230,7 +244,9 @@ export function AutomationHubPanel({
           onCounts={setFunctionsCounts}
           onAsk={onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))}
         />}
-        {section === 'triggers' && entityType === 'product' && productTriggerScope && <ProductAPITriggersView
+        {section === 'triggers' && entityType === 'product' && productTriggerScope && <div className="h-full overflow-auto"><ProductAPITriggersView
+          embedded
+          hideEmpty={Object.values(childWebhookCounts).some(count => count.active + count.paused > 0)}
           scope={productTriggerScope}
           workspacePath={workspacePath}
           onAsk={onAskAI}
@@ -238,19 +254,27 @@ export function AutomationHubPanel({
           hideHeader
           refreshToken={triggersRefreshToken}
           onCounts={setTriggersCounts}
-        />}
+        />
+          {childrenError && <p role="alert" className="p-4 text-sm text-destructive">{childrenError}</p>}
+          {children.map(child => <WorkflowAPITriggersView key={child.id} workspacePath={child.workspace_path} embedded hideHeader onCounts={count => setChildWebhookCounts(previous => previous[child.id]?.active === count.active && previous[child.id]?.paused === count.paused ? previous : { ...previous, [child.id]: count })} refreshToken={triggersRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
+        </div>}
         {section === 'functions' && entityType === 'workflow' && <WorkflowFunctionsView
           workspacePath={workspacePath}
           refreshToken={functionsRefreshToken}
           onCounts={setFunctionsCounts}
           onAsk={onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))}
         />}
-        {section === 'functions' && entityType === 'product' && productTriggerScope && <CrewFunctionsView
+        {section === 'functions' && entityType === 'product' && productTriggerScope && <div className="h-full overflow-auto"><CrewFunctionsView
+          embedded
+          hideEmpty={Object.values(childFunctionCounts).some(count => count > 0)}
           scope={productTriggerScope}
           refreshToken={functionsRefreshToken}
           onCounts={setFunctionsCounts}
           onEdit={onAskAI}
-        />}
+        />
+          {childrenError && <p role="alert" className="p-4 text-sm text-destructive">{childrenError}</p>}
+          {children.map(child => <WorkflowFunctionsView key={child.id} workspacePath={child.workspace_path} embedded onCounts={count => setChildFunctionCounts(previous => previous[child.id] === count.functions ? previous : { ...previous, [child.id]: count.functions })} refreshToken={functionsRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
+        </div>}
         {section === 'bots' && botContent}
         </Suspense>
       </div>

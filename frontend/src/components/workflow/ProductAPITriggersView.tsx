@@ -14,7 +14,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update project triggers'
 }
 
-export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk }: { scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
+export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false, hideEmpty = false }: { embedded?: boolean; hideEmpty?: boolean; scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const { profileId, projectId } = scope
   const [triggers, setTriggers] = useState<ProductAPITrigger[]>([])
   const [openId, setOpenId] = useState<string | null>(null)
@@ -65,7 +65,7 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
     catch { setError('Clipboard access failed. Select and copy the displayed value.') }
   }
 
-  return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
+  return <div className={`${embedded ? '' : 'h-full'} min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background`}>
     {!hideHeader && <WorkspaceViewHeader
       sticky
       icon={Webhook}
@@ -98,7 +98,7 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
         </label>
         <div className="flex flex-wrap gap-1.5"><button type="button" disabled={busy} className={buttonClass} onClick={() => void save({ ...trigger, enabled: !trigger.enabled })}>{trigger.enabled ? 'Disable' : 'Enable'}</button><button type="button" disabled={busy} className={buttonClass} onClick={() => void save(trigger, true)}>Rotate secret</button><button type="button" disabled={busy} className={buttonClass} onClick={() => void remove(trigger.id)}>Remove</button></div>
       </div>
-    </AutomationRow>)}</AutomationListBox>}{triggers.length === 0 && <EmptyAutomations>No webhooks yet. Ask the chat to create one.</EmptyAutomations>}
+    </AutomationRow>)}</AutomationListBox>}{!hideEmpty && triggers.length === 0 && <EmptyAutomations>No webhooks yet. Ask the chat to create one.</EmptyAutomations>}
     {copied && <p role="status" className="text-xs text-muted-foreground">{copied}</p>}
     {deliveryHistory && <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border">{deliveryHistory}</div>}
     <p className="text-xs leading-relaxed text-muted-foreground">Send JSON up to 1 MiB. Bearer triggers use the Authorization header; GitHub triggers verify X-Hub-Signature-256. Reuse an Idempotency-Key or GitHub delivery ID to avoid duplicate runs.</p>
