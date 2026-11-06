@@ -132,9 +132,12 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 					name = "Main"
 				}
 				row := crewTeamAgent{Tab: tab.Tab, Name: name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey, InTeam: !tab.OnlyMe}
-				if !person.MacOn {
+				// The same chip as the owner's Mac agents (owner, 6 Nov: Team members are equal).
+				row.PlaceLabel, row.PlaceTone = crewAlwaysOnPlaceLabel(t.ProjectID, p.UserID, tab.Tab, person.MacOn, caller == p.UserID, row.InTeam)
+				row.PlaceServer = row.PlaceTone == "server"
+				if !person.MacOn && !row.PlaceServer {
 					row.StatusLabel = "Mac off"
-				} else if crewMacConversationRunning(p.UserID, t.ProjectID, tab.ConversationID) {
+				} else if person.MacOn && crewMacConversationRunning(p.UserID, t.ProjectID, tab.ConversationID) {
 					row.Activity = "running"
 				}
 				person.Agents = append(person.Agents, row)

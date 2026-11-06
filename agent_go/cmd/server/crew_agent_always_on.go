@@ -57,7 +57,7 @@ func crewStandbyServerNote(project, tab string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## Answering from the server\n\nYou are %s's agent %q. %s's Mac is off, so you are answering from the server's copy of this conversation, with %s's AI account and the apps and secrets in their Vault on the server.\n\n", ownerName, agent, ownerName, ownerName)
 	fmt.Fprintf(&b, "Files here: %s. Everything else in this Crew is only on the Mac: do not assume those files exist here.\n\n", files)
-	if items := crewStandbyMacOnly(project); len(items) > 0 {
+	if items := crewStandbyMacOnly(project, owner); len(items) > 0 {
 		names := make([]string, 0, min(len(items), crewStandbyMacOnlyShown)+1)
 		for _, item := range items[:min(len(items), crewStandbyMacOnlyShown)] {
 			names = append(names, item.Name+" ("+item.Kind+")")
@@ -67,7 +67,7 @@ func crewStandbyServerNote(project, tab string) string {
 		}
 		fmt.Fprintf(&b, "Only on the Mac, not available now: %s.\n\n", strings.Join(names, ", "))
 	}
-	if rows, err := readCrewStandby(project); err == nil {
+	if rows, err := readCrewStandby(project, owner); err == nil {
 		if row := rows[tab]; row.MacProgram != "" && row.ServerProgram != row.MacProgram {
 			fmt.Fprintf(&b, "On the Mac you run on %s; this server doesn't have it, so you continue this conversation on %s from its saved history: you have the conversation, but not the details of earlier tool calls.\n\n", providerDisplayLabel(row.MacProgram), crewStandbyServerProgramName(row.ServerProgram))
 		}
@@ -90,11 +90,11 @@ func crewAlwaysOnLog(project, tab, event, reason string, started time.Time) {
 
 // crewStandbyServerWriter: the server answers for this agent now (it ran a turn from the standby copy and has not
 // handed the agent back to the Mac yet).
-func crewStandbyServerWriter(project, tab string) bool {
-	if IsLocalMode() || project == "" || tab == "" {
+func crewStandbyServerWriter(project, person, tab string) bool {
+	if IsLocalMode() || project == "" || person == "" || tab == "" {
 		return false
 	}
-	rows, err := readCrewStandby(project)
+	rows, err := readCrewStandby(project, person)
 	return err == nil && rows[tab].Writer == "server"
 }
 
@@ -113,7 +113,8 @@ func crewStandbyServedTab(key string) (string, bool) {
 	if IsLocalMode() || project == "" || !isSharedThreadKey(key) {
 		return "", false
 	}
-	rows, err := readCrewStandby(project)
+	// The owner's agents only: a member's are served in a later step.
+	rows, err := readCrewStandby(project, ownerOfCrewProjectID(project))
 	if err != nil || len(rows) == 0 {
 		return "", false
 	}
@@ -141,7 +142,7 @@ func crewStandbyCanAnswer(project, owner, tab string) bool {
 	if IsLocalMode() || owner == "" || !crewMacTabID(tab) {
 		return false
 	}
-	rows, err := readCrewStandby(project)
+	rows, err := readCrewStandby(project, owner)
 	if err != nil {
 		return false
 	}
@@ -152,11 +153,11 @@ func crewStandbyCanAnswer(project, owner, tab string) bool {
 	if row.Writer == "server" {
 		return true
 	}
-	b, err := crewroot.ReadSync(project)
-	if err != nil || b == nil || b.PairID == "" || b.PairID != row.PairID || crewMacSocketFor(owner, project, b.PairID) != nil {
+	pair, peer := crewStandbyPairPeer(project, owner, row)
+	if pair == "" || pair != row.PairID || crewMacSocketFor(owner, project, pair) != nil {
 		return false
 	}
-	if _, ok := row.Sessions[macSharedAgentChatKey(b.PeerProjectID, tab)]; !ok {
+	if _, ok := row.Sessions[macSharedAgentChatKey(peer, tab)]; !ok {
 		return false
 	}
 	ok, _ = crewStandbyEligible(project, owner, tab)
@@ -167,23 +168,24 @@ func crewStandbyCanAnswer(project, owner, tab string) bool {
 // chat with the agent (what the thread starts from) and the asking teammate's own thread on it are imported from the copy. writes is set for a call that runs a
 // turn; it makes the server the agent's writer. Any failure leaves the call on its usual path (the Mac, or held).
 func (api *StreamingAPI) crewStandbyRoute(ctx context.Context, owner, project, tab, sender string, writes bool) bool {
-	if crewPublishedTarget(project, tab) || !crewStandbyCanAnswer(project, owner, tab) {
+	// Placements are the Crew owner's tabs: only they can make the owner's agent "published".
+	if owner == ownerOfCrewProjectID(project) && crewPublishedTarget(project, tab) || !crewStandbyCanAnswer(project, owner, tab) {
 		return false
 	}
 	started := time.Now()
 	if err := api.importCrewStandby(ctx, owner, project, tab, sender); err != nil {
-		if !crewStandbyServerWriter(project, tab) {
+		if !crewStandbyServerWriter(project, owner, tab) {
 			crewAlwaysOnLog(project, tab, "not_on_server", "import_failed", started)
-			crewStandbyImportFailed.Store(project+"\x00"+tab, time.Now())
+			crewStandbyImportFailed.Store(project+"\x00"+owner+"\x00"+tab, time.Now())
 			log.Printf("[ALWAYS_ON] project=%s tab=%s import_error=%q", project, tab, err)
 			return false
 		}
 		log.Printf("[ALWAYS_ON] project=%s tab=%s event=import_retry_later import_error=%q", project, tab, err)
 	}
-	crewStandbyImportFailed.Delete(project + "\x00" + tab)
+	crewStandbyImportFailed.Delete(project + "\x00" + owner + "\x00" + tab)
 	// The decision, the in-flight mark and the writer are settled under the lock the hand back flips the writer under:
 	// a call routed here is never lost to a flip that happens before its turn is running or queued.
-	lock := crewStandbyLock(project)
+	lock := crewStandbyLock(project, owner)
 	lock.Lock()
 	defer lock.Unlock()
 	if !crewStandbyCanAnswer(project, owner, tab) {
@@ -191,8 +193,8 @@ func (api *StreamingAPI) crewStandbyRoute(ctx context.Context, owner, project, t
 		return false
 	}
 	if writes {
-		addCrewStandbyFlight(project, tab)
-		markCrewStandbyWriterLocked(project, tab)
+		addCrewStandbyFlight(project, owner, tab)
+		markCrewStandbyWriterLocked(project, owner, tab)
 	}
 	return true
 }
@@ -207,18 +209,18 @@ var crewStandbyFlights = struct {
 	at map[string][]time.Time
 }{at: map[string][]time.Time{}}
 
-func addCrewStandbyFlight(project, tab string) {
+func addCrewStandbyFlight(project, person, tab string) {
 	crewStandbyFlights.Lock()
 	defer crewStandbyFlights.Unlock()
-	key := project + "\x00" + tab
+	key := project + "\x00" + person + "\x00" + tab
 	crewStandbyFlights.at[key] = append(crewStandbyFlights.at[key], time.Now())
 }
 
 // releaseCrewStandbyFlight: one routed call's turn is running or queued now.
-func releaseCrewStandbyFlight(project, tab string) {
+func releaseCrewStandbyFlight(project, person, tab string) {
 	crewStandbyFlights.Lock()
 	defer crewStandbyFlights.Unlock()
-	key := project + "\x00" + tab
+	key := project + "\x00" + person + "\x00" + tab
 	if flights := crewStandbyFlights.at[key]; len(flights) > 1 {
 		crewStandbyFlights.at[key] = flights[1:]
 	} else {
@@ -226,10 +228,10 @@ func releaseCrewStandbyFlight(project, tab string) {
 	}
 }
 
-func crewStandbyInFlight(project, tab string) bool {
+func crewStandbyInFlight(project, person, tab string) bool {
 	crewStandbyFlights.Lock()
 	defer crewStandbyFlights.Unlock()
-	key := project + "\x00" + tab
+	key := project + "\x00" + person + "\x00" + tab
 	kept := crewStandbyFlights.at[key][:0]
 	for _, at := range crewStandbyFlights.at[key] {
 		if time.Since(at) < crewStandbyFlightExpiry {
@@ -246,9 +248,9 @@ func crewStandbyInFlight(project, tab string) bool {
 
 // markCrewStandbyWriterLocked records that the server answers for this agent from its standby copy at the copy's
 // revision. The caller holds the project's standby lock.
-func markCrewStandbyWriterLocked(project, tab string) {
+func markCrewStandbyWriterLocked(project, person, tab string) {
 	started := time.Now()
-	rows, err := readCrewStandby(project)
+	rows, err := readCrewStandby(project, person)
 	if err != nil {
 		return
 	}
@@ -258,7 +260,7 @@ func markCrewStandbyWriterLocked(project, tab string) {
 	}
 	row.Writer, row.WriterRevision, row.WriterSince = "server", row.Revision, time.Now().UTC().Format(time.RFC3339)
 	rows[tab] = row
-	if err = writeCrewStandby(project, rows); err != nil {
+	if err = writeCrewStandby(project, person, rows); err != nil {
 		log.Printf("[ALWAYS_ON] project=%s tab=%s event=writer_not_saved", project, tab)
 		return
 	}
@@ -281,14 +283,14 @@ func (api *StreamingAPI) importCrewStandby(ctx context.Context, owner, project, 
 	if err != nil || binding == nil || binding.Side != "server" || binding.PeerProjectID == "" {
 		return fmt.Errorf("this Crew is not paired with its Mac")
 	}
-	dir, err := crewStandbyDir(project)
+	dir, err := crewStandbyPersonDir(project, owner)
 	if err != nil {
 		return err
 	}
-	lock := crewStandbyLock(project)
+	lock := crewStandbyLock(project, owner)
 	lock.Lock()
 	defer lock.Unlock()
-	rows, err := readCrewStandby(project)
+	rows, err := readCrewStandby(project, owner)
 	if err != nil {
 		return err
 	}
@@ -337,7 +339,7 @@ func (api *StreamingAPI) importCrewStandby(ctx context.Context, owner, project, 
 		return nil
 	}
 	rows[tab] = row
-	return writeCrewStandby(project, rows)
+	return writeCrewStandby(project, owner, rows)
 }
 
 // importCrewStandbySession imports one stored conversation (native session + history) into the server's chat with the
@@ -433,10 +435,10 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 
 // crewStandbyImportFailed remembers, per agent, when the server last could not start from its copy (for example no
 // usable AI account on the server), so the Team tab says the agent waits for the Mac rather than promising an answer.
-var crewStandbyImportFailed sync.Map // project\x00tab -> time.Time
+var crewStandbyImportFailed sync.Map // project\x00person\x00tab -> time.Time
 
-func crewStandbyRecentlyFailed(project, tab string) bool {
-	at, ok := crewStandbyImportFailed.Load(project + "\x00" + tab)
+func crewStandbyRecentlyFailed(project, person, tab string) bool {
+	at, ok := crewStandbyImportFailed.Load(project + "\x00" + person + "\x00" + tab)
 	return ok && time.Since(at.(time.Time)) < 30*time.Minute
 }
 
@@ -447,16 +449,17 @@ func crewStandbyRecentlyFailed(project, tab string) bool {
 // "syncing" state: the label says when the last copy arrived.
 func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours, inTeam bool) (label, tone string) {
 	switch {
-	case crewStandbyServerWriter(project, tab):
+	case crewStandbyServerWriter(project, owner, tab):
 		if macOn {
 			return "Taking back from the server…", "wait"
 		}
-		return "Mac off · answering from the server" + crewStandbyOnProgram(project, tab), "server"
+		return "Mac off · answering from the server" + crewStandbyOnProgram(project, owner, tab), "server"
 	case macOn && !inTeam:
 		return "Only you · on your Mac", ""
 	case macOn:
-		return crewStandbyCopyLabel(project, tab)
-	case crewStandbyCanAnswer(project, owner, tab) && !crewStandbyRecentlyFailed(project, tab):
+		return crewStandbyCopyLabel(project, owner, tab)
+	// A member's agent is not answered from the server yet (a later step): until then it waits for their Mac.
+	case owner == ownerOfCrewProjectID(project) && crewStandbyCanAnswer(project, owner, tab) && !crewStandbyRecentlyFailed(project, owner, tab):
 		return "Mac off · answering from the server", "server"
 	case yours:
 		return "Mac off · waits for your Mac", ""
@@ -465,8 +468,8 @@ func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours, inTeam boo
 }
 
 // crewStandbyOnProgram names the program the server answers on when it is not the agent's own (" (on Muse)").
-func crewStandbyOnProgram(project, tab string) string {
-	rows, err := readCrewStandby(project)
+func crewStandbyOnProgram(project, person, tab string) string {
+	rows, err := readCrewStandby(project, person)
 	if row := rows[tab]; err == nil && row.MacProgram != "" && row.ServerProgram != row.MacProgram {
 		return " (on " + crewStandbyServerProgramName(row.ServerProgram) + ")"
 	}
@@ -483,8 +486,8 @@ func crewStandbyServerProgramName(program string) string {
 }
 
 // crewStandbyCopyLabel is a shared agent's chip while its Mac is on: when its last copy reached the server.
-func crewStandbyCopyLabel(project, tab string) (string, string) {
-	rows, err := readCrewStandby(project)
+func crewStandbyCopyLabel(project, person, tab string) (string, string) {
+	rows, err := readCrewStandby(project, person)
 	row, ok := rows[tab]
 	if err != nil || !ok || len(row.Sessions) == 0 {
 		return "Not on the server yet · it copies after its next reply", "wait"

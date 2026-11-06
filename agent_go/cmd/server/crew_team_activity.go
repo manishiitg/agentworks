@@ -56,7 +56,7 @@ func crewServerChatRunning(sessionID string) bool {
 
 // crewStandbyServedRunning: the server is answering for this Mac agent and a turn of its own chats here is going.
 func crewStandbyServedRunning(owner, project, tab string) bool {
-	if rows, err := readCrewStandby(project); err != nil || rows[tab].Writer != "server" {
+	if rows, err := readCrewStandby(project, owner); err != nil || rows[tab].Writer != "server" {
 		return false
 	}
 	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(owner))

@@ -87,7 +87,7 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 	if reply, err := store(owner, "owner-pair", other); err != nil || reply == nil || reply.Event != "diverged" || reply.Revision != 3 {
 		t.Fatalf("a copy that does not extend the stored one: %+v %v", reply, err)
 	}
-	rows, err := readCrewStandby("team")
+	rows, err := readCrewStandby("team", "owner")
 	if err != nil {
 		t.Fatalf("standby record: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 	if row.Location != "standby" || row.PairID != "owner-pair" || len(session.Diverged) != 1 {
 		t.Fatalf("standby record: %+v", row)
 	}
-	dir, _ := crewStandbyDir("team")
+	dir, _ := crewStandbyPersonDir("team", "owner")
 	for name, want := range map[string]string{session.Dir: other, session.Diverged[0]: second} {
 		if got, err := os.ReadFile(filepath.Join(dir, tab, name, "native", "session.jsonl")); err != nil || string(got) != want {
 			t.Fatalf("diverged copies must both be kept: %s %q %v", name, got, err)
@@ -113,7 +113,7 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 	if _, err := store(&UserClaims{UserID: "other", Username: "other"}, "owner-pair", second); err == nil {
 		t.Fatal("someone other than the Crew's owner stored a copy")
 	}
-	if rows, err = readCrewStandby("team"); err != nil || rows[tab].Revision != 3 {
+	if rows, err = readCrewStandby("team", "owner"); err != nil || rows[tab].Revision != 3 {
 		t.Fatalf("a refused copy changed the record: %+v %v", rows[tab], err)
 	}
 	// The owner turns the helper off: it is Only me and its copy is dropped; Main stays In team and eligible.
@@ -121,7 +121,7 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatalf("team update: %v", err)
 	}
-	if rows, err = readCrewStandby("team"); err != nil || len(rows) != 0 {
+	if rows, err = readCrewStandby("team", "owner"); err != nil || len(rows) != 0 {
 		t.Fatalf("an Only me agent kept its standby copy: %+v %v", rows, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, tab)); !os.IsNotExist(err) {
@@ -157,7 +157,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 		return crewAgentStandby{Tab: tab, Location: "standby", PairID: "owner-pair", Revision: 1, Sessions: map[string]crewAgentStandbySession{
 			macSharedAgentChatKey("mac-crew", tab): {Dir: "copy", Fingerprint: "f", ConversationID: "conversation-" + tab, Provider: "claude-code", Revision: 1}}}
 	}
-	if err := writeCrewStandby("team", map[string]crewAgentStandby{helper: copyOf(helper), solo: copyOf(solo)}); err != nil {
+	if err := writeCrewStandby("team", "owner", map[string]crewAgentStandby{helper: copyOf(helper), solo: copyOf(solo)}); err != nil {
 		t.Fatalf("standby fixture: %v", err)
 	}
 	imported := []string{}
@@ -210,7 +210,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if len(imported) != 1 || imported[0] != helper+"/other" {
 		t.Fatalf("the owner's chat and the teammate's thread must come from the copy: %v", imported)
 	}
-	rows, err := readCrewStandby("team")
+	rows, err := readCrewStandby("team", "owner")
 	if err != nil || rows[helper].Writer != "server" || rows[helper].WriterRevision != 1 || rows[helper].WriterSince == "" {
 		t.Fatalf("the server must be recorded as the writer: %+v %v", rows[helper], err)
 	}
@@ -290,7 +290,7 @@ func TestCrewHandbackTakesServerCopyKeepsBothAndRefusesOthers(t *testing.T) {
 	}
 	serverWriter := func() {
 		t.Helper()
-		if err := writeCrewStandby("team", map[string]crewAgentStandby{tab: {Tab: tab, Location: "standby", PairID: "owner-pair", Revision: 1, Writer: "server", WriterRevision: 1,
+		if err := writeCrewStandby("team", "owner", map[string]crewAgentStandby{tab: {Tab: tab, Location: "standby", PairID: "owner-pair", Revision: 1, Writer: "server", WriterRevision: 1,
 			Sessions: map[string]crewAgentStandbySession{macKey: {Dir: "copy", ConversationID: "conversation-helper", Provider: "claude-code", Revision: 1, Imported: 1}}}}); err != nil {
 			t.Fatalf("standby fixture: %v", err)
 		}
@@ -372,7 +372,7 @@ func TestCrewHandbackTakesServerCopyKeepsBothAndRefusesOthers(t *testing.T) {
 	}
 	writer := func() string {
 		t.Helper()
-		rows, err := readCrewStandby("team")
+		rows, err := readCrewStandby("team", "owner")
 		if err != nil {
 			t.Fatalf("standby record: %v", err)
 		}
@@ -438,7 +438,7 @@ func TestCrewHandbackTakesServerCopyKeepsBothAndRefusesOthers(t *testing.T) {
 		t.Fatalf("a routed call still in flight must hold the flip: %+v %v writer=%q", reply, err, writer())
 	}
 	api.standbyAgentCall(t.Context(), "owner", "team", crewChatCall{Operation: "agent_ask", Tab: tab, Args: json.RawMessage(`{"sender_id":"other"}`)}, false)
-	if crewStandbyInFlight("team", tab) {
+	if crewStandbyInFlight("team", "owner", tab) {
 		t.Fatal("an admitted turn must no longer count as in flight")
 	}
 
@@ -448,7 +448,7 @@ func TestCrewHandbackTakesServerCopyKeepsBothAndRefusesOthers(t *testing.T) {
 	if err != nil || !done || diverged != 0 || writer() != "" {
 		t.Fatalf("hand back: done=%t diverged=%d err=%v writer=%q", done, diverged, err, writer())
 	}
-	if api.crewStandbyRoute(t.Context(), "owner", "team", tab, "other", true) || crewStandbyInFlight("team", tab) {
+	if api.crewStandbyRoute(t.Context(), "owner", "team", tab, "other", true) || crewStandbyInFlight("team", "owner", tab) {
 		t.Fatal("after the hand back, with the Mac online, an ask must go to the Mac")
 	}
 	if len(imported) != 2 || imported[0] != macKey+"/"+native || imported[1] != macKey+"/"+native {
@@ -470,8 +470,8 @@ func TestCrewHandbackTakesServerCopyKeepsBothAndRefusesOthers(t *testing.T) {
 	if got, err := os.ReadFile(kept[0]); err != nil || string(got) != serverJournal {
 		t.Fatalf("the kept copy is not the server's version: %q %v", got, err)
 	}
-	rows, _ := readCrewStandby("team")
-	if rows[tab].KeptAt == "" || rows[tab].Sessions[macKey].Imported != 0 || crewHandbackKeptNote("team", tab) == "" {
+	rows, _ := readCrewStandby("team", "owner")
+	if rows[tab].KeptAt == "" || rows[tab].Sessions[macKey].Imported != 0 || crewHandbackKeptNote("team", "owner", tab) == "" {
 		t.Fatalf("the owner must be told both versions were kept: %+v", rows[tab])
 	}
 	doc, _ := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))
@@ -582,7 +582,7 @@ func TestCrewMacOffReadShowsOnlyTheAgentsOwnCopy(t *testing.T) {
 	if owner == "" {
 		t.Fatal("fixture Crew has no owner")
 	}
-	dir, err := crewStandbyDir("team")
+	dir, err := crewStandbyPersonDir("team", "owner")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -599,7 +599,7 @@ func TestCrewMacOffReadShowsOnlyTheAgentsOwnCopy(t *testing.T) {
 	write("own", "the agent's own chat")
 	write("thread", "a teammate's private thread")
 	// The server answers teammates here (writer=server); the owner's chat has run no turn on it and still reads.
-	if err := writeCrewStandby("team", map[string]crewAgentStandby{"helper01": {Tab: "helper01", Writer: "server", Sessions: map[string]crewAgentStandbySession{
+	if err := writeCrewStandby("team", "owner", map[string]crewAgentStandby{"helper01": {Tab: "helper01", Writer: "server", Sessions: map[string]crewAgentStandbySession{
 		"mac-crew:chat:helper01":                   {Dir: "own", ConversationID: "conversation-own"},
 		"mac-crew:chat:with-helper01-0123456789ab": {Dir: "thread", ConversationID: "conversation-thread"},
 	}}}); err != nil {
@@ -848,7 +848,7 @@ func TestOwnerTeamCopyIsAttachedToServerTurnsAndNamedInTheNote(t *testing.T) {
 	if crewOwnerCopyWanted(team) || len(crewTeamServerFolders(&UserClaims{UserID: "owner"})) != 0 {
 		t.Fatal("the owner's team copy was attached before any agent could answer from the server")
 	}
-	if err = writeCrewStandby("team", map[string]crewAgentStandby{"main": {Tab: "main", Location: "standby", PairID: "owner-pair", Revision: 1}}); err != nil {
+	if err = writeCrewStandby("team", "owner", map[string]crewAgentStandby{"main": {Tab: "main", Location: "standby", PairID: "owner-pair", Revision: 1}}); err != nil {
 		t.Fatal(err)
 	}
 	if !crewOwnerCopyWanted(team) {
@@ -938,5 +938,97 @@ func TestCrewHandbackMuseSessionEndAloneIsNotADivergence(t *testing.T) {
 	server := bundleOf(shared + line("session.end", "server-end") + line("message", "3"))
 	if got := crewHandbackDecide(mac, server); got != "import" {
 		t.Fatalf("the Mac took the server's newer version: %q", got)
+	}
+}
+
+// Always on for every Team member (owner, 6 Nov: Team members are equal): a joined member's Mac keeps its own standby
+// rows, apart from the owner's, even for the same agent tab (both have a Main). Each person's pair reaches only that
+// person's rows and staging; a person only invited, or a member whose agents work on the website, has no Mac to copy.
+func TestCrewStandbyMemberRowsAreSeparateAndPairBound(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	api := f.api
+	const memberPeer = "6f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f"
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatalf("pair fixture: %v", err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{
+		{UserID: "other", Where: "mac", MacPair: "other-pair"},
+		{UserID: "invitee", Invited: true, Where: "mac", MacPair: "invitee-pair"},
+		{UserID: "webby"},
+	}}); err != nil {
+		t.Fatalf("team fixture: %v", err)
+	}
+	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}}); err != nil {
+		t.Fatalf("shared agents fixture: %v", err)
+	}
+	// The agent list each member's Mac last sent.
+	crewMacTeamTabsCache.Store("team\x00other", crewMacTeamTabsRead{tabs: []crewMacTeamTab{{Person: "other", Tab: "main"}}})
+	crewMacTeamTabsCache.Store("team\x00webby", crewMacTeamTabsRead{tabs: []crewMacTeamTab{{Person: "webby", Tab: "main"}}})
+	t.Cleanup(func() { crewMacTeamTabsCache.Delete("team\x00other"); crewMacTeamTabsCache.Delete("team\x00webby") })
+
+	for person, want := range map[string]bool{"owner": true, "other": true, "invitee": false, "webby": false} {
+		if ok, reason := crewStandbyEligible("team", person, "main"); ok != want {
+			t.Fatalf("eligibility of %s: %t %s", person, ok, reason)
+		}
+	}
+
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	member := &UserClaims{UserID: "other", Username: "other"}
+	ownerRoots, err := api.crewSyncRoots(context.WithValue(t.Context(), UserContextKey, owner), owner, "team")
+	if err != nil {
+		t.Fatalf("owner roots: %v", err)
+	}
+	memberRoots, _, isMember, err := api.crewMemberTransfer(context.WithValue(t.Context(), UserContextKey, member), member, "team", "other-pair")
+	if err != nil || !isMember || memberRoots.Private == ownerRoots.Private {
+		t.Fatalf("member roots must be their own: %t %v", isMember, err)
+	}
+	const native = "0f8fad5b-d9cb-469f-a165-70867728950e"
+	store := func(claims *UserClaims, pair, peer, key, journal string, roots crewroot.Roots) (*crewStandbyReply, error) {
+		t.Helper()
+		sum := sha256.Sum256([]byte(journal))
+		b := &sessiontransfer.Bundle{Provider: "claude-code", Format: "claude-jsonl", Transport: "structured", SessionID: native, Workspace: "/work/crew",
+			Files: map[string]sessiontransfer.File{"session.jsonl": {Size: int64(len(journal)), SHA256: hex.EncodeToString(sum[:])}}}
+		stage, err := crewNativeStage(roots, b)
+		if err == nil {
+			err = os.WriteFile(filepath.Join(stage, "session.jsonl"), []byte(journal), 0o600)
+		}
+		if err != nil {
+			t.Fatalf("native stage: %v", err)
+		}
+		item := crewStandbySendItem{Key: key, Conversation: &crewHandoffConversation{ConversationID: "conversation-" + claims.UserID, Native: b}}
+		out, err := api.crewSync(context.WithValue(t.Context(), UserContextKey, claims), claims, "team", crewSyncRequest{Action: "standby_store", PairID: pair, Standby: &crewStandbyRequest{Tab: "main", Peer: peer, Sessions: []crewStandbySendItem{item}}})
+		return out.Standby, err
+	}
+	ownerJournal := `{"sessionId":"` + native + `","from":"owner"}` + "\n"
+	memberJournal := `{"sessionId":"` + native + `","from":"member"}` + "\n"
+	if reply, err := store(owner, "owner-pair", "", "mac-crew", ownerJournal, ownerRoots); err != nil || !reply.Eligible || reply.Event != "stored" {
+		t.Fatalf("owner copy: %+v %v", reply, err)
+	}
+	if reply, err := store(member, "other-pair", memberPeer, memberPeer, memberJournal, memberRoots); err != nil || !reply.Eligible || reply.Event != "stored" || reply.Revision != 1 {
+		t.Fatalf("member copy: %+v %v", reply, err)
+	}
+	// Each pair reaches only its own person's rows.
+	if _, err := store(member, "owner-pair", memberPeer, memberPeer, memberJournal+"x", memberRoots); err == nil {
+		t.Fatal("the owner's pair wrote a member's row")
+	}
+	if _, err := store(owner, "other-pair", "", "mac-crew", ownerJournal+"x", ownerRoots); err == nil {
+		t.Fatal("a member's pair wrote the owner's row")
+	}
+	if _, err := store(member, "other-pair", "", memberPeer, memberJournal+"x", memberRoots); err == nil {
+		t.Fatal("a member's copy without the Mac's own project was stored")
+	}
+	for person, want := range map[string]struct{ pair, key, journal string }{
+		"owner": {"owner-pair", "mac-crew", ownerJournal},
+		"other": {"other-pair", memberPeer, memberJournal},
+	} {
+		rows, err := readCrewStandby("team", person)
+		session, kept := rows["main"].Sessions[want.key]
+		dir, _ := crewStandbyPersonDir("team", person)
+		got, readErr := os.ReadFile(filepath.Join(dir, "main", session.Dir, "native", "session.jsonl"))
+		if err != nil || len(rows) != 1 || !kept || len(rows["main"].Sessions) != 1 || rows["main"].PairID != want.pair || rows["main"].Revision != 1 || rows["main"].User != person || readErr != nil || string(got) != want.journal {
+			t.Fatalf("%s must keep only their own Main: %+v %v %v", person, rows, err, readErr)
+		}
 	}
 }

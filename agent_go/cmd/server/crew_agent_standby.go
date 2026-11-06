@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
@@ -32,7 +33,10 @@ import (
 // crewStandbyRequest: standby_check names the agent (and, per session, the fingerprint the Mac has now);
 // standby_store carries exactly one session whose native bundle was just synced to this server's native stage.
 type crewStandbyRequest struct {
-	Tab      string                `json:"tab"`
+	Tab string `json:"tab"`
+	// Peer is the sending Mac's own project for this Crew. The owner's Mac is known from the Crew's pair; a member's
+	// Mac is not (the Team record keeps only its pair), so it names itself, and only for that member's own rows.
+	Peer     string                `json:"peer,omitempty"`
 	Sessions []crewStandbySendItem `json:"sessions,omitempty"`
 	// MacOnly (standby_check): what this Crew uses that only the owner's Mac has, names only (crewTeamMacOnly), for the
 	// note a server turn gets (crewStandbyServerNote). Nil keeps the last list.
@@ -70,6 +74,10 @@ type crewStandbyReply struct {
 // crewAgentStandby is one agent's standby copy on the server: "standby" means the server holds a current copy and the
 // Mac runs the agent.
 type crewAgentStandby struct {
+	// User is the person whose Mac agent this copy is (owner, 6 Nov: Team members are equal): the owner or a joined
+	// member on their Mac. Peer is that Mac's own project for the Crew. Rows are kept per person and tab.
+	User     string                             `json:"user"`
+	Peer     string                             `json:"peer,omitempty"`
 	Tab      string                             `json:"tab"`
 	Location string                             `json:"location"`
 	PairID   string                             `json:"pair_id"`
@@ -106,8 +114,9 @@ type crewAgentStandbySession struct {
 
 var crewStandbyLocks sync.Map
 
-func crewStandbyLock(project string) *sync.Mutex {
-	value, _ := crewStandbyLocks.LoadOrStore(project, &sync.Mutex{})
+// crewStandbyLock serialises one person's standby rows of one Crew.
+func crewStandbyLock(project, person string) *sync.Mutex {
+	value, _ := crewStandbyLocks.LoadOrStore(project+"\x00"+person, &sync.Mutex{})
 	return value.(*sync.Mutex)
 }
 
@@ -120,8 +129,46 @@ func crewStandbyDir(project string) (string, error) {
 	return filepath.Join(filepath.Dir(p), project+"-always-on"), nil
 }
 
-func readCrewStandby(project string) (map[string]crewAgentStandby, error) {
+// crewStandbyPersonDir holds one person's standby record and copies: people/<person>/standby.json, mac-only.json and
+// <tab>/<copy>. A member's folder is never reachable with the owner's pair, nor the owner's with a member's.
+func crewStandbyPersonDir(project, person string) (string, error) {
+	if strings.TrimSpace(person) == "" {
+		return "", fmt.Errorf("a standby copy belongs to a person")
+	}
 	dir, err := crewStandbyDir(project)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "people", sanitizeUserIDForPath(person)), nil
+}
+
+// crewStandbyPeople are the people who have standby rows in this Crew.
+func crewStandbyPeople(project string) []string {
+	dir, err := crewStandbyDir(project)
+	if err != nil {
+		return nil
+	}
+	entries, _ := os.ReadDir(filepath.Join(dir, "people"))
+	var out []string
+	for _, entry := range entries {
+		var rows map[string]crewAgentStandby
+		raw, err := os.ReadFile(filepath.Join(dir, "people", entry.Name(), "standby.json"))
+		if err != nil || json.Unmarshal(raw, &rows) != nil {
+			continue
+		}
+		for _, row := range rows {
+			if row.User != "" {
+				out = append(out, row.User)
+			}
+			break
+		}
+	}
+	return out
+}
+
+// readCrewStandby is one person's rows of this Crew, by agent tab.
+func readCrewStandby(project, person string) (map[string]crewAgentStandby, error) {
+	dir, err := crewStandbyPersonDir(project, person)
 	if err != nil {
 		return nil, err
 	}
@@ -143,11 +190,13 @@ func readCrewStandby(project string) (map[string]crewAgentStandby, error) {
 // conversations, as chat events, for reading it while the Mac is off. A teammate's private thread with an agent is
 // never served here, whoever asks.
 func crewStandbyHistoryEvents(project, conversationID string) []json.RawMessage {
-	rows, err := readCrewStandby(project)
+	// The owner's Mac conversations (members' are served in a later step).
+	owner := ownerOfCrewProjectID(project)
+	rows, err := readCrewStandby(project, owner)
 	if err != nil || conversationID == "" {
 		return nil
 	}
-	dir, err := crewStandbyDir(project)
+	dir, err := crewStandbyPersonDir(project, owner)
 	if err != nil {
 		return nil
 	}
@@ -179,7 +228,7 @@ func crewStandbyHistoryEvents(project, conversationID string) []json.RawMessage 
 // crewStandbyServedEvents is the server's own chat of a Mac conversation while the server answers for its agent
 // (writer "server"): the copy imported as the owner's chat with the same conversation id, with the turns answered here.
 func (api *StreamingAPI) crewStandbyServedEvents(owner, project, conversationID string) []json.RawMessage {
-	rows, err := readCrewStandby(project)
+	rows, err := readCrewStandby(project, owner)
 	if err != nil || conversationID == "" || api.eventStore == nil {
 		return nil
 	}
@@ -219,9 +268,9 @@ func (api *StreamingAPI) crewStandbyServedEvents(owner, project, conversationID 
 	return nil
 }
 
-// crewStandbyMacOnly is the last list of what only the owner's Mac has, as its Mac sent it.
-func crewStandbyMacOnly(project string) []crewTeamMacOnlyItem {
-	dir, err := crewStandbyDir(project)
+// crewStandbyMacOnly is the last list of what only this person's Mac has, as their Mac sent it.
+func crewStandbyMacOnly(project, person string) []crewTeamMacOnlyItem {
+	dir, err := crewStandbyPersonDir(project, person)
 	if err != nil {
 		return nil
 	}
@@ -232,13 +281,17 @@ func crewStandbyMacOnly(project string) []crewTeamMacOnlyItem {
 	return items
 }
 
-func writeCrewStandby(project string, rows map[string]crewAgentStandby) error {
-	dir, err := crewStandbyDir(project)
+func writeCrewStandby(project, person string, rows map[string]crewAgentStandby) error {
+	dir, err := crewStandbyPersonDir(project, person)
 	if err != nil {
 		return err
 	}
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return err
+	}
+	for tab, row := range rows {
+		row.User = person // every row says whose it is, whoever filled it in
+		rows[tab] = row
 	}
 	return fsutil.WriteJSONAtomic(filepath.Join(dir, "standby.json"), rows, 0o600)
 }
@@ -260,10 +313,12 @@ func crewStandbyFingerprint(c *crewHandoffConversation) string {
 	return hex.EncodeToString(sum.Sum(nil))
 }
 
-// crewStandbyEligible is the server's answer to "keep a copy of this agent": the Crew is the owner's Mac Crew's online
-// copy, its Team is on, the agent is listed for the Team, it is In team (the owner's own choice, else All agents in
-// team), and it is not published (a published agent already runs here).
-func crewStandbyEligible(project, owner, tab string) (bool, string) {
+// crewStandbyEligible is the server's answer to "keep a copy of this person's agent": the Crew is a Mac Crew's online
+// copy, its Team is on, and the person is the owner (the agent is listed for the Team) or a joined member whose agents
+// work on their Mac (the agent is in their Mac's list); the agent is In team for that person; and, for the owner's, it
+// is not published (a published agent already runs here). A person only invited, or a member on the website, is not
+// eligible: they have no Mac to copy from.
+func crewStandbyEligible(project, person, tab string) (bool, string) {
 	if !crewRelayTwin(project) {
 		return false, "not_mac_crew"
 	}
@@ -271,14 +326,30 @@ func crewStandbyEligible(project, owner, tab string) (bool, string) {
 	if err != nil || !t.On {
 		return false, "team_off"
 	}
-	if owner == "" || t.OwnerID != owner || ownerOfCrewProjectID(project) != owner {
+	if person == "" || t.OwnerID == "" || ownerOfCrewProjectID(project) != t.OwnerID {
 		return false, "not_owner"
 	}
-	if !slices.ContainsFunc(readMacSharedAgents(project), func(a macSharedAgent) bool { return a.Tab == tab && crewTeamInTeam(a) }) {
-		return false, "not_listed"
+	if person == t.OwnerID {
+		if !slices.ContainsFunc(readMacSharedAgents(project), func(a macSharedAgent) bool { return a.Tab == tab && crewTeamInTeam(a) }) {
+			return false, "not_listed"
+		}
+	} else {
+		if !t.member(person) {
+			return false, "not_member"
+		}
+		if _, onMac := t.memberMac(person); !onMac {
+			return false, "not_on_mac"
+		}
+		if !crewMemberMacTabKnown(project, person, tab) {
+			return false, "not_listed"
+		}
 	}
-	if !t.agentInTeam(owner, tab) {
+	if !t.agentInTeam(person, tab) {
 		return false, "only_me"
+	}
+	if person != t.OwnerID {
+		// Placements are the owner's tabs: a member's "main" is not the owner's published one.
+		return true, ""
 	}
 	if placements, err := readCrewAgentPlacements(project); err != nil {
 		return false, "placement_unreadable"
@@ -288,35 +359,65 @@ func crewStandbyEligible(project, owner, tab string) (bool, string) {
 	return true, ""
 }
 
+// crewMemberMacTabKnown: the tab is in the last agent list read from this member's Mac (cache, else the saved list).
+func crewMemberMacTabKnown(project, person, tab string) bool {
+	var tabs []crewMacTeamTab
+	if v, ok := crewMacTeamTabsCache.Load(project + "\x00" + person); ok {
+		tabs = v.(crewMacTeamTabsRead).tabs
+	} else if saved, ok := readSavedCrewMacTabs(project, person); ok {
+		tabs = saved
+	}
+	return slices.ContainsFunc(tabs, func(t crewMacTeamTab) bool { return t.Tab == tab })
+}
+
+// crewStandbyPairPeer is the pair of this person's Mac for this Crew and that Mac's own project: the owner's from the
+// Crew's binding, a member's from the Team record (the pair) and their row (the project they named).
+func crewStandbyPairPeer(project, person string, row crewAgentStandby) (pair, peer string) {
+	if person == "" {
+		return "", ""
+	}
+	if person == ownerOfCrewProjectID(project) {
+		if b, err := crewroot.ReadSync(project); err == nil && b != nil {
+			return b.PairID, b.PeerProjectID
+		}
+		return "", ""
+	}
+	if t, err := readCrewTeam(project); err == nil && ownerOfCrewProjectID(project) == t.OwnerID {
+		pair, _ = t.memberMac(person)
+	}
+	return pair, row.Peer
+}
+
 // pruneCrewStandby drops every standby copy that is no longer allowed: the agent turned Only me or left the Team's
-// list, the Team turned off, the agent was published, or the Crew's pair changed. Runs after each Team record and
-// shared-agent list write, and on each standby request.
+// list, the Team turned off, the person left, the agent was published, or the person's pair changed. Runs after each
+// Team record and shared-agent list write, and on each standby request.
 func pruneCrewStandby(project string) {
 	if IsLocalMode() {
 		return
 	}
-	dir, err := crewStandbyDir(project)
+	for _, person := range crewStandbyPeople(project) {
+		pruneCrewStandbyPerson(project, person)
+	}
+}
+
+func pruneCrewStandbyPerson(project, person string) {
+	dir, err := crewStandbyPersonDir(project, person)
 	if err != nil {
 		return
 	}
-	if _, err = os.Stat(filepath.Join(dir, "standby.json")); err != nil {
-		return
-	}
-	lock := crewStandbyLock(project)
+	lock := crewStandbyLock(project, person)
 	lock.Lock()
 	defer lock.Unlock()
-	rows, err := readCrewStandby(project)
-	if err != nil {
+	rows, err := readCrewStandby(project, person)
+	if err != nil || len(rows) == 0 {
 		return
 	}
-	binding, _ := crewroot.ReadSync(project)
-	owner := ownerOfCrewProjectID(project)
 	changed := false
 	for tab, row := range rows {
 		reason := ""
-		if binding == nil || binding.PairID != row.PairID {
+		if pair, _ := crewStandbyPairPeer(project, person, row); pair == "" || pair != row.PairID {
 			reason = "pair_changed"
-		} else if ok, why := crewStandbyEligible(project, owner, tab); !ok && row.Writer != "server" {
+		} else if ok, why := crewStandbyEligible(project, person, tab); !ok && row.Writer != "server" {
 			// A copy the server answers from holds turns the Mac does not have yet: it stays until handed back.
 			reason = why
 		}
@@ -330,16 +431,16 @@ func pruneCrewStandby(project string) {
 		crewStandbyLog(project, tab, "dropped", 0, started, " reason="+reason)
 	}
 	if changed {
-		if err = writeCrewStandby(project, rows); err != nil {
+		if err = writeCrewStandby(project, person, rows); err != nil {
 			log.Printf("[ALWAYS_ON] project=%s event=drop_record_failed", project)
 		}
 	}
 }
 
 // dropCrewStandbyTab removes one agent's copy at once (a standby request for an agent that is no longer eligible).
-// The caller holds the project's standby lock.
-func dropCrewStandbyTab(project, tab, reason string) {
-	rows, err := readCrewStandby(project)
+// The caller holds the person's standby lock.
+func dropCrewStandbyTab(project, person, tab, reason string) {
+	rows, err := readCrewStandby(project, person)
 	if err != nil {
 		return
 	}
@@ -347,11 +448,11 @@ func dropCrewStandbyTab(project, tab, reason string) {
 		return // a copy the server answers from stays until it is handed back to the Mac
 	}
 	started := time.Now()
-	if dir, err := crewStandbyDir(project); err == nil {
+	if dir, err := crewStandbyPersonDir(project, person); err == nil {
 		_ = os.RemoveAll(filepath.Join(dir, tab))
 	}
 	delete(rows, tab)
-	if writeCrewStandby(project, rows) == nil {
+	if writeCrewStandby(project, person, rows) == nil {
 		crewStandbyLog(project, tab, "dropped", 0, started, " reason="+reason)
 	}
 }
@@ -365,8 +466,67 @@ func crewStandbyKeyTab(peer, key string) string {
 	return crewAgentPublishTab(key)
 }
 
+// crewStandbyAdmit admits the calling person's Mac for standby copies and hand back. The Crew's owner is admitted by
+// the Crew's own pair (crewTransferBinding), exactly as before. A joined Team member is admitted only by the pair the
+// Team recorded for them (crewMemberTransfer); the owner's pair never reaches a member's rows or the member's the owner's.
+// peer is the member Mac's own project (see crewStandbyRequest.Peer).
+func (api *StreamingAPI) crewStandbyAdmit(ctx context.Context, claims *UserClaims, id, pair, peer string) (crewroot.Roots, *crewroot.SyncBinding, error) {
+	roots, binding, member, err := api.crewMemberTransfer(ctx, claims, id, pair)
+	if member {
+		if err == nil {
+			if _, e := uuid.Parse(peer); e != nil {
+				return roots, nil, fmt.Errorf("name the project this Mac holds for the Crew")
+			}
+			binding.PeerProjectID = peer
+		}
+		return roots, binding, err
+	}
+	return api.crewTransferBinding(ctx, claims, id, pair)
+}
+
+// crewMemberTransfer: member is true when the caller is a joined Team member who is not the Crew's owner. Admitted
+// only when their agents work on their Mac and pair is the one the Team recorded for them. The returned roots are the
+// Crew's, narrowed to this member: their own private staging folder (native sessions and chunks never share the
+// owner's) and their own copy folder.
+func (api *StreamingAPI) crewMemberTransfer(ctx context.Context, claims *UserClaims, id, pair string) (roots crewroot.Roots, binding *crewroot.SyncBinding, member bool, err error) {
+	if IsLocalMode() || claims == nil || claims.UserID == "" {
+		return roots, nil, false, nil
+	}
+	t, e := readCrewTeam(id)
+	if e != nil || t.OwnerID == "" || t.OwnerID == claims.UserID || ownerOfCrewProjectID(id) != t.OwnerID || !t.member(claims.UserID) {
+		return roots, nil, false, nil
+	}
+	if failure := crewSyncClaimsGate(claims, id); failure != nil {
+		return roots, nil, true, failure
+	}
+	recorded, onMac := t.memberMac(claims.UserID)
+	if !onMac || pair == "" || recorded != pair {
+		return roots, nil, true, &crewSyncFailure{Status: 409, Code: "wrong_pair", Message: "use your own Mac's connection for this Crew"}
+	}
+	rec, ok := crewOwnerRecord(id)
+	if !ok || rec.Folder == "" {
+		return roots, nil, true, fmt.Errorf("this Crew's folder is unavailable")
+	}
+	roots, found, e := crewStorageRoots("Crew/" + rec.Folder)
+	if e != nil || !found {
+		return roots, nil, true, fmt.Errorf("this Crew's folder is unavailable")
+	}
+	roots.Owner = claims.UserID
+	roots.Private = filepath.Join(roots.Private, "members", sanitizeUserIDForPath(claims.UserID))
+	if e = os.MkdirAll(roots.Private, 0o700); e != nil {
+		return roots, nil, true, e
+	}
+	if files, e := crewTeamMemberCopyRoot(id, claims.UserID); e == nil {
+		roots.Files = files
+	}
+	return roots, &crewroot.SyncBinding{Mode: "relay", PairID: pair, Side: "server", Editing: "local"}, true, nil
+}
+
 func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserClaims, id string, in crewSyncRequest) (crewSyncReply, error) {
-	roots, binding, err := api.crewTransferBinding(ctx, claims, id, in.PairID)
+	if in.Standby == nil {
+		return crewSyncReply{}, fmt.Errorf("choose one of this Crew's agents")
+	}
+	roots, binding, err := api.crewStandbyAdmit(ctx, claims, id, in.PairID, in.Standby.Peer)
 	if err != nil {
 		return crewSyncReply{}, err
 	}
@@ -374,34 +534,39 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 	if binding.Mode != "relay" || binding.Editing != "local" || binding.PendingAction != "" || binding.ArchiveOnly {
 		return out, &crewSyncFailure{Status: 409, Code: "wrong_pair", Message: "keep a standby copy from the Mac that holds this Crew"}
 	}
-	if in.Standby == nil || !crewMacTabID(in.Standby.Tab) {
+	if !crewMacTabID(in.Standby.Tab) {
 		return out, fmt.Errorf("choose one of this Crew's agents")
 	}
-	tab := in.Standby.Tab
-	lock := crewStandbyLock(id)
+	tab, person := in.Standby.Tab, claims.UserID
+	if person != ownerOfCrewProjectID(id) {
+		// A member's agent list is the one their Mac last sent: read it now (at most every 15 s) so a new agent is
+		// known before it is judged (crewMemberMacTabKnown).
+		personMacTabs(ctx, person, id)
+	}
+	lock := crewStandbyLock(id, person)
 	lock.Lock()
 	defer lock.Unlock()
 	reply := &crewStandbyReply{}
 	out.Standby = reply
-	rows, err := readCrewStandby(id)
+	rows, err := readCrewStandby(id, person)
 	if err != nil {
 		return out, err
 	}
 	row := rows[tab]
-	if row.PairID != "" && row.PairID != binding.PairID {
+	if row.PairID != "" && (row.PairID != binding.PairID || row.Peer != "" && row.Peer != binding.PeerProjectID && person != ownerOfCrewProjectID(id)) {
 		row = crewAgentStandby{}
 	}
 	reply.Writer = row.Writer
-	if ok, reason := crewStandbyEligible(id, claims.UserID, tab); !ok {
+	if ok, reason := crewStandbyEligible(id, person, tab); !ok {
 		reply.Reason = reason
-		dropCrewStandbyTab(id, tab, reason)
+		dropCrewStandbyTab(id, person, tab, reason)
 		return out, nil
 	}
 	reply.Eligible = true
 	reply.Revision = row.Revision
 	if in.Action == "standby_check" {
 		if in.Standby.MacOnly != nil {
-			if dir, err := crewStandbyDir(id); err == nil && os.MkdirAll(dir, 0o700) == nil {
+			if dir, err := crewStandbyPersonDir(id, person); err == nil && os.MkdirAll(dir, 0o700) == nil {
 				_ = fsutil.WriteJSONAtomic(filepath.Join(dir, "mac-only.json"), in.Standby.MacOnly, 0o600)
 			}
 		}
@@ -449,7 +614,7 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 		crewStandbyLog(id, tab, "unchanged", 0, started, " copy="+name)
 		return out, nil
 	}
-	dir, err := crewStandbyDir(id)
+	dir, err := crewStandbyPersonDir(id, person)
 	if err != nil {
 		return out, err
 	}
@@ -544,13 +709,13 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 	if row.Sessions == nil {
 		row.Sessions = map[string]crewAgentStandbySession{}
 	}
-	row.Tab, row.Location, row.PairID = tab, "standby", binding.PairID
+	row.User, row.Peer, row.Tab, row.Location, row.PairID = person, binding.PeerProjectID, tab, "standby", binding.PairID
 	row.Revision++
 	row.CopiedAt = session.StoredAt
 	session.Revision = row.Revision
 	row.Sessions[item.Key] = session
 	rows[tab] = row
-	if err = writeCrewStandby(id, rows); err != nil {
+	if err = writeCrewStandby(id, person, rows); err != nil {
 		return out, err
 	}
 	reply.Event, reply.Revision = event, row.Revision
