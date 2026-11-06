@@ -278,7 +278,7 @@ func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.R
 		record.handoffAgentToolsMode = main.handoffAgentToolsMode
 		sum := sha256.Sum256([]byte(item.Key))
 		transfer := fmt.Sprintf("always-on/%s/%s/%s", tab, hex.EncodeToString(sum[:8]), item.Fingerprint)
-		err = api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer, &conversation, *record, true)
+		err = api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer, &conversation, *record, crewImportNative)
 	}
 	if errors.Is(err, sessiontransfer.ErrDiverged) {
 		return "diverged", bytes, keepCrewHandbackAside(roots, tab, item.Key, &conversation)

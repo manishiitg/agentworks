@@ -106,7 +106,7 @@ func TestPublishAgentFileSelectionCannotEscapeCrew(t *testing.T) {
 
 func TestPublishAgentRefusesArchiveInsteadOfClaimingNativeResume(t *testing.T) {
 	api := &StreamingAPI{}
-	err := api.importCrewHandoffConversation(context.Background(), &UserClaims{UserID: "owner"}, crewroot.Roots{}, "pair", "transfer", &crewHandoffConversation{ConversationID: "conversation-test"}, ProductConversationRecord{}, true)
+	err := api.importCrewHandoffConversation(context.Background(), &UserClaims{UserID: "owner"}, crewroot.Roots{}, "pair", "transfer", &crewHandoffConversation{ConversationID: "conversation-test"}, ProductConversationRecord{}, crewImportNative)
 	if err == nil {
 		t.Fatal("native publish accepted an archive without its native session")
 	}
