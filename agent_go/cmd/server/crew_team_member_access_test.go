@@ -124,6 +124,13 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	if w := call("member", "agent-visibility", `{"agent_key":"`+key+`","in_team":true}`); w.Code != 200 {
 		t.Fatalf("back in team: %d", w.Code)
 	}
+	// A tool names an agent by the name the Team tab shows ("Main"), among the caller's own agents only.
+	if w := call("member", "agent-visibility", `{"agent_key":"Main","in_team":true}`); w.Code != 200 {
+		t.Fatalf("own agent by name Main: %d %s", w.Code, w.Body.String())
+	}
+	if w := call("member", "agent-visibility", `{"agent_key":"`+crewOwnerDefaultChatKey("member-access", "owner")+`","in_team":true}`); w.Code != 403 {
+		t.Fatalf("another person's Main: %d %s", w.Code, w.Body.String())
+	}
 	if w := call("member", "agent-rule", `{"agent_key":"`+key+`","when_others_ask":"Only answer about the website."}`); w.Code != 200 {
 		t.Fatalf("own rule: %d %s", w.Code, w.Body.String())
 	}

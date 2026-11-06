@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -317,6 +318,23 @@ func TestCrewTeamWholeCrewAsksFirst(t *testing.T) {
 	}
 	if change.ConfirmLabel == "" || change.Refusal != "" || !slices.Contains(change.FoldersAdded, "code/") || slices.Contains(change.FoldersAdded, "team/") || !slices.Equal(change.People, []string{"member"}) || len(change.Means) == 0 {
 		t.Fatalf("preview: %+v", change)
+	}
+	// A member's chat call gets the owner-only refusal, not "name the folders".
+	memberUser := &UserClaims{UserID: "member", Username: "member"}
+	if _, err := api.crewTeamConfigureChat(context.WithValue(t.Context(), UserContextKey, memberUser), memberUser, nil, "whole-ask", "whole-ask", "configure", map[string]any{"share": "folders"}); err == nil || !strings.Contains(err.Error(), "Only ") {
+		t.Fatalf("member share=folders: %v", err)
+	}
+	// The files listing is paged so a Whole Crew can still be listed from chat.
+	var many []map[string]any
+	for i := range 450 {
+		many = append(many, map[string]any{"path": fmt.Sprintf("d/f%03d.md", i)})
+	}
+	raw, _ := json.Marshal(map[string]any{"files": many})
+	if page, err := crewTeamFilesPage(raw, "", 400); err != nil || !strings.Contains(string(page), "f449.md") || strings.Contains(string(page), "next_offset") {
+		t.Fatalf("last page: %v %s", err, page)
+	}
+	if page, _ := crewTeamFilesPage(raw, "d", 0); !strings.Contains(string(page), `"next_offset":200`) || strings.Contains(string(page), "f200.md") {
+		t.Fatalf("first page: %s", page)
 	}
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
 	ctx := context.WithValue(t.Context(), UserContextKey, owner)
