@@ -85,18 +85,32 @@ const tabCache = new Map<string, TabEntry>()
 function watchTeamTab(project: string, key: string, listener: (state: TeamTabState) => void) {
   let entry = tabCache.get(key)
   if (!entry) {
-    let seq = 0
+    // A turn sends many crew_panel notices: one read at a time (a notice during a read reads once more after it), and an
+    // unchanged reply is not published, so the tab strip, left menu and agent cards only re-render on a real change.
+    let reading = false
+    let again = false
+    let last = ''
     const created: TabEntry = { state: { error: '' }, listeners: new Set(), load: async () => {}, stop: () => {} }
-    const publish = (state: TeamTabState) => { created.state = state; created.listeners.forEach(notify => notify(state)) }
+    const publish = (state: TeamTabState) => {
+      const text = JSON.stringify(state)
+      if (text === last) return
+      last = text
+      created.state = state
+      created.listeners.forEach(notify => notify(state))
+    }
     created.load = async () => {
-      const mine = ++seq
+      if (reading) { again = true; return }
+      reading = true
       try {
         const target = await teamTarget(project)
-        if (mine !== seq) return
-        if (!target) { publish({ unbound: true, error: '' }); return }
-        const view = await teamRequest<TeamTabView>(target, '/tab')
-        if (mine === seq) publish({ view, target: { ...target, folderId: view.team.folder.id }, error: '' })
-      } catch (e) { if (mine === seq) publish({ ...created.state, error: teamError(e) }) }
+        if (!target) publish({ unbound: true, error: '' })
+        else {
+          const view = await teamRequest<TeamTabView>(target, '/tab')
+          publish({ view, target: { ...target, folderId: view.team.folder.id }, error: '' })
+        }
+      } catch (e) { publish({ ...created.state, error: teamError(e) }) }
+      reading = false
+      if (again) { again = false; void created.load() }
     }
     const reload = () => { void created.load() }
     const timer = window.setInterval(() => { if (!document.hidden) reload() }, 15000)

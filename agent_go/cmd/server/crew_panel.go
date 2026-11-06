@@ -355,6 +355,11 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 		}
 	}
 	for destination, rows := range groups {
+		// The left menu's Automations group lists one row per kind (Schedules, Watchers, Webhooks) with how many.
+		if strings.HasPrefix(destination, "schedules:") {
+			details[destination] = fmt.Sprint(len(rows))
+			continue
+		}
 		if !strings.HasPrefix(destination, "mcp:") {
 			continue
 		}

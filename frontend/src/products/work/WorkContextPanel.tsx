@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bot, CalendarClock, ChevronRight, FolderSync, Globe, Laptop, LayoutDashboard, Link2, RefreshCw, Settings2, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
+import { Bot, CalendarClock, FolderSync, Globe, Laptop, LayoutDashboard, Link2, RefreshCw, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
@@ -43,22 +43,20 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const section = (id: string) => data?.sections.find(item => item.id === id)
   const access = section('access')?.access
   const apps = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('mcp:'))
-  const allAutomations = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('schedules:'))
   const documents = (section('dashboards')?.rows || []).map((row, order) => ({ id: row.id, title: row.label, path: row.path!, order, motion: row.motion, artifact: row.artifact }))
   const browserRow = section('browser')?.rows[0]
   const browser = { connected: browserRow?.connected === true, name: browserRow?.label === 'Browser' ? undefined : browserRow?.label, label: browserRow?.detail || (section('browser')?.error ? 'Unable to check' : 'Checking…') }
   const menuOptions = { panels, enabledPanels, incomingEmail, projectId }
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const byId = new Map(inventory.map(item => [item.id, item]))
-  const automations = allAutomations.filter(item => byId.has(item.destination!))
   const accessItems = inventory.filter(item => item.group === 'Share' && item.view === 'mcp')
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const automationItems = inventory.filter(item => item.view === 'schedules')
-  const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' | 'automations' }>()
+  const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' }>()
   const computerState = access?.place
   const accessTree = access?.tree || []
   const asking = access?.asking || []
-  const showMenu = (view: 'full' | 'integrations' | 'automations') => {
+  const showMenu = (view: 'full' | 'integrations') => {
     if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     setMenu({ scope, view })
   }
@@ -87,8 +85,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       const color = connections.some(row => row.attention) ? 'text-amber-600 dark:text-amber-400' : connections.some(row => row.connected) ? 'text-emerald-600 dark:text-emerald-400' : undefined
       return <Row key={item.id} icon={item.icon} hint={connections.length && item.id !== 'mcp:connected' ? connections.map(row => row.detail).join('\n') : undefined} detail={menu.view === 'integrations' && status ? <span className={color}>{status}</span> : undefined} onClick={() => open(item)}>{item.label}</Row>
     }
-    return <WorkspaceContextCard title={{ full: 'Full menu', integrations: 'Integrations', automations: 'Automations' }[menu.view]} onBack={() => setMenu(undefined)}>
-      {menu.view !== 'full' ? <div className="space-y-0.5">{(menu.view === 'integrations' ? integrations : automationItems).map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {
+    return <WorkspaceContextCard title={{ full: 'Full menu', integrations: 'Integrations' }[menu.view]} onBack={() => setMenu(undefined)}>
+      {menu.view !== 'full' ? <div className="space-y-0.5">{integrations.map(renderItem)}</div> : CREW_MENU_GROUPS.map(group => {
         const items = inventory.filter(item => item.group === group && !(item.id === 'dashboard' && accessItems.length > 0))
         if (!items.length) return null
         const subgroups = [...new Set(items.flatMap(item => item.subgroup ? [item.subgroup] : []))]
@@ -162,9 +160,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {/* With a Share row the dashboard is a line in its tree (owner, 5 Nov: one place); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
+    {/* One row per kind with the server's count (owner, 6 Nov: no "Manage automations" hop for a handful of kinds). */}
     {automationItems.length > 0 && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={CalendarClock} detail={data?.details.automations}>
-      {automations.map(item => <Row key={item.id} icon={byId.get(item.destination!)?.icon || CalendarClock} hint={byId.get(item.destination!)?.label} detail={item.detail} onClick={() => openID(item.destination!)}>{item.label}</Row>)}
-      <Row icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={() => showMenu('automations')}>Manage automations</Row>
+      {automationItems.map(item => <Row key={item.id} icon={item.icon} detail={data?.details[item.id]} onClick={() => open(item)}>{item.label}</Row>)}
     </WorkspaceCompactGroup>}
     </>}
     {error || data?.sections.some(item => item.error || item.stale) ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>{error || (data?.sections.some(item => item.stale) ? 'Showing the last update for some sections.' : 'Some workspace status is unavailable.')}</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}

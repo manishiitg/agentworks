@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -124,15 +125,15 @@ type crewTeamTabReply struct {
 // crewTeamAskPrompts are the Access and Team cards' Ask messages (owner, 6 Nov: each looks at the current state
 // first, explains it plainly, suggests, and changes only when the person says so). The screen sends them as given.
 var crewTeamAskPrompts = map[string]string{
-	"team":    "Look at this Crew's Team: who is in it, who was invited and hasn't joined yet, and whether the Team is on. Explain it in plain words, tell me what each person can see and do, then help me add or remove people.",
-	"shares":  "Show me what this Crew's Team shares now: each shared folder with its size, or the whole Crew. Go through the Crew's other folders and what is in them, point out anything private or too big to share (keys, personal notes, large data), and suggest what to share. Change it when I say so.",
-	"agents":  "List my agents in this Crew: for each, its purpose, whether it's shared with the Team, and what it uses (apps, secret names, my personal accounts, folders). Suggest which to share and which to keep to myself, and why. Change it when I say so.",
-	"lent":    "List the apps and secrets I lend to this Crew's Team (names only, never values) and which teammates' agents use them. Point out which are my personal accounts and suggest what to keep lending or stop.",
-	"sync":    "Check this Crew's Team sync: when each person last synced, files still waiting, and any clashes where two people changed the same lines. For each clash show both versions and help me keep mine, keep theirs, or merge them.",
+	"team":        "Look at this Crew's Team: who is in it, who was invited and hasn't joined yet, and whether the Team is on. Explain it in plain words, tell me what each person can see and do, then help me add or remove people.",
+	"shares":      "Show me what this Crew's Team shares now: each shared folder with its size, or the whole Crew. Go through the Crew's other folders and what is in them, point out anything private or too big to share (keys, personal notes, large data), and suggest what to share. Change it when I say so.",
+	"agents":      "List my agents in this Crew: for each, its purpose, whether it's shared with the Team, and what it uses (apps, secret names, my personal accounts, folders). Suggest which to share and which to keep to myself, and why. Change it when I say so.",
+	"lent":        "List the apps and secrets I lend to this Crew's Team (names only, never values) and which teammates' agents use them. Point out which are my personal accounts and suggest what to keep lending or stop.",
+	"sync":        "Check this Crew's Team sync: when each person last synced, files still waiting, and any clashes where two people changed the same lines. For each clash show both versions and help me keep mine, keep theirs, or merge them.",
 	"mac":         "Check this Crew's Mac online: is my Mac online now, when was it last seen, and does it stay on because the Team is on. Explain what works while my Mac is off and what is kept on the server, in plain words. Change it when I say so.",
 	"reach":       "Show me how I can reach this Crew from anywhere: the website and phone link, and connecting ChatGPT or Claude. Walk me through the one I want to set up.",
 	"agentbridge": "List my agents in this Crew with their purpose and whether each is public on AgentBridge. Explain what public means (other people's agents on this server can find and message it, and it answers as me with my rules for when others ask), suggest which to make public and which purposes to improve, and change it when I say so. Also explain the line to paste in Claude Code, Codex or Cursor so my coding app can reach these agents.",
-	"publish": "Help me publish this Crew to the server.",
+	"publish":     "Help me publish this Crew to the server.",
 	// An agent card's Automations…, sent to that agent's own chat (crew_tab_setup.go).
 	"automations": "Show this agent's schedules, watchers and webhooks and help me change them.",
 }
@@ -142,9 +143,15 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	started := time.Now()
 	t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) })
 	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, crewTeamTabFor(r.Context(), t, claims.UserID))
+	reply := crewTeamTabFor(r.Context(), t, claims.UserID)
+	// Every screen re-reads this on each crew_panel notice: a slow reply shows here with the Crew and its size.
+	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
+		log.Printf("[CREW_TEAM_TAB] project=%s viewer=%s team_on=%v agents=%d elapsed_ms=%d", t.ProjectID, claims.UserID, t.On, len(reply.Agents), elapsed.Milliseconds())
+	}
+	externalJSON(w, reply)
 }
 
 func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabReply {
@@ -249,7 +256,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if p.UserID == t.OwnerID && mine {
 				row.AgentBridge = bridge
 			}
-			row.Setup = setups.setup(t, a, p.UserID, row.InTeam, bridge)
+			row.Setup = setups.setup(t, a, p.UserID, viewer, row.InTeam, bridge)
 			out.Agents = append(out.Agents, row)
 		}
 	}
@@ -330,7 +337,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 			changes := rule.CanMakeChanges
 			row.CanMakeChanges = &changes
 		}
-		row.Setup = setups.setup(t, a, t.OwnerID, false, row.AgentBridge)
+		row.Setup = setups.setup(t, a, t.OwnerID, t.OwnerID, false, row.AgentBridge)
 		out = append(out, row)
 	}
 	return out
