@@ -678,8 +678,14 @@ func TestCrewHandbackFromHistoryTakesExtendsKeepsBoth(t *testing.T) {
 	if event := apply(); event != "imported" || len(imported) != 2 || imported[1] != 6 {
 		t.Fatalf("a trimmed server history must add only its new turns to the Mac's full history: event=%s imported=%v", event, imported)
 	}
+	// The Mac's last message ("ok") also ends a later server turn: the earlier place where the history matches counts.
+	macHistory = say("remember pineapple", "ok")
+	server = say("remember pineapple", "ok", "and mango?", "ok")
+	if event := apply(); event != "imported" || len(imported) != 3 || imported[2] != 4 {
+		t.Fatalf("a repeated last message must not make a false divergence: event=%s imported=%v", event, imported)
+	}
 	macHistory = say("remember pineapple", "ok", "something only the Mac saw", "noted on the Mac") // both changed
-	if event := apply(); event != "diverged" || len(imported) != 2 {
+	if event := apply(); event != "diverged" || len(imported) != 3 {
 		t.Fatalf("when both changed the Mac keeps its own and the server's is kept aside: event=%s imported=%v", event, imported)
 	}
 }

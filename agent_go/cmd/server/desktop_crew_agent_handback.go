@@ -402,11 +402,17 @@ func crewHandbackMergeHistory(owner string, record ProductConversationRecord, se
 		if !same(server[at], last) {
 			continue
 		}
-		// The messages before it must match too, as far back as both go.
+		// The messages before it must match too, as far back as both go; a repeated message (an "ok") may match at
+		// another place, so a mismatch tries the next older one.
+		matches := true
 		for back := 1; back <= at && back < len(mine); back++ {
 			if !same(server[at-back], mine[len(mine)-1-back]) {
-				return nil, 0, false
+				matches = false
+				break
 			}
+		}
+		if !matches {
+			continue
 		}
 		added = len(server) - 1 - at
 		return append(append([]llmtypes.MessageContent{}, mine...), server[at+1:]...), added, true
