@@ -28,6 +28,8 @@ func (api *StreamingAPI) startDesktopCrewChats() context.CancelFunc {
 	if !IsLocalMode() {
 		return cancel
 	}
+	// Copies waiting in a debounce when the app last stopped were lost with it: offer every shared agent once.
+	time.AfterFunc(crewStandbyStartupDelay, api.catchUpCrewStandby)
 	go func() {
 		workers := map[string]context.CancelFunc{}
 		defer func() {
