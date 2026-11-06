@@ -21,6 +21,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/filemetadata"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
+	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 	"modernc.org/sqlite"
 )
 
@@ -269,7 +270,7 @@ func OpenDirectory(root *os.Root, p string, create bool) (*os.Root, error) {
 		}
 		info, err := current.Lstat(part)
 		if os.IsNotExist(err) && create {
-			if err = current.Mkdir(part, 0755); err != nil && !os.IsExist(err) {
+			if err = mkdirInParent(current, part); err != nil && !os.IsExist(err) {
 				current.Close()
 				return nil, err
 			}
@@ -298,10 +299,33 @@ func OpenDirectory(root *os.Root, p string, create bool) (*os.Root, error) {
 	}
 	return current, nil
 }
+
+// mkdirInParent makes a folder under parent's slot-group policy, so an agent's shell can write in folders the
+// service created for MCP writes and uploads.
+func mkdirInParent(parent *os.Root, name string) error {
+	info, err := parent.Stat(".")
+	if err != nil {
+		return err
+	}
+	mode := utils.ProjectDirectoryMode(info)
+	if err = parent.Mkdir(name, mode.Perm()); err != nil {
+		return err
+	}
+	if mode&os.ModeSetgid != 0 { // Apply explicitly: the service umask can remove group write.
+		return parent.Chmod(name, mode)
+	}
+	return nil
+}
+
+// readRegular returns a file's bytes and mode; for a missing file, nil and the mode a new file there gets.
 func readRegular(root *os.Root, name string) ([]byte, os.FileMode, error) {
 	info, err := root.Lstat(name)
 	if os.IsNotExist(err) {
-		return nil, 0644, nil
+		folder, statErr := root.Stat(".")
+		if statErr != nil {
+			return nil, 0, statErr
+		}
+		return nil, utils.ProjectFileMode(folder), nil
 	}
 	if err != nil {
 		return nil, 0, err

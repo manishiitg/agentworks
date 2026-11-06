@@ -275,6 +275,9 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 			record.When = *s.When
 			record.When.Cron = s.CronExpression
 			record.When.Timezone = scheduleTimezoneOrDefault(s.Timezone)
+			if record.When.Anchor == "" { // A new dated schedule: without it the clock never activates it.
+				record.When.Anchor = s.CreatedAt
+			}
 		}
 		if s.CronExpression != "" {
 			record.When.Dates = nil

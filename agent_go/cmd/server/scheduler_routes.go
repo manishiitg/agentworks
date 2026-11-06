@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 )
 
 // ScheduleRunDestination is one place a Crew schedule can run. ID "chat" is the main chat (the run_destination value), "isolated" is
@@ -115,6 +116,7 @@ type CreateScheduleRequest struct {
 	CronExpression           string                 `json:"cron_expression"`
 	Timezone                 string                 `json:"timezone"`
 	CalendarItems            []CalendarScheduleItem `json:"calendar_items,omitempty"`
+	RunAt                    string                 `json:"run_at,omitempty"` // Crew one-time: an RFC3339 moment, as in the Crew chat tool
 	Enabled                  bool                   `json:"enabled"`
 	TriggerPayload           json.RawMessage        `json:"trigger_payload,omitempty"`
 	GroupNames               []string               `json:"group_names,omitempty"`
@@ -148,6 +150,7 @@ type UpdateScheduleRequest struct {
 	CronExpression           string                 `json:"cron_expression,omitempty"`
 	Timezone                 string                 `json:"timezone,omitempty"`
 	CalendarItems            []CalendarScheduleItem `json:"calendar_items,omitempty"`
+	RunAt                    string                 `json:"run_at,omitempty"` // Crew one-time: replaces the current timing
 	Enabled                  *bool                  `json:"enabled,omitempty"`
 	TriggerPayload           json.RawMessage        `json:"trigger_payload,omitempty"`
 	GroupNames               []string               `json:"group_names,omitempty"`
@@ -282,6 +285,15 @@ func validateScheduleRequest(scheduleType string, cronExpr string, calendarItems
 	default:
 		return errBadRequest("schedule_type must be 'cron', 'calendar', or 'webhook'")
 	}
+}
+
+// crewScheduleDates is calendar_items as a Crew schedule saves them.
+func crewScheduleDates(items []CalendarScheduleItem) []projectactions.Date {
+	dates := make([]projectactions.Date, 0, len(items))
+	for _, item := range normalizeCalendarScheduleItems(items) {
+		dates = append(dates, projectactions.Date{ID: item.ID, Date: item.Date, Time: item.Time})
+	}
+	return dates
 }
 
 func normalizeCalendarScheduleItems(items []CalendarScheduleItem) []CalendarScheduleItem {
@@ -636,9 +648,12 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := validateScheduleRequest(scheduleTypeOrDefault(req.ScheduleType), req.CronExpression, req.CalendarItems); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+		// A Crew's run_at is its own timing form, so it needs no schedule_type.
+		if req.EntityType != "product" || strings.TrimSpace(req.RunAt) == "" {
+			if err := validateScheduleRequest(scheduleTypeOrDefault(req.ScheduleType), req.CronExpression, req.CalendarItems); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 		if req.EntityType == "product" {
 			if svc == nil || svc.api == nil || svc.api.projectActions == nil {
@@ -663,9 +678,19 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			runAt, err := oneTimeRunAt(map[string]interface{}{"run_at": req.RunAt}, time.Now())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			timezone := scheduleTimezoneOrDefault(req.Timezone)
+			var when *projectactions.When
+			if len(req.CalendarItems) > 0 {
+				when = &projectactions.When{Timezone: timezone, Dates: crewScheduleDates(req.CalendarItems)}
+			}
 			job, err := svc.api.projectActions.CreateProjectSchedule(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, productschedule.Schedule{
 				Name: req.Name, Description: req.Description, Enabled: req.Enabled,
-				CronExpression: req.CronExpression, Timezone: scheduleTimezoneOrDefault(req.Timezone), Messages: req.Messages, Isolated: isolated, ChatKey: chatKey,
+				CronExpression: req.CronExpression, RunAt: runAt, When: when, Timezone: timezone, Messages: req.Messages, Isolated: isolated, ChatKey: chatKey,
 			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1483,6 +1508,17 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			}
 			requestedChatKey = &key
 		}
+		runAt, runAtErr := oneTimeRunAt(map[string]interface{}{"run_at": req.RunAt}, time.Now())
+		if runAtErr != nil {
+			http.Error(w, runAtErr.Error(), http.StatusBadRequest)
+			return true
+		}
+		if len(req.CalendarItems) > 0 {
+			if itemsErr := validateScheduleRequest("calendar", "", req.CalendarItems); itemsErr != nil {
+				http.Error(w, itemsErr.Error(), http.StatusBadRequest)
+				return true
+			}
+		}
 		updated, err := ps.UpdateProjectSchedule(ctx, userID, id, func(schedule *productschedule.Schedule) {
 			if requestedChatKey != nil {
 				schedule.ChatKey = *requestedChatKey
@@ -1498,6 +1534,17 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			}
 			if req.CronExpression != "" {
 				schedule.CronExpression = req.CronExpression
+			}
+			if len(req.CalendarItems) > 0 {
+				when := projectactions.When{}
+				if schedule.When != nil {
+					when = *schedule.When
+				}
+				when.Dates = crewScheduleDates(req.CalendarItems)
+				schedule.When, schedule.CronExpression, schedule.RunAt, schedule.CadenceHours = &when, "", "", 0
+			}
+			if runAt != "" {
+				schedule.RunAt, schedule.CronExpression, schedule.CadenceHours = runAt, "", 0
 			}
 			if req.Timezone != "" {
 				schedule.Timezone = req.Timezone

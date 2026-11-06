@@ -172,7 +172,7 @@ func (e *Editor) Lifecycle(ctx context.Context, r LifecycleRequest) error {
 	}
 	switch r.Action {
 	case "mkdir":
-		return parent.Mkdir(path.Base(p), 0755)
+		return mkdirInParent(parent, path.Base(p))
 	case "delete":
 		return parent.Remove(path.Base(p))
 	case "move":

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -96,6 +97,60 @@ func TestEditorRejectsLockStateInsideRootThroughParentSymlink(t *testing.T) {
 		t.Fatal("lock state resolved inside exposed files")
 	}
 }
+
+// A slot's shell runs as the Crew folder's group. MCP writes, uploads and mkdir made 0755 folders and 0644 files, so
+// the shell got Permission denied on them. Outside a group-shared folder nothing changes, and others never get write.
+func TestNewEntriesKeepTheSlotGroupsWriteAccess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no POSIX modes")
+	}
+	editor, root, _ := testEditor(t)
+	crew := filepath.Join(root, "Crew")
+	if err := os.Mkdir(crew, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(crew, 0770|os.ModeSetgid); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	writes := []WriteRequest{
+		{Root: "Crew", Path: "project/reg/shell.txt", Content: "text", ExpectedRevision: MissingRevision, RequestID: "text", Actor: "owner"},
+		{Root: "Crew", Path: "uploads/report.pdf", Upload: []byte("%PDF"), ExpectedRevision: MissingRevision, RequestID: "upload", Actor: "owner"},
+	}
+	for _, request := range writes {
+		if _, err := editor.Write(ctx, request); err != nil {
+			t.Fatalf("%s: %v", request.Path, err)
+		}
+	}
+	if err := editor.Lifecycle(ctx, LifecycleRequest{Root: "Crew", Path: "made", Action: "mkdir", ExpectedRevision: MissingRevision}); err != nil {
+		t.Fatal(err)
+	}
+	for rel, want := range map[string]os.FileMode{
+		"project": 0770 | os.ModeSetgid | os.ModeDir, "project/reg": 0770 | os.ModeSetgid | os.ModeDir,
+		"uploads": 0770 | os.ModeSetgid | os.ModeDir, "made": 0770 | os.ModeSetgid | os.ModeDir,
+		"project/reg/shell.txt": 0660, "uploads/report.pdf": 0660,
+	} {
+		info, err := os.Stat(filepath.Join(crew, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode() != want {
+			t.Errorf("%s: mode %v, want %v", rel, info.Mode(), want)
+		}
+	}
+
+	plain := WriteRequest{Root: ".", Path: "docs/note.md", Content: "text", ExpectedRevision: MissingRevision, RequestID: "plain", Actor: "owner"}
+	if _, err := editor.Write(ctx, plain); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(filepath.Join(root, plain.Path)); err != nil || info.Mode() != 0644 {
+		t.Fatalf("plain file: %v %v", info, err)
+	}
+	if info, err := os.Stat(filepath.Join(root, "docs")); err != nil || info.Mode()&os.ModeSetgid != 0 || info.Mode().Perm()&0022 != 0 {
+		t.Fatalf("plain folder: %v %v", info, err)
+	}
+}
+
 func TestEditorGuardsRevisionsAndDurableRetries(t *testing.T) {
 	editor, root, state := testEditor(t)
 	ctx := context.Background()

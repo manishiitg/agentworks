@@ -686,6 +686,8 @@ func isWebhookRequest(r *http.Request) bool {
 		prefix = "/api/hooks/workflow/"
 	case strings.HasPrefix(r.URL.Path, "/api/hooks/product/"):
 		prefix = "/api/hooks/product/"
+	case strings.HasPrefix(r.URL.Path, "/api/hooks/"):
+		prefix = "/api/hooks/" // The one public address of a Crew or Goal webhook; the two above are its aliases.
 	default:
 		return false
 	}
