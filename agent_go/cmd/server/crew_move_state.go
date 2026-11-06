@@ -66,7 +66,7 @@ func crewMoveBytes(roots crewroot.Roots, binding *crewroot.SyncBinding) (done, t
 		for _, file := range bundle.Files {
 			total += file.Size
 		}
-		// rsync writes temporary files. Count a native journal only after its
+		// A transfer writes temporary files. Count a native journal only after its
 		// validated completion manifest was durably saved, never estimated bytes.
 		p := filepath.Join(roots.Private, "native-sync", bundle.Provider+"-"+bundle.SessionID, "manifest.json")
 		var complete sessiontransfer.Bundle

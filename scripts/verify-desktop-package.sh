@@ -24,7 +24,6 @@ RESOURCES="$STAGE/Applications/AgentWorks.app/Contents/Resources"
 "$RESOURCES/bin/tmux" -V
 [ -x "$RESOURCES/agentworks-vault" ] || { echo 'The packaged app has no Vault' >&2; exit 1; }
 printf 'Vault: %s bytes\n' "$(stat -f %z "$RESOURCES/agentworks-vault")"
-"$RESOURCES/bin/rsync" --version
 printf '[]' > "$STAGE/tools.json"
 node - "$RESOURCES/bin/mcpbridge" "$STAGE/tools.json" <<'JS'
 const { spawn } = require('node:child_process');

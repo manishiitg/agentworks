@@ -385,7 +385,6 @@ fi
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/agent_go/scripts/install-slack-cli.sh"
 # gog (Gmail connector CLI), kept on the latest checksum-verified release.
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/deploy/common/install-gog.sh"
-"${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/deploy/common/install-rsync.sh"
 # The model proxy for company logins used from the Mac app (PLAT-856-441).
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/deploy/common/install-cli-proxy-api.sh"
 case "${DEPLOY_REFRESH_TOOLS:-0}" in

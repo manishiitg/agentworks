@@ -13,9 +13,6 @@ EPOCH="$(node -p 'require(process.argv[1]).compat_epoch' "$ROOT/deploy/cli-relea
   CGO_ENABLED=0 go build -ldflags "-s -w -X main.cliVersion=$VERSION -X main.cliBuild=$BUILD -X main.cliCompatEpoch=$EPOCH" -o "$OUT/bin/agentworks" ./cmd/agentworks
   CGO_ENABLED=0 go build -o "$OUT/bin/mcpbridge" github.com/manishiitg/mcpagent/cmd/mcpbridge
 )
-bash "$ROOT/deploy/common/install-rsync.sh" "$OUT"
-mkdir -p "$OUT/licenses/rsync"
-cp "$OUT/share/licenses/rsync/COPYING" "$OUT/licenses/rsync/COPYING"
 bash "$ROOT/scripts/build-desktop-tmux.sh" "$OUT"
 cp "$ROOT/install.sh" "$OUT/install.sh"
 "$OUT/bin/agentworks" --version

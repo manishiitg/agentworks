@@ -1,14 +1,17 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -377,8 +380,8 @@ func TestCrewHandbackTakesServerCopyKeepsBothAndRefusesOthers(t *testing.T) {
 		pair   string
 		want   int
 	}{{other, "owner-pair", http.StatusForbidden}, {owner, "another-pair", http.StatusConflict}} {
-		r := httptest.NewRequest(http.MethodGet, "/api/crew-sync/team/native?direction=pull&pair="+c.pair, nil).WithContext(context.WithValue(t.Context(), UserContextKey, c.claims))
-		r = mux.SetURLVars(r, map[string]string{"project": "team"})
+		r := httptest.NewRequest(http.MethodPost, "/api/crew-sync/team/native/pull?pair="+c.pair, strings.NewReader("{}")).WithContext(context.WithValue(t.Context(), UserContextKey, c.claims))
+		r = mux.SetURLVars(r, map[string]string{"project": "team", "op": "pull"})
 		w := httptest.NewRecorder()
 		api.handleCrewNativeSync(w, r)
 		if w.Code != c.want {
@@ -453,5 +456,96 @@ func TestCrewHandbackTakesServerCopyKeepsBothAndRefusesOthers(t *testing.T) {
 	doc, _ := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath("owner"))
 	if current := doc.Entries[productConversationRegistryEntryKey(crewProfileID, serverKey)]; current.SessionID == "srv-1" || current.SessionID == "" {
 		t.Fatalf("the server's chat must start from the Mac's next copy, its own version kept as an earlier one: %+v", current)
+	}
+}
+
+// PLAT-856-551: a native session moves as chunks, like the Team folder (owner, 6 Nov: "use what folder sync uses"): a
+// Mac's push lands whole on the server, a push of the grown journal sends only its new chunks, and a pull brings the
+// server's newer copy back to the Mac.
+func TestCrewNativeSessionMovesAsChunks(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	api := f.api
+	binding := crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}
+	if err := crewroot.WriteSync("team", binding); err != nil {
+		t.Fatalf("pair fixture: %v", err)
+	}
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	server, err := api.crewSyncRoots(context.WithValue(t.Context(), UserContextKey, owner), owner, "team")
+	if err != nil {
+		t.Fatalf("owner Crew roots: %v", err)
+	}
+	mac := crewroot.Roots{ID: "mac-crew", Owner: "owner", Private: t.TempDir()}
+	router := mux.NewRouter()
+	router.HandleFunc("/api/crew-sync/{project}/native/{op:plan|commit|pull|chunks}", api.handleCrewNativeSync).Methods("POST", "PUT")
+	var sent int
+	counting := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			body, _ := io.ReadAll(r.Body)
+			sent += len(body)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+		}
+		router.ServeHTTP(w, r)
+	})
+	ctx := context.WithValue(t.Context(), crewTeamTransportKey{}, crewTeamInProcess{handler: counting, claims: owner})
+	connection := desktopConnection{Server: "https://server.example.com"}
+	macBinding := &crewroot.SyncBinding{PeerProjectID: "team", PairID: "owner-pair"}
+
+	const native = "0f8fad5b-d9cb-469f-a165-70867728950e"
+	var journal strings.Builder
+	line := func(n int) {
+		sum := sha256.Sum256([]byte{byte(n), byte(n >> 8)})
+		journal.WriteString(`{"sessionId":"` + native + `","n":` + strconv.Itoa(n) + `,"text":"` + strings.Repeat(hex.EncodeToString(sum[:]), 8) + `"}` + "\n")
+	}
+	for n := 0; n < 1500; n++ {
+		line(n)
+	}
+	bundle := func(root, text string) *sessiontransfer.Bundle {
+		t.Helper()
+		sum := sha256.Sum256([]byte(text))
+		b := &sessiontransfer.Bundle{Provider: "claude-code", Format: "claude-jsonl", Transport: "structured", SessionID: native, Workspace: "/work/crew",
+			Files: map[string]sessiontransfer.File{"session.jsonl": {Size: int64(len(text)), SHA256: hex.EncodeToString(sum[:])}}}
+		stage, err := crewNativeStage(crewroot.Roots{Private: root}, b)
+		if err == nil && text != "" {
+			err = os.WriteFile(filepath.Join(stage, "session.jsonl"), []byte(text), 0o600)
+		}
+		if err != nil {
+			t.Fatalf("native stage: %v", err)
+		}
+		b.Root = stage
+		return b
+	}
+	serverJournal := func() string {
+		data, _ := os.ReadFile(filepath.Join(server.Private, "native-sync", "claude-code-"+native, "journals", "session.jsonl"))
+		return string(data)
+	}
+
+	first := journal.String()
+	if err := desktopCrewNativeSync(ctx, mac, connection, macBinding, bundle(mac.Private, first)); err != nil || serverJournal() != first {
+		t.Fatalf("first push did not land whole: %v", err)
+	}
+	if sent < len(first) {
+		t.Fatalf("the first push sent %d bytes of a %d-byte journal", sent, len(first))
+	}
+	line(1500)
+	grown := journal.String()
+	sent = 0
+	if err := desktopCrewNativeSync(ctx, mac, connection, macBinding, bundle(mac.Private, grown)); err != nil || serverJournal() != grown {
+		t.Fatalf("second push did not land whole: %v", err)
+	}
+	if sent == 0 || sent > 2*crewTeamChunkMax {
+		t.Fatalf("a grown journal must send only its new chunks: sent %d of %d bytes", sent, len(grown))
+	}
+
+	// The server answered a turn: its copy is newer. The Mac pulls it back.
+	line(1501)
+	newer := journal.String()
+	served := bundle(server.Private, newer)
+	if err := desktopCrewNativePull(ctx, mac, connection, macBinding, &sessiontransfer.Bundle{Provider: served.Provider, Format: served.Format, Transport: served.Transport, SessionID: native, Workspace: served.Workspace, Files: served.Files}); err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(mac.Private, "native-sync", "claude-code-"+native, "journals", "session.jsonl")); string(data) != newer {
+		t.Fatal("the pull did not bring the server's newer copy to the Mac")
 	}
 }

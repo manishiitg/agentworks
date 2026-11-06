@@ -222,4 +222,3 @@ transcript.txt
 /frontend/public/report-preview.js
 
 # Local source-development native delta helper
-agent_go/.native-sync/

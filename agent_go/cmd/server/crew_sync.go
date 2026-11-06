@@ -210,9 +210,6 @@ func crewSyncPeerError(code, message string) error {
 	}
 	return fmt.Errorf("server sync failed: %s", message)
 }
-func crewNativeErrorReply(err error) map[string]string {
-	return map[string]string{"error": err.Error(), "code": crewSyncErrorCode(err)}
-}
 
 // The transport carries project content, never paths or credentials chosen by
 // another machine. Every operation rechecks the destination's actual owner.

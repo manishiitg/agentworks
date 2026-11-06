@@ -22,9 +22,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/nativersync"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -706,29 +704,16 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 
 }
 
-// The allowed upgrade proves these refusals are the owner/pair/location rules,
-// rather than an absent binary or a websocket that can never be opened.
+// The allowed request proves these refusals are the owner/pair/location rules, rather than a route that can never
+// answer.
 func checkCrewNativeSyncAdmission(t *testing.T, api *StreamingAPI, ctx context.Context, owner *UserClaims, roots crewroot.Roots) {
 	t.Helper()
-	t.Run("native-websocket-admission", func(t *testing.T) {
-		if _, err := nativersync.Binary(); err != nil {
-			t.Skip(err)
-		}
+	t.Run("native-sync-admission", func(t *testing.T) {
 		original, err := crewroot.ReadSync(roots.ID)
 		if err != nil || original == nil {
 			t.Fatal("paired fixture unavailable")
 		}
 		defer crewroot.WriteSync(roots.ID, *original)
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			person := owner
-			if r.URL.Query().Get("who") == "other" {
-				person = &UserClaims{UserID: "other", Username: "other"}
-			}
-			r = r.WithContext(context.WithValue(ctx, UserContextKey, person))
-			r = mux.SetURLVars(r, map[string]string{"project": roots.ID})
-			api.handleCrewNativeSync(w, r)
-		}))
-		defer server.Close()
 		for _, tc := range []struct {
 			who, pair, editing string
 			status             int
@@ -736,23 +721,23 @@ func checkCrewNativeSyncAdmission(t *testing.T, api *StreamingAPI, ctx context.C
 			{"other", original.PairID, "local", 403},
 			{"owner", "wrong-pair", "local", 409},
 			{"owner", original.PairID, "server", 409},
-			{"owner", original.PairID, "local", 101},
+			{"owner", original.PairID, "local", 200},
 		} {
 			binding := *original
 			binding.Editing = tc.editing
 			if err := crewroot.WriteSync(roots.ID, binding); err != nil {
 				t.Fatal(err)
 			}
-			address := "ws" + strings.TrimPrefix(server.URL, "http") + "?pair=" + tc.pair + "&direction=push&who=" + tc.who
-			conn, response, err := websocket.DefaultDialer.DialContext(ctx, address, nil)
-			if conn != nil {
-				conn.Close()
+			person := owner
+			if tc.who == "other" {
+				person = &UserClaims{UserID: "other", Username: "other"}
 			}
-			if response == nil || response.StatusCode != tc.status || (tc.status == 101 && err != nil) {
-				t.Fatalf("native admission who=%s pair=%s editing=%s: response=%v error=%v", tc.who, tc.pair, tc.editing, response, err)
-			}
-			if tc.status != 101 {
-				response.Body.Close()
+			r := httptest.NewRequest(http.MethodPost, "/api/crew-sync/x/native/chunks?pair="+tc.pair, strings.NewReader(`{"chunks":[]}`))
+			r = mux.SetURLVars(r.WithContext(context.WithValue(ctx, UserContextKey, person)), map[string]string{"project": roots.ID, "op": "chunks"})
+			w := httptest.NewRecorder()
+			api.handleCrewNativeSync(w, r)
+			if w.Code != tc.status {
+				t.Fatalf("native admission who=%s pair=%s editing=%s: got %d, want %d (%s)", tc.who, tc.pair, tc.editing, w.Code, tc.status, w.Body.String())
 			}
 		}
 	})
