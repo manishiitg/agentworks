@@ -120,6 +120,30 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if person == "owner" {
+			// PLAT-746-355: migrated Builder is Main under its original imported ID.
+			// The next owner's default must still resolve to their own physical tab.
+			store := defaultProductConversationRegistryStore()
+			doc, err := store.loadDocument(ctx, productConversationRegistryPath(person))
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldEntry := productConversationRegistryEntryKey("work", record.ConversationKey)
+			delete(doc.Entries, oldEntry)
+			record.ConversationKey = "beta:chat:imported-builder"
+			newEntry := productConversationRegistryEntryKey("work", record.ConversationKey)
+			doc.Entries[newEntry] = record
+			if identity, ok := doc.Agents[oldEntry]; ok {
+				doc.Agents[newEntry] = identity
+				delete(doc.Agents, oldEntry)
+			}
+			if err := store.writeDocument(ctx, productConversationRegistryPath(person), doc); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.writeMainChatPointer(ctx, binding.ManifestPath, record.ConversationKey, record.SessionID); err != nil {
+				t.Fatal(err)
+			}
+		}
 		sessions[person] = record
 	}
 	if sessions["owner"].SessionID == sessions["other"].SessionID || sessions["owner"].ConversationKey == sessions["other"].ConversationKey {

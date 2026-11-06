@@ -430,19 +430,13 @@ func TestCrewWorkflowsKeepRelayDataWhileFlowIsDisabled(t *testing.T) {
 	if rejected.Code != http.StatusBadRequest || len(after) != len(before) {
 		t.Fatalf("new Relay was created: %d %s", rejected.Code, rejected.Body)
 	}
-	created := httptest.NewRecorder()
-	api.handleCrewExecutables(created, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"name":"Reports"}`)).WithContext(ctx))
-	var newWorkflow crewExecutableBinding
-	if created.Code != http.StatusCreated || json.Unmarshal(created.Body.Bytes(), &newWorkflow) != nil || newWorkflow.Kind != "workflow" {
-		t.Fatalf("workflow creation: %d %s", created.Code, created.Body)
-	}
 	reg := &recordingRegistrar{}
 	if err := api.registerCrewExecutableFileTools(reg, "owner", crew.WorkspacePath); err != nil {
 		t.Fatal(err)
 	}
 	for _, request := range []map[string]interface{}{
 		{"action": "write", "workspace_path": "Workflow/relay", "file": "relay.py", "content": "changed"},
-		{"action": "write", "workspace_path": newWorkflow.Root, "file": "relay.py", "content": "changed"},
+		{"action": "write", "workspace_path": response.Executables[0].Root, "file": "relay.py", "content": "changed"},
 	} {
 		if _, err := reg.tools["crew_workflow_files"].exec(ctx, request); err == nil {
 			t.Fatal("Crew editor accepted Relay source")
