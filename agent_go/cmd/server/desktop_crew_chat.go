@@ -449,7 +449,18 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		}
 		askCtx = context.WithValue(askCtx, crewMacSharedAskKey{}, ask)
 		// Queued as its own turn, never steered into another sender's running turn: each sender reads only their own.
-		body, _ := json.Marshal(AgentProfileChatRequest{Message: text, ConversationKey: conversation.ConversationKey, DeliveryMode: "queue"})
+		chat := AgentProfileChatRequest{Message: text, ConversationKey: conversation.ConversationKey, DeliveryMode: "queue"}
+		// A teammate's thread has no model of its own: it runs on the agent's own program, model and account (live round
+		// 3, 6 Nov: it took the Crew's default model and was refused, 422).
+		if own := ask.Owner; strings.TrimSpace(own.Provider) != "" {
+			for _, option := range profile.Runtime.ProviderOptions {
+				if strings.EqualFold(strings.TrimSpace(option.Provider), strings.TrimSpace(own.Provider)) {
+					chat.Engine, chat.ModelID, chat.ReasoningEffort, chat.ConnectionID = option.ID, own.ModelID, own.ReasoningEffort, own.ConnectionID
+					break
+				}
+			}
+		}
+		body, _ := json.Marshal(chat)
 		req, _ := http.NewRequestWithContext(askCtx, http.MethodPost, "http://localhost/api/agent-profiles/work/query", bytes.NewReader(body))
 		req = mux.SetURLVars(req, map[string]string{"id": "work"})
 		req.Header.Set("Content-Type", "application/json")
