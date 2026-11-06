@@ -287,6 +287,7 @@ func (s Store) writeTurnFiles(ctx context.Context, ref string, files map[string]
 }
 
 func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, error) {
+	gateStarted := time.Now()
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Record{}, err
@@ -299,6 +300,7 @@ func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, erro
 		return Record{}, err
 	}
 	r := Record{ID: ID(execution), ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing", BeforeHeads: map[string]string{}}
+	r.BeforeCapture.GateMS = time.Since(gateStarted).Milliseconds()
 	discoveryStarted := time.Now()
 	dirs, loose, err := s.turnPaths(ctx)
 	if err != nil {
@@ -340,12 +342,14 @@ func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, erro
 }
 
 func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, error) {
+	gateStarted := time.Now()
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Record{}, err
 	}
 	defer unlock()
 	r, err := s.read(ID(execution))
+	r.AfterCapture.GateMS = time.Since(gateStarted).Milliseconds()
 	if err != nil || r.Status != "capturing" {
 		return r, err
 	}
