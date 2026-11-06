@@ -398,4 +398,31 @@ func TestCrewTeamPeopleOverMCPFollowTheTeamRules(t *testing.T) {
 	if err != nil || !slices.ContainsFunc(team.People, func(p crewTeamPerson) bool { return p.UserID == "newbie" && p.Invited }) {
 		t.Fatalf("newbie is not invited: %+v %v", team.People, err)
 	}
+	// The Team's settings over MCP: the Team switch is the main owner's alone; an outsider changes nothing.
+	for _, refused := range []struct {
+		user string
+		args map[string]any
+	}{{"other", map[string]any{"action": "settings", "on": false}}, {"outsider", map[string]any{"action": "settings", "on": false}}} {
+		if w := call(refused.user, refused.args); w.Code < 400 {
+			t.Fatalf("%s changed the Team's settings: %d %s", refused.user, w.Code, w.Body.String())
+		}
+	}
+	if team, _ = readCrewTeam("team"); !team.On {
+		t.Fatal("a refused settings call turned the Team off")
+	}
+	if w := call("owner", map[string]any{"action": "settings", "on": false}); w.Code != 200 {
+		t.Fatalf("owner turn off: %d %s", w.Code, w.Body.String())
+	}
+	if team, _ = readCrewTeam("team"); team.On || len(team.People) != 2 {
+		t.Fatalf("settings did not keep the people while turning off: %+v", team)
+	}
+	if w := call("owner", map[string]any{"action": "settings", "on": true}); w.Code != 200 {
+		t.Fatalf("owner turn on: %d %s", w.Code, w.Body.String())
+	}
+	if team, _ = readCrewTeam("team"); !team.On {
+		t.Fatalf("the owner could not turn the Team on: %+v", team)
+	}
+	if w := call("owner", map[string]any{"action": "settings"}); w.Code != http.StatusBadRequest {
+		t.Fatalf("an empty settings call: %d %s", w.Code, w.Body.String())
+	}
 }
