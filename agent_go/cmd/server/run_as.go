@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"path/filepath"
 	"strings"
@@ -113,7 +114,9 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 	// runs there as the app account whatever project it links to. A Crew's runtime in its owner's slot state folder is
 	// that slot's: every turn in the Crew, the owner's and a Run person's, runs as the owner's slot (PLAT-872-84).
 	if in.CLIWorkingDir != "" && in.CLIWorkingDir != in.SharedWorkingDir {
-		if slot, owner := crewTurnSlot(in.WorkingFolder, in.SessionID); slot != "" && isProjectProfileID(in.ProfileID) && inSlotStateFolder(in.CLIWorkingDir, slot) {
+		if slot, owner, err := crewTurnSlot(in.WorkingFolder, in.SessionID, in.CallerID); err != nil {
+			return appAccount // declareTurnRunAs refuses this launch before it gets here
+		} else if slot != "" && isProjectProfileID(in.ProfileID) && inSlotStateFolder(in.CLIWorkingDir, slot) {
 			// Only the server's own account reaches a slot (from its environment). Any provider-connection account
 			// keeps its login in files the slot could read, so the turn stays on the app account.
 			if connection := strings.TrimSpace(in.ConnectionID); connection != "" && !strings.HasPrefix(connection, "global:") {
@@ -126,7 +129,7 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 	}
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(in.WorkingFolder)))
 	if folder, shared := ref.SharedProject(); shared && isProjectProfileID(in.ProfileID) {
-		if id, ok := crewStandbySessionIdentity(in.SessionID); ok {
+		if id, ok, err := crewStandbySessionIdentity(in.SessionID, in.CallerID); ok && err == nil {
 			return owned(id.Person) // a Team member's own agent answering from the server runs as the member
 		}
 		return owned(deps.projectOwner(ctx, workspaceref.SharedProjectPath(folder)))
@@ -200,7 +203,10 @@ func declareTurnRunAs(ctx context.Context, in turnRunAsInput) (llmtypes.RunAs, e
 	// start as the owner's by default (crew_standby_runas.go).
 	if isProjectProfileID(in.ProfileID) {
 		if err := crewStandbySessionsErr(); err != nil {
-			return llmtypes.RunAs{}, errors.New("this agent can't start right now; try again shortly")
+			return llmtypes.RunAs{}, fmt.Errorf("this agent can't start right now: %w", err)
+		}
+		if _, _, err := crewStandbySessionIdentity(in.SessionID, in.CallerID); err != nil {
+			return llmtypes.RunAs{}, err
 		}
 	}
 	if err := checkProjectLaunchOwner(ctx, in, deps); err != nil {

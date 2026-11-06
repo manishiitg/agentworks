@@ -471,7 +471,7 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 		owner := api.mcpSessionPerson(in.Session)
 		if owner != in.Person {
 			root := api.projectRootForSession(in.Session)
-			if owner == "" || root == "" || api.projectSecretsOwner(owner, root) != in.Person {
+			if owner == "" || root == "" || api.turnSecretsOwner(in.Session, owner, root) != in.Person {
 				http.Error(w, "session ownership changed", 403)
 				return
 			}
