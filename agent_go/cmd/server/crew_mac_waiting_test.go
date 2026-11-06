@@ -41,6 +41,14 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if err := registry.writeDocument(t.Context(), productConversationRegistryPath("owner"), document); err != nil {
 		t.Fatal(err)
 	}
+	// Live test, 6 Nov: a teammate's agent addressed the owner's Main by its root key and was refused as not shared.
+	// The owner's own root record is Main; anyone else's root key is not.
+	if tab := macSharedAgentTab("team", mainKey); tab != macMainTab {
+		t.Fatalf("the owner's Main under its root key must route as Main, got %q", tab)
+	}
+	if tab := macSharedAgentTab("team", originalMainChatKey("team", "someone-elses-conversation")); tab == macMainTab {
+		t.Fatal("a root key that is not the owner's own record routed as the owner's Main")
+	}
 	store := agentMessageStore{}
 	for _, user := range []string{"other", "removed"} {
 		store.Agents = append(store.Agents, namedMessageAgent{ID: "agent-" + user, Name: user, UserID: user})

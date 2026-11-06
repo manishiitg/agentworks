@@ -302,7 +302,26 @@ func macSharedAgentTab(project, chatID string) string {
 	if !crewMacTabID(chatID) {
 		return ""
 	}
+	// The Crew owner's Main on its online copy lives under a physical root key (originalMainChatKey); the shared list
+	// names it "main". Only the owner's own record maps, never a member's root key.
+	if strings.HasPrefix(chatID, "root-") && crewOwnerRootMain(project, project+codeChatSideMarker+chatID) {
+		return macMainTab
+	}
 	return chatID
+}
+
+// crewOwnerRootMain: key is the Crew owner's own Main record under its root key.
+func crewOwnerRootMain(project, key string) bool {
+	owner := ownerOfCrewProjectID(project)
+	if owner == "" {
+		return false
+	}
+	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(owner))
+	if err != nil {
+		return false
+	}
+	record, ok := doc.Entries[productConversationRegistryEntryKey(crewProfileID, key)]
+	return ok && record.ConversationKey == key
 }
 
 // externalMacSharedAgent answers another person's ask or read for an agent shared from a Crew on its owner's Mac.

@@ -92,6 +92,8 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 		chat.Name = "Chat " + chat.ID
 		if chat.IsMain {
 			chat.Name = "Main chat"
+		} else if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(manifest.ID, tab.OwnerID) || strings.HasPrefix(chat.ID, "root-") {
+			chat.Name = "Main" // another person's Main, by its name in the Team (never a raw root id)
 		}
 		// The person's or the agent's own name wins over the chat's automatic title.
 		if identity := tab.Identity; identity.Name != "" || identity.Purpose != "" {
@@ -487,6 +489,14 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				if chat.Key == project.Self.Key || chat.SessionID == project.Self.SessionID {
 					return "", fmt.Errorf("a chat cannot ask itself")
+				}
+				// Another person's agent from a Crew on its owner's Mac answers only when it is shared with this person: say so
+				// now, plainly, rather than accepting a message that is refused on delivery.
+				if !IsLocalMode() && chat.OwnerID != userID && crewRelayTwin(project.ProjectID) && crewTeamMemberTab(ctx, project.ProjectID, chat.Key) == "" {
+					if _, reason := macSharedAgentForAgent(project.ProjectID, macSharedAgentTab(project.ProjectID, chat.Key), userID, chat.OwnerID); reason != "" {
+						log.Printf("[CREW_SHARED_AGENT] project=%s chat=%s action=message refused_at_send reason=%s user=%s", project.ProjectID, chat.ID, reason, logUsernameForUserID(userID))
+						return "", fmt.Errorf("%s's %s isn't shared with you, so it can't be asked. Ask %s to share it from the Team tab", shareOwnerLabel(chat.OwnerID), chat.Name, shareOwnerLabel(chat.OwnerID))
+					}
 				}
 				base, err := resolveCaller(ctx)
 				if err != nil {
