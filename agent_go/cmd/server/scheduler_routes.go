@@ -27,8 +27,9 @@ type ScheduleRunDestination struct {
 // ScheduledJobResponse is the API response for a scheduled job.
 // Designed to be backward-compatible with the old DB-based ScheduledJob shape.
 type ScheduledJobResponse struct {
-	InputPreset string            `json:"input_preset,omitempty"`
-	Inputs      map[string]string `json:"inputs,omitempty"`
+	CrewWorkspacePath string            `json:"crew_workspace_path,omitempty"`
+	InputPreset       string            `json:"input_preset,omitempty"`
+	Inputs            map[string]string `json:"inputs,omitempty"`
 	// ChatKey is the Code side chat (tab) a project schedule runs in; empty is the main chat.
 	ChatKey string `json:"chat_key,omitempty"`
 	// ChatID is the tab's id (the part of ChatKey after ":chat:"); empty is the main chat.
@@ -259,6 +260,9 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 // Run access to an automation never reveals the owner's private chat names.
 func buildJobResponseForCaller(r *http.Request, workspace string, manifest *WorkflowManifest, schedule WorkflowSchedule, state ScheduleRuntimeState, missed WorkflowScheduleMissedStatus) ScheduledJobResponse {
 	response := buildJobResponse(workspace, manifest, schedule, state, missed)
+	if manifest.crewExecutable != nil {
+		response.CrewWorkspacePath = manifest.crewExecutable.CrewRoot
+	}
 	level := workflowAccessForManifest(GetUserFromContext(r.Context()), manifest)
 	if manifest.crewExecutable != nil && level != WorkflowAccessOwner && level != WorkflowAccessWrite {
 		response.RunDestinations = nil
@@ -551,10 +555,11 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 		// One project's schedules only (the Crew side panel): skips every other project's state and history reads.
 		workspaceFilter := strings.TrimRight(strings.TrimSpace(r.URL.Query().Get("workspace_path")), "/")
 
+		includeCrewChildren := entityTypeFilter == "product" && isCrewProjectPath(workspaceFilter)
 		var allJobs []ScheduledJobResponse
 		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 
-		if (entityTypeFilter == "" || entityTypeFilter == "workflow") &&
+		if (entityTypeFilter == "" || entityTypeFilter == "workflow" || includeCrewChildren) &&
 			(modeFilter == "" || modeFilter == "workflow" || modeFilter == "workshop") {
 			// Discover all workflows and collect schedules. This is workspace-API
 			// backed, so keep a short cache for repeated UI polling.
@@ -569,7 +574,9 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 			workflows = filterWorkflowManifestsForUser(GetUserFromContext(r.Context()), workflows)
 			for _, dw := range workflows {
 				if workspaceFilter != "" && strings.TrimRight(dw.WorkspacePath, "/") != workspaceFilter {
-					continue
+					if !includeCrewChildren || dw.Manifest.crewExecutable == nil || dw.Manifest.crewExecutable.CrewRoot != workspaceFilter {
+						continue
+					}
 				}
 				for _, sched := range dw.Manifest.Schedules {
 					if enabledFilter != "" {

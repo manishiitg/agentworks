@@ -6,16 +6,13 @@ import type { WorkspaceViewId } from '../../components/workflow/workspaceViews'
 import type { EmbeddedWorkflowScope } from '../../components/workflow/canvas/workspaceViewData'
 import { useWorkspaceState } from '../../components/workflow/hooks/useWorkspaceState'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 
-const Inputs = lazy(() => import('../../components/workflow/canvas/VariablesSidebar'))
 const Canvas = lazy(() => import('../../components/workflow/canvas/WorkspaceViewHost'))
 const Logs = lazy(() => import('../../components/workflow/ExecutionLogsPopup'))
 const Costs = lazy(() => import('../../components/workflow/CostsPopup'))
 const Inspect = lazy(() => import('../../components/chat/StepInspectionPanel'))
-const Schedules = lazy(() => import('../../components/scheduler/WorkflowScheduleRunsPanel'))
-const Functions = lazy(() => import('../../components/workflow/WorkflowFunctionsView'))
-const Webhooks = lazy(() => import('../../components/workflow/WorkflowAPITriggersView'))
 
 export type CrewExecutable = {
   id: string
@@ -38,14 +35,13 @@ export function CrewExecutableEditor({
   crewAgents: Array<{ id: string; name: string }>
   crewScripts?: Array<{ id: string; name: string }>
   chatTabId: string
-  onBack: () => void
+  onBack?: () => void
 }) {
-  const [section, setSection] = useState<'steps' | 'runs' | 'settings'>('steps')
+  const [section, setSection] = useState<'steps' | 'runs'>('steps')
   const [view, setView] = useState<WorkspaceViewId>('flow')
   const [file, setFile] = useState<string | null>(null)
   const [runFolder, setRunFolder] = useState<string | null>(null)
   const [detail, setDetail] = useState<'logs' | 'inspect' | 'costs'>('logs')
-  const [settings, setSettings] = useState<'inputs' | 'schedules' | 'functions' | 'webhooks'>('inputs')
   const [error, setError] = useState('')
   const workspace = useWorkspaceState(item.workspace_path, runFolder, false)
   const folders = workspace.state?.run_folders ?? []
@@ -56,8 +52,7 @@ export function CrewExecutableEditor({
       return
     }
     if (next === 'schedules' || next === 'webhooks') {
-      setSection('settings')
-      setSettings(next)
+      useWorkflowStore.getState().openWorkspaceView('workshop', next === 'webhooks' ? 'triggers' : 'schedules')
       return
     }
     setView(next)
@@ -66,12 +61,13 @@ export function CrewExecutableEditor({
     () => ({
       crewAgents,
       crewScripts,
+      onEditInputs: () => { void ask('Help me edit the inputs for this workflow.') },
       view,
       selectedRunFolder: selectedRun,
       setSelectedRunFolder: setRunFolder,
       openView,
     }),
-    [crewAgents, crewScripts, view, selectedRun, openView],
+    [crewAgents, crewScripts, view, selectedRun, openView, chatTabId, item],
   )
   useLiveRefetch(
     () => {
@@ -93,9 +89,9 @@ export function CrewExecutableEditor({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
-        <button className={button} onClick={onBack} aria-label={item.kind === 'script' ? 'Back to scripts' : 'Back to workflows'}>
+        {onBack && <button className={button} onClick={onBack} aria-label={item.kind === 'script' ? 'Back to scripts' : 'Back to workflows'}>
           <ArrowLeft className="h-4 w-4" />
-        </button>
+        </button>}
         <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{item.manifest.label}</h2>
         <button
           className={button}
@@ -112,7 +108,7 @@ export function CrewExecutableEditor({
       </div>
       {item.kind === 'script' && !!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes apply to the next run.</p>}
       <nav aria-label="Workflow" className="flex shrink-0 gap-2 border-b p-2">
-        {(['steps', 'runs', 'settings'] as const).map((value) => (
+        {(['steps', 'runs'] as const).map((value) => (
           <button
             key={value}
             aria-current={section === value ? 'page' : undefined}
@@ -141,13 +137,14 @@ export function CrewExecutableEditor({
               onClose={() => setFile(null)}
             />
           ) : section === 'steps' && item.kind === 'script' ? (
-            <ExecutableFile workspacePath={item.workspace_path} file="main.py" crewScript onClose={onBack} />
+            <ExecutableFile workspacePath={item.workspace_path} file="main.py" crewScript onClose={() => onBack?.()} />
           ) : section === 'steps' ? (
             <Canvas
               key={item.id}
               workspacePath={item.workspace_path}
               presetQueryId={item.id}
               embeddedPlanOnly
+              readOnly
               hideToolbar
               scope={scope}
               onCreatePlan={() => void ask('Create the steps for this workflow.')}
@@ -225,43 +222,7 @@ export function CrewExecutableEditor({
                 )}
               </div>
             </div>
-          ) : (
-            <div className="flex h-full min-h-0 flex-col">
-              <nav aria-label="Workflow settings" className="flex shrink-0 gap-1 border-b p-2">
-                {(['inputs', 'schedules', 'functions', 'webhooks'] as const).map((value) => (
-                  <button
-                    key={value}
-                    className={`${button} ${settings === value ? 'bg-muted' : ''}`}
-                    onClick={() => setSettings(value)}
-                  >
-                    {value === 'inputs' ? 'Inputs' : value === 'webhooks' ? 'Webhooks' : value === 'functions' ? 'Functions' : 'Schedules'}
-                  </button>
-                ))}
-              </nav>
-              <div className="min-h-0 flex-1 overflow-auto">
-                {settings === 'inputs' ? (
-                  <Inputs embedded scriptMode={item.kind === 'script'} workspacePath={item.workspace_path} onClose={onBack} onUpdate={() => void workspace.refresh()} />
-                ) : settings === 'schedules' ? (
-                  <Schedules
-                    embedded
-                    workflowScope={{ presetQueryId: item.id, workspacePath: item.workspace_path, label: item.manifest.label }}
-                    onClose={onBack}
-                  />
-                ) : settings === 'functions' ? (
-                  <Functions
-                    workspacePath={item.workspace_path}
-                          onAsk={ask}
-                  />
-                ) : (
-                  <Webhooks
-                    workspacePath={item.workspace_path}
-                    onViewRuns={() => setSection('runs')}
-                    onAsk={(message) => ask(message)}
-                  />
-                )}
-              </div>
-            </div>
-          )}
+          ) : null}
         </div>
       </Suspense>
     </div>

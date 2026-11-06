@@ -32,6 +32,8 @@ class Migration(unittest.TestCase):
         (self.docs/'Crew/target').mkdir(parents=True)
         write(self.private/'product.json',{'id':'crew','product':'work','main_chat_key':'crew:chat:existing'})
         write(self.source/'workflow.json',{'id':'old-goal','label':'Revenue goal','created_by':'owner','access':{'owners':['owner'],'readers':['runner']},'schedules':[], 'capabilities':{'selected_secrets':['api-name']}})
+        (self.source/'soul').mkdir(parents=True)
+        (self.source/'soul/soul.md').write_text('## Objective\nGrow qualified revenue.\n\n## Success Criteria\nVerified revenue.\n')
         write(self.source/'planning/plan.json',{'steps':[{'id':'one','type':'scripted'}]})
         write(self.source/'variables/variables.json',{'variables':[],'groups':[{'name':'default','values':{},'enabled':True}]})
         write(self.source/'code/one/main.py',{'source':'original'})
@@ -97,6 +99,14 @@ class Migration(unittest.TestCase):
         self.assertNotIn('input_schema', fn)
 
     def test_one_goal_preserves_history_ids_other_goal_and_private_chats(self):
+        registry_path = self.docs/'_users/owner/chat_history/product-conversations.json'
+        registry = m.read(registry_path)
+        registry['entries']['work/crew:chat:existing'] = {'profile_id':'work','conversation_key':'crew:chat:existing','session_id':'destination-session','resource_id':'crew','workspace_path':'Crew/target'}
+        # A second imported chat is independent; only the owner's primary Builder becomes Main.
+        extra = dict(registry['entries']['agentworks/'+self.key], conversation_key='old-goal:chat:research', session_id='research-session')
+        registry['entries']['agentworks/old-goal:chat:research'] = extra
+        write(registry_path, registry)
+
         before=hashes(self.base);c=self.conversion()
         self.assertEqual(c.report()['status'],'ready');self.assertEqual(hashes(self.base),before)
         result=c.apply();self.assertTrue(Path(result['backup'],'files.tar.gz').exists())
@@ -110,6 +120,7 @@ class Migration(unittest.TestCase):
             self.assertEqual(db.execute('SELECT observation_id,metric,recorded_at FROM goal_observations').fetchall(),[('original-observation','revenue','2026-11-01T00:00:00Z')])
             self.assertEqual(db.execute('SELECT run_id FROM goal_observations').fetchone()[0],'old-goal:source-run')
             self.assertEqual(json.loads(db.execute('SELECT definition_json FROM crew_goals').fetchone()[0])['status'],'active')
+            self.assertEqual(json.loads(db.execute('SELECT definition_json FROM crew_goals').fetchone()[0])['outcome'], 'Grow qualified revenue.')
             self.assertEqual([row[2] for row in db.execute('PRAGMA index_info(idx_pulse_goal_observations_criterion)')],['criterion_id','observed_at'])
         with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
             self.assertEqual(db.execute('SELECT * FROM business_data').fetchall(),[('unchanged',)])
@@ -123,7 +134,12 @@ class Migration(unittest.TestCase):
         self.assertEqual(m.read(transcript)['conversation_history'][0]['content'],'Do not rewrite Workflow/old-goal inside messages')
         self.assertEqual(m.read(transcript)['user_id'],'owner')
         registry=m.read(self.docs/'_users/owner/chat_history/product-conversations.json')
-        row=next(iter(registry['entries'].values()))
+        main_key = m.read(self.private/'product.json')['main_chat_key']
+        row = registry['entries']['work/'+main_key]
+        self.assertEqual(registry['agents']['work/'+main_key]['name'], 'Main')
+        self.assertEqual([r['session_id'] for r in registry['previous']['work/'+main_key]], ['destination-session'])
+        self.assertEqual(len(registry['entries']), 2)
+        self.assertTrue(any(r['session_id'] == 'research-session' for r in registry['entries'].values()))
         self.assertEqual(row['session_id'],'session-original');self.assertEqual(row['resource_id'],'crew')
         index=m.read(self.docs/'_users/owner/chat_history/index.json')
         item=next(iter(index['entries'].values()))
@@ -159,19 +175,15 @@ class Migration(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'symlink'):self.conversion()
 
 
-    def test_second_goal_merges_without_replacing_first_and_keeps_distinct_folder_id(self):
+    def test_second_workflow_refused_without_changing_first(self):
         first=self.conversion().apply()
         source=self.docs/'Workflow/second-folder'
         write(source/'workflow.json',{'id':'second-id','label':'Reporting','access':{'owners':['owner'],'readers':['runner']}})
         owners=m.read(self.state/'ownership/workflows.json');owners['Workflow/second-folder']='owner';write(self.state/'ownership/workflows.json',owners)
-        result=m.Conversion(self.docs,self.state,'second-folder','crew').apply()
-        with closing(sqlite3.connect(self.private/'db/db.sqlite')) as db:
-            goals=[json.loads(row[0]) for row in db.execute('SELECT definition_json FROM crew_goals')]
-            self.assertEqual(len(goals),2)
-            self.assertEqual(len(db.execute('SELECT * FROM goal_observations').fetchall()),1)
-        second=next(g for g in goals if g['id']==result['goal_id'])
-        self.assertEqual(second['workflow_ids'],['second-id'])
-        self.assertTrue((self.docs/'Crew/target/.agentworks/workflows/second-id/workflow.json').is_file())
+        before = hashes(self.base)
+        with self.assertRaisesRegex(ValueError, 'already has a workflow'):
+            m.Conversion(self.docs,self.state,'second-folder','crew').apply()
+        self.assertEqual(hashes(self.base), before)
 
     def test_legacy_batch_and_raw_database_scripts_report_before_any_writes(self):
         file=self.source/'schedules.json';doc=m.read(file);doc['schedules'][0]['input']={'groups':['one','two']};write(file,doc)

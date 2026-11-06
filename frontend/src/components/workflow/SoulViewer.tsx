@@ -96,7 +96,18 @@ export function SoulViewer({ workspacePath, embedded = false, goalSummary = fals
     )
   }
 
-  if (goalSummary) {
+  if (goalSummary) return <GoalSummary content={content} />
+
+  return (
+    <div className={embedded ? 'px-4 py-4 sm:px-5' : 'h-full overflow-y-auto px-6 py-5'}>
+      <div className={embedded ? 'max-w-none' : 'mx-auto max-w-3xl'}>
+        <MarkdownRenderer content={content} disablePathLinking />
+      </div>
+    </div>
+  )
+}
+
+export function GoalSummary({ content }: { content: string }) {
     const summary = extractWorkflowGoalSections(content)
     return (
       <section className="rounded-xl border bg-background p-4 sm:p-5" aria-label="Workflow goal">
@@ -112,15 +123,6 @@ export function SoulViewer({ workspacePath, embedded = false, goalSummary = fals
         {summary.boundaries && <details className="mt-3 border-t pt-3 text-xs"><summary className="cursor-pointer font-medium text-muted-foreground">What must stay true</summary><div className="mt-3"><MarkdownRenderer content={summary.boundaries} disablePathLinking /></div></details>}
       </section>
     )
-  }
-
-  return (
-    <div className={embedded ? 'px-4 py-4 sm:px-5' : 'h-full overflow-y-auto px-6 py-5'}>
-      <div className={embedded ? 'max-w-none' : 'mx-auto max-w-3xl'}>
-        <MarkdownRenderer content={content} disablePathLinking />
-      </div>
-    </div>
-  )
 }
 
 export default SoulViewer

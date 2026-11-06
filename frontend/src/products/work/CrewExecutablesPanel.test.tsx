@@ -56,16 +56,9 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
       {crew_id:'crew',workspace_path:'Workflow/retained-relay',manifest:{id:'retained-relay',kind:'relay',label:'Existing Relay'}},
     ] as unknown as DiscoveredWorkflow[]
     expect(buildWorkflowPresetsFromManifests(manifests).map(preset => preset.id)).toEqual([])
-    await click('Add workflow')
-    const name = host.querySelector<HTMLInputElement>('input')!
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(name,'Reports')
-      name.dispatchEvent(new Event('input',{bubbles:true}))
-    })
-    await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
-    await flush()
-    expect(api.post).toHaveBeenCalledWith('/api/crew-executables',{name:'Reports',kind:'workflow'},{params:{crew_id:'crew'}})
-    await click('Reports')
+    expect(host.querySelector('[data-view="steps"]')?.getAttribute('data-workspace')).toBe('Workflow/child')
+    expect([...host.querySelectorAll('button')].some(button => button.textContent?.trim() === 'Settings')).toBe(false)
+    expect(api.post).not.toHaveBeenCalled()
     expect(useChatStore.getState().activeTabId).toBe('crew-chat')
     expect(useWorkflowStore.getState().selectedRunFolder).toBe('unrelated-run')
     expect(useWorkflowStore.getState().runFolders.map(folder => folder.name)).toEqual(['unrelated-run'])

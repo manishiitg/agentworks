@@ -47,10 +47,12 @@ function FieldTable({ label, schema }: { label: string; schema?: CrewFunctionSch
 }
 
 
-export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, onEdit }: {
+export default function CrewFunctionsView({ scope, refreshToken = 0, embedded = false, hideEmpty = false, onCounts, onEdit }: {
   // The same view serves Crew and Code projects; name the product the person
   // is actually in (profile ids: work = Crew, code = Code).
 
+  embedded?: boolean
+  hideEmpty?: boolean
   scope: ProductTriggerScope
   refreshToken?: number
   onCounts?: (counts: { functions: number; running: number }) => void
@@ -110,7 +112,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
     finally { setBusy(false) }
   }
 
-  return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
+  return <div className={`${embedded ? '' : 'h-full'} min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background`}>
     <div className="space-y-4 p-4">
       <AutomationIntro icon={Braces} tone="sky" title="Functions" action={onEdit ? <button type="button" className={buttonClass} onClick={() => void onEdit('I want to add a function to this Crew. Ask me what it should do, then set it up.')}>Add in chat</button> : undefined}>
         {loaded ? `${functions.length} functions · ${running} running · ${calls.length} recent calls` : 'Loading functions…'}
@@ -139,7 +141,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
           </AutomationRow>
         })}
       </AutomationListBox>}
-      {loaded && functions.length === 0 && <EmptyAutomations>No functions yet. Ask the chat to add one.</EmptyAutomations>}
+      {!hideEmpty && loaded && functions.length === 0 && <EmptyAutomations>No functions yet. Ask the chat to add one.</EmptyAutomations>}
       {loaded && functions.length > 0 && visibleFunctions.length === 0 && <p className="text-center text-xs text-muted-foreground">No function matches “{filter}”.</p>}
 
       <section className="space-y-2" data-testid="crew-function-callers">

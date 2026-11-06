@@ -2,6 +2,8 @@
 
 The tool schemas are authoritative; these examples are optional. Use `crew_workflow_files action=list` for exact workspace identities and this Crew's available agents.
 
+Each Crew has one workflow. Use routes for different tasks within that plan, not another workflow. Configure steps, inputs, settings and goals in Crew chat; the screens show the plan, progress and run evidence.
+
 ## Change a step without replacing the plan
 
 Read `planning/plan.json`, then call `crew_workflow_files` with `action=edit`, the returned `workspace_path`, `operation=update_step` and:

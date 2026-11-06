@@ -66,6 +66,28 @@ def references_measurement_table(text):
     return re.search(r'\b(?:goal_observations|workflow_goal_metrics)\b', text, re.IGNORECASE) is not None
 
 
+def promote_builder_main(document, manifest, conversation_key):
+    """Main is a role pointer. Keep session IDs and all earlier chats intact."""
+    fullkey = 'work/' + conversation_key
+    current = document['entries'][fullkey]
+    oldkey = 'work/' + (manifest.get('main_chat_key') or manifest['id'])
+    if oldkey != fullkey and oldkey in document['entries']:
+        prior = document.setdefault('previous', {}).setdefault(fullkey, [])
+        old = document['entries'].pop(oldkey)
+        history = [old, *document.get('previous', {}).pop(oldkey, [])]
+        seen = {item.get('session_id') for item in [current, *prior]}
+        for item in history:
+            if item.get('session_id') and item['session_id'] not in seen:
+                item['conversation_key'] = conversation_key
+                prior.append(item)
+                seen.add(item['session_id'])
+        document.get('agents', {}).pop(oldkey, None)
+    current['title'] = 'Main'
+    document.setdefault('agents', {}).setdefault(fullkey, {})['name'] = 'Main'
+    manifest['main_chat_key'] = conversation_key
+    manifest['session_id'] = current['session_id']
+
+
 class Conversion:
     def __init__(self, docs, state, workflow, crew, agent_binary=None):
         self.docs, self.state = Path(docs).resolve(strict=True), Path(state).resolve(strict=True)
@@ -96,6 +118,10 @@ class Conversion:
         for file in (self.state/'ownership/crew-executables').glob('*.json'):
             if read(file).get('id') == self.workflow:
                 raise ValueError('This workflow ID is already registered to a Crew.')
+        for file in (self.state/'ownership/crew-executables').glob('*.json'):
+            binding = read(file)
+            if binding.get('crew_id') == crew and binding.get('kind') == 'workflow':
+                raise ValueError('Destination Crew already has a workflow; choose a Crew without one.')
         owners = read(self.state / 'ownership/workflows.json', {})
         self.owner = safe_id(owners.get(self.root))
         projects = read(self.state / 'ownership/projects.json', {}).get('projects', {})
@@ -142,6 +168,12 @@ class Conversion:
         self.goal = {'id': self.goal_id, 'name': self.manifest.get('label') or workflow,
                      'outcome': self.manifest.get('description') or '', 'status': 'active',
                      'workflow_ids': [self.workflow], 'metric_ids': [], 'updated_at': stamp()}
+        soul = self.source/'soul/soul.md'
+        if soul.is_file():
+            no_links(soul)
+            objective = re.search(r'^##\s+Objective\s*\n(.*?)(?=^##\s|\Z)', soul.read_text(), re.S | re.M | re.I)
+            if objective and objective[1].strip():
+                self.goal['outcome'] = objective[1].strip()
         if len(self.goal['name']) > 160 or len(self.goal['outcome']) > 4000:
             raise ValueError('Shorten the saved name/description to fit a Crew goal; full instructions remain in soul.md.')
         self.owners = source_owners
@@ -228,6 +260,16 @@ class Conversion:
             no_links(file)
             user = file.parents[1].name
             doc = read(file); changed = False
+            primary = None
+            if user == self.owner:
+                candidates = [key for key, row in doc.get('entries', {}).items() if row.get('workspace_path') == self.root]
+                owner_key = 'agentworks/' + self.workflow + ':chat:owner-' + hashlib.sha256(user.encode()).hexdigest()[:16]
+                primary = next((key for key in [owner_key, 'agentworks/' + self.workflow] if key in candidates), None)
+                if primary is None and len(candidates) == 1:
+                    primary = candidates[0]
+                if candidates and primary is None:
+                    raise ValueError('Choose the owner’s primary Builder chat before conversion.')
+            main_key = None
             for key, row in list(doc.get('entries', {}).items()):
                 if row.get('workspace_path') != self.root:
                     continue
@@ -257,10 +299,17 @@ class Conversion:
                                         workspace_path=self.crew_root, resource_id=self.crew, fresh_native=True)
                             item['workflow_context_paths'] = list(dict.fromkeys([*item.get('workflow_context_paths', []), self.root]))
                     doc.setdefault(section, {})[fullkey] = value
-                # Existing destination Main remains Main; imported Builder is a tab.
+                if key == primary:
+                    main_key = newkey
+                # Other imported chats retain their own identities and names.
                 doc.setdefault('agents', {}).setdefault(fullkey, {'name': row.get('title') or self.goal['name']})
                 changed = True
             if changed:
+                if main_key:
+                    manifest_path = self.private/'product.json'
+                    manifest = self.document(manifest_path)
+                    promote_builder_main(doc, manifest, main_key)
+                    self.write_json(manifest_path, manifest)
                 self.write_json(file, doc)
         source_files = list((self.source / 'builder/conversation').rglob('*-conversation.json'))
         for file in source_files:
@@ -318,6 +367,16 @@ class Conversion:
         path_map = {str(a.relative_to(self.docs)): self.crew_root + '/' + str(b.relative_to(self.private)) for a, b in self.moves}
         for file in [*(self.docs / '_users').glob('*/chat_history/chat-index.json'), *(self.docs / '_users').glob('*/chat_history/index.json')]:
             doc = read(file); changed = False
+            primary = None
+            if user == self.owner:
+                candidates = [key for key, row in doc.get('entries', {}).items() if row.get('workspace_path') == self.root]
+                owner_key = 'agentworks/' + self.workflow + ':chat:owner-' + hashlib.sha256(user.encode()).hexdigest()[:16]
+                primary = next((key for key in [owner_key, 'agentworks/' + self.workflow] if key in candidates), None)
+                if primary is None and len(candidates) == 1:
+                    primary = candidates[0]
+                if candidates and primary is None:
+                    raise ValueError('Choose the owner’s primary Builder chat before conversion.')
+            main_key = None
             entries = doc.get('entries', {})
             for oldpath, row in list(entries.items()):
                 session = row.get('session', {})

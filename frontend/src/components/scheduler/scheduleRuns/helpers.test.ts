@@ -38,6 +38,12 @@ describe('jobMatchesWorkflowScope', () => {
     }, new Map())).toBe(true)
   })
 
+  it('includes child schedules only in the parent Crew supplied by the server', () => {
+    const job = { entity_type: 'workflow', workspace_path: 'Workflow/reports', crew_workspace_path: 'Crew/parent' } as ScheduledJob
+    expect(jobMatchesWorkflowScope(job, { workspacePath: 'Crew/parent' }, new Map())).toBe(true)
+    expect(jobMatchesWorkflowScope(job, { workspacePath: 'Crew/other' }, new Map())).toBe(false)
+  })
+
   it('does not expose another project schedule from the same user', () => {
     const job = {
       entity_type: 'product',

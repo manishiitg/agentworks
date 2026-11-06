@@ -2740,6 +2740,7 @@ export interface WorkflowNotificationInfoResponse {
 
 // Scheduled Jobs
 export interface ScheduledJob {
+  crew_workspace_path?: string
   kind?: string
 
   id: string

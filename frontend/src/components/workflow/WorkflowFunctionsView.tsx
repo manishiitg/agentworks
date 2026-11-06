@@ -18,8 +18,9 @@ function errorMessage(error: unknown): string {
  * The built-in ask reaches the workflow's Run-mode assistant; typed functions
  * are function triggers (a route plus required inputs set as run variables).
  */
-export default function WorkflowFunctionsView({ workspacePath, relayMode = false, relayWorkflowID, refreshToken = 0, onCounts, onAsk }: {
+export default function WorkflowFunctionsView({ workspacePath, relayMode = false, relayWorkflowID, refreshToken = 0, onCounts, onAsk, embedded = false }: {
   workspacePath: string
+  embedded?: boolean
   relayMode?: boolean
   relayWorkflowID?: string
   refreshToken?: number
@@ -76,7 +77,8 @@ export default function WorkflowFunctionsView({ workspacePath, relayMode = false
     }).join(', ')
   }
 
-  return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
+  if (embedded && !error && functions.length === 0) return null
+  return <div className={`${embedded ? '' : 'h-full'} min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background`}>
     <div className="space-y-4 p-4" data-testid="workflow-functions">
       <p className="text-xs text-muted-foreground">{loaded ? `${functions.length} functions · ${functions.filter(item => item.enabled).length} enabled` : 'Loading functions…'}</p>
       {relayMode && <section className="rounded-lg border border-border p-3 text-xs" data-testid="relay-release-status">
@@ -115,7 +117,7 @@ export default function WorkflowFunctionsView({ workspacePath, relayMode = false
             </div>}
           </section>
         })}
-        {!relayMode && <section data-testid="workflow-function-ask" className="min-w-0 space-y-1.5 rounded-lg border border-border p-3 text-xs">
+        {!relayMode && !embedded && <section data-testid="workflow-function-ask" className="min-w-0 space-y-1.5 rounded-lg border border-border p-3 text-xs">
           <div className="flex items-center justify-between gap-2">
             <h3 className="truncate font-mono text-sm font-medium">ask</h3>
             <span className="shrink-0 text-[11px] text-muted-foreground">Built in</span>

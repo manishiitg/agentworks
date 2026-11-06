@@ -336,7 +336,8 @@ export function jobMatchesWorkflowScope(
   const presetPath = job.preset_query_id
     ? presetMap.get(job.preset_query_id)?.workspacePath
     : null
-  return normalizeWorkspacePath(job.workspace_path) === scopePath ||
+  return normalizeWorkspacePath(job.crew_workspace_path) === scopePath ||
+    normalizeWorkspacePath(job.workspace_path) === scopePath ||
     normalizeWorkspacePath(presetPath) === scopePath
 }
 
