@@ -620,8 +620,10 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 		promptContext.OthersAsking = whenOthersAskForTurn(ctx, req, userID, agentOwner, strings.TrimSpace(req.AgentProfileConversationKey))
 		// Always on: a Mac agent answering from its standby copy says plainly when a request needs the Mac.
-		if crewStandbyServesKey(strings.TrimSpace(req.AgentProfileConversationKey)) {
-			promptContext.OthersAsking = strings.TrimSpace(promptContext.OthersAsking + "\n\n" + crewStandbyServerNote)
+		if key := strings.TrimSpace(req.AgentProfileConversationKey); key != "" {
+			if tab, ok := crewStandbyServedTab(key); ok {
+				promptContext.OthersAsking = strings.TrimSpace(promptContext.OthersAsking + "\n\n" + crewStandbyServerNote(crewResourceProjectID(key), tab))
+			}
 		}
 	}
 	if err := applyWorkspaceMemoryFeature(&profile); err != nil {
