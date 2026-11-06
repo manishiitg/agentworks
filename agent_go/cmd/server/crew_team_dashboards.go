@@ -64,8 +64,8 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 // handleCrewTeamDashboardPublicLink is POST /crew-teams/{project}/dashboards/public-link: the card's switch, through the
 // Team's own route so the Mac app reaches a server Crew's. The dashboard tool's public_link action decides everything.
 func (api *StreamingAPI) handleCrewTeamDashboardPublicLink(w http.ResponseWriter, r *http.Request) {
-	t, _, ok := crewTeamForTab(w, r, false)
-	if !ok {
+	t, claims, ok := crewTeamForTab(w, r, false)
+	if !ok || refuseCrewOwnerOnline(w, r, t.ProjectID, claims.UserID) {
 		return
 	}
 	var args struct {

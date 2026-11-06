@@ -136,6 +136,10 @@ func (api *StreamingAPI) externalScheduleCall(w http.ResponseWriter, r *http.Req
 		}
 	}
 
+	if target.crewID != "" && action != "list" && action != "runs" && action != "run_now" && action != "stop" && refuseCrewOwnerOnline(w, r, workspaceTokenProjectID(target.crewID), claims.UserID) {
+		return
+	}
+
 	// The schedule must belong to the named workflow or Crew. A workflow's run history stays readable after its schedule
 	// is deleted and for webhook runs: externalScheduleRuns reads only this workflow's own history and refuses an ID
 	// with neither a schedule nor runs, as get_schedule_runs did (PLAT-856-399).

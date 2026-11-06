@@ -633,6 +633,9 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
 		return
 	}
+	if name == "update_settings" && refuseCrewOwnerOnline(w, r, project.ID, claims.UserID) {
+		return
+	}
 	root := crew.Binding.WorkspacePath
 	if name == "get_secret_sources" {
 		externalJSON(w, api.secretSources(ctx, claims.UserID, root))

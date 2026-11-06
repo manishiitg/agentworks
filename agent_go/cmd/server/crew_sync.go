@@ -59,7 +59,10 @@ type crewSyncReply struct {
 	Where string `json:"where,omitempty"`
 	// AccessView is which Access page this person gets: "team" (the Team tab alone: a teammate, or the website copy
 	// of a Mac Crew), "server_crew" (a Crew on the server: its page and the Team tab), "summary" (a shared Crew).
-	AccessView         string                        `json:"access_view,omitempty"`
+	AccessView string `json:"access_view,omitempty"`
+	// ChatOnly: the owner reaches this Mac Crew through the server, so the screen shows its chat and no side panel (owner,
+	// 6 Nov: "mac online.. just reach my agent.. from phone"; crew_owner_on_mac.go).
+	ChatOnly           bool                          `json:"chat_only,omitempty"`
 	Role               string                        `json:"role,omitempty"`
 	OnServer           []crewServerCopy              `json:"on_server,omitempty"`
 	Publish            *crewAgentPublishPreview      `json:"publish,omitempty"`
@@ -276,6 +279,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 	out.Role = "owner"
 	if !IsLocalMode() && crewRelayTwin(out.ProjectID) {
 		out.AccessView = "team"
+		out.ChatOnly = crewOwnerOnlineOfMacCrew(r, out.ProjectID, GetUserIDFromContext(r.Context()))
 	} else if !IsLocalMode() {
 		// A Crew that lives on the server has the same Team tab (owner, 5 Nov) under its normal Access page.
 		out.AccessView = "server_crew"

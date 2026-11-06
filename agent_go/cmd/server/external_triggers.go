@@ -92,13 +92,16 @@ func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.
 		externalError(w, 503, "triggers_unavailable", "Crew triggers are unavailable.")
 		return
 	}
-	crew, _, _, ok := api.externalCrewResolve(ctx, claims, crewID)
+	crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, crewID)
 	if !ok {
 		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
 		return
 	}
 	if action != "list" && action != "runs" && !crew.OwnedByCaller {
 		externalError(w, 403, "forbidden", "Only the Crew's owner can change its triggers.")
+		return
+	}
+	if action != "list" && action != "runs" && refuseCrewOwnerOnline(w, r, manifest.ID, claims.UserID) {
 		return
 	}
 	userID, profileID := claims.UserID, "work"

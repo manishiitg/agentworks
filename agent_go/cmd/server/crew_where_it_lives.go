@@ -99,7 +99,7 @@ func crewLivesOnMac(profileID, conversationKey, caller string) bool {
 			return onMac
 		}
 	}
-	// An In team agent the server answers for from its standby copy (Always on) runs here, its teammates' threads too.
+	// A teammate's thread on an In team agent the server answers for from its standby copy (Always on) runs here.
 	if crewStandbyServesKey(conversationKey) {
 		return false
 	}

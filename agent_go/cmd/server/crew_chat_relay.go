@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -184,42 +185,24 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 	if crewTeamMemberTab(r.Context(), project, key) != "" {
 		return false
 	}
-	// An agent the server answers for from its standby copy (Always on): its chats, teammates' threads on it included,
-	// run here until it is handed back to the Mac.
+	// A teammate's thread on an agent the server answers for from its standby copy (Always on) runs here until the agent
+	// is handed back to the Mac. The owner's own chat with that agent never does: it waits for the Mac (PLAT-856-509).
 	if crewStandbyServesKey(key) {
 		return false
 	}
-	// Always on: while the Mac is off, the owner's In team agent answers here from its standby copy (or already does).
-	// Opening it brings the copy in; sending makes the server its writer. A new chat stays the Mac's to start.
-	standby := func(tab string) bool {
-		if call.Operation != "send" && call.Operation != "resolve" {
-			return false
-		}
-		started := time.Now()
-		if !api.crewStandbyRoute(r.Context(), GetUserIDFromContext(r.Context()), project, tab, "", call.Operation == "send") {
-			return false
-		}
-		if call.Operation == "send" {
-			crewAlwaysOnLog(project, tab, "answered_on_server", "owner_chat", started)
-			// The chat handler that called this releases the flight once the turn is admitted (else it expires).
-			if holder, ok := r.Context().Value(crewStandbyFlightHolderKey{}).(*crewStandbyFlightHolder); ok {
-				holder.project, holder.tab = project, tab
-			}
-		}
-		return true
-	}
-	// A side tab of a Crew that lives on the Mac is the Mac's own tab (PLAT-856-509); the server keeps none.
-	if base, tab, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker); ok {
-		if base != project || !crewMacTabID(tab) {
+	// A side tab of a Crew that lives on the Mac is the Mac's own tab (PLAT-856-509); the server keeps none. The owner's
+	// Main under its physical key is the Mac's Main.
+	tab := macMainTab
+	if base, side, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker); ok {
+		if base != project || !crewMacTabID(side) {
 			externalError(w, 400, "invalid_tab", "This tab is unavailable.")
 			return true
 		}
-		if standby(crewStandbyTabForKey(project, key)) {
-			return false
-		}
-		call.Tab = tab
-		if call.Operation == "resolve" {
-			call.Name = crewMacTabName(call.Name)
+		if crewStandbyTabForKey(project, key) != macMainTab {
+			tab, call.Tab = side, side
+			if call.Operation == "resolve" {
+				call.Name = crewMacTabName(call.Name)
+			}
 		}
 	} else {
 		resolved, err := api.agentProfiles.Resolve(profile, 0, GetUserIDFromContext(r.Context()))
@@ -230,21 +213,16 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		if err != nil || binding.ConversationKey != binding.ProjectMainChatKey {
 			return false
 		}
-		if standby(macMainTab) {
-			return false
-		}
 	}
-	if call.Operation == "resolve" && call.Tab == "" && crewMacSocketFor(GetUserIDFromContext(r.Context()), project, b.PairID) == nil {
-		entries, e := readCrewAgentPlacements(project)
+	// With the Mac off the chat still opens to read what the server holds of it; a send waits for the Mac.
+	if call.Operation == "resolve" && crewMacSocketFor(GetUserIDFromContext(r.Context()), project, b.PairID) == nil {
+		conversation, e := crewMacOffConversation(project, b.PeerProjectID, tab)
 		if e != nil {
 			externalError(w, 409, "publish_unavailable", e.Error())
 			return true
 		}
-		for _, entry := range entries {
-			if entry.MacMainConversationID == "" {
-				continue
-			}
-			writeAgentProfileJSON(w, http.StatusOK, map[string]any{"session_id": crewChatSessionID(project, entry.MacMainConversationID), "conversation_id": entry.MacMainConversationID, "conversation_key": key, "tab_owner_id": GetUserIDFromContext(r.Context()), "can_write": true, "is_main_chat": true, "chat_location": "mac", "mac_off": true})
+		if conversation != "" {
+			writeAgentProfileJSON(w, http.StatusOK, map[string]any{"session_id": crewChatSessionID(project, conversation), "conversation_id": conversation, "conversation_key": key, "tab_owner_id": GetUserIDFromContext(r.Context()), "can_write": true, "is_main_chat": tab == macMainTab, "chat_location": "mac", "mac_off": true})
 			return true
 		}
 	}
@@ -293,6 +271,27 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 	}
 	writeCrewChatResult(w, result)
 	return true
+}
+
+// crewMacOffConversation is the owner's chat with an agent of their Mac as this server knows it while the Mac is off:
+// Main's from its publication, else the one in the agent's standby copy; "" when the server holds neither.
+func crewMacOffConversation(project, peer, tab string) (string, error) {
+	if tab == macMainTab {
+		entries, err := readCrewAgentPlacements(project)
+		if err != nil {
+			return "", err
+		}
+		for _, entry := range entries {
+			if entry.MacMainConversationID != "" {
+				return entry.MacMainConversationID, nil
+			}
+		}
+	}
+	rows, err := readCrewStandby(project)
+	if err != nil {
+		return "", nil
+	}
+	return rows[tab].Sessions[macSharedAgentChatKey(peer, tab)].ConversationID, nil
 }
 
 // A virtual session address selects a private pair, not a native session ID.
@@ -418,7 +417,8 @@ func (api *StreamingAPI) crewMacOffRead(owner, project, generation, operation st
 		}
 	}
 	// Always on: an agent with a copy on this server shows that copy's conversation, so a teammate (or the owner on
-	// the website) sees the chat while the Mac is off, also after this server restarted and its relay cache is empty.
+	// the website, to read) sees the chat while the Mac is off, also after this server restarted and its relay cache
+	// is empty.
 	// Only for the Crew's owner (a Team member watching reads as the owner, for the one conversation it may watch);
 	// a member's read of their own Mac never reaches the owner's copies.
 	onMac := true
@@ -656,8 +656,8 @@ func callCrewMacFor(ctx context.Context, owner, project string, call crewChatCal
 }
 
 // routeCrewMacTabs lists a Mac Crew's own side tabs for its owner on the website (PLAT-856-509): the Mac's tab keys with
-// the project part swapped to this server's copy. With the Mac off only published agents and In team agents answering
-// from their standby copy are here; Main still shows.
+// the project part swapped to this server's copy. With the Mac off only published agents and agents with a standby copy
+// are here, the latter to read: the owner's chat with them waits for the Mac. Main still shows.
 func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request, project string) bool {
 	if IsLocalMode() || !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
 		return false
@@ -685,35 +685,34 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 			if !ok || base != b.PeerProjectID || !crewMacTabID(id) || row.ConversationID == "" {
 				continue
 			}
-			if _, published := placements[id]; published || crewStandbyServerWriter(project, id) {
+			if _, published := placements[id]; published {
 				continue
 			}
 			tabs = append(tabs, AgentProfileSideChat{TabOwnerID: owner, TabOwnerName: GetUserFromContext(r.Context()).Username, CanWrite: true,
 				ConversationKey: project + codeChatSideMarker + id, ConversationID: row.ConversationID, SessionID: crewChatSessionID(project, row.ConversationID),
 				ChatLocation: "mac", Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned})
 		}
-	}
-	// Always on: an In team agent the server answers for (its Mac off, or not handed back yet) is opened here, from its
-	// standby copy.
-	serving := map[string]bool{}
-	if rows, e := readCrewStandby(project); e == nil {
-		for tab := range rows {
-			if tab == macMainTab || placements[tab].Tab != "" {
+	} else if rows, e := readCrewStandby(project); e == nil {
+		shared := readMacSharedAgents(project)
+		for tab, row := range rows {
+			session, ok := row.Sessions[macSharedAgentChatKey(b.PeerProjectID, tab)]
+			if _, published := placements[tab]; !ok || published || tab == macMainTab || session.ConversationID == "" {
 				continue
 			}
-			if api.crewStandbyRoute(r.Context(), owner, project, tab, "", false) {
-				serving[tab] = true
+			at := slices.IndexFunc(shared, func(agent macSharedAgent) bool { return agent.Tab == tab })
+			if at < 0 {
+				continue
 			}
+			tabs = append(tabs, AgentProfileSideChat{TabOwnerID: owner, TabOwnerName: GetUserFromContext(r.Context()).Username, CanWrite: true,
+				ConversationKey: project + codeChatSideMarker + tab, ConversationID: session.ConversationID, SessionID: crewChatSessionID(project, session.ConversationID),
+				ChatLocation: "mac", Name: crewMacTabName(shared[at].Name), Purpose: shared[at].Purpose, Pinned: true})
 		}
 	}
-	if len(placements) > 0 || len(serving) > 0 {
+	if len(placements) > 0 {
 		doc, e := defaultProductConversationRegistryStore().loadDocument(r.Context(), productConversationRegistryPath(owner))
 		if e != nil {
 			externalError(w, 409, "publish_unavailable", e.Error())
 			return true
-		}
-		for tab := range serving {
-			placements[tab] = crewAgentPlacement{Tab: tab, Location: "server"}
 		}
 		for tab, place := range placements {
 			if place.Location != "server" || tab == macMainTab {
