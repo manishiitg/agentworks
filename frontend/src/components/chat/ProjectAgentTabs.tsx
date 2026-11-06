@@ -622,6 +622,9 @@ function PersonChip({ name, presence, agents, watching, onPick }: {
       {avatar('h-5 w-5')}
       <span className="min-w-0 truncate">{name}{watching && <> · <b className="font-semibold">{watching.name}</b></>}</span>
       {!watching && <span className="text-muted-foreground">{agents.length}</span>}
+      {/* What their agents are doing now (owner, 6 Nov: "when their agent is online/offline/working/loading I want to see
+          that"): one mark each, only while it is working, needs them, failed or has a reply not read yet. */}
+      <span className="flex shrink-0 items-center gap-0.5">{agents.map(agent => <AgentMenuActivity key={agent.tabId} tabId={agent.tabId} />)}</span>
       <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
     </button>
     {open && createPortal(
@@ -632,9 +635,13 @@ function PersonChip({ name, presence, agents, watching, onPick }: {
         </div>
         {agents.map(agent => <button key={agent.tabId} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(agent.tabId) }}
           className={`flex min-h-9 w-full min-w-0 items-center gap-2 rounded-xl px-2 text-left text-[13px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching?.tabId === agent.tabId ? 'bg-muted/70 font-semibold' : ''}`}>
+          <span className="flex w-3 shrink-0 justify-center"><AgentMenuActivity tabId={agent.tabId} /></span>
           <span className="min-w-0 truncate">{agent.name}</span>
           {watching?.tabId === agent.tabId && <span className="shrink-0 text-[11px] font-normal text-muted-foreground">watching</span>}
-          {agent.status && <span className={`ml-auto shrink-0 pl-2 text-[11px] font-normal ${STATUS_TONE[agent.tone || ''] || 'text-muted-foreground'}`}>{agent.status}</span>}
+          <span className="ml-auto flex shrink-0 items-center">
+            <AgentMenuStateWord tabId={agent.tabId} />
+            {agent.status && <span className={`shrink-0 pl-2 text-[11px] font-normal ${STATUS_TONE[agent.tone || ''] || 'text-muted-foreground'}`}>{agent.status}</span>}
+          </span>
         </button>)}
       </div>, document.body
     )}
