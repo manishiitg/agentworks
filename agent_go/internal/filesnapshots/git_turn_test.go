@@ -1,11 +1,15 @@
 package filesnapshots
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // PLAT-746-319: the old reply capture enumerated 104k files even on no-op
@@ -453,6 +457,88 @@ func TestTurnRespectsOrdinaryIgnoreRules(t *testing.T) {
 			plan, err := f.s.PlanUndo(t.Context(), r.ID, all, all)
 			if err != nil || len(plan.Restore) != want {
 				t.Fatalf("Undo includes ignored output: %v %+v", err, plan)
+			}
+		})
+	}
+}
+
+// PLAT-746-319: a stalled checkout used to spend the entire after deadline,
+// losing ordinary-file and healthy checkout changes from the reply bar too.
+func TestTurnSlowCheckoutKeepsHealthyReplyChanges(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX Git process boundary")
+	}
+	for _, slowBefore := range []bool{true, false} {
+		t.Run(fmt.Sprintf("before=%t", slowBefore), func(t *testing.T) {
+			f := newCrew(t)
+			f.repo("00-slow", map[string]string{"a.txt": "original\n"})
+			for i := 0; i < 6; i++ {
+				f.repo(fmt.Sprintf("app%d", i), map[string]string{"a.txt": "original\n"})
+			}
+			f.put("report.md", "original\n")
+			realGit, err := exec.LookPath("git")
+			if err != nil {
+				t.Fatal(err)
+			}
+			bin := t.TempDir()
+			blocked := filepath.Join(bin, "blocked")
+			// Only the selected checkout stalls. Private Git and all healthy
+			// checkouts still execute their real commands through safegit.
+			wrapper := fmt.Sprintf("#!/bin/sh\nif [ \"$PWD\" = %q ] && [ -f %q ]; then exec sleep 60; fi\nexec %q \"$@\"\n", filepath.Join(f.s.Root, "00-slow"), blocked, realGit)
+			if err := os.WriteFile(filepath.Join(bin, "git"), []byte(wrapper), 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			block := func(on bool) {
+				t.Helper()
+				if on {
+					if err := os.WriteFile(blocked, nil, 0600); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					_ = os.Remove(blocked)
+				}
+			}
+			boundary := func(begin bool) Record {
+				t.Helper()
+				ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+				defer cancel()
+				var r Record
+				var err error
+				if begin {
+					r, err = f.s.BeginGitTurn(ctx, "slow")
+				} else {
+					r, err = f.s.FinishGitTurn(ctx, "slow")
+				}
+				if err != nil {
+					t.Fatalf("healthy reply capture lost: %v", err)
+				}
+				return r
+			}
+			block(slowBefore)
+			before := boundary(true)
+			if slowBefore && len(before.GitTurn) != 6 {
+				t.Fatalf("healthy checkouts starved: %d", len(before.GitTurn))
+			}
+			block(!slowBefore)
+			f.put("00-slow/a.txt", "changed but unknown\n")
+			for i := 0; i < 6; i++ {
+				f.put(fmt.Sprintf("app%d/a.txt", i), "changed\n")
+			}
+			f.put("report.md", "changed\n")
+			r := boundary(false)
+			block(false)
+			if r.Status != "partial" || len(r.Review.IncompleteRoots) != 1 || r.Review.IncompleteRoots[0] != "00-slow" {
+				t.Fatalf("missing checkout not disclosed: %+v", r.Review)
+			}
+			c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
+			if err != nil || len(c.Changes) != 7 {
+				t.Fatalf("healthy/ordinary reply files lost: %v %+v", err, c.Changes)
+			}
+			for _, change := range c.Changes {
+				if strings.HasPrefix(change.Path, "00-slow/") {
+					t.Fatal("unreadable baseline invented a change")
+				}
 			}
 		})
 	}
