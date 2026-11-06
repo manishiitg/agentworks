@@ -75,8 +75,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     {macs.map(({ mac, rows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
       <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
         <span className="shrink-0">On your Mac</span>
-        <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${mac.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
-        <span className="truncate font-normal" title={`${mac.name} · ${macStatusText(mac)}`}>{mac.name} · {macStatusText(mac)}</span>
+        <span role="img" aria-label={`${mac.name} · ${macStatusText(mac)}`} title={`${mac.name} · ${macStatusText(mac)}`} className={`h-1.5 w-1.5 shrink-0 rounded-full ${mac.online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
       </h2>
       {rows.map(renderProject)}
     </section>)}

@@ -125,7 +125,7 @@ func crewStandbyTabForKey(project, key string) string {
 	if project == "" || key == "" {
 		return ""
 	}
-	if key == crewOwnerDefaultChatKey(project, ownerOfCrewProjectID(project)) {
+	if key == crewOwnerDefaultChatKey(project, ownerOfCrewProjectID(project)) || crewOwnerRootMain(project, key) {
 		return macMainTab
 	}
 	return crewAgentPublishTab(key)
