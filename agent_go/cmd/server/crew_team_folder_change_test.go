@@ -248,7 +248,7 @@ func TestCrewTeamStartupClearsFalseClashes(t *testing.T) {
 		return &chunkedFile{Hash: strings.Repeat(hash, 64), Size: 1}
 	}
 	event := func(path string, rev uint64, v *chunkedFile) crewTeamEvent {
-		return crewTeamEvent{Path: path, Kind: "sent", Revision: rev, File: syncFile(v), Chunks: v.Chunks}
+		return crewTeamEvent{Path: path, Kind: "sent", Revision: rev, File: syncFile(*v), Chunks: v.Chunks}
 	}
 	state := crewTeamFileState{Revision: 6, Versions: map[string]crewTeamVersion{}, Receipts: map[string]crewTeamReceipt{},
 		Events: []crewTeamEvent{event("same.md", 1, file("a")), event("same.md", 2, file("a")), event("real.md", 3, file("b")), event("real.md", 4, file("c")), event("own.md", 5, file("d")), event("own.md", 6, file("e"))},
