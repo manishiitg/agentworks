@@ -25,11 +25,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chunks"
+	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
-// The pieces every side shares live in agent_go/pkg/chunks; these names keep the server's code short.
+// The pieces every side shares live in workspace/chunks; these names keep the server's code short.
 type (
 	transferChunk = chunks.Chunk
 	chunkedFile   = chunks.File
