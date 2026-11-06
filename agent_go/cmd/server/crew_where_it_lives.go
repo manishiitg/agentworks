@@ -189,6 +189,11 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 		externalError(w, 409, "wrong_pair", "Turn this off from the Mac that holds this Crew.")
 		return
 	}
+	if crewTeamRecordOn(roots.ID) {
+		log.Printf("[CREW_RELAY] project=%s reach_off refused: team_on", roots.ID)
+		externalError(w, 409, "team_on", crewTeamOnOfflineRefused)
+		return
+	}
 	if crewHasPublishedAgents(roots.ID) {
 		externalError(w, 409, "published_agents", "This Crew has published agents on the server. Keep it connected to continue using them; you can close the Mac app and those agents will keep running.")
 		return
