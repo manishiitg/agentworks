@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
@@ -547,5 +548,53 @@ func TestCrewNativeSessionMovesAsChunks(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(filepath.Join(mac.Private, "native-sync", "claude-code-"+native, "journals", "session.jsonl")); string(data) != newer {
 		t.Fatal("the pull did not bring the server's newer copy to the Mac")
+	}
+}
+
+// PLAT-856: with the Mac off, a chat read can show an always-on copy, but only of an agent's own conversation and only
+// for the Crew's owner (a member watching reads as the owner): a teammate's private thread with the agent is never
+// served, and a member's read of their own Mac never reaches the owner's copies.
+func TestCrewMacOffReadShowsOnlyTheAgentsOwnCopy(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	owner := ownerOfCrewProjectID("team")
+	if owner == "" {
+		t.Fatal("fixture Crew has no owner")
+	}
+	dir, err := crewStandbyDir("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(sub, text string) {
+		t.Helper()
+		raw, _ := json.Marshal(crewHandoffConversation{ConversationID: "conversation-x", History: []llmtypes.MessageContent{llmtypes.TextParts(llmtypes.ChatMessageTypeHuman, text)}})
+		if err := os.MkdirAll(filepath.Join(dir, "helper01", sub), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "helper01", sub, "conversation.json"), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("own", "the agent's own chat")
+	write("thread", "a teammate's private thread")
+	if err := writeCrewStandby("team", map[string]crewAgentStandby{"helper01": {Tab: "helper01", Sessions: map[string]crewAgentStandbySession{
+		"mac-crew:chat:helper01":                   {Dir: "own", ConversationID: "conversation-own"},
+		"mac-crew:chat:with-helper01-0123456789ab": {Dir: "thread", ConversationID: "conversation-thread"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	read := func(reader, conversation string) string {
+		body := f.api.crewMacOffRead(reader, "team", conversation, "events").Body
+		return string(body)
+	}
+	if got := read(owner, "conversation-own"); !strings.Contains(got, "own chat") || !strings.Contains(got, `"history_on_mac":false`) {
+		t.Fatalf("the owner (or a member watching as the owner) must see the agent's own copy: %s", got)
+	}
+	if got := read(owner, "conversation-thread"); strings.Contains(got, "private thread") {
+		t.Fatalf("a teammate's private thread was served from the copy: %s", got)
+	}
+	if got := read("member", "conversation-own"); strings.Contains(got, "own chat") {
+		t.Fatalf("a member's own read reached the owner's copy: %s", got)
 	}
 }
