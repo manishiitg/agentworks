@@ -172,14 +172,28 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if _, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, memberChat.ConversationKey); err == nil {
 		t.Fatal("automation reused a teammate's private account configuration")
 	}
-	if err := store.setAgentOnlyMe(ctx, "owner", "work", chat.ConversationKey, true); err != nil {
+	// Private side agents now use the Team's visibility record. Main remains
+	// shared on this upstream revision; keep it alongside the private agent.
+	privateKey := crew.CrewID + codeChatSideMarker + "private"
+	privateBinding, err := resolveProductConversationBinding(ctx, "owner", profile, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateChat, err := store.resolveOrCreate(ctx, "owner", profile, privateBinding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: crew.CrewID, OwnerID: "owner", On: true,
+		People:       []crewTeamPerson{{UserID: "stranger"}},
+		AgentChoices: map[string]map[string]bool{"owner": {privateChat.ConversationKey: false}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	choices, err = crewExecutableAgentChoices(strangerCtx, "stranger", "owner", crew.CrewID, crew.WorkspacePath)
-	if err != nil || len(choices) != 0 {
+	if err != nil || len(choices) != 1 || choices[0].ID != chat.ConversationKey {
 		t.Fatal("member discovered the owner's Only me agent", choices, err)
 	}
-	if _, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, chat.ConversationKey); err != nil {
+	if _, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, privateChat.ConversationKey); err != nil {
 		t.Fatal("owner lost their own agent", err)
 	}
 }

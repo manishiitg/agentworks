@@ -65,9 +65,6 @@ func crewScriptManifest(ctx context.Context, binding *crewExecutableBinding) (*W
 	if parent, parentErr := readCrewProjectManifests(ctx, "work", binding.CrewRoot); parentErr == nil {
 		manifest.Capabilities.SelectedServers = append([]string{}, parent.Capabilities.SelectedServers...)
 		manifest.Capabilities.SelectedTools = append([]string{}, parent.Capabilities.SelectedTools...)
-		if parent.Capabilities.SelectedSecrets != nil {
-			manifest.Capabilities.SelectedSecrets = append([]string{}, (*parent.Capabilities.SelectedSecrets)...)
-		}
 		if parent.Capabilities.SelectedGlobalSecretNames != nil {
 			names := append([]string{}, (*parent.Capabilities.SelectedGlobalSecretNames)...)
 			manifest.Capabilities.SelectedGlobalSecretNames = &names
