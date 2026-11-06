@@ -380,33 +380,55 @@ var crewHandbackMacHistory = func(owner string, record ProductConversationRecord
 }
 
 // crewHandbackMergeHistory joins the server's turns onto this Mac's saved history. The server's saved history may start
-// later than the Mac's (it trims the oldest messages when it saves a turn), so the Mac's last message is looked up in
-// it: everything after it is new, and the Mac keeps its own full history in front. When the Mac's last message is not
-// in the server's history the Mac answered too (both changed): ok is false. A Mac with no saved history takes the
-// server's as it is.
+// later than the Mac's (it trims the oldest messages when it saves a turn) and carries its own freshly built system
+// message, so system messages are left out of the comparison and the Mac's last message is looked up in the server's
+// history: everything after it is new, and the Mac keeps its own full history in front. Only the latest messages must
+// match (a repeated message may match at another place, so a mismatch tries the next older one). When the Mac's last
+// message is not in the server's history the Mac answered too (both changed): ok is false, with the reason logged.
+// A Mac with no saved history takes the server's as it is.
 func crewHandbackMergeHistory(owner string, record ProductConversationRecord, server []llmtypes.MessageContent) (merged []llmtypes.MessageContent, added int, ok bool) {
 	mine, found, err := crewHandbackMacHistory(owner, record)
 	if err != nil {
+		log.Printf("[ALWAYS_ON] handback_merge session=%s not_merged reason=mac_history_unreadable error=%q", record.SessionID, err)
 		return nil, 0, false
 	}
 	if !found || len(mine) == 0 {
 		return server, len(server), true
 	}
-	same := func(a, b llmtypes.MessageContent) bool {
-		x, _ := json.Marshal(a)
-		y, _ := json.Marshal(b)
-		return bytes.Equal(x, y)
+	const mustMatch = 20 // how many of the Mac's latest messages must also be in the server's history
+	key := func(m llmtypes.MessageContent) string {
+		if strings.EqualFold(string(m.Role), "system") {
+			return ""
+		}
+		x, _ := json.Marshal(m)
+		return string(x)
 	}
-	last := mine[len(mine)-1]
-	for at := len(server) - 1; at >= 0; at-- {
-		if !same(server[at], last) {
+	// The Mac's dialogue without system messages, newest last, and the server's with their places.
+	macKeys := []string{}
+	for _, m := range mine {
+		if k := key(m); k != "" {
+			macKeys = append(macKeys, k)
+		}
+	}
+	serverAt := []int{}
+	serverKeys := []string{}
+	for i, m := range server {
+		if k := key(m); k != "" {
+			serverAt = append(serverAt, i)
+			serverKeys = append(serverKeys, k)
+		}
+	}
+	if len(macKeys) == 0 {
+		return server, len(server), true
+	}
+	last := macKeys[len(macKeys)-1]
+	for at := len(serverKeys) - 1; at >= 0; at-- {
+		if serverKeys[at] != last {
 			continue
 		}
-		// The messages before it must match too, as far back as both go; a repeated message (an "ok") may match at
-		// another place, so a mismatch tries the next older one.
 		matches := true
-		for back := 1; back <= at && back < len(mine); back++ {
-			if !same(server[at-back], mine[len(mine)-1-back]) {
+		for back := 1; back < mustMatch && back <= at && back < len(macKeys); back++ {
+			if serverKeys[at-back] != macKeys[len(macKeys)-1-back] {
 				matches = false
 				break
 			}
@@ -414,9 +436,11 @@ func crewHandbackMergeHistory(owner string, record ProductConversationRecord, se
 		if !matches {
 			continue
 		}
-		added = len(server) - 1 - at
-		return append(append([]llmtypes.MessageContent{}, mine...), server[at+1:]...), added, true
+		// The server's messages after that place, system messages included only when they come after it.
+		after := server[serverAt[at]+1:]
+		return append(append([]llmtypes.MessageContent{}, mine...), after...), len(after), true
 	}
+	log.Printf("[ALWAYS_ON] handback_merge session=%s not_merged reason=last_message_not_in_server mac_messages=%d server_messages=%d", record.SessionID, len(macKeys), len(serverKeys))
 	return nil, 0, false
 }
 
