@@ -52,8 +52,8 @@ type Snapshot struct {
 	DatabasePath string `json:"-"` // consistent Crew database snapshot, never a live SQLite file
 	StatePath    string `json:"-"` // owner-scoped move records, admitted separately from working files
 	StagingDir   string `json:"-"`
-	// What a capture did: files hashed by reading, files whose hash came from the cache, private copies made (each one
-	// more read of that file), reads repeated because a file changed.
+	// What a capture did: source files read, files reused without content reads,
+	// private transfer copies kept, reads repeated because a file changed.
 	Read, Reused, Copied, Retried int                `json:"-"`
 	Payloads                      map[string]Payload `json:"payloads,omitempty"`
 	Content                       *ContentSnapshot   `json:"content,omitempty"`
@@ -185,16 +185,37 @@ func (e *BusyFileError) Error() string {
 	return name + " keeps changing, so this Crew can't be sent yet. Stop the agent writing to it, then try again."
 }
 
-// readCaptureFile is Cache.Read; a test makes a file change on purpose.
-var readCaptureFile = Cache.Read
+// readCaptureFile uses the same cache reader with a private-copy sink; a test
+// makes a file change on purpose.
+var readCaptureFile = Cache.readWith
 
-// captureFile reads one file (or reuses it from the cache) and, when it differs from what the other side has, keeps a
-// private copy to send: a transfer can resume after the working file moved on. Unchanged files are neither read nor
-// copied.
+// captureFile keeps a private copy of a changed version so its transfer can
+// resume after the working file moves on. Trusted versions already in the
+// destination's baseline need no content read or copy.
 func captureFile(ctx context.Context, roots crewroot.Roots, cache Cache, root, rel, key string, previous Manifest, out *Snapshot) (File, Change, bool, error) {
 	before, exists := previous[key]
 	for try := 1; ; try++ {
-		cached, read, err := readCaptureFile(cache, ctx, root, rel, key)
+		var stage *os.File
+		cleanup := func() {
+			if stage != nil {
+				_ = stage.Close()
+				_ = os.Remove(stage.Name())
+			}
+		}
+		// Open the stage lazily: a trusted unchanged file does no content
+		// reads or writes, while a cold read hashes and freezes in one pass.
+		copyChunk := func(data []byte) error {
+			if stage == nil {
+				var err error
+				stage, err = os.CreateTemp(out.StagingDir, "file-")
+				if err != nil {
+					return err
+				}
+			}
+			_, err := stage.Write(data)
+			return err
+		}
+		cached, read, err := readCaptureFile(cache, ctx, root, rel, key, copyChunk)
 		file := cached.File
 		if err == nil {
 			// NTFS does not represent the Unix execute bit. Keep its last synced
@@ -203,15 +224,21 @@ func captureFile(ctx context.Context, roots crewroot.Roots, cache Cache, root, r
 				file.Executable = before.Executable
 			}
 			if exists && before == file {
+				cleanup() // a touch/racy recheck may have streamed unchanged bytes
 				out.count(read)
 				return file, Change{}, false, nil
 			}
-			var stage *os.File
-			if stage, err = os.CreateTemp(out.StagingDir, "file-"); err == nil {
+			if stage == nil { // a cache hit, or an empty cold file
+				stage, err = os.CreateTemp(out.StagingDir, "file-")
+			}
+			if err == nil && !read {
+				// A fresh destination needs frozen bytes even when their hash
+				// was cached. Count this as a real source read, not reuse.
 				err = CopyContent(ctx, stage, roots, key, file)
-				if closeErr := stage.Close(); err == nil {
-					err = closeErr
-				}
+				read = true
+			}
+			if stage != nil && err == nil {
+				err = stage.Close()
 			}
 			if err == nil {
 				out.count(read)
@@ -222,10 +249,8 @@ func captureFile(ctx context.Context, roots crewroot.Roots, cache Cache, root, r
 				}
 				return file, change, true, nil
 			}
-			if stage != nil {
-				_ = os.Remove(stage.Name())
-			}
 		}
+		cleanup()
 		if !errors.Is(err, ErrFileChanged) {
 			return File{}, Change{}, false, err
 		}
@@ -245,8 +270,9 @@ func (s *Snapshot) count(read bool) {
 	}
 }
 
-// CaptureCached is CaptureSelected with this Crew's cache of what it read before (cache.go): a file whose stamp is
-// unchanged is not read. The caller saves the cache.
+// CaptureCached uses this Crew's local version cache. A trusted version already
+// in previous needs no content read; a fresh destination still needs a private
+// transfer copy. The caller saves the cache separately from delivery receipts.
 func CaptureCached(ctx context.Context, roots crewroot.Roots, previous Manifest, privateStageRoot string, include func(string, bool) bool, cache Cache) (out Snapshot, err error) {
 	out = Snapshot{Files: Manifest{}, Changes: []Change{}}
 	if privateStageRoot == "" {

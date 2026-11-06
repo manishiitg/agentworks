@@ -68,6 +68,12 @@ var openCachedFile = (*os.Root).Open
 // Read reuses only a stable local version, otherwise computes the raw sha256
 // and content-defined chunks together in one bounded pass. It stages no bytes.
 func (c Cache) Read(ctx context.Context, root, rel, key string) (CachedFile, bool, error) {
+	return c.readWith(ctx, root, rel, key, nil)
+}
+
+// readWith lets a capture freeze cold bytes during the same pass that hashes
+// them. Cache hits never invoke each; the cache still stores no contents.
+func (c Cache) readWith(ctx context.Context, root, rel, key string, each func([]byte) error) (CachedFile, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return CachedFile{}, false, err
 	}
@@ -107,8 +113,17 @@ func (c Cache) Read(ctx context.Context, root, rel, key string) (CachedFile, boo
 	if runtime.GOOS == "windows" && had {
 		executable = known.File.Executable
 	}
-	version, err = chunks.Split(&contextReader{ctx, io.LimitReader(f, limit+1)}, info.Size(), executable, func(string, []byte) error { return nil })
+	var copyErr error
+	version, err = chunks.Split(&contextReader{ctx, io.LimitReader(f, limit+1)}, info.Size(), executable, func(_ string, data []byte) error {
+		if each != nil {
+			copyErr = each(data)
+		}
+		return copyErr
+	})
 	if err != nil {
+		if copyErr != nil {
+			return entry, true, copyErr // staging failures are not unstable source files
+		}
 		if ctx.Err() != nil {
 			return entry, true, ctx.Err()
 		}
