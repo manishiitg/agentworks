@@ -1031,4 +1031,26 @@ func TestCrewStandbyMemberRowsAreSeparateAndPairBound(t *testing.T) {
 			t.Fatalf("%s must keep only their own Main: %+v %v %v", person, rows, err, readErr)
 		}
 	}
+	// A removed member keeps nothing: rows, copies, the Mac-only list and their private native sessions all go, and the
+	// owner's row is not touched (private sessions left on disk would be trusted by a later stage).
+	dir, _ := crewStandbyPersonDir("team", "other")
+	if err := os.WriteFile(filepath.Join(dir, "mac-only.json"), []byte("[]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(memberRoots.Private, "native-sync")); err != nil {
+		t.Fatalf("the member's native staging should exist before removal: %v", err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "invitee", Invited: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	pruneCrewStandby("team")
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("a removed member's standby folder (rows, copies, mac-only.json) stayed: %v", err)
+	}
+	if _, err := os.Stat(memberRoots.Private); !os.IsNotExist(err) {
+		t.Fatalf("a removed member's private native sessions stayed: %v", err)
+	}
+	if rows, err := readCrewStandby("team", "owner"); err != nil || len(rows["main"].Sessions) != 1 {
+		t.Fatalf("the owner's row must stay: %+v %v", rows, err)
+	}
 }

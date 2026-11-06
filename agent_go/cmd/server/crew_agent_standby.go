@@ -408,6 +408,12 @@ func pruneCrewStandbyPerson(project, person string) {
 	lock := crewStandbyLock(project, person)
 	lock.Lock()
 	defer lock.Unlock()
+	if crewStandbyMemberGone(project, person) {
+		// A removed member (or Team off, or no Mac any more) keeps nothing here: their rows, copies, Mac-only list and
+		// private native sessions go, and a hand back could never come anyway (the transport refuses them).
+		removeCrewStandbyMemberData(project, person)
+		return
+	}
 	rows, err := readCrewStandby(project, person)
 	if err != nil || len(rows) == 0 {
 		return
@@ -433,6 +439,37 @@ func pruneCrewStandbyPerson(project, person string) {
 	if changed {
 		if err = writeCrewStandby(project, person, rows); err != nil {
 			log.Printf("[ALWAYS_ON] project=%s event=drop_record_failed", project)
+		}
+	}
+}
+
+// crewStandbyMemberGone: the person is not the Crew's owner and is no longer a joined member working on their Mac while
+// the Team is on (or the Team record is gone). A read error other than "no Team" decides nothing.
+func crewStandbyMemberGone(project, person string) bool {
+	owner := ownerOfCrewProjectID(project)
+	if owner == "" || person == owner {
+		return false
+	}
+	t, err := readCrewTeam(project)
+	if os.IsNotExist(err) {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	_, onMac := t.memberMac(person)
+	return t.OwnerID != owner || !t.On || !t.member(person) || !onMac
+}
+
+// removeCrewStandbyMemberData deletes everything the server holds for one member's standby: people/<person>/ (rows,
+// copies, mac-only.json) and their private native-sync staging under <Private>/members/<person>.
+func removeCrewStandbyMemberData(project, person string) {
+	if dir, err := crewStandbyPersonDir(project, person); err == nil {
+		_ = os.RemoveAll(dir)
+	}
+	if rec, ok := crewOwnerRecord(project); ok && rec.Folder != "" {
+		if roots, found, err := crewStorageRoots("Crew/" + rec.Folder); err == nil && found {
+			_ = os.RemoveAll(filepath.Join(roots.Private, "members", sanitizeUserIDForPath(person)))
 		}
 	}
 }
