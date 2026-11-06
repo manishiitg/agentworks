@@ -346,6 +346,11 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 	run := func(w http.ResponseWriter, h func(http.ResponseWriter, *http.Request)) bool {
 		rec := httptest.NewRecorder()
 		h(rec, r)
+		if rec.Code == http.StatusConflict && strings.Contains(rec.Body.String(), "dashboard") && !strings.Contains(rec.Body.String(), "Mac") {
+			// The Share save's own words are for a tool; say it plainly with the next step.
+			externalError(w, http.StatusConflict, "dashboard_needed", "This Crew has no dashboard yet, so there is nothing to show this person. Say yes and I'll create a standard dashboard and add them, or publish your own dashboard first and then add them.")
+			return false
+		}
 		if rec.Code >= 300 {
 			w.Header().Set("Content-Type", rec.Header().Get("Content-Type"))
 			w.WriteHeader(rec.Code)
@@ -385,7 +390,7 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 			if record != nil && strings.TrimSpace(record.Email) != "" {
 				emails = append(emails, record.Email)
 			} else {
-				externalError(w, 400, "invalid_person", "This person has no email on file, so they can't be given dashboards only.")
+				externalError(w, 400, "invalid_person", "This person has no email on file, so they can't be given dashboards only. Ask an admin to add their email, or choose Works with me for them.")
 				return false
 			}
 		}
