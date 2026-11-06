@@ -248,18 +248,18 @@ func TestExternalWorkflowFunctions(t *testing.T) {
 func TestFunctionTriggerVariablesPassRunStartCheck(t *testing.T) {
 	sched := reviewPRTrigger()
 	input := &WorkflowWebhookDelivery{Variables: map[string]string{"GITHUB_OWNER": "acme", "GITHUB_REPO": "app", "PR_NUMBER": "149"}}
-	if err := webhookDeliveryStartError(sched, input); err != nil {
+	if err := webhookDeliveryStartError(t.Context(), "Workflow/test", sched, input); err != nil {
 		t.Fatalf("function inputs rejected at run start: %v", err)
 	}
 	input.Variables["OTHER"] = "x"
-	if err := webhookDeliveryStartError(sched, input); err == nil || !strings.Contains(err.Error(), `"OTHER"`) {
+	if err := webhookDeliveryStartError(t.Context(), "Workflow/test", sched, input); err == nil || !strings.Contains(err.Error(), `"OTHER"`) {
 		t.Fatalf("undeclared variable: err = %v", err)
 	}
 	hook := WorkflowSchedule{ScheduleType: "webhook", Webhook: &WorkflowWebhookConfig{AllowedVariables: []string{"PR_NUMBER"}}}
-	if err := webhookDeliveryStartError(hook, &WorkflowWebhookDelivery{Variables: map[string]string{"PR_NUMBER": "1"}}); err != nil {
+	if err := webhookDeliveryStartError(t.Context(), "Workflow/test", hook, &WorkflowWebhookDelivery{Variables: map[string]string{"PR_NUMBER": "1"}}); err != nil {
 		t.Fatalf("webhook allow-list: %v", err)
 	}
-	if err := webhookDeliveryStartError(hook, &WorkflowWebhookDelivery{Variables: map[string]string{"GITHUB_OWNER": "a"}}); err == nil {
+	if err := webhookDeliveryStartError(t.Context(), "Workflow/test", hook, &WorkflowWebhookDelivery{Variables: map[string]string{"GITHUB_OWNER": "a"}}); err == nil {
 		t.Fatal("webhook must still reject variables outside allowed_variables")
 	}
 }

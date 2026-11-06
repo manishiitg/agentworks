@@ -285,6 +285,22 @@ func TestCrewDirectWorkflowInputsValidateBeforeLaunch(t *testing.T) {
 	if err := resolveWorkflowWebhookInputs(ctx, "Workflow/test", saved, &WorkflowWebhookDelivery{Variables: map[string]string{"count": "7"}}); err != nil {
 		t.Fatalf("valid typed value with default rejected: %v", err)
 	}
+	// Live regression: admission passed but the scheduler reloaded the saved
+	// raw trigger and refused its direct-run inputs. Exercise that boundary.
+	direct := &WorkflowWebhookDelivery{DirectRun: true, Variables: map[string]string{"count": "7"}}
+	if err := webhookDeliveryStartError(ctx, "Workflow/test", saved, direct); err != nil {
+		t.Fatalf("direct start rejected: %v", err)
+	}
+	direct.Variables["unknown"] = "bad"
+	if err := webhookDeliveryStartError(ctx, "Workflow/test", saved, direct); err == nil {
+		t.Fatal("direct run accepted undeclared input")
+	}
+	delete(direct.Variables, "unknown")
+	public := saved
+	public.Kind, public.Caller = "", nil
+	if err := webhookDeliveryStartError(ctx, "Workflow/test", public, direct); err == nil {
+		t.Fatal("public trigger accepted direct-run authority")
+	}
 	// A changed declared input is picked up next direct call, without resetting
 	// an entry's paused status or other saved settings.
 	for i := range manifest.Schedules {
