@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, Eye, Loader2, MessageSquare, MessageSquareText, Pencil, PinOff, X } from 'lucide-react'
+import { ChevronDown, Loader2, MessageSquare, MessageSquareText, Pencil, PinOff, X } from 'lucide-react'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -178,8 +178,8 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
             {displayName}
           </span></AgentHoverCard>
           <AgentSetupMark setup={agent?.info?.setup} />
-          {/* Another person's agent (owner, 5 Nov): a watch mark, since only they type there; their name is the strip's group label. */}
-          {ownerName && !yourTab && <Eye role="img" aria-label="Watching: only they type here" className="h-3 w-3 shrink-0 text-muted-foreground"><title>Watching: only {ownerName} types here</title></Eye>}
+          {/* Another person's agent shows no mark (owner, 6 Nov): their name is the strip's group label. */}
+          {ownerName && !yourTab && <span className="sr-only">Only {ownerName} types here</span>}
         </>
       )}
       <ShowChatButton tabId={tab.tabId} />

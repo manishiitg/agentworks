@@ -1,6 +1,6 @@
 import { Globe, Loader2, Users, Zap } from 'lucide-react'
 import type { AgentMenuState } from './agentMenuState'
-import type { TeamTabSetup } from '../../products/work/teamApi'
+import type { TeamTabPresence, TeamTabSetup } from '../../products/work/teamApi'
 
 /** The switch-agent key on this computer: ⌘ on a Mac, Ctrl elsewhere. */
 export const AGENT_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
@@ -20,6 +20,13 @@ export function AgentSetupMark({ setup }: { setup?: TeamTabSetup }) {
     <Icon aria-hidden="true" className="h-3 w-3" />
     {setup.starts_on_own && bolt('absolute -right-1.5 -top-1 h-2.5 w-2.5')}
   </span>
+}
+
+/** The dot by a teammate's name (owner, 6 Nov): green with their Mac on, grey with it off, nothing when the server gives
+ * no presence (their agents work on the server). */
+export function PersonPresenceDot({ presence }: { presence?: TeamTabPresence }) {
+  if (!presence) return null
+  return <span role="img" aria-label={presence.line} title={presence.line} className={`h-1.5 w-1.5 shrink-0 rounded-full ${presence.online ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} />
 }
 
 /** The one mark an agent shows, the same as the chat tabs have always shown (owner, 4 Nov): a spinner while it works,

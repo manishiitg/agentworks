@@ -48,7 +48,9 @@ async function teamTarget(project: string): Promise<TeamTarget | undefined> {
 
 /** The Team tab as the server writes it for the signed-in person (crew_team_tab.go): every row, and what they may
  * change. Every screen shows it and sends the person's choices; none decides anything itself. */
-export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean }
+export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean; presence?: TeamTabPresence }
+// A teammate's Mac, as the server words it (crew_team_tab.go); absent when their agents work on the server.
+export type TeamTabPresence = { online: boolean; line: string }
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
 export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; place: 'mac' | 'server'; status_label?: string; tab: string

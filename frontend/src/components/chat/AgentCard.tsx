@@ -20,6 +20,8 @@ export interface AgentCardInfo {
   onSetPurpose?: () => void
   /** A teammate's agent: whose it is (it is shared with the team). */
   owner?: string
+  /** A teammate's agent: the server's line about their Mac, under Now. */
+  presence?: string
   /** Removes the agent for good (its chat is deleted); only for its owner, never Main. */
   onRemove?: () => void
   /** Opens Access at this agent; only where sharing can be set from here. */
@@ -33,9 +35,12 @@ export interface AgentCardInfo {
   onAutomations?: () => void
 }
 
-function AgentNowRow({ tabId, activity }: { tabId: string; activity?: 'running' | 'waiting' | null }) {
+function AgentNowRow({ tabId, activity, presence }: { tabId: string; activity?: 'running' | 'waiting' | null; presence?: string }) {
   const state = useAgentMenuState(tabId, activity)
-  return <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Now</span><span className={state === 'running' ? 'text-[hsl(var(--info))]' : 'text-muted-foreground'}>{state ? AGENT_STATE_WORD[state] : 'Idle'}</span></div>
+  return <div className="border-t border-border py-1.5">
+    <div className="flex justify-between gap-3"><span>Now</span><span className={state === 'running' ? 'text-[hsl(var(--info))]' : 'text-muted-foreground'}>{state ? AGENT_STATE_WORD[state] : 'Idle'}</span></div>
+    {presence && <p className="mt-0.5 text-muted-foreground">{presence}</p>}
+  </div>
 }
 
 /** The open tab's agent, for the purpose line above its chat; the tab strip sets it. */
@@ -128,7 +133,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         : 'fixed z-[100] w-80 rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg'}>
       <p className="flex items-center gap-2 text-sm font-semibold"><span className="min-w-0 flex-1 truncate">{info.name}</span>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}</p>
       <p className={`mb-2 mt-1 ${info.purpose ? 'text-muted-foreground' : 'text-muted-foreground/70'}`}>{info.purpose || (info.owner ? 'No purpose yet.' : 'No purpose yet. Others see it when you share this agent.')}</p>
-      {info.tabId && <AgentNowRow tabId={info.tabId} activity={info.activity} />}
+      {info.tabId && <AgentNowRow tabId={info.tabId} activity={info.activity} presence={info.presence} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>
         : <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>}
       {info.sharedWith && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>For them it</span><span className="text-muted-foreground">{info.canChange ? 'can make changes' : 'answers only'}</span></div>}
