@@ -913,6 +913,9 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		return nil
 	}
 	if status != http.StatusOK {
+		// Live round 3, 6 Nov: the asking agent was told "sent" and never heard of the refusal. It is told in its chat,
+		// in plain words, as the Mac-off notice is.
+		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s agent could not take your message, so it was not delivered. Ask again in a moment; if it keeps failing, tell "+shareOwnerLabel(dest.UserID)+".")
 		return fmt.Errorf("the agent could not take this message; try again shortly")
 	}
 	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: tab, Mac: dest.UserID, Published: published, Standby: standby, SenderID: source.UserID, Caller: sender})
