@@ -390,7 +390,7 @@ func (api *StreamingAPI) importCrewMoveData(ctx context.Context, claims *UserCla
 				return err
 			}
 			current.handoffAgentToolsMode = main.handoffAgentToolsMode
-			return api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer+"/"+chat.Conversation.ConversationID, chat.Conversation, current, h.AgentTab != "")
+			return api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer+"/"+chat.Conversation.ConversationID, chat.Conversation, current, map[bool]crewImportMode{true: crewImportNative, false: crewImportAny}[h.AgentTab != ""])
 		}
 		if err := api.importCrewMoveCallers(ctx, claims, roots, h, pair, main.ConversationKey); err != nil {
 			return err

@@ -676,7 +676,7 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if err = stageCrewNative(roots, moved.Native); err != nil {
 		t.Fatal(err)
 	}
-	if err = api.importCrewHandoffConversation(ctx, owner, roots, "native-pair", "native-first", &moved, current); err != nil {
+	if err = api.importCrewHandoffConversation(ctx, owner, roots, "native-pair", "native-first", &moved, current, crewImportAny); err != nil {
 		t.Fatal(err)
 	}
 	imported, err := api.crewHandoffMain(ctx, owner, roots.ID)
@@ -716,7 +716,7 @@ func checkCrewMuseNativeHandoff(t *testing.T, api *StreamingAPI, ctx context.Con
 	if err = os.WriteFile(path, advanced, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err = api.importCrewHandoffConversation(ctx, owner, roots, "native-pair", "native-conflict", &moved, imported); err != nil {
+	if err = api.importCrewHandoffConversation(ctx, owner, roots, "native-pair", "native-conflict", &moved, imported, crewImportAny); err != nil {
 		t.Fatal(err)
 	}
 	fallback, err := api.crewHandoffMain(ctx, owner, roots.ID)

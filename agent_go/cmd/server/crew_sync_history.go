@@ -125,9 +125,21 @@ func validateCrewHandoffConversation(in *crewHandoffConversation) error {
 // A new destination runtime session avoids reusing a stale in-memory/native
 // session on the return trip. The logical conversation ID stays unchanged.
 // Its ID is derived from the admitted pair and transfer, never a remote path.
-func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, pair, transfer string, in *crewHandoffConversation, current ProductConversationRecord, nativeOnly ...bool) error {
-	strict := len(nativeOnly) > 0 && nativeOnly[0]
-	if strict && (in == nil || in.Native == nil || crewArchiveOnly(roots)) {
+// crewImportMode says what an import may fall back to: a whole-Crew handoff continues from saved history when the
+// native session cannot resume here; Publish needs the native session; an Always on copy uses the native session when
+// this server runs its AI program and otherwise continues from saved history on a program it has (owner, 6 Nov).
+type crewImportMode int
+
+const (
+	crewImportAny crewImportMode = iota
+	crewImportNative
+	crewImportNativeElseHistory
+)
+
+func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, claims *UserClaims, roots crewroot.Roots, pair, transfer string, in *crewHandoffConversation, current ProductConversationRecord, mode crewImportMode) error {
+	// strict: one agent's own conversation (Publish, Always on), checked and replaced as that one chat.
+	strict := mode != crewImportAny
+	if mode == crewImportNative && (in == nil || in.Native == nil || crewArchiveOnly(roots)) {
 		return fmt.Errorf("publishing requires a supported native session on this server")
 	}
 	if err := validateCrewHandoffConversation(in); err != nil {
@@ -169,9 +181,10 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 			}
 			doc.Agents[key] = *chosen
 		} else {
-			if strict {
+			if mode == crewImportNative {
 				return fmt.Errorf("cannot publish this native session: %s", reason)
 			}
+			log.Printf("[CREW_HANDOFF] project=%s phase=import mode=history program=%s reason=%q", roots.ID, in.Native.Provider, reason)
 			nativeCandidate = nil
 			in.Notice = reason
 		}
@@ -202,7 +215,7 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	if runtime, nativeErr := api.importCrewNative(ctx, claims, roots, current, session, nativeCandidate, strict); nativeErr != nil {
 		// Busy means retry this handoff, not replace the running conversation
 		// with an archive that starts a fresh native session.
-		if strict || errors.Is(nativeErr, errCrewNativeDestinationBusy) {
+		if mode == crewImportNative || errors.Is(nativeErr, errCrewNativeDestinationBusy) {
 			return nativeErr
 		}
 		log.Printf("[CREW_HANDOFF] project=%s phase=import mode=archive native_unavailable=%q", roots.ID, nativeErr)
@@ -272,10 +285,10 @@ func (api *StreamingAPI) importCrewHandoffConversation(ctx context.Context, clai
 	if err = store.writeDocument(ctx, registryPath, doc); err != nil {
 		return err
 	}
-	mode := "archive"
+	imported := "archive"
 	if !current.FreshNative {
-		mode = "native_candidate"
+		imported = "native_candidate"
 	}
-	log.Printf("[CREW_HANDOFF] project=%s pair=%s transfer=%s phase=import mode=%s conversation=%s session=%s messages=%d journal_rows=%d bytes=%d", roots.ID, pair, transfer, mode, in.ConversationID, session, len(in.History), len(dialogue), len(raw))
+	log.Printf("[CREW_HANDOFF] project=%s pair=%s transfer=%s phase=import mode=%s conversation=%s session=%s messages=%d journal_rows=%d bytes=%d", roots.ID, pair, transfer, imported, in.ConversationID, session, len(in.History), len(dialogue), len(raw))
 	return nil
 }

@@ -84,6 +84,10 @@ type crewAgentStandby struct {
 	// KeptAt: the last hand back found the agent had answered on both the Mac and the server; both versions were kept
 	// and the owner was told (crew_agent_handback.go).
 	KeptAt string `json:"kept_at,omitempty"`
+	// MacProgram / ServerProgram: the AI program the agent runs on the Mac and the one the server continued it on. They
+	// differ when this server lacks the Mac's program and continued from saved history instead (owner, 6 Nov).
+	MacProgram    string `json:"mac_program,omitempty"`
+	ServerProgram string `json:"server_program,omitempty"`
 }
 
 type crewAgentStandbySession struct {
