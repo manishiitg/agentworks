@@ -61,6 +61,11 @@ def db_read(path):
     return sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)
 
 
+def references_measurement_table(text):
+    # A bridge call such as record_goal_observations is not a table reference.
+    return re.search(r'\b(?:goal_observations|workflow_goal_metrics)\b', text, re.IGNORECASE) is not None
+
+
 class Conversion:
     def __init__(self, docs, state, workflow, crew, agent_binary=None):
         self.docs, self.state = Path(docs).resolve(strict=True), Path(state).resolve(strict=True)
@@ -284,6 +289,8 @@ class Conversion:
         # Private Run chats stay private. Patch only routing metadata for the
         # exact registered person's sessions, including compact resume files.
         for file in (self.docs/'_users').glob('*/chat_history/*/*.json'):
+            if not file.name.endswith(('-conversation.json', '-resume.json')):
+                continue
             record = read(file)
             identity = self.sessions.get(record.get('session_id'))
             if not identity:
@@ -413,13 +420,17 @@ class Conversion:
         self.source_db = self.source / 'db/db.sqlite'
         self.target_db = self.private / 'db/db.sqlite'
         self.tables = {}
+        self.measurement_indexes = {}
         no_links(self.source_db); no_links(self.target_db)
         if self.source_db.exists():
             with closing(db_read(self.source_db)) as db:
-                for kind, name, sql in db.execute("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL"):
+                for kind, name, table, sql in db.execute("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL"):
                     if name in ['workflow_goal_metrics','goal_observations']:
                         continue
-                    if any(table in sql for table in ['workflow_goal_metrics','goal_observations']):
+                    if kind == 'index' and table in ['workflow_goal_metrics','goal_observations']:
+                        self.measurement_indexes[name] = (table, sql)
+                        continue
+                    if references_measurement_table(sql):
                         raise ValueError('Update database dependencies on measurement tables before converting: '+name)
                 for name in ['workflow_goal_metrics', 'goal_observations']:
                     sql = db.execute('SELECT sql FROM sqlite_master WHERE type=\'table\' AND name=?', (name,)).fetchone()
@@ -433,6 +444,10 @@ class Conversion:
         existing = {}
         if self.target_db.exists():
             with closing(db_read(self.target_db)) as db:
+                for name, (table, sql) in self.measurement_indexes.items():
+                    saved = db.execute('SELECT type,tbl_name,sql FROM sqlite_master WHERE name=?', (name,)).fetchone()
+                    if saved and saved != ('index', table, sql):
+                        raise ValueError('Destination has a different database index; resolve it before converting: '+name)
                 for name in [*self.tables, 'crew_goals']:
                     if db.execute('SELECT 1 FROM sqlite_master WHERE type=\'table\' AND name=?', (name,)).fetchone():
                         existing[name] = {r[0] for r in db.execute(f'SELECT * FROM {name}')}
@@ -483,7 +498,7 @@ class Conversion:
                         tree = ast.parse(text, filename=str(file.relative_to(self.source)))
                         if any(isinstance(n, ast.Constant) and isinstance(n.value, str) and ('DB_PATH' in n.value or 'db.sqlite' in n.value) for n in ast.walk(tree)) and 'sqlite' in text:
                             raise ValueError('Use agentworks_db for managed database access before converting: '+str(file.relative_to(self.source)))
-                    if 'goal_observations' in text or 'workflow_goal_metrics' in text:
+                    if references_measurement_table(text):
                         raise ValueError('Update direct measurement-table SQL/code to the Crew goal API before conversion: '+str(file.relative_to(self.source)))
 
     def source_moves(self):
@@ -551,6 +566,9 @@ class Conversion:
                                 metric.update(goal_id=self.goal_id, goal_name=self.goal['name'])
                             values[pos] = json.dumps(metric)
                         db.execute(f'INSERT INTO {name} ({",".join(columns)}) VALUES ({",".join("?" for _ in columns)})', values)
+                for name, (_, sql) in self.measurement_indexes.items():
+                    if not db.execute('SELECT 1 FROM sqlite_master WHERE name=?', (name,)).fetchone():
+                        db.execute(sql)
                 db.execute('INSERT INTO crew_goals VALUES (?,?)', (self.goal_id,json.dumps(self.goal)))
             for source,target in self.moves:
                 target.parent.mkdir(parents=True, exist_ok=True)
