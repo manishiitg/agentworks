@@ -371,7 +371,7 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		// a failed history read made the page look like a new Crew, and the queue lives on the Mac (PLAT-856-509).
 		if operation == "events" || operation == "queue" {
 			if b, err := api.crewChatPair(r, project, ""); err == nil && crewMacSocketFor(GetUserIDFromContext(r.Context()), project, b.PairID) == nil {
-				writeCrewChatResult(w, crewMacOffRead(GetUserIDFromContext(r.Context()), project, generation, operation))
+				writeCrewChatResult(w, api.crewMacOffRead(GetUserIDFromContext(r.Context()), project, generation, operation))
 				return
 			}
 		}
@@ -381,7 +381,7 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 
 // crewMacOffRead answers a read while the owner's Mac is off: the queue is empty here (it lives on the Mac), and the
 // history is what the relay cache holds, marked so the page says earlier messages are on the Mac.
-func crewMacOffRead(owner, project, generation, operation string) crewChatResult {
+func (api *StreamingAPI) crewMacOffRead(owner, project, generation, operation string) crewChatResult {
 	if operation == "queue" {
 		return crewChatResult{Status: 200, Body: json.RawMessage(`{"messages":[],"mac_off":true}`)}
 	}
@@ -403,7 +403,9 @@ func crewMacOffRead(owner, project, generation, operation string) crewChatResult
 	// Always on: an agent with a copy on this server shows that copy's conversation, so a teammate (or the owner on
 	// the website) sees the chat while the Mac is off, also after this server restarted and its relay cache is empty.
 	onMac := true
-	if len(events) == 0 {
+	if served := api.crewStandbyServedEvents(owner, project, generation); len(served) > 0 {
+		events, onMac = served, false // the server answers for the agent now: its own chat has the newest turns
+	} else if len(events) == 0 {
 		if copied := crewStandbyHistoryEvents(project, generation); len(copied) > 0 {
 			events, onMac = copied, false
 		}

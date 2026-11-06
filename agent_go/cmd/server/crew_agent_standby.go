@@ -174,6 +174,41 @@ func crewStandbyHistoryEvents(project, conversationID string) []json.RawMessage 
 	return nil
 }
 
+// crewStandbyServedEvents is the server's own chat of a Mac conversation while the server answers for its agent
+// (writer "server"): the copy imported as the owner's chat with the same conversation id, with the turns answered here.
+func (api *StreamingAPI) crewStandbyServedEvents(owner, project, conversationID string) []json.RawMessage {
+	rows, err := readCrewStandby(project)
+	if err != nil || conversationID == "" || api.eventStore == nil {
+		return nil
+	}
+	serving := false
+	for _, row := range rows {
+		for _, session := range row.Sessions {
+			serving = serving || row.Writer == "server" && session.ConversationID == conversationID
+		}
+	}
+	if !serving {
+		return nil
+	}
+	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(owner))
+	if err != nil {
+		return nil
+	}
+	for _, record := range doc.Entries {
+		if record.ProfileID != crewProfileID || record.ConversationID != conversationID || crewResourceProjectID(record.ConversationKey) != project {
+			continue
+		}
+		out := []json.RawMessage{}
+		for _, event := range api.eventStore.GetAllEventsRaw(record.SessionID) {
+			if raw, err := json.Marshal(event); err == nil {
+				out = append(out, raw)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
 // crewStandbyMacOnly is the last list of what only the owner's Mac has, as its Mac sent it.
 func crewStandbyMacOnly(project string) []crewTeamMacOnlyItem {
 	dir, err := crewStandbyDir(project)
