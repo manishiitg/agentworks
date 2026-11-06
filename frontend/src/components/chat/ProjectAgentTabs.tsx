@@ -14,7 +14,7 @@ import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
-import { teamAgentForTab, useTeamTab } from '../../products/work/teamApi'
+import { teamAgentForTab, useTeamTab, type TeamTabPresence } from '../../products/work/teamApi'
 import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
@@ -139,6 +139,18 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const menuPeople = [...new Set(tabs.map(tabOwnerId))].sort(byName)
   const menuGrouped = menuPeople.length > 1 || menuPeople[0] !== ''
   const menuGroups = menuPeople.map(person => ({ person, tabs: tabs.filter(tab => tabOwnerId(tab) === person) }))
+  // In a Crew's strip each other person is one chip after your own tabs (owner, 6 Nov, approved mockup); their agents
+  // and the server's status words open from it. Other products keep their tabs.
+  const personChips = surface === 'work'
+  const stripTabs = personChips ? visibleTabs.filter(tab => tabOwnerId(tab) === '') : visibleTabs
+  const chipAgent = (tab: ChatTab) => {
+    const row = teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, false, false)
+    return { tabId: tab.tabId, name: tabLabel(tab), status: row?.place_label || row?.status_label || '', tone: row?.place_label ? row.place_tone : undefined }
+  }
+  const chipPeople = personChips ? menuGroups.filter(group => group.person !== '').map(group => {
+    const agents = group.tabs.filter(isAgentTab).map(chipAgent)
+    return { person: group.person, agents, watching: agents.find(agent => agent.tabId === activeTabId) }
+  }).filter(group => group.agents.length > 0) : []
   const agentId = (tab: ChatTab) => tab.tabId === canonicalTabId ? 'main' : sideChatKey(tab)?.split(':chat:')[1]
   // Your own agent In team, from the Team tab's server reading (the same rows in the Mac app and on the website).
   // Answer only / Make changes is the same row's server answer (When others ask).
@@ -400,9 +412,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
       {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} showName={menuMode || phone} />}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
-      {visibleTabs.map((tab, index) => {
+      {stripTabs.map((tab, index) => {
         const person = tabOwnerId(tab)
-        const groupLabel = person && (index === 0 || tabOwnerId(visibleTabs[index - 1]) !== person)
+        const groupLabel = person && (index === 0 || tabOwnerId(stripTabs[index - 1]) !== person)
           ? <span key={`person:${person}`} title={presenceOf(person)?.line} className="ml-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-4 w-px bg-border" /><PersonPresenceDot presence={presenceOf(person)} />{personName(person)}:</span> : null
         const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
         const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
@@ -433,6 +445,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         onMakeInteractive={onMakeInteractive}
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}
+      {chipPeople.length > 0 && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
+      {chipPeople.map(group => <PersonChip key={`person:${group.person}`} name={personName(group.person)} presence={presenceOf(group.person)}
+        agents={group.agents} watching={group.watching} onPick={selectTab} />)}
       </div>
       {(!menuMode || onImportLocalChat) && (tabs.length > 1 || phone || livesOnMac || onImportLocalChat) && (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
@@ -564,7 +579,64 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   )
 }
 
-const PHONE_PLACE: Record<CloudState, string> = { mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'Offline' }
+type PersonChipAgent = { tabId: string; name: string; status: string; tone?: string }
+const STATUS_TONE: Record<string, string> = { ok: 'text-emerald-600 dark:text-emerald-400', wait: 'text-amber-600 dark:text-amber-400', server: 'text-sky-600 dark:text-sky-400' }
+
+/** Another person in the Crew's tab strip (owner, 6 Nov, approved mockup): one chip with their initial, name, how many
+ * of their agents are here and the dot for their Mac; it opens their agents with the server's status words (the Team
+ * tab reading). While one of theirs is open, the chip names it. */
+function PersonChip({ name, presence, agents, watching, onPick }: {
+  name: string; presence?: TeamTabPresence; agents: PersonChipAgent[]; watching?: PersonChipAgent; onPick: (tabId: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+  useLayoutEffect(() => {
+    if (!open) return
+    const rect = buttonRef.current?.getBoundingClientRect()
+    if (rect) setPosition({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(300, window.innerWidth - 16) - 8)) })
+    menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    const close = (event: MouseEvent) => { if (!buttonRef.current?.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) setOpen(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); buttonRef.current?.focus() } }
+    const shut = () => setOpen(false)
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', escape)
+    window.addEventListener('resize', shut)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape); window.removeEventListener('resize', shut) }
+  }, [open])
+  const avatar = (size: string) => <span aria-hidden="true" className={`relative grid ${size} shrink-0 place-items-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary`}>
+    {name.trim().charAt(0).toUpperCase() || '?'}
+    {presence && <span className="absolute -bottom-0.5 -right-0.5 grid place-items-center rounded-full bg-background p-[1.5px]"><PersonPresenceDot presence={presence} className="h-2 w-2" /></span>}
+  </span>
+  return <>
+    <button ref={buttonRef} type="button" onClick={() => setOpen(value => !value)} aria-haspopup="menu" aria-expanded={open}
+      aria-label={`${name}'s agents (${agents.length})${presence ? ` · ${presence.line}` : ''}`} title={presence?.line || `${name}'s agents`}
+      data-person-chip={name} data-tab-active={watching ? 'true' : undefined}
+      className={`inline-flex h-7 max-w-[16rem] shrink-0 items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching ? 'border-primary text-foreground' : 'border-border text-foreground/85'}`}>
+      {avatar('h-5 w-5')}
+      <span className="min-w-0 truncate">{name}{watching && <> · <b className="font-semibold">{watching.name}</b></>}</span>
+      {!watching && <span className="text-muted-foreground">{agents.length}</span>}
+      <ChevronDown className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+    </button>
+    {open && createPortal(
+      <div ref={menuRef} style={position} role="menu" aria-label={`${name}'s agents`} className="fixed z-[100] w-[300px] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-popover p-1.5 shadow-lg">
+        <div className="flex items-start gap-2 px-2 pb-1.5 pt-1">
+          {avatar('h-5 w-5')}
+          <p className="min-w-0 text-xs text-muted-foreground"><span className="font-semibold text-foreground">{name}</span>{presence && <span className="block">{presence.line}</span>}</p>
+        </div>
+        {agents.map(agent => <button key={agent.tabId} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(agent.tabId) }}
+          className={`flex min-h-9 w-full min-w-0 items-center gap-2 rounded-xl px-2 text-left text-[13px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching?.tabId === agent.tabId ? 'bg-muted/70 font-semibold' : ''}`}>
+          <span className="min-w-0 truncate">{agent.name}</span>
+          {watching?.tabId === agent.tabId && <span className="shrink-0 text-[11px] font-normal text-muted-foreground">watching</span>}
+          {agent.status && <span className={`ml-auto shrink-0 pl-2 text-[11px] font-normal ${STATUS_TONE[agent.tone || ''] || 'text-muted-foreground'}`}>{agent.status}</span>}
+        </button>)}
+      </div>, document.body
+    )}
+  </>
+}
+
+const PHONE_PLACE: Record<CloudState, string> ={ mac: 'On your Mac', mac_off: 'Mac off', moving: 'Moving online…', online: 'Online', offline: 'Offline' }
 
 /** Where the Crew lives, as the server reports it (owner, 3 Nov): a dot and a short word, at every width. */
 const livesOnMacHere = (place?: CloudState) => place === 'mac' || place === 'mac_off' || place === 'offline' || place === 'moving'

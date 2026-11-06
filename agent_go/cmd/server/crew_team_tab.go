@@ -28,10 +28,12 @@ type crewTeamTabPerson struct {
 }
 
 // crewTeamTabPresence is whether a teammate's Mac is online now. Line is the dot's hover title and the agent card's Now
-// line.
+// line. Tone picks the dot's colour: "on" (Mac on), "server" (Mac off, their shared agents answer from the server) or
+// "away" (Mac off, their agents wait for it).
 type crewTeamTabPresence struct {
 	Online bool   `json:"online"`
 	Line   string `json:"line"`
+	Tone   string `json:"tone"`
 }
 
 type crewTeamTabAgent struct {
@@ -298,14 +300,14 @@ func crewTeamPersonPresence(t crewTeam, p crewTeamAgentsPerson, viewer string) *
 		return nil
 	}
 	if p.MacOn || (p.Owner && IsLocalMode()) {
-		return &crewTeamTabPresence{Online: true, Line: p.Name + "'s Mac is on"}
+		return &crewTeamTabPresence{Online: true, Line: p.Name + "'s Mac is on", Tone: "on"}
 	}
 	for _, a := range p.Agents {
 		if a.Place == "server" || a.PlaceServer {
-			return &crewTeamTabPresence{Line: p.Name + "'s Mac is off · shared agents answer from the server"}
+			return &crewTeamTabPresence{Line: p.Name + "'s Mac is off · shared agents answer from the server", Tone: "server"}
 		}
 	}
-	return &crewTeamTabPresence{Line: p.Name + "'s Mac is off · their agents wait for it"}
+	return &crewTeamTabPresence{Line: p.Name + "'s Mac is off · their agents wait for it", Tone: "away"}
 }
 
 // crewTeamNotSharedLine is the muted line of the viewer's own agent that is not shared: what turning sharing on gives.
