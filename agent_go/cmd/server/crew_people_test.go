@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -96,6 +97,10 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 	}
 	if code, out := level("member", "anita", "dashboards", true); code != http.StatusForbidden || shareHas("anita") {
 		t.Fatalf("a builder gave dashboards only: %d %v", code, out)
+	}
+	// No dashboard yet and no yes to create one: a plain refusal with the next step, and nothing saved.
+	if code, out := call("owner", map[string]any{"person": "anita", "level": "dashboards", "confirm": true}); code != http.StatusConflict || !strings.Contains(fmt.Sprint(out["error"]), "dashboard_needed") || !strings.Contains(fmt.Sprint(out["error"]), "standard dashboard") || shareHas("anita") {
+		t.Fatalf("giving dashboards only without a dashboard: %d %v", code, out)
 	}
 	change("owner", "anita", "dashboards", func() bool { return shareHas("anita") })
 	if teamHas("anita") {
