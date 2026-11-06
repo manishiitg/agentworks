@@ -48,7 +48,9 @@ func TestCrewTurnRunsAsItsOwnersSlot(t *testing.T) {
 		{"owner's turn", `{"slots":{"slot01":"alice"}}`, "alice", "alice", "slot01"},
 		{"Run person's turn", `{"slots":{"slot01":"alice","slot02":"bob"}}`, "bob", "alice", "slot01"},
 		{"owner without a slot", `{"slots":{"slot02":"bob"}}`, "alice", "", ""},
-		{"a CLI whose server login is a file", `{"slots":{"slot01":"alice"}}`, "alice", "", ""},
+		// Every AI program runs in the slot (owner, 2 Nov: slots are the default, PLAT-872-86); only a provider-connection
+		// account, checked below, keeps the app account.
+		{"another AI program whose server login is a file", `{"slots":{"slot01":"alice"}}`, "alice", "alice", "slot01"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := os.WriteFile(table, []byte(tc.slots), 0o600); err != nil {

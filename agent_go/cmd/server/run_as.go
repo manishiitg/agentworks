@@ -46,6 +46,8 @@ type turnRunAsInput struct {
 	CLIWorkingDir    string
 	SharedWorkingDir string
 	CallerID         string
+	// SessionID is the turn's session: the marker of a standby turn is kept by session (crew_standby_runas.go).
+	SessionID string
 	// ConnectionID is the provider account the turn runs on ("" or global:<provider> is the server's own account).
 	ConnectionID string
 }
@@ -111,7 +113,7 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 	// runs there as the app account whatever project it links to. A Crew's runtime in its owner's slot state folder is
 	// that slot's: every turn in the Crew, the owner's and a Run person's, runs as the owner's slot (PLAT-872-84).
 	if in.CLIWorkingDir != "" && in.CLIWorkingDir != in.SharedWorkingDir {
-		if slot, owner := crewTurnSlot(in.WorkingFolder, in.CallerID); slot != "" && isProjectProfileID(in.ProfileID) && inSlotStateFolder(in.CLIWorkingDir, slot) {
+		if slot, owner := crewTurnSlot(in.WorkingFolder, in.SessionID); slot != "" && isProjectProfileID(in.ProfileID) && inSlotStateFolder(in.CLIWorkingDir, slot) {
 			// Only the server's own account reaches a slot (from its environment). Any provider-connection account
 			// keeps its login in files the slot could read, so the turn stays on the app account.
 			if connection := strings.TrimSpace(in.ConnectionID); connection != "" && !strings.HasPrefix(connection, "global:") {
@@ -124,7 +126,7 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 	}
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(in.WorkingFolder)))
 	if folder, shared := ref.SharedProject(); shared && isProjectProfileID(in.ProfileID) {
-		if id, ok := crewMemberStandbyTurnAt(in.WorkingFolder, in.CallerID); ok {
+		if id, ok := crewStandbySessionIdentity(in.SessionID); ok {
 			return owned(id.Person) // a Team member's own agent answering from the server runs as the member
 		}
 		return owned(deps.projectOwner(ctx, workspaceref.SharedProjectPath(folder)))

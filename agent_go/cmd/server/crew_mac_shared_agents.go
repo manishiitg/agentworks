@@ -934,6 +934,11 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 	if status == http.StatusOK {
 		status = run(ask, 60*time.Second).Status
 	}
+	// The standby copy was dropped between the route and the call (the agent turned Only me, the person left): the
+	// message is not lost, it waits for the Mac like any other.
+	if standby && (status == http.StatusForbidden || status == http.StatusConflict) {
+		standby, status = false, http.StatusServiceUnavailable
+	}
 	log.Printf("[CREW_SHARED_AGENT] project=%s tab=%s action=message sender_agent=%s user=%s mac_status=%d published=%t standby=%t", dest.ID, tab, source.NamedAgentID, logUsernameForUserID(source.UserID), status, published, standby)
 	if status == http.StatusServiceUnavailable && !IsLocalMode() && !published && !standby {
 		if err := holdForMac(dest.ID, "mac_off", ask, c.ID, from); err != nil {

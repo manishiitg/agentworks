@@ -4019,7 +4019,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	// Inherited Crew accounts use its main owner. An explicit saved tab account
 	// uses that tab's owner, including company-account limits and attribution.
-	if coOwnerOf := coOwnerTurnOwner(r.Context(), currentUserID, accountScope.WorkspacePath); botTokenOwner == "" && coOwnerOf != "" && !personalTabAccount {
+	if coOwnerOf := coOwnerTurnOwner(r.Context(), currentUserID, accountScope.WorkspacePath); botTokenOwner == "" && coOwnerOf != "" && !crewStandbyMemberTurn(sessionID, currentUserID) && !personalTabAccount {
 		botTokenOwner = coOwnerOf
 		accountScope.Principal = coOwnerOf
 		log.Printf("[CREW_OWNERS] session=%s turn by co_owner=%s runs as main owner=%s (accounts, limits)", sessionID, sanitizeUserIDForPath(currentUserID), coOwnerOf)
@@ -4707,7 +4707,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				req.secretsWorkspacePath = resolvedWPath
 				// Checked against the owner who lends them, as the turn resolves them.
-				secretsOwner := api.projectSecretsOwner(currentUserID, resolvedWPath)
+				secretsOwner := api.turnSecretsOwner(sessionID, currentUserID, resolvedWPath)
 				// A bot session already carries its arrival connection, which
 				// wins over the manifest selection for that conversation.
 				if strings.TrimSpace(req.BotConnectionID) == "" {
@@ -4843,7 +4843,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.SelectedGlobalSecrets = caps.SelectedGlobalSecretNames
 				}
 				// Checked against the owner who lends them, as the turn resolves them.
-				secretsOwner := api.projectSecretsOwner(currentUserID, manifestWorkspacePath)
+				secretsOwner := api.turnSecretsOwner(sessionID, currentUserID, manifestWorkspacePath)
 				req.secretsWorkspacePath = manifestWorkspacePath
 				// A bot session already carries its arrival connection, which
 				// wins over the manifest selection for that conversation.
@@ -5010,7 +5010,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// The selected Vault secrets, lent by the project's owner, set on the orchestrator
-		allSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+		allSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 		if len(allSecrets) > 0 {
 			entries := make([]orchestrator.SecretEntry, len(allSecrets))
 			for i, s := range allSecrets {
@@ -6006,6 +6006,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			CLIWorkingDir:    chatWorkingDir,
 			SharedWorkingDir: sharedChatWorkingDir,
 			CallerID:         currentUserID,
+			SessionID:        sessionID,
 			ConnectionID:     req.ConnectionID,
 		})
 		if runAsErr != nil {
@@ -6037,7 +6038,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				codingAgentSecretEnvironment[name] = value
 			}
 		}
-		codingAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+		codingAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 		// On the Mac, a selected secret its Vault lacks comes from the lender's Vault on the Crew's company server.
 		codingAgentSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, codingAgentSecrets, req.SelectedGlobalSecrets)
 		for _, secret := range codingAgentSecrets {
@@ -6428,7 +6429,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// req.SelectedGlobalSecrets is loaded from the workflow manifest above
 			// (workflow_phase), so it picks up secrets selected in earlier turns;
 			// multi-agent chat without a selection yields an empty map (no-op).
-			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 			chatAgentSecretEnv := make(map[string]string, len(chatAgentSecrets))
 			for _, s := range chatAgentSecrets {
 				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
@@ -7817,7 +7818,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
 					// Secrets
-					phaseSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+					phaseSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 					if len(phaseSecrets) > 0 {
 						entries := make([]orchestrator.SecretEntry, len(phaseSecrets))
 						for i, s := range phaseSecrets {
@@ -7946,7 +7947,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Secret values stay in the tool environment; only their names belong in
 		// the immutable identity. Assemble that section before finalization.
-		identitySecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+		identitySecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 		if len(identitySecrets) > 0 && req.PhaseID == "" {
 			if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
 				_ = llmAgent.AddInstructions(buildSecretNamesPrompt(identitySecrets))
@@ -8321,7 +8322,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// diverge (e.g. a request with PhaseID set but a non-workflow_phase mode).
 		// Keep that in mind before relying on either one in this block.
 		isWorkflowPhase := req.PhaseID != ""
-		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 		if !isWorkflowPhase {
 			allChatSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, allChatSecrets, req.SelectedGlobalSecrets)
 		}

@@ -87,9 +87,5 @@ func crewRoleOf(root, userID string) string {
 // Flow co-owner's turn runs as that Flow's owner (flowOwnerTurnOwner). In a Crew everyone is just another person
 // (owner, 5 Nov): their chat runs on the models they chose, so for a Crew it is "".
 func coOwnerTurnOwner(ctx context.Context, callerID, workspacePath string) string {
-	// A Team member's own agent answering from the server keeps the member's AI account, limits and attribution.
-	if _, standby := crewMemberStandbyTurnAt(workspacePath, callerID); standby {
-		return ""
-	}
 	return flowOwnerTurnOwner(ctx, callerID, workspacePath)
 }
