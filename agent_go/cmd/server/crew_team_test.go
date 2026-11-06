@@ -169,22 +169,22 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatalf("folders after member changes: %+v", saved.Folder)
 	}
 	memberTab, ownerTab := crewTeamTabFor(t.Context(), mustReadCrewTeam(t, "team-test"), "member"), crewTeamTabFor(t.Context(), mustReadCrewTeam(t, "team-test"), "owner")
-	if memberTab.CanSwitch || memberTab.CanChoose || !memberTab.CanAddFolder || !memberTab.CanAllMine || memberTab.CanRemoveFolder || !ownerTab.CanSwitch || !ownerTab.CanChoose || !ownerTab.CanRemoveFolder {
+	if memberTab.CanSwitch || memberTab.CanChoose || !memberTab.CanAddFolder || memberTab.CanRemoveFolder || !ownerTab.CanSwitch || !ownerTab.CanChoose || !ownerTab.CanRemoveFolder {
 		t.Fatalf("tab flags: member %+v owner %+v", memberTab, ownerTab)
 	}
 	if w = call("owner", "PUT", base, config, ""); w.Code != 200 {
 		t.Fatalf("owner back to the Whole Crew: %d %s", w.Code, w.Body.String())
 	}
-	// All my agents in team is each person's own (owner, 5 Nov): a member's off hides only their agents, never the
-	// owner's; a Main is always In team.
-	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"*","in_team":false}`, ""); w.Code != 200 {
-		t.Fatalf("member's own All my agents: %d %s", w.Code, w.Body.String())
+	// Owner, 6 Nov: no "Share all my agents" ("*" names none of anyone's agents), and each person keeps at least one
+	// agent shared: turning off their last shared one (here the member's Main) is refused and nothing is saved.
+	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"*","in_team":false}`, ""); w.Code < 400 {
+		t.Fatalf("member's all-agents choice was accepted: %d %s", w.Code, w.Body.String())
 	}
-	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"main","in_team":false}`, ""); w.Code != 400 {
-		t.Fatalf("member's Main went Only me: %d %s", w.Code, w.Body.String())
+	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"main","in_team":false}`, ""); w.Code != 400 || !strings.Contains(w.Body.String(), "at least one agent shared") {
+		t.Fatalf("member's last shared agent went Only me: %d %s", w.Code, w.Body.String())
 	}
-	if saved := mustReadCrewTeam(t, "team-test"); !saved.agentInTeam("owner", "team01") || saved.agentInTeam("member", "team-test"+codeChatSideMarker+"notes") || !saved.agentInTeam("member", macMainTab) || saved.allMine("member") {
-		t.Fatalf("member's All my agents changed the wrong agents: %+v", saved.AgentChoices)
+	if saved := mustReadCrewTeam(t, "team-test"); !saved.agentInTeam("owner", "team01") || !saved.agentInTeam("member", macMainTab) || len(saved.AgentChoices["member"]) != 0 {
+		t.Fatalf("refused choices changed the record: %+v", saved.AgentChoices)
 	}
 	if w = call("owner", "POST", base+"/leave", `{}`, ""); w.Code != 403 || !crewTeamMember("team-test", "owner") {
 		t.Fatalf("the owner left their own Team: %d", w.Code)

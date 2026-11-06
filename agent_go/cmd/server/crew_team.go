@@ -148,9 +148,8 @@ type crewTeam struct {
 	On bool `json:"on"`
 	// AgentsOnlyMe is the old Team-wide All agents in team, read only by migrateCrewTeamRecord.
 	AgentsOnlyMe bool `json:"agents_only_me,omitempty"`
-	// AgentChoices is each person's own In team (true) / Only me (false) per agent key, and under "*" their own All my
-	// agents in team (crew_team_in_team.go): the one place this choice is kept, for every Crew kind. A viewer sees
-	// only their own.
+	// AgentChoices is each person's own In team (true) / Only me (false) per agent key (crew_team_in_team.go): the one
+	// place this choice is kept, for every Crew kind. A viewer sees only their own.
 	AgentChoices map[string]map[string]bool `json:"agent_choices,omitempty"`
 	// AgentRules is each person's "When others ask" rule and Answer only / Make changes per agent, by the same key
 	// as AgentChoices (crew_when_others_ask.go). Only the agent's own person sets it.
@@ -516,15 +515,12 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			input.AgentRules[person] = rules
 		}
 	}
-	// Team on (owner, 4-5 Nov) starts with All agents in team and, with nothing shared yet, the Crew's team/ folder.
-	// The server decides it for every caller (website, Mac app, chat, MCP); the owner's Mac makes the folder there
-	// when it applies the record (crew_team_apply.go).
+	// Team on (owner, 4-5 Nov) starts, with nothing shared yet, with the Crew's team/ folder. The server decides it for
+	// every caller (website, Mac app, chat, MCP); the owner's Mac makes the folder there when it applies the record
+	// (crew_team_apply.go).
 	input.AgentsOnlyMe = false
-	if input.On && !previous.On {
-		delete(input.AgentChoices[owner], crewTeamAllMine)
-		if !input.Folder.shared() {
-			input.Folder = crewTeamFolder{Folders: []string{crewTeamDefaultFolder}}
-		}
+	if input.On && !previous.On && !input.Folder.shared() {
+		input.Folder = crewTeamFolder{Folders: []string{crewTeamDefaultFolder}}
 	}
 	// Back to Folders from the Whole Crew picks the folders shared before it, or team/ (owner, 5 Nov); the server decides.
 	input.LastFolders = previous.LastFolders
@@ -585,7 +581,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t owner_all_in_team=%t people=%d folder=%q revision=%d", project, logUsernameForUserID(claims.UserID), input.On, input.allMine(owner), len(input.People), input.Folder.display(), input.Revision)
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t people=%d folder=%q revision=%d", project, logUsernameForUserID(claims.UserID), input.On, len(input.People), input.Folder.display(), input.Revision)
 	if folderChanged && input.Folder.ID != "" && input.Folder.ID == previous.Folder.ID {
 		if err := announceCrewTeamSharedAgain(project, claims.UserID, previous.Folder, input.Folder); err != nil {
 			log.Printf("[CREW_TEAM] project=%s event=shared_again_failed reason=%q", project, err)

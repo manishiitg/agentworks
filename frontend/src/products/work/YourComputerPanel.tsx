@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, CheckCircle2, CircleDashed, Cloud, Folder, Laptop, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, CircleDashed, Cloud, Folder, Laptop, Lock, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
 import api from '../../services/api'
 import { desktopRequest } from '../../services/desktopConnections'
 import { useChatStore } from '../../stores/useChatStore'
@@ -12,7 +12,7 @@ import { HostedAiAppGuide } from '../../components/integrations/HostedAiAppGuide
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
-import { AskButton, TeamTab } from './TeamTab'
+import { AskButton, TeamTab, teamCard } from './TeamTab'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
@@ -31,8 +31,10 @@ type ServerCopy = { name: string; detail: string }
  * controls ("mac") or shows the Mac-only rows as text, those rows' text, and the extra sections. */
 type AccessTab = { id: CrewAccessSection; label: string; detail?: string }
 type AccessText = { line: string; note?: string }
+// The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
+type MacCard = { online: boolean; status: string; line: string }
 type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number; placements?: Record<string, AgentPlacement>
-  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: AccessText; access_mac_locked?: string; access_publish?: AccessText; access_share?: boolean; access_laptop?: boolean }
+  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_publish?: AccessText; access_share?: boolean; access_laptop?: boolean }
 // The move's own steps, as the server reports them (astra, PLAT-856-509).
 type MovePhase = 'files' | 'database' | 'chats' | 'schedules_watchers' | 'dashboards_functions' | 'activating' | 'done'
 const MOVE_PHASES: MovePhase[] = ['files', 'database', 'chats', 'schedules_watchers', 'dashboards_functions', 'activating', 'done']
@@ -218,10 +220,13 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
   }
   const minutes = readiness ? Math.max(1, Math.round(readiness.estimated_seconds / 60)) : 0
   const facts = readiness && !tooBig ? { size: sizeLabel(readiness.measurement.bytes), time: `about ${minutes} ${minutes > 1 ? 'minutes' : 'minute'}` } : undefined
-  const way = (title: string, line: string, action: ReactNode) => <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-t border-border py-2.5 pl-3 text-sm">
-    <span>{title}</span>{line && <span className="text-[12.5px] text-muted-foreground">{line}</span>}
-    <div className="ml-auto flex flex-wrap items-center gap-1.5">{action}</div>
+  const way = (title: string, line: string, action: ReactNode) => <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 py-2.5 text-sm">
+    <div className="min-w-0 flex-1"><p className="font-semibold">{title}</p><p className="text-[12.5px] text-muted-foreground">{line}</p></div>
+    <div className="flex flex-wrap items-center gap-1.5">{action}</div>
   </div>
+  // Reach it from: the Mac app reaches its Crew through the paired server; the website is that server.
+  const reachServer = here ? binding?.peer_server || '' : window.location.origin
+  const reachLink = here ? link : `${window.location.origin}/crew/projects/${encodeURIComponent(projectId)}`
   // Move online takes the whole page (owner, 3 Nov mockup): the step, then its progress, then done.
   const [doneSeen, setDoneSeen] = useState(false)
   const done = online && Boolean(moved) && !doneSeen
@@ -278,40 +283,47 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
     {/* No server connected yet (owner, 4 Nov): one sign-in card here, so the person never leaves Access; the tabs show
         their content once the connection exists. Browser approval stays the person's own step. */}
     {needsServer && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
-    {!here && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">{macText(status.access_mac)}<MacAgentBridge projectId={projectId} /></section>}
     {!here && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
       {macText(status.access_publish)}
       {(status.on_server || []).map(copy => <p key={copy.name} className="px-1 text-xs"><span className="font-medium">{copy.name}</span> <span className="text-muted-foreground">· {copy.detail}</span></p>)}
     </section>}
-    {here && !needsServer && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
-      <div className="flex justify-end"><AskButton projectId={projectId} card="mac" /></div>
-      {binding?.connection_id && !online
-        ? <MacOnlineDataLine key={`${projectId}:${binding.connection_id}`} network={network} copies={serverCopies} onTeam={() => setSection('team')} />
-        : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
-      <div className="px-0.5">
-        {status && !online && !moving && <label className="flex items-center justify-between gap-3 py-2.5">
-          <span><span className="font-semibold">You</span> <span className="text-[12.5px] text-muted-foreground">· {status.access_mac_locked || 'from anywhere while your Mac is on'}</span></span>
-          {/* While the Team is on, Mac online stays on (the server says so, owner 6 Nov). */}
-          <Switch aria-label="Use from phone and web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length || Boolean(status.access_mac_locked)} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
-        </label>}
-        {asking && !binding && <div role="group" aria-label="Which network?" className="space-y-1.5 border-t border-border py-3">
-          <p className="text-xs text-muted-foreground">Which network?</p>
-          {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="w-full justify-start rounded-full px-3.5" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
-        </div>}
-        <div aria-disabled={!binding} className={binding ? '' : 'pointer-events-none opacity-50'}>
-          {way('Website', 'any browser or phone', <>
-            <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}>Open</Button>
-            <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!link} aria-expanded={open === 'code'} aria-controls={`crew-phone-code-${projectId}`} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide QR' : 'QR for phone'}</Button>
-          </>)}
-          {open === 'code' && link && <div id={`crew-phone-code-${projectId}`} className="flex justify-center border-t border-border p-3"><LinkCode link={link} /></div>}
-          {way('ChatGPT or Claude', `“ask my ${name} Crew to…”`, <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
-          {open === 'ai' && binding?.peer_server && <div className="border-t border-border py-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
-        </div>
+    {/* Mac online (owner, 6 Nov, approved mockup): three cards, the same on the Mac app and the website. The server
+        words This Mac; the Mac app holds its switch, the website shows it. */}
+    {!(here && needsServer) && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
+      {here && online ? <MacDataLine>{`This Crew now runs on ${network}. Open it on the Publish tab.`}</MacDataLine> : <>
+        <section aria-label="This Mac" className={teamCard}>
+          <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">This Mac</h3><AskButton projectId={projectId} card="mac" /></div>
+          <div className="flex items-center gap-2.5">
+            <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${status.access_mac?.online ? 'bg-emerald-500 ring-2 ring-emerald-500/20' : 'bg-muted-foreground/60'}`} />
+            <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{status.access_mac?.status}</span>
+            {status.access_mac_locked
+              ? <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground"><Lock aria-hidden="true" className="h-3 w-3" />{status.access_mac_locked}</span>
+              : here ? !moving && <Switch aria-label="Mac online" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
+                : <span title="Turn this off in the Mac app."><Switch aria-label="Mac online" checked disabled /></span>}
+          </div>
+          <p className="text-[12.5px] text-muted-foreground">{status.access_mac?.line}{serverCopies.length > 0 && <> <button type="button" className="text-primary hover:underline" onClick={() => setSection('team')}>What's kept on the server</button></>}</p>
+          {asking && !binding && <div role="group" aria-label="Which network?" className="space-y-1.5 border-t border-border pt-2.5">
+            <p className="text-xs text-muted-foreground">Which network?</p>
+            {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="w-full justify-start rounded-full px-3.5" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
+          </div>}
+        </section>
+        <section aria-label="Reach it from" className={teamCard}>
+          <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Reach it from</h3><AskButton projectId={projectId} card="reach" /></div>
+          <div aria-disabled={!reachLink} className={`divide-y divide-border ${reachLink ? '' : 'pointer-events-none opacity-50'}`}>
+            {way('Website and phone', 'Open this Crew in any browser', <>
+              <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!reachLink} onClick={() => window.open(reachLink, '_blank', 'noopener,noreferrer')}>Open</Button>
+              <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!reachLink} aria-expanded={open === 'code'} aria-controls={`crew-phone-code-${projectId}`} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide QR' : 'QR for phone'}</Button>
+            </>)}
+            {open === 'code' && reachLink && <div id={`crew-phone-code-${projectId}`} className="flex justify-center p-3"><LinkCode link={reachLink} /></div>}
+            {way('ChatGPT or Claude', `Then say “ask my ${name} Crew to…”`, <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!reachServer} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
+            {open === 'ai' && reachServer && <div className="py-3"><ConnectAiApp endpoint={`${reachServer}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
+            {way('Claude Code, Codex, Cursor', 'One line to paste in your coding app', <CopySetupLine crewName={team?.name || name} />)}
+          </div>
+          {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to reach this Crew from your other apps.</p>}
+        </section>
         {/* Public on AgentBridge is chosen per agent here, on Mac online only (owner, 6 Nov). */}
-        {binding?.connection_id && !online && <MacAgentBridge projectId={projectId} />}
-        {online && <p className="mt-1 text-[12.5px] text-muted-foreground">Open this published Crew from the Publish tab.</p>}
-        {!binding && !online && <p className="mt-1 text-xs text-muted-foreground">Turn on Use from phone and web to connect your other apps.</p>}
-      </div>
+        <MacAgentBridge projectId={projectId} />
+      </>}
     </section>}
     {here && !needsServer && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
       <div className="flex justify-end"><AskButton projectId={projectId} card="publish" /></div>
@@ -336,16 +348,23 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
   </div>
 }
 
-const allOnMac = (network: string) => `Everything is on this Mac. Use it from your phone, the web or your other apps while the Mac is on; your messages pass through ${network}, your files don't.`
 function MacDataLine({ children }: { children: ReactNode }) {
   return <p className="px-1 text-[13px] text-muted-foreground">{children}</p>
 }
-// The Mac online line speaks only about the Mac (owner, 4 Nov: keep the tabs' ideas apart). When the server keeps
-// something for Team or Publish, one link says so and the Team tab lists it.
-function MacOnlineDataLine({ network, copies, onTeam }: { network: string; copies: ServerCopy[]; onTeam: () => void }) {
-  const kept = copies.length > 0
-  return <MacDataLine>Your Mac does the work while it is on. Messages pass through {network}. Your files stay on this Mac.
-    {kept && <> <button type="button" className="underline underline-offset-2" onClick={onTeam}>Some agent data is kept on the server for your team</button>.</>}</MacDataLine>
+
+/** One line your coding app (Claude Code, Codex, Cursor) pastes to reach this Crew's agents through AgentWorks. */
+function CopySetupLine({ crewName }: { crewName: string }) {
+  const [copied, setCopied] = useState(false)
+  const [fallback, setFallback] = useState('')
+  const line = `Connect to AgentWorks, then ask the ${JSON.stringify(crewName)} Crew's agents to help me.`
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(line); setCopied(true); window.setTimeout(() => setCopied(false), 1500) }
+    catch { setFallback(line) }
+  }
+  return <>
+    <Button className="h-7 rounded-full px-3" size="sm" variant="outline" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy line'}</Button>
+    {fallback && <p className="w-full text-xs text-muted-foreground">Copy this into your coding app: {fallback}</p>}
+  </>
 }
 
 /** The Access page before this Mac has a server: why, then the same connect form as Servers. */

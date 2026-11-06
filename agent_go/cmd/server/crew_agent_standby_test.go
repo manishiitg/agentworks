@@ -21,8 +21,8 @@ import (
 
 // PLAT-856 Always on, step 1: the server keeps an In team agent's standby copy from its owner's Mac through the
 // normal sync request, admitted only for the owner on the Crew's own pair. A resend of the same copy changes nothing,
-// a copy that does not extend the stored one keeps both, and the owner's All my agents off drops an agent's copy
-// (Main is always In team, so it stays eligible).
+// a copy that does not extend the stored one keeps both, and turning an agent off drops its copy (Main, still In
+// team, stays eligible).
 func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -112,9 +112,8 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 	if rows, err = readCrewStandby("team"); err != nil || rows[tab].Revision != 3 {
 		t.Fatalf("a refused copy changed the record: %+v %v", rows[tab], err)
 	}
-	// The owner turns All my agents off: an agent they never chose for is Only me and its copy is dropped; Main is
-	// always In team and stays eligible.
-	team.AgentChoices = map[string]map[string]bool{"owner": {crewTeamAllMine: false}}
+	// The owner turns the helper off: it is Only me and its copy is dropped; Main stays In team and eligible.
+	team.AgentChoices = map[string]map[string]bool{"owner": {tab: false}}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatalf("team update: %v", err)
 	}
@@ -125,7 +124,7 @@ func TestCrewStandbyCopyStoredUnchangedDivergedAndOwnerOnly(t *testing.T) {
 		t.Fatalf("an Only me agent's copy is still on the server: %v", err)
 	}
 	if ok, reason := crewStandbyEligible("team", "owner", "main"); !ok {
-		t.Fatalf("Main must stay eligible (always In team): %s", reason)
+		t.Fatalf("Main must stay eligible (In team): %s", reason)
 	}
 }
 

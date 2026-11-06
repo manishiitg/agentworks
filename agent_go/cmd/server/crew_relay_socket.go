@@ -167,6 +167,7 @@ func (sock *crewMacSocket) unregister() {
 	crewMacSockets.Unlock()
 	sock.mu.Lock()
 	for project := range sock.twins {
+		crewMacLastHeard.Store(project, sock.lastSeen)
 		publishCrewPanelChanged(project)
 	}
 	for id, result := range sock.pending {
@@ -197,6 +198,17 @@ func crewMacSocketFor(owner, project, pair string) *crewMacSocket {
 		}
 	}
 	return best
+}
+
+// crewMacLastHeard is when a Crew's Mac was last heard from before its connection closed (the Mac online card's
+// "Last seen"), kept only while this server runs.
+var crewMacLastHeard sync.Map
+
+// crewMacOffSince is when the Crew's Mac was last heard from while it is offline; zero when unknown.
+func crewMacOffSince(project string) time.Time {
+	at, _ := crewMacLastHeard.Load(project)
+	seen, _ := at.(time.Time)
+	return seen
 }
 
 // crewMacLastSeen is when the twin's Mac was last heard from; zero if not since the server started.

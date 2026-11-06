@@ -1,23 +1,23 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChevronRight, Folder, Loader2, MoreHorizontal, X } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { ChevronRight, Folder, Loader2, X } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
-import { fillAskFromMyAgentDraft, sendToMain } from '../../utils/agentPurposeDraft'
+import { sendToMain } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
-import { activateTab } from '../../utils/activateTab'
 import { changeTeamPeople, saveTeam, switchTeam, teamError, teamFolders, teamRequest, useTeamTab, type Team, type TeamFolderListing, type TeamTabAgent, type TeamTabState, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
-import { AgentSharingRow, CopySetupLine, teamAgentChatTab } from './AgentSharingRow'
+import { AgentSharingRow } from './AgentSharingRow'
 
 type Person = { id: string; username: string; email?: string }
 
 const mb = (bytes: number) => `${(bytes / (1 << 20)).toFixed(bytes < 10 << 20 ? 1 : 0)} MB`
 const sizeLine = (size?: { files: number; bytes: number }) => size ? `${size.files.toLocaleString()} ${size.files === 1 ? 'file' : 'files'} · ${mb(size.bytes)}` : ''
-const card = 'space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm'
+export const teamCard = 'space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm'
+const card = teamCard
 const shortName = (name: string) => name.split('@')[0] || name
 
 /** The one saving pattern of these cards (owner, 6 Nov): only the clicked control shows it is working. */
@@ -39,7 +39,7 @@ function useSave() {
 const askTitle = 'Ask your AI agent how to set this up'
 // Before Mac online pairs the Mac app's own Crew there is no server reply with the cards' messages yet.
 const UNPAIRED_ASKS: Record<string, string> = {
-  mac: 'Explain Mac online for this Crew: is it on, what can reach my Mac (website, phone, ChatGPT or Claude, AgentBridge), and which of my agents are public on AgentBridge. Help me change it.',
+  mac: 'Explain Mac online for this Crew: is it on, and what turning it on lets me do from the website, my phone and my other apps. Help me turn it on.',
   publish: 'Help me publish this Crew to the server.',
 }
 
@@ -246,13 +246,14 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
   </section>
 }
 
-/** The one agent sharing list (owner, 6 Nov): every agent in the Team as the server lists it, the person's own with a
- * Shared switch, its purpose and its permissions; everyone else's as theirs to change. The same rows in the Mac app
- * and on the website. */
+/** The agent sharing list (owner, 6 Nov): only the viewer's own agents, as the server marks them (mine), each with
+ * its Shared switch (On / Off), purpose and permissions. Teammates' agents stay in the tab bar. The same rows in the
+ * Mac app and on the website; the server says when a switch cannot go off (the last shared agent) and why. */
 function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; view: TeamTabView; target: TeamTarget; projectId: string }) {
   const [opened, setOpened] = useState('')
   const { pending, error, run } = useSave()
-  const visibility = (key: string, inTeam: boolean) => run(key === '*' ? 'all' : `agent:${key}`, async () => {
+  const agents = view.agents.filter(agent => agent.mine)
+  const visibility = (key: string, inTeam: boolean) => run(`agent:${key}`, async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/agent-visibility', 'POST', { agent_key: key, in_team: inTeam })
     window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   })
@@ -261,27 +262,25 @@ function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; v
       <h3 className="flex-1 font-semibold">Agents</h3>
       <AskButton projectId={projectId} card="agents" />
     </div>
-    {view.can_all_mine && <div className="flex items-center gap-2 text-[13px]"><span className="flex-1 font-medium">Share all my agents</span><Saving on={pending === 'all'}>{null}</Saving><Switch aria-label="Share all my agents" checked={view.all_in_team} disabled={Boolean(pending)} onCheckedChange={on => void visibility('*', on)} /></div>}
-    {view.can_all_mine && <p className="text-xs text-muted-foreground">{view.agents_line || 'Your new agents are shared too, unless you turn sharing off for them. Main is always shared.'}</p>}
-    {view.agents.map(agent => <div key={agent.key} className="border-t border-border pt-2">
-      <div className="flex items-center gap-2 text-[13px]">
-        <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b> <span className="text-muted-foreground">· {agent.detail}</span></span>
-        {(agent.place_label || agent.place === 'mac') && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${agent.place_server ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'bg-muted text-muted-foreground'}`}>{agent.place_label || 'Mac'}</span>}
-        {agent.in_team && <button type="button" aria-expanded={opened === agent.key} onClick={() => setOpened(opened === agent.key ? '' : agent.key)} className="shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Permissions</button>}
-        {agent.can_change || agent.can_edit_rule
-          ? <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={agent.can_change ? undefined : agent.fixed}>
-            Shared<Saving on={pending === `agent:${agent.key}`}>{null}</Saving>
-            <Switch aria-label={`${agent.name}: shared`} checked={agent.in_team} disabled={!agent.can_change || Boolean(pending)} onCheckedChange={on => void visibility(agent.key, on)} />
+    {view.agents_line && <p className="text-xs text-muted-foreground">{view.agents_line}</p>}
+    {agents.map(agent => {
+      const locked = !agent.can_change || (agent.in_team && !agent.can_unshare)
+      return <div key={agent.key} className="border-t border-border pt-2">
+        <div className="flex items-center gap-2 text-[13px]">
+          <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b> <span className="text-muted-foreground">· {agent.detail}</span></span>
+          {(agent.place_label || agent.place === 'mac') && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${agent.place_server ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'bg-muted text-muted-foreground'}`}>{agent.place_label || 'Mac'}</span>}
+          {agent.in_team && <button type="button" aria-expanded={opened === agent.key} onClick={() => setOpened(opened === agent.key ? '' : agent.key)} className="shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Permissions</button>}
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={locked ? agent.fixed : undefined}>
+            {agent.in_team ? 'On' : 'Off'}<Saving on={pending === `agent:${agent.key}`}>{null}</Saving>
+            <Switch aria-label={`${agent.name}: shared`} checked={agent.in_team} disabled={locked || Boolean(pending)} onCheckedChange={on => void visibility(agent.key, on)} />
           </span>
-          : <span className="shrink-0 text-xs text-muted-foreground">{agent.fixed}</span>}
-        <AgentMenu agent={agent} state={state} projectId={projectId} />
+        </div>
+        <AgentSharingRow agent={agent} state={state} projectId={projectId} />
+        {agent.in_team && agent.permissions_line && <p className="ml-0.5 text-xs text-muted-foreground">{agent.permissions_line}</p>}
+        {opened === agent.key && agent.in_team && <AgentDetails agent={agent} target={target} projectId={projectId} />}
       </div>
-      <AgentSharingRow agent={agent} state={state} projectId={projectId} />
-      {agent.in_team && agent.permissions_line && <p className="ml-0.5 text-xs text-muted-foreground">{agent.permissions_line}</p>}
-      {opened === agent.key && agent.in_team && <AgentDetails agent={agent} target={target} projectId={projectId} />}
-    </div>)}
-    {!view.agents.length && <p className="text-xs text-muted-foreground">No agents in the team yet.</p>}
-    <CopySetupLine crewName={view.team.name} />
+    })}
+    {!agents.length && <p className="text-xs text-muted-foreground">No agents in the team yet.</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </section>
 }
@@ -328,29 +327,6 @@ function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; targe
       </>}
     </>}
     {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
-  </div>
-}
-
-/** ⋯ for one agent: open its tab here, or ask it from your own agent when it is someone else's. */
-function AgentMenu({ agent, state, projectId }: { agent: TeamTabAgent; state: TeamTabState; projectId: string }) {
-  const [open, setOpen] = useState(false)
-  const box = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (event: MouseEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false) }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
-  const tab = open ? teamAgentChatTab(state, projectId, agent.key) : undefined
-  const ask = !agent.can_change && agent.address
-  const item = 'block w-full rounded-lg px-2.5 py-1.5 text-left text-xs hover:bg-muted'
-  return <div ref={box} className="relative shrink-0">
-    <button type="button" aria-label={`More for ${agent.name}`} aria-expanded={open} onClick={() => setOpen(value => !value)} className="grid h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"><MoreHorizontal className="h-3.5 w-3.5" /></button>
-    {open && <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-border bg-popover p-1 shadow-lg">
-      {tab && <button type="button" className={item} onClick={() => { activateTab(tab.tabId); setOpen(false) }}>Open its chat</button>}
-      {ask && <button type="button" className={item} onClick={() => { if (!fillAskFromMyAgentDraft(projectId, agent.owner_name, agent.name, agent.address)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error'); setOpen(false) }}>Ask from my agent</button>}
-      {!tab && !ask && <p className="px-2.5 py-1.5 text-xs text-muted-foreground">Its chat is not open here.</p>}
-    </div>}
   </div>
 }
 

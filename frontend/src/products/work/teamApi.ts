@@ -49,7 +49,9 @@ async function teamTarget(project: string): Promise<TeamTarget | undefined> {
 /** The Team tab as the server writes it for the signed-in person (crew_team_tab.go): every row, and what they may
  * change. Every screen shows it and sends the person's choices; none decides anything itself. */
 export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'you' | 'invited'; active: boolean; active_label?: string; can_remove: boolean }
-export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; place: 'mac' | 'server'; status_label?: string; tab: string
+// mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
+// fixed then says why.
+export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; place: 'mac' | 'server'; status_label?: string; tab: string
   // Always on (crew_agent_always_on.go): where an agent of the owner's Mac answers now, worded by the server.
   place_label?: string; place_server?: boolean
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
@@ -57,16 +59,17 @@ export type TeamTabAgent = { key: string; name: string; detail: string; in_team:
   // Permissions (owner, 6 Nov): the one-line summary under the purpose, and its Ask message (the viewer's own agent).
   permissions_line: string; permissions_prompt?: string
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer may ask its chat to set one, and its Public on
-  // AgentBridge (the Crew owner's own rows only). mac_only: switched only in the owner's Mac app; elsewhere text.
+  // AgentBridge (a Mac Crew's owner's own rows): needs_purpose shows Set purpose instead of the switch; state is the
+  // pill while it is public ("public · online").
   purpose: string; can_set_purpose: boolean
-  agentbridge?: { public: boolean; can_change: boolean; mac_only?: boolean; needs_purpose?: boolean; line?: string; text: string; share_key?: string; workspace?: string }
+  agentbridge?: { public: boolean; can_change: boolean; needs_purpose?: boolean; state?: string }
   // The tab's setup icon and card rows (crew_tab_setup.go), worded by the server, for everyone who sees the agent.
   setup?: TeamTabSetup }
 export type TeamTabSetup = { reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamTabView = {
   team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
-  sync?: TeamTabSync; can_switch: boolean; all_in_team: boolean; can_all_mine: boolean; agents_mac_only?: string; agents_line?: string; can_leave: boolean
+  sync?: TeamTabSync; can_switch: boolean; agents_line?: string; can_leave: boolean
   can_choose: boolean; can_add_folder: boolean; can_remove_folder: boolean
   // The cards' Ask messages, written by the server and sent as given (crew_team_tab.go crewTeamAskPrompts).
   asks: Record<string, string>

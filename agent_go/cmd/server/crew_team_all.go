@@ -1,12 +1,8 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,7 +13,7 @@ import (
 )
 
 // The owner's Mac and its Crew's Team (owner, 5 Nov: the server decides, one Team tab everywhere). Every Team setting
-// is the company server's Team record: on/off, people, what is shared, All agents in team and each agent's In team /
+// is the company server's Team record: on/off, people, what is shared and each agent's In team /
 // Only me. This Mac only applies it (crew_team_apply.go): it lists its agents on the online copy while the Team is
 // on, and makes the team/ folder the server chose. What stays per Mac is Mac online and its own folders.
 
@@ -96,18 +92,4 @@ func crewTeamRoster(rows []macAgentRow, current []macSharedAgent, on bool) ([]ma
 		changed = true
 	}
 	return next, changed
-}
-
-// setCrewTeamAll is the owner's own All my agents in team from this Mac (its screen and its chat): the server's record.
-func (api *StreamingAPI) setCrewTeamAll(ctx context.Context, project string, on bool) (map[string]any, error) {
-	claims, binding, connection, err := api.desktopCrewChatBinding(ctx, project)
-	if err != nil {
-		return nil, fmt.Errorf("Turn on Mac online for this Crew first.")
-	}
-	body := map[string]any{"agent_key": crewTeamAllMine, "in_team": on}
-	if err = crewTeamRemoteJSON(ctx, claims.UserID, connection, http.MethodPost, "/api/crew-teams/"+url.PathEscape(binding.PeerProjectID)+"/agent-visibility", body, nil); err != nil {
-		return nil, err
-	}
-	log.Printf("[CREW_TEAM] local project=%s event=all_in_team on=%t", project, on)
-	return map[string]any{"all_in_team": on}, nil
 }

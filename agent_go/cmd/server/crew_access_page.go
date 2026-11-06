@@ -15,6 +15,22 @@ type crewAccessText struct {
 	Note string `json:"note,omitempty"`
 }
 
+// crewAccessMacCard is the Mac online tab's "This Mac" card (owner, 6 Nov mockup): one status line and one plain
+// sentence, the same on the Mac app and the website.
+type crewAccessMacCard struct {
+	Online bool   `json:"online"`
+	Status string `json:"status"` // "Online · MacBook Air", "Offline · MacBook Air"
+	Line   string `json:"line"`
+}
+
+func crewAccessMacOnline(mac string, teamOn bool) *crewAccessMacCard {
+	line := "Your Mac does the work and your files stay on it. Turn off to keep this Crew on the Mac only."
+	if teamOn {
+		line = "Your Mac does the work and your files stay on it. When it is off, In team agents keep answering from the server."
+	}
+	return &crewAccessMacCard{Online: true, Status: "Online · " + mac, Line: line}
+}
+
 // crewPublishTabShown brings back the Share page's Publish tab (owner, 5 Nov: the first release shows Mac online and
 // Team only). The Publish code, and publishing from chat and MCP, stay as they are.
 const crewPublishTabShown = false
@@ -37,8 +53,19 @@ func crewAccessPage(out *crewSyncReply) {
 		// The Mac app's own Crew: its Mac online, Publish and Team controls are here. Who can use it once it is online.
 		out.AccessHere, out.AccessTabs = "mac", crewAccessMacTabs
 		out.AccessShare = b != nil && b.Editing == "server"
-		if b != nil && b.Mode == "relay" && b.Editing == "local" && crewTeamKeepsMacOnline(out.ProjectID) {
+		teamOn := b != nil && b.Mode == "relay" && b.Editing == "local" && crewTeamKeepsMacOnline(out.ProjectID)
+		if teamOn {
 			out.AccessMacLocked = crewTeamOnlineLine
+		}
+		name := "this Mac"
+		if b != nil && b.MacName != "" {
+			name = b.MacName
+		}
+		switch {
+		case b == nil:
+			out.AccessMac = &crewAccessMacCard{Status: "Only on " + name, Line: "Turn on to use this Crew from the website, your phone and your other apps. Your files stay on this Mac."}
+		case b.Editing == "local":
+			out.AccessMac = crewAccessMacOnline(name, teamOn)
 		}
 	case out.AccessView == "summary":
 		// one line (access_summary)
@@ -51,11 +78,22 @@ func crewAccessPage(out *crewSyncReply) {
 		if b != nil && b.MacName != "" {
 			mac = b.MacName
 		}
-		line := "Mac online is on, but " + mac + " is off now: this Crew works again when it is back."
-		if out.Place == "mac" {
-			line = "Mac online is on: " + mac + " does the work while it is on. Messages pass through this server; your files stay on the Mac."
+		teamOn := crewTeamRecordOn(out.ProjectID)
+		if teamOn {
+			out.AccessMacLocked = crewTeamOnlineLine
 		}
-		out.AccessMac = &crewAccessText{Line: line, Note: "Turn Mac online on or off, and choose AgentBridge, in the Mac app: Share, Mac online."}
+		if out.Place == "mac" {
+			out.AccessMac = crewAccessMacOnline(mac, teamOn)
+		} else {
+			line := "It comes back when the Mac app opens."
+			if seen := crewMacOffSince(out.ProjectID); !seen.IsZero() {
+				line = "Last seen " + crewAccessAgo(seen) + ". " + line
+			}
+			if teamOn {
+				line += " Meanwhile In team agents answer from the server."
+			}
+			out.AccessMac = &crewAccessMacCard{Status: "Offline · " + mac, Line: line}
+		}
 		if crewPublishTabShown {
 			out.AccessPublish = &crewAccessText{Line: "Publish moves this Crew, or one of its agents, from your Mac to this server, so it works with your Mac off.", Note: "Publish from the Mac app: Share, Publish."}
 		}
@@ -70,7 +108,7 @@ func crewAccessPage(out *crewSyncReply) {
 // Mac online stays on while the Team is on (owner, 6 Nov; decisions log): in-team agents are always on, so a Team Crew
 // is never taken offline on its own. The main owner turns the Team off first (only they can).
 const (
-	crewTeamOnlineLine       = "On, because the Team is on"
+	crewTeamOnlineLine       = "Stays on while the Team is on"
 	crewTeamOnOfflineRefused = "The Team is on, so this Crew stays online. Turn the Team off first to take it offline."
 )
 

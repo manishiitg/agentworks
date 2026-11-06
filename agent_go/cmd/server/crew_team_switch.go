@@ -16,7 +16,7 @@ import (
 )
 
 // The Team tab's on/off switch from the Mac that holds the Crew (owner, 4-5 Nov, PLAT-856-531). The switch is the
-// server's Team record like every Team setting: on starts with All agents in team and, with nothing shared yet, the
+// server's Team record like every Team setting: on starts, with nothing shared yet, with the
 // team/ folder; off leaves only the owner in the team, the roster saved. The website, members and MCP switch it on the
 // server directly; this Mac path also turns Mac online on first (Team works through it) and applies the record here at
 // once (crew_team_apply.go). Public on AgentBridge belongs to Mac online, not Team, and stays.

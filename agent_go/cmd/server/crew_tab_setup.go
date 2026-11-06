@@ -189,8 +189,8 @@ func crewMacAutomations(ctx context.Context, t crewTeam) ([]crewTabAutomation, b
 	if !on || time.Since(last.at) < 15*time.Second {
 		return last.items, on
 	}
-	// The Mac answers on its Team tab read (desktopCrewTeamFolders); a Mac from before this keeps the last list.
-	result := callCrewMacPair(ctx, t.OwnerID, t.ProjectID, pair, crewChatCall{Operation: "team_folders", Action: "automations"}, 5*time.Second)
+	// The Mac answers its own relay op (runDesktopCrewChat); a Mac from before this keeps the last list.
+	result := callCrewMacPair(ctx, t.OwnerID, t.ProjectID, pair, crewChatCall{Operation: "automations"}, 5*time.Second)
 	var items []crewTabAutomation
 	if result.Status == 200 && json.Unmarshal(result.Body, &items) == nil {
 		last.items = items
