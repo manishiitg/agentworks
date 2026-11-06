@@ -53,7 +53,6 @@ export function AgentStepEditor({
   const [inputNames, setInputNames] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
   const panel = useRef<HTMLElement>(null);
   useEffect(() => {
     let alive = true;
@@ -76,7 +75,6 @@ export function AgentStepEditor({
   const stageConfig = useCallback((next: AgentConfigs) => {
     setConfig(next);
     setConfigChanged(true);
-    setSaved(false);
   }, []);
   const updateItem = (index: number, patch: Partial<AgentItem>) =>
     setItems(
@@ -122,7 +120,6 @@ export function AgentStepEditor({
       }
     }
     setError("");
-    setSaved(false);
     setSaving(true);
     try {
       const names = inputs.map((row) => row.name.trim());
@@ -148,7 +145,7 @@ export function AgentStepEditor({
         },
         configChanged ? config : undefined,
       );
-      setSaved(true);
+      onClose();
     } catch (e) {
       const detail = axios.isAxiosError(e) ? e.response?.data : undefined;
       setError(
@@ -165,10 +162,9 @@ export function AgentStepEditor({
   return (
     <aside
       ref={panel}
-      onChangeCapture={() => setSaved(false)}
       data-ui-plan-step={step.id}
       aria-label={`Step details: ${step.title}`}
-      className="flex h-full w-full flex-col border-l bg-background sm:w-[70%] sm:max-w-[70%]"
+      className="flex h-full w-full shrink-0 flex-col border-l bg-background sm:w-[70%] sm:max-w-[70%]"
     >
       <header className="flex items-center justify-between border-b p-4">
         <h2 className="font-semibold">{step.title}</h2>
@@ -590,11 +586,6 @@ export function AgentStepEditor({
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
-          </p>
-        )}
-        {saved && (
-          <p role="status" className="text-sm text-muted-foreground">
-            Saved. Changes apply on the next run.
           </p>
         )}
         <button
