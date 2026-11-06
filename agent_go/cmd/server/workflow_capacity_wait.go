@@ -242,7 +242,7 @@ func (s *SchedulerService) capacityResumeContext(ctx context.Context, run schedu
 		if json.Unmarshal([]byte(raw), &input) != nil || input.RunID != run.RunID {
 			return nil, fmt.Errorf("capacity resume delivery is invalid")
 		}
-		if err := webhookDeliveryStartError(*sched, &input); err != nil {
+		if err := webhookDeliveryStartError(ctx, run.ScopeID, *sched, &input); err != nil {
 			return nil, err
 		}
 		resume.WebhookInput = &input

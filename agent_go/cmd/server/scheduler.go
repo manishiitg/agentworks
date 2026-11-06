@@ -1263,9 +1263,15 @@ func (s *SchedulerService) TriggerNowFromSession(workspacePath, scheduleID, orig
 // webhookDeliveryStartError re-checks a delivery's group and variables
 // against the trigger as saved now. A function trigger's variables are its
 // declared inputs; any other trigger's are its allowed_variables.
-func webhookDeliveryStartError(sched WorkflowSchedule, input *WorkflowWebhookDelivery) error {
+func webhookDeliveryStartError(ctx context.Context, workspace string, sched WorkflowSchedule, input *WorkflowWebhookDelivery) error {
 	if input.Group != "" {
 		return errors.New(retiredWorkflowGroupsMessage)
+	}
+	if input.DirectRun {
+		if !sched.IsInternalTrigger() {
+			return errors.New("direct run requires an authenticated internal binding")
+		}
+		return resolveWorkflowWebhookInputs(ctx, workspace, sched, input)
 	}
 	if sched.Webhook == nil && !sched.IsFunctionTrigger() {
 		return nil
@@ -1337,7 +1343,7 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 		}
 		sctx.TriggerSource = "webhook"
 		sctx.WebhookInput = input
-		if err := webhookDeliveryStartError(*sched, input); err != nil {
+		if err := webhookDeliveryStartError(ctx, workspacePath, *sched, input); err != nil {
 			return "", err
 		}
 		resolvedStepID, resolvedRoutes := resolvedWebhookExecutionTarget(*sched, input)

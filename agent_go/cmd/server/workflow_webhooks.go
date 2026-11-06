@@ -46,6 +46,9 @@ type WorkflowWebhookValueMapping = workflowtrigger.ValueMapping
 type WorkflowWebhookPayloadMappings = workflowtrigger.PayloadMappings
 
 type WorkflowWebhookDelivery struct {
+	// Set by authenticated direct-run dispatch, never decoded from public payloads.
+	// Persisted with the delivery so capacity resume revalidates the same contract.
+	DirectRun       bool                  `json:"direct_run,omitempty"`
 	ConditionCaller *conditionRouteCaller `json:"condition_caller,omitempty"`
 	Group           string                `json:"group,omitempty"`
 	Variables       map[string]string     `json:"variables,omitempty"`
@@ -966,6 +969,12 @@ func (receiver webhookReceiver) dispatchInternal(ctx context.Context, workspaceP
 			config.AllowedVariables = append(config.AllowedVariables, input.Name)
 		}
 		deliverySchedule.Webhook = &config
+		start := receiver.start
+		receiver.start = func(root, trigger, session string, input *WorkflowWebhookDelivery) (string, error) {
+			input.DirectRun = true
+			return start(root, trigger, session, input)
+		}
+
 		call.Payload, err = json.Marshal(map[string]interface{}{"variables": call.DirectInputs, "payload": json.RawMessage(call.Payload)})
 		if err != nil {
 			return internalTriggerDeliveryResult{}, err
