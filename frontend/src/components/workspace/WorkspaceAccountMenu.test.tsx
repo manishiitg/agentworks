@@ -44,8 +44,8 @@ it.each([false, true])('keeps account administration without walkthroughs and wi
     for (const label of ['Workspace', 'Sign out']) expect(menu.textContent).toContain(label)
     for (const label of ['Getting started', 'Browser connections', 'Notifications & sound', 'Tips while working']) expect(menu.textContent).not.toContain(label)
     expect(menu.textContent).not.toContain('Change password')
-    expect(menu.querySelector('[data-product-option]')).toBeNull()
-    for (const label of ['Dashboards', 'Switch product', 'Audit logs', 'Vault MCP endpoint', 'Search']) expect(menu.textContent).not.toContain(label)
+    expect(menu.querySelector('[aria-label="Dashboards"]')).not.toBeNull()
+    for (const label of ['Audit logs', 'Vault MCP endpoint', 'Search']) expect(menu.textContent).not.toContain(label)
     expect(menu.textContent).not.toContain('Keyboard shortcuts')
     expect(menu.textContent).not.toContain('Help & walkthrough')
     expect(menu.querySelector('[aria-label="Connect AI tools"]')).toBeNull()
@@ -68,16 +68,17 @@ it('retains the explicit browser-setup event without a menu entry', async () => 
     expect(document.querySelector('[role="dialog"][aria-label="Browser connections"]')).not.toBeNull()
   })
 })
-it('keeps a bottom-left entry with Escape dismissal when the sidebar is collapsed', async () => {
+it.each([false, true])('keeps permitted products and dismissal in the account menu (sidebar=%s)', async sidebar => {
   window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['work', 'agentworks', 'relays', 'knowledgebase', 'bullpen', 'mcp-gateway'], gatewayUrl: 'https://example.com' }
   auth.user.allowed_products = ['work', 'bullpen']
-  await render(async host => {
-    const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Account & settings"]')!
+  await render(async (host, destination) => {
+    const container = sidebar ? destination : host
+    const trigger = container.querySelector<HTMLButtonElement>('[aria-label="Account & settings"]')!
     await act(async () => trigger.click())
-    const menu = host.querySelector<HTMLElement>('[role="menu"]')!
+    const menu = container.querySelector<HTMLElement>('[role="menu"]')!
     expect(menu.hidden).toBe(false)
     expect([...menu.querySelectorAll('[data-product-option]')].map(item => item.getAttribute('aria-label'))).toEqual(['Crew', 'AgentBridge', 'Dashboards', 'CLI / MCP'])
-    expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBeNull()
+    expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBe(sidebar ? destination : null)
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(menu.hidden).toBe(true)
     expect(document.activeElement).toBe(trigger)
@@ -89,7 +90,7 @@ it('keeps a bottom-left entry with Escape dismissal when the sidebar is collapse
     await act(async () => menu.querySelector<HTMLButtonElement>('[aria-label="CLI / MCP"]')!.click())
     expect(window.location.pathname).toBe(WORKSPACE_SETTINGS_PATHS.mcp)
     expect(menu.hidden).toBe(true)
-  }, false)
+  }, sidebar)
 })
 it('keeps local identity without password and sign-out actions', async () => {
   auth.isMultiUserMode = false; auth.providers = [{ type: 'credentials' }]
