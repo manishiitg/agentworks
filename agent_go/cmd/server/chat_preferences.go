@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"path/filepath"
 
@@ -12,13 +11,10 @@ import (
 // Display preferences belong to the caller, never the project or provider account.
 type chatPreferences struct {
 	ShowContextIndicator bool `json:"show_context_indicator"`
-	// AgentsView is how a Crew's agents are shown (owner, 4 Nov): "menu" in the left menu (the default) or "tabs".
-	AgentsView string `json:"agents_view"`
 }
 
 type chatPreferencesUpdate struct {
-	Show       *bool   `json:"show_context_indicator"`
-	AgentsView *string `json:"agents_view"`
+	Show *bool `json:"show_context_indicator"`
 }
 
 func (api *StreamingAPI) chatPreferences(w http.ResponseWriter, r *http.Request, update *chatPreferencesUpdate) {
@@ -40,17 +36,11 @@ func (api *StreamingAPI) chatPreferences(w http.ResponseWriter, r *http.Request,
 		if update.Show != nil {
 			pref.ShowContextIndicator = *update.Show
 		}
-		if update.AgentsView != nil {
-			pref.AgentsView = *update.AgentsView
-		}
 		saved, _ := json.Marshal(pref)
 		if err := writeRawFileToWorkspace(r.Context(), path, string(saved)); err != nil {
 			http.Error(w, "Could not save your chat display. Try again.", http.StatusServiceUnavailable)
 			return
 		}
-	}
-	if pref.AgentsView != "tabs" {
-		pref.AgentsView = "menu"
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(pref)
@@ -62,13 +52,7 @@ func chatPreferencesUpdateFromArgs(args map[string]any) (*chatPreferencesUpdate,
 	if show, ok := args["show_context_indicator"].(bool); ok {
 		update.Show = &show
 	}
-	if view, ok := args["agents_view"].(string); ok {
-		if view != "menu" && view != "tabs" {
-			return nil, fmt.Errorf("Show agents in the left menu (menu) or as tabs (tabs).")
-		}
-		update.AgentsView = &view
-	}
-	if update.Show == nil && update.AgentsView == nil {
+	if update.Show == nil {
 		return nil, nil
 	}
 	return &update, nil
@@ -80,12 +64,8 @@ func (api *StreamingAPI) handleChatPreferences(w http.ResponseWriter, r *http.Re
 		var body chatPreferencesUpdate
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 		decoder.DisallowUnknownFields()
-		if decoder.Decode(&body) != nil || (body.Show == nil && body.AgentsView == nil) {
+		if decoder.Decode(&body) != nil || body.Show == nil {
 			http.Error(w, "Choose a chat display setting to change.", http.StatusBadRequest)
-			return
-		}
-		if body.AgentsView != nil && *body.AgentsView != "menu" && *body.AgentsView != "tabs" {
-			http.Error(w, "Show agents in the left menu or as tabs.", http.StatusBadRequest)
 			return
 		}
 		update = &body

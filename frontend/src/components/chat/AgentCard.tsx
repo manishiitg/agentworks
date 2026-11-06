@@ -78,12 +78,6 @@ export const useCrewAgentsStore = create<{ projectId: string | null; name: strin
   set: (projectId, name, agents, canAdd, closed = []) => set({ projectId, name, agents, canAdd, closed }),
 }))
 
-/** The person's choice of how agents are shown ("menu" or "tabs"), once it has loaded from the server. */
-export const useAgentsViewStore = create<{ view: 'menu' | 'tabs' | null; set: (view: 'menu' | 'tabs') => void }>(set => ({
-  view: null,
-  set: view => set({ view }),
-}))
-
 export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, pinned, shortcut, onRename }: { info?: AgentCardInfo; children: ReactNode; side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; pinned?: boolean; shortcut?: number; onRename?: () => void }) {
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)

@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 const auth = vi.hoisted(() => ({ user: { id: 'member', username: 'Member', can_create: true, is_admin: false, allowed_products: null } as any, isMultiUserMode: true, providers: [{ type: 'oauth' }], logout: vi.fn() }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select?: any) => select ? select(auth) : auth, { getState: () => auth }) }))
-vi.mock('../../hooks/useChatPreferences', () => ({ useChatPreferences: () => ({ showContextIndicator: false, agentsView: 'menu', ready: true, save: { mutate: () => {} } }) }))
 vi.mock('../topbar/ChangePasswordDialog', () => ({ default: () => null }))
 vi.mock('../BrowserConnectionsDialog', () => ({ default: ({ open }: { open: boolean }) => open ? createPortal(<div role="dialog" aria-label="Browser connections" />, document.body) : null }))
 import { WorkspaceAccountMenu } from './WorkspaceAccountMenu'

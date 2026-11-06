@@ -17,7 +17,5 @@ export function useChatPreferences() {
     mutationFn: llmConfigService.setChatPreferences,
     onSuccess: value => queryClient.setQueryData(queryKey, value),
   })
-  // A Crew's agents in the left menu (default) or as tabs (owner, 4 Nov).
-  const agentsView = query.data?.agents_view === 'tabs' ? 'tabs' as const : 'menu' as const
-  return { showContextIndicator: query.data?.show_context_indicator ?? false, agentsView, ready: query.isSuccess, save }
+  return { showContextIndicator: query.data?.show_context_indicator ?? false, ready: query.isSuccess, save }
 }

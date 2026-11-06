@@ -16,10 +16,10 @@ import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNa
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
 import { teamAgentForTab, useTeamTab, type TeamTabPresence } from '../../products/work/teamApi'
 import type { ChatTabPillProps } from './ChatTabPill'
-import { AgentHeaderLine, useAgentsViewStore, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
+import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
-import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
+import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { fillAgentPurposeDraft, sendToTab } from '../../utils/agentPurposeDraft'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
@@ -191,14 +191,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       },
     }
   }
-  // In Left menu mode (the person's choice, owner 4 Nov) the agents are listed in the app's left menu, not as tabs here:
-  // the list there reads them from this store; "+" stays in this top line.
-  const agentsView = useAgentsViewStore(state => state.view)
-  // Left menu is the default, also before the saved choice has loaded; phones list the agents in the sidebar drawer.
-  // With the left menu closed on a computer the agents come back as tabs here, with their marks and cards (owner, 4 Nov:
-  // "i need tabs for my agents.. see whats is running.. their purpose").
-  const leftMenuOpen = useWorkspaceReturnStore(state => state.navigationMode) === 'fixed'
-  const menuMode = surface === 'work' && agentsView !== 'tabs' && (phone || leftMenuOpen)
+  // Desktop agent placement follows the visible sidebar, including its temporary peek.
+  // Phones keep the compact current-agent header and drawer list.
+  const leftMenuOpen = useProductNavigationToolbarStore(state => state.sidebarSettingsTarget !== null)
+  const menuMode = surface === 'work' && (phone || leftMenuOpen)
   // The strip's own handlers for one agent, so the left menu and the rail offer the same rename, order, show/hide and
   // hide (owner, 4 Nov: "did we lose more features?"); removing for good is only in the agent card.
   const agentActions = (tab: ChatTab): CrewAgentActions => {

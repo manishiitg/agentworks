@@ -13,7 +13,6 @@ import { useLLMStore } from '../../stores/useLLMStore'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 
-vi.mock('../../hooks/useChatPreferences', () => ({ useChatPreferences: () => ({ showContextIndicator: false, agentsView: 'menu', ready: true, save: { mutate: () => {} } }) }))
 vi.mock('./AppQuickSwitcher', () => ({ AppQuickSwitcher: () => null }))
 vi.mock('./WorkspaceChatsSidebar', () => ({ default: ({ toggle, footer }: { toggle?: React.ReactNode; footer?: React.ReactNode }) => <div>{toggle}My chats{footer}</div> }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

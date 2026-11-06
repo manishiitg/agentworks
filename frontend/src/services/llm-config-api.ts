@@ -299,7 +299,7 @@ llmConfigApi.interceptors.request.use((config) => {
 })
 
 /** The person's own display choices (server-side, per person). */
-export type ChatPreferences = { show_context_indicator: boolean; agents_view: 'menu' | 'tabs' }
+export type ChatPreferences = { show_context_indicator: boolean }
 
 // LLM Configuration API service
 export const llmConfigService = {
