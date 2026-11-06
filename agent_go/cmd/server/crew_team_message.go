@@ -31,14 +31,7 @@ type crewTeamMessageRequest struct {
 func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request, project string, input crewSyncRequest) {
 	claims := GetUserFromContext(r.Context())
 	in := input.TeamMessage
-	if claims != nil && ownerOfCrewProjectID(project) != claims.UserID {
-		// A Team member's Mac cannot send into the owner's agents yet; say what works instead of pointing at a Mac they don't have.
-		externalError(w, 409, "wrong_pair", "Messaging the owner's agents from your Mac isn't available yet. Open their agent from the Team bar to ask it.")
-		return
-	}
-	b, err := crewroot.ReadSync(project)
-	if in == nil || err != nil || b == nil || b.Mode != "relay" || b.Side != "server" || b.Editing != "local" || input.PairID == "" || b.PairID != input.PairID ||
-		claims == nil || ownerOfCrewProjectID(project) != claims.UserID {
+	if in == nil || claims == nil || !crewTeamMessagePairAdmitted(project, claims.UserID, input.PairID) {
 		externalError(w, 409, "wrong_pair", "Send this from the Mac that holds this Crew.")
 		return
 	}
@@ -54,6 +47,9 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 		}
 	}
 	if member == "" {
+		member = crewTeamOwnerAgent(r.Context(), project, in.ChatKey, claims.UserID)
+	}
+	if member == "" || member == claims.UserID {
 		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
 		return
 	}
@@ -63,7 +59,12 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
 		return
 	}
+	// The sending agent's conversation key is the one its Mac is listed under, so the answer comes back to that Mac: the
+	// owner's Mac by the project key, a member's Mac by their own key (crewMacTabRow).
 	key := macSharedAgentChatKey(project, in.FromTab)
+	if claims.UserID != ownerOfCrewProjectID(project) {
+		key = crewMacTabRow(project, crewMacTeamTab{Person: claims.UserID, Tab: in.FromTab}).ConversationKey
+	}
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: project, ProfileID: crewProfileID}, Label: firstNonEmptyTrimmed(in.Agent, "Main"),
 		Chat: &codeChat{OwnerID: claims.UserID, IsMain: in.FromTab == macMainTab, Key: key, ID: in.FromTab, Name: firstNonEmptyTrimmed(in.Agent, "Main"), SessionID: crewChatSessionID(project, in.ConversationID)}}
 	out, err := api.sendAgentMessage(ctx, claims.UserID, caller, target, in.Message, "", in.SubmissionID)
@@ -74,6 +75,47 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	}
 	log.Printf("[CREW_TEAM] project=%s event=agent_message from=%s to_member=%s chat=%q", project, in.FromTab, logUsernameForUserID(member), in.ChatKey)
 	externalJSON(w, out)
+}
+
+// crewTeamMessagePairAdmitted: a Team message comes from the Mac that holds the sender's working copy of this Crew. The
+// owner's Mac is the Crew's own sync binding; a member's is the pair the server recorded for them when they put their
+// agents on their Mac (owner, 6 Nov: any two people in a Team can message each other's agents, owner or not). A person
+// who is only invited, or whose agents work on the website, has no pair and is refused.
+func crewTeamMessagePairAdmitted(project, user, pair string) bool {
+	if user == "" || pair == "" {
+		return false
+	}
+	if ownerOfCrewProjectID(project) == user {
+		b, err := crewroot.ReadSync(project)
+		return err == nil && b != nil && b.Mode == "relay" && b.Side == "server" && b.Editing == "local" && b.PairID == pair
+	}
+	t, err := readCrewTeam(project)
+	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID {
+		return false
+	}
+	recorded, ok := t.memberMac(user)
+	return ok && recorded == pair
+}
+
+// crewTeamOwnerAgent is the Crew owner when key is one of the owner's agents that are In team, read from the same rows the
+// Team tab lists (teamAgentsByPerson), else "". caller is the one asking: others' Only me agents are never in the rows.
+func crewTeamOwnerAgent(ctx context.Context, project, key, caller string) string {
+	t, err := readCrewTeam(project)
+	if err != nil || !t.On || t.OwnerID == "" || ownerOfCrewProjectID(project) != t.OwnerID {
+		return ""
+	}
+	short := strings.TrimPrefix(strings.TrimSpace(key), project+codeChatSideMarker)
+	for _, person := range teamAgentsByPerson(ctx, t, caller) {
+		if !person.Owner {
+			continue
+		}
+		for _, agent := range person.Agents {
+			if agent.InTeam && (agent.ChatKey == key || strings.TrimPrefix(agent.ChatKey, project+codeChatSideMarker) == short || key == project && agent.Tab == macMainTab) {
+				return t.OwnerID
+			}
+		}
+	}
+	return ""
 }
 
 // sendTeamMessageFromMac is send_message on the Mac for a target "team:<local Crew>:<member's chat key>" (list_agents

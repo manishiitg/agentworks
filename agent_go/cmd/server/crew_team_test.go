@@ -994,6 +994,57 @@ func TestCrewTeamMemberMacAdmittedOnlyWithTheirRecordedPair(t *testing.T) {
 	}
 }
 
+// Owner, 6 Nov: any two people in a Team can message each other's agents from their Macs; owner or member is not a Crew
+// role for it. A Team message is admitted from the owner's Mac (the Crew's own pair) or from a joined member's Mac with
+// the pair the server recorded for that member, and from nobody else: not an invited person, not a member whose agents
+// work on the website, not a stranger, not a member using another person's pair. Admitted, the call goes on to check
+// the sender (400 invalid_sender here); refused, it stops at 409 wrong_pair.
+func TestCrewTeamMessageIsAdmittedFromOwnerOrMemberMacOnly(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"member","username":"member","can_create":true,"products":["work"]},{"id":"web","username":"web","can_create":true,"products":["work"]},{"id":"invited","username":"invited","can_create":true,"products":["work"]},{"id":"stranger","username":"stranger","can_create":true,"products":["work"]}]}`)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "message-room", OwnerID: "owner", ProjectID: "message-room"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync("message-room", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "message-room", OwnerID: "owner", On: true, People: []crewTeamPerson{
+		{UserID: "member", Where: "mac", MacPair: "member-pair"}, {UserID: "web"},
+		{UserID: "invited", Invited: true, Where: "mac", MacPair: "invited-pair"}}}); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	send := func(user, pair string) (int, string) {
+		t.Helper()
+		body := crewSyncRequest{Action: "team_message", PairID: pair, TeamMessage: &crewTeamMessageRequest{FromTab: "", ConversationID: "c1", ChatKey: "x", Message: "hi"}}
+		r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+		w := httptest.NewRecorder()
+		api.crewTeamMessage(w, r, "message-room", body)
+		return w.Code, w.Body.String()
+	}
+	for _, c := range []struct {
+		who, user, pair string
+		admitted        bool
+	}{
+		{"the owner's Mac", "owner", "owner-pair", true},
+		{"a member's own Mac", "member", "member-pair", true},
+		{"a member with the owner's pair", "member", "owner-pair", false},
+		{"a member with an invited person's pair", "member", "invited-pair", false},
+		{"a member with no pair", "member", "", false},
+		{"an invited person with their own pair", "invited", "invited-pair", false},
+		{"a member whose agents work on the website", "web", "member-pair", false},
+		{"a stranger with a member's pair", "stranger", "member-pair", false},
+		{"the owner with a member's pair", "owner", "member-pair", false},
+	} {
+		code, body := send(c.user, c.pair)
+		if c.admitted && code != http.StatusBadRequest || !c.admitted && (code != http.StatusConflict || !strings.Contains(body, "wrong_pair")) {
+			t.Fatalf("%s: got %d %s, admitted=%t", c.who, code, body, c.admitted)
+		}
+	}
+}
+
 // Live Team tab, 6 Nov: "Context7" (Vault) and "context7" (a Mac program) showed as two rows. One app keeps one row, and
 // the row with an action wins; an app and a secret of the same name stay apart.
 func TestCrewTeamListsOneRowPerApp(t *testing.T) {
