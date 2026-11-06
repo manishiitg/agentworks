@@ -406,50 +406,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     </form>
   )
 
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-1">
-      {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
-      {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} showName={menuMode || phone} />}
-      <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
-      {stripTabs.map((tab, index) => {
-        const person = tabOwnerId(tab)
-        const groupLabel = person && (index === 0 || tabOwnerId(stripTabs[index - 1]) !== person)
-          ? <span key={`person:${person}`} title={presenceOf(person)?.line} className="ml-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-4 w-px bg-border" /><PersonPresenceDot presence={presenceOf(person)} />{personName(person)}:</span> : null
-        const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
-        const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
-        return <Fragment key={tab.tabId}>{groupLabel}<div
-          data-chat-tab-id={tab.tabId}
-          draggable={!!key}
-          onDragStart={key ? event => startDrag(event, key, tab.tabId) : undefined}
-          onDragOver={event => overTab(event, targetKey)}
-          onDrop={event => dropTab(event, targetKey)}
-          onDragEnd={endDrag}
-          className={`flex items-center rounded border-l-2 ${dropKey === targetKey && draggingKey !== key ? 'border-primary bg-primary/10' : 'border-transparent'} ${draggingKey === key ? 'opacity-50' : ''}`}
-          title={key ? 'Drag to reorder this agent' : undefined}
-        ><AgentWorksChatTabItem
-        tab={tab}
-        isActive={isTabActive ? isTabActive(tab) : tab.tabId === activeTabId}
-        canClose={false}
-        isBlank={false}
-        displayName={tabLabel(tab)}
-        workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
-        purpose={purposeOf(tab)}
-        onSetPurpose={purposeOf(tab) === undefined ? undefined : () => fillAgentPurposeDraft(tab.tabId)}
-        agent={agentFace(tab)}
-        titleOverride={tab.tabId === canonicalTabId ? projectName : key ? sideChatName(tab) : undefined}
-        onTabClick={selectTab}
-        onCloseTab={hideOrCloseTab}
-        onRenameTab={key && canControl(tab) ? renameSideChat : undefined}
-        closeStopsSession={!!key}
-        onMakeInteractive={onMakeInteractive}
-      />{renderAfterTab?.(tab)}</div></Fragment>
-      })}
-      {chipPeople.length > 0 && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
-      {chipPeople.map(group => <PersonChip key={`person:${group.person}`} name={personName(group.person)} presence={presenceOf(group.person)}
-        agents={group.agents} watching={group.watching} onPick={selectTab} />)}
-      </div>
-      {(!menuMode || onImportLocalChat) && (tabs.length > 1 || phone || livesOnMac || onImportLocalChat) && (
+  // Your own agents' menu (the caret) sits with your tabs, before the divider and the other people's chips.
+  const moreMenu = (!menuMode || onImportLocalChat) && (tabs.length > 1 || phone || livesOnMac || onImportLocalChat) && (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
             type="button"
@@ -555,7 +513,54 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
             </div>, document.body
           )}
         </div>
-      )}
+      )
+  const moreBeforePeople = chipPeople.length > 0 && !menuMode
+
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
+      {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
+      {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} showName={menuMode || phone} />}
+      <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
+      {stripTabs.map((tab, index) => {
+        const person = tabOwnerId(tab)
+        const groupLabel = person && (index === 0 || tabOwnerId(stripTabs[index - 1]) !== person)
+          ? <span key={`person:${person}`} title={presenceOf(person)?.line} className="ml-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span aria-hidden="true" className="h-4 w-px bg-border" /><PersonPresenceDot presence={presenceOf(person)} />{personName(person)}:</span> : null
+        const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
+        const targetKey = key || (tab.tabId === canonicalTabId ? listed?.[0]?.conversation_key : undefined)
+        return <Fragment key={tab.tabId}>{groupLabel}<div
+          data-chat-tab-id={tab.tabId}
+          draggable={!!key}
+          onDragStart={key ? event => startDrag(event, key, tab.tabId) : undefined}
+          onDragOver={event => overTab(event, targetKey)}
+          onDrop={event => dropTab(event, targetKey)}
+          onDragEnd={endDrag}
+          className={`flex items-center rounded border-l-2 ${dropKey === targetKey && draggingKey !== key ? 'border-primary bg-primary/10' : 'border-transparent'} ${draggingKey === key ? 'opacity-50' : ''}`}
+          title={key ? 'Drag to reorder this agent' : undefined}
+        ><AgentWorksChatTabItem
+        tab={tab}
+        isActive={isTabActive ? isTabActive(tab) : tab.tabId === activeTabId}
+        canClose={false}
+        isBlank={false}
+        displayName={tabLabel(tab)}
+        workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
+        purpose={purposeOf(tab)}
+        onSetPurpose={purposeOf(tab) === undefined ? undefined : () => fillAgentPurposeDraft(tab.tabId)}
+        agent={agentFace(tab)}
+        titleOverride={tab.tabId === canonicalTabId ? projectName : key ? sideChatName(tab) : undefined}
+        onTabClick={selectTab}
+        onCloseTab={hideOrCloseTab}
+        onRenameTab={key && canControl(tab) ? renameSideChat : undefined}
+        closeStopsSession={!!key}
+        onMakeInteractive={onMakeInteractive}
+      />{renderAfterTab?.(tab)}</div></Fragment>
+      })}
+      {moreBeforePeople && moreMenu}
+      {chipPeople.length > 0 && <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />}
+      {chipPeople.map(group => <PersonChip key={`person:${group.person}`} name={personName(group.person)} presence={presenceOf(group.person)}
+        agents={group.agents} watching={group.watching} onPick={selectTab} />)}
+      </div>
+      {!moreBeforePeople && moreMenu}
 
       {newTabForm}
       {sideChatsHere && newTabName === null && (
