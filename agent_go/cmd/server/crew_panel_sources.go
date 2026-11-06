@@ -214,7 +214,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 				Connected bool
 				Login     string
 			}
-			err := read(ctx, api.handleGitHubVault, "/api/vault/github", nil, &data)
+			err := read(ctx, api.handleGitHubVault, "/api/vault/github", url.Values{"view": {"summary"}}, &data)
 			label := "Not connected"
 			if data.Connected {
 				label = "Connected"
@@ -341,7 +341,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 					Completed string `json:"completed_at"`
 				}
 			}
-			err := read(ctx, api.projectActions.conditionHTTP, "/api/condition-triggers", url.Values{"profile_id": {"work"}, "project_id": {project}}, &data)
+			err := read(ctx, api.projectActions.conditionHTTP, "/api/condition-triggers", url.Values{"profile_id": {"work"}, "project_id": {project}, "view": {"summary"}}, &data)
 			section := crewPanelSection{}
 			for _, item := range data.Triggers {
 				label := "Paused"

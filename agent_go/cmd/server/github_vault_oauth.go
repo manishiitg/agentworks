@@ -515,6 +515,16 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Cache-Control", "no-store")
 	switch {
 	case r.Method == http.MethodGet:
+		if r.URL.Query().Get("view") == "summary" {
+			// The menu shows the saved connection. Account choices and fresh
+			// organization checks belong to the full connection settings page.
+			out := map[string]any{"connected": false}
+			if rec := readGitHubRecord(person); rec != nil {
+				out["connected"], out["login"] = true, rec.Login
+			}
+			writeAgentProfileJSON(w, http.StatusOK, out)
+			return
+		}
 		writeAgentProfileJSON(w, http.StatusOK, gitHubStatus(r.Context(), person))
 	case r.Method == http.MethodDelete:
 		rec := readGitHubRecord(person)

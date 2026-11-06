@@ -80,6 +80,16 @@ func TestConditionProductCallerOwnsDetectorAndCallsOwnCrew(t *testing.T) {
 	if err != nil || len(pendingList.(map[string]interface{})["triggers"].([]interface{})) != 1 {
 		t.Fatal("undelivered one-time wait disappeared", pendingList, err)
 	}
+	// PLAT-856-542: the menu reads the same active state without loading
+	// other projects' jobs, caller attribution or private chat choices.
+	summaryList, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list", "summary": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := summaryList.(map[string]interface{})
+	if len(summary["triggers"].([]interface{})) != 1 || summary["chats"] != nil || summary["callers"] != nil {
+		t.Fatal("menu summary lost pending watcher or loaded detail lists", summary)
+	}
 	c.drain(ctx, job)
 	listed, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list"})
 	if err != nil {
@@ -88,6 +98,10 @@ func TestConditionProductCallerOwnsDetectorAndCallsOwnCrew(t *testing.T) {
 	active := listed.(map[string]interface{})
 	if len(active["triggers"].([]interface{})) != 0 || len(active["callers"].([]map[string]interface{})) != 0 {
 		t.Fatal("completed wait remains in active Watchers", listed)
+	}
+	summaryList, err = c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list", "summary": true})
+	if err != nil || len(summaryList.(map[string]interface{})["triggers"].([]interface{})) != 0 {
+		t.Fatal("completed watcher remains in the menu summary", summaryList, err)
 	}
 	archived, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list", "include_completed": true})
 	if err != nil {

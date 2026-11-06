@@ -88,8 +88,15 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 	}
 	id, _ := args["id"].(string)
 	if action == "list" {
+		summary, _ := args["summary"].(bool)
 		includeCompleted, _ := args["include_completed"].(bool)
-		jobs, err := c.s.JobsForUser(ctx, owner)
+		var jobs []productScheduleJob
+		var err error
+		if summary && base.Profile.ID == crewProfileID {
+			jobs, err = c.summaryJobs(ctx, base)
+		} else {
+			jobs, err = c.s.JobsForUser(ctx, owner)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -128,6 +135,9 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			}
 		}
 		result := map[string]interface{}{"triggers": out}
+		if summary {
+			return result, nil
+		}
 		if base.Profile.ID == crewProfileID {
 			// A watcher caller has a minimal identity, not a runtime profile.
 			// Resolve the Crew's actual conversation policy before listing chats.
@@ -526,6 +536,7 @@ func (s *ProjectActionDispatcher) conditionHTTP(w http.ResponseWriter, r *http.R
 	}
 	if r.Method == http.MethodGet {
 		args["action"] = "list"
+		args["summary"] = r.URL.Query().Get("view") == "summary"
 		args["include_completed"] = r.URL.Query().Get("include_completed") == "true"
 		if id := mux.Vars(r)["id"]; id != "" {
 			args["action"], args["id"] = "history", id
