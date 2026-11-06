@@ -23,6 +23,7 @@ function parseDefaults(raw: string | null): Record<string, unknown> | undefined 
  * there is no script method that runs a function. */
 export function installDashboardActionButtons(doc: Document, options: Options) {
   const disabled = new Map<HTMLButtonElement, boolean>()
+  const hidden = new Map<HTMLButtonElement, boolean>()
   // Functions the server says this person may not call (its can_call is false):
   // the button stays visible, disabled, with a plain reason. The server decides.
   let blocked = new Set<string>()
@@ -31,6 +32,11 @@ export function installDashboardActionButtons(doc: Document, options: Options) {
       if (!disabled.has(button)) disabled.set(button, button.disabled)
       const limited = blocked.has((button.getAttribute(ACTION_BUTTON_ATTR) || '').trim())
       if (!options.available || limited) button.disabled = true
+      // Nothing here can run it (a public page, a Crew whose functions are on its Mac): no button at all.
+      if (!options.available) {
+        if (!hidden.has(button)) hidden.set(button, button.hidden)
+        button.hidden = true
+      }
       if (limited) button.title = 'This function is limited to certain people.'
     }
   }
@@ -52,7 +58,9 @@ export function installDashboardActionButtons(doc: Document, options: Options) {
       mutation.disconnect()
       doc.removeEventListener('click', click)
       for (const [button, wasDisabled] of disabled) button.disabled = wasDisabled
+      for (const [button, wasHidden] of hidden) button.hidden = wasHidden
       disabled.clear()
+      hidden.clear()
     },
   }
 }

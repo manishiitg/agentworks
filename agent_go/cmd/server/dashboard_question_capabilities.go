@@ -11,6 +11,9 @@ type dashboardQuestionCapability struct {
 	CanAsk  bool   `json:"can_ask"`
 	Reason  string `json:"reason,omitempty"`
 	Mode    string `json:"mode,omitempty"`
+	// FunctionsOff: this dashboard's functions can't run here, so the page shows no buttons for them. A Crew on a Mac:
+	// the server holds only a read copy (crew_mac_dashboards.go).
+	FunctionsOff bool `json:"functions_off,omitempty"`
 }
 
 type dashboardQuestionPolicy struct {
@@ -136,6 +139,7 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 		}
 	}
 	out.Capability = dashboardQuestionCapabilities(dashboardQuestionPolicy{Authenticated: true, Active: !userAccessForClaims(claims).Disabled, Product: true, View: true, Published: true, AskScope: askScope, Owner: owner})
+	out.Capability.FunctionsOff = target.Kind == "crew" && crewMacDashboardsRoot(target.Root) != target.Root
 	// An Artifact is a finished page to read and share, not a dashboard to ask
 	// (PLAT-750): no chat pane, Ask or function buttons beside it.
 	if out.Snapshot.Artifact {

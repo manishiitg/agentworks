@@ -68,7 +68,7 @@ func (api *StreamingAPI) handleCrewTeamDashboards(w http.ResponseWriter, r *http
 	// A Crew on a Mac: when its dashboards last reached the server (crew_mac_dashboards.go).
 	if updated, ok := crewMacDashboardsUpdated(t.ProjectID); ok && crewRelayTwin(t.ProjectID) {
 		out["updated"] = "Updated " + roughAgo(time.Since(updated))
-		out["note"] = "Buttons on these dashboards need the owner's Mac for now."
+		out["note"] = "Buttons on these dashboards work on the owner's Mac for now."
 	}
 	externalJSON(w, out)
 }

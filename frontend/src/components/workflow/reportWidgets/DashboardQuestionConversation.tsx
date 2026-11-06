@@ -18,7 +18,7 @@ import { ReportQuestionFrame } from './ReportQuestionFrame'
 import { reportContentQuestion, type ReportContentContext } from './reportContentQuestion'
 
 const ChatArea = lazy(() => import('../../ChatArea'))
-export type DashboardQuestionCapability = { can_view: boolean; can_ask: boolean; mode?: string; reason?: string }
+export type DashboardQuestionCapability = { can_view: boolean; functions_off?: boolean; can_ask: boolean; mode?: string; reason?: string }
 type Props = ComponentProps<typeof ReportQuestionFrame> & {
   resourceId: string; revision: string; projectId: string; workspacePath: string
   capability: DashboardQuestionCapability; product: string
@@ -55,7 +55,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const showChatWidgets = canAsk && capability.mode === 'question_only' && !conversationPane
   // Function buttons run the project's published functions as this person; the
   // server resolves the project from the dashboard record, including either Crew origin.
-  const canUseFunctions = Boolean(viewer && capability.can_view && ['crew', 'code', 'workflow', 'relay'].includes(product))
+  const canUseFunctions = Boolean(viewer && capability.can_view && !capability.functions_off && ['crew', 'code', 'workflow', 'relay'].includes(product))
   // "/" in this chat lists the project's published functions (not the person's own
   // commands); choosing one opens the same form as a function button.
   const [functionList, setFunctionList] = useState<{ name: string; description?: string }[]>([])
