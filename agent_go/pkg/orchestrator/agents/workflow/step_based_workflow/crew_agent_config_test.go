@@ -47,12 +47,12 @@ func TestCrewAgentDefaultsArePerRunAndPreserveExplicitStepOverrides(t *testing.T
 	if strings.Contains(first.SystemRules, "Second") || !strings.Contains(second.SystemRules, "Second") || first.AgentConfigs.ExecutionLLM.ModelID != "first" || second.AgentConfigs.ExecutionLLM.ModelID != "second" || saved.SystemRules != "" || saved.AgentConfigs != nil {
 		t.Fatal("one run changed another run's configuration or the saved plan")
 	}
-	saved.AgentConfigs = &AgentConfigs{ExecutionLLM: &AgentLLMConfig{Provider: "pi-cli", ModelID: "service/pinned"}, EnabledSkills: []string{"explicit-skill"}}
+	saved.AgentConfigs = &AgentConfigs{ExecutionLLM: &AgentLLMConfig{Provider: "pi-cli", ModelID: "service/pinned"}, EnabledSkills: []string{"explicit-skill"}, SelectedServers: []string{"NO_SERVERS"}}
 	pinned, err := controller.resolveCrewAgentStep(t.Context(), &saved)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pinned.AgentConfigs.ExecutionLLM.ModelID != "service/pinned" || strings.Join(pinned.AgentConfigs.EnabledSkills, ",") != "explicit-skill" {
+	if strings.Join(pinned.AgentConfigs.SelectedServers, ",") != "NO_SERVERS" || pinned.AgentConfigs.ExecutionLLM.ModelID != "service/pinned" || strings.Join(pinned.AgentConfigs.EnabledSkills, ",") != "explicit-skill" {
 		t.Fatal("saved Crew defaults replaced an explicit step override")
 	}
 }

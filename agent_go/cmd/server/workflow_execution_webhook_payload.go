@@ -32,7 +32,7 @@ func (api *StreamingAPI) handleGetExecutionWebhookPayload(w http.ResponseWriter,
 	}
 
 	iterationFolder := strings.Split(filepath.ToSlash(runFolder), "/")[0]
-	if !webhookFolderPattern.MatchString(iterationFolder) {
+	if iterationFolder == "" || strings.ContainsAny(iterationFolder, "\\\x00") {
 		http.Error(w, "selected run was not started by a webhook", http.StatusNotFound)
 		return
 	}

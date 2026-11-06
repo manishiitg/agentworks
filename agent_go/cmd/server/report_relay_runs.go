@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -178,10 +179,9 @@ func relayRecordedRunsBefore(ctx context.Context, claims *UserClaims, workspace 
 	if err != nil && !os.IsNotExist(err) {
 		return nil, http.StatusInternalServerError, "Flow runs unavailable"
 	}
-	// Allocation numbers establish newest-first order without reading every
-	// run's transcript, agent prompt, or private journal.
+	// The immutable allocation marker provides order without reading transcripts.
 	sort.Slice(entries, func(i, j int) bool {
-		return reportRelayRunNumber(entries[i].Name()) > reportRelayRunNumber(entries[j].Name())
+		return reportRelayEntryOrder(root, entries[i]) > reportRelayEntryOrder(root, entries[j])
 	})
 	viewer := ""
 	if claims != nil {
@@ -195,7 +195,7 @@ func relayRecordedRunsBefore(ctx context.Context, claims *UserClaims, workspace 
 		if ctx.Err() != nil {
 			break
 		}
-		number := reportRelayRunNumber(entry.Name())
+		number := reportRelayEntryOrder(root, entry)
 		if !entry.IsDir() || number == 0 || before > 0 && number >= before {
 			continue
 		}
@@ -288,8 +288,17 @@ func relayRecordedRunsBefore(ctx context.Context, claims *UserClaims, workspace 
 	return out, 0, ""
 }
 
+func reportRelayEntryOrder(root *os.Root, entry fs.DirEntry) int {
+	if permanentRunFolderPattern.MatchString(entry.Name()) {
+		if info, err := root.Stat(path.Join("runs", entry.Name(), ".webhook-run-id")); err == nil {
+			return int(info.ModTime().UnixMicro())
+		}
+	}
+	return reportRelayRunNumber(entry.Name())
+}
+
 func reportRelayRunNumber(name string) int {
-	match := webhookFolderPattern.FindStringSubmatch(name)
+	match := regexp.MustCompile(`^iteration-([0-9]+)-hook$`).FindStringSubmatch(name)
 	if len(match) != 2 {
 		return 0
 	}
@@ -532,7 +541,7 @@ func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string,
 		// A run ID: look through the newest runs for its trace.
 		entries, _ := fs.ReadDir(root.FS(), "runs")
 		sort.Slice(entries, func(i, j int) bool {
-			return reportRelayRunNumber(entries[i].Name()) > reportRelayRunNumber(entries[j].Name())
+			return reportRelayEntryOrder(root, entries[i]) > reportRelayEntryOrder(root, entries[j])
 		})
 		folder = ""
 		for i, entry := range entries {

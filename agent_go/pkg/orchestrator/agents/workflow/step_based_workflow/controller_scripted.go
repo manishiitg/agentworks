@@ -997,6 +997,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	stepExecutionAbsPath := stepExecutionScopeAbsPath(stepOutputAbsPath)
 	extraEnv := map[string]string{
 		"STEP_OUTPUT_DIR":         stepOutputAbsPath,
+		"SCRIPT_SOURCE_DIR":       workDirAbsPath,
 		"STEP_EXECUTION_DIR":      stepExecutionAbsPath,
 		"PYTHONDONTWRITEBYTECODE": "1",
 		"SCRIPT_VERBOSE":          "1", // Enable verbose logging in scripts — stdout is only read on failure
@@ -1008,7 +1009,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	if envRef := hcpo.GetWorkspaceEnvRef(); envRef != nil {
 		hcpo.LockWorkspaceEnv()
 		for k, v := range envRef {
-			if k == "STEP_OUTPUT_DIR" || k == "STEP_EXECUTION_DIR" {
+			if k == "STEP_OUTPUT_DIR" || k == "STEP_EXECUTION_DIR" || k == "SCRIPT_SOURCE_DIR" {
 				// Never let the shared workspace env override the per-step folders.
 				// These are execution-specific and can leak across concurrently
 				// running steps if read from the shared env map.
@@ -1275,13 +1276,25 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	// Clean previous output files before running saved script — fresh slate for this execution.
 	// Preserve code/ — it may contain an LLM-fixed main.py from a previous attempt.
 	hcpo.cleanStepOutputDir(ctx, stepExecutionRelPath, "code")
+	if hasShared {
+		// Direct chat and workflow invocations record the same resolved inputs and
+		// executed definition beside their own copied source bundle.
+		call, _ := scriptedDelegationFromContext(ctx)
+		inputs, _ := json.MarshalIndent(call.Parameters, "", "  ")
+		definition, _ := json.MarshalIndent(shared.crewScript.Definition, "", "  ")
+		for file, content := range map[string][]byte{"inputs.json": inputs, "code/script.json": definition} {
+			if err := hcpo.WriteWorkspaceFile(ctx, stepExecutionRelPath+"/"+file, string(content)); err != nil {
+				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+			}
+		}
+	}
 
 	// Always copy saved script from learnings/ to execution/code/.
 	// learnings/{step-id}/main.py is the source of truth — execution/code/ is a disposable
 	// working copy. If the user or workflow builder patches learnings, the next run must
 	// pick up the change. LLM relearn fixes are saved back to learnings/ via
 	// saveScriptedScriptToLearnings, so always copying from learnings is safe.
-	if !hcpo.usesCodeTree() {
+	if !hasShared && !hcpo.usesCodeTree() {
 		if mkErr := createFolderViaAPI(ctx, codeDirRelPath); mkErr != nil {
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to create code/ dir for saved script copy: %v", mkErr))
 		}

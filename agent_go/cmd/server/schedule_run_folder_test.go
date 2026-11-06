@@ -14,7 +14,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
-func TestAllocateScheduledRunFolderIsImmutableAndSharesNumericNamespace(t *testing.T) {
+func TestAllocateScheduledRunFolderIsPermanentAndIndependentOfOtherRuns(t *testing.T) {
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	runs := filepath.Join(docs, "Workflow", "demo", "runs")
@@ -28,8 +28,8 @@ func TestAllocateScheduledRunFolderIsImmutableAndSharesNumericNamespace(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first != "iteration-9-sched" {
-		t.Fatalf("first folder = %q, want iteration-9-sched", first)
+	if !permanentRunFolderPattern.MatchString(first) {
+		t.Fatalf("first folder = %q, want permanent run identity", first)
 	}
 	again, err := allocateScheduledRunFolder("Workflow/demo", "run-one")
 	if err != nil || again != first {
@@ -39,8 +39,8 @@ func TestAllocateScheduledRunFolderIsImmutableAndSharesNumericNamespace(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second != "iteration-10-sched" {
-		t.Fatalf("second folder = %q, want iteration-10-sched", second)
+	if second == first || !permanentRunFolderPattern.MatchString(second) {
+		t.Fatalf("second folder = %q, want another permanent run", second)
 	}
 }
 
@@ -81,8 +81,7 @@ func TestScheduledRetentionKeepsTenCompletedRunsAndHistory(t *testing.T) {
 		}
 	}
 	index := map[string]interface{}{
-		"version": 2, "active_iteration": "iteration-0", "retained_iterations": folders,
-		"scheduled_iterations": folders, "webhook_iterations": []string{},
+		"version": 3, "runs": folders,
 	}
 	encoded, _ := json.Marshal(index)
 	if err := os.WriteFile(filepath.Join(root, "runs", "run_index.json"), encoded, 0600); err != nil {

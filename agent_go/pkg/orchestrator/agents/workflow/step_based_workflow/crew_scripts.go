@@ -105,79 +105,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) hydrateCrewScripts(ctx context.Contex
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) crewScriptParameters(ctx context.Context, step *ScriptedPlanStep, stepIndex int, stepPath string, allSteps []PlanStepInterface, executionRoot string) (map[string]interface{}, error) {
+	valuesByName, err := hcpo.resolveStepInputValues(ctx, step, step.ScriptInputs, stepIndex, stepPath, allSteps, executionRoot, false)
+	if err != nil {
+		return nil, err
+	}
 	raw := map[string]string{}
-	for name, binding := range step.ScriptInputs {
-		sources := 0
-		if binding.Value != nil {
-			sources++
-		}
-		if binding.Input != "" {
-			sources++
-		}
-		if binding.Output != "" {
-			sources++
-		}
-		if sources != 1 {
-			return nil, fmt.Errorf("script input %q needs one value source", name)
-		}
-		var value interface{}
-		if binding.Value != nil {
-			decoder := json.NewDecoder(strings.NewReader(string(binding.Value)))
-			decoder.UseNumber()
-			if err := decoder.Decode(&value); err != nil {
-				return nil, err
-			}
-		} else if binding.Input != "" {
-			text, found := hcpo.variableValues[binding.Input]
-			if !found {
-				return nil, fmt.Errorf("unknown workflow input %q", binding.Input)
-			}
-			value = text
-			if hcpo.variablesManifest != nil {
-				for _, input := range hcpo.variablesManifest.Variables {
-					if input.Name == binding.Input && WorkflowInputType(input) != "string" && text != "" {
-						decoder := json.NewDecoder(strings.NewReader(text))
-						decoder.UseNumber()
-						if err := decoder.Decode(&value); err != nil {
-							return nil, err
-						}
-					}
-				}
-			}
-		} else {
-			if !slices.Contains(step.ContextDependencies, binding.Output) {
-				return nil, fmt.Errorf("script input %q must reference a declared context dependency", name)
-			}
-			paths := hcpo.resolveDependencyPathsWithWorkspace(ctx, []string{binding.Output}, stepIndex, stepPath, allSteps, executionRoot, GetPromptDocsRoot(), hcpo.variableValues)
-			if len(paths) != 1 {
-				return nil, fmt.Errorf("script input %q output is unavailable", name)
-			}
-			relative, err := filepath.Rel(filepath.Join(GetPromptDocsRoot(), executionRoot), paths[0])
-			if err != nil || strings.HasPrefix(relative, "..") || filepath.IsAbs(relative) {
-				return nil, fmt.Errorf("script input %q must use this run's output", name)
-			}
-			content, err := hcpo.ReadWorkspaceFile(ctx, strings.TrimPrefix(paths[0], GetPromptDocsRoot()+"/"))
-			if err != nil {
-				return nil, err
-			}
-			decoder := json.NewDecoder(strings.NewReader(content))
-			decoder.UseNumber()
-			if err := decoder.Decode(&value); err != nil {
-				return nil, fmt.Errorf("script input %q expects JSON output", name)
-			}
-			if binding.Field != "" {
-				for _, part := range strings.Split(binding.Field, ".") {
-					object, ok := value.(map[string]interface{})
-					if !ok {
-						return nil, fmt.Errorf("output field %q is unavailable", binding.Field)
-					}
-					value, ok = object[part]
-					if !ok {
-						return nil, fmt.Errorf("output field %q is unavailable", binding.Field)
-					}
-				}
-			}
-		}
+	for name, value := range valuesByName {
 		if text, ok := value.(string); ok {
 			raw[name] = text
 		} else {
@@ -197,7 +130,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) crewScriptParameters(ctx context.Cont
 	if delegation, ok := scriptedDelegationFromContext(ctx); ok {
 		for name, value := range delegation.Parameters {
 			if _, mapped := raw[name]; mapped {
-				return nil, fmt.Errorf("script input %q was supplied twice", name)
+				return nil, fmt.Errorf("step input %q was supplied twice", name)
 			}
 			if text, ok := value.(string); ok {
 				raw[name] = text
@@ -295,4 +228,151 @@ func CrewScriptBundleFile(file string) bool {
 		}
 	}
 	return true
+}
+
+// Both agent and script steps use the same explicit input-source rules.
+func (hcpo *StepBasedWorkflowOrchestrator) resolveStepInputValues(ctx context.Context, step PlanStepInterface, bindings map[string]ScriptInputBinding, stepIndex int, stepPath string, allSteps []PlanStepInterface, executionRoot string, fileReferences bool) (map[string]interface{}, error) {
+	if err := validateStepInputBindings(bindings, step.GetContextDependencies()); err != nil {
+		return nil, err
+	}
+	resolved := map[string]interface{}{}
+	for name, binding := range bindings {
+		sources := 0
+		if binding.Value != nil {
+			sources++
+		}
+		if binding.Input != "" {
+			sources++
+		}
+		if binding.Output != "" {
+			sources++
+		}
+		if sources != 1 {
+			return nil, fmt.Errorf("step input %q needs one value source", name)
+		}
+		var value interface{}
+		if binding.Value != nil {
+			decoder := json.NewDecoder(strings.NewReader(string(binding.Value)))
+			decoder.UseNumber()
+			if err := decoder.Decode(&value); err != nil {
+				return nil, err
+			}
+		} else if binding.Input != "" {
+			text, found := hcpo.variableValues[binding.Input]
+			if !found {
+				return nil, fmt.Errorf("unknown workflow input %q", binding.Input)
+			}
+			value = text
+			if hcpo.variablesManifest != nil {
+				for _, input := range hcpo.variablesManifest.Variables {
+					if input.Name == binding.Input && WorkflowInputType(input) != "string" && text != "" {
+						decoder := json.NewDecoder(strings.NewReader(text))
+						decoder.UseNumber()
+						if err := decoder.Decode(&value); err != nil {
+							return nil, err
+						}
+					}
+				}
+			}
+		} else {
+			if !slices.Contains(step.GetContextDependencies(), binding.Output) {
+				return nil, fmt.Errorf("step input %q must reference a declared context dependency", name)
+			}
+			paths := hcpo.resolveDependencyPathsWithWorkspace(ctx, []string{binding.Output}, stepIndex, stepPath, allSteps, executionRoot, GetPromptDocsRoot(), hcpo.variableValues)
+			if len(paths) != 1 {
+				return nil, fmt.Errorf("step input %q output is unavailable", name)
+			}
+			relative, err := filepath.Rel(filepath.Join(GetPromptDocsRoot(), executionRoot), paths[0])
+			if err != nil || strings.HasPrefix(relative, "..") || filepath.IsAbs(relative) {
+				return nil, fmt.Errorf("step input %q must use this run's output", name)
+			}
+			content, err := hcpo.ReadWorkspaceFile(ctx, strings.TrimPrefix(paths[0], GetPromptDocsRoot()+"/"))
+			if err != nil {
+				return nil, err
+			}
+			if fileReferences && binding.Field == "" {
+				resolved[name] = map[string]string{"file": paths[0]}
+				continue
+			}
+			decoder := json.NewDecoder(strings.NewReader(content))
+			decoder.UseNumber()
+			if err := decoder.Decode(&value); err != nil {
+				return nil, fmt.Errorf("step input %q expects JSON output", name)
+			}
+			if binding.Field != "" {
+				for _, part := range strings.Split(binding.Field, ".") {
+					object, ok := value.(map[string]interface{})
+					if !ok {
+						return nil, fmt.Errorf("output field %q is unavailable", binding.Field)
+					}
+					value, ok = object[part]
+					if !ok {
+						return nil, fmt.Errorf("output field %q is unavailable", binding.Field)
+					}
+				}
+			}
+		}
+		encoded, _ := json.Marshal(value)
+		if err := ValidatePlainWorkflowInput(name, string(encoded)); err != nil {
+			return nil, err
+		}
+		resolved[name] = value
+	}
+	return resolved, nil
+}
+
+func validateStepInputBindings(bindings map[string]ScriptInputBinding, dependencies []string) error {
+	for name, binding := range bindings {
+		if !scriptParameterNamePattern.MatchString(name) {
+			return fmt.Errorf("input %q needs a name using letters, numbers and underscores", name)
+		}
+		sources := 0
+		if binding.Value != nil {
+			sources++
+			if !json.Valid(binding.Value) {
+				return fmt.Errorf("input %q has invalid JSON", name)
+			}
+		}
+		if binding.Input != "" {
+			sources++
+		}
+		if binding.Output != "" {
+			sources++
+			if !slices.Contains(dependencies, binding.Output) {
+				return fmt.Errorf("input %q must use a declared earlier output", name)
+			}
+		}
+		if sources != 1 || binding.Field != "" && binding.Output == "" {
+			return fmt.Errorf("input %q needs exactly one fixed value, workflow input or earlier output", name)
+		}
+		if err := ValidatePlainWorkflowInput(name, string(binding.Value)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// WorkflowStepInputReferences includes nested agent/tool steps as well as the
+// main chain, so editing definitions cannot leave a saved mapping dangling.
+func WorkflowStepInputReferences(plan *PlanningResponse) map[string][]string {
+	result := map[string][]string{}
+	if plan == nil {
+		return result
+	}
+	steps := append(append([]PlanStepInterface{}, plan.Steps...), plan.OrphanSteps...)
+	for _, info := range collectAllSteps(steps) {
+		var bindings map[string]ScriptInputBinding
+		switch step := info.Step.(type) {
+		case *AgentPlanStep:
+			bindings = step.Inputs
+		case *ScriptedPlanStep:
+			bindings = step.ScriptInputs
+		}
+		for _, binding := range bindings {
+			if binding.Input != "" {
+				result[info.Step.GetID()] = append(result[info.Step.GetID()], binding.Input)
+			}
+		}
+	}
+	return result
 }

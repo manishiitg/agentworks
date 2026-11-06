@@ -1273,7 +1273,7 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 		}
 		if name == "get_run" {
 			folder := strings.Split(externalArg(args, "run_folder"), "/")[0]
-			if webhookFolderPattern.MatchString(folder) {
+			if permanentRunFolderPattern.MatchString(folder) {
 				runs, err := ReadScheduleRuns(r.Context(), req.Root)
 				if err != nil {
 					externalError(w, http.StatusBadGateway, "workspace_unavailable", "Webhook run history is unavailable.")

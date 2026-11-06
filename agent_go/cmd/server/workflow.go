@@ -1901,6 +1901,7 @@ func (api *StreamingAPI) handleGetAllStepLearnings(w http.ResponseWriter, r *htt
 // PlanStepUpdate represents partial updates to a plan step
 // All fields are pointers so nil means "not updated" and non-nil means "update this field"
 type PlanStepUpdate struct {
+	Inputs map[string]todo_creation_human.ScriptInputBinding `json:"inputs,omitempty"`
 	// Common fields (shared by all step types)
 	Title               *string                                    `json:"title,omitempty"`
 	Description         *string                                    `json:"description,omitempty"`
@@ -2308,6 +2309,9 @@ func updateStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string,
 
 	case *todo_creation_human.AgentPlanStep:
 		updated := *s // Copy the step
+		if updates.Inputs != nil {
+			updated.Inputs = updates.Inputs
+		}
 		if updates.CrewAgent != nil {
 			updated.CrewAgent = strings.TrimSpace(*updates.CrewAgent)
 		}

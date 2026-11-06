@@ -52,6 +52,9 @@ from pathlib import Path
 from helper.values import revision
 params = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(params['count'], int)
+assert Path(os.environ['SCRIPT_SOURCE_DIR'], 'template.txt').read_text() == 'template data'
+assert json.loads(Path(os.environ['STEP_OUTPUT_DIR'], 'inputs.json').read_text()) == params
+assert json.loads(Path(os.environ['SCRIPT_SOURCE_DIR'], 'script.json').read_text())['id'] == 'qualify'
 assert not any(key.startswith('optional_') for key in params)
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':params['count'], 'revision':revision()}))
 `

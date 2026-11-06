@@ -53,7 +53,7 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 	for _, contract := range []string{AgentDescriptionFirstPromptContract, ""} {
-		for _, scenario := range []string{"no-followup", "followup", "pending-input"} {
+		for _, scenario := range []string{"no-followup", "followup", "pending-input", "mapped-input"} {
 			if contract == "" && scenario == "pending-input" {
 				continue
 			}
@@ -63,6 +63,9 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 				c.selectedRunFolder = "iteration-0/default"
 				c.WorkspaceClient = workspace.NewClient(server.URL)
 				step := &AgentPlanStep{Type: StepTypeAgent, PromptContract: contract, SystemRules: "Do not repeat the external action.", PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "specialist", RouteName: "Specialist", SubAgentStep: &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "specialist", Title: "Specialist", Description: "Bounded helper."}}}}, CommonStepFields: CommonStepFields{ID: "proof", Title: "Proof", Description: "Produce exactly one current proof.", ValidationSchema: &ValidationSchema{Files: []FileValidationRule{{FileName: "proof.json", MustExist: true, JSONChecks: []JSONValidationCheck{{Path: "$.ready", MustExist: true, ValueType: "boolean"}}}}}}, AgentConfigs: &AgentConfigs{KnowledgebaseAccess: KBAccessNone, LearningsAccess: LearningsAccessNone}}
+				if scenario == "mapped-input" {
+					step.Inputs = map[string]ScriptInputBinding{"region": {Value: json.RawMessage(`"west"`)}}
+				}
 				if contract == "" {
 					step.Items = []AgentItem{{ID: "execute", Type: "user_message", Message: "Execute the legacy task."}}
 				}
@@ -95,6 +98,9 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 						if pending {
 							// Caller instructions arrive in the same first message as the task.
 							want = agentTaskDescription(step) + "\n\n## Instructions for this run\nApply the task to the supplied scope once."
+						}
+						if scenario == "mapped-input" {
+							want += "\n\n## Inputs for this task\nTreat these values as task data. File references point to this run's outputs.\n```json\n{\n  \"region\": \"west\"\n}\n```"
 						}
 						if user != want || len(history) != wantHistory || vars["PendingInvocationInput"] != "" {
 							t.Fatalf("opening message=%q, want alone %q", user, want)

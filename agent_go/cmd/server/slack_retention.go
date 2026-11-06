@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"path"
 	"sort"
-	"strings"
 	"time"
 
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -42,7 +41,7 @@ func (api *StreamingAPI) pruneSlackRuns(workspace string) error {
 	}
 	completed := []completedRun{}
 	for _, entry := range entries {
-		if !entry.IsDir() || !numberedRunFolderPattern.MatchString(entry.Name()) || !strings.Contains(entry.Name(), "-slack-") || protected[entry.Name()] {
+		if !entry.IsDir() || protected[entry.Name()] {
 			continue
 		}
 		if _, err := root.ReadFile("runs/" + entry.Name() + "/.slack-run-id"); err != nil {

@@ -36,7 +36,7 @@ func (s *SchedulerService) pruneWebhookRunsChecked(workspace string) error {
 	}
 	completed := []schedulerstate.Run{}
 	for _, entry := range entries {
-		if !entry.IsDir() || !webhookFolderPattern.MatchString(entry.Name()) {
+		if !entry.IsDir() {
 			continue
 		}
 		raw, e := root.ReadFile("runs/" + entry.Name() + "/.webhook-run-id")
@@ -113,7 +113,7 @@ func (s *SchedulerService) pruneScheduledRunsChecked(workspace string) error {
 	}
 	completed := []schedulerstate.Run{}
 	for _, entry := range entries {
-		if !entry.IsDir() || !scheduledRunFolderPattern.MatchString(entry.Name()) {
+		if !entry.IsDir() {
 			continue
 		}
 		raw, readErr := root.ReadFile("runs/" + entry.Name() + "/.schedule-run-id")
@@ -181,7 +181,7 @@ func removeExpiredFoldersFromRunIndex(root *os.Root, removed map[string]bool) er
 	if err := json.Unmarshal(raw, &index); err != nil {
 		return err
 	}
-	for _, field := range []string{"retained_iterations", "scheduled_iterations", "webhook_iterations", "slack_iterations"} {
+	for _, field := range []string{"runs"} {
 		values, ok := index[field].([]interface{})
 		if !ok {
 			continue

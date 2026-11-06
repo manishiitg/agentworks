@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"regexp"
-	"sort"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
@@ -18,13 +16,13 @@ const (
 // existing run. Input labels never determine its folder.
 func (hcpo *StepBasedWorkflowOrchestrator) prepareCurrentRun(ctx context.Context, workspacePath string) (string, error) {
 	if opts := hcpo.GetExecutionOptions(); opts != nil && opts.WebhookInputFile != "" {
-		if !regexp.MustCompile(`^iteration-[0-9]+-(?:hook|slack-[a-f0-9]+)$`).MatchString(opts.SelectedRunFolder) {
+		if !IsPermanentRunFolder(opts.SelectedRunFolder) {
 			return "", fmt.Errorf("invalid webhook run folder")
 		}
 		return opts.SelectedRunFolder, hcpo.createRunFolderStructure(ctx, filepath.Join(workspacePath, "runs", opts.SelectedRunFolder))
 	}
 	if opts := hcpo.GetExecutionOptions(); opts != nil && (opts.RunKind == "schedule" || opts.RunKind == "slack") {
-		if !regexp.MustCompile(`^iteration-[0-9]+-(?:sched|slack-[a-f0-9]+)$`).MatchString(opts.SelectedRunFolder) || opts.ScheduleRunID == "" || opts.ScheduleID == "" {
+		if !IsPermanentRunFolder(opts.SelectedRunFolder) || opts.ScheduleRunID == "" || opts.ScheduleID == "" {
 			return "", fmt.Errorf("invalid scheduled run binding")
 		}
 		return opts.SelectedRunFolder, hcpo.createRunFolderStructure(ctx, filepath.Join(workspacePath, "runs", opts.SelectedRunFolder))
@@ -52,144 +50,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCurrentRun(ctx context.Context
 		opts.SelectedRunFolder = folder
 	}
 	return folder, hcpo.createRunFolderStructure(ctx, filepath.Join(workspacePath, "runs", folder))
-}
-
-// rotateIterationZero rotates the workflow runs tree's iteration-0 to the next
-// backup name, then creates a fresh iteration-0.
-func (hcpo *StepBasedWorkflowOrchestrator) rotateIterationZero(ctx context.Context, runsPath string, keep int) error {
-	workflowIter0 := fmt.Sprintf("%s/iteration-0", runsPath)
-
-	workflowExists := hcpo.workspaceFileExists(ctx, workflowIter0)
-
-	if workflowExists {
-		backupName := hcpo.nextAvailableIterationAcross(ctx, runsPath)
-		workflowBackup := fmt.Sprintf("%s/%s", runsPath, backupName)
-
-		hcpo.GetLogger().Info(fmt.Sprintf("Backing up %s/iteration-0 -> %s", runsPath, backupName))
-		if err := hcpo.MoveWorkspaceFile(ctx, workflowIter0, workflowBackup); err != nil {
-			return fmt.Errorf("refusing to rotate runs: failed to back up workflow iteration-0 to %s: %w", backupName, err)
-		}
-		// Cost records keep the UUID as their immutable identity. Rotation only
-		// updates their human-readable archived path, so the next iteration-0
-		// run cannot inherit historical spend.
-		if err := hcpo.ArchiveRunCostPaths(ctx, "iteration-0", backupName); err != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Could not update archived cost paths for %s: %v", backupName, err))
-		}
-		// Run history is the second thing that names this folder, and the only
-		// one that was never repointed. Cost records above follow the rotation;
-		// the history entry kept claiming iteration-0, so the schedule popup
-		// looked every historical run's cost up against the live slot and
-		// showed the current run's spend on every row.
-		if err := hcpo.ArchiveScheduleRunFolder(ctx, "iteration-0", backupName); err != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Could not update run history folder for %s: %v", backupName, err))
-		}
-	}
-
-	hcpo.pruneOldIterations(ctx, runsPath, keep)
-
-	if err := hcpo.createRunFolderStructure(ctx, workflowIter0); err != nil {
-		return fmt.Errorf("failed to create workflow iteration-0: %w", err)
-	}
-	if err := hcpo.writeRunIndex(ctx, "full_run_rotation"); err != nil {
-		return fmt.Errorf("failed to publish run provenance: %w", err)
-	}
-	return nil
-}
-
-// nextAvailableIterationAcross returns "iteration-{N+1}" where N is the highest
-// iteration-N found across all supplied runs paths.
-func (hcpo *StepBasedWorkflowOrchestrator) nextAvailableIterationAcross(ctx context.Context, paths ...string) string {
-	maxIter := 0
-	// Builder archives, webhook runs, and scheduled runs share one numeric
-	// namespace. Counting all three prevents iteration-12 from being allocated
-	// after iteration-12-sched (or -hook) already exists.
-	re := regexp.MustCompile(`^iteration-(\d+)(?:-(?:hook|sched|slack-[a-f0-9]+))?$`)
-	for _, p := range paths {
-		folders, err := hcpo.listRunFolders(ctx, p)
-		if err != nil {
-			continue
-		}
-		for _, folder := range folders {
-			matches := re.FindStringSubmatch(folder)
-			if len(matches) > 1 {
-				var n int
-				if _, err := fmt.Sscanf(matches[1], "%d", &n); err == nil && n > maxIter {
-					maxIter = n
-				}
-			}
-		}
-	}
-	return fmt.Sprintf("iteration-%d", maxIter+1)
-}
-
-// pruneOldIterations deletes backup iteration folders (iteration-1, iteration-2, ...)
-// keeping only the most recent `keep` backups. iteration-0 is never deleted.
-func (hcpo *StepBasedWorkflowOrchestrator) pruneOldIterations(ctx context.Context, runsPath string, keep int) {
-	existingFolders, err := hcpo.listRunFolders(ctx, runsPath)
-	if err != nil {
-		return
-	}
-
-	// Collect backup iteration numbers (skip iteration-0)
-	type iterEntry struct {
-		num  int
-		name string
-	}
-	var backups []iterEntry
-	// Retention of Builder archives is intentionally independent. Trigger-owned
-	// immutable folders have their own retention policies and must not be pruned
-	// by an interactive Builder run.
-	re := regexp.MustCompile(`^iteration-(\d+)$`)
-	for _, folder := range existingFolders {
-		matches := re.FindStringSubmatch(folder)
-		if len(matches) > 1 {
-			var n int
-			if _, scanErr := fmt.Sscanf(matches[1], "%d", &n); scanErr == nil && n > 0 {
-				backups = append(backups, iterEntry{num: n, name: folder})
-			}
-		}
-	}
-
-	if len(backups) <= keep {
-		return
-	}
-
-	// Sort descending by iteration number — keep the highest N
-	sort.Slice(backups, func(i, j int) bool {
-		return backups[i].num > backups[j].num
-	})
-
-	for _, entry := range backups[keep:] {
-		folderPath := fmt.Sprintf("%s/%s", runsPath, entry.name)
-		hcpo.GetLogger().Info(fmt.Sprintf("🗑️ Pruning old iteration backup: %s", entry.name))
-		if delErr := hcpo.DeleteWorkspaceFile(ctx, folderPath); delErr != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to delete old iteration %s: %v", entry.name, delErr))
-		}
-	}
-}
-
-// nextAvailableIteration finds the next available iteration-N name (N >= 1) under runsPath.
-//
-//nolint:unused // kept for future non-destructive iteration allocation work.
-func (hcpo *StepBasedWorkflowOrchestrator) nextAvailableIteration(ctx context.Context, runsPath string) (string, error) {
-	existingFolders, err := hcpo.listRunFolders(ctx, runsPath)
-	if err != nil {
-		// If we can't list, start from 1
-		return "iteration-1", nil
-	}
-
-	maxIter := 0
-	re := regexp.MustCompile(`^iteration-(\d+)(?:-(?:hook|sched|slack-[a-f0-9]+))?$`)
-	for _, folder := range existingFolders {
-		matches := re.FindStringSubmatch(folder)
-		if len(matches) > 1 {
-			var n int
-			if _, err := fmt.Sscanf(matches[1], "%d", &n); err == nil && n > maxIter {
-				maxIter = n
-			}
-		}
-	}
-	return fmt.Sprintf("iteration-%d", maxIter+1), nil
 }
 
 // workspaceFileExists checks if a file or directory exists in the workspace

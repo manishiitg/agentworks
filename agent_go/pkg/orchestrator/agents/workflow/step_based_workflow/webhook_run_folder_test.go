@@ -6,15 +6,7 @@ import (
 )
 
 func TestWebhookRunFolderAndGroupIsolation(t *testing.T) {
-	for _, p := range []string{"iteration-3-hook", "iteration-3-hook/dev"} {
-		if got := workshopInternalRunFolderForTarget(p); got != p {
-			t.Fatalf("hook folder normalized away: %s", got)
-		}
-	}
-	if got := workshopInternalRunFolderForTarget("iteration-3/dev"); got != "iteration-0/dev" {
-		t.Fatalf("ordinary behavior changed: %s", got)
-	}
-	binding := &WebhookInvocation{RunFolder: "iteration-3-hook"}
+	binding := &WebhookInvocation{RunFolder: "run-webhook-example"}
 	if err := binding.ClaimGroup("dev"); err != nil {
 		t.Fatal(err)
 	}
