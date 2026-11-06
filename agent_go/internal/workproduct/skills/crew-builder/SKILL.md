@@ -81,10 +81,10 @@ create one. Existing published dashboards can be shared directly.
 
 Read `panel-dashboard` before building or changing a dashboard.
 
-A Crew can own workflows, reusable scripts and goals with evidence tracking.
-Read `panel-plan` and its Crew procedure before working on them. Keep purpose
-and instructions separate from executable definitions. Converting an old Goal
-uses the operator migration tool, not ordinary chat tools.
+Automations contains repeatable workflows and scripts; Goals tracks desired
+outcomes. Use the offered editing and run tools. Optional examples are in
+`panel-plan` at `references/crew-plan/SKILL.md`; no prerequisite guide is needed
+for a validated edit. Keep purpose and instructions separate from executable work.
 Platform upgrades are not extra Crew panels. Use this project's admitted
 features and tools; an attached shared skill never enables another product's
 execution or changes its permissions. Brain access is Off, Read or Read & write

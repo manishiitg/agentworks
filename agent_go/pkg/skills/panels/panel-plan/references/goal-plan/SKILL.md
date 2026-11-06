@@ -1,6 +1,6 @@
 # Edit a workflow plan
 
-This procedure applies in the workflow Builder, including a workflow owned by a Crew. From Crew chat, use `panel-plan/references/crew-plan/SKILL.md` and its scoped authoring tool instead.
+This procedure applies in the workflow Builder, including a workflow owned by a Crew. Crew chat uses these same native editing operations through `crew_workflow_files action=edit`.
 
 Read `builder-reference/references/plan-editing-tools.md`, the saved plan and its input definitions. Use the offered `create_plan`, `add_step`, `update_step` and `maintain_plan` schemas for the requested edit. Keep step IDs and existing instructions. One workflow belongs to its resolved parent; do not create another Crew or move existing Goal data just to edit a plan.
 

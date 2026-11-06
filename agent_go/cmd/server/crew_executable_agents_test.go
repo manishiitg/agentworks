@@ -15,7 +15,7 @@ import (
 // another Crew must fail even when the same person owns both Crews.
 func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *testing.T) {
 	svc, files, ctx := newCrewCreationTestEnvWithOptions(t, []agentprofiles.ProviderOption{{ID: "codex", Label: "Example coding agent", Provider: "codex-cli", ModelID: "example-model", Models: []string{"example-model"}, ReasoningEfforts: []string{"medium"}}})
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"stranger","username":"stranger","can_create":true}]}`)
+	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"stranger","username":"stranger","can_create":true}]}`)
 	profile, err := svc.registry.Resolve("work", 0, "owner")
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	files.files["chat_history/"+chat.SessionID+".json"] = `{"messages":[{"text":"PERSONAL_HISTORY_MUST_NOT_BE_IMPORTED"}]}`
 	// Exercise the editor's actual write API for a reusable specialist as well
 	// as the runtime resolver. Neither path may accept another Crew as authority.
-	if err := writeFileToWorkspace(ctx, child.Root+"/planning/plan.json", `{"steps":[],"orphan_steps":[{"type":"agent","id":"report","title":"Report","description":"Write a report","prompt_contract":"description-first-v1"}]}`); err != nil {
+	if err := writeFileToWorkspace(ctx, child.Root+"/planning/plan.json", `{"steps":[],"orphan_steps":[{"type":"agent","id":"report","title":"Report","description":"Write a report","prompt_contract":"description-first-v1"},{"type":"scripted","id":"untouched","title":"Untouched","description":"Keep this step"}]}`); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{projectActions: svc}
@@ -83,7 +83,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		t.Fatalf("specialist selection: %d %s", response.Code, response.Body)
 	}
 	plan, err := readPlanFromWorkspace(ctx, child.Root)
-	if err != nil || len(plan.OrphanSteps) != 1 {
+	if err != nil || len(plan.OrphanSteps) != 2 {
 		t.Fatal("specialist plan unavailable", err)
 	}
 	rawPlan, _ := json.Marshal(plan.OrphanSteps[0])
@@ -108,9 +108,51 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if err != nil || !strings.Contains(read, "print('report')") {
 		t.Fatalf("saved definition unavailable: %s %v", read, err)
 	}
-	if _, err := edit(ctx, map[string]interface{}{"action": "write", "workspace_path": child.Root, "file": "planning/plan.json", "content": `{"steps":[],"orphan_steps":[{"type":"agent","id":"report","title":"Report","description":"Write a report","prompt_contract":"description-first-v1","crew_agent":"` + chat.ConversationKey + `"}]}`}); err != nil {
+	// PLAT-746-345/346: whole-file replacement is refused; native edits keep
+	// unrelated plan state and still work for an authorized owner.
+	for _, file := range []string{"planning/plan.json", "planning/step_config.json", "variables/variables.json"} {
+		if _, err := edit(ctx, map[string]interface{}{"action": "write", "workspace_path": child.Root, "file": file, "content": "{}"}); err == nil || !strings.Contains(err.Error(), "whole plan") {
+			t.Fatalf("whole replacement admitted: %s %v", file, err)
+		}
+	}
+	if _, err := edit(ctx, map[string]interface{}{"action": "edit", "workspace_path": child.Root, "operation": "update_step", "arguments": map[string]interface{}{"step_id": "report", "changes": map[string]interface{}{"title": "Updated report", "reason": "Clarify report label"}}}); err != nil {
 		t.Fatal(err)
 	}
+	plan, err = readPlanFromWorkspace(ctx, child.Root)
+	if err != nil || len(plan.OrphanSteps) != 2 || plan.OrphanSteps[0].GetTitle() != "Updated report" {
+		t.Fatalf("native edit lost plan: %+v %v", plan, err)
+	}
+	if plan.OrphanSteps[1].GetID() != "untouched" {
+		t.Fatal("unrelated step was lost")
+	}
+	rawPlan, _ = json.Marshal(plan.OrphanSteps[0])
+	if !strings.Contains(string(rawPlan), chat.ConversationKey) {
+		t.Fatal("editing title lost saved agent")
+	}
+	for _, name := range []string{"count", "untouched"} {
+		out, err := edit(ctx, map[string]interface{}{"action": "edit", "workspace_path": child.Root, "operation": "update_variable", "arguments": map[string]interface{}{"action": "add", "name": name, "type": "integer", "value": "2"}})
+		if err != nil {
+			t.Fatalf("input add: %s %v", out, err)
+		}
+	}
+	if _, err := edit(ctx, map[string]interface{}{"action": "edit", "workspace_path": child.Root, "operation": "update_variable", "arguments": map[string]interface{}{"action": "update", "existing_variable_name": "count", "value": "3"}}); err != nil {
+		t.Fatal(err)
+	}
+	inputs, err := readWorkflowInputDefinitions(ctx, child.Root)
+	if err != nil || len(inputs.Variables) != 2 || inputs.Variables[1].Value != "2" {
+		t.Fatalf("input edit lost other inputs: %+v %v", inputs, err)
+	}
+	originalDirectory := *directory
+	*directory = `{"users":[{"id":"owner","username":"owner","role":"viewer"},{"id":"stranger","username":"stranger","can_create":true}]}`
+	invalidateUserDirectoryCache()
+	for _, action := range []string{"create", "write", "edit"} {
+		if _, err := edit(ctx, map[string]interface{}{"action": action, "workspace_path": child.Root, "file": "code/report/main.py", "content": "denied"}); err == nil || !strings.Contains(err.Error(), "account cannot edit") {
+			t.Fatalf("demoted owner %s: %v", action, err)
+		}
+	}
+	*directory = originalDirectory
+	invalidateUserDirectoryCache()
+
 	foreignChild := crewExecutableBinding{ID: "foreign-child", CrewID: foreignCrew.CrewID, CrewRoot: foreignCrew.WorkspacePath, Root: "Workflow/foreign-child", Kind: "workflow"}
 	if err := registerCrewExecutable(foreignChild); err != nil {
 		t.Fatal(err)

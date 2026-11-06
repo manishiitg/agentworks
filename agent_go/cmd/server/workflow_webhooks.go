@@ -947,7 +947,34 @@ func (receiver webhookReceiver) dispatchInternal(ctx context.Context, workspaceP
 	if deliveryID == "" {
 		deliveryID = uuid.NewString()
 	}
-	return receiver.deliver(ctx, manifest.ID, workspacePath, *sched, deliveryID, strings.TrimSpace(call.Event), call.Payload)
+	deliverySchedule := *sched
+	if call.DirectInputs != nil {
+		// Reuse the native envelope decoder for this invocation, without
+		// rewriting the saved entry used by other internal/event callers.
+		if _, err := authorizeWorkflowContextPaths(ctx, []string{workspacePath}); err != nil {
+			return internalTriggerDeliveryResult{}, err
+		}
+		definitions, err := readWorkflowInputDefinitions(ctx, workspacePath)
+		if err != nil {
+			return internalTriggerDeliveryResult{}, err
+		}
+		config := WorkflowWebhookConfig{InputMode: "envelope"}
+		for _, input := range definitions.Variables {
+			if err := validateWorkflowExposedInput(input.Name); err != nil {
+				return internalTriggerDeliveryResult{}, err
+			}
+			config.AllowedVariables = append(config.AllowedVariables, input.Name)
+		}
+		deliverySchedule.Webhook = &config
+		call.Payload, err = json.Marshal(map[string]interface{}{"variables": call.DirectInputs, "payload": json.RawMessage(call.Payload)})
+		if err != nil {
+			return internalTriggerDeliveryResult{}, err
+		}
+		if len(call.Payload) > 1<<20 {
+			return internalTriggerDeliveryResult{}, ErrInternalTriggerPayload
+		}
+	}
+	return receiver.deliver(ctx, manifest.ID, workspacePath, deliverySchedule, deliveryID, strings.TrimSpace(call.Event), call.Payload)
 }
 
 // findInternalWorkflowTrigger resolves a workflow trigger for internal

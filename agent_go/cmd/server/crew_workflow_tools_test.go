@@ -74,10 +74,10 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath("Workflow/test"):               string(raw),
 		"Workflow/test/planning/plan.json":          `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
-		"Workflow/test/variables/variables.json":    `{"variables":[],"groups":[{"name":"default"}]}`,
+		"Workflow/test/variables/variables.json":    `{"variables":[],"presets":[]}`,
 		manifestPath("Workflow/other"):              string(otherRaw),
 		"Workflow/other/planning/plan.json":         `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`,
-		"Workflow/other/variables/variables.json":   `{"variables":[],"groups":[{"name":"default"}]}`,
+		"Workflow/other/variables/variables.json":   `{"variables":[],"presets":[]}`,
 		crewWorkflowTestCrewPath + "/product.json":  crewProduct,
 		crewWorkflowTestCrewPath + "/workflow.json": crewRuntime,
 	}}
@@ -200,7 +200,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	plainRaw, _ := json.Marshal(plain)
 	mock.files[manifestPath("Workflow/plain")] = string(plainRaw)
 	mock.files["Workflow/plain/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`
-	mock.files["Workflow/plain/variables/variables.json"] = `{"variables":[],"groups":[{"name":"default"}]}`
+	mock.files["Workflow/plain/variables/variables.json"] = `{"variables":[],"presets":[]}`
 	mock.files[crewWorkflowTestCrewPath+"/workflow.json"] = `{"schema_version":1,"product":"work","id":"crew-project-a","workflow_context_paths":["Workflow/test","Workflow/plain"]}`
 	createdManifest, err := crewAttachedWorkflowManifest(ctx, crewWorkflowTestCrewPath, "Workflow/plain")
 	if err != nil {
@@ -222,7 +222,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 		t.Fatalf("binding is not secretless internal: %+v", binding)
 	}
 	// An owned child without variables is one ungrouped run, not a request
-	// for a nonexistent "default" input set. Standalone defaults above stay.
+	// for a nonexistent "default" input set.
 	child := crewExecutableBinding{ID: "ungrouped", CrewID: "crew-project-a", CrewRoot: crewWorkflowTestCrewPath, Root: "Workflow/ungrouped", Kind: "workflow"}
 	if err := registerCrewExecutable(child); err != nil {
 		t.Fatal(err)
@@ -247,6 +247,56 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	deniedCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "reader"})
 	if _, err := crewWorkflowTriggerBinding(deniedCtx, api, "Workflow/plain", createdManifest, crew); err == nil || !strings.Contains(err.Error(), "access denied") {
 		t.Fatalf("unshared workflow binding err = %v, want access denial", err)
+	}
+}
+
+// PLAT-746-347: direct workflow inputs use the same decoder/validator as scripts,
+// with no function definition required and invalid values refused before launch.
+func TestCrewDirectWorkflowInputsValidateBeforeLaunch(t *testing.T) {
+	tools, files, api := newCrewWorkflowRunTestEnv(t)
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	api.scheduler.stateStore = store
+	files.files["Workflow/test/variables/variables.json"] = `{"variables":[{"name":"count","type":"integer","required":true},{"name":"label","type":"string","value":"saved default"}]}`
+	run := tools["run_workflow_trigger"].exec
+	for _, inputs := range []map[string]interface{}{{}, {"count": "wrong"}, {"count": 2, "unknown": 1}, {"count": 2, "API_KEY": "synthetic"}} {
+		_, err := run(context.Background(), map[string]interface{}{"workspace_path": "Workflow/test", "inputs": inputs})
+		if err == nil || (!strings.Contains(err.Error(), "count") && !strings.Contains(err.Error(), "unknown") && !strings.Contains(err.Error(), "API_KEY")) {
+			t.Fatalf("expected native input refusal for %v, got %v", inputs, err)
+		}
+	}
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	manifest, found, err := ReadWorkflowManifest(ctx, "Workflow/test")
+	if err != nil || !found {
+		t.Fatal(err)
+	}
+	var saved WorkflowSchedule
+	for _, schedule := range manifest.Schedules {
+		if schedule.ID == "trig-crew-on" {
+			saved = schedule
+		}
+	}
+	if saved.Webhook != nil && saved.Webhook.InputMode == "envelope" {
+		t.Fatal("direct inputs rewrote the saved entry contract")
+	}
+	if err := resolveWorkflowWebhookInputs(ctx, "Workflow/test", saved, &WorkflowWebhookDelivery{Variables: map[string]string{"count": "7"}}); err != nil {
+		t.Fatalf("valid typed value with default rejected: %v", err)
+	}
+	// A changed declared input is picked up next direct call, without resetting
+	// an entry's paused status or other saved settings.
+	for i := range manifest.Schedules {
+		if manifest.Schedules[i].ID == saved.ID {
+			manifest.Schedules[i].Enabled = false
+		}
+	}
+	if err := WriteWorkflowManifest(ctx, "Workflow/test", manifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(ctx, map[string]interface{}{"workspace_path": "Workflow/test", "inputs": map[string]interface{}{"count": 7}}); err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("paused entry was revived: %v", err)
 	}
 }
 
