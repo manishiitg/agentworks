@@ -48,16 +48,33 @@ func (s Store) turnTree(ctx context.Context, ref string) (map[string]turnBlob, e
 	return files, nil
 }
 
-func (s Store) captureTurnLoose(ctx context.Context, ref, boundary string, paths []string, stats *CaptureStats, skippedState map[string]string, budget int64) (map[string]turnBlob, []string, []string, error) {
+// The ordinary-file and checkout dirty-path candidates share the existing
+// private indexes. Only changed stat entries import bytes; all other versions
+// remain blob IDs throughout capture and comparison.
+func (s Store) captureTurnFiles(ctx context.Context, ref, boundary string, loose []string, repoPaths map[string][]string, stats *CaptureStats, skippedState map[string]string) (map[string]turnBlob, []string, []string, error) {
 	started := time.Now()
-	stats.WalkedFiles = len(paths)
-	files, omitted, err := s.filterLoosePaths(ctx, paths)
+	stats.WalkedFiles = len(loose)
+	files, omitted, err := s.filterLoosePaths(ctx, loose)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	c := &checkout{dir: s.Root, key: "loose", loose: true, files: files}
-	tree, skipped, _, err := s.captureListed(ctx, ref, "", stats, skippedState, budget, []*checkout{c}, nil, false)
-	log.Printf("[FILE_SNAPSHOT] phase=loose_capture boundary=%s walked=%d reused=%d imported_files=%d imported_bytes=%d budget_skipped=%d elapsed_ms=%d success=%t", boundary, len(paths), stats.Reused, stats.Changed, stats.ImportedBytes, stats.BudgetSkipped, time.Since(started).Milliseconds(), err == nil)
+	checkouts := []*checkout{{dir: s.Root, key: "loose", loose: true, files: files}}
+	paths := len(files)
+	for _, root := range turnKeys(repoPaths) {
+		dir := filepath.Join(s.Root, filepath.FromSlash(root))
+		c := &checkout{dir: dir, prefix: root, key: checkoutKey(root, dir)}
+		unique := map[string]bool{}
+		for _, p := range repoPaths[root] {
+			if validTurnPath(p) && validTurnPath(turnPath(root, p)) {
+				unique[p] = true
+			}
+		}
+		c.files = turnKeys(unique)
+		paths += len(c.files)
+		checkouts = append(checkouts, c)
+	}
+	tree, skipped, _, err := s.captureListed(ctx, ref, "", stats, skippedState, maxImportBytes, checkouts, omitted)
+	log.Printf("[FILE_SNAPSHOT] phase=reply_capture ref=%s boundary=%s paths=%d walked=%d reused=%d imported_files=%d imported_bytes=%d budget_skipped=%d elapsed_ms=%d success=%t", ref, boundary, paths, len(loose), stats.Reused, stats.Changed, stats.ImportedBytes, stats.BudgetSkipped, time.Since(started).Milliseconds(), err == nil)
 	if err != nil {
 		return nil, skipped, omitted, err
 	}
@@ -178,42 +195,6 @@ func validTurnPath(p string) bool {
 	return p != "" && p != "." && !path.IsAbs(p) && path.Clean(p) == p && p != ".." && !strings.HasPrefix(p, "../") && !excluded(p, false)
 }
 
-func (s Store) rawTurnFile(p string) (turnBlob, bool, error) {
-	root, err := os.OpenRoot(s.Root)
-	if err != nil {
-		return turnBlob{}, false, err
-	}
-	defer root.Close()
-	info, err := root.Lstat(p)
-	if os.IsNotExist(err) {
-		return turnBlob{}, false, nil
-	}
-	if err != nil {
-		return turnBlob{}, false, err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		data, err := root.Readlink(p)
-		return turnBlob{mode: "120000", data: []byte(data)}, true, err
-	}
-	if !info.Mode().IsRegular() || info.Size() > MaxFileBytes {
-		return turnBlob{}, false, errors.New("file cannot be captured")
-	}
-	f, err := root.Open(p)
-	if err != nil {
-		return turnBlob{}, false, err
-	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, MaxFileBytes+1))
-	if len(data) > MaxFileBytes {
-		return turnBlob{}, false, errors.New("file too large")
-	}
-	mode := "100644"
-	if info.Mode()&0111 != 0 {
-		mode = "100755"
-	}
-	return turnBlob{mode: mode, data: data}, true, err
-}
-
 // writeTurnFiles creates a self-contained tree of selected paths, with no
 // parent/index/workspace traversal and no attributes or external filters.
 func (s Store) writeTurnFiles(ctx context.Context, ref string, files map[string]turnBlob) (string, error) {
@@ -260,42 +241,21 @@ func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, erro
 	if err != nil {
 		return r, err
 	}
-	files := map[string]turnBlob{}
-	var total int64
+	paths := map[string][]string{}
 	for _, root := range turnKeys(r.GitTurn) {
 		repo := r.GitTurn[root]
 		r.BeforeRepos = append(r.BeforeRepos, root)
 		r.BeforeHeads[root] = repo.Head
-		for _, p := range repo.Dirty {
-			full := turnPath(root, p)
-			if !validTurnPath(full) {
-				continue
-			}
-			b, present, e := s.rawTurnFile(full)
-			if e != nil || total+int64(len(b.data)) > maxImportBytes {
-				r.Skipped = append(r.Skipped, full)
-				continue
-			}
-			if present {
-				files[full] = b
-				total += int64(len(b.data))
-			}
-		}
+		paths[root] = repo.Dirty
 	}
 	r.BeforeSkippedState = map[string]string{}
-	looseFiles, skipped, omitted, err := s.captureTurnLoose(ctx, "refs/turns/"+r.ID+"/loose-before", "before", loose, &r.BeforeCapture, r.BeforeSkippedState, maxImportBytes-total)
+	files, skipped, omitted, err := s.captureTurnFiles(ctx, "refs/turns/"+r.ID+"/cache-before", "before", loose, paths, &r.BeforeCapture, r.BeforeSkippedState)
 	if err != nil {
 		return r, err
 	}
 	r.Skipped = append(r.Skipped, skipped...)
 	r.Omitted = append(r.Omitted, omitted...)
 	r.BeforeCapture.Repos = len(r.GitTurn)
-	r.BeforeCapture.Captured += len(files)
-	r.BeforeCapture.Changed += len(files)
-	r.BeforeCapture.ImportedBytes += total
-	for p, b := range looseFiles {
-		files[p] = b
-	}
 	r.Before, err = s.writeTurnFiles(ctx, "refs/turns/"+r.ID+"/before", files)
 	if err != nil {
 		return r, err
@@ -332,10 +292,16 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
 		}
 	}
-	var total int64
+	previous, err := s.turnTree(ctx, r.Before)
+	if err != nil {
+		return r, err
+	}
+	starts := map[string]gitTurnRepo{}
+	paths := map[string][]string{}
 	changedRoots := map[string]bool{}
 	for _, root := range turnKeys(repos) {
 		end := repos[root]
+		paths[root] = nil
 		start, existed := r.GitTurn[root]
 		dir := filepath.Join(s.Root, filepath.FromSlash(root))
 		if !existed { // A new checkout's existing contents are not edits.
@@ -347,10 +313,8 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 			start = gitTurnRepo{Head: base}
 		}
 		candidates := map[string]bool{}
-		dirty := map[string]bool{}
 		for _, p := range start.Dirty {
 			candidates[p] = true
-			dirty[p] = true
 		}
 		for _, p := range end.Dirty {
 			candidates[p] = true
@@ -383,36 +347,45 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 				}
 			}
 		}
-		for _, p := range turnKeys(candidates) {
+		starts[root] = start
+		paths[root] = turnKeys(candidates)
+	}
+	r.AfterSkippedState = map[string]string{}
+	current, cacheSkipped, omitted, err := s.captureTurnFiles(ctx, "refs/turns/"+r.ID+"/cache-after", "after", loose, paths, &r.AfterCapture, r.AfterSkippedState)
+	if err != nil {
+		return r, err
+	}
+	r.Omitted = append(r.Omitted, omitted...)
+	for _, p := range cacheSkipped {
+		skipped[p] = true
+	}
+	for _, root := range turnKeys(starts) {
+		start := starts[root]
+		dir := filepath.Join(s.Root, filepath.FromSlash(root))
+		dirty := map[string]bool{}
+		for _, p := range start.Dirty {
+			dirty[p] = true
+		}
+		for _, p := range paths[root] {
 			full := turnPath(root, p)
 			if !validTurnPath(p) || !validTurnPath(full) || skipped[full] {
 				continue
 			}
-			var b turnBlob
-			var present bool
-			var e error
-			if dirty[p] {
-				b, present, e = s.savedTurnFile(ctx, r.Before, full)
-			} else if start.Head != "" {
-				b, present, e = s.committedTurnFile(ctx, dir, start.Head, p)
+			b, present := previous[full]
+			if !dirty[p] && start.Head != "" {
+				b, present, err = s.committedTurnFile(ctx, dir, start.Head, p)
+				if err == nil && present {
+					b, err = s.importTurnBlob(ctx, b, &r.AfterCapture)
+				}
+				if err != nil {
+					skipped[full] = true
+					continue
+				}
 			}
-			if e != nil {
-				skipped[full] = true
-				continue
-			}
-			a, exists, e := s.rawTurnFile(full)
-			if e != nil {
-				skipped[full] = true
-				continue
-			}
-			if total+int64(len(b.data)+len(a.data)) > maxImportBytes {
-				skipped[full] = true
-				continue
-			}
-			if present != exists || b.mode != a.mode || !bytes.Equal(b.data, a.data) {
+			a, exists := current[full]
+			if present != exists || b.mode != a.mode || b.oid != a.oid {
 				changedRoots[root] = true
 			}
-			total += int64(len(b.data) + len(a.data))
 			if present {
 				before[full] = b
 			}
@@ -421,6 +394,7 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 			}
 		}
 	}
+
 	// The before tree also names deleted ordinary files. Exclude both starting
 	// and current checkout roots so creating/switching a checkout cannot make
 	// its existing contents look like ordinary-file additions or deletions.
@@ -431,19 +405,6 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 			rel = ""
 		}
 		roots = append(roots, filepath.ToSlash(rel))
-	}
-	previous, err := s.turnTree(ctx, r.Before)
-	if err != nil {
-		return r, err
-	}
-	r.AfterSkippedState = map[string]string{}
-	current, looseSkipped, omitted, err := s.captureTurnLoose(ctx, "refs/turns/"+r.ID+"/loose-after", "after", loose, &r.AfterCapture, r.AfterSkippedState, maxImportBytes-total)
-	if err != nil {
-		return r, err
-	}
-	r.Omitted = append(r.Omitted, omitted...)
-	for _, p := range looseSkipped {
-		skipped[p] = true
 	}
 	ignored := map[string]bool{}
 	for _, p := range r.Omitted {
@@ -490,8 +451,7 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 		r.Status = "partial"
 	}
 	r.AfterCapture.Repos = len(repos)
-	r.AfterCapture.Captured += len(after) - len(current)
-	r.AfterCapture.ImportedBytes += total
+	r.AfterCapture.Captured = len(after)
 	err = s.save(r)
 	if err == nil {
 		s.prune(ctx)
@@ -499,8 +459,25 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 	return r, err
 }
 
-func (s Store) savedTurnFile(ctx context.Context, tree, p string) (turnBlob, bool, error) {
-	return s.treeTurnFile(ctx, s.command(ctx, "ls-tree", "-z", tree, "--", p), func(oid string) *exec.Cmd { return s.command(ctx, "cat-file", "blob", oid) })
+// A committed before-image not already in private Git is imported once. Dirty
+// files use the saved blob IDs directly and never enter this content path.
+func (s Store) importTurnBlob(ctx context.Context, b turnBlob, stats *CaptureStats) (turnBlob, error) {
+	if b.oid != "" {
+		return b, nil
+	}
+	if stats.ImportedBytes+int64(len(b.data)) > maxImportBytes {
+		stats.BudgetSkipped++
+		return turnBlob{}, errors.New("capture size limit exceeded")
+	}
+	cmd := s.command(ctx, "hash-object", "-w", "--stdin", "--no-filters")
+	cmd.Stdin = bytes.NewReader(b.data)
+	out, err := cmd.Output()
+	if err != nil {
+		return turnBlob{}, err
+	}
+	stats.ImportedBytes += int64(len(b.data))
+	stats.Changed++
+	return turnBlob{mode: b.mode, oid: strings.TrimSpace(string(out))}, nil
 }
 
 // A clean path's committed bytes are a valid before-image only when Git does
@@ -535,6 +512,16 @@ func (s Store) treeTurnFile(ctx context.Context, list *exec.Cmd, blob func(strin
 	fields := strings.Fields(meta)
 	if !ok || len(fields) != 3 || fields[1] != "blob" {
 		return turnBlob{}, false, errors.New("not a regular blob")
+	}
+	check := s.command(ctx, "cat-file", "--batch-check=%(objecttype) %(objectsize)")
+	check.Stdin = strings.NewReader(fields[2] + "\n")
+	if out, e := check.Output(); e == nil {
+		cached := strings.Fields(string(out))
+		if len(cached) == 2 && cached[0] == "blob" {
+			if size, e := strconv.ParseInt(cached[1], 10, 64); e == nil && size <= MaxFileBytes {
+				return turnBlob{mode: fields[0], oid: fields[2]}, true, nil
+			}
+		}
 	}
 	cmd := blob(fields[2])
 	out, err := cmd.StdoutPipe()
