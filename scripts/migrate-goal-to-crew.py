@@ -152,6 +152,7 @@ class Conversion:
         self.chats()
         self.chat_journal()
         self.entries()
+        self.prepare_input_contracts()
         self.inputs()
         self.measurements()
         self.source_moves()
@@ -185,21 +186,30 @@ class Conversion:
             entry_changes = timer_module.entry_changes(stage, timer_changes, counts, self.owner)
             for file, value in entry_changes:
                 file.parent.mkdir(parents=True, exist_ok=True); file.write_bytes(encode(value))
-            functions = read(source/'functions.json', {}).get('functions', [])
-            if not (source/'variables/variables.json').exists() and any(f.get('input_schema') is not None for f in functions):
-                (source/'variables').mkdir(exist_ok=True)
-                (source/'variables/variables.json').write_bytes(encode({'variables':[]}))
-            changes, errors = module('migrate-workflow-input-contracts').convert(stage, self.agent_binary)
-            if errors:
-                raise ValueError('Input conversion needs an author decision: ' + '; '.join(errors))
-            for file,value in changes.items():
-                file.write_bytes(encode(value))
             for file in source.rglob('*'):
                 if file.is_file():
                     target = self.source/file.relative_to(source)
                     if not target.exists() or file.read_bytes() != target.read_bytes():
                         self.writes[target] = file.read_bytes()
             self.manifest = self.document(self.source/'workflow.json')
+
+    def prepare_input_contracts(self):
+        # Entries first convert old groups to one preset. Validate the final
+        # candidate, not the legacy input envelope which runtime refuses.
+        spec = importlib.util.spec_from_file_location('workflow_inputs', Path(__file__).with_name('migrate-workflow-input-contracts.py'))
+        converter = importlib.util.module_from_spec(spec); spec.loader.exec_module(converter)
+        with tempfile.TemporaryDirectory(prefix='goal-input-conversion-') as directory:
+            stage = Path(directory)
+            for relative in ['workflow.json', 'functions.json', 'variables/variables.json']:
+                target = stage/relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                default = {'variables': []} if relative.startswith('variables/') else {}
+                target.write_bytes(encode(self.document(self.source/relative, default)))
+            changes, errors = converter.convert(stage, self.agent_binary)
+            if errors:
+                raise ValueError('Input conversion needs an author decision: ' + '; '.join(errors))
+            for file, value in changes.items():
+                self.write_json(self.source/file.relative_to(stage), value)
 
     def write_json(self, path, value):
         self.writes[path] = encode(value)

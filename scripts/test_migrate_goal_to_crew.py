@@ -3,6 +3,7 @@ from contextlib import closing
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -69,6 +70,31 @@ class Migration(unittest.TestCase):
             db.execute("INSERT INTO structured_chat_sequences VALUES ('session-original',2)")
 
     def conversion(self):return m.Conversion(self.docs,self.state,'old-goal','crew')
+
+    def test_legacy_function_groups_convert_before_contract_validation(self):
+        # PR498: runtime validation rejects groups, so validate only after the
+        # one-Goal converter has produced the final preset/function envelope.
+        binary = os.environ.get('AGENTWORKS_TEST_AGENT_BINARY')
+        if not binary:
+            self.skipTest('set AGENTWORKS_TEST_AGENT_BINARY to the isolated refactor build')
+        functions = m.read(self.source/'functions.json')
+        functions['functions'][0]['input_schema'] = {'type': 'object', 'properties': {'count': {'type': 'integer', 'minimum': 1}}, 'required': ['count']}
+        write(self.source/'functions.json', functions)
+        definitions = {'variables': [{'name': 'count', 'value': 'bad'}], 'groups': [{'name': 'default', 'values': {}}]}
+        write(self.source/'variables/variables.json', definitions)
+        before = hashes(self.base)
+        with self.assertRaisesRegex(ValueError, 'Input conversion needs an author decision'):
+            m.Conversion(self.docs, self.state, 'old-goal', 'crew', binary).report()
+        self.assertEqual(hashes(self.base), before)
+        definitions['variables'][0]['value'] = '2'
+        write(self.source/'variables/variables.json', definitions)
+        conversion = m.Conversion(self.docs, self.state, 'old-goal', 'crew', binary)
+        self.assertEqual(conversion.report()['status'], 'ready')
+        conversion.apply()
+        fn = m.read(self.source/'functions.json')['functions'][0]
+        self.assertEqual(fn['inputs'], ['count'])
+        self.assertEqual(fn['input'], {'input_preset': 'default'})
+        self.assertNotIn('input_schema', fn)
 
     def test_one_goal_preserves_history_ids_other_goal_and_private_chats(self):
         before=hashes(self.base);c=self.conversion()
