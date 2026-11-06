@@ -389,8 +389,15 @@ func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]*checkout
 	stats.WalkedFiles = len(paths)
 	loose := &checkout{dir: s.Root, key: "loose", loose: true}
 	repos = append(repos, loose)
+	files, omitted, err := s.filterLoosePaths(ctx, paths)
+	loose.files = files
+	return repos, omitted, err
+}
+
+// The same project ignore rules apply to loose files in full and reply captures.
+func (s Store) filterLoosePaths(ctx context.Context, paths []string) ([]string, []string, error) {
 	if len(paths) == 0 {
-		return repos, nil, nil
+		return nil, nil, nil
 	}
 	cmd := s.command(ctx, "check-ignore", "--no-index", "-z", "--stdin")
 	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
@@ -403,15 +410,15 @@ func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]*checkout
 	for _, p := range bytes.Split(out, []byte{0}) {
 		ignored[string(p)] = true
 	}
-	omitted := []string{}
+	var files, omitted []string
 	for _, p := range paths {
 		if !ignored[p] {
-			loose.files = append(loose.files, p)
+			files = append(files, p)
 		} else {
 			omitted = append(omitted, p)
 		}
 	}
-	return repos, omitted, nil
+	return files, omitted, nil
 }
 
 // vanishedOnDisk lists paths saved in the prior (before) state that are not
