@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -108,15 +109,73 @@ func setCrewTeamAgentRule(ctx context.Context, project, person, key string, text
 	return rule, nil
 }
 
-// handleCrewTeamAgentRule is POST /crew-teams/{project}/agent-rule: {agent_key, when_others_ask?, can_make_changes?}.
+// errCrewTeamPurposeMacOff: the agent's purpose is kept on its Mac, which is offline now.
+var errCrewTeamPurposeMacOff = errors.New("your Mac is offline; change the purpose when it's back")
+
+// setCrewTeamAgentPurpose saves the purpose of one of person's own agents from the Team tab's row (owner, 6 Nov),
+// where the purpose lives: an agent of the owner's Mac Crew on that Mac, over its relay (the Mac saves it as its own
+// set_my_agent_identity does and pushes the new line here), any other in this server's copy (its tab identity).
+func setCrewTeamAgentPurpose(ctx context.Context, project, person, key, purpose string) error {
+	clean := strings.Join(strings.Fields(purpose), " ")
+	if len([]rune(clean)) > productAgentPurposeMaxRunes {
+		return fmt.Errorf("keep the purpose under %d characters", productAgentPurposeMaxRunes)
+	}
+	t, stored, err := crewTeamOwnAgent(ctx, project, person, key)
+	if err != nil {
+		return err
+	}
+	if crewTeamAgentOnMac(t, person) {
+		if person != t.OwnerID {
+			return fmt.Errorf("set this agent's purpose from its chat on your Mac")
+		}
+		result := crewChatResult{Status: http.StatusServiceUnavailable}
+		if pair, found := crewMacPairFor(person, project); found {
+			result = callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "agent_purpose", Tab: stored, Message: clean}, 30*time.Second)
+		}
+		log.Printf("[CREW_TEAM] project=%s event=agent_purpose user=%s agent=%s on_mac=true status=%d", project, logUsernameForUserID(person), stored, result.Status)
+		switch result.Status {
+		case http.StatusOK:
+		case http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			return errCrewTeamPurposeMacOff
+		default:
+			return errors.New(crewRelayErrorText(result.Body, "It was not saved. Try again."))
+		}
+	} else {
+		_, err = defaultProductConversationRegistryStore().setAgentIdentity(ctx, person, crewProfileID, stored, nil, &clean, person)
+		log.Printf("[CREW_TEAM] project=%s event=agent_purpose user=%s agent=%s on_mac=false err=%v", project, logUsernameForUserID(person), stored, err)
+		if err != nil {
+			return err
+		}
+	}
+	publishCrewPanelChanged(project)
+	return nil
+}
+
+// handleCrewTeamAgentRule is POST /crew-teams/{project}/agent-rule: {agent_key, when_others_ask?, can_make_changes?,
+// purpose?}: one of the caller's own agents' settings from its Team tab row.
 func handleCrewTeamAgentRule(w http.ResponseWriter, r *http.Request, project, person string) {
 	var in struct {
 		Key            string  `json:"agent_key"`
 		WhenOthersAsk  *string `json:"when_others_ask"`
 		CanMakeChanges *bool   `json:"can_make_changes"`
+		Purpose        *string `json:"purpose"`
 	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.WhenOthersAsk == nil && in.CanMakeChanges == nil {
-		externalError(w, 400, "invalid_agent", "Choose your agent and give its rule or Answer only / Make changes.")
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.WhenOthersAsk == nil && in.CanMakeChanges == nil && in.Purpose == nil {
+		externalError(w, 400, "invalid_agent", "Choose your agent and give its purpose, rule or Answer only / Make changes.")
+		return
+	}
+	if in.Purpose != nil {
+		err := setCrewTeamAgentPurpose(r.Context(), project, person, in.Key, *in.Purpose)
+		switch {
+		case errors.Is(err, errCrewTeamAgentNotYours):
+			externalError(w, 403, "agent_not_yours", "Only the agent's own person sets its purpose. Choose one of your own agents.")
+		case errors.Is(err, errCrewTeamPurposeMacOff):
+			externalError(w, 409, "mac_offline", "Your Mac is offline; change the purpose when it's back.")
+		case err != nil:
+			externalError(w, 409, "agent_update_failed", err.Error())
+		default:
+			externalJSON(w, map[string]any{"purpose": strings.Join(strings.Fields(*in.Purpose), " ")})
+		}
 		return
 	}
 	rule, err := setCrewTeamAgentRule(r.Context(), project, person, in.Key, in.WhenOthersAsk, in.CanMakeChanges)
@@ -299,22 +358,13 @@ func crewTeamRowUses(all []crewTeamAgentUse, rowOwner, crewOwner, viewer string)
 	return out
 }
 
-// crewTeamWhenOthersLine is the row's fixed line: to the agent's person, what it won't do; to anyone else, a summary.
-// crewTeamPermissionsLine is an agent's permissions in one line, under its purpose on the Team tab.
-func crewTeamPermissionsLine(rule crewTeamAgentRule) string {
-	line := "Others can: " + map[bool]string{true: "make changes", false: "answer only"}[rule.CanMakeChanges]
-	if rule.WhenOthersAsk != "" {
-		line += " · 1 extra rule"
-	}
-	return line
-}
-
 // crewTeamPermissionsPrompt asks the person's own Main to look at what the agent reaches before its rule is chosen.
 // The rule is free text and every turn names who asks (whenOthersAskNote), so it may differ per teammate.
 func crewTeamPermissionsPrompt(agent string) string {
 	return fmt.Sprintf("Help me decide what my %[1]s agent may do when teammates ask it. First list, for %[1]s: the apps (MCP) and secret names it uses (never values), which of them are my personal accounts (Gmail, Drive, Slack and others) and what personal information they reach, and the files and folders it can read and change. Then help me choose, per teammate if needed, what it may share and what it must protect, and whether it may only answer or also make changes. Save the result as its rule when others ask (team_sync agent_rule).", agent)
 }
 
+// crewTeamWhenOthersLine is the row's fixed line: to the agent's person, what it won't do; to anyone else, a summary.
 func crewTeamWhenOthersLine(rule crewTeamAgentRule, rowOwnerName string, yours bool) string {
 	can := map[bool]string{true: "make changes", false: "answer only"}[rule.CanMakeChanges]
 	if yours {

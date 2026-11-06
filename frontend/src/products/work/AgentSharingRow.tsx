@@ -14,13 +14,3 @@ export function askAgentPurpose(state: TeamTabState, projectId: string, agent: T
   if (tab) fillAgentPurposeDraft(tab.tabId)
   else useChatStore.getState().addToast(`Open ${agent.name}'s chat, then set its purpose there.`, 'error')
 }
-
-/** One agent row's purpose line (owner, 5 Nov, approved mockup "Agent Sharing List"): the server writes it and says
- * whether the viewer may ask the agent's chat to set it. Public on AgentBridge is the Mac online tab's (owner, 6 Nov). */
-export function AgentSharingRow({ agent, state, projectId }: { agent: TeamTabAgent; state: TeamTabState; projectId: string }) {
-  if (!agent.purpose && !agent.can_set_purpose) return null
-  return <p className="ml-0.5 mt-0.5 text-[12.5px] text-muted-foreground">
-    {agent.purpose || 'No purpose yet.'}
-    {agent.can_set_purpose && <> <button type="button" className="text-primary hover:underline" onClick={() => askAgentPurpose(state, projectId, agent)}>{agent.purpose ? 'Change purpose' : 'Set purpose'}</button></>}
-  </p>
-}
