@@ -35,23 +35,16 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()) })
 
-it('labels a Flow, marks it current, and opens it on the Flow surface', async () => {
+it('omits a saved Flow from search while the product is disabled', async () => {
   const preset = { id: 'invoice-relay', label: 'Invoice Relay', workflowKind: 'relay', selectedFolder: { filepath: 'Workflow/invoice-relay' } } as CustomPreset
   useGlobalPresetStore.setState(state => ({ workflowPresetsLoaded: true, workflowPresets: [preset], activePresetIds: { ...state.activePresetIds, workflow: preset.id } }))
   useModeStore.setState({ selectedModeCategory: 'workflow' })
-  useProductSurfaceStore.setState({ productSurface: 'relays' })
+  useProductSurfaceStore.setState({ productSurface: 'work' })
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
-  const onClose = vi.fn()
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
-  await act(async () => { root.render(<QuickSwitcher isOpen onClose={onClose} />) })
-  const row = [...host.querySelectorAll('.cursor-pointer')].find(div => div.textContent?.includes('Invoice Relay'))!
-  expect(row.textContent).toContain('Flow')
-  expect(row.textContent).toContain('current')
-  expect(row.textContent).not.toContain('Automation ·')
-  await act(async () => { useProductSurfaceStore.setState({ productSurface: 'work' }) })
-  await act(async () => { row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
-  expect(useProductSurfaceStore.getState().productSurface).toBe('relays')
-  expect(openWorkflowPresetPage).toHaveBeenCalledWith(preset, expect.objectContaining({ source: 'quick-switcher' }))
-  expect(onClose).toHaveBeenCalled()
+  await act(async () => root.render(<QuickSwitcher isOpen onClose={vi.fn()} />))
+  expect(host.textContent).not.toContain('Invoice Relay')
+  expect(openWorkflowPresetPage).not.toHaveBeenCalled()
+  expect(useProductSurfaceStore.getState().productSurface).toBe('work')
 })

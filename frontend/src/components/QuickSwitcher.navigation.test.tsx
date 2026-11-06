@@ -61,7 +61,7 @@ async function renderNavigation(query: string, allowed = ['agentworks', 'work', 
   return { host, onClose }
 }
 
-it('defaults to running workflows, Crews and Relays before idle work, with browse and navigation rows at the bottom', async () => {
+it('defaults to running workflows and Crews before idle work, with browse and navigation rows at the bottom', async () => {
   const { host } = await renderNavigation('', undefined, true, () => {
     useProductSurfaceStore.setState({ productSurface: 'work' })
     useChatStore.setState({ activeTabId: 'idle', chatTabs: {
@@ -79,14 +79,14 @@ it('defaults to running workflows, Crews and Relays before idle work, with brows
   })
   const rows = [...host.querySelectorAll('[data-navigation-id]')]
   expect(rows.length).toBeGreaterThan(5)
-  expect(rows.slice(0, 4).map(row => row.textContent)).toEqual(expect.arrayContaining([
-    expect.stringContaining('Running workflow'), expect.stringContaining('Running Relay'),
+  expect(rows.slice(0, 3).map(row => row.textContent)).toEqual(expect.arrayContaining([
+    expect.stringContaining('Running workflow'),
     expect.stringContaining('Running Crew'), expect.stringContaining('Running project'),
   ]))
-  expect(rows[4].textContent).toContain('Idle current')
-  expect(rows[5].getAttribute('data-navigation-id')).toBe('browse:active')
+  expect(rows[3].textContent).toContain('Idle current')
+  expect(rows[4].getAttribute('data-navigation-id')).toBe('browse:active')
   expect(host.querySelector('[data-navigation-id="browse:workflows"]')).not.toBeNull()
-  expect(host.querySelector('[data-navigation-id="browse:relays"]')).not.toBeNull()
+  expect(host.querySelector('[data-navigation-id="browse:relays"]')).toBeNull()
   expect(host.querySelector('[data-navigation-id="menu:providers"]')).not.toBeNull()
   expect(host.querySelector('[aria-label="Quick navigation shortcuts"]')?.textContent).not.toContain('@')
 })
@@ -161,7 +161,7 @@ it('keeps named panel commands ahead of recently visited incidental matches, wit
   expect(ids).toContain('crew:recent')
 })
 
-it('browses all workflows or Relays from footer icons without requiring typed scopes', async () => {
+it('browses workflows without offering disabled Flows from footer icons without requiring typed scopes', async () => {
   const { host, onClose } = await renderNavigation('', undefined, true, () => {
     useGlobalPresetStore.setState({ workflowPresets: [
       { id: 'workflow', label: 'Daily report', selectedFolder: { filepath: 'Workflow/report' } },
@@ -173,8 +173,7 @@ it('browses all workflows or Relays from footer icons without requiring typed sc
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:workflow', 'create:agentworks'])
   expect(host.querySelector('input')!.value).toBe('')
   expect(host.querySelector('[aria-label="Show all work and navigation"]')?.textContent).toContain('All Goals')
-  await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All Flows"]')!.click())
-  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:relay', 'create:relays'])
+  expect(shortcuts.querySelector('[aria-label="All Flows"]')).toBeNull()
   expect(onClose).not.toHaveBeenCalled()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Show all work and navigation"]')!.click())
   expect(host.querySelector('[data-navigation-id="browse:crew"]')).not.toBeNull()
@@ -216,7 +215,7 @@ it('lists every available product and opens its workspace from another product',
   const { host, onClose } = await renderNavigation('@products ')
   expect(host.textContent).not.toContain('Dominion')
   expect(host.textContent).toContain('Vault')
-  expect(host.textContent).toContain('Flows')
+  expect(host.textContent).not.toContain('Flows')
   useAppStore.setState({ adminPage: 'users', showSchedulesOverview: true })
   await act(async () => host.querySelector('[data-navigation-id="product:work"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
   expect(useProductSurfaceStore.getState().productSurface).toBe('work')
@@ -305,7 +304,7 @@ it('opens a parent panel with @panels and refuses stale panel selections after a
 
 it('offers creation for every supported product and routes each action from another product', async () => {
   const { host, onClose } = await renderNavigation('@create ')
-  const surfaces: ProductCreateSurface[] = ['agentworks', 'relays', 'work']
+  const surfaces: ProductCreateSurface[] = ['agentworks', 'work']
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(surfaces.map(surface => `create:${surface}`))
   for (const surface of surfaces) {
     await act(async () => {
@@ -376,7 +375,7 @@ it.each([false, true])('filters Ctrl+K products for local server-product opt-in=
   })
   const surfaces = [...host.querySelectorAll('[data-navigation-id^="product:"]')].map(row => row.getAttribute('data-navigation-id'))
   expect(surfaces).toEqual(optIn
-    ? ['product:agentworks', 'product:relays', 'product:work', 'product:mcp-gateway', 'product:knowledgebase']
+    ? ['product:agentworks', 'product:work', 'product:mcp-gateway', 'product:knowledgebase']
     : ['product:agentworks', 'product:work'])
 })
 
@@ -389,7 +388,7 @@ it('respects account entitlements within an opted-in local installation', async 
     .toEqual(['product:work', 'product:mcp-gateway'])
 })
 
-it.each(['mcp-gateway', 'relays'])('rejects a stale %s shortcut after local opt-in is withdrawn', async product => {
+it.each(['mcp-gateway'])('rejects a stale %s shortcut after local opt-in is withdrawn', async product => {
   await renderNavigation('@products ', localProducts, true, () => {
     Object.assign(window.__APP_RUNTIME_CONFIG__!, { deploymentMode: 'local', localServerProducts: true })
   })
@@ -486,7 +485,7 @@ it('keeps same-named projects separate and a matching child selected beneath its
   expect(useChatStore.getState().activeTabId).toBe('p2')
 })
 
-it.each(['goal', 'relay'] as const)('finds a named %s Builder chat under its project and opens that exact chat', async kind => {
+it.each(['goal'])('finds a named %s Builder chat under its project and opens that exact chat', async kind => {
   const { host, onClose } = await renderNavigation(`@${kind === 'relay' ? 'relays' : 'workflows'} Research`, ['agentworks', 'relays'], false, () => {
     useGlobalPresetStore.setState({ workflowPresets: [{ id: 'plan', label: 'Example project', workflowKind: kind === 'relay' ? 'relay' : undefined, selectedFolder: { filepath: 'Workflow/example' } }] as never })
     useChatStore.setState({ chatTabs: { research: { tabId: 'research', name: 'Research', createdAt: 1, config: {}, events: [], metadata: { mode: 'workflow', presetQueryId: 'plan', phaseId: 'workflow-builder', workflowOwnerTabID: 'owner-tab' } } } as never })
@@ -514,10 +513,10 @@ it('keeps Home during creation instead of navigating to a remembered project', a
   await renderNavigation('@create ')
   const stop = observeProductHistory()
   try {
-    for (const surface of ['work', 'agentworks', 'relays'] as const) {
+    for (const surface of ['work', 'agentworks'] as const) {
       window.history.replaceState({}, '', '/home')
       useProductSurfaceStore.setState({ selectedWorkProjectId: 'existing-crew' })
-      useGlobalPresetStore.setState({ workflowPresets: [{ id: 'existing-goal', label: 'Existing goal', workflowKind: surface === 'relays' ? 'relay' : 'workflow' }] as never, activePresetIds: { ...useGlobalPresetStore.getState().activePresetIds, workflow: 'existing-goal' } })
+      useGlobalPresetStore.setState({ workflowPresets: [{ id: 'existing-goal', label: 'Existing goal', workflowKind: 'workflow' }] as never, activePresetIds: { ...useGlobalPresetStore.getState().activePresetIds, workflow: 'existing-goal' } })
       const creation = quickNavigationItems(useAuthStore.getState().user, useProductSurfaceStore.getState().productSurface).find(item => item.id === `create:${surface}`)!
       await act(async () => {
         expect(openQuickNavigation(creation)).toBe(true)

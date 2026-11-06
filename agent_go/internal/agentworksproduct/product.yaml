@@ -176,9 +176,6 @@ chat:
       - get_cost_summary
       - get_file_link
       # files action=read/list/search: reading a workflow file is basic (PLAT-856-397).
-      - read_file
-      - list_files
-      - search_files
       - get_llm_config
       - get_notification_history
       - record_summary
@@ -345,9 +342,6 @@ chat:
       - get_cost_summary
       - get_file_link
       # files action=read/list/search: reading a workflow file is basic (PLAT-856-397).
-      - read_file
-      - list_files
-      - search_files
       - get_llm_config
       - get_notification_history
       - get_report_link

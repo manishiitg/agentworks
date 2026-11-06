@@ -30,7 +30,7 @@ func newFakeWorkspaceServer(t *testing.T) (*httptest.Server, *fakeWorkspaceDocum
 		case http.MethodGet:
 			content, ok := store.files[path]
 			if !ok {
-				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "message": "File does not exist", "error": "File not found: " + path, "data": map[string]any{}})
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{

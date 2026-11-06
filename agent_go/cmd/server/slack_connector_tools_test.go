@@ -88,13 +88,13 @@ func TestSlackRouteToolAcceptsAuthenticatedCLIBridgeOwner(t *testing.T) {
 		t.Fatalf("unexpected persisted route: %+v", routes)
 	}
 	workspace.files["Workflow/example/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"analyze","title":"Analyze","description":"Analyze the event"}]}`
-	workspace.files["Workflow/example/variables/variables.json"] = `{"variables":[],"groups":[{"name":"default"}]}`
+	workspace.files["Workflow/example/variables/variables.json"] = `{"variables":[]}`
 	update := reg.tools["update_slack_bot_route_permission"]
 	operatorCtx, err := resolve(ctx, "update_slack_bot_route_permission")
 	if err != nil {
 		t.Fatal(err)
 	}
-	trigger := map[string]interface{}{"type": "trusted_app", "bot_id": "BSENTRY", "group_names": []string{"default"}, "step_id": "analyze", "context": map[string]interface{}{"limit": 10, "lookback_minutes": 30}}
+	trigger := map[string]interface{}{"type": "trusted_app", "bot_id": "BSENTRY", "step_id": "analyze", "context": map[string]interface{}{"limit": 10, "lookback_minutes": 30}}
 	if _, err = update.exec(operatorCtx, map[string]interface{}{"channel_id": "C0TESTCHAN1", "trigger": trigger}); err != nil {
 		t.Fatal(err)
 	}

@@ -1514,5 +1514,77 @@
     "description": "Read the existing owner-only execution history for this Crew.",
     "source": "crew_execution",
     "source_action": "history"
+  },
+  {
+    "family": "workspace",
+    "name": "automation_list",
+    "member": "crew_workflows__list",
+    "description": "Use the Crew automation list operation.",
+    "source": "crew_workflows",
+    "source_action": "list"
+  },
+  {
+    "family": "workspace",
+    "name": "automation_create",
+    "member": "crew_workflows__create",
+    "description": "Use the Crew automation create operation.",
+    "source": "crew_workflows",
+    "source_action": "create"
+  },
+  {
+    "family": "workspace",
+    "name": "automation_read",
+    "member": "crew_workflows__read",
+    "description": "Use the Crew automation read operation.",
+    "source": "crew_workflows",
+    "source_action": "read"
+  },
+  {
+    "family": "workspace",
+    "name": "automation_write",
+    "member": "crew_workflows__write",
+    "description": "Use the Crew automation write operation.",
+    "source": "crew_workflows",
+    "source_action": "write"
+  },
+  {
+    "family": "workspace",
+    "name": "automation_describe",
+    "member": "crew_workflows__describe",
+    "description": "Use the Crew automation describe operation.",
+    "source": "crew_workflows",
+    "source_action": "describe"
+  },
+  {
+    "family": "workspace",
+    "name": "automation_edit",
+    "member": "crew_workflows__edit",
+    "description": "Use the Crew automation edit operation.",
+    "source": "crew_workflows",
+    "source_action": "edit"
+  },
+  {
+    "family": "metrics",
+    "name": "crew_list",
+    "member": "crew_goals__list",
+    "description": "Use the Crew goal list operation.",
+    "source": "crew_goals",
+    "source_action": "list"
+  },
+  {
+    "family": "metrics",
+    "name": "crew_save",
+    "member": "crew_goals__save",
+    "description": "Use the Crew goal save operation.",
+    "source": "crew_goals",
+    "source_action": "save"
+  },
+  {
+    "family": "metrics",
+    "name": "crew_record",
+    "member": "crew_goals__record",
+    "description": "Use the Crew goal record operation.",
+    "source": "crew_goals",
+    "source_action": "record"
   }
 ]

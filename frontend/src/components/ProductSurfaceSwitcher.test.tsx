@@ -17,17 +17,17 @@ afterEach(() => {
 })
 
 describe('ProductSurfaceSwitcher deployment allowlist', () => {
-  it('shows AgentWorks, Relays, Crew, and Brain in the local product switcher', () => {
-    expect(visibleProductSurfaceIDs()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase'])
+  it('omits disabled Flows while showing Goals, Crew, and Brain in the local product switcher', () => {
+    expect(visibleProductSurfaceIDs()).toEqual(['agentworks', 'work', 'knowledgebase'])
   })
-  it('shows only AgentWorks and Relays on the dedicated server', () => {
+  it('ignores disabled Flows in an old deployment allowlist', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {
         defaultProductSurface: 'relays',
         enabledProductSurfaces: ['agentworks', 'relays'],
       },
     })
-    expect(visibleProductSurfaceIDs()).toEqual(['agentworks', 'relays'])
+    expect(visibleProductSurfaceIDs()).toEqual(['agentworks'])
   })
 
   it('further narrows to a per-user allowlist on top of the deployment allowlist', () => {
@@ -37,9 +37,9 @@ describe('ProductSurfaceSwitcher deployment allowlist', () => {
         enabledProductSurfaces: ['relays', 'agentworks'],
       },
     })
-    expect(visibleProductSurfaceIDs(['relays'])).toEqual(['relays'])
-    expect(visibleProductSurfaceIDs(['relays', 'agentworks'])).toEqual(['agentworks', 'relays'])
-    expect(visibleProductSurfaceIDs(null)).toEqual(['agentworks', 'relays'])
+    expect(visibleProductSurfaceIDs(['relays'])).toEqual([])
+    expect(visibleProductSurfaceIDs(['relays', 'agentworks'])).toEqual(['agentworks'])
+    expect(visibleProductSurfaceIDs(null)).toEqual(['agentworks'])
   })
 
   it('shows Work alongside AgentWorks when the deployment allowlists it', () => {
