@@ -6,11 +6,12 @@ import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
-import { changeTeamPeople, saveTeam, switchTeam, teamError, teamFolders, teamRequest, useTeamTab, type Team, type TeamFolderListing, type TeamTabAgent, type TeamTabState, type TeamTabView, type TeamTarget } from './teamApi'
+import { changeTeamPeople, saveTeam, switchTeam, teamError, teamFolderChange, teamFolders, teamRequest, useTeamTab, type Team, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabState, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
 import { AgentSharingRow } from './AgentSharingRow'
+import { TeamFolderChangeDialog } from './TeamFolderChangeDialog'
 
 type Person = { id: string; username: string; email?: string }
 
@@ -173,8 +174,8 @@ function FolderRow({ folder, target, canRemove, saving, disabled, onRemove }: { 
   </div>
 }
 
-/** What the team shares: Folders or the Whole Crew. The Crew's owner switches it and stops sharing a folder
- * (can_choose; never the last one, can_remove_folder); anyone in the Team adds one with "+ Share this folder"
+/** What the team shares: Folders or the Whole Crew. The Crew's owner switches it, after the server's confirm box
+ * (owner, 6 Nov: Whole Crew asks first), and stops sharing a folder (can_choose; never the last one, can_remove_folder); anyone in the Team adds one with "+ Share this folder"
  * (can_add_folder), picked from the Crew's folders the server lists where the Crew is. While a Mac Crew's Mac is off
  * the server says so, and the folder is named instead (the server makes it when the Mac is back). */
 function SharesCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
@@ -184,6 +185,7 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
   const [parent, setParent] = useState('')
   const [listing, setListing] = useState<TeamFolderListing>()
   const [name, setName] = useState('')
+  const [change, setChange] = useState<TeamFolderChange>()
   const choose = view.can_choose
   useEffect(() => {
     if (!picking) return
@@ -209,7 +211,7 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
         {([[false, 'Folders'], [true, 'Whole Crew']] as const).map(([value, label]) => {
           const on = Boolean(team.folder.whole) === value
           return <button key={label} type="button" role="radio" aria-checked={on} disabled={Boolean(pending)}
-            onClick={() => { if (!on) void save(`share:${label}`, { ...team, folder: value ? { whole: true } : { folders: [] } }) }}
+            onClick={() => { if (!on) void run(`share:${label}`, async () => setChange(await teamFolderChange(target, value))) }}
             className={`inline-flex items-center gap-1 px-2.5 py-0.5 disabled:cursor-not-allowed ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted disabled:opacity-50'}`}><Saving on={pending === `share:${label}`}>{null}</Saving>{label}</button>
         })}
       </div>}
@@ -241,6 +243,8 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
     </div>}
     <p className="text-xs text-muted-foreground">Not shared: your chats and memory, app files, passwords and keys.</p>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+    {change && <TeamFolderChangeDialog change={change} saving={pending === 'confirm'} onCancel={() => setChange(undefined)}
+      onConfirm={() => void save('confirm', { ...team, folder: change.whole ? { whole: true } : { folders: [] } }).then(() => setChange(undefined))} />}
   </section>
 }
 
@@ -265,8 +269,7 @@ function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; v
       const locked = !agent.can_change || (agent.in_team && !agent.can_unshare)
       return <div key={agent.key} className="border-t border-border pt-2">
         <div className="flex items-center gap-2 text-[13px]">
-          <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b> <span className="text-muted-foreground">· {agent.detail}</span></span>
-          {(agent.place_label || agent.place === 'mac') && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${agent.place_server ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'bg-muted text-muted-foreground'}`}>{agent.place_label || 'Mac'}</span>}
+          <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b>{agent.detail && <span className="text-muted-foreground"> · {agent.detail}</span>}</span>
           {agent.in_team && <button type="button" aria-expanded={opened === agent.key} onClick={() => setOpened(opened === agent.key ? '' : agent.key)} className="shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Permissions</button>}
           <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={locked ? agent.fixed : undefined}>
             {agent.in_team ? 'On' : 'Off'}<Saving on={pending === `agent:${agent.key}`}>{null}</Saving>

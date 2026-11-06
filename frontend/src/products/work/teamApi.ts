@@ -52,8 +52,6 @@ export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'y
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
 export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; place: 'mac' | 'server'; status_label?: string; tab: string
-  // Always on (crew_agent_always_on.go): where an agent of the owner's Mac answers now, worded by the server.
-  place_label?: string; place_server?: boolean
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
   uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
   // Permissions (owner, 6 Nov): the one-line summary under the purpose, and its Ask message (the viewer's own agent).
@@ -186,6 +184,12 @@ export function teamAgentForTab(state: TeamTabState, key: string | undefined, ma
 export type TeamFolderListing = { folders: string[]; path: string; files: number; bytes: number; offline?: string }
 export function teamFolders(target: TeamTarget, query: string): Promise<TeamFolderListing> {
   return teamRequest<TeamFolderListing>({ project: target.project, connection: target.connection }, `/folders?${query}`)
+}
+
+/** The Folders / Whole Crew confirm box, worded by the server (crew_team_folder_switch.go); refusal when too big. */
+export type TeamFolderChange = { whole: boolean; title: string; sub: string; people: string[]; folders_added?: string[]; folders_kept?: string[]; means: string[]; note?: string; confirm_label?: string; refusal?: string }
+export function teamFolderChange(target: TeamTarget, whole: boolean): Promise<TeamFolderChange> {
+  return teamRequest<TeamFolderChange>({ project: target.project, connection: target.connection }, `/folder-change?whole=${whole ? 1 : 0}`)
 }
 
 /** The Team members' own agents in the owner's Mac app (owner, 5 Nov): the online copy's side-chat rows the person
