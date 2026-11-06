@@ -189,7 +189,7 @@ class Conversion:
             if not (source/'variables/variables.json').exists() and any(f.get('input_schema') is not None for f in functions):
                 (source/'variables').mkdir(exist_ok=True)
                 (source/'variables/variables.json').write_bytes(encode({'variables':[]}))
-            changes, errors = module('migrate-workflow-input-contracts').convert(stage)
+            changes, errors = module('migrate-workflow-input-contracts').convert(stage, self.agent_binary)
             if errors:
                 raise ValueError('Input conversion needs an author decision: ' + '; '.join(errors))
             for file,value in changes.items():
@@ -605,7 +605,7 @@ def main():
     parser.add_argument('--state', type=Path, required=True)
     parser.add_argument('--workflow', required=True, help='One source folder name under Workflow/ (not a display name)')
     parser.add_argument('--crew', required=True, help='Destination Crew ID, created normally beforehand')
-    parser.add_argument('--agent-binary', type=Path, help='This refactor build, for older JSON-only chat archives')
+    parser.add_argument('--agent-binary', type=Path, help='This refactor build, for input validation and older JSON-only chat archives')
     parser.add_argument('--apply', action='store_true')
     args=parser.parse_args()
     try:

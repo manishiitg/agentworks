@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -2725,152 +2724,17 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type": "integer", "minimum": 0,
 					"description": "Character offset into the saved scripted execution log; use next_log_offset to read more.",
 				},
-				"iteration": map[string]interface{}{
-					"type": "string", "pattern": "^iteration-[0-9]+(?:-(?:hook|sched|slack-[a-f0-9]+))?$",
-					"description": "Run iteration to inspect, default iteration-0.",
+				"run_folder": map[string]interface{}{
+					"type": "string", "description": "Exact run folder returned by execution or the run list, such as run-<id>. Inputs and presets do not identify a run.",
 				},
 				"step_id": map[string]interface{}{
 					"type":        "string",
 					"description": "The step ID from plan.json (e.g., 'step-create-report') or positional reference (e.g., '1', 'step-1')",
 				},
-				"input_preset": map[string]interface{}{
-					"type":        "string",
-					"description": "Variable group ID (e.g., 'group-1', 'saurabh'). Required. Read variables/variables.json to see available groups.",
-				},
 			},
-			"required": []string{"step_id", "input_preset"},
+			"required": []string{"step_id", "run_folder"},
 		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			stepIDRaw, ok := args["step_id"]
-			if !ok || stepIDRaw == nil {
-				return "step_id is required", nil
-			}
-			stepID, ok := stepIDRaw.(string)
-			if !ok || stepID == "" {
-				return "step_id must be a non-empty string", nil
-			}
-
-			// Extract group_name
-			groupName, _ := args["input_preset"].(string)
-
-			iteration := "iteration-0"
-			if value, ok := args["iteration"].(string); ok && value != "" {
-				if !regexp.MustCompile(`^iteration-[0-9]+(?:-(?:hook|sched|slack-[a-f0-9]+))?$`).MatchString(value) {
-					return "iteration must be iteration-<number>", nil
-				}
-				iteration = value
-			}
-			if groupName == "" && !iwm.controller.isRelayExecution() {
-				return "group_name is required (e.g., 'group-1'). Read variables/variables.json to see available groups.", nil
-			}
-
-			// Refresh manifest from file to avoid stale group data
-			iwm.refreshVariablesManifest(ctx)
-			// Resolve group folder name and build run folder
-			groupFolderName := groupName
-			if iwm.controller.variablesManifest != nil {
-				for _, g := range iwm.controller.variablesManifest.Groups {
-					if g.Name == groupName || iwm.controller.sanitizeDisplayNameForFolder(g.Name) == groupName {
-						if g.Name != "" {
-							sanitized := iwm.controller.sanitizeDisplayNameForFolder(g.Name)
-							if sanitized != "" {
-								groupFolderName = sanitized
-							}
-						}
-						break
-					}
-				}
-			}
-			runFolder := fmt.Sprintf("%s/%s", iteration, groupFolderName)
-			if iwm.controller.isRelayExecution() {
-				runFolder, _ = args["run_folder"].(string)
-				if runFolder == "" {
-					runFolder = iwm.controller.selectedRunFolder
-				}
-				if err := validateRelayWorkshopRunFolder(runFolder); err != nil {
-					return "", err
-				}
-			}
-			iwm.controller.SetSelectedRunFolder(runFolder)
-
-			// Resolve step ID
-			plan, err := iwm.controller.ReadCurrentPlan(ctx)
-			if err != nil {
-				return fmt.Sprintf("Failed to load plan: %v", err), nil
-			}
-			resolvedID, resolveErr := resolveWorkshopStepID(plan, stepID)
-			if resolveErr != nil {
-				return resolveErr.Error(), nil
-			}
-
-			stepInfo := findWorkshopStepByID(plan.Steps, resolvedID)
-			if stepInfo == nil {
-				return fmt.Sprintf("step %q not found in plan", stepID), nil
-			}
-
-			var result strings.Builder
-			result.WriteString(fmt.Sprintf("## Debug: %s (%s)\n\n", stepInfo.Step.GetTitle(), resolvedID))
-
-			// Current guides use the same per-step skill selection as execution.
-			stepConfigs, _ := iwm.controller.ReadStepConfigs(ctx)
-			result.WriteString("### Skills\n")
-			for _, sc := range stepConfigs {
-				if sc.ID == resolvedID && sc.AgentConfigs != nil {
-					result.WriteString(strings.Join(sc.AgentConfigs.EnabledSkills, ", "))
-				}
-			}
-			result.WriteString("\n\n")
-
-			// Section 2: Validation result
-			logFolder := workshopStepLogFolder(resolvedID)
-			validationLogDir := fmt.Sprintf("runs/%s/logs/%s", runFolder, logFolder)
-			logPath := validationLogDir + "/execution/scripted_fast_path.json"
-			if content, err := iwm.controller.ReadWorkspaceFile(ctx, logPath); err == nil {
-				offset := 0
-				if value, ok := args["log_offset"].(float64); ok && value > 0 {
-					offset = int(value)
-				}
-				result.WriteString("### Scripted execution\n" + logPath + "\n")
-				result.WriteString(scriptedLogPage(content, offset))
-			}
-
-			result.WriteString("### Validation\n")
-			foundValidation := false
-			for i := 5; i >= 2; i-- {
-				vPath := fmt.Sprintf("%s/validation-%d.json", validationLogDir, i)
-				if content, err := iwm.controller.ReadWorkspaceFile(ctx, vPath); err == nil {
-					result.WriteString(content)
-					result.WriteString("\n")
-					foundValidation = true
-					break
-				}
-			}
-			if !foundValidation {
-				if content, err := iwm.controller.ReadWorkspaceFile(ctx, fmt.Sprintf("%s/validation.json", validationLogDir)); err == nil {
-					result.WriteString(content)
-					result.WriteString("\n")
-				} else {
-					result.WriteString("No validation result found.\n")
-				}
-			}
-			result.WriteString("\n")
-
-			// Section 3: Complex step details (todo_task/orchestration)
-			complexSummary := iwm.enrichQueryForComplexStep(ctx, resolvedID)
-			if complexSummary != "" {
-				result.WriteString("### Execution Details")
-				result.WriteString(complexSummary)
-				result.WriteString("\n")
-			}
-
-			// Section 4: Log paths for manual inspection
-			result.WriteString("### Log Paths\n")
-			result.WriteString(fmt.Sprintf("Execution logs: runs/%s/logs/%s/execution/\n", runFolder, logFolder))
-			result.WriteString(fmt.Sprintf("Validation: %s/\n", validationLogDir))
-			result.WriteString("Use execute_shell_command to read these files for details.\n")
-
-			return result.String(), nil
-		},
+		iwm.debugStep,
 		"workflow",
 	); err != nil {
 		logger.Warn(fmt.Sprintf("⚠️ Failed to register debug_step tool: %v", err))
@@ -7741,4 +7605,101 @@ func notifySecretsAttached(callback func(set map[string]string, removed []string
 		}
 	}
 	callback(set, removed)
+}
+
+// debugStep reads the exact run selected by the caller, independent of its inputs.
+func (iwm *InteractiveWorkshopManager) debugStep(ctx context.Context, args map[string]interface{}) (string, error) {
+	stepIDRaw, ok := args["step_id"]
+	if !ok || stepIDRaw == nil {
+		return "step_id is required", nil
+	}
+	stepID, ok := stepIDRaw.(string)
+	if !ok || stepID == "" {
+		return "step_id must be a non-empty string", nil
+	}
+
+	runFolder, _ := args["run_folder"].(string)
+	if err := ValidateWorkflowRunFolder(runFolder); err != nil {
+		return "", err
+	}
+
+	iwm.controller.SetSelectedRunFolder(runFolder)
+
+	// Resolve step ID
+	plan, err := iwm.controller.ReadCurrentPlan(ctx)
+	if err != nil {
+		return fmt.Sprintf("Failed to load plan: %v", err), nil
+	}
+	resolvedID, resolveErr := resolveWorkshopStepID(plan, stepID)
+	if resolveErr != nil {
+		return resolveErr.Error(), nil
+	}
+
+	stepInfo := findWorkshopStepByID(plan.Steps, resolvedID)
+	if stepInfo == nil {
+		return fmt.Sprintf("step %q not found in plan", stepID), nil
+	}
+
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("## Debug: %s (%s)\n\n", stepInfo.Step.GetTitle(), resolvedID))
+
+	// Current guides use the same per-step skill selection as execution.
+	stepConfigs, _ := iwm.controller.ReadStepConfigs(ctx)
+	result.WriteString("### Skills\n")
+	for _, sc := range stepConfigs {
+		if sc.ID == resolvedID && sc.AgentConfigs != nil {
+			result.WriteString(strings.Join(sc.AgentConfigs.EnabledSkills, ", "))
+		}
+	}
+	result.WriteString("\n\n")
+
+	// Section 2: Validation result
+	logFolder := workshopStepLogFolder(resolvedID)
+	validationLogDir := fmt.Sprintf("runs/%s/logs/%s", runFolder, logFolder)
+	logPath := validationLogDir + "/execution/scripted_fast_path.json"
+	if content, err := iwm.controller.ReadWorkspaceFile(ctx, logPath); err == nil {
+		offset := 0
+		if value, ok := args["log_offset"].(float64); ok && value > 0 {
+			offset = int(value)
+		}
+		result.WriteString("### Scripted execution\n" + logPath + "\n")
+		result.WriteString(scriptedLogPage(content, offset))
+	}
+
+	result.WriteString("### Validation\n")
+	foundValidation := false
+	for i := 5; i >= 2; i-- {
+		vPath := fmt.Sprintf("%s/validation-%d.json", validationLogDir, i)
+		if content, err := iwm.controller.ReadWorkspaceFile(ctx, vPath); err == nil {
+			result.WriteString(content)
+			result.WriteString("\n")
+			foundValidation = true
+			break
+		}
+	}
+	if !foundValidation {
+		if content, err := iwm.controller.ReadWorkspaceFile(ctx, fmt.Sprintf("%s/validation.json", validationLogDir)); err == nil {
+			result.WriteString(content)
+			result.WriteString("\n")
+		} else {
+			result.WriteString("No validation result found.\n")
+		}
+	}
+	result.WriteString("\n")
+
+	// Section 3: Complex step details (todo_task/orchestration)
+	complexSummary := iwm.enrichQueryForComplexStep(ctx, resolvedID)
+	if complexSummary != "" {
+		result.WriteString("### Execution Details")
+		result.WriteString(complexSummary)
+		result.WriteString("\n")
+	}
+
+	// Section 4: Log paths for manual inspection
+	result.WriteString("### Log Paths\n")
+	result.WriteString(fmt.Sprintf("Execution logs: runs/%s/logs/%s/execution/\n", runFolder, logFolder))
+	result.WriteString(fmt.Sprintf("Validation: %s/\n", validationLogDir))
+	result.WriteString("Use execute_shell_command to read these files for details.\n")
+
+	return result.String(), nil
 }

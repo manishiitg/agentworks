@@ -31,7 +31,7 @@ func relayToolDefinition(name, description string, schema map[string]interface{}
 			delete(properties, key)
 		}
 		if name == "execute_step" || name == "debug_step" {
-			properties["run_folder"] = map[string]interface{}{"type": "string", "description": "Flow run ID under runs/, without a path. execute_step starts a new run when omitted; pass a previous run ID to reuse its upstream outputs. debug_step defaults to the selected run."}
+			properties["run_folder"] = map[string]interface{}{"type": "string", "description": "Flow run ID under runs/, without a path. execute_step starts a new run when omitted; pass a previous run ID to reuse its upstream outputs. debug_step requires the run ID to inspect."}
 		}
 		if name == "debug_step" {
 			delete(properties, "iteration")
@@ -59,7 +59,7 @@ func relayToolDefinition(name, description string, schema map[string]interface{}
 	case "execute_step":
 		description = "Test a saved Flow node using flat configuration and run inputs. Starts a new run folder when omitted; pass run_folder to reuse upstream outputs. Returns an execution_id for querying or stopping the background test."
 	case "debug_step":
-		description = "Inspect a Flow node's saved execution logs in run_folder (defaults to the selected run)."
+		description = "Inspect a Flow node's saved execution logs in the specified run_folder."
 	case "update_variable":
 		description = "Add, update or remove a Flow configuration variable. Values are stored in variables[].value and apply to future runs; each API call supplies its own INPUT."
 	}
