@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, Eye, MoreHorizontal } from 'lucide-react'
+import { ChevronRight, MoreHorizontal } from 'lucide-react'
 import { AgentActionsMenu, AgentHoverCard, useAgentsViewStore, useCrewAgentsStore, type CrewAgentRow } from '../chat/AgentCard'
-import { AGENT_KEY, AgentMark, AgentSetupMark } from '../chat/AgentIcon'
+import { AGENT_KEY, AgentMark, AgentSetupMark, PersonPresenceDot } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
@@ -38,16 +38,17 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   // under "You", each heading the server's display name.
   const people = [...new Set(shown.map(agent => agent.ownerId || ''))]
   const nameOf = (id: string) => teamPeople.find(person => person.user_id === id)?.name || shown.find(agent => agent.ownerId === id)?.owner || 'Someone'
+  const presenceOf = (id: string) => teamPeople.find(person => person.user_id === id)?.presence
   // A Team member with nothing shared here still has a heading, so the team sees who is in it.
   const quiet = teamPeople.filter(person => !people.includes(person.user_id))
   const grouped = people.length > 1 || quiet.length > 0
   return <div role="list" aria-label="Agents" className="ml-6 space-y-0.5 border-l border-border pb-1 pl-1.5">
     {grouped ? people.map(person => <div key={person || 'you'} role="group" aria-label={person ? `${nameOf(person)}'s agents` : 'Your agents'}>
-      <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{person ? nameOf(person) : 'You'}</p>
+      <p title={presenceOf(person)?.line} className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground"><PersonPresenceDot presence={presenceOf(person)} />{person ? nameOf(person) : 'You'}</p>
       {shown.filter(agent => (agent.ownerId || '') === person).map(row)}
     </div>) : shown.map(row)}
-    {quiet.map(({ user_id: id, name }) => <div key={`quiet:${id}`} role="group" aria-label={`${name}'s agents`}>
-      <p className="px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground">{name}</p>
+    {quiet.map(({ user_id: id, name, presence }) => <div key={`quiet:${id}`} role="group" aria-label={`${name}'s agents`}>
+      <p title={presence?.line} className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[11px] text-muted-foreground"><PersonPresenceDot presence={presence} />{name}</p>
       <p className="px-2 py-0.5 text-[11px] text-muted-foreground/70">No shared agents</p>
     </div>)}
     {hidden.length > 0 && <button type="button" aria-expanded={showHidden} onClick={() => setShowHidden(value => !value)}
@@ -85,7 +86,6 @@ function AgentRow({ agent, status, active, dragging, onDrag }: { agent: CrewAgen
         <span className="min-w-0 truncate">{agent.name}</span>
         <AgentSetupMark setup={agent.info?.setup} />
         {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}
-        {agent.owner && <Eye role="img" aria-label="Watching: only its owner types here" className="h-3 w-3 shrink-0 text-muted-foreground" />}
         <span className="flex-1" />
         {agent.shortcut && <span className="hidden shrink-0 text-[10px] text-muted-foreground group-hover:inline">{AGENT_KEY}{agent.shortcut}</span>}
         <AgentMark state={state} asking={agent.asking} />

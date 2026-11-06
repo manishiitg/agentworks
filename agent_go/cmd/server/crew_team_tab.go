@@ -22,6 +22,16 @@ type crewTeamTabPerson struct {
 	Active      bool   `json:"active"`
 	ActiveLabel string `json:"active_label,omitempty"`
 	CanRemove   bool   `json:"can_remove"`
+	// Presence is the dot by a teammate's name on the tab bar and left menu; nil for the viewer, an invited person and
+	// anyone whose agents work on the server (no Mac to speak of).
+	Presence *crewTeamTabPresence `json:"presence,omitempty"`
+}
+
+// crewTeamTabPresence is whether a teammate's Mac is online now. Line is the dot's hover title and the agent card's Now
+// line.
+type crewTeamTabPresence struct {
+	Online bool   `json:"online"`
+	Line   string `json:"line"`
 }
 
 type crewTeamTabAgent struct {
@@ -192,7 +202,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	person := func(id, note string, removable bool) {
 		p := seen[id]
 		out.People = append(out.People, crewTeamTabPerson{UserID: id, Name: crewPersonShortName(id), Note: note, Active: p.Active, ActiveLabel: p.ActiveLabel,
-			CanRemove: removable && view.CanManage && id != viewer})
+			CanRemove: removable && view.CanManage && id != viewer, Presence: crewTeamPersonPresence(t, p, viewer)})
 	}
 	person(t.OwnerID, "owner", false) // the owner is never removed
 	for _, p := range t.People {
@@ -278,6 +288,24 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	out.CanAddFolder = view.CanManage
 	out.CanRemoveFolder = out.CanChoose && len(t.Folder.Folders) > 1
 	return out
+}
+
+// crewTeamPersonPresence words a teammate's Mac for the viewer, from the same Mac connection as their agents' rows. With
+// the Mac off it says what happens to their agents: the Crew owner's In team agents answer from the server, a member's
+// wait for their Mac (crew_mac_waiting.go).
+func crewTeamPersonPresence(t crewTeam, p crewTeamAgentsPerson, viewer string) *crewTeamTabPresence {
+	if p.UserID == "" || p.UserID == viewer || !crewTeamAgentOnMac(t, p.UserID) {
+		return nil
+	}
+	if p.MacOn || (p.Owner && IsLocalMode()) {
+		return &crewTeamTabPresence{Online: true, Line: p.Name + "'s Mac is on"}
+	}
+	for _, a := range p.Agents {
+		if a.Place == "server" || a.PlaceServer {
+			return &crewTeamTabPresence{Line: p.Name + "'s Mac is off · shared agents answer from the server"}
+		}
+	}
+	return &crewTeamTabPresence{Line: p.Name + "'s Mac is off · their agents wait for it"}
 }
 
 // crewTeamNotSharedLine is the muted line of the viewer's own agent that is not shared: what turning sharing on gives.
