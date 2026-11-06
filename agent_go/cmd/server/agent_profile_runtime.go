@@ -621,8 +621,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		promptContext.OthersAsking = whenOthersAskForTurn(ctx, req, userID, agentOwner, strings.TrimSpace(req.AgentProfileConversationKey))
 		// Always on: a Mac agent answering from its standby copy says plainly when a request needs the Mac.
 		if key := strings.TrimSpace(req.AgentProfileConversationKey); key != "" {
-			if tab, ok := crewStandbyServedTab(key); ok {
-				promptContext.OthersAsking = strings.TrimSpace(promptContext.OthersAsking + "\n\n" + crewStandbyServerNote(crewResourceProjectID(key), tab))
+			// The agent's person is the one whose registry holds this thread: the person running the turn.
+			if tab, ok := crewStandbyServedTabOf(userID, key); ok {
+				promptContext.OthersAsking = strings.TrimSpace(promptContext.OthersAsking + "\n\n" + crewStandbyServerNote(crewResourceProjectID(key), userID, tab))
 			}
 		}
 	}

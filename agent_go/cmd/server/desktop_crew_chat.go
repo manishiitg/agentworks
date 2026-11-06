@@ -374,9 +374,18 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		return refuse("bad_request")
 	}
 	var agent *macSharedAgent
-	for _, shared := range readMacSharedAgents(project) {
-		if shared.Tab == call.Tab {
-			agent = &shared
+	_, memberStandby := crewMemberStandbyTurn(project, claims.UserID)
+	if memberStandby {
+		// A Team member's own agent answering from the server (crew_standby_runas.go): the agent is the one their Mac
+		// listed, never the Crew owner's agent of the same tab. The server already checked the audience.
+		if a, ok := crewMemberStandbyAgent(project, claims.UserID, call.Tab); ok {
+			agent = &a
+		}
+	} else {
+		for _, shared := range readMacSharedAgents(project) {
+			if shared.Tab == call.Tab {
+				agent = &shared
+			}
 		}
 	}
 	// A Team member's working copy (crew_team_where.go): the server decided who may message its agents (Team, not
@@ -391,7 +400,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	// identity, its own chat. The tab must still be one this Mac shares.
 	key := sharedThreadKey(project, call.Tab, args.SenderID)
 	// The shared tab must still exist on this Mac.
-	if tabKey := macSharedAgentChatKey(project, call.Tab); call.Tab != macMainTab {
+	if tabKey := macSharedAgentChatKey(project, call.Tab); call.Tab != macMainTab && !memberStandby {
 		tabs, err := api.macCrewTabs(ctx, claims, project)
 		if err != nil || !slices.ContainsFunc(tabs, func(tab AgentProfileSideChat) bool { return tab.ConversationKey == tabKey }) {
 			return refuse("no_tab")

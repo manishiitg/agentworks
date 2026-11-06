@@ -45,6 +45,13 @@ func (api *StreamingAPI) crewHandoffMain(ctx context.Context, claims *UserClaims
 		return ProductConversationRecord{}, err
 	}
 	binding, err := resolveProductProjectBinding(ctx, claims.UserID, profile, project)
+	if errors.Is(err, errProjectNotFound) && claims.UserID != ownerOfCrewProjectID(project) {
+		// A Team member's own agent answering from the server (crew_standby_runas.go): their Main in this Crew is the
+		// one their own registry gives a joined member (crewOwnerDefaultBinding), never the owner's.
+		if crew, e := resolveCrewProjectBinding(ctx, claims.UserID, profile, project, ""); e == nil {
+			binding, err = crewOwnerDefaultBinding(claims.UserID, crew.Binding), nil
+		}
+	}
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}

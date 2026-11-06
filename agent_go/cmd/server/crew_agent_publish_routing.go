@@ -41,8 +41,16 @@ func (api *StreamingAPI) serverAgentCall(ctx context.Context, owner, project str
 		body, _ := json.Marshal(map[string]string{"error": message})
 		return crewChatResult{ID: call.ID, Status: status, Body: body}
 	}
-	if IsLocalMode() || owner == "" || ownerOfCrewProjectID(project) != owner {
+	// owner is whose agent this is: the Crew's owner, or (a standby turn only) a Team member working on their Mac.
+	crewOwner := ownerOfCrewProjectID(project)
+	member := owner != "" && owner != crewOwner
+	if IsLocalMode() || owner == "" || crewOwner == "" {
 		return fail(403, "This agent is unavailable.")
+	}
+	if member {
+		if _, ok := crewMemberStandbyTurn(project, owner); !ok || !standby {
+			return fail(403, "This agent is unavailable.")
+		}
 	}
 	if !standby {
 		place, err := crewPublishedAgent(project, call.Tab)
@@ -57,11 +65,20 @@ func (api *StreamingAPI) serverAgentCall(ctx context.Context, owner, project str
 		return fail(403, "This agent is unavailable.")
 	}
 	// An agent message may also reach a public agent; a person's own ask needs the audience.
-	if _, reason := macSharedAgentAccess(project, call.Tab, args.SenderID, owner, byAgent); reason != "" {
+	if member {
+		if reason := crewMemberStandbyAudience(ctx, project, owner, call.Tab, args.SenderID); reason != "" {
+			return fail(403, "This agent is no longer shared with you.")
+		}
+	} else if _, reason := macSharedAgentAccess(project, call.Tab, args.SenderID, owner, byAgent); reason != "" {
 		return fail(403, "This agent is no longer shared with you.")
 	}
 	if call.Operation != "agent_ask" && call.Operation != "agent_read" && call.Operation != "agent_answer" {
 		return fail(400, "Send a message, read its reply or answer its question.")
+	}
+	// The turn runs as the agent's person: the owner, or the member (their slot, else the shared app account; never the
+	// Crew owner's) with the member's Vault and AI account limits (crew_standby_runas.go).
+	if standby && call.Operation == "agent_ask" {
+		crewStandbyTurnLog(project, owner, args.SenderID)
 	}
 	if standby && crewStandbyRunForTest != nil {
 		return crewStandbyRunForTest(ctx, project, call)
