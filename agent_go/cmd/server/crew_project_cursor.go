@@ -171,9 +171,16 @@ func (api *StreamingAPI) continueLocalCursorRuntime(r *http.Request, roots crewr
 	}
 	destination := conversation
 	destination.Provider, destination.ModelID, destination.ConnectionID = selected.Provider, model, selected.Source.ConnectionID
-	_, runtimeDir, err := api.crewProgramStore(r.Context(), GetUserFromContext(r.Context()), roots, destination, "tmux", false)
+	store, runtimeDir, err := api.crewProgramStore(r.Context(), GetUserFromContext(r.Context()), roots, destination, "tmux", false)
 	if err != nil {
 		return nil, err
+	}
+	expected, err := cursorcli.PrivateRuntimeConfigDirectory(runtimeDir, []string{"CURSOR_CONFIG_DIR=" + selected.Source.Root})
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Clean(store) != filepath.Clean(expected) && filepath.Clean(store) != filepath.Clean(selected.Source.Root) {
+		return nil, fmt.Errorf("this Cursor account points to a different local chat store; choose the original account in AI accounts")
 	}
 	cwd, err := crewCLIWorkingDir(roots.Virtual, roots.Owner, conversation.SessionID, selected.Provider, false)
 	if err != nil {
