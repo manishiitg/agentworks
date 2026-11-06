@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -519,8 +520,25 @@ func writeCrewTeamFile(ctx context.Context, root, rel string, src io.Reader, met
 			return fmt.Errorf("links are not shared folder files")
 		}
 	}
+	// A copy an agent works in (its folder has the slot group's setgid) gets the group's access, as the slot's own files
+	// have: its shell runs as that group. Any other folder, the Team's own store included, stays owner-only.
+	group := crewTeamGroupPolicy(root)
+	var made []string
+	if group {
+		for p := path.Dir(rel); p != "."; p = path.Dir(p) {
+			if _, statErr := dir.Lstat(p); !os.IsNotExist(statErr) {
+				break
+			}
+			made = append(made, p)
+		}
+	}
 	if e = dir.MkdirAll(path.Dir(rel), 0700); e != nil {
 		return e
+	}
+	for _, p := range made {
+		if e = dir.Chmod(p, os.ModeSetgid|0o770); e != nil {
+			return e
+		}
 	}
 	tmp := path.Join(path.Dir(rel), ".team-write-"+uuid.NewString())
 	f, e := dir.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -531,7 +549,9 @@ func writeCrewTeamFile(ctx context.Context, root, rel string, src io.Reader, met
 	// No fsync per file: a 7,184-file apply took 267 s with one each (Showcase, 5 Nov), holding the team lock. The
 	// revision is in history before any file is written, and the rename keeps each file whole.
 	e = crewsync.CopyChecked(ctx, f, src, meta)
-	if e == nil && meta.Executable {
+	if e == nil && group {
+		e = f.Chmod(map[bool]os.FileMode{true: 0o770, false: 0o660}[meta.Executable])
+	} else if e == nil && meta.Executable {
 		e = f.Chmod(0700)
 	}
 	ce := f.Close()
@@ -704,4 +724,50 @@ func removeCrewTeamFile(root, rel string) error {
 		}
 	}
 	return nil
+}
+
+// crewTeamGroupPolicy: the folder keeps the slot group (setgid), so what is written there must be group-accessible.
+func crewTeamGroupPolicy(root string) bool {
+	info, err := os.Stat(root)
+	return err == nil && info.Mode()&os.ModeSetgid != 0
+}
+
+// repairCrewTeamCopyModes gives a copy written before this (owner-only folders and files) the group's access, once:
+// folders rwx with setgid, files rw (rwx where the owner can run them). It returns how many entries it changed.
+func repairCrewTeamCopyModes(root string) (changed int, err error) {
+	if !crewTeamGroupPolicy(root) {
+		return 0, nil
+	}
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		info, e := d.Info()
+		if e != nil || info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+		want := info.Mode().Perm()
+		switch {
+		case d.IsDir():
+			if info.Mode()&os.ModeSetgid != 0 && want&0o070 == 0o070 {
+				return nil
+			}
+			if e = os.Chmod(p, os.ModeSetgid|0o770); e == nil {
+				changed++
+			}
+		case info.Mode().IsRegular():
+			group := os.FileMode(0o060)
+			if want&0o100 != 0 {
+				group = 0o070
+			}
+			if want&group == group {
+				return nil
+			}
+			if e = os.Chmod(p, want|group); e == nil {
+				changed++
+			}
+		}
+		return nil
+	})
+	return changed, err
 }
