@@ -51,7 +51,7 @@ async function render(check: (host: HTMLDivElement) => Promise<void>, panels = i
 }
 it('shows actual workspace status without promoting occasional tools, and keeps All tools searchable', async () => {
  mocks.status.apps = [{ id: 'mcp:a', label: 'Notes account', detail: 'MCP · Connected', connected:true, destination: 'mcp:connected' }, { id: 'mcp:b', label: 'Other account', detail: 'MCP · Needs attention', destination: 'mcp:connected', attention:true }, { id:'google:g', label:'Google', detail:'person@example.com · Connected', connected:true, destination:'mcp:gmail' }, { id:'slack:s', label:'My Slack account', detail:'Personal Slack · Connected', connected:true, destination:'mcp:slack-account' }, { id:'bot:b', label:'Project helper', detail:'Project helper · Identity verified', connected:true, destination:'mcp:slack-bot' }, { id:'whatsapp', label:'WhatsApp',detail:'Connected',connected:true,destination:'mcp:whatsapp' }, {id:'github',label:'GitHub',detail:'chosen-account · Connected',connected:true,destination:'mcp:github'}]
- mocks.status.details = { automations: '2 · Next · 1 Jan 08:00 UTC' }
+ mocks.status.details = { automations: '2 · Next · 1 Jan 08:00 UTC', 'schedules:schedules': '2' }
  mocks.status.automations = [{ id: 'schedule:s', label: 'Morning summary', detail: 'Paused', destination: 'schedules:schedules' }, { id:'schedule:next',label:'Next summary',detail:'Jan 1, 8:00 AM',nextRunAt:'2099-01-01T08:00:00Z',destination:'schedules:schedules' }]
  await render(async host => {
   await act(async () => [...host.querySelectorAll('button')].find(node => node.textContent === 'Changes')!.click())
@@ -75,7 +75,9 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(host.textContent).toContain('MCPs1 connected · 1 need attention')
   expect(host.textContent).not.toContain('Notes account'); expect(host.textContent).not.toContain('Other account')
   expect(host.textContent).toContain('Googleperson@example.com · Connected')
-  expect(host.textContent).toContain('Morning summaryPaused')
+  // One row per kind with the server's count, not each automation.
+  expect(host.textContent).toContain('Schedules2')
+  expect(host.textContent).not.toContain('Morning summary')
   expect(host.textContent).toContain('Slack botProject helper · Identity verified')
   expect(host.textContent).toContain('My Slack accountPersonal Slack · Connected')
   for (const label of ['Recent', 'Costs & usage', 'Models', 'Chat history']) expect(host.textContent).not.toContain(label)
@@ -234,8 +236,8 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
 it('opens automation setup before any jobs exist and keeps native destination guards', async () => {
  await render(async host => {
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Automations"]')!.click())
-  const section = host.querySelector('[aria-label="Automations"]')!.closest('section')!
-  await act(async () => [...section.querySelectorAll('button')].find(node => node.textContent === 'Manage automations')!.click())
+  // The kinds are listed in the group itself (no "Manage automations" step).
+  expect([...host.querySelectorAll('button')].some(node => node.textContent === 'Manage automations')).toBe(false)
   expect(mocks.open).not.toHaveBeenCalled(); expect(mocks.target).not.toHaveBeenCalled()
   for (const [label,target] of [['Schedules','schedules'],['Watchers','conditions'],['Webhooks','triggers'],['Functions','functions'],['Email inbox','email']]) {
    const row = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label)!
