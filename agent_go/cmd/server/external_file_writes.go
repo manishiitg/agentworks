@@ -73,7 +73,22 @@ func externalPostSharedFileWrite(w http.ResponseWriter, r *http.Request, req wf.
 		externalFailure(w, err)
 		return
 	}
-	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, getWorkspaceAPIURL()+"/api/shared-file-write", bytes.NewReader(data))
+	externalPostToWriter(w, r, "/api/shared-file-write", bytes.NewReader(data))
+}
+
+// externalPostSharedFileUpload is the same write for a chunked upload's assembled file: the request on one line, then
+// its bytes.
+func externalPostSharedFileUpload(w http.ResponseWriter, r *http.Request, req wf.WriteRequest, file io.Reader) {
+	data, err := json.Marshal(req)
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	externalPostToWriter(w, r, "/api/shared-file-upload", io.MultiReader(bytes.NewReader(append(data, '\n')), file))
+}
+
+func externalPostToWriter(w http.ResponseWriter, r *http.Request, route string, body io.Reader) {
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, getWorkspaceAPIURL()+route, body)
 	if err != nil {
 		externalFailure(w, err)
 		return

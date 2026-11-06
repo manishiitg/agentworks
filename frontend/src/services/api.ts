@@ -681,6 +681,23 @@ export type CrewStorageStatus = {
   projects: { key: string; workspace_id?: string; name: string; owner_name: string; bytes: number; state: string; reasons?: string[]; backup_state?: string; backup_skipped?: number; inventory_incomplete?: boolean; move_available?: boolean; restore_verified: boolean }[]
 }
 
+// A browser upload's chunks: fixed size (the server checks each by its hash), at most about 4 MB per request.
+const UPLOAD_CHUNK_BYTES = 256 * 1024
+const UPLOAD_CHUNKS_PER_REQUEST = 15
+
+// Chunks on the wire: each one's 32-byte sha256, a 4-byte big-endian length, the bytes.
+function uploadFrames(pieces: { id: string; data: Uint8Array }[]): Uint8Array {
+  const frames = new Uint8Array(pieces.reduce((total, piece) => total + 36 + piece.data.length, 0))
+  let at = 0
+  for (const piece of pieces) {
+    piece.id.match(/../g)?.forEach((pair, index) => { frames[at + index] = parseInt(pair, 16) })
+    new DataView(frames.buffer).setUint32(at + 32, piece.data.length)
+    frames.set(piece.data, at + 36)
+    at += 36 + piece.data.length
+  }
+  return frames
+}
+
 export const agentApi = {
   startCrewStorageCheck: async (): Promise<{ operation_id: string }> => {
     const response = await api.post('/api/admin/crew-storage', { action: 'storage_preview' })
@@ -2150,15 +2167,26 @@ export const agentApi = {
     return response.data
   },
 
+  // One helper for every chat attachment: the file goes as chunks (plan, the chunks the server lacks, finish), so no
+  // single request is big enough to hit the gateway's limit. The server decides what is allowed and where it goes.
   uploadCrewChatFile: async (file: File, projectId: string) => {
-    const formData = new FormData()
-    formData.append('file', file)
+    const route = `/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/uploads`
+    const hex = (digest: ArrayBuffer) => Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
     try {
-      // Override the chat client's JSON default. Axios otherwise serializes
-      // FormData as JSON; the browser adapter supplies the multipart boundary.
-      const response = await api.post(`/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/uploads`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const pieces: { id: string; data: Uint8Array }[] = []
+      for (let at = 0; at < bytes.length; at += UPLOAD_CHUNK_BYTES) {
+        const data = bytes.subarray(at, at + UPLOAD_CHUNK_BYTES)
+        pieces.push({ id: hex(await crypto.subtle.digest('SHA-256', data)), data })
+      }
+      const version = { hash: hex(await crypto.subtle.digest('SHA-256', bytes)), size: bytes.length, chunks: pieces.map(piece => ({ id: piece.id, n: piece.data.length })) }
+      const plan = await api.post(`${route}/plan`, { file: version })
+      const missing = new Set<string>(plan.data.missing)
+      const send = pieces.filter(piece => missing.delete(piece.id))
+      for (let at = 0; at < send.length; at += UPLOAD_CHUNKS_PER_REQUEST) {
+        await api.put(`${route}/chunks`, uploadFrames(send.slice(at, at + UPLOAD_CHUNKS_PER_REQUEST)), { headers: { 'Content-Type': 'application/octet-stream' } })
+      }
+      const response = await api.post(route, { name: file.name, file: version })
       return response.data
     } catch (error) {
       if (axios.isAxiosError(error)) {
