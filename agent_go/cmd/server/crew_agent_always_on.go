@@ -48,6 +48,12 @@ func crewStandbyServerNote(project, tab string) string {
 	} else if err == nil && len(t.Folder.Folders) > 0 {
 		files = "only the Team's shared folders: " + strings.Join(t.Folder.Folders, ", ")
 	}
+	// What is really here: the owner's copy of the team folder, attached as WORK_FOLDER_<NAME> (crew_team_server_copy.go).
+	if t, err := readCrewTeam(project); err == nil {
+		if top := crewOwnerCopyTop(t); top != "" {
+			files = fmt.Sprintf("your copy of the Team's shared folder, attached as the folder WORK_FOLDER_%s (it syncs with the team, so what you change reaches the Mac when it is back); it holds %s", strings.ToUpper(crewTeamCopyAlias(t)), top)
+		}
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "## Answering from the server\n\nYou are %s's agent %q. %s's Mac is off, so you are answering from the server's copy of this conversation, with %s's AI account and the apps and secrets in their Vault on the server.\n\n", ownerName, agent, ownerName, ownerName)
 	fmt.Fprintf(&b, "Files here: %s. Everything else in this Crew is only on the Mac: do not assume those files exist here.\n\n", files)

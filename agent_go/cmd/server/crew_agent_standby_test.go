@@ -699,3 +699,60 @@ func TestCrewHandbackFromHistoryTakesExtendsKeepsBoth(t *testing.T) {
 		t.Fatalf("when both changed the Mac keeps its own and the server's is kept aside: event=%s imported=%v", event, imported)
 	}
 }
+
+// PLAT-856 live round 3, 6 Nov: an owner's agent answering from the server worked in an empty folder (the 15,108 team
+// files were only in a member's copy). The owner of a Mac Crew now has a copy of the team folder here while an agent of
+// theirs has a standby copy; it is attached to their server turns and the server note says what is really in it.
+func TestOwnerTeamCopyIsAttachedToServerTurnsAndNamedInTheNote(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	_ = f
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatalf("pair fixture: %v", err)
+	}
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", Name: "Example Crew", On: true, Folder: crewTeamFolder{ID: "folder-1", Whole: true}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatalf("team fixture: %v", err)
+	}
+	root := filepath.Join(t.TempDir(), "team-copies", "owner")
+	if err := os.MkdirAll(filepath.Join(root, "reports"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "notes.md"), []byte("shared"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := crewTeamServerCopyDir("owner", "team", "folder-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = saveCrewTeamLocal(dir, crewTeamLocal{FolderID: "folder-1", Project: "team", RemoteUser: "owner", Root: root, Downloaded: true}); err != nil {
+		t.Fatal(err)
+	}
+	// No agent of the owner has a copy here yet: nothing is attached.
+	if crewOwnerCopyWanted(team) || len(crewTeamServerFolders(&UserClaims{UserID: "owner"})) != 0 {
+		t.Fatal("the owner's team copy was attached before any agent could answer from the server")
+	}
+	if err = writeCrewStandby("team", map[string]crewAgentStandby{"main": {Tab: "main", Location: "standby", PairID: "owner-pair", Revision: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if !crewOwnerCopyWanted(team) {
+		t.Fatal("an owner with a standby copy must have a team copy")
+	}
+	grants := crewTeamServerFolders(&UserClaims{UserID: "owner"})
+	if len(grants) != 1 || grants[0].Path != root {
+		t.Fatalf("the owner's team copy must be attached to their server turns: %+v", grants)
+	}
+	if grants = crewTeamServerFolders(&UserClaims{UserID: "other"}); len(grants) != 0 {
+		t.Fatalf("someone else got the owner's team copy: %+v", grants)
+	}
+	if top := crewOwnerCopyTop(team); !strings.Contains(top, "reports/") || !strings.Contains(top, "notes.md") {
+		t.Fatalf("the note must name what is really in the copy: %q", top)
+	}
+	if note := crewStandbyServerNote("team", "main"); !strings.Contains(note, "WORK_FOLDER_EXAMPLE_CREW") || !strings.Contains(note, "reports/") {
+		t.Fatalf("the server note must point at the attached copy: %s", note)
+	}
+}
