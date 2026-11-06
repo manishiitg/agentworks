@@ -18,11 +18,10 @@ import (
 // machine's global excludes, a parent folder's .gitignore or a repository's .git/info/exclude, which differ from one
 // copy to another. Git's own matcher reads the rules through a private empty repository with no user or system
 // configuration, so every copy of the same folder ignores the same files.
-func crewTeamIgnored(ctx context.Context, root string) (map[string]bool, error) {
-	out := map[string]bool{}
+// rules reports whether the folder has any .gitignore (a watched round then checks only the files it read).
+func crewTeamIgnored(ctx context.Context, root string) (ignored map[string]bool, rules bool, err error) {
 	var paths []string
-	rules := false
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -46,8 +45,18 @@ func crewTeamIgnored(ctx context.Context, root string) (map[string]bool, error) 
 		paths = append(paths, rel)
 		return nil
 	})
-	if err != nil || !rules || len(paths) == 0 {
-		return out, err
+	if err != nil || !rules {
+		return map[string]bool{}, rules, err
+	}
+	ignored, err = crewTeamCheckIgnore(ctx, root, paths)
+	return ignored, rules, err
+}
+
+// crewTeamCheckIgnore is which of paths (files of the folder at root) its .gitignore files leave out.
+func crewTeamCheckIgnore(ctx context.Context, root string, paths []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(paths) == 0 {
+		return out, nil
 	}
 	if _, err := exec.LookPath("git"); err != nil {
 		return nil, fmt.Errorf("this shared folder has a .gitignore but Git isn't installed; install Git or remove the .gitignore")

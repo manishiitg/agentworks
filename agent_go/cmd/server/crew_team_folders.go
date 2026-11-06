@@ -73,14 +73,47 @@ func crewTeamFolderListing(root, rel string, whole bool) (map[string]any, int, e
 	return crewTeamSizeReply(map[string]any{"folders": folders, "path": rel}, count, bytes), 200, nil
 }
 
-// crewTeamSizeReply adds a size and whether it is too big to share, with the words to show (the screen keeps no limits).
+// crewTeamSizeReply adds a size to a folder listing.
 func crewTeamSizeReply(out map[string]any, count, bytes int64) map[string]any {
-	tooBig := count > publication.MaxFiles || bytes > publication.MaxBytes
-	out["files"], out["bytes"], out["too_big"] = count, bytes, tooBig
-	if tooBig {
-		out["too_big_line"] = fmt.Sprintf("Too big to share: at most %d MB and %d files.", publication.MaxBytes>>20, publication.MaxFiles)
-	}
+	out["files"], out["bytes"] = count, bytes
 	return out
+}
+
+// crewTeamTooBigLine is the one line that refuses sharing more than the Team's limits ("" when it fits).
+func crewTeamTooBigLine(what string, count, bytes int64) string {
+	switch {
+	case count > crewTeamMaxFiles:
+		return fmt.Sprintf("%s has %d files; the Team can share at most %d. Share folders instead.", what, count, crewTeamMaxFiles)
+	case bytes > crewTeamMaxBytes:
+		return fmt.Sprintf("%s is %.1f GB; the Team can share at most %d GB. Share folders instead.", what, float64(bytes)/(1<<30), crewTeamMaxBytes>>30)
+	}
+	return ""
+}
+
+// crewTeamWholeSize measures the Whole Crew where the Crew is: its folder on the server, or its owner's Mac over the
+// Mac online relay. ok is false when it cannot be measured now (the Mac is off).
+func crewTeamWholeSize(ctx context.Context, owner, project string) (count, bytes int64, ok bool) {
+	if !crewRelayTwin(project) {
+		roots, found, err := crewStorageRoots(crewProjectRootByID(project))
+		if err != nil || !found {
+			return 0, 0, false
+		}
+		count, bytes = crewTeamShareSize(roots.Files, crewTeamFolder{Whole: true})
+		return count, bytes, true
+	}
+	pair, found := crewMacPairFor(owner, project)
+	if !found {
+		return 0, 0, false
+	}
+	result := callCrewMacPair(ctx, owner, project, pair, crewChatCall{Operation: "team_folders", Query: url.Values{"whole": {"1"}}}, 20*time.Second)
+	var size struct {
+		Files int64 `json:"files"`
+		Bytes int64 `json:"bytes"`
+	}
+	if result.Status != http.StatusOK || json.Unmarshal(result.Body, &size) != nil {
+		return 0, 0, false
+	}
+	return size.Files, size.Bytes, true
 }
 
 // handleCrewTeamFolders is GET /crew-teams/{project}/folders?path=&whole=1, the Team tab's folder picker and sizes.

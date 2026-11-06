@@ -201,7 +201,7 @@ func crewTeamSame(a, b *crewsync.File) bool {
 	return *a == *b
 }
 func validateCrewTeamSnapshot(s *crewsync.Snapshot, on ...crewTeamOnPurpose) error {
-	if s == nil || s.Git != nil || s.StatePath != "" || s.DatabasePath != "" || len(s.Files) > publication.MaxFiles || len(s.Changes) > publication.MaxFiles {
+	if s == nil || s.Git != nil || s.StatePath != "" || s.DatabasePath != "" || len(s.Files) > crewTeamMaxFiles || len(s.Changes) > crewTeamMaxFiles {
 		return fmt.Errorf("send only the shared folder's files")
 	}
 	for name := range s.Payloads {
@@ -233,8 +233,8 @@ func validateCrewTeamSnapshot(s *crewsync.Snapshot, on ...crewTeamOnPurpose) err
 			folded[lower] = part
 		}
 	}
-	if total > publication.MaxBytes {
-		return fmt.Errorf("shared folder exceeds 256 MiB")
+	if line := crewTeamTooBigLine("What the team shares", int64(len(s.Files)), total); line != "" {
+		return fmt.Errorf("%s", line)
 	}
 	seen := map[string]bool{}
 	for _, c := range s.Changes {

@@ -31,6 +31,11 @@ const (
 	// so every request finishes well inside the company gateway's 20 s.
 	crewTeamChunkBatch  = 4 << 20
 	crewTeamCommitBatch = 2000
+	// The Team's own limits, not Publish's one-upload limit (owner, 6 Nov): sync moves only changed chunks after
+	// the first copy, so a bigger folder costs a longer first download, not every round. Each file keeps
+	// publication.MaxFileBytes.
+	crewTeamMaxFiles       = 50000
+	crewTeamMaxBytes int64 = 4 << 30
 	// crewTeamSyncFormat names the chunked layout: a Team's content and every copy's binding start fresh with it.
 	crewTeamSyncFormat = "chunks-1"
 )

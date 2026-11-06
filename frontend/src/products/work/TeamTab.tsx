@@ -192,8 +192,7 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
     void teamFolders(target, `path=${encodeURIComponent(parent)}`).then(data => { if (active) setListing(data) }).catch(e => { if (active) setError(teamError(e)) })
     return () => { active = false }
   }, [picking, parent, target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  const whole = useFolderSize(target, choose || team.folder.whole ? 'whole=1' : undefined)
-  const tooBig = Boolean(whole?.too_big)
+  const whole = useFolderSize(target, team.folder.whole ? 'whole=1' : undefined)
   const folders = team.folder.folders || []
   const save = (key: string, next: Team) => run(key, () => saveTeam(target, next))
   const add = async (folder: string) => {
@@ -209,7 +208,7 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
         : <div role="radiogroup" aria-label="What the team shares" className="flex overflow-hidden rounded-md border border-border text-xs">
         {([[false, 'Folders'], [true, 'Whole Crew']] as const).map(([value, label]) => {
           const on = Boolean(team.folder.whole) === value
-          return <button key={label} type="button" role="radio" aria-checked={on} disabled={Boolean(pending) || (value && tooBig)}
+          return <button key={label} type="button" role="radio" aria-checked={on} disabled={Boolean(pending)}
             onClick={() => { if (!on) void save(`share:${label}`, { ...team, folder: value ? { whole: true } : { folders: [] } }) }}
             className={`inline-flex items-center gap-1 px-2.5 py-0.5 disabled:cursor-not-allowed ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted disabled:opacity-50'}`}><Saving on={pending === `share:${label}`}>{null}</Saving>{label}</button>
         })}
@@ -222,7 +221,6 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
         {!folders.length && <p className="text-xs text-muted-foreground">Nothing is shared yet{choose ? ': add a folder, or share the Whole Crew' : ''}.</p>}
         {view.can_add_folder && <button type="button" disabled={Boolean(pending)} title="Choose a folder of this Crew to share with the Team"
           onClick={() => { setPicking(!picking); setParent('') }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Share this folder</button>}
-        {choose && tooBig && whole?.too_big_line && <p className="text-xs text-amber-600">The Whole Crew ({sizeLine(whole)}): {whole.too_big_line}</p>}
       </div>}
     {picking && !team.folder.whole && <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-xs">
       {listing?.offline ? <>
@@ -236,7 +234,7 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
         {!listing && <Loader2 aria-label="Loading folders" className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         {listing?.folders.map(folder => <button key={folder} type="button" onClick={() => setParent(folder)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"><Folder className="h-3.5 w-3.5" />{folder.split('/').pop()}<ChevronRight className="ml-auto h-3 w-3" /></button>)}
         {parent && listing?.path === parent && <>
-          <p>{sizeLine(listing)}{listing.too_big_line ? ` · ${listing.too_big_line}` : ''}</p>
+          <p>{sizeLine(listing)}</p>
           <Button size="sm" disabled={Boolean(pending) || folders.includes(parent)} onClick={() => void add(parent)}><Saving on={pending === 'add'}>{null}</Saving>Share this folder</Button>
         </>}
       </>}
