@@ -120,6 +120,36 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 	if rec, _ := defaultProjectOwners().Lookup("work", "test-team"); len(rec.RunPeople) != 0 || !rec.Private {
 		t.Fatalf("the last dashboards-only person left but the Share still names people: %+v", rec)
 	}
+	// "Everyone on this server" is one row, the owner's: it opens the Crew's dashboards to every account and closes them
+	// again through the same Share save; a builder is neither offered it nor allowed it, and it is never Works with me.
+	everyoneOn := func() bool { on, _ := crewPeopleShareRecord(crewProjectRootByID("team")); return on }
+	_, view = call("owner", map[string]any{})
+	if view["add_everyone"] != crewPeopleEveryoneName {
+		t.Fatalf("the owner was not offered everyone on this server: %v", view)
+	}
+	if _, v := call("member", map[string]any{}); v["add_everyone"] != nil {
+		t.Fatalf("a builder was offered everyone on this server: %v", v)
+	}
+	if code, out := level("member", "everyone", "dashboards", true); code != http.StatusForbidden || everyoneOn() {
+		t.Fatalf("a builder opened the Crew to everyone: %d %v", code, out)
+	}
+	if code, out := level("owner", "everyone", "works", true); code != http.StatusBadRequest || teamHas("everyone") {
+		t.Fatalf("everyone was added to Works with me: %d %v", code, out)
+	}
+	change("owner", "everyone", "dashboards", everyoneOn)
+	if p := listed("owner", "everyone"); p == nil || p["name"] != crewPeopleEveryoneName || p["line"] != crewPeopleEveryoneLine || p["level"] != crewPeopleDashboards {
+		t.Fatalf("the everyone row: %v", p)
+	}
+	if _, v := call("owner", map[string]any{}); v["add_everyone"] != nil {
+		t.Fatalf("everyone was offered again while on: %v", v)
+	}
+	if code, out := level("member", "everyone", "none", true); code != http.StatusForbidden || !everyoneOn() {
+		t.Fatalf("a builder closed the Crew to everyone: %d %v", code, out)
+	}
+	change("owner", "everyone", "none", func() bool { return !everyoneOn() })
+	if _, v := call("owner", map[string]any{}); v["add_everyone"] != crewPeopleEveryoneName || listed("owner", "everyone") != nil {
+		t.Fatalf("after closing, the row stays: %v", v)
+	}
 	// The old add/remove shorthand is gone: a change names a person and a level, and nothing is saved without them.
 	body, _ := json.Marshal(map[string]string{"add": "anita"})
 	w := httptest.NewRecorder()
@@ -140,6 +170,9 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 	if code, out := level("owner", "newbie", "dashboards", true); code != http.StatusConflict || out["error"] == nil || shareHas("newbie") {
 		t.Fatalf("dashboards only on a Mac Crew: %d %v", code, out)
 	}
+	if code, out := level("owner", "everyone", "dashboards", true); code != http.StatusConflict || everyoneOn() {
+		t.Fatalf("everyone on a Mac Crew: %d %v", code, out)
+	}
 	change("owner", "newbie", "works", func() bool { return teamHas("newbie") })
 	if err := crewroot.ReplaceSync("team", crewroot.SyncBinding{Side: "server"}); err != nil {
 		t.Fatal(err)
@@ -153,6 +186,9 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 	}
 	if p := listed("owner", "newbie"); p == nil || p["moves"] != nil {
 		t.Fatalf("a never-online Crew offered a change: %v", p)
+	}
+	if code, out := level("owner", "everyone", "dashboards", true); code != http.StatusConflict {
+		t.Fatalf("everyone on a never-online Crew: %d %v", code, out)
 	}
 	if code, out := level("owner", "outsider", "works", true); code != http.StatusConflict || teamHas("outsider") {
 		t.Fatalf("a never-online Crew changed its people: %d %v", code, out)

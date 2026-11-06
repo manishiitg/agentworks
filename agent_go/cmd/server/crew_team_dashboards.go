@@ -3,14 +3,13 @@ package server
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-// The Team tab's Dashboards card (owner, 6 Nov, approved mockup): everyone in the Team sees all the Crew's dashboards and
-// artifacts, with nothing to set; Share stays for people outside the Team. Read when the card opens, not in /tab, which
-// every screen re-reads on each panel notice.
+// The Crew's published dashboards, artifacts and motion (owner, 6 Nov): everyone in the Team sees all of them, with
+// nothing to set. The Dashboards tab (crew_dashboards_tab.go) is the one reader; it is read when the tab opens, not in
+// /tab, which every screen re-reads on each panel notice.
 
 type crewTeamDashboard struct {
 	ID       string `json:"id"`
@@ -22,29 +21,7 @@ type crewTeamDashboard struct {
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
 }
 
-// handleCrewTeamDashboards is GET /crew-teams/{project}/dashboards. can_share: this person may change who else sees them.
-func (api *StreamingAPI) handleCrewTeamDashboards(w http.ResponseWriter, r *http.Request) {
-	t, claims, ok := crewTeamForTab(w, r, false)
-	if !ok {
-		return
-	}
-	root := crewProjectRootByID(t.ProjectID)
-	canShare := t.OwnerID == claims.UserID
-	rows, ok := api.crewTeamDashboardRows(w, r, t, root, canShare)
-	if !ok {
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	out := map[string]any{"workspace": root, "dashboards": rows, "can_share": canShare}
-	// A Crew on a Mac: when its dashboards last reached the server (crew_mac_dashboards.go).
-	if updated, ok := crewMacDashboardsUpdated(t.ProjectID); ok && crewRelayTwin(t.ProjectID) {
-		out["updated"] = "Updated " + roughAgo(time.Since(updated))
-		out["note"] = "Buttons on these dashboards work on the owner's Mac for now."
-	}
-	externalJSON(w, out)
-}
-
-// crewTeamDashboardRows lists the Crew's published dashboards, artifacts and motion for the Team card and the
+// crewTeamDashboardRows lists the Crew's published dashboards, artifacts and motion for the
 // Dashboards tab: one read, one set of rows. The public link is the owner's, on a Crew that can have one.
 func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Request, t crewTeam, root string, canShare bool) ([]crewTeamDashboard, bool) {
 	links := map[string]dashboardPublicRecord{}

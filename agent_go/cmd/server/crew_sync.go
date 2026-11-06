@@ -100,7 +100,6 @@ type crewSyncReply struct {
 	// AccessMacLocked: Mac online stays on while the Team is on (owner, 6 Nov); the line its switch shows, locked on.
 	AccessMacLocked string          `json:"access_mac_locked,omitempty"`
 	AccessPublish   *crewAccessText `json:"access_publish,omitempty"`
-	AccessShare     bool            `json:"access_share,omitempty"`
 	AccessLaptop    bool            `json:"access_laptop,omitempty"`
 	// Standby answers standby_check and standby_store (crew_agent_standby.go), handback_pull and handback_done
 	// (crew_agent_handback.go).

@@ -29,6 +29,12 @@ const (
 	crewKindMacOnline = "mac_online"
 	crewKindMacNever  = "mac_never_online"
 
+	// crewPeopleEveryone is the one row for "open to everyone on this server": the Share record's audience, set and
+	// cleared through the same Share save as a named person (owner, 6 Nov: one People list, no separate panel).
+	crewPeopleEveryone     = "everyone"
+	crewPeopleEveryoneName = "Everyone on this server"
+	crewPeopleEveryoneLine = "Anyone with an account on this server can open this Crew's dashboards and ask it. No files."
+
 	crewPeopleNeverOnlineLine = "Turn on Mac online to share this Crew."
 	crewPeoplePutOnlineLine   = "To give someone dashboards only, with Ask and buttons, put this Crew online first."
 )
@@ -70,8 +76,9 @@ type crewPeopleView struct {
 	Blocked string `json:"blocked,omitempty"`
 	// PutOnline is shown beside "Dashboards only" on a Crew that lives on a Mac.
 	PutOnline string `json:"put_online,omitempty"`
-	// Everyone is set when the Crew is open to every account on the server: nobody needs dashboards only.
-	Everyone string `json:"everyone,omitempty"`
+	// AddEveryone is the label of the "everyone on this server" choice, offered to the owner of a server Crew that is not
+	// open to everyone yet (add it with person=everyone, level=dashboards).
+	AddEveryone string `json:"add_everyone,omitempty"`
 	// CanAdd: this viewer may add people to Works with me; CanShare: the owner alone may give dashboards only.
 	CanAdd   bool               `json:"can_add"`
 	CanShare bool               `json:"can_share"`
@@ -224,8 +231,8 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 	case crewKindMacOnline:
 		view.PutOnline = crewPeoplePutOnlineLine
 	}
-	if everyone && kind == crewKindServer {
-		view.Everyone = "This Crew is open to everyone on this server: they can open its dashboards and ask it."
+	if owner && kind == crewKindServer && !everyone {
+		view.AddEveryone = crewPeopleEveryoneName
 	}
 	view.Owner = crewPeoplePerson{UserID: t.OwnerID, Name: crewPersonShortName(t.OwnerID), Email: email(t.OwnerID), Level: "owner", LevelLabel: "Owner", Line: "Owner", Owner: true, You: owner}
 	add := func(id string, invited bool, level string) {
@@ -241,6 +248,13 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 		if crewTeamAccountActive(id) && !slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == id }) {
 			add(id, false, crewPeopleDashboards)
 		}
+	}
+	if everyone && kind == crewKindServer {
+		row := crewPeoplePerson{UserID: crewPeopleEveryone, Name: crewPeopleEveryoneName, Level: crewPeopleDashboards, LevelLabel: crewPeopleLevelLabel(crewPeopleDashboards), Line: crewPeopleEveryoneLine}
+		if owner {
+			row.Moves = []string{crewPeopleNone}
+		}
+		view.People = append([]crewPeoplePerson{row}, view.People...)
 	}
 	return view
 }
@@ -316,6 +330,9 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 	case kind == crewKindMacOnline && level == crewPeopleDashboards:
 		externalError(w, 409, "crew_online_required", crewPeoplePutOnlineLine)
 		return
+	case person == crewPeopleEveryone:
+		api.changeCrewEveryone(w, r, claims, project, t, in)
+		return
 	case person == t.OwnerID:
 		externalError(w, 400, "invalid_person", "The owner is already here.")
 		return
@@ -343,22 +360,7 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 		externalJSON(w, map[string]any{"confirm_needed": true, "preview": crewPeoplePreview(name, from, level, t.On, everyone), "next": "Nothing changed yet. Show the person this summary in plain words and ask. Change it only when they agree: call again with the same arguments and confirm=true."})
 		return
 	}
-	run := func(w http.ResponseWriter, h func(http.ResponseWriter, *http.Request)) bool {
-		rec := httptest.NewRecorder()
-		h(rec, r)
-		if rec.Code == http.StatusConflict && strings.Contains(rec.Body.String(), "dashboard") && !strings.Contains(rec.Body.String(), "Mac") {
-			// The Share save's own words are for a tool; say it plainly with the next step.
-			externalError(w, http.StatusConflict, "dashboard_needed", "This Crew has no dashboard yet, so there is nothing to show this person. Say yes and I'll create a standard dashboard and add them, or publish your own dashboard first and then add them.")
-			return false
-		}
-		if rec.Code >= 300 {
-			w.Header().Set("Content-Type", rec.Header().Get("Content-Type"))
-			w.WriteHeader(rec.Code)
-			_, _ = w.Write(rec.Body.Bytes())
-			return false
-		}
-		return true
-	}
+	run := func(w http.ResponseWriter, h func(http.ResponseWriter, *http.Request)) bool { return crewPeopleRunShare(w, r, h) }
 	// The Team half: the Team save on the current record with this one change, as the Team tab's people route does.
 	team := func(w http.ResponseWriter, add bool) bool {
 		current, err := readCrewTeam(project)
@@ -432,6 +434,86 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 		fresh = t
 	}
 	externalJSON(w, map[string]any{"changed": true, "view": api.crewPeopleViewFor(claims, fresh)})
+}
+
+// changeCrewEveryone opens the Crew's dashboards to everyone on the server, or closes them again: the Share's own
+// audience, saved by the same Share save as a named person, and the owner's act like any Dashboards-only change.
+func (api *StreamingAPI) changeCrewEveryone(w http.ResponseWriter, r *http.Request, claims *UserClaims, project string, t crewTeam, in crewPeopleChange) {
+	level := strings.TrimSpace(in.Level)
+	if level == crewPeopleWorks {
+		externalError(w, 400, "invalid_person", "Everyone on this server can be given dashboards only, or removed.")
+		return
+	}
+	if claims.UserID != t.OwnerID {
+		externalError(w, 403, "team_owner_only", fmt.Sprintf("Only %s can open this Crew's dashboards to everyone on this server.", crewPersonShortName(t.OwnerID)))
+		return
+	}
+	root := crewProjectRootByID(project)
+	everyone, named := crewPeopleShareRecord(root)
+	from := crewPeopleNone
+	if everyone {
+		from = crewPeopleDashboards
+	}
+	if from == level {
+		note := "Everyone on this server can already open this Crew's dashboards."
+		if level == crewPeopleNone {
+			note = "This Crew is not open to everyone on this server."
+		}
+		externalJSON(w, map[string]any{"changed": false, "note": note})
+		return
+	}
+	if !in.Confirm {
+		preview := crewPeoplePreview(crewPeopleEveryoneName, from, level, t.On, false)
+		preview["summary"] = map[string]string{crewPeopleDashboards: crewPeopleEveryoneName + " will be given dashboards only.", crewPeopleNone: crewPeopleEveryoneName + " will be removed from this Crew."}[level]
+		notes := []string{}
+		if level == crewPeopleDashboards && len(named) > 0 {
+			notes = append(notes, "The people you gave dashboards only are covered by this, so they leave the list.")
+		}
+		if level == crewPeopleNone {
+			notes = append(notes, "Only you and your Team will be able to open its dashboards.")
+		}
+		preview["notes"] = notes
+		externalJSON(w, map[string]any{"confirm_needed": true, "preview": preview, "next": "Nothing changed yet. Show the person this summary in plain words and ask. Change it only when they agree: call again with the same arguments and confirm=true."})
+		return
+	}
+	target, err := api.dashboardTarget(r.Context(), claims, root)
+	if err != nil {
+		dashboardError(w, err)
+		return
+	}
+	mode := runShareEveryone
+	if level == crewPeopleNone {
+		mode = runSharePrivate
+	}
+	if !crewPeopleRunShare(w, r, func(rec http.ResponseWriter, req *http.Request) {
+		api.handleDashboardShare(rec, req, claims, target, "share", mode, nil, in.CreateDashboard)
+	}) {
+		return
+	}
+	fresh, err := readCrewTeam(project)
+	if err != nil {
+		fresh = t
+	}
+	externalJSON(w, map[string]any{"changed": true, "view": api.crewPeopleViewFor(claims, fresh)})
+}
+
+// crewPeopleRunShare runs one Share or Team save and says a refusal plainly: the Share save's own words about a missing
+// dashboard are for a tool, so a person gets the next step instead.
+func crewPeopleRunShare(w http.ResponseWriter, r *http.Request, h func(http.ResponseWriter, *http.Request)) bool {
+	rec := httptest.NewRecorder()
+	h(rec, r)
+	if rec.Code == http.StatusConflict && strings.Contains(rec.Body.String(), "dashboard") && !strings.Contains(rec.Body.String(), "Mac") {
+		// The Share save's own words are for a tool; say it plainly with the next step.
+		externalError(w, http.StatusConflict, "dashboard_needed", "This Crew has no dashboard yet, so there is nothing to show this person. Say yes and I'll create a standard dashboard and add them, or publish your own dashboard first and then add them.")
+		return false
+	}
+	if rec.Code >= 300 {
+		w.Header().Set("Content-Type", rec.Header().Get("Content-Type"))
+		w.WriteHeader(rec.Code)
+		_, _ = w.Write(rec.Body.Bytes())
+		return false
+	}
+	return true
 }
 
 // putCrewTeam saves a Team record through the Team's own PUT (handleCrewTeam), so the invite, removal and access rules

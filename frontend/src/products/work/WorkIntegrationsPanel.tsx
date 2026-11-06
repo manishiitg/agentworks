@@ -57,7 +57,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     <div data-ui-view-section={tab === 'apps' ? integrationSection : tab} className="min-h-0 flex-1 overflow-y-auto p-4">
       <>
         {/* One Access page in the Mac app and on the website (owner, 5 Nov); the server's reply decides its rows. */}
-        {tab === 'access' && <div className="max-w-2xl"><YourComputerPanel projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} tabId={tabId} onAsk={draft} onBack={onBack} /></div>}
+        {tab === 'access' && <div className="max-w-2xl"><YourComputerPanel projectId={projectId} sessionId={sessionId} onBack={onBack} /></div>}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
         {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
