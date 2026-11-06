@@ -9,6 +9,7 @@ package server
 // the writer, the Mac refuses to run the agent and the server keeps answering, so no message is lost.
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -26,6 +27,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
@@ -247,6 +249,38 @@ func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.R
 			}
 		}
 	}
+	// The server answered on another program than this Mac's (it lacked the Mac's, crewImportNativeElseHistory): its
+	// native session can't resume here, so this Mac takes its saved history instead. When the Mac's own history is the
+	// start of the server's, the chat continues with all of it and the next turn starts a fresh native conversation on
+	// this Mac's program from the usual continuity notice, as "Fresh chat" does; otherwise both changed and the server's
+	// version is kept aside.
+	if macProgram := crewHandbackMacProgram(record, mine); macProgram != "" && macProgram != server.Provider {
+		if record == nil || !crewHandbackHistoryExtends(claims.UserID, *record, conversation.History) {
+			return "diverged", bytes, keepCrewHandbackAside(roots, tab, item.Key, &conversation)
+		}
+		if api.crewAgentTurnRunning(record.SessionID) {
+			return "", 0, errCrewNativeDestinationBusy
+		}
+		history := conversation
+		history.Native = nil
+		sum := sha256.Sum256([]byte(item.Key))
+		transfer := fmt.Sprintf("always-on/%s/%s/%s", tab, hex.EncodeToString(sum[:8]), item.Fingerprint)
+		if crewHandbackImportForTest != nil {
+			err = crewHandbackImportForTest(roots, item.Key, &history)
+		} else {
+			main, e := api.crewHandoffMain(ctx, claims, roots.ID)
+			if e != nil {
+				return "", 0, e
+			}
+			record.handoffAgentToolsMode = main.handoffAgentToolsMode
+			err = api.importCrewHandoffConversation(ctx, claims, roots, pair, transfer, &history, *record, crewImportNativeElseHistory)
+		}
+		if err != nil {
+			return "", 0, err
+		}
+		log.Printf("[ALWAYS_ON] project=%s tab=%s event=handback_imported mode=history mac_program=%s server_program=%s messages=%d", roots.ID, tab, macProgram, server.Provider, len(history.History))
+		return "imported", bytes, nil
+	}
 	if err = pull(&server); err != nil {
 		return "", 0, err
 	}
@@ -288,6 +322,40 @@ func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.R
 	}
 	log.Printf("[ALWAYS_ON] project=%s tab=%s event=handback_imported provider=%s bytes=%d", roots.ID, tab, server.Provider, bytes)
 	return "imported", bytes, nil
+}
+
+// crewHandbackMacProgram is the AI program this Mac runs the conversation on.
+func crewHandbackMacProgram(record *ProductConversationRecord, mine *sessiontransfer.Bundle) string {
+	if mine != nil {
+		return mine.Provider
+	}
+	if record != nil {
+		return strings.TrimSpace(record.Provider)
+	}
+	return ""
+}
+
+// crewHandbackHistoryExtends: this Mac's saved history of the conversation is the start of the server's, so the server
+// only added turns (the Mac did not answer in it meanwhile).
+func crewHandbackHistoryExtends(owner string, record ProductConversationRecord, server []llmtypes.MessageContent) bool {
+	raw, err := ReadChatHistoryConversation(owner, record.SessionID, record.WorkspacePath)
+	if err != nil {
+		return errors.Is(err, errChatHistoryConversationNotFound)
+	}
+	var doc struct {
+		History []llmtypes.MessageContent `json:"conversation_history"`
+	}
+	if json.Unmarshal(raw, &doc) != nil || len(doc.History) > len(server) {
+		return false
+	}
+	for i := range doc.History {
+		a, _ := json.Marshal(doc.History[i])
+		b, _ := json.Marshal(server[i])
+		if !bytes.Equal(a, b) {
+			return false
+		}
+	}
+	return true
 }
 
 // crewHandbackMineForTest stands in for finding and capturing the Mac's own version (it needs a provider runtime) in
