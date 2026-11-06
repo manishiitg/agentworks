@@ -252,21 +252,14 @@ it('opens AgentBridge directly with current product permission checks', async ()
   })
 })
 
-it('names expanded shared shortcuts on keyboard focus and rechecks access before navigation', async () => {
-  mocks.enabled = ['work', 'agentworks', 'relays', 'knowledgebase', 'mcp-gateway', 'bullpen']
+it('keeps the CLI shortcut accessible by keyboard after moving products to settings', async () => {
   await render(async host => {
-    const brain = host.querySelector<HTMLButtonElement>('[aria-label="Brain"]')!
-    const vault = host.querySelector<HTMLButtonElement>('[aria-label="Vault"]')!
-    expect(brain.textContent).toBe('')
-    expect(host.querySelector('a[aria-label="Dashboards"]')?.getAttribute('href')).toBe('/dashboards')
-    await act(async () => brain.focus())
-    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Brain')
-    await act(async () => brain.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    const cli = host.querySelector<HTMLButtonElement>('[aria-label="AgentWorks CLI & MCP"]')!
+    await act(async () => cli.focus())
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('AgentWorks CLI & MCP')
+    await act(async () => cli.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(document.querySelector('[role="tooltip"]')).toBeNull()
-    mocks.user.allowed_products = ['knowledgebase']
-    await act(async () => { vault.click() })
-    expect(mocks.openProduct).not.toHaveBeenCalled()
-    await act(async () => brain.click())
-    expect(mocks.openProduct).toHaveBeenCalledWith('knowledgebase')
+    await act(async () => cli.click())
+    expect(mocks.openSettings).toHaveBeenCalledWith('mcp')
   }, () => <SharedToolShortcuts />)
 })
