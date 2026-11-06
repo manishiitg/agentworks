@@ -21,7 +21,7 @@ var errProjectSecretOwner = errors.New("Only the owner can add a secret here, be
 func (api *StreamingAPI) saveProjectSecret(ctx context.Context, actor, root, name, value string) (string, error) {
 	actor, name = strings.TrimSpace(actor), strings.TrimSpace(name)
 	owner := api.projectSecretsOwner(actor, root)
-	// A Crew's co-owners and Team members add secrets too (reviewer, 5 Nov: Team = co-owner parity); the value goes
+	// A Crew's joined Team members add secrets too (reviewer, 5 Nov); the value goes
 	// into the owner's Vault and is lent like the owner's own. Elsewhere only the owner.
 	if actor == "" || owner != actor && api.crewSecretsPerson(actor, root, "add_secret") != owner {
 		return "", errProjectSecretOwner

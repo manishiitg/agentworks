@@ -20,9 +20,7 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 	for _, person := range []string{"owner", "other"} {
 		t.Run(person, func(t *testing.T) {
 			f, _ := newExternalCrewCommandFixture(t)
-			if _, err := defaultProjectOwners().AddCoOwner("work", "test-team", "other"); err != nil {
-				t.Fatal(err)
-			}
+			joinCrewTeam(t, "test-team", "other")
 			claims := &UserClaims{UserID: person, Username: person}
 			ctx := context.WithValue(context.Background(), UserContextKey, claims)
 			const panelSession = "co-owner-panel-parity"
@@ -31,20 +29,15 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 			if err := f.api.registerWorkspacePanelChatTools(panels, nil, person, panelSession, externalCommandCrewRoot, "work"); err != nil {
 				t.Fatal(err)
 			}
-			// The panel keeps its chat tool names; MCP reaches the same handlers by their merged names.
-			for name, args := range map[string]map[string]any{"settings": {"action": "get"}, "crew_owners": {"action": "list"}} {
-				got, err := panels.tools[name].exec(ctx, args)
-				if err != nil {
-					t.Fatalf("%s native panel as %s: %v", name, person, err)
-				}
-				mcpName, mcpArgs := name, args
-				if name == "crew_owners" {
-					mcpName, mcpArgs = "workspace", map[string]any{"action": "owners"}
-				}
-				want := crewCapabilityHTTP(t, f, crewWriter(person), mcpName, mcpArgs, 200)
-				if strings.TrimSpace(got) != strings.TrimSpace(want) {
-					t.Fatalf("%s chat and MCP differ for %s", name, person)
-				}
+			// The panel tool and MCP reach the same handler.
+			args := map[string]any{"action": "get"}
+			got, err := panels.tools["settings"].exec(ctx, args)
+			if err != nil {
+				t.Fatalf("settings native panel as %s: %v", person, err)
+			}
+			want := crewCapabilityHTTP(t, f, crewWriter(person), "settings", args, 200)
+			if strings.TrimSpace(got) != strings.TrimSpace(want) {
+				t.Fatalf("settings chat and MCP differ for %s", person)
 			}
 
 			// The existing native settings tool and MCP/app adapters share storage.
@@ -225,9 +218,7 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 				logConfigurationCatalog(t, "crew-run-ask", run.tools)
 			}
 			if person == "other" {
-				if _, err := defaultProjectOwners().RemoveCoOwner("work", "test-team", person); err != nil {
-					t.Fatal(err)
-				}
+				joinCrewTeam(t, "test-team")
 				if _, err := panels.tools["settings"].exec(ctx, map[string]any{"action": "get"}); err == nil {
 					t.Fatal("retained Builder panel admitted removed co-owner")
 				}

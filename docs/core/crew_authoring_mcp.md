@@ -75,7 +75,7 @@ The built-in domain skill is `software-work`. Its short index links to focused r
   MCP / CLI OAuth grant). Existing OAuth logins must sign in again to get it.
 - **Account:** disabled accounts, read-only (viewer) accounts and accounts
   without the Crew product are refused.
-- **Ownership:** owners and co-owners build the same Crew, with each owner controlling their own chat tabs. Other people use the entry points shared with them; `get_crew.access` reports the current access.
+- **Ownership:** the main owner and, while the Team is on, its joined members build the same Crew, each controlling their own chat tabs. Other people use the entry points shared with them; `get_crew.access` reports the current access.
 - **Token bounds:** a token bounded to specific Crews edits only those; creating
   or importing needs a connection covering all your Crews.
 

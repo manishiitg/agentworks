@@ -126,7 +126,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 		}
 	}
 	if agentprofiles.HasFeature(profile.Definition, "costs") {
-		if err := register("get_crew_costs", "Read this Crew's Costs and usage: total spend, tokens and calls, by day, activity and model. Uses the app's ledger and existing Crew owner access, including co-owners. days defaults to 30 (at most 90); before pages back by UTC date.", map[string]any{"days": externalInteger(1, 90), "before": externalString("Only spend before this UTC date (YYYY-MM-DD).")}, nil, func(r *http.Request, args map[string]any) (string, error) {
+		if err := register("get_crew_costs", "Read this Crew's Costs and usage: total spend, tokens and calls, by day, activity and model. Uses the app's ledger and existing Crew owner access, including Team members. days defaults to 30 (at most 90); before pages back by UTC date.", map[string]any{"days": externalInteger(1, 90), "before": externalString("Only spend before this UTC date (YYYY-MM-DD).")}, nil, func(r *http.Request, args map[string]any) (string, error) {
 			w := httptest.NewRecorder()
 			api.externalCrewCosts(w, r, args)
 			return responseText(w)

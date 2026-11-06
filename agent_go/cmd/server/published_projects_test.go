@@ -177,20 +177,6 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	if response := readSaved(other, 0, 7); response.Code < 400 {
 		t.Fatal("Run caller read saved chat over MCP")
 	}
-	if _, err := registry.AddCoOwner("code", "app-c0de0001", "other"); err != nil {
-		t.Fatal(err)
-	}
-	builderDownload := httptest.NewRecorder()
-	api.handlePublicationHistory(builderDownload, request.WithContext(other))
-	if builderDownload.Code != 200 || !strings.Contains(builderDownload.Body.String(), "PRIVATE_RAW_HISTORY") {
-		t.Fatalf("co-owner lost Builder history: %d %s", builderDownload.Code, builderDownload.Body.String())
-	}
-	if response := readSaved(other, 0, 65536); response.Code != 200 || !strings.Contains(response.Body.String(), "PRIVATE_RAW_HISTORY") {
-		t.Fatalf("co-owner MCP archive=%d %s", response.Code, response.Body.String())
-	}
-	if _, err := registry.RemoveCoOwner("code", "app-c0de0001", "other"); err != nil {
-		t.Fatal(err)
-	}
 	if err := registry.SetRunPeople("code", "app-c0de0001", nil); err != nil {
 		t.Fatal(err)
 	}

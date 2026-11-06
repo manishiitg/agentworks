@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"net/http"
 	"net/http/httptest"
@@ -180,32 +179,21 @@ func TestWorkspaceFailedTurnDoesNotHideOrReplaceNewerTurns(t *testing.T) {
 }
 
 func TestWorkspaceCodeDeletionUsesItsNativeOrigin(t *testing.T) {
-	for _, coOwner := range []bool{false, true} {
-		t.Run(fmt.Sprint(coOwner), func(t *testing.T) {
-			f := newMultiUserFixture(t, legacyIdentityLayout())
-			caller := fixtureUserA
-			if coOwner {
-				caller = fixtureUserB
-				if _, err := defaultProjectOwners().AddCoOwner("code", fixtureCodeFolder, caller); err != nil {
-					t.Fatal(err)
-				}
-			}
-			key := "code:" + fixtureCodeID
-			req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(f.Ctx(caller))
-			rec := httptest.NewRecorder()
-			f.API.externalCrewProjectCall(rec, req, map[string]any{"action": "delete", "confirm": key}, key)
-			if rec.Code != http.StatusOK {
-				t.Fatalf("delete code as co-owner=%v: %d %s", coOwner, rec.Code, rec.Body.String())
-			}
-			f.Mock.mu.Lock()
-			defer f.Mock.mu.Unlock()
-			if _, present := f.Mock.files[f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)+"/product.json"]; present {
-				t.Fatal("Code source still present after deletion")
-			}
-			if _, present := f.Mock.files[f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)+"/product.json"]; !present {
-				t.Fatal("another origin was deleted")
-			}
-		})
+	f := newMultiUserFixture(t, legacyIdentityLayout())
+	key := "code:" + fixtureCodeID
+	req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(f.Ctx(fixtureUserA))
+	rec := httptest.NewRecorder()
+	f.API.externalCrewProjectCall(rec, req, map[string]any{"action": "delete", "confirm": key}, key)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete code: %d %s", rec.Code, rec.Body.String())
+	}
+	f.Mock.mu.Lock()
+	defer f.Mock.mu.Unlock()
+	if _, present := f.Mock.files[f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)+"/product.json"]; present {
+		t.Fatal("Code source still present after deletion")
+	}
+	if _, present := f.Mock.files[f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)+"/product.json"]; !present {
+		t.Fatal("another origin was deleted")
 	}
 }
 

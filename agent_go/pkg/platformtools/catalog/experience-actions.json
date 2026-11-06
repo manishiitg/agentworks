@@ -429,30 +429,6 @@
   },
   {
     "family": "workspace",
-    "name": "owners",
-    "member": "crew_owners__list",
-    "description": "Use the current workspace owners operation.",
-    "source": "crew_owners",
-    "source_action": "list"
-  },
-  {
-    "family": "workspace",
-    "name": "owner_add",
-    "member": "crew_owners__add",
-    "description": "Use the current workspace owner add operation.",
-    "source": "crew_owners",
-    "source_action": "add"
-  },
-  {
-    "family": "workspace",
-    "name": "owner_remove",
-    "member": "crew_owners__remove",
-    "description": "Use the current workspace owner remove operation.",
-    "source": "crew_owners",
-    "source_action": "remove"
-  },
-  {
-    "family": "workspace",
     "name": "team_clashes",
     "member": "crew_team_sync__clashes",
     "description": "Use the current workspace team clashes operation.",
@@ -482,6 +458,22 @@
     "description": "Use the current workspace team agent rule operation.",
     "source": "crew_team_sync",
     "source_action": "agent_rule"
+  },
+  {
+    "family": "workspace",
+    "name": "team_directory",
+    "member": "crew_team_sync__directory",
+    "description": "Use the current workspace team directory operation.",
+    "source": "crew_team_sync",
+    "source_action": "directory"
+  },
+  {
+    "family": "workspace",
+    "name": "team_people",
+    "member": "crew_team_sync__people",
+    "description": "Use the current workspace team people operation.",
+    "source": "crew_team_sync",
+    "source_action": "people"
   },
   {
     "family": "workspace",

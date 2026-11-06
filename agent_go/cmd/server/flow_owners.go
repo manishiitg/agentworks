@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,6 +14,13 @@ import (
 // listed) is who it runs as, and owners manage the shared owner list. A Flow has one shared draft in version 1 and no
 // Builder lock; a publish says whose version it replaced.
 
+type flowOwnersState struct {
+	Owner     runSharePerson   `json:"owner"`
+	CoOwners  []runSharePerson `json:"co_owners"`
+	CanManage bool             `json:"can_manage"`
+	Note      string           `json:"note,omitempty"`
+}
+
 // projectMainOwner is who a Goal or Flow runs as and who cannot be removed: a Goal team's leader, else relayBuilder.
 func projectMainOwner(manifest *WorkflowManifest) string {
 	if manifest.Team != nil && manifest.Team.LeaderID != "" {
@@ -22,10 +30,10 @@ func projectMainOwner(manifest *WorkflowManifest) string {
 }
 
 // flowOwnersStateFor lists a Goal's or Flow's owners for callerID (one sharing model, 2026-10-27).
-func flowOwnersStateFor(manifest *WorkflowManifest, callerID string) crewOwnersState {
+func flowOwnersStateFor(manifest *WorkflowManifest, callerID string) flowOwnersState {
 	dir, _ := readUserDirectoryFile()
 	main := projectMainOwner(manifest)
-	state := crewOwnersState{CanManage: containsID(manifest.effectiveOwners(), callerID), CoOwners: []runSharePerson{}}
+	state := flowOwnersState{CanManage: containsID(manifest.effectiveOwners(), callerID), CoOwners: []runSharePerson{}}
 	if people := peopleForIDs(dir, []string{main}); len(people) == 1 {
 		state.Owner = people[0]
 	}
@@ -40,24 +48,24 @@ func flowOwnersStateFor(manifest *WorkflowManifest, callerID string) crewOwnersS
 }
 
 // changeFlowOwners applies one add or remove by a project owner. It returns the new state, or a refusal (status, code, message).
-func (api *StreamingAPI) changeFlowOwners(ctx context.Context, claims *UserClaims, root string, manifest *WorkflowManifest, action, email string) (crewOwnersState, int, string, string) {
+func (api *StreamingAPI) changeFlowOwners(ctx context.Context, claims *UserClaims, root string, manifest *WorkflowManifest, action, email string) (flowOwnersState, int, string, string) {
 	main := projectMainOwner(manifest)
 	if main == "" || !containsID(manifest.effectiveOwners(), claims.UserID) {
-		return crewOwnersState{}, http.StatusForbidden, "forbidden", "Only an owner can add or remove owners."
+		return flowOwnersState{}, http.StatusForbidden, "forbidden", "Only an owner can add or remove owners."
 	}
 	if email == "" {
-		return crewOwnersState{}, http.StatusBadRequest, "invalid_arguments", "Give the person's email."
+		return flowOwnersState{}, http.StatusBadRequest, "invalid_arguments", "Give the person's email."
 	}
 	dir, _ := readUserDirectoryFile()
 	people, unknown := resolveShareEmails(dir, []string{email})
 	if len(people) != 1 {
-		return crewOwnersState{}, http.StatusNotFound, "not_found", "No active account has the email " + strings.Join(unknown, ", ") + "."
+		return flowOwnersState{}, http.StatusNotFound, "not_found", "No active account has the email " + strings.Join(unknown, ", ") + "."
 	}
 	target := people[0].ID
-	state := crewOwnersState{}
+	state := flowOwnersState{}
 	if sanitizeUserIDForPath(target) == sanitizeUserIDForPath(main) {
 		if action == "remove" {
-			return crewOwnersState{}, http.StatusConflict, "creator", "The main owner cannot be removed as an owner."
+			return flowOwnersState{}, http.StatusConflict, "creator", "The main owner cannot be removed as an owner."
 		}
 		return flowOwnersStateFor(manifest, claims.UserID), 0, "", ""
 	}
@@ -96,7 +104,7 @@ func (api *StreamingAPI) changeFlowOwners(ctx context.Context, claims *UserClaim
 		}
 		if err := WriteWorkflowManifest(writeCtx, root, manifest); err != nil {
 			log.Printf("[FLOW_OWNERS] %s %s on %s failed: %v", action, target, root, err)
-			return crewOwnersState{}, http.StatusInternalServerError, "failed", "The owners could not be changed. Try again."
+			return flowOwnersState{}, http.StatusInternalServerError, "failed", "The owners could not be changed. Try again."
 		}
 		if action == "remove" {
 			api.stopRemovedOwnerSessions(target, root)
@@ -121,7 +129,7 @@ func withoutID(list []string, id string) []string {
 }
 
 // flowOwnerTurnOwner is the main owner of the Flow at workspacePath when callerID is one of its CO-owners, or "": such a
-// caller's Builder turn runs as the main owner for provider accounts and token limits (like a Crew co-owner's).
+// caller's Builder turn runs as the main owner for provider accounts and token limits.
 func flowOwnerTurnOwner(ctx context.Context, callerID, workspacePath string) string {
 	root := flowRootOfPath(workspacePath)
 	if root == "" {
@@ -285,4 +293,74 @@ func stringListArg(raw any) ([]string, bool) {
 		return out, true
 	}
 	return nil, false
+}
+
+// The Share popup's Owners section talks to the dashboards endpoint, like Share itself: owners lists a Goal's or Flow's
+// owners, owner_add and owner_remove (any current owner, checked in changeFlowOwners) change them.
+func dashboardOwnersAction(action string) bool {
+	return action == "owners" || dashboardOwnersWrite(action)
+}
+
+func dashboardOwnersWrite(action string) bool {
+	return action == "owner_add" || action == "owner_remove"
+}
+
+func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string) {
+	if target.Kind != "relay" && target.Kind != "workflow" {
+		externalError(w, http.StatusNotFound, "not_found", "Owners are available for Goals and Flows. A Crew's builders are its owner and its Team.")
+		return
+	}
+	level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, target.Root)
+	if manifest == nil || level != WorkflowAccessOwner {
+		externalError(w, http.StatusNotFound, "not_found", "Not found or not allowed.")
+		return
+	}
+	state := flowOwnersStateFor(manifest, claims.UserID)
+	if dashboardOwnersWrite(action) {
+		if !dashboardAuthoringAllowed(claims, &target) {
+			externalError(w, http.StatusForbidden, "insufficient_scope", "Changing owners needs an owner and existing authoring consent.")
+			return
+		}
+		if len(emails) == 0 {
+			externalError(w, http.StatusBadRequest, "invalid_arguments", "Give the person's email.")
+			return
+		}
+		for _, email := range emails {
+			next, status, code, message := api.changeFlowOwners(r.Context(), claims, target.Root, manifest, strings.TrimPrefix(action, "owner_"), strings.TrimSpace(email))
+			if status != 0 {
+				externalError(w, status, code, message)
+				return
+			}
+			state = next
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(state)
+}
+
+// stopRemovedOwnerSessions ends the running chats and Builder terminals a removed Flow owner or Team member has at root.
+// Their next message is refused anyway (access is read on every request); this also stops what is already running,
+// whose folder access was granted when it started.
+func (api *StreamingAPI) stopRemovedOwnerSessions(userID, root string) {
+	root = canonicalCrewWorkspaceRoot(root)
+	person := sanitizeUserIDForPath(userID)
+	if api == nil || root == "" || person == "" {
+		return
+	}
+	var ids []string
+	api.activeSessionsMux.RLock()
+	for id, session := range api.activeSessions {
+		if session == nil || sanitizeUserIDForPath(session.UserID) != person {
+			continue
+		}
+		at := canonicalCrewWorkspaceRoot(session.WorkspacePath)
+		if at == root || strings.HasPrefix(at, root+"/") {
+			ids = append(ids, id)
+		}
+	}
+	api.activeSessionsMux.RUnlock()
+	for _, id := range ids {
+		log.Printf("[CREW_OWNERS] crew=%s stopping session=%s of removed co_owner=%s", root, id, person)
+		api.cancelSessionRuntimeWork(id, "no longer an owner of this Crew", runtimePhaseCanceled)
+	}
 }

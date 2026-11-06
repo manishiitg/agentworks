@@ -19,6 +19,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 const productScheduleJobPrefix = "product:"
@@ -528,7 +529,7 @@ func (s *ProjectActionDispatcher) JobsForBuilder(ctx context.Context, userID str
 	}
 	owners := map[string]bool{}
 	for _, record := range records {
-		if registryListHas(record.CoOwners, userID) {
+		if crewIsCoOwner(firstNonEmptyTrimmed(record.CanonicalRoot, workspaceref.SharedProjectPath(record.Folder)), userID) {
 			owners[record.OwnerID] = true
 		}
 	}

@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -78,9 +77,6 @@ type projectOwnerRecord struct {
 	SharedAgents []string `json:"shared_agents,omitempty"`
 	// SharedAgentSince is when each selected conversation became shared.
 	SharedAgentSince map[string]string `json:"shared_agent_since,omitempty"`
-	// CoOwners are the accounts that build this Crew together with its main owner (OwnerID, the creator, who never changes
-	// and who everything runs as). Server-controlled like the rest of the record; a Crew at the shared root only.
-	CoOwners []string `json:"co_owners,omitempty"`
 }
 
 type projectOwnerFile struct {
@@ -316,62 +312,6 @@ func (r *projectOwnerRegistry) SetRunPeople(product, folder string, people []str
 		projects[key] = current
 		return true, nil
 	})
-}
-
-// AddCoOwner records an account as a co-owner of a registered project; adding the main owner or an existing co-owner changes
-// nothing. Returns whether the list changed.
-func (r *projectOwnerRegistry) AddCoOwner(product, folder, userID string) (changed bool, err error) {
-	userID = strings.TrimSpace(userID)
-	if userID == "" {
-		return false, errors.New("a co-owner needs an account id")
-	}
-	err = r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
-		key := projectOwnerKey(product, folder)
-		current, exists := projects[key]
-		if !exists {
-			return false, fmt.Errorf("%s is not registered", key)
-		}
-		if current.OwnerID == userID {
-			return false, nil
-		}
-		for _, existing := range current.CoOwners {
-			if existing == userID {
-				return false, nil
-			}
-		}
-		current.CoOwners = append(append([]string(nil), current.CoOwners...), userID)
-		// An owner is no longer a named user of the same Crew: the move is one registry change.
-		current.RunPeople = slices.DeleteFunc(append([]string(nil), current.RunPeople...), func(id string) bool { return id == userID })
-		projects[key] = current
-		changed = true
-		return true, nil
-	})
-	return changed, err
-}
-
-// RemoveCoOwner drops a co-owner. The main owner is not in this list and cannot be removed here. Returns whether it changed.
-func (r *projectOwnerRegistry) RemoveCoOwner(product, folder, userID string) (changed bool, err error) {
-	err = r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
-		key := projectOwnerKey(product, folder)
-		current, exists := projects[key]
-		if !exists {
-			return false, fmt.Errorf("%s is not registered", key)
-		}
-		kept := make([]string, 0, len(current.CoOwners))
-		for _, existing := range current.CoOwners {
-			if existing != strings.TrimSpace(userID) {
-				kept = append(kept, existing)
-			}
-		}
-		if len(kept) == len(current.CoOwners) {
-			return false, nil
-		}
-		current.CoOwners = kept
-		projects[key] = current
-		changed = true
-		return true, nil
-	})
-	return changed, err
 }
 
 // Remove drops a project's entry (the project was deleted).

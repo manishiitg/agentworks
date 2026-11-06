@@ -28,13 +28,11 @@ func TestCrewBuilderAnswerSavesThePersonsDecision(t *testing.T) {
 	})
 	const rootA, rootB = "Crew/approval-a", "Crew/approval-b"
 	for _, folder := range []string{"approval-a", "approval-b"} {
-		if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, OwnerID: "owner", Shared: true}); err != nil {
+		if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, ProjectID: folder, OwnerID: "owner", Shared: true}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := registry.AddCoOwner("work", "approval-a", "co"); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, "approval-a", "co")
 	api := &StreamingAPI{eventStore: internalevents.NewEventStore(20), lastQueryRequests: map[string]QueryRequest{}, activeSessions: map[string]*ActiveSessionInfo{}}
 	previousAPI := workflowToolsAPI
 	workflowToolsAPI = api
@@ -196,9 +194,7 @@ func TestCrewBuilderAnswerSavesThePersonsDecision(t *testing.T) {
 		t.Fatal("Crew A's input ID was answered inside Crew B")
 	}
 	_, coCtx := register("revoked-co", "co", rootA, "work", false, nil)
-	if _, err := registry.RemoveCoOwner("work", "approval-a", "co"); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, "approval-a")
 	refuseLifecycle(coCtx, args)
 	if _, err := answer(coCtx, args); err == nil {
 		t.Fatal("removed co-owner answered through a retained tool")

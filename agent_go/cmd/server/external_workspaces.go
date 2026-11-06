@@ -290,7 +290,7 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				continue
 			}
 			// A Crew that lives on its owner's Mac is listed online for its owner and for the people who joined its
-			// Team (owner, 5 Nov: "we only have crews"); no other co-owner or Run person (PLAT-856-509). Once moved
+			// Team (owner, 5 Nov: "we only have crews"); no Run person (PLAT-856-509). Once moved
 			// online it is an ordinary server Crew.
 			relay, _ := crewroot.ReadSync(doc.ID)
 			if relay != nil && (relay.Side != "server" || relay.Editing != "local") {
@@ -336,7 +336,7 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 	externalJSON(w, map[string]any{"workspaces": items})
 }
 
-// ownerHasCrewCoOwnedBy reports whether any of owner's projects of profile lists callerID as a co-owner. A listing
+// ownerHasCrewCoOwnedBy reports whether any of owner's projects of profile has callerID as a joined Team member. A listing
 // failure answers true so the full path decides.
 func ownerHasCrewCoOwnedBy(ctx context.Context, profile agentprofiles.Profile, owner, callerID string) bool {
 	paths, _, err := listProjectManifestPaths(ctx, defaultProductProjectStore(), owner, profile)

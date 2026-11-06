@@ -111,7 +111,7 @@ func crewAccessFor(claims *UserClaims, ref crewPathRef) crewAccessLevel {
 		return crewAccessNone
 	}
 
-	// A co-owner builds with the same rights as the main owner (crew_co_owners.go); identity stays the main owner's.
+	// A joined Team member builds with the same rights as the main owner (crew_co_owners.go); identity stays the main owner's.
 	if crewIsCoOwner(ref.Root, claims.UserID) {
 		return crewAccessOwner
 	}

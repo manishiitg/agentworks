@@ -241,9 +241,7 @@ esac
 	// Shared Crew execution uses its selected account, independently of caller.
 	crew := "Crew/account-crew"
 	selectAccount("editor", "mine", crew, true, 200)
-	if _, err := owners.AddCoOwner("work", "account-crew", "builder"); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, "account-crew", "builder")
 	selectAccount("builder", "other", crew, true, 200)
 	listed := httptest.NewRecorder()
 	router.ServeHTTP(listed, googleAppRequest(http.MethodGet, "/api/human-feedback/gmail/connections?workspace_path=Crew/account-crew", "", "builder"))

@@ -228,10 +228,10 @@ func (t crewTeam) invited(user string) bool {
 	return user != "" && t.On && slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == user && p.Invited })
 }
 
-// Joined members manage the Team together. Permanent registry ownership and
-// each person's own machine/agent controls remain separate.
+// Joined members manage the Team together. The main owner and each person's own
+// machine/agent controls remain separate.
 func crewTeamCanManage(t crewTeam, user string) bool {
-	return user != "" && crewTeamAccountActive(user) && (t.member(user) || crewRegistryOwnedByCaller(user, crewProjectRootByID(t.ProjectID)))
+	return user != "" && crewTeamAccountActive(user) && (t.member(user) || crewProjectOwnedByCallerStrict(user, crewProjectRootByID(t.ProjectID)))
 }
 
 // crewTeamOwnerOnlyChange is the refusal for a save by someone other than the Crew's main owner that changes what only
@@ -253,14 +253,14 @@ func crewTeamOwnerOnlyChange(previous, input crewTeam, user string) string {
 }
 
 // A lost Team grant ends already-running work as well as refusing new turns.
-// An independent registry owner keeps their rights when leaving the Team.
+// The main owner keeps their rights whatever the Team does.
 func (api *StreamingAPI) stopRemovedCrewTeamSessions(previous, current crewTeam) {
 	root := crewProjectRootByID(previous.ProjectID)
 	if root == "" || !previous.On {
 		return
 	}
 	for _, person := range previous.People {
-		if !person.Invited && !current.member(person.UserID) && !crewRegistryOwnedByCaller(person.UserID, root) {
+		if !person.Invited && !current.member(person.UserID) && !crewProjectOwnedByCallerStrict(person.UserID, root) {
 			log.Printf("[CREW_TEAM] project=%s event=access_revoked user=%s", previous.ProjectID, logUsernameForUserID(person.UserID))
 			api.stopRemovedOwnerSessions(person.UserID, root)
 		}
@@ -399,7 +399,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	owner := ownerOfCrewProjectID(project)
 	if r.Method == http.MethodGet {
 		t, e := readCrewTeam(project)
-		if os.IsNotExist(e) && crewRegistryOwnedByCaller(claims.UserID, crewProjectRootByID(project)) {
+		if os.IsNotExist(e) && crewProjectOwnedByCallerStrict(claims.UserID, crewProjectRootByID(project)) {
 			t = crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}
 			e = nil
 		}

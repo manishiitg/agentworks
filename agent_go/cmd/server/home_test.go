@@ -334,18 +334,6 @@ func TestHomeInventoryIncludesOnlyAdmittedSharedCode(t *testing.T) {
 	if contains() {
 		t.Fatal("revoked Run audience retained in return inventory")
 	}
-	if _, err := registry.AddCoOwner("code", folder, "other"); err != nil {
-		t.Fatal(err)
-	}
-	if !contains() {
-		t.Fatal("co-owned Code missing from return inventory")
-	}
-	if _, err := registry.RemoveCoOwner("code", folder, "other"); err != nil {
-		t.Fatal(err)
-	}
-	if contains() {
-		t.Fatal("revoked co-owner retained in return inventory")
-	}
 	claims.AccessToken = &accesstokens.Token{Scopes: []string{"crews:read"}}
 	if contains() {
 		t.Fatal("scoped token reached Code return inventory")

@@ -28,7 +28,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 	}
 	if product == "work" {
 		// Browser and model chat tools already exist for Crews.
-		names = []string{"settings", "models", "crew_owners", "manage_messaging", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply", "crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff"}
+		names = []string{"settings", "models", "manage_messaging", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply", "crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff"}
 	}
 	names = append(names, "chat_preferences")
 	catalog, err := externalTools()
@@ -150,9 +150,8 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 			}
 			request := httptest.NewRequest(http.MethodPost, "/api/external/call", bytes.NewReader(data)).WithContext(ctx)
 			recorder := httptest.NewRecorder()
-			// Translated: the server chose this tool and project after the caller checks above. Panel tools such as
-			// crew_owners are internal members of a merged MCP tool (workspace action=owners), so an untranslated
-			// call was refused as unknown_tool (PLAT-856).
+			// Translated: the server chose this tool and project after the caller checks above. Panel tools can be
+			// internal members of a merged MCP tool, so an untranslated call was refused as unknown_tool (PLAT-856).
 			dispatched = true
 			api.dispatchExternalCall(recorder, request, true)
 			body := strings.TrimSpace(recorder.Body.String())
