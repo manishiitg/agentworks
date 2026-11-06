@@ -507,6 +507,9 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if err != nil {
 					return "", err
 				}
+				// Live test, 6 Nov: told only "replies are optional", an agent guessed the other tab "looks idle" while its
+				// answer was 40 s away. Say what happens: the answer arrives here by itself.
+				out["next"] = fmt.Sprintf("Sent to %s. Its answer comes back to this chat as a new message when it is ready, also while its owner's Mac is off; there is nothing to check or wait for. Tell the person it was sent.", chat.Name)
 				return jsonOut(out)
 			}},
 	}
