@@ -36,6 +36,14 @@ var crewStandbyMu sync.Mutex
 var crewStandbyAgents = map[string]*crewStandbyAgent{}
 var crewStandbySending sync.Map
 
+// crewStandbyMacTeam: this Mac Crew takes part in Always on, whoever's it is (owner, 6 Nov: Team members are equal):
+// the owner's Crew with the Team on, or a member's working copy of a Team's Crew. The server decides which agents are
+// eligible; this only keeps the loop away from Crews that are in no Team.
+func crewStandbyMacTeam(project string) bool {
+	state := readCrewTeamState(project)
+	return state.TeamOn || state.MemberOf != ""
+}
+
 // noteCrewStandbyTurn runs when a session's turn ends (updateSessionStatus). It only remembers the session and
 // (re)starts the agent's wait; all checks and work run when the wait ends.
 func (api *StreamingAPI) noteCrewStandbyTurn(session, workspace string) {
@@ -50,7 +58,7 @@ func (api *StreamingAPI) noteCrewStandbyTurn(session, workspace string) {
 		if b, err := crewroot.ReadSync(roots.ID); err != nil || b == nil || b.Side != "local" || b.Mode != "relay" {
 			return
 		}
-		if state := readCrewTeamState(roots.ID); !state.TeamOn || state.MemberOf != "" {
+		if !crewStandbyMacTeam(roots.ID) {
 			return
 		}
 		tab := ""
@@ -105,7 +113,7 @@ func (api *StreamingAPI) catchUpCrewStandby() {
 		if e != nil || b == nil || b.Side != "local" || b.Mode != "relay" {
 			continue
 		}
-		if s := readCrewTeamState(id); !s.TeamOn || s.MemberOf != "" {
+		if !crewStandbyMacTeam(id) {
 			continue
 		}
 		claims := &UserClaims{UserID: GetDefaultUserID(), Username: GetDefaultUserID()}
@@ -184,10 +192,11 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 	if err != nil || binding.Mode != "relay" {
 		return // Mac online is off for this Crew
 	}
-	if state := readCrewTeamState(project); !state.TeamOn || state.MemberOf != "" {
+	if !crewStandbyMacTeam(project) {
 		return
 	}
-	if placements, err := readCrewAgentPlacements(project); err != nil || placements[tab].Tab != "" {
+	member := readCrewTeamState(project).MemberOf != ""
+	if placements, err := readCrewAgentPlacements(project); !member && (err != nil || placements[tab].Tab != "") {
 		return // a published agent already runs on the server
 	}
 	roots, err := api.crewSyncRoots(ctx, claims, project)
@@ -196,9 +205,14 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 	}
 	// What only this Mac has goes with the first check, so the server's note for its turns names it (names only; a
 	// list that cannot be read now keeps the server's last one).
-	macOnly, _ := api.crewTeamMacOnly(ctx, claims.UserID, roots, connection, binding)
+	var macOnly []crewTeamMacOnlyItem
+	if !member {
+		macOnly, _ = api.crewTeamMacOnly(ctx, claims.UserID, roots, connection, binding)
+	}
 	call := func(action string, sessions []crewStandbySendItem) (*crewStandbyReply, error) {
-		request := &crewStandbyRequest{Tab: tab, Sessions: sessions}
+		// Peer names this Mac's own project: the server knows the owner's Mac from the Crew's pair, a member's only
+		// from what it names (crewStandbyRequest.Peer).
+		request := &crewStandbyRequest{Tab: tab, Sessions: sessions, Peer: project}
 		if action == "standby_check" && sessions == nil {
 			request.MacOnly = macOnly
 		}
@@ -327,7 +341,7 @@ func (api *StreamingAPI) crewStandbyMacRefusal(ctx context.Context, profileID, k
 	if b, err := crewroot.ReadSync(project); err != nil || b == nil || b.Side != "local" || b.Mode != "relay" {
 		return ""
 	}
-	if state := readCrewTeamState(project); !state.TeamOn || state.MemberOf != "" {
+	if !crewStandbyMacTeam(project) {
 		return ""
 	}
 	seen, ok := crewStandbyWriters.Load(project + "\x00" + tab)
@@ -336,7 +350,7 @@ func (api *StreamingAPI) crewStandbyMacRefusal(ctx context.Context, profileID, k
 		check, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		if claims, binding, connection, err := api.desktopCrewChatBinding(check, project); err == nil && binding.Mode == "relay" {
-			reply, err := desktopCrewSyncCall(check, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "standby_check", PairID: binding.PairID, Standby: &crewStandbyRequest{Tab: tab}})
+			reply, err := desktopCrewSyncCall(check, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: "standby_check", PairID: binding.PairID, Standby: &crewStandbyRequest{Tab: tab, Peer: project}})
 			if err == nil && reply.Standby != nil {
 				writer = reply.Standby.Writer
 			}

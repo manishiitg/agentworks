@@ -398,7 +398,7 @@ func crewOwnerCopyWanted(t crewTeam) bool {
 	if IsLocalMode() || !t.On || t.Folder.ID == "" || t.OwnerID == "" || !crewRelayTwin(t.ProjectID) {
 		return false
 	}
-	rows, err := readCrewStandby(t.ProjectID)
+	rows, err := readCrewStandby(t.ProjectID, t.OwnerID)
 	return err == nil && len(rows) > 0
 }
 

@@ -234,13 +234,21 @@ func crewNativeAssembleInto(dir string, files map[string]chunkedFile, chunk func
 func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	op := mux.Vars(r)["op"]
-	roots, err := api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"])
-	if err != nil {
-		externalError(w, 403, "native_sync_unavailable", "Only this project's owner can sync its private session.")
+	pair := r.URL.Query().Get("pair")
+	// A joined Team member's Mac syncs its standby sessions here too, by the pair the Team recorded for them, into
+	// their own staging folder (crewMemberTransfer); everyone else needs the Crew owner's pair.
+	roots, binding, member, err := api.crewMemberTransfer(r.Context(), claims, mux.Vars(r)["project"], pair)
+	if member && err != nil {
+		externalError(w, 403, "native_sync_unavailable", "Use your own Mac's connection for this Crew.")
 		return
 	}
-	pair := r.URL.Query().Get("pair")
-	binding, err := crewroot.ReadSync(roots.ID)
+	if !member {
+		if roots, err = api.crewSyncRoots(r.Context(), claims, mux.Vars(r)["project"]); err != nil {
+			externalError(w, 403, "native_sync_unavailable", "Only this project's owner can sync its private session.")
+			return
+		}
+		binding, err = crewroot.ReadSync(roots.ID)
+	}
 	if err != nil || binding == nil || binding.ArchiveOnly || binding.Side != "server" || binding.PairID != pair || binding.Editing != "local" {
 		externalError(w, 409, "native_sync_unavailable", "Use the project's current sync connection.")
 		return
@@ -299,13 +307,21 @@ func (api *StreamingAPI) handleCrewNativeSync(w http.ResponseWriter, r *http.Req
 			return
 		}
 		// Workspace, then session: the order file handoffs take. A competing transfer is retryable.
-		unlock, err := wf.LockWorkspace(r.Context(), roots.Files)
+		lockDir := roots.Files
+		if member {
+			lockDir = roots.Private // a member has no copy of the Crew's files to hold here
+		}
+		unlock, err := wf.LockWorkspace(r.Context(), lockDir)
 		if err != nil {
 			fail(409, "native_sync_busy", err)
 			return
 		}
 		defer unlock()
-		if current, e := crewroot.ReadSync(roots.ID); e != nil || current == nil || current.PairID != pair || current.Editing != "local" {
+		if _, _, still, e := api.crewMemberTransfer(r.Context(), claims, roots.ID, pair); member && (!still || e != nil) {
+			fail(409, "native_sync_unavailable", fmt.Errorf("the active computer changed; sync again"))
+			return
+		}
+		if current, e := crewroot.ReadSync(roots.ID); !member && (e != nil || current == nil || current.PairID != pair || current.Editing != "local") {
 			fail(409, "native_sync_unavailable", fmt.Errorf("the active computer changed; sync again"))
 			return
 		}

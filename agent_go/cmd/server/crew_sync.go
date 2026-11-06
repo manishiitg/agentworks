@@ -143,21 +143,30 @@ func saveCrewSyncManifest(id string, files crewsync.Manifest) error {
 	return fsutil.WriteJSONAtomic(p, files, 0600)
 }
 
-func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, id string) (crewroot.Roots, error) {
+// crewSyncClaimsGate is the part of the sync admission that depends only on the connection: a personal sign-in (or full
+// Builder connection) allowed to author Crews, with the whole project in reach. The ownership check comes after it.
+func crewSyncClaimsGate(claims *UserClaims, id string) *crewSyncFailure {
 	if !personalLaptopSettingsClaims(claims) {
-		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "use your own interactive Crew chat or personal Builder connection to sync"}
+		return &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "use your own interactive Crew chat or personal Builder connection to sync"}
 	}
 	if code, message := externalCrewAuthorGate(claims); code != 0 {
-		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: message}
+		return &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: message}
 	}
 	if claims.AccessToken != nil && (!claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(id))) {
-		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "this connection cannot sync this Crew"}
+		return &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "this connection cannot sync this Crew"}
 	}
 	if token := claims.AccessToken; token != nil && token.FileGuard != nil {
 		guard := token.FileGuard
 		if !guard.Allows(".", false) || !guard.Allows(".", true) || len(guard.BlockedPaths)+len(guard.BlockedWritePaths)+len(guard.ReadOnlyPaths) > 0 {
-			return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "sync needs access to the whole project; use the Mac app or a full-project Builder connection"}
+			return &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "sync needs access to the whole project; use the Mac app or a full-project Builder connection"}
 		}
+	}
+	return nil
+}
+
+func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, id string) (crewroot.Roots, error) {
+	if failure := crewSyncClaimsGate(claims, id); failure != nil {
+		return crewroot.Roots{}, failure
 	}
 	binding, _, ok := api.resolveExternalWorkspace(ctx, claims, id)
 	if !ok || !binding.OwnedByCaller || binding.OwnerID != claims.UserID {

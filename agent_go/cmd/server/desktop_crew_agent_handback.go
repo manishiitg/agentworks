@@ -59,7 +59,7 @@ func (api *StreamingAPI) handBackCrewStandby(project, tab string) {
 		return
 	}
 	call := func(action string, sessions []crewStandbySendItem) (*crewStandbyReply, error) {
-		reply, err := desktopCrewSyncCall(ctx, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: action, PairID: binding.PairID, Standby: &crewStandbyRequest{Tab: tab, Sessions: sessions}})
+		reply, err := desktopCrewSyncCall(ctx, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: action, PairID: binding.PairID, Standby: &crewStandbyRequest{Tab: tab, Sessions: sessions, Peer: project}})
 		if err != nil {
 			return nil, err
 		}

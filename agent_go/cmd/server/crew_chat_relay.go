@@ -287,7 +287,7 @@ func crewMacOffConversation(project, peer, tab string) (string, error) {
 			}
 		}
 	}
-	rows, err := readCrewStandby(project)
+	rows, err := readCrewStandby(project, ownerOfCrewProjectID(project))
 	if err != nil {
 		return "", nil
 	}
@@ -692,7 +692,7 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 				ConversationKey: project + codeChatSideMarker + id, ConversationID: row.ConversationID, SessionID: crewChatSessionID(project, row.ConversationID),
 				ChatLocation: "mac", Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned})
 		}
-	} else if rows, e := readCrewStandby(project); e == nil {
+	} else if rows, e := readCrewStandby(project, ownerOfCrewProjectID(project)); e == nil {
 		shared := readMacSharedAgents(project)
 		for tab, row := range rows {
 			session, ok := row.Sessions[macSharedAgentChatKey(b.PeerProjectID, tab)]

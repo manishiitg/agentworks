@@ -99,13 +99,18 @@ func crewHandbackMark(owner string, record ProductConversationRecord) string {
 // crewHandbackBusy: a server turn of the agent is running or queued, or a call routed to its server copy has not
 // reached either yet (crewStandbyRoute's in-flight mark).
 func (api *StreamingAPI) crewHandbackBusy(project, owner, tab string, sessions []crewHandbackSession) bool {
-	return crewStandbyInFlight(project, tab) || slices.ContainsFunc(sessions, func(s crewHandbackSession) bool {
+	return crewStandbyInFlight(project, owner, tab) || slices.ContainsFunc(sessions, func(s crewHandbackSession) bool {
 		return api.crewAgentTurnRunning(s.record.SessionID) || api.conversationTurnHasBacklog(owner, s.record.SessionID)
 	})
 }
 
 func (api *StreamingAPI) receiveCrewHandback(ctx context.Context, claims *UserClaims, id string, in crewSyncRequest) (crewSyncReply, error) {
-	roots, binding, err := api.crewTransferBinding(ctx, claims, id, in.PairID)
+	if in.Standby == nil {
+		return crewSyncReply{}, fmt.Errorf("choose one of this Crew's agents")
+	}
+	// owner is the person whose Mac agent this is, the Crew's owner or a joined member: each is admitted only by
+	// their own pair (crewStandbyAdmit) and reads only their own rows.
+	roots, binding, err := api.crewStandbyAdmit(ctx, claims, id, in.PairID, in.Standby.Peer)
 	if err != nil {
 		return crewSyncReply{}, err
 	}
@@ -113,17 +118,17 @@ func (api *StreamingAPI) receiveCrewHandback(ctx context.Context, claims *UserCl
 	if binding.Mode != "relay" || binding.Editing != "local" || binding.PendingAction != "" || binding.ArchiveOnly {
 		return out, &crewSyncFailure{Status: 409, Code: "wrong_pair", Message: "hand an agent back only to the Mac that holds this Crew"}
 	}
-	if in.Standby == nil || !crewMacTabID(in.Standby.Tab) {
+	if !crewMacTabID(in.Standby.Tab) {
 		return out, fmt.Errorf("choose one of this Crew's agents")
 	}
 	tab, owner := in.Standby.Tab, claims.UserID
 	reply := &crewStandbyReply{}
 	out.Standby = reply
-	rows, err := readCrewStandby(id)
+	rows, err := readCrewStandby(id, owner)
 	if err != nil {
 		return out, err
 	}
-	if row, ok := rows[tab]; !ok || row.Writer != "server" || row.PairID != binding.PairID {
+	if row, ok := rows[tab]; !ok || row.Writer != "server" || row.PairID != binding.PairID || owner != ownerOfCrewProjectID(id) && row.Peer != binding.PeerProjectID {
 		return out, nil // the Mac runs this agent already
 	}
 	reply.Writer = "server"
@@ -192,10 +197,10 @@ func (api *StreamingAPI) receiveCrewHandback(ctx context.Context, claims *UserCl
 	}
 
 	// handback_done: flip the writer back to the Mac, only if nothing ran here since the Mac took the conversations.
-	lock := crewStandbyLock(id)
+	lock := crewStandbyLock(id, owner)
 	lock.Lock()
 	defer lock.Unlock()
-	if rows, err = readCrewStandby(id); err != nil {
+	if rows, err = readCrewStandby(id, owner); err != nil {
 		return out, err
 	}
 	row, ok := rows[tab]
@@ -243,7 +248,7 @@ func (api *StreamingAPI) receiveCrewHandback(ctx context.Context, claims *UserCl
 		row.KeptAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	rows[tab] = row
-	if err = writeCrewStandby(id, rows); err != nil {
+	if err = writeCrewStandby(id, owner, rows); err != nil {
 		return out, err
 	}
 	reply.Writer, reply.Event = "", "done"
@@ -254,7 +259,7 @@ func (api *StreamingAPI) receiveCrewHandback(ctx context.Context, claims *UserCl
 	}
 	// An agent that turned Only me or left the Team while the server answered for it: handed back, its copy goes.
 	if ok, reason := crewStandbyEligible(id, owner, tab); !ok {
-		dropCrewStandbyTab(id, tab, reason)
+		dropCrewStandbyTab(id, owner, tab, reason)
 	}
 	return out, nil
 }
@@ -284,9 +289,19 @@ func rotateCrewHandbackRecord(ctx context.Context, owner, pair string, record Pr
 	return store.writeDocument(ctx, path, doc)
 }
 
-func crewHandbackAgentName(project, tab string) string {
+func crewHandbackAgentName(project, person, tab string) string {
+	if person != ownerOfCrewProjectID(project) {
+		// A member's agents are named by the list their Mac last sent.
+		if saved, ok := readSavedCrewMacTabs(project, person); ok {
+			for _, t := range saved {
+				if t.Tab == tab && strings.TrimSpace(t.Name) != "" {
+					return strings.TrimSpace(t.Name)
+				}
+			}
+		}
+	}
 	for _, agent := range readMacSharedAgents(project) {
-		if agent.Tab == tab && strings.TrimSpace(agent.Name) != "" {
+		if person == ownerOfCrewProjectID(project) && agent.Tab == tab && strings.TrimSpace(agent.Name) != "" {
 			return strings.TrimSpace(agent.Name)
 		}
 	}
@@ -296,9 +311,10 @@ func crewHandbackAgentName(project, tab string) string {
 	return "This agent"
 }
 
-// notifyCrewHandbackKept tells the owner once, in plain words, that the agent answered in both places.
+// notifyCrewHandbackKept tells the agent's person (owner is the owner of that Mac agent, the Crew's owner or a member)
+// once, in plain words, that the agent answered in both places.
 func notifyCrewHandbackKept(project, owner, tab string) {
-	name := crewHandbackAgentName(project, tab)
+	name := crewHandbackAgentName(project, owner, tab)
 	notifyEnqueue(notifyJob{event: "always_on_kept", direct: []notifyDirect{{user: owner, msg: notifyMessage{
 		Title: name + " answered in two places",
 		Body:  "While your Mac was off, " + name + " also answered on the server. Both versions are kept; your Mac's continues, and the server's is saved on your Mac.",
@@ -306,9 +322,9 @@ func notifyCrewHandbackKept(project, owner, tab string) {
 	}}}})
 }
 
-// crewHandbackKeptNote is the Team card's line for the owner after a hand back that kept both versions.
-func crewHandbackKeptNote(project, tab string) string {
-	rows, err := readCrewStandby(project)
+// crewHandbackKeptNote is the Team card's line for the agent's person after a hand back that kept both versions.
+func crewHandbackKeptNote(project, person, tab string) string {
+	rows, err := readCrewStandby(project, person)
 	if err != nil {
 		return ""
 	}
@@ -329,12 +345,13 @@ func offerCrewHandbacks(sock *crewMacSocket) {
 	}
 	sock.mu.Unlock()
 	for project, pair := range twins {
-		rows, err := readCrewStandby(project)
-		if err != nil || ownerOfCrewProjectID(project) != sock.owner {
+		// The connecting person's own rows, by the pair this connection was admitted with (owner or joined member).
+		rows, err := readCrewStandby(project, sock.owner)
+		if err != nil {
 			continue
 		}
 		for tab, row := range rows {
-			if row.Writer != "server" || row.PairID != pair {
+			if row.User != sock.owner || row.Writer != "server" || row.PairID != pair {
 				continue
 			}
 			if sock.send != nil && sock.send(crewRelayMessage{Type: "handback", Project: project, State: tab}) == nil {
