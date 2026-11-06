@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { FileCode2 } from 'lucide-react'
+import { FileCode2, Route } from 'lucide-react'
 import { isAxiosError } from 'axios'
 import api from '../../services/api'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
@@ -46,7 +46,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, kind }: { projectId
     {loaded && <>
       {kind === 'workflow' && visibleItems.length > 1 && <p className="text-sm text-muted-foreground">This Crew has earlier workflows. Open one to inspect it, or ask chat to combine their tasks into routes.</p>}
       {visibleItems.length === 0 && <p className="text-sm text-muted-foreground">{kind === 'script' ? 'No saved scripts yet.' : 'No workflow yet. Describe the work you want to repeat in chat.'}</p>}
-      <ul className="divide-y divide-border">{visibleItems.map(item => <li key={item.id}><button onClick={() => setSelected(item)} className="flex w-full items-center gap-3 py-4 text-left hover:text-primary"><FileCode2 className="h-5 w-5" /><span>{item.manifest.label}</span></button></li>)}</ul>
+      <ul className="divide-y divide-border">{visibleItems.map(item => <li key={item.id}><button onClick={() => setSelected(item)} className="flex w-full items-center gap-3 py-4 text-left hover:text-primary">{item.kind === 'workflow' ? <Route className="h-5 w-5" /> : <FileCode2 className="h-5 w-5" />}<span>{item.manifest.label}</span></button></li>)}</ul>
       <button onClick={() => void ask()} className="text-sm text-primary">{kind === 'script' ? 'Create a script in chat' : visibleItems.length ? 'Discuss in chat' : 'Set up in chat'}</button>
     </>}
   </div>

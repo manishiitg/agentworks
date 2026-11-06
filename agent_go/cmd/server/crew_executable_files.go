@@ -193,6 +193,7 @@ func crewPlanDefinitions() []workflow.ExternalPlanToolDefinition {
 	// Reuse the public action schemas and handlers; only the target is fixed to this Crew's child.
 	add := func(name, description string, _, _ bool, properties map[string]any, required ...string) {
 		delete(properties, "project")
+		description = strings.ReplaceAll(description, "Pass project.", "The target is this Crew's selected workflow or script.")
 		required = slices.DeleteFunc(required, func(key string) bool { return key == "project" })
 		if name == "manage_triggers" {
 			name = "manage_webhooks"

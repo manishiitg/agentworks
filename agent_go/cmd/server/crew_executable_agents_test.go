@@ -165,12 +165,16 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		t.Fatal("chat edit was not saved", got)
 	}
 	configure("manage_schedules", map[string]interface{}{"action": "delete", "schedule_id": timer.ID})
-	out = configure("manage_webhooks", map[string]interface{}{"action": "create", "trigger": map[string]interface{}{"name": "Inbound report", "enabled": false, "auth_mode": "bearer", "route_selections": map[string]interface{}{}}})
+	out = configure("manage_webhooks", map[string]interface{}{"action": "create", "trigger": map[string]interface{}{"name": "Inbound report", "enabled": false, "chat_id": chat.ConversationKey, "auth_mode": "bearer", "route_selections": map[string]interface{}{}}})
 	var hook struct {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal([]byte(out), &hook); err != nil || hook.ID == "" {
 		t.Fatal("webhook did not return an identity", err)
+	}
+	savedManifest, found, err := ReadWorkflowManifest(ctx, child.Root)
+	if err != nil || !found || len(savedManifest.Schedules) != 1 || savedManifest.Schedules[0].ChatID != chat.ConversationKey {
+		t.Fatal("webhook lost its requested chat destination", err)
 	}
 	configure("manage_webhooks", map[string]interface{}{"action": "delete", "id": hook.ID})
 	originalDirectory := *directory
