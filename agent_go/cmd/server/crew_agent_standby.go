@@ -462,10 +462,13 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 	if err = bindCrewNativeStage(roots, native); err != nil {
 		return out, fmt.Errorf("the standby copy did not arrive complete; send it again")
 	}
-	event := "stored"
+	event, fresh := "stored", false
 	if had {
 		old, e := readCrewStandbyBundle(final)
 		if e == nil {
+			// A new native session id is not a fork: the program started a fresh conversation (a changed agent
+			// definition cannot load into a resumed one). The old copy is kept beside the new one all the same.
+			fresh = old.SessionID != native.SessionID
 			e = crewStandbyAncestor(old, native)
 		}
 		if e != nil {
@@ -553,7 +556,11 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 	reply.Event, reply.Revision = event, row.Revision
 	crewStandbyLog(id, tab, "standby_stored", bytes, started, fmt.Sprintf(" copy=%s revision=%d", name, row.Revision))
 	if event == "diverged" {
-		crewStandbyLog(id, tab, "diverged", bytes, started, fmt.Sprintf(" copy=%s kept=%d", name, len(session.Diverged)))
+		label := "diverged"
+		if fresh {
+			label = "fresh_session"
+		}
+		crewStandbyLog(id, tab, label, bytes, started, fmt.Sprintf(" copy=%s kept=%d", name, len(session.Diverged)))
 	}
 	return out, nil
 }
