@@ -527,6 +527,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                 </div>
               })}
               </Fragment>)}
+              {/* Closed agents open again from here too, for people who use tabs instead of the left menu. */}
+              {closedAgents.length > 0 && <>
+                <p className="px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground">Closed agents</p>
+                {closedAgents.map(agent => <button key={agent.key} type="button" title={agent.purpose || undefined} onClick={() => { setMoreOpen(false); void agent.open() }}
+                  className="flex min-h-10 w-full min-w-0 items-center rounded-xl px-2.5 text-left text-[13px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"><span className="min-w-0 truncate">{agent.name}</span></button>)}
+              </>}
               </div>
               {sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
                 className="mt-1 flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-2.5 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New agent</button>}
