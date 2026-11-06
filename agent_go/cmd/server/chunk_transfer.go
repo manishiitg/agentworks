@@ -124,7 +124,12 @@ func chunkReader(r io.Reader, size int64, exec bool, each func(id string, data [
 
 func chunkPath(store, id string) string { return filepath.Join(store, id[:2], id) }
 
+// hasChunk, readChunk and putChunk refuse any id that is not a chunk hash themselves, so no caller can turn a client's
+// id into another path (chunkPath joins it).
 func hasChunk(store string, c transferChunk) bool {
+	if !validCrewTeamHash(c.ID) {
+		return false
+	}
 	info, err := os.Stat(chunkPath(store, c.ID))
 	return err == nil && info.Mode().IsRegular() && info.Size() == c.Len
 }
@@ -152,6 +157,9 @@ func putChunk(store, id string, data []byte) error {
 }
 
 func readChunk(store string, c transferChunk) ([]byte, error) {
+	if !validCrewTeamHash(c.ID) {
+		return nil, fmt.Errorf("invalid chunk")
+	}
 	data, err := os.ReadFile(chunkPath(store, c.ID))
 	if err != nil {
 		return nil, err
