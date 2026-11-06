@@ -7,7 +7,6 @@ metadata:
   panel-tools:
     work:
     - share
-    - crew_owners
     - manage_my_vaults
     - settings
     - get_ui_state

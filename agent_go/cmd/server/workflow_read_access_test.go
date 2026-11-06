@@ -347,11 +347,4 @@ func TestCodeRunCannotReadRawWorkspaceRoutes(t *testing.T) {
 	if _, _, _, handled, ok := api.crewReaderSharedAsset(httptest.NewRecorder(), req, codePrivacyOwnerRoot+"/code/main.go"); !handled || !ok {
 		t.Fatal("Run lost its mediated source link")
 	}
-	if _, err := registry.AddCoOwner("code", "app-c0de0001", "other"); err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other", Username: "other"})
-	if !workspaceReadAllowed(ctx, GetUserFromContext(ctx), codePrivacyOwnerRoot+"/builder/conversation/private.json", logicalPathIsDefaultUser, true) {
-		t.Fatal("co-owner lost Builder history")
-	}
 }

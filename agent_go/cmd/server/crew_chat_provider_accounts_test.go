@@ -28,9 +28,7 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := defaultProjectOwners().AddCoOwner("work", "test-team", "other"); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, "test-team", "other")
 	env := &providerAccountsEnv{api: f.api}
 	personal := env.addAccount(t, "other", map[string]any{"provider": "codex-cli", "display_name": "Personal coding account", "credential": "test-personal-credential"})
 	private := env.addAccount(t, "owner", map[string]any{"provider": "codex-cli", "display_name": "Another person's private account", "credential": "test-private-credential"})

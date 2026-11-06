@@ -52,7 +52,7 @@ func crewTeamMemberCopyFolder(root string) bool {
 // Team of several folders or the Whole Crew, gets the Crew's files root.
 func crewTeamMemberFilesPath(user, root string) string {
 	files := crewFilesPath(root)
-	if !crewTeamOnlyMember(root, user) {
+	if !crewIsCoOwner(root, user) {
 		return files
 	}
 	rec, ok := crewOwnerRecordAt(root)

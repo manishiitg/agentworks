@@ -477,12 +477,12 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		externalError(w, http.StatusForbidden, "tab_owner", err.Error())
 		return
 	}
-	// A teammate or co-owner is just another person (owner, 5 Nov): their chat runs on the models and accounts they chose,
+	// A teammate is just another person (owner, 5 Nov): their chat runs on the models and accounts they chose,
 	// the same way as any chat of theirs; nothing on top.
 	// The member's own copy of the team's shared folder syncs alongside, never before the message is accepted (a 19 s
 	// wait was seen, owner 5 Nov): the copy exists from joining and the 5-second loop keeps it current; this round only
 	// shortens the gap and makes the copy on first use (crew_team_server_copy.go).
-	if caller := productWorkspaceUserID(r.Context()); crewTeamOnlyMember(conversation.WorkspacePath, caller) {
+	if caller := productWorkspaceUserID(r.Context()); crewIsCoOwner(conversation.WorkspacePath, caller) {
 		project := crewResourceProjectID(conversation.ConversationKey)
 		go func() {
 			if crewTeamFirstDownloadPending(caller, project) {

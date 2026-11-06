@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -219,16 +220,11 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "revoked", ProjectID: "revoked", OwnerID: "owner"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, action := range []string{"leave", "remove", "off", "registered-owner"} {
+	for _, action := range []string{"leave", "remove", "off"} {
 		t.Run(action, func(t *testing.T) {
 			team := crewTeam{ProjectID: "revoked", OwnerID: "owner", Name: "Example", On: true, People: []crewTeamPerson{{UserID: "member"}}}
 			if err := writeCrewTeam(team); err != nil {
 				t.Fatal(err)
-			}
-			if action == "registered-owner" {
-				if _, err := registry.AddCoOwner("work", "revoked", "member"); err != nil {
-					t.Fatal(err)
-				}
 			}
 			canceled := map[string]bool{}
 			api := &StreamingAPI{stoppedSessions: map[string]bool{}, activeSessions: map[string]*ActiveSessionInfo{
@@ -258,7 +254,7 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 			if w.Code != 200 {
 				t.Fatalf("revocation failed: %d %s", w.Code, w.Body.String())
 			}
-			if canceled["member-turn"] != (action != "registered-owner") || canceled["owner-turn"] || canceled["another-crew"] {
+			if !canceled["member-turn"] || canceled["owner-turn"] || canceled["another-crew"] {
 				t.Fatalf("wrong work canceled: %v", canceled)
 			}
 		})
@@ -358,5 +354,41 @@ func TestCrewMacDashboardsAreReadFromTheCopy(t *testing.T) {
 	f.api.handleCrewTeamDashboards(card, adminRequest(http.MethodGet, "/api/crew-teams/team/dashboards", "", claims, map[string]string{"project": "team"}))
 	if card.Code != 200 || !strings.Contains(card.Body.String(), `"updated":"Updated`) || !strings.Contains(card.Body.String(), "work on the owner's Mac") {
 		t.Fatalf("card: %d %s", card.Code, card.Body.String())
+	}
+}
+
+// PLAT-856-509 (owner, 6 Nov): with Crew co-owners gone, a Crew's builders are added from its Team; over MCP too. The
+// owner or a joined member may look at the directory and add a person (invited until they accept); an outsider may do neither.
+func TestCrewTeamPeopleOverMCPFollowTheTeamRules(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]},{"id":"outsider","role":"editor","products":["work"]},{"id":"newbie","role":"editor","products":["work"]}]}`)
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}); err != nil {
+		t.Fatal(err)
+	}
+	call := func(user string, args map[string]any) *httptest.ResponseRecorder {
+		t.Helper()
+		args["crew_id"] = "team"
+		r := adminRequest(http.MethodPost, "/api/external/v1/call", "", &UserClaims{UserID: user, Username: user}, nil)
+		w := httptest.NewRecorder()
+		f.api.externalCrewTeamSyncCall(w, r, args)
+		return w
+	}
+	for _, user := range []string{"owner", "other"} {
+		if w := call(user, map[string]any{"action": "directory"}); w.Code != 200 || !strings.Contains(w.Body.String(), `"user_id":"newbie"`) {
+			t.Fatalf("%s directory: %d %s", user, w.Code, w.Body.String())
+		}
+	}
+	if w := call("outsider", map[string]any{"action": "directory"}); w.Code != http.StatusForbidden {
+		t.Fatalf("an outsider saw the directory: %d %s", w.Code, w.Body.String())
+	}
+	if w := call("outsider", map[string]any{"action": "people", "add": "newbie"}); w.Code < 400 {
+		t.Fatalf("an outsider added someone: %d %s", w.Code, w.Body.String())
+	}
+	if w := call("other", map[string]any{"action": "people", "add": "newbie"}); w.Code != 200 {
+		t.Fatalf("a joined member could not add: %d %s", w.Code, w.Body.String())
+	}
+	team, err := readCrewTeam("team")
+	if err != nil || !slices.ContainsFunc(team.People, func(p crewTeamPerson) bool { return p.UserID == "newbie" && p.Invited }) {
+		t.Fatalf("newbie is not invited: %+v %v", team.People, err)
 	}
 }

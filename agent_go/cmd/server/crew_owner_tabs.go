@@ -251,24 +251,6 @@ func crewQueryTabWriteError(ctx context.Context, caller, profile, workspace, ses
 	return nil
 }
 
-func ensureCrewOwnerDefaultTab(ctx context.Context, user string, profile agentprofiles.Profile, project string) error {
-	binding, owned, err := resolveConversationBindingForUser(ctx, user, profile, project)
-	if err != nil {
-		return err
-	}
-	if !owned {
-		return fmt.Errorf("Crew owner is unavailable")
-	}
-	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, user, profile, binding, "")
-	if err != nil {
-		return err
-	}
-	if identity, e := defaultProductConversationRegistryStore().agentIdentity(ctx, user, profile.ID, record.ConversationKey); e == nil && identity.Name != "" {
-		return nil
-	}
-	return setCodeTabName(ctx, user, record.ConversationKey, crewOwnerDisplayName(user)+" · Builder", profile.ID)
-}
-
 // crewTabOwnerForSession answers from the caller's own tab list: when one of the caller's Crew tabs
 // holds this session, that tab's owner controls it. The first writer recorded for a shared
 // project-wide session ID is not the tab owner (PLAT-856).

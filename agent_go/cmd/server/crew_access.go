@@ -36,10 +36,10 @@ import (
 // and never adopts the owner's live session.
 type crewProjectBinding struct {
 	OwnerID string
-	// OwnedByCaller is the permission to build: the main owner, or a co-owner (crew_co_owners.go). OwnerID stays the main
+	// OwnedByCaller is the permission to build: the main owner, or a joined Team member (crew_co_owners.go). OwnerID stays the main
 	// owner either way.
 	OwnedByCaller bool
-	// CoOwner is true when the caller builds as a co-owner. Such a binding is the reader-style one (no manifest coupling,
+	// CoOwner is true when the caller builds as a joined Team member. Such a binding is the reader-style one (no manifest coupling,
 	// no authoritative session of the main owner's): each person keeps their own conversations.
 	CoOwner bool
 	Binding productConversationBinding

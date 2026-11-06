@@ -142,11 +142,9 @@ func withVaultSecretGrant(t *testing.T, userID string, names ...string) {
 
 // A project-selected secret is lent by the Crew owner. Personal Vault grants
 // must not make the same project work in one owner's chat and fail in another.
-func TestCrewCoOwnersShareSelectedSecretsInChatAndMCP(t *testing.T) {
+func TestCrewTeamMembersShareSelectedSecretsInChatAndMCP(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
-	if _, err := defaultProjectOwners().AddCoOwner("work", "test-team", "other"); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, "test-team", "other")
 	withVaultSecretGrant(t, "owner", "CREW_TOKEN", "NOT_SELECTED")
 	t.Setenv("MULTI_USER_MODE", "true")
 	managedGlobalsMu.Lock()

@@ -40,7 +40,7 @@ func crewSharedWith(root, userID string) bool {
 	if crewSharedWithOthers(root) {
 		return true
 	}
-	// A co-owner sees and builds the Crew whatever its sharing (crew_co_owners.go).
+	// A joined Team member sees and builds the Crew whatever its sharing (crew_co_owners.go).
 	if crewIsCoOwner(root, userID) {
 		return true
 	}

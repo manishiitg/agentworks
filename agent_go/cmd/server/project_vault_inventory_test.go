@@ -78,9 +78,7 @@ func TestProjectVaultSelectionsUseCanonicalCrewSettings(t *testing.T) {
 	if _, err := f.api.projectVaultInventory(runContext, "other", externalCommandCrewRoot); err == nil {
 		t.Fatal("Run share opened Builder Vault inventory")
 	}
-	if _, err := defaultProjectOwners().AddCoOwner("work", "test-team", "other"); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, "test-team", "other")
 	// Through the workspace API, which routes a Crew's record to its private folder (PLAT-856-383), as the product does.
 	if err := writeFileToWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_lent"],"chosen_vault_apps_only":true}}`); err != nil {
 		t.Fatal(err)

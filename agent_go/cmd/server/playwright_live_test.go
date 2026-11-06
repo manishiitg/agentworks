@@ -70,11 +70,12 @@ func readPlaywrightType(t *testing.T, c *websocket.Conn, kind string) map[string
 func TestPlaywrightRunCannotSendInput(t *testing.T) {
 	fx := newCrewRunModeFixture(t)
 	registry := withProjectOwnerRegistry(t)
-	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "browser-a1", OwnerID: "owner", CoOwners: []string{"coowner"}, Shared: true}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "browser-a1", ProjectID: "browser-a1", OwnerID: "owner", Shared: true}); err != nil {
 		t.Fatal(err)
 	}
 	const root = "Crew/browser-a1"
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"reader","username":"reader","products":["work"]},{"id":"coowner","username":"coowner","products":["work"]}]}`)
+	joinCrewTeam(t, "browser-a1", "coowner")
 	api := fx.api
 	s := &playwrightLiveSession{id: "pw-access", owner: "owner", workspace: playwrightScope("owner", root), latest: map[string][]byte{}, watchers: map[chan []byte]struct{}{}, input: make(chan []byte, 8), done: make(chan struct{})}
 	api.playwrightLive.sessions = map[string]*playwrightLiveSession{s.id: s}

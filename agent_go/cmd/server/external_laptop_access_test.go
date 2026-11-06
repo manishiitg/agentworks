@@ -71,9 +71,7 @@ func TestMCPLaptopSettingsUseOwnerGrantsWithoutCommandAccess(t *testing.T) {
 	if w := call(&other, "get", nil); w.Code != 403 {
 		t.Fatalf("other owner got access: %d", w.Code)
 	}
-	if _, err := defaultProjectOwners().AddCoOwner("work", "dashboard-team", "other"); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, "dashboard-team", "other")
 	if w := call(&other, "get", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "offline-laptop") {
 		t.Fatalf("co-owner shared settings: %d %s", w.Code, w.Body.String())
 	}
@@ -242,9 +240,7 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 			}
 			call("terminal", map[string]any{"action": "laptop_set", "device_id": "mcp-laptop", "folders": folders, "commands": true}, 200)
 			if !goal {
-				if _, err := defaultProjectOwners().AddCoOwner("work", "dashboard-team", "other"); err != nil {
-					t.Fatal(err)
-				}
+				joinCrewTeam(t, "dashboard-team", "other")
 			}
 			co := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read", "crews:write", "builder:chat", "workflows:read", "files:read", "runs:execute"}, AllCrews: true, AllWorkflows: true}}
 			coRequest := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(context.WithValue(t.Context(), UserContextKey, co))
@@ -262,8 +258,8 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 			}
 			if goal {
 				f.write(t, root+"/workflow.json", strings.Replace(goalManifest, `"owners":["owner","other"]`, `"owners":["owner"],"readers":["other"]`, 1))
-			} else if _, err := defaultProjectOwners().RemoveCoOwner("work", "dashboard-team", "other"); err != nil {
-				t.Fatal(err)
+			} else {
+				joinCrewTeam(t, "dashboard-team")
 			}
 			denied := httptest.NewRecorder()
 			f.api.externalLaptopToolCall(denied, coRequest, "list_local_files", target)

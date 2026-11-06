@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/mux"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
@@ -37,9 +38,7 @@ func TestCrewOwnerNavigationBeforeFirstChat(t *testing.T) {
 	if !strings.Contains(list(true), `"workspace_id":"work:beta"`) {
 		t.Fatal("co-owned Crew missing before first chat")
 	}
-	if _, err := defaultProjectOwners().RemoveCoOwner("work", "owner-tabs", "other"); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, "owner-tabs")
 	if err := defaultProjectOwners().SetPrivate("work", "owner-tabs", false); err != nil {
 		t.Fatal(err)
 	}
@@ -89,9 +88,7 @@ func TestCrewOwnersShareScheduleAndWatcherConfiguration(t *testing.T) {
 	if err != nil || len(view.(map[string]interface{})["triggers"].([]interface{})) != 1 {
 		t.Fatalf("shared Watchers: %+v %v", view, err)
 	}
-	if _, err := defaultProjectOwners().RemoveCoOwner("work", "owner-tabs", "other"); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, "owner-tabs")
 	if _, err := env.svc.SetEnabled(ctx, "other", job.ID(), true); err == nil {
 		t.Fatal("removed co-owner changed the shared schedule")
 	}
@@ -367,9 +364,7 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("cross-owner agent message did not reach recipient")
 	}
-	if _, err = defaultProjectOwners().RemoveCoOwner("work", "owner-tabs", "other"); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, "owner-tabs")
 	removed := env.api.agentMessageCallerRole(agentMessageEndpoint{Kind: triggerCallerCrew, ID: "beta", Profile: "work", UserID: "other", Path: root, Session: sessions["other"].SessionID, ChatKey: sessions["other"].ConversationKey})
 	if removed.Mode == "builder" {
 		t.Fatal("removed owner retained inferred Builder role")
@@ -407,10 +402,8 @@ func crewOwnerTabsFixture(t *testing.T, env triggerLinkEnv, coOwners ...string) 
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "owner-tabs", ProjectID: "beta", OwnerID: "owner", Shared: true, Private: true}); err != nil {
 		t.Fatal(err)
 	}
-	for _, person := range coOwners {
-		if _, err := registry.AddCoOwner("work", "owner-tabs", person); err != nil {
-			t.Fatal(err)
-		}
+	if len(coOwners) > 0 {
+		joinCrewTeam(t, "owner-tabs", coOwners...)
 	}
 	clear()
 	env.mock.mu.Lock()
@@ -430,4 +423,24 @@ func workspaceOwnerTabRequest(t *testing.T, env triggerLinkEnv, claims *UserClai
 	out := map[string]any{}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
 	return rec.Code, out
+}
+
+// ensureCrewOwnerDefaultTab makes a person's own default Builder tab in a Crew and names it, as their first message does
+// (resolveAgentProfileConversation), so a test can start from each person having one.
+func ensureCrewOwnerDefaultTab(ctx context.Context, user string, profile agentprofiles.Profile, project string) error {
+	binding, owned, err := resolveConversationBindingForUser(ctx, user, profile, project)
+	if err != nil {
+		return err
+	}
+	if !owned {
+		return fmt.Errorf("Crew owner is unavailable")
+	}
+	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, user, profile, binding, "")
+	if err != nil {
+		return err
+	}
+	if identity, e := defaultProductConversationRegistryStore().agentIdentity(ctx, user, profile.ID, record.ConversationKey); e == nil && identity.Name != "" {
+		return nil
+	}
+	return setCodeTabName(ctx, user, record.ConversationKey, crewOwnerDisplayName(user)+" · Builder", profile.ID)
 }

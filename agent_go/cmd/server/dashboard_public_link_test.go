@@ -19,10 +19,7 @@ import (
 // Everything runs through the real handlers; only the headless browser's render is replaced.
 func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"coowner","role":"editor","products":["work"]},{"id":"member","role":"editor","products":["work"]},{"id":"outsider","role":"editor","products":["work"]}]}`)
-	if _, err := defaultProjectOwners().AddCoOwner("work", "test-team", "coowner"); err != nil {
-		t.Fatal(err)
-	}
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"member","role":"editor","products":["work"]},{"id":"outsider","role":"editor","products":["work"]}]}`)
 	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -92,9 +89,9 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 		return w
 	}
 
-	// A co-owner builds in this Crew, so this refusal is the main-owner rule itself, not missing access.
-	if w := direct("coowner"); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Only this Crew's owner") {
-		t.Fatalf("co-owner: %d %s", w.Code, w.Body.String())
+	// A Team member builds in this Crew, so this refusal is the main-owner rule itself, not missing access.
+	if w := direct("member"); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Only this Crew's owner") {
+		t.Fatalf("Team member: %d %s", w.Code, w.Body.String())
 	}
 	if w := change("member", "on"); w.Code == http.StatusOK {
 		t.Fatalf("a Team member turned it on: %s", w.Body.String())

@@ -32,7 +32,7 @@ func crewTeamForTab(w http.ResponseWriter, r *http.Request, write bool) (crewTea
 	}
 	owner := ownerOfCrewProjectID(project)
 	t, err := readCrewTeam(project)
-	if os.IsNotExist(err) && crewRegistryOwnedByCaller(claims.UserID, crewProjectRootByID(project)) {
+	if os.IsNotExist(err) && crewProjectOwnedByCallerStrict(claims.UserID, crewProjectRootByID(project)) {
 		t, err = crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}, nil
 	}
 	if err != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {

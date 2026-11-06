@@ -2,16 +2,36 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// Crew co-owners (owner decision 2026-10-15): a co-owner has the main owner's PERMISSIONS on the Crew (build, files, the
-// Builder), while IDENTITY stays the main owner's, and the creator can never be removed.
-func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
+// joinCrewTeam saves the Crew's Team as on with exactly these joined members: the only builders besides its main owner.
+// No people is the Team with everyone removed.
+func joinCrewTeam(t *testing.T, folder string, people ...string) {
+	t.Helper()
+	ensureProjectStateRoot(t)
+	rec, found := defaultProjectOwners().Lookup(crewProfileID, folder)
+	if !found || rec.ProjectID == "" {
+		t.Fatalf("Crew %s needs a registered project id to have a Team", folder)
+	}
+	team := crewTeam{ProjectID: rec.ProjectID, OwnerID: rec.OwnerID, On: true, People: []crewTeamPerson{}}
+	for _, id := range people {
+		team.People = append(team.People, crewTeamPerson{UserID: id})
+	}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A joined Team member has the main owner's PERMISSIONS on the Crew (build, files, the Builder), while IDENTITY stays the
+// main owner's.
+func TestCrewTeamMemberHasPermissionsButNotIdentity(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","email":"owner@example.com","products":["work"]},{"id":"co","username":"co","email":"co@example.com","products":["work"]},{"id":"ann","username":"ann","email":"ann@example.com","products":["work"]},{"id":"nowork","username":"nowork","email":"nowork@example.com","products":["agentworks"]}]}`)
 	if name := crewOwnerDisplayName("owner"); name != "owner@example.com" {
 		t.Fatalf("tab controller is not identified by email: %q", name)
@@ -27,29 +47,13 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	})
 	const folder = "demo-12345678"
 	root := "Crew/" + folder
-	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, OwnerID: "owner", Shared: true}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, ProjectID: "demo-proj", OwnerID: "owner", Shared: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.SetPrivate("work", folder, true); err != nil {
 		t.Fatal(err)
 	}
-	// "co" first uses the Crew by name (Access panel, PLAT-856-390); making them an owner moves them off that list.
-	if err := registry.SetRunPeople("work", folder, []string{"co"}); err != nil {
-		t.Fatal(err)
-	}
-	if changed, err := registry.AddCoOwner("work", folder, "co"); err != nil || !changed {
-		t.Fatalf("add co-owner: changed=%v err=%v", changed, err)
-	}
-	if rec, _ := registry.Lookup("work", folder); len(rec.RunPeople) != 0 {
-		t.Fatalf("a new owner stayed on the Can use list: %v", rec.RunPeople)
-	}
-	if changed, _ := registry.AddCoOwner("work", folder, "co"); changed {
-		t.Fatal("adding the same co-owner twice changed the list")
-	}
-	if changed, _ := registry.AddCoOwner("work", folder, "owner"); changed {
-		t.Fatal("the main owner became a co-owner")
-	}
-
+	joinCrewTeam(t, folder, "co")
 	// Roles, on a PRIVATE Crew: the co-owner still sees and builds it; a stranger does not.
 	for user, want := range map[string]string{"owner": crewRoleOwner, "co": crewRoleCoOwner, "ann": crewRoleNone} {
 		if got := crewRoleOf(root, user); got != want {
@@ -69,6 +73,13 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	}
 	if _, err := cleanAgentProfileWorkspace(root, "ann"); err == nil {
 		t.Fatal("a stranger opened the Crew folder")
+	}
+	// Joining one Crew gives nothing in the same owner's other Crews.
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "sibling-12345678", ProjectID: "sibling-proj", OwnerID: "owner", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cleanAgentProfileWorkspace("Crew/sibling-12345678", "co"); err == nil {
+		t.Fatal("a Team member opened the owner's sibling Crew")
 	}
 	ref := crewPathRef{Root: root, OwnerID: "owner", Shared: true}
 	if got := crewAccessFor(&UserClaims{UserID: "co", Username: "co"}, ref); got != crewAccessOwner {
@@ -110,28 +121,10 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	if crewBuilderDiskHiddenFromUser("co", root) || crewBuilderDiskHiddenFromUser("owner", root) || !crewBuilderDiskHiddenFromUser("ann", root) {
 		t.Fatal("Builder conversation transcripts must be readable by every owner and by no reader")
 	}
-
-	// The creator can never be removed, a co-owner can; both by email, by an owner.
-	crew := crewProjectBinding{OwnerID: "owner", OwnedByCaller: true}
-	crew.Binding.WorkspacePath = root
-	api := &StreamingAPI{}
-	claims := &UserClaims{UserID: "owner", Username: "owner"}
-	if _, status, _, _ := api.changeCrewOwners(&UserClaims{UserID: "co", Username: "co"}, crew, "remove", "co@example.com"); status != 0 {
-		t.Fatalf("a co-owner could not change the owners: status=%d", status)
-	}
-	if _, status, code, _ := api.changeCrewOwners(claims, crew, "remove", "owner@example.com"); status != http.StatusConflict || code != "creator" {
-		t.Fatalf("removing the creator: status=%d code=%q", status, code)
-	}
-	if state, status, _, _ := api.changeCrewOwners(claims, crew, "remove", "co@example.com"); status != 0 || len(state.CoOwners) != 0 {
-		t.Fatalf("removing a co-owner: status=%d state=%+v", status, state)
-	}
-	if crewIsCoOwner(root, "co") {
-		t.Fatal("a removed co-owner still builds")
-	}
 }
 
 // A Team is a shared room (owner, 5 Nov): a joined member builds the Crew like a co-owner while the Team is on; an
-// invite, Team off or removal takes it away at once. The owner's own co-owner list stays only the registered ones.
+// invite, Team off or removal takes it away at once. A co_owners entry left in the registry gives no access (owner, 6 Nov).
 func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
@@ -166,20 +159,35 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 		if got := crewProjectOwnedByCaller("ann", root); got != tc.wantCoOwnerOf {
 			t.Fatalf("%s: ann builds the Crew = %v, want %v", tc.name, got, tc.wantCoOwnerOf)
 		}
-		crew := crewProjectBinding{OwnerID: "owner"}
-		crew.Binding.WorkspacePath = root
-		if crewOwnersStateFor(crew, "ann").CanManage {
-			t.Fatal("Team membership can manage permanent owners")
+		if crewProjectOwnedByCallerStrict("ann", root) {
+			t.Fatalf("%s: a team member became the owner", tc.name)
 		}
-		api := &StreamingAPI{}
-		for _, action := range []string{"add", "remove"} {
-			if _, status, _, _ := api.changeCrewOwners(&UserClaims{UserID: "ann"}, crew, action, "ann@example.com"); status != http.StatusForbidden {
-				t.Fatalf("%s: Team member changed permanent owners via %s: %d", tc.name, action, status)
-			}
-		}
-		if crewProjectOwnedByCallerStrict("ann", root) || len(crewRegistryCoOwnerIDs(root)) != 0 {
-			t.Fatalf("%s: a team member became the owner or a registered co-owner", tc.name)
-		}
+	}
+	// The old list on disk, for a person who is also a joined member, then with the Team off: only the Team counts.
+	path := registry.path()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored map[string]any
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatal(err)
+	}
+	stored["projects"].(map[string]any)[projectOwnerKey("work", folder)].(map[string]any)["co_owners"] = []string{"ann"}
+	if raw, err = json.Marshal(stored); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ref := crewPathRef{Root: root, OwnerID: "owner", Shared: true}
+	save(true, false, "ann")
+	if !crewProjectOwnedByCaller("ann", root) {
+		t.Fatal("joined member lost the Crew")
+	}
+	save(false, false, "ann")
+	if crewProjectOwnedByCaller("ann", root) || crewRoleOf(root, "ann") == crewRoleCoOwner || crewAccessFor(&UserClaims{UserID: "ann", Username: "ann"}, ref) == crewAccessOwner {
+		t.Fatal("a co_owners entry in the registry gave builder access with the Team off")
 	}
 	// One Files view (owner, 5 Nov): the server opens a joined member's Files on the folder the Team shares; the owner
 	// keeps the Crew's root.

@@ -379,8 +379,8 @@ func TestEditedManifestOwnerNeverChangesOwnershipOrLaunchIdentity(t *testing.T) 
 }
 
 // Launching in someone else's Crew follows its current sharing and never changes whose slot it runs as: "Only me"
-// keeps B out, "Chosen people: B" lets B in, back to "Only me" shuts B out again, and a co-owner keeps access only while
-// listed. (SetAudience's flag is private: true with no people is "Only me".)
+// keeps B out, "Chosen people: B" lets B in, back to "Only me" shuts B out again, and a Team member keeps access only while
+// joined. (SetAudience's flag is private: true with no people is "Only me".)
 func TestCrewLaunchUsesCurrentShareWithoutChangingOwner(t *testing.T) {
 	f := newMultiUserFixture(t, sharedIdentityLayout())
 	root := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
@@ -406,15 +406,11 @@ func TestCrewLaunchUsesCurrentShareWithoutChangingOwner(t *testing.T) {
 	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
 		t.Fatal("unshare did not revoke launch")
 	}
-	if _, err := defaultProjectOwners().AddCoOwner("work", fixtureCrewFolder, fixtureUserB); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, fixtureCrewFolder, fixtureUserB)
 	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err != nil {
 		t.Fatalf("co-owner launch refused: %v", err)
 	}
-	if _, err := defaultProjectOwners().RemoveCoOwner("work", fixtureCrewFolder, fixtureUserB); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, fixtureCrewFolder)
 	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
 		t.Fatal("removed co-owner retained launch access")
 	}

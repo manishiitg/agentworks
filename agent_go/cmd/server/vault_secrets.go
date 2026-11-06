@@ -342,7 +342,7 @@ func validateVaultSecretSelection(ctx context.Context, userID string, selection 
 }
 
 // crewSecretsPerson is whose Vault grants admit a turn's selected secrets and apps: the Crew's owner for the owner and
-// its co-owners (a Team's joined members too, owner 5 Nov), who build with the project's selected credentials even when
+// its Team's joined members (owner 5 Nov), who build with the project's selected credentials even when
 // their own Vault grants differ. Other callers keep their own admission; project access is checked by the turn.
 func (api *StreamingAPI) crewSecretsPerson(userID, root, surface string) string {
 	if !isCrewProjectPath(root) || !crewProjectOwnedByCaller(userID, root) {

@@ -5,15 +5,15 @@ import (
 	"strings"
 )
 
-// Crew co-owners (owner decision 2026-10-15). A Crew has ONE main owner (the creator, the registry's OwnerID: it never
-// changes, and the Crew's runs, accounts, secrets and schedules are theirs) and any number of co-owners who build it
-// with them: change its instructions, skills, functions, settings and knowledge, share it, add and remove owners. The
-// list lives in the server-controlled owner registry (project_owner_registry.go), so neither a project file nor an
-// agent turn can edit it. Only a Crew at the shared Crew/ root can have co-owners.
+// Who builds a Crew (owner decision 2026-11-06, replacing the 15 Oct co-owner list). A Crew has ONE main owner (the
+// creator, the registry's OwnerID: it never changes, and the Crew's runs, accounts, secrets and schedules are theirs) and,
+// while its Team is on, the Team's joined members, who build it with them: change its instructions, skills, functions,
+// settings and knowledge. Nothing else makes someone a builder, and with the Team off there is only the main owner.
+// "Co-owner" in this code means such a joined member.
 //
 // Two questions are kept apart on purpose:
 //   - PERMISSION ("may this person build here?"): crewProjectOwnedByCaller, crewAccessFor, resolveCrewProjectBinding.
-//     True for the main owner and for co-owners.
+//     True for the main owner and for joined Team members.
 //   - IDENTITY ("whose Crew, tree, accounts, browser, mailbox is this?"): crewProjectOwnerID, crewProjectOwnedByCallerStrict.
 //     The main owner only.
 
@@ -24,34 +24,6 @@ const (
 	crewRoleNone    = "none"
 )
 
-// crewCoOwnerIDs are the Crew's co-owners for PERMISSION: those registered for the Crew at root, plus the joined
-// members of its Team while the Team is on (owner, 5 Nov, "A Team is a shared room": members build it like co-owners).
-// Read on every call, so removing a member or turning the Team off takes it away at once.
-func crewCoOwnerIDs(root string) []string {
-	ids := crewRegistryCoOwnerIDs(root)
-	for _, id := range crewTeamCoOwnerIDs(root) {
-		if !registryListHas(ids, id) {
-			ids = append(ids, id)
-		}
-	}
-	return ids
-}
-
-// crewRegistryCoOwnerIDs are only the co-owners registered for the Crew at root (the owner manages this list).
-// Only registry owners may change permanent ownership. Team membership grants
-// temporary build access and must not be able to make itself permanent.
-func crewRegistryOwnedByCaller(userID, root string) bool {
-	return crewProjectOwnedByCallerStrict(userID, root) || registryListHas(crewRegistryCoOwnerIDs(root), userID)
-}
-
-func crewRegistryCoOwnerIDs(root string) []string {
-	rec, found := crewOwnerRecordAt(root)
-	if !found {
-		return nil
-	}
-	return append([]string(nil), rec.CoOwners...)
-}
-
 func crewOwnerRecordAt(root string) (projectOwnerRecord, bool) {
 	id, ok := projectIdentityOf(root)
 	if !ok || !isProjectProfileID(id.Product) {
@@ -60,8 +32,9 @@ func crewOwnerRecordAt(root string) (projectOwnerRecord, bool) {
 	return defaultProjectOwners().Lookup(id.Product, id.Folder)
 }
 
-// crewTeamCoOwnerIDs are the joined, active members of the Crew's Team while it is on; none on a Mac or without a Team.
-func crewTeamCoOwnerIDs(root string) []string {
+// crewCoOwnerIDs are the Crew's builders besides its main owner: the joined, active members of its Team while it is on;
+// none on a Mac or without a Team. Read on every call, so removing a member or turning the Team off takes it away at once.
+func crewCoOwnerIDs(root string) []string {
 	if IsLocalMode() {
 		return nil
 	}
@@ -82,12 +55,7 @@ func crewTeamCoOwnerIDs(root string) []string {
 	return ids
 }
 
-// crewTeamOnlyMember: the caller builds this Crew as a Team member, not as a registered co-owner.
-func crewTeamOnlyMember(root, userID string) bool {
-	return registryListHas(crewTeamCoOwnerIDs(root), userID) && !registryListHas(crewRegistryCoOwnerIDs(root), userID)
-}
-
-// crewIsCoOwner says whether userID is a registered co-owner (not the main owner) of the Crew at root.
+// crewIsCoOwner says whether userID builds the Crew at root as a joined Team member (not the main owner).
 func crewIsCoOwner(root, userID string) bool {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {

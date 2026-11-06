@@ -14,7 +14,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
 /** What exists in this project, for the side list. A value is undefined until it loads or when it cannot be read. */
-export type ProjectStatus = { schedules?: number; conditions?: number; triggers?: number; functions?: number; slackAccount?: string; slackBot?: string; computerChats?: number; whatsapp?: string; email?: string; mcps?: number; skills?: number; googleApps?: number; secrets?: number; owners?: number; laptop?: string }
+export type ProjectStatus = { schedules?: number; conditions?: number; triggers?: number; functions?: number; slackAccount?: string; slackBot?: string; computerChats?: number; whatsapp?: string; email?: string; mcps?: number; skills?: number; googleApps?: number; secrets?: number; laptop?: string }
 
 const trim = (path?: string) => (path || '').replace(/\/+$/, '')
 const count = (result: PromiseSettledResult<number>) => (result.status === 'fulfilled' ? result.value : undefined)
@@ -36,7 +36,7 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
     const load = async () => {
       if (loading || !alive) return
       loading = true
-      const [schedules, conditions, triggers, functions, slackBot, slackAccount, whatsapp, email, mcps, computerChats, skills, googleApps, secrets, owners, laptop] = await Promise.allSettled([
+      const [schedules, conditions, triggers, functions, slackBot, slackAccount, whatsapp, email, mcps, computerChats, skills, googleApps, secrets, laptop] = await Promise.allSettled([
         schedulerApi.listJobs({ entity_type: kind === 'crew' ? 'product' : 'workflow', limit: 1000 }).then(response => (response.jobs || []).filter(job => trim(job.workspace_path) === trim(workspacePath)).length),
         conditionTriggersApi.list(projectId, profileId).then(result => (result.triggers || []).length),
         (async () => ((kind === 'crew' ? await productWebhooksApi.list(scope) : await workflowWebhooksApi.list(workspacePath)).triggers || []).length)(),
@@ -58,7 +58,6 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
           if (result.status !== 'available') throw new Error('Secret inventory is incomplete')
           return result.secrets.length
         }),
-        api.post<{ owner?: { id: string }; co_owners: { id: string }[] }>('/api/dashboards', { workspace: workspacePath, action: 'owners' }).then(({ data }) => new Set([...(data.owner ? [data.owner.id] : []), ...data.co_owners.map(person => person.id)]).size),
         kind === 'crew' ? Promise.all([
           api.get<{ device_id: string }>(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}/laptop`, { skipSessionContext: true }),
           api.get<{ devices: { device_id: string }[] }>('/api/devices', { skipSessionContext: true, params: { workspace: workspacePath } }),
@@ -66,7 +65,7 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
       ])
       loading = false
       if (!alive) return
-      setSnapshot({ identity, status: { schedules: count(schedules), conditions: count(conditions), triggers: count(triggers), functions: count(functions), slackBot: text(slackBot), slackAccount: text(slackAccount), whatsapp: text(whatsapp), email: text(email), mcps: count(mcps), computerChats: count(computerChats), skills: count(skills), googleApps: count(googleApps), secrets: count(secrets), owners: count(owners), laptop: text(laptop) } })
+      setSnapshot({ identity, status: { schedules: count(schedules), conditions: count(conditions), triggers: count(triggers), functions: count(functions), slackBot: text(slackBot), slackAccount: text(slackAccount), whatsapp: text(whatsapp), email: text(email), mcps: count(mcps), computerChats: count(computerChats), skills: count(skills), googleApps: count(googleApps), secrets: count(secrets), laptop: text(laptop) } })
     }
     // Once when the panel opens and again when the person comes back to the tab. A 30 s poll of these reads
     // per open panel (full schedule list, every Crew's agents) was a large share of a small server's CPU.

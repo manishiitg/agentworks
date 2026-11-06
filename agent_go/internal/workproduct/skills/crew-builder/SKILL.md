@@ -180,7 +180,7 @@ Avoid choosing a different output path based on who called the Crew.
 
 Every agent you can use is in `list_agents`: Crews, Goals and Relays you own or that are shared with you (with their functions), and your agents connected through AgentBridge such as local Claude Code. Nothing has to be linked first. Call a function with `functions action=call(target=<id>, ...)`; message an agent with `send_message(target=<id>)`. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.
 
-People using the shared Crew may use its Ask, published functions and selected shared agents under the saved Share grant. Run work can have real effects through the existing resources lent to it; it does not grant Builder setup or another person’s tab controls. Owner and co-owner chats keep their current Builder authority. Read `panel-dashboard` and `panel-access` for the applicable entry point.
+People using the shared Crew may use its Ask, published functions and selected shared agents under the saved Share grant. Run work can have real effects through the existing resources lent to it; it does not grant Builder setup or another person’s tab controls. Owner and Team member chats keep their current Builder authority. Read `panel-dashboard` and `panel-access` for the applicable entry point.
 
 Schedules, webhooks and Watchers (including personal Gmail snapshots and PR or deployment watches) are in `panel-automations`. Crew plan artifacts are in `panel-plan`; execution and incoming function calls are in `panel-dashboard`.
 

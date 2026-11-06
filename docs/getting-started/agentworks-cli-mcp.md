@@ -822,7 +822,7 @@ command can do. macOS keeps its existing light Seatbelt sandbox and Linux uses L
 commands on any platform. The CLI's existing private-file, credential-state and guarded-path rules still apply.
 
 Crew continues running on the server when your laptop disconnects. Ordinary shell, Files, memory, functions and background work
-stay on the server. Only your own interactive Builder chat receives laptop tools; schedules, Run callers and co-owners do not.
+stay on the server. Only your own interactive Builder chat receives laptop tools; schedules, Run callers and Team members do not.
 Server environment variables and secrets are never forwarded to local commands. Local output and copied files reach the server
 and model and may be saved in chat history. There is no automatic sync.
 

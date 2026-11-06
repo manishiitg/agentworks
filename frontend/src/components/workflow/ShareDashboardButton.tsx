@@ -14,12 +14,14 @@ import { PublicLinkControl, type PublicLink } from './PublicLinkControl'
 type Person = { id: string; email?: string; username?: string }
 type ShareState = {
   mode: 'everyone' | 'people' | 'private'; people?: Person[]; can_share: boolean; share_blocked?: string; needs_dashboard?: boolean
+  /** Goals and Flows keep an owner list; a Crew's builders are its Team. */
+  has_owners?: boolean
   accounts?: { kind: string; name: string; use: string }[]
   public_links?: PublicLink[]
 }
 type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean }
 const who = (person: Person) => person.email || person.username || person.id
-const audience = (state: ShareState) => state.mode === 'everyone' ? 'Everyone' : state.mode === 'people' ? 'Chosen people' : 'Only owners'
+const audience = (state: ShareState) => state.mode === 'everyone' ? 'Everyone' : state.mode === 'people' ? 'Chosen people' : state.has_owners ? 'Only owners' : 'Only me'
 const errorText = (cause: unknown, fallback: string) => {
   const data = (cause as { response?: { data?: { error?: { message?: string } | string; message?: string } } })?.response?.data
   return (typeof data?.error === 'string' ? data.error : data?.error?.message) || data?.message || fallback
@@ -66,7 +68,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     return () => { disposed = true }
   }, [workspacePath, user, server, scope, streaming, attempt])
   useEffect(() => {
-    if (!expanded || !state?.can_share) return
+    if (!expanded || !state?.can_share || !state.has_owners) return
     const identity = captureChatIdentity()
     let disposed = false
     setOwnerSnapshot(null); setOwnersError('')
@@ -77,7 +79,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     void load().then(loaded => { if (!disposed && isChatIdentityCurrent(identity)) setOwnerSnapshot({ scope, owners: loaded }) })
       .catch(() => { if (!disposed && isChatIdentityCurrent(identity)) setOwnersError('Could not load the owners. Try again.') })
     return () => { disposed = true }
-  }, [expanded, state?.can_share, workspacePath, user, server, scope, streaming, attempt])
+  }, [expanded, state?.can_share, state?.has_owners, workspacePath, user, server, scope, streaming, attempt])
   useEffect(() => {
     if (!open) return
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); close() } }
@@ -123,7 +125,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
       setNotice('Link copied. People still need access to open it.')
     } catch (cause) { setError(errorText(cause, 'Could not copy the link.')) }
   }
-  // Two groups (owner 2026-11-02): co-owners build and change it; people it is shared with use it (dashboard, chat,
+  // Two groups (owner 2026-11-02): on a Goal or Flow, co-owners build and change it; people it is shared with use it (dashboard, chat,
   // functions, their own AI apps over MCP). The share choice is Only me / Chosen people / Everyone; the server stores an
   // empty named list as private, so Only me clears the named list. Owner changes use the same server operation as chat.
   const companyWide = state.mode === 'everyone'
@@ -170,7 +172,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
           onClick={() => { setChoosing(value === 'people'); void run(() => value === 'everyone' ? putShare('everyone') : shareList(value === 'people' ? emails : [])) }}
           className={`rounded-md px-3 py-1.5 text-xs ${choice === value ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{text}</button>)}
       </div>
-      <p className="text-xs text-muted-foreground">{choice === 'everyone' ? 'Everyone at the company can use it.' : choice === 'people' ? 'These people can use it.' : 'Only you and co-owners can use it.'} Using means opening its dashboard, chatting with it and reaching it from their own AI apps.</p>
+      <p className="text-xs text-muted-foreground">{choice === 'everyone' ? 'Everyone at the company can use it.' : choice === 'people' ? 'These people can use it.' : state.has_owners ? 'Only you and co-owners can use it.' : 'Only you and its Team can use it.'} Using means opening its dashboard, chatting with it and reaching it from their own AI apps.</p>
       {choice === 'people' && <>
         <ul aria-label="People it is shared with" className="space-y-2">
           {(state.people || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{removeButton(person, value => shareList(emails.filter(item => item !== value)))}</li>)}
@@ -193,7 +195,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
         <button type="button" disabled={busy} onClick={() => setPendingShare(undefined)} className="rounded-md border border-border px-3 py-2 text-xs hover:bg-muted">Cancel</button>
       </div>
     </section>}
-    <section aria-label="Co-owners" className="space-y-3 border-t border-border pt-4">
+    {state.has_owners && <section aria-label="Co-owners" className="space-y-3 border-t border-border pt-4">
       <div><h3 className="font-semibold">Co-owners</h3><p className="text-xs text-muted-foreground">Can build and change it, like you.</p></div>
       <ul aria-label="Owners" className="space-y-2">
         {owners?.owner && <li className="flex min-w-0 items-center gap-2">{avatar(owners.owner)}<span className="min-w-0 flex-1 truncate" title={who(owners.owner)}>{who(owners.owner)}</span><span className="shrink-0 text-xs text-muted-foreground">Created it</span></li>}
@@ -201,7 +203,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
       </ul>
       {ownersError && <p role="alert" className="text-xs text-destructive">{ownersError} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
       {owners?.can_manage && emailForm(ownerEmail, setOwnerEmail, addOwner, 'Add a co-owner by email')}
-    </section>
+    </section>}
     {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {/* Which agents others can message is each agent's Public on AgentBridge, in the Team tab's one agent list. */}
