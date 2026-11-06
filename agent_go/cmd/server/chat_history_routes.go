@@ -710,7 +710,7 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		sessionID := mux.Vars(r)["session_id"]
 		// These routes sit outside the /api subrouter's session check (crewChatRelayMiddleware).
-		if private := api.crewSessionChatPrivate(r, sessionID); private != nil {
+		if private := api.crewSessionChatSavedRead(r, sessionID); private != nil {
 			private.refuse(w, userID)
 			return
 		}

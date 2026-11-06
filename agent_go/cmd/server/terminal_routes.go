@@ -1716,7 +1716,7 @@ func (api *StreamingAPI) canAccessTerminalSession(r *http.Request, sessionID str
 	}
 
 	if !api.crewSessionCanControl(r, sessionID) {
-		return r.Method == http.MethodGet && api.crewSessionTabView(r, sessionID)
+		return r.Method == http.MethodGet && api.crewSessionTabView(r, sessionID) && api.crewSessionChatLimit(r, sessionID) == nil // a terminal is a live view
 	}
 	currentUserID := GetUserIDFromContext(r.Context())
 	// Every terminal route (metadata, stream, input, keys, live attach) comes through here,

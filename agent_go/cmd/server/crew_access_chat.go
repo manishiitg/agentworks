@@ -44,7 +44,7 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 				agent := shared[at]
 				rule := team.agentRule(team.OwnerID, agent.Tab)
 				item["in_team"], item["can_make_changes"], item["public_on_agentbridge"] = teamErr == nil && team.On && crewTeamInTeam(agent) && team.agentInTeam(team.OwnerID, agent.Tab), rule.CanMakeChanges, agent.AgentBridgePublic
-				item["when_others_ask"], item["chat_visible"] = rule.WhenOthersAsk, team.agentChatVisible(ctx, team.OwnerID, agent.Tab)
+				item["when_others_ask"], item["teammates_see"] = rule.WhenOthersAsk, crewChatShareName(team.agentChatShare(ctx, team.OwnerID, agent.Tab))
 				if agent.Address != "" {
 					item["address_for_their_agents"] = "agent:" + agent.Address
 				}

@@ -64,9 +64,10 @@ export type TeamTabAgent = { key: string; name: string; detail: string; in_team:
   activity?: 'running' | ''
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
   uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
-  // Teammates can read this chat (crew_team_chat_private.go): chat_visible_label is the switch's line on the viewer's own
-  // agent; chat_private_line replaces the chat on someone else's agent; watch_key is its tab's key where that differs.
-  chat_visible: boolean; chat_visible_label?: string; chat_private_line?: string; watch_key?: string
+  // Teammates see (crew_team_chat_private.go): chat_share_label and chat_share_options are the choice on the viewer's own
+  // agent; on someone else's, chat_private_line replaces the chat and chat_share_note sits above it. watch_key is its
+  // tab's key where that differs.
+  chat_share: string; chat_share_label?: string; chat_share_options?: { value: string; label: string }[]; chat_private_line?: string; chat_share_note?: string; watch_key?: string
   // The rule editor's Ask message (the viewer's own agent).
   permissions_prompt?: string
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer edits it (POST agent-rule {purpose}), and its Public on
