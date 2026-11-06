@@ -5662,6 +5662,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		turnStatus := trackedExecutionStatusCanceled
 		turnError := "conversation turn ended before completion was recorded"
+		// When the turn started and last streamed reply text: a steer it took after
+		// that text gets a follow-up turn (late_steer_followup.go).
+		turnStartedAt, lastTurnOutputAt := time.Now(), time.Time{}
 		var agentCancel context.CancelFunc
 		var idleTurnRuntime *ChatHistoryAgentRuntime
 		defer func() {
@@ -5705,6 +5708,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// Drain only after releasing the lane; synthetic turns acquire it.
 				api.drainPendingAutoNotificationsAfterTurn(sessionID)
 			}
+			api.settleLateSteers(sessionID, turnStartedAt, lastTurnOutputAt, turnStatus == trackedExecutionStatusCompleted)
 			api.completeTrackedExecution(queryID, turnStatus, turnError, nil)
 		}()
 
@@ -8623,6 +8627,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		_, _ = drainTurnTextStream(agentCtx, textChan, func(chunk string) {
 			log.Printf("[AGENT DEBUG] raw chunk (len=%d): %s", len(chunk), chunk)
 			chunkCount++
+			if strings.TrimSpace(chunk) != "" {
+				lastTurnOutputAt = time.Now()
+			}
 
 			// Note: Chunks are processed by the agent internally, no manual accumulation needed
 
@@ -11630,6 +11637,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			delivery, err := retainedSession.SendIdentified(sessionInputCtx, withSessionMode(sessionModeFromContext(r.Context()), message),
 				mcpagent.QueuedMessageIdentity{ID: newSteerMessageID(), ClientID: clientMessageIDFromContext(r.Context())})
 			sessionInputCancel()
+			deliveredAt := time.Now()
 			if err != nil {
 				if liveInputErrorProvesNoTarget(err) {
 					api.recoverUnsentLiveInput(sessionID, err, recovered)
@@ -11646,6 +11654,12 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 				provider := string(delivery.Provider)
 				noteLiveInputDelivered(sessionID, string(delivery.Provider), message, withSessionMode(sessionModeFromContext(r.Context()), message))
 				messageID := api.recordMCPAgentSessionLiveInputAt(sessionID, message, provider, clientMessageIDFromContext(r.Context()), delivery.TurnID, deliveryStartedAt, queryID)
+				if string(delivery.Transport) != string(llmproviders.CodingAgentTransportTmux) {
+					// A native protocol took it into the running turn; if that turn ends without
+					// answering, the turn's end starts a follow-up (late_steer_followup.go).
+					api.noteNativeSteer(sessionID, lateSteer{message: message, messageID: messageID, clientMessageID: clientMessageIDFromContext(r.Context()),
+						provider: provider, sentAt: deliveryStartedAt, ackAt: deliveredAt})
+				}
 				api.persistLiveInputUserMessage(r.Context(), sessionID, message)
 				w.Header().Set("Content-Type", "application/json")
 				response := QueryResponse{
@@ -11967,6 +11981,7 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 			delivery, err := retainedSession.SendIdentified(sessionInputCtx, req.Message,
 				mcpagent.QueuedMessageIdentity{ID: newSteerMessageID(), ClientID: clientMessageIDFromContext(r.Context())})
 			sessionInputCancel()
+			deliveredAt := time.Now()
 			if err != nil {
 				if liveInputErrorProvesNoTarget(err) {
 					var pending []string
@@ -11983,6 +11998,10 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 			} else if delivery.Status == mcpagent.UserMessageDeliveryStatusSentToCLI {
 				provider := string(delivery.Provider)
 				messageID := api.recordMCPAgentSessionLiveInputAt(sessionID, req.Message, provider, clientMessageIDFromContext(r.Context()), delivery.TurnID, deliveryStartedAt, snapshotExecutionID)
+				if string(delivery.Transport) != string(llmproviders.CodingAgentTransportTmux) {
+					api.noteNativeSteer(sessionID, lateSteer{message: req.Message, messageID: messageID, clientMessageID: clientMessageIDFromContext(r.Context()),
+						provider: provider, sentAt: deliveryStartedAt, ackAt: deliveredAt})
+				}
 				writeRetainedTerminalLiveInputResponseWithMessageID(w, sessionID, provider, messageID)
 				log.Printf("[LIVE INPUT] Delivered through durable mcpagent session=%s provider=%s transport=%s: %.80s", sessionID, provider, delivery.Transport, req.Message)
 				api.persistLiveInputUserMessage(r.Context(), sessionID, req.Message)

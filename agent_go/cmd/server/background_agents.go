@@ -3045,6 +3045,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 	// state before returning. A nil setup error is not delivery success: the
 	// Session.Run result arrives later on outcomeChan, and notification callers
 	// commit their durable state only from that terminal outcome.
+	turnStartedAt := time.Now()
 	textChan, outcomeChan, err := llmAgent.StreamWithEventsAndOutcome(agentCtx, syntheticMsg)
 	if err != nil {
 		log.Printf("[BG AGENT] StreamWithEvents error for synthetic turn on session %s: %v", sessionID, err)
@@ -3066,6 +3067,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 		syntheticStatus := trackedExecutionStatusCanceled
 		syntheticError := "synthetic turn ended before completion was recorded"
 		var terminalErr error
+		lastTurnOutputAt := time.Time{}
 		defer func() {
 			stopIdleWatch()
 			agentCancel()
@@ -3082,6 +3084,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 			// Clear session busy first so any later work sees the session as idle.
 			api.setSessionBusy(sessionID, false)
 			releaseInputLane()
+			api.settleLateSteers(sessionID, turnStartedAt, lastTurnOutputAt, syntheticStatus == trackedExecutionStatusCompleted)
 			api.completeTrackedExecution(syntheticExecutionID, syntheticStatus, syntheticError, nil)
 			if onComplete != nil {
 				onComplete(terminalErr)
@@ -3112,7 +3115,10 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 		// usage-limit wall stops producing without closing the channel, and an
 		// unbounded consume there blocks this goroutine — and the deferred
 		// cleanup below it — forever (PLAT-101).
-		abandonReason, streamStalled := drainTurnTextStream(agentCtx, textChan, func(string) {
+		abandonReason, streamStalled := drainTurnTextStream(agentCtx, textChan, func(chunk string) {
+			if strings.TrimSpace(chunk) != "" {
+				lastTurnOutputAt = time.Now()
+			}
 			api.conversationMux.Lock()
 			api.conversationHistory[sessionID] = llmAgent.GetHistory()
 			api.conversationMux.Unlock()
