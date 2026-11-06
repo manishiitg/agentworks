@@ -467,6 +467,7 @@ type desktopProject struct {
 	Name          string `json:"name"`
 	Kind          string `json:"kind"`
 	Mode          string `json:"mode,omitempty"`
+	PersonalAgent bool   `json:"personal_agent,omitempty"`
 }
 
 func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
@@ -521,6 +522,7 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 					ID            string `json:"id"`
 					Name          string `json:"name"`
 					Mode          string `json:"mode"`
+					PersonalAgent bool   `json:"personal_agent"`
 				} `json:"workspaces"`
 				Workflows []struct {
 					Manifest struct {
@@ -537,7 +539,7 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 			}
 			projects := []desktopProject{}
 			for _, p := range inventory.Workspaces {
-				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName})
+				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, PersonalAgent: p.PersonalAgent})
 			}
 			for _, p := range inventory.Workflows {
 				if p.Manifest.Kind != "relay" {
