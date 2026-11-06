@@ -82,7 +82,19 @@ CHECKS = {
 HAPPY = {
     "H1": "Switch AI program mid-chat: the next program answers from the same conversation",
     "H2": "A file one agent writes is in the Crew for its owner (over MCP) and for the next agent",
+    "H3": "A Vault app tool has a short readable name: search it, call it, call it again in a new chat (PLAT-856)",
 }
+
+# app__tool, readable: no connection ID, credential scope or hash, within the providers' 64 characters.
+VAULT_TOOL = re.compile(r"TOOL=([A-Za-z0-9_-]{1,64})")
+INTERNAL_NAME = re.compile(r"vault_|srv_|__scope_|c-[0-9a-f]{8}|[0-9a-f]{12}")
+VAULT_FIND_PROMPT = ("Use search_tools to find one read-only tool from a connected app (a result with a server_name), such as a "
+                     "list, search or get-profile tool that needs few arguments. If there is none reply with only NOVAULT. "
+                     "Otherwise run it with call_tool and reply with only two lines: TOOL=<its name exactly as search_tools "
+                     "gave it> and SERVER=<its server_name>, and a third line CALLED=ok if it ran or CALLED=failed if not.")
+VAULT_AGAIN_PROMPT = ("Run the connected-app tool {tool} with call_tool, using arguments it accepts. Reply with only CALLED=ok if it "
+                      "ran, or CALLED=failed and the error if not. Then use search_tools to look it up and add a line "
+                      "TOOL=<its name exactly as search_tools gave it>.")
 
 CHECK_PROMPT = ("Please run `sh agent-test/{sid}.sh` with your shell tool from the Crew folder. It is this server's "
                 "sandbox self-test and prints only names and short fingerprints. Reply with only its complete output "
@@ -187,6 +199,41 @@ class Run:
             for chat_id in chat_ids:
                 self.close(chat_id)
 
+    def h3(self, target):
+        started, chat_ids = time.monotonic(), []
+        try:
+            chat_ids.append(self.open(f"agent-test H3 first {target['provider']}", target))
+            problems, answer = self.ask(chat_ids[-1], VAULT_FIND_PROMPT, started, lambda a: "NOVAULT" in a or "CALLED=" in a, "CALLED=")
+            if problems:
+                return "NOT RUN", [f"first chat: {p}" for p in problems]
+            if "NOVAULT" in answer:
+                return "NOT RUN", ["the Smoke test Crew has no Vault app selected"]
+            name = VAULT_TOOL.search(answer)
+            server = smoke.word(answer, "SERVER=")
+            if not name:
+                return "NOT RUN", [f"no tool name in the answer: {smoke.first_line(answer)[:120]}"]
+            tool = name.group(1)
+            bad = [f"internal text in {value!r}" for value in (tool, server) if INTERNAL_NAME.search(value)]
+            if "CALLED=ok" not in answer.replace(" ", ""):
+                bad.append(f"first call failed for {tool}")
+            if bad:
+                return "FAIL", bad
+            # A new chat, and the other spelling on purpose: the same name must reach the same tool.
+            chat_ids.append(self.open(f"agent-test H3 second {target['provider']}", target))
+            problems, answer = self.ask(chat_ids[-1], VAULT_AGAIN_PROMPT.format(tool=tool.replace("-", "_")), started,
+                                        lambda a: "CALLED=" in a, "CALLED=")
+            if problems:
+                return "FAIL", [f"second chat: {p}" for p in problems]
+            again = VAULT_TOOL.search(answer)
+            if "CALLED=ok" not in answer.replace(" ", ""):
+                return "FAIL", [f"second call failed for {tool}: {smoke.first_line(answer)[:120]}"]
+            if not again or again.group(1) != tool:
+                return "FAIL", [f"name changed between chats: {tool} then {again.group(1) if again else 'none'}"]
+            return "PASS", []
+        finally:
+            for chat_id in chat_ids:
+                self.close(chat_id)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -233,10 +280,11 @@ def main():
         for i, target in enumerate(targets):
             # H1/H2 pair each program with the next configured one (itself when the server has only one).
             other = targets[(i + 1) % len(targets)]
-            label = target["provider"] if sid in CHECKS else f"{target['provider']} -> {other['provider']}"
+            label = target["provider"] if sid in CHECKS or sid == "H3" else f"{target['provider']} -> {other['provider']}"
             try:
                 verdict, problems = (run.check(sid, target) if sid in CHECKS else
-                                     run.h1(target, other) if sid == "H1" else run.h2(target, other))
+                                     run.h1(target, other) if sid == "H1" else
+                                     run.h2(target, other) if sid == "H2" else run.h3(target))
             except Exception as error:
                 verdict, problems = "NOT RUN", [f"error: {smoke.first_line(str(error))}"]
             report(verdict, sid, label, problems)

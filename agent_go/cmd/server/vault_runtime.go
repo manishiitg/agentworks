@@ -48,7 +48,8 @@ func governedVaultName(name string) bool {
 }
 
 // The SDK pools live connections globally by server name. Binding the name to
-// the delegation prevents reuse across users, sessions, or token lifetimes.
+// the delegation prevents reuse across users, sessions, or token lifetimes. It
+// changes with the token, so it stays internal: agents see vaultToolAlias.
 func vaultRuntimeName(public string, cfg mcpclient.MCPServerConfig) string {
 	sum := sha256.Sum256([]byte(cfg.Headers["Authorization"]))
 	return public + "__scope_" + hex.EncodeToString(sum[:16])
@@ -63,58 +64,125 @@ func vaultSelectionName(name string) string {
 	return name
 }
 
-// OpenAPI bridge URLs also normalize tool names. Recover only a unique name
-// from this caller's live inventory; the gateway still authorizes the call.
-func (api *StreamingAPI) vaultBridgeToolName(ctx context.Context, session, server, tool string) (context.Context, string, error) {
-	if strings.HasPrefix(server, serverVaultPrefix) {
-		name, err := serverVaultBridgeToolName(ctx, api.mcpSessionPerson(session), server, tool)
-		return ctx, name, err
+// vaultToolAlias is the name agents see for a Vault app: "notion", "notion_94acea49" when the person has two
+// connections of it, "server_notion" for one of their server's apps on the Mac. It comes from the app and the person's
+// inventory only, never from a credential, so it reads the same in every chat and vaultBridgeMatch can recompute it.
+func vaultToolAlias(rows []vaultRuntimeServer, row vaultRuntimeServer) string {
+	app := func(r vaultRuntimeServer) string {
+		name := firstNonEmptyTrimmed(r.Provider, r.Label, r.ID)
+		if strings.HasPrefix(r.Name, serverVaultPrefix) {
+			name = "server_" + name
+		}
+		return mcpclient.ToolAlias(name)
 	}
+	alias := app(row)
+	for _, other := range rows {
+		if other.ID != row.ID && app(other) == alias {
+			id := mcpclient.CleanToolNamePart(mcpclient.NormalizeToolName(strings.TrimPrefix(row.ID, "c-")))
+			return mcpclient.ToolAlias(alias[:min(len(alias), 15)]) + "_" + id[:min(len(id), 8)]
+		}
+	}
+	return alias
+}
+
+// vaultRowToolName is the real tool of one connection an agent's name means, in any spelling; empty when it has none.
+func vaultRowToolName(rows []vaultRuntimeServer, row vaultRuntimeServer, tool string) (string, error) {
+	names := make([]string, 0, len(row.Tools))
+	for _, candidate := range row.Tools {
+		names = append(names, candidate.Name)
+	}
+	real, options := mcpclient.MatchToolName(tool, vaultToolAlias(rows, row), names, true)
+	if len(options) > 0 {
+		return "", fmt.Errorf("%q could mean more than one tool: %s. Use one of these names.", tool, strings.Join(options, ", "))
+	}
+	return real, nil
+}
+
+// vaultBridgeMatch finds the connection and real tool behind a server and tool name in these rows. server may be the
+// short alias, the connection's name (with or without an old credential scope) or a route's sanitized form of it.
+// Nothing matching returns empty names. Names only: the gateway still decides every call.
+func vaultBridgeMatch(rows []vaultRuntimeServer, server, tool string) (string, string, error) {
+	selection := vaultSelectionName(server)
+	key := mcpclient.NormalizeToolName(selection)
+	matchedServer, matchedTool := "", ""
+	for _, row := range rows {
+		name := row.Name
+		if name == "" {
+			name = vaultServerName(row.ID)
+		}
+		if selection != name && selection != openapi.SanitizePathSegment(name) && key != mcpclient.NormalizeToolName(vaultToolAlias(rows, row)) {
+			continue
+		}
+		real, err := vaultRowToolName(rows, row, tool)
+		if err != nil {
+			return "", "", err
+		}
+		if real == "" {
+			continue
+		}
+		if matchedTool != "" {
+			return "", "", errors.New("ambiguous Vault tool bridge path")
+		}
+		matchedServer, matchedTool = name, real
+	}
+	return matchedServer, matchedTool, nil
+}
+
+// vaultBridgeToolName is the one place a name an agent was given becomes a real connection and tool. It works from
+// this caller's live inventory, so a short name means the same thing in every session, including one with no agent
+// (a report, a saved script). A name it cannot place is returned as it came: discovery never grants a tool, and the
+// gateway's normal denial and audit still handle it.
+func (api *StreamingAPI) vaultBridgeToolName(ctx context.Context, session, server, tool string) (context.Context, string, string, error) {
 	vaultPath := strings.HasPrefix(server, "vault_")
 	legacyReportPath := !vaultPath && strings.HasPrefix(session, "report-run-")
-	if !vaultPath && !legacyReportPath {
-		return ctx, tool, nil
+	if session == "" && !vaultPath {
+		return ctx, server, tool, nil
 	}
 	person := api.mcpSessionPerson(session)
+	// A Crew's Vault apps are its owner's for everyone who uses it (scopeAgentMCP).
+	lender := person
+	if root := api.projectRootForSession(session); root != "" && person != "" {
+		lender = api.projectSecretsOwner(person, root)
+	}
+	if strings.HasPrefix(server, serverVaultPrefix) {
+		name, err := serverVaultBridgeToolName(ctx, lender, server, tool)
+		return ctx, server, name, err
+	}
 	if legacyReportPath {
 		// Preserve old report URLs such as Linear/list_issues after migration,
 		// but a viewer's private connection always retains its own tool names.
-		resolved, err := api.resolveGovernedMCP(ctx, person, server)
+		resolved, err := api.resolveGovernedMCP(ctx, lender, server)
 		if err != nil {
-			return ctx, "", err
+			return ctx, server, "", err
 		}
 		if !strings.HasPrefix(resolved.Name, "vault_") {
-			return ctx, tool, nil
+			return ctx, server, tool, nil
 		}
 		server = resolved.Name
 	}
-	rows, err := vaultServersFor(ctx, person)
+	rows, err := vaultServersFor(ctx, lender)
 	if err != nil {
-		return ctx, "", err
-	}
-	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person: person, servers: rows})
-	selection := vaultSelectionName(server)
-	var matches []string
-	for _, row := range rows {
-		if selection != vaultServerName(row.ID) && selection != openapi.SanitizePathSegment(vaultServerName(row.ID)) {
-			continue
+		if vaultPath || legacyReportPath {
+			return ctx, server, "", err
 		}
-		for _, candidate := range row.Tools {
-			_, upstream, hasPrefix := strings.Cut(candidate.Name, "__")
-			if candidate.Name == tool || openapi.SanitizePathSegment(candidate.Name) == tool || legacyReportPath && hasPrefix && (upstream == tool || openapi.SanitizePathSegment(upstream) == tool) {
-				matches = append(matches, candidate.Name)
-			}
+		return ctx, server, tool, nil // Not a Vault name; the resolver decides as usual.
+	}
+	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person: lender, servers: rows})
+	realServer, realTool, err := vaultBridgeMatch(rows, server, tool)
+	if err != nil {
+		return ctx, server, "", err
+	}
+	if realTool == "" && !vaultPath && !legacyReportPath {
+		var remote []vaultRuntimeServer
+		ctx, remote = api.withServerVaultInventory(ctx, lender, session)
+		if realServer, realTool, err = vaultBridgeMatch(remote, server, tool); err != nil {
+			return ctx, server, "", err
 		}
 	}
-	if len(matches) > 1 {
-		return ctx, "", errors.New("ambiguous Vault tool bridge path")
+	if realTool == "" {
+		return ctx, server, tool, nil
 	}
-	if len(matches) == 1 {
-		return ctx, matches[0], nil
-	}
-	// Do not grant a tool absent from discovery. Its original name can still
-	// reach the gateway's normal denial/audit handler.
-	return ctx, tool, nil
+	return ctx, realServer, realTool, nil
 }
 func mcpCaller(ctx context.Context) string {
 	if user := GetUserFromContext(ctx); user != nil {
@@ -479,11 +547,18 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 		// Generated bridge paths normalize hyphens to underscores. Compare the
 		// forward-normalized live ID, never guess an ID by replacing underscores.
 		selection := vaultSelectionName(server)
-		if selection == vaultServerName(v.ID) || selection == openapi.SanitizePathSegment(vaultServerName(v.ID)) || strings.EqualFold(server, v.Label) || strings.EqualFold(server, v.Provider) {
+		if selection == vaultServerName(v.ID) || selection == openapi.SanitizePathSegment(vaultServerName(v.ID)) || strings.EqualFold(server, v.Label) || strings.EqualFold(server, v.Provider) || mcpclient.NormalizeToolName(server) == mcpclient.NormalizeToolName(vaultToolAlias(rows, v)) {
 			matches = append(matches, v)
 		}
 	}
-	if len(matches) != 1 {
+	if len(matches) > 1 {
+		options := make([]string, 0, len(matches))
+		for _, v := range matches {
+			options = append(options, vaultToolAlias(rows, v))
+		}
+		return nil, fmt.Errorf("%q could mean more than one connected app: %s. Use one of these names.", server, strings.Join(options, ", "))
+	}
+	if len(matches) == 0 {
 		return nil, errors.New("MCP is not available through Vault; use a specific connection ID from the live inventory")
 	}
 	v := matches[0]
@@ -491,6 +566,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 	if err != nil {
 		return nil, err
 	}
+	cfg.ToolAlias = vaultToolAlias(rows, v)
 	if builder {
 		_, secret, err := gatewayAdminServiceConfig()
 		if err != nil {

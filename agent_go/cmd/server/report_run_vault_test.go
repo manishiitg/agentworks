@@ -37,14 +37,14 @@ func TestReportRunVaultBridgeUsesLiveViewerAndEndsWithScript(t *testing.T) {
 	const session = "report-run-test"
 	api.eventStore.SetSessionOwner(session, "owner") // Must never override the live viewer.
 	api.reportRunSessions.Store(session, reportRunScope{workspacePath: "Workflow/report", userID: "viewer"})
-	ctx, tool, err := api.vaultBridgeToolName(context.Background(), session, "vault_c_notion", "notion__fetch_page")
+	ctx, _, tool, err := api.vaultBridgeToolName(context.Background(), session, "vault_c_notion", "notion__fetch_page")
 	if err != nil || tool != "notion__fetch-page" {
 		t.Fatalf("live report bridge: %q %v", tool, err)
 	}
 	if _, err := api.resolveGovernedMCP(ctx, "viewer", "vault_c_notion"); err != nil {
 		t.Fatal(err)
 	}
-	ctx, tool, err = api.vaultBridgeToolName(context.Background(), session, "Notion", "fetch-page")
+	ctx, _, tool, err = api.vaultBridgeToolName(context.Background(), session, "Notion", "fetch-page")
 	if err != nil || tool != "notion__fetch-page" {
 		t.Fatalf("legacy report tool path was lost: %q %v", tool, err)
 	}
@@ -60,7 +60,7 @@ func TestReportRunVaultBridgeUsesLiveViewerAndEndsWithScript(t *testing.T) {
 	}
 	api.reportRunSessions.Delete(session)
 	before := requests
-	if _, _, err := api.vaultBridgeToolName(context.Background(), session, "vault_c_notion", "notion__fetch_page"); err == nil {
+	if _, _, _, err := api.vaultBridgeToolName(context.Background(), session, "vault_c_notion", "notion__fetch_page"); err == nil {
 		t.Fatal("ended report inherited the event-store owner")
 	}
 	if requests != before {
