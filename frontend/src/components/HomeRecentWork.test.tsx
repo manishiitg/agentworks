@@ -97,7 +97,7 @@ it('keeps connected Home visits scoped to admitted projects, accounts and server
   expect(host.textContent).not.toContain('Personal manager')
   expect(host.textContent).toContain('🚀')
   expect(history).not.toHaveBeenCalled()
-  const remote = host.querySelector<HTMLButtonElement>('[aria-label="Remote dashboard · Crew · Company"]')!
+  const remote = host.querySelector<HTMLButtonElement>('[aria-label="Remote dashboard · Shared dashboard · Company"]')!
   await act(async () => remote.click())
   expect(open).toHaveBeenCalledWith('remote', '/crew/projects/same')
   await act(async () => useConnectedWorkStore.setState(state => ({ inventory: { ...state.inventory, remote: { ...state.inventory.remote, status: 'sign_in' } } })))

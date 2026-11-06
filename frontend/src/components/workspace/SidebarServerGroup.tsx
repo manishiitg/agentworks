@@ -2,16 +2,17 @@ import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
-import { Laptop } from 'lucide-react'
+import { LayoutDashboard, Laptop } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
-export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, owned_by_caller, owner_name, stateLine, offline, onMac, shared_agents, where, onOpen }: { where?: 'mac' | 'web'; shared_agents?: number; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
-  const label = kind === 'crew' ? 'Crew' : 'Goal'
+export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, owned_by_caller, owner_name, stateLine, offline, onMac, shared_agents, where, onOpen }: { where?: 'mac' | 'web'; shared_agents?: number; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
+  const sharedDashboard = kind === 'crew' && mode === 'run'
+  const label = sharedDashboard ? 'Shared dashboard' : kind === 'crew' ? 'Crew' : 'Goal'
   return <div className={`flex ${stateLine ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${selected ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
     <button type="button" title={`${label} · ${name}${location ? ` · ${location}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} onClick={onOpen}
       className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={<ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4" />} /></span>
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={sharedDashboard ? <LayoutDashboard className="h-4 w-4" /> : <ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4" />} /></span>
       <span className="min-w-0 flex-1"><span className={`block truncate text-[13px] leading-5 ${selected ? 'font-medium' : 'font-normal'}`}>{name}</span>{owned_by_caller === false && owner_name && <span className="block truncate text-[11px] leading-3 text-muted-foreground">{owner_name}{where ? ` · ${where === 'mac' ? 'On your Mac' : 'On the web'}` : ''}</span>}{stateLine && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{stateLine}</span>}</span>
     </button>
     {/* A Crew that lives on its owner's Mac (the server's row says so): a laptop with the Mac's on/off dot. */}
