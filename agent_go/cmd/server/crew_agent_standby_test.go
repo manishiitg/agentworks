@@ -864,7 +864,7 @@ func TestOwnerTeamCopyIsAttachedToServerTurnsAndNamedInTheNote(t *testing.T) {
 	if top := crewOwnerCopyTop(team); !strings.Contains(top, "reports/") || !strings.Contains(top, "notes.md") {
 		t.Fatalf("the note must name what is really in the copy: %q", top)
 	}
-	if note := crewStandbyServerNote("team", "main"); !strings.Contains(note, "WORK_FOLDER_EXAMPLE_CREW") || !strings.Contains(note, "reports/") {
+	if note := crewStandbyServerNote("team", "owner", "main"); !strings.Contains(note, "WORK_FOLDER_EXAMPLE_CREW") || !strings.Contains(note, "reports/") {
 		t.Fatalf("the server note must point at the attached copy: %s", note)
 	}
 }
@@ -1052,5 +1052,134 @@ func TestCrewStandbyMemberRowsAreSeparateAndPairBound(t *testing.T) {
 	}
 	if rows, err := readCrewStandby("team", "owner"); err != nil || len(rows["main"].Sessions) != 1 {
 		t.Fatalf("the owner's row must stay: %+v %v", rows, err)
+	}
+}
+
+// Always on for a Team member's Mac agent (owner, 6 Nov): while the member's Mac is off, another person's ask of the
+// member's agent is answered on the server AS THE MEMBER, never as the Crew owner. With a server slot the turn runs in
+// the member's slot; with none, as the shared app account. The Vault is the member's and the member's own copy of the
+// Team files is kept. The owner's own agents and an ordinary Run person's turn keep the owner's slot (AGENTS.md). Only
+// a person of the Team may ask a member's agent.
+func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	_ = f
+	const crew, memberPeer = externalCommandCrewRoot, "6f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f"
+	root := t.TempDir()
+	slotState := filepath.Join(root, "slots", "state")
+	config := filepath.Join(root, "slotctl.json")
+	table := filepath.Join(root, "slots.json")
+	if err := os.WriteFile(config, []byte(`{"allowed_exec":[],"allowed_cwd":[],"slot_run_root":"`+filepath.Join(root, "slots", "run")+`","slot_state_root":"`+slotState+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENTWORKS_SLOTS", "on")
+	t.Setenv("AGENTWORKS_SLOTS_FILE", table)
+	t.Setenv("AGENTWORKS_SLOTCTL_CONFIG", config)
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatalf("pair fixture: %v", err)
+	}
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "folder-1", Whole: true},
+		People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "other-pair"}, {UserID: "third"}}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatalf("team fixture: %v", err)
+	}
+	crewMacTeamTabsCache.Store("team\x00other", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "other", Tab: "main", Name: "Helper", Purpose: "helps"}}})
+	t.Cleanup(func() { crewMacTeamTabsCache.Delete("team\x00other") })
+	rows := map[string]crewAgentStandby{"main": {Tab: "main", Location: "standby", PairID: "other-pair", Peer: memberPeer, Revision: 1}}
+	if err := writeCrewStandby("team", "other", rows); err != nil {
+		t.Fatal(err)
+	}
+	shared := codingAgentWorkspaceWorkingDir(crew)
+	runsAs := func(caller, slot string) (user, got string) {
+		dir := filepath.Join(slotState, slot, "runtime")
+		if slot == "" {
+			dir = filepath.Join(root, "app", "runtime")
+		}
+		r := decideTurnRunAs(context.Background(), turnRunAsInput{ProfileID: "work", WorkingFolder: crew, CLIWorkingDir: dir, SharedWorkingDir: shared, CallerID: caller, ConnectionID: "global:claude-code"}, defaultRunAsDeps())
+		return r.User, r.Slot
+	}
+
+	// The member holds a slot: their agent's turn is theirs; the owner's agent and a Run person keep the owner's slot.
+	if err := os.WriteFile(table, []byte(`{"slots":{"slot01":"owner","slot02":"other","slot03":"third"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if id := crewStandbyRunAs("team", "other"); !id.Member || id.Slot != "slot02" || id.Account() != "member_slot" {
+		t.Fatalf("member with a slot: %+v", id)
+	}
+	if slot, person := crewTurnSlot(crew, "other"); slot != "slot02" || person != "other" {
+		t.Fatalf("member's turn slot: %q %q", slot, person)
+	}
+	if user, slot := runsAs("other", "slot02"); user != "other" || slot != "slot02" {
+		t.Fatalf("member's turn declared as user=%q slot=%q", user, slot)
+	}
+	for _, caller := range []string{"owner", "third"} { // the owner's agent, and a Run person (a Team person with no standby copy)
+		if slot, person := crewTurnSlot(crew, caller); slot != "slot01" || person != "owner" {
+			t.Fatalf("%s's turn must keep the Crew owner's slot: %q %q", caller, slot, person)
+		}
+		if user, slot := runsAs(caller, "slot01"); user != "owner" || slot != "slot01" {
+			t.Fatalf("%s's turn declared as user=%q slot=%q", caller, user, slot)
+		}
+	}
+	if crewStandbyRunAs("team", "owner").Member || crewStandbyRunAs("team", "owner").Account() != "owner" {
+		t.Fatal("the owner's agent must stay the owner's")
+	}
+	api := &StreamingAPI{}
+	if got := api.projectSecretsOwner("other", crew); got != "other" {
+		t.Fatalf("the member's agent must use the member's Vault, got %q", got)
+	}
+	for _, caller := range []string{"owner", "third"} {
+		if got := api.projectSecretsOwner(caller, crew); got != "owner" {
+			t.Fatalf("%s must keep the Crew's Vault lender, got %q", caller, got)
+		}
+	}
+	if note := crewStandbyServerNote("team", "other", "main"); !strings.Contains(note, "own login on this server") || strings.Contains(note, "shared AI account") {
+		t.Fatalf("the note must say the member's own login ran: %s", note)
+	}
+	// The member's own copy of the Team files is wanted while their agent has a standby copy; nobody else's.
+	if !crewStandbyCopyWanted(team, "other") || crewStandbyCopyWanted(team, "third") || crewOwnerCopyWanted(team) {
+		t.Fatal("a member's copy of the Team files is kept for the member alone, while they have a standby copy")
+	}
+
+	// The member holds no slot: the shared app account, never the owner's slot, and the note says so.
+	if err := os.WriteFile(table, []byte(`{"slots":{"slot01":"owner"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if id := crewStandbyRunAs("team", "other"); !id.Member || id.Slot != "" || id.Account() != "shared_account" {
+		t.Fatalf("member without a slot: %+v", id)
+	}
+	if slot, person := crewTurnSlot(crew, "other"); slot != "" || person != "other" {
+		t.Fatalf("a member with no slot must not get the owner's: %q %q", slot, person)
+	}
+	if user, slot := runsAs("other", ""); user != "" || slot != "" {
+		t.Fatalf("member without a slot declared as user=%q slot=%q, want the app account", user, slot)
+	}
+	if note := crewStandbyServerNote("team", "other", "main"); !strings.Contains(note, "shared AI account") || strings.Contains(note, "own login") {
+		t.Fatalf("the note must say the shared account ran: %s", note)
+	}
+
+	// Who may ask: a person of the Team does; someone outside it is refused by the audience rule, and an agent whose
+	// person has no standby copy is unavailable.
+	var ran []crewChatCall
+	crewStandbyRunForTest = func(_ context.Context, _ string, call crewChatCall) crewChatResult {
+		ran = append(ran, call)
+		return crewChatResult{Status: http.StatusOK, Body: []byte(`{"status":"accepted"}`)}
+	}
+	t.Cleanup(func() { crewStandbyRunForTest = nil })
+	ask := func(person, sender string) crewChatResult {
+		raw, _ := json.Marshal(map[string]string{"sender_id": sender})
+		return api.serverAgentCall(t.Context(), person, "team", crewChatCall{Operation: "agent_ask", Tab: "main", Message: "hi", Args: raw}, true, true)
+	}
+	if got := ask("other", "owner"); got.Status != http.StatusOK || len(ran) != 1 {
+		t.Fatalf("a person of the Team must reach the member's agent: %d %s", got.Status, got.Body)
+	}
+	if got := ask("other", "outsider"); got.Status != http.StatusForbidden || !strings.Contains(string(got.Body), "no longer shared") || len(ran) != 1 {
+		t.Fatalf("someone outside the Team must be refused by the audience rule: %d %s", got.Status, got.Body)
+	}
+	if err := writeCrewStandby("team", "other", map[string]crewAgentStandby{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := ask("other", "owner"); got.Status != http.StatusForbidden || !strings.Contains(string(got.Body), "unavailable") || len(ran) != 1 {
+		t.Fatalf("a member with no standby copy has no agent here: %d %s", got.Status, got.Body)
 	}
 }

@@ -98,11 +98,12 @@ func (api *StreamingAPI) syncCrewTeamServerCopy(ctx context.Context, member, pro
 	t, err := readCrewTeam(project)
 	// The owner of a Crew that lives on their Mac has a copy here too while their agents can answer from the server
 	// (Always on): the server's turns for those agents work in it (crewOwnerCopyWanted).
-	ownerHere := member == t.OwnerID && crewOwnerCopyWanted(t)
-	if err != nil || member == t.OwnerID && !ownerHere || t.Folder.ID == "" || !t.edits(member) {
+	// A member on their Mac has one here too while one of their agents can answer from the server (crewStandbyCopyWanted).
+	wanted := crewStandbyCopyWanted(t, member)
+	if err != nil || member == t.OwnerID && !wanted || t.Folder.ID == "" || !t.edits(member) {
 		return "", nil
 	}
-	if _, onMac := t.memberMac(member); onMac {
+	if _, onMac := t.memberMac(member); onMac && !wanted {
 		return "", nil // their agents here work on their Mac, with its copy
 	}
 	if !crewRelayTwin(project) {
@@ -186,9 +187,13 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 				}
 				// The owner's copy of a Mac Crew exists while an In team agent of theirs can answer here, so it is ready
 				// when their Mac goes off (the first download of a large Crew takes a while).
-				if crewOwnerCopyWanted(t) {
+				// A member's of their Mac Crew likewise, while one of their agents has a standby copy here.
+				for _, p := range append([]crewTeamPerson{{UserID: t.OwnerID}}, t.People...) {
+					if p.Invited || !crewStandbyCopyWanted(t, p.UserID) {
+						continue
+					}
 					round, done := context.WithTimeout(context.WithValue(ctx, crewTeamCopyReasonKey{}, "always_on"), 2*time.Minute)
-					_, _ = api.syncCrewTeamServerCopy(round, t.OwnerID, t.ProjectID, true)
+					_, _ = api.syncCrewTeamServerCopy(round, p.UserID, t.ProjectID, true)
 					done()
 				}
 			}
@@ -262,7 +267,8 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 			continue
 		}
 		stillTheirs := !gone && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID == b.FolderID && t.edits(b.RemoteUser) && crewRelayTwin(b.Project)
-		if stillTheirs && !onMac {
+		// A member on their Mac keeps the copy while one of their agents has a standby copy here.
+		if stillTheirs && (!onMac || crewStandbyCopyWanted(t, b.RemoteUser)) {
 			continue
 		}
 		if stillTheirs && onMac {
@@ -341,6 +347,9 @@ func crewTeamServerFolders(claims *UserClaims) []workflowtypes.WorkflowFolderGra
 		if claims.UserID == t.OwnerID && !crewOwnerCopyWanted(t) || !t.edits(claims.UserID) {
 			continue
 		}
+		if _, onMac := t.memberMac(claims.UserID); onMac && claims.UserID != t.OwnerID && !crewStandbyCopyWanted(t, claims.UserID) {
+			continue // a member on their Mac has their copy here only while one of their agents can answer from the server
+		}
 		dir, err := crewTeamServerCopyDir(claims.UserID, t.ProjectID, t.Folder.ID)
 		if err != nil {
 			continue
@@ -394,11 +403,16 @@ func crewTeamCopyInUse(t crewTeam, b crewTeamLocal, dir string) bool {
 
 // crewOwnerCopyWanted: the Team is on with a shared folder, its Crew lives on the owner's Mac, and an agent of the owner
 // has a standby copy here, so the server may answer for it while the Mac is off and that turn needs the team's files.
-func crewOwnerCopyWanted(t crewTeam) bool {
-	if IsLocalMode() || !t.On || t.Folder.ID == "" || t.OwnerID == "" || !crewRelayTwin(t.ProjectID) {
+func crewOwnerCopyWanted(t crewTeam) bool { return crewStandbyCopyWanted(t, t.OwnerID) }
+
+// crewStandbyCopyWanted is the same for any joined person of a Mac Crew's Team, a member on their Mac included: they
+// have their own copy of the Team's shared folder here (team-copies/<member>/) while an agent of theirs has a standby
+// copy, so the server's turns for it, run as them (crew_standby_runas.go), work in their copy and never the owner's.
+func crewStandbyCopyWanted(t crewTeam, person string) bool {
+	if IsLocalMode() || !t.On || t.Folder.ID == "" || t.OwnerID == "" || person == "" || !crewRelayTwin(t.ProjectID) || !t.member(person) {
 		return false
 	}
-	rows, err := readCrewStandby(t.ProjectID, t.OwnerID)
+	rows, err := readCrewStandby(t.ProjectID, person)
 	return err == nil && len(rows) > 0
 }
 
@@ -413,13 +427,16 @@ func crewTeamCopyAlias(t crewTeam) string {
 
 // crewOwnerCopyTop names the top-level entries of the owner's copy of the team folder here, "" when there is none yet
 // (or it has not received the team folder), so the server note says what is really there.
-func crewOwnerCopyTop(t crewTeam) string {
-	dir, err := crewTeamServerCopyDir(t.OwnerID, t.ProjectID, t.Folder.ID)
+func crewOwnerCopyTop(t crewTeam) string { return crewCopyTop(t, t.OwnerID) }
+
+// crewCopyTop is crewOwnerCopyTop for the copy of person (a member's, never another's).
+func crewCopyTop(t crewTeam, person string) string {
+	dir, err := crewTeamServerCopyDir(person, t.ProjectID, t.Folder.ID)
 	if err != nil {
 		return ""
 	}
 	b, err := readCrewTeamLocal(dir)
-	if err != nil || !b.Downloaded || b.RemoteUser != t.OwnerID {
+	if err != nil || !b.Downloaded || b.RemoteUser != person {
 		return ""
 	}
 	entries, err := os.ReadDir(b.Root)

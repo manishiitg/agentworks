@@ -360,6 +360,11 @@ func (api *StreamingAPI) crewSecretsPerson(userID, root, surface string) string 
 // mcps.. it upto the user"). For a Goal it is its registered creator (workflow_owner_registry.go); elsewhere the caller.
 func (api *StreamingAPI) projectSecretsOwner(userID, workspacePath string) string {
 	if owner, ok := crewProjectOwnerID(workspacePath); ok && strings.TrimSpace(owner) != "" {
+		// A Team member's own agent answering from the server (a standby turn) uses the member's Vault, never the
+		// Crew owner's (crew_standby_runas.go).
+		if id, standby := crewMemberStandbyTurnAt(workspacePath, userID); standby {
+			return id.Person
+		}
 		return owner
 	}
 	// A Goal's owner comes only from the server's own record, never from workflow.json (Builder turns can edit it).

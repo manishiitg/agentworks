@@ -33,11 +33,19 @@ const crewStandbyMacRefusalLine = "This agent is answering from the server while
 // crewStandbyMacOnlyShown keeps the Mac-only list in every server turn's note short.
 const crewStandbyMacOnlyShown = 50
 
-func crewStandbyServerNote(project, tab string) string {
-	owner := ownerOfCrewProjectID(project)
-	ownerName := firstNonEmptyTrimmed(crewPersonShortName(owner), "your owner")
+func crewStandbyServerNote(project, person, tab string) string {
+	identity := crewStandbyRunAs(project, person)
+	ownerName := firstNonEmptyTrimmed(crewPersonShortName(person), "your owner")
 	agent := "Main"
-	for _, a := range readMacSharedAgents(project) {
+	agents := readMacSharedAgents(project)
+	if identity.Member {
+		// A member's agent is as their Mac listed it, not the owner's agent of the same tab.
+		agents = nil
+		if a, ok := crewMemberStandbyAgent(project, person, tab); ok {
+			agents = []macSharedAgent{a}
+		}
+	}
+	for _, a := range agents {
 		if a.Tab == tab && strings.TrimSpace(a.Name) != "" {
 			agent = strings.TrimSpace(a.Name)
 		}
@@ -50,14 +58,24 @@ func crewStandbyServerNote(project, tab string) string {
 	}
 	// What is really here: the owner's copy of the team folder, attached as WORK_FOLDER_<NAME> (crew_team_server_copy.go).
 	if t, err := readCrewTeam(project); err == nil {
-		if top := crewOwnerCopyTop(t); top != "" {
+		if top := crewCopyTop(t, person); top != "" {
 			files = fmt.Sprintf("your copy of the Team's shared folder, attached as the folder WORK_FOLDER_%s (it syncs with the team, so what you change reaches the Mac when it is back); it holds %s", strings.ToUpper(crewTeamCopyAlias(t)), top)
+		} else if identity.Member {
+			files = "none of the Crew's files, only this conversation (your copy of the Team's shared folder is not ready yet)"
 		}
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "## Answering from the server\n\nYou are %s's agent %q. %s's Mac is off, so you are answering from the server's copy of this conversation, with %s's AI account and the apps and secrets in their Vault on the server.\n\n", ownerName, agent, ownerName, ownerName)
+	// Whose account really runs this turn (crewStandbyRunAs): said plainly, never the Crew owner's for a member's agent.
+	account := fmt.Sprintf("with %s's AI account and the apps and secrets in their Vault on the server", ownerName)
+	switch identity.Account() {
+	case "member_slot":
+		account = fmt.Sprintf("with %s's own login on this server and the apps and secrets in their Vault on the server (never the Crew owner's)", ownerName)
+	case "shared_account":
+		account = fmt.Sprintf("with the server's shared AI account, because %s has no login of their own on this server, and the apps and secrets in their Vault on the server (never the Crew owner's)", ownerName)
+	}
+	fmt.Fprintf(&b, "## Answering from the server\n\nYou are %s's agent %q. %s's Mac is off, so you are answering from the server's copy of this conversation, %s.\n\n", ownerName, agent, ownerName, account)
 	fmt.Fprintf(&b, "Files here: %s. Everything else in this Crew is only on the Mac: do not assume those files exist here.\n\n", files)
-	if items := crewStandbyMacOnly(project, owner); len(items) > 0 {
+	if items := crewStandbyMacOnly(project, person); len(items) > 0 {
 		names := make([]string, 0, min(len(items), crewStandbyMacOnlyShown)+1)
 		for _, item := range items[:min(len(items), crewStandbyMacOnlyShown)] {
 			names = append(names, item.Name+" ("+item.Kind+")")
@@ -67,7 +85,7 @@ func crewStandbyServerNote(project, tab string) string {
 		}
 		fmt.Fprintf(&b, "Only on the Mac, not available now: %s.\n\n", strings.Join(names, ", "))
 	}
-	if rows, err := readCrewStandby(project, owner); err == nil {
+	if rows, err := readCrewStandby(project, person); err == nil {
 		if row := rows[tab]; row.MacProgram != "" && row.ServerProgram != row.MacProgram {
 			fmt.Fprintf(&b, "On the Mac you run on %s; this server doesn't have it, so you continue this conversation on %s from its saved history: you have the conversation, but not the details of earlier tool calls.\n\n", providerDisplayLabel(row.MacProgram), crewStandbyServerProgramName(row.ServerProgram))
 		}
@@ -108,29 +126,41 @@ func crewStandbyServesKey(key string) bool {
 
 // crewStandbyServedTab is the agent of a teammate's thread the server answers for from its standby copy.
 func crewStandbyServedTab(key string) (string, bool) {
+	return crewStandbyServedTabOf(ownerOfCrewProjectID(crewResourceProjectID(strings.TrimSpace(key))), key)
+}
+
+// crewStandbyServedTabOf is the same for the agents of person (the Crew's owner, or a Team member working on their Mac):
+// a thread lives in the registry of the person whose agent it is, so the person that runs the turn names the rows.
+func crewStandbyServedTabOf(person, key string) (string, bool) {
 	key = strings.TrimSpace(key)
 	project := crewResourceProjectID(key)
-	if IsLocalMode() || project == "" || !isSharedThreadKey(key) {
+	if IsLocalMode() || project == "" || person == "" || !isSharedThreadKey(key) {
 		return "", false
 	}
-	// The owner's agents only: a member's are served in a later step.
-	rows, err := readCrewStandby(project, ownerOfCrewProjectID(project))
+	rows, err := readCrewStandby(project, person)
 	if err != nil || len(rows) == 0 {
 		return "", false
 	}
-	tab := crewStandbyTabForKey(project, key)
+	tab := crewStandbyTabForKeyOf(project, person, key)
 	return tab, rows[tab].Writer == "server"
 }
 
 // crewStandbyTabForKey is the Mac agent a chat key of the Crew's online copy belongs to: a side tab or a teammate's
 // thread on it, or the owner's Main (by the project, its physical key, or a thread on it).
 func crewStandbyTabForKey(project, key string) string {
+	return crewStandbyTabForKeyOf(project, ownerOfCrewProjectID(project), key)
+}
+
+// crewStandbyTabForKeyOf is the agent a chat key belongs to among the agents of person: their Main is the key their own
+// registry gives it (crewOwnerDefaultChatKey); the root-key Main is the Crew owner's alone.
+func crewStandbyTabForKeyOf(project, person, key string) string {
 	key = strings.TrimSpace(key)
 	if project == "" || key == "" {
 		return ""
 	}
-	// The saved Main pointer distinguishes it from the owner's other registered agents.
-	if key == crewOwnerDefaultChatKey(project, ownerOfCrewProjectID(project)) || key == crewOwnerMainChatKey(project) {
+	// The saved Main pointer distinguishes the owner's Main from their other registered agents; a member's Main is the
+	// key their own registry gives it.
+	if key == crewOwnerDefaultChatKey(project, person) || person == ownerOfCrewProjectID(project) && key == crewOwnerMainChatKey(project) {
 		return macMainTab
 	}
 	return crewAgentPublishTab(key)
@@ -267,21 +297,18 @@ func markCrewStandbyWriterLocked(project, person, tab string) {
 	crewAlwaysOnLog(project, tab, "writer_server", fmt.Sprintf("revision_%d", row.Revision), started)
 }
 
-// importCrewStandby brings the owner's chat with the agent, and the sender's own thread on it when a teammate asks,
-// from the standby copy into this server's conversations. A copy already imported at its revision is left as it is.
+// importCrewStandby brings the agent's person's chat with the agent (the owner's, or the member's whose agent it is), and
+// the sender's own thread on it when a teammate asks, from the standby copy into this server's conversations of that
+// person. A copy already imported at its revision is left as it is.
 func (api *StreamingAPI) importCrewStandby(ctx context.Context, owner, project, tab, sender string) error {
 	if crewStandbyImportForTest != nil {
 		return crewStandbyImportForTest(owner, project, tab, sender)
 	}
 	claims := &UserClaims{UserID: owner, Username: owner}
 	ctx = context.WithValue(ctx, UserContextKey, claims)
-	roots, err := api.crewSyncRoots(ctx, claims, project)
+	roots, binding, err := api.crewStandbyImportRoots(ctx, claims, project, tab)
 	if err != nil {
 		return err
-	}
-	binding, err := crewroot.ReadSync(project)
-	if err != nil || binding == nil || binding.Side != "server" || binding.PeerProjectID == "" {
-		return fmt.Errorf("this Crew is not paired with its Mac")
 	}
 	dir, err := crewStandbyPersonDir(project, owner)
 	if err != nil {
@@ -340,6 +367,37 @@ func (api *StreamingAPI) importCrewStandby(ctx context.Context, owner, project, 
 	}
 	rows[tab] = row
 	return writeCrewStandby(project, owner, rows)
+}
+
+// crewStandbyImportRoots is where a person's standby copy is imported from and into: the Crew owner's, by the Crew's own
+// pair; a member's, by the pair the Team recorded for them and the Mac project their row names, with their own staging
+// folder and copy of the Team files (crewMemberTransfer), never the owner's.
+func (api *StreamingAPI) crewStandbyImportRoots(ctx context.Context, claims *UserClaims, project, tab string) (crewroot.Roots, *crewroot.SyncBinding, error) {
+	if claims.UserID == ownerOfCrewProjectID(project) {
+		roots, err := api.crewSyncRoots(ctx, claims, project)
+		if err != nil {
+			return roots, nil, err
+		}
+		binding, err := crewroot.ReadSync(project)
+		if err != nil || binding == nil || binding.Side != "server" || binding.PeerProjectID == "" {
+			return roots, nil, fmt.Errorf("this Crew is not paired with its Mac")
+		}
+		return roots, binding, nil
+	}
+	rows, err := readCrewStandby(project, claims.UserID)
+	if err != nil {
+		return crewroot.Roots{}, nil, err
+	}
+	pair, peer := crewStandbyPairPeer(project, claims.UserID, rows[tab])
+	roots, binding, member, err := api.crewMemberTransfer(ctx, claims, project, pair)
+	if err != nil {
+		return roots, nil, err
+	}
+	if !member || binding == nil || peer == "" {
+		return roots, nil, fmt.Errorf("this Crew is not paired with their Mac")
+	}
+	binding.PeerProjectID = peer
+	return roots, binding, nil
 }
 
 // importCrewStandbySession imports one stored conversation (native session + history) into the server's chat with the
@@ -404,7 +462,14 @@ func (api *StreamingAPI) importCrewStandbySession(ctx context.Context, claims *U
 				doc.Agents = map[string]ProductAgentIdentity{}
 			}
 			identity := doc.Agents[entry]
-			for _, agent := range readMacSharedAgents(roots.ID) {
+			agents := readMacSharedAgents(roots.ID)
+			if claims.UserID != ownerOfCrewProjectID(roots.ID) {
+				agents = nil // a member's tab is named as their Mac listed it
+				if a, ok := crewMemberStandbyAgent(roots.ID, claims.UserID, tab); ok {
+					agents = []macSharedAgent{a}
+				}
+			}
+			for _, agent := range agents {
 				if agent.Tab == tab && strings.TrimSpace(identity.Name) == "" {
 					identity.Name, identity.Purpose = agent.Name, agent.Purpose
 				}
@@ -458,8 +523,7 @@ func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours, inTeam boo
 		return "Only you · on your Mac", ""
 	case macOn:
 		return crewStandbyCopyLabel(project, owner, tab)
-	// A member's agent is not answered from the server yet (a later step): until then it waits for their Mac.
-	case owner == ownerOfCrewProjectID(project) && crewStandbyCanAnswer(project, owner, tab) && !crewStandbyRecentlyFailed(project, owner, tab):
+	case crewStandbyCanAnswer(project, owner, tab) && !crewStandbyRecentlyFailed(project, owner, tab):
 		return "Mac off · answering from the server", "server"
 	case yours:
 		return "Mac off · waits for your Mac", ""

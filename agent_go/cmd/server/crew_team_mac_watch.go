@@ -458,9 +458,14 @@ func crewMemberMacAgentFor(ctx context.Context, project, key, caller string) (st
 	return "", crewMacTeamTab{}, false
 }
 
+// crewMemberMacOffLine is what the sender is told when the member's Mac is off and their agent cannot answer from the
+// server (no copy there yet, or no AI program the server can use for it): the message waits for the Mac.
+const crewMemberMacOffLine = "Their Mac is off and their agent can't answer from the server yet. Your message is waiting for their Mac."
+
 // deliverToMemberMacAgent hands an agent message to a Team member's agent on their Mac, like the owner's Mac agents:
-// it runs there in the sender's own thread, the answer comes back to this inbox, and with their Mac off the message
-// waits for it.
+// it runs there in the sender's own thread, the answer comes back to this inbox. With their Mac off an In team agent
+// that has a standby copy answers from the server AS THE MEMBER (crew_standby_runas.go); otherwise the message waits
+// for the Mac.
 func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
 	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, source.UserID)
 	if !ok {
@@ -469,7 +474,12 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	}
 	pair, _ := crewMacPairFor(person, dest.ID)
 	sender := shareOwnerLabel(source.UserID)
+	// With their Mac off, the agent answers from its standby copy on the server, as the member.
+	standby := api.crewStandbyRoute(ctx, person, dest.ID, agent.Tab, source.UserID, true)
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
+		if standby {
+			return api.standbyAgentCall(context.Background(), person, dest.ID, call, true)
+		}
 		return callCrewMacPair(context.Background(), person, dest.ID, pair, call, timeout)
 	}
 	read := func(after, wait int) (map[string]any, int) {
@@ -487,21 +497,21 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	if status == http.StatusOK {
 		status = run(ask, 60*time.Second).Status
 	}
-	log.Printf("[CREW_TEAM] project=%s event=member_mac_message of=%s tab=%s user=%s mac_status=%d", dest.ID, logUsernameForUserID(person), agent.Tab, logUsernameForUserID(source.UserID), status)
-	if status == http.StatusServiceUnavailable {
+	log.Printf("[CREW_TEAM] project=%s event=member_mac_message of=%s tab=%s user=%s mac_status=%d standby=%t", dest.ID, logUsernameForUserID(person), agent.Tab, logUsernameForUserID(source.UserID), status, standby)
+	if status == http.StatusServiceUnavailable && !standby {
 		if err := holdForPersonMac(dest.ID, person, "mac_off", ask, c.ID, from); err != nil {
 			if errors.Is(err, errCrewMacHeldFull) {
 				return fmt.Errorf("Too many of your messages are already waiting for this Mac. Try again when it is back.")
 			}
 			return fmt.Errorf("Your message could not be saved. Please try again.")
 		}
-		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(person)+"'s Mac is off; your message is delivered when it's back. The answer comes to this inbox.")
+		go api.appendMacAgentReply(c.ID, from, crewMemberMacOffLine)
 		return nil
 	}
 	if status != http.StatusOK {
 		return fmt.Errorf("the agent could not take this message; try again shortly")
 	}
-	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: agent.Tab, Mac: person, Member: true, SenderID: source.UserID, Caller: sender})
+	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: agent.Tab, Mac: person, Member: true, Standby: standby, SenderID: source.UserID, Caller: sender})
 	return nil
 }
 
