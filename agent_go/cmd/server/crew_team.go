@@ -485,6 +485,16 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		externalError(w, 403, "team_owner_only", refusal)
 		return
 	}
+	// Whole Crew is refused only when the Crew is over the Team's limits now (owner, 6 Nov), with one plain line.
+	if input.Folder.Whole && !previous.Folder.Whole {
+		if count, bytes, measured := crewTeamWholeSize(r.Context(), owner, project); measured {
+			if line := crewTeamTooBigLine("This Crew", count, bytes); line != "" {
+				log.Printf("[CREW_TEAM] project=%s actor=%s event=whole_refused files=%d bytes=%d", project, logUsernameForUserID(claims.UserID), count, bytes)
+				externalError(w, 400, "crew_too_big", line)
+				return
+			}
+		}
+	}
 	// A person added to the Team is invited until they accept; existing people keep their own state.
 	for i := range input.People {
 		at := slices.IndexFunc(previous.People, func(p crewTeamPerson) bool { return p.UserID == input.People[i].UserID })

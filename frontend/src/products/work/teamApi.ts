@@ -182,7 +182,7 @@ export function teamAgentForTab(state: TeamTabState, key: string | undefined, ma
 /** One folder of the Crew for the Team's "+ Share this folder" and the shared folders' sizes (path=, or whole=1),
  * the same for the Mac app and the website: the server reads it where the Crew is (its own folder, or the owner's
  * Mac over Mac online) and, with that Mac off, says so in offline (crew_team_folders.go). */
-export type TeamFolderListing = { folders: string[]; path: string; files: number; bytes: number; too_big?: boolean; too_big_line?: string; offline?: string }
+export type TeamFolderListing = { folders: string[]; path: string; files: number; bytes: number; offline?: string }
 export function teamFolders(target: TeamTarget, query: string): Promise<TeamFolderListing> {
   return teamRequest<TeamFolderListing>({ project: target.project, connection: target.connection }, `/folders?${query}`)
 }

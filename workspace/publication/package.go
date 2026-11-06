@@ -145,7 +145,7 @@ func excluded(p string, directory, credentials bool) bool {
 			return true
 		}
 		switch part {
-		case "node_modules", "__pycache__", "venv", "builder", "chat_history", "browser-profile", "browser-data":
+		case "node_modules", "bower_components", "jspm_packages", "site-packages", "__pycache__", "venv", "builder", "chat_history", "browser-profile", "browser-data":
 			return true
 		}
 		if !strings.HasPrefix(part, ".") {

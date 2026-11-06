@@ -14,10 +14,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -222,6 +224,7 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 			case <-ctx.Done():
 				return
 			case <-time.After(5 * time.Second):
+			case <-crewTeamWake: // a watched copy changed (crew_team_watch.go)
 			}
 		}
 	}()
@@ -289,21 +292,36 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 	query := "?folder_id=" + url.QueryEscape(b.FolderID)
 	// 1. What changed here goes up: plan, the chunks the server lacks, commit; at most crewTeamCommitBatch files a time.
 	// A copy that has not yet received the team folder once only downloads.
+	var uploadErr error
+	// Only what a watcher saw change is read, with a full scan now and then (crew_team_watch.go).
 	scan := crewTeamScanResult{}
 	if b.Downloaded {
-		if scan, e = crewTeamScan(ctx, b, team.Folder); e != nil {
+		started, key := time.Now(), crewTeamScanKey(*b, team.Folder)
+		watch := crewTeamWatchFor(dir, b.Root)
+		plan := watch.take(key)
+		if !plan.idle() {
+			scan, e = crewTeamScanChanged(ctx, b, team.Folder, plan.changed, plan.rules)
+		}
+		// An upload that fails (a refused file, the server busy) does not stop what the team changed from coming
+		// down; the failure is reported once the download is done, and what did not go up goes next round.
+		var chunks int
+		var saveErr error
+		if e == nil && len(scan.changes) > 0 {
+			roundCtx := startCrewTeamRound(ctx, dir, b.Project, "upload", len(scan.changes), 0, 0)
+			chunks, uploadErr = crewTeamUpload(roundCtx, owner, c, route, query, b, scan)
+			endCrewTeamRound(dir, uploadErr)
+			saveErr = saveCrewTeamLocal(dir, *b)
+		}
+		watch.done(b.Project, key, plan, scan, errors.Join(e, uploadErr, saveErr))
+		if !plan.idle() {
+			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=round scan=%s watched=%d stated=%d names=%d changes=%d chunks_sent=%d ms=%d",
+				b.Project, b.Client, plan.mode(), plan.watched, scan.stated, scan.names, len(scan.changes), chunks, time.Since(started).Milliseconds())
+		}
+		if e != nil {
 			return crewTeamStep("scan", e)
 		}
-	}
-	// An upload that fails (a refused file, the server busy) does not stop what the team changed from coming down;
-	// the failure is reported once the download is done, and what did not go up goes next round.
-	var uploadErr error
-	if len(scan.changes) > 0 {
-		roundCtx := startCrewTeamRound(ctx, dir, b.Project, "upload", len(scan.changes), 0, 0)
-		uploadErr = crewTeamUpload(roundCtx, owner, c, route, query, b, scan)
-		endCrewTeamRound(dir, uploadErr)
-		if e = saveCrewTeamLocal(dir, *b); e != nil {
-			return e
+		if saveErr != nil {
+			return saveErr
 		}
 	}
 	// 2. What changed on the team comes down, page by page.
@@ -365,97 +383,204 @@ type crewTeamScanResult struct {
 	changes []crewTeamChange
 	entries map[string]crewTeamLocalFile // the new state of each changed path (absent for a removal)
 	sources map[string]crewTeamChunkSource
+	dirs    []string // folders the scan entered: what a watcher watches ("" is the copy's folder)
+	stated  int      // files whose size and time were read
+	names   int      // names in the folders the scan listed
+	rules   bool     // the folder has a .gitignore (known after a full scan)
+	respell bool     // a changed folder is spelled differently on disk now: only a full scan reads it right
 }
 
 // crewTeamScan finds what changed in this copy since it was last in step: a file whose size and modification time
 // are unchanged is not read; any other is chunked. Only what the share holds is looked at (crewTeamAllowed, Sync it
 // anyway, Whole Crew or the chosen folders, .gitignore), as the old capture did.
 func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (crewTeamScanResult, error) {
+	return crewTeamScanChanged(ctx, b, share, nil, false)
+}
+
+// crewTeamScanChanged is crewTeamScan for the paths a watcher saw change (crew_team_watch.go): it reads the folder
+// each is in, and a path marked true (made, removed or renamed: maybe a folder) with all it holds. changed nil reads
+// the whole copy. rules is whether the folder had a .gitignore at its last full scan.
+func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFolder, changed map[string]bool, rules bool) (crewTeamScanResult, error) {
 	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]crewTeamChunkSource{}}
-	ignored, err := crewTeamIgnored(ctx, b.Root)
-	if err != nil {
-		return out, err
-	}
 	op := b.onPurpose()
-	// seen: files this round shares; present: every file name the walk met, spelled as on disk now (on a Mac's
-	// case-insensitive disk a lookup of the old spelling still succeeds after a case-only rename); left: folders the
-	// walk did not enter.
-	seen, present, left := map[string]bool{}, map[string]bool{}, []string{}
-	tooLarge := []string{}
-	var count, bytes int64
-	err = filepath.WalkDir(b.Root, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	full := changed == nil
+	enters := func(rel string) bool { return crewsync.Allowed(crewTeamKey(rel), true) && share.walks(rel) }
+	// targets: folder -> whether everything under it is read (deep), or only its own files.
+	targets := map[string]bool{"": full}
+	if !full {
+		delete(targets, "")
+		for p, all := range changed {
+			if p = strings.Trim(path.Clean("/"+p), "/"); p == "" {
+				targets[""] = targets[""] || all
+				continue
+			}
+			if _, ok := targets[crewTeamParent(p)]; !ok {
+				targets[crewTeamParent(p)] = false // its own files only
+			}
+			if all {
+				targets[p] = true
+			}
 		}
+	}
+	// present: every file name the listing met, spelled as on disk now (on a Mac's case-insensitive disk a lookup of
+	// the old spelling still succeeds after a case-only rename); listed: folders whose names were all read, and deep
+	// ones with all below them; left: folders a deep listing did not enter.
+	type file struct {
+		rel string
+		d   fs.DirEntry
+	}
+	files := []file{}
+	present, listed, deep, left := map[string]bool{}, map[string]bool{}, map[string]bool{}, []string{}
+	names := map[string]map[string]bool{} // a folder's exact entry names, for spelling checks
+	var list func(rel string, recurse bool) error
+	list = func(rel string, recurse bool) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if p == b.Root {
+		if listed[rel] && (deep[rel] || !recurse) {
 			return nil
 		}
-		rel, _ := filepath.Rel(b.Root, p)
-		rel = filepath.ToSlash(rel)
-		if d.IsDir() {
-			if !crewsync.Allowed(crewTeamKey(rel), true) || ignored[rel] || !share.walks(rel) {
-				left = append(left, rel)
-				return filepath.SkipDir
+		entries, err := os.ReadDir(filepath.Join(b.Root, filepath.FromSlash(rel)))
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+				listed[rel], deep[rel] = true, true // gone (or a file): what was under it is checked below
+				return nil
 			}
-			return nil
+			return err
 		}
-		present[rel] = true
-		if d.Type()&os.ModeSymlink != 0 || !d.Type().IsRegular() || !crewsync.Allowed(crewTeamKey(rel), false) || ignored[rel] || !share.holds(rel) || !crewTeamAllowed(rel, op) {
-			return nil
+		again := listed[rel]
+		if !again {
+			out.names += len(entries)
 		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		if info.Size() > publication.MaxFileBytes {
-			// Over the per-file limit: left out and named in the status, so it never blocks the rest (it stays here,
-			// and the team's earlier version of it stays on the team).
-			tooLarge = append(tooLarge, rel)
-			return nil
-		}
-		seen[rel] = true
-		count, bytes = count+1, bytes+info.Size()
-		if count > publication.MaxFiles || bytes > publication.MaxBytes {
-			return fmt.Errorf("shared folder exceeds 256 MiB or 10,000 files")
-		}
-		known, had := b.Files[rel]
-		if had && known.Size == info.Size() && known.Mtime == info.ModTime().UnixNano() {
-			return nil
-		}
-		f, err := openCrewTeamFile(b.Root, rel, op)
-		if err != nil {
-			return nil // a link or a file that went away: not shared this round
-		}
-		defer f.Close()
-		var offset int64
-		version, err := crewTeamChunkReader(f, info.Size(), info.Mode()&0o111 != 0, func(id string, data []byte) error {
-			if _, ok := out.sources[id]; !ok {
-				out.sources[id] = crewTeamChunkSource{path: rel, offset: offset, size: int64(len(data))}
+		listed[rel] = true
+		deep[rel] = deep[rel] || recurse
+		out.dirs = append(out.dirs, rel)
+		names[rel] = map[string]bool{}
+		for _, d := range entries {
+			child := path.Join(rel, d.Name())
+			names[rel][d.Name()] = true
+			if d.IsDir() {
+				if !recurse {
+					continue
+				}
+				if !enters(child) {
+					left = append(left, child)
+					continue
+				}
+				if err := list(child, true); err != nil {
+					return err
+				}
+				continue
 			}
-			offset += int64(len(data))
-			return nil
-		})
-		if err != nil {
-			return nil // changed while it was read: it goes next round
+			if !again {
+				present[child] = true
+				files = append(files, file{child, d})
+			}
 		}
-		if had && known.Version.Hash == version.Hash {
-			out.entries[rel] = crewTeamLocalFile{Size: info.Size(), Mtime: info.ModTime().UnixNano(), Version: version}
-			return nil // touched, not changed: only its time is new
-		}
-		out.changes = append(out.changes, crewTeamChange{Path: rel, Before: known.Version.Hash, After: &version})
-		out.entries[rel] = crewTeamLocalFile{Size: info.Size(), Mtime: info.ModTime().UnixNano(), Version: version}
 		return nil
-	})
+	}
+	// spelled: every name in rel is on disk spelled exactly so now (a lookup by another spelling succeeds on a Mac).
+	var spelled func(rel string) bool
+	spelled = func(rel string) bool {
+		if rel == "" {
+			return true
+		}
+		parent := crewTeamParent(rel)
+		if !spelled(parent) {
+			return false
+		}
+		if names[parent] == nil {
+			entries, err := os.ReadDir(filepath.Join(b.Root, filepath.FromSlash(parent)))
+			if err != nil {
+				return false
+			}
+			names[parent] = map[string]bool{}
+			for _, d := range entries {
+				names[parent][d.Name()] = true
+			}
+		}
+		return names[parent][path.Base(rel)]
+	}
+	// inside: rel and every folder above it are folders the share reads.
+	inside := func(rel string) bool {
+		for p := rel; p != ""; p = crewTeamParent(p) {
+			if !enters(p) {
+				return false
+			}
+		}
+		return true
+	}
+	order := make([]string, 0, len(targets))
+	for rel := range targets {
+		order = append(order, rel)
+	}
+	sort.Strings(order) // a parent before what is inside it
+	for _, rel := range order {
+		if !spelled(rel) {
+			if _, err := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(rel))); err == nil {
+				out.respell = true // found only by another spelling: a full scan reads the names as they are now
+				return out, nil
+			}
+			listed[rel], deep[rel] = true, true // gone: what was under it is checked below
+			continue
+		}
+		if !inside(rel) {
+			continue
+		}
+		if err := list(rel, targets[rel]); err != nil {
+			return out, err
+		}
+	}
+	var ignored map[string]bool
+	var err error
+	if full {
+		ignored, out.rules, err = crewTeamIgnored(ctx, b.Root)
+	} else {
+		out.rules = rules
+		ignored = map[string]bool{}
+		if rules {
+			paths := make([]string, 0, len(files))
+			for _, f := range files {
+				paths = append(paths, f.rel)
+			}
+			ignored, err = crewTeamCheckIgnore(ctx, b.Root, paths)
+		}
+	}
 	if err != nil {
 		return out, err
 	}
+	// covered: a file of the copy this scan read the folder of, so its absence means it is gone.
+	covered := func(rel string) bool {
+		if listed[crewTeamParent(rel)] {
+			return true
+		}
+		for dir := crewTeamParent(rel); dir != ""; {
+			if dir = crewTeamParent(dir); deep[dir] {
+				return true
+			}
+		}
+		return false
+	}
+	seen := map[string]bool{} // files this round shares
+	tooLarge := []string{}
+	for _, f := range files {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+		crewTeamScanFile(b, op, &out, f.rel, f.d, ignored, share, seen, &tooLarge)
+	}
 	// Removed here, or taken back from Sync it anyway (the file stays here): removed from the team. A file that is
 	// still here but this copy leaves out (ignored, outside the share) is not this copy's to remove (review 5 Nov).
+	for _, rel := range b.TooLarge {
+		if !covered(rel) {
+			tooLarge = append(tooLarge, rel) // a folder this round did not read keeps its notice
+		}
+	}
 	b.TooLarge = tooLarge
 	for rel, known := range b.Files {
+		if !covered(rel) && !slices.Contains(b.StopSyncing, rel) {
+			continue
+		}
 		gone := !present[rel]
 		if gone && slices.ContainsFunc(left, func(dir string) bool { return strings.HasPrefix(rel, dir+"/") }) {
 			// Inside a folder the walk left out (its names were not read): only a file that is really gone.
@@ -483,9 +608,63 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 	return out, nil
 }
 
+// crewTeamParent is the folder rel is in, "" for the copy's own folder.
+func crewTeamParent(rel string) string {
+	if dir := path.Dir(rel); dir != "." {
+		return dir
+	}
+	return ""
+}
+
+// crewTeamScanFile looks at one file a scan listed: unchanged size and time are not read; anything else is chunked.
+func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanResult, rel string, d fs.DirEntry, ignored map[string]bool, share crewTeamFolder, seen map[string]bool, tooLarge *[]string) {
+	if d.Type()&os.ModeSymlink != 0 || !d.Type().IsRegular() || !crewsync.Allowed(crewTeamKey(rel), false) || ignored[rel] || !share.holds(rel) || !crewTeamAllowed(rel, op) {
+		return
+	}
+	info, err := d.Info()
+	out.stated++
+	if err != nil {
+		return
+	}
+	if info.Size() > publication.MaxFileBytes {
+		// Over the per-file limit: left out and named in the status, so it never blocks the rest (it stays here,
+		// and the team's earlier version of it stays on the team).
+		*tooLarge = append(*tooLarge, rel)
+		return
+	}
+	seen[rel] = true
+	known, had := b.Files[rel]
+	if had && known.Size == info.Size() && known.Mtime == info.ModTime().UnixNano() {
+		return
+	}
+	f, err := openCrewTeamFile(b.Root, rel, op)
+	if err != nil {
+		return // a link or a file that went away: not shared this round
+	}
+	defer f.Close()
+	var offset int64
+	version, err := crewTeamChunkReader(f, info.Size(), info.Mode()&0o111 != 0, func(id string, data []byte) error {
+		if _, ok := out.sources[id]; !ok {
+			out.sources[id] = crewTeamChunkSource{path: rel, offset: offset, size: int64(len(data))}
+		}
+		offset += int64(len(data))
+		return nil
+	})
+	if err != nil {
+		return // changed while it was read: it goes next round
+	}
+	out.entries[rel] = crewTeamLocalFile{Size: info.Size(), Mtime: info.ModTime().UnixNano(), Version: version}
+	if had && known.Version.Hash == version.Hash {
+		return // touched, not changed: only its time is new
+	}
+	out.changes = append(out.changes, crewTeamChange{Path: rel, Before: known.Version.Hash, After: &version})
+}
+
 // crewTeamUpload sends this copy's changes in batches: plan, the missing chunks in frames of at most
 // crewTeamChunkBatch bytes (read from the files again and checked), then commit.
-func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, route, query string, b *crewTeamLocal, scan crewTeamScanResult) error {
+// It returns how many chunks it sent.
+func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, route, query string, b *crewTeamLocal, scan crewTeamScanResult) (int, error) {
+	chunks := 0
 	// Every batch is planned first, so the round's total is the bytes the server lacks (review 5 Nov #11).
 	type planned struct {
 		request crewTeamSyncRequest
@@ -503,7 +682,7 @@ func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, rout
 			Missing []string `json:"missing"`
 		}
 		if e := crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/sync/plan"+query, request, &plan); e != nil {
-			return crewTeamStep("plan", e)
+			return chunks, crewTeamStep("plan", e)
 		}
 		for _, id := range plan.Missing {
 			total += scan.sources[id].size
@@ -519,27 +698,28 @@ func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, rout
 				id := plan.Missing[i]
 				source, ok := scan.sources[id]
 				if !ok {
-					return crewTeamStep("send", fmt.Errorf("the server asked for a chunk this copy did not send"))
+					return chunks, crewTeamStep("send", fmt.Errorf("the server asked for a chunk this copy did not send"))
 				}
 				data, err := crewTeamReadSource(b.Root, source, id)
 				if err != nil {
-					return crewTeamStep("send", err)
+					return chunks, crewTeamStep("send", err)
 				}
 				if err = crewTeamWriteFrame(&frames, id, data); err != nil {
-					return crewTeamStep("send", err)
+					return chunks, crewTeamStep("send", err)
 				}
 				sent += int64(len(data))
+				chunks++
 			}
 			resp, err := crewTeamRemoteDo(ctx, owner, c, http.MethodPut, route+"/chunks"+query, "application/octet-stream", &frames)
 			if err != nil {
-				return crewTeamStep("send", err)
+				return chunks, crewTeamStep("send", err)
 			}
 			resp.Body.Close()
 			crewTeamRoundBytes(ctx, sent)
 		}
 		var receipt crewTeamReceipt
 		if e := crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/sync/commit"+query, request, &receipt); e != nil {
-			return crewTeamStep("commit", e)
+			return chunks, crewTeamStep("commit", e)
 		}
 		for _, ch := range batch {
 			if entry, ok := scan.entries[ch.Path]; ok && ch.After != nil {
@@ -552,7 +732,7 @@ func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, rout
 		b.StopSyncing = slices.DeleteFunc(b.StopSyncing, func(p string) bool { _, kept := b.Files[p]; return !kept })
 		b.FolderOnPurpose = sortedOnPurpose(crewTeamOnPurpose{}.with(b.FolderOnPurpose).with(b.SyncAnyway))
 	}
-	return nil
+	return chunks, nil
 }
 
 // crewTeamReadSource reads one chunk back from this copy and checks it is still the same bytes.
@@ -849,7 +1029,7 @@ func crewTeamPlainSyncError(err error) string {
 		{"shared folder access was removed", "you no longer have the shared folder; its files stay on this Mac"},
 		{"ask the owner to allow shared folder editing", "the shared folder is not shared with you"},
 		{"transfer refused", "the server refused the transfer; check that you are still in the Team"},
-		{"exceeds 256 MiB", "what the team shares is over 256 MB or 10,000 files"},
+		{"Share folders instead", "what the team shares is over the Team's limit; share folders instead"},
 		{"outside what the team shares", "a file is outside what the team shares"},
 		{"differ only by letter case", "two files differ only by capital letters; rename one"},
 		{"context deadline exceeded", "it took too long"},

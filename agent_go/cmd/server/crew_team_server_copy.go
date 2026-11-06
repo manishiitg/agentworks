@@ -170,6 +170,7 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-time.After(5 * time.Second):
+			case <-crewTeamWake: // a watched copy changed (crew_team_watch.go)
 			}
 		}
 	}()

@@ -51,6 +51,52 @@ func TestCrewTeamScanLeavesOutOversizeFileAndSendsRemovalsFirst(t *testing.T) {
 	}
 }
 
+// PLAT-856-509 (Team sync lighter, 6 Nov): a watched round reads only the folders that changed, yet still sends an
+// edit, a removal and a new folder's file; a folder nothing changed in is not read.
+func TestCrewTeamWatchedRoundReadsOnlyChangedFolders(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, rel)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, rel := range []string{"a/edit.md", "a/same.md", "b/gone.md", "quiet/1.md", "quiet/2.md"} {
+		write(rel, "first "+rel)
+	}
+	b := &crewTeamLocal{Root: root, Downloaded: true, Files: map[string]crewTeamLocalFile{}}
+	share := crewTeamFolder{ID: "f1", Whole: true}
+	full, err := crewTeamScan(t.Context(), b, share)
+	if err != nil || len(full.changes) != 5 {
+		t.Fatalf("first scan: %v %+v", err, full.changes)
+	}
+	for rel, entry := range full.entries { // as if committed
+		b.Files[rel] = entry
+	}
+	write("a/edit.md", "a longer second version")
+	write("c/new.md", "new")
+	if err = os.Remove(filepath.Join(root, "b", "gone.md")); err != nil {
+		t.Fatal(err)
+	}
+	scan, err := crewTeamScanChanged(t.Context(), b, share, map[string]bool{"a/edit.md": false, "b/gone.md": true, "c": true}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range scan.changes {
+		got = append(got, c.Path)
+	}
+	if !slices.Equal(got, []string{"b/gone.md", "a/edit.md", "c/new.md"}) || scan.changes[0].After != nil {
+		t.Fatalf("changes %v", got)
+	}
+	if scan.stated != 3 { // a/edit.md, a/same.md, c/new.md; quiet/ is not read
+		t.Fatalf("stated %d files", scan.stated)
+	}
+}
+
 // PLAT-856-509: a delete sent from a stale base used to win over a teammate's newer edit (the clash was recorded but
 // the file removed). The edit now stays and is recorded again, so the deleter's copy receives it back.
 func TestCrewTeamStaleDeleteKeepsTheNewerEdit(t *testing.T) {
