@@ -98,7 +98,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     if (!isRenaming) setRenameDraft(tab.name)
   }, [isRenaming, tab.name])
   useEffect(() => {
-    if (isRenaming) renameInputRef.current?.select()
+    if (isRenaming) { renameInputRef.current?.focus(); renameInputRef.current?.select() }
   }, [isRenaming])
 
   const saveName = async () => {
@@ -171,7 +171,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
         />
       ) : (
         <>
-          <AgentHoverCard info={agent?.info}><span
+          <AgentHoverCard info={agent?.info} onRename={onRename && !isBlank ? () => { setRenameDraft(tab.name); setIsRenaming(true) } : undefined}><span
             className={`block min-w-0 truncate whitespace-nowrap ${productSurface ? 'max-w-[18rem] font-semibold' : 'max-w-[14rem]'}`}
             title={agent?.info ? undefined : tooltip}
           >
