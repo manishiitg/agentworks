@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.mock('./RunsOnPicker', () => ({ RunsOnPicker: ({ saveAccount }: { saveAccount: string }) => <span data-testid="provider-picker">{saveAccount}</span> }))
 const location = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ agentApi: { getProjectCreationLocation: location } }))
+vi.mock('./LocalChatPicker', () => ({ LocalChatPicker: ({ onSelected, onClose }: { onSelected: (chat: unknown) => void; onClose: () => void }) => <button type="button" onClick={() => { onSelected({ id: 'previous', title: 'Original chat', provider: 'claude-code', account: 'Your login', updated_at: '' }); onClose() }}>Select previous</button> }))
 import { CreateCrewWizard } from './CreateCrewWizard'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -40,7 +41,7 @@ it('creates a blank project in one step with provider controls visible and no sh
   expect(host.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true)
   await input(host, '#crew-wizard-name', '  My project  ')
   await click(host, 'Create project')
-  expect(onCreate).toHaveBeenCalledExactlyOnceWith('My project', '', undefined, {}, undefined)
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith('My project', '', undefined, {}, undefined, undefined)
 })
 it('shows a retry instead of an empty folder for a malformed location response', async () => {
   location.mockResolvedValue({ status: 'ok' })
@@ -85,9 +86,25 @@ it('lets local creation change or restore the displayed default folder', async (
     expect(pick).toHaveBeenCalledOnce()
     expect(host.querySelector<HTMLInputElement>('#crew-wizard-folder')!.value).toBe('/Users/example/work')
     await click(host, 'Create project')
-    expect(onCreate).toHaveBeenCalledExactlyOnceWith('Existing work', '', undefined, {}, '/Users/example/work')
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith('Existing work', '', undefined, {}, '/Users/example/work', undefined)
     await click(host, 'Use default folder')
     await click(host, 'Create project')
     expect(onCreate.mock.calls[1][5]).toBeUndefined()
   } finally { window.electronAPI = previous }
+})
+
+it('forgets a selected native chat when its folder changes before Create', async () => {
+  location.mockResolvedValue({ folder: '/Users/example/AgentWorks/Crew/new', can_choose_folder: true })
+  const { host, onCreate } = await render({ allowExistingFolder: true })
+  await input(host, '#crew-wizard-name', 'My project')
+  await click(host, 'Change')
+  await input(host, '#crew-wizard-folder', '/Users/example/first')
+  await click(host, 'Choose chat')
+  await click(host, 'Select previous')
+  await click(host, 'Create project')
+  expect(onCreate.mock.calls[0][5]).toMatchObject({ id: 'previous' })
+  await input(host, '#crew-wizard-folder', '/Users/example/second')
+  await click(host, 'Create project')
+  expect(onCreate.mock.calls[1][4]).toBe('/Users/example/second')
+  expect(onCreate.mock.calls[1][5]).toBeUndefined()
 })

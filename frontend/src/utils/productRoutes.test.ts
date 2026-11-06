@@ -3,7 +3,7 @@ import { isLegacyAppPath, LEGACY_APP_ROOTS, legacyAppRoot, parseProductRoute, pr
 
 describe('shareable product routes', () => {
   it('round trips every surface and the resource/view contract', () => {
-    const paths = [...Object.values(PRODUCT_PATHS), '/workflows', '/agentbridge/connect', '/relays/example', '/relays/example/dashboard', '/workflows/example/dashboard', '/crew/projects/example?view=memory', '/brain?view=access&folder=Guides%2FGetting+started']
+    const paths = [...Object.values(PRODUCT_PATHS), '/workflows', '/agentbridge/connect', '/relays/example', '/relays/example/dashboard', '/workflows/example/dashboard', '/crew/projects/example?view=memory', '/crew/projects/example?agent=import-copy', '/brain?view=access&folder=Guides%2FGetting+started']
     for (const path of paths) {
       const route = parseProductRoute(path)
       expect(route, path).toBeTruthy()

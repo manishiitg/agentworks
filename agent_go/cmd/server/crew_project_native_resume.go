@@ -192,11 +192,16 @@ func (api *StreamingAPI) previewLocalProjectSession(w http.ResponseWriter, r *ht
 		externalError(w, 503, "sessions_unavailable", "Your local conversations could not be checked. Try again.")
 		return
 	}
+	writeLocalProjectPreview(w, r, sessions)
+}
+
+func writeLocalProjectPreview(w http.ResponseWriter, r *http.Request, sessions []localProjectNativeSession) {
 	for _, session := range sessions {
 		if session.ID != r.URL.Query().Get("native_id") {
 			continue
 		}
 		var messages []builderConversationMessage
+		var err error
 		if session.Provider == "claude-code" {
 			messages, _, err = readNewClaudeTranscriptMessages(session.Path, time.Time{})
 		} else {
@@ -237,6 +242,9 @@ func localProjectRecognitionAction(api *StreamingAPI, w http.ResponseWriter, r *
 	action := externalArg(args, "action")
 	query := r.URL.Query()
 	query.Set("project_id", externalArg(args, "crew_id"))
+	if action == "native_list" || action == "native_preview" {
+		query.Set("root_path", externalArg(args, "root_path"))
+	}
 	if action == "native_preview" {
 		query.Set("native_id", externalArg(args, "native_id"))
 	}
