@@ -58,9 +58,8 @@ func crewAccessPage(out *crewSyncReply) {
 	b := out.Binding
 	switch {
 	case IsLocalMode():
-		// The Mac app's own Crew: its Mac online, Publish and Team controls are here. Who can use it once it is online.
+		// The Mac app's own Crew: its Mac online, Publish and Team controls are here.
 		out.AccessHere, out.AccessTabs = "mac", crewAccessMacTabs
-		out.AccessShare = b != nil && b.Editing == "server"
 		teamOn := b != nil && b.Mode == "relay" && b.Editing == "local" && crewTeamKeepsMacOnline(out.ProjectID)
 		if teamOn {
 			out.AccessMacLocked = crewTeamOnlineLine
@@ -106,9 +105,8 @@ func crewAccessPage(out *crewSyncReply) {
 			out.AccessPublish = &crewAccessText{Line: "Publish moves this Crew, or one of its agents, from your Mac to this server, so it works with your Mac off.", Note: "Publish from the Mac app: Share, Publish."}
 		}
 	default:
-		// A Crew that lives on this server: its Team tab, laptop access for its owner and who can use it.
+		// A Crew that lives on this server: its People and Dashboards tabs and laptop access for its owner.
 		out.AccessTabs = crewAccessTeamTab
-		out.AccessShare = true
 		out.AccessLaptop = out.Role == "owner"
 	}
 }

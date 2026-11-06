@@ -173,7 +173,7 @@ export type CrewPeopleLevelKey = 'works' | 'dashboards'
 export type CrewPeoplePerson = { user_id: string; name: string; email?: string; level: CrewPeopleLevelKey | 'owner'; level_label: string; line: string; invited?: boolean; owner?: boolean; you?: boolean; moves?: (CrewPeopleLevelKey | 'none')[] }
 export type CrewPeopleLevel = { key: CrewPeopleLevelKey; label: string; line: string; available: boolean; why?: string }
 export type CrewPeopleView = {
-  kind: 'server' | 'mac_online' | 'mac_never_online'; team_on: boolean; intro: string; blocked?: string; put_online?: string; everyone?: string
+  kind: 'server' | 'mac_online' | 'mac_never_online'; team_on: boolean; intro: string; blocked?: string; put_online?: string; add_everyone?: string
   can_add: boolean; can_share: boolean; owner: CrewPeoplePerson; people: CrewPeoplePerson[]; levels: CrewPeopleLevel[]
   gets: { label: string; dashboards_only: string; works_with_me: string }[]
 }

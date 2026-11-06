@@ -13,7 +13,6 @@ import { useLocalFileDevices } from './codeLocalFiles'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
 import { AskButton, TeamTab, teamCard } from './TeamTab'
 import { CrewDashboardsTab } from './CrewDashboardsTab'
-import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
 import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
@@ -34,7 +33,7 @@ type AccessText = { line: string; note?: string }
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
 type MacCard = { online: boolean; status: string; line: string }
 type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number; placements?: Record<string, AgentPlacement>
-  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_publish?: AccessText; access_share?: boolean; access_laptop?: boolean }
+  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_publish?: AccessText; access_laptop?: boolean }
 // The move's own steps, as the server reports them (astra, PLAT-856-509).
 type MovePhase = 'files' | 'database' | 'chats' | 'schedules_watchers' | 'dashboards_functions' | 'activating' | 'done'
 const MOVE_PHASES: MovePhase[] = ['files', 'database', 'chats', 'schedules_watchers', 'dashboards_functions', 'activating', 'done']
@@ -141,13 +140,13 @@ const tintedIcons = new Map<string, LucideIcon>()
 
 /** The one Access page (owner, 5 Nov: "one Access page, not two"), the same in the Mac app and on the website. The
  * server's crew-sync reply decides it: the tabs, and whether this app holds the Mac's controls (the Mac app's own Crew)
- * or shows those rows as text (the website, or a Crew from a server); then the Team tab, Who can use it and laptop
+ * or shows those rows as text (the website, or a Crew from a server); then the People and Dashboards tabs and laptop
  * access where the server lists them. */
-export function YourComputerPanel({ projectId, sessionId, onFullScreen, onBack, workspacePath, tabId, onAsk }: { projectId: string; sessionId?: string; canEdit?: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void; workspacePath?: string; tabId?: string; onAsk?: (message: string) => void | Promise<unknown> }) {
-  return <div><CrewAccessPage projectId={projectId} sessionId={sessionId} onFullScreen={onFullScreen} onBack={onBack} workspacePath={workspacePath} tabId={tabId} onAsk={onAsk} /></div>
+export function YourComputerPanel({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; canEdit?: boolean; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
+  return <div><CrewAccessPage projectId={projectId} sessionId={sessionId} onFullScreen={onFullScreen} onBack={onBack} /></div>
 }
 
-function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspacePath, tabId, onAsk }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void; workspacePath?: string; tabId?: string; onAsk?: (message: string) => void | Promise<unknown> }) {
+function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack }: { projectId: string; sessionId?: string; onFullScreen?: (full: boolean) => void; onBack?: () => void }) {
   const team = useTeamTab(projectId).view?.team
   const teamChanged = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   // The last Access tab is remembered per Crew in this browser (owner, 5 Nov); an agent asking for its sharing still opens Team.
@@ -340,7 +339,6 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
       <CrewDashboardsTab projectId={projectId} />
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}
-    {status.access_share && workspacePath && tabId && onAsk && <section aria-label="Who can use it"><h3 className="mb-2 text-xs font-medium text-muted-foreground">Who can use it</h3><ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={tabId} onAsk={onAsk} /></section>}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
   </div>
 }

@@ -18,18 +18,18 @@ func TestCrewAccessPageMacControlsOnlyOnTheMac(t *testing.T) {
 	}
 	member := crewSyncReply{Role: "member", AccessView: "team", Binding: twin}
 	crewAccessPage(&member)
-	if member.AccessHere != "" || len(member.AccessTabs) != 2 || member.AccessTabs[0].Label != "People" || member.AccessTabs[1].Label != "Dashboards" || member.AccessMac != nil || member.AccessShare || member.AccessLaptop {
+	if member.AccessHere != "" || len(member.AccessTabs) != 2 || member.AccessTabs[0].Label != "People" || member.AccessTabs[1].Label != "Dashboards" || member.AccessMac != nil || member.AccessLaptop {
 		t.Fatalf("member: %+v", member)
 	}
 	server := crewSyncReply{Role: "owner", AccessView: "server_crew"}
 	crewAccessPage(&server)
-	if server.AccessHere != "" || len(server.AccessTabs) != 2 || server.AccessTabs[0].Label != "People" || server.AccessTabs[1].Label != "Dashboards" || !server.AccessShare || !server.AccessLaptop {
+	if server.AccessHere != "" || len(server.AccessTabs) != 2 || server.AccessTabs[0].Label != "People" || server.AccessTabs[1].Label != "Dashboards" || !server.AccessLaptop {
 		t.Fatalf("Crew on the server: %+v", server)
 	}
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	mac := crewSyncReply{Binding: &crewroot.SyncBinding{Side: "local", Editing: "local"}}
 	crewAccessPage(&mac)
-	if mac.AccessHere != "mac" || len(mac.AccessTabs) != len(crewAccessMacTabs) || mac.AccessShare {
+	if mac.AccessHere != "mac" || len(mac.AccessTabs) != len(crewAccessMacTabs) {
 		t.Fatalf("Mac app's own Crew: %+v", mac)
 	}
 }

@@ -78,6 +78,27 @@ it('a Crew on a Mac shows the server\'s put-it-online line and takes the person 
   } finally { window.removeEventListener('agentworks:open-crew-access', listen); await unmount() }
 })
 
+// "Everyone on this server" is one row of the People list (owner, 6 Nov), not a separate panel: the server says when it
+// is on and when the owner may add it; adding it asks first like any change, with person=everyone.
+it('everyone on this server is one People row, and the owner adds it through the same confirm box', async () => {
+  mocks.people.mockResolvedValue(view({ add_everyone: 'Everyone on this server', people: [] }))
+  mocks.change.mockResolvedValueOnce({ confirm_needed: true, preview: { person: 'Everyone on this server', from: 'none', to: 'dashboards', summary: 'Everyone on this server will be given dashboards only.', gains: ['All this Crew\'s dashboards'], loses: [], notes: [] } })
+  const { host, unmount } = await mount(<TeamTab projectId="team" />)
+  try {
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === '+ Add a person')!.click())
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Everyone on this server')!.click())
+    expect(mocks.change).toHaveBeenLastCalledWith({ project: 'team' }, { person: 'everyone', level: 'dashboards' }) // asks first
+    expect(document.body.querySelector('[role="dialog"]')!.textContent).toContain('Everyone on this server will be given dashboards only.')
+  } finally { await unmount() }
+  mocks.people.mockResolvedValue(view({ people: [{ user_id: 'everyone', name: 'Everyone on this server', level: 'dashboards', level_label: 'Dashboards only', line: 'Anyone with an account on this server can open this Crew\'s dashboards and ask it. No files.', moves: ['none'] }] }))
+  const again = await mount(<TeamTab projectId="team" />)
+  try {
+    expect(again.host.textContent).toContain('Anyone with an account on this server can open this Crew\'s dashboards and ask it. No files.')
+    expect(again.host.textContent).not.toContain('Who can use it')
+    expect([...again.host.querySelectorAll('button')].some(button => button.textContent === 'Everyone on this server')).toBe(false)
+  } finally { await again.unmount() }
+})
+
 // Dashboards tab (owner, 6 Nov): the server's rows, filters and lines; Change goes to People; a teammate has no controls.
 const tab = (extra: Partial<CrewDashboardsTab> = {}): CrewDashboardsTab => ({
   workspace: 'Crew/team', intro: 'Everything published from this Crew.', can_change: true, filter: 'all',

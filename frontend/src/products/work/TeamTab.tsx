@@ -259,13 +259,13 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
       <p className="text-xs text-muted-foreground">{people.intro}</p>
       {people.blocked && <p className="text-xs text-muted-foreground">{people.blocked}</p>}
       <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(personRow)}</div>
-      {people.everyone && <p className="text-xs text-muted-foreground">{people.everyone}</p>}
       {people.put_online && <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span className="min-w-0 flex-1">{people.put_online}</span>
         <Button size="sm" variant="outline" className="h-7 rounded-full px-3" onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-crew-access', { detail: { projectId, section: 'mac' } }))}>Put it online</Button></div>}
       {people.can_add && !closed && <>
         <span className="inline-flex items-center gap-2"><button type="button" disabled={Boolean(pending)} onClick={() => { setAdding(!adding); setChosen(undefined) }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Add a person</button></span>
         {adding && !chosen && <div className="rounded-xl border border-border bg-popover">
           <input aria-label="Find a person" placeholder="Find a person…" className="w-full border-b border-border bg-transparent px-3 py-2 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
+          {people.add_everyone && people.add_everyone.toLowerCase().includes(search.toLowerCase()) && <button type="button" disabled={Boolean(pending)} onClick={() => void propose('everyone', people.add_everyone || '', 'dashboards')} className="block w-full border-b border-border px-3 py-2 text-left text-xs font-medium hover:bg-muted">{people.add_everyone}</button>}
           <div className="max-h-48 overflow-auto">{directory.filter(p => !known.has(p.id) && `${p.username} ${p.email || ''}`.toLowerCase().includes(search.toLowerCase())).map(p => <button key={p.id} type="button" disabled={Boolean(pending)} onClick={() => { setChosen(p); setLevel(levelOf('works')?.available ? 'works' : 'dashboards') }} className="block w-full px-3 py-2 text-left text-xs hover:bg-muted">{shortName(p.username)}</button>)}</div>
         </div>}
         {adding && chosen && <div role="radiogroup" aria-label={`How ${shortName(chosen.username)} uses this Crew`} className="space-y-2 rounded-xl border border-border p-3 text-xs">
