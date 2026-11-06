@@ -55,7 +55,7 @@ func (api *StreamingAPI) syncServerCrewTeamStore(ctx context.Context, t crewTeam
 		b.Files, b.Revision, b.Downloaded = map[string]crewTeamLocalFile{}, state.Revision, true
 		for p, v := range state.Versions {
 			if v.File != nil {
-				b.Files[p] = crewTeamLocalFile{Size: -1, Version: crewTeamFileVersion{Hash: v.File.Hash, Size: v.File.Size, Exec: v.File.Executable, Chunks: v.Chunks}}
+				b.Files[p] = crewTeamLocalFile{Size: -1, Version: chunkedFile{Hash: v.File.Hash, Size: v.File.Size, Exec: v.File.Executable, Chunks: v.Chunks}}
 			}
 		}
 		if err = os.MkdirAll(dir, 0o700); err == nil {

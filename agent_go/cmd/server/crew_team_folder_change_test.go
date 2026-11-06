@@ -139,9 +139,9 @@ func TestCrewTeamSameContentOrSamePersonIsNoClash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	put := func(content string) crewTeamFileVersion {
+	put := func(content string) chunkedFile {
 		t.Helper()
-		v, err := crewTeamChunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+		v, err := chunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,9 +183,9 @@ func TestCrewTeamClashNoticeOncePerPersonPerRound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	put := func(content string) *crewTeamFileVersion {
+	put := func(content string) *chunkedFile {
 		t.Helper()
-		v, err := crewTeamChunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+		v, err := chunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -242,10 +242,10 @@ func TestCrewTeamStartupClearsFalseClashes(t *testing.T) {
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	file := func(hash string) *crewTeamFileVersion {
-		return &crewTeamFileVersion{Hash: strings.Repeat(hash, 64), Size: 1}
+	file := func(hash string) *chunkedFile {
+		return &chunkedFile{Hash: strings.Repeat(hash, 64), Size: 1}
 	}
-	event := func(path string, rev uint64, v *crewTeamFileVersion) crewTeamEvent {
+	event := func(path string, rev uint64, v *chunkedFile) crewTeamEvent {
 		return crewTeamEvent{Path: path, Kind: "sent", Revision: rev, File: v.file(), Chunks: v.Chunks}
 	}
 	state := crewTeamFileState{Revision: 6, Versions: map[string]crewTeamVersion{}, Receipts: map[string]crewTeamReceipt{},

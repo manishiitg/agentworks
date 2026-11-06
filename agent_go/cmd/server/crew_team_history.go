@@ -29,7 +29,7 @@ type crewTeamEvent struct {
 	At       string         `json:"time"`
 	File     *crewsync.File `json:"file,omitempty"`
 	// Chunks are that version's content in the Team's chunk store (crew_team_chunks.go).
-	Chunks []crewTeamChunk `json:"chunks,omitempty"`
+	Chunks []transferChunk `json:"chunks,omitempty"`
 }
 type crewTeamClash struct {
 	Source          string `json:"source"`
@@ -45,14 +45,14 @@ type crewTeamClash struct {
 }
 
 // versionAt is a file's version at a revision, from the events; nil when it did not exist then.
-func (s crewTeamFileState) versionAt(path string, revision uint64) *crewTeamFileVersion {
+func (s crewTeamFileState) versionAt(path string, revision uint64) *chunkedFile {
 	for i := len(s.Events) - 1; i >= 0; i-- {
 		e := s.Events[i]
 		if e.Path == path && e.Revision <= revision {
 			if e.File == nil {
 				return nil
 			}
-			return &crewTeamFileVersion{Hash: e.File.Hash, Size: e.File.Size, Exec: e.File.Executable, Chunks: e.Chunks}
+			return &chunkedFile{Hash: e.File.Hash, Size: e.File.Size, Exec: e.File.Executable, Chunks: e.Chunks}
 		}
 	}
 	return nil
@@ -162,7 +162,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 		}
 		defer os.Remove(f.Name())
 		defer f.Close()
-		if e = crewTeamAssemble(store, *file, f); e != nil {
+		if e = assembleChunked(store, *file, f); e != nil {
 			externalError(w, 409, "team_history_unavailable", "This version is unavailable.")
 			return
 		}
@@ -213,7 +213,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 			if current := s.Versions[in.Path].File; current != nil {
 				executable = current.Executable
 			}
-			version, err := crewTeamChunkReader(strings.NewReader(*in.Content), int64(len(*in.Content)), executable, func(id string, data []byte) error { return crewTeamPutChunk(store, id, data) })
+			version, err := chunkReader(strings.NewReader(*in.Content), int64(len(*in.Content)), executable, func(id string, data []byte) error { return putChunk(store, id, data) })
 			if err != nil {
 				externalError(w, 409, "team_restore_failed", err.Error())
 				return
@@ -282,7 +282,7 @@ func (api *StreamingAPI) handleCrewTeamHistory(w http.ResponseWriter, r *http.Re
 
 // crewTeamCompareVersions is a unified diff of two versions of one file, built from the chunk store (git diff of two
 // private temp files, as the history compare showed before).
-func crewTeamCompareVersions(ctx context.Context, project, dir string, left, right *crewTeamFileVersion, rel string) (string, error) {
+func crewTeamCompareVersions(ctx context.Context, project, dir string, left, right *chunkedFile, rel string) (string, error) {
 	store, err := crewTeamChunkStore(project)
 	if err != nil {
 		return "", err
@@ -292,7 +292,7 @@ func crewTeamCompareVersions(ctx context.Context, project, dir string, left, rig
 		return "", err
 	}
 	defer os.RemoveAll(tmp)
-	write := func(name string, v *crewTeamFileVersion) (string, error) {
+	write := func(name string, v *chunkedFile) (string, error) {
 		path := filepath.Join(tmp, name)
 		f, err := os.Create(path)
 		if err != nil {
@@ -300,7 +300,7 @@ func crewTeamCompareVersions(ctx context.Context, project, dir string, left, rig
 		}
 		defer f.Close()
 		if v != nil {
-			if err = crewTeamAssemble(store, *v, f); err != nil {
+			if err = assembleChunked(store, *v, f); err != nil {
 				return "", err
 			}
 		}
