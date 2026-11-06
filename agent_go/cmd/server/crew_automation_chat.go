@@ -80,6 +80,11 @@ func prepareCrewExecutableSchedules(ctx context.Context, root string, manifest *
 				return fmt.Errorf("%w: %w", errScriptTimerInputs, err)
 			}
 		}
+		// Pausing must remain possible after the destination chat was closed.
+		// Admission validates the destination again before any actual execution.
+		if !schedule.Enabled {
+			continue
+		}
 		if err := validateExecutableSchedule(ctx, buildScheduleContext(root, manifest, *schedule)); err != nil {
 			return err
 		}
