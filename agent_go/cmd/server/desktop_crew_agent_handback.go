@@ -220,7 +220,7 @@ func (api *StreamingAPI) applyCrewHandback(ctx context.Context, roots crewroot.R
 		record, mine = crewHandbackMineForTest(roots, item.Key)
 	} else {
 		for _, r := range crewStandbyRecords(roots) {
-			if r.ConversationKey == item.Key {
+			if crewStandbyWireKey(roots.ID, r.ConversationKey) == item.Key {
 				record = &r
 			}
 		}
