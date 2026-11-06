@@ -466,12 +466,18 @@ func crewHandbackKeptDir(roots crewroot.Roots, tab string) string {
 func keepCrewHandbackAside(roots crewroot.Roots, tab, key string, conversation *crewHandoffConversation) error {
 	sum := sha256.Sum256([]byte(key))
 	dir := filepath.Join(crewHandbackKeptDir(roots, tab), hex.EncodeToString(sum[:8])+"-"+time.Now().UTC().Format("20060102T150405.000000000Z"))
-	kept, err := copyCrewBundle(conversation.Native, filepath.Join(dir, "native"))
-	if err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "native.json"), kept, 0o600); err != nil {
-		return err
+	// A chat the server ran from saved history has no native session: only its history is kept.
+	if conversation.Native != nil {
+		kept, err := copyCrewBundle(conversation.Native, filepath.Join(dir, "native"))
+		if err != nil {
+			return err
+		}
+		if err = fsutil.WriteJSONAtomic(filepath.Join(dir, "native.json"), kept, 0o600); err != nil {
+			return err
+		}
 	}
 	history := *conversation
 	history.Native = nil
