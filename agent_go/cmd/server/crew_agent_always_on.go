@@ -417,23 +417,41 @@ func crewStandbyRecentlyFailed(project, tab string) bool {
 	return ok && time.Since(at.(time.Time)) < 30*time.Minute
 }
 
-// crewAlwaysOnPlaceLabel is where an agent of the owner's Mac answers now, for the Team tab (approved mockup): the
-// server decides the words; serving is set when the server answers for it.
-func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours bool) (label string, serving bool) {
+// crewAlwaysOnPlaceLabel is where an agent of the owner's Mac answers now and where its server copy stands, for the
+// Team tab (owner, 6 Nov, approved mockups): the server decides the words and the tone the screen colours them by:
+// "ok" (the server holds a copy), "wait" (no copy yet, or the Mac is taking the agent back), "server" (the server
+// answers for it) or "" (plain). A finished turn whose copy has not gone up yet is not known here, so there is no
+// "syncing" state: the label says when the last copy arrived.
+func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours, inTeam bool) (label, tone string) {
 	switch {
 	case crewStandbyServerWriter(project, tab):
 		if macOn {
-			return "Answering from the server", true
+			return "Mac · taking back from server…", "wait"
 		}
-		return "Mac off · answering from the server", true
+		return "Mac off · answering from the server", "server"
+	case macOn && !inTeam:
+		return "Only you · on your Mac", ""
 	case macOn:
-		return "Mac", false
+		return crewStandbyCopyLabel(project, tab)
 	case crewStandbyCanAnswer(project, owner, tab) && !crewStandbyRecentlyFailed(project, tab):
-		return "Mac off · answering from the server", true
+		return "Mac off · answering from the server", "server"
 	case yours:
-		return "Mac off · waits for your Mac", false
+		return "Mac off · waits for your Mac", ""
 	}
-	return "Mac off · waits for their Mac", false
+	return "Mac off · waits for their Mac", ""
+}
+
+// crewStandbyCopyLabel is a shared agent's chip while its Mac is on: when its last copy reached the server.
+func crewStandbyCopyLabel(project, tab string) (string, string) {
+	rows, err := readCrewStandby(project)
+	row, ok := rows[tab]
+	if err != nil || !ok || len(row.Sessions) == 0 {
+		return "Mac · not on server yet", "wait"
+	}
+	if at, err := time.Parse(time.RFC3339, row.CopiedAt); err == nil {
+		return "Mac · synced to server " + crewAccessAgo(at), "ok"
+	}
+	return "Mac · synced to server", "ok"
 }
 
 // crewAlwaysOnAgentsLine is the Agents card's line for the owner of a Mac Crew with the Team on.

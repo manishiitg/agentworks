@@ -6,11 +6,10 @@ import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
-import { changeTeamPeople, saveTeam, switchTeam, teamError, teamFolderChange, teamFolders, teamRequest, useTeamTab, type Team, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabState, type TeamTabView, type TeamTarget } from './teamApi'
+import { changeTeamPeople, saveTeam, switchTeam, teamError, teamFolderChange, teamFolders, teamRequest, useTeamTab, type Team, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
-import { AgentSharingRow } from './AgentSharingRow'
 import { TeamFolderChangeDialog } from './TeamFolderChangeDialog'
 
 type Person = { id: string; username: string; email?: string }
@@ -92,7 +91,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
     {team.on && <>
       <CrewWhereRow projectId={projectId} />
       <SharesCard view={view} target={target} projectId={projectId} />
-      <AgentsCard state={state} view={view} target={target} projectId={projectId} />
+      <AgentsCard view={view} target={target} projectId={projectId} />
       {team.lent && <LentCard lent={team.lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} />}
       {team.folder_access && <section aria-label="Sync" className={card}>
         <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
@@ -248,11 +247,9 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
   </section>
 }
 
-/** The agent sharing list (owner, 6 Nov): only the viewer's own agents, as the server marks them (mine), each with
- * its Shared switch (On / Off), purpose and permissions. Teammates' agents stay in the tab bar. The same rows in the
- * Mac app and on the website; the server says when a switch cannot go off (the last shared agent) and why. */
-function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; view: TeamTabView; target: TeamTarget; projectId: string }) {
-  const [opened, setOpened] = useState('')
+/** The agent sharing list (owner, 6 Nov, approved mockups): only the viewer's own agents, as the server marks them
+ * (mine). Teammates' agents stay in the tab bar. The same rows in the Mac app and on the website. */
+function AgentsCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
   const { pending, error, run } = useSave()
   const agents = view.agents.filter(agent => agent.mine)
   const visibility = (key: string, inTeam: boolean) => run(`agent:${key}`, async () => {
@@ -265,35 +262,76 @@ function AgentsCard({ state, view, target, projectId }: { state: TeamTabState; v
       <AskButton projectId={projectId} card="agents" />
     </div>
     {view.agents_line && <p className="text-xs text-muted-foreground">{view.agents_line}</p>}
-    {agents.map(agent => {
-      const locked = !agent.can_change || (agent.in_team && !agent.can_unshare)
-      return <div key={agent.key} className="border-t border-border pt-2">
-        <div className="flex items-center gap-2 text-[13px]">
-          <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b>{agent.detail && <span className="text-muted-foreground"> · {agent.detail}</span>}</span>
-          {agent.in_team && <button type="button" aria-expanded={opened === agent.key} onClick={() => setOpened(opened === agent.key ? '' : agent.key)} className="shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted">Permissions</button>}
-          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={locked ? agent.fixed : undefined}>
-            {agent.in_team ? 'On' : 'Off'}<Saving on={pending === `agent:${agent.key}`}>{null}</Saving>
-            <Switch aria-label={`${agent.name}: shared`} checked={agent.in_team} disabled={locked || Boolean(pending)} onCheckedChange={on => void visibility(agent.key, on)} />
-          </span>
-        </div>
-        <AgentSharingRow agent={agent} state={state} projectId={projectId} />
-        {agent.in_team && agent.permissions_line && <p className="ml-0.5 text-xs text-muted-foreground">{agent.permissions_line}</p>}
-        {opened === agent.key && agent.in_team && <AgentDetails agent={agent} target={target} projectId={projectId} />}
-      </div>
-    })}
+    {agents.map(agent => <AgentRow key={agent.key} agent={agent} target={target} projectId={projectId} switching={pending === `agent:${agent.key}`} busy={Boolean(pending)} onShare={on => void visibility(agent.key, on)} />)}
     {!agents.length && <p className="text-xs text-muted-foreground">No agents in the team yet.</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </section>
 }
 
-/** One agent's permissions (owner, 5 Nov mockup "When others ask"): what it uses, as the server lists it (the person's
- * own sign-ins marked yours, sent only to them), and what it does when someone else asks. Its own person edits the rule
- * and Answer only / Make changes; everyone else reads the server's summary line. */
+// The place chip's colour by the server's tone (crewAlwaysOnPlaceLabel); "" is plain.
+const toneChip: Record<string, string> = { ok: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', wait: 'bg-amber-500/10 text-amber-700 dark:text-amber-300', server: 'bg-sky-500/10 text-sky-700 dark:text-sky-300' }
+const toneDot: Record<string, string> = { ok: 'bg-emerald-500', wait: 'bg-amber-500', server: 'bg-sky-500' }
+
+/** One of the viewer's own agents: its name, where it is (the server's chip) and its "Shared with the team" switch;
+ * while shared, its purpose (edited in place) and what teammates can do, with its rule when others ask. Every save
+ * goes to the server (agent-visibility, agent-rule); the server says when a switch cannot go off and why. */
+function AgentRow({ agent, target, projectId, switching, busy, onShare }: { agent: TeamTabAgent; target: TeamTarget; projectId: string; switching: boolean; busy: boolean; onShare: (on: boolean) => void }) {
+  const [purpose, setPurpose] = useState(agent.purpose || '')
+  const [rules, setRules] = useState(false)
+  const { pending, error, run } = useSave()
+  useEffect(() => { setPurpose(agent.purpose || '') }, [agent.purpose])
+  const save = (key: string, change: { purpose?: string; can_make_changes?: boolean }) => run(key, async () => {
+    await teamRequest({ project: target.project, connection: target.connection }, '/agent-rule', 'POST', { agent_key: agent.key, ...change })
+    window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+  })
+  const locked = !agent.can_change || (agent.in_team && !agent.can_unshare)
+  const place = agent.place_label || ''
+  const tone = agent.place_tone || ''
+  return <div className="space-y-1.5 border-t border-border pt-2">
+    <div className="flex items-center gap-2 text-[13px]">
+      <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b>{agent.detail && <span className="text-muted-foreground"> · {agent.detail}</span>}</span>
+      {place && <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] ${toneChip[tone] || 'bg-muted text-muted-foreground'}`}>
+        {toneDot[tone] && <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${toneDot[tone]}`} />}{place}</span>}
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={locked ? agent.fixed : undefined}>
+        Shared with the team<Saving on={switching}>{null}</Saving>
+        <Switch aria-label={`${agent.name}: shared with the team`} checked={agent.in_team} disabled={locked || busy} onCheckedChange={onShare} />
+      </span>
+    </div>
+    {!agent.in_team && agent.not_shared_line && <p className="text-xs text-muted-foreground">{agent.not_shared_line}</p>}
+    {agent.in_team && <>
+      {agent.can_set_purpose ? <div>
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">Purpose<Saving on={pending === 'purpose'}>{null}</Saving></p>
+        <input aria-label={`${agent.name}: purpose`} value={purpose} maxLength={300} disabled={pending === 'purpose'} placeholder="Add a purpose so teammates know when to ask this agent…"
+          onChange={e => setPurpose(e.target.value)} onBlur={() => { if (purpose.trim() !== (agent.purpose || '').trim()) void save('purpose', { purpose }) }}
+          className="mt-0.5 w-full rounded-md border border-border bg-background px-2 py-1 text-[13px]" />
+      </div> : agent.purpose && <p className="text-[12.5px] text-muted-foreground">{agent.purpose}</p>}
+      {agent.can_edit_rule && <div className="flex flex-wrap items-center gap-2 text-xs">
+        {agent.can_make_changes !== undefined && <>
+          <span className="text-muted-foreground">Teammates can</span>
+          <div role="radiogroup" aria-label={`${agent.name}: teammates can`} className="flex overflow-hidden rounded-md border border-border">
+            {([[false, 'Answer only'], [true, 'Make changes']] as const).map(([value, text]) => {
+              const on = agent.can_make_changes === value
+              return <button key={text} type="button" role="radio" aria-checked={on} disabled={Boolean(pending)} onClick={() => { if (!on) void save(`can:${text}`, { can_make_changes: value }) }}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}><Saving on={pending === `can:${text}`}>{null}</Saving>{text}</button>
+            })}
+          </div>
+        </>}
+        <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-primary hover:underline">{agent.has_rule ? '1 rule when others ask' : 'Rule when others ask'}</button>
+      </div>}
+      {rules && <AgentDetails agent={agent} target={target} projectId={projectId} />}
+    </>}
+    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+  </div>
+}
+
+/** One agent's rule when others ask (owner, 5 Nov mockup "When others ask"): what it uses, as the server lists it (the
+ * person's own sign-ins marked yours, sent only to them), and what it does when someone else asks. Its own person edits
+ * the rule; everyone else reads the server's summary line. */
 function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; target: TeamTarget; projectId: string }) {
   const [rule, setRule] = useState(agent.when_others_ask || '')
   const { pending, error, run } = useSave()
   useEffect(() => { setRule(agent.when_others_ask || '') }, [agent.when_others_ask])
-  const save = (key: string, change: { when_others_ask?: string; can_make_changes?: boolean }) => run(key, async () => {
+  const save = (key: string, change: { when_others_ask?: string }) => run(key, async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/agent-rule', 'POST', { agent_key: agent.key, ...change })
     window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   })
@@ -316,16 +354,6 @@ function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; targe
         onChange={e => setRule(e.target.value)} onBlur={() => { if (rule.trim() !== (agent.when_others_ask || '')) void save('rule', { when_others_ask: rule }) }}
         className="min-h-[58px] w-full rounded-md border border-border bg-background px-2 py-1.5 text-[13px]" />
       <p className="mt-1 text-xs text-muted-foreground">Added only when someone else asks; the agent knows who is asking. It follows it; it isn't a lock.</p>
-      {agent.can_make_changes !== undefined && <>
-        <p className={label}>When someone else asks, it can</p>
-        <div role="radiogroup" aria-label={`${agent.name} when someone else asks`} className="flex w-max overflow-hidden rounded-md border border-border text-xs">
-          {([[false, 'Answer only'], [true, 'Make changes']] as const).map(([value, text]) => {
-            const on = agent.can_make_changes === value
-            return <button key={text} type="button" role="radio" aria-checked={on} disabled={Boolean(pending)} onClick={() => { if (!on) void save(`can:${text}`, { can_make_changes: value }) }}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}><Saving on={pending === `can:${text}`}>{null}</Saving>{text}</button>
-          })}
-        </div>
-      </>}
     </>}
     {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
   </div>

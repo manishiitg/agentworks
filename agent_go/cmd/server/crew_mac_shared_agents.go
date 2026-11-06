@@ -649,11 +649,12 @@ func (api *StreamingAPI) desktopShareMacCrewAgents(w http.ResponseWriter, r *htt
 	externalJSON(w, map[string]any{"tabs": rows, "agents": readMacSharedAgents(project), "placements": placements})
 }
 
-// macSharedPurposesStale: a shared agent's saved name or purpose differs from its tab's now (and the tab still has one).
+// macSharedPurposesStale: a shared agent's saved name or purpose differs from its tab's now. A purpose cleared in the
+// tab counts too (a purpose is optional), so the online copy's list drops it as well.
 func macSharedPurposesStale(rows []macAgentRow, agents []macSharedAgent) bool {
 	for _, agent := range agents {
 		for _, row := range rows {
-			if row.Tab == agent.Tab && row.Purpose != "" && (row.Purpose != agent.Purpose || row.Name != agent.Name) {
+			if row.Tab == agent.Tab && (row.Purpose != agent.Purpose || row.Name != agent.Name) {
 				return true
 			}
 		}

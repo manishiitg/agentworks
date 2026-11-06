@@ -52,11 +52,15 @@ export type TeamTabPerson = { user_id: string; name: string; note?: 'owner' | 'y
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
 export type TeamTabAgent = { key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; place: 'mac' | 'server'; status_label?: string; tab: string
+  // Always on (crew_agent_always_on.go): where an agent of the owner's Mac answers now and where its server copy
+  // stands, worded by the server; place_tone only picks the chip's colour. not_shared_line: the muted line of the
+  // viewer's own agent that is not shared.
+  place_label?: string; place_tone?: 'ok' | 'wait' | 'server' | ''; not_shared_line?: string
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
   uses: { name: string; kind: string; personal?: boolean }[]; when_others_ask: string; has_rule: boolean; can_make_changes?: boolean; can_edit_rule: boolean; when_others_line: string
-  // Permissions (owner, 6 Nov): the one-line summary under the purpose, and its Ask message (the viewer's own agent).
-  permissions_line: string; permissions_prompt?: string
-  // The sharing list (crew_team_tab.go): its purpose, whether the viewer may ask its chat to set one, and its Public on
+  // The rule editor's Ask message (the viewer's own agent).
+  permissions_prompt?: string
+  // The sharing list (crew_team_tab.go): its purpose, whether the viewer edits it (POST agent-rule {purpose}), and its Public on
   // AgentBridge (a Mac Crew's owner's own rows): needs_purpose shows Set purpose instead of the switch; state is the
   // pill while it is public ("public · online").
   purpose: string; can_set_purpose: boolean

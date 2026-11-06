@@ -111,6 +111,25 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	if err != nil {
 		return fail(409, err.Error())
 	}
+	// An agent's purpose from the Team tab's row (setCrewTeamAgentPurpose): saved where set_my_agent_identity saves it,
+	// Main's in the Crew identity, a tab's in its own identity, then the new line goes to the online copy.
+	if call.Operation == "agent_purpose" {
+		purpose := call.Message
+		var err error
+		if call.Tab == macMainTab {
+			_, err = writeCrewMainIdentity(ctx, conversation.WorkspacePath, nil, &purpose)
+		} else if !crewMacTabID(call.Tab) {
+			err = fmt.Errorf("choose one of this Crew's agents")
+		} else {
+			_, err = defaultProductConversationRegistryStore().setAgentIdentity(ctx, claims.UserID, crewProfileID, project+codeChatSideMarker+call.Tab, nil, &purpose, claims.UserID)
+		}
+		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=agent_purpose tab=%s request=%s err=%v", project, call.Tab, call.ID, err)
+		if err != nil {
+			return fail(409, err.Error())
+		}
+		api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project)
+		return crewChatResult{ID: call.ID, Status: 200, Body: json.RawMessage(`{}`)}
+	}
 	if call.Operation == "file" {
 		return api.desktopCrewFile(ctx, claims, project, call)
 	}

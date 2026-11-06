@@ -49,6 +49,12 @@ type crewTeamTabAgent struct {
 	// Place is where it runs ("mac" or "server"); StatusLabel is its availability ("Mac off"), "" when it can answer.
 	Place       string `json:"place"`
 	StatusLabel string `json:"status_label,omitempty"`
+	// PlaceLabel / PlaceTone: where an agent of the owner's Mac answers now and where its server copy stands (Always
+	// on, crewAlwaysOnPlaceLabel), shown as the row's chip; the tone ("ok", "wait", "server" or "") only picks its colour.
+	PlaceLabel string `json:"place_label,omitempty"`
+	PlaceTone  string `json:"place_tone,omitempty"`
+	// NotSharedLine is the one muted line of the viewer's own agent that is not shared (owner, 6 Nov mockup).
+	NotSharedLine string `json:"not_shared_line,omitempty"`
 	// Tab is the agent's tab in its person's copy ("main" for a Mac's Main), so the Mac app finds its own tabs' rows.
 	Tab string `json:"tab"`
 	// When others ask (crew_when_others_ask.go), the row's details: what it uses (names only; the owner's own sign-ins
@@ -60,12 +66,10 @@ type crewTeamTabAgent struct {
 	CanMakeChanges *bool              `json:"can_make_changes,omitempty"`
 	CanEditRule    bool               `json:"can_edit_rule"`
 	WhenOthersLine string             `json:"when_others_line"`
-	// PermissionsLine is the one-line summary under the purpose (owner, 6 Nov): "Others can: answer only · 1 extra rule".
-	// PermissionsPrompt is what its Permissions' "Ask AI to set this up" sends to the viewer's Main (their own agent).
-	PermissionsLine   string `json:"permissions_line"`
+	// PermissionsPrompt is what its rule editor's "Ask AI to set this up" sends to the viewer's Main (their own agent).
 	PermissionsPrompt string `json:"permissions_prompt,omitempty"`
-	// The agent sharing list (owner, 5 Nov, approved mockup "Agent Sharing List"): its one-line purpose, whether the
-	// viewer may ask its chat to set one (their own agent), and, for the owner of a Mac Crew, its Public on AgentBridge
+	// The agent sharing list (owner, 6 Nov, approved mockup): its one-line purpose, whether the viewer edits it in the
+	// row (their own agent; POST agent-rule {purpose}), and, for the owner of a Mac Crew, its Public on AgentBridge
 	// for the Mac online tab's AgentBridge card.
 	Purpose       string             `json:"purpose"`
 	CanSetPurpose bool               `json:"can_set_purpose"`
@@ -212,12 +216,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 					detail = append(detail, "On their Mac")
 				}
 			}
-			// Always on: where an agent of the owner's Mac answers while that differs from its place ("Mac off ·
-			// answering from the server"); a plain "Mac" says nothing here.
-			switch {
-			case a.PlaceLabel != "" && a.PlaceLabel != "Mac":
-				detail = append(detail, a.PlaceLabel)
-			case a.StatusLabel != "" && a.PlaceLabel == "":
+			// Always on: where an agent of the owner's Mac answers and where its server copy stands is the row's own
+			// chip (place_label, place_tone), so the detail never repeats it.
+			if a.StatusLabel != "" && a.PlaceLabel == "" {
 				detail = append(detail, a.StatusLabel)
 			}
 			// Always on: a hand back that found the agent had answered on both the Mac and the server (owner only).
@@ -227,7 +228,10 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				}
 			}
 			row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
-				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, Tab: a.Tab}
+				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceTone: a.PlaceTone, Tab: a.Tab}
+			if mine && !a.InTeam {
+				row.NotSharedLine = crewTeamNotSharedLine(a.Place == "mac")
+			}
 			// Shared is per person (owner, 5-6 Nov): each person switches their own agents, Main too, but keeps one
 			// shared (setCrewTeamAgentChoice); someone else's agent just reads Shared.
 			if mine {
@@ -245,7 +249,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				changes := rule.CanMakeChanges
 				row.CanMakeChanges = &changes
 			}
-			row.WhenOthersLine, row.PermissionsLine = crewTeamWhenOthersLine(rule, p.Name, mine), crewTeamPermissionsLine(rule)
+			row.WhenOthersLine = crewTeamWhenOthersLine(rule, p.Name, mine)
 			if mine {
 				row.PermissionsPrompt = crewTeamPermissionsPrompt(a.Name)
 			}
@@ -267,6 +271,14 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	out.CanAddFolder = view.CanManage
 	out.CanRemoveFolder = out.CanChoose && len(t.Folder.Folders) > 1
 	return out
+}
+
+// crewTeamNotSharedLine is the muted line of the viewer's own agent that is not shared: what turning sharing on gives.
+func crewTeamNotSharedLine(onMac bool) string {
+	if onMac {
+		return "Only you can use it. Turn on sharing to let teammates ask it, even while your Mac is off."
+	}
+	return "Only you can use it. Turn on sharing to let teammates ask it."
 }
 
 // crewTeamBridges is what this server keeps of a Mac Crew's agents' Public on AgentBridge (the Mac online tab's

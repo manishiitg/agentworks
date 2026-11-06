@@ -21,9 +21,11 @@ type crewTeamAgent struct {
 	Place       string `json:"place"`
 	ChatKey     string `json:"chat_key"`
 	StatusLabel string `json:"status_label,omitempty"`
-	// PlaceLabel is where an agent of the owner's Mac answers now (Always on): "Mac", "Mac off · answering from the
-	// server" or "Mac off · waits for your Mac"; PlaceServer is set when the server answers for it.
+	// PlaceLabel is where an agent of the owner's Mac answers now and where its server copy stands (Always on,
+	// crewAlwaysOnPlaceLabel); PlaceTone colours it ("ok", "wait", "server" or ""); PlaceServer is set when the
+	// server answers for it.
 	PlaceLabel  string `json:"place_label,omitempty"`
+	PlaceTone   string `json:"place_tone,omitempty"`
 	PlaceServer bool   `json:"place_server,omitempty"`
 	// InTeam: everyone in the Team sees it (its maker chose In team); false only on the viewer's own Only me agents.
 	InTeam bool `json:"in_team"`
@@ -90,7 +92,8 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		}
 		if place == "mac" {
 			// Always on: an In team agent answers from the server while the Mac is off; an Only me one waits for it.
-			row.PlaceLabel, row.PlaceServer = crewAlwaysOnPlaceLabel(t.ProjectID, t.OwnerID, agent.Tab, owner.MacOn, caller == t.OwnerID)
+			row.PlaceLabel, row.PlaceTone = crewAlwaysOnPlaceLabel(t.ProjectID, t.OwnerID, agent.Tab, owner.MacOn, caller == t.OwnerID, row.InTeam)
+			row.PlaceServer = row.PlaceTone == "server"
 			if !owner.MacOn && !row.PlaceServer {
 				row.StatusLabel = "Mac off"
 			}

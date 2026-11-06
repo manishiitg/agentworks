@@ -179,16 +179,16 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if api.crewStandbyRoute(t.Context(), "owner", "team", helper, "other", true) || len(imported) != 0 {
 		t.Fatalf("with the Mac on, the server took the agent (imported %v)", imported)
 	}
-	if label, _ := crewAlwaysOnPlaceLabel("team", "owner", helper, true, true); label != "Mac" {
-		t.Fatalf("Mac on label: %q", label)
+	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, true, true, true); label != "Mac · synced to server" || tone != "ok" {
+		t.Fatalf("Mac on label: %q %q", label, tone)
 	}
 
 	// The Mac goes off: the teammate asks Helper from their own AI app.
 	crewMacSockets.Lock()
 	delete(crewMacSockets.byDevice, "owner-mac")
 	crewMacSockets.Unlock()
-	if label, serving := crewAlwaysOnPlaceLabel("team", "owner", helper, false, true); label != "Mac off · answering from the server" || !serving {
-		t.Fatalf("In team, Mac off label: %q %t", label, serving)
+	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, false, true, true); label != "Mac off · answering from the server" || tone != "server" {
+		t.Fatalf("In team, Mac off label: %q %q", label, tone)
 	}
 	member := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}}}
 	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, member))
@@ -222,8 +222,8 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if api.crewStandbyRoute(t.Context(), "owner", "team", solo, "", true) || rows[solo].Writer != "" {
 		t.Fatalf("an Only me agent was answered on the server: %+v", rows[solo])
 	}
-	if label, serving := crewAlwaysOnPlaceLabel("team", "owner", solo, false, true); label != "Mac off · waits for your Mac" || serving {
-		t.Fatalf("Only me, Mac off label: %q %t", label, serving)
+	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", solo, false, true, false); label != "Mac off · waits for your Mac" || tone != "" {
+		t.Fatalf("Only me, Mac off label: %q %q", label, tone)
 	}
 	if len(imported) != 1 {
 		t.Fatalf("an Only me agent's copy was imported: %v", imported)
