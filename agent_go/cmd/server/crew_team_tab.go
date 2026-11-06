@@ -229,7 +229,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	uses := crewTeamUses(ctx, t)
 	for _, p := range byPerson {
 		mine := p.UserID == viewer
-		onMac := crewTeamAgentOnMac(t, p.UserID)
 		shared := 0
 		for _, a := range p.Agents {
 			if a.InTeam {
@@ -273,10 +272,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			rule := t.agentRule(p.UserID, crewTeamRuleKey(ctx, t, p.UserID, a.ChatKey))
 			row.Uses = crewTeamRowUses(uses, p.UserID, t.OwnerID, viewer)
 			row.WhenOthersAsk, row.HasRule, row.CanEditRule = rule.WhenOthersAsk, rule.WhenOthersAsk != "", mine
-			if onMac {
-				changes := rule.CanMakeChanges
-				row.CanMakeChanges = &changes
-			}
+			// Answer only / Make changes for every agent, Mac or server alike (one row for every own agent, owner 6 Nov).
+			changes := rule.CanMakeChanges
+			row.CanMakeChanges = &changes
 			row.WhenOthersLine = crewTeamWhenOthersLine(rule, p.Name, mine)
 			row.ChatVisible = t.agentChatVisible(ctx, p.UserID, a.ChatKey)
 			if mine {
@@ -421,10 +419,8 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, CanSetPurpose: true,
 			ChatVisible: t.agentChatVisible(ctx, t.OwnerID, a.ChatKey), ChatVisibleLabel: crewTeamChatVisibleLabel,
 			AgentBridge: bridges.row(t, a, t.OwnerID)}
-		if bridges.twin {
-			changes := rule.CanMakeChanges
-			row.CanMakeChanges = &changes
-		}
+		changes := rule.CanMakeChanges
+		row.CanMakeChanges = &changes
 		row.Setup = setups.setup(t, a, t.OwnerID, t.OwnerID, false, row.AgentBridge)
 		out = append(out, row)
 	}

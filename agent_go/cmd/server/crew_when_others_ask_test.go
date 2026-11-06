@@ -36,6 +36,19 @@ func TestWhenOthersAskNoteOnlyForAnotherPerson(t *testing.T) {
 			t.Fatalf("%s: note %q", name, note)
 		}
 	}
+	// Answer only is the default and Make changes the owner's choice; a server agent's turn says which (6 Nov: one row
+	// for every agent, so the setting must hold for a server agent too).
+	req0 := QueryRequest{AskedBy: "teammate"}
+	if note := whenOthersAskForTurn(ctx, &req0, "owner", "owner", key); !strings.Contains(note, "answer questions only") {
+		t.Fatalf("default is answer only: %q", note)
+	}
+	team.AgentRules["owner"][key] = crewTeamAgentRule{WhenOthersAsk: "Only answer about the website project.", CanMakeChanges: true}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if note := whenOthersAskForTurn(ctx, &req0, "owner", "owner", key); !strings.Contains(note, "lets you make changes") || strings.Contains(note, "answer questions only") {
+		t.Fatalf("Make changes is said: %q", note)
+	}
 	// The owner's own turns (typed, schedules, their user-view test chat) get nothing.
 	for _, req := range []QueryRequest{{}, {CrewGuestCaller: "owner", PinRunMode: true}} {
 		if note := whenOthersAskForTurn(ctx, &req, "owner", "owner", key); note != "" {

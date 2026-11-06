@@ -222,6 +222,16 @@ func turnSharedAsk(ctx context.Context, req *QueryRequest) *crewMacSharedAsk {
 	return ask
 }
 
+// crewAskModeLine is the owner's Answer only / Make changes for another person's ask, said on every turn both ways: the
+// setting can change mid-thread and the latest line wins over earlier ones. It is an instruction to the agent, on a Mac
+// agent's turn (crewMacSharedAgentText) and on a server agent's alike.
+func crewAskModeLine(canChange bool) string {
+	if canChange {
+		return "[Your owner now lets you make changes for this person: you may change files, run commands and use your tools for them. This replaces any earlier answer-only note in this thread.]"
+	}
+	return "[Your owner shared you to answer questions only: read and answer; do not change files, run commands that change anything, or send anything on the owner's behalf. If they ask for a change, say you can only answer here and that your owner can choose Make changes for this agent in the Team tab.]"
+}
+
 // whenOthersAskNote is the turn's note for another person's ask: the fixed line, then the owner's rule if set.
 func whenOthersAskNote(askerName, ownerName, rule string) string {
 	note := fmt.Sprintf("## When others ask\n\nThis request is from %s, not %s. Do not use %s's personal accounts (their own Gmail, Drive, personal Slack and other apps they signed in to themselves) or share %s's personal information, unless %s allows it below.", askerName, ownerName, ownerName, ownerName, ownerName)
@@ -237,14 +247,15 @@ func whenOthersAskForTurn(ctx context.Context, req *QueryRequest, userID, ownerI
 	if !ok {
 		return ""
 	}
-	rule := ""
+	rule, mode := "", ""
 	if ask := turnSharedAsk(ctx, req); ask != nil && ask.Sender != "" {
-		rule = ask.WhenOthersAsk
+		rule = ask.WhenOthersAsk // the Mac's own text for this turn carries the mode line (crewMacSharedAgentText)
 	} else {
-		rule = crewTeamAgentRuleFor(ctx, crewResourceProjectID(agentKey), owner, agentKey).WhenOthersAsk
+		stored := crewTeamAgentRuleFor(ctx, crewResourceProjectID(agentKey), owner, agentKey)
+		rule, mode = stored.WhenOthersAsk, "\n\n"+crewAskModeLine(stored.CanMakeChanges)
 	}
-	log.Printf("[WHEN_OTHERS_ASK] agent=%s asker=%s owner=%s custom=%t", agentKey, logUsernameForUserID(askerID), logUsernameForUserID(owner), strings.TrimSpace(rule) != "")
-	return whenOthersAskNote(askerName, ownerName, rule)
+	log.Printf("[WHEN_OTHERS_ASK] agent=%s asker=%s owner=%s custom=%t can_make_changes=%t", agentKey, logUsernameForUserID(askerID), logUsernameForUserID(owner), strings.TrimSpace(rule) != "", mode != "" && !strings.Contains(mode, "answer questions only"))
+	return whenOthersAskNote(askerName, ownerName, rule) + mode
 }
 
 // crewTeamAgentUse is one app or secret (by name) the Crew's agents use; Personal marks the owner's own sign-in.
