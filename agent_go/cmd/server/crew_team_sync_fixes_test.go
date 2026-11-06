@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -38,7 +39,7 @@ func TestCrewTeamScanLeavesOutOversizeFileAndSendsRemovalsFirst(t *testing.T) {
 	}
 	// The copy last had docs/a.md, before the folder was renamed to Docs.
 	b := &crewTeamLocal{Root: root, Downloaded: true, Files: map[string]crewTeamLocalFile{
-		"docs/a.md": {Size: 14, Version: chunkedFile{Hash: strings.Repeat("a", 64), Size: 14}}}}
+		"docs/a.md": {Version: chunkedFile{Hash: strings.Repeat("a", 64), Size: 14}}}}
 	scan, err := crewTeamScan(t.Context(), b, crewTeamFolder{ID: "f1", Whole: true})
 	if err != nil {
 		t.Fatal(err)
@@ -94,6 +95,70 @@ func TestCrewTeamWatchedRoundReadsOnlyChangedFolders(t *testing.T) {
 	}
 	if scan.stated != 3 { // a/edit.md, a/same.md, c/new.md; quiet/ is not read
 		t.Fatalf("stated %d files", scan.stated)
+	}
+}
+
+// PLAT-856-552: settle a racy first read once, then warm scans read no
+// contents, while equal-size edits/replacements preserving mtime still sync.
+func TestCrewTeamStableStampReusesContentAndDetectsPreservedMtime(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("this OS has no strong identity in FileInfo; content is conservatively rechecked")
+	}
+	root := t.TempDir()
+	p := filepath.Join(root, "edit.md")
+	old := time.Now().Add(-time.Minute)
+	write := func(path, data string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(p, "first")
+	b := &crewTeamLocal{Root: root, Downloaded: true, Files: map[string]crewTeamLocalFile{}}
+	share := crewTeamFolder{ID: "f1", Whole: true}
+	scan := func() crewTeamScanResult {
+		t.Helper()
+		got, err := crewTeamScan(t.Context(), b, share)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	first := scan()
+	if first.readFiles != 1 || len(first.changes) != 1 {
+		t.Fatalf("first capture: %+v", first)
+	}
+	for rel, entry := range first.entries {
+		b.Files[rel] = entry // upload acknowledged
+	}
+	// The first stamp's ctime lies in the read's own second. After the clock
+	// settles, a successful recheck records a trustworthy read-start time.
+	time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(time.Second)) + 10*time.Millisecond)
+	settled := scan()
+	for rel, entry := range settled.entries {
+		b.Files[rel] = entry
+	}
+	if warm := scan(); warm.readFiles != 0 || warm.reused != 1 || len(warm.changes) != 0 {
+		t.Fatalf("warm unchanged file was reread: %+v", warm)
+	}
+	write(p, "other")
+	edited := scan()
+	if edited.readFiles != 1 || len(edited.changes) != 1 || edited.changes[0].After.Hash == b.Files["edit.md"].Version.Hash {
+		t.Fatalf("same-size/mtime edit was lost: %+v", edited)
+	}
+	for rel, entry := range edited.entries {
+		b.Files[rel] = entry
+	}
+	replacement := filepath.Join(t.TempDir(), "replacement")
+	write(replacement, "third")
+	if err := os.Rename(replacement, p); err != nil {
+		t.Fatal(err)
+	}
+	if replaced := scan(); replaced.readFiles != 1 || len(replaced.changes) != 1 {
+		t.Fatalf("atomic replacement with preserved size/mtime was lost: %+v", replaced)
 	}
 }
 
