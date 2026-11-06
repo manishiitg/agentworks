@@ -684,8 +684,18 @@ func TestCrewHandbackFromHistoryTakesExtendsKeepsBoth(t *testing.T) {
 	if event := apply(); event != "imported" || len(imported) != 3 || imported[2] != 4 {
 		t.Fatalf("a repeated last message must not make a false divergence: event=%s imported=%v", event, imported)
 	}
+	// Live round 3, 6 Nov: the server's saved history starts with its own freshly built system message, which differs
+	// from the Mac's old one; that must not count as both sides having changed.
+	withSystem := func(prompt string, rest ...llmtypes.MessageContent) []llmtypes.MessageContent {
+		return append([]llmtypes.MessageContent{llmtypes.TextParts(llmtypes.ChatMessageTypeSystem, prompt)}, rest...)
+	}
+	macHistory = withSystem("old prompt", say("remember pineapple", "ok")...)
+	server = withSystem("new prompt", say("remember pineapple", "ok", "and mango?", "ok mango")...)
+	if event := apply(); event != "imported" || len(imported) != 4 || imported[3] != 5 {
+		t.Fatalf("a different system message must not make a false divergence: event=%s imported=%v", event, imported)
+	}
 	macHistory = say("remember pineapple", "ok", "something only the Mac saw", "noted on the Mac") // both changed
-	if event := apply(); event != "diverged" || len(imported) != 3 {
+	if event := apply(); event != "diverged" || len(imported) != 4 {
 		t.Fatalf("when both changed the Mac keeps its own and the server's is kept aside: event=%s imported=%v", event, imported)
 	}
 }
