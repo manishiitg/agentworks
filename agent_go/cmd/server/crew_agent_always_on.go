@@ -128,7 +128,8 @@ func crewStandbyTabForKey(project, key string) string {
 	if project == "" || key == "" {
 		return ""
 	}
-	if key == crewOwnerDefaultChatKey(project, ownerOfCrewProjectID(project)) || crewOwnerRootMain(project, key) {
+	// Only the owner's Main has a physical root key; any other registered chat of the owner is its own agent.
+	if side, ok := strings.CutPrefix(key, project+codeChatSideMarker); key == crewOwnerDefaultChatKey(project, ownerOfCrewProjectID(project)) || ok && strings.HasPrefix(side, "root-") && crewOwnerRootMain(project, key) {
 		return macMainTab
 	}
 	return crewAgentPublishTab(key)

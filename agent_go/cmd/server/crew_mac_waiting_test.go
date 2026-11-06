@@ -50,6 +50,16 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 		t.Fatal("a root key that is not the owner's own record routed as the owner's Main")
 	}
 	// PLAT-856-509: the owner's Main under its root key is the Mac's Main, so it waits for the Mac like the Crew's own key.
+	// Live test, 6 Nov: a side agent's key that the owner's registry also holds was routed to Main, so a website turn for
+	// the ChatGPT tab ran as Main's Claude session.
+	sideKey := "team" + codeChatSideMarker + "0986645f"
+	document.Entries[productConversationRegistryEntryKey(crewProfileID, sideKey)] = ProductConversationRecord{ProfileID: crewProfileID, ResourceID: "team", ConversationKey: sideKey, ConversationID: "side-conversation"}
+	if err := registry.writeDocument(t.Context(), productConversationRegistryPath("owner"), document); err != nil {
+		t.Fatal(err)
+	}
+	if tab := crewStandbyTabForKey("team", sideKey); tab != "0986645f" {
+		t.Fatalf("a registered side agent routed as %q, not its own tab", tab)
+	}
 	if tab := crewStandbyTabForKey("team", mainKey); tab != macMainTab {
 		t.Fatalf("the owner's Main under its root key must be Main, got %q", tab)
 	}
