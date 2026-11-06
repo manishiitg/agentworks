@@ -82,6 +82,116 @@ func TestGitTurnCapturesOnlyChangedPathsAndCommittedEdits(t *testing.T) {
 	}
 }
 
+// PLAT-746-319: a file left uncommitted across replies must reuse its private
+// blob; only a subsequent content edit imports bytes, including same-size edits.
+func TestDirtyTurnReusesPrivateIndexAcrossReplies(t *testing.T) {
+	for _, linked := range []bool{false, true} {
+		t.Run(fmt.Sprint(linked), func(t *testing.T) {
+			f := newCrew(t)
+			f.repo("app", map[string]string{"a.txt": "base-a\n", "b.txt": "base-b\n"})
+			dir := "app"
+			if linked {
+				dir = "feature"
+				f.git("app", "worktree", "add", "--quiet", "-b", "feature", filepath.Join(f.s.Root, dir))
+			}
+			f.put(dir+"/a.txt", "dirty-a\n")
+			f.put(dir+"/b.txt", "dirty-b\n")
+			f.backdateAll()
+			begin := func(id string) Record {
+				t.Helper()
+				r, err := f.s.BeginGitTurn(t.Context(), id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return r
+			}
+			finish := func(id string) Record {
+				t.Helper()
+				r, err := f.s.FinishGitTurn(t.Context(), id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return r
+			}
+			assertReused := func(stats CaptureStats) {
+				t.Helper()
+				if stats.ImportedBytes != 0 || stats.Changed != 0 || stats.Reused < 2 {
+					t.Fatalf("stable dirty files imported again: %+v", stats)
+				}
+			}
+			begin("seed")
+			assertReused(finish("seed").AfterCapture)
+			assertReused(begin("noop").BeforeCapture)
+			noop := finish("noop")
+			assertReused(noop.AfterCapture)
+			if !f.s.Unchanged(t.Context(), noop) {
+				t.Fatal("unchanged dirty files became reply edits")
+			}
+
+			assertReused(begin("same-size").BeforeCapture)
+			f.put(dir+"/a.txt", "dirty-z\n")
+			edited := finish("same-size")
+			if edited.AfterCapture.ImportedBytes != int64(len("dirty-z\n")) || edited.AfterCapture.Changed != 1 || edited.AfterCapture.Reused < 1 {
+				t.Fatalf("did not import only the edited dirty file: %+v", edited.AfterCapture)
+			}
+			all := func(string) bool { return true }
+			c, err := f.s.CompareSaved(t.Context(), []string{edited.ID}, "", "", all)
+			if err != nil || len(c.Changes) != 1 || c.Changes[0].Path != dir+"/a.txt" {
+				t.Fatalf("wrong reply changes: %v %+v", err, c.Changes)
+			}
+			diff, err := f.s.CompareSaved(t.Context(), []string{edited.ID}, c.Changes[0].Path, c.Changes[0].Key, all)
+			if err != nil || !strings.Contains(diff.Diff, "-dirty-a") || !strings.Contains(diff.Diff, "+dirty-z") {
+				t.Fatalf("lost private before bytes: %v %s", err, diff.Diff)
+			}
+			if plan, err := f.s.ApplyUndo(t.Context(), edited.ID, all, all); err != nil || len(plan.Restore) != 1 {
+				t.Fatalf("Undo lost cached version: %v %+v", err, plan)
+			}
+			begin("after-undo")
+			assertReused(finish("after-undo").AfterCapture)
+
+			assertReused(begin("commit-only").BeforeCapture)
+			f.git(dir, "add", "a.txt", "b.txt")
+			f.git(dir, "commit", "--quiet", "-m", "commit existing dirty files")
+			index, err := gitIn(t.Context(), f.s.Root, filepath.Join(f.s.Root, dir), "rev-parse", "--git-path", "index").Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			indexPath := strings.TrimSpace(string(index))
+			if !filepath.IsAbs(indexPath) {
+				indexPath = filepath.Join(f.s.Root, dir, indexPath)
+			}
+			beforeIndex, err := os.ReadFile(indexPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			committed := finish("commit-only")
+			assertReused(committed.AfterCapture)
+			if !f.s.Unchanged(t.Context(), committed) {
+				t.Fatal("commit without file edits created changes")
+			}
+			afterIndex, err := os.ReadFile(indexPath)
+			if err != nil || string(beforeIndex) != string(afterIndex) {
+				t.Fatal("capture wrote the user's index")
+			}
+
+			f.put(dir+"/a.txt", "left-dirty-a\n")
+			f.put(dir+"/b.txt", "left-dirty-b\n")
+			begin("seed-restore")
+			finish("seed-restore")
+			assertReused(begin("restore-head").BeforeCapture)
+			f.git(dir, "restore", "--", "a.txt")
+			restored := finish("restore-head")
+			if restored.AfterCapture.ImportedBytes != int64(len("dirty-a\n")) || restored.AfterCapture.Changed != 1 {
+				t.Fatalf("restore-to-HEAD lost or reread other dirty files: %+v", restored.AfterCapture)
+			}
+			c, err = f.s.CompareSaved(t.Context(), []string{restored.ID}, "", "", all)
+			if err != nil || len(c.Changes) != 1 || c.Changes[0].Path != dir+"/a.txt" {
+				t.Fatalf("restore-to-HEAD comparison: %v %+v", err, c.Changes)
+			}
+		})
+	}
+}
+
 func TestGitTurnRefusesConvertedBeforeBytesAndExternalGitDir(t *testing.T) {
 	f := newCrew(t)
 	f.repo("app", map[string]string{".gitattributes": "*.txt text\n", "a.txt": "original\n"})

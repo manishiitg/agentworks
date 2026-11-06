@@ -290,7 +290,7 @@ func (s Store) writeCheckout(ctx context.Context, c *checkout) error {
 
 // compose writes one commit holding every checkout tree under its
 // Crew-relative prefix plus the loose files, and moves headRef to it.
-func (s Store) compose(ctx context.Context, ref, indexHead string, checkouts []*checkout) error {
+func (s Store) compose(ctx context.Context, ref string, checkouts []*checkout) error {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "commit %s\nmark :1\ncommitter AgentWorks <snapshot@example.com> %d +0000\ndata 14\nFile snapshot\n\ndeleteall\n", ref, time.Now().Unix())
 	var loose *checkout
@@ -350,8 +350,8 @@ func (s Store) compose(ctx context.Context, ref, indexHead string, checkouts []*
 			}
 		}
 	}
-	if ref != indexHead {
-		fmt.Fprintf(&b, "\nreset %s\nfrom :1\n", indexHead)
+	if ref != headRef {
+		fmt.Fprintf(&b, "\nreset %s\nfrom :1\n", headRef)
 	}
 	b.WriteString("\ndone\n")
 	cmd := s.command(ctx, "fast-import", "--quiet", "--done", "--force", "--date-format=raw")
@@ -389,13 +389,13 @@ func (s Store) captureRepos(ctx context.Context, ref, prior string, stats *Captu
 			repos[c.prefix] = c.dir
 		}
 	}
-	return s.captureListed(ctx, ref, prior, stats, skippedState, budget, checkouts, omitted, true)
+	return s.captureListed(ctx, ref, prior, stats, skippedState, budget, checkouts, omitted)
 }
 
-// captureListed reuses the same private Git stat indexes for a validated subset
-// of files. Reply capture supplies only loose files, leaving checkout contents
-// to Git's changed-path list and retaining the other existing private indexes.
-func (s Store) captureListed(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string, budget int64, checkouts []*checkout, omitted []string, removeOtherIndexes bool) (string, []string, []string, error) {
+// captureListed reuses the private Git stat indexes for validated candidates.
+// Reply capture supplies ordinary files and only the checkout paths Git reports,
+// so unchanged dirty files reuse their blobs without enumerating clean contents.
+func (s Store) captureListed(ctx context.Context, ref, prior string, stats *CaptureStats, skippedState map[string]string, budget int64, checkouts []*checkout, omitted []string) (string, []string, []string, error) {
 	s.cleanStale()
 	if err := os.MkdirAll(s.indexDir(), 0700); err != nil {
 		return "", nil, nil, err
@@ -502,13 +502,7 @@ func (s Store) captureListed(ctx context.Context, ref, prior string, stats *Capt
 	for _, c := range checkouts {
 		stats.Removed += len(c.remove)
 	}
-	indexHead := headRef
-	if !removeOtherIndexes {
-		// A loose-only capture must not drop the full capture's reachability
-		// anchor while its other persisted indexes still name those blobs.
-		indexHead = "refs/snapshot-index/loose"
-	}
-	if err := s.compose(ctx, ref, indexHead, checkouts); err != nil {
+	if err := s.compose(ctx, ref, checkouts); err != nil {
 		if ctx.Err() == nil {
 			for _, c := range checkouts {
 				_ = os.Remove(s.indexFile(c.key)) // a tree is unusable: rebuild
@@ -532,7 +526,7 @@ func (s Store) captureListed(ctx context.Context, ref, prior string, stats *Capt
 			}
 		}
 	}
-	if entries, err := os.ReadDir(s.indexDir()); err == nil && removeOtherIndexes {
+	if entries, err := os.ReadDir(s.indexDir()); err == nil {
 		for _, e := range entries {
 			if strings.HasSuffix(e.Name(), ".idx") && !keep[e.Name()] {
 				_ = os.Remove(filepath.Join(s.indexDir(), e.Name())) // checkout gone
