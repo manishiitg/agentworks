@@ -388,10 +388,10 @@ func TestCrewTeamPeopleOverMCPFollowTheTeamRules(t *testing.T) {
 	if w := call("outsider", map[string]any{"action": "directory"}); w.Code != http.StatusForbidden {
 		t.Fatalf("an outsider saw the directory: %d %s", w.Code, w.Body.String())
 	}
-	if w := call("outsider", map[string]any{"action": "people", "add": "newbie"}); w.Code < 400 {
+	if w := call("outsider", map[string]any{"action": "people", "person": "newbie", "level": "works", "confirm": true}); w.Code < 400 {
 		t.Fatalf("an outsider added someone: %d %s", w.Code, w.Body.String())
 	}
-	if w := call("other", map[string]any{"action": "people", "add": "newbie"}); w.Code != 200 {
+	if w := call("other", map[string]any{"action": "people", "person": "newbie", "level": "works", "confirm": true}); w.Code != 200 {
 		t.Fatalf("a joined member could not add: %d %s", w.Code, w.Body.String())
 	}
 	team, err := readCrewTeam("team")
