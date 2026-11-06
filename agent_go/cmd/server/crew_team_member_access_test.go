@@ -169,6 +169,20 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			t.Fatalf("%s edits %d of their agents", who, editable)
 		}
 	}
+	// Showcase, 6 Nov: the owner's Main, asked to set the rule of "testing xxx" from chat, named it by its tab, its Mac
+	// chat key and its name, with the Mac off; each was refused. Each now saves, for the caller's own agents only.
+	for _, name := range []string{"e139c703", "mac-copy:chat:e139c703", "helper", "mac-copy"} {
+		if w := call("owner", "agent-rule", `{"agent_key":"`+name+`","when_others_ask":"Saved by `+name+`"}`); w.Code != 200 {
+			t.Fatalf("owner could not save the rule of their own Mac agent by %q: %d %s", name, w.Code, w.Body.String())
+		}
+		if w := call("member", "agent-rule", `{"agent_key":"`+name+`","when_others_ask":"Share everything."}`); w.Code != 403 {
+			t.Fatalf("member saved the owner's agent rule by %q: %d", name, w.Code)
+		}
+	}
+	if saved, _ := readCrewTeam(team.ProjectID); saved.agentRule("owner", "e139c703").WhenOthersAsk != "Saved by helper" || saved.agentRule("owner", macMainTab).WhenOthersAsk != "Saved by mac-copy" {
+		t.Fatalf("rules by Mac key or name not kept on the owner's agents: %+v", saved.AgentRules["owner"])
+	}
+	call("owner", "agent-rule", `{"agent_key":"Helper","when_others_ask":"Ask me first."}`)
 	saved, _ := readCrewTeam(team.ProjectID)
 	if saved.agentRule("owner", "e139c703").WhenOthersAsk != "Ask me first." || saved.agentRule("member", memberMain).WhenOthersAsk != "Ask me first." {
 		t.Fatalf("rules not kept: %+v", saved.AgentRules)
