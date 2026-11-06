@@ -192,6 +192,47 @@ func TestDirtyTurnReusesPrivateIndexAcrossReplies(t *testing.T) {
 	}
 }
 
+// PLAT-746-319: raw candidate discovery must retain staged renames/deletions
+// and untracked literal paths while leaving ignored output out of the cache.
+func TestTurnCandidatePathsKeepStagedDeletedAndUntrackedFiles(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"main.txt": "before\n", "old.txt": "renamed\n", "removed.txt": "deleted\n"})
+	f.git("app", "mv", "old.txt", "renamed\tfile.txt")
+	f.put("app/main.txt", "staged\n")
+	f.git("app", "add", "main.txt")
+	f.put("app/main.txt", "edited\n")
+	if err := os.Remove(filepath.Join(f.s.Root, "app", "removed.txt")); err != nil {
+		t.Fatal(err)
+	}
+	f.put("app/new\nfile.txt", "new\n")
+	f.put("app/.gitignore", "*.log\n")
+	f.put("app/ignored.log", "ignored\n")
+	f.backdateAll()
+	r, err := f.s.BeginGitTurn(t.Context(), "paths")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string]bool{}
+	for _, p := range r.GitTurn["app"].Dirty {
+		paths[p] = true
+	}
+	for _, p := range []string{"main.txt", "old.txt", "renamed\tfile.txt", "removed.txt", "new\nfile.txt", ".gitignore"} {
+		if !paths[p] {
+			t.Fatalf("lost literal candidate %q: %+v", p, paths)
+		}
+	}
+	if paths["ignored.log"] {
+		t.Fatal("ignored output became a candidate")
+	}
+	if got := f.tree(r.Before); got["app/main.txt"] != "edited\n" || got["app/renamed\tfile.txt"] != "renamed\n" {
+		t.Fatalf("not the raw working-tree baseline: %+v", got)
+	}
+	r, err = f.s.FinishGitTurn(t.Context(), "paths")
+	if err != nil || r.AfterCapture.ImportedBytes != 0 || !f.s.Unchanged(t.Context(), r) {
+		t.Fatalf("unchanged staged work reread or became edits: %v %+v", err, r.AfterCapture)
+	}
+}
+
 func TestGitTurnRefusesConvertedBeforeBytesAndExternalGitDir(t *testing.T) {
 	f := newCrew(t)
 	f.repo("app", map[string]string{".gitattributes": "*.txt text\n", "a.txt": "original\n"})
