@@ -48,17 +48,21 @@ func (s Store) turnTree(ctx context.Context, ref string) (map[string]turnBlob, e
 	return files, nil
 }
 
-func (s Store) captureTurnLoose(ctx context.Context, ref, boundary string, paths []string, stats *CaptureStats, skippedState map[string]string, budget int64) (map[string]turnBlob, []string, error) {
+func (s Store) captureTurnLoose(ctx context.Context, ref, boundary string, paths []string, stats *CaptureStats, skippedState map[string]string, budget int64) (map[string]turnBlob, []string, []string, error) {
 	started := time.Now()
 	stats.WalkedFiles = len(paths)
-	c := &checkout{dir: s.Root, key: "loose", loose: true, files: paths}
+	files, omitted, err := s.filterLoosePaths(ctx, paths)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	c := &checkout{dir: s.Root, key: "loose", loose: true, files: files}
 	tree, skipped, _, err := s.captureListed(ctx, ref, "", stats, skippedState, budget, []*checkout{c}, nil, false)
 	log.Printf("[FILE_SNAPSHOT] phase=loose_capture boundary=%s walked=%d reused=%d imported_files=%d imported_bytes=%d budget_skipped=%d elapsed_ms=%d success=%t", boundary, len(paths), stats.Reused, stats.Changed, stats.ImportedBytes, stats.BudgetSkipped, time.Since(started).Milliseconds(), err == nil)
 	if err != nil {
-		return nil, skipped, err
+		return nil, skipped, omitted, err
 	}
-	files, err := s.turnTree(ctx, tree)
-	return files, skipped, err
+	blobs, err := s.turnTree(ctx, tree)
+	return blobs, skipped, omitted, err
 }
 
 // Do not walk checkout contents: Git reports their changed paths. A .git file
@@ -279,11 +283,12 @@ func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, erro
 		}
 	}
 	r.BeforeSkippedState = map[string]string{}
-	looseFiles, skipped, err := s.captureTurnLoose(ctx, "refs/turns/"+r.ID+"/loose-before", "before", loose, &r.BeforeCapture, r.BeforeSkippedState, maxImportBytes-total)
+	looseFiles, skipped, omitted, err := s.captureTurnLoose(ctx, "refs/turns/"+r.ID+"/loose-before", "before", loose, &r.BeforeCapture, r.BeforeSkippedState, maxImportBytes-total)
 	if err != nil {
 		return r, err
 	}
 	r.Skipped = append(r.Skipped, skipped...)
+	r.Omitted = append(r.Omitted, omitted...)
 	r.BeforeCapture.Repos = len(r.GitTurn)
 	r.BeforeCapture.Captured += len(files)
 	r.BeforeCapture.Changed += len(files)
@@ -432,16 +437,21 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 		return r, err
 	}
 	r.AfterSkippedState = map[string]string{}
-	current, omitted, err := s.captureTurnLoose(ctx, "refs/turns/"+r.ID+"/loose-after", "after", loose, &r.AfterCapture, r.AfterSkippedState, maxImportBytes-total)
+	current, looseSkipped, omitted, err := s.captureTurnLoose(ctx, "refs/turns/"+r.ID+"/loose-after", "after", loose, &r.AfterCapture, r.AfterSkippedState, maxImportBytes-total)
 	if err != nil {
 		return r, err
 	}
-	for _, p := range omitted {
+	r.Omitted = append(r.Omitted, omitted...)
+	for _, p := range looseSkipped {
 		skipped[p] = true
+	}
+	ignored := map[string]bool{}
+	for _, p := range r.Omitted {
+		ignored[p] = true
 	}
 	candidates := map[string]bool{}
 	for _, p := range append(turnKeys(current), turnKeys(previous)...) {
-		if _, repo := savedRoot(p, roots); !repo && validTurnPath(p) {
+		if _, repo := savedRoot(p, roots); !repo && validTurnPath(p) && !ignored[p] {
 			candidates[p] = true
 		}
 	}

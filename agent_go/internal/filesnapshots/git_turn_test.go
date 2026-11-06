@@ -1,6 +1,7 @@
 package filesnapshots
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -253,6 +254,54 @@ func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
 				if err != nil || warm.AfterCapture.ImportedBytes != 0 || !f.s.Unchanged(t.Context(), warm) {
 					t.Fatalf("unchanged finish reread or invented edits: %v %+v", err, warm.AfterCapture)
 				}
+			}
+		})
+	}
+}
+
+// PLAT-746-319 review: ignored output must neither enter reply history nor
+// appear as a deletion when a new ignore rule takes effect during the turn.
+func TestTurnRespectsOrdinaryIgnoreRules(t *testing.T) {
+	for _, newlyIgnored := range []bool{false, true} {
+		t.Run(fmt.Sprint(newlyIgnored), func(t *testing.T) {
+			f := newCrew(t)
+			rules := "generated/\n"
+			if newlyIgnored {
+				rules = ""
+			}
+			f.put(".gitignore", rules)
+			f.put("generated/output.json", "before\n")
+			f.backdateAll()
+			before, err := f.s.BeginGitTurn(t.Context(), "ignored")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !newlyIgnored && f.tree(before.Before)["generated/output.json"] != "" {
+				t.Fatal("ignored output was imported")
+			}
+			f.put("generated/output.json", "after\n")
+			if newlyIgnored {
+				f.put(".gitignore", "generated/\n")
+			}
+			r, err := f.s.FinishGitTurn(t.Context(), "ignored")
+			if err != nil {
+				t.Fatal(err)
+			}
+			all := func(string) bool { return true }
+			c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", all)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 0
+			if newlyIgnored {
+				want = 1 // Only .gitignore changed; output did not become a deletion.
+			}
+			if len(c.Changes) != want || (want == 1 && c.Changes[0].Path != ".gitignore") {
+				t.Fatalf("ignored output leaked into changes: %+v", c.Changes)
+			}
+			plan, err := f.s.PlanUndo(t.Context(), r.ID, all, all)
+			if err != nil || len(plan.Restore) != want {
+				t.Fatalf("Undo includes ignored output: %v %+v", err, plan)
 			}
 		})
 	}
