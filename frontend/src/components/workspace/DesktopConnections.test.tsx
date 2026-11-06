@@ -1,16 +1,27 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { invalidateChatIdentity } from '../../utils/chatIdentity'
 import { DesktopConnections } from './DesktopConnections'
+import { connectedProjectKey } from '../../utils/connectedWorkPresentation'
+import { connectedWorkHistoryScope, useProjectMenuHistoryStore } from '../../stores/useProjectMenuHistoryStore'
+import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import { openAppProduct } from '../../utils/appNavigation'
 
 const mocks = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('../../services/desktopConnections', () => ({ desktopRequest: mocks.request }))
 vi.mock('../../services/api', () => ({ default: { get: () => new Promise(() => {}) }, getApiBaseUrl: () => '', getAuthToken: () => '', getLocalApiBaseUrl: () => 'http://127.0.0.1:18743', getDesktopApiBaseUrl: () => 'http://127.0.0.1:18743' }))
 vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn() }))
 vi.mock('../../utils/appNavigation', () => ({ openAppProduct: vi.fn() }))
-beforeEach(() => { invalidateChatIdentity() })
+beforeEach(() => {
+  invalidateChatIdentity()
+  const values = new Map([['auth-storage', JSON.stringify({ state: { user: { id: 'local-owner' } } })]])
+  vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) })
+  useProjectMenuHistoryStore.setState({ recent: {}, pinned: {}, startHere: {} })
+  vi.clearAllMocks()
+})
+afterEach(() => vi.unstubAllGlobals())
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 it('identical project IDs open on their owning server while an offline server leaves other groups usable', async () => {
@@ -32,6 +43,7 @@ it('identical project IDs open on their owning server while an offline server le
     await act(async () => root.render(<DesktopConnections><span>Local draft stays here</span></DesktopConnections>))
     expect(host.textContent).toContain('Local draft stays here')
     expect(host.textContent).toContain('First team unavailable')
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Second team Crews"]')!.click())
     const project = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Release crew'))!
     await act(async () => project.click())
     expect(open).toHaveBeenCalledWith(second, '/crew/projects/same-project')
@@ -78,8 +90,8 @@ it('keeps shared projects in the active server beside the owner navigation', asy
     expect(mine.textContent).toContain('Owned crew')
     expect(mine.textContent).toContain('Build together') // a Crew shared to build in is not a dashboard
     expect(mine.textContent).not.toContain('Shared crew')
-    expect(mine.textContent).not.toContain('AgentWorks') // the person's own agent is pinned above the servers, not in a server's list
-    expect(group.textContent).toContain('Your agent') // ...first, with its own label
+    expect(mine.textContent).not.toContain('AgentWorks') // the personal agent is separate from the ordinary Crew list
+    expect(group.textContent).toContain('Your agent') // inside its own network, with its own label
     expect(group.textContent!.indexOf('Your agent')).toBeLessThan(group.textContent!.indexOf('My Crews'))
     expect(dashboards.textContent).toContain('Shared crew')
     expect(dashboards.textContent).not.toContain('Owned crew')
@@ -87,7 +99,7 @@ it('keeps shared projects in the active server beside the owner navigation', asy
     const groups = [...dashboards.querySelectorAll('details')]
     expect(groups.map(g => g.querySelector('summary')?.textContent)).toEqual(['▸Project owner· 2', '▸Someone else· 1'])
     expect(groups[0].open).toBe(true)
-    expect(group.querySelector('section[aria-label="Server: Team"]')?.textContent).toContain('server')
+    expect(group.querySelector('section[aria-label="Network: Team"]')?.textContent).toContain('Your agent')
     expect(group.textContent).toContain('Weekly goal')
     expect(group.textContent?.match(/Owned crew/g)).toHaveLength(1)
   } finally {
@@ -114,5 +126,52 @@ it('website lists Mac Crews under their Mac, greyed with their last state when t
   } finally {
     await act(async () => root.unmount())
     window.electronAPI = previous
+  }
+})
+
+// PLAT-746: a saved shortcut cannot grant access or confuse equal Crew IDs on different networks.
+it('routes pinned and recent Crews by network and drops shortcuts absent from the current inventory', async () => {
+  const remote = 'c'.repeat(32), previous = window.electronAPI
+  const open = vi.fn().mockResolvedValue(undefined)
+  window.electronAPI = { getDesktopConnection: () => 'local', openDesktopConnection: open }
+  const localKey = connectedProjectKey('local', 'crew', 'same')
+  const remoteKey = connectedProjectKey(remote, 'crew', 'same')
+  const scope = connectedWorkHistoryScope()
+  const history = useProjectMenuHistoryStore.getState()
+  history.visit(scope, localKey)
+  history.visit(scope, remoteKey)
+  history.setPinned(scope, localKey, true)
+  for (let i = 0; i < 6; i++) history.visit(scope, connectedProjectKey(remote, 'crew', 'more-' + i))
+  mocks.request.mockImplementation(async (path = '') => !path
+    ? { connections: [{ id: remote, name: 'Team', server: 'https://team.example.com' }] }
+    : { status: 'connected', projects: path === '/local/inventory'
+      ? [{ id: 'same', name: 'Local crew', kind: 'crew' }]
+      : [{ id: 'same', name: 'Remote crew', kind: 'crew' }, ...Array.from({ length: 6 }, (_, i) => ({ id: 'more-' + i, name: 'Other ' + i, kind: 'crew' }))] })
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<DesktopConnections />))
+    const recent = () => host.querySelector<HTMLElement>('[aria-label="Recent Crews"]')!
+    // One pin plus five unpinned visits; an old pin survives newer visits.
+    expect(recent().querySelectorAll('[aria-label*=" · Crew · "]')).toHaveLength(6)
+    expect(recent().textContent).toContain('Local crew')
+    expect(recent().textContent).not.toContain('Other 0')
+    expect(recent().textContent).toContain('On your Mac')
+    expect(recent().textContent).toContain('Team')
+    await act(async () => useProjectMenuHistoryStore.getState().visit(scope, remoteKey))
+    await act(async () => recent().querySelector<HTMLButtonElement>('[aria-label="Remote crew · Crew · Team"]')!.click())
+    expect(open).toHaveBeenLastCalledWith(remote, '/crew/projects/same')
+    await act(async () => recent().querySelector<HTMLButtonElement>('[aria-label="Local crew · Crew · On your Mac"]')!.click())
+    expect(openAppProduct).toHaveBeenLastCalledWith({ surface: 'work', id: 'same' })
+    await act(async () => recent().querySelector<HTMLButtonElement>('[aria-label="Unpin Local crew · On your Mac"]')!.click())
+    expect(useProjectMenuHistoryStore.getState().pinned[scope]).toEqual([])
+    await act(async () => useProjectMenuHistoryStore.getState().setPinned(scope, remoteKey, true))
+    await act(async () => useConnectedWorkStore.setState(state => ({ inventory: { ...state.inventory, [remote]: { status: 'connected', projects: [] } } })))
+    expect(recent().textContent).not.toContain('Remote crew')
+    expect(recent().textContent).toContain('Local crew')
+    await act(async () => invalidateChatIdentity())
+    await act(async () => root.render(<DesktopConnections />))
+    expect(host.querySelector('[aria-label="Recent Crews"]')).toBeNull()
+  } finally {
+    await act(async () => root.unmount()); window.electronAPI = previous
   }
 })

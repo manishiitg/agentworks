@@ -3,7 +3,7 @@ import { afterEach, expect, it } from 'vitest'
 import { createJSONStorage } from 'zustand/middleware'
 import { projectMenuHistoryScope, useProjectMenuHistoryStore } from './useProjectMenuHistoryStore'
 
-afterEach(() => useProjectMenuHistoryStore.setState({ recent: {}, startHere: {} }))
+afterEach(() => useProjectMenuHistoryStore.setState({ recent: {}, startHere: {}, pinned: {} }))
 
 it('keeps ten unique destinations in access order without growing on revisits', () => {
   const { visit } = useProjectMenuHistoryStore.getState()
@@ -24,13 +24,19 @@ it('restores histories without mixing accounts, servers, products or projects', 
   const alice = projectMenuHistoryScope('local', 'alice', 'work', 'one')
   useProjectMenuHistoryStore.getState().visit(alice, 'files')
   useProjectMenuHistoryStore.getState().seedStartHere(alice, ['files', 'memory:skills'])
+  useProjectMenuHistoryStore.getState().setPinned(alice, 'crew-one', true)
+  useProjectMenuHistoryStore.getState().setPinned(alice, 'crew-one', true)
   const saved = storage.get('project-menu-history-v1')!
-  useProjectMenuHistoryStore.setState({ recent: {} })
+  useProjectMenuHistoryStore.setState({ recent: {}, pinned: {} })
   storage.set('project-menu-history-v1', saved)
   await useProjectMenuHistoryStore.persist.rehydrate()
   expect(useProjectMenuHistoryStore.getState().recent[alice]).toEqual(['files'])
+  expect(useProjectMenuHistoryStore.getState().pinned[alice]).toEqual(['crew-one'])
   expect(useProjectMenuHistoryStore.getState().startHere[alice]).toEqual(['memory:skills'])
-  for (const key of [projectMenuHistoryScope('local', 'bob', 'work', 'one'), projectMenuHistoryScope('remote', 'alice', 'work', 'one'), projectMenuHistoryScope('local', 'alice', 'work', 'two'), projectMenuHistoryScope('local', 'alice', 'relays', 'one')]) expect(useProjectMenuHistoryStore.getState().recent[key]).toBeUndefined()
+  for (const key of [projectMenuHistoryScope('local', 'bob', 'work', 'one'), projectMenuHistoryScope('remote', 'alice', 'work', 'one'), projectMenuHistoryScope('local', 'alice', 'work', 'two'), projectMenuHistoryScope('local', 'alice', 'relays', 'one')]) {
+    expect(useProjectMenuHistoryStore.getState().recent[key]).toBeUndefined()
+    expect(useProjectMenuHistoryStore.getState().pinned[key]).toBeUndefined()
+  }
 })
 
 it('promotes starting shortcuts into real history without duplicates or reseeding used suggestions', () => {

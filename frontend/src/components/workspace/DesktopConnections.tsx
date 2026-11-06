@@ -10,13 +10,14 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useTeamInviteRows } from './TeamInviteRow'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
+import { ChevronRight, Laptop } from 'lucide-react'
 import { ServerIdentityIcon } from './ServerIdentityIcon'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
 
 /** One list of Crews and Goals (owner, 6 Nov): My Crews (mine, and Crews I can build in), then the dashboards other
  * people shared with me, grouped by who shared them with the biggest group open. Team invites come first. The person's
- * own AgentWorks agent is not here; the caller pins it above the servers. */
+ * own AgentWorks agent is rendered by its network group. */
 function ProjectList<T extends SidebarProject>({ projects, render, invites }: { projects: T[]; render: (project: T) => ReactNode; invites: ReactNode[] }) {
   const rest = projects.filter(project => !project.personal_agent)
   const mine = rest.filter(project => project.owned_by_caller === true || (project.owned_by_caller === false && project.mode !== 'run'))
@@ -45,11 +46,13 @@ function useWorkHistory(projects: SidebarProject[]) {
   const active = getRawActiveWorkspaceId()
   const historyScope = connectedWorkHistoryScope()
   const recent = useProjectMenuHistoryStore(state => state.recent[historyScope])
+  const pinned = useProjectMenuHistoryStore(state => state.pinned[historyScope])
+  const setPinned = useProjectMenuHistoryStore(state => state.setPinned)
   const visit = useProjectMenuHistoryStore(state => state.visit)
   const selectedProject = projects.find(project => project.selected)
   const selectedKey = selectedProject ? connectedProjectKey(active, selectedProject.kind, selectedProject.id) : ''
   useEffect(() => { if (selectedKey) visit(historyScope, selectedKey) }, [historyScope, selectedKey, visit])
-  return { recent, visit: (key: string) => visit(historyScope, key) }
+  return { recent, pinned, canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value), visit: (key: string) => visit(historyScope, key) }
 }
 export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
   return hasDesktopConnections() ? <ConnectedServers projects={projects}>{children}</ConnectedServers> : <StandaloneWork projects={projects}>{children}</StandaloneWork>
@@ -93,7 +96,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const connections = connectedLocations(state)
   const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
   const { refresh, error: directoryError } = state
-  const { recent, visit } = useWorkHistory(projects)
+  const { recent, pinned, canPin, setPinned, visit } = useWorkHistory(projects)
   const [filter, setFilter] = useState('all')
   const invites = useTeamInviteRows()
   useEffect(() => { if (filter !== 'all' && !connections.some(connection => connection.id === filter)) setFilter('all') }, [connections, filter])
@@ -119,30 +122,48 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   // The filter is only which server (owner, 4 Nov).
   const visible = rows.filter(row => filter === 'all' || row.connection.id === filter)
   const serverColors = serverIconColors(connections)
-  const renderProject = (project: typeof rows[number]) => <Fragment key={`${project.connection.id}:${project.kind}:${project.id}`}><SidebarProjectRow {...project}
-    selected={project.connection.id === active && project.selected}
-    serverId={project.connection.id} remote={project.connection.id !== 'local'} serverColor={serverColors[project.connection.server]} location={project.connection.id !== 'local' ? project.connection.name : undefined}
-    onOpen={() => {
-      visit(connectedProjectKey(project.connection.id, project.kind, project.id))
-      if (project.connection.id === active) openSidebarProject(project.kind, project.id)
-      else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
-    }} />{project.kind === 'crew' && project.connection.id === active && project.selected && <SidebarCrewAgents projectId={project.id} />}</Fragment>
+  const keyFor = (project: typeof rows[number]) => connectedProjectKey(project.connection.id, project.kind, project.id)
+  // Saved shortcuts contain IDs only. Resolve them against the current admitted inventory on every render.
+  const crewByKey = new Map(rows.filter(row => row.kind === 'crew' && !row.personal_agent).map(row => [keyFor(row), row]))
+  const pinnedKeys = new Set(pinned || [])
+  const recentRows = [...(pinned || []), ...(recent || []).filter(key => !pinnedKeys.has(key) && crewByKey.has(key)).slice(0, 5)]
+    .flatMap(key => { const row = crewByKey.get(key); return row ? [row] : [] })
+  const renderProject = (project: typeof rows[number], shortcut = false) => {
+    const key = keyFor(project)
+    return <Fragment key={key}><SidebarProjectRow {...project}
+      selected={project.connection.id === active && project.selected}
+      serverId={project.connection.id} remote={project.connection.id !== 'local'} serverColor={serverColors[project.connection.server]}
+      location={project.connection.id === 'local' ? 'On your Mac' : project.connection.name} showLocation={shortcut}
+      pinned={pinnedKeys.has(key)} onTogglePin={canPin && project.kind === 'crew' && !project.personal_agent ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
+      onOpen={() => {
+        visit(key)
+        if (project.connection.id === active) openSidebarProject(project.kind, project.id)
+        else open(project.connection.id, project.kind === 'crew' ? `/crew/projects/${encodeURIComponent(project.id)}` : `/workflows/${encodeURIComponent(project.id)}`)
+      }} />{!shortcut && project.kind === 'crew' && project.connection.id === active && project.selected && <SidebarCrewAgents projectId={project.id} />}</Fragment>
+  }
   const locations = connections.filter(connection => filter === 'all' || connection.id === filter)
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
-    <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2">
-      {connections.length > 1 && <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} />}
-    </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      {visible.filter(row => row.personal_agent).length > 0 && <div className="mb-1 space-y-1">{visible.filter(row => row.personal_agent).map(renderProject)}</div>}
+      {recentRows.length > 0 && <section aria-label="Recent Crews" className="mb-3 space-y-1">
+        <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">Recent</h2>
+        {recentRows.map(project => renderProject(project, true))}
+      </section>}
+      <div className="flex items-center px-2 py-2">
+        {connections.length > 1 && <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} />}
+      </div>
+      {invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}
       {locations.map(connection => {
-        const rows = visible.filter(row => row.connection.id === connection.id && !row.personal_agent)
-        if (!rows.length) return null
-        return <section key={connection.id} aria-label={`Server: ${connection.name}`} className="space-y-1">
-          <h2 className="flex min-w-0 items-center gap-2 px-3 pt-3 text-[13px] font-semibold"><ServerIdentityIcon connectionId={connection.id} hidden className={`h-3 w-3 shrink-0 ${serverColors[connection.server] || 'text-slate-500/75 dark:text-slate-400/75'}`} /><span className="truncate">{connection.name}</span><span className="shrink-0 rounded-full border border-border px-2 text-[11px] font-normal text-muted-foreground">server</span></h2>
-          <ProjectList projects={rows} render={renderProject} invites={connection === locations[0] ? invites : []} />
-        </section>
+        const projectsHere = visible.filter(row => row.connection.id === connection.id)
+        if (!projectsHere.length) return null
+        const local = connection.id === 'local'
+        const localConnected = inventory[connection.id]?.status === 'connected'
+        const name = local ? 'On your Mac' : connection.name
+        return <NetworkSection key={connection.id} name={name} active={connection.id === active || filter === connection.id}
+          icon={local ? <><Laptop className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span role="img" aria-label={localConnected ? 'Local connection available' : 'Local connection not ready'} className={`h-1.5 w-1.5 shrink-0 rounded-full ${localConnected ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /></> : <ServerIdentityIcon connectionId={connection.id} hidden className={`h-3.5 w-3.5 shrink-0 ${serverColors[connection.server] || 'text-muted-foreground'}`} />}>
+          {projectsHere.filter(project => project.personal_agent).map(project => renderProject(project))}
+          <ProjectList projects={projectsHere} render={project => renderProject(project)} invites={[]} />
+        </NetworkSection>
       })}
-      {visible.length === 0 && invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}
       {(filter === 'all' || filter === active) && children}
         {locations.map(connection => {
         const status = inventory[connection.id]?.status
@@ -156,4 +177,17 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     {directoryError && <p role="alert" className="px-3 text-xs text-destructive">{directoryError}</p>}
 
   </div>
+}
+
+/** Browse a network without changing the connection used by the current chat. */
+function NetworkSection({ name, active, icon, children }: { name: string; active: boolean; icon: ReactNode; children: ReactNode }) {
+  const [expanded, setExpanded] = useState(active)
+  useEffect(() => { if (active) setExpanded(true) }, [active])
+  return <section aria-label={`Network: ${name}`} className="mb-2 space-y-1">
+    <button type="button" aria-label={`${name} Crews`} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}
+      className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-[13px] font-medium text-foreground/80 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />{icon}<span className="truncate">{name}</span>
+    </button>
+    {expanded && children}
+  </section>
 }
