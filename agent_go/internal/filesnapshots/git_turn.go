@@ -172,8 +172,21 @@ func (s Store) turnCandidatePaths(ctx context.Context, dir, head string) ([]stri
 // (a broken .git folder, an index the server account cannot open) is skipped
 // and named in the log, so one bad checkout never fails the whole reply.
 func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurnRepo, map[string]bool, error) {
-	out, skipped := map[string]gitTurnRepo{}, map[string]bool{}
-	for _, dir := range dirs {
+	// Leave the other half of the boundary for importing and publishing healthy
+	// files. One slow checkout must not consume the entire capture deadline.
+	budget := 30 * time.Second
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline)/2 < budget {
+		budget = time.Until(deadline) / 2
+	}
+	discovery, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	type result struct {
+		root string
+		repo gitTurnRepo
+		err  error
+	}
+	results := make([]result, len(dirs))
+	for i, dir := range dirs {
 		rel, err := filepath.Rel(s.Root, dir)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return nil, nil, errors.New("checkout outside workspace")
@@ -181,36 +194,52 @@ func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurn
 		if rel == "." {
 			rel = ""
 		}
-		rel = filepath.ToSlash(rel)
-		skip := func(err error) {
-			skipped[rel] = true
-			log.Printf("[SNAPSHOT] checkout_skipped dir=%q reason=%q", rel, gitReason(err))
-		}
-		head, _ := gitIn(ctx, s.Root, dir, "rev-parse", "--verify", "HEAD").Output()
-		dirty, err := s.turnCandidatePaths(ctx, dir, strings.TrimSpace(string(head)))
-		if err != nil {
-			skip(err)
-			continue
-		}
-		branch, _ := gitIn(ctx, s.Root, dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
-		remote, _ := gitIn(ctx, s.Root, dir, "config", "--get", "remote.origin.url").Output()
-		gitdir, err := gitIn(ctx, s.Root, dir, "rev-parse", "--absolute-git-dir").Output()
-		if err != nil {
-			skip(err)
-			continue
-		}
-		identity, err := checkoutIdentity(strings.TrimSpace(string(gitdir)))
-		if err != nil {
-			skip(err)
-			continue
-		}
-		repo := gitTurnRepo{Head: strings.TrimSpace(string(head)), Dirty: dirty, Label: CheckoutLabel{ID: identity, Root: rel, Name: filepath.Base(dir), Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}}
-		if repo.Label.Branch == "" && len(repo.Head) >= 8 {
-			repo.Label.Branch = "detached@" + repo.Head[:8]
-		}
-		out[rel] = repo
+		results[i].root = filepath.ToSlash(rel)
 	}
-	return out, skipped, nil
+	_ = parallel(len(dirs), func(i int) error {
+		started := time.Now()
+		repoCtx, stop := context.WithTimeout(discovery, 10*time.Second)
+		defer stop()
+		results[i].repo, results[i].err = s.turnRepo(repoCtx, dirs[i], results[i].root)
+		if repoCtx.Err() != nil {
+			results[i].err = repoCtx.Err()
+		}
+		log.Printf("[FILE_SNAPSHOT] phase=checkout_discovery dir=%q elapsed_ms=%d success=%t", results[i].root, time.Since(started).Milliseconds(), results[i].err == nil)
+		return nil
+	})
+	out, skipped := map[string]gitTurnRepo{}, map[string]bool{}
+	for _, r := range results {
+		if r.err != nil {
+			skipped[r.root] = true
+			log.Printf("[SNAPSHOT] checkout_skipped dir=%q reason=%q", r.root, gitReason(r.err))
+		} else {
+			out[r.root] = r.repo
+		}
+	}
+	return out, skipped, ctx.Err()
+}
+
+func (s Store) turnRepo(ctx context.Context, dir, root string) (gitTurnRepo, error) {
+	head, _ := gitIn(ctx, s.Root, dir, "rev-parse", "--verify", "HEAD").Output()
+	dirty, err := s.turnCandidatePaths(ctx, dir, strings.TrimSpace(string(head)))
+	if err != nil {
+		return gitTurnRepo{}, err
+	}
+	branch, _ := gitIn(ctx, s.Root, dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
+	remote, _ := gitIn(ctx, s.Root, dir, "config", "--get", "remote.origin.url").Output()
+	gitdir, err := gitIn(ctx, s.Root, dir, "rev-parse", "--absolute-git-dir").Output()
+	if err != nil {
+		return gitTurnRepo{}, err
+	}
+	identity, err := checkoutIdentity(strings.TrimSpace(string(gitdir)))
+	if err != nil {
+		return gitTurnRepo{}, err
+	}
+	repo := gitTurnRepo{Head: strings.TrimSpace(string(head)), Dirty: dirty, Label: CheckoutLabel{ID: identity, Root: root, Name: filepath.Base(dir), Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}}
+	if repo.Label.Branch == "" && len(repo.Head) >= 8 {
+		repo.Label.Branch = "detached@" + repo.Head[:8]
+	}
+	return repo, nil
 }
 
 // gitReason is the first line of Git's error output (never file contents).
@@ -270,18 +299,28 @@ func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, erro
 		return Record{}, err
 	}
 	r := Record{ID: ID(execution), ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing", BeforeHeads: map[string]string{}}
+	discoveryStarted := time.Now()
 	dirs, loose, err := s.turnPaths(ctx)
 	if err != nil {
 		return r, err
 	}
 	r.GitTurn, _, err = s.turnRepos(ctx, dirs)
+	r.BeforeCapture.DiscoveryMS = time.Since(discoveryStarted).Milliseconds()
 	if err != nil {
 		return r, err
+	}
+	// Remember unreadable roots too: recovering one next boundary must not
+	// mistake its existing committed files for new work made during this turn.
+	for _, dir := range dirs {
+		rel, _ := filepath.Rel(s.Root, dir)
+		if rel == "." {
+			rel = ""
+		}
+		r.BeforeRepos = append(r.BeforeRepos, filepath.ToSlash(rel))
 	}
 	paths := map[string][]string{}
 	for _, root := range turnKeys(r.GitTurn) {
 		repo := r.GitTurn[root]
-		r.BeforeRepos = append(r.BeforeRepos, root)
 		r.BeforeHeads[root] = repo.Head
 		paths[root] = repo.Dirty
 	}
@@ -310,11 +349,13 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 	if err != nil || r.Status != "capturing" {
 		return r, err
 	}
+	discoveryStarted := time.Now()
 	dirs, loose, err := s.turnPaths(ctx)
 	if err != nil {
 		return r, err
 	}
 	repos, unreadable, err := s.turnRepos(ctx, dirs)
+	r.AfterCapture.DiscoveryMS = time.Since(discoveryStarted).Milliseconds()
 	if err != nil {
 		return r, err
 	}
@@ -323,11 +364,10 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 	for _, p := range r.Skipped {
 		skipped[p] = true
 	}
-	r.Review = &savedReview{Roots: turnKeys(repos), Spans: []reviewSpan{}}
-	for _, root := range turnKeys(r.GitTurn) {
-		if unreadable[root] { // read at the start, unreadable now: its edits are unknown
-			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
-		}
+	r.Review = &savedReview{Roots: turnKeys(repos), Spans: []reviewSpan{}, IncompleteRoots: turnKeys(unreadable)}
+	presentBefore := map[string]bool{}
+	for _, root := range r.BeforeRepos {
+		presentBefore[root] = true
 	}
 	previous, err := s.turnTree(ctx, r.Before)
 	if err != nil {
@@ -341,6 +381,11 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 		paths[root] = nil
 		start, existed := r.GitTurn[root]
 		dir := filepath.Join(s.Root, filepath.FromSlash(root))
+		if !existed && presentBefore[root] {
+			// No trustworthy before-image for this checkout. Keep other roots.
+			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
+			continue
+		}
 		if !existed { // A new checkout's existing contents are not edits.
 			base, e := startCommit(ctx, s.Root, dir, r.StartedAt, "--until=@"+strconv.FormatInt(r.StartedAt.Unix()-1, 10))
 			if e != nil {

@@ -191,7 +191,9 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 			api.publishCrewSnapshotUnavailable(snapshot, "failed")
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotTimeout)
+		// This runs asynchronously, just like the before boundary. Large
+		// multi-repo projects need the same budget to save their reply changes.
+		ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotBeforeLimit)
 		defer cancel()
 		started := time.Now()
 		record, err := snapshot.store.FinishGitTurn(ctx, snapshot.executionID)
