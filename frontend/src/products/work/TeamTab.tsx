@@ -6,7 +6,9 @@ import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
-import { changeTeamPeople, saveTeam, switchTeam, teamError, teamFolderChange, teamFolders, teamRequest, useTeamTab, type Team, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
+import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
+import { selectReportDocument } from '../../components/workflow/reportDocuments'
+import { changeTeamPeople, saveTeam, switchTeam, teamError, teamFolderChange, teamDashboards, teamFolders, teamRequest, useTeamTab, type Team, type TeamDashboards, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
@@ -92,6 +94,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
       <CrewWhereRow projectId={projectId} />
       <SharesCard view={view} target={target} projectId={projectId} />
       <AgentsCard view={view} target={target} projectId={projectId} />
+      <DashboardsCard target={target} />
       {team.lent && <LentCard lent={team.lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} />}
       {team.folder_access && <section aria-label="Sync" className={card}>
         <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
@@ -100,6 +103,31 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
       {view.can_leave && <LeaveTeam target={target} />}
     </>}
   </div>
+}
+
+/** Everyone in the Team sees the Crew's dashboards and artifacts, with nothing to set (owner, 6 Nov, approved mockup);
+ * the server lists them. Who else may see them stays the Crew's one Share choice, the owner's. */
+function DashboardsCard({ target }: { target: TeamTarget }) {
+  const [list, setList] = useState<TeamDashboards>()
+  useEffect(() => {
+    let active = true
+    void teamDashboards(target).then(data => { if (active) setList(data) }).catch(() => {})
+    return () => { active = false }
+  }, [target.project, target.connection]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!list?.dashboards.length) return null
+  return <section aria-label="Dashboards" className={card}>
+    <div className="flex items-center gap-2">
+      <h3 className="flex-1 font-semibold">Dashboards</h3>
+      <span className="text-xs text-muted-foreground">Everyone in the Team sees these</span>
+    </div>
+    <div className="space-y-1">
+      {list.dashboards.map(d => <button key={d.id} type="button" onClick={() => selectReportDocument(list.workspace, d.path, true)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted">
+        <span className="min-w-0 flex-1 truncate">{d.title}</span>
+        {d.artifact && <span className="text-xs text-muted-foreground">Artifact</span>}
+      </button>)}
+    </div>
+    {list.can_share && <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="flex-1">Also shared with</span><ShareDashboardButton workspacePath={list.workspace} /></div>}
+  </section>
 }
 
 function Dot({ on }: { on: boolean }) {
