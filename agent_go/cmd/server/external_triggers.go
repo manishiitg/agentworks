@@ -21,7 +21,7 @@ func externalTriggerDefinitions(add func(string, string, bool, bool, map[string]
 		"action":  map[string]any{"type": "string", "enum": []any{"list", "create", "update", "delete", "test", "status", "runs"}},
 		"limit":   externalInteger(1, 100),
 		"id":      externalString("Trigger ID from list; required for update, delete, test and runs."),
-		"trigger": map[string]any{"type": "object", "description": "For create and update. Workflows and Flows: name, enabled, kind (webhook default, function, internal), auth_mode (bearer or github), route_selections, group_names (workflows), function {name, description, inputs, allowed_callers}, caller, step_id, input_mode, allowed_variables, payload_mappings, rotate_secret. Crews: name, enabled, message, auth_mode, run_destination (chat or isolated), kind (internal), caller, rotate_secret. For test: payload, event, delivery_id; for status: run_id."},
+		"trigger": map[string]any{"type": "object", "description": "For create and update. Workflows and Flows: name, enabled, auth_mode (bearer or github), route_selections, input_preset, inputs, chat_id, step_id, input_mode, allowed_variables, payload_mappings, rotate_secret. Use functions to manage callable functions. Crews: name, enabled, message, auth_mode, run_destination (chat or isolated), kind (internal), caller, rotate_secret. For test: payload, event, delivery_id; for status: run_id."},
 	}, "action", "project")
 }
 

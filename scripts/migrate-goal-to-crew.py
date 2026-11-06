@@ -367,16 +367,6 @@ class Conversion:
         path_map = {str(a.relative_to(self.docs)): self.crew_root + '/' + str(b.relative_to(self.private)) for a, b in self.moves}
         for file in [*(self.docs / '_users').glob('*/chat_history/chat-index.json'), *(self.docs / '_users').glob('*/chat_history/index.json')]:
             doc = read(file); changed = False
-            primary = None
-            if user == self.owner:
-                candidates = [key for key, row in doc.get('entries', {}).items() if row.get('workspace_path') == self.root]
-                owner_key = 'agentworks/' + self.workflow + ':chat:owner-' + hashlib.sha256(user.encode()).hexdigest()[:16]
-                primary = next((key for key in [owner_key, 'agentworks/' + self.workflow] if key in candidates), None)
-                if primary is None and len(candidates) == 1:
-                    primary = candidates[0]
-                if candidates and primary is None:
-                    raise ValueError('Choose the owner’s primary Builder chat before conversion.')
-            main_key = None
             entries = doc.get('entries', {})
             for oldpath, row in list(entries.items()):
                 session = row.get('session', {})

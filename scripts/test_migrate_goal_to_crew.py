@@ -107,6 +107,15 @@ class Migration(unittest.TestCase):
         registry['entries']['agentworks/old-goal:chat:research'] = extra
         write(registry_path, registry)
 
+        # History indexes use archive paths, never canonical Builder tab keys.
+        # Two rows must not trigger primary-chat selection in this second pass.
+        index_path = self.docs/'_users/owner/chat_history/index.json'
+        index = m.read(index_path)
+        first = next(iter(index['entries'].values()))
+        first['workspace_path'] = 'Workflow/old-goal'
+        index['entries']['other-archive.json'] = {'workspace_path':'Workflow/old-goal', 'session':{'session_id':'research-session','workspace_path':'Workflow/old-goal'}}
+        write(index_path, index)
+
         before=hashes(self.base);c=self.conversion()
         self.assertEqual(c.report()['status'],'ready');self.assertEqual(hashes(self.base),before)
         result=c.apply();self.assertTrue(Path(result['backup'],'files.tar.gz').exists())
@@ -142,7 +151,7 @@ class Migration(unittest.TestCase):
         self.assertTrue(any(r['session_id'] == 'research-session' for r in registry['entries'].values()))
         self.assertEqual(row['session_id'],'session-original');self.assertEqual(row['resource_id'],'crew')
         index=m.read(self.docs/'_users/owner/chat_history/index.json')
-        item=next(iter(index['entries'].values()))
+        item=next(row for row in index['entries'].values() if row['session']['session_id']=='session-original')
         self.assertTrue(item['session']['conversation_path'].startswith('Crew/target/'))
         self.assertEqual(self.conversion().report()['status'],'already migrated')
         self.conversion().apply();self.assertEqual(after,hashes(self.base))

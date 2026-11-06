@@ -142,6 +142,37 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if err != nil || len(inputs.Variables) != 2 || inputs.Variables[1].Value != "2" {
 		t.Fatalf("input edit lost other inputs: %+v %v", inputs, err)
 	}
+	// PLAT-746-355: removing duplicate settings must leave the same child timers
+	// and webhooks editable from Crew chat, using the real save handlers.
+	api.scheduler = NewSchedulerService(api)
+	configure := func(operation string, arguments map[string]interface{}) string {
+		t.Helper()
+		out, err := edit(ctx, map[string]interface{}{"action": "edit", "workspace_path": child.Root, "operation": operation, "arguments": arguments})
+		if err != nil {
+			t.Fatalf("%s: %s %v", operation, out, err)
+		}
+		return out
+	}
+	out := configure("manage_schedules", map[string]interface{}{"action": "create", "schedule": map[string]interface{}{"name": "Daily report", "schedule_type": "cron", "cron_expression": "0 9 * * *", "timezone": "UTC", "enabled": false, "messages": []string{"Prepare report"}}})
+	var timer struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &timer); err != nil || timer.ID == "" {
+		t.Fatalf("schedule result: %s %v", out, err)
+	}
+	configure("manage_schedules", map[string]interface{}{"action": "update", "schedule_id": timer.ID, "schedule": map[string]interface{}{"name": "Updated daily report"}})
+	if got := configure("manage_schedules", map[string]interface{}{"action": "list"}); !strings.Contains(got, "Updated daily report") {
+		t.Fatal("chat edit was not saved", got)
+	}
+	configure("manage_schedules", map[string]interface{}{"action": "delete", "schedule_id": timer.ID})
+	out = configure("manage_webhooks", map[string]interface{}{"action": "create", "trigger": map[string]interface{}{"name": "Inbound report", "enabled": false, "auth_mode": "bearer", "route_selections": map[string]interface{}{}}})
+	var hook struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &hook); err != nil || hook.ID == "" {
+		t.Fatal("webhook did not return an identity", err)
+	}
+	configure("manage_webhooks", map[string]interface{}{"action": "delete", "id": hook.ID})
 	originalDirectory := *directory
 	*directory = `{"users":[{"id":"owner","username":"owner","role":"viewer"},{"id":"stranger","username":"stranger","can_create":true}]}`
 	invalidateUserDirectoryCache()
