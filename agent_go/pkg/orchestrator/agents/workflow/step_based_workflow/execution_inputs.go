@@ -54,7 +54,11 @@ func ResolveWorkflowInputs(manifest *VariablesManifest, preset string, overrides
 	if manifest != nil {
 		for _, variable := range manifest.Variables {
 			declared[variable.Name] = variable
-			values[variable.Name] = variable.Value
+			// An unset typed default is absence, not an explicit empty value.
+			// Preserve that distinction in saved inputs and direct script calls.
+			if variable.Value != "" || WorkflowInputType(variable) == "string" {
+				values[variable.Name] = variable.Value
+			}
 		}
 	}
 	if preset != "" {

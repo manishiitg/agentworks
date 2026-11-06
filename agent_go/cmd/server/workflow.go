@@ -518,8 +518,8 @@ func readProgressForFolder(ctx context.Context, stepsFilePath string) (*StepProg
 	return &progress, nil
 }
 
-// Runs are flat children. Preset labels and execution/log subfolders are
-// never additional runs, for workflows and Relays alike.
+// New run identities are flat. Historical nested run records are discovered
+// below for viewing only; launch/continuation still require a flat identity.
 func workflowRunName(path string) string {
 	name := path
 	if i := strings.Index(path, "/runs/"); i >= 0 {
@@ -534,9 +534,38 @@ func workflowRunName(path string) string {
 	return ""
 }
 
-func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceFolderItem, existingFolders []string, _ ...bool) []string {
+// PLAT-746-337: retained run history can have several recorded children.
+// Recognize run artifacts, not arbitrary folders or current input presets.
+func hasRunArtifacts(children []virtualtools.WorkspaceFolderItem) bool {
 	for _, child := range children {
-		if name := workflowRunName(child.FilePath); child.Type == "folder" && name != "" {
+		name := filepath.Base(child.FilePath)
+		if child.Type == "file" && (name == "run_metadata.json" || name == "inputs.json") ||
+			child.Type == "folder" && (name == "execution" || name == "logs") {
+			return true
+		}
+	}
+	return false
+}
+
+func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceFolderItem, existingFolders []string, flatRuns ...bool) []string {
+	for _, child := range children {
+		name := workflowRunName(child.FilePath)
+		if child.Type != "folder" || name == "" {
+			continue
+		}
+		nested := []string{}
+		if !(len(flatRuns) > 0 && flatRuns[0]) && !hasRunArtifacts(child.Children) {
+			for _, archive := range child.Children {
+				label := filepath.Base(archive.FilePath)
+				if archive.Type == "folder" && filepath.Dir(archive.FilePath) == child.FilePath &&
+					todo_creation_human.ValidateWorkflowRunFolder(label) == nil && hasRunArtifacts(archive.Children) {
+					nested = append(nested, name+"/"+label)
+				}
+			}
+		}
+		if len(nested) > 0 {
+			existingFolders = append(existingFolders, nested...)
+		} else {
 			existingFolders = append(existingFolders, name)
 		}
 	}
@@ -554,19 +583,23 @@ func extractIterationFoldersFromInterfaceArray(dataArray []interface{}, existing
 	return existingFolders
 }
 
-func extractIterationFoldersFromChildren(children []interface{}, existingFolders []string, _ ...bool) []string {
-	for _, raw := range children {
-		if item, ok := raw.(map[string]interface{}); ok && item["type"] == "folder" {
-			path, _ := item["filepath"].(string)
-			if path == "" {
-				path, _ = item["name"].(string)
-			}
-			if name := workflowRunName(path); name != "" {
-				existingFolders = append(existingFolders, name)
+func extractIterationFoldersFromChildren(children []interface{}, existingFolders []string, flatRuns ...bool) []string {
+	encoded, err := json.Marshal(children)
+	if err != nil {
+		return existingFolders
+	}
+	var typed []virtualtools.WorkspaceFolderItem
+	if json.Unmarshal(encoded, &typed) != nil {
+		return existingFolders
+	}
+	for i := range typed {
+		if typed[i].FilePath == "" {
+			if item, ok := children[i].(map[string]interface{}); ok {
+				typed[i].FilePath, _ = item["name"].(string)
 			}
 		}
 	}
-	return existingFolders
+	return extractIterationFoldersFromTypedChildren(typed, existingFolders, flatRuns...)
 }
 
 // ActiveWorkflowExecution is the backend half of the workflow/chat decoupling:
@@ -974,10 +1007,10 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Add query parameters
-	// Use max_depth=2 to list nested folders (iteration-X/group-Y)
+	// Include recorded children of historical runs, without walking their artifacts.
 	q := req.URL.Query()
 	q.Add("folder", runsPath)
-	q.Add("max_depth", "2")
+	q.Add("max_depth", "3")
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := workspaceHTTPClient.Do(req)
@@ -1450,7 +1483,7 @@ func (api *StreamingAPI) handleCreateRunFolder(w http.ResponseWriter, r *http.Re
 	// Add query parameters
 	q := req.URL.Query()
 	q.Add("folder", runsPath)
-	q.Add("max_depth", "2")
+	q.Add("max_depth", "3")
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := workspaceHTTPClient.Do(req)

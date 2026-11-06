@@ -69,10 +69,13 @@ func TestWorkflowTypedInputsAndRequiredAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, supplied := defaults["details"]; supplied {
+		t.Fatal("omitted optional object became an explicit value")
+	}
 	if err := ValidateWorkflowLaunchInputs(manifest, defaults); err == nil {
 		t.Fatal("missing required input launched")
 	}
-	for _, values := range []map[string]string{{"count": "not a number"}, {"count": "2.5"}, {"enabled": "yes"}, {"details": `{"code":"wrong"}`}, {"details": "{}"}} {
+	for _, values := range []map[string]string{{"count": ""}, {"enabled": ""}, {"count": "not a number"}, {"count": "2.5"}, {"enabled": "yes"}, {"details": `{"code":"wrong"}`}, {"details": "{}"}} {
 		if _, err := ResolveWorkflowInputs(manifest, "", values); err == nil {
 			t.Fatalf("invalid typed input accepted: %v", values)
 		}

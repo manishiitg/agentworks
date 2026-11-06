@@ -40,6 +40,11 @@ func TestCrewSavedScriptRunsDirectlyAndAcrossWorkflowReferences(t *testing.T) {
 	}
 	const root = "Crew/lab/code/qualify"
 	definition := CrewScriptDefinition{ID: "qualify", Name: "Qualify lead", Inputs: []Variable{{Name: "count", Type: "integer", Required: true, Value: "2"}}, Outputs: []string{"result.json"}}
+	// PLAT-746-338 / PR498: omitted optional non-string inputs must remain
+	// absent when direct invocation reuses its resolved launch snapshot.
+	for _, kind := range []string{"integer", "number", "boolean", "object", "array"} {
+		definition.Inputs = append(definition.Inputs, Variable{Name: "optional_" + kind, Type: kind})
+	}
 	raw, _ := json.Marshal(definition)
 	write(root+"/script.json", string(raw))
 	source := `import json, os
@@ -47,6 +52,7 @@ from pathlib import Path
 from helper.values import revision
 params = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(params['count'], int)
+assert not any(key.startswith('optional_') for key in params)
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':params['count'], 'revision':revision()}))
 `
 	write(root+"/main.py", source)

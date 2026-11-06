@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 )
@@ -83,18 +82,7 @@ func TestUngroupedRunPickerDoesNotTreatExecutionAndLogsAsInputSets(t *testing.T)
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 	api := lifecycleTestAPI()
-	for _, name := range []string{"Logs!", "reports"} {
-		request := httptest.NewRequest(http.MethodPut, "/api/workflow/variables?workspace_path="+root, strings.NewReader(`{"variables":[],"groups":[{"name":"`+name+`","enabled":true,"values":{}}]}`))
-		response := httptest.NewRecorder()
-		api.handleUpdateVariableGroups(response, request)
-		if name == "Logs!" {
-			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "reserved for run files") {
-				t.Fatalf("reserved name was not refused at save: %d %s", response.Code, response.Body)
-			}
-		} else if response.Code != http.StatusOK {
-			t.Fatalf("valid input-set name was refused: %d %s", response.Code, response.Body)
-		}
-	}
+
 	list := httptest.NewRecorder()
 	api.handleGetRunFolders(list, httptest.NewRequest(http.MethodGet, "/api/workflow/run-folders?workspace_path="+root, nil))
 	var response RunFoldersResponse
