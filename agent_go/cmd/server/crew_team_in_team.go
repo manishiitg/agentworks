@@ -179,7 +179,7 @@ func crewTeamOwnRowKeys(ctx context.Context, t crewTeam, person string) []string
 	var keys []string
 	if !t.On {
 		if person == t.OwnerID {
-			for _, row := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(ctx, t)) {
+			for _, row := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(ctx, t), crewTabSetupSource{}) {
 				keys = append(keys, row.Key)
 			}
 		}

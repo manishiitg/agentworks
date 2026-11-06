@@ -59,7 +59,10 @@ export type TeamTabAgent = { key: string; name: string; detail: string; in_team:
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer may ask its chat to set one, and its Public on
   // AgentBridge (the Crew owner's own rows only). mac_only: switched only in the owner's Mac app; elsewhere text.
   purpose: string; can_set_purpose: boolean
-  agentbridge?: { public: boolean; can_change: boolean; mac_only?: boolean; needs_purpose?: boolean; line?: string; text: string; share_key?: string; workspace?: string } }
+  agentbridge?: { public: boolean; can_change: boolean; mac_only?: boolean; needs_purpose?: boolean; line?: string; text: string; share_key?: string; workspace?: string }
+  // The tab's setup icon and card rows (crew_tab_setup.go), worded by the server, for everyone who sees the agent.
+  setup?: TeamTabSetup }
+export type TeamTabSetup = { reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamTabView = {
   team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
@@ -170,7 +173,7 @@ export function teamAgentForTab(state: TeamTabState, key: string | undefined, ma
   if (!agents || !key) return undefined
   if (!own || !state.target?.localProject) return teamAgentFor(agents, key)
   const tab = main ? 'main' : key.split(':chat:')[1]
-  return agents.find(agent => agent.can_change && agent.tab === tab)
+  return agents.find(agent => agent.can_set_purpose && agent.tab === tab)
 }
 
 /** One folder of the Crew for the Team's "+ Share this folder" and the shared folders' sizes (path=, or whole=1),
