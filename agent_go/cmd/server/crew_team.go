@@ -167,6 +167,9 @@ type crewTeam struct {
 	Lent *crewTeamLent `json:"lent,omitempty"`
 	// Where the caller's own agents in this Crew work, for a member: "mac" or "web" (crew_team_where.go; never saved).
 	Where string `json:"where,omitempty"`
+	// ChangeOnMac is the screen's line when the viewer is the owner of a Mac Crew reaching it through the server: all of
+	// Share is read only for them (crew_owner_on_mac.go; never saved).
+	ChangeOnMac string `json:"change_on_mac,omitempty"`
 }
 
 func crewTeamDir(project string) (string, error) {
@@ -412,11 +415,17 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) })
 		view := t.view(claims.UserID)
 		view.Lent = crewTeamLentNow(r.Context(), t, claims.UserID)
+		if crewOwnerOnlineOfMacCrew(r, project, claims.UserID) {
+			view.ChangeOnMac, view.CanManage = crewChangeOnMacLine, false
+		}
 		externalJSON(w, view)
 		return
 	}
 	if mux.Vars(r)["op"] == "invite" {
 		api.answerCrewTeamInvite(w, r, claims, project)
+		return
+	}
+	if refuseCrewOwnerOnline(w, r, project, claims.UserID) {
 		return
 	}
 	current, currentErr := readCrewTeam(project)
@@ -791,6 +800,7 @@ func crewTeamRemoteDo(ctx context.Context, localOwner string, c desktopConnectio
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Content-Type", contentType)
+	setCrewMacPair(req.Header, localOwner, c, route)
 	resp, e := crewTeamHTTPClient(ctx).Do(req)
 	if e != nil {
 		if errors.Is(e, context.DeadlineExceeded) || os.IsTimeout(e) {

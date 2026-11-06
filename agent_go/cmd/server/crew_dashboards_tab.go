@@ -122,7 +122,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	default:
 		filter = "all"
 	}
-	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner, OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
+	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
 	who := api.crewDashboardsTabWho(r, root, owner && !onMac)
 	updatedOnMac := ""
 	if updated, ok := crewMacDashboardsUpdated(t.ProjectID); ok && crewRelayTwin(t.ProjectID) {

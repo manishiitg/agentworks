@@ -22,6 +22,9 @@ func (api *StreamingAPI) handleCrewTeamAgentBridge(w http.ResponseWriter, r *htt
 	if !ok {
 		return
 	}
+	if refuseCrewOwnerOnline(w, r, t.ProjectID, claims.UserID) {
+		return
+	}
 	var in struct {
 		Tab    string `json:"tab"`
 		Public *bool  `json:"public"`

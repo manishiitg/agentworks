@@ -219,6 +219,26 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 		t.Fatal("the teammate's thread on a server-answered agent must run on the server")
 	}
 
+	// PLAT-856-509 (owner, 6 Nov: "always online agents.. are for another person"): the owner's own chat waits for the Mac,
+	// also while the server answers teammates. Opening it still reads the copy's conversation; a send never runs here.
+	ownerKey := macSharedAgentChatKey("team", helper)
+	if crewStandbyServesKey(ownerKey) || !crewLivesOnMac(crewProfileID, ownerKey, "owner") {
+		t.Fatal("the owner's own chat must stay on the Mac")
+	}
+	ownerCall := func(operation string) (bool, *httptest.ResponseRecorder) {
+		claims := &UserClaims{UserID: "owner", Username: "owner"}
+		r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, claims))
+		r.Header.Set("X-Session-ID", crewChatSessionID("team", "conversation-"+helper))
+		w := httptest.NewRecorder()
+		return api.routeCrewMainChat(w, r, crewProfileID, ownerKey, crewChatCall{Operation: operation, Message: "hello"}), w
+	}
+	if routed, w := ownerCall("resolve"); !routed || w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"mac_off":true`) || !strings.Contains(w.Body.String(), "conversation-"+helper) {
+		t.Fatalf("the owner's chat must open from the copy, to read: %t %d %s", routed, w.Code, w.Body.String())
+	}
+	if routed, w := ownerCall("send"); !routed || w.Code != http.StatusServiceUnavailable || len(ran) != 1 {
+		t.Fatalf("the owner's send must wait for the Mac: %t %d %s (ran %d)", routed, w.Code, w.Body.String(), len(ran))
+	}
+
 	// An Only me agent never answers from the server, even with a copy: it waits for the Mac.
 	if api.crewStandbyRoute(t.Context(), "owner", "team", solo, "", true) || rows[solo].Writer != "" {
 		t.Fatalf("an Only me agent was answered on the server: %+v", rows[solo])
@@ -578,7 +598,8 @@ func TestCrewMacOffReadShowsOnlyTheAgentsOwnCopy(t *testing.T) {
 	}
 	write("own", "the agent's own chat")
 	write("thread", "a teammate's private thread")
-	if err := writeCrewStandby("team", map[string]crewAgentStandby{"helper01": {Tab: "helper01", Sessions: map[string]crewAgentStandbySession{
+	// The server answers teammates here (writer=server); the owner's chat has run no turn on it and still reads.
+	if err := writeCrewStandby("team", map[string]crewAgentStandby{"helper01": {Tab: "helper01", Writer: "server", Sessions: map[string]crewAgentStandbySession{
 		"mac-crew:chat:helper01":                   {Dir: "own", ConversationID: "conversation-own"},
 		"mac-crew:chat:with-helper01-0123456789ab": {Dir: "thread", ConversationID: "conversation-thread"},
 	}}}); err != nil {
@@ -596,6 +617,45 @@ func TestCrewMacOffReadShowsOnlyTheAgentsOwnCopy(t *testing.T) {
 	}
 	if got := read("member", "conversation-own"); strings.Contains(got, "own chat") {
 		t.Fatalf("a member's own read reached the owner's copy: %s", got)
+	}
+}
+
+// PLAT-856-509 (owner, 6 Nov): a Crew on the owner's Mac is changed on that Mac. The owner through the server is refused
+// with one line, Mac on or off; the Mac's own call and a teammate are not.
+func TestMacCrewSettingsChangeOnlyFromTheMac(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		claims  *UserClaims
+		pair    string
+		refused bool
+	}{
+		{"owner on the website", &UserClaims{UserID: "owner", Username: "owner"}, "", true},
+		{"owner over MCP", crewWriter("owner"), "", true},
+		{"owner with another pair", &UserClaims{UserID: "owner", Username: "owner"}, "another-pair", true},
+		{"owner's Mac", &UserClaims{UserID: "owner", Username: "owner"}, "owner-pair", false},
+		{"teammate", &UserClaims{UserID: "other", Username: "other"}, "", false},
+	} {
+		r := httptest.NewRequest(http.MethodPut, "/", strings.NewReader(`{"on":false,"people":[]}`)).WithContext(context.WithValue(t.Context(), UserContextKey, tc.claims))
+		if tc.pair != "" {
+			r.Header.Set(crewMacPairHeader, tc.pair)
+		}
+		w := httptest.NewRecorder()
+		f.api.handleCrewTeam(w, mux.SetURLVars(r, map[string]string{"project": "team"}))
+		if got := strings.Contains(w.Body.String(), "change_on_mac"); got != tc.refused {
+			t.Fatalf("%s: refused=%t want %t: %d %s", tc.name, got, tc.refused, w.Code, w.Body.String())
+		}
+		if tc.refused && (w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), crewChangeOnMacLine)) {
+			t.Fatalf("%s: %d %s", tc.name, w.Code, w.Body.String())
+		}
 	}
 }
 

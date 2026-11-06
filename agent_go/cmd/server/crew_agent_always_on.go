@@ -1,9 +1,9 @@
 package server
 
 // Always on, step 2 (owner, 5 Nov: every In team agent is always on): while the owner's Mac is off, an In team agent
-// with a standby copy (crew_agent_standby.go) answers on the server from that copy: teammates' messages, held messages
-// and the owner's own website chat with it. The server runs it the way a published agent runs (serverAgentCall), from
-// the same conversation: the stored native session is imported with its own native session id and the chat's history
+// with a standby copy (crew_agent_standby.go) answers on the server from that copy: teammates' messages and held
+// messages. It is for other people (owner, 6 Nov): the owner's own chat with it waits for the Mac. The server runs it the
+// way a published agent runs (serverAgentCall), from the same conversation: the stored native session is imported with its own native session id and the chat's history
 // is seeded from the copy. The first turn makes the server the agent's writer (recorded in the standby record); from
 // then on the server answers for it and the owner's Mac refuses to run it until it is handed back (step 3).
 
@@ -98,16 +98,19 @@ func crewStandbyServerWriter(project, tab string) bool {
 	return err == nil && rows[tab].Writer == "server"
 }
 
-// crewStandbyServesKey: the chat with this key belongs to an agent the server answers for from its standby copy.
+// crewStandbyServesKey: the chat with this key is a teammate's thread on an agent the server answers for from its
+// standby copy. Only those run here: writer=server stops the Mac running the agent until it is handed back, but the
+// owner's own key still belongs to the Mac, so it is never served (PLAT-856-509).
 func crewStandbyServesKey(key string) bool {
 	_, ok := crewStandbyServedTab(key)
 	return ok
 }
 
-// crewStandbyServedTab is the agent the server answers for from its standby copy that this chat belongs to.
+// crewStandbyServedTab is the agent of a teammate's thread the server answers for from its standby copy.
 func crewStandbyServedTab(key string) (string, bool) {
+	key = strings.TrimSpace(key)
 	project := crewResourceProjectID(key)
-	if IsLocalMode() || project == "" {
+	if IsLocalMode() || project == "" || !isSharedThreadKey(key) {
 		return "", false
 	}
 	rows, err := readCrewStandby(project)
@@ -159,8 +162,8 @@ func crewStandbyCanAnswer(project, owner, tab string) bool {
 	return ok
 }
 
-// crewStandbyRoute decides whether this agent's call runs on the server copy, and prepares it: the owner's chat with
-// the agent (and the asking teammate's own thread on it) is imported from the copy. writes is set for a call that runs a
+// crewStandbyRoute decides whether a teammate's call to this agent runs on the server copy, and prepares it: the owner's
+// chat with the agent (what the thread starts from) and the asking teammate's own thread on it are imported from the copy. writes is set for a call that runs a
 // turn; it makes the server the agent's writer. Any failure leaves the call on its usual path (the Mac, or held).
 func (api *StreamingAPI) crewStandbyRoute(ctx context.Context, owner, project, tab, sender string, writes bool) bool {
 	if crewPublishedTarget(project, tab) || !crewStandbyCanAnswer(project, owner, tab) {
@@ -238,19 +241,6 @@ func crewStandbyInFlight(project, tab string) bool {
 	}
 	crewStandbyFlights.at[key] = kept
 	return true
-}
-
-// crewStandbyFlightHolder lets the owner's website chat (routeCrewMainChat) release its flight once its turn is
-// admitted by the chat handler that called it.
-type crewStandbyFlightHolder struct{ project, tab string }
-
-type crewStandbyFlightHolderKey struct{}
-
-func (h *crewStandbyFlightHolder) release() {
-	if h != nil && h.project != "" {
-		releaseCrewStandbyFlight(h.project, h.tab)
-		h.project = ""
-	}
 }
 
 // markCrewStandbyWriterLocked records that the server answers for this agent from its standby copy at the copy's
@@ -505,7 +495,7 @@ func crewStandbyCopyLabel(project, tab string) (string, string) {
 }
 
 // crewAlwaysOnAgentsLine is the Agents card's line for the owner of a Mac Crew with the Team on.
-const crewAlwaysOnAgentsLine = "Shared agents are always on: when your Mac is off, they answer from the server. " + crewTeamAgentsLine
+const crewAlwaysOnAgentsLine = "Shared agents are always on: when your Mac is off, they answer teammates from the server. " + crewTeamAgentsLine
 
 // crewTeamAgentsLine is the Agents card's line (owner, 6 Nov: each agent's own switch is the only control).
 const crewTeamAgentsLine = "New agents are shared; turn one off to keep it to yourself. Keep at least one shared."

@@ -10,7 +10,7 @@ import type { PublicLink, PublicLinkMode } from '../../components/workflow/Publi
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
-export type Team = { project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: { id?: string; whole?: boolean; folders?: string[] }; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
+export type Team = { change_on_mac?: string; project_id: string; name: string; owner_id: string; owner_name: string; on: boolean; people: { user_id: string; invited?: boolean }[]; folder: { id?: string; whole?: boolean; folders?: string[] }; can_manage: boolean; folder_access: boolean; server_data?: { name: string; size_bytes: number }; lent?: TeamLent; where?: 'mac' | 'web' }
 // What teammates' agents use from the owner, as the server writes it (crew_team.go crewTeamLent).
 export type TeamLent = { title: string; line: string; foot?: string; empty?: string; yours: boolean; items: { name: string; kind: string }[] }
 export type TeamTarget = { project: string; connection?: string; localProject?: string; folderId?: string }

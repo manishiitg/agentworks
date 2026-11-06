@@ -22,6 +22,9 @@ func (api *StreamingAPI) handleCrewTeamPeople(w http.ResponseWriter, r *http.Req
 		externalError(w, 403, "team_forbidden", "Use your own account to change this team.")
 		return
 	}
+	if refuseCrewOwnerOnline(w, r, project, claims.UserID) {
+		return
+	}
 	var in crewPeopleChange
 	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in) != nil {
 		externalError(w, 400, "invalid_person", "Choose one person and a level: works, dashboards or none.")

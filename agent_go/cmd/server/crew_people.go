@@ -79,6 +79,8 @@ type crewPeopleView struct {
 	// AddEveryone is the label of the "everyone on this server" choice, offered to the owner of a server Crew that is not
 	// open to everyone yet (add it with person=everyone, level=dashboards).
 	AddEveryone string `json:"add_everyone,omitempty"`
+	// ChangeOnMac: the viewer is the owner of a Mac Crew reaching it through the server, so the list is read only.
+	ChangeOnMac string `json:"change_on_mac,omitempty"`
 	// CanAdd: this viewer may add people to Works with me; CanShare: the owner alone may give dashboards only.
 	CanAdd   bool               `json:"can_add"`
 	CanShare bool               `json:"can_share"`
@@ -266,7 +268,11 @@ func (api *StreamingAPI) handleCrewPeopleView(w http.ResponseWriter, r *http.Req
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, api.crewPeopleViewFor(claims, t))
+	view := api.crewPeopleViewFor(claims, t)
+	if crewOwnerOnlineOfMacCrew(r, t.ProjectID, claims.UserID) {
+		view.changeOnMac()
+	}
+	externalJSON(w, view)
 }
 
 type crewPeopleChange struct {

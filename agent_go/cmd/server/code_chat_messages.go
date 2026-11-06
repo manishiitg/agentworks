@@ -340,6 +340,10 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if err != nil {
 					return "", err
 				}
+				// An owner's agent on a server turn (a teammate's thread on a Mac Crew) changes nothing of the Crew here.
+				if !IsLocalMode() && crewRelayTwin(project.ProjectID) && userID == ownerOfCrewProjectID(project.ProjectID) {
+					return "", fmt.Errorf("%s", crewChangeOnMacLine)
+				}
 				if setRule {
 					// Only the agent's own person, in their own turn: the Team record refuses anyone else's agent, and a
 					// turn another person asked never changes the rule meant for them.

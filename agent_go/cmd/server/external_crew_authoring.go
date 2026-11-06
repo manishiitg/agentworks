@@ -415,6 +415,9 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 			externalError(w, http.StatusForbidden, "forbidden", fmt.Sprintf("Only the Crew's owner (%v) can %s it.", summary["owner"], strings.TrimSuffix(name, "_crew")))
 			return
 		}
+		if name == "update_crew" && refuseCrewOwnerOnline(w, r, manifest.ID, claims.UserID) {
+			return
+		}
 		if name == "export_crew" {
 			spec, err := exportCrewSpec(ctx, crew, manifest)
 			if err != nil {

@@ -48,8 +48,12 @@ func (api *StreamingAPI) externalWatcherCall(w http.ResponseWriter, r *http.Requ
 			externalError(w, 403, "insufficient_scope", "Crew watchers require crews:run.")
 			return
 		}
-		if _, _, _, ok := api.externalCrewResolve(ctx, claims, crew); !ok {
+		_, manifest, _, ok := api.externalCrewResolve(ctx, claims, crew)
+		if !ok {
 			externalError(w, 404, "not_found", "Crew unavailable.")
+			return
+		}
+		if action := externalArg(args, "action"); (action == "create" || action == "update" || action == "delete") && refuseCrewOwnerOnline(w, r, manifest.ID, claims.UserID) {
 			return
 		}
 		profile, project = "work", crew

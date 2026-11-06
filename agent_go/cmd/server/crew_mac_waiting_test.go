@@ -49,10 +49,9 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if tab := macSharedAgentTab("team", originalMainChatKey("team", "someone-elses-conversation")); tab == macMainTab {
 		t.Fatal("a root key that is not the owner's own record routed as the owner's Main")
 	}
-	// Live test, 6 Nov (PLAT-871-32): with the Mac off, the owner's send on this key was refused "Reopen this Crew",
-	// because the standby check did not take it for Main.
+	// PLAT-856-509: the owner's Main under its root key is the Mac's Main, so it waits for the Mac like the Crew's own key.
 	if tab := crewStandbyTabForKey("team", mainKey); tab != macMainTab {
-		t.Fatalf("the owner's Main under its root key must answer from the standby copy, got %q", tab)
+		t.Fatalf("the owner's Main under its root key must be Main, got %q", tab)
 	}
 	// Main off (owner, 6 Nov): a message to the Crew itself reaches the first shared agent, not an unshared Main. A key
 	// naming Main stays Main, and a Main public on AgentBridge is still shared.

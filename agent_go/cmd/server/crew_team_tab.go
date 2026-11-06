@@ -178,6 +178,9 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 	t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) })
 	w.Header().Set("Cache-Control", "no-store")
 	reply := crewTeamTabFor(r.Context(), t, claims.UserID)
+	if crewOwnerOnlineOfMacCrew(r, t.ProjectID, claims.UserID) {
+		reply.changeOnMac()
+	}
 	// Every screen re-reads this on each crew_panel notice: a slow reply shows here with the Crew and its size.
 	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
 		log.Printf("[CREW_TEAM_TAB] project=%s viewer=%s team_on=%v agents=%d elapsed_ms=%d", t.ProjectID, claims.UserID, t.On, len(reply.Agents), elapsed.Milliseconds())
@@ -193,7 +196,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		CanLeave: viewer != t.OwnerID && t.member(viewer), Intro: "People work with you here. Everything is kept on the server.",
 		AgentsLine: crewTeamAgentsLine}
 	if twin {
-		out.Intro = "People work with you here. The shared folder is kept on the server. While the Mac is off, shared agents answer from the server; agents that are not shared wait for it."
+		out.Intro = "People work with you here. The shared folder is kept on the server. While the Mac is off, shared agents answer teammates from the server; agents that are not shared wait for it."
 	}
 	bridges := crewTeamBridgesFor(t)
 	setups := crewTabSetupSourceFor(ctx, t, twin)
