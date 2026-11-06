@@ -97,7 +97,7 @@ func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[
 	api := &StreamingAPI{}
 	groups := []string{"crew_workflows", "crew_goals", "crew_skills", "crew_mcp", "crew_folders", "crew_references"}
 	descriptions := map[string]string{
-		"crew_workflows":  "Create and edit workflows and saved scripts inside this Crew. describe returns native editing schemas; edit changes named steps or inputs. Source lives under the Crew automation folder; runtime history stays separate. Run with functions action=run_trigger.",
+		"crew_workflows":  "Create and edit this Crew’s single workflow and saved scripts. Use routes for different tasks. describe returns schemas; edit changes named steps, inputs, schedules or webhooks. Source lives under the Crew automation folder; runtime history stays separate. Run with functions action=run_trigger.",
 		"crew_goals":      "Read this Crew’s goals and progress, save a goal with its metrics, or record source-backed observations. Other goals and saved observations are preserved.",
 		"crew_skills":     "Discover, search, install, import or uninstall skills in this Crew. Use settings to select installed skills. GitHub imports accept the same optional private-repository token as the website tool.",
 		"crew_mcp":        "List connections/catalog, search, install/attach using the exact name returned by list, or catalog; for a new verified remote MCP pass name and url. Complete API key or OAuth app setup in chat using the install action's encrypted credential fields, return the real sign-in link, then verify discovery. Never repeat credentials. Removing detaches only this Crew, preserving other projects and logins. Use settings to select connections.",
