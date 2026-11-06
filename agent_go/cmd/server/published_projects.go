@@ -211,6 +211,9 @@ func publishedWriteRefusal(ctx context.Context, raw string) string {
 // Published file reads select one immutable source revision. Metadata and live
 // results stay at the stable project root. Session working-dir pins an in-flight turn.
 func publishedReadPath(ctx context.Context, raw string) string {
+	if read := crewMacDashboardsRead(ctx, raw); read != raw {
+		return read
+	}
 	ref, ok := resolveCrewPath(ctx, GetUserIDFromContext(ctx), raw)
 	if !ok || ref.Rest == "" || strings.HasPrefix(ref.Rest, ".published/") {
 		return raw

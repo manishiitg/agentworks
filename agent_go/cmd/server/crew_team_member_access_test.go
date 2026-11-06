@@ -4,10 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -286,5 +289,74 @@ func TestCrewTeamDashboardsAreForTheTeamOnly(t *testing.T) {
 		if w := read(user); w.Code != http.StatusForbidden {
 			t.Fatalf("%s reached the Team's dashboards: %d %s", user, w.Code, w.Body.String())
 		}
+	}
+}
+
+// PLAT-856-509 (owner, 6 Nov): a teammate opens a Mac Crew's dashboard from the server's read copy, through the real
+// dashboard reader and workspace, while the Crew's own db/ on the server is left alone.
+func TestCrewMacDashboardsAreReadFromTheCopy(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]}]}`)
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(f.docs, externalCommandCrewRoot)
+	own := filepath.Join(root, "db", "reports")
+	if err := os.MkdirAll(own, 0o770); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(own, "index.html"), []byte("<html><title>Server page</title></html>"), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	store := t.TempDir()
+	page := "<html><head><title>Mac page</title></head><body>from the Mac</body></html>"
+	version, err := chunks.Split(strings.NewReader(page), int64(len(page)), false, func(id string, data []byte) error { return putChunk(store, id, data) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = swapCrewMacDashboards(root, store, map[string]chunks.File{"db/reports/index.html": version}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := crewSyncManifestPath("team")
+	if err == nil {
+		err = os.MkdirAll(filepath.Dir(manifest), 0o700)
+	}
+	if err == nil {
+		err = os.WriteFile(manifest+".dashboards-updated", []byte("{}"), 0o600)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := &UserClaims{UserID: "other", Username: "other"}
+	ctx := context.WithValue(t.Context(), UserContextKey, claims)
+	// A Crew that lives on the server reads its own db/, even with such a folder present.
+	for _, p := range []string{"/db/reports/index.html", "/db/db.sqlite"} {
+		if got := publishedReadPath(ctx, externalCommandCrewRoot+p); got != externalCommandCrewRoot+p {
+			t.Fatalf("a server Crew was redirected to %s", got)
+		}
+	}
+	if err = crewroot.WriteSync("team", crewroot.SyncBinding{PairID: "pair", Side: "server", Editing: "local", PeerProjectID: "mac"}); err != nil {
+		t.Fatal(err)
+	}
+	mapped := publishedReadPath(ctx, externalCommandCrewRoot+"/db/reports/index.html")
+	if mapped != externalCommandCrewRoot+"/"+crewroot.MacDashboardsFolder+"/db/reports/index.html" {
+		t.Fatalf("read goes to %s", mapped)
+	}
+	data, err := f.api.reportPreviewWorkspaceClient(ctx, claims, externalCommandCrewRoot).DownloadFile(ctx, mapped)
+	if err != nil || !strings.Contains(string(data), "from the Mac") {
+		t.Fatalf("the workspace read of the copy: %q %v", data, err)
+	}
+	if got := crewMacDashboardsRead(ctx, externalCommandCrewRoot+"/db/db.sqlite"); got != externalCommandCrewRoot+"/"+crewroot.MacDashboardsFolder+"/db/db.sqlite" {
+		t.Fatalf("database query goes to %s", got)
+	}
+	listing := httptest.NewRecorder()
+	f.api.handleDashboards(listing, adminRequest(http.MethodPost, "/api/dashboards", `{"workspace":"`+externalCommandCrewRoot+`","action":"list"}`, claims, nil))
+	if listing.Code != 200 || !strings.Contains(listing.Body.String(), "Mac page") || strings.Contains(listing.Body.String(), "Server page") {
+		t.Fatalf("listing: %d %s", listing.Code, listing.Body.String())
+	}
+	card := httptest.NewRecorder()
+	f.api.handleCrewTeamDashboards(card, adminRequest(http.MethodGet, "/api/crew-teams/team/dashboards", "", claims, map[string]string{"project": "team"}))
+	if card.Code != 200 || !strings.Contains(card.Body.String(), `"updated":"Updated`) || !strings.Contains(card.Body.String(), "need the owner's Mac") {
+		t.Fatalf("card: %d %s", card.Code, card.Body.String())
 	}
 }

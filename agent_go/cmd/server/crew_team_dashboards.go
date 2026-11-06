@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
@@ -43,5 +44,11 @@ func (api *StreamingAPI) handleCrewTeamDashboards(w http.ResponseWriter, r *http
 		offset += len(page.Dashboards)
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, map[string]any{"workspace": root, "dashboards": rows, "can_share": t.OwnerID == claims.UserID})
+	out := map[string]any{"workspace": root, "dashboards": rows, "can_share": t.OwnerID == claims.UserID}
+	// A Crew on a Mac: when its dashboards last reached the server (crew_mac_dashboards.go).
+	if updated, ok := crewMacDashboardsUpdated(t.ProjectID); ok && crewRelayTwin(t.ProjectID) {
+		out["updated"] = "Updated " + roughAgo(time.Since(updated))
+		out["note"] = "Buttons on these dashboards need the owner's Mac for now."
+	}
+	externalJSON(w, out)
 }
