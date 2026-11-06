@@ -10,11 +10,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -79,6 +82,48 @@ func (api *StreamingAPI) scheduleCrewStandby(project, tab, session string, wait 
 		agent.timer.Stop()
 	}
 	agent.timer = time.AfterFunc(wait, func() { api.sendCrewStandby(project, tab) })
+}
+
+// crewStandbyStartupDelay lets Mac online connect before the startup catch-up offers copies.
+var crewStandbyStartupDelay = time.Minute
+
+// catchUpCrewStandby runs once when the Mac app starts: every agent of this Mac's Crews with Mac online and the Team
+// on is offered once (the server says which copies are behind and which agents are shared), so a copy that was waiting
+// when the app stopped still goes up.
+func (api *StreamingAPI) catchUpCrewStandby() {
+	state, err := workflowCLIStateRoot()
+	if err != nil {
+		return
+	}
+	entries, _ := os.ReadDir(filepath.Join(state, "crew-sync"))
+	for _, entry := range entries {
+		id, ok := strings.CutSuffix(entry.Name(), ".json")
+		if _, e := uuid.Parse(id); entry.IsDir() || !ok || e != nil {
+			continue
+		}
+		b, e := crewroot.ReadSync(id)
+		if e != nil || b == nil || b.Side != "local" || b.Mode != "relay" {
+			continue
+		}
+		if s := readCrewTeamState(id); !s.TeamOn || s.MemberOf != "" {
+			continue
+		}
+		claims := &UserClaims{UserID: GetDefaultUserID(), Username: GetDefaultUserID()}
+		roots, e := api.crewSyncRoots(context.WithValue(context.Background(), UserContextKey, claims), claims, id)
+		if e != nil || roots.Owner != claims.UserID {
+			continue
+		}
+		tabs := map[string]bool{}
+		for _, record := range crewStandbyRecords(roots) {
+			if tab := crewAgentPublishTab(crewStandbyWireKey(roots.ID, record.ConversationKey)); tab != "" && !isUserViewConversationKey(record.ConversationKey) {
+				tabs[tab] = true
+			}
+		}
+		for tab := range tabs {
+			api.scheduleCrewStandby(roots.ID, tab, "", 0)
+		}
+		log.Printf("[ALWAYS_ON] project=%s event=startup_offer agents=%d", roots.ID, len(tabs))
+	}
 }
 
 // crewStandbyWireKey is a Mac chat key as the Team and the server name it: the Crew's Main lives under its physical
