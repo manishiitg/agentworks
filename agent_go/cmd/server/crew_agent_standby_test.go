@@ -598,3 +598,81 @@ func TestCrewMacOffReadShowsOnlyTheAgentsOwnCopy(t *testing.T) {
 		t.Fatalf("a member's own read reached the owner's copy: %s", got)
 	}
 }
+
+// PLAT-856 Always on, live test 6 Nov (capture_error "this agent has no portable native session"): an agent the server
+// ran from saved history (it lacked the Mac's program) comes back to the Mac as history. The Mac takes it when its own
+// history is the start of the server's, changes nothing when they are the same, and keeps the server's version aside
+// when both changed.
+func TestCrewHandbackFromHistoryTakesExtendsKeepsBoth(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	f, _ := newExternalCrewCommandFixture(t)
+	api := f.api
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	roots, err := api.crewSyncRoots(context.WithValue(t.Context(), UserContextKey, owner), owner, "team")
+	if err != nil {
+		t.Fatalf("owner Crew roots: %v", err)
+	}
+	roots.ID = "mac-crew"
+	const tab, key = "helper01", "mac-crew:chat:helper01"
+	say := func(texts ...string) []llmtypes.MessageContent {
+		out := []llmtypes.MessageContent{}
+		for i, text := range texts {
+			role := llmtypes.ChatMessageTypeHuman
+			if i%2 == 1 {
+				role = llmtypes.ChatMessageTypeAI
+			}
+			out = append(out, llmtypes.TextParts(role, text))
+		}
+		return out
+	}
+	var macHistory []llmtypes.MessageContent
+	saved := crewHandbackMacHistory
+	crewHandbackMacHistory = func(string, ProductConversationRecord) ([]llmtypes.MessageContent, bool, error) {
+		return macHistory, macHistory != nil, nil
+	}
+	crewHandbackMineForTest = func(_ crewroot.Roots, k string) (*ProductConversationRecord, *sessiontransfer.Bundle) {
+		if k != key {
+			return nil, nil
+		}
+		return &ProductConversationRecord{ConversationKey: k, SessionID: "mac-1", Provider: "claude-code"}, nil
+	}
+	var imported []int
+	crewHandbackImportForTest = func(_ crewroot.Roots, k string, c *crewHandoffConversation) error {
+		if c.Native != nil {
+			t.Fatal("a history hand back must not bring a native session")
+		}
+		imported = append(imported, len(c.History))
+		return nil
+	}
+	t.Cleanup(func() {
+		crewHandbackMineForTest, crewHandbackImportForTest = nil, nil
+		crewHandbackMacHistory = saved
+	})
+	server := say("remember pineapple", "ok", "also mango (asked on the website)", "ok, pineapple and mango")
+	apply := func() string {
+		t.Helper()
+		item := crewStandbySendItem{Key: key, Conversation: &crewHandoffConversation{ConversationID: "conversation-helper", History: server}}
+		event, _, err := api.applyCrewHandback(t.Context(), roots, tab, "owner-pair", item, func(*sessiontransfer.Bundle) error {
+			t.Fatal("a history hand back must not pull a native session")
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("hand back: %v", err)
+		}
+		return event
+	}
+
+	macHistory = server[:2] // the server only added the website turns
+	if event := apply(); event != "imported" || len(imported) != 1 || imported[0] != len(server) {
+		t.Fatalf("the Mac must take the server's longer history: event=%s imported=%v", event, imported)
+	}
+	macHistory = server // nothing was answered on the server
+	if event := apply(); event != "unchanged" || len(imported) != 1 {
+		t.Fatalf("the same history must change nothing: event=%s imported=%v", event, imported)
+	}
+	macHistory = say("remember pineapple", "ok", "something only the Mac saw", "ok") // both changed
+	if event := apply(); event != "diverged" || len(imported) != 1 {
+		t.Fatalf("when both changed the Mac keeps its own and the server's is kept aside: event=%s imported=%v", event, imported)
+	}
+}

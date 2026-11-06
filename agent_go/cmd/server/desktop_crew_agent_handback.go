@@ -359,21 +359,37 @@ func crewHandbackMacProgram(record *ProductConversationRecord, mine *sessiontran
 	return ""
 }
 
-// crewHandbackHistoryExtends: this Mac's saved history of the conversation is the start of the server's, so the server
-// only added turns (the Mac did not answer in it meanwhile).
-func crewHandbackHistoryExtends(owner string, record ProductConversationRecord, server []llmtypes.MessageContent) bool {
+// crewHandbackMacHistory is this Mac's saved history of a conversation; found is false when it has none yet. Tests
+// stand in for it (the saved history needs the app's chat storage).
+var crewHandbackMacHistory = func(owner string, record ProductConversationRecord) (history []llmtypes.MessageContent, found bool, err error) {
 	raw, err := ReadChatHistoryConversation(owner, record.SessionID, record.WorkspacePath)
+	if errors.Is(err, errChatHistoryConversationNotFound) {
+		return nil, false, nil
+	}
 	if err != nil {
-		return errors.Is(err, errChatHistoryConversationNotFound)
+		return nil, false, err
 	}
 	var doc struct {
 		History []llmtypes.MessageContent `json:"conversation_history"`
 	}
-	if json.Unmarshal(raw, &doc) != nil || len(doc.History) > len(server) {
+	if err = json.Unmarshal(raw, &doc); err != nil {
+		return nil, false, err
+	}
+	return doc.History, true, nil
+}
+
+// crewHandbackHistoryExtends: this Mac's saved history of the conversation is the start of the server's, so the server
+// only added turns (the Mac did not answer in it meanwhile).
+func crewHandbackHistoryExtends(owner string, record ProductConversationRecord, server []llmtypes.MessageContent) bool {
+	mine, found, err := crewHandbackMacHistory(owner, record)
+	if err != nil || len(mine) > len(server) {
 		return false
 	}
-	for i := range doc.History {
-		a, _ := json.Marshal(doc.History[i])
+	if !found {
+		return true
+	}
+	for i := range mine {
+		a, _ := json.Marshal(mine[i])
 		b, _ := json.Marshal(server[i])
 		if !bytes.Equal(a, b) {
 			return false
@@ -384,14 +400,8 @@ func crewHandbackHistoryExtends(owner string, record ProductConversationRecord, 
 
 // crewHandbackHistorySame: this Mac's saved history already is the server's (nothing was answered there).
 func crewHandbackHistorySame(owner string, record ProductConversationRecord, server []llmtypes.MessageContent) bool {
-	raw, err := ReadChatHistoryConversation(owner, record.SessionID, record.WorkspacePath)
-	if err != nil {
-		return false
-	}
-	var doc struct {
-		History []llmtypes.MessageContent `json:"conversation_history"`
-	}
-	return json.Unmarshal(raw, &doc) == nil && len(doc.History) == len(server) && crewHandbackHistoryExtends(owner, record, server)
+	mine, found, err := crewHandbackMacHistory(owner, record)
+	return err == nil && found && len(mine) == len(server) && crewHandbackHistoryExtends(owner, record, server)
 }
 
 // crewHandbackMineForTest stands in for finding and capturing the Mac's own version (it needs a provider runtime) in
