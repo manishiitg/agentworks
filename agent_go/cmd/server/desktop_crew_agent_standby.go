@@ -53,7 +53,7 @@ func (api *StreamingAPI) noteCrewStandbyTurn(session, workspace string) {
 		tab := ""
 		for _, record := range crewStandbyRecords(roots) {
 			if record.SessionID == session && !isUserViewConversationKey(record.ConversationKey) {
-				tab = crewAgentPublishTab(record.ConversationKey)
+				tab = crewAgentPublishTab(crewStandbyWireKey(roots.ID, record.ConversationKey))
 			}
 		}
 		if tab == "" {
@@ -79,6 +79,15 @@ func (api *StreamingAPI) scheduleCrewStandby(project, tab, session string, wait 
 		agent.timer.Stop()
 	}
 	agent.timer = time.AfterFunc(wait, func() { api.sendCrewStandby(project, tab) })
+}
+
+// crewStandbyWireKey is a Mac chat key as the Team and the server name it: the Crew's Main lives under its physical
+// root key on the Mac (originalMainChatKey), but is the project itself everywhere else.
+func crewStandbyWireKey(project, key string) string {
+	if side, ok := strings.CutPrefix(key, project+codeChatSideMarker); ok && strings.HasPrefix(side, "root-") {
+		return project
+	}
+	return key
 }
 
 // crewStandbyRecords are the owner's conversations in this Crew, from this Mac's chat registry.
@@ -169,7 +178,8 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 	}
 	failed := false
 	for _, record := range crewStandbyRecords(roots) {
-		if crewAgentPublishTab(record.ConversationKey) != tab || primed && !dirty[record.SessionID] {
+		key := crewStandbyWireKey(roots.ID, record.ConversationKey)
+		if crewAgentPublishTab(key) != tab || primed && !dirty[record.SessionID] {
 			continue
 		}
 		started := time.Now()
@@ -189,7 +199,7 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 			api.scheduleCrewStandby(project, tab, "", crewStandbyDelay)
 			continue
 		}
-		item := crewStandbySendItem{Key: record.ConversationKey, Fingerprint: crewStandbyFingerprint(conversation)}
+		item := crewStandbySendItem{Key: key, Fingerprint: crewStandbyFingerprint(conversation)}
 		answer, err := call("standby_check", []crewStandbySendItem{item})
 		if err != nil {
 			retry(record.SessionID)
@@ -258,7 +268,7 @@ func (api *StreamingAPI) crewStandbyMacRefusal(ctx context.Context, profileID, k
 		return ""
 	}
 	project := crewResourceProjectID(key)
-	tab := crewAgentPublishTab(key)
+	tab := crewAgentPublishTab(crewStandbyWireKey(project, key))
 	if project == "" || tab == "" {
 		return ""
 	}
