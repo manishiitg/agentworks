@@ -416,7 +416,10 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	if err != nil {
 		return reply(409, map[string]string{"error": "This agent is unavailable right now."})
 	}
-	markCrewStandbySession(ctx, project, claims.UserID, conversation.SessionID)
+	if err := markCrewStandbySession(ctx, project, claims.UserID, conversation.SessionID); err != nil {
+		log.Printf("[STANDBY_TURN] project=%s mark_failed=%q", project, err)
+		return reply(503, map[string]string{"error": "This agent can't answer from the server right now."})
+	}
 	if call.Operation == "agent_answer" {
 		var input struct {
 			Provider string                           `json:"provider"`
@@ -456,7 +459,10 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		text := crewMacSharedAgentText(*agent, args.CanMakeChanges, call.Caller, message)
 		if owner, err := api.resolveAgentProfileConversation(r, profile, macSharedAgentChatKey(project, call.Tab), ""); err == nil {
 			ask.Owner = owner
-			markCrewStandbySession(ctx, project, claims.UserID, owner.SessionID) // the chat the thread starts from
+			if err := markCrewStandbySession(ctx, project, claims.UserID, owner.SessionID); err != nil { // the chat the thread starts from
+				log.Printf("[STANDBY_TURN] project=%s mark_failed=%q", project, err)
+				return reply(503, map[string]string{"error": "This agent can't answer from the server right now."})
+			}
 		}
 		askCtx = context.WithValue(askCtx, crewMacSharedAskKey{}, ask)
 		// Queued as its own turn, never steered into another sender's running turn: each sender reads only their own.

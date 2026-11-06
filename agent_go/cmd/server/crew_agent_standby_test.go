@@ -1116,6 +1116,31 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 	if _, marked := crewStandbySessionIdentity(standbySession + "-third"); marked {
 		t.Fatal("a person with no standby copy was marked")
 	}
+	// A server restart forgets memory, never the marks: the queued standby turn is still the member's, and the same
+	// member's unmarked session is still the owner's.
+	crewStandbySessionsReset()
+	if slot, person := crewTurnSlot(crew, standbySession); slot != "slot02" || person != "other" {
+		t.Fatalf("member's standby turn slot after a restart: %q %q", slot, person)
+	}
+	if got := (&StreamingAPI{}).turnSecretsOwner(standbySession, "other", crew); got != "other" {
+		t.Fatalf("member's standby turn Vault after a restart: %q", got)
+	}
+	if slot, person := crewTurnSlot(crew, memberRunSession); slot != "slot01" || person != "owner" {
+		t.Fatalf("an unmarked session of the member after a restart: %q %q", slot, person)
+	}
+	// A marks file that cannot be read refuses Crew launches instead of falling back to the owner's identity.
+	marksPath, _ := crewStandbySessionsPath()
+	if err := os.WriteFile(marksPath, []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	crewStandbySessionsReset()
+	if _, err := declareTurnRunAs(context.Background(), turnRunAsInput{ProfileID: "work", WorkingFolder: crew, SessionID: standbySession, CallerID: "other"}); err == nil {
+		t.Fatal("a Crew launch started although the standby marks could not be read")
+	}
+	if err := os.WriteFile(marksPath, []byte(`{"`+standbySession+`":{"project":"team","person":"other"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	crewStandbySessionsReset()
 	if slot, person := crewTurnSlot(crew, standbySession); slot != "slot02" || person != "other" {
 		t.Fatalf("member's standby turn slot: %q %q", slot, person)
 	}
@@ -1172,8 +1197,6 @@ func TestMemberStandbyTurnRunsAsTheMemberNotTheCrewOwner(t *testing.T) {
 	if id := crewStandbyRunAs("team", "other"); !id.Member || id.Slot != "" || id.Account() != "shared_account" {
 		t.Fatalf("member without a slot: %+v", id)
 	}
-	crewStandbyTurnSessions.Delete(standbySession)
-	markCrewStandbySession(withCrewStandbyTurn(t.Context()), "team", "other", standbySession) // re-marked: the slot table changed
 	if slot, person := crewTurnSlot(crew, standbySession); slot != "" || person != "other" {
 		t.Fatalf("a member with no slot must not get the owner's: %q %q", slot, person)
 	}

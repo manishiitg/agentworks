@@ -196,6 +196,13 @@ func checkProjectLaunchOwner(ctx context.Context, in turnRunAsInput, deps runAsD
 // for the launch policy to carry. An error means the launch must not start (checkProjectLaunchOwner).
 func declareTurnRunAs(ctx context.Context, in turnRunAsInput) (llmtypes.RunAs, error) {
 	deps := defaultRunAsDeps()
+	// A Crew launch needs to know whether its session is a member's standby turn: when that cannot be read, it does not
+	// start as the owner's by default (crew_standby_runas.go).
+	if isProjectProfileID(in.ProfileID) {
+		if err := crewStandbySessionsErr(); err != nil {
+			return llmtypes.RunAs{}, errors.New("this agent can't start right now; try again shortly")
+		}
+	}
 	if err := checkProjectLaunchOwner(ctx, in, deps); err != nil {
 		return llmtypes.RunAs{}, err
 	}
