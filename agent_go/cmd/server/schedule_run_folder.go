@@ -8,14 +8,10 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"io/fs"
 	"os"
-	"regexp"
-	"strconv"
+
 	"strings"
 	"time"
 )
-
-var scheduledRunFolderPattern = regexp.MustCompile(`^iteration-([0-9]+)-sched$`)
-var numberedRunFolderPattern = regexp.MustCompile(`^iteration-([0-9]+)(?:-(?:hook|sched|slack-[a-f0-9]+))?$`)
 
 // allocateScheduledRunFolder binds one saved-schedule occurrence to an
 // immutable folder. Exclusive mkdir is the cross-process arbiter. The marker
@@ -25,12 +21,11 @@ func allocateScheduledRunFolder(workspace, runID string) (string, error) {
 }
 
 func allocateSlackRunFolder(workspace, runID string) (string, error) {
-	sum := sha256.Sum256([]byte(runID))
-	return allocateImmutableRunFolder(workspace, runID, fmt.Sprintf("slack-%x", sum[:8]), ".slack-run-id")
+	return allocateImmutableRunFolder(workspace, runID, "slack", ".slack-run-id")
 }
 
-// Exclusive mkdir and a durable producer marker are shared by non-interactive
-// producers. The monotonically increasing sequence includes every run family.
+// Every producer uses a permanent folder derived from its durable invocation ID.
+// No directory scan, numeric sequence, or archive rename is needed.
 func allocateImmutableRunFolder(workspace, runID, suffix, markerName string) (string, error) {
 	if strings.TrimSpace(runID) == "" {
 		return "", fmt.Errorf("schedule run id is required")
@@ -59,64 +54,30 @@ func allocateImmutableRunFolder(workspace, runID, suffix, markerName string) (st
 	if err = root.MkdirAll("runs", 0700); err != nil {
 		return "", err
 	}
-	entries, err := fs.ReadDir(root.FS(), "runs")
-	if err != nil {
-		return "", err
-	}
-	n := 0
-	if raw, readErr := root.ReadFile(".schedule-sequence"); readErr == nil {
-		if previous, parseErr := strconv.Atoi(strings.TrimSpace(string(raw))); parseErr == nil && previous > n {
-			n = previous
-		}
-	}
-	for _, entry := range entries {
-		if strings.HasSuffix(entry.Name(), "-"+suffix) {
-			raw, readErr := root.ReadFile("runs/" + entry.Name() + "/" + markerName)
-			if readErr == nil && string(raw) == runID {
-				return entry.Name(), nil
-			}
-		}
-		if match := numberedRunFolderPattern.FindStringSubmatch(entry.Name()); len(match) > 0 {
-			if value, parseErr := strconv.Atoi(match[1]); parseErr == nil && value > n {
-				n = value
-			}
-		}
-	}
-	for {
-		n++
-		folder := fmt.Sprintf("iteration-%d-%s", n, suffix)
-		err = root.Mkdir("runs/"+folder, 0700)
-		if os.IsExist(err) {
-			continue
-		}
-		if err != nil {
-			return "", err
-		}
-		// With slots on, a step runs as the owner's slot account (a member of the host's shared group, which the
-		// setgid parent folder passes on): the run folder must be group-writable or its code steps cannot write
-		// their outputs (PLAT-502). Without slots it stays owner-only.
-		if slots.Enabled() {
-			if err := root.Chmod("runs/"+folder, 0o770|os.ModeSetgid); err != nil {
-				return "", err
-			}
-		}
-		marker, openErr := root.OpenFile("runs/"+folder+"/"+markerName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if openErr != nil {
-			return "", openErr
-		}
-		_, writeErr := marker.WriteString(runID)
-		closeErr := marker.Close()
-		if writeErr != nil {
-			return "", writeErr
-		}
-		if closeErr != nil {
-			return "", closeErr
-		}
-		if err := root.WriteFile(".schedule-sequence", []byte(strconv.Itoa(n)), 0600); err != nil {
-			return "", err
+	sum := sha256.Sum256([]byte(suffix + "\x00" + runID))
+	folder := fmt.Sprintf("run-%x", sum[:16])
+	markerPath := "runs/" + folder + "/" + markerName
+	if raw, readErr := root.ReadFile(markerPath); readErr == nil {
+		if string(raw) != runID {
+			return "", fmt.Errorf("run folder identity mismatch")
 		}
 		return folder, nil
+	} else if !errors.Is(readErr, fs.ErrNotExist) {
+		return "", readErr
 	}
+	if err := root.MkdirAll("runs/"+folder, 0700); err != nil {
+		return "", err
+	}
+	// The owner's execution slot must be able to write its own run outputs.
+	if slots.Enabled() {
+		if err := root.Chmod("runs/"+folder, 0o770|os.ModeSetgid); err != nil {
+			return "", err
+		}
+	}
+	if err := root.WriteFile(markerPath, []byte(runID), 0600); err != nil {
+		return "", err
+	}
+	return folder, nil
 }
 
 // openRunAllocationLock creates or opens the workspace's allocation lock file.

@@ -96,3 +96,17 @@ func TestUngroupedRunPickerDoesNotTreatExecutionAndLogsAsInputSets(t *testing.T)
 		t.Fatalf("workspace picker lost the ungrouped run: %d %s", state.Code, state.Body)
 	}
 }
+
+// A slow earlier invocation finishing last must not become the default run.
+func TestLatestRunIsNewestStartNotNewestCompletion(t *testing.T) {
+	now := time.Now().UTC()
+	later := now.Add(time.Hour)
+	folders := []RunFolderInfo{
+		{Name: "run-older", Metadata: &RunMetadata{StartedAt: now.Add(-time.Hour), CompletedAt: &later}},
+		{Name: "run-newer", Metadata: &RunMetadata{StartedAt: now, Status: "running"}},
+	}
+	sortRunFoldersByTime(folders)
+	if defaultRunFolder(folders) != "run-newer" {
+		t.Fatalf("wrong latest: %+v", folders)
+	}
+}

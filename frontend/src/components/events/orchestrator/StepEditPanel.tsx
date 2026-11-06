@@ -22,6 +22,7 @@ interface StepEditPanelProps {
   onSave: (updatedStep: TodoStepWithConfigs) => Promise<void>;
   onCancel: () => void;
   isSaving?: boolean;
+  onDraftChange?: (config: AgentConfigs) => void;
   presetServers?: string[]; // Preset's selected servers (subset to show in UI)
   presetLLMConfig?: PresetLLMConfig | null; // Preset's LLM config with agent defaults
   presetUseCodeExecutionMode?: boolean; // Preset's code execution mode (default value for step)
@@ -34,6 +35,7 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
   stepIndex,
   onSave,
   isSaving = false,
+  onDraftChange,
   presetServers = [],
   presetLLMConfig = null,
   presetUseCodeExecutionMode = false,
@@ -408,7 +410,7 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
   };
 
   // Handle save
-  const handleSave = async () => {
+  const buildConfigs = () => {
     // Start with a clean config object - we'll explicitly set each field
     const finalConfigs: AgentConfigs = {
       ...agentConfigs,
@@ -460,20 +462,18 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
       delete finalConfigs.use_code_execution_mode;
     }
 
-    // Debug logging to verify data being saved
-    console.log('[StepEditPanel] Saving step config:', {
-      stepTitle: step.title,
-      selectedServers,
-      selectedTools,
-      agentConfigs_use_code_execution_mode: agentConfigs.use_code_execution_mode,
-      finalConfigs_use_code_execution_mode: finalConfigs.use_code_execution_mode,
-      finalConfigs: {
-        selected_servers: finalConfigs.selected_servers,
-        selected_tools: finalConfigs.selected_tools,
-        use_code_execution_mode: finalConfigs.use_code_execution_mode,
-      },
-    });
+    return finalConfigs;
+  };
+  const draftKey = JSON.stringify([agentConfigs, selectedServers, selectedTools, enabledCustomTools]);
+  const previousDraftKey = useRef(draftKey);
+  useEffect(() => {
+    if (previousDraftKey.current === draftKey) return;
+    previousDraftKey.current = draftKey;
+    onDraftChange?.(buildConfigs());
+  }, [draftKey, onDraftChange]);
 
+  const handleSave = async () => {
+    const finalConfigs = buildConfigs();
     const updatedStep: TodoStepWithConfigs = {
       ...step,
       agent_configs: finalConfigs,
@@ -1064,8 +1064,8 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+            {/* Standalone editor saves itself; embedded editor shares Save step. */}
+            {!onDraftChange && <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
               <Button
                 variant="default"
                 size="sm"
@@ -1075,7 +1075,7 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
               >
                 {isSaving ? 'Saving...' : 'Save'}
               </Button>
-            </div>
+            </div>}
           </div>
         </div>
       )}

@@ -14,15 +14,17 @@ Use `describe` with `operation=add_step` for a new step's schema. Only `delete_p
 
 An agent step can select a `crew_agent` returned by list. It reuses its saved role and model, with a separate run context. It does not import private chat history or another person's credentials. Explicit settings override defaults; an empty skills list deliberately selects none.
 
+Agent steps have one initial task (`description`), optional ordered follow-ups or required script calls (`items`), and explicit settings. Optional script tools remain available for the agent to choose when needed. `inputs` maps a name to one fixed value, workflow input or declared earlier output, using the same mapping shape as `script_inputs` below. An output without `field` gives the agent a file reference; choosing `field` supplies that JSON value. Do not paste previous output files into task instructions.
+
 ## Reuse Python
 
-Create with `kind=script`; read/write its `script.json` and `main.py`. It runs Python directly, without an AI turn or a second plan. Code edits apply next run; previous runs retain their executed source.
+Create with `kind=script`; read/write its `script.json` and `main.py`. It runs Python directly, without an AI turn or a second plan. Code edits apply next run; previous runs retain their executed source and resolved inputs. Chat calls and workflow steps use this same runner. Read bundled files from `SCRIPT_SOURCE_DIR`; write results to `STEP_OUTPUT_DIR`. `STEP_EXECUTION_DIR` identifies the current execution. Each invocation has its own permanent run folder; explicit shared destinations are still shared.
 
 A workflow scripted step can reference `script: "<id>"` and `script_inputs`. Each input selects one source: `{"value":7}`, `{"input":"count"}`, or `{"output":"prior.json","field":"nested.count"}`. Prior outputs must be declared dependencies from this run. Do not copy the script's schema or code into the workflow. Cross-Crew reuse uses a shared function.
 
 ## Run and verify
 
-Call `run_workflow_trigger` with `workspace_path` and optional `inputs`, such as `{"count":7}`. Omit `trigger_id` for a direct run. Defaults, required values and types are validated for workflows and scripts alike. Reuse a delivery ID only to retry the same uncertain delivery. Poll the returned run until it finishes and report its actual output or failure.
+Call `run_workflow_trigger` with `workspace_path` and optional `inputs`, such as `{"count":7}`. Omit `trigger_id` for a direct run. Defaults, required values and types are validated for workflows and scripts alike. Reuse a delivery ID only to retry the same uncertain delivery. Use the returned run identity, never guess an iteration folder. The run picker selects the latest started run. Existing retention still applies. Poll the returned run until it finishes and report its actual output or failure.
 
 ## Track outcomes
 

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/workspace/slots"
+
 	"io"
 	"io/fs"
 	"mime"
@@ -16,7 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"strconv"
+
 	"strings"
 	"time"
 
@@ -26,7 +26,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
-var webhookFolderPattern = regexp.MustCompile(`^iteration-([0-9]+)-hook$`)
+var permanentRunFolderPattern = regexp.MustCompile(`^run-[a-z0-9-]+$`)
 
 func webhookWorkspaceRoot(workspace string) (*os.Root, error) {
 	if !strings.HasPrefix(workspace, "Workflow/") || path.Clean(workspace) != workspace || strings.ContainsAny(workspace, "\\\x00") {
@@ -40,78 +40,9 @@ func webhookWorkspaceRoot(workspace string) (*os.Root, error) {
 	return docs.OpenRoot(workspace)
 }
 
-// Exclusive mkdir is the final arbiter, including across concurrent processes.
+// Chat, webhook, schedule and workflow calls use the same permanent allocator.
 func allocateWebhookRunFolder(workspace, runID string) (string, error) {
-	lock := scheduleRunFileLock(workspace + "/run-folder-allocation")
-	lock.Lock()
-	defer lock.Unlock()
-	root, err := webhookWorkspaceRoot(workspace)
-	if err != nil {
-		return "", err
-	}
-	defer root.Close()
-	if err = root.MkdirAll("runs", 0700); err != nil {
-		return "", err
-	}
-	entries, err := fs.ReadDir(root.FS(), "runs")
-	if err != nil {
-		return "", err
-	}
-	n := 0
-	if raw, e := root.ReadFile(".webhook-sequence"); e == nil {
-		if previous, e := strconv.Atoi(strings.TrimSpace(string(raw))); e == nil && previous > n {
-			n = previous
-		}
-	}
-	for _, entry := range entries {
-		if m := webhookFolderPattern.FindStringSubmatch(entry.Name()); len(m) > 0 {
-			raw, e := root.ReadFile("runs/" + entry.Name() + "/.webhook-run-id")
-			if e == nil && string(raw) == runID {
-				return entry.Name(), nil
-			}
-		}
-		if m := numberedRunFolderPattern.FindStringSubmatch(entry.Name()); len(m) > 0 {
-			i, parseErr := strconv.Atoi(m[1])
-			if parseErr == nil && i > n {
-				n = i
-			}
-		}
-	}
-	for {
-		n++
-		folder := fmt.Sprintf("iteration-%d-hook", n)
-		err = root.Mkdir("runs/"+folder, 0700)
-		if os.IsExist(err) {
-			continue
-		}
-		if err != nil {
-			return "", err
-		}
-		// With slots on, a step runs as the owner's slot account (a member of the host's shared group, which the setgid
-		// parent folder passes on): the run folder must be group-writable or its code steps cannot write their outputs
-		// (PLAT-502). The scheduled-run allocator does the same; this one was missed.
-		if slots.Enabled() {
-			if err := root.Chmod("runs/"+folder, 0o770|os.ModeSetgid); err != nil {
-				return "", err
-			}
-		}
-		f, e := root.OpenFile("runs/"+folder+"/.webhook-run-id", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if e != nil {
-			return "", e
-		}
-		_, e = f.WriteString(runID)
-		closeErr := f.Close()
-		if e != nil {
-			return "", e
-		}
-		if closeErr != nil {
-			return "", closeErr
-		}
-		if e := root.WriteFile(".webhook-sequence", []byte(strconv.Itoa(n)), 0600); e != nil {
-			return "", e
-		}
-		return folder, nil
-	}
+	return allocateImmutableRunFolder(workspace, runID, "hook", ".webhook-run-id")
 }
 
 type webhookAccessClaims struct {
@@ -323,7 +254,7 @@ func webhookRunMatchesSchedule(run schedulerstate.Run, workspacePath string, man
 	return run.ScheduleID == sched.ID && run.ScopeType == scope && run.ScopeID == scopeID && run.TriggerSource == "webhook"
 }
 func openWebhookRunRoot(workspace string, run schedulerstate.Run) (*os.Root, error) {
-	if !webhookFolderPattern.MatchString(run.RunFolder) {
+	if stepworkflow.ValidateWorkflowRunFolder(run.RunFolder) != nil {
 		return nil, fmt.Errorf("run artifacts are not allocated")
 	}
 	root, e := webhookWorkspaceRoot(workspace)

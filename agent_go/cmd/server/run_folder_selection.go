@@ -7,21 +7,16 @@ import (
 	"time"
 )
 
-// Run folders are storage slots, not a clock: iteration zero may be reused.
+// Latest means most recently started, not the last older run to finish.
 func runFolderTime(folder RunFolderInfo) (time.Time, string) {
 	var latest time.Time
 	reason := "no_timestamp"
 	if m := folder.Metadata; m != nil {
-		for _, candidate := range []struct {
-			at     time.Time
-			reason string
-		}{{m.CreatedAt, "newest_created"}, {m.StartedAt, "newest_started"}} {
-			if candidate.at.After(latest) {
-				latest, reason = candidate.at, candidate.reason
-			}
+		if !m.StartedAt.IsZero() {
+			return m.StartedAt, "newest_started"
 		}
-		if m.CompletedAt != nil && m.CompletedAt.After(latest) {
-			latest, reason = *m.CompletedAt, "newest_completed"
+		if !m.CreatedAt.IsZero() {
+			return m.CreatedAt, "newest_created"
 		}
 	}
 	return latest, reason

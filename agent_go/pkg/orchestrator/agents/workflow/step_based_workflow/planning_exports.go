@@ -1793,7 +1793,7 @@ func RegisterRunFullWorkflowTool(
 					if err := validateRelayWorkshopRunFolder(iteration); err != nil {
 						return "", err
 					}
-				} else if !regexp.MustCompile(`^iteration-[0-9]+-(?:hook|slack-[a-f0-9]+)$`).MatchString(iteration) {
+				} else if !IsPermanentRunFolder(iteration) {
 					return "webhook run folder unavailable", nil
 				}
 				if !session.controller.isRelayExecution() {

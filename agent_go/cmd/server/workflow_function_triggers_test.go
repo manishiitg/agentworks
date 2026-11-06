@@ -513,6 +513,13 @@ func TestWorkflowInputExposureAndSavedReferences(t *testing.T) {
 	if err := writeProjectFunctionDefinitions(ctx, "Workflow/reports", []projectFunctionDefinition{record}); err != nil {
 		t.Fatal(err)
 	}
+
+	env.mock.mu.Lock()
+	env.mock.files["Workflow/reports/planning/plan.json"] = `{"steps":[{"id":"summarize","type":"agent","title":"Summarize","description":"Summarize the supplied count","inputs":{"amount":{"input":"count"}}}]}`
+	env.mock.mu.Unlock()
+	if err := validateWorkflowInputReferences(ctx, "Workflow/reports", &VariablesManifest{}); err == nil || !strings.Contains(err.Error(), "step summarize") {
+		t.Fatalf("agent input reference silently removed: %v", err)
+	}
 	old.Variables[0].Description = "A harmless description edit"
 	if err := validateWorkflowInputReferences(ctx, "Workflow/reports", &old); err != nil {
 		t.Fatal(err)

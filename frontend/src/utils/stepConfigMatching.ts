@@ -103,6 +103,8 @@ interface CommonStepFields {
   shared_with?: StepSharing;
 }
 
+export interface StepInputBinding { value?: unknown; input?: string; output?: string; field?: string }
+
 // Scripted step
 export interface ScriptedPlanStep extends CommonStepFields {
   type: 'scripted' | 'regular'; // regular is a saved-plan compatibility alias.
@@ -137,6 +139,7 @@ export interface AgentItem {
 }
 
 export interface AgentPlanStep extends CommonStepFields {
+  inputs?: Record<string, StepInputBinding>;
   crew_agent?: string;
   type: 'agent';
   prompt_contract?: 'description-first-v1';

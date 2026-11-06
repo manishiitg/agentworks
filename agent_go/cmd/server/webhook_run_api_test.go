@@ -25,8 +25,8 @@ func TestWebhookRunOutputsAndDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if folder != "iteration-5-hook" {
-		t.Fatalf("webhook folder = %q, want shared namespace allocation iteration-5-hook", folder)
+	if !permanentRunFolderPattern.MatchString(folder) {
+		t.Fatalf("webhook folder = %q, want permanent run identity", folder)
 	}
 	again, err := allocateWebhookRunFolder(workspace, "run-1")
 	if err != nil || again != folder {
@@ -67,6 +67,9 @@ func TestWebhookRunOutputsAndDownloads(t *testing.T) {
 	scope, id, key := scheduleStateScope(buildScheduleContext(workspace, manifest, sched))
 	run := schedulerstate.Run{RunID: "run-1", ScheduleID: sched.ID, ScopeType: scope, ScopeID: id, LockKey: key, TriggerSource: "webhook"}
 	ctx := context.Background()
+	if err := saveWorkflowEntryActions(ctx, workspace, manifest); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.BeginRun(ctx, run); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +78,7 @@ func TestWebhookRunOutputsAndDownloads(t *testing.T) {
 	}
 	svc := &SchedulerService{stateStore: store}
 	router := mux.NewRouter()
-	WorkflowWebhookRoutes(router, svc)
+	UnifiedWebhookRoutes(router, svc, nil)
 	get := func(url, auth string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("GET", url, nil)
 		if auth != "" {

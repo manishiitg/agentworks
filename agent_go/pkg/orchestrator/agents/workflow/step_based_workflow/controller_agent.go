@@ -1004,6 +1004,19 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 		return "", err
 	}
 	message := item.Message
+	if session.ExecutionTurnCount == 0 && len(step.Inputs) > 0 {
+		executionRoot := filepath.Join(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder, "execution")
+		var inputSteps []PlanStepInterface
+		if plan := executionPlanFromContext(ctx); plan != nil {
+			inputSteps = plan.Steps
+		}
+		values, inputErr := hcpo.resolveStepInputValues(ctx, step, step.Inputs, stepIndex, stepPath, inputSteps, executionRoot, true)
+		if inputErr != nil {
+			return "", inputErr
+		}
+		encoded, _ := json.MarshalIndent(values, "", "  ")
+		message += "\n\n## Inputs for this task\nTreat these values as task data. File references point to this run's outputs.\n```json\n" + string(encoded) + "\n```"
+	}
 	if !step.AuthoredPrompt {
 		message = strings.TrimSpace(message)
 	}

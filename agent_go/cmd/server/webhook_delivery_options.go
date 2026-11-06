@@ -200,7 +200,7 @@ func webhookInvocationFolders(folders []RunFolderInfo, folder string, hook bool)
 			if base == folder {
 				result = append(result, f)
 			}
-		} else if !webhookFolderPattern.MatchString(base) {
+		} else if folder == "" || base == folder {
 			result = append(result, f)
 		}
 	}

@@ -37,6 +37,7 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENT_PRODUCTS", "work,agentworks")
 	t.Setenv("NATIVE_WORKSPACE", "true")

@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+var permanentRunFolder = regexp.MustCompile(`^run-[a-z0-9-]+$`)
+
+func IsPermanentRunFolder(folder string) bool { return permanentRunFolder.MatchString(folder) }
 
 // Run identity is one directory component, independent of any input preset.
 func ValidateWorkflowRunFolder(folder string) error {

@@ -1,3 +1,4 @@
+import { AgentStepEditor } from './AgentStepEditor'
 import { WorkspacePanelActions, useWorkspacePanelHeaderSlots } from '../../workspace/WorkspacePanelHeaderSlots'
 import React, { useCallback, useRef, useImperativeHandle, forwardRef, useEffect, useLayoutEffect } from 'react'
 import {
@@ -754,6 +755,7 @@ function WriteLimits({ access }: { access: AgentWriteAccess }) {
 }
 
 export function ReadOnlyStepDetailPanel({
+  editor,
   node,
   workspacePath,
   onClose,
@@ -763,6 +765,7 @@ export function ReadOnlyStepDetailPanel({
   onSetCrewScript,
   onSetCrewAgent,
 }: {
+  editor?: { steps: PlanStep[]; scripts: Array<{ id: string; title: string }>; onSave: (patch: import('../../../utils/stepConfigMatching').PlanStepPatch, config?: import('../../../utils/stepConfigMatching').AgentConfigs) => Promise<void> }
   node: WorkflowNode
   workspacePath: string | null
   onClose: () => void
@@ -827,6 +830,8 @@ export function ReadOnlyStepDetailPanel({
       setOpeningScript(false)
     }
   }, [openingScript, step, workspacePath, onOpenFile])
+
+  if (editor && step?.type === 'agent' && descriptionFirst && workspacePath) return <AgentStepEditor key={step.id} step={step} steps={editor.steps} scripts={editor.scripts} agents={crewAgents} workspacePath={workspacePath} onSave={editor.onSave} onClose={onClose} />
 
   return (
     <aside
@@ -2691,6 +2696,14 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
 
         {selectedFlowNode && (
           <ReadOnlyStepDetailPanel
+            editor={!readOnly && scope && workspacePath ? { steps: plan?.steps || [], scripts: (plan?.orphan_steps || []).filter(s => s.type === 'scripted').map(s => ({ id: s.id, title: s.title })), onSave: async (patch, config) => {
+              const selected = selectedFlowNode.data as WorkflowNodeData
+              const step = ('step' in selected ? selected.step : undefined) as PlanStep | undefined
+              if (!step?.id) throw new Error('Choose a step first.')
+              await agentApi.updatePlanStep(workspacePath, step.id, patch)
+              if (config !== undefined) await agentApi.updateStepConfig(workspacePath, step.id, config)
+              await loadPlanRefresh()
+            } } : undefined}
             onOpenFile={scope ? file => scope.openView('files', file) : undefined}
             crewAgents={scope?.crewAgents}
             crewScripts={scope?.crewScripts}

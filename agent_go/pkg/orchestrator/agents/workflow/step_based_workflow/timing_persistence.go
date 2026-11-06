@@ -605,11 +605,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) markRunMetadataStartedForExecution(ct
 		// This identity belongs to this producing group execution, not to the
 		// long-lived orchestrator instance or mutable iteration-0 slot.
 		meta["execution_id"] = executionID
-		if hcpo.isRelayExecution() {
-			delete(meta, "active_slot_at_start")
-		} else {
-			meta["active_slot_at_start"] = currentWorkflowRunFolder
-		}
+		delete(meta, "active_slot_at_start")
 		meta["plan_revision"] = planRevision
 		meta["run_folder"] = runFolder
 		if opts := hcpo.GetExecutionOptions(); opts != nil && (opts.RunKind == "schedule" || opts.RunKind == "slack") {

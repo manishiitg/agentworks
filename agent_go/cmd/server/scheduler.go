@@ -2767,7 +2767,7 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	if sctx.WebhookInput != nil {
 		messages[0] += " " + webhookRunInputInstruction(webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)) + " This is an isolated webhook invocation. Execute only the saved workflow binding. Do not run AgentWorks, reviewers, post-run backup, publish, or maintenance. Stop after reporting the run result."
 	}
-	runFolder := "iteration-0"
+	runFolder := ""
 	if strings.TrimSpace(sctx.ScheduledRunFolder) != "" {
 		runFolder = strings.TrimSpace(sctx.ScheduledRunFolder)
 	}
@@ -2779,11 +2779,9 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 		}
 	}
 
-	// Snapshot existing run folders before this invocation. A producing saved
-	// schedule is already bound to its immutable iteration-N-sched folder; an
-	// interactive Builder run uses iteration-0 and a webhook is allocated an
-	// iteration-N-hook folder. This snapshot is retained for legacy metadata and
-	// exact-folder outcome reconciliation.
+	// Producing schedules and webhooks are bound to a permanent run. For a
+	// conversation-only invocation the new run, if any, is discovered from
+	// its receipt and metadata instead of assuming a reusable folder.
 	preRunFolders, preRunFoldersErr := s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath)
 	preRunFolders = webhookInvocationFolders(preRunFolders, runFolder, sctx.WebhookInput != nil)
 	preRunFolders = scheduleInvocationFolders(preRunFolders, runFolder, sctx.ScheduledRunFolder != "")
@@ -3061,7 +3059,7 @@ func (s *SchedulerService) preserveRunEvidenceAfterFailedTurn(ctx context.Contex
 	// lost (PLAT-070), and an empty baseline would make every folder look new
 	// and answer "evidence" unconditionally — the opposite error.
 	if folders, listErr := s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath); listErr == nil && sctx.WebhookInput == nil {
-		folders = webhookInvocationFolders(folders, "iteration-0", false)
+		folders = webhookInvocationFolders(folders, sctx.ScheduledRunFolder, false)
 		folders = scheduleInvocationFolders(folders, sctx.ScheduledRunFolder, sctx.ScheduledRunFolder != "")
 		if workshopRunStartedDuringInvocation(folders, since) {
 			sctx.ProducedRunEvidence = true
@@ -3497,7 +3495,7 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 
 	s.applyLLMAndSecretsToReqMap(ctx, reqMap, sctx)
 
-	runFolder := "iteration-0"
+	runFolder := ""
 	if strings.TrimSpace(sctx.ScheduledRunFolder) != "" {
 		runFolder = strings.TrimSpace(sctx.ScheduledRunFolder)
 	}

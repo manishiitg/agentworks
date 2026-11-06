@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -14,28 +13,19 @@ import (
 )
 
 const (
-	runIndexVersion       = 2
+	runIndexVersion       = 3
 	runIndexRelativePath  = "runs/run_index.json"
 	planRevisionDirectory = "planning/revisions"
 )
 
 type workflowRunIndex struct {
-	Version                   int      `json:"version"`
-	ActiveIteration           string   `json:"active_iteration"`
-	RetainedIterations        []string `json:"retained_iterations"`
-	BuilderActiveIteration    string   `json:"builder_active_iteration,omitempty"`
-	BuilderRetainedIterations []string `json:"builder_retained_iterations,omitempty"`
-	ScheduledIterations       []string `json:"scheduled_iterations,omitempty"`
-	WebhookIterations         []string `json:"webhook_iterations,omitempty"`
-	SlackIterations           []string `json:"slack_iterations,omitempty"`
-	LastTransition            string   `json:"last_transition"`
-	FullRunPolicy             string   `json:"full_run_policy"`
-	PartialGroupRunPolicy     string   `json:"partial_group_policy"`
-	UpdatedAt                 string   `json:"updated_at"`
+	Version        int      `json:"version"`
+	Runs           []string `json:"runs"`
+	LastTransition string   `json:"last_transition"`
+	UpdatedAt      string   `json:"updated_at"`
 }
 
 var runIndexWriteLocks sync.Map
-var indexedIterationFolderPattern = regexp.MustCompile(`^iteration-([0-9]+)(?:-(hook|sched|slack-[a-f0-9]+))?$`)
 
 func runIndexWriteLock(workspacePath string) *sync.Mutex {
 	lock, _ := runIndexWriteLocks.LoadOrStore(filepath.Clean(workspacePath), &sync.Mutex{})
@@ -133,52 +123,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) ensureExecutablePlanRevision(ctx cont
 	return revisionID, nil
 }
 
-func retainedIterationNames(folders []string) []string {
-	all, _, _, _ := categorizedIterationNames(folders)
-	return all
-}
-
-func categorizedIterationNames(folders []string) (all, builder, scheduled, webhook []string) {
-	for _, folder := range folders {
-		folder = strings.TrimSpace(folder)
-		if folder == "" || folder == currentWorkflowRunFolder {
-			continue
-		}
-		match := indexedIterationFolderPattern.FindStringSubmatch(folder)
-		if len(match) == 3 {
-			var number int
-			_, _ = fmt.Sscanf(match[1], "%d", &number)
-			if number <= 0 {
-				continue
-			}
-			all = append(all, folder)
-			switch match[2] {
-			case "sched":
-				scheduled = append(scheduled, folder)
-			case "hook":
-				webhook = append(webhook, folder)
-			default:
-				if !strings.HasPrefix(match[2], "slack-") {
-					builder = append(builder, folder)
-				}
-			}
-		}
-	}
-	sortIterations := func(values []string) {
-		sort.Slice(values, func(i, j int) bool {
-			var left, right int
-			_, _ = fmt.Sscanf(values[i], "iteration-%d", &left)
-			_, _ = fmt.Sscanf(values[j], "iteration-%d", &right)
-			return left < right
-		})
-	}
-	sortIterations(all)
-	sortIterations(builder)
-	sortIterations(scheduled)
-	sortIterations(webhook)
-	return all, builder, scheduled, webhook
-}
-
 func (hcpo *StepBasedWorkflowOrchestrator) writeRunIndex(ctx context.Context, transition string) error {
 	lock := runIndexWriteLock(hcpo.GetWorkspacePath())
 	lock.Lock()
@@ -188,26 +132,18 @@ func (hcpo *StepBasedWorkflowOrchestrator) writeRunIndex(ctx context.Context, tr
 	if err != nil {
 		return fmt.Errorf("list run folders for provenance index: %w", err)
 	}
-	retained, builderRetained, scheduled, webhooks := categorizedIterationNames(folders)
-	var slack []string
-	for _, folder := range retained {
-		if strings.Contains(folder, "-slack-") {
-			slack = append(slack, folder)
+	runs := folders[:0]
+	for _, folder := range folders {
+		if IsPermanentRunFolder(folder) {
+			runs = append(runs, folder)
 		}
 	}
+	folders = runs
+	sort.Strings(folders)
 	index := workflowRunIndex{
-		Version:                   runIndexVersion,
-		ActiveIteration:           currentWorkflowRunFolder,
-		RetainedIterations:        retained,
-		BuilderActiveIteration:    currentWorkflowRunFolder,
-		BuilderRetainedIterations: builderRetained,
-		ScheduledIterations:       scheduled,
-		WebhookIterations:         webhooks,
-		SlackIterations:           slack,
-		LastTransition:            strings.TrimSpace(transition),
-		FullRunPolicy:             "rotate_iteration_0_to_next_available_iteration",
-		PartialGroupRunPolicy:     "reuse_iteration_0",
-		UpdatedAt:                 time.Now().UTC().Format(time.RFC3339Nano),
+		Version: runIndexVersion, Runs: folders,
+		LastTransition: strings.TrimSpace(transition),
+		UpdatedAt:      time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	encoded, err := json.MarshalIndent(index, "", "  ")
 	if err != nil {

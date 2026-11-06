@@ -156,6 +156,21 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 			used = append(used, label+": "+err.Error())
 		}
 	}
+
+	var plan workflow.PlanningResponse
+	if err := readProjectEntryFile(ctx, root, "planning/plan.json", &plan); err != nil {
+		return err
+	}
+	for step, names := range workflow.WorkflowStepInputReferences(&plan) {
+		for _, name := range names {
+			input, exists := current[name]
+			before, wasDefined := old[name]
+			if !exists || wasDefined && (workflow.WorkflowInputType(input) != workflow.WorkflowInputType(before) || !reflect.DeepEqual(input.Schema, before.Schema)) {
+				used = append(used, "step "+step)
+				break
+			}
+		}
+	}
 	functions, err := readProjectFunctionDefinitions(ctx, root)
 	if err != nil {
 		return err
@@ -203,7 +218,7 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 	if len(used) > 0 {
 		slices.Sort(used)
 		used = slices.Compact(used)
-		return fmt.Errorf("these input changes affect saved entry points. Used by: %s. Update them first, then save Inputs", strings.Join(used, ", "))
+		return fmt.Errorf("these input changes affect saved steps or entry points. Used by: %s. Update them first, then save Inputs", strings.Join(used, ", "))
 	}
 	return nil
 }
