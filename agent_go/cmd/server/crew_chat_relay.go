@@ -400,11 +400,19 @@ func crewMacOffRead(owner, project, generation, operation string) crewChatResult
 			events = append(events, envelope.Events...)
 		}
 	}
+	// Always on: an agent with a copy on this server shows that copy's conversation, so a teammate (or the owner on
+	// the website) sees the chat while the Mac is off, also after this server restarted and its relay cache is empty.
+	onMac := true
+	if len(events) == 0 {
+		if copied := crewStandbyHistoryEvents(project, generation); len(copied) > 0 {
+			events, onMac = copied, false
+		}
+	}
 	if len(events) > 200 {
 		events = events[len(events)-200:]
 	}
-	body, _ := json.Marshal(map[string]any{"events": events, "last_processed_index": crewRelayLastSeq(batches), "has_more": false, "mac_off": true, "history_on_mac": true})
-	log.Printf("[CREW_RELAY] mac off read owner=%s project=%s conversation=%s operation=%s events=%d", owner, project, generation, operation, len(events))
+	body, _ := json.Marshal(map[string]any{"events": events, "last_processed_index": crewRelayLastSeq(batches), "has_more": false, "mac_off": true, "history_on_mac": onMac})
+	log.Printf("[CREW_RELAY] mac off read owner=%s project=%s conversation=%s operation=%s events=%d from_copy=%t", owner, project, generation, operation, len(events), !onMac)
 	return crewChatResult{Status: 200, Body: body}
 }
 
