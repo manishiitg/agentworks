@@ -19,6 +19,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/pathidentity"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
@@ -78,6 +79,11 @@ func (api *StreamingAPI) crewProgramStore(ctx context.Context, claims *UserClaim
 	if _, err = api.admitProviderAccount(ctx, providerAccountScope{Principal: claims.UserID, WorkspacePath: roots.Virtual, Product: "crew"}, c.Provider, id); err != nil {
 		return "", "", err
 	}
+	if c.Provider == "pi-cli" {
+		// Pi keeps its journal in the runtime folder (not in an account home); the session's own folder
+		// is chosen by crewPiStore, because it is named from the native session id.
+		return runtimeDir, runtimeDir, nil
+	}
 	target, err := api.resolveProviderAccountTarget(ctx, id, c.Provider)
 	if err != nil {
 		return "", "", err
@@ -134,7 +140,7 @@ func (api *StreamingAPI) captureCrewNative(ctx context.Context, claims *UserClai
 		return nil, nil
 	}
 	h := runtime.AgentSessionHandle.Provider
-	if c.Provider != "claude-code" && c.Provider != "codex-cli" && c.Provider != "cursor-cli" && c.Provider != "muse-cli" {
+	if c.Provider != "claude-code" && c.Provider != "codex-cli" && c.Provider != "cursor-cli" && c.Provider != "muse-cli" && c.Provider != "pi-cli" {
 		return nil, nil
 	}
 	cwd, e := crewCLIWorkingDir(roots.Virtual, claims.UserID, c.SessionID, c.Provider, false)
@@ -175,7 +181,24 @@ func exportCrewProgram(store, cwd, id, provider, transport, out string, remember
 		}
 		return nil, fmt.Errorf("this Cursor runtime has no portable native store; continued from saved conversation history")
 	}
+	if provider == "pi-cli" {
+		piStore, err := crewPiStore(store, id, false)
+		if err != nil {
+			return nil, err
+		}
+		store = piStore
+	}
 	return sessiontransfer.ExportJSONL(provider, transport, store, cwd, id, out)
+}
+
+// crewPiStore is the folder Pi writes one native session into, below the conversation's runtime folder. The agent
+// can write inside its runtime, so every component is checked for links, like the Muse home above.
+func crewPiStore(runtimeDir, id string, create bool) (string, error) {
+	rel, err := filepath.Rel(runtimeDir, picli.SessionStoreDir(runtimeDir, id))
+	if err != nil {
+		return "", err
+	}
+	return sessiontransfer.PathDirectory(runtimeDir, filepath.ToSlash(rel), create)
 }
 
 func crewNativeRuntimeAvailable(ctx context.Context, b *sessiontransfer.Bundle) error {
@@ -198,6 +221,13 @@ func crewNativeRuntimeAvailable(ctx context.Context, b *sessiontransfer.Bundle) 
 		if _, err := exec.LookPath("tmux"); err != nil {
 			return fmt.Errorf("this computer cannot open the saved terminal agent; continued from saved conversation history")
 		}
+	}
+	if b.Provider == "pi-cli" {
+		// Pi starts from an installed copy, PI_BIN or its npx fallback.
+		if picli.CommandAvailable() != nil {
+			return fmt.Errorf("this AI program is unavailable on this computer; continued from saved conversation history")
+		}
+		return nil
 	}
 	command := map[string]string{"claude-code": "claude", "codex-cli": "codex", "cursor-cli": "cursor-agent", "muse-cli": "muse"}[b.Provider]
 	if _, err := exec.LookPath(command); err != nil {
@@ -309,6 +339,11 @@ func (api *StreamingAPI) importCrewNativeInto(ctx context.Context, claims *UserC
 			e = sessiontransfer.ImportCursorSDK(store, cwd, b)
 		case "cursor-cli-sqlite":
 			e = sessiontransfer.ImportCursorCLI(store, cwd, b)
+		case "pi-jsonl":
+			var piStore string
+			if piStore, e = crewPiStore(store, b.SessionID, true); e == nil {
+				e = sessiontransfer.ImportJSONL(piStore, cwd, b)
+			}
 		default:
 			e = sessiontransfer.ImportJSONL(store, cwd, b)
 		}
