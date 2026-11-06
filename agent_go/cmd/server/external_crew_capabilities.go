@@ -18,6 +18,8 @@ import (
 // These groups reuse the website/chat registrars. Their external transport
 // supplies identity and the resolved Crew root, never an arbitrary workspace.
 var externalCrewCapabilities = map[string]map[string]string{
+	"crew_workflows":  {"list": "crew_workflow_files", "create": "crew_workflow_files", "read": "crew_workflow_files", "write": "crew_workflow_files", "describe": "crew_workflow_files", "edit": "crew_workflow_files"},
+	"crew_goals":      {"list": "crew_goals", "save": "crew_goals", "record": "crew_goals"},
 	"crew_skills":     {"list": "list_skills", "search": "search_skills", "install": "install_skill", "import": "import_skill", "uninstall": "uninstall_skill"},
 	"crew_mcp":        {"list": "list_mcp_servers", "search": "search_mcp_catalog", "install": "install_mcp_server", "remove": "remove_mcp_server", "discover": "trigger_mcp_discovery"},
 	"crew_folders":    {"list": "list_work_folders", "attach": "attach_work_folder", "detach": "detach_work_folder"},
@@ -65,6 +67,10 @@ func (r crewCapabilityRegistrar) RegisterCustomToolWithTimeout(name, description
 func (api *StreamingAPI) crewCapabilityTools(group, user, root string, sessionIDs ...string) (crewCapabilityRegistrar, error) {
 	reg := crewCapabilityRegistrar{}
 	switch group {
+	case "crew_workflows":
+		return reg, api.registerCrewExecutableFileTools(reg, user, root)
+	case "crew_goals":
+		return reg, api.registerCrewGoalTools(reg, user, root)
 	case "crew_skills":
 		return reg, api.registerMultiAgentSkillToolsIn(reg, nil, "work", root+"/skills")
 	case "crew_mcp":
@@ -89,8 +95,10 @@ func (api *StreamingAPI) crewCapabilityTools(group, user, root string, sessionID
 }
 func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) error {
 	api := &StreamingAPI{}
-	groups := []string{"crew_skills", "crew_mcp", "crew_folders", "crew_references"}
+	groups := []string{"crew_workflows", "crew_goals", "crew_skills", "crew_mcp", "crew_folders", "crew_references"}
 	descriptions := map[string]string{
+		"crew_workflows":  "Create and edit workflows and saved scripts inside this Crew. describe returns native editing schemas; edit changes named steps or inputs. Source lives under the Crew automation folder; runtime history stays separate. Run with functions action=run_trigger.",
+		"crew_goals":      "Read this Crew’s goals and progress, save a goal with its metrics, or record source-backed observations. Other goals and saved observations are preserved.",
 		"crew_skills":     "Discover, search, install, import or uninstall skills in this Crew. Use settings to select installed skills. GitHub imports accept the same optional private-repository token as the website tool.",
 		"crew_mcp":        "List connections/catalog, search, install/attach using the exact name returned by list, or catalog; for a new verified remote MCP pass name and url. Complete API key or OAuth app setup in chat using the install action's encrypted credential fields, return the real sign-in link, then verify discovery. Never repeat credentials. Removing detaches only this Crew, preserving other projects and logins. Use settings to select connections.",
 		"crew_folders":    "List, attach or detach this account's additional server folders within administrator-assigned roots. This changes all of the account's Crews, so it requires consent for all Crews without a file guard.",
@@ -127,7 +135,7 @@ func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[
 	return nil
 }
 func crewCapabilityRead(action string) bool {
-	return action == "list" || action == "search" || action == "discover"
+	return action == "list" || action == "search" || action == "discover" || action == "read" || action == "describe"
 }
 
 // Bulk package installation/removal must be allowed over the entire subtree;
@@ -192,9 +200,19 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		externalFailure(w, err)
 		return
 	}
-	feature := map[string]string{"crew_skills": "skills", "crew_mcp": "mcp", "crew_folders": "attached-folders", "crew_references": "workflow-references"}[group]
-	if !agentprofiles.HasFeature(profile, feature) || !containsExactString(profile.ToolPolicy.Enabled, member) {
+	feature := map[string]string{"crew_workflows": "workflow-references", "crew_goals": "workflow-references", "crew_skills": "skills", "crew_mcp": "mcp", "crew_folders": "attached-folders", "crew_references": "workflow-references"}[group]
+	nativeCrewAutomation := group == "crew_workflows" || group == "crew_goals"
+	if !agentprofiles.HasFeature(profile, feature) || (!nativeCrewAutomation && !containsExactString(profile.ToolPolicy.Enabled, member)) {
 		externalError(w, 404, "tool_unavailable", "This Crew profile does not enable this capability.")
+		return
+	}
+	// These native tools resolve managed child files/ledgers. Narrowed file grants
+	// cannot grant that entire operation through a different transport.
+	if nativeCrewAutomation && token != nil && token.FileGuard != nil {
+		externalError(w, 403, "protected_path", "This action needs access to the Crew automation files. Use a connection with full Crew file access.")
+		return
+	}
+	if nativeCrewAutomation && write && refuseCrewOwnerOnline(w, r, id, claims.UserID) {
 		return
 	}
 	if group == "crew_skills" && action != "search" && action != "list" && !crewCapabilitySubtreeAllowed(externalFileGuard(r.Context(), true), "skills", write) {
@@ -263,6 +281,9 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 			params[key] = value
 		}
 	}
+	if nativeCrewAutomation {
+		params["action"] = action
+	}
 	compiler := jsonschema.NewCompiler()
 	if err = compiler.AddResource("crew-capability.json", tool.schema); err != nil {
 		externalFailure(w, err)
@@ -278,6 +299,9 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		return
 	}
 	ctx := context.WithValue(r.Context(), externalCrewMCPPlaceKey{}, root)
+	if nativeCrewAutomation {
+		ctx = context.WithValue(ctx, externalCrewDirectAuthorityKey{}, externalCrewDirectAuthority{crewID: id, root: root, user: claims.UserID})
+	}
 	result, err := tool.execute(ctx, params)
 	if err != nil {
 		externalError(w, 400, "capability_rejected", err.Error())

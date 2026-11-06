@@ -40,7 +40,8 @@ describe('fresh deep links keep their view', () => {
 
   it('keeps a route view only while its panel is enabled', () => {
     expect(isWorkWorkspaceViewEnabled('schedules', new Set(['schedules']))).toBe(true)
-    expect(isWorkWorkspaceViewEnabled('schedules', new Set(['files']))).toBe(false)
+    // Automations includes Crew workflows and scripts even without timers enabled.
+    expect(isWorkWorkspaceViewEnabled('schedules', new Set(['files']))).toBe(true)
     expect(isWorkWorkspaceViewEnabled('costs', new Set(['files']))).toBe(false)
   })
 

@@ -413,3 +413,65 @@ func TestCrewMCPDiscoveryRefreshesCache(t *testing.T) {
 		t.Fatalf("discovery did not publish fresh cache: %+v (%v)", entry, found)
 	}
 }
+
+// PLAT-746: the external MCP/CLI catalog must reach the same saved-script
+// authoring path as Crew chat, while keeping current account and file consent.
+func TestExternalCrewAutomationAuthoringOverMCP(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	srv := serveExternalMCP(t, f.api, crewWriter("owner"))
+	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, cli)
+	call := func(action string, args map[string]any) string {
+		t.Helper()
+		args["crew_id"], args["action"] = "team", "automation_"+action
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "workspace", "arguments": args})
+		requireRemoteSuccess(t, result, action)
+		return marshalStructured(t, result)
+	}
+	call("create", map[string]any{"kind": "script", "name": "MCP saved script"})
+	bindings, err := readCrewExecutables()
+	if err != nil || len(bindings) != 1 {
+		t.Fatalf("saved binding: %v %v", bindings, err)
+	}
+	var root string
+	for _, binding := range bindings {
+		root = binding.Root
+	}
+	call("write", map[string]any{"workspace_path": root, "file": "main.py", "content": "print('saved through MCP')\n"})
+	if got := call("read", map[string]any{"workspace_path": root, "file": "main.py"}); !strings.Contains(got, "saved through MCP") {
+		t.Fatal(got)
+	}
+	call("describe", map[string]any{"operation": "update_step"})
+	call("create", map[string]any{"kind": "workflow", "name": "MCP workflow"})
+	bindings, _ = readCrewExecutables()
+	var workflowRoot string
+	for _, binding := range bindings {
+		if binding.Kind == "workflow" {
+			workflowRoot = binding.Root
+		}
+	}
+	call("edit", map[string]any{"workspace_path": workflowRoot, "operation": "update_variable", "arguments": map[string]any{"action": "add", "name": "count", "type": "integer", "value": "2"}})
+	if got := call("read", map[string]any{"workspace_path": workflowRoot, "file": "variables/variables.json"}); !strings.Contains(got, "count") {
+		t.Fatal(got)
+	}
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", map[string]any{"action": "automation_write", "workspace_path": workflowRoot, "file": "planning/plan.json", "content": "{}"}, 400)
+	goal := map[string]any{"id": "report", "name": "Report quality", "outcome": "Produce a complete report", "status": "active"}
+	result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "metrics", "arguments": map[string]any{"crew_id": "team", "action": "crew_save", "goal": goal, "metrics": []any{}}})
+	requireRemoteSuccess(t, result, "save goal")
+	if got := crewCapabilityHTTP(t, f, crewReader("other"), "metrics", map[string]any{"action": "crew_list"}, 200); !strings.Contains(got, "Report quality") {
+		t.Fatal(got)
+	}
+	crewCapabilityHTTP(t, f, crewReader("other"), "metrics", map[string]any{"action": "crew_save", "goal": goal, "metrics": []any{}}, 403)
+
+	for _, claims := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
+		crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "automation_create", "kind": "script", "name": "Refused"}, 403)
+	}
+	guarded := crewWriter("owner")
+	guarded.AccessToken.FileGuard = &wf.FolderGuard{ReadPaths: []string{"code"}, WritePaths: []string{"code"}}
+	crewCapabilityHTTP(t, f, guarded, "workspace", map[string]any{"action": "automation_write", "workspace_path": root, "file": "main.py", "content": "no"}, 403)
+}

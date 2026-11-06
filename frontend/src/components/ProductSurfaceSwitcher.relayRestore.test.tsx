@@ -30,7 +30,7 @@ function Navigation() {
   return <><ProductTopBar><ProductSurfaceSwitcher /></ProductTopBar><h1>{product}</h1></>
 }
 
-it.each([false, true])('keeps Flows selected with saved Goal tabs (saved Flow tab: %s)', async hasRelayTab => {
+it.each([false, true])('keeps saved Goal history when a disabled Flow is also remembered (saved Flow tab: %s)', async hasRelayTab => {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays'] }
   useProductSurfaceStore.setState({ productSurface: 'agentworks' })
   useModeStore.setState({ selectedModeCategory: 'workflow' })
@@ -48,21 +48,13 @@ it.each([false, true])('keeps Flows selected with saved Goal tabs (saved Flow ta
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   try {
     await act(async () => root.render(<Navigation />))
-    const select = async (label: string) => {
-      await act(async () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!.click())
-      await act(async () => host.querySelector<HTMLButtonElement>(`[role="menuitem"][aria-label="${label}"]`)!.click())
-    }
-    for (let attempt = 0; attempt < 2; attempt++) {
-      await select('Flows')
-      expect(host.querySelector('h1')?.textContent).toBe('relays')
-      expect(useChatStore.getState().activeTabId).toBe(relayTabId)
-      expect(useGlobalPresetStore.getState().activePresetIds.workflow).toBe(hasRelayTab ? relay.id : null)
-      // Returning to Goals restores the saved Goal, without deleting either tab.
-      await select('Goals')
-      expect(host.querySelector('h1')?.textContent).toBe('agentworks')
-      expect(useChatStore.getState().activeTabId).toBe(goalTabId)
-      expect(useChatStore.getState().chatTabs[goalTabId]).toBeDefined()
-    }
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!.click())
+    expect(host.querySelector('[role="menuitem"][aria-label="Flows"]')).toBeNull()
+    expect(useProductSurfaceStore.getState().productSurface).toBe('agentworks')
+    expect(useChatStore.getState().activeTabId).toBe(goalTabId)
+    expect(useChatStore.getState().chatTabs[goalTabId]).toBeDefined()
+    if (relayTabId) expect(useChatStore.getState().chatTabs[relayTabId]).toBeDefined()
+
   } finally {
     await act(async () => root.unmount()); host.remove(); delete window.__APP_RUNTIME_CONFIG__; vi.restoreAllMocks()
   }

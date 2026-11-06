@@ -19,8 +19,8 @@ describe('workflowSurfaceForPreset', () => {
     ;(window as unknown as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays'] }
   })
 
-  it('opens a Relay in Relays and everything else in Goals', () => {
-    expect(workflowSurfaceForPreset('r1')).toBe('relays')
+  it('does not navigate saved Relay presets into the disabled product', () => {
+    expect(workflowSurfaceForPreset('r1')).toBe('agentworks')
     expect(workflowSurfaceForPreset('g1')).toBe('agentworks')
     expect(workflowSurfaceForPreset('unknown')).toBe('agentworks')
     expect(workflowSurfaceForPreset(undefined)).toBe('agentworks')

@@ -195,7 +195,7 @@ func recordCrewGoalObservations(ctx context.Context, root, source string, observ
 
 func (api *StreamingAPI) registerCrewGoalTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
 	metric, observation := goalMetricSchemas()
-	return registrar.RegisterCustomTool("crew_goals", "Track goals inside this Crew; read panel-plan references/crew-plan/SKILL.md for details. list returns progress and evidence. save updates one goal and its complete metrics list, preserving other goals and observations. record adds source-backed measurements. Reuse IDs; never invent targets or evidence, or infer achievement from successful runs.", map[string]any{
+	return registrar.RegisterCustomTool("crew_goals", "Track goals inside this Crew. list returns progress and evidence. save updates one goal and its complete metrics list, preserving other goals and observations. record adds source-backed measurements. Reuse IDs; never invent targets or evidence, or infer achievement from successful runs.", map[string]any{
 		"type": "object", "required": []string{"action"}, "properties": map[string]any{
 			"action": map[string]any{"type": "string", "enum": []string{"list", "save", "record"}},
 			"goal": map[string]any{"type": "object", "properties": map[string]any{

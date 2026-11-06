@@ -74,14 +74,14 @@ describe('ScheduleListView run destination', () => {
 })
 
 describe('ScheduleListView declutter', () => {
-  it('hides a single group but shows multiple groups', async () => {
+  it('does not show retired group selectors from old schedule records', async () => {
     const { host, unmount } = await renderList([
       job({ id: 'a', name: 'Solo', group_names: ['Default Group'], run_count: 1 }),
       job({ id: 'b', name: 'Multi', group_names: ['Team A', 'Team B'], run_count: 1 }),
     ])
     try {
       expect(host.textContent).not.toContain('Default Group')
-      expect(host.textContent).toContain('Groups: Team A, Team B')
+      expect(host.textContent).not.toContain('Groups:')
     } finally {
       await unmount()
     }
