@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
@@ -200,13 +201,62 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	if saved.agentRule("owner", "e139c703").WhenOthersAsk != "Ask me first." || saved.agentRule("member", memberMain).WhenOthersAsk != "Ask me first." {
 		t.Fatalf("rules not kept: %+v", saved.AgentRules)
 	}
-	// Public on AgentBridge from the website (owner, 6 Nov): only the Crew's owner switches it, through their Mac; a
-	// Team member is refused by the owner rule, and the owner is told plainly while the Mac is offline (no Mac here).
-	if w := call("member", "agentbridge", `{"tab":"e139c703","public":true}`); w.Code != 403 || !strings.Contains(w.Body.String(), "agentbridge_owner_only") {
-		t.Fatalf("member switched the owner's AgentBridge: %d %s", w.Code, w.Body.String())
-	}
+	// Public on AgentBridge from the website (owner, 6 Nov): anyone in the Team switches THEIR OWN agent, through their
+	// own Mac; the call never reaches another person's Mac. A person whose Mac is off is told plainly (no Mac here).
 	if w := call("owner", "agentbridge", `{"tab":"e139c703","public":true}`); w.Code != 409 || !strings.Contains(w.Body.String(), crewAgentBridgeMacOffline) {
 		t.Fatalf("owner's AgentBridge with the Mac offline: %d %s", w.Code, w.Body.String())
+	}
+	if w := call("member", "agentbridge", `{"tab":"e139c703","public":true}`); w.Code != 409 || !strings.Contains(w.Body.String(), "mac_offline") {
+		t.Fatalf("member without a paired Mac was not told it is offline: %d %s", w.Code, w.Body.String())
+	}
+	team, _ = readCrewTeam(team.ProjectID)
+	team.People[0].Where, team.People[0].MacPair = "mac", "member-pair" // "member": their agents work on their own Mac
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	sent := map[string][]crewChatCall{}
+	for _, who := range []string{"owner", "member"} {
+		sock := &crewMacSocket{owner: who, device: who + "-mac", twins: map[string]string{team.ProjectID: map[string]string{"owner": "pair", "member": "member-pair"}[who]}, lastSeen: time.Now(),
+			pending: map[string]chan crewChatResult{}, dispatched: map[string]chan struct{}{}}
+		who := who
+		sock.send = func(m crewRelayMessage) error {
+			sent[who] = append(sent[who], *m.Call)
+			sock.mu.Lock()
+			sock.pending[m.Call.ID] <- crewChatResult{ID: m.Call.ID, Status: 200, Body: []byte(`{}`)}
+			sock.mu.Unlock()
+			return nil
+		}
+		crewMacSockets.Lock()
+		crewMacSockets.byDevice[who+"-mac"] = sock
+		crewMacSockets.Unlock()
+		defer func(device string) {
+			crewMacSockets.Lock()
+			delete(crewMacSockets.byDevice, device)
+			crewMacSockets.Unlock()
+		}(who + "-mac")
+	}
+	if w := call("member", "agentbridge", `{"tab":"aaaa1111","public":true}`); w.Code != 200 || len(sent["member"]) != 1 || sent["member"][0].Operation != "agentbridge" || sent["member"][0].Action != "public" || len(sent["owner"]) != 0 {
+		t.Fatalf("member's own agent was not made public through their own Mac: %d %s sent=%+v", w.Code, w.Body.String(), sent)
+	}
+	// Someone not in the Team, and a person invited but not yet joined, are refused by the Team rule (team_forbidden),
+	// and nothing reaches any Mac.
+	team, _ = readCrewTeam(team.ProjectID)
+	team.People[1].Invited = true // "teammate"
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	for _, who := range []string{"outsider", "teammate"} {
+		if w := call(who, "agentbridge", `{"tab":"aaaa1111","public":true}`); w.Code != 403 || !strings.Contains(w.Body.String(), "team_forbidden") {
+			t.Fatalf("%s was not refused by the Team rule: %d %s", who, w.Code, w.Body.String())
+		}
+	}
+	if len(sent["member"]) != 1 || len(sent["owner"]) != 0 {
+		t.Fatalf("a refused call reached a Mac: %+v", sent)
+	}
+	team, _ = readCrewTeam(team.ProjectID)
+	team.People[0].Where, team.People[0].MacPair, team.People[1].Invited = "", "", false
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
 	}
 	if w := call("member", "leave", `{}`); w.Code != 200 {
 		t.Fatalf("leave: %d %s", w.Code, w.Body.String())
