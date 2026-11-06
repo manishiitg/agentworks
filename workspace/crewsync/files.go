@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -16,6 +17,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
@@ -27,10 +29,12 @@ type File struct {
 }
 type Manifest map[string]File
 type Change struct {
-	Path     string `json:"path"`
-	Before   *File  `json:"before,omitempty"`
-	After    *File  `json:"after,omitempty"`
-	DataPath string `json:"-"`
+	Path   string `json:"path"`
+	Before *File  `json:"before,omitempty"`
+	After  *File  `json:"after,omitempty"`
+	// Chunks are After's content chunks: what a move sends (workspace/chunks).
+	Chunks   []chunks.Chunk `json:"chunks,omitempty"`
+	DataPath string         `json:"-"`
 }
 type ContentSnapshot struct {
 	Base       string `json:"base"`
@@ -45,16 +49,18 @@ type Payload struct {
 }
 
 type Snapshot struct {
-	DatabasePath string             `json:"-"` // consistent Crew database snapshot, never a live SQLite file
-	StatePath    string             `json:"-"` // owner-scoped move records, admitted separately from working files
-	DecodedDir   string             `json:"-"`
-	StagingDir   string             `json:"-"`
-	Payloads     map[string]Payload `json:"payloads,omitempty"`
-	Content      *ContentSnapshot   `json:"content,omitempty"`
-	Omitted      []string           `json:"omitted,omitempty"`
-	Git          *GitSnapshot       `json:"git,omitempty"`
-	Files        Manifest           `json:"files"`
-	Changes      []Change           `json:"changes"`
+	DatabasePath string `json:"-"` // consistent Crew database snapshot, never a live SQLite file
+	StatePath    string `json:"-"` // owner-scoped move records, admitted separately from working files
+	StagingDir   string `json:"-"`
+	// What a capture did: files hashed by reading, files whose hash came from the cache, private copies made (each one
+	// more read of that file), reads repeated because a file changed.
+	Read, Reused, Copied, Retried int                `json:"-"`
+	Payloads                      map[string]Payload `json:"payloads,omitempty"`
+	Content                       *ContentSnapshot   `json:"content,omitempty"`
+	Omitted                       []string           `json:"omitted,omitempty"`
+	Git                           *GitSnapshot       `json:"git,omitempty"`
+	Files                         Manifest           `json:"files"`
+	Changes                       []Change           `json:"changes"`
 }
 
 // Both send and receive use this policy. Project ignore rules are additionally
@@ -100,7 +106,7 @@ func copyChecked(ctx context.Context, dst io.Writer, src io.Reader, expected Fil
 		return err
 	}
 	if n != expected.Size || hex.EncodeToString(h.Sum(nil)) != expected.Hash {
-		return fmt.Errorf("project file changed during capture or does not match its snapshot")
+		return fmt.Errorf("project file does not match its snapshot: %w", ErrFileChanged)
 	}
 	return nil
 }
@@ -149,10 +155,6 @@ func readFile(ctx context.Context, root, rel string, dst io.Writer) (File, error
 // Close removes only this operation's generated files, never working files or
 // an admitted transfer's frozen artifacts. Call on capture errors as well.
 func (s *Snapshot) Close() {
-	if s.DecodedDir != "" {
-		_ = os.RemoveAll(s.DecodedDir)
-		s.DecodedDir = ""
-	}
 	if s.StagingDir != "" {
 		_ = os.RemoveAll(s.StagingDir)
 		s.StagingDir = ""
@@ -169,6 +171,83 @@ func Capture(ctx context.Context, roots crewroot.Roots, previous Manifest, priva
 // The ordinary sync exclusions still apply; selection cannot admit private state,
 // symlinks, ignored files or generated dependencies. A nil selection means all.
 func CaptureSelected(ctx context.Context, roots crewroot.Roots, previous Manifest, privateStageRoot string, include func(string, bool) bool) (out Snapshot, err error) {
+	return CaptureCached(ctx, roots, previous, privateStageRoot, include, Cache{})
+}
+
+// captureTries is how often a file that keeps changing is read before a capture gives up on it (review 6 Nov).
+const captureTries = 3
+
+// BusyFileError is a file that kept changing through every read: a move cannot leave it out, so the person decides.
+type BusyFileError struct{ Key string }
+
+func (e *BusyFileError) Error() string {
+	_, name, _ := strings.Cut(e.Key, "/")
+	return name + " keeps changing, so this Crew can't be sent yet. Stop the agent writing to it, then try again."
+}
+
+// readCaptureFile is Cache.Read; a test makes a file change on purpose.
+var readCaptureFile = Cache.Read
+
+// captureFile reads one file (or reuses it from the cache) and, when it differs from what the other side has, keeps a
+// private copy to send: a transfer can resume after the working file moved on. Unchanged files are neither read nor
+// copied.
+func captureFile(ctx context.Context, roots crewroot.Roots, cache Cache, root, rel, key string, previous Manifest, out *Snapshot) (File, Change, bool, error) {
+	before, exists := previous[key]
+	for try := 1; ; try++ {
+		cached, read, err := readCaptureFile(cache, ctx, root, rel, key)
+		file := cached.File
+		if err == nil {
+			// NTFS does not represent the Unix execute bit. Keep its last synced
+			// value so editing a script on Windows does not make it non-executable.
+			if runtime.GOOS == "windows" && exists {
+				file.Executable = before.Executable
+			}
+			if exists && before == file {
+				out.count(read)
+				return file, Change{}, false, nil
+			}
+			var stage *os.File
+			if stage, err = os.CreateTemp(out.StagingDir, "file-"); err == nil {
+				err = CopyContent(ctx, stage, roots, key, file)
+				if closeErr := stage.Close(); err == nil {
+					err = closeErr
+				}
+			}
+			if err == nil {
+				out.count(read)
+				out.Copied++
+				change := Change{Path: key, After: &file, Chunks: cached.Chunks, DataPath: stage.Name()}
+				if exists {
+					change.Before = &before
+				}
+				return file, change, true, nil
+			}
+			if stage != nil {
+				_ = os.Remove(stage.Name())
+			}
+		}
+		if !errors.Is(err, ErrFileChanged) {
+			return File{}, Change{}, false, err
+		}
+		delete(cache, key)
+		if try == captureTries {
+			return File{}, Change{}, false, &BusyFileError{Key: key}
+		}
+		out.Retried++
+	}
+}
+
+func (s *Snapshot) count(read bool) {
+	if read {
+		s.Read++
+	} else {
+		s.Reused++
+	}
+}
+
+// CaptureCached is CaptureSelected with this Crew's cache of what it read before (cache.go): a file whose stamp is
+// unchanged is not read. The caller saves the cache.
+func CaptureCached(ctx context.Context, roots crewroot.Roots, previous Manifest, privateStageRoot string, include func(string, bool) bool, cache Cache) (out Snapshot, err error) {
 	out = Snapshot{Files: Manifest{}, Changes: []Change{}}
 	if privateStageRoot == "" {
 		return out, fmt.Errorf("private sync staging directory is required")
@@ -225,7 +304,7 @@ func CaptureSelected(ctx context.Context, roots crewroot.Roots, previous Manifes
 			if entry.Type()&os.ModeSymlink != 0 {
 				return nil
 			}
-			file, err := readFile(ctx, area.root, rel, io.Discard)
+			file, change, changed, err := captureFile(ctx, roots, cache, area.root, rel, key, previous, &out)
 			if err != nil {
 				return err
 			}
@@ -233,30 +312,8 @@ func CaptureSelected(ctx context.Context, roots crewroot.Roots, previous Manifes
 			if total > SyncLimits(ctx).Bytes || len(out.Files) >= SyncLimits(ctx).Files {
 				return fmt.Errorf("project exceeds %d GB or %d files; exclude generated files before syncing", SyncLimits(ctx).Bytes>>30, SyncLimits(ctx).Files)
 			}
-			before, exists := previous[key]
-			// NTFS does not represent the Unix execute bit. Keep its last synced
-			// value so editing a script on Windows does not make it non-executable.
-			if runtime.GOOS == "windows" && exists {
-				file.Executable = before.Executable
-			}
 			out.Files[key] = file
-			if !exists || before != file {
-				stage, err := os.CreateTemp(out.StagingDir, "file-")
-				if err != nil {
-					return err
-				}
-				err = CopyContent(ctx, stage, roots, key, file)
-				closeErr := stage.Close()
-				if err != nil {
-					return err
-				}
-				if closeErr != nil {
-					return closeErr
-				}
-				change := Change{Path: key, After: &file, DataPath: stage.Name()}
-				if exists {
-					change.Before = &before
-				}
+			if changed {
 				out.Changes = append(out.Changes, change)
 			}
 			return nil
@@ -428,12 +485,12 @@ func CopyContent(ctx context.Context, dst io.Writer, roots crewroot.Roots, key s
 		return err
 	}
 	if !sameFile(actual, expected) {
-		return fmt.Errorf("%s changed during capture; retry sync", key)
+		return fmt.Errorf("%s: %w", key, ErrFileChanged)
 	}
 	return nil
 }
 
-// DataPath is populated only by local capture or the verified bundle decoder;
+// DataPath is populated only by local capture or the checked transfer files;
 // it is never accepted from JSON metadata.
 func (c Change) CopyTo(ctx context.Context, dst io.Writer) error {
 	return c.copyTo(ctx, dst, SyncLimits(ctx).FileBytes)

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
@@ -147,9 +146,6 @@ func TestPublishAgentContentBundleKeepsOtherAgentAndPrivateFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer snapshot.Close()
-	if err = (filesnapshots.Store{Root: source.Files, Private: source.Private}).EncodeSync(t.Context(), "pair-agent", source, &snapshot); err != nil {
-		t.Fatal(err)
-	}
 	scoped, err := crewAgentScopedRoots(destination, "writer")
 	if err != nil {
 		t.Fatal(err)
