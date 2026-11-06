@@ -192,7 +192,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           <ChevronDown aria-hidden="true" className="h-3 w-3" />
         </button>}
       </>}
-      {onRename && !isBlank && (
+      {onRename && !isBlank && !agent?.info && (
         <button
           type="button"
           onClick={(event) => { event.stopPropagation(); setRenameDraft(tab.name); setIsRenaming(true) }}
