@@ -93,7 +93,7 @@ func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTe
 		// Named like the left menu: its own name, Main for the Crew's Main, never an email.
 		name := firstNonEmptyTrimmed(agent.Name, "Agent")
 		if agent.Tab == macMainTab {
-			name = firstNonEmptyTrimmed(agent.Name, "Main")
+			name = "Main" // never the saved chat title "<person> · Builder"
 		}
 		row := crewTeamAgent{Tab: agent.Tab, Name: name, Purpose: agent.Purpose, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab), InTeam: t.agentInTeam(t.OwnerID, agent.Tab)}
 		if agent.Tab == macMainTab {
