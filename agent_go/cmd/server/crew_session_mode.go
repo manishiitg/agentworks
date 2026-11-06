@@ -97,8 +97,15 @@ func sessionModeFromContext(ctx context.Context) string {
 // agentSessionModeForTurn carries current access guidance into fresh and
 // retained turns. Codex's built-in sandbox is distinct from platform tools.
 func agentSessionModeForTurn(req QueryRequest, currentUserID, sessionID string, resolvedProfile *resolvedAgentProfile, readOnly bool) string {
-
-	return crewSessionModeForTurn(req, currentUserID, sessionID, resolvedProfile, readOnly)
+	notice := crewSessionModeForTurn(req, currentUserID, sessionID, resolvedProfile, readOnly)
+	if resolvedProfile == nil || !isProjectProfileID(resolvedProfile.Definition.ID) {
+		return notice
+	}
+	files := crewAttachedFilesNotice(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder), req.Query)
+	if notice == "" || files == "" {
+		return notice + files
+	}
+	return notice + "\n" + files
 }
 
 // crewSessionModeForTurn is the notice for this turn, or "" for an owner or editor.

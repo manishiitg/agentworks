@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -145,6 +146,104 @@ func TestCrewChatUploadUsesCallerFolder(t *testing.T) {
 	}
 	if w := upload(&UserClaims{UserID: "other"}, image, "revoked.png"); w.Code != 404 {
 		t.Fatalf("revoked sharing upload = %d %s", w.Code, w.Body.String())
+	}
+}
+
+// PLAT-746-340: a pasted screenshot in a Crew using a folder the person chose was stored at <folder>/.agentworks/uploads,
+// but the turn only named its virtual path, so the native CLI looked under the workspace ("File does not exist"), and the
+// chat's image route opened the virtual root under the workspace (404). The turn must name a path that exists and the
+// route must serve the file, for that Crew and a managed one, with the same access, while what is stored stays virtual.
+func TestCrewUploadIsReachableFromTheTurnAndTheChat(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	project, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(project, ".agentworks"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "notes.txt"), []byte("project file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	const customRoot = "Crew/test-custom"
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "test-custom", ProjectID: "custom", OwnerID: "owner", CanonicalRoot: customRoot, LocalRoot: project, Shared: true, Private: true, AudienceConfigured: true}); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, "_system/crew-data/custom/product.json", `{"schema_version":1,"product":"work","id":"custom","title":"Custom","session_id":"sess-custom"}`)
+	f.write(t, "_system/crew-data/custom/workflow.json", `{"id":"custom","label":"Custom","created_by":"owner"}`)
+	f.write(t, externalCommandCrewRoot+"/other.txt", "another Crew's file")
+	docs, err := filepath.EvalSymlinks(f.docs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	open := func(claims *UserClaims, virtual string) *httptest.ResponseRecorder {
+		t.Helper()
+		w := httptest.NewRecorder()
+		f.api.handlePublicFile(w, adminRequest(http.MethodGet, sharedTestURL(virtual), "", claims, nil))
+		return w
+	}
+	profile := &resolvedAgentProfile{}
+	profile.Definition.ID = crewProfileID
+	for _, crew := range []struct{ id, root, resources string }{
+		{"custom", customRoot, filepath.Join(project, ".agentworks")},
+		{"team", externalCommandCrewRoot, filepath.Join(docs, externalCommandCrewRoot)},
+	} {
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		part, err := form.CreateFormFile("file", "pasted-image.png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = part.Write([]byte("image"))
+		_ = form.Close()
+		r := adminRequest(http.MethodPost, "/api/agent-profiles/work/projects/"+crew.id+"/uploads", "", owner, map[string]string{"id": "work", "project_id": crew.id})
+		r.Body = io.NopCloser(&body)
+		r.Header.Set("Content-Type", form.FormDataContentType())
+		w := httptest.NewRecorder()
+		f.api.handleCrewChatUpload(w, r)
+		var response struct {
+			Filepath string `json:"filepath"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || w.Code != http.StatusOK {
+			t.Fatalf("%s upload = %d %s", crew.id, w.Code, w.Body.String())
+		}
+		if !strings.HasPrefix(response.Filepath, crew.root+"/uploads/") {
+			t.Fatalf("%s upload path is not virtual: %s", crew.id, response.Filepath)
+		}
+		real := filepath.Join(crew.resources, "uploads", filepath.Base(response.Filepath))
+		if _, err := os.Stat(real); err != nil {
+			t.Fatal(err)
+		}
+		// The line is typed text: another Crew's file and a missing file are not named.
+		query := "what is this?\n\n📁 Files in context: " + response.Filepath + ", " + crew.root + "/uploads/missing.png, Crew/test-team/other.txt"
+		notice := agentSessionModeForTurn(QueryRequest{Query: query, SelectedFolder: crew.root}, "owner", "session", profile, false)
+		if !strings.Contains(notice, fmt.Sprintf("%q", real)) || strings.Contains(notice, "missing.png") {
+			t.Fatalf("%s notice = %s", crew.id, notice)
+		}
+		if crew.id == "custom" && strings.Contains(notice, "other.txt") {
+			t.Fatalf("named another Crew's file: %s", notice)
+		}
+		sent := withSessionMode(notice, query)
+		if stripSessionMode(sent) != query || userMessageAttachments(sent)[0]["path"] != response.Filepath {
+			t.Fatalf("%s stored message changed: %s", crew.id, sent)
+		}
+		if w := open(owner, response.Filepath); w.Code != http.StatusOK || w.Body.String() != "image" {
+			t.Fatalf("%s image route = %d %s", crew.id, w.Code, w.Body.String())
+		}
+		if crew.id == "custom" {
+			if w := open(&UserClaims{UserID: "other", Username: "other"}, response.Filepath); w.Code != http.StatusForbidden {
+				t.Fatalf("a private Crew's upload opened for someone else: %d", w.Code)
+			}
+		}
+	}
+	// The person's own files use the same route; the Crew's resource folder is not reachable through them.
+	if w := open(owner, customRoot+"/_files/notes.txt"); w.Code != http.StatusOK || w.Body.String() != "project file" {
+		t.Fatalf("project file = %d %s", w.Code, w.Body.String())
+	}
+	if w := open(owner, customRoot+"/_files/.agentworks/uploads"); w.Code == http.StatusOK {
+		t.Fatalf("resource folder opened through the project files: %d", w.Code)
 	}
 }
 
