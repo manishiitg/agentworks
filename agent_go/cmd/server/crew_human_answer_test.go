@@ -155,13 +155,26 @@ func TestCrewBuilderAnswerSavesThePersonsDecision(t *testing.T) {
 			t.Fatal("a mismatched or external caller answered through the website's tool")
 		}
 	}
+	// Owner, 5 Nov (decisions log, "Automatic turns in a person's own chat"): schedules, background agents and
+	// auto-notifications in a person's own Builder chat get the same answer tools as that person's own turns.
 	for label, change := range map[string]func(*QueryRequest){
-		"run":          func(r *QueryRequest) { r.PinRunMode = true },
 		"schedule":     func(r *QueryRequest) { r.TriggeredBy = "schedule" },
-		"channel":      func(r *QueryRequest) { r.BotPlatform = "slack" },
 		"background":   func(r *QueryRequest) { r.ParentSessionID = "parent" },
 		"notification": func(r *QueryRequest) { r.IsAutoNotification = true },
-		"external":     func(r *QueryRequest) { r.ExternalBuilderOperationID = "mcp-operation" },
+	} {
+		reg, _ := register("automatic-"+label, "owner", rootA, "work", false, change)
+		for _, tool := range []string{name, "get_human_input_request", "mark_human_input_consumed"} {
+			if _, ok := reg.tools[tool]; !ok {
+				t.Fatalf("an automatic %s turn in the owner's own Builder chat has no %s", label, tool)
+			}
+		}
+	}
+	// Still not offered: Run mode, a channel (Slack) reply and another person's agent message. An external MCP caller is
+	// refused when it calls (the identity check above), not at registration.
+	for label, change := range map[string]func(*QueryRequest){
+		"run":          func(r *QueryRequest) { r.PinRunMode = true },
+		"channel":      func(r *QueryRequest) { r.BotPlatform = "slack" },
+		"other person": func(r *QueryRequest) { r.AgentMessageFromOtherPerson = true },
 	} {
 		reg, ctx := register("blocked-"+label, "owner", rootA, "work", label == "run", change)
 		for _, tool := range []string{name, "get_human_input_request", "mark_human_input_consumed"} {
