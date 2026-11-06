@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -721,7 +722,7 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	recorder := &gatewayResponseRecorder{ResponseWriter: w}
 	route := gatewayRoute(r.URL.Path)
 	stream := gatewayStreamRequest(r)
-	log.Printf("[GATEWAY] --> request_id=%s method=%s path=%q route=%s stream=%t client_ip=%q", requestID, r.Method, r.URL.EscapedPath(), route, stream, gatewayClientIP(r))
+	log.Printf("[GATEWAY] --> request_id=%s method=%s path=%q route=%s stream=%t client_ip=%q", requestID, r.Method, gatewayLogPath(r), route, stream, gatewayClientIP(r))
 
 	defer func() {
 		status := recorder.status
@@ -742,7 +743,7 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[GATEWAY] <-- request_id=%s method=%s path=%q route=%s status=%d bytes=%d ttfb_ms=%d duration_ms=%d ttfb=%s duration=%s stream=%t slow=%t write_error=%q",
 			requestID,
 			r.Method,
-			r.URL.EscapedPath(),
+			gatewayLogPath(r),
 			route,
 			status,
 			recorder.bytes,
@@ -788,6 +789,30 @@ func isMCPAppsFrameRequest(r *http.Request) bool {
 	return r.Method == http.MethodGet && r.URL.Path == "/api/mcp-apps/frame"
 }
 
+// A dashboard's public link opens with no sign-in: its random code is the only key and the agent serves one frozen page
+// or its runtime for it. Send no identity along, so nothing about the viewer reaches it.
+func isDashboardPublicRequest(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.URL.RawPath == "" && dashboardPublicPath.MatchString(r.URL.Path)
+}
+
+// The agent's 128-bit base64url code is 22 characters (dashboard_public_link.go), with its three runtime files.
+var dashboardPublicPath = regexp.MustCompile(`^/p/[A-Za-z0-9_-]{22}(/(report-preview\.js|dashboard-react\.js|dashboard\.css))?$`)
+
+// gatewayLogPath keeps a public link's code out of the request log: anyone holding it can open the page.
+func gatewayLogPath(r *http.Request) string {
+	path := r.URL.EscapedPath()
+	rest, public := strings.CutPrefix(path, "/p/")
+	if !public {
+		return path
+	}
+	code, file, hasFile := strings.Cut(rest, "/")
+	masked := "/p/" + code[:min(4, len(code))] + "***"
+	if hasFile {
+		masked += "/" + file
+	}
+	return masked
+}
+
 func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	// Do not promote a browser stream's URL credential to a bearer header.
 	// Enforce this before either Google sign-in or per-user authentication.
@@ -797,6 +822,13 @@ func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if isWebhookRequest(r) || isGmailSetupBrowserRequest(r) || isChromeExtensionBrowserRequest(r) || isMCPAppsFrameRequest(r) {
 		r.Header.Del("X-User-ID")
+		g.agent.ServeHTTP(w, r)
+		return
+	}
+	if isDashboardPublicRequest(r) {
+		for _, name := range []string{"X-User-ID", "Authorization", "Cookie"} {
+			r.Header.Del(name)
+		}
 		g.agent.ServeHTTP(w, r)
 		return
 	}

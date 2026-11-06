@@ -29,6 +29,8 @@ metadata:
 
 Build and share dashboards, offer functions, answer an incoming function call, or configure publishing and backups. Use the current product services.
 
+A public link (`dashboard action=public_link`, mode on, update, off or status) is for when the Crew's owner asks for a page anyone can open without signing in. It is a frozen copy with no Ask and no buttons; it changes only on update, and off stops it at once. Say first that everything on the page goes public, including the data behind it (its query results, even columns the page doesn't show). A Crew on a Mac gets it later.
+
 Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
 - Dashboard: read `references/dashboard/SKILL.md` when needed.

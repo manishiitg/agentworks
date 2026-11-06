@@ -241,11 +241,11 @@ async function start() {
   window.addEventListener('unhandledrejection', (e) => consoleErrors.push(String((e as PromiseRejectionEvent).reason?.message || e.reason || 'rejection')))
   ;(window as unknown as { __reportPreview: unknown }).__reportPreview = {
     getState: snapshot, setTheme, setWidth,
-    exportStatic: async (liveURL: string) => {
+    exportStatic: async (liveURL: string, publicCopy: { title?: string; footer?: string } = {}) => {
       if (!staticCapture || snapshot().previewState !== 'ready') throw new Error('Load the dashboard successfully before exporting.')
       const data = await exportCapture!.freeze()
       const html = sourceHTML.replaceAll('/dashboard-react.js', './dashboard-react.js').replaceAll('/dashboard.css', './dashboard.css')
-      return staticIndex({ version: 1, html, data, as_of: new Date().toISOString(), theme: currentTheme, live_url: liveURL })
+      return staticIndex({ version: 1, html, data, as_of: new Date().toISOString(), theme: currentTheme, live_url: liveURL, ...publicCopy })
     },
     getUIChecks: () => documentHost?.request('ui.checks') ?? { error: 'Dashboard document is unavailable.' },
     motion: () => documentHost?.request('motion') ?? [],
@@ -281,7 +281,14 @@ async function start() {
   const liveApi = createPreviewDataApi()
   exportCapture = captureReportData(staticCapture ? staticAssetDataApi(liveApi) : liveApi, params.get('export') === '1', staticCapture)
   const dataApi = staticSnapshot ? staticDataApi(staticSnapshot, markdown => renderReportMarkdown(markdown)) : exportCapture.api
-  if (staticSnapshot) {
+  if (staticSnapshot?.footer) {
+    shell.style.maxWidth = 'none'
+    const footer = document.createElement('div')
+    footer.style.cssText = 'padding:10px 16px;border-top:1px solid hsl(var(--border));color:hsl(var(--muted-foreground));font:12px system-ui'
+    footer.textContent = staticSnapshot.footer
+    shell.after(footer)
+    document.title = staticSnapshot.title || 'Dashboard'
+  } else if (staticSnapshot) {
     shell.style.maxWidth = 'none'
     const notice = document.createElement('div')
     notice.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid hsl(var(--border));font:12px system-ui'

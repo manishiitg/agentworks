@@ -49,6 +49,9 @@ export class OpaqueReportFrame {
       if (typeof operation !== 'function') throw new Error('This operation is unavailable in this dashboard.')
       if (method === 'fileUrl') return Promise.resolve(Reflect.apply(operation, api, args)).then(async url => {
         if (typeof url !== 'string' || !url) return null
+        // A frozen copy's files are embedded, and its page may not fetch anything at all.
+        const embedded = /^data:([^;,]*);base64,/.exec(url)
+        if (embedded) return new Blob([Uint8Array.from(atob(url.slice(embedded[0].length)), c => c.charCodeAt(0))], { type: embedded[1] })
         const response = await fetch(url)
         if (!response.ok) throw new Error('The dashboard file could not be loaded.')
         // The child creates its own opaque-origin URL. Neither a preview URL's

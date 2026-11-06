@@ -9,11 +9,13 @@ import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { OnlineOnlyNote } from '../../products/work/useMacCrew'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
+import { PublicLinkControl, type PublicLink } from './PublicLinkControl'
 
 type Person = { id: string; email?: string; username?: string }
 type ShareState = {
   mode: 'everyone' | 'people' | 'private'; people?: Person[]; can_share: boolean; share_blocked?: string; needs_dashboard?: boolean
   accounts?: { kind: string; name: string; use: string }[]
+  public_links?: PublicLink[]
 }
 type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean }
 const who = (person: Person) => person.email || person.username || person.id
@@ -176,6 +178,12 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
         {emailForm(email, setEmail, addPerson, 'Share with a person by email')}
       </>}
     </section>
+    {!!state.public_links?.length && <section aria-label="Public links" className="space-y-3 border-t border-border pt-4">
+      {state.public_links.map(link => <div key={link.dashboard_id} className="space-y-1">
+        <p className="truncate font-medium">{link.title}</p>
+        <PublicLinkControl link={link} change={async mode => (await api.post<PublicLink>('/api/dashboards', { workspace: workspacePath, action: 'public_link', mode, dashboard_id: link.dashboard_id })).data} />
+      </div>)}
+    </section>}
     {confirmation && <section role="region" aria-label="Create a dashboard to share" className="space-y-3 rounded-lg border border-border p-3">
       <h3 className="font-semibold">Create a dashboard for this Crew?</h3>
       <p className="text-xs text-muted-foreground">People will open it to chat with this Crew and use its published functions.</p>

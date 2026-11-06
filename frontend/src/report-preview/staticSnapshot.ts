@@ -8,6 +8,9 @@ export interface StaticSnapshot {
   as_of: string
   theme: ReportHostTheme
   live_url: string
+  /** A public link's copy: its page title and the line under the page, written by the server. */
+  title?: string
+  footer?: string
 }
 
 /** Only authorized file/media bytes are exported, never their signed URLs. */
@@ -35,7 +38,7 @@ export function staticAssetDataApi(api: ReportDataApi): ReportDataApi {
 /** Replay the actual calls made while rendering; no query extraction or database copy. */
 export function staticDataApi(snapshot: StaticSnapshot, renderMarkdown: ReportDataApi['renderMarkdown']): ReportDataApi {
   const records = new Map(snapshot.data.map(entry => [JSON.stringify([entry.method, entry.args]), entry.value]))
-  const unavailable = () => Promise.reject(new Error('This data is not included in the published snapshot. Open the live dashboard.'))
+  const unavailable = () => Promise.reject(new Error(snapshot.live_url ? 'This data is not included in the published snapshot. Open the live dashboard.' : 'This is a frozen copy of the page, so this is not available here.'))
   function read<T>(method: string, args: unknown[]): Promise<T> {
     const key = JSON.stringify([method, args])
     return records.has(key) ? Promise.resolve(structuredClone(records.get(key)) as T) : unavailable()

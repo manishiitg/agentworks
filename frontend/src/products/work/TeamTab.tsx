@@ -7,8 +7,9 @@ import { Button } from '../../components/ui/Button'
 import { sendToMain } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
+import { PublicLinkControl } from '../../components/workflow/PublicLinkControl'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
-import { changeTeamPeople, saveTeam, switchTeam, teamError, teamFolderChange, teamDashboards, teamFolders, teamRequest, useTeamTab, type Team, type TeamDashboards, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
+import { changeTeamPeople, saveTeam, switchTeam, teamError, teamFolderChange, teamDashboards, teamFolders, teamPublicLink, teamRequest, useTeamTab, type Team, type TeamDashboards, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
@@ -121,10 +122,13 @@ function DashboardsCard({ target }: { target: TeamTarget }) {
       <span className="text-xs text-muted-foreground">{list.updated ? `${list.updated} · ` : ''}Everyone in the Team sees these</span>
     </div>
     <div className="space-y-1">
-      {list.dashboards.map(d => <button key={d.id} type="button" onClick={() => selectReportDocument(list.workspace, d.path, true)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted">
-        <span className="min-w-0 flex-1 truncate">{d.title}</span>
-        {d.artifact && <span className="text-xs text-muted-foreground">Artifact</span>}
-      </button>)}
+      {list.dashboards.map(d => <div key={d.id} className="space-y-1">
+        <button type="button" onClick={() => selectReportDocument(list.workspace, d.path, true)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted">
+          <span className="min-w-0 flex-1 truncate">{d.title}</span>
+          {d.artifact && <span className="text-xs text-muted-foreground">Artifact</span>}
+        </button>
+        {d.public_link && <div className="px-2 pb-1"><PublicLinkControl link={d.public_link} change={mode => teamPublicLink(target, d.id, mode)} /></div>}
+      </div>)}
     </div>
     {list.note && <p className="text-xs text-muted-foreground">{list.note}</p>}
     {list.can_share && <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="flex-1">Also shared with</span><ShareDashboardButton workspacePath={list.workspace} /></div>}

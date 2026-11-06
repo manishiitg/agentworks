@@ -267,6 +267,7 @@ chat:
       - preview_dashboard
       - export_dashboard_motion
       - export_dashboard_static
+      - set_dashboard_public_link
       - publish_dashboard
       - restore_dashboard
       - get_dashboard_link
@@ -437,6 +438,7 @@ chat:
       - preview_dashboard
       - export_dashboard_motion
       - export_dashboard_static
+      - set_dashboard_public_link
       - publish_dashboard
       - restore_dashboard
       - get_dashboard_link
