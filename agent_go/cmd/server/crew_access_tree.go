@@ -29,8 +29,9 @@ type crewAccessLine struct {
 	Kind     string             `json:"kind"` // mac, team, where, agents, dashboard, public, folder, clash
 	Title    string             `json:"title"`
 	Detail   string             `json:"detail,omitempty"`
-	Path     string             `json:"path,omitempty"` // dashboard: the document the line opens
-	Ask      string             `json:"ask,omitempty"`  // dashboard: none yet; the words put in the person's Main chat box
+	Path     string             `json:"path,omitempty"`   // dashboard: the document the line opens
+	Ask      string             `json:"ask,omitempty"`    // dashboard: none yet; the words put in the person's Main chat box
+	Target   string             `json:"target,omitempty"` // dashboard: the Share tab the line opens ("dashboards")
 	People   []crewAccessPerson `json:"people,omitempty"`
 	Progress *crewTeamRound     `json:"progress,omitempty"`
 }
@@ -157,13 +158,13 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 // dashboard): who it is shared with, or, with none, an Ask to make one. Nothing creates a dashboard on its own.
 func crewAccessDashboardLine(paths []string, shared string) crewAccessLine {
 	if len(paths) == 0 {
-		return crewAccessLine{Kind: "dashboard", Title: "No dashboard", Detail: "Ask AI to make one", Ask: "Help me make a dashboard for this Crew"}
+		return crewAccessLine{Kind: "dashboard", Title: "No dashboard", Detail: "Ask AI to make one", Ask: "Help me make a dashboard for this Crew", Target: "dashboards"}
 	}
 	title := "Dashboard"
 	if len(paths) > 1 {
 		title = fmt.Sprintf("%d dashboards", len(paths))
 	}
-	return crewAccessLine{Kind: "dashboard", Title: title, Detail: shared, Path: paths[0]}
+	return crewAccessLine{Kind: "dashboard", Title: title, Detail: shared, Path: paths[0], Target: "dashboards"}
 }
 
 // crewAccessWithDashboard puts the dashboard line after "Shared with the team" (or after the Mac and Team lines when
