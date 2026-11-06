@@ -62,14 +62,13 @@ type crewAccessFacts struct {
 func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 	lines := []crewAccessLine{}
 	teamOn := f.TeamKnown && f.Team != nil && f.Team.On
+	// Offline is already shown on the Share row; it needs no duplicate child.
 	switch {
 	case f.ServerCrew || f.Member:
 		// A Crew on the server has no Mac (owner, 5 Nov), and a teammate's tree is about their Team: it starts there.
 	case f.MacOnline:
 		// One line, no detail (owner, 5 Nov).
 		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Mac online"})
-	default:
-		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Mac online off"})
 	}
 	if !f.TeamKnown {
 		return append(lines, crewAccessPublicLine(f.Agents)...)
