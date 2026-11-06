@@ -11,7 +11,8 @@ Use the workspace directory and state directory for the **same installation**. T
 ```sh
 python3 scripts/migrate-goal-to-crew.py \
   --docs /path/to/workspace-docs --state /path/to/state \
-  --workflow source-folder --crew destination-crew-id
+  --workflow source-folder --crew destination-crew-id \
+  --agent-binary /path/to/refactor-backend
 ```
 
 This reads files and SQLite databases without changing them. It reports the selected workflow, destination, file moves, chat mapping and counts. The workflow folder name can differ from its manifest ID; both are retained.
@@ -19,7 +20,7 @@ This reads files and SQLite databases without changing them. It reports the sele
 Resolve any reported access, input or data conflict before applying. In particular:
 
 - Destination owner, owners (including joined Team members) and sharing audience must match. Invitations alone grant no access. Old editors, source Team policies, individually shared destination agents and paired/synced destination Crews need an explicit mapping first.
-- An old enabled group batch must become one chosen input preset per entry. Function input schemas must map unambiguously to workflow inputs.
+- An old enabled group batch must become one chosen input preset per entry. Function input schemas must map unambiguously to workflow inputs. The refactor binary validates the complete proposed contract before any writes: defaults and saved presets must match their types and constraints, and every function must expose or supply all required inputs. Conflicts need an author decision; the converter never weakens constraints.
 - Saved Python must use `agentworks_db` for managed database access. Code, reports or database objects directly using measurement tables must use the Crew measurement API instead.
 - Code no longer sits beside runtime data. Review helpers that derive data paths from `WORKFLOW_CODE_ROOT`, `__file__` or their parents. Use runtime-provided data paths instead (for a database-enabled step, the managed `DB_PATH` identifies its database folder). The inspector catches direct `WORKFLOW_CODE_ROOT` parent lookups, but does not prove arbitrary path calculations are correct; execute the saved code after conversion.
 - Existing named outcomes must not be collapsed into one goal; multiple such outcomes need their own mapping first.
@@ -30,7 +31,7 @@ This is intentional inspection, not a claim that every historical configuration 
 
 ## Apply with this installation stopped
 
-Stop the installation's backend/workspace writers. Keep other installations running. Use a backend binary built from **this refactor**, which includes `server import-goal-chats`; it is needed when an old chat has a JSON archive but no display journal.
+Stop the installation's backend/workspace writers. Keep other installations running. Use a backend binary built from **this refactor**, which includes `server validate-workflow-input-migration` and `server import-goal-chats`. The binary is also used during inspection when function input contracts need conversion, and during apply for old chats with JSON archives but no display journal.
 
 ```sh
 python3 scripts/migrate-goal-to-crew.py \

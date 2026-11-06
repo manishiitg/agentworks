@@ -333,7 +333,7 @@ func crewExecutableKnowledgeAudience(root string, manifest workflowkb.Manifest) 
 			AllowedKBWriters []string `json:"allowed_kb_writers"`
 		}{}
 	}
-	manifest.Access.Owners = append([]string{record.OwnerID}, record.CoOwners...)
+	manifest.Access.Owners = append([]string{record.OwnerID}, crewCoOwnerIDs(binding.CrewRoot)...)
 	manifest.Access.Readers = nil
 	if projectSharingEnabled() {
 		manifest.Access.Readers = append([]string{}, record.RunPeople...)

@@ -228,6 +228,8 @@ func TestCrewKnowledgeSourceUsesInheritedAudienceAtEndpoint(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	write("_system/crew-data/kb-crew/.keep", "")
+	write(binding.CrewRoot+"/.agentworks/workflows/kb-child/workflow.json", consumer)
 	write(binding.Root+"/workflow.json", consumer)
 	write("Workflow/source/workflow.json", source)
 	write("Workflow/source/knowledgebase/secret.md", "private content")
@@ -293,6 +295,36 @@ func TestCrewKnowledgeSourceUsesInheritedAudienceAtEndpoint(t *testing.T) {
 	(&StreamingAPI{}).handleWorkflowKnowledgebaseSources(response, sharedSecretsRequest("GET", "/api/workflows/knowledgebase-sources?workspace_path="+binding.Root+"&alias=private&path=secret.md", "reader", nil))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "private content") {
 		t.Fatalf("allowed endpoint: %d %s", response.Code, response.Body.String())
+	}
+	// PR498 P1: a joined Team member is part of the inherited audience even
+	// when absent from the registry's permanent owners and Run people.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	if err := defaultProjectOwners().modify(func(records map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey("work", "kb-lab")
+		record := records[key]
+		record.RunPeople = nil
+		records[key] = record
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "kb-crew", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "reader"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if !registryListHas(crewCoOwnerIDs(binding.CrewRoot), "reader") {
+		t.Fatal("fixture did not grant Team build access")
+	}
+	write("Workflow/source/workflow.json", source)
+	response = httptest.NewRecorder()
+	(&StreamingAPI{}).handleWorkflowKnowledgebaseSources(response, sharedSecretsRequest("GET", "/api/workflows/knowledgebase-sources?workspace_path="+binding.Root+"&alias=private&path=secret.md", "reader", nil))
+	if response.Code == http.StatusOK {
+		t.Fatal("Team member exposed owner-only source", response.Body.String())
+	}
+	write("Workflow/source/workflow.json", string(encoded))
+	response = httptest.NewRecorder()
+	(&StreamingAPI{}).handleWorkflowKnowledgebaseSources(response, sharedSecretsRequest("GET", "/api/workflows/knowledgebase-sources?workspace_path="+binding.Root+"&alias=private&path=secret.md", "reader", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "private content") {
+		t.Fatalf("Team authorized source: %d %s", response.Code, response.Body.String())
 	}
 }
 

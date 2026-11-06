@@ -92,6 +92,19 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		}
 		for _, folder := range folders {
 			if folder.IsDir() && strings.HasPrefix(folder.Name(), "run-") {
+				if strings.HasPrefix(workspace, "Workflow/") {
+					// PR498: inspecting an actual flat run must not require a retired group.
+					manager := &InteractiveWorkshopManager{controller: session.controller}
+					output, err := manager.debugStep(ctx, map[string]interface{}{"step_id": "use-script", "run_folder": folder.Name()})
+					if err != nil || !strings.Contains(output, "### Scripted execution") || !strings.Contains(output, "runs/"+folder.Name()+"/logs/") {
+						t.Fatalf("inspect saved script run: %s %v", output, err)
+					}
+					for _, invalid := range []string{"", "../other", "run-one/preset"} {
+						if _, err := manager.debugStep(ctx, map[string]interface{}{"step_id": "use-script", "run_folder": invalid}); err == nil {
+							t.Fatalf("invalid run path accepted: %q", invalid)
+						}
+					}
+				}
 				return filepath.Join(docs, workspace, "runs", folder.Name())
 			}
 		}

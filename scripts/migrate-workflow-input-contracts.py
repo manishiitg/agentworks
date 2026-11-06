@@ -5,6 +5,7 @@ import copy
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 
 
@@ -17,7 +18,7 @@ def has_schema_reference(value):
     return isinstance(value, list) and any(has_schema_reference(child) for child in value)
 
 
-def convert(root):
+def convert(root, agent_binary=None):
     changes, errors = {}, []
     for file in sorted(root.rglob('functions.json')):
         if any(part in {'runs', '.relay_releases', '.git'} for part in file.relative_to(root).parts):
@@ -67,6 +68,23 @@ def convert(root):
             fn['inputs'] = list(properties)
             del fn['input_schema']
         definitions['variables'] = [proposed.get(v['name'], v) for v in definitions.get('variables', [])]
+        # Validate the full merged result, including existing presets and every
+        # saved function, with the same backend contract used when loading it.
+        if not agent_binary:
+            errors.append(f'{file.relative_to(root)}: pass --agent-binary with this refactor build to validate the proposed inputs')
+        else:
+            try:
+                checked = subprocess.run(
+                    [str(agent_binary), 'server', 'validate-workflow-input-migration'],
+                    input=json.dumps({'definitions': definitions, 'functions': functions}),
+                    text=True, capture_output=True, timeout=30)
+                if checked.returncode:
+                    # Cobra may print usage after the diagnostic. Do not echo
+                    # input JSON (which is private saved data).
+                    diagnostic = next((line for line in checked.stderr.splitlines() if line.startswith('Error:')), '')
+                    errors.append(f'{file.relative_to(root)}: {diagnostic or "input validation failed; use the current refactor build"}')
+            except (OSError, subprocess.TimeoutExpired):
+                errors.append(f'{file.relative_to(root)}: could not run input validation; use --agent-binary with the current refactor build')
         changes[file] = document
         changes[definitions_file] = definitions
     return changes, errors
@@ -75,10 +93,11 @@ def convert(root):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True, help='Workspace docs directory to convert')
+    parser.add_argument('--agent-binary', type=Path, required=True, help='Current refactor agent binary for offline validation')
     parser.add_argument('--apply', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve(strict=True)
-    changes, errors = convert(root)
+    changes, errors = convert(root, args.agent_binary.resolve())
     if errors:
         for error in errors:
             print(error)
