@@ -20,9 +20,16 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // crewStandbyIdentity is whom a server turn of person's agent runs as.
@@ -79,12 +86,68 @@ func crewMemberStandbyTurn(project, user string) (crewStandbyIdentity, bool) {
 // the Crew (MCP ask, dashboard Ask) and the Vault screens all keep the Crew owner's rules. Only a standby turn
 // (another person's ask of the member's agent, answered from the server) is the member's, and only
 // serverAgentCall can start one: it puts crewStandbyTurnKey in the context, desktopMacSharedAgent and the import of the
-// member's copy read it and mark the SESSIONS of that turn (crewStandbyTurnSessions). The identity points that
+// member's copy read it and mark the SESSIONS of that turn (kept in a file, crewStandbySessions). The identity points that
 // launch the CLI, pick the Vault lender or the AI account ask by session (crewStandbySessionIdentity); a session that was
 // not marked here keeps the old owner resolver. Nothing a caller sends over HTTP or MCP can mark a session.
 type crewStandbyTurnKey struct{}
 
-var crewStandbyTurnSessions sync.Map // session id -> crewStandbyIdentity (Member only)
+// The marked sessions are kept in a small file (crew-sync/standby-sessions.json in the app's state), written BEFORE
+// the turn is submitted, so a restart never turns a member's queued standby turn into an owner-identity turn. A mark
+// stays for good (a session id is never reused by another conversation); the member and their slot are read fresh
+// from the Team record and slot table at every lookup. A mark that cannot be written, or a file that cannot be read,
+// refuses the standby turn (the caller holds the message for the member's Mac) and refuses any Crew launch until it
+// reads again (crewStandbySessionsErr): the unsafe direction, the owner's slot and Vault, is never the fallback.
+type crewStandbyMark struct {
+	Project string `json:"project"`
+	Person  string `json:"person"`
+}
+
+var crewStandbySessions = struct {
+	sync.Mutex
+	path  string
+	marks map[string]crewStandbyMark
+}{}
+
+func crewStandbySessionsPath() (string, error) {
+	state, err := crewroot.StateRoot()
+	return filepath.Join(state, "crew-sync", "standby-sessions.json"), err
+}
+
+// crewStandbySessionsLoadLocked reads the file once per state folder; the caller holds the lock.
+func crewStandbySessionsLoadLocked() (map[string]crewStandbyMark, error) {
+	path, err := crewStandbySessionsPath()
+	if err != nil {
+		return nil, err
+	}
+	if crewStandbySessions.marks != nil && crewStandbySessions.path == path {
+		return crewStandbySessions.marks, nil
+	}
+	marks := map[string]crewStandbyMark{}
+	raw, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	if err == nil && json.Unmarshal(raw, &marks) != nil {
+		return nil, fmt.Errorf("the standby sessions file cannot be read")
+	}
+	crewStandbySessions.path, crewStandbySessions.marks = path, marks
+	return marks, nil
+}
+
+// crewStandbySessionsReset forgets what is in memory (a restart); the file stays.
+func crewStandbySessionsReset() {
+	crewStandbySessions.Lock()
+	crewStandbySessions.path, crewStandbySessions.marks = "", nil
+	crewStandbySessions.Unlock()
+}
+
+// crewStandbySessionsErr: the marked sessions cannot be read now.
+func crewStandbySessionsErr() error {
+	crewStandbySessions.Lock()
+	defer crewStandbySessions.Unlock()
+	_, err := crewStandbySessionsLoadLocked()
+	return err
+}
 
 // withCrewStandbyTurn: the context of a standby turn started by serverAgentCall.
 func withCrewStandbyTurn(ctx context.Context) context.Context {
@@ -92,14 +155,34 @@ func withCrewStandbyTurn(ctx context.Context) context.Context {
 }
 
 // markCrewStandbySession marks a session as part of a member's standby turn (its thread, the conversation it starts
-// from, the imported copy). It does nothing outside a standby turn or for a person who is not such a member.
-func markCrewStandbySession(ctx context.Context, project, user, session string) {
+// from, the imported copy). It does nothing outside a standby turn or for a person who is not such a member; an error
+// means the mark is not durable and the turn must not run.
+func markCrewStandbySession(ctx context.Context, project, user, session string) error {
 	if on, _ := ctx.Value(crewStandbyTurnKey{}).(bool); !on || session == "" {
-		return
+		return nil
 	}
-	if id, ok := crewMemberStandbyTurn(project, user); ok {
-		crewStandbyTurnSessions.Store(session, id)
+	if _, ok := crewMemberStandbyTurn(project, user); !ok {
+		return nil
 	}
+	crewStandbySessions.Lock()
+	defer crewStandbySessions.Unlock()
+	marks, err := crewStandbySessionsLoadLocked()
+	if err != nil {
+		return err
+	}
+	if marks[session] == (crewStandbyMark{Project: project, Person: user}) {
+		return nil
+	}
+	next := make(map[string]crewStandbyMark, len(marks)+1)
+	for k, v := range marks {
+		next[k] = v
+	}
+	next[session] = crewStandbyMark{Project: project, Person: user}
+	if err := fsutil.WriteJSONAtomic(crewStandbySessions.path, next, 0o600); err != nil {
+		return err
+	}
+	crewStandbySessions.marks = next
+	return nil
 }
 
 // crewStandbySessionIdentity is the member a marked session runs as.
@@ -107,11 +190,14 @@ func crewStandbySessionIdentity(session string) (crewStandbyIdentity, bool) {
 	if session == "" {
 		return crewStandbyIdentity{}, false
 	}
-	v, ok := crewStandbyTurnSessions.Load(session)
-	if !ok {
+	crewStandbySessions.Lock()
+	marks, err := crewStandbySessionsLoadLocked()
+	mark, ok := marks[session]
+	crewStandbySessions.Unlock()
+	if err != nil || !ok {
 		return crewStandbyIdentity{}, false
 	}
-	id, _ := v.(crewStandbyIdentity)
+	id := crewStandbyRunAs(mark.Project, mark.Person)
 	return id, id.Member
 }
 

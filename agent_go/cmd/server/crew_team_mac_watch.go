@@ -499,7 +499,7 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	}
 	// The standby copy was dropped between the route and the call (the agent turned Only me, the person left): the
 	// message is not lost, it waits for the Mac like any other.
-	if standby && (status == http.StatusForbidden || status == http.StatusConflict) {
+	if standby && (status == http.StatusForbidden || status == http.StatusConflict || status == http.StatusServiceUnavailable) {
 		standby, status = false, http.StatusServiceUnavailable
 	}
 	log.Printf("[CREW_TEAM] project=%s event=member_mac_message of=%s tab=%s user=%s mac_status=%d standby=%t", dest.ID, logUsernameForUserID(person), agent.Tab, logUsernameForUserID(source.UserID), status, standby)
