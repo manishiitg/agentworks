@@ -301,14 +301,13 @@ function AgentsCard({ view, target, projectId }: { view: TeamTabView; target: Te
   </section>
 }
 
-// The place chip's colour by the server's tone (crewAlwaysOnPlaceLabel); "" is plain.
-const toneChip: Record<string, string> = { ok: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', wait: 'bg-amber-500/10 text-amber-700 dark:text-amber-300', server: 'bg-sky-500/10 text-sky-700 dark:text-sky-300' }
-const toneDot: Record<string, string> = { ok: 'bg-emerald-500', wait: 'bg-amber-500', server: 'bg-sky-500' }
+// The status line's colour by the server's tone (crewAlwaysOnPlaceLabel): quiet grey unless something needs attention.
+const toneText: Record<string, string> = { wait: 'text-amber-700 dark:text-amber-300', server: 'text-sky-700 dark:text-sky-300' }
 
-/** One of the viewer's own agents: its name, where it is (the server's chip) and its "Shared with the team" switch;
- * while shared, what teammates can do, with its rule when others ask (purpose stays in the agent's own chat, owner
- * 6 Nov: "remove purpose from here.. this make the ui confusing"). Every save
- * goes to the server (agent-visibility, agent-rule); the server says when a switch cannot go off and why. */
+/** One of the viewer's own agents (owner, 6 Nov, approved "calmer rows" mock): its name and one "Shared" switch, one
+ * quiet status line the server words (place_label, coloured by place_tone only when it needs attention), and, while
+ * shared, "Teammates can [Answer only | Make changes]" with a Rules link. Purpose stays in the agent's own chat. Every
+ * save goes to the server (agent-visibility, agent-rule); the server says when a switch cannot go off and why. */
 function AgentRow({ agent, target, projectId, switching, busy, onShare }: { agent: TeamTabAgent; target: TeamTarget; projectId: string; switching: boolean; busy: boolean; onShare: (on: boolean) => void }) {
   const [rules, setRules] = useState(false)
   const { pending, error, run } = useSave()
@@ -317,35 +316,30 @@ function AgentRow({ agent, target, projectId, switching, busy, onShare }: { agen
     window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   })
   const locked = !agent.can_change || (agent.in_team && !agent.can_unshare)
-  const place = agent.place_label || ''
-  const tone = agent.place_tone || ''
-  return <div className="space-y-1.5 border-t border-border pt-2">
+  const status = agent.place_label || (!agent.in_team ? agent.not_shared_line : '') || ''
+  return <div className="space-y-1 border-t border-border pt-2">
     <div className="flex items-center gap-2 text-[13px]">
-      <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b>{agent.detail && <span className="text-muted-foreground"> · {agent.detail}</span>}</span>
-      {place && <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] ${toneChip[tone] || 'bg-muted text-muted-foreground'}`}>
-        {toneDot[tone] && <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${toneDot[tone]}`} />}{place}</span>}
+      <span className="min-w-0 flex-1 truncate"><b>{agent.name}</b></span>
       <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title={locked ? agent.fixed : undefined}>
-        Shared with the team<Saving on={switching}>{null}</Saving>
-        <Switch aria-label={`${agent.name}: shared with the team`} checked={agent.in_team} disabled={locked || busy} onCheckedChange={onShare} />
+        Shared<Saving on={switching}>{null}</Saving>
+        <Switch aria-label={`${agent.name}: shared`} checked={agent.in_team} disabled={locked || busy} onCheckedChange={onShare} />
       </span>
     </div>
-    {!agent.in_team && agent.not_shared_line && <p className="text-xs text-muted-foreground">{agent.not_shared_line}</p>}
-    {agent.in_team && <>
-      {agent.can_edit_rule && <div className="flex flex-wrap items-center gap-2 text-xs">
-        {agent.can_make_changes !== undefined && <>
-          <span className="text-muted-foreground">Teammates can</span>
-          <div role="radiogroup" aria-label={`${agent.name}: teammates can`} className="flex overflow-hidden rounded-md border border-border">
-            {([[false, 'Answer only'], [true, 'Make changes']] as const).map(([value, text]) => {
-              const on = agent.can_make_changes === value
-              return <button key={text} type="button" role="radio" aria-checked={on} disabled={Boolean(pending)} onClick={() => { if (!on) void save(`can:${text}`, { can_make_changes: value }) }}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}><Saving on={pending === `can:${text}`}>{null}</Saving>{text}</button>
-            })}
-          </div>
-        </>}
-        <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-primary hover:underline">{agent.has_rule ? '1 rule when others ask' : 'Rule when others ask'}</button>
-      </div>}
-      {rules && <AgentDetails agent={agent} target={target} projectId={projectId} />}
-    </>}
+    {status && <p className={`text-xs ${toneText[agent.place_tone || ''] || 'text-muted-foreground'}`}>{status}</p>}
+    {agent.in_team && agent.can_edit_rule && <div className="flex flex-wrap items-center gap-2 text-xs">
+      {agent.can_make_changes !== undefined && <>
+        <label htmlFor={`can-${agent.key}`} className="text-muted-foreground">Teammates can</label>
+        <select id={`can-${agent.key}`} value={agent.can_make_changes ? 'change' : 'answer'} disabled={Boolean(pending)}
+          onChange={e => void save('can', { can_make_changes: e.target.value === 'change' })}
+          className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
+          <option value="answer">Answer only</option>
+          <option value="change">Make changes</option>
+        </select>
+        <Saving on={pending === 'can'}>{null}</Saving>
+      </>}
+      <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-primary hover:underline">{agent.has_rule ? '1 rule…' : 'Rules…'}</button>
+    </div>}
+    {agent.in_team && rules && <AgentDetails agent={agent} target={target} projectId={projectId} />}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }

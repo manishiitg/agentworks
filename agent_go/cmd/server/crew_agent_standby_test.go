@@ -180,7 +180,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	if api.crewStandbyRoute(t.Context(), "owner", "team", helper, "other", true) || len(imported) != 0 {
 		t.Fatalf("with the Mac on, the server took the agent (imported %v)", imported)
 	}
-	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, true, true, true); label != "Mac · synced to server" || tone != "ok" {
+	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, true, true, true); !strings.HasPrefix(label, "Always on") || tone != "ok" {
 		t.Fatalf("Mac on label: %q %q", label, tone)
 	}
 
@@ -188,7 +188,7 @@ func TestCrewStandbyAnswersOnServerWhileMacOff(t *testing.T) {
 	crewMacSockets.Lock()
 	delete(crewMacSockets.byDevice, "owner-mac")
 	crewMacSockets.Unlock()
-	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, false, true, true); label != "Mac off · answering from the server" || tone != "server" {
+	if label, tone := crewAlwaysOnPlaceLabel("team", "owner", helper, false, true, true); !strings.HasPrefix(label, "Mac off · answering from the server") || tone != "server" {
 		t.Fatalf("In team, Mac off label: %q %q", label, tone)
 	}
 	member := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}}}
