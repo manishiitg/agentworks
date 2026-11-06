@@ -657,6 +657,58 @@ func TestMacCrewSettingsChangeOnlyFromTheMac(t *testing.T) {
 			t.Fatalf("%s: %d %s", tc.name, w.Code, w.Body.String())
 		}
 	}
+
+	// PLAT-856-509: the Crew automation writes (workflows, script source, goals and the chat tools behind them) obey the same rule.
+	svc, files, ctx := newCrewCreationTestEnv(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator","can_create":true},{"id":"other","username":"other","role":"creator"}]}`)
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Mac lab", Purpose: "Run reports", StepInstruction: "Prepare reports", IdempotencyKey: "mac-automations"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync(crew.CrewID, crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+		t.Fatal(err)
+	}
+	script := crewExecutableBinding{ID: "s1", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/s1", Kind: "script"}
+	if err := registerCrewExecutable(script); err != nil {
+		t.Fatal(err)
+	}
+	files.files[script.Root+"/workflow.json"] = `{"id":"s1","label":"Example"}`
+	api := &StreamingAPI{projectActions: svc}
+	crewQuery := "?crew_id=" + crew.CrewID
+	for _, route := range []struct {
+		name    string
+		method  string
+		url     string
+		body    string
+		handler func(http.ResponseWriter, *http.Request)
+	}{
+		{"new workflow", http.MethodPost, "/api/crew-executables" + crewQuery, `{"name":"Reports"}`, api.handleCrewExecutables},
+		{"script source", http.MethodPut, "/api/crew-script-file?workspace_path=" + script.Root + "&file=script.json", `{"content":"{}"}`, api.handleCrewScriptFile},
+		{"goals", http.MethodPost, "/api/crew-goals" + crewQuery, `{"action":"none"}`, api.handleCrewGoals},
+	} {
+		for _, tc := range []struct {
+			who, pair string
+			refused   bool
+		}{{"owner", "", true}, {"owner", "owner-pair", false}, {"other", "", false}} {
+			r := httptest.NewRequest(route.method, route.url, strings.NewReader(route.body)).WithContext(internalBotRequestContext(t.Context(), tc.who))
+			if tc.pair != "" {
+				r.Header.Set(crewMacPairHeader, tc.pair)
+			}
+			w := httptest.NewRecorder()
+			route.handler(w, r)
+			if got := strings.Contains(w.Body.String(), "change_on_mac"); got != tc.refused {
+				t.Fatalf("%s as %s pair %q: refused=%t want %t: %d %s", route.name, tc.who, tc.pair, got, tc.refused, w.Code, w.Body.String())
+			}
+		}
+	}
+	// The chat tools have no request: the owner's server turn is refused, a teammate's is not the owner, the Mac runs in local mode.
+	if err := refuseCrewOwnerTurnOnMacTwin(ctx, crew.WorkspacePath, "owner"); err == nil || err.Error() != crewChangeOnMacLine {
+		t.Fatalf("owner's server turn: %v", err)
+	}
+	if err := refuseCrewOwnerTurnOnMacTwin(ctx, crew.WorkspacePath, "other"); err != nil {
+		t.Fatalf("teammate's turn: %v", err)
+	}
 }
 
 // PLAT-856 Always on, live test 6 Nov (capture_error "this agent has no portable native session"): an agent the server

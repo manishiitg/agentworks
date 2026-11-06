@@ -91,6 +91,11 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		if err != nil || !found || manifest.Kind == "relay" || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner {
 			return "", fmt.Errorf("this workflow is unavailable")
 		}
+		if action == "edit" || action == "write" {
+			if err := refuseCrewOwnerTurnOnMacTwin(ctx, root, userID); err != nil {
+				return "", err
+			}
+		}
 		if action == "edit" {
 			if binding.Kind != "workflow" {
 				return "", fmt.Errorf("edit script.json or Python source with write for a saved script")
