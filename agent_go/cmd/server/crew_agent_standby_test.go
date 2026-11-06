@@ -803,3 +803,28 @@ func TestChunkFilesSkipsAFileWhoseFolderIsMissing(t *testing.T) {
 		t.Fatalf("a file in a missing folder is skipped: files=%v err=%v", files, err)
 	}
 }
+
+// PLAT-856 live round 4, 6 Nov: the Mac and the server both continued ChatGPT's Muse session from the same point and each
+// closed it with its own session.end record; the hand-back called that "changed on both computers". Only the server had
+// new turns, so it is the newer one and the Mac takes it.
+func TestCrewHandbackMuseSessionEndAloneIsNotADivergence(t *testing.T) {
+	line := func(typ, id string) string { return `{"id":"` + id + `","payload_type":"` + typ + `"}` + "\n" }
+	bundleOf := func(content string) *sessiontransfer.Bundle {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "session.jsonl")
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		f, err := sessiontransfer.Inspect(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &sessiontransfer.Bundle{Provider: "muse-cli", Format: "muse-jsonl", SessionID: "s", Root: dir, Files: map[string]sessiontransfer.File{"session.jsonl": f}}
+	}
+	shared := line("message", "1") + line("message", "2")
+	mac := bundleOf(shared + line("session.end", "mac-end"))
+	server := bundleOf(shared + line("session.end", "server-end") + line("message", "3"))
+	if got := crewHandbackDecide(mac, server); got != "import" {
+		t.Fatalf("the Mac took the server's newer version: %q", got)
+	}
+}
