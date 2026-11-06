@@ -26,8 +26,38 @@ import (
 // crewStandbyMacRefusalLine is what the owner's Mac says when it is asked to run an agent the server is answering for.
 const crewStandbyMacRefusalLine = "This agent is answering from the server while your Mac was off; it comes back to this Mac in a moment."
 
-// crewStandbyServerNote is added to a turn the server runs from a standby copy (resolveAgentProfileForQuery).
-const crewStandbyServerNote = "## Answering from the server\n\nYour owner's Mac is off, so you are answering from the server's copy of this conversation. You use your owner's AI account, apps and secrets on the server and the Team's shared files. Apps, files and sign-ins that exist only on the Mac are not available here: if this request needs one, say so plainly and suggest asking again when the Mac is back."
+// crewStandbyServerNote is added to a turn the server runs from a standby copy (resolveAgentProfileForQuery). On the
+// Mac the agent has every file and app of the Crew; here it has only what the server holds (owner, 6 Nov), so the
+// note names whose agent it is, which files are here, and what this Crew uses that only the Mac has (the list the
+// owner's Mac sent with its last copy, crewStandbyMacOnly).
+func crewStandbyServerNote(project, tab string) string {
+	owner := ownerOfCrewProjectID(project)
+	ownerName := firstNonEmptyTrimmed(crewPersonShortName(owner), "your owner")
+	agent := "Main"
+	for _, a := range readMacSharedAgents(project) {
+		if a.Tab == tab && strings.TrimSpace(a.Name) != "" {
+			agent = strings.TrimSpace(a.Name)
+		}
+	}
+	files := "none of the Crew's files, only this conversation"
+	if t, err := readCrewTeam(project); err == nil && t.Folder.Whole {
+		files = "all of the Crew's files"
+	} else if err == nil && len(t.Folder.Folders) > 0 {
+		files = "only the Team's shared folders: " + strings.Join(t.Folder.Folders, ", ")
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "## Answering from the server\n\nYou are %s's agent %q. %s's Mac is off, so you are answering from the server's copy of this conversation, with %s's AI account and the apps and secrets in their Vault on the server.\n\n", ownerName, agent, ownerName, ownerName)
+	fmt.Fprintf(&b, "Files here: %s. Everything else in this Crew is only on the Mac: do not assume those files exist here.\n\n", files)
+	if items := crewStandbyMacOnly(project); len(items) > 0 {
+		names := make([]string, 0, len(items))
+		for _, item := range items {
+			names = append(names, item.Name+" ("+item.Kind+")")
+		}
+		fmt.Fprintf(&b, "Only on the Mac, not available now: %s.\n\n", strings.Join(names, ", "))
+	}
+	b.WriteString("If a request needs a file or app that is only on the Mac, say which one and that it works when the Mac is back; do the rest here.")
+	return b.String()
+}
 
 var errCrewNoStandbyCopy = errors.New("this agent has no server copy yet")
 
@@ -53,15 +83,22 @@ func crewStandbyServerWriter(project, tab string) bool {
 
 // crewStandbyServesKey: the chat with this key belongs to an agent the server answers for from its standby copy.
 func crewStandbyServesKey(key string) bool {
+	_, ok := crewStandbyServedTab(key)
+	return ok
+}
+
+// crewStandbyServedTab is the agent the server answers for from its standby copy that this chat belongs to.
+func crewStandbyServedTab(key string) (string, bool) {
 	project := crewResourceProjectID(key)
 	if IsLocalMode() || project == "" {
-		return false
+		return "", false
 	}
 	rows, err := readCrewStandby(project)
 	if err != nil || len(rows) == 0 {
-		return false
+		return "", false
 	}
-	return rows[crewStandbyTabForKey(project, key)].Writer == "server"
+	tab := crewStandbyTabForKey(project, key)
+	return tab, rows[tab].Writer == "server"
 }
 
 // crewStandbyTabForKey is the Mac agent a chat key of the Crew's online copy belongs to: a side tab or a teammate's

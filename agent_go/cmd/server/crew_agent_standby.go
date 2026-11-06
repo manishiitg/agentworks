@@ -34,6 +34,9 @@ import (
 type crewStandbyRequest struct {
 	Tab      string                `json:"tab"`
 	Sessions []crewStandbySendItem `json:"sessions,omitempty"`
+	// MacOnly (standby_check): what this Crew uses that only the owner's Mac has, names only (crewTeamMacOnly), for the
+	// note a server turn gets (crewStandbyServerNote). Nil keeps the last list.
+	MacOnly []crewTeamMacOnlyItem `json:"mac_only"`
 }
 
 type crewStandbySendItem struct {
@@ -130,6 +133,19 @@ func readCrewStandby(project string) (map[string]crewAgentStandby, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// crewStandbyMacOnly is the last list of what only the owner's Mac has, as its Mac sent it.
+func crewStandbyMacOnly(project string) []crewTeamMacOnlyItem {
+	dir, err := crewStandbyDir(project)
+	if err != nil {
+		return nil
+	}
+	var items []crewTeamMacOnlyItem
+	if raw, err := os.ReadFile(filepath.Join(dir, "mac-only.json")); err == nil {
+		_ = json.Unmarshal(raw, &items)
+	}
+	return items
 }
 
 func writeCrewStandby(project string, rows map[string]crewAgentStandby) error {
@@ -300,6 +316,11 @@ func (api *StreamingAPI) receiveCrewStandby(ctx context.Context, claims *UserCla
 	reply.Eligible = true
 	reply.Revision = row.Revision
 	if in.Action == "standby_check" {
+		if in.Standby.MacOnly != nil {
+			if dir, err := crewStandbyDir(id); err == nil && os.MkdirAll(dir, 0o700) == nil {
+				_ = fsutil.WriteJSONAtomic(filepath.Join(dir, "mac-only.json"), in.Standby.MacOnly, 0o600)
+			}
+		}
 		for _, item := range in.Standby.Sessions {
 			if crewStandbyKeyTab(binding.PeerProjectID, item.Key) != tab {
 				return out, fmt.Errorf("a conversation does not belong to this agent")

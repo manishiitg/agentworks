@@ -149,8 +149,15 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 	if err != nil {
 		return
 	}
+	// What only this Mac has goes with the first check, so the server's note for its turns names it (names only; a
+	// list that cannot be read now keeps the server's last one).
+	macOnly, _ := api.crewTeamMacOnly(ctx, claims.UserID, roots, connection, binding)
 	call := func(action string, sessions []crewStandbySendItem) (*crewStandbyReply, error) {
-		reply, err := desktopCrewSyncCall(ctx, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: action, PairID: binding.PairID, Standby: &crewStandbyRequest{Tab: tab, Sessions: sessions}})
+		request := &crewStandbyRequest{Tab: tab, Sessions: sessions}
+		if action == "standby_check" && sessions == nil {
+			request.MacOnly = macOnly
+		}
+		reply, err := desktopCrewSyncCall(ctx, claims.UserID, &connection, binding.PeerProjectID, crewSyncRequest{Action: action, PairID: binding.PairID, Standby: request})
 		if err != nil {
 			return nil, err
 		}
