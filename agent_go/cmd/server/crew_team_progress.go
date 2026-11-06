@@ -20,6 +20,7 @@ type crewTeamRound struct {
 	BytesTotal int64     `json:"bytes_total"`
 	Started    time.Time `json:"started"`
 	project    string
+	published  time.Time // the last progress notice
 }
 
 var crewTeamRounds sync.Map // binding dir -> *crewTeamRound (guarded by crewTeamRoundsMu for updates)
@@ -60,8 +61,16 @@ func crewTeamRoundBytes(ctx context.Context, done int64) {
 	if v, ok := crewTeamRounds.Load(dir); ok {
 		round := *v.(*crewTeamRound)
 		round.BytesDone = done
+		// The panel needs this about once a second, not per chunk: each notice checks every viewer's access, and at a
+		// notice per chunk a 40 MB page took 230 s (Showcase, 6 Nov).
+		publish := time.Since(round.published) >= time.Second
+		if publish {
+			round.published = time.Now()
+		}
 		crewTeamRounds.Store(dir, &round)
-		publishCrewPanelRoundChanged(dir)
+		if publish {
+			publishCrewPanelRoundChanged(dir)
+		}
 	}
 }
 

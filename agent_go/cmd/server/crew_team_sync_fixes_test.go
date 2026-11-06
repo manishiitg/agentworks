@@ -1,8 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -49,6 +53,93 @@ func TestCrewTeamScanLeavesOutOversizeFileAndSendsRemovalsFirst(t *testing.T) {
 	}
 	if len(scan.changes) != 3 || scan.changes[0].Path != "docs/a.md" || scan.changes[0].After != nil {
 		t.Fatalf("the old spelling's removal is not sent first: %+v", scan.changes)
+	}
+}
+
+// crewTeamChunkServer answers a copy's chunk requests from memory, for a test of the receiving side.
+type crewTeamChunkServer struct {
+	chunks map[string][]byte
+	served map[string]int
+	calls  int
+	onCall func(call int)
+}
+
+func (s *crewTeamChunkServer) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.calls++
+	if s.onCall != nil {
+		s.onCall(s.calls)
+	}
+	var in struct {
+		Chunks []transferChunk `json:"chunks"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+		return nil, err
+	}
+	var body bytes.Buffer
+	for _, c := range in.Chunks {
+		s.served[c.ID]++
+		if err := writeChunkFrame(&body, c.ID, s.chunks[c.ID]); err != nil {
+			return nil, err
+		}
+	}
+	return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(&body), Request: req}, nil
+}
+
+// PLAT-856-509 (Showcase, 6 Nov): a 2,000-file first download ran past its round's deadline, wrote nothing and started
+// again for ever. A page that runs out of time keeps the batches it wrote, and the next round goes on from there.
+func TestCrewTeamDownloadPageLargerThanARoundCompletesOverRounds(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	root, dir := t.TempDir(), t.TempDir()
+	server := &crewTeamChunkServer{chunks: map[string][]byte{}, served: map[string]int{}}
+	const count = crewTeamDownloadBatch*2 + 50
+	files := make([]crewTeamRemoteFile, 0, count)
+	for i := range count {
+		data := []byte(fmt.Sprintf("file %d", i))
+		v, err := chunkReader(bytes.NewReader(data), int64(len(data)), false, func(id string, piece []byte) error {
+			server.chunks[id] = append([]byte(nil), piece...)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, crewTeamRemoteFile{Path: fmt.Sprintf("docs/%04d.md", i), Version: &v})
+	}
+	b := &crewTeamLocal{Root: root, Project: "page-test", Client: "copy", Files: map[string]crewTeamLocalFile{}}
+	round, stop := context.WithCancel(context.WithValue(t.Context(), crewTeamTransportKey{}, http.RoundTripper(server)))
+	defer stop()
+	// The deadline passes while the second batch is on its way.
+	server.onCall = func(call int) {
+		if call == 2 {
+			stop()
+		}
+	}
+	c := desktopConnection{ID: "server", Server: "http://team.example.com"}
+	if _, err := crewTeamDownload(round, "owner", c, "/api/crew-teams/page-test", "", dir, b, files); err == nil {
+		t.Fatal("the round did not run out of time")
+	}
+	if len(b.Files) < crewTeamDownloadBatch || len(b.Files) >= count {
+		t.Fatalf("after the first round %d files of %d are kept", len(b.Files), count)
+	}
+	saved, err := readCrewTeamLocal(dir)
+	if err != nil || len(saved.Files) < crewTeamDownloadBatch {
+		t.Fatalf("the finished batch was not saved: %d %v", len(saved.Files), err)
+	}
+	kept := len(b.Files)
+	server.onCall = nil
+	next := context.WithValue(t.Context(), crewTeamTransportKey{}, http.RoundTripper(server))
+	if _, err = crewTeamDownload(next, "owner", c, "/api/crew-teams/page-test", "", dir, b, files); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Files) != count {
+		t.Fatalf("%d files of %d", len(b.Files), count)
+	}
+	for i, f := range files[:kept] {
+		if server.served[f.Version.Chunks[0].ID] != 1 {
+			t.Fatalf("file %d was fetched %d times; the next round must go on, not start again", i, server.served[f.Version.Chunks[0].ID])
+		}
+	}
+	if data, err := os.ReadFile(filepath.Join(root, "docs", fmt.Sprintf("%04d.md", count-1))); err != nil || string(data) != fmt.Sprintf("file %d", count-1) {
+		t.Fatalf("last file: %q %v", data, err)
 	}
 }
 

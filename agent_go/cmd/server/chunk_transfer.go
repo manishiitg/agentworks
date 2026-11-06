@@ -139,8 +139,8 @@ func readChunkSource(root string, source chunkSource, id string) ([]byte, error)
 
 // fetchChunks asks the server for chunks until all have arrived (each reply holds at most chunkBatchBytes
 // bytes) and stages each, checked, by its id. It returns the chunks the server no longer serves: their file's version
-// moved on since the page was read.
-func fetchChunks(ctx context.Context, owner string, c desktopConnection, route, query, stage string, chunks []transferChunk) (map[string]bool, error) {
+// moved on since the page was read. progress, when set, gets the bytes received so far.
+func fetchChunks(ctx context.Context, owner string, c desktopConnection, route, query, stage string, chunks []transferChunk, progress func(received int64)) (map[string]bool, error) {
 	var received int64
 	moved := map[string]bool{}
 	for len(chunks) > 0 {
@@ -156,7 +156,9 @@ func fetchChunks(ctx context.Context, owner string, c desktopConnection, route, 
 			}
 			got[id] = true
 			received += int64(len(data))
-			crewTeamRoundBytes(ctx, received)
+			if progress != nil {
+				progress(received)
+			}
 			return os.WriteFile(filepath.Join(stage, id), data, 0o600)
 		})
 		resp.Body.Close()
