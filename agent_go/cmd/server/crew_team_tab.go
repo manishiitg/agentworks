@@ -229,6 +229,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	uses := crewTeamUses(ctx, t)
 	for _, p := range byPerson {
 		mine := p.UserID == viewer
+		onMac := crewTeamAgentOnMac(t, p.UserID)
 		shared := 0
 		for _, a := range p.Agents {
 			if a.InTeam {
