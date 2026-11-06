@@ -30,6 +30,9 @@ const crewStandbyMacRefusalLine = "This agent is answering from the server while
 // Mac the agent has every file and app of the Crew; here it has only what the server holds (owner, 6 Nov), so the
 // note names whose agent it is, which files are here, and what this Crew uses that only the Mac has (the list the
 // owner's Mac sent with its last copy, crewStandbyMacOnly).
+// crewStandbyMacOnlyShown keeps the Mac-only list in every server turn's note short.
+const crewStandbyMacOnlyShown = 50
+
 func crewStandbyServerNote(project, tab string) string {
 	owner := ownerOfCrewProjectID(project)
 	ownerName := firstNonEmptyTrimmed(crewPersonShortName(owner), "your owner")
@@ -49,9 +52,12 @@ func crewStandbyServerNote(project, tab string) string {
 	fmt.Fprintf(&b, "## Answering from the server\n\nYou are %s's agent %q. %s's Mac is off, so you are answering from the server's copy of this conversation, with %s's AI account and the apps and secrets in their Vault on the server.\n\n", ownerName, agent, ownerName, ownerName)
 	fmt.Fprintf(&b, "Files here: %s. Everything else in this Crew is only on the Mac: do not assume those files exist here.\n\n", files)
 	if items := crewStandbyMacOnly(project); len(items) > 0 {
-		names := make([]string, 0, len(items))
-		for _, item := range items {
+		names := make([]string, 0, min(len(items), crewStandbyMacOnlyShown)+1)
+		for _, item := range items[:min(len(items), crewStandbyMacOnlyShown)] {
 			names = append(names, item.Name+" ("+item.Kind+")")
+		}
+		if extra := len(items) - crewStandbyMacOnlyShown; extra > 0 {
+			names = append(names, fmt.Sprintf("and %d more", extra))
 		}
 		fmt.Fprintf(&b, "Only on the Mac, not available now: %s.\n\n", strings.Join(names, ", "))
 	}
