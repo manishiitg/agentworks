@@ -287,11 +287,35 @@ func macSharedAgentChatKey(project, tab string) string {
 	return project + codeChatSideMarker + tab
 }
 
-// macSharedAgentTab reads the tab id from a chat_id: "<project>:chat:<id>", the bare id, or the project (Main).
+// macCrewAddressTab is the agent a message to the Crew itself reaches: Main while it is shared (Team or Public on
+// AgentBridge), else the owner's first shared agent (owner, 6 Nov: Main can be off, each person keeps one shared).
+func macCrewAddressTab(project string) string {
+	if IsLocalMode() {
+		return macMainTab
+	}
+	t, err := liveCrewTeam(project)
+	if err != nil || !t.On {
+		return macMainTab
+	}
+	first := ""
+	for _, agent := range readMacSharedAgents(project) {
+		inTeam := agent.Audience == "team" && t.agentInTeam(t.OwnerID, agent.Tab)
+		if agent.Tab == macMainTab && (inTeam || agent.AgentBridgePublic) {
+			return macMainTab
+		}
+		if inTeam && first == "" {
+			first = agent.Tab
+		}
+	}
+	return firstNonEmptyTrimmed(first, macMainTab)
+}
+
+// macSharedAgentTab reads the tab id from a chat_id: "<project>:chat:<id>", the bare id, or the project (the Crew
+// itself, macCrewAddressTab). A key that names Main itself stays Main, so an unshared Main is refused as such.
 func macSharedAgentTab(project, chatID string) string {
 	chatID = strings.TrimSpace(chatID)
 	if chatID == project {
-		return macMainTab
+		return macCrewAddressTab(project)
 	}
 	if base, id, ok := strings.Cut(chatID, codeChatSideMarker); ok {
 		if base != project {

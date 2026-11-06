@@ -49,6 +49,39 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if tab := macSharedAgentTab("team", originalMainChatKey("team", "someone-elses-conversation")); tab == macMainTab {
 		t.Fatal("a root key that is not the owner's own record routed as the owner's Main")
 	}
+	// Main off (owner, 6 Nov): a message to the Crew itself reaches the first shared agent, not an unshared Main. A key
+	// naming Main stays Main, and a Main public on AgentBridge is still shared.
+	mainOff := team
+	mainOff.AgentChoices = map[string]map[string]bool{"owner": {macMainTab: false}}
+	if err := writeCrewTeam(mainOff); err != nil {
+		t.Fatal(err)
+	}
+	withHelper := []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}, {Tab: "helper01", Name: "Helper", Audience: "team"}}
+	if err := writeMacSharedAgents("team", withHelper); err != nil {
+		t.Fatal(err)
+	}
+	if tab := macSharedAgentTab("team", "team"); tab != "helper01" {
+		t.Fatalf("a message to the Crew with Main off went to %q, want the first shared agent", tab)
+	}
+	if tab := macSharedAgentTab("team", mainKey); tab != macMainTab {
+		t.Fatalf("a key naming Main routed to %q", tab)
+	}
+	withHelper[0].AgentBridgePublic = true
+	if err := writeMacSharedAgents("team", withHelper); err != nil {
+		t.Fatal(err)
+	}
+	if tab := macSharedAgentTab("team", "team"); tab != macMainTab {
+		t.Fatalf("a Main public on AgentBridge lost the Crew's messages to %q", tab)
+	}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: "main", Name: "Main", Audience: "team"}}); err != nil {
+		t.Fatal(err)
+	}
+	if tab := macSharedAgentTab("team", "team"); tab != macMainTab {
+		t.Fatalf("a message to the Crew with Main shared went to %q", tab)
+	}
 	store := agentMessageStore{}
 	for _, user := range []string{"other", "removed"} {
 		store.Agents = append(store.Agents, namedMessageAgent{ID: "agent-" + user, Name: user, UserID: user})
@@ -98,6 +131,8 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
+	// The Team list reads the Mac's tabs once it is back, and nobody answers this fixture's Mac until the loop below.
+	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now()})
 	commands := make(chan crewRelayMessage, 8)
 	sock, err := f.api.crewRelayRegister(t.Context(), &UserClaims{UserID: "owner", Username: "owner"}, crewRelayMessage{Type: "hello", DeviceID: "mac", Crews: []crewRelayCrew{{Project: "team", Pair: "pair"}}}, func(m crewRelayMessage) error { commands <- m; return nil }, nil)
 	if err != nil {

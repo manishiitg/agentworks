@@ -3,6 +3,7 @@ package server
 // PLAT-856-509: a Team is a folder grant, never another person's Crew Builder.
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -648,9 +649,8 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 			secrets = append(secrets, vaultSecretShortName(name))
 		}
 	}
-	slices.Sort(apps)
 	slices.Sort(secrets)
-	for _, name := range slices.Compact(apps) {
+	for _, name := range crewTeamOneNamePerApp(apps) {
 		out.Items = append(out.Items, crewTeamLentItem{Name: name, Kind: "app"})
 	}
 	for _, name := range slices.Compact(secrets) {
@@ -660,6 +660,14 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 		return nil // a teammate sees the card only when something is lent (owner, 5 Nov)
 	}
 	return out
+}
+
+// crewTeamOneNamePerApp sorts app names and keeps one spelling of each (crewTeamAppKey).
+func crewTeamOneNamePerApp(apps []string) []string {
+	slices.SortFunc(apps, func(a, b string) int {
+		return cmp.Or(cmp.Compare(crewTeamAppKey(a), crewTeamAppKey(b)), cmp.Compare(a, b))
+	})
+	return slices.CompactFunc(apps, func(a, b string) bool { return crewTeamAppKey(a) == crewTeamAppKey(b) })
 }
 
 // answerCrewTeamInvite is the invited person's own answer: accept makes them a member, decline takes them off the roster.
