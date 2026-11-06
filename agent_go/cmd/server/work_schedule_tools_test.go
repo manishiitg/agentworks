@@ -2,10 +2,13 @@ package server
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
@@ -146,6 +149,67 @@ func TestScheduleCreatedFromMigratedMainUsesTheMainAddress(t *testing.T) {
 		}
 	}
 	t.Fatal("created schedule missing")
+}
+
+// PLAT-871: the automations tool's documented one-time forms on a Crew. calendar_items were dropped (400 "cron_expression,
+// cadence_hours or run_at is required") and run_at was refused; both must save, come back as dates and reach the clock.
+func TestCrewOneTimeScheduleFormsReachTheClock(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	crewOwnerTabsFixture(t, env)
+	env.svc.users = func(string) []string { return []string{"owner"} }
+	svc := &SchedulerService{api: env.api}
+	ctx := internalBotRequestContext(t.Context(), "owner")
+	at := time.Now().UTC().Add(48 * time.Hour).Truncate(time.Minute)
+	for name, timing := range map[string]map[string]any{
+		"dated": {"schedule_type": "calendar", "calendar_items": []any{map[string]any{"date": at.Format("2006-01-02"), "time": at.Format("15:04")}}},
+		"at":    {"run_at": at.Format(time.RFC3339)},
+	} {
+		body := map[string]any{"entity_type": "product", "product_profile_id": "work", "product_project_id": "beta",
+			"name": name, "timezone": "UTC", "enabled": true, "messages": []any{"Send the report"}}
+		for key, value := range timing {
+			body[key] = value
+		}
+		encoded, _ := json.Marshal(body)
+		w := httptest.NewRecorder()
+		createScheduledJobHandler(svc)(w, httptest.NewRequest(http.MethodPost, "/api/scheduler/jobs", strings.NewReader(string(encoded))).WithContext(ctx))
+		if w.Code != http.StatusCreated {
+			t.Fatalf("%s: %d %s", name, w.Code, w.Body)
+		}
+		jobs, err := env.svc.JobsForUser(ctx, "owner")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var id string
+		for _, job := range jobs {
+			if job.Schedule.Name != name {
+				continue
+			}
+			id = job.ID()
+			if d := projectTimerDecision(job, at.Add(-time.Minute)); d.Run {
+				t.Fatalf("%s ran early: %+v", name, d)
+			}
+			if d := projectTimerDecision(job, at.Add(time.Second)); !d.Run {
+				t.Fatalf("%s did not come due: %+v", name, d)
+			}
+		}
+		if id == "" {
+			t.Fatalf("%s: schedule not found after saving", name)
+		}
+		// A new timing form replaces the saved dates.
+		w = httptest.NewRecorder()
+		update := httptest.NewRequest(http.MethodPut, "/api/scheduler/jobs/x", strings.NewReader(`{"cron_expression":"0 9 * * *"}`)).WithContext(ctx)
+		updateScheduledJobHandler(svc)(w, mux.SetURLVars(update, map[string]string{"id": id}))
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s to cron: %d %s", name, w.Code, w.Body)
+		}
+	}
+	past := `{"entity_type":"product","product_profile_id":"work","product_project_id":"beta","name":"late","enabled":true,"messages":["x"],"run_at":"2020-01-01T00:00:00Z"}`
+	w := httptest.NewRecorder()
+	createScheduledJobHandler(svc)(w, httptest.NewRequest(http.MethodPost, "/api/scheduler/jobs", strings.NewReader(past)).WithContext(ctx))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("past run_at: %d %s", w.Code, w.Body)
+	}
 }
 
 // PLAT-871-23: "in five minutes" must never be reported as "every five minutes".

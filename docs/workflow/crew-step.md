@@ -510,8 +510,8 @@ response. A complete external call-and-poll contract should expose a status
 resource equivalent to:
 
 ```http
-POST /api/hooks/product/{trigger_id}
-GET  /api/hooks/product/{trigger_id}/runs/{run_id}
+POST /api/hooks/{trigger_id}
+GET  /api/hooks/{trigger_id}/runs/{run_id}
 ```
 
 ```json

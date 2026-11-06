@@ -834,6 +834,10 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 	for i := range manifest.Schedules {
 		if manifest.Schedules[i].ID == job.Schedule.ID {
 			update(&manifest.Schedules[i])
+			// A schedule has one timing form: a new cron, cadence or run_at replaces saved dates.
+			if s := &manifest.Schedules[i]; s.When != nil && (s.CronExpression != "" || s.CadenceHours > 0 || s.RunAt != "") {
+				s.When.Dates = nil
+			}
 			job.Schedule = manifest.Schedules[i]
 			found = true
 			break

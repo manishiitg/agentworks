@@ -36,7 +36,7 @@ func crewTeamForTab(w http.ResponseWriter, r *http.Request, write bool) (crewTea
 		t, err = crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}, nil
 	}
 	if err != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
-		externalError(w, 403, "team_forbidden", "This Crew isn't shared with you right now. Ask its owner to add you to its Team.")
+		externalError(w, 403, "team_forbidden", "The Team tab is for people in this Crew's Team. Ask its owner to add you.")
 		return crewTeam{}, nil, false
 	}
 	return t, claims, true

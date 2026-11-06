@@ -9,7 +9,11 @@ it and paste the output: a long probe pasted into chat reads like an attack and 
 print only names, markers and fingerprints of a file's first bytes, never a value. An agent that will not run the
 script is reported as NOT RUN (nothing proven), never as a pass. Happy paths (H*) use ordinary requests.
 
-  python3 scripts/agent-test.py --login NAME --workspace-id work:<crew id> [--providers a,b] [--only S1,H1] [--show]
+  python3 scripts/agent-test.py --login NAME --workspace-id work:<crew id> [--workspace-port PORT] [--providers a,b]
+                                [--only S1,H1] [--show]
+
+--workspace-port (SMOKE_WORKSPACE_PORT in the server's smoke.env) is required when S1 runs, which is the default.
+Exits 0 only when every scenario passed; 1 when one failed or could not run; 2 on a wrong command.
 """
 import argparse
 import importlib.util
@@ -119,7 +123,7 @@ class Run:
                 pass
 
     def ask(self, chat_id, prompt, started, accept, expected):
-        return smoke.turn(self.config, self.workspace, chat_id, prompt, started, self.limit, accept, expected)
+        return smoke.turn(self.config, self.workspace, chat_id, prompt, started, self.limit, accept, expected)[:2]
 
     def check(self, sid, target):
         _, script, judge = CHECKS[sid]
@@ -194,6 +198,16 @@ def main():
     parser.add_argument("--workspace-port", default="", help="the server's workspace service port, for S1's no-token request")
     parser.add_argument("--show", action="store_true", help="print each security script's output (names and fingerprints only)")
     args = parser.parse_args()
+    ids = [s.strip() for s in args.only.split(",") if s.strip()] or [*CHECKS, *HAPPY]
+    unknown = [sid for sid in ids if sid not in CHECKS and sid not in HAPPY]
+    if unknown:
+        print(f"AGENT-TEST: unknown scenario {', '.join(unknown)}; known: {', '.join([*CHECKS, *HAPPY])}")
+        return 2
+    if "S1" in ids and not args.workspace_port:
+        # Without it S1 cannot check that the workspace service refuses a request without its token.
+        print("AGENT-TEST: could not run: S1 needs the workspace service port. Set SMOKE_WORKSPACE_PORT in the server's "
+              "smoke.env (or pass --workspace-port), or leave S1 out with --only")
+        return 2
     run = Run(args)
     if not os.path.isfile(run.config):
         print(f"AGENT-TEST: could not run: no saved login {args.login!r}")
@@ -205,15 +219,9 @@ def main():
         return 1
     wanted = {p.strip() for p in args.providers.split(",") if p.strip()}
     targets = [t for t in targets if not wanted or t["provider"] in wanted]
-    ids = [s.strip() for s in args.only.split(",") if s.strip()] or [*CHECKS, *HAPPY]
-    unknown = [sid for sid in ids if sid not in CHECKS and sid not in HAPPY]
-    if unknown:
-        print(f"AGENT-TEST: unknown scenario {', '.join(unknown)}; known: {', '.join([*CHECKS, *HAPPY])}")
-        return 2
-    if "S1" in ids and not args.workspace_port:
-        # Without it S1 cannot check that the workspace service refuses a request without its token.
-        print("AGENT-TEST: S1 needs --workspace-port (SMOKE_WORKSPACE_PORT in the server's smoke.env)")
-        return 2
+    if not targets:
+        print("AGENT-TEST: could not run: no matching AI program is configured on this server")
+        return 1
     tally = {"PASS": 0, "FAIL": 0, "NOT RUN": 0}
 
     def report(verdict, sid, label, problems):
@@ -233,7 +241,7 @@ def main():
                 verdict, problems = "NOT RUN", [f"error: {smoke.first_line(str(error))}"]
             report(verdict, sid, label, problems)
     print(f"AGENT-TEST: {tally['PASS']} passed, {tally['FAIL']} failed, {tally['NOT RUN']} not run")
-    return 0
+    return 1 if tally["FAIL"] or tally["NOT RUN"] else 0
 
 
 if __name__ == "__main__":

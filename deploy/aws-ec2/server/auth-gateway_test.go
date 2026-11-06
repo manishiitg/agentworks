@@ -566,18 +566,25 @@ func TestProductWebhookBypassesGatewayButManagementStaysPrivate(t *testing.T) {
 	defer upstream.Close()
 	target, _ := url.Parse(upstream.URL)
 	g := &gateway{agent: httputil.NewSingleHostReverseProxy(target)}
-	req := httptest.NewRequest(http.MethodPost, "/api/hooks/product/trigger-id", strings.NewReader(`{"marker":"test"}`))
-	req.Header.Set("Authorization", "Bearer product-trigger-secret")
-	req.Header.Set("X-User-ID", "spoofed-user")
-	rec := httptest.NewRecorder()
-	g.ServeHTTP(rec, req)
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("product webhook response = %d", rec.Code)
+	// /api/hooks/<id> is the address the app hands out for a Crew or Goal; it was refused with 401 here (PLAT-871).
+	for _, address := range [][2]string{{http.MethodPost, "/api/hooks/product/trigger-id"}, {http.MethodPost, "/api/hooks/trigger-id"}, {http.MethodGet, "/api/hooks/trigger-id/runs/run-id"}} {
+		req := httptest.NewRequest(address[0], address[1], strings.NewReader(`{"marker":"test"}`))
+		req.Header.Set("Authorization", "Bearer product-trigger-secret")
+		req.Header.Set("X-User-ID", "spoofed-user")
+		rec := httptest.NewRecorder()
+		g.ServeHTTP(rec, req)
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("%s response = %d", address[1], rec.Code)
+		}
 	}
 	for _, candidate := range []*http.Request{
 		httptest.NewRequest(http.MethodGet, "/api/hooks/product/trigger-id", nil),
 		httptest.NewRequest(http.MethodPost, "/api/hooks/product/trigger-id/extra", nil),
 		httptest.NewRequest(http.MethodPost, "/api/product-webhooks/trigger-id", nil),
+		httptest.NewRequest(http.MethodGet, "/api/hooks/trigger-id", nil),
+		httptest.NewRequest(http.MethodPost, "/api/hooks/trigger-id/extra", nil),
+		httptest.NewRequest(http.MethodDelete, "/api/hooks/trigger-id/runs/run-id", nil),
+		httptest.NewRequest(http.MethodPost, "/api/hooks/", nil),
 	} {
 		if isWebhookRequest(candidate) {
 			t.Fatalf("unexpected product webhook exception: %s %s", candidate.Method, candidate.URL.Path)
