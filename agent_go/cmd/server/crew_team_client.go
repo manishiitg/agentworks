@@ -318,10 +318,14 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 			endCrewTeamRound(dir, uploadErr)
 			saveErr = saveCrewTeamLocal(dir, *b)
 		}
-		watch.done(b.Project, key, plan, scan, errors.Join(e, uploadErr, saveErr))
+		var retryErr error
+		if scan.unstable > 0 {
+			retryErr = errCrewTeamFileChanged
+		}
+		watch.done(b.Project, key, plan, scan, errors.Join(e, uploadErr, saveErr, retryErr))
 		if !plan.idle() {
-			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=round scan=%s watched=%d stated=%d names=%d reused=%d read_files=%d read_bytes=%d changes=%d chunks_sent=%d ms=%d",
-				b.Project, b.Client, plan.mode(), plan.watched, scan.stated, scan.names, scan.reused, scan.readFiles, scan.readBytes, len(scan.changes), chunks, time.Since(started).Milliseconds())
+			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=round scan=%s watched=%d stated=%d names=%d reused=%d read_files=%d read_bytes=%d unstable=%d changes=%d chunks_sent=%d ms=%d",
+				b.Project, b.Client, plan.mode(), plan.watched, scan.stated, scan.names, scan.reused, scan.readFiles, scan.readBytes, scan.unstable, len(scan.changes), chunks, time.Since(started).Milliseconds())
 		}
 		if e != nil {
 			return crewTeamStep("scan", e)
@@ -331,7 +335,7 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 		}
 	}
 	// 2. What changed on the team comes down, page by page.
-	pending := false
+	pending := scan.unstable > 0
 	for {
 		var page crewTeamChangesReply
 		if e = crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/sync/changes"+query, crewTeamSyncRequest{Client: b.Client, Since: b.Revision}, &page); e != nil {
@@ -387,6 +391,7 @@ type crewTeamScanResult struct {
 	reused    int      // stable file versions reused without reading contents
 	readFiles int
 	readBytes int64
+	unstable  int  // retry these files next round without blocking other transfers
 	names     int  // names in the folders the scan listed
 	rules     bool // the folder has a .gitignore (known after a full scan)
 	respell   bool // a changed folder is spelled differently on disk now: only a full scan reads it right
@@ -569,9 +574,7 @@ func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFo
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
-		if err := crewTeamScanFile(b, op, &out, f.rel, f.d, ignored, share, seen, &tooLarge); err != nil {
-			return out, err
-		}
+		crewTeamScanFile(b, op, &out, f.rel, f.d, ignored, share, seen, &tooLarge)
 	}
 	// Removed here, or taken back from Sync it anyway (the file stays here): removed from the team. A file that is
 	// still here but this copy leaves out (ignored, outside the share) is not this copy's to remove (review 5 Nov).
@@ -622,33 +625,33 @@ func crewTeamParent(rel string) string {
 
 // crewTeamScanFile reuses only a stable full stamp, including change-time,
 // identity and mode; preserving a file's size/mtime cannot hide an edit.
-func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanResult, rel string, d fs.DirEntry, ignored map[string]bool, share crewTeamFolder, seen map[string]bool, tooLarge *[]string) error {
+func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanResult, rel string, d fs.DirEntry, ignored map[string]bool, share crewTeamFolder, seen map[string]bool, tooLarge *[]string) {
 	if d.Type()&os.ModeSymlink != 0 || !d.Type().IsRegular() || !crewsync.Allowed(crewTeamKey(rel), false) || ignored[rel] || !share.holds(rel) || !crewTeamAllowed(rel, op) {
-		return nil
+		return
 	}
 	info, err := d.Info()
 	out.stated++
 	if err != nil {
-		return nil
+		return
 	}
 	if info.Size() > publication.MaxFileBytes {
 		// Over the per-file limit: left out and named in the status, so it never blocks the rest (it stays here,
 		// and the team's earlier version of it stays on the team).
 		*tooLarge = append(*tooLarge, rel)
-		return nil
+		return
 	}
 	seen[rel] = true
 	known, had := b.Files[rel]
 	if had && known.Stamp.Reusable(crewsync.StampOf(info), known.ReadAt) {
 		out.reused++
-		return nil
+		return
 	}
 	entry, sources, err := readCrewTeamVersion(b.Root, rel, op, known.Version)
 	if err != nil {
 		if errors.Is(err, errCrewTeamFileChanged) {
-			return err // watcher.done schedules a full retry of an unstable read
+			out.unstable++ // watcher.done retries; this file's acknowledged version stays unchanged
 		}
-		return nil // unreadable/linked/disappeared paths retain the existing skip policy
+		return // keep transferring other files, including teammates' downloads
 	}
 	for id, source := range sources {
 		if _, ok := out.sources[id]; !ok {
@@ -659,10 +662,9 @@ func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanR
 	out.readBytes += entry.Version.Size
 	out.entries[rel] = entry
 	if had && crewTeamSameVersion(known.Version, entry.Version) {
-		return nil // touched/racy, not changed: settle its stamp after the scan
+		return // touched/racy, not changed: settle its stamp after the scan
 	}
 	out.changes = append(out.changes, crewTeamChange{Path: rel, Before: known.Version.Hash, After: &entry.Version})
-	return nil
 }
 
 // crewTeamUpload sends this copy's changes in batches: plan, the missing chunks in frames of at most
