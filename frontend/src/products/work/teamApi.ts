@@ -62,7 +62,8 @@ export type TeamTabAgent = { key: string; name: string; detail: string; in_team:
   // AgentBridge (a Mac Crew's owner's own rows): needs_purpose shows Set purpose instead of the switch; state is the
   // pill while it is public ("public · online").
   purpose: string; can_set_purpose: boolean
-  agentbridge?: { public: boolean; can_change: boolean; needs_purpose?: boolean; state?: string }
+  // copy_line is the owner's coding-app line for this one agent; copy_line_why says why there is none yet.
+  agentbridge?: { public: boolean; can_change: boolean; needs_purpose?: boolean; state?: string; copy_line?: string; copy_line_why?: string }
   // The tab's setup icon and card rows (crew_tab_setup.go), worded by the server, for everyone who sees the agent.
   setup?: TeamTabSetup }
 export type TeamTabSetup = { reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }

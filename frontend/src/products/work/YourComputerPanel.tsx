@@ -8,7 +8,6 @@ import { laptopSettingsEndpoint } from '../../components/workspace/laptopAccess'
 import { Button } from '../../components/ui/Button'
 import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { Switch } from '../../components/ui/Switch'
-import { HostedAiAppGuide } from '../../components/integrations/HostedAiAppGuide'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { useLocalFileDevices } from './codeLocalFiles'
 import { ConnectServerForm } from '../../components/providers/ProvidersOverview'
@@ -175,7 +174,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
   const [asking, setAsking] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const [open, setOpen] = useState<'' | 'code' | 'ai' | 'move'>('')
+  const [open, setOpen] = useState<'' | 'code' | 'move'>('')
   useEffect(() => {
     const abort = new AbortController()
     const load = () => void api.get<SyncStatus>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: abort.signal, skipSessionContext: true }).then(({ data }) => { if (!abort.signal.aborted) setStatus(data) }).catch(() => {})
@@ -224,8 +223,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
     <div className="min-w-0 flex-1"><p className="font-semibold">{title}</p><p className="text-[12.5px] text-muted-foreground">{line}</p></div>
     <div className="flex flex-wrap items-center gap-1.5">{action}</div>
   </div>
-  // Reach it from: the Mac app reaches its Crew through the paired server; the website is that server.
-  const reachServer = here ? binding?.peer_server || '' : window.location.origin
+  // Website and phone: the Mac app opens its Crew on the paired server; the website is that server.
   const reachLink = here ? link : `${window.location.origin}/crew/projects/${encodeURIComponent(projectId)}`
   // Move online takes the whole page (owner, 3 Nov mockup): the step, then its progress, then done.
   const [doneSeen, setDoneSeen] = useState(false)
@@ -287,7 +285,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
       {macText(status.access_publish)}
       {(status.on_server || []).map(copy => <p key={copy.name} className="px-1 text-xs"><span className="font-medium">{copy.name}</span> <span className="text-muted-foreground">· {copy.detail}</span></p>)}
     </section>}
-    {/* Mac online (owner, 6 Nov, approved mockup): three cards, the same on the Mac app and the website. The server
+    {/* Mac online (owner, 6 Nov, approved mockup): two cards, the same on the Mac app and the website. The server
         words This Mac; the Mac app holds its switch, the website shows it. */}
     {!(here && needsServer) && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
       {here && online ? <MacDataLine>{`This Crew now runs on ${network}. Open it on the Publish tab.`}</MacDataLine> : <>
@@ -306,22 +304,18 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
             <p className="text-xs text-muted-foreground">Which network?</p>
             {connections.map(item => <Button key={item.id} size="sm" variant="outline" className="w-full justify-start rounded-full px-3.5" onClick={() => reach(item.id)}>{networkName(item.id)}</Button>)}
           </div>}
-        </section>
-        <section aria-label="Reach it from" className={teamCard}>
-          <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Reach it from</h3><AskButton projectId={projectId} card="reach" /></div>
-          <div aria-disabled={!reachLink} className={`divide-y divide-border ${reachLink ? '' : 'pointer-events-none opacity-50'}`}>
+          {/* Website and phone is This Mac's last row (owner, 6 Nov: the ChatGPT/Claude row is gone, so no card of one row). */}
+          <div aria-disabled={!reachLink} className={`border-t border-border ${reachLink ? '' : 'pointer-events-none opacity-50'}`}>
             {way('Website and phone', 'Open this Crew in any browser', <>
               <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!reachLink} onClick={() => window.open(reachLink, '_blank', 'noopener,noreferrer')}>Open</Button>
               <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!reachLink} aria-expanded={open === 'code'} aria-controls={`crew-phone-code-${projectId}`} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide QR' : 'QR for phone'}</Button>
             </>)}
             {open === 'code' && reachLink && <div id={`crew-phone-code-${projectId}`} className="flex justify-center p-3"><LinkCode link={reachLink} /></div>}
-            {way('ChatGPT or Claude', `Then say “ask my ${name} Crew to…”`, <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!reachServer} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
-            {open === 'ai' && reachServer && <div className="py-3"><ConnectAiApp endpoint={`${reachServer}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
           </div>
-          {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to reach this Crew from your other apps.</p>}
+          {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to open this Crew in a browser or on your phone.</p>}
         </section>
         {/* Public on AgentBridge is chosen per agent here, on Mac online only (owner, 6 Nov). */}
-        <MacAgentBridge projectId={projectId} crewName={team?.name || name} />
+        <MacAgentBridge projectId={projectId} />
       </>}
     </section>}
     {here && !needsServer && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
@@ -422,17 +416,6 @@ function LinkCode({ link }: { link: string }) {
     return () => { active = false }
   }, [link])
   return image ? <img src={image} alt={`Code that opens ${link}`} className="h-44 w-44 rounded-md border border-border bg-white p-1" /> : <p className="text-muted-foreground">Drawing the code…</p>
-}
-
-/** The existing hosted AI app guide, pointed at this Crew's online address, plus a first sentence to try. */
-function ConnectAiApp({ endpoint, name, onDone }: { endpoint: string; name: string; onDone: () => void }) {
-  const [app, setApp] = useState<'chatgpt' | 'cowork'>('chatgpt')
-  return <div className="space-y-2">
-    <HostedAiAppGuide app={app} endpoint={endpoint}>
-      <p className="text-sm"><span className="font-medium">Try it:</span> "Ask my {name} Crew what changed today."</p>
-    </HostedAiAppGuide>
-    <div className="flex gap-2"><Button className="rounded-full px-3.5" size="sm" variant="outline" onClick={() => setApp(app === 'chatgpt' ? 'cowork' : 'chatgpt')}>{app === 'chatgpt' ? 'Claude instead' : 'ChatGPT instead'}</Button><Button className="rounded-full px-3.5" size="sm" onClick={onDone}>Done</Button></div>
-  </div>
 }
 
 
