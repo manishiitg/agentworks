@@ -633,7 +633,6 @@ function PersonChip({ name, presence, agents, watching, onPick }: {
       className={`inline-flex h-7 max-w-[16rem] shrink-0 items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching ? 'border-primary text-foreground' : 'border-border text-foreground/85'}`}>
       {avatar('h-5 w-5')}
       <span className="min-w-0 truncate">{name}{watching && <> · <b className="font-semibold">{watching.name}</b></>}</span>
-      {!watching && <span className="text-muted-foreground">{agents.length}</span>}
       {/* What their agents are doing now (owner, 6 Nov: "when their agent is online/offline/working/loading I want to see
           that"): one mark each, only while it is working, needs them, failed or has a reply not read yet. */}
       <span className="flex shrink-0 items-center gap-0.5">{agents.map(agent => <PersonAgentMark key={agent.tabId} tabId={agent.tabId} running={agent.running} />)}</span>
