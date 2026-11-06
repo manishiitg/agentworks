@@ -65,15 +65,29 @@ it('keeps shared projects in the active server beside the owner navigation', asy
     : { status: 'connected', projects: path === `/${id}/inventory` ? [
       { id: 'owned', name: 'Owned crew', kind: 'crew', mode: 'builder', owned_by_caller: true },
       { id: 'shared', name: 'Shared crew', kind: 'crew', mode: 'run', owned_by_caller: false, owner_name: 'Project owner' },
+      { id: 'shared2', name: 'Second dashboard', kind: 'crew', mode: 'run', owned_by_caller: false, owner_name: 'Project owner' },
+      { id: 'other', name: 'Other dashboard', kind: 'crew', mode: 'run', owned_by_caller: false, owner_name: 'Someone else' },
+      { id: 'build', name: 'Build together', kind: 'crew', mode: 'builder', owned_by_caller: false, owner_name: 'Project owner' },
+      { id: 'agent', name: 'AgentWorks', kind: 'crew', mode: 'builder', owned_by_caller: true, personal_agent: true },
     ] : [] })
   const host = document.createElement('div'), root = createRoot(host)
   try {
     await act(async () => root.render(<DesktopConnections projects={[{ id: 'owned', name: 'Owned crew', kind: 'crew' }, { id: 'weekly', name: 'Weekly goal', kind: 'goal' }]} />))
     const group = host.querySelector('[aria-label="Connected work"]')!
-    expect(group.querySelector('[aria-label="Mine"]')?.textContent).toContain('Owned crew')
-    expect(group.querySelector('[aria-label="Shared with me"]')?.textContent).toContain('Shared crew')
-    expect(group.querySelector('[aria-label="Shared with me"]')?.textContent).toContain('Project owner')
-    expect(group.querySelector('[aria-label="Mine"]')?.textContent).not.toContain('Shared crew')
+    const mine = group.querySelector('[aria-label="My Crews"]')!, dashboards = group.querySelector('[aria-label="Dashboards shared with me"]')!
+    expect(mine.textContent).toContain('Owned crew')
+    expect(mine.textContent).toContain('Build together') // a Crew shared to build in is not a dashboard
+    expect(mine.textContent).not.toContain('Shared crew')
+    expect(mine.textContent).not.toContain('AgentWorks') // the person's own agent is pinned above the servers, not in a server's list
+    expect(group.textContent).toContain('Your agent') // ...first, with its own label
+    expect(group.textContent!.indexOf('Your agent')).toBeLessThan(group.textContent!.indexOf('My Crews'))
+    expect(dashboards.textContent).toContain('Shared crew')
+    expect(dashboards.textContent).not.toContain('Owned crew')
+    // Grouped by who shared them, the biggest group first and open.
+    const groups = [...dashboards.querySelectorAll('details')]
+    expect(groups.map(g => g.querySelector('summary')?.textContent)).toEqual(['▸Project owner· 2', '▸Someone else· 1'])
+    expect(groups[0].open).toBe(true)
+    expect(group.querySelector('section[aria-label="Server: Team"]')?.textContent).toContain('server')
     expect(group.textContent).toContain('Weekly goal')
     expect(group.textContent?.match(/Owned crew/g)).toHaveLength(1)
   } finally {

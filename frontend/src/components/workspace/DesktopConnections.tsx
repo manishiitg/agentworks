@@ -10,22 +10,35 @@ import { SidebarProjectRow, openSidebarProject } from './SidebarServerGroup'
 import { groupByMac, macCrewStateText, macStatusText, type CrewLocationFields } from './macCrews'
 import { useTeamInviteRows } from './TeamInviteRow'
 import { SidebarCrewAgents } from './SidebarCrewAgents'
+import { ServerIdentityIcon } from './ServerIdentityIcon'
 
-type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
+type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
 
-/** One list of Crews and Goals under two plain headings (owner, 5 Nov): Mine, and Shared with me for another person's
- * Crew (a Team you joined, or one you co-own; its row names its owner). Team invites come first. */
+/** One list of Crews and Goals (owner, 6 Nov): My Crews (mine, and Crews I can build in), then the dashboards other
+ * people shared with me, grouped by who shared them with the biggest group open. Team invites come first. The person's
+ * own AgentWorks agent is not here; the caller pins it above the servers. */
 function ProjectList<T extends SidebarProject>({ projects, render, invites }: { projects: T[]; render: (project: T) => ReactNode; invites: ReactNode[] }) {
-  const groups = [
-    { label: 'Mine', rows: projects.filter(project => project.owned_by_caller === true).map(render) },
-    { label: 'Shared with me', rows: projects.filter(project => project.owned_by_caller === false).map(render) },
-  ]
+  const rest = projects.filter(project => !project.personal_agent)
+  const mine = rest.filter(project => project.owned_by_caller === true || (project.owned_by_caller === false && project.mode !== 'run'))
+  const dashboards = rest.filter(project => project.owned_by_caller === false && project.mode === 'run')
+  const byOwner = new Map<string, T[]>()
+  for (const project of dashboards) byOwner.set(project.owner_name || 'Others', [...(byOwner.get(project.owner_name || 'Others') || []), project])
+  const owners = [...byOwner.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
   return <>{invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}
-    {groups.map(group => group.rows.length > 0 && <section key={group.label} aria-label={group.label} className="mb-3 space-y-1">
-      <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">{group.label}</h2>
-      {group.rows}
-    </section>)}
-    {projects.filter(project => project.owned_by_caller === undefined).map(render)}</>
+    {mine.length > 0 && <section aria-label="My Crews" className="mb-3 space-y-1">
+      <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">My Crews</h2>
+      {mine.map(render)}
+    </section>}
+    {dashboards.length > 0 && <section aria-label="Dashboards shared with me" className="mb-3 space-y-1">
+      <h2 className="flex justify-between px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground"><span>Dashboards shared with me</span><span className="font-normal">{dashboards.length}</span></h2>
+      {owners.map(([owner, rows], index) => <details key={owner} open={index === 0} className="group">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-1 text-xs text-muted-foreground hover:text-foreground">
+          <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-90">▸</span><span className="font-medium text-foreground/80">{owner}</span><span>· {rows.length}</span>
+        </summary>
+        <div className="space-y-1">{rows.map(render)}</div>
+      </details>)}
+    </section>}
+    {rest.filter(project => project.owned_by_caller === undefined).map(render)}</>
 }
 
 function useWorkHistory(projects: SidebarProject[]) {
@@ -67,6 +80,7 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
       </h2>
       {rows.map(renderProject)}
     </section>)}
+    {orderedProjects.filter(project => project.personal_agent).map(renderProject)}
     {macs.length > 0 && server.length > 0 && <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">On the server</h2>}
     <div className="space-y-1"><ProjectList projects={server} render={renderProject} invites={invites} /></div>
     {children}
@@ -120,7 +134,16 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
       {connections.length > 1 && <LocationFilter label="Filter work" value={filter} onChange={setFilter} connections={connections} />}
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      <div className="space-y-1"><ProjectList projects={visible} render={renderProject} invites={invites} /></div>
+      {visible.filter(row => row.personal_agent).length > 0 && <div className="mb-1 space-y-1">{visible.filter(row => row.personal_agent).map(renderProject)}</div>}
+      {locations.map(connection => {
+        const rows = visible.filter(row => row.connection.id === connection.id && !row.personal_agent)
+        if (!rows.length) return null
+        return <section key={connection.id} aria-label={`Server: ${connection.name}`} className="space-y-1">
+          <h2 className="flex min-w-0 items-center gap-2 px-3 pt-3 text-[13px] font-semibold"><ServerIdentityIcon connectionId={connection.id} hidden className={`h-3 w-3 shrink-0 ${serverColors[connection.server] || 'text-slate-500/75 dark:text-slate-400/75'}`} /><span className="truncate">{connection.name}</span><span className="shrink-0 rounded-full border border-border px-2 text-[11px] font-normal text-muted-foreground">server</span></h2>
+          <ProjectList projects={rows} render={renderProject} invites={connection === locations[0] ? invites : []} />
+        </section>
+      })}
+      {visible.length === 0 && invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}
       {(filter === 'all' || filter === active) && children}
         {locations.map(connection => {
         const status = inventory[connection.id]?.status
