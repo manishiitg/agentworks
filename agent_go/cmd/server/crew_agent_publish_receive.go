@@ -108,7 +108,7 @@ func (api *StreamingAPI) crewAgentPublishAccounts(ctx context.Context, claims *U
 }
 
 func crewAgentPublishProgramSupported(provider string) bool {
-	return provider == "claude-code" || provider == "codex-cli" || provider == "cursor-cli" || provider == "muse-cli" || provider == "pi-cli"
+	return provider == "claude-code" || provider == "codex-cli" || provider == "cursor-cli" || provider == "muse-cli" || provider == "pi-cli" || provider == "agy-cli"
 }
 
 func (api *StreamingAPI) receiveCrewAgentPublish(ctx context.Context, claims *UserClaims, id string, in crewSyncRequest) (crewSyncReply, error) {
