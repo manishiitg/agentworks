@@ -73,7 +73,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 		t.Fatal(err)
 	}
 	for _, pointer := range []string{promotedKey, originalMainChatKey("team", "another-owner"), mainKey} {
-		f.write(t, externalCommandCrewState+"/product.json", `{"product":"work","id":"team","main_chat_key":"`+pointer+`"}`)
+		f.write(t, externalCommandCrewState+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","main_chat_key":"`+pointer+`"}`)
 		for name, route := range map[string]func(string, string) string{"standby": crewStandbyTabForKey, "shared": macSharedAgentTab} {
 			if got := route("team", promotedKey); (got == macMainTab) != (pointer == promotedKey) {
 				t.Fatalf("%s promoted chat with pointer %q routed as %q", name, pointer, got)

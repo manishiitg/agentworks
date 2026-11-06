@@ -17,7 +17,7 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's single workflow and reusable Python scripts. Use routes in the existing workflow for different tasks; list before creating. list returns workspace_path and available agents; create takes name and kind. read takes workspace_path and file. edit changes only the named steps or inputs using a native Builder operation and arguments; describe returns its exact schema. Omitted steps stay unchanged; deletion must be explicit. write is only for code and script.json, never whole workflow plan/config/input files. Run either kind with run_workflow_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's single workflow and reusable Python scripts. Use routes in the existing workflow for different tasks; list before creating. list returns workspace_path and available agents; create takes name and kind. read takes workspace_path and file. edit changes named steps or inputs, or manages this workflow’s schedules and webhooks; describe returns each operation’s exact schema. Functions use the functions tool with project=workspace_path. Omitted steps stay unchanged; deletion must be explicit. write is only for code and script.json, never whole workflow plan/config/input files. Run either kind with run_workflow_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit"}},
 			"workspace_path": map[string]interface{}{"type": "string"},
@@ -97,10 +97,28 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			}
 		}
 		if action == "edit" {
+			operation, _ := args["operation"].(string)
+			if operation == "manage_schedules" || operation == "manage_webhooks" {
+				arguments, ok := args["arguments"].(map[string]interface{})
+				if !ok {
+					return "", fmt.Errorf("provide arguments matching the operation schema")
+				}
+				request, _ := http.NewRequestWithContext(ctx, http.MethodPost, "/api/crew-workflow-configuration", nil)
+				response := &internalResponseCapture{header: http.Header{}}
+				child := DiscoveredWorkflow{WorkspacePath: binding.Root, Manifest: manifest}
+				if operation == "manage_schedules" {
+					api.externalScheduleCall(response, request, arguments, externalScheduleTarget{workflow: &child})
+				} else {
+					api.externalWorkflowTriggerCall(response, request, arguments, child, WorkflowAccessOwner)
+				}
+				if response.status >= 400 {
+					return "", fmt.Errorf("%s", strings.TrimSpace(response.body.String()))
+				}
+				return response.body.String(), nil
+			}
 			if binding.Kind != "workflow" {
 				return "", fmt.Errorf("edit script.json or Python source with write for a saved script")
 			}
-			operation, _ := args["operation"].(string)
 			if !slices.Contains(crewPlanOperations, operation) {
 				return "", fmt.Errorf("choose a supported editing operation; describe lists their schemas")
 			}
@@ -166,10 +184,23 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 }
 
 // One editing vocabulary, backed by the same native handlers as the Builder.
-var crewPlanOperations = []string{"create_plan", "add_step", "update_step", "delete_plan_steps", "manage_step_route", "update_step_config", "update_validation_schema", "update_variable"}
+var crewPlanOperations = []string{"create_plan", "add_step", "update_step", "delete_plan_steps", "manage_step_route", "update_step_config", "update_validation_schema", "update_variable", "manage_schedules", "manage_webhooks"}
 
 func crewPlanDefinitions() []workflow.ExternalPlanToolDefinition {
 	definitions := workflow.ExternalBuilderPlanToolDefinitions()
 	definitions = slices.DeleteFunc(definitions, func(d workflow.ExternalPlanToolDefinition) bool { return !slices.Contains(crewPlanOperations, d.Name) })
-	return append(definitions, workflow.WorkflowInputEditDefinition())
+	definitions = append(definitions, workflow.WorkflowInputEditDefinition())
+	// Reuse the public action schemas and handlers; only the target is fixed to this Crew's child.
+	add := func(name, description string, _, _ bool, properties map[string]any, required ...string) {
+		delete(properties, "project")
+		required = slices.DeleteFunc(required, func(key string) bool { return key == "project" })
+		if name == "manage_triggers" {
+			name = "manage_webhooks"
+		}
+		schema, _ := json.Marshal(map[string]any{"type": "object", "properties": properties, "required": required})
+		definitions = append(definitions, workflow.ExternalPlanToolDefinition{Name: name, Description: description, InputSchema: schema})
+	}
+	externalScheduleDefinitions(add)
+	externalTriggerDefinitions(add)
+	return definitions
 }

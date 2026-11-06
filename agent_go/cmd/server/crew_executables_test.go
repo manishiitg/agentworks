@@ -502,11 +502,15 @@ func TestCrewAutomationNativeCommitUsesMovedSource(t *testing.T) {
 func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
 	svc, _, ctx := newCrewCreationTestEnv(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"},{"id":"stranger","username":"stranger","role":"creator"}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"},{"id":"stranger","username":"stranger","role":"creator"},{"id":"runner","username":"runner","role":"viewer"}]}`)
 	manifests := map[string]*WorkflowManifest{}
 	for _, name := range []string{"one", "two"} {
 		root := "Crew/" + name
-		if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: name, ProjectID: name, OwnerID: "owner", Private: true, AudienceConfigured: true}); err != nil {
+		owner := "owner"
+		if name == "two" {
+			owner = "stranger"
+		}
+		if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: name, ProjectID: name, OwnerID: owner, Private: true, AudienceConfigured: true}); err != nil {
 			t.Fatal(err)
 		}
 		binding := crewExecutableBinding{ID: name, CrewID: name, CrewRoot: root, Root: "Workflow/" + name, Kind: "workflow"}
@@ -514,8 +518,8 @@ func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
 			t.Fatal(err)
 		}
 		manifest := NewWorkflowManifest(name)
-		manifest.ID, manifest.CreatedBy, manifest.crewExecutable = name, "owner", &binding
-		manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
+		manifest.ID, manifest.CreatedBy, manifest.crewExecutable = name, owner, &binding
+		manifest.Access = &WorkflowAccess{Owners: []string{owner}}
 		manifest.Schedules = []WorkflowSchedule{{ID: "timer-" + name, Name: "Daily work", Mode: "workshop", Enabled: false}}
 		manifests[binding.Root] = manifest
 	}
@@ -531,7 +535,7 @@ func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
 	}
 	t.Cleanup(func() { workflowManifests = previous })
 	scheduler := NewSchedulerService(&StreamingAPI{projectActions: svc})
-	for _, user := range []string{"owner", "stranger"} {
+	for _, user := range []string{"owner", "stranger", "runner"} {
 		request := httptest.NewRequest(http.MethodGet, "/api/scheduler/jobs?entity_type=product&workspace_path=Crew%2Fone", nil).WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: user, Username: user}))
 		response := httptest.NewRecorder()
 		listScheduledJobsHandler(scheduler)(response, request)
@@ -544,7 +548,7 @@ func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
 		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
 		}
-		if user == "stranger" {
+		if user != "owner" {
 			if len(result.Jobs) != 0 {
 				t.Fatal("stranger saw private timers")
 			}

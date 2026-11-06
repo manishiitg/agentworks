@@ -2,7 +2,7 @@
 
 The tool schemas are authoritative; these examples are optional. Use `crew_workflow_files action=list` for exact workspace identities and this Crew's available agents.
 
-Each Crew has one workflow. Use routes for different tasks within that plan, not another workflow. Configure steps, inputs, settings and goals in Crew chat; the screens show the plan, progress and run evidence.
+Each Crew has one workflow. Use routes for different tasks within that plan, not another workflow. Configure steps, inputs, step settings and goals in Crew chat; the screens show the plan, progress and run evidence.
 
 ## Change a step without replacing the plan
 
@@ -17,6 +17,10 @@ Use `describe` with `operation=add_step` for a new step's schema. Only `delete_p
 An agent step can select a `crew_agent` returned by list. It reuses its saved role and model, with a separate run context. It does not import private chat history or another person's credentials. Explicit settings override defaults; an empty skills list deliberately selects none.
 
 Agent steps have one initial task (`description`), optional ordered follow-ups or required script calls (`items`), and explicit settings. Optional script tools remain available for the agent to choose when needed. `inputs` maps a name to one fixed value, workflow input or declared earlier output, using the same mapping shape as `script_inputs` below. An output without `field` gives the agent a file reference; choosing `field` supplies that JSON value. Do not paste previous output files into task instructions.
+
+## Schedule or expose the workflow
+
+Use `crew_workflow_files action=describe` with `operation=manage_schedules` or `operation=manage_webhooks`, then `action=edit` with the same operation, child `workspace_path` and its arguments. List first and preserve existing IDs and paused state. These operate on the workflow shown under Automations, not another Crew. For functions, use `functions` with `project` set to the child's exact workspace path; define its saved run action and named inputs. All entries deliver to their saved Crew chat.
 
 ## Reuse Python
 
