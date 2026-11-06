@@ -174,11 +174,27 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 					return
 				}
 				r = r.WithContext(context.WithValue(r.Context(), UserContextKey, owner))
-				r = mux.SetURLVars(r, map[string]string{"project": strings.TrimPrefix(r.URL.Path, "/api/crew-sync/")})
-				if pieceHook != nil && r.URL.Query().Get("transfer") != "" {
+				project, moveOp, isMove := strings.Cut(strings.TrimPrefix(r.URL.Path, "/api/crew-sync/"), "/move/")
+				r = mux.SetURLVars(r, map[string]string{"project": project, "op": moveOp})
+				if pieceHook != nil && isMove && moveOp == "chunks" {
 					pieceHook(r)
 				}
-				if failActivation && r.Method == http.MethodPost && r.URL.Query().Get("transfer") == "" {
+				if isMove {
+					response := httptest.NewRecorder()
+					api.handleCrewMoveChunks(response, r)
+					if dropUpload && moveOp == "chunks" && response.Code == 200 {
+						dropUpload = false
+						w.WriteHeader(502)
+						return
+					}
+					for key, values := range response.Header() {
+						w.Header()[key] = values
+					}
+					w.WriteHeader(response.Code)
+					_, _ = w.Write(response.Body.Bytes())
+					return
+				}
+				if failActivation && r.Method == http.MethodPost {
 					raw, _ := io.ReadAll(r.Body)
 					r.Body = io.NopCloser(bytes.NewReader(raw))
 					var call crewSyncRequest
@@ -191,11 +207,6 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 				}
 				response := httptest.NewRecorder()
 				api.handleCrewSync(response, r)
-				if dropUpload && r.Method == http.MethodPut && response.Code == 204 {
-					dropUpload = false
-					w.WriteHeader(502)
-					return
-				}
 				if loseResponse && response.Code == 200 && bytes.Contains(response.Body.Bytes(), []byte(`"editing":"server"`)) {
 					loseResponse = false
 					w.WriteHeader(502)
@@ -381,18 +392,32 @@ func TestCrewSyncHTTPHandoffRetryAndOwnerBoundary(t *testing.T) {
 			if err != nil || progress.BytesDone == 0 || progress.BytesDone >= progress.BytesTotal {
 				t.Fatalf("progress: %+v %v", progress, err)
 			}
+			// A move's plan answers its owner only (chunk_transfer.go: the access check comes before any answer).
+			localDir, err := crewTransferDir(local.ID, upload.PairID, upload.TransferID, "upload")
+			if err != nil {
+				t.Fatal(err)
+			}
+			names := []string{}
+			for name := range upload.Snapshot.Payloads {
+				names = append(names, name)
+			}
+			planned, _, err := chunkFiles(names, func(name string) (string, error) { return filepath.Join(localDir, name), nil }, false, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			planBody, _ := json.Marshal(crewMoveRequest{PairID: upload.PairID, TransferID: upload.TransferID, Files: planned})
 			for _, person := range []string{"owner", "other"} {
-				q := url.Values{"transfer": {upload.TransferID}, "pair": {upload.PairID}, "direction": {"upload"}, "blob": {"content"}}
-				req := httptest.NewRequest("HEAD", "/?"+q.Encode(), nil).WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: person, Username: person}))
-				req = mux.SetURLVars(req, map[string]string{"project": serverRoots.ID})
+				q := url.Values{"pair": {upload.PairID}}
+				req := httptest.NewRequest("POST", "/?"+q.Encode(), bytes.NewReader(planBody)).WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: person, Username: person}))
+				req = mux.SetURLVars(req, map[string]string{"project": serverRoots.ID, "op": "plan"})
 				response := httptest.NewRecorder()
-				api.handleCrewSync(response, req)
+				api.handleCrewMoveChunks(response, req)
 				want := 200
 				if person == "other" {
 					want = 403
 				}
 				if response.Code != want {
-					t.Fatalf("piece %s: %d %s", person, response.Code, response.Body.String())
+					t.Fatalf("move plan %s: %d %s", person, response.Code, response.Body.String())
 				}
 			}
 			failActivation = true
