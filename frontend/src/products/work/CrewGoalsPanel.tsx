@@ -21,7 +21,7 @@ export function CrewGoalsPanel({ projectId, onAsk }: { projectId: string; onAsk:
     void refresh(controller.signal).catch(e => { if (!controller.signal.aborted) setError(isAxiosError(e) && typeof e.response?.data === 'string' ? e.response.data : e instanceof Error ? e.message : 'Could not load goals. Try again.') })
     return () => controller.abort()
   }, [refresh])
-  const summary = data?.goals.map(goal => `### ${goal.name}\n\n${goal.outcome}`).join('\n\n')
+  const summary = data?.goals.map(goal => `### ${goal.name}${goal.status === 'active' ? '' : ` · ${goal.status}`}\n\n${goal.outcome}`).join('\n\n')
   return <GoalOverviewContent workspacePath={data?.workspace_path ?? ''} measurements={data?.measurements ?? null} error={error} onAsk={onAsk} summary={<>
     {summary && <GoalSummary content={`## Objective\n\n${summary}`} />}
     {data?.goals.length === 0 && <p className="text-sm text-muted-foreground">No goals yet. Describe what you want this Crew to achieve in chat.</p>}
