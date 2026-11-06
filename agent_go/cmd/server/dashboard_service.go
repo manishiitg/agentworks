@@ -143,6 +143,7 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 }
 func dashboardWorkspaceRequest(ctx context.Context, req dashboards.Request) (dashboards.Result, error) {
 	if !dashboardMutation(req.Action) {
+		req.Root = crewMacDashboardsRoot(req.Root)
 		if publication, e := readPublishedProject(ctx, req.Root); e != nil {
 			return dashboards.Result{}, e
 		} else if publishedDashboardSource(publication) {

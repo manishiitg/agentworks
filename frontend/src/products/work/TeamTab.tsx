@@ -118,7 +118,7 @@ function DashboardsCard({ target }: { target: TeamTarget }) {
   return <section aria-label="Dashboards" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">Dashboards</h3>
-      <span className="text-xs text-muted-foreground">Everyone in the Team sees these</span>
+      <span className="text-xs text-muted-foreground">{list.updated ? `${list.updated} · ` : ''}Everyone in the Team sees these</span>
     </div>
     <div className="space-y-1">
       {list.dashboards.map(d => <button key={d.id} type="button" onClick={() => selectReportDocument(list.workspace, d.path, true)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted">
@@ -126,6 +126,7 @@ function DashboardsCard({ target }: { target: TeamTarget }) {
         {d.artifact && <span className="text-xs text-muted-foreground">Artifact</span>}
       </button>)}
     </div>
+    {list.note && <p className="text-xs text-muted-foreground">{list.note}</p>}
     {list.can_share && <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="flex-1">Also shared with</span><ShareDashboardButton workspacePath={list.workspace} /></div>}
   </section>
 }

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
@@ -172,6 +173,59 @@ func TestCrewTeamTurnSkipsSyncOnlyDuringAFirstDownload(t *testing.T) {
 	}
 	if crewTeamFirstDownloadPending("member", "first-download") {
 		t.Fatal("a finished copy must sync on a turn")
+	}
+}
+
+// PLAT-856-509 (owner, 6 Nov): a Mac Crew's dashboards reach the server in their own read copy. Only dashboard files and
+// the database copy are taken, the copy is swapped whole, and reads go there, never to the Crew's own db/, which an
+// always-on agent may be writing.
+func TestCrewMacDashboardsReadCopy(t *testing.T) {
+	version := func(store string, content string) chunks.File {
+		t.Helper()
+		v, err := chunks.Split(strings.NewReader(content), int64(len(content)), false, func(id string, data []byte) error { return putChunk(store, id, data) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	store, root := t.TempDir(), t.TempDir()
+	page, data := version(store, "<html>first</html>"), version(store, "database copy")
+	for name, files := range map[string]map[string]chunks.File{
+		"nothing":           {},
+		"a chat":            {"builder/conversation/chat.json": page},
+		"a credential":      {"db/reports/.env": page},
+		"outside":           {"../db/reports/index.html": page},
+		"the Crew settings": {"product.json": page},
+	} {
+		if validateCrewMacDashboards(files) == nil {
+			t.Fatalf("%s was accepted", name)
+		}
+	}
+	first := map[string]chunks.File{"db/reports/index.html": page, crewMacDashboardsDatabase: data}
+	if err := validateCrewMacDashboards(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := swapCrewMacDashboards(root, store, first); err != nil {
+		t.Fatal(err)
+	}
+	// A swap that cannot finish leaves the copy as it was.
+	broken := map[string]chunks.File{"db/reports/index.html": {Hash: page.Hash, Size: 1, Chunks: []chunks.Chunk{{ID: strings.Repeat("d", 64), Len: 1}}}}
+	if swapCrewMacDashboards(root, store, broken) == nil {
+		t.Fatal("a missing chunk was accepted")
+	}
+	got, err := os.ReadFile(filepath.Join(root, crewroot.MacDashboardsFolder, "db", "reports", "index.html"))
+	if err != nil || string(got) != "<html>first</html>" {
+		t.Fatalf("read copy: %q %v", got, err)
+	}
+	if crewroot.SyncContentAllowed("resources/"+crewroot.MacDashboardsFolder+"/db/reports/index.html", false) {
+		t.Fatal("Team sync would carry the read copy")
+	}
+	second := map[string]chunks.File{"db/reports/other.html": version(store, "<html>second</html>")}
+	if err = swapCrewMacDashboards(root, store, second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(root, crewroot.MacDashboardsFolder, "db", "reports", "index.html")); !os.IsNotExist(err) {
+		t.Fatalf("a removed dashboard stayed in the copy: %v", err)
 	}
 }
 

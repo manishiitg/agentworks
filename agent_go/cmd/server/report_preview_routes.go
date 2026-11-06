@@ -307,7 +307,7 @@ func (api *StreamingAPI) handleReportPreviewQuery(w http.ResponseWriter, r *http
 		return
 	}
 	result, err := api.reportPreviewWorkspaceClient(r.Context(), claims, workspacePath).QueryAuthorizedWorkflowDB(r.Context(), workspace.QueryWorkflowDBParams{
-		DBPath: filepath.ToSlash(filepath.Join(workspacePath, "db", "db.sqlite")),
+		DBPath: crewMacDashboardsRead(r.Context(), filepath.ToSlash(filepath.Join(workspacePath, "db", "db.sqlite"))),
 		SQL:    body.SQL,
 		Params: body.Params,
 	})

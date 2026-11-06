@@ -203,7 +203,7 @@ export function teamAgentForTab(state: TeamTabState, key: string | undefined, ma
  * the same for the Mac app and the website: the server reads it where the Crew is (its own folder, or the owner's
  * Mac over Mac online) and, with that Mac off, says so in offline (crew_team_folders.go). */
 export type TeamFolderListing = { folders: string[]; path: string; files: number; bytes: number; offline?: string }
-export type TeamDashboards = { workspace: string; can_share: boolean; dashboards: { id: string; title: string; path: string; artifact?: boolean }[] }
+export type TeamDashboards = { workspace: string; can_share: boolean; updated?: string; note?: string; dashboards: { id: string; title: string; path: string; artifact?: boolean }[] }
 export function teamDashboards(target: TeamTarget): Promise<TeamDashboards> {
   return teamRequest<TeamDashboards>({ project: target.project, connection: target.connection }, '/dashboards')
 }

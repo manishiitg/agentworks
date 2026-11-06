@@ -200,6 +200,14 @@ func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 								api.applyCrewTeamOnMac(ctx, local, t)
 							}
 						}
+						// The owner's Mac Crew's dashboards reach the Team (crew_mac_dashboards.go).
+						if t.OwnerID == c.User.ID && t.On {
+							if local := crewLocalProjectForTeam(owner, c, t.ProjectID); local != "" {
+								if err := api.sendCrewMacDashboards(ctx, owner, c, local); err != nil {
+									log.Printf("[CREW_MAC_DASHBOARDS] project=%s event=send_failed reason=%q", local, err)
+								}
+							}
+						}
 						if _, joining := crewTeamJoining.Load(crewTeamJoinKey(c.ID, t.ProjectID)); !t.FolderAccess || joining {
 							continue
 						}

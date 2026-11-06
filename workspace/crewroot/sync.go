@@ -183,7 +183,7 @@ func SyncContentAllowed(key string, directory bool) bool {
 		return (rel == "knowledgebase" || strings.HasPrefix(rel, "knowledgebase/")) && !publication.ExcludedFromSync(rel, directory)
 	}
 	// Team members' working copies are their own, never shared or synced (crew_team_member_copy.go).
-	if first := strings.SplitN(rel, "/", 2)[0]; area != "knowledge" && first == TeamCopiesFolder {
+	if first := strings.SplitN(rel, "/", 2)[0]; area != "knowledge" && (first == TeamCopiesFolder || first == MacDashboardsFolder) {
 		return false
 	}
 	if area == "resources" {
@@ -204,6 +204,9 @@ func SyncContentAllowed(key string, directory bool) bool {
 	return !publication.ExcludedFromSync(rel, directory)
 }
 
+// MacDashboardsFolder holds the read copy of a Mac Crew's dashboards on the server: never synced, never edited.
+const MacDashboardsFolder = "mac-dashboards"
+
 // TeamCopiesFolder holds each Team member's working copy of a Crew on the server, at team-copies/<member>/.
 const TeamCopiesFolder = "team-copies"
 
@@ -214,6 +217,9 @@ func TeamCopyHidden(entry, listing, user string) bool {
 	at := 2
 	if len(parts) > 2 && parts[2] == FilesSegment {
 		at = 3
+	}
+	if len(parts) > at && strings.EqualFold(parts[0], "Crew") && parts[at] == MacDashboardsFolder {
+		return true // the read copy of a Mac Crew's dashboards is nobody's to browse
 	}
 	if len(parts) <= at || !strings.EqualFold(parts[0], "Crew") || parts[at] != TeamCopiesFolder {
 		return false
