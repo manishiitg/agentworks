@@ -181,7 +181,7 @@ func (api *StreamingAPI) sendCrewStandby(project, tab string) {
 		}
 		conversation, err := api.captureCrewHandoffConversation(ctx, claims, roots, record, true)
 		if err != nil || conversation == nil || conversation.Native == nil {
-			skip("no_native_session")
+			log.Printf("[ALWAYS_ON] project=%s tab=%s session=%s event=skipped reason=no_native_session error=%q", project, tab, record.SessionID, fmt.Sprint(err))
 			continue
 		}
 		if api.crewAgentTurnRunning(record.SessionID) {
