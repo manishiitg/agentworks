@@ -2642,12 +2642,12 @@ func runServer(cmd *cobra.Command, args []string) {
 			writeUsersJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "MCP tools are not available in a read-only ask: call one of the Crew's functions instead."})
 			return
 		}
-		ctx, originalTool, err := api.vaultBridgeToolName(r.Context(), strings.TrimSpace(r.Header.Get("X-Session-ID")), server, tool)
+		ctx, realServer, realTool, err := api.vaultBridgeToolName(r.Context(), strings.TrimSpace(r.Header.Get("X-Session-ID")), server, tool)
 		if err != nil {
 			writeUsersJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": err.Error()})
 			return
 		}
-		executorHandlers.HandlePerToolMCPRequest(w, r.WithContext(ctx), server, originalTool)
+		executorHandlers.HandlePerToolMCPRequest(w, r.WithContext(ctx), realServer, realTool)
 		api.recordMCPBridgeCall(strings.TrimSpace(r.Header.Get("X-Session-ID")), server, tool)
 	}
 

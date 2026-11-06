@@ -214,7 +214,7 @@ func (api *StreamingAPI) resolveServerVaultMCP(ctx context.Context, person, name
 		return nil, errors.New("MCP is not available through your server's Vault; use a connection from the live inventory")
 	}
 	token := signVaultDelegation(serverVaultKey, vaultDelegation{Purpose: serverVaultPurpose, Session: session, Person: person, Connector: c.ID + "/" + row.ID, Expires: time.Now().Truncate(time.Hour).Add(24 * time.Hour).Unix()})
-	cfg := mcpclient.MCPServerConfig{URL: api.GetAPIURL() + "/internal/server-vault/mcp/" + url.PathEscape(c.ID) + "/" + url.PathEscape(row.ID), Protocol: mcpclient.ProtocolHTTP, Headers: map[string]string{"Authorization": "Bearer " + token}}
+	cfg := mcpclient.MCPServerConfig{URL: api.GetAPIURL() + "/internal/server-vault/mcp/" + url.PathEscape(c.ID) + "/" + url.PathEscape(row.ID), Protocol: mcpclient.ProtocolHTTP, Headers: map[string]string{"Authorization": "Bearer " + token}, ToolAlias: vaultToolAlias(rows, row)}
 	runtimeName := vaultRuntimeName(row.Name, cfg)
 	return &executor.ResolvedMCPServer{Name: runtimeName, Config: cfg, ConnectionSessionID: runtimeName}, nil
 }
@@ -230,17 +230,9 @@ func serverVaultBridgeToolName(ctx context.Context, person, server, tool string)
 	if !ok {
 		return tool, nil
 	}
-	var matches []string
-	for _, candidate := range row.Tools {
-		if candidate.Name == tool || openapi.SanitizePathSegment(candidate.Name) == tool {
-			matches = append(matches, candidate.Name)
-		}
-	}
-	if len(matches) > 1 {
-		return "", errors.New("ambiguous Vault tool bridge path")
-	}
-	if len(matches) == 1 {
-		return matches[0], nil
+	real, err := vaultRowToolName(rows, row, tool)
+	if err != nil || real != "" {
+		return real, err
 	}
 	return tool, nil
 }

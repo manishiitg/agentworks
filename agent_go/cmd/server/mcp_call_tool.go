@@ -35,6 +35,10 @@ func (api *StreamingAPI) callMCPTool(ctx context.Context, args map[string]interf
 	if strings.TrimSpace(server) == "" || strings.TrimSpace(tool) == "" || !ok {
 		return "", fmt.Errorf("exact server, tool and arguments object required; inspect list_mcp_servers first")
 	}
+	ctx, server, tool, err = api.vaultBridgeToolName(ctx, session, server, tool)
+	if err != nil {
+		return "", err
+	}
 	payload, err := json.Marshal(executor.MCPExecuteRequest{Server: server, Tool: tool, Args: arguments, SessionID: session})
 	if err != nil {
 		return "", err
