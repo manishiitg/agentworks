@@ -116,6 +116,17 @@ func TestGitHubVaultPATAndCLIUseTheSameOwnerRecord(t *testing.T) {
 	if rec := readGitHubRecord("alice"); rec == nil || rec.Source != "gh" || rec.Login != "alice-cli" {
 		t.Fatal("CLI identity did not replace the selected record")
 	}
+	// PLAT-856-542: the sidebar must not run gh auth/network discovery just
+	// to show the existing connection, or read another person's connection.
+	beforeAccounts, beforeTokens := accountReads, cliReads
+	summary := personalRoute(api, (*StreamingAPI).handleGitHubVault, http.MethodGet, "/api/vault/github?view=summary", "", "alice", nil)
+	otherSummary := personalRoute(api, (*StreamingAPI).handleGitHubVault, http.MethodGet, "/api/vault/github?view=summary", "", "bob", nil)
+	if summary.Code != 200 || !strings.Contains(summary.Body.String(), `"login":"alice-cli"`) || strings.Contains(summary.Body.String(), "gh_accounts") || accountReads != beforeAccounts || cliReads != beforeTokens {
+		t.Fatalf("summary performed connection discovery: %d %s", summary.Code, summary.Body.String())
+	}
+	if otherSummary.Code != 200 || strings.Contains(otherSummary.Body.String(), "alice") || !strings.Contains(otherSummary.Body.String(), `"connected":false`) {
+		t.Fatal("summary crossed saved account ownership")
+	}
 	gone := call(http.MethodDelete, "")
 	if gone.Code != 200 || readGitHubRecord("alice") != nil || len(stored) != 0 || !strings.Contains(gone.Body.String(), "gh login is unchanged") {
 		t.Fatalf("disconnect changed native identity: %d %s", gone.Code, gone.Body.String())

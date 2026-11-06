@@ -169,6 +169,30 @@ func conditionCallerJobs(owner string, states map[string]productScheduleUserStat
 	return jobs
 }
 
+// The Crew menu needs only this product's saved watcher state. Avoid
+// enumerating other products, people and private chat choices on a status read.
+// source() already resolved the caller's normal product admission.
+func (c *conditionService) summaryJobs(ctx context.Context, source productScheduleJob) ([]productScheduleJob, error) {
+	states, err := c.s.loadState(ctx, source.UserID)
+	if err != nil {
+		return nil, err
+	}
+	jobs := conditionCallerJobs(source.UserID, states)
+	manifest, err := readCrewProjectManifests(ctx, crewProfileID, source.WatcherSource.Path)
+	if err != nil {
+		return nil, err
+	}
+	for _, schedule := range manifest.Schedules {
+		if schedule.Condition == nil {
+			continue
+		}
+		job := productScheduleJob{UserID: source.UserID, Profile: source.Profile, Schedule: schedule, ProjectID: source.ProjectID, WorkspacePath: source.WatcherSource.Path}
+		job.State = states[scheduleStateKey(job)]
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
 // Everyone with product access can see caller attribution. Detector source,
 // private cursor and credentials remain with the person who owns the caller.
 func (c *conditionService) callersForProduct(ctx context.Context, source productScheduleJob, includeCompleted bool) ([]map[string]interface{}, error) {
