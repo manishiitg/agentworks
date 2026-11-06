@@ -34,7 +34,8 @@ class Migration(unittest.TestCase):
         write(self.source/'planning/plan.json',{'steps':[{'id':'one','type':'scripted'}]})
         write(self.source/'variables/variables.json',{'variables':[],'groups':[{'name':'default','values':{},'enabled':True}]})
         write(self.source/'code/one/main.py',{'source':'original'})
-        (self.source/'code/one/main.py').write_text('# original script\n')
+        # PLAT-746-336: valid bridge API names are not direct tracking-table SQL.
+        (self.source/'code/one/main.py').write_text("bridge('record_goal_observations', {'observations': []})\n")
         write(self.source/'runs/iteration-1/run_metadata.json',{'run_id':'original-run'})
         write(self.source/'skills/example/SKILL.md',{'untouched':'skill'})
         write(self.source/'knowledgebase/example.json',{'untouched':'knowledge'})
@@ -46,6 +47,10 @@ class Migration(unittest.TestCase):
         self.oldpath='Workflow/old-goal/builder/conversation/users/owner/2026-11-04/session-session-original-conversation.json'
         write(self.docs/self.oldpath,{'session_id':'session-original','user_id':'owner','workspace_path':'Workflow/old-goal','conversation_history':[{'role':'user','content':'Do not rewrite Workflow/old-goal inside messages'}]})
         write(self.docs/'_users/owner/chat_history/index.json',{'entries':{self.oldpath:{'session':{'session_id':'session-original','workspace_path':'Workflow/old-goal','conversation_path':self.oldpath},'conversation_path':self.oldpath}}})
+        # Real personal history also contains delivery receipts, with owner rather
+        # than transcript user_id. These are historical receipts, not chat archives.
+        self.receipt=self.docs/'_users/owner/chat_history/submissions/delivery.json'
+        write(self.receipt,{'owner':'owner','project':'old-goal','session_id':'session-original','state':'delivered'})
         for filename,field in [('schedules.json','schedules'),('functions.json','functions'),('webhooks.json','webhooks')]:
             write(self.source/filename,{field:[{'id':field+'-original','name':field,'enabled':False,'run_as':'owner','project':{'kind':'goal','id':'old-goal'},'action':{'type':'run','tab':self.key},'input':{'groups':['default']},'auth':{'encrypted_secret':'opaque-not-printed'}}]})
         with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
@@ -53,6 +58,7 @@ class Migration(unittest.TestCase):
             db.execute('CREATE TABLE workflow_goal_metrics(metric_id TEXT PRIMARY KEY, definition_json TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1)')
             db.execute('INSERT INTO workflow_goal_metrics VALUES (?,?,1)',('revenue',json.dumps({'id':'revenue','role':'primary','unit':'USD','target':20})))
             db.execute('CREATE TABLE goal_observations(observation_id TEXT PRIMARY KEY,criterion_id TEXT,metric TEXT,run_id TEXT,route TEXT,environment TEXT,value REAL,status TEXT,unit TEXT,observed_at TEXT,window_start TEXT,window_end TEXT,evidence_json TEXT,recorded_at TEXT)')
+            db.execute('CREATE INDEX idx_pulse_goal_observations_criterion ON goal_observations(criterion_id, observed_at)')
             db.execute('INSERT INTO goal_observations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',('original-observation','earned','revenue','source-run','','',12,'','USD','2026-11-01T00:00:00Z','','','["source report"]','2026-11-01T00:00:00Z'))
 
         # Existing canonical chat journal must remain untouched by conversion.
@@ -72,12 +78,13 @@ class Migration(unittest.TestCase):
         self.assertTrue((self.docs/'Crew/target/.agentworks/workflows/old-goal/workflow.json').exists())
         self.assertEqual((self.source/'runs/iteration-1/run_metadata.json').read_text(),'{"run_id": "original-run"}')
         after=hashes(self.base)
-        for name in ['docs/Workflow/unrelated/workflow.json','docs/Workflow/old-goal/skills/example/SKILL.md','docs/Workflow/old-goal/knowledgebase/example.json','docs/Workflow/old-goal/db/reports/index.html']:
+        for name in ['docs/Workflow/unrelated/workflow.json','docs/Workflow/old-goal/skills/example/SKILL.md','docs/Workflow/old-goal/knowledgebase/example.json','docs/Workflow/old-goal/db/reports/index.html',str(self.receipt.relative_to(self.base))]:
             self.assertEqual(before[name],after[name])
         with closing(sqlite3.connect(self.private/'db/db.sqlite')) as db, db:
             self.assertEqual(db.execute('SELECT observation_id,metric,recorded_at FROM goal_observations').fetchall(),[('original-observation','revenue','2026-11-01T00:00:00Z')])
             self.assertEqual(db.execute('SELECT run_id FROM goal_observations').fetchone()[0],'old-goal:source-run')
             self.assertEqual(json.loads(db.execute('SELECT definition_json FROM crew_goals').fetchone()[0])['status'],'active')
+            self.assertEqual([row[2] for row in db.execute('PRAGMA index_info(idx_pulse_goal_observations_criterion)')],['criterion_id','observed_at'])
         with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
             self.assertEqual(db.execute('SELECT * FROM business_data').fetchall(),[('unchanged',)])
             self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name='goal_observations'").fetchall())
@@ -114,6 +121,11 @@ class Migration(unittest.TestCase):
             write(team_file,{'project_id':'crew','owner_id':'owner','on':on,'people':[{'user_id':'runner','invited':invited}]})
             self.assertEqual(self.conversion().report()['status'],'ready')
         team_file.unlink()
+        private_chat=self.docs/'_users/owner/chat_history/2026-11-04/session-original-conversation.json'
+        write(private_chat,{'session_id':'session-original','user_id':'another-person'})
+        before=hashes(self.base)
+        with self.assertRaisesRegex(ValueError,'conflicting ownership'):self.conversion()
+        self.assertEqual(before,hashes(self.base));private_chat.unlink()
         destination=self.docs/'Crew/target/.agentworks/workflows/old-goal';destination.mkdir(parents=True)
         with self.assertRaisesRegex(ValueError,'already has source'):self.conversion()
         destination.rmdir()
@@ -144,6 +156,14 @@ class Migration(unittest.TestCase):
         (self.source/'code/one/main.py').write_text("import sqlite3, os\nsqlite3.connect(os.environ['DB_PATH'])\n")
         before=hashes(self.base)
         with self.assertRaisesRegex(ValueError,'agentworks_db'):self.conversion()
+        self.assertEqual(before,hashes(self.base))
+        (self.source/'code/one/main.py').write_text("sql = 'SELECT * FROM GOAL_OBSERVATIONS'\n")
+        with self.assertRaisesRegex(ValueError,'direct measurement-table'):self.conversion()
+        (self.source/'code/one/main.py').write_text('# no direct database use\n')
+        with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db,db:
+            db.execute('CREATE VIEW measurement_summary AS SELECT * FROM goal_observations')
+        before=hashes(self.base)
+        with self.assertRaisesRegex(ValueError,'database dependencies'):self.conversion()
         self.assertEqual(before,hashes(self.base))
 
 
