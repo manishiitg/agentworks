@@ -10,8 +10,8 @@ export type AgentMenuState = 'waiting' | 'running' | 'failed' | 'done' | null
 /** The state in words, for the left menu's rows and the agent card's Now row. */
 export const AGENT_STATE_WORD = { waiting: 'Needs you', running: 'Working', failed: 'Stopped with an error', done: 'Finished' } as const
 
-/** One chat tab's status, the single source for its tab pill, its left-menu row, its icon in the collapsed rail and
- * its team-board card (owner, 4 Nov: "the dots and loading we had before are important"): needs you, working, failed
+/** One chat tab's status, the single source for its tab pill, its left-menu row, its icon in the collapsed rail
+ * (owner, 4 Nov: "the dots and loading we had before are important"): needs you, working, failed
  * (until opened), a reply not read yet, or nothing. workspaceActivity, when given (a Crew's Main), decides needs-you
  * and working for the whole Crew. given is the caller's own copy of the tab, read when the store does not hold it.
  * Working holds 1.2 s after it ends so a quick tool turn does not flicker. */

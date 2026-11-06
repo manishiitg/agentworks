@@ -5,13 +5,11 @@ import { AGENT_KEY, AgentMark, AgentSetupMark, PersonPresenceDot } from '../chat
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
-import { OPEN_TEAM_BOARD_EVENT } from '../chat/ProjectWorkspaceTitle'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
 import { useAuthStore } from '../../stores/useAuthStore'
 
 // The phone drawer closes once something is opened from it.
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
-const openTeamBoard = (projectId: string) => { window.dispatchEvent(new CustomEvent(OPEN_TEAM_BOARD_EVENT, { detail: { projectId } })); closeDrawer() }
 const openAgent = (tabId: string) => { activateTab(tabId); closeDrawer() }
 
 /** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its
@@ -21,14 +19,13 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const crew = useCrewAgentsStore()
   const activeTabId = useChatStore(state => state.activeTabId)
   const [showHidden, setShowHidden] = useState(false)
+  const [showClosed, setShowClosed] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
   const me = useAuthStore(state => state.user?.id)
   const tabs = useChatStore(state => state.chatTabs)
   const teamPeople = (team?.team.on ? team.people : []).filter(person => person.user_id !== me && person.note !== 'invited')
-  // Every agent is listed, the open one highlighted, so the menu matches the top line (owner, 4 Nov: "show that on left also").
-  const total = crew.agents.length + crew.closed.length
   if (view === 'tabs' || crew.projectId !== projectId || !crew.agents.length) return null
   // Hidden agents (unpinned, as on the tab bar) sit at the end; the open one always stays in view.
   const shown = crew.agents.filter(agent => agent.pinned !== false || agent.tabId === activeTabId)
@@ -56,8 +53,15 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
       <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showHidden ? 'rotate-90' : ''}`} />Hidden agents ({hidden.length})
     </button>}
     {showHidden && hidden.map(row)}
-    <button type="button" onClick={() => openTeamBoard(projectId)}
-      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">All agents ({total})</button>
+    {/* Closed agents (no tab here) open again from this list. */}
+    {crew.closed.length > 0 && <button type="button" aria-expanded={showClosed} onClick={() => setShowClosed(value => !value)}
+      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
+      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showClosed ? 'rotate-90' : ''}`} />Closed agents ({crew.closed.length})
+    </button>}
+    {showClosed && crew.closed.map(agent => <button key={agent.key} type="button" role="listitem" title={agent.purpose || undefined} onClick={() => { void agent.open(); closeDrawer() }}
+      className="flex w-full min-w-0 items-center rounded-md py-1 pl-2 pr-7 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-10">
+      <span className="min-w-0 truncate">{agent.name}</span>
+    </button>)}
   </div>
 }
 

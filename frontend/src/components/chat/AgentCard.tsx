@@ -163,19 +163,15 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   </>
 }
 
-/** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <agent name> ⓘ". The Crew name opens its
- * team board; ⓘ opens the agent's card (purpose, sharing, ✎). Purpose text is not shown inline. */
-export function AgentHeaderLine({ tabId, crewName, projectId, showName = true }: { tabId?: string | null; crewName: string; projectId?: string; showName?: boolean }) {
+/** The top line of a Crew's chat (owner, 4 Nov): "<Crew name> › <agent name> ⓘ". ⓘ opens the agent's card
+ * (purpose, sharing, ✎). Purpose text is not shown inline. */
+export function AgentHeaderLine({ tabId, crewName, showName = true }: { tabId?: string | null; crewName: string; showName?: boolean }) {
   const open = useOpenAgentStore()
   const row = useCrewAgentsStore(state => (tabId ? state.agents.find(agent => agent.tabId === tabId) : undefined))
   const info = open.tabId && open.tabId === tabId ? open.info : null
   const name = row?.name || info?.name
   return <div className="mr-2 flex h-10 min-w-0 shrink items-center gap-1.5 px-1 text-sm md:h-8" data-agent-header>
-    {projectId
-      ? <button type="button" data-project-title title={crewName} aria-label={`${crewName}: see all agents`}
-          onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-team-board', { detail: { projectId } }))}
-          className="min-w-0 max-w-28 truncate rounded-md px-1 font-semibold text-muted-foreground hover:bg-muted md:max-w-40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{crewName}</button>
-      : <span data-project-title title={crewName} className="min-w-0 max-w-28 truncate px-1 md:max-w-40 font-semibold text-muted-foreground">{crewName}</span>}
+    <span data-project-title title={crewName} className="min-w-0 max-w-28 truncate px-1 md:max-w-40 font-semibold text-muted-foreground">{crewName}</span>
     {name && <>
       {/* With the tabs showing, the open agent is the highlighted tab: its name is not repeated here (owner, 4 Nov). */}
       {showName && <><span aria-hidden="true" className="shrink-0 text-muted-foreground/60">›</span>

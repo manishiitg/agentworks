@@ -61,7 +61,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const phoneNavigation = useContext(MobileWorkspaceNavigationContext)
   const selectTab = (tabId: string) => { onSelectTab(tabId); phoneNavigation?.onChange('chat') }
   const closeProjectTab = onCloseTab
-  // Closing a Crew agent hides it (owner, 4 Nov: "Close = Hide"): it stays under Hidden agents and on the team board;
+  // Closing a Crew agent hides it (owner, 4 Nov: "Close = Hide"): it stays under Hidden agents;
   // removing it for good is "Remove agent…" in its card. Other tabs (activity views, Goal chats) still close.
   const hideOrCloseTab = (tabId: string) => {
     const tab = tabs.find(item => item.tabId === tabId)
@@ -212,7 +212,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const listedInMenu = (tab: ChatTab) => onStrip(tab) || tab.tabId === activeTabId
   const menuOrder = [...agentTabs.filter(listedInMenu), ...agentTabs.filter(tab => !listedInMenu(tab))]
   const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => ({ shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main: tab.tabId === canonicalTabId, ownerId: canControl(tab) ? undefined : tabOwnerId(tab), owner: canControl(tab) ? undefined : personName(tabOwnerId(tab)), pinned: onStrip(tab), asking: agentFace(tab)?.asking, info: agentFace(tab)?.info, activity: tab.tabId === canonicalTabId ? projectActivity : undefined, actions: agentActions(tab) })) : []
-  // Agents the server lists that have no tab here (closed), for the team board, which lists every agent.
+  // Agents the server lists that have no tab here (closed), for the left menu's Closed agents list.
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !chat.is_main && !tabs.some(tab => listedFor(tab) === chat)) : []
   // The strip's ⌄ opens every agent; it shows no count (which agents are tabs is the person's choice) and no place colour
   // (owner, 4 Nov).
@@ -398,7 +398,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {/* A Crew's top line is "Crew › agent ⓘ" with Left menu and Tabs alike (owner, 4 Nov). */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} projectId={placeProject} showName={menuMode || phone} />}
+      {surface === 'work' && <AgentHeaderLine tabId={openTab?.tabId} crewName={projectName} showName={menuMode || phone} />}
       <div ref={stripRef} className={`${menuMode ? 'hidden' : 'hidden md:flex'} min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0`} data-testid="work-chat-tab-strip" aria-label="Chat tabs">
       {visibleTabs.map((tab, index) => {
         const person = tabOwnerId(tab)
@@ -517,7 +517,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                       onClick={() => { setMoreOpen(false); hideOrCloseTab(tab.tabId) }}
                       className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                       aria-label={surface === 'work' && isAgentTab(tab) ? `Hide ${label}` : `Close ${label}`}
-                      title={surface === 'work' && isAgentTab(tab) ? "Hide agent (it stays under All agents)" : "Close activity view"}
+                      title={surface === 'work' && isAgentTab(tab) ? "Hide agent (it stays under Hidden agents)" : "Close activity view"}
                     >
                       <X className="h-3 w-3" />
                     </button>
