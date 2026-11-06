@@ -244,6 +244,9 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "agents": agents, "existing_relays": existingRelays})
 		return
 	}
+	if refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(root), caller) {
+		return
+	}
 	var input struct {
 		Name string `json:"name"`
 		Kind string `json:"kind"`

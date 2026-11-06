@@ -227,6 +227,9 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 		http.Error(w, "This connection cannot edit this Crew's source. Open its Builder chat instead.", 403)
 		return
 	}
+	if r.Method != http.MethodGet && refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(binding.CrewRoot), claims.UserID) {
+		return
+	}
 	file := r.URL.Query().Get("file")
 	if path.Base(file) != file || file != "script.json" && !strings.HasSuffix(file, ".py") {
 		http.Error(w, "Choose script.json or a Python file.", 400)

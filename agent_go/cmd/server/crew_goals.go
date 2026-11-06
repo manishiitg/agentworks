@@ -55,6 +55,9 @@ func (api *StreamingAPI) handleCrewGoals(w http.ResponseWriter, r *http.Request)
 			http.Error(w, "Ask a Crew owner to update its goals.", 403)
 			return
 		}
+		if refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(root), caller) {
+			return
+		}
 		var req crewGoalRequest
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256*1024))
 		decoder.DisallowUnknownFields()

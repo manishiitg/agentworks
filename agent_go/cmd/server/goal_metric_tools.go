@@ -117,10 +117,16 @@ func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[strin
 			if access != WorkflowAccessOwner {
 				return "", fmt.Errorf("record measurements from the owning Crew's workflow")
 			}
+			if err := refuseCrewOwnerTurnOnMacTwin(ctx, binding.CrewRoot, GetUserIDFromContext(ctx)); err != nil {
+				return "", err
+			}
 			err = recordCrewGoalObservations(ctx, binding.CrewRoot, root, observations)
 		} else if crew := canonicalCrewWorkspaceRoot(root); isCrewProjectPath(crew) {
 			if !crewProjectOwnedByCaller(GetUserIDFromContext(ctx), crew) {
 				return "", fmt.Errorf("ask a Crew owner to record measurements")
+			}
+			if err := refuseCrewOwnerTurnOnMacTwin(ctx, crew, GetUserIDFromContext(ctx)); err != nil {
+				return "", err
 			}
 			err = recordCrewGoalObservations(ctx, crew, "", observations)
 		} else {

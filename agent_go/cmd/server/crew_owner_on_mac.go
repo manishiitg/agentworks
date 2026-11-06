@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -47,6 +49,29 @@ func refuseCrewOwnerOnline(w http.ResponseWriter, r *http.Request, project, user
 	log.Printf("[CREW_TEAM] project=%s event=change_on_mac path=%s", project, r.URL.Path)
 	externalError(w, http.StatusForbidden, "change_on_mac", crewChangeOnMacLine)
 	return true
+}
+
+// crewProjectIDOfRoot is the project ID of a Crew workspace root ("" when it is not a Crew).
+func crewProjectIDOfRoot(root string) string {
+	identity, ok := projectIdentityOf(canonicalCrewWorkspaceRoot(root))
+	if !ok {
+		return ""
+	}
+	record, _ := defaultProjectOwners().Lookup(identity.Product, identity.Folder)
+	return record.ProjectID
+}
+
+// refuseCrewOwnerTurnOnMacTwin is the same refusal for a chat tool, which has no request: the owner's agent on a server
+// turn of a Crew that lives on their Mac. The Mac's own turns run in local mode and pass; a teammate is not the owner;
+// an MCP/CLI call (external direct call) was already checked, with its request, in externalCrewCapabilityCall.
+func refuseCrewOwnerTurnOnMacTwin(ctx context.Context, root, user string) error {
+	if IsLocalMode() || isExternalCrewDirectCall(ctx) {
+		return nil
+	}
+	if project := crewProjectIDOfRoot(root); project != "" && user != "" && user == ownerOfCrewProjectID(project) && crewRelayTwin(project) {
+		return fmt.Errorf("%s", crewChangeOnMacLine)
+	}
+	return nil
 }
 
 // changeOnMac makes the Team tab reply read only for the owner reaching it through the server: every row stays, nothing
