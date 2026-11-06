@@ -1,7 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
 func recognitionWrite(t *testing.T, path, content string) {
@@ -83,12 +87,13 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "")
-	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code,codex-cli")
-	t.Setenv("AGENTWORKS_PROVIDER_POLICY", `{"claude-code":{"available_to":"all"},"codex-cli":{"available_to":"all"}}`)
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code,codex-cli,cursor-cli")
+	t.Setenv("AGENTWORKS_PROVIDER_POLICY", `{"claude-code":{"available_to":"all"},"codex-cli":{"available_to":"all"},"cursor-cli":{"available_to":"all"}}`)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
+	t.Setenv("CURSOR_CONFIG_DIR", "")
 	oldOS := cliHostOS
 	cliHostOS = "darwin"
 	t.Cleanup(func() { cliHostOS = oldOS })
@@ -257,4 +262,95 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 	if gone := request(http.MethodPost, "", body, owner); gone.Code != 404 {
 		t.Fatalf("resumed removed source: %d", gone.Code)
 	}
+	// PLAT-746-335: Cursor is the owner's explicit same-conversation exception.
+	// Read the real CLI SQLite layout; never reinterpret it as an SDK agent.
+	cursorID := "33333333-3333-4333-8333-333333333333"
+	config := filepath.Join(home, ".cursor")
+	cursorPath := recognitionCursorStore(t, config, root, cursorID)
+	cursorOriginal, _ := os.ReadFile(cursorPath)
+	listed := request(http.MethodGet, "?project_id="+project+"&sessions=true", "", owner)
+	var cursorData localProjectRecognition
+	if json.Unmarshal(listed.Body.Bytes(), &cursorData) != nil || len(cursorData.Sessions) != 1 || cursorData.Sessions[0].Provider != "cursor-cli" {
+		t.Fatalf("Cursor discovery: %d %s", listed.Code, listed.Body.String())
+	}
+	cursorKey := cursorData.Sessions[0].ID
+	cursorPreview := "?project_id=" + project + "&native_id=" + cursorKey
+	if preview := request(http.MethodGet, cursorPreview, "", owner); preview.Code != 200 || !strings.Contains(preview.Body.String(), "Cursor saved answer") {
+		t.Fatalf("Cursor preview: %d %s", preview.Code, preview.Body.String())
+	}
+	if denied := request(http.MethodGet, cursorPreview, "", limited); denied.Code != 403 {
+		t.Fatalf("scoped token saw Cursor history: %d", denied.Code)
+	}
+	if other := request(http.MethodGet, "?root_path="+url.QueryEscape(newRoot)+"&native_id="+cursorKey, "", owner); other.Code != 404 {
+		t.Fatal("Cursor history crossed folder")
+	}
+	// Existing-store adapters need the commands present, but opening a tab must
+	// execute neither. These exit if accidentally launched during the request.
+	bin := t.TempDir()
+	for _, name := range []string{"cursor-agent", "tmux"} {
+		recognitionWrite(t, filepath.Join(bin, name), "#!/bin/sh\nexit 99\n")
+		if err := os.Chmod(filepath.Join(bin, name), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cursorBody := fmt.Sprintf(`{"project_id":%q,"id":%q}`, project, cursorKey)
+	continued := request(http.MethodPost, "", cursorBody, owner)
+	if continued.Code != 200 {
+		t.Fatalf("Cursor continue: %d %s", continued.Code, continued.Body.String())
+	}
+	_ = json.Unmarshal(continued.Body.Bytes(), &response)
+	cursorRuntime, found, err := ReadChatHistoryRuntimeForSession("default", response.SessionID, virtual)
+	if err != nil || !found || cursorRuntime.AgentSessionHandle.Provider.NativeSessionID != cursorID || cursorRuntime.AgentSessionHandle.Provider.Transport != "tmux" || cursorRuntime.AgentSessionHandle.Provider.NativeFormat != "cursor-cli-sqlite" || cursorRuntime.AgentSessionHandle.ConnectionID != "global:cursor-cli" {
+		t.Fatalf("Cursor lost original identity/account/transport: %+v %v", cursorRuntime, err)
+	}
+	if again := request(http.MethodPost, "", cursorBody, owner); again.Code != 200 || !strings.Contains(again.Body.String(), response.SessionID) {
+		t.Fatal("Cursor reopening replaced the tab")
+	}
+	current, _ := os.ReadFile(cursorPath)
+	if !bytes.Equal(current, cursorOriginal) || f.upstreamCalls.Load() != 0 {
+		t.Fatal("Cursor preview/open modified source or ran a model")
+	}
+	// A forged cwd inside the right hashed directory still grants no history.
+	recognitionWrite(t, filepath.Join(filepath.Dir(cursorPath), "meta.json"), fmt.Sprintf(`{"schemaVersion":1,"cwd":%q}`, newRoot))
+	if gone := request(http.MethodGet, cursorPreview, "", owner); gone.Code != 404 {
+		t.Fatal("Cursor preview trusted the hash over metadata")
+	}
+
+}
+
+func recognitionCursorStore(t *testing.T, config, cwd, id string) string {
+	t.Helper()
+	directory, err := sessiontransfer.CursorCLIPath(config, cwd, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recognitionWrite(t, filepath.Join(directory, "meta.json"), fmt.Sprintf(`{"schemaVersion":1,"cwd":%q,"title":"Existing Cursor work"}`, cwd))
+	path := filepath.Join(directory, "store.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, stmt := range []string{`CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)`, `CREATE TABLE blobs (id TEXT PRIMARY KEY, data BLOB)`} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rootID := strings.Repeat("ff", 32)
+	if _, err := db.Exec(`INSERT INTO meta(key,value) VALUES('0', ?)`, fmt.Sprintf(`{"latestRootBlobId":%q}`, rootID)); err != nil {
+		t.Fatal(err)
+	}
+	root := []byte{}
+	for i, message := range []string{`{"role":"user","content":[{"type":"text","text":"<user_query>Continue my work</user_query>"}]}`, `{"role":"assistant","content":[{"type":"text","text":"Cursor saved answer"}]}`} {
+		ref := bytes.Repeat([]byte{byte(i + 1)}, 32)
+		root = append(append(root, 0x0a, 32), ref...)
+		if _, err := db.Exec(`INSERT INTO blobs(id,data) VALUES(?,?)`, hex.EncodeToString(ref), []byte(message)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO blobs(id,data) VALUES(?,?)`, rootID, root); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

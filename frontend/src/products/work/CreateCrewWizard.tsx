@@ -4,7 +4,7 @@ import { agentApi } from '../../services/api'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
 import type { CrewOnboarding } from './crewStarterTypes'
-import { LocalChatPicker, type LocalChat } from './LocalChatPicker'
+import { localChatProgram, LocalChatPicker, type LocalChat } from './LocalChatPicker'
 
 export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowExistingFolder = false }: {
   onClose: () => void
@@ -104,8 +104,8 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
         </section>
         {canChangeFolder && rootPath.trim() && <section aria-label="Previous conversation" className="rounded-lg border border-border p-3">
           <div className="flex items-center justify-between gap-3">
-            {localChat && <img alt="" src={localChat.provider === 'claude-code' ? '/provider-icons/claude.ico' : '/provider-icons/codex.png'} className="h-5 w-5 shrink-0 object-contain" />}
-            <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{localChat?.title || 'Continue a previous chat'}</p><p className="mt-1 text-xs text-muted-foreground">{localChat ? 'A separate copy will open after creation' : 'Optional · Claude and Codex chats from this folder'}</p></div>
+            {localChat && <img alt="" src={`/provider-icons/${localChatProgram(localChat.provider).icon}`} className="h-5 w-5 shrink-0 object-contain" />}
+            <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{localChat?.title || 'Continue a previous chat'}</p><p className="mt-1 text-xs text-muted-foreground">{localChat ? localChat.provider === 'cursor-cli' ? 'Continues the same Cursor chat after creation' : 'A separate copy will open after creation' : 'Optional · Claude, Codex and Cursor CLI chats from this folder'}</p></div>
             <button type="button" disabled={submitting} onClick={() => setChoosingChat(true)} className="shrink-0 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50">{localChat ? 'Change chat' : 'Choose chat'}</button>
           </div>
           {localChat && <button type="button" disabled={submitting} onClick={() => setLocalChat(undefined)} className="mt-2 text-xs text-muted-foreground hover:text-foreground">Start fresh instead</button>}

@@ -3,7 +3,12 @@ import { ArrowRight, Loader2, RefreshCw, X } from 'lucide-react'
 import ModalPortal from '../../components/ui/ModalPortal'
 import api from '../../services/api'
 
-export type LocalChat = { id: string; title: string; provider: string; account: string; updated_at: string }
+export type LocalChat = { id: string; title: string; provider: string; account: string; updated_at: string; in_use?: boolean }
+export const localChatProgram = (provider: string) => ({
+  'claude-code': { name: 'Claude', icon: 'claude.ico' },
+  'codex-cli': { name: 'Codex', icon: 'codex.png' },
+  'cursor-cli': { name: 'Cursor', icon: 'cursor.svg' },
+}[provider] || { name: 'Agent', icon: 'codex.png' })
 type Preview = { messages: { role: string; text: string }[]; total_messages: number }
 export type ImportedLocalChat = { conversation_key: string; conversation_id: string; session_id: string; name: string; provider: string; connection_id: string; engine: string; model_id: string }
 
@@ -81,16 +86,16 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
       {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
       <div className="grid min-h-0 flex-1 overflow-auto rounded-lg border border-border sm:grid-cols-[minmax(220px,1fr)_2fr]">
         <div aria-label="Local conversations" className="max-h-48 overflow-y-auto border-b border-border p-2 sm:max-h-[55dvh] sm:border-b-0 sm:border-r">
-          {loading ? <p role="status" className="p-3 text-sm text-muted-foreground">Finding local chats…</p> : chats.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No Claude or Codex chats found for this folder.</p> : chats.map(chat => <button key={chat.id} type="button" aria-pressed={selected === chat.id} disabled={importing} onClick={() => setSelected(chat.id)} className={`mb-1 flex w-full gap-3 rounded-lg p-3 text-left ${selected === chat.id ? 'bg-muted' : 'hover:bg-muted/50'}`}>
-            <img alt="" src={chat.provider === 'claude-code' ? '/provider-icons/claude.ico' : '/provider-icons/codex.png'} className="mt-0.5 h-5 w-5 shrink-0 object-contain" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{chat.title}</span><span className="mt-1 block text-xs text-muted-foreground">{chat.provider === 'claude-code' ? 'Claude' : 'Codex'} · {new Date(chat.updated_at).toLocaleDateString()}</span></span>
+          {loading ? <p role="status" className="p-3 text-sm text-muted-foreground">Finding local chats…</p> : chats.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No Claude, Codex or Cursor CLI chats found for this folder.</p> : chats.map(chat => <button key={chat.id} type="button" aria-pressed={selected === chat.id} disabled={importing} onClick={() => setSelected(chat.id)} className={`mb-1 flex w-full gap-3 rounded-lg p-3 text-left ${selected === chat.id ? 'bg-muted' : 'hover:bg-muted/50'}`}>
+            <img alt="" src={`/provider-icons/${localChatProgram(chat.provider).icon}`} className="mt-0.5 h-5 w-5 shrink-0 object-contain" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{chat.title}</span><span className="mt-1 block text-xs text-muted-foreground">{localChatProgram(chat.provider).name} · {new Date(chat.updated_at).toLocaleDateString()}</span></span>
           </button>)}
           {partial && <p className="p-3 text-xs text-muted-foreground">Some chats could not be checked. Refresh to try again.</p>}
         </div>
         <section aria-label="Conversation preview" className="min-h-48 overflow-y-auto p-4 sm:max-h-[55dvh] sm:p-6">
-          {previewLoading ? <p role="status" className="text-sm text-muted-foreground">Loading history…</p> : preview && <><p className="mb-3 text-xs text-muted-foreground">{current?.provider === 'claude-code' ? 'Claude' : 'Codex'} · {current?.account}{preview.total_messages > preview.messages.length ? ` · Latest ${preview.messages.length} messages` : ''}</p>{preview.messages.map((item, index) => <div key={index} className="border-b border-border py-4 last:border-b-0"><p className="mb-2 text-xs text-muted-foreground">{item.role === 'human' || item.role === 'user' ? 'You' : 'Assistant'}</p><p className="whitespace-pre-wrap break-words text-sm">{item.text}</p></div>)}</>}
+          {previewLoading ? <p role="status" className="text-sm text-muted-foreground">Loading history…</p> : preview && <><p className="mb-3 text-xs text-muted-foreground">{localChatProgram(current?.provider || '').name} · {current?.account}{preview.total_messages > preview.messages.length ? ` · Latest ${preview.messages.length} messages` : ''}</p>{preview.messages.map((item, index) => <div key={index} className="border-b border-border py-4 last:border-b-0"><p className="mb-2 text-xs text-muted-foreground">{item.role === 'human' || item.role === 'user' ? 'You' : 'Assistant'}</p><p className="whitespace-pre-wrap break-words text-sm">{item.text}</p></div>)}</>}
         </section>
       </div>
-      <footer className="mt-5 flex flex-wrap items-center justify-between gap-4"><p className="text-xs text-muted-foreground">{onSelected ? 'A separate copy opens after creation.' : 'Opens a separate chat tab.'} Your original conversation stays unchanged.<br />The project files are shared.</p><button type="button" disabled={!preview?.messages.length || loading || previewLoading || importing} onClick={() => void continueChat()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{onSelected ? 'Use this chat' : 'Continue in AgentWorks'}<ArrowRight className="h-4 w-4" /></button></footer>
+      <footer className="mt-5 flex flex-wrap items-center justify-between gap-4"><p className="text-xs text-muted-foreground">{current?.provider === 'cursor-cli' ? `${current.in_use ? 'This chat appears open in Cursor. ' : ''}Continues the same Cursor CLI conversation${onSelected ? ' after creation' : ''}. Close it in Cursor before sending here.` : `${onSelected ? 'A separate copy opens after creation.' : 'Opens a separate chat tab.'} Your original conversation stays unchanged.`}<br />The project files are shared.</p><button type="button" disabled={!preview?.messages.length || loading || previewLoading || importing} onClick={() => void continueChat()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{onSelected ? 'Use this chat' : 'Continue in AgentWorks'}<ArrowRight className="h-4 w-4" /></button></footer>
     </div>
   </div></ModalPortal>
 }

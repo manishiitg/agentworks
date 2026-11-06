@@ -86,3 +86,10 @@ message resumes this independent copy with the Crew's current tools and
 permissions. Both chats still work on the same project files. Never copy native history between accounts, select a different
 folder's conversation or imply that opening a tab ran the agent. Other people's
 or shared-account owners' private chats are not listed.
+
+Cursor CLI chats can also be selected from the exact local folder. They continue
+**the same conversation**, not an independent copy. Explain this and ask the
+person to close that conversation in Cursor before sending in the Crew tab.
+The picker shows the saved history without starting a model turn. Cursor CLI and
+tmux must be installed; its SDK store is separate and is not a substitute.
+Claude/Codex still open independent copies with their original history unchanged.

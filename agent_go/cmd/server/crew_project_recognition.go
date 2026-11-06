@@ -98,13 +98,14 @@ type localNativeSource struct {
 }
 
 type localProjectNativeSession struct {
-	ID                    string            `json:"id"`
-	Provider              string            `json:"provider"`
-	Account               string            `json:"account"`
-	Title                 string            `json:"title"`
-	UpdatedAt             string            `json:"updated_at"`
-	NativeID, Path, Model string            `json:"-"`
-	Source                localNativeSource `json:"-"`
+	ID                             string            `json:"id"`
+	Provider                       string            `json:"provider"`
+	Account                        string            `json:"account"`
+	Title                          string            `json:"title"`
+	UpdatedAt                      string            `json:"updated_at"`
+	InUse                          bool              `json:"in_use,omitempty"`
+	NativeID, Path, Model, Project string            `json:"-"`
+	Source                         localNativeSource `json:"-"`
 }
 
 func localNativeSessionKey(source localNativeSource, native string) string {
@@ -123,7 +124,7 @@ func (api *StreamingAPI) localNativeSources(ctx context.Context, user, workspace
 	if err != nil {
 		return nil, err
 	}
-	for _, provider := range []string{"claude-code", "codex-cli"} {
+	for _, provider := range []string{"claude-code", "codex-cli", "cursor-cli"} {
 		if _, err := api.admitProviderAccount(ctx, scope, provider, "global:"+provider); err != nil {
 			continue
 		}
@@ -137,6 +138,9 @@ func (api *StreamingAPI) localNativeSources(ctx context.Context, user, workspace
 		if provider == "claude-code" && os.Getenv("CLAUDE_CONFIG_DIR") != "" {
 			root = filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "projects")
 		}
+		if provider == "cursor-cli" {
+			root = firstNonEmptyTrimmed(os.Getenv("CURSOR_CONFIG_DIR"), filepath.Join(home, ".cursor"))
+		}
 		sources = append(sources, localNativeSource{provider, "global:" + provider, "Your local login", root})
 	}
 	records, err := loadProviderConnections(ctx)
@@ -144,7 +148,7 @@ func (api *StreamingAPI) localNativeSources(ctx context.Context, user, workspace
 		return nil, err
 	}
 	for _, record := range records {
-		if record.OwnerUserID != user || record.Provider != "claude-code" && record.Provider != "codex-cli" {
+		if record.OwnerUserID != user || record.Provider != "claude-code" && record.Provider != "codex-cli" && record.Provider != "cursor-cli" {
 			continue
 		}
 		if _, err := api.admitProviderAccount(ctx, scope, record.Provider, record.ID); err != nil {
@@ -157,6 +161,9 @@ func (api *StreamingAPI) localNativeSources(ctx context.Context, user, workspace
 		root := filepath.Join(home, ".claude", "projects")
 		if record.Provider == "codex-cli" {
 			root = filepath.Join(home, ".codex", "sessions")
+		}
+		if record.Provider == "cursor-cli" {
+			root = filepath.Join(home, ".cursor")
 		}
 		sources = append(sources, localNativeSource{record.Provider, record.ID, record.DisplayName, root})
 	}
@@ -252,6 +259,12 @@ func listLocalNativeSessions(ctx context.Context, project string, sources []loca
 	out := []localProjectNativeSession{}
 	partial, visited := false, 0
 	for _, source := range sources {
+		if source.Provider == "cursor-cli" {
+			sessions, incomplete := listLocalCursorSessions(ctx, project, source)
+			out = append(out, sessions...)
+			partial = partial || incomplete
+			continue
+		}
 		_ = filepath.WalkDir(source.Root, func(path string, entry fs.DirEntry, err error) error {
 			if ctx.Err() != nil {
 				partial = true
@@ -315,7 +328,7 @@ func (api *StreamingAPI) localCrewNativeSessions(r *http.Request, crew crewProje
 			continue
 		}
 		runtime, found, _ := ReadChatHistoryRuntimeForSession(owner, chat.SessionID, crew.Binding.WorkspacePath)
-		if !found || runtime == nil || runtime.AgentSessionHandle == nil {
+		if !found || runtime == nil || runtime.AgentSessionHandle == nil || runtime.Provider == "cursor-cli" {
 			continue
 		}
 		handle := runtime.AgentSessionHandle

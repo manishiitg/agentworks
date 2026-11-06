@@ -38,13 +38,16 @@ it('previews the selected chat and imports only on Continue', async () => {
 
 it('selects a folder chat before creation without importing or starting a turn', async () => {
   api.get.mockReset(); api.post.mockReset()
-  const chat = { id: 'one', title: 'Existing work', provider: 'codex-cli', account: 'Your local login', updated_at: '2026-11-05T10:00:00Z' }
+  const chat = { id: 'one', title: 'Existing work', provider: 'cursor-cli', account: 'Your local login', updated_at: '2026-11-05T10:00:00Z' }
   api.get.mockImplementation((_path, { params }) => Promise.resolve({ data: params.sessions ? { sessions: [chat] } : { messages: [{ role: 'human', text: 'The original conversation' }], total_messages: 1 } }))
   const onSelected = vi.fn(), onClose = vi.fn()
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   try {
     await act(async () => root.render(<LocalChatPicker folder="/Users/example/project" onSelected={onSelected} onClose={onClose} />))
+    expect(document.body.textContent).toContain('Continues the same Cursor CLI conversation after creation')
+    expect(document.body.textContent).not.toContain('Your original conversation stays unchanged')
+    expect(document.querySelector('[aria-label="Local conversations"] img')?.getAttribute('src')).toBe('/provider-icons/cursor.svg')
     expect(api.get).toHaveBeenCalledWith('/api/agent-profiles/work/local-project', expect.objectContaining({ params: { root_path: '/Users/example/project', native_id: 'one' } }))
     const button = [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.includes('Use this chat'))!
     await act(async () => button.click())
