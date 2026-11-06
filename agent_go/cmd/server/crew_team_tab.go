@@ -81,6 +81,13 @@ type crewTeamTabAgent struct {
 	CanMakeChanges *bool              `json:"can_make_changes,omitempty"`
 	CanEditRule    bool               `json:"can_edit_rule"`
 	WhenOthersLine string             `json:"when_others_line"`
+	// Teammates can read this chat (crew_team_chat_private.go). ChatVisibleLabel is the switch's line, on the viewer's
+	// own agent; ChatPrivateLine replaces the chat on someone else's agent they keep private.
+	ChatVisible      bool   `json:"chat_visible"`
+	ChatVisibleLabel string `json:"chat_visible_label,omitempty"`
+	ChatPrivateLine  string `json:"chat_private_line,omitempty"`
+	// WatchKey is the key of its tab for someone else, where that differs from Key: the Crew owner's Mac Main.
+	WatchKey string `json:"watch_key,omitempty"`
 	// PermissionsPrompt is what its rule editor's "Ask AI to set this up" sends to the viewer's Main (their own agent).
 	PermissionsPrompt string `json:"permissions_prompt,omitempty"`
 	// The agent sharing list (owner, 6 Nov, approved mockup): its one-line purpose, whether the viewer edits it in the
@@ -271,8 +278,17 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				row.CanMakeChanges = &changes
 			}
 			row.WhenOthersLine = crewTeamWhenOthersLine(rule, p.Name, mine)
+			row.ChatVisible = t.agentChatVisible(ctx, p.UserID, a.ChatKey)
 			if mine {
 				row.PermissionsPrompt = crewTeamPermissionsPrompt(a.Name)
+				row.ChatVisibleLabel = crewTeamChatVisibleLabel
+			} else {
+				if !row.ChatVisible {
+					row.ChatPrivateLine = crewChatPrivateLine(p.UserID)
+				}
+				if p.Owner && onMac && a.Tab == macMainTab {
+					row.WatchKey = crewMacTabRow(t.ProjectID, crewMacTeamTab{Person: p.UserID, Tab: macMainTab}).ConversationKey
+				}
 			}
 			row.Purpose, row.CanSetPurpose = a.Purpose, mine
 			// Public on AgentBridge is switched on the Mac online tab (owner, 6 Nov); the row keeps it for that screen.
@@ -403,6 +419,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 		row := crewTeamTabAgent{Key: a.ChatKey, Name: a.Name, Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
 			Uses: []crewTeamAgentUse{}, WhenOthersAsk: rule.WhenOthersAsk, HasRule: rule.WhenOthersAsk != "", CanEditRule: true,
 			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, CanSetPurpose: true,
+			ChatVisible: t.agentChatVisible(ctx, t.OwnerID, a.ChatKey), ChatVisibleLabel: crewTeamChatVisibleLabel,
 			AgentBridge: bridges.row(t, a, t.OwnerID)}
 		if bridges.twin {
 			changes := rule.CanMakeChanges

@@ -127,16 +127,14 @@ func crewConversationTabAccess(ctx context.Context, caller string, profile agent
 	return tab.OwnerID, crewOwnerDisplayName(tab.OwnerID), tab.OwnerID == caller
 }
 
-// Session views use the same owner roster as the tab list, including after a
-// restart. Only actual Builder tabs qualify; unrelated private chats stay out.
+// crewSessionTabView: the caller may read this chat as another person's tab; a chat its person keeps private
+// (crew_team_chat_private.go) is listed but not read.
 func (api *StreamingAPI) crewSessionTabView(r *http.Request, session string) bool {
-	if tab, _, ok := api.goalTabForSession(r.Context(), session); ok {
-		return !tab.CanWrite
-	}
-	caller := GetUserIDFromContext(r.Context())
-	if tabOwner, found := crewTabOwnerForSession(r.Context(), caller, session); found {
-		return tabOwner != caller
-	}
+	return api.crewSessionTabPeer(r, session) && api.crewSessionChatPrivate(r, session) == nil
+}
+
+// crewSessionRecordedOwner is who the running or saved session records as its owner.
+func (api *StreamingAPI) crewSessionRecordedOwner(session string) string {
 	owner := ""
 	if active, ok := api.getActiveSession(session); ok {
 		owner = active.UserID
@@ -147,6 +145,21 @@ func (api *StreamingAPI) crewSessionTabView(r *http.Request, session string) boo
 	if owner == "" && api.eventStore != nil {
 		owner, _ = api.eventStore.DurableChatOwner(session)
 	}
+	return owner
+}
+
+// Session views use the same owner roster as the tab list, including after a
+// restart. Only actual Builder tabs qualify; unrelated private chats stay out.
+// Control asks this one: a private chat is still another person's tab, never the caller's to control.
+func (api *StreamingAPI) crewSessionTabPeer(r *http.Request, session string) bool {
+	if tab, _, ok := api.goalTabForSession(r.Context(), session); ok {
+		return !tab.CanWrite
+	}
+	caller := GetUserIDFromContext(r.Context())
+	if tabOwner, found := crewTabOwnerForSession(r.Context(), caller, session); found {
+		return tabOwner != caller
+	}
+	owner := api.crewSessionRecordedOwner(session)
 	if caller == "" || owner == "" || owner == caller {
 		return false
 	}
@@ -217,7 +230,7 @@ func (api *StreamingAPI) crewSessionCanControl(r *http.Request, session string) 
 			owner, _ = api.eventStore.DurableChatOwner(session)
 		}
 		if owner != "" && owner != GetUserIDFromContext(r.Context()) {
-			return !api.crewSessionTabView(r, session)
+			return !api.crewSessionTabPeer(r, session)
 		}
 	}
 	return true

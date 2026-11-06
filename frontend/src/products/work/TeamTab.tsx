@@ -351,7 +351,7 @@ function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; targe
   const [rule, setRule] = useState(agent.when_others_ask || '')
   const { pending, error, run } = useSave()
   useEffect(() => { setRule(agent.when_others_ask || '') }, [agent.when_others_ask])
-  const save = (key: string, change: { when_others_ask?: string }) => run(key, async () => {
+  const save = (key: string, change: { when_others_ask?: string; chat_visible?: boolean }) => run(key, async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/agent-rule', 'POST', { agent_key: agent.key, ...change })
     window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   })
@@ -374,6 +374,12 @@ function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; targe
         onChange={e => setRule(e.target.value)} onBlur={() => { if (rule.trim() !== (agent.when_others_ask || '')) void save('rule', { when_others_ask: rule }) }}
         className="min-h-[58px] w-full rounded-md border border-border bg-background px-2 py-1.5 text-[13px]" />
       <p className="mt-1 text-xs text-muted-foreground">Added only when someone else asks; the agent knows who is asking. It follows it; it isn't a lock.</p>
+      {agent.chat_visible_label && <div className="mt-2.5 flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="min-w-0 flex-1">{agent.chat_visible_label}</span>
+        <Saving on={pending === 'chat'}>{null}</Saving>
+        {agent.chat_visible ? 'On' : 'Off'}
+        <Switch aria-label={`${agent.name}: ${agent.chat_visible_label}`} checked={agent.chat_visible} disabled={Boolean(pending)} onCheckedChange={on => void save('chat', { chat_visible: on })} />
+      </div>}
     </>}
     {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
   </div>

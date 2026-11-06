@@ -25,6 +25,8 @@ import (
 type crewTeamAgentRule struct {
 	WhenOthersAsk  string `json:"when_others_ask,omitempty"`
 	CanMakeChanges bool   `json:"can_make_changes,omitempty"`
+	// ChatVisible: teammates can read this agent's own chat (crew_team_chat_private.go). Unset is on; only off is stored.
+	ChatVisible *bool `json:"chat_visible,omitempty"`
 }
 
 // whenOthersAskMaxRunes bounds the rule: it is added to every such turn's instructions.
@@ -59,9 +61,9 @@ func withAgentRuleArgs(ctx context.Context, args map[string]any, project, person
 // errWhenOthersAskTooLong refuses a rule over the limit, with what to do instead.
 var errWhenOthersAskTooLong = fmt.Errorf("keep the rule under %d characters", whenOthersAskMaxRunes)
 
-// setCrewTeamAgentRule saves the person's own rule and/or Answer only / Make changes for one of their agents (nil
-// leaves that part as it is). Only the agent's own person may (crewTeamOwnAgent).
-func setCrewTeamAgentRule(ctx context.Context, project, person, key string, text *string, changes *bool) (crewTeamAgentRule, error) {
+// setCrewTeamAgentRule saves the person's own rule, Answer only / Make changes and/or Teammates can read this chat for
+// one of their agents (nil leaves that part as it is). Only the agent's own person may (crewTeamOwnAgent).
+func setCrewTeamAgentRule(ctx context.Context, project, person, key string, text *string, changes, chatVisible *bool) (crewTeamAgentRule, error) {
 	if text != nil {
 		trimmed := strings.TrimSpace(*text)
 		if len([]rune(trimmed)) > whenOthersAskMaxRunes {
@@ -89,6 +91,12 @@ func setCrewTeamAgentRule(ctx context.Context, project, person, key string, text
 	if changes != nil {
 		rule.CanMakeChanges = *changes
 	}
+	if chatVisible != nil {
+		rule.ChatVisible = nil
+		if !*chatVisible {
+			rule.ChatVisible = chatVisible
+		}
+	}
 	if t.AgentRules == nil {
 		t.AgentRules = map[string]map[string]crewTeamAgentRule{}
 	}
@@ -104,23 +112,28 @@ func setCrewTeamAgentRule(ctx context.Context, project, person, key string, text
 	if err = writeCrewTeam(t); err != nil {
 		return crewTeamAgentRule{}, err
 	}
-	log.Printf("[CREW_TEAM] project=%s event=agent_rule user=%s agent=%s has_rule=%t can_make_changes=%t revision=%d", project, logUsernameForUserID(person), stored, rule.WhenOthersAsk != "", rule.CanMakeChanges, t.Revision)
+	log.Printf("[CREW_TEAM] project=%s event=agent_rule user=%s agent=%s has_rule=%t can_make_changes=%t chat_visible=%t revision=%d", project, logUsernameForUserID(person), stored, rule.WhenOthersAsk != "", rule.CanMakeChanges, rule.chatVisible(), t.Revision)
+	if chatVisible != nil {
+		publishCrewPanelChanged(project) // a teammate's open tab shows the chat or the private line at once
+	}
 	return rule, nil
 }
 
-// handleCrewTeamAgentRule is POST /crew-teams/{project}/agent-rule: {agent_key, when_others_ask?, can_make_changes?}:
+// handleCrewTeamAgentRule is POST /crew-teams/{project}/agent-rule: {agent_key, when_others_ask?, can_make_changes?,
+// chat_visible?}:
 // one of the caller's own agents' settings from its Team tab row.
 func handleCrewTeamAgentRule(w http.ResponseWriter, r *http.Request, project, person string) {
 	var in struct {
 		Key            string  `json:"agent_key"`
 		WhenOthersAsk  *string `json:"when_others_ask"`
 		CanMakeChanges *bool   `json:"can_make_changes"`
+		ChatVisible    *bool   `json:"chat_visible"`
 	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.WhenOthersAsk == nil && in.CanMakeChanges == nil {
-		externalError(w, 400, "invalid_agent", "Choose your agent and give its rule or Answer only / Make changes.")
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.WhenOthersAsk == nil && in.CanMakeChanges == nil && in.ChatVisible == nil {
+		externalError(w, 400, "invalid_agent", "Choose your agent and give its rule, Answer only / Make changes, or whether teammates can read its chat.")
 		return
 	}
-	rule, err := setCrewTeamAgentRule(r.Context(), project, person, in.Key, in.WhenOthersAsk, in.CanMakeChanges)
+	rule, err := setCrewTeamAgentRule(r.Context(), project, person, in.Key, in.WhenOthersAsk, in.CanMakeChanges, in.ChatVisible)
 	switch {
 	case errors.Is(err, errCrewTeamAgentNotYours):
 		externalError(w, 403, "agent_not_yours", "Only the agent's own person sets what it does when others ask. Choose one of your own agents.")
@@ -129,7 +142,7 @@ func handleCrewTeamAgentRule(w http.ResponseWriter, r *http.Request, project, pe
 	case err != nil:
 		externalError(w, 409, "agent_update_failed", "It was not saved. Try again.")
 	default:
-		externalJSON(w, map[string]any{"when_others_ask": rule.WhenOthersAsk, "has_rule": rule.WhenOthersAsk != "", "can_make_changes": rule.CanMakeChanges})
+		externalJSON(w, map[string]any{"when_others_ask": rule.WhenOthersAsk, "has_rule": rule.WhenOthersAsk != "", "can_make_changes": rule.CanMakeChanges, "chat_visible": rule.chatVisible()})
 	}
 }
 
@@ -138,7 +151,7 @@ func handleCrewTeamAgentRule(w http.ResponseWriter, r *http.Request, project, pe
 func (api *StreamingAPI) setOwnAgentRule(ctx context.Context, user, chatKey string, text *string, changes *bool) (crewTeamAgentRule, error) {
 	project := crewResourceProjectID(chatKey)
 	if !IsLocalMode() {
-		return setCrewTeamAgentRule(ctx, project, user, chatKey, text, changes)
+		return setCrewTeamAgentRule(ctx, project, user, chatKey, text, changes, nil)
 	}
 	b, err := crewroot.ReadSync(project)
 	if err != nil || b == nil || b.Side != "local" {
@@ -303,7 +316,7 @@ func crewTeamRowUses(all []crewTeamAgentUse, rowOwner, crewOwner, viewer string)
 // crewTeamPermissionsPrompt asks the person's own Main to look at what the agent reaches before its rule is chosen.
 // The rule is free text and every turn names who asks (whenOthersAskNote), so it may differ per teammate.
 func crewTeamPermissionsPrompt(agent string) string {
-	return fmt.Sprintf("Help me decide what my %[1]s agent may do when teammates ask it. First list, for %[1]s: the apps (MCP) and secret names it uses (never values), which of them are my personal accounts (Gmail, Drive, Slack and others) and what personal information they reach, and the files and folders it can read and change. Then help me choose, per teammate if needed, what it may share and what it must protect, and whether it may only answer or also make changes. Save the result as its rule when others ask (team_sync agent_rule).", agent)
+	return fmt.Sprintf("Help me decide what my %[1]s agent may do when teammates ask it. First list, for %[1]s: the apps (MCP) and secret names it uses (never values), which of them are my personal accounts (Gmail, Drive, Slack and others) and what personal information they reach, and the files and folders it can read and change. Then help me choose, per teammate if needed, what it may share and what it must protect, and whether it may only answer or also make changes. Also tell me whether teammates can read %[1]s's own chat: on by default; with it off they can still ask it, in their own thread, but cannot read its chat. Save the result as its rule when others ask (team_sync agent_rule, chat_visible for reading its chat).", agent)
 }
 
 // crewTeamWhenOthersLine is the row's fixed line: to the agent's person, what it won't do; to anyone else, a summary.

@@ -362,6 +362,11 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			flusher.Flush()
 
 		case <-statusTicker.C:
+			// Turned private while a teammate watches: the stream ends like any refused read.
+			if api.crewSessionChatPrivate(r, sessionID) != nil {
+				streamLog.reason = "chat_private"
+				return
+			}
 			currentStatus, _ := api.getSessionStatusString(r, sessionID)
 			if currentStatus == "" {
 				currentStatus = sessionStatus

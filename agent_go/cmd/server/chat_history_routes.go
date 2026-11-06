@@ -709,6 +709,11 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 			userID = "default"
 		}
 		sessionID := mux.Vars(r)["session_id"]
+		// These routes sit outside the /api subrouter's session check (crewChatRelayMiddleware).
+		if private := api.crewSessionChatPrivate(r, sessionID); private != nil {
+			private.refuse(w, userID)
+			return
+		}
 		workspacePath := r.URL.Query().Get("workspace_path")
 		resumeTurns := parsePositiveQueryInt(r, "resume_turns")
 		resumeOffset := parseNonNegativeQueryInt(r, "resume_offset")

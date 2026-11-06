@@ -395,7 +395,7 @@ func crewMacTeamWatchAllowed(r *http.Request, project string) bool {
 		return false
 	}
 	person, tab := crewMacTeamConversation(r.Context(), project, watch.conversation)
-	return person == watch.person && tab == watch.tab
+	return person == watch.person && tab == watch.tab && t.agentChatVisible(r.Context(), person, tab)
 }
 
 func (api *StreamingAPI) crewMacTeamWatchContext(r *http.Request, project, conversation string) (*http.Request, bool) {
