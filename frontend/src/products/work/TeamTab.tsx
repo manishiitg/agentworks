@@ -306,12 +306,13 @@ const toneText: Record<string, string> = { wait: 'text-amber-700 dark:text-amber
 
 /** One of the viewer's own agents (owner, 6 Nov, approved "calmer rows" mock): its name and one "Shared" switch, one
  * quiet status line the server words (place_label, coloured by place_tone only when it needs attention), and, while
- * shared, "Teammates can [Answer only | Make changes]" with a Rules link. Purpose stays in the agent's own chat. Every
+ * shared, "Teammates can [Answer only | Make changes]", "Teammates see [Live chat | Chat history | Just the agent]" (its
+ * words and choices from the server) and a Rules link. Purpose stays in the agent's own chat. Every
  * save goes to the server (agent-visibility, agent-rule); the server says when a switch cannot go off and why. */
 function AgentRow({ agent, target, projectId, switching, busy, onShare }: { agent: TeamTabAgent; target: TeamTarget; projectId: string; switching: boolean; busy: boolean; onShare: (on: boolean) => void }) {
   const [rules, setRules] = useState(false)
   const { pending, error, run } = useSave()
-  const save = (key: string, change: { can_make_changes?: boolean }) => run(key, async () => {
+  const save = (key: string, change: { can_make_changes?: boolean; chat_share?: string }) => run(key, async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/agent-rule', 'POST', { agent_key: agent.key, ...change })
     window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   })
@@ -337,6 +338,15 @@ function AgentRow({ agent, target, projectId, switching, busy, onShare }: { agen
         </select>
         <Saving on={pending === 'can'}>{null}</Saving>
       </>}
+      {agent.chat_share_options && <>
+        <label htmlFor={`see-${agent.key}`} className="text-muted-foreground">{agent.chat_share_label}</label>
+        <select id={`see-${agent.key}`} value={agent.chat_share} disabled={Boolean(pending)}
+          onChange={e => void save('see', { chat_share: e.target.value })}
+          className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
+          {agent.chat_share_options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+        <Saving on={pending === 'see'}>{null}</Saving>
+      </>}
       <button type="button" aria-expanded={rules} onClick={() => setRules(!rules)} className="text-primary hover:underline">{agent.has_rule ? '1 rule…' : 'Rules…'}</button>
     </div>}
     {agent.in_team && rules && <AgentDetails agent={agent} target={target} projectId={projectId} />}
@@ -351,7 +361,7 @@ function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; targe
   const [rule, setRule] = useState(agent.when_others_ask || '')
   const { pending, error, run } = useSave()
   useEffect(() => { setRule(agent.when_others_ask || '') }, [agent.when_others_ask])
-  const save = (key: string, change: { when_others_ask?: string; chat_visible?: boolean }) => run(key, async () => {
+  const save = (key: string, change: { when_others_ask?: string }) => run(key, async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/agent-rule', 'POST', { agent_key: agent.key, ...change })
     window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
   })
@@ -374,12 +384,6 @@ function AgentDetails({ agent, target, projectId }: { agent: TeamTabAgent; targe
         onChange={e => setRule(e.target.value)} onBlur={() => { if (rule.trim() !== (agent.when_others_ask || '')) void save('rule', { when_others_ask: rule }) }}
         className="min-h-[58px] w-full rounded-md border border-border bg-background px-2 py-1.5 text-[13px]" />
       <p className="mt-1 text-xs text-muted-foreground">Added only when someone else asks; the agent knows who is asking. It follows it; it isn't a lock.</p>
-      {agent.chat_visible_label && <div className="mt-2.5 flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1">{agent.chat_visible_label}</span>
-        <Saving on={pending === 'chat'}>{null}</Saving>
-        {agent.chat_visible ? 'On' : 'Off'}
-        <Switch aria-label={`${agent.name}: ${agent.chat_visible_label}`} checked={agent.chat_visible} disabled={Boolean(pending)} onCheckedChange={on => void save('chat', { chat_visible: on })} />
-      </div>}
     </>}
     {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
   </div>

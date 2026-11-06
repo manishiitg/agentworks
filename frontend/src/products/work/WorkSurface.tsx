@@ -54,7 +54,7 @@ import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspa
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
 import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, WORK_SIDE_CHAT_LIMIT, type WorkRuntimeSelection } from './workTabs'
-import { ChatEmptyState, useChatPrivateLine } from './ChatEmptyState'
+import { ChatEmptyState, useChatShareLines } from './ChatEmptyState'
 import { teamSideChats } from './teamApi'
 import { ownerShortName } from '../../components/chat/chatTabName'
 import { CrewWorksElsewhere, useCrewWorksElsewhere } from './CrewWorksElsewhere'
@@ -1025,7 +1025,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const isShared = isWorkSessionRun(selected)
   // A Team member's own agents work in one place; in the other the Crew is one plain screen (owner, 5 Nov).
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '').elsewhere
-  const chatPrivateLine = useChatPrivateLine(tabId)
+  const { private: chatPrivateLine, note: chatShareNote } = useChatShareLines(tabId)
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   useEffect(() => {
@@ -1484,6 +1484,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chat={<>
                   {tabId ? (
                       <div className="relative flex min-h-0 flex-1 flex-col">
+                        {chatShareNote && <p role="status" className="border-b border-border px-3 py-1.5 text-center text-xs text-muted-foreground">{chatShareNote}</p>}
                         <div className="min-h-0 flex-1">
                         {chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}

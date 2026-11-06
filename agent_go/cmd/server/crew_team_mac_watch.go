@@ -376,8 +376,8 @@ func (api *StreamingAPI) routeCrewMemberMacTabs(w http.ResponseWriter, r *http.R
 // keeps the caller's own context.
 type crewMacTeamWatchKey struct{}
 type crewMacTeamWatch struct {
-	viewer                             *UserClaims
-	project, conversation, person, tab string
+	viewer                                    *UserClaims
+	project, conversation, person, tab, share string // share: what the person shared when this read began
 }
 
 // Retain the original viewer for the lifetime of a relay read. Switching the
@@ -395,7 +395,8 @@ func crewMacTeamWatchAllowed(r *http.Request, project string) bool {
 		return false
 	}
 	person, tab := crewMacTeamConversation(r.Context(), project, watch.conversation)
-	return person == watch.person && tab == watch.tab && t.agentChatVisible(r.Context(), person, tab)
+	share := t.agentChatShare(r.Context(), person, tab)
+	return person == watch.person && tab == watch.tab && share == watch.share && share != crewChatShareAgent
 }
 
 func (api *StreamingAPI) crewMacTeamWatchContext(r *http.Request, project, conversation string) (*http.Request, bool) {
@@ -413,7 +414,7 @@ func (api *StreamingAPI) crewMacTeamWatchContext(r *http.Request, project, conve
 		return r, false
 	}
 	log.Printf("[CREW_TEAM] project=%s event=member_watch user=%s of=%s tab=%s read=%s", project, logUsernameForUserID(viewer), logUsernameForUserID(person), tab, strings.TrimPrefix(r.URL.Path, "/api/sessions/"))
-	ctx := context.WithValue(r.Context(), crewMacTeamWatchKey{}, crewMacTeamWatch{viewer: claims, project: project, conversation: conversation, person: person, tab: tab})
+	ctx := context.WithValue(r.Context(), crewMacTeamWatchKey{}, crewMacTeamWatch{viewer: claims, project: project, conversation: conversation, person: person, tab: tab, share: t.agentChatShare(r.Context(), person, tab)})
 	return r.WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: person, Username: person})), true
 }
 

@@ -310,8 +310,8 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		if !strings.HasPrefix(session, pairedMacSessionPrefix) {
 			// Every session route of a chat kept on this server; admins' audited reviews keep their own rule.
 			if !strings.HasPrefix(r.URL.Path, "/api/admin/") {
-				if private := api.crewSessionChatPrivate(r, mux.Vars(r)["session_id"]); private != nil {
-					private.refuse(w, GetUserIDFromContext(r.Context()))
+				if limit := api.crewSessionChatLimit(r, mux.Vars(r)["session_id"]); limit != nil {
+					api.serveCrewServerChatLimited(w, r, next, limit)
 					return
 				}
 			}
@@ -329,12 +329,14 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			externalError(w, 409, "reopen_mac_chat", "Reopen this Crew to continue its current Mac conversation.")
 			return
 		}
-		if private := api.crewMacChatPrivate(r, project, generation); private != nil {
-			private.refuse(w, GetUserIDFromContext(r.Context()))
-			return
-		}
 		operation := ""
 		suffix := strings.TrimPrefix(r.URL.Path, "/api/sessions/"+session+"/")
+		limit := api.crewMacChatLimit(r, project, generation)
+		if limit != nil && (limit.share == crewChatShareAgent || r.Method != "GET" || suffix != "events/stream" && suffix != "events" && suffix != "status") {
+			limit.refuse(w, GetUserIDFromContext(r.Context()))
+			return
+		}
+		asked := r
 		// A Team member watches the owner's In team Mac agent: reads only, and only that conversation (crew_team_mac_watch.go).
 		if r.Method == "GET" && (suffix == "events/stream" || suffix == "events" || suffix == "status") {
 			if watch, ok := api.crewMacTeamWatchContext(r, project, generation); ok {
@@ -346,6 +348,10 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			r = r.WithContext(context.WithValue(r.Context(), crewRelayReadKey{}, true))
 		} else if crewTeamMemberOnMac(project, GetUserIDFromContext(r.Context())) {
 			externalError(w, 409, "mac_chat_action", "This Crew works on your Mac. Open it in the AgentWorks app on your Mac to send, answer or stop.")
+			return
+		}
+		if limit != nil {
+			api.serveCrewMacChatHistory(w, r, asked, project, generation, suffix)
 			return
 		}
 		switch {
