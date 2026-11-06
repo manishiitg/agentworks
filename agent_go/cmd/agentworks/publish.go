@@ -1,16 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chunks"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -161,33 +163,10 @@ func runPublish(ctx context.Context, o *options, name, resume, crew, agentID str
 		return err
 	}
 	if receipt["state"] == "uploading" || receipt["state"] == "failed" {
-		f, e := os.Open(pending.Archive)
-		if e != nil {
-			return e
-		}
-		defer f.Close()
-		offset, _ := receipt["uploaded_bytes"].(float64)
-		if _, e = f.Seek(int64(offset), io.SeekStart); e != nil {
-			return e
-		}
-		buf := make([]byte, publication.ChunkBytes)
-		for {
-			n, e := f.Read(buf)
-			if e == io.EOF {
-				break
-			}
-			if e != nil {
-				return e
-			}
-			_, err = client.Publication(ctx, http.MethodPut, pending.Operation, map[string]any{"offset": int64(offset), "data": buf[:n]})
-			if err != nil {
-				return fmt.Errorf("%w; resume with agentworks publish --resume %s", err, pending.Operation)
-			}
-			offset += float64(n)
-		}
-		receipt, err = client.Publication(ctx, http.MethodPost, pending.Operation, map[string]any{})
-		if err != nil {
-			return err
+		// The package goes as chunks: the server answers which it lacks (its store keeps the last package's), so
+		// publishing again or resuming sends only those.
+		if receipt, err = publishPackage(ctx, client, pending.Operation, pending.Archive); err != nil {
+			return fmt.Errorf("%w; resume with agentworks publish --resume %s", err, pending.Operation)
 		}
 	}
 	for receipt["state"] == "preparing" {
@@ -220,4 +199,54 @@ func runPublish(ctx context.Context, o *options, name, resume, crew, agentID str
 		fmt.Fprintln(o.stderr, "Published. Your Crew works while this computer is offline. Server chat continues from a private summary; native resume comes later.")
 	}
 	return o.output(receipt)
+}
+
+// publishPackage sends the package at archive in chunks the server lacks, then publishes it.
+func publishPackage(ctx context.Context, client *agentworksclient.Client, operation, archive string) (map[string]any, error) {
+	f, err := os.Open(archive)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	type source struct{ offset, size int64 }
+	sources := map[string]source{}
+	var offset int64
+	pkg, err := chunks.Split(f, info.Size(), false, func(id string, data []byte) error {
+		if _, ok := sources[id]; !ok {
+			sources[id] = source{offset, int64(len(data))}
+		}
+		offset += int64(len(data))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	missing, err := client.PublicationPlan(ctx, operation, pkg)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < len(missing); {
+		var frames bytes.Buffer
+		for ; i < len(missing) && (frames.Len() == 0 || frames.Len()+chunks.MaxBytes <= chunks.BatchBytes); i++ {
+			src, ok := sources[missing[i]]
+			if !ok {
+				return nil, fmt.Errorf("the server asked for a chunk this package does not have")
+			}
+			data := make([]byte, src.size)
+			if _, err = f.ReadAt(data, src.offset); err != nil {
+				return nil, err
+			}
+			if err = chunks.WriteFrame(&frames, missing[i], data); err != nil {
+				return nil, err
+			}
+		}
+		if err = client.PublicationChunks(ctx, operation, frames.Bytes()); err != nil {
+			return nil, err
+		}
+	}
+	return client.Publication(ctx, http.MethodPost, operation, map[string]any{"package": pkg})
 }

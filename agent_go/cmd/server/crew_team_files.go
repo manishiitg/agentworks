@@ -322,7 +322,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 		if !team.Folder.holds(c.Path) {
 			return crewTeamReceipt{}, fmt.Errorf("%s is outside what the team shares", c.Path)
 		}
-		if !c.After.valid() {
+		if !c.After.Valid() {
 			return crewTeamReceipt{}, fmt.Errorf("invalid shared file metadata: %s", c.Path)
 		}
 		for _, chunk := range c.After.Chunks {
@@ -330,7 +330,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 				return crewTeamReceipt{}, fmt.Errorf("send the file's chunks before committing it: %s", c.Path)
 			}
 		}
-		next[crewTeamKey(c.Path)] = *c.After.file()
+		next[crewTeamKey(c.Path)] = *syncFile(*c.After)
 	}
 	// The whole next folder stays within the limits, with no file/folder or letter-case collisions.
 	if e = validateCrewTeamSnapshot(&crewsync.Snapshot{Files: next}, op); e != nil {
@@ -360,7 +360,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 		var after *crewsync.File
 		var chunks []transferChunk
 		if c.After != nil {
-			after, chunks = c.After.file(), c.After.Chunks
+			after, chunks = syncFile(*c.After), c.After.Chunks
 		}
 		// A file synced on purpose is recorded with who chose it; removing it ends that.
 		if after == nil {
@@ -412,7 +412,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 		}
 		if kind == "clash" && after != nil {
 			if v, conflicts, ok := crewTeamMergeVersion(store, state, c.Path, c.Before, current, *c.After); ok {
-				source, after, chunks, hunks, merged = v, v.file(), v.Chunks, conflicts, true
+				source, after, chunks, hunks, merged = v, syncFile(v), v.Chunks, conflicts, true
 				kind = "merged"
 				result := "merged"
 				if hunks > 0 {

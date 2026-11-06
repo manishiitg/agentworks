@@ -205,7 +205,7 @@ func crewNativeFilesMatch(b *sessiontransfer.Bundle, files map[string]chunkedFil
 	var total int64
 	for name := range b.Files {
 		v, ok := files[name]
-		if !ok || !v.valid() {
+		if !ok || !v.Valid() {
 			return fmt.Errorf("the session's files do not match its description")
 		}
 		total += v.Size

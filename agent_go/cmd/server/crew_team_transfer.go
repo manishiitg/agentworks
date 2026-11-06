@@ -107,7 +107,7 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 		onPurpose := state.onPurpose().with(in.OnPurpose)
 		afters := []chunkedFile{}
 		for _, c := range in.Changes {
-			if !crewTeamAllowed(c.Path, onPurpose) || !crewTeamGuardAllows(claims, c.Path, true) || c.After != nil && (!team.Folder.holds(c.Path) || !c.After.valid()) {
+			if !crewTeamAllowed(c.Path, onPurpose) || !crewTeamGuardAllows(claims, c.Path, true) || c.After != nil && (!team.Folder.holds(c.Path) || !c.After.Valid()) {
 				done(409, len(in.Changes), 0)
 				externalError(w, 409, "transfer_failed", c.Path+" is not a file this team shares")
 				return

@@ -377,7 +377,7 @@ func (s Store) syncBytes(ctx context.Context, snapshot *crewsync.Snapshot) error
 		}
 		total += size
 		if total > crewsync.SyncLimits(ctx).Bytes {
-			return fmt.Errorf("project exceeds 256 MiB")
+			return fmt.Errorf("project exceeds %d GB", crewsync.SyncLimits(ctx).Bytes>>30)
 		}
 		f := snapshot.Files[e.path]
 		if f.Size != size || f.Executable != e.exec {

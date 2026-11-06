@@ -22,11 +22,14 @@ import (
 )
 
 const (
-	Version               = 1
-	MaxBytes        int64 = 256 << 20
+	Version = 1
+	// MaxBytes and MaxFiles are the one limit for every sync and publication (owner, 6 Nov: "one sync process"):
+	// transfers move only the chunks the server lacks (agent_go/pkg/chunks), so a bigger Crew costs a longer first
+	// transfer, not every one. Each file keeps MaxFileBytes.
+	MaxBytes        int64 = 4 << 30
 	MaxFileBytes    int64 = 64 << 20
-	MaxFiles              = 10000
-	ChunkBytes            = 1 << 20
+	MaxFiles              = 50000
+	ChunkBytes            = 1 << 20 // the laptop folder snapshot reader's piece size (workspace/localfiles)
 	TransferTimeout       = 30 * time.Minute
 	IdleTimeout           = 5 * time.Minute
 )
@@ -203,7 +206,7 @@ func (m Manifest) validateFiles() error {
 		seen[file.Path] = true
 		total += file.Size
 		if total > MaxBytes {
-			return fmt.Errorf("publication exceeds 256 MiB; exclude generated files and publish again")
+			return fmt.Errorf("publication exceeds %d GB; exclude generated files and publish again", MaxBytes>>30)
 		}
 	}
 	return nil
@@ -397,7 +400,7 @@ func build(ctx context.Context, root, state string, source Source, allow func(st
 		err = closeErr
 	}
 	if info, statErr := os.Stat(archive); err == nil && statErr == nil && info.Size() > MaxBytes {
-		err = fmt.Errorf("package including archive metadata exceeds 256 MiB")
+		err = fmt.Errorf("package including archive metadata exceeds %d GB", MaxBytes>>30)
 	}
 	return archive, manifest, err
 }
