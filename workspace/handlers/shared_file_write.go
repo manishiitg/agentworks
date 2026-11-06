@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -22,6 +24,31 @@ func SharedFileWrite(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "invalid request"})
 		return
 	}
+	sharedFileWrite(c, req)
+}
+
+// SharedFileUpload is SharedFileWrite for a chunked upload's assembled file: one JSON line (the write request), then
+// the raw bytes, so no base64 copy. The same token, scope and writer checks apply.
+func SharedFileUpload(c *gin.Context) {
+	body := bufio.NewReader(http.MaxBytesReader(c.Writer, c.Request.Body, wf.MaxUploadFileBytes+(1<<20)))
+	line, err := body.ReadBytes('\n')
+	var req wf.WriteRequest
+	d := json.NewDecoder(bytes.NewReader(line))
+	d.DisallowUnknownFields()
+	if err != nil || len(line) > 1<<20 || d.Decode(&req) != nil || req.Content != "" || req.ContentBase64 != "" || req.Diff != "" {
+		c.JSON(400, gin.H{"error": "invalid request"})
+		return
+	}
+	data, err := io.ReadAll(body)
+	if err != nil {
+		c.JSON(413, gin.H{"error": "upload exceeds 64 MiB"})
+		return
+	}
+	req.Upload = append(make([]byte, 0, len(data)), data...)
+	sharedFileWrite(c, req)
+}
+
+func sharedFileWrite(c *gin.Context, req wf.WriteRequest) {
 	root, err := wf.CleanRelative(req.Root)
 	if err != nil || root == "." {
 		c.JSON(400, gin.H{"error": "workflow root required"})

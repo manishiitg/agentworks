@@ -48,8 +48,11 @@ type WriteRequest struct {
 	Content  string       `json:"content"`
 	// ContentBase64 writes a binary file (image, PDF, spreadsheet) instead of
 	// UTF-8 Content; the same path, grant, revision and receipt rules apply.
-	Diff             string       `json:"diff,omitempty"`
-	ContentBase64    string       `json:"content_base64,omitempty"`
+	Diff          string `json:"diff,omitempty"`
+	ContentBase64 string `json:"content_base64,omitempty"`
+	// Upload is a chunked upload's assembled bytes (never JSON); ContentSHA256 names them in the retry fingerprint.
+	Upload           []byte       `json:"-"`
+	ContentSHA256    string       `json:"content_sha256,omitempty"`
 	ExpectedRevision string       `json:"expected_revision"`
 	RequestID        string       `json:"request_id"`
 	Actor            string       `json:"actor"`
@@ -447,8 +450,17 @@ func (e *Editor) WriteWithPatch(ctx context.Context, r WriteRequest, patch func(
 		return WriteReceipt{}, fileError(400, "invalid diff patch")
 	}
 	content := []byte(r.Content)
-	binary := r.ContentBase64 != ""
-	if binary {
+	binary := r.ContentBase64 != "" || r.Upload != nil
+	if r.Upload != nil {
+		if r.Content != "" || r.ContentBase64 != "" || r.Diff != "" {
+			return WriteReceipt{}, fileError(400, "pass an upload or content, not both")
+		}
+		if len(r.Upload) > MaxUploadFileBytes {
+			return WriteReceipt{}, fileError(413, "upload exceeds 64 MiB")
+		}
+		content = r.Upload
+		r.ContentSHA256 = Revision(content)
+	} else if binary {
 		if r.Content != "" {
 			return WriteReceipt{}, fileError(400, "pass content or content_base64, not both")
 		}
