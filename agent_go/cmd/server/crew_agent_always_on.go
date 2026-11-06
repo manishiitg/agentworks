@@ -62,8 +62,8 @@ func crewStandbyServerNote(project, tab string) string {
 		fmt.Fprintf(&b, "Only on the Mac, not available now: %s.\n\n", strings.Join(names, ", "))
 	}
 	if rows, err := readCrewStandby(project); err == nil {
-		if row := rows[tab]; row.ServerProgram != "" && row.MacProgram != "" && row.ServerProgram != row.MacProgram {
-			fmt.Fprintf(&b, "On the Mac you run on %s; this server doesn't have it, so you continue this conversation on %s from its saved history: you have the conversation, but not the details of earlier tool calls.\n\n", providerDisplayLabel(row.MacProgram), providerDisplayLabel(row.ServerProgram))
+		if row := rows[tab]; row.MacProgram != "" && row.ServerProgram != row.MacProgram {
+			fmt.Fprintf(&b, "On the Mac you run on %s; this server doesn't have it, so you continue this conversation on %s from its saved history: you have the conversation, but not the details of earlier tool calls.\n\n", providerDisplayLabel(row.MacProgram), crewStandbyServerProgramName(row.ServerProgram))
 		}
 	}
 	b.WriteString("If a request needs a file or app that is only on the Mac, say which one and that it works when the Mac is back; do the rest here.")
@@ -470,10 +470,19 @@ func crewAlwaysOnPlaceLabel(project, owner, tab string, macOn, yours, inTeam boo
 // crewStandbyOnProgram names the program the server answers on when it is not the agent's own (" (on Muse)").
 func crewStandbyOnProgram(project, tab string) string {
 	rows, err := readCrewStandby(project)
-	if row := rows[tab]; err == nil && row.ServerProgram != "" && row.MacProgram != "" && row.ServerProgram != row.MacProgram {
-		return " (on " + providerDisplayLabel(row.ServerProgram) + ")"
+	if row := rows[tab]; err == nil && row.MacProgram != "" && row.ServerProgram != row.MacProgram {
+		return " (on " + crewStandbyServerProgramName(row.ServerProgram) + ")"
 	}
 	return ""
+}
+
+// crewStandbyServerProgramName names the program the server continued on; an imported chat that has not run a turn
+// yet has none recorded, and then it runs on this server's default.
+func crewStandbyServerProgramName(program string) string {
+	if strings.TrimSpace(program) == "" {
+		return "this server's AI program"
+	}
+	return providerDisplayLabel(program)
 }
 
 // crewStandbyCopyLabel is a shared agent's chip while its Mac is on: when its last copy reached the server.
