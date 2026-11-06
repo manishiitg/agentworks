@@ -136,4 +136,12 @@ func TestCacheReusesStableFilesAndPersistsOnlyVersionMetadata(t *testing.T) {
 	if recovered, err := LoadCache(cachePath); err != nil || len(recovered) != 0 {
 		t.Fatalf("broken derived cache was not rebuilt: %v %+v", err, recovered)
 	}
+	openCachedFile = originalOpen
+	sinkErr := errors.New("private transfer writer failed")
+	if _, _, err = c.readWith(t.Context(), root, "item.txt", "files/item.txt", func([]byte) error { return sinkErr }); !errors.Is(err, sinkErr) || errors.Is(err, ErrFileChanged) {
+		t.Fatalf("staging failure was retried as a changing source: %v", err)
+	}
+	if _, exists := c["files/item.txt"]; exists {
+		t.Fatal("failed stream entered cache")
+	}
 }
