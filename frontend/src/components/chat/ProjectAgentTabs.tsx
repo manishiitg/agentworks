@@ -646,14 +646,15 @@ function PersonChip({ name, presence, agents, watching, onPick }: {
           <p className="min-w-0 text-xs text-muted-foreground"><span className="font-semibold text-foreground">{name}</span>{presence && <span className="block">{presence.line}</span>}</p>
         </div>
         {agents.map(agent => <button key={agent.tabId} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(agent.tabId) }}
-          className={`flex min-h-9 w-full min-w-0 items-center gap-2 rounded-xl px-2 text-left text-[13px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching?.tabId === agent.tabId ? 'bg-muted/70 font-semibold' : ''}`}>
-          <span className="flex w-3 shrink-0 justify-center"><PersonAgentMark tabId={agent.tabId} running={agent.running} /></span>
-          <span className="min-w-0 truncate">{agent.name}</span>
-          {watching?.tabId === agent.tabId && <span className="shrink-0 text-[11px] font-normal text-muted-foreground">watching</span>}
-          <span className="ml-auto flex shrink-0 items-center">
-            <PersonAgentWord tabId={agent.tabId} running={agent.running} />
-            {agent.status && <span className={`shrink-0 pl-2 text-[11px] font-normal ${STATUS_TONE[agent.tone || ''] || 'text-muted-foreground'}`}>{agent.status}</span>}
+          className={`flex min-h-9 w-full min-w-0 items-start gap-2 rounded-xl px-2 py-1.5 text-left text-[13px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${watching?.tabId === agent.tabId ? 'bg-muted/70' : ''}`}>
+          <span className="mt-1 flex w-3 shrink-0 justify-center"><PersonAgentMark tabId={agent.tabId} running={agent.running} /></span>
+          {/* The name keeps its own full line; the server's status sits smaller underneath (owner, 6 Nov: names were cut to "t.." by the status). */}
+          <span className="min-w-0 flex-1">
+            <span className={`block truncate ${watching?.tabId === agent.tabId ? 'font-semibold' : ''}`}>{agent.name}</span>
+            {agent.status && <span className={`block text-[11px] font-normal leading-snug ${STATUS_TONE[agent.tone || ''] || 'text-muted-foreground'}`}>{agent.status}</span>}
           </span>
+          {watching?.tabId === agent.tabId && <span className="mt-0.5 shrink-0 text-[11px] font-normal text-muted-foreground">watching</span>}
+          <span className="mt-0.5 flex shrink-0 items-center"><PersonAgentWord tabId={agent.tabId} running={agent.running} /></span>
         </button>)}
       </div>, document.body
     )}
