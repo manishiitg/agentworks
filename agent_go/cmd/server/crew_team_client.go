@@ -868,7 +868,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 				}
 				writer.CloseWithError(copyErr)
 			}(*f.Version)
-			err = writeCrewTeamFile(ctx, b.Root, f.Path, reader, *f.Version.file(), op)
+			err = writeCrewTeamFile(ctx, b.Root, f.Path, reader, *syncFile(*f.Version), op)
 			reader.Close()
 			if err != nil {
 				err = crewTeamStep("write", err)

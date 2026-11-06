@@ -127,8 +127,8 @@ func CaptureGit(ctx context.Context, root string, previous *GitSnapshot, private
 	if err != nil {
 		return nil, err
 	}
-	if info.Size() > 256<<20 {
-		return nil, fmt.Errorf("Git history exceeds 256 MiB")
+	if info.Size() > SyncMaxBytes {
+		return nil, fmt.Errorf("Git history exceeds %d GB", SyncMaxBytes>>30)
 	}
 	out.BundlePath = archive
 	keep = true

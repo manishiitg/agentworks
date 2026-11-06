@@ -493,7 +493,7 @@ func (api *StreamingAPI) handleCrewMoveChunks(w http.ResponseWriter, r *http.Req
 	files := make([]chunkedFile, 0, len(in.Files))
 	for name, v := range in.Files {
 		p, ok := s.Payloads[name]
-		if !ok || !crewPayloadName(name) || !crewPayloadAllowed(name, p) || !v.valid() || v.Hash != p.Hash || v.Size != p.Size {
+		if !ok || !crewPayloadName(name) || !crewPayloadAllowed(name, p) || !v.Valid() || v.Hash != p.Hash || v.Size != p.Size {
 			fail(fmt.Errorf("artifact not admitted by this transfer"))
 			return
 		}

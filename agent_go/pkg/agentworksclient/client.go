@@ -120,6 +120,7 @@ func New(serverURL, token string) (*Client, error) {
 func (c *Client) request(ctx context.Context, method, path string, body any, auth bool) (json.RawMessage, error) {
 	var data []byte
 	var err error
+	contentType := ""
 	if body != nil {
 		data, err = json.Marshal(body)
 		if err != nil {
@@ -128,7 +129,13 @@ func (c *Client) request(ctx context.Context, method, path string, body any, aut
 		if len(data) > MaxBodyBytes {
 			return nil, errors.New("request exceeds 16 MiB limit")
 		}
+		contentType = "application/json"
 	}
+	return c.send(ctx, method, path, contentType, data, auth)
+}
+
+// send is one request with a ready body (contentType "" for none) and the JSON answer.
+func (c *Client) send(ctx context.Context, method, path, contentType string, data []byte, auth bool) (json.RawMessage, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -141,8 +148,8 @@ func (c *Client) request(ctx context.Context, method, path string, body any, aut
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	started := time.Now()
 	resp, err := c.http.Do(req)

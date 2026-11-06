@@ -9,8 +9,8 @@ import (
 // the other side lacks, so a bigger Crew costs a longer first transfer, not every one. Each file keeps
 // publication.MaxFileBytes.
 const (
-	SyncMaxFiles       = 50000
-	SyncMaxBytes int64 = 4 << 30
+	SyncMaxFiles = publication.MaxFiles
+	SyncMaxBytes = publication.MaxBytes
 )
 
 type Limits struct {

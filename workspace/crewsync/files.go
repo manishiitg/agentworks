@@ -231,7 +231,7 @@ func CaptureSelected(ctx context.Context, roots crewroot.Roots, previous Manifes
 			}
 			total += file.Size
 			if total > SyncLimits(ctx).Bytes || len(out.Files) >= SyncLimits(ctx).Files {
-				return fmt.Errorf("project exceeds 256 MiB or 10,000 files; exclude generated files before syncing")
+				return fmt.Errorf("project exceeds %d GB or %d files; exclude generated files before syncing", SyncLimits(ctx).Bytes>>30, SyncLimits(ctx).Files)
 			}
 			before, exists := previous[key]
 			// NTFS does not represent the Unix execute bit. Keep its last synced

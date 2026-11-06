@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -72,6 +71,17 @@ func publicationOperationDir(id string) (string, error) {
 	return filepath.Join(root, "uploads", id), nil
 }
 
+// publicationChunkStore is the publisher's own chunk store: the chunks of their last package stay, so publishing the
+// same project again sends only what changed.
+func publicationChunkStore(user string) (string, error) {
+	root, err := publicationStateRoot()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(root, "chunks", crewTransferDigest(user))
+	return dir, os.MkdirAll(dir, 0o700)
+}
+
 func savePublicationUpload(upload *publicationUpload) error {
 	var bucket uint32
 	for _, ch := range upload.ID {
@@ -110,7 +120,7 @@ func loadPublicationUpload(id, actor string) (*publicationUpload, error) {
 }
 
 func publicationReceipt(upload *publicationUpload) map[string]any {
-	out := map[string]any{"limits": map[string]any{"bytes": publication.MaxBytes, "file_bytes": publication.MaxFileBytes, "files": publication.MaxFiles, "chunk_bytes": publication.ChunkBytes}, "operation_id": upload.ID, "state": upload.State, "uploaded_bytes": upload.Offset, "updated_at": upload.UpdatedAt, "native_resume": "not_attempted", "next": "Check workspace action=publish_status with this operation_id."}
+	out := map[string]any{"limits": map[string]any{"bytes": publication.MaxBytes, "file_bytes": publication.MaxFileBytes, "files": publication.MaxFiles}, "operation_id": upload.ID, "state": upload.State, "uploaded_bytes": upload.Offset, "updated_at": upload.UpdatedAt, "native_resume": "not_attempted", "next": "Check workspace action=publish_status with this operation_id."}
 	if upload.Audience != nil {
 		out["share"] = upload.Audience
 	}
@@ -251,50 +261,67 @@ func (api *StreamingAPI) handlePublicationUpload(w http.ResponseWriter, r *http.
 		}
 	}
 	dir, _ := publicationOperationDir(id)
-	if r.Method == http.MethodPut {
-		var in struct {
-			Offset int64  `json:"offset"`
-			Data   []byte `json:"data"`
-		}
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20)).Decode(&in) != nil || len(in.Data) == 0 || len(in.Data) > publication.ChunkBytes || in.Offset < 0 || in.Offset+int64(len(in.Data)) > publication.MaxBytes {
-			externalError(w, 413, "transfer_limit", "A publication chunk exceeds the server's transfer limit.")
-			return
-		}
-		if time.Since(upload.StartedAt) > publication.TransferTimeout || time.Since(upload.UpdatedAt) > publication.IdleTimeout {
-			upload.StartedAt = time.Now().UTC()
-			upload.State = "uploading" // retry resumes the same bytes/receipt
-		}
-		f, e := os.OpenFile(filepath.Join(dir, "upload.tar"), os.O_CREATE|os.O_RDWR, 0600)
-		if e != nil {
-			externalError(w, 500, "storage_error", "Upload storage is unavailable; retry this publication.")
-			return
-		}
-		defer f.Close()
-		if in.Offset < upload.Offset {
-			saved := make([]byte, len(in.Data))
-			_, e = f.ReadAt(saved, in.Offset)
-			if e != nil || !bytes.Equal(saved, in.Data) {
-				externalError(w, 409, "offset_conflict", "This retry does not match saved upload bytes. Start a new publication.")
-				return
-			}
-		} else if in.Offset == upload.Offset {
-			if _, e = f.WriteAt(in.Data, in.Offset); e != nil || f.Sync() != nil {
-				externalError(w, 500, "storage_error", "This upload chunk could not be saved; retry.")
-				return
-			}
-			upload.Offset += int64(len(in.Data))
-		} else {
-			externalError(w, 409, "offset_conflict", "Resume from the uploaded_bytes offset in your receipt.")
-			return
-		}
-		upload.UpdatedAt = time.Now().UTC()
-		upload.Error = ""
-		if e = savePublicationUpload(upload); e != nil {
-			externalError(w, 500, "storage_error", "The upload receipt could not be saved; retry.")
-			return
-		}
-		externalJSON(w, publicationReceipt(upload))
+	if time.Since(upload.StartedAt) > publication.TransferTimeout || time.Since(upload.UpdatedAt) > publication.IdleTimeout {
+		upload.StartedAt = time.Now().UTC()
+		upload.State = "uploading" // a retry continues; the chunks already sent stay
+	}
+	// The package travels as chunks (chunk_transfer.go) into the publisher's own chunk store: plan answers which the
+	// server lacks, PUT .../chunks sends them, and the POST that publishes names the package, built from them.
+	store, err := publicationChunkStore(claims.UserID)
+	if err != nil {
+		externalError(w, 500, "storage_error", "Upload storage is unavailable; retry this publication.")
 		return
+	}
+	step := mux.Vars(r)["step"]
+	if step == "chunks" {
+		stored, size, e := receiveChunks(r.Body, store)
+		if e != nil {
+			externalError(w, 400, "transfer_failed", e.Error())
+			return
+		}
+		upload.UpdatedAt, upload.Error = time.Now().UTC(), ""
+		_ = savePublicationUpload(upload)
+		log.Printf("[CREW_PUBLISH] operation=%s action=send chunks=%d bytes=%d", id, stored, size)
+		externalJSON(w, map[string]int{"stored": stored})
+		return
+	}
+	var in struct {
+		Package *chunkedFile `json:"package"`
+	}
+	if r.ContentLength != 0 && json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20)).Decode(&in) != nil {
+		externalError(w, 400, "invalid_arguments", "Name the project package by its chunks.")
+		return
+	}
+	if in.Package != nil && (!in.Package.Valid() || in.Package.Size == 0 || in.Package.Size > publication.MaxBytes) {
+		externalError(w, 413, "transfer_limit", fmt.Sprintf("The project package must be under %d GB.", publication.MaxBytes>>30))
+		return
+	}
+	if step == "plan" {
+		if in.Package == nil {
+			externalError(w, 400, "invalid_arguments", "Name the project package by its chunks.")
+			return
+		}
+		missing := missingChunks(store, []chunkedFile{*in.Package})
+		log.Printf("[CREW_PUBLISH] operation=%s action=plan chunks=%d missing=%d", id, len(in.Package.Chunks), len(missing))
+		externalJSON(w, map[string]any{"missing": missing})
+		return
+	}
+	if in.Package != nil {
+		started := time.Now()
+		if err = os.MkdirAll(dir, 0o700); err == nil {
+			err = assembleFiles(map[string]chunkedFile{"upload.tar": *in.Package}, func(name string) (string, error) { return filepath.Join(dir, name), nil }, func(c transferChunk) ([]byte, error) { return readChunk(store, c) })
+		}
+		if err != nil {
+			externalError(w, 409, "incomplete", "Some of the package has not arrived; send the missing chunks and publish again.")
+			return
+		}
+		upload.Offset = in.Package.Size
+		used := map[string]bool{}
+		for _, c := range in.Package.Chunks {
+			used[c.ID] = true
+		}
+		pruneChunks(store, used, crewNativeChunkKeep)
+		logChunkTransfer("publish", id, "up", 1, distinctChunks([]chunkedFile{*in.Package}), 0, in.Package.Size, started)
 	}
 	if upload.Offset == 0 {
 		externalError(w, 400, "incomplete", "Upload the complete project package before publishing.")

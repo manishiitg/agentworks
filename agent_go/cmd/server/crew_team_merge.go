@@ -196,7 +196,7 @@ func crewTeamMergeVersion(store string, state crewTeamFileState, rel, base strin
 		return chunkedFile{}, 0, false
 	}
 	read := func(v chunkedFile) ([]byte, bool) {
-		if v.Size > crewTeamMergeMaxBytes || !v.valid() {
+		if v.Size > crewTeamMergeMaxBytes || !v.Valid() {
 			return nil, false
 		}
 		var buf bytes.Buffer
