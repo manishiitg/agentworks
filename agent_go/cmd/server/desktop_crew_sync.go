@@ -65,7 +65,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	switch input.Action {
-	case "status", "server", "relay", "offline", "agents", "share_agents", "team_all", "lent", "lent_copy", "lent_move":
+	case "status", "server", "relay", "offline", "agents", "share_agents", "public", "only_my_agents", "team_all", "lent", "lent_copy", "lent_move":
 	default:
 		externalError(w, 400, "invalid_action", "Choose Move online.")
 		return
@@ -236,6 +236,16 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		api.desktopCrewTeamLent(w, r, claims, roots, binding, connection, input.Action, input.Key)
 		return
 	}
+	// Public on AgentBridge for one agent (key: its tab), on the Mac online tab (owner, 6 Nov): the same server path as
+	// the owner's chat (crew_access_chat.go), so its checks (a purpose first) are the same.
+	if input.Action == "public" || input.Action == "only_my_agents" {
+		if _, err := api.crewAccessChatAction(r.Context(), roots.ID, input.Action, map[string]any{"agent": input.Key}); err != nil {
+			externalError(w, 409, "agentbridge_failed", err.Error())
+			return
+		}
+		externalJSON(w, map[string]any{"project_id": roots.ID})
+		return
+	}
 	if input.Action == "agents" || input.Action == "share_agents" {
 		api.desktopShareMacCrewAgents(w, r, claims, roots.ID, binding, connection, input.Action, input.Agents)
 		return
@@ -260,16 +270,11 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			externalError(w, 409, "sync_unavailable", "This Crew lives online; it stays reachable from your phone and the web.")
 			return
 		}
-		// Team works through this connection (owner, 5 Nov): Mac online off turns the Team off first. Its record stays on
-		// the server and moves to the next online copy when Mac online is turned on again.
-		teamNote := ""
-		if readCrewTeamState(roots.ID).TeamOn {
-			if _, err := api.switchCrewTeam(r.Context(), claims, roots.ID, false, ""); err != nil {
-				externalError(w, 409, "team_off_failed", "The Team could not be turned off first, so Mac online stays on: "+err.Error())
-				return
-			}
-			teamNote = "Team is off too: your team can't reach this Crew now."
-			log.Printf("[CREW_TEAM] local project=%s server_project=%s event=online_tied mac_online=off team=off", roots.ID, binding.PeerProjectID)
+		// While the Team is on, Mac online stays on (owner, 6 Nov): the main owner turns the Team off first.
+		if crewTeamKeepsMacOnline(roots.ID) {
+			log.Printf("[CREW_TEAM] local project=%s server_project=%s event=offline_refused reason=team_on", roots.ID, binding.PeerProjectID)
+			externalError(w, 409, "team_on", crewTeamOnOfflineRefused)
+			return
 		}
 		if err := writeCrewTeamState(roots.ID, func(s *crewTeamLocalState) { s.PreviousProject = binding.PeerProjectID }); err != nil {
 			log.Printf("[CREW_TEAM] local project=%s previous online copy not saved: %v", roots.ID, err)
@@ -287,7 +292,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			}
 		}
 		log.Printf("[CREW_RELAY] project=%s reach_off server_project=%s server=%s sync_files_removed=%d shares_kept=%d", roots.ID, binding.PeerProjectID, connection.Server, removed, len(shared))
-		externalJSON(w, crewSyncReply{ProjectID: roots.ID, TeamNote: teamNote})
+		externalJSON(w, crewSyncReply{ProjectID: roots.ID})
 		return
 	}
 	fail := func(err error) {

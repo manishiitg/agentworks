@@ -111,6 +111,18 @@ func checkCrewReachOff(t *testing.T, api *StreamingAPI, owner *UserClaims, twin,
 	if w := unpair(owner, movedOnline, movedPair); w.Code < 400 {
 		t.Fatalf("Reach off removed a Crew that lives online: %d", w.Code)
 	}
+	// While the Team is on, Mac online stays on (owner, 6 Nov): the owner turns the Team off first.
+	team := crewTeam{ProjectID: twin, OwnerID: owner.UserID, On: true}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if w := unpair(owner, twin, pair); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "Turn the Team off first") {
+		t.Fatalf("Reach off went through while the Team is on: %d %s", w.Code, w.Body.String())
+	}
+	team.On = false
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
 	if w := unpair(owner, twin, pair); w.Code != http.StatusOK {
 		t.Fatalf("owner could not turn Reach off: %d %s", w.Code, w.Body.String())
 	}

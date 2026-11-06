@@ -37,6 +37,9 @@ func crewAccessPage(out *crewSyncReply) {
 		// The Mac app's own Crew: its Mac online, Publish and Team controls are here. Who can use it once it is online.
 		out.AccessHere, out.AccessTabs = "mac", crewAccessMacTabs
 		out.AccessShare = b != nil && b.Editing == "server"
+		if b != nil && b.Mode == "relay" && b.Editing == "local" && crewTeamKeepsMacOnline(out.ProjectID) {
+			out.AccessMacLocked = crewTeamOnlineLine
+		}
 	case out.AccessView == "summary":
 		// one line (access_summary)
 	case out.Role == "member":
@@ -62,4 +65,22 @@ func crewAccessPage(out *crewSyncReply) {
 		out.AccessShare = true
 		out.AccessLaptop = out.Role == "owner"
 	}
+}
+
+// Mac online stays on while the Team is on (owner, 6 Nov; decisions log): in-team agents are always on, so a Team Crew
+// is never taken offline on its own. The main owner turns the Team off first (only they can).
+const (
+	crewTeamOnlineLine       = "On, because the Team is on"
+	crewTeamOnOfflineRefused = "The Team is on, so this Crew stays online. Turn the Team off first to take it offline."
+)
+
+// crewTeamKeepsMacOnline: on the Mac, its copy of this Crew's Team record says the Team is on.
+func crewTeamKeepsMacOnline(project string) bool {
+	return project != "" && readCrewTeamState(project).TeamOn
+}
+
+// crewTeamRecordOn: on the server, the online copy's Team record says the Team is on.
+func crewTeamRecordOn(project string) bool {
+	t, err := readCrewTeam(project)
+	return err == nil && t.On
 }

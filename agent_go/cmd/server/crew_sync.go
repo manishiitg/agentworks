@@ -93,16 +93,16 @@ type crewSyncReply struct {
 	AccessTree []crewAccessLine `json:"access_tree,omitempty"`
 	// InboxID: team_message's conversation, for the Mac agent's later reads.
 	InboxID string `json:"inbox_id,omitempty"`
-	// TeamNote: Mac online off also turned the Team off (owner, 5 Nov).
-	TeamNote string `json:"team_note,omitempty"`
 	// The Access page's shape (crew_access_page.go): whether this app holds the Mac's controls ("mac"), its tabs,
 	// the Mac-only rows as text elsewhere, and its Who can use it and laptop access sections.
-	AccessHere    string          `json:"access_here,omitempty"`
-	AccessTabs    []crewAccessTab `json:"access_tabs,omitempty"`
-	AccessMac     *crewAccessText `json:"access_mac,omitempty"`
-	AccessPublish *crewAccessText `json:"access_publish,omitempty"`
-	AccessShare   bool            `json:"access_share,omitempty"`
-	AccessLaptop  bool            `json:"access_laptop,omitempty"`
+	AccessHere string          `json:"access_here,omitempty"`
+	AccessTabs []crewAccessTab `json:"access_tabs,omitempty"`
+	AccessMac  *crewAccessText `json:"access_mac,omitempty"`
+	// AccessMacLocked: Mac online stays on while the Team is on (owner, 6 Nov); the line its switch shows, locked on.
+	AccessMacLocked string          `json:"access_mac_locked,omitempty"`
+	AccessPublish   *crewAccessText `json:"access_publish,omitempty"`
+	AccessShare     bool            `json:"access_share,omitempty"`
+	AccessLaptop    bool            `json:"access_laptop,omitempty"`
 	// Standby answers standby_check and standby_store (crew_agent_standby.go), handback_pull and handback_done
 	// (crew_agent_handback.go).
 	Standby *crewStandbyReply `json:"standby,omitempty"`

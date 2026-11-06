@@ -587,14 +587,21 @@ func (api *StreamingAPI) pushMacSharedAgents(ctx context.Context, claims *UserCl
 	if binding == nil || binding.Mode != "relay" || binding.Editing != "local" {
 		return 409, "reach_off", fmt.Errorf("Turn on Use from phone and web first.")
 	}
+	previous := readMacSharedAgents(project)
 	for i := range agents {
 		at := slices.IndexFunc(rows, func(row macAgentRow) bool { return row.Tab == agents[i].Tab })
 		if at < 0 {
 			return 400, "invalid_agents", fmt.Errorf("Choose one of this Crew's agents.")
 		}
 		agents[i].Name, agents[i].Purpose = rows[at].Name, rows[at].Purpose
+		// An agent goes public on AgentBridge with a purpose, so other agents know what to ask it (the server
+		// decides; the screen shows this reply after the click). One that is public already stays as it is.
+		wasPublic := slices.ContainsFunc(previous, func(p macSharedAgent) bool { return p.Tab == agents[i].Tab && p.AgentBridgePublic && !p.Off })
+		if agents[i].AgentBridgePublic && !agents[i].Off && !wasPublic && strings.TrimSpace(rows[at].Purpose) == "" {
+			return 409, "needs_purpose", fmt.Errorf("Give %s a purpose first, then turn this on.", rows[at].Name)
+		}
 	}
-	clean, err := cleanMacSharedAgents(agents, readMacSharedAgents(project))
+	clean, err := cleanMacSharedAgents(agents, previous)
 	if err != nil {
 		return 400, "invalid_agents", err
 	}

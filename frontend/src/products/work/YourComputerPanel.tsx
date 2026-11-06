@@ -17,12 +17,13 @@ import { ShareDashboardButton } from '../../components/workflow/ShareDashboardBu
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { useTeamTab } from './teamApi'
 import { CrewPublishAgent, type AgentPlacement } from './CrewPublishAgent'
+import { MacAgentBridge } from './MacAgentBridge'
 import { hasPendingCrewAccess, pendingCrewAccessSection, type CrewAccessSection } from './MacSharedAgents'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' | 'server' }
 // Move online reports real progress (PLAT-856-509): bytes sent so far, whether the Mac's schedules wait for the move,
 // and, when it finished, where the Mac folder is kept.
-type MoveReport = { phase?: MovePhase; place?: CloudState; bytes_done?: number; bytes_total?: number; schedules_paused?: boolean; message?: string; backup_path?: string; local_folder_kept?: string; team_note?: string }
+type MoveReport = { phase?: MovePhase; place?: CloudState; bytes_done?: number; bytes_total?: number; schedules_paused?: boolean; message?: string; backup_path?: string; local_folder_kept?: string }
 // What of this Crew the server keeps (owner, 4 Nov "Where your data is"): the server lists it by name, e.g. an agent's
 // always-online copy or a team's shared folder; empty while everything stays on this Mac.
 type ServerCopy = { name: string; detail: string }
@@ -31,7 +32,7 @@ type ServerCopy = { name: string; detail: string }
 type AccessTab = { id: CrewAccessSection; label: string; detail?: string }
 type AccessText = { line: string; note?: string }
 type SyncStatus = MoveReport & { binding: Binding | null; on_server?: ServerCopy[]; shared_agents?: number; placements?: Record<string, AgentPlacement>
-  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: AccessText; access_publish?: AccessText; access_share?: boolean; access_laptop?: boolean }
+  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: AccessText; access_mac_locked?: string; access_publish?: AccessText; access_share?: boolean; access_laptop?: boolean }
 // The move's own steps, as the server reports them (astra, PLAT-856-509).
 type MovePhase = 'files' | 'database' | 'chats' | 'schedules_watchers' | 'dashboards_functions' | 'activating' | 'done'
 const MOVE_PHASES: MovePhase[] = ['files', 'database', 'chats', 'schedules_watchers', 'dashboards_functions', 'activating', 'done']
@@ -205,8 +206,6 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
     try {
       const reply = await desktopRequest<MoveReport>(`/${encodeURIComponent(via)}/crew-sync/${encodeURIComponent(projectId)}`, 'POST', { action })
       if (action === 'server' && reply?.place === 'online') setMoved(reply)
-      // Mac online off also turned the Team off (the server says so, owner 5 Nov).
-      if (reply?.team_note) setError(reply.team_note)
       if (action !== 'server') teamChanged()
       return true
     }
@@ -279,7 +278,7 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
     {/* No server connected yet (owner, 4 Nov): one sign-in card here, so the person never leaves Access; the tabs show
         their content once the connection exists. Browser approval stays the person's own step. */}
     {needsServer && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
-    {!here && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">{macText(status.access_mac)}</section>}
+    {!here && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">{macText(status.access_mac)}<MacAgentBridge projectId={projectId} /></section>}
     {!here && shown === 'publish' && <section role="tabpanel" id={`crew-access-panel-${projectId}-publish`} aria-labelledby={`crew-access-${projectId}-publish`} className="space-y-3">
       {macText(status.access_publish)}
       {(status.on_server || []).map(copy => <p key={copy.name} className="px-1 text-xs"><span className="font-medium">{copy.name}</span> <span className="text-muted-foreground">· {copy.detail}</span></p>)}
@@ -291,8 +290,9 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
         : <MacDataLine>{online ? `This Crew now runs on ${network}. Open it on the Publish tab.` : !status ? 'Checking where this Crew’s data is kept…' : allOnMac(network)}</MacDataLine>}
       <div className="px-0.5">
         {status && !online && !moving && <label className="flex items-center justify-between gap-3 py-2.5">
-          <span><span className="font-semibold">You</span> <span className="text-[12.5px] text-muted-foreground">· from anywhere while your Mac is on{team?.on ? ' · Team uses it' : ''}</span></span>
-          <Switch aria-label="Use from phone and web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
+          <span><span className="font-semibold">You</span> <span className="text-[12.5px] text-muted-foreground">· {status.access_mac_locked || 'from anywhere while your Mac is on'}</span></span>
+          {/* While the Team is on, Mac online stays on (the server says so, owner 6 Nov). */}
+          <Switch aria-label="Use from phone and web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length || Boolean(status.access_mac_locked)} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
         </label>}
         {asking && !binding && <div role="group" aria-label="Which network?" className="space-y-1.5 border-t border-border py-3">
           <p className="text-xs text-muted-foreground">Which network?</p>
@@ -307,8 +307,8 @@ function CrewAccessPage({ projectId, sessionId, onFullScreen, onBack, workspaceP
           {way('ChatGPT or Claude', `“ask my ${name} Crew to…”`, <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!binding?.peer_server} onClick={() => setOpen(open === 'ai' ? '' : 'ai')}>{open === 'ai' ? 'Close' : 'Connect'}</Button>)}
           {open === 'ai' && binding?.peer_server && <div className="border-t border-border py-3"><ConnectAiApp endpoint={`${binding.peer_server}/api/external/v1/mcp`} name={name} onDone={() => setOpen('')} /></div>}
         </div>
-        {/* AgentBridge is chosen per agent in the one agent sharing list, on the Team tab (owner, 5 Nov mockup). */}
-        {binding?.connection_id && !online && <p className="mt-4 py-2.5"><span className="font-semibold">AgentBridge</span> <span className="block text-[12.5px] text-muted-foreground">Choose which agents are public on AgentBridge in <button type="button" className="text-primary hover:underline" onClick={() => setSection('team')}>Team · Agents</button>.</span></p>}
+        {/* Public on AgentBridge is chosen per agent here, on Mac online only (owner, 6 Nov). */}
+        {binding?.connection_id && !online && <MacAgentBridge projectId={projectId} />}
         {online && <p className="mt-1 text-[12.5px] text-muted-foreground">Open this published Crew from the Publish tab.</p>}
         {!binding && !online && <p className="mt-1 text-xs text-muted-foreground">Turn on Use from phone and web to connect your other apps.</p>}
       </div>
