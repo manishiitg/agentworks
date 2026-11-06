@@ -793,3 +793,13 @@ func TestCrewRelayedEventsSayWhetherAMacAgentIsWorking(t *testing.T) {
 		t.Fatal("a turn whose end never came must stop counting as working")
 	}
 }
+
+// PLAT-856 round 4, 6 Nov: taking ChatGPT's Muse session back failed ("lstat …/journals/subagent/<id>: no such file")
+// because the Mac had none of a sub-session's folder yet; reading what the destination already holds must skip it.
+func TestChunkFilesSkipsAFileWhoseFolderIsMissing(t *testing.T) {
+	dir := t.TempDir()
+	files, _, err := crewNativeFiles(dir, &sessiontransfer.Bundle{Files: map[string]sessiontransfer.File{"subagent/abc/session.jsonl": {}}}, true, nil)
+	if err != nil || len(files) != 0 {
+		t.Fatalf("a file in a missing folder is skipped: files=%v err=%v", files, err)
+	}
+}
