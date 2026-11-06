@@ -167,13 +167,13 @@ func crewTeamClashViewOf(store string, s crewTeamFileState, c crewTeamClash, wit
 	if !withText {
 		return v
 	}
-	read := func(side *crewTeamClashSide, version *crewTeamFileVersion) {
+	read := func(side *crewTeamClashSide, version *chunkedFile) {
 		if version == nil {
 			side.Removed = true
 			return
 		}
 		var buf bytes.Buffer
-		if version.Size > crewTeamMergeMaxBytes || crewTeamAssemble(store, *version, &buf) != nil || !crewTeamMergeText(buf.Bytes()) {
+		if version.Size > crewTeamMergeMaxBytes || assembleChunked(store, *version, &buf) != nil || !crewTeamMergeText(buf.Bytes()) {
 			side.NotText = true
 			return
 		}
@@ -181,9 +181,9 @@ func crewTeamClashViewOf(store string, s crewTeamFileState, c crewTeamClash, wit
 	}
 	current := s.Versions[c.Path]
 	v.Current = &crewTeamClashSide{Who: crewPersonShortName(current.Author), Revision: current.Revision}
-	var now *crewTeamFileVersion
+	var now *chunkedFile
 	if current.File != nil {
-		now = &crewTeamFileVersion{Hash: current.File.Hash, Size: current.File.Size, Exec: current.File.Executable, Chunks: current.Chunks}
+		now = &chunkedFile{Hash: current.File.Hash, Size: current.File.Size, Exec: current.File.Executable, Chunks: current.Chunks}
 	}
 	read(v.Current, now)
 	other := c.LosingAuthor

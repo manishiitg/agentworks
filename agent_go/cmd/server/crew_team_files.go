@@ -30,7 +30,7 @@ import (
 
 type crewTeamVersion struct {
 	File       *crewsync.File  `json:"file,omitempty"` // nil is a tombstone
-	Chunks     []crewTeamChunk `json:"chunks,omitempty"`
+	Chunks     []transferChunk `json:"chunks,omitempty"`
 	Revision   uint64          `json:"revision"`
 	Author     string          `json:"author"`
 	ModifiedAt string          `json:"modified_at"`
@@ -267,9 +267,9 @@ func validateCrewTeamSnapshot(s *crewsync.Snapshot, on ...crewTeamOnPurpose) err
 // crewTeamChange is one file of a commit: its path, the version hash the sender started from ("" = it had none) and its
 // new version (nil deletes it).
 type crewTeamChange struct {
-	Path   string               `json:"path"`
-	Before string               `json:"before,omitempty"`
-	After  *crewTeamFileVersion `json:"after,omitempty"`
+	Path   string       `json:"path"`
+	Before string       `json:"before,omitempty"`
+	After  *chunkedFile `json:"after,omitempty"`
 }
 
 // commitCrewTeamChanges records a commit: each changed file's new version (its chunks must already be in the store),
@@ -326,7 +326,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 			return crewTeamReceipt{}, fmt.Errorf("invalid shared file metadata: %s", c.Path)
 		}
 		for _, chunk := range c.After.Chunks {
-			if !crewTeamHasChunk(store, chunk) {
+			if !hasChunk(store, chunk) {
 				return crewTeamReceipt{}, fmt.Errorf("send the file's chunks before committing it: %s", c.Path)
 			}
 		}
@@ -358,7 +358,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 	for _, c := range crewTeamOrderedChanges(changes) {
 		current := state.Versions[c.Path]
 		var after *crewsync.File
-		var chunks []crewTeamChunk
+		var chunks []transferChunk
 		if c.After != nil {
 			after, chunks = c.After.file(), c.After.Chunks
 		}
@@ -406,7 +406,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 		// Two people editing the same text file from one base: merge by lines (owner, 5 Nov). The merged file is a new
 		// revision, so every copy, the sender's included, downloads it next round; only overlapping lines are a clash.
 		merged, hunks := false, 0
-		var source crewTeamFileVersion
+		var source chunkedFile
 		if c.After != nil {
 			source = *c.After
 		}
@@ -427,7 +427,7 @@ func commitCrewTeamChanges(ctx context.Context, project, actor, transfer, digest
 			}
 		} else {
 			reader, writer := io.Pipe()
-			go func(v crewTeamFileVersion) { writer.CloseWithError(crewTeamAssemble(store, v, writer)) }(source)
+			go func(v chunkedFile) { writer.CloseWithError(assembleChunked(store, v, writer)) }(source)
 			e = writeCrewTeamFile(ctx, root, c.Path, reader, *after, op)
 			reader.Close()
 			if e != nil {
@@ -623,7 +623,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	// A saved or uploaded file goes into the chunk store first, then is committed like any synced change.
-	var after *crewTeamFileVersion
+	var after *chunkedFile
 	if r.Method == http.MethodPut {
 		store, err := crewTeamChunkStore(project)
 		if err != nil {
@@ -640,7 +640,7 @@ func (api *StreamingAPI) handleCrewTeamFiles(w http.ResponseWriter, r *http.Requ
 			}
 			size, body = int64(len(raw)), io.NopCloser(bytes.NewReader(raw))
 		}
-		version, err := crewTeamChunkReader(body, size, false, func(id string, data []byte) error { return crewTeamPutChunk(store, id, data) })
+		version, err := chunkReader(body, size, false, func(id string, data []byte) error { return putChunk(store, id, data) })
 		if err != nil {
 			externalError(w, 400, "invalid_file", "Send a complete file of at most 64 MiB.")
 			return

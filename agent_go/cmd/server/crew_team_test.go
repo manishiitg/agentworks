@@ -683,7 +683,7 @@ func TestCrewTeamNewCopyReceivesTheTeamSetupBeforeWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	version, err := crewTeamChunkReader(bytes.NewReader(setup), int64(len(setup)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+	version, err := chunkReader(bytes.NewReader(setup), int64(len(setup)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -742,7 +742,7 @@ func TestCrewTeamNewServerOwnerCopyKeepsTheCrewFolder(t *testing.T) {
 	store, _ := crewTeamChunkStore("team")
 	put := func(path, content string) {
 		t.Helper()
-		v, err := crewTeamChunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+		v, err := chunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
 		if err == nil {
 			_, err = commitCrewTeamChanges(t.Context(), "team", "other", path, crewTransferDigest(path), []crewTeamChange{{Path: path, After: &v}})
 		}
@@ -784,7 +784,7 @@ func TestCrewTeamSyncsCredentialFileOnlyWhenChosenOnPurpose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	version, err := crewTeamChunkReader(bytes.NewReader(data), int64(len(data)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+	version, err := chunkReader(bytes.NewReader(data), int64(len(data)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -181,44 +181,44 @@ func crewTeamLineMatches(a, b []int) ([]int, bool) {
 // crewTeamMergeVersion tries the line merge for a change sent from base over the team's current version. It returns
 // the merged version (its chunks stored) and the overlapping-change count; ok is false when any of the three is not
 // text, too big, unavailable, or too different, and the caller keeps the whole-file rule (later wins).
-func crewTeamMergeVersion(store string, state crewTeamFileState, rel, base string, current crewTeamVersion, incoming crewTeamFileVersion) (crewTeamFileVersion, int, bool) {
+func crewTeamMergeVersion(store string, state crewTeamFileState, rel, base string, current crewTeamVersion, incoming chunkedFile) (chunkedFile, int, bool) {
 	if base == "" || current.File == nil {
-		return crewTeamFileVersion{}, 0, false
+		return chunkedFile{}, 0, false
 	}
-	var baseVersion *crewTeamFileVersion
+	var baseVersion *chunkedFile
 	for i := len(state.Events) - 1; i >= 0; i-- {
 		if e := state.Events[i]; e.Path == rel && e.File != nil && e.File.Hash == base {
-			baseVersion = &crewTeamFileVersion{Hash: e.File.Hash, Size: e.File.Size, Exec: e.File.Executable, Chunks: e.Chunks}
+			baseVersion = &chunkedFile{Hash: e.File.Hash, Size: e.File.Size, Exec: e.File.Executable, Chunks: e.Chunks}
 			break
 		}
 	}
 	if baseVersion == nil {
-		return crewTeamFileVersion{}, 0, false
+		return chunkedFile{}, 0, false
 	}
-	read := func(v crewTeamFileVersion) ([]byte, bool) {
+	read := func(v chunkedFile) ([]byte, bool) {
 		if v.Size > crewTeamMergeMaxBytes || !v.valid() {
 			return nil, false
 		}
 		var buf bytes.Buffer
-		if crewTeamAssemble(store, v, &buf) != nil || !crewTeamMergeText(buf.Bytes()) {
+		if assembleChunked(store, v, &buf) != nil || !crewTeamMergeText(buf.Bytes()) {
 			return nil, false
 		}
 		return buf.Bytes(), true
 	}
-	ours := crewTeamFileVersion{Hash: current.File.Hash, Size: current.File.Size, Exec: current.File.Executable, Chunks: current.Chunks}
+	ours := chunkedFile{Hash: current.File.Hash, Size: current.File.Size, Exec: current.File.Executable, Chunks: current.Chunks}
 	b, okB := read(*baseVersion)
 	o, okO := read(ours)
 	t, okT := read(incoming)
 	if !okB || !okO || !okT {
-		return crewTeamFileVersion{}, 0, false
+		return chunkedFile{}, 0, false
 	}
 	merged, conflicts, ok := crewTeamMerge3(string(b), string(o), string(t))
 	if !ok {
-		return crewTeamFileVersion{}, 0, false
+		return chunkedFile{}, 0, false
 	}
-	v, err := crewTeamChunkReader(strings.NewReader(merged), int64(len(merged)), incoming.Exec, func(id string, data []byte) error { return crewTeamPutChunk(store, id, data) })
+	v, err := chunkReader(strings.NewReader(merged), int64(len(merged)), incoming.Exec, func(id string, data []byte) error { return putChunk(store, id, data) })
 	if err != nil {
-		return crewTeamFileVersion{}, 0, false
+		return chunkedFile{}, 0, false
 	}
 	return v, conflicts, true
 }

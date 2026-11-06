@@ -38,7 +38,7 @@ func TestCrewTeamScanLeavesOutOversizeFileAndSendsRemovalsFirst(t *testing.T) {
 	}
 	// The copy last had docs/a.md, before the folder was renamed to Docs.
 	b := &crewTeamLocal{Root: root, Downloaded: true, Files: map[string]crewTeamLocalFile{
-		"docs/a.md": {Size: 14, Version: crewTeamFileVersion{Hash: strings.Repeat("a", 64), Size: 14}}}}
+		"docs/a.md": {Size: 14, Version: chunkedFile{Hash: strings.Repeat("a", 64), Size: 14}}}}
 	scan, err := crewTeamScan(t.Context(), b, crewTeamFolder{ID: "f1", Whole: true})
 	if err != nil {
 		t.Fatal(err)
@@ -109,9 +109,9 @@ func TestCrewTeamStaleDeleteKeepsTheNewerEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	put := func(content string) crewTeamFileVersion {
+	put := func(content string) chunkedFile {
 		t.Helper()
-		v, err := crewTeamChunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+		v, err := chunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -294,9 +294,9 @@ func TestCrewTeamLineMergeOfConcurrentEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	put := func(content string) crewTeamFileVersion {
+	put := func(content string) chunkedFile {
 		t.Helper()
-		v, err := crewTeamChunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+		v, err := chunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -332,7 +332,7 @@ func TestCrewTeamLineMergeOfConcurrentEdits(t *testing.T) {
 			state, _ := readCrewTeamFileState("merge-test")
 			current := state.Versions[path]
 			var stored strings.Builder
-			if err = crewTeamAssemble(store, crewTeamFileVersion{Chunks: current.Chunks}, &stored); err != nil || stored.String() != tc.want || current.Author != "member" {
+			if err = assembleChunked(store, chunkedFile{Chunks: current.Chunks}, &stored); err != nil || stored.String() != tc.want || current.Author != "member" {
 				t.Fatalf("stored version %q by %s, err %v", stored.String(), current.Author, err)
 			}
 			if clash := slices.Contains(receipt.Conflicts, path); clash != (tc.hunks != 0) {
@@ -377,8 +377,8 @@ func TestCrewTeamClashNotifiesBothAndAgentResolves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	put := func(content string) crewTeamFileVersion {
-		v, err := crewTeamChunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return crewTeamPutChunk(store, id, chunk) })
+	put := func(content string) chunkedFile {
+		v, err := chunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
 		if err != nil {
 			t.Fatal(err)
 		}

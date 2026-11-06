@@ -17,7 +17,7 @@ import (
 )
 
 // The chunked sync protocol (crew_team_chunks.go). Every request is bounded (a commit carries at most
-// crewTeamCommitBatch files, a chunk request or reply at most crewTeamChunkBatch bytes), so none runs into the 20 s the
+// crewTeamCommitBatch files, a chunk request or reply at most chunkBatchBytes bytes), so none runs into the 20 s the
 // company gateway and the Mac allow; Team membership is checked on every request.
 
 // crewTeamSyncRequest is a plan or a commit: the changed files (and, for a commit, the sender's transfer id).
@@ -33,8 +33,8 @@ type crewTeamSyncRequest struct {
 
 // crewTeamRemoteFile is one file the copy should have: its current version, or nil when it was removed.
 type crewTeamRemoteFile struct {
-	Path    string               `json:"path"`
-	Version *crewTeamFileVersion `json:"version,omitempty"`
+	Path    string       `json:"path"`
+	Version *chunkedFile `json:"version,omitempty"`
 }
 
 // crewTeamChangesReply lists what changed after the copy's revision, up to Through (more pages while More).
@@ -105,23 +105,18 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		onPurpose := state.onPurpose().with(in.OnPurpose)
-		missing, seen := []string{}, map[string]bool{}
+		afters := []chunkedFile{}
 		for _, c := range in.Changes {
 			if !crewTeamAllowed(c.Path, onPurpose) || !crewTeamGuardAllows(claims, c.Path, true) || c.After != nil && (!team.Folder.holds(c.Path) || !c.After.valid()) {
 				done(409, len(in.Changes), 0)
 				externalError(w, 409, "transfer_failed", c.Path+" is not a file this team shares")
 				return
 			}
-			if c.After == nil {
-				continue
-			}
-			for _, chunk := range c.After.Chunks {
-				if !seen[chunk.ID] && !crewTeamHasChunk(store, chunk) {
-					missing = append(missing, chunk.ID)
-				}
-				seen[chunk.ID] = true
+			if c.After != nil {
+				afters = append(afters, *c.After)
 			}
 		}
+		missing := missingChunks(store, afters)
 		done(200, len(in.Changes), len(missing))
 		externalJSON(w, map[string]any{"missing": missing})
 	case "commit":
@@ -169,7 +164,7 @@ func (api *StreamingAPI) handleCrewTeamSync(w http.ResponseWriter, r *http.Reque
 			}
 			file := crewTeamRemoteFile{Path: p}
 			if v := state.Versions[p]; v.File != nil {
-				file.Version = &crewTeamFileVersion{Hash: v.File.Hash, Size: v.File.Size, Exec: v.File.Executable, Chunks: v.Chunks}
+				file.Version = &chunkedFile{Hash: v.File.Hash, Size: v.File.Size, Exec: v.File.Executable, Chunks: v.Chunks}
 			}
 			out.Files = append(out.Files, file)
 		}
@@ -211,7 +206,7 @@ func crewTeamChangedSince(state crewTeamFileState, since uint64, limit int) ([]s
 }
 
 // handleCrewTeamChunks receives chunks (PUT: frames, verified and stored once) or sends the chunks asked for (POST
-// {ids}: frames, at most crewTeamChunkBatch bytes per reply; the caller asks again for the rest).
+// {ids}: frames, at most chunkBatchBytes bytes per reply; the caller asks again for the rest).
 func (api *StreamingAPI) handleCrewTeamChunks(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	project := mux.Vars(r)["project"]
@@ -228,12 +223,8 @@ func (api *StreamingAPI) handleCrewTeamChunks(w http.ResponseWriter, r *http.Req
 	defer crewTeamSyncWork(project)()
 	start := time.Now()
 	if write {
-		stored, bytes := 0, 0
-		e = crewTeamReadFrames(io.LimitReader(r.Body, crewTeamChunkBatch+crewTeamChunkMax+64<<10), func(id string, data []byte) error {
-			stored, bytes = stored+1, bytes+len(data)
-			return crewTeamPutChunk(store, id, data)
-		})
-		log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=send chunks=%d bytes=%d ms=%d err=%v", project, logUsernameForUserID(claims.UserID), stored, bytes, time.Since(start).Milliseconds(), e)
+		stored, size, e := receiveChunks(r.Body, store)
+		log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=send chunks=%d bytes=%d ms=%d err=%v", project, logUsernameForUserID(claims.UserID), stored, size, time.Since(start).Milliseconds(), e)
 		if e != nil {
 			externalError(w, 400, "transfer_failed", e.Error())
 			return
@@ -241,49 +232,28 @@ func (api *StreamingAPI) handleCrewTeamChunks(w http.ResponseWriter, r *http.Req
 		externalJSON(w, map[string]int{"stored": stored})
 		return
 	}
-	var in struct {
-		Chunks []crewTeamChunk `json:"chunks"`
-	}
-	if json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&in) != nil || len(in.Chunks) > 20000 {
-		externalError(w, 400, "invalid_transfer", "Ask for the chunks by id and size.")
-		return
-	}
 	// Only chunks of a file the caller may read now: a current version, inside what the team shares, not private, and
 	// within their connection's file guard (not any old chunk by its hash).
-	state, e := readCrewTeamFileState(project)
-	if e != nil {
-		externalError(w, 409, "transfer_failed", e.Error())
-		return
+	sent, size, ok := serveChunks(w, r, store, func() (map[string]bool, error) {
+		state, e := readCrewTeamFileState(project)
+		if e != nil {
+			return nil, e
+		}
+		team, _ := readCrewTeam(project)
+		readable, op := map[string]bool{}, state.onPurpose()
+		for p, v := range state.Versions {
+			if v.File == nil || !crewTeamAllowed(p, op) || !team.Folder.holds(p) || !crewTeamGuardAllows(claims, p, false) {
+				continue
+			}
+			for _, c := range v.Chunks {
+				readable[c.ID] = true
+			}
+		}
+		return readable, nil
+	})
+	if ok {
+		log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=receive chunks=%d bytes=%d ms=%d", project, logUsernameForUserID(claims.UserID), sent, size, time.Since(start).Milliseconds())
 	}
-	team, _ := readCrewTeam(project)
-	readable, op := map[string]bool{}, state.onPurpose()
-	for p, v := range state.Versions {
-		if v.File == nil || !crewTeamAllowed(p, op) || !team.Folder.holds(p) || !crewTeamGuardAllows(claims, p, false) {
-			continue
-		}
-		for _, c := range v.Chunks {
-			readable[c.ID] = true
-		}
-	}
-	w.Header().Set("Content-Type", "application/octet-stream")
-	sent, bytes := 0, int64(0)
-	for _, c := range in.Chunks {
-		if !validCrewTeamHash(c.ID) || !readable[c.ID] {
-			continue // not part of a file the caller may read now (its version moved on): the caller skips that file
-		}
-		if bytes > 0 && bytes+c.Len > crewTeamChunkBatch {
-			break
-		}
-		data, err := crewTeamReadChunk(store, c)
-		if err != nil {
-			break // the caller asks again for what did not arrive
-		}
-		if err = crewTeamWriteFrame(w, c.ID, data); err != nil {
-			return
-		}
-		sent, bytes = sent+1, bytes+int64(len(data))
-	}
-	log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s action=receive chunks=%d bytes=%d ms=%d", project, logUsernameForUserID(claims.UserID), sent, bytes, time.Since(start).Milliseconds())
 }
 
 func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {

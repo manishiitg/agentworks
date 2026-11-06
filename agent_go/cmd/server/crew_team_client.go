@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -60,9 +59,9 @@ type crewTeamLocal struct {
 }
 
 type crewTeamLocalFile struct {
-	Size    int64               `json:"size"`
-	Mtime   int64               `json:"mtime"`
-	Version crewTeamFileVersion `json:"version"`
+	Size    int64       `json:"size"`
+	Mtime   int64       `json:"mtime"`
+	Version chunkedFile `json:"version"`
 }
 
 // onPurpose is what this copy syncs on purpose: its own choices and the folder's, minus the ones it took back.
@@ -372,17 +371,10 @@ func syncCrewTeamRound(ctx context.Context, owner string, c desktopConnection, d
 	return saveCrewTeamLocal(dir, *b)
 }
 
-// crewTeamChunkSource is where a chunk's bytes are in this copy: a file and the range inside it.
-type crewTeamChunkSource struct {
-	path   string
-	offset int64
-	size   int64
-}
-
 type crewTeamScanResult struct {
 	changes []crewTeamChange
 	entries map[string]crewTeamLocalFile // the new state of each changed path (absent for a removal)
-	sources map[string]crewTeamChunkSource
+	sources map[string]chunkSource
 	dirs    []string // folders the scan entered: what a watcher watches ("" is the copy's folder)
 	stated  int      // files whose size and time were read
 	names   int      // names in the folders the scan listed
@@ -401,7 +393,7 @@ func crewTeamScan(ctx context.Context, b *crewTeamLocal, share crewTeamFolder) (
 // each is in, and a path marked true (made, removed or renamed: maybe a folder) with all it holds. changed nil reads
 // the whole copy. rules is whether the folder had a .gitignore at its last full scan.
 func crewTeamScanChanged(ctx context.Context, b *crewTeamLocal, share crewTeamFolder, changed map[string]bool, rules bool) (crewTeamScanResult, error) {
-	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]crewTeamChunkSource{}}
+	out := crewTeamScanResult{entries: map[string]crewTeamLocalFile{}, sources: map[string]chunkSource{}}
 	op := b.onPurpose()
 	full := changed == nil
 	enters := func(rel string) bool { return crewsync.Allowed(crewTeamKey(rel), true) && share.walks(rel) }
@@ -643,9 +635,9 @@ func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanR
 	}
 	defer f.Close()
 	var offset int64
-	version, err := crewTeamChunkReader(f, info.Size(), info.Mode()&0o111 != 0, func(id string, data []byte) error {
+	version, err := chunkReader(f, info.Size(), info.Mode()&0o111 != 0, func(id string, data []byte) error {
 		if _, ok := out.sources[id]; !ok {
-			out.sources[id] = crewTeamChunkSource{path: rel, offset: offset, size: int64(len(data))}
+			out.sources[id] = chunkSource{path: rel, offset: offset, size: int64(len(data))}
 		}
 		offset += int64(len(data))
 		return nil
@@ -661,10 +653,10 @@ func crewTeamScanFile(b *crewTeamLocal, op crewTeamOnPurpose, out *crewTeamScanR
 }
 
 // crewTeamUpload sends this copy's changes in batches: plan, the missing chunks in frames of at most
-// crewTeamChunkBatch bytes (read from the files again and checked), then commit.
+// chunkBatchBytes bytes (read from the files again and checked), then commit.
 // It returns how many chunks it sent.
 func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, route, query string, b *crewTeamLocal, scan crewTeamScanResult) (int, error) {
-	chunks := 0
+	chunks, started := 0, time.Now()
 	// Every batch is planned first, so the round's total is the bytes the server lacks (review 5 Nov #11).
 	type planned struct {
 		request crewTeamSyncRequest
@@ -691,31 +683,14 @@ func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, rout
 	}
 	crewTeamRoundTotal(ctx, total)
 	for _, p := range plans {
-		request, batch, plan := p.request, p.batch, struct{ Missing []string }{p.missing}
-		for i := 0; i < len(plan.Missing); {
-			var frames bytes.Buffer
-			for ; i < len(plan.Missing) && (frames.Len() == 0 || int64(frames.Len())+crewTeamChunkMax <= crewTeamChunkBatch); i++ {
-				id := plan.Missing[i]
-				source, ok := scan.sources[id]
-				if !ok {
-					return chunks, crewTeamStep("send", fmt.Errorf("the server asked for a chunk this copy did not send"))
-				}
-				data, err := crewTeamReadSource(b.Root, source, id)
-				if err != nil {
-					return chunks, crewTeamStep("send", err)
-				}
-				if err = crewTeamWriteFrame(&frames, id, data); err != nil {
-					return chunks, crewTeamStep("send", err)
-				}
-				sent += int64(len(data))
-				chunks++
-			}
-			resp, err := crewTeamRemoteDo(ctx, owner, c, http.MethodPut, route+"/chunks"+query, "application/octet-stream", &frames)
-			if err != nil {
-				return chunks, crewTeamStep("send", err)
-			}
-			resp.Body.Close()
-			crewTeamRoundBytes(ctx, sent)
+		request, batch := p.request, p.batch
+		base := sent
+		n, moved, err := sendMissingChunks(ctx, owner, c, route+"/chunks"+query, b.Root, scan.sources, p.missing, func(s int64) { crewTeamRoundBytes(ctx, base+s) })
+		chunks, sent = chunks+n, sent+moved
+		if errors.Is(err, errChunkNotOffered) {
+			return chunks, crewTeamStep("send", fmt.Errorf("the server asked for a chunk this copy did not send"))
+		} else if err != nil {
+			return chunks, crewTeamStep("send", err)
 		}
 		var receipt crewTeamReceipt
 		if e := crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/sync/commit"+query, request, &receipt); e != nil {
@@ -732,24 +707,14 @@ func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, rout
 		b.StopSyncing = slices.DeleteFunc(b.StopSyncing, func(p string) bool { _, kept := b.Files[p]; return !kept })
 		b.FolderOnPurpose = sortedOnPurpose(crewTeamOnPurpose{}.with(b.FolderOnPurpose).with(b.SyncAnyway))
 	}
+	afters := []chunkedFile{}
+	for _, ch := range scan.changes {
+		if ch.After != nil {
+			afters = append(afters, *ch.After)
+		}
+	}
+	logChunkTransfer("team", b.Project, "up", len(scan.changes), distinctChunks(afters), chunks, sent, started)
 	return chunks, nil
-}
-
-// crewTeamReadSource reads one chunk back from this copy and checks it is still the same bytes.
-func crewTeamReadSource(root string, source crewTeamChunkSource, id string) ([]byte, error) {
-	f, err := os.Open(filepath.Join(root, filepath.FromSlash(source.path)))
-	if err != nil {
-		return nil, fmt.Errorf("a file changed while it was sent; it goes next round")
-	}
-	defer f.Close()
-	data := make([]byte, source.size)
-	if _, err = f.ReadAt(data, source.offset); err != nil {
-		return nil, fmt.Errorf("a file changed while it was sent; it goes next round")
-	}
-	if sum := sha256.Sum256(data); hex.EncodeToString(sum[:]) != id {
-		return nil, fmt.Errorf("a file changed while it was sent; it goes next round")
-	}
-	return data, nil
 }
 
 // crewTeamDownload brings one page of the team's changes into this copy. A file changed here since the copy was last
@@ -831,7 +796,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 	}
 	defer os.RemoveAll(stage)
 	// Chunks this copy already holds, in files that are still as last synced.
-	local := map[string]crewTeamChunkSource{}
+	local := map[string]chunkSource{}
 	for rel, known := range b.Files {
 		if !unchanged(rel) {
 			continue
@@ -839,12 +804,12 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		var offset int64
 		for _, ch := range known.Version.Chunks {
 			if _, ok := local[ch.ID]; !ok {
-				local[ch.ID] = crewTeamChunkSource{path: rel, offset: offset, size: ch.Len}
+				local[ch.ID] = chunkSource{path: rel, offset: offset, size: ch.Len}
 			}
 			offset += ch.Len
 		}
 	}
-	need, fetch, seen := []crewTeamChunk{}, []crewTeamChunk{}, map[string]bool{}
+	need, fetch, seen := []transferChunk{}, []transferChunk{}, map[string]bool{}
 	var total int64
 	for _, f := range writes {
 		for _, ch := range f.Version.Chunks {
@@ -856,7 +821,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 	}
 	for _, ch := range need {
 		if source, ok := local[ch.ID]; ok {
-			if data, err := crewTeamReadSource(b.Root, source, ch.ID); err == nil {
+			if data, err := readChunkSource(b.Root, source, ch.ID); err == nil {
 				if err = os.WriteFile(filepath.Join(stage, ch.ID), data, 0o600); err != nil {
 					return skipped, err
 				}
@@ -867,11 +832,15 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 		total += ch.Len
 	}
 	roundCtx := startCrewTeamRound(ctx, dir, b.Project, "download", len(writes), total, 0)
-	moved, err := crewTeamFetchChunks(roundCtx, owner, c, route, query, stage, fetch)
+	started := time.Now()
+	moved, err := fetchChunks(roundCtx, owner, c, route, query, stage, fetch)
+	if err == nil {
+		logChunkTransfer("team", b.Project, "down", len(writes), len(need), len(fetch), total, started)
+	}
 	if err == nil {
 		for _, f := range writes {
 			// Its version moved on while this page was read (review 5 Nov #8): the newer version comes in a later page.
-			if slices.ContainsFunc(f.Version.Chunks, func(ch crewTeamChunk) bool { return moved[ch.ID] }) {
+			if slices.ContainsFunc(f.Version.Chunks, func(ch transferChunk) bool { return moved[ch.ID] }) {
 				log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s path=%q event=moved_on", b.Project, b.Client, f.Path)
 				continue
 			}
@@ -885,7 +854,7 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 				continue
 			}
 			reader, writer := io.Pipe()
-			go func(v crewTeamFileVersion) {
+			go func(v chunkedFile) {
 				var copyErr error
 				for _, ch := range v.Chunks {
 					data, err := os.ReadFile(filepath.Join(stage, ch.ID))
@@ -930,43 +899,6 @@ func crewTeamHashFile(root, rel string) string {
 		return ""
 	}
 	return hex.EncodeToString(sum.Sum(nil))
-}
-
-// crewTeamFetchChunks asks the server for chunks until all have arrived (each reply holds at most crewTeamChunkBatch
-// bytes) and stages each, checked, by its id. It returns the chunks the server no longer serves: their file's version
-// moved on since the page was read.
-func crewTeamFetchChunks(ctx context.Context, owner string, c desktopConnection, route, query, stage string, chunks []crewTeamChunk) (map[string]bool, error) {
-	var received int64
-	moved := map[string]bool{}
-	for len(chunks) > 0 {
-		body, _ := json.Marshal(map[string]any{"chunks": chunks})
-		resp, err := crewTeamRemoteDo(ctx, owner, c, http.MethodPost, route+"/chunks"+query, "application/json", bytes.NewReader(body))
-		if err != nil {
-			return moved, crewTeamStep("receive", err)
-		}
-		got := map[string]bool{}
-		err = crewTeamReadFrames(resp.Body, func(id string, data []byte) error {
-			if sum := sha256.Sum256(data); hex.EncodeToString(sum[:]) != id {
-				return fmt.Errorf("a received chunk does not match its id")
-			}
-			got[id] = true
-			received += int64(len(data))
-			crewTeamRoundBytes(ctx, received)
-			return os.WriteFile(filepath.Join(stage, id), data, 0o600)
-		})
-		resp.Body.Close()
-		if err != nil {
-			return moved, crewTeamStep("receive", err)
-		}
-		if len(got) == 0 {
-			for _, ch := range chunks {
-				moved[ch.ID] = true
-			}
-			return moved, nil
-		}
-		chunks = slices.DeleteFunc(chunks, func(ch crewTeamChunk) bool { return got[ch.ID] })
-	}
-	return moved, nil
 }
 
 // crewTeamChangeSetID names one batch of changes from one copy at the revision it had received: the same batch retried

@@ -534,7 +534,7 @@ func TestCrewNativeSessionMovesAsChunks(t *testing.T) {
 	if err := desktopCrewNativeSync(ctx, mac, connection, macBinding, bundle(mac.Private, grown)); err != nil || serverJournal() != grown {
 		t.Fatalf("second push did not land whole: %v", err)
 	}
-	if sent == 0 || sent > 2*crewTeamChunkMax {
+	if sent == 0 || sent > 2*chunkMaxBytes {
 		t.Fatalf("a grown journal must send only its new chunks: sent %d of %d bytes", sent, len(grown))
 	}
 
