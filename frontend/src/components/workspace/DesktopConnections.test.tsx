@@ -80,6 +80,7 @@ it('keeps shared projects in the active server beside the owner navigation', asy
       { id: 'shared2', name: 'Second dashboard', kind: 'crew', mode: 'run', owned_by_caller: false, owner_name: 'Project owner' },
       { id: 'other', name: 'Other dashboard', kind: 'crew', mode: 'run', owned_by_caller: false, owner_name: 'Someone else' },
       { id: 'build', name: 'Build together', kind: 'crew', mode: 'builder', owned_by_caller: false, owner_name: 'Project owner' },
+      { id: 'unclassified', name: 'Existing crew', kind: 'crew' },
       { id: 'agent', name: 'AgentWorks', kind: 'crew', mode: 'builder', owned_by_caller: true, personal_agent: true },
     ] : [] })
   const host = document.createElement('div'), root = createRoot(host)
@@ -95,10 +96,10 @@ it('keeps shared projects in the active server beside the owner navigation', asy
     expect(group.textContent!.indexOf('Your agent')).toBeLessThan(group.textContent!.indexOf('My Crews'))
     expect(dashboards.textContent).toContain('Shared crew')
     expect(dashboards.textContent).not.toContain('Owned crew')
-    // Grouped by who shared them, the biggest group first and open.
-    const groups = [...dashboards.querySelectorAll('details')]
-    expect(groups.map(g => g.querySelector('summary')?.textContent)).toEqual(['▸Project owner· 2', '▸Someone else· 1'])
-    expect(groups[0].open).toBe(true)
+    // Shared destinations remain directly reachable, without another owner accordion.
+    expect(dashboards.querySelectorAll('details')).toHaveLength(0)
+    expect(dashboards.querySelectorAll('button[aria-label*="Shared dashboard"]')).toHaveLength(3)
+    expect(group.textContent!.indexOf('Existing crew')).toBeLessThan(group.textContent!.indexOf('Shared crew'))
     expect(group.querySelector('section[aria-label="Network: Team"]')?.textContent).toContain('Your agent')
     expect(group.textContent).toContain('Weekly goal')
     expect(group.textContent?.match(/Owned crew/g)).toHaveLength(1)
