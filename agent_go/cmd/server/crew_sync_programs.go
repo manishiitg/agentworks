@@ -17,6 +17,7 @@ import (
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
@@ -94,6 +95,24 @@ func (api *StreamingAPI) crewProgramStore(ctx context.Context, claims *UserClaim
 		return filepath.Join(runtimeDir, security.SandboxPersistentDirName, "cli-home", "claude-code", ".claude"), runtimeDir, nil
 	}
 	sandboxHome := cliNativeHomeEnvironment(c.Provider, runtimeDir)
+	if c.Provider == "agy-cli" {
+		// agy keeps its conversations in the home it launches with: the chat's private home when the run is
+		// confined, otherwise the account's own home.
+		if confined := sandboxHome["HOME"]; confined != "" {
+			dir, e := agycli.SessionStoreDir(confined)
+			if e != nil {
+				return "", "", e
+			}
+			rel, e := filepath.Rel(runtimeDir, dir)
+			if e != nil {
+				return "", "", e
+			}
+			store, err = sessiontransfer.PathDirectory(runtimeDir, filepath.ToSlash(rel), importing)
+			return store, runtimeDir, err
+		}
+		store, err = agycli.SessionStoreDir(target.Home)
+		return store, runtimeDir, err
+	}
 	nativeEnv := append([]string{}, target.Env...)
 	for key, value := range sandboxHome {
 		nativeEnv = append(nativeEnv, key+"="+value)
@@ -140,7 +159,7 @@ func (api *StreamingAPI) captureCrewNative(ctx context.Context, claims *UserClai
 		return nil, nil
 	}
 	h := runtime.AgentSessionHandle.Provider
-	if c.Provider != "claude-code" && c.Provider != "codex-cli" && c.Provider != "cursor-cli" && c.Provider != "muse-cli" && c.Provider != "pi-cli" {
+	if c.Provider != "claude-code" && c.Provider != "codex-cli" && c.Provider != "cursor-cli" && c.Provider != "muse-cli" && c.Provider != "pi-cli" && c.Provider != "agy-cli" {
 		return nil, nil
 	}
 	cwd, e := crewCLIWorkingDir(roots.Virtual, claims.UserID, c.SessionID, c.Provider, false)
@@ -180,6 +199,9 @@ func exportCrewProgram(store, cwd, id, provider, transport, out string, remember
 			return sessiontransfer.ExportCursorCLI(store, cwd, id, out, remember)
 		}
 		return nil, fmt.Errorf("this Cursor runtime has no portable native store; continued from saved conversation history")
+	}
+	if provider == "agy-cli" {
+		return sessiontransfer.ExportAgy(transport, store, cwd, id, out)
 	}
 	if provider == "pi-cli" {
 		piStore, err := crewPiStore(store, id, false)
@@ -229,7 +251,7 @@ func crewNativeRuntimeAvailable(ctx context.Context, b *sessiontransfer.Bundle) 
 		}
 		return nil
 	}
-	command := map[string]string{"claude-code": "claude", "codex-cli": "codex", "cursor-cli": "cursor-agent", "muse-cli": "muse"}[b.Provider]
+	command := map[string]string{"claude-code": "claude", "codex-cli": "codex", "cursor-cli": "cursor-agent", "muse-cli": "muse", "agy-cli": "agy"}[b.Provider]
 	if _, err := exec.LookPath(command); err != nil {
 		return fmt.Errorf("this AI program is unavailable on this computer; continued from saved conversation history")
 	}
@@ -339,6 +361,8 @@ func (api *StreamingAPI) importCrewNativeInto(ctx context.Context, claims *UserC
 			e = sessiontransfer.ImportCursorSDK(store, cwd, b)
 		case "cursor-cli-sqlite":
 			e = sessiontransfer.ImportCursorCLI(store, cwd, b)
+		case "agy-conversation":
+			e = sessiontransfer.ImportAgy(store, cwd, b)
 		case "pi-jsonl":
 			var piStore string
 			if piStore, e = crewPiStore(store, b.SessionID, true); e == nil {
