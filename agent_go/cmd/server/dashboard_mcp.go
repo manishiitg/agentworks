@@ -12,7 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-var dashboardActions = map[string]string{"upload_dashboard_asset": "upload", "get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
+var dashboardActions = map[string]string{"upload_dashboard_asset": "upload", "get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "set_dashboard_public_link": dashboardPublicAction, "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
@@ -110,6 +110,13 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		"duration_s":       map[string]any{"type": "number", "minimum": 0, "maximum": 600, "description": "Playback seconds. Omit to use the dashboard clock's duration, or one second for a still page."},
 		"fps":              externalInteger(1, 60),
 	})
+	add("set_dashboard_public_link", "A public link to one published dashboard or artifact of a server Crew: anyone with the link opens a frozen copy without signing in, with no Ask and no function buttons. Only the Crew's main owner, and only when they ask: everything on the page goes public, including the data behind it (its query results, even columns the page doesn't show), so say that first. mode on makes the link, update refreshes the copy under the same link, off stops it at once, status lists the Crew's dashboards with their links. Refused while the page holds a secret value. A Crew that lives on a Mac gets this later.", true, false, map[string]any{
+		"crew_id":      externalString("Crew ID from workspace action=list or the dashboard list."),
+		"workspace":    externalString("Existing project root."),
+		"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
+		"dashboard_id": externalString("Published dashboard slug from the dashboard list. Needed for on, update and off."),
+		"mode":         map[string]any{"type": "string", "enum": []any{"on", "update", "off", "status"}},
+	}, "mode")
 	shareProps := map[string]any{
 		"workflow_id":  externalString("Goal/workflow ID from workflow action=list. Also accepts an existing Flow ID for compatibility. Pass exactly one project selector."),
 		"flow_id":      externalString("Flow ID from workflow action=list or relay. Pass exactly one of workflow_id, flow_id, crew_id or workspace."),

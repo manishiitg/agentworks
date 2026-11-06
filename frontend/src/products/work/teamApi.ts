@@ -6,6 +6,7 @@ import { liveFeed } from '../../services/liveFeed'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { registerRemoteSession } from '../../utils/remoteSessions'
 import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import type { PublicLink, PublicLinkMode } from '../../components/workflow/PublicLinkControl'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
@@ -203,9 +204,12 @@ export function teamAgentForTab(state: TeamTabState, key: string | undefined, ma
  * the same for the Mac app and the website: the server reads it where the Crew is (its own folder, or the owner's
  * Mac over Mac online) and, with that Mac off, says so in offline (crew_team_folders.go). */
 export type TeamFolderListing = { folders: string[]; path: string; files: number; bytes: number; offline?: string }
-export type TeamDashboards = { workspace: string; can_share: boolean; updated?: string; note?: string; dashboards: { id: string; title: string; path: string; artifact?: boolean }[] }
+export type TeamDashboards = { workspace: string; can_share: boolean; updated?: string; note?: string; dashboards: { id: string; title: string; path: string; artifact?: boolean; public_link?: PublicLink }[] }
 export function teamDashboards(target: TeamTarget): Promise<TeamDashboards> {
   return teamRequest<TeamDashboards>({ project: target.project, connection: target.connection }, '/dashboards')
+}
+export function teamPublicLink(target: TeamTarget, id: string, mode: PublicLinkMode): Promise<PublicLink> {
+  return teamRequest<PublicLink>({ project: target.project, connection: target.connection }, '/dashboards/public-link', 'POST', { dashboard_id: id, mode })
 }
 export function teamFolders(target: TeamTarget, query: string): Promise<TeamFolderListing> {
   return teamRequest<TeamFolderListing>({ project: target.project, connection: target.connection }, `/folders?${query}`)

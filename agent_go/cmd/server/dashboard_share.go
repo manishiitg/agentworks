@@ -64,6 +64,8 @@ type runShareState struct {
 	// Note says anything the owner should know about what the share did.
 	Note   string            `json:"note,omitempty"`
 	Agents []sharedCrewAgent `json:"agents,omitempty"`
+	// PublicLinks is the main owner's public link control, here while the Crew's Team is off (the Team tab has it otherwise).
+	PublicLinks []dashboardPublicView `json:"public_links,omitempty"`
 }
 
 func dashboardShareAction(action string) bool { return action == "share" || action == "share_status" }
@@ -382,6 +384,9 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 	state.CanShare = state.Owner && dashboardAuthoringAllowed(claims, &target) && !macTwin
 	if macTwin {
 		state.ShareBlocked = macCrewShareBlocked
+	}
+	if state.CanShare {
+		state.PublicLinks = dashboardPublicShareViews(r.Context(), claims, target)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(state)

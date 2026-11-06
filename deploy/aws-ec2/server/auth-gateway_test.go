@@ -926,6 +926,55 @@ func TestGatewayEventStreamsRejectQueryTokens(t *testing.T) {
 	}
 }
 
+func TestDashboardPublicLinkReachesAgentWithoutIdentity(t *testing.T) {
+	for _, sso := range []bool{true, false} {
+		calls := 0
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			if r.Header.Get("Authorization") != "" || r.Header.Get("X-User-ID") != "" || r.Header.Get("Cookie") != "" {
+				t.Error("public page received an identity")
+			}
+			_, _ = w.Write([]byte("frozen page"))
+		}))
+		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), ssoOnly: sso, agent: proxyFor(upstream.URL)}
+		res := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/p/AAAAAAAAAAAAAAAAAAAAAA", nil)
+		req.Header.Set("X-User-ID", "spoofed")
+		req.Header.Set("Cookie", "session=viewer")
+		g.ServeHTTP(res, req)
+		if res.Code != http.StatusOK || calls != 1 {
+			t.Fatalf("sso=%t: status=%d forwarded=%d", sso, res.Code, calls)
+		}
+		res = httptest.NewRecorder()
+		g.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/p/AAAAAAAAAAAAAAAAAAAAAA", nil))
+		if calls != 1 {
+			t.Fatalf("sso=%t: a POST reached the agent", sso)
+		}
+		res = httptest.NewRecorder()
+		g.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/p/AAAAAAAAAAAAAAAAAAAAAA/dashboard.css", nil))
+		if calls != 2 {
+			t.Fatalf("sso=%t: a runtime file did not reach the agent", sso)
+		}
+		for _, path := range []string{"/p/../x", "/p/%2e%2e/x", "/p/..%2fapi%2fhealth", "/p/short", "/p/AAAAAAAAAAAAAAAAAAAAAA/record.json", "/p/AAAAAAAAAAAAAAAAAAAAAA/", "/p/"} {
+			res = httptest.NewRecorder()
+			g.ServeHTTP(res, httptest.NewRequest(http.MethodGet, path, nil))
+			if calls != 2 {
+				t.Fatalf("sso=%t: %s passed as a public page", sso, path)
+			}
+		}
+		upstream.Close()
+	}
+	for path, want := range map[string]string{
+		"/p/AbCdAAAAAAAAAAAAAAAAAA":               "/p/AbCd***",
+		"/p/AbCdAAAAAAAAAAAAAAAAAA/dashboard.css": "/p/AbCd***/dashboard.css",
+		"/api/health":                             "/api/health",
+	} {
+		if got := gatewayLogPath(httptest.NewRequest(http.MethodGet, path, nil)); got != want {
+			t.Fatalf("log path %s = %s", path, got)
+		}
+	}
+}
+
 func TestMCPAppsFrameBypassesOnlyExactAnonymousGET(t *testing.T) {
 	for _, disabled := range []bool{false, true} {
 		calls := 0

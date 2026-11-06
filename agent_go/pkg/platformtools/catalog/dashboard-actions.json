@@ -76,6 +76,12 @@
   },
   {
     "family": "dashboard",
+    "name": "public_link",
+    "member": "set_dashboard_public_link",
+    "description": "Turn a frozen no-sign-in copy of one published dashboard on, update it, turn it off or read its state."
+  },
+  {
+    "family": "dashboard",
     "name": "publish",
     "member": "publish_dashboard",
     "description": "Publish the expected draft revision to its live URL."

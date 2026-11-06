@@ -32,6 +32,11 @@ func dashboardMutation(action string) bool {
 	return action == "create" || action == "update" || action == "publish" || action == "restore"
 }
 
+// dashboardExportAction renders the dashboard in the server's browser with the caller's data.
+func dashboardExportAction(action string) bool {
+	return action == "export_motion" || action == "export_static" || action == dashboardPublicAction
+}
+
 // Dashboard drafts follow website project roles and existing product authoring
 // consent. A nil target is catalog discovery; dispatch always binds a target.
 func dashboardAuthoringAllowed(claims *UserClaims, target *dashboardTarget) bool {
@@ -77,7 +82,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || action == "export_motion" || action == "export_static") && !userAccessForClaims(claims).CanEdit {
+	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || dashboardExportAction(action)) && !userAccessForClaims(claims).CanEdit {
 		return false
 	}
 	if claims.AccessToken == nil {
@@ -86,10 +91,10 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if !claims.AccessToken.Allows("dashboards:read") {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || action == "export_motion" || action == "export_static") && !dashboardAuthoringAllowed(claims, nil) {
+	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || dashboardExportAction(action)) && !dashboardAuthoringAllowed(claims, nil) {
 		return false
 	}
-	if (action == "preview" || action == "export_motion" || action == "export_static") && !claims.AccessToken.Allows("runs:execute") {
+	if (action == "preview" || dashboardExportAction(action)) && !claims.AccessToken.Allows("runs:execute") {
 		return false
 	}
 	return true
@@ -318,6 +323,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	if dashboardShareAction(args.Action) {
 		api.handleDashboardShare(w, r, claims, target, args.Action, args.Mode, args.Emails, args.CreateDashboard, args.crewAgentShareChange)
+		return
+	}
+	if args.Action == dashboardPublicAction {
+		api.handleDashboardPublicLink(w, r, claims, target, args.Mode, args.ID)
 		return
 	}
 	if args.Action == "export_static" {

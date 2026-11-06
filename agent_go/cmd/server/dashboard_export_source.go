@@ -18,6 +18,7 @@ type dashboardExportOptions struct {
 	Duration   float64 `json:"duration_s,omitempty"`
 	FPS        int     `json:"fps"`
 	Document   string  `json:"-"`
+	Title      string  `json:"-"`
 	SourcePath string  `json:"-"`
 }
 
@@ -81,7 +82,7 @@ func resolveDashboardExportSource(ctx context.Context, target dashboardTarget, o
 	if result.Dashboard == nil || result.Dashboard.Published == "" {
 		return options, dashboardFailure(404, "Publish this dashboard before exporting it.")
 	}
-	options.Revision = result.Dashboard.Revision
+	options.Revision, options.Title = result.Dashboard.Revision, result.Dashboard.Title
 	options.Document = dashboards.Document(options.Dashboard, options.Revision)
 	options.SourcePath = path.Dir(options.Document)
 	return options, nil
