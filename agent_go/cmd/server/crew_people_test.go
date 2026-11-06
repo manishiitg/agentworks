@@ -87,6 +87,13 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 	if p := listed("owner", "newbie"); p == nil || p["invited"] != true || p["line"] != "Will get files, agents and dashboards when they accept." || p["level_label"] != "Works with me" {
 		t.Fatalf("the invited person's line: %v", p)
 	}
+	// Open to everyone (how the fixture's Crew starts): nobody needs dashboards only, and nothing is saved.
+	if code, out := level("owner", "anita", "dashboards", true); code != 200 || out["changed"] != false || !strings.Contains(out["note"].(string), "open to everyone") || shareHas("anita") {
+		t.Fatalf("dashboards only on a Crew open to everyone: %d %v", code, out)
+	}
+	if err := defaultProjectOwners().SetAudience("work", "test-team", true, nil, nil); err != nil {
+		t.Fatal(err)
+	}
 	if code, out := level("member", "anita", "dashboards", true); code != http.StatusForbidden || shareHas("anita") {
 		t.Fatalf("a builder gave dashboards only: %d %v", code, out)
 	}
