@@ -1,9 +1,6 @@
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 
-/** Opens a Crew's team board (owner, 4 Nov): sent by its name in the left menu, the icon rail and the chips' "+N". */
-export const OPEN_TEAM_BOARD_EVENT = 'agentworks:open-team-board'
-
 /** Project identity stays visible while people switch between its chats. A plain label (owner, 4 Nov): switching
  * is done from the sidebar, not from here. A Crew shows "Crew › agent" here instead (AgentHeaderLine). */
 export function ProjectWorkspaceTitle({ name, surface }: { name: string; surface: ProductSurface }) {
