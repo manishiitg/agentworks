@@ -183,7 +183,9 @@ func chunkFiles(names []string, pathOf func(name string) (string, error), skipMi
 	versions, sources := map[string]chunkedFile{}, map[string]chunkSource{}
 	for _, name := range names {
 		p, err := pathOf(name)
-		if err != nil {
+		if err != nil && skipMissing && os.IsNotExist(err) {
+			continue // a folder the destination does not have yet holds none of it
+		} else if err != nil {
 			return nil, nil, err
 		}
 		f, err := os.Open(p)
