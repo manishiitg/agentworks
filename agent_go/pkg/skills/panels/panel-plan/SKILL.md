@@ -2,7 +2,7 @@
 name: panel-plan
 description: Manage Crew workflows, reusable scripts and goal tracking, or edit an existing standalone workflow plan.
 metadata:
-  version: 3.0.0
+  version: 3.1.0
   panel-tools:
     agentworks:
     - execute_shell_command
@@ -34,13 +34,15 @@ metadata:
 
 # Workflows and scripts
 
-Use a workflow for repeatable steps and a saved script for reusable Python. A Crew can contain both; a normal conversation needs neither. Keep purpose and instructions in their existing files.
+In a Crew, **Automations** contains repeatable work. A workflow connects steps; a saved script runs reusable Python. **Goals** track the outcomes that work should achieve. A normal chat needs neither.
 
-Read only the procedure for the current editing surface:
-- In Crew chat, read `references/crew-plan/SKILL.md` for workflows, scripts and goal tracking.
-- In a workflow Builder, read `references/goal-plan/SKILL.md` for the existing plan tools, including workflows owned by a Crew.
-- Relay integration is deferred. Only when a deployment offers Relay tools and the person requests that product, read `references/relay-code/SKILL.md`. Do not create a Relay to implement a Crew script.
+Use the tools offered in this chat:
+- `crew_workflow_files`: list existing work, create a workflow/script, read it, or edit it. `describe` returns the exact schema for an editing operation. `edit` reuses the Builder's named-step and input operations; omitted steps stay unchanged. Use `write` for code or a saved script's definition, never to replace workflow plan/config/input files.
+- `run_workflow_trigger`: run either kind with `inputs`. No function setup is required. Check the returned run with `get_workflow_trigger_run`; accepted does not mean completed.
+- `crew_goals`: set desired outcomes and record measured progress. Completing a run does not automatically achieve a goal.
 
-In product chat, use `read_skill` with this skill name and the reference path. External MCP clients use `help action=topic` with this topic and path. Follow the current tool catalog: loading guidance does not register tools or change access. Do not invoke standalone workflow-only tools from Crew chat unless they are actually offered.
+Define inputs once, with types and optional defaults. A workflow with no inputs needs no input file or preset. Secrets belong in Vault. Reuse this Crew's saved agents when their role fits; do not copy another person's account or chat history.
 
-Verify saved definitions and report run results from their returned status and outputs. An accepted run is not a completed run. Creating a workflow does not convert an old Goal. Conversion uses the operator migration tool; this guide covers work already inside a Crew.
+For examples, open `references/crew-plan/SKILL.md` directly. In a workflow Builder, use its existing plan tools; `references/goal-plan/SKILL.md` contains examples. The backend validates edits even when no guide was read.
+
+To run work on a schedule or in response to an event, use `panel-automations`. For logs, Inspect and costs, open the workflow's Runs view under Automations. Keep the conversation in its Crew chat.

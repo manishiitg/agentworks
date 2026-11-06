@@ -178,11 +178,11 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		return err
 	}
 
-	if err := register("run_workflow_trigger", "Run one workflow you own or edit through a secretless internal trigger binding scoped to this exact Crew. Omit trigger_id to reuse or create the binding. Payloads must be JSON within 1 MiB. Returns the run ID; poll it with get_workflow_trigger_run. Reuse delivery_id when retrying the same delivery.", map[string]interface{}{
+	if err := register("run_workflow_trigger", "Run a saved workflow or script with its declared inputs. Omit trigger_id for a direct run; no function setup is needed. Returns a run ID to check with get_workflow_trigger_run. Reuse delivery_id only when retrying the same delivery. Payloads must be JSON within 1 MiB.", map[string]interface{}{
 		"type": "object", "required": []string{"workspace_path"}, "properties": map[string]interface{}{
 			"workspace_path": map[string]interface{}{"type": "string", "description": "The workflow's id from list_agents (workflow:<id>) or its workspace_path."},
 			"trigger_id":     map[string]interface{}{"type": "string", "description": "Internal trigger ID bound to this Crew; omit to reuse or create it."},
-			"inputs":         map[string]interface{}{"type": "object", "description": "For a saved Crew script: typed values for its declared inputs. Types/defaults come from the script."},
+			"inputs":         map[string]interface{}{"type": "object", "description": "Typed values for declared workflow or script inputs. Omitted values use saved defaults; unknown, protected or invalid values are rejected."},
 			"payload":        map[string]interface{}{"type": "object", "description": "JSON delivery payload within 1 MiB."},
 			"delivery_id":    map[string]interface{}{"type": "string", "description": "Stable idempotency key; omit for a new delivery."},
 			"event":          map[string]interface{}{"type": "string", "description": "Event type; defaults to crew.trigger."},
@@ -199,7 +199,8 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 			return "", err
 		}
 		triggerID, _ := args["trigger_id"].(string)
-		if strings.TrimSpace(triggerID) == "" {
+		direct := strings.TrimSpace(triggerID) == ""
+		if direct {
 			triggerID, err = crewWorkflowTriggerBinding(ctx, api, strings.TrimSuffix(strings.TrimSpace(target), "/"), manifest, crew)
 			if err != nil {
 				return "", err
@@ -218,18 +219,29 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 			payload = typed
 		}
 		var deliveryPayload interface{} = payload
-		if manifest.crewExecutable != nil && manifest.crewExecutable.Kind == "script" {
-			variables := map[string]interface{}{}
+		envelope := false
+		for _, schedule := range manifest.Schedules {
+			if schedule.ID == triggerID && schedule.Webhook != nil {
+				envelope = schedule.Webhook.InputMode == "envelope"
+			}
+		}
+		var directInputs map[string]interface{}
+		if direct || envelope {
+			inputs := map[string]interface{}{}
 			if raw, present := args["inputs"]; present {
 				var ok bool
-				variables, ok = raw.(map[string]interface{})
+				inputs, ok = raw.(map[string]interface{})
 				if !ok {
 					return "", fmt.Errorf("inputs must be an object")
 				}
 			}
-			deliveryPayload = map[string]interface{}{"variables": variables, "payload": payload}
+			if direct {
+				directInputs = inputs
+			} else {
+				deliveryPayload = map[string]interface{}{"variables": inputs, "payload": payload}
+			}
 		} else if _, present := args["inputs"]; present {
-			return "", fmt.Errorf("inputs on this entry are supported for saved Crew scripts; use the workflow's declared function inputs")
+			return "", fmt.Errorf("this saved entry does not accept inputs; omit trigger_id for a direct run")
 		}
 		data, err := json.Marshal(deliveryPayload)
 		if err != nil {
@@ -245,7 +257,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		}
 		delivery, err := api.scheduler.dispatchInternalWorkflowTrigger(ctx, internalWorkflowTriggerCall{
 			WorkflowID: manifest.ID, TriggerID: strings.TrimSpace(triggerID),
-			Caller: crew, DeliveryID: deliveryID, Event: event, Payload: data,
+			Caller: crew, DeliveryID: deliveryID, Event: event, Payload: data, DirectInputs: directInputs,
 		})
 		if err != nil {
 			return "", crewWorkflowRunError(err)
@@ -392,14 +404,7 @@ func workflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspacePat
 			return sched.ID, false, nil
 		}
 	}
-	selection := []string{"default"}
-	if manifest != nil && manifest.crewExecutable != nil {
-		selection = nil
-	}
-	groups, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, selection)
-	if err != nil {
-		return "", false, fmt.Errorf("cannot create the binding: %w", err)
-	}
+
 	if err := validateWebhookTarget(ctx, workspacePath, "", map[string]string{}); err != nil {
 		return "", false, fmt.Errorf("cannot create the binding: %w", err)
 	}
@@ -420,7 +425,7 @@ func workflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspacePat
 	bound := caller
 	sched := WorkflowSchedule{
 		ID: id, Name: firstNonEmptyTrimmed(name, "Internal invocation"), ScheduleType: "webhook", Timezone: "UTC", Enabled: true,
-		RouteSelections: map[string]string{}, GroupNames: groups, Mode: "workshop", WorkshopMode: "run",
+		RouteSelections: map[string]string{}, Mode: "workshop", WorkshopMode: "run",
 		CollisionPolicy: "skip", Webhook: &WorkflowWebhookConfig{}, Kind: triggerKindInternal, Caller: &bound,
 	}
 	if latest.crewExecutable != nil && latest.crewExecutable.Kind == "script" {

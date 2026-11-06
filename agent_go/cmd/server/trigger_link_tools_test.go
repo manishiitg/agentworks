@@ -329,6 +329,10 @@ func TestWorkflowCallerConnectsToCrewAndWorkflow(t *testing.T) {
 
 // Workflow triggers accept a workflow caller on dispatch and on poll.
 func TestInternalWorkflowTriggerAcceptsWorkflowCaller(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/reports/variables/variables.json": `{"variables":[]}`}})
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	ctx := context.Background()
 	manifest := &WorkflowManifest{ID: "reports", Schedules: []WorkflowSchedule{
 		{ID: "trig-wf", ScheduleType: "webhook", Enabled: true, Kind: "internal", Caller: &triggerCaller{Type: "workflow", ID: "pipeline"}},
