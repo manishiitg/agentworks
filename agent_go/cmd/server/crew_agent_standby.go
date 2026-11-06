@@ -139,6 +139,41 @@ func readCrewStandby(project string) (map[string]crewAgentStandby, error) {
 	return out, nil
 }
 
+// crewStandbyHistoryEvents is the saved dialogue of the stored copy of one of this Crew's Mac conversations, as chat
+// events, for reading it while the Mac is off.
+func crewStandbyHistoryEvents(project, conversationID string) []json.RawMessage {
+	rows, err := readCrewStandby(project)
+	if err != nil || conversationID == "" {
+		return nil
+	}
+	dir, err := crewStandbyDir(project)
+	if err != nil {
+		return nil
+	}
+	for tab, row := range rows {
+		for _, session := range row.Sessions {
+			if session.ConversationID != conversationID {
+				continue
+			}
+			raw, err := os.ReadFile(filepath.Join(dir, tab, session.Dir, "conversation.json"))
+			if err != nil {
+				return nil
+			}
+			var copied crewHandoffConversation
+			if json.Unmarshal(raw, &copied) != nil {
+				return nil
+			}
+			data, _ := json.Marshal(map[string]any{"session_id": conversationID, "conversation_history": copied.History, "updated_at": session.StoredAt})
+			var log builderConversationLog
+			if json.Unmarshal(data, &log) != nil {
+				return nil
+			}
+			return builderConversationToRawEventsLimit(log, 0)
+		}
+	}
+	return nil
+}
+
 // crewStandbyMacOnly is the last list of what only the owner's Mac has, as its Mac sent it.
 func crewStandbyMacOnly(project string) []crewTeamMacOnlyItem {
 	dir, err := crewStandbyDir(project)
