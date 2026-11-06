@@ -2,15 +2,15 @@ import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
-import { LayoutDashboard, Laptop } from 'lucide-react'
+import { LayoutDashboard, Laptop, Pin } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
-export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, owned_by_caller, owner_name, personal_agent, stateLine, offline, onMac, shared_agents, where, onOpen }: { personal_agent?: boolean; where?: 'mac' | 'web'; shared_agents?: number; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
+export function SidebarProjectRow({ name, kind, icon, selected, location, remote, serverColor, serverId, mode, owned_by_caller, owner_name, personal_agent, stateLine, offline, onMac, shared_agents, where, showLocation, pinned, onTogglePin, onOpen }: { showLocation?: boolean; pinned?: boolean; onTogglePin?: () => void; personal_agent?: boolean; where?: 'mac' | 'web'; shared_agents?: number; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; location?: string; remote?: boolean; serverColor?: string; serverId?: string; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; stateLine?: string; offline?: boolean; onMac?: 'on' | 'off'; onOpen: () => void }) {
   const sharedDashboard = kind === 'crew' && mode === 'run'
   const subline = stateLine || (personal_agent ? 'Your agent' : undefined)
   const label = personal_agent ? 'Your AgentWorks agent' : sharedDashboard ? 'Shared dashboard' : kind === 'crew' ? 'Crew' : 'Goal'
-  return <div className={`flex ${subline ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${selected ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
+  return <div className={`group/crew flex ${subline ? 'min-h-12 py-1' : 'h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${selected ? 'bg-foreground/[0.06] text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
     <button type="button" title={`${label} · ${name}${location ? ` · ${location}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} onClick={onOpen}
       className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span className="flex h-4 w-4 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={personal_agent ? <ProductSurfaceIcon surface="agentworks" className="h-4 w-4" /> : sharedDashboard ? <LayoutDashboard className="h-4 w-4" /> : <ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4" />} /></span>
@@ -22,7 +22,12 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
       <Laptop className="h-3.5 w-3.5" aria-hidden="true" />
       <span aria-hidden="true" className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-background ${onMac === 'on' ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />
     </span>}
-    {remote && serverId && <button type="button" aria-label={`Server: ${location || 'Connected server'}`} title={location || 'Connected server'}
+    {showLocation && location && <span title={location} className="max-w-[88px] shrink-0 truncate pr-1 text-[10px] text-muted-foreground">{location}</span>}
+    {onTogglePin && <button type="button" aria-label={`${pinned ? 'Unpin' : 'Pin'} ${name}${location ? ` · ${location}` : ''}`} aria-pressed={Boolean(pinned)} title={pinned ? 'Unpin from Recent' : 'Keep in Recent'} onClick={onTogglePin}
+      className={`mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${pinned ? '' : 'md:opacity-0 md:group-hover/crew:opacity-100 md:focus-visible:opacity-100'}`}>
+      <Pin className="h-3.5 w-3.5" fill={pinned ? 'currentColor' : 'none'} aria-hidden="true" />
+    </button>}
+    {!showLocation && remote && serverId && <button type="button" aria-label={`Server: ${location || 'Connected server'}`} title={location || 'Connected server'}
       onClick={() => openConnectedServers('', serverId)} className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <ServerIdentityIcon connectionId={serverId} hidden className={`h-3 w-3 ${serverColor || 'text-slate-500/75 dark:text-slate-400/75'}`} />
     </button>}

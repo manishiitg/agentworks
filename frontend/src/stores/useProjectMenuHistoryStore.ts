@@ -15,11 +15,20 @@ export function connectedWorkHistoryScope(): string {
 export const useProjectMenuHistoryStore = create<{
   recent: Record<string, string[]>
   startHere: Record<string, string[]>
+  pinned: Record<string, string[]>
+  setPinned: (scope: string, destination: string, pinned: boolean) => void
   seedStartHere: (scope: string, destinations: string[]) => void
   visit: (scope: string, destination: string) => void
 }>()(persist(set => ({
   recent: {},
   startHere: {},
+  pinned: {},
+  setPinned: (scope, destination, pinned) => set(state => {
+    if (!scope || !destination) return state
+    const previous = state.pinned[scope] || []
+    if (previous.includes(destination) === pinned) return state
+    return { pinned: { ...state.pinned, [scope]: pinned ? [...previous, destination] : previous.filter(id => id !== destination) } }
+  }),
   seedStartHere: (scope, destinations) => set(state => {
     if (!scope || Object.hasOwn(state.startHere, scope)) return state
     return { startHere: { ...state.startHere, [scope]: [...new Set(destinations)].filter(id => id && !state.recent[scope]?.includes(id)).slice(0, PROJECT_MENU_RECENT_LIMIT) } }
@@ -38,5 +47,5 @@ export const useProjectMenuHistoryStore = create<{
     setItem: (key, value) => { try { window.localStorage.setItem(key, value) } catch { /* History is optional. */ } },
     removeItem: key => { try { window.localStorage.removeItem(key) } catch { /* History is optional. */ } },
   })),
-  partialize: state => ({ recent: state.recent, startHere: state.startHere }),
+  partialize: state => ({ recent: state.recent, startHere: state.startHere, pinned: state.pinned }),
 }))
