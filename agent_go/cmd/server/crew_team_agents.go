@@ -182,7 +182,7 @@ func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []
 		if crewServerChatRunning(record.SessionID) {
 			activity = "running"
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity})
+		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Place: "server", ChatKey: record.ConversationKey, InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, PlaceLabel: crewServerAgentPlaceLabel})
 	}
 	return out
 }
@@ -208,3 +208,7 @@ func (api *StreamingAPI) handleCrewTeamAgents(w http.ResponseWriter, r *http.Req
 func crewPersonShortName(userID string) string {
 	return strings.SplitN(strings.TrimSpace(shareOwnerLabel(userID)), "@", 2)[0]
 }
+
+// crewServerAgentPlaceLabel is the status of an agent that lives on the server: it answers any time (the same row as a Mac
+// agent's "Always on · copy on the server …", owner 6 Nov: one row for every own agent).
+const crewServerAgentPlaceLabel = "On the server · always on"
