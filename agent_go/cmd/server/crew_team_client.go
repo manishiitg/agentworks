@@ -732,6 +732,9 @@ func crewTeamUpload(ctx context.Context, owner string, c desktopConnection, rout
 	return chunks, nil
 }
 
+// crewTeamDownloadBatch is how many files of a page are fetched and written before the copy's record is saved.
+const crewTeamDownloadBatch = 200
+
 // crewTeamDownload brings one page of the team's changes into this copy. A file changed here since the copy was last
 // in step is left alone (it goes up next round; the server keeps both). Each needed chunk is copied from this copy's
 // own unchanged files or fetched, into private staging, before any file is written. It reports whether a file was
@@ -829,36 +832,56 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 			offset += ch.Len
 		}
 	}
-	need, fetch, seen := []transferChunk{}, []transferChunk{}, map[string]bool{}
-	var total int64
+	// The page goes in batches, each fetched, written and saved before the next: a round that runs out of time keeps
+	// what it wrote, and the next round goes on from there (Showcase, 6 Nov: a 2,000-file page never finished).
+	var total, doneBytes int64
+	counted := map[string]bool{}
 	for _, f := range writes {
 		for _, ch := range f.Version.Chunks {
-			if !seen[ch.ID] {
-				seen[ch.ID] = true
-				need = append(need, ch)
+			if _, here := local[ch.ID]; !here && !counted[ch.ID] {
+				counted[ch.ID] = true
+				total += ch.Len
 			}
 		}
-	}
-	for _, ch := range need {
-		if source, ok := local[ch.ID]; ok {
-			if data, err := readChunkSource(b.Root, source, ch.ID); err == nil {
-				if err = os.WriteFile(filepath.Join(stage, ch.ID), data, 0o600); err != nil {
-					return skipped, err
-				}
-				continue
-			}
-		}
-		fetch = append(fetch, ch)
-		total += ch.Len
 	}
 	roundCtx := startCrewTeamRound(ctx, dir, b.Project, "download", len(writes), total, 0)
-	started := time.Now()
-	moved, err := fetchChunks(roundCtx, owner, c, route, query, stage, fetch)
-	if err == nil {
-		logChunkTransfer("team", b.Project, "down", len(writes), len(need), len(fetch), total, started)
-	}
-	if err == nil {
-		for _, f := range writes {
+	receive := func(batch []crewTeamRemoteFile) error {
+		if err := os.RemoveAll(stage); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(stage, 0o700); err != nil {
+			return err
+		}
+		need, fetch, seen := []transferChunk{}, []transferChunk{}, map[string]bool{}
+		var size int64
+		for _, f := range batch {
+			for _, ch := range f.Version.Chunks {
+				if !seen[ch.ID] {
+					seen[ch.ID] = true
+					need = append(need, ch)
+				}
+			}
+		}
+		for _, ch := range need {
+			if source, ok := local[ch.ID]; ok {
+				if data, err := readChunkSource(b.Root, source, ch.ID); err == nil {
+					if err = os.WriteFile(filepath.Join(stage, ch.ID), data, 0o600); err != nil {
+						return err
+					}
+					continue
+				}
+			}
+			fetch = append(fetch, ch)
+			size += ch.Len
+		}
+		started := time.Now()
+		moved, err := fetchChunks(roundCtx, owner, c, route, query, stage, fetch, func(received int64) { crewTeamRoundBytes(roundCtx, doneBytes+received) })
+		if err != nil {
+			return err
+		}
+		doneBytes += size
+		logChunkTransfer("team", b.Project, "down", len(batch), len(need), len(fetch), size, started)
+		for _, f := range batch {
 			// Its version moved on while this page was read (review 5 Nov #8): the newer version comes in a later page.
 			if slices.ContainsFunc(f.Version.Chunks, func(ch transferChunk) bool { return moved[ch.ID] }) {
 				log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s path=%q event=moved_on", b.Project, b.Client, f.Path)
@@ -892,16 +915,25 @@ func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, ro
 			err = writeCrewTeamFile(ctx, b.Root, f.Path, reader, *syncFile(*f.Version), op)
 			reader.Close()
 			if err != nil {
-				err = crewTeamStep("write", err)
-				break
+				return crewTeamStep("write", err)
 			}
 			info, statErr := os.Lstat(filepath.Join(b.Root, filepath.FromSlash(f.Path)))
 			if statErr != nil {
-				err = crewTeamStep("write", statErr)
-				break
+				return crewTeamStep("write", statErr)
 			}
 			b.Files[f.Path] = crewTeamLocalFile{Stamp: crewsync.StampOf(info), ReadAt: writeStarted, Version: *f.Version}
 			log.Printf("[CREW_TEAM_LOCAL] project=%s actor=%s client=%s path=%q event=received", b.Project, b.RemoteUser, b.Client, f.Path)
+		}
+		return nil
+	}
+	var err error
+	for start := 0; start < len(writes) && err == nil; start += crewTeamDownloadBatch {
+		end := min(start+crewTeamDownloadBatch, len(writes))
+		if err = receive(writes[start:end]); err == nil {
+			err = saveCrewTeamLocal(dir, *b)
+		}
+		if err == nil {
+			log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=download_progress files=%d/%d bytes=%d/%d", b.Project, b.Client, end, len(writes), doneBytes, total)
 		}
 	}
 	endCrewTeamRound(dir, err)

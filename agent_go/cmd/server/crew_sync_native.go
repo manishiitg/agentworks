@@ -461,7 +461,7 @@ func desktopCrewNativeTransfer(ctx context.Context, roots crewroot.Roots, connec
 				seen[c.ID] = true
 			}
 		}
-		gone, err := fetchChunks(ctx, roots.Owner, connection, route, query, scratch, need)
+		gone, err := fetchChunks(ctx, roots.Owner, connection, route, query, scratch, need, nil)
 		if err != nil {
 			return fmt.Errorf("the server could not sync this conversation: %w", err)
 		}
