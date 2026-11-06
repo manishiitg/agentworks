@@ -17,6 +17,7 @@ type crewTeamDashboard struct {
 	Title    string `json:"title"`
 	Path     string `json:"path"`
 	Artifact bool   `json:"artifact,omitempty"`
+	Motion   bool   `json:"motion,omitempty"`
 	// PublicLink is for the Crew's owner only; teammates see the same rows without it.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
 }
@@ -29,6 +30,23 @@ func (api *StreamingAPI) handleCrewTeamDashboards(w http.ResponseWriter, r *http
 	}
 	root := crewProjectRootByID(t.ProjectID)
 	canShare := t.OwnerID == claims.UserID
+	rows, ok := api.crewTeamDashboardRows(w, r, t, root, canShare)
+	if !ok {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	out := map[string]any{"workspace": root, "dashboards": rows, "can_share": canShare}
+	// A Crew on a Mac: when its dashboards last reached the server (crew_mac_dashboards.go).
+	if updated, ok := crewMacDashboardsUpdated(t.ProjectID); ok && crewRelayTwin(t.ProjectID) {
+		out["updated"] = "Updated " + roughAgo(time.Since(updated))
+		out["note"] = "Buttons on these dashboards work on the owner's Mac for now."
+	}
+	externalJSON(w, out)
+}
+
+// crewTeamDashboardRows lists the Crew's published dashboards, artifacts and motion for the Team card and the
+// Dashboards tab: one read, one set of rows. The public link is the owner's, on a Crew that can have one.
+func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Request, t crewTeam, root string, canShare bool) ([]crewTeamDashboard, bool) {
 	links := map[string]dashboardPublicRecord{}
 	if canShare {
 		links = dashboardPublicRecords(root)
@@ -41,10 +59,10 @@ func (api *StreamingAPI) handleCrewTeamDashboards(w http.ResponseWriter, r *http
 		}
 		if err := crewPanelRead(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]any{"workspace": root, "action": "list", "published_only": true, "limit": 100, "offset": offset}, &page); err != nil {
 			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
-			return
+			return nil, false
 		}
 		for _, d := range page.Dashboards {
-			row := crewTeamDashboard{ID: d.ID, Title: d.Title, Path: d.DocumentPath, Artifact: d.Artifact}
+			row := crewTeamDashboard{ID: d.ID, Title: d.Title, Path: d.DocumentPath, Artifact: d.Artifact, Motion: d.Motion}
 			if canShare && d.Managed {
 				var record *dashboardPublicRecord
 				if found, ok := links[d.ID]; ok {
@@ -63,14 +81,7 @@ func (api *StreamingAPI) handleCrewTeamDashboards(w http.ResponseWriter, r *http
 		}
 		offset += len(page.Dashboards)
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	out := map[string]any{"workspace": root, "dashboards": rows, "can_share": canShare}
-	// A Crew on a Mac: when its dashboards last reached the server (crew_mac_dashboards.go).
-	if updated, ok := crewMacDashboardsUpdated(t.ProjectID); ok && crewRelayTwin(t.ProjectID) {
-		out["updated"] = "Updated " + roughAgo(time.Since(updated))
-		out["note"] = "Buttons on these dashboards work on the owner's Mac for now."
-	}
-	externalJSON(w, out)
+	return rows, true
 }
 
 // handleCrewTeamDashboardPublicLink is POST /crew-teams/{project}/dashboards/public-link: the card's switch, through the
