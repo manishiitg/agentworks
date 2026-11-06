@@ -237,7 +237,7 @@ func (api *StreamingAPI) runDesktopCrewAgentPublish(w http.ResponseWriter, r *ht
 			return
 		}
 	}
-	if err = desktopCrewPayloads(r.Context(), id, connection, binding, transfer, request.Snapshot); err != nil {
+	if err = desktopCrewPayloads(r.Context(), claims.UserID, id, connection, binding, transfer, request.Snapshot); err != nil {
 		fail(err)
 		return
 	}

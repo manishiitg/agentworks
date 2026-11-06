@@ -214,10 +214,6 @@ func crewSyncPeerError(code, message string) error {
 // The transport carries project content, never paths or credentials chosen by
 // another machine. Every operation rechecks the destination's actual owner.
 func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("transfer") != "" {
-		api.handleCrewSyncPiece(w, r)
-		return
-	}
 	var input crewSyncRequest
 	if r.Method == http.MethodGet {
 		input.Action = "status"

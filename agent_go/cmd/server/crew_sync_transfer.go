@@ -2,7 +2,8 @@ package server
 
 // PLAT-856-509: immutable binary artifacts are private pending-transfer data,
 // not file contents in a JSON RPC. The existing snapshot refs and receipts still
-// decide what was applied. A file's durable length is its resumable offset.
+// decide what was applied. They travel as chunks (chunk_transfer.go): a retry or
+// the next move sends only the chunks the server's store lacks.
 import (
 	"bytes"
 	"context"
@@ -16,7 +17,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,12 +25,11 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
-	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-const crewSyncPieceBytes int64 = 8 << 20
-const crewSyncPayloadBytes int64 = 264 << 20 // Phase 2 retains existing limits.
+// crewSyncPayloadBytes bounds one payload: the one sync limit plus a bundle's own overhead.
+const crewSyncPayloadBytes = crewsync.SyncMaxBytes + 8<<20
 const crewSyncMetadataBytes int64 = 48 << 20 // includes the existing bounded chat archive
 
 func crewTransferDigest(value string) string {
@@ -74,7 +73,7 @@ func crewPayloadAllowed(name string, p crewsync.Payload) bool {
 	case "content", "state", "database":
 		return true
 	case "git":
-		return p.Size <= 256<<20
+		return true
 	case "index":
 		return p.Size <= 64<<20
 	}
@@ -289,7 +288,7 @@ func (api *StreamingAPI) crewTransferBinding(ctx context.Context, claims *UserCl
 	return roots, b, nil
 }
 func validateCrewPayloads(s *crewsync.Snapshot) error {
-	if s == nil || s.Content == nil || len(s.Payloads) == 0 || len(s.Payloads) > 5 || len(s.Files) > publication.MaxFiles || len(s.Changes) > publication.MaxFiles {
+	if s == nil || s.Content == nil || len(s.Payloads) == 0 || len(s.Payloads) > 5 || len(s.Files) > crewsync.SyncMaxFiles || len(s.Changes) > crewsync.SyncMaxFiles {
 		return fmt.Errorf("send a snapshot with binary artifact descriptors")
 	}
 	if _, ok := s.Payloads["content"]; !ok {
@@ -408,29 +407,70 @@ func verifyCrewTransferDescriptor(id, pair, transfer string, s *crewsync.Snapsho
 	return nil
 }
 
-// The API already authenticates this request. Recheck actual owner, pair,
-// enabled state and direction on EVERY piece, including status/resume probes.
-func (api *StreamingAPI) handleCrewSyncPiece(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	id := mux.Vars(r)["project"]
-	pair, transfer, direction, name := q.Get("pair"), q.Get("transfer"), q.Get("direction"), q.Get("blob")
+// crewMoveChunkStore is this Crew's private chunk store for moves (chunk_transfer.go): the chunks of its last
+// move stay, so the next move sends only what changed in its payloads.
+func crewMoveChunkStore(id string) (string, error) {
+	p, err := crewSyncManifestPath(id)
+	if err != nil {
+		return "", err
+	}
+	dir := p + ".chunks"
+	return dir, agentworksclient.EnsurePrivateDirectory(dir)
+}
+
+// crewMoveRequest names a staged transfer and, for plan and commit, each payload as chunks.
+type crewMoveRequest struct {
+	PairID     string                 `json:"pair_id"`
+	TransferID string                 `json:"transfer_id"`
+	Files      map[string]chunkedFile `json:"files,omitempty"`
+}
+
+// handleCrewMoveChunks is /api/crew-sync/{project}/move/{op:plan|chunks|commit}: a move's payloads (content, Git,
+// index, state, database) as chunks. Every request rechecks the actual owner, the pair, that this server side is
+// receiving a move (Editing local), and for plan/commit that each file is exactly a payload the admitted transfer
+// named. Commit writes the payloads into the transfer's staging folder, where push reads them as before.
+func (api *StreamingAPI) handleCrewMoveChunks(w http.ResponseWriter, r *http.Request) {
+	id, op := mux.Vars(r)["project"], mux.Vars(r)["op"]
+	start := time.Now()
 	fail := func(e error) {
 		status := 409
 		if f, ok := e.(*crewSyncFailure); ok && f.Status != 0 {
 			status = f.Status
 		}
+		log.Printf("[CREW_SYNC] project=%s op=move_%s status=%d error=%q", id, op, status, e)
 		externalError(w, status, crewSyncErrorCode(e), e.Error())
 	}
+	pair := r.URL.Query().Get("pair")
 	_, b, e := api.crewTransferBinding(r.Context(), GetUserFromContext(r.Context()), id, pair)
 	if e != nil {
 		fail(e)
 		return
 	}
-	if !crewPayloadName(name) {
-		fail(fmt.Errorf("invalid sync artifact name"))
+	if b.Editing != "local" {
+		fail(fmt.Errorf("this Crew is not receiving a move"))
 		return
 	}
-	dir, e := crewTransferDir(id, pair, transfer, direction)
+	store, e := crewMoveChunkStore(id)
+	if e != nil {
+		fail(e)
+		return
+	}
+	if op == "chunks" {
+		stored, size, err := receiveChunks(r.Body, store)
+		if err != nil {
+			fail(err)
+			return
+		}
+		log.Printf("[CREW_SYNC] project=%s op=move_send chunks=%d bytes=%d ms=%d", id, stored, size, time.Since(start).Milliseconds())
+		externalJSON(w, map[string]int{"stored": stored})
+		return
+	}
+	var in crewMoveRequest
+	if json.NewDecoder(io.LimitReader(r.Body, 16<<20)).Decode(&in) != nil || in.PairID != pair {
+		fail(fmt.Errorf("send the transfer and its payloads"))
+		return
+	}
+	dir, e := crewTransferDir(id, pair, in.TransferID, "upload")
 	if e != nil {
 		fail(e)
 		return
@@ -441,174 +481,108 @@ func (api *StreamingAPI) handleCrewSyncPiece(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer unlock()
-	// Recheck after waiting on a concurrent piece without acquiring the working-folder lock.
-	_, b, e = api.crewTransferBinding(r.Context(), GetUserFromContext(r.Context()), id, pair)
-	if e != nil {
-		fail(e)
-		return
-	}
-	if direction != "upload" || b.Editing != "local" {
-		fail(fmt.Errorf("this Crew is not receiving a move"))
-		return
-	}
 	var s crewsync.Snapshot
-	e = readCrewTransfer(filepath.Join(dir, "snapshot.json"), &s)
-	snapshot := &s
-	if e != nil || snapshot == nil {
+	if e = readCrewTransfer(filepath.Join(dir, "snapshot.json"), &s); e != nil {
 		fail(fmt.Errorf("sync transfer is unavailable"))
 		return
 	}
-	payload, ok := snapshot.Payloads[name]
-	if !ok || !crewPayloadAllowed(name, payload) {
-		fail(fmt.Errorf("artifact not admitted by this transfer"))
+	if len(in.Files) != len(s.Payloads) {
+		fail(fmt.Errorf("send every payload the transfer named"))
 		return
 	}
-	path := filepath.Join(dir, name)
-	var offset int64
-	if info, err := os.Lstat(path); err == nil {
-		if !info.Mode().IsRegular() || info.Size() > payload.Size {
-			fail(fmt.Errorf("invalid sync staging file"))
+	files := make([]chunkedFile, 0, len(in.Files))
+	for name, v := range in.Files {
+		p, ok := s.Payloads[name]
+		if !ok || !crewPayloadName(name) || !crewPayloadAllowed(name, p) || !v.valid() || v.Hash != p.Hash || v.Size != p.Size {
+			fail(fmt.Errorf("artifact not admitted by this transfer"))
 			return
 		}
-		offset = info.Size()
-	} else if !os.IsNotExist(err) {
-		fail(err)
-		return
+		files = append(files, v)
 	}
-	w.Header().Set("Upload-Offset", strconv.FormatInt(offset, 10))
-	w.Header().Set("X-Sync-Size", strconv.FormatInt(payload.Size, 10))
-	w.Header().Set("X-Sync-Hash", payload.Hash)
-	if r.Method == http.MethodHead {
-		w.WriteHeader(200)
-		return
-	}
-	wanted, e := strconv.ParseInt(q.Get("offset"), 10, 64)
-	if e != nil || wanted < 0 || wanted > payload.Size {
-		fail(fmt.Errorf("invalid sync offset"))
-		return
-	}
-	if r.Method != http.MethodPut || direction != "upload" {
-		fail(fmt.Errorf("unsupported sync piece operation"))
-		return
-	}
-	if wanted != offset {
-		fail(fmt.Errorf("sync offset changed; resume from the saved offset"))
-		return
-	}
-	if r.ContentLength <= 0 || r.ContentLength > crewSyncPieceBytes || offset+r.ContentLength > payload.Size {
-		fail(fmt.Errorf("send one bounded sync piece"))
-		return
-	}
-	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(2 * time.Minute))
-	f, e := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0600)
-	if e != nil {
-		fail(e)
-		return
-	}
-	_, e = f.Seek(offset, io.SeekStart)
-	var n int64
-	if e == nil {
-		n, e = io.CopyN(f, r.Body, r.ContentLength)
-	}
-	syncErr := f.Sync()
-	closeErr := f.Close()
-	if e == nil {
-		e = syncErr
-	}
-	if e == nil {
-		e = closeErr
-	}
-	offset += n
-	w.Header().Set("Upload-Offset", strconv.FormatInt(offset, 10))
-	if offset == payload.Size {
-		if check := crewCheckPayloadFile(path, payload); check != nil {
-			_ = os.Remove(path)
-			fail(check)
+	switch op {
+	case "plan":
+		// The planned chunks are the move's progress until the payloads are written (crewMoveBytes).
+		if e = fsutil.WriteJSONAtomic(filepath.Join(dir, "chunks.json"), in.Files, 0600); e != nil {
+			fail(e)
 			return
 		}
+		missing := missingChunks(store, files)
+		log.Printf("[CREW_SYNC] project=%s transfer=%s op=move_plan payloads=%d missing=%d", id, in.TransferID, len(files), len(missing))
+		externalJSON(w, map[string]any{"missing": missing})
+	case "commit":
+		e = assembleFiles(in.Files, func(name string) (string, error) { return filepath.Join(dir, name), nil }, func(c transferChunk) ([]byte, error) { return readChunk(store, c) })
+		if e != nil {
+			fail(e)
+			return
+		}
+		used := map[string]bool{}
+		for _, v := range files {
+			for _, c := range v.Chunks {
+				used[c.ID] = true
+			}
+		}
+		pruneChunks(store, used, crewNativeChunkKeep)
+		log.Printf("[CREW_SYNC] project=%s transfer=%s op=move_commit payloads=%d ms=%d", id, in.TransferID, len(files), time.Since(start).Milliseconds())
+		externalJSON(w, map[string]bool{"complete": true})
+	default:
+		externalError(w, 404, "not_found", "Unknown move step.")
 	}
-	if e != nil {
-		fail(fmt.Errorf("sync piece interrupted; resume from its saved offset"))
-		return
-	}
-	log.Printf("[CREW_SYNC_PIECE] project=%s transfer=%s direction=upload bytes=%d offset=%d total=%d", id, transfer, n, offset, payload.Size)
-	w.WriteHeader(http.StatusNoContent)
 }
 
-func crewPieceRequest(ctx context.Context, c desktopConnection, project, pair, transfer, direction, name, method string, offset int64, body io.Reader, length int64) (*http.Response, error) {
-	u := c.Server + "/api/crew-sync/" + url.PathEscape(project)
-	q := url.Values{"pair": {pair}, "transfer": {transfer}, "direction": {direction}, "blob": {name}, "offset": {strconv.FormatInt(offset, 10)}}
-	req, e := http.NewRequestWithContext(ctx, method, u+"?"+q.Encode(), body)
-	if e != nil {
-		return nil, e
-	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	req.ContentLength = length
-	if method == http.MethodPut {
-		req.Header.Set("Content-Type", "application/octet-stream")
-	}
-	client := desktopHTTPClient()
-	client.Timeout = 2 * time.Minute
-	res, e := client.Do(req)
-	if e != nil {
-		return nil, fmt.Errorf("sync connection interrupted; retry resumes saved bytes")
-	}
-	if res.StatusCode != 200 && res.StatusCode != 204 {
-		defer res.Body.Close()
-		return nil, fmt.Errorf("server refused sync piece (%d); check the paired connection and retry", res.StatusCode)
-	}
-	return res, nil
-}
-func desktopCrewPayloads(ctx context.Context, id string, c desktopConnection, b *crewroot.SyncBinding, transfer string, s *crewsync.Snapshot) error {
+// desktopCrewPayloads sends a frozen transfer's payloads as chunks (owner: this computer's signed-in person): plan, only the chunks the server's store lacks,
+// then commit, rechecking this Mac's pairing between steps.
+func desktopCrewPayloads(ctx context.Context, owner, id string, c desktopConnection, b *crewroot.SyncBinding, transfer string, s *crewsync.Snapshot) error {
 	if e := validateCrewPayloads(s); e != nil {
 		return e
 	}
-	direction := "upload"
-	dir, e := crewTransferDir(id, b.PairID, transfer, direction)
+	dir, e := crewTransferDir(id, b.PairID, transfer, "upload")
 	if e != nil {
 		return e
 	}
+	names := make([]string, 0, len(s.Payloads))
 	for name, p := range s.Payloads {
-		if e = checkLocalCrewTransfer(id, b); e != nil {
+		if e = crewCheckPayloadFile(filepath.Join(dir, name), p); e != nil {
 			return e
 		}
-		path := filepath.Join(dir, name)
-		if e = crewCheckPayloadFile(path, p); e != nil {
-			return e
-		}
-		res, e := crewPieceRequest(ctx, c, b.PeerProjectID, b.PairID, transfer, direction, name, http.MethodHead, 0, nil, 0)
-		if e != nil {
-			return e
-		}
-		res.Body.Close()
-		offset, e := strconv.ParseInt(res.Header.Get("Upload-Offset"), 10, 64)
-		if e != nil || offset < 0 || offset > p.Size || res.Header.Get("X-Sync-Hash") != p.Hash {
-			return fmt.Errorf("invalid sync resume response")
-		}
-		f, e := os.Open(path)
-		if e != nil {
-			return e
-		}
-		for offset < p.Size {
-			if e = checkLocalCrewTransfer(id, b); e != nil {
-				f.Close()
-				return e
-			}
-			count := min(crewSyncPieceBytes, p.Size-offset)
-			res, e = crewPieceRequest(ctx, c, b.PeerProjectID, b.PairID, transfer, direction, name, http.MethodPut, offset, io.NewSectionReader(f, offset, count), count)
-			if e != nil {
-				f.Close()
-				return e
-			}
-			res.Body.Close()
-			next, err := strconv.ParseInt(res.Header.Get("Upload-Offset"), 10, 64)
-			if err != nil || next != offset+count {
-				f.Close()
-				return fmt.Errorf("server did not confirm sync piece")
-			}
-			offset = next
-		}
-		f.Close()
+		names = append(names, name)
 	}
+	started := time.Now()
+	files, sources, e := chunkFiles(names, func(name string) (string, error) { return filepath.Join(dir, name), nil }, false, nil)
+	if e != nil {
+		return e
+	}
+	route := "/api/crew-sync/" + url.PathEscape(b.PeerProjectID) + "/move"
+	query := "?" + url.Values{"pair": {b.PairID}}.Encode()
+	request := crewMoveRequest{PairID: b.PairID, TransferID: transfer, Files: files}
+	call := func(op string, out any) error {
+		if err := checkLocalCrewTransfer(id, b); err != nil {
+			return err
+		}
+		if err := crewTeamRemoteJSON(ctx, owner, c, http.MethodPost, route+"/"+op+query, request, out); err != nil {
+			return fmt.Errorf("server refused the move (%s): %w", op, err)
+		}
+		return nil
+	}
+	var plan struct {
+		Missing []string `json:"missing"`
+	}
+	if e = call("plan", &plan); e != nil {
+		return e
+	}
+	if e = checkLocalCrewTransfer(id, b); e != nil {
+		return e
+	}
+	sent, size, e := sendMissingChunks(ctx, owner, c, route+"/chunks"+query, dir, sources, plan.Missing, nil)
+	if e != nil {
+		return fmt.Errorf("sync connection interrupted; retry sends only what is missing: %w", e)
+	}
+	if e = call("commit", nil); e != nil {
+		return e
+	}
+	all := make([]chunkedFile, 0, len(files))
+	for _, v := range files {
+		all = append(all, v)
+	}
+	logChunkTransfer("move", id, "up", len(files), distinctChunks(all), sent, size, started)
 	return nil
 }

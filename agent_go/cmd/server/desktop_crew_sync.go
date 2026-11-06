@@ -459,7 +459,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			if e = outside(func() error {
-				return desktopCrewPayloads(r.Context(), roots.ID, connection, binding, transfer.TransferID, transfer.Snapshot)
+				return desktopCrewPayloads(r.Context(), roots.Owner, roots.ID, connection, binding, transfer.TransferID, transfer.Snapshot)
 			}); e != nil {
 				fail(e)
 				return

@@ -8,16 +8,16 @@ package server
 
 import (
 	"path/filepath"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
 const (
 	// crewTeamCommitBatch bounds the files in one commit.
 	crewTeamCommitBatch = 2000
-	// The Team's own limits, not Publish's one-upload limit (owner, 6 Nov): sync moves only changed chunks after
-	// the first copy, so a bigger folder costs a longer first download, not every round. Each file keeps
-	// publication.MaxFileBytes.
-	crewTeamMaxFiles       = 50000
-	crewTeamMaxBytes int64 = 4 << 30
+	// The one sync limit (crewsync.SyncMaxFiles / SyncMaxBytes); each file keeps publication.MaxFileBytes.
+	crewTeamMaxFiles = crewsync.SyncMaxFiles
+	crewTeamMaxBytes = crewsync.SyncMaxBytes
 	// crewTeamSyncFormat names the chunked layout: a Team's content and every copy's binding start fresh with it.
 	crewTeamSyncFormat = "chunks-1"
 )

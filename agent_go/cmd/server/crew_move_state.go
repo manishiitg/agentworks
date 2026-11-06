@@ -50,13 +50,27 @@ func crewMoveBytes(roots crewroot.Roots, binding *crewroot.SyncBinding) (done, t
 	if err != nil {
 		return
 	}
+	// A payload is done once written; before that, the chunks of it the server's store holds (crew_sync_transfer.go).
+	var planned map[string]chunkedFile
+	store, _ := crewMoveChunkStore(roots.ID)
+	if raw, err := os.ReadFile(filepath.Join(dir, "chunks.json")); err == nil {
+		_ = json.Unmarshal(raw, &planned)
+	}
 	for name, payload := range progress.Payloads {
 		if !crewPayloadName(name) || !crewPayloadAllowed(name, payload) {
 			return 0, 0
 		}
 		total += payload.Size
-		if info, err := os.Lstat(filepath.Join(dir, name)); err == nil && info.Mode().IsRegular() {
-			done += min(info.Size(), payload.Size)
+		if info, err := os.Lstat(filepath.Join(dir, name)); err == nil && info.Mode().IsRegular() && info.Size() == payload.Size {
+			done += payload.Size
+			continue
+		}
+		if v, ok := planned[name]; ok && store != "" && v.Hash == payload.Hash {
+			for _, c := range v.Chunks {
+				if hasChunk(store, c) {
+					done += c.Len
+				}
+			}
 		}
 	}
 	for _, bundle := range progress.Native {
