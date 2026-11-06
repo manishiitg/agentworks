@@ -410,9 +410,9 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 			return
 		}
 		// Export carries the Crew's skill files and function instructions,
-		// which Run-mode users never see; only the owner may take it away.
+		// which Run-mode users never see; only those who build the Crew (its owner and Team) may take it away.
 		if !crew.OwnedByCaller {
-			externalError(w, http.StatusForbidden, "forbidden", fmt.Sprintf("Only the Crew's owner (%v) can %s it.", summary["owner"], strings.TrimSuffix(name, "_crew")))
+			externalError(w, http.StatusForbidden, "forbidden", fmt.Sprintf("Only the people who build this Crew (its owner, %v, and its Team) can %s it.", summary["owner"], strings.TrimSuffix(name, "_crew")))
 			return
 		}
 		if name == "update_crew" && refuseCrewOwnerOnline(w, r, manifest.ID, claims.UserID) {
@@ -1048,11 +1048,11 @@ func (api *StreamingAPI) externalCrewWriteRequest(w http.ResponseWriter, r *http
 	rel := externalArg(args, "path")
 	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
 	clean, err := wf.CleanRelative(rel)
-	// Everyone who can run the Crew has one place to put files: shared/<their id>/. The owner writes anywhere editable.
+	// Everyone who can run the Crew has one place to put files: shared/<their id>/. The people who build the Crew (its owner and Team) write anywhere editable.
 	sharedFolder := "shared/" + sanitizeUserIDForPath(claims.UserID)
 	inOwnShared := err == nil && strings.HasPrefix(clean, sharedFolder+"/")
 	if !crew.OwnedByCaller && !inOwnShared {
-		externalError(w, http.StatusForbidden, "forbidden", "Only the Crew's owner can write its files; you can add files under "+sharedFolder+"/ .")
+		externalError(w, http.StatusForbidden, "forbidden", "Only the people who build this Crew (its owner and Team) can write its files; you can add files under "+sharedFolder+"/ .")
 		return refused, false
 	}
 	if crew.OwnedByCaller && !inOwnShared && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:write") {
