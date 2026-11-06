@@ -164,7 +164,8 @@ func crewStandbyHistoryEvents(project, conversationID string) []json.RawMessage 
 			if json.Unmarshal(raw, &copied) != nil {
 				return nil
 			}
-			data, _ := json.Marshal(map[string]any{"session_id": conversationID, "conversation_history": copied.History, "updated_at": session.StoredAt})
+			// The chat screen shows only events of the session it opened: the Mac chat's address on this server.
+			data, _ := json.Marshal(map[string]any{"session_id": crewChatSessionID(project, conversationID), "conversation_history": copied.History, "updated_at": session.StoredAt})
 			var log builderConversationLog
 			if json.Unmarshal(data, &log) != nil {
 				return nil
@@ -199,9 +200,17 @@ func (api *StreamingAPI) crewStandbyServedEvents(owner, project, conversationID 
 		if record.ProfileID != crewProfileID || record.ConversationID != conversationID || crewResourceProjectID(record.ConversationKey) != project {
 			continue
 		}
+		// Shown under the Mac chat's address on this server, the session the screen opened.
+		address := crewChatSessionID(project, conversationID)
 		out := []json.RawMessage{}
 		for _, event := range api.eventStore.GetAllEventsRaw(record.SessionID) {
-			if raw, err := json.Marshal(event); err == nil {
+			raw, err := json.Marshal(event)
+			var fields map[string]any
+			if err != nil || json.Unmarshal(raw, &fields) != nil {
+				continue
+			}
+			fields["session_id"] = address
+			if raw, err = json.Marshal(fields); err == nil {
 				out = append(out, raw)
 			}
 		}
