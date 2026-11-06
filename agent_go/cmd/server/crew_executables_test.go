@@ -17,14 +17,18 @@ import (
 )
 
 // PLAT-746-265: an editable executable cannot choose its owner or gain another
-// Crew's grants; revoking a co-owner affects the very next access check.
+// Crew's grants; revoking Team membership affects the very next access check.
 func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENT_PRODUCTS", "work,agentworks,relays")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"},{"id":"builder","username":"builder","role":"creator"},{"id":"stranger","username":"stranger","role":"creator"}]}`)
 	registry := defaultProjectOwners()
-	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "lab", ProjectID: "crew-lab", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true, CoOwners: []string{"builder"}}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "lab", ProjectID: "crew-lab", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	if err := writeCrewTeam(crewTeam{ProjectID: "crew-lab", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "builder"}}}); err != nil {
 		t.Fatal(err)
 	}
 	binding := crewExecutableBinding{ID: "executable", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/executable", Kind: "workflow"}
@@ -134,16 +138,12 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 			t.Fatalf("%s access=%s, want %s", user, got, want)
 		}
 	}
-	if err := registry.modify(func(records map[string]projectOwnerRecord) (bool, error) {
-		record := records["work/lab"]
-		record.CoOwners = nil
-		records["work/lab"] = record
-		return true, nil
-	}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "crew-lab", OwnerID: "owner", On: false}); err != nil {
 		t.Fatal(err)
 	}
+
 	if got := workflowAccessForManifest(&UserClaims{UserID: "builder", Username: "builder"}, manifest); got != WorkflowAccessNone {
-		t.Fatal("revoked co-owner retained access", got)
+		t.Fatal("revoked Team member retained access", got)
 	}
 	// PLAT-746-265: the new Team roster must flow through the same live
 	// workflow admission, without changing the saved automation's owner.
