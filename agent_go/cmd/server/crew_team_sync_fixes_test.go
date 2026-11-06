@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
 
@@ -226,6 +228,83 @@ func TestCrewMacDashboardsReadCopy(t *testing.T) {
 	}
 	if _, err = os.Stat(filepath.Join(root, crewroot.MacDashboardsFolder, "db", "reports", "index.html")); !os.IsNotExist(err) {
 		t.Fatalf("a removed dashboard stayed in the copy: %v", err)
+	}
+}
+
+// PLAT-856-509 (Showcase test, 6 Nov): an agent's shell runs as the slot group, so a Team copy written into a setgid
+// folder gets group access (folders rwx, files rw, programs rwx); anywhere else, the Team's own store included, files
+// stay owner-only. A copy written before that is repaired once.
+func TestCrewTeamCopyFilesAreGroupAccessibleForAgents(t *testing.T) {
+	write := func(root, rel string, exec bool) {
+		t.Helper()
+		data := []byte("content of " + rel)
+		meta := crewsync.File{Hash: fmt.Sprintf("%x", sha256.Sum256(data)), Size: int64(len(data)), Executable: exec}
+		if err := writeCrewTeamFile(t.Context(), root, rel, bytes.NewReader(data), meta); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mode := func(root, rel string) os.FileMode {
+		t.Helper()
+		info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info.Mode()
+	}
+	group := t.TempDir()
+	if err := os.Chmod(group, os.ModeSetgid|0o770); err != nil {
+		t.Skipf("setgid is not available here: %v", err)
+	}
+	write(group, "docs/deep/note.md", false)
+	write(group, "bin/run.sh", true)
+	for _, dir := range []string{"docs", "docs/deep", "bin"} {
+		if m := mode(group, dir); m&os.ModeSetgid == 0 || m.Perm() != 0o770 {
+			t.Fatalf("folder %s is %v", dir, m)
+		}
+	}
+	if m := mode(group, "docs/deep/note.md").Perm(); m != 0o660 {
+		t.Fatalf("file is %v", m)
+	}
+	if m := mode(group, "bin/run.sh").Perm(); m != 0o770 {
+		t.Fatalf("program is %v", m)
+	}
+	// Everywhere else, owner-only as before.
+	private := t.TempDir()
+	write(private, "docs/note.md", false)
+	if m := mode(private, "docs/note.md").Perm(); m != 0o600 {
+		t.Fatalf("a private store file is %v", m)
+	}
+	if m := mode(private, "docs").Perm(); m != 0o700 {
+		t.Fatalf("a private store folder is %v", m)
+	}
+	// A copy written before: repaired once, the rest left alone.
+	old := t.TempDir()
+	if err := os.Chmod(old, os.ModeSetgid|0o770); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(old, "a", "b"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for rel, perm := range map[string]os.FileMode{"a/b/x.txt": 0o600, "a/tool": 0o700, "a/ok.txt": 0o660} {
+		if err := os.WriteFile(filepath.Join(old, filepath.FromSlash(rel)), []byte("x"), perm); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(filepath.Join(old, filepath.FromSlash(rel)), perm); err != nil {
+			t.Fatal(err)
+		}
+	}
+	changed, err := repairCrewTeamCopyModes(old)
+	if err != nil || changed != 4 { // a, a/b, x.txt, tool
+		t.Fatalf("repaired %d: %v", changed, err)
+	}
+	if mode(old, "a/b").Perm() != 0o770 || mode(old, "a/b/x.txt").Perm() != 0o660 || mode(old, "a/tool").Perm() != 0o770 {
+		t.Fatal("the repair left a copy without group access")
+	}
+	if again, _ := repairCrewTeamCopyModes(old); again != 0 {
+		t.Fatalf("a second repair changed %d", again)
+	}
+	if n, _ := repairCrewTeamCopyModes(private); n != 0 || mode(private, "docs/note.md").Perm() != 0o600 {
+		t.Fatal("the repair touched a folder without the group policy")
 	}
 }
 

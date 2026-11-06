@@ -263,6 +263,15 @@ func syncCrewTeamLocal(ctx context.Context, owner string, c desktopConnection, d
 	} else if !os.IsNotExist(err) {
 		return err
 	}
+	// A copy an agent works in, written before its files had group access, is repaired once.
+	if marker := filepath.Join(dir, "modes-repaired"); crewTeamGroupPolicy(b.Root) && !fileExists(marker) {
+		started := time.Now()
+		changed, repairErr := repairCrewTeamCopyModes(b.Root)
+		log.Printf("[CREW_TEAM_LOCAL] project=%s client=%s event=modes_repaired changed=%d ms=%d err=%v", b.Project, b.Client, changed, time.Since(started).Milliseconds(), repairErr)
+		if repairErr == nil {
+			_ = os.WriteFile(marker, nil, 0o600)
+		}
+	}
 	if e = syncCrewTeamRound(ctx, owner, c, dir, b); e != nil {
 		b.Status = "pending"
 		b.Error = crewTeamPlainSyncError(e)
