@@ -250,20 +250,20 @@ func isBrainChatWorkspace(userID, workspace string) bool {
 	return workspace == "Chats/Knowledgebase" || workspace == strings.Trim(agentProfileRuntimeWorkspace(userID, "Chats/Knowledgebase"), "/")
 }
 
-// bindKnowledgebaseStepIdentity gives a workflow's Brain tools the identity of the authenticated request that set the
+// bindWorkflowStepIdentity gives a workflow's Brain and goal tools the identity of the authenticated request that set the
 // session up, for calls arriving through that session's (or one of its registered step sessions') token-authenticated
 // bridge with no user attached: a step on a coding CLI reaches its tools that way, and every Brain call from a
 // Workshop-started or scheduled step failed with "Brain tool requires its authenticated caller" (server A latency-report,
 // 2026-10-07). This is the same server-owned binding delegated sub-agents get (bindToolExecutionContextForSession);
 // the tools' own executor still refuses a call that brings no identity and is not bound here.
-func bindKnowledgebaseStepIdentity(requestCtx context.Context, rootSession string, executors map[string]interface{}, categories map[string]string) {
+func bindWorkflowStepIdentity(requestCtx context.Context, rootSession string, executors map[string]interface{}, categories map[string]string) {
 	claims := GetUserFromContext(requestCtx)
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || strings.TrimSpace(rootSession) == "" {
 		return
 	}
 	bound := *claims
 	for name, category := range categories {
-		if category != "knowledgebase" {
+		if category != "knowledgebase" && name != "get_goal_metrics" && name != "record_goal_observations" && name != "configure_goal_metrics" {
 			continue
 		}
 		run, ok := executors[name].(func(context.Context, map[string]interface{}) (string, error))

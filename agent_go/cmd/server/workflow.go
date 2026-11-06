@@ -668,7 +668,7 @@ type ExecutionOptions struct {
 	InputPreset string            `json:"input_preset,omitempty"`
 	Inputs      map[string]string `json:"inputs,omitempty"`
 	// Retired batch selector is decoded only to return an actionable refusal.
-	EnabledGroupNames []string `json:"enabled_group_names"` // nil uses configured enabled sets; an explicit empty slice selects no work
+	EnabledGroupNames []string `json:"enabled_group_names,omitempty"`
 
 	// Logging options
 	SaveValidationResponses bool `json:"save_validation_responses,omitempty"` // If true, save validation responses and execution logs to workspace (default: true)

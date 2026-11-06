@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/mcpagent/executor"
+	"github.com/manishiitg/mcpagent/mcpclient"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -226,6 +228,28 @@ func TestCrewGoalsShareEvidenceWithoutSharingWriteAuthority(t *testing.T) {
 	}
 	if _, err := observe(internalBotRequestContext(t.Context(), "runner"), args); err == nil {
 		t.Fatal("Run person changed measurements")
+	}
+	// PLAT-746-336: scheduled native steps arrive through their registered
+	// bridge with no HTTP claims. Keep the authenticated parent's identity.
+	_, childExecutors, categories := createGoalMetricTools()
+	parent, child := "metrics-parent", "metrics-child"
+	mcpclient.GetSessionRegistry().RegisterHTTPSession(parent, child)
+	t.Cleanup(func() { mcpclient.GetSessionRegistry().CloseHTTPSession(parent) })
+	bindWorkflowStepIdentity(internalBotRequestContext(ctx, "owner"), parent, childExecutors, categories)
+	childRead := childExecutors["get_goal_metrics"].(func(context.Context, map[string]interface{}) (string, error))
+	childObserve := childExecutors["record_goal_observations"].(func(context.Context, map[string]interface{}) (string, error))
+	childCtx := executor.WithSessionID(t.Context(), child)
+	if _, err := childRead(childCtx, args); err != nil {
+		t.Fatal("registered child cannot read tracking", err)
+	}
+	if _, err := childObserve(childCtx, args); err != nil {
+		t.Fatal("registered child cannot record tracking", err)
+	}
+	if _, err := childRead(executor.WithSessionID(t.Context(), "unrelated-child"), args); err == nil {
+		t.Fatal("unrelated session inherited tracking authority")
+	}
+	if _, err := childObserve(internalBotRequestContext(childCtx, "runner"), args); err == nil {
+		t.Fatal("Run caller inherited owner measurement authority")
 	}
 	reg := &chatPolicyTestDefinition{}
 	if err := api.registerCrewGoalTools(reg, "owner", crew.WorkspacePath); err != nil {

@@ -496,6 +496,12 @@ class Conversion:
                     text = file.read_text(errors='replace')
                     if file.suffix == '.py':
                         tree = ast.parse(text, filename=str(file.relative_to(self.source)))
+                        for node in ast.walk(tree):
+                            if isinstance(node, ast.Attribute) and node.attr in ('parent', 'parents') and any(
+                                isinstance(child, ast.Constant) and child.value == 'WORKFLOW_CODE_ROOT'
+                                for child in ast.walk(node.value)
+                            ):
+                                raise ValueError('Code moves independently of runtime data; replace WORKFLOW_CODE_ROOT parent lookup before converting: '+str(file.relative_to(self.source)))
                         if any(isinstance(n, ast.Constant) and isinstance(n.value, str) and ('DB_PATH' in n.value or 'db.sqlite' in n.value) for n in ast.walk(tree)) and 'sqlite' in text:
                             raise ValueError('Use agentworks_db for managed database access before converting: '+str(file.relative_to(self.source)))
                     if references_measurement_table(text):

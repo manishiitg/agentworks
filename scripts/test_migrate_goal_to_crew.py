@@ -159,6 +159,11 @@ class Migration(unittest.TestCase):
         self.assertEqual(before,hashes(self.base))
         (self.source/'code/one/main.py').write_text("sql = 'SELECT * FROM GOAL_OBSERVATIONS'\n")
         with self.assertRaisesRegex(ValueError,'direct measurement-table'):self.conversion()
+        # PLAT-746-336: a real migrated helper looked for assets beside moved code.
+        (self.source/'code/one/main.py').write_text("root = Path(os.environ['WORKFLOW_CODE_ROOT']).resolve().parent\n")
+        before=hashes(self.base)
+        with self.assertRaisesRegex(ValueError,'Code moves independently'):self.conversion()
+        self.assertEqual(before,hashes(self.base))
         (self.source/'code/one/main.py').write_text('# no direct database use\n')
         with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db,db:
             db.execute('CREATE VIEW measurement_summary AS SELECT * FROM goal_observations')

@@ -4797,7 +4797,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Workflow agents can be Simple or ReAct agents, tools are registered based on mode.
 		allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, req.SelectedFolder) // Workflow mode: session-aware
 
-		bindKnowledgebaseStepIdentity(r.Context(), sessionID, allExecutors, toolCategories)
+		bindWorkflowStepIdentity(r.Context(), sessionID, allExecutors, toolCategories)
 
 		// NOTE: Workspace executor replacement with session + secrets happens after secrets are merged (see below).
 
@@ -12710,7 +12710,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	// session-scoped route and get the correct executor.
 	allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, workspacePath)
 
-	bindKnowledgebaseStepIdentity(ctx, sessionID, allExecutors, toolCategories)
+	bindWorkflowStepIdentity(ctx, sessionID, allExecutors, toolCategories)
 	allTools = restrictWorkflowNotificationTools(allTools, allExecutors, toolCategories, workflowNotificationsForPath(workspacePath))
 
 	// Track preset's global secret selection (overrides req.SelectedGlobalSecrets which is nil for phase chat)

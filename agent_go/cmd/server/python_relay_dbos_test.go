@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/spf13/viper"
@@ -136,6 +137,15 @@ async def run(INPUT):
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{}
+	if native {
+		journal, err := events.OpenSQLiteEventJournal(filepath.Join(docs, "chat-events.sqlite"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer journal.Close()
+		api.eventStore = events.NewEventStore(20)
+		api.eventStore.SetDurableJournal(journal)
+	}
 	if native {
 		registry := agentprofiles.NewRegistry()
 		registerWorkCrewProfile(t, registry)

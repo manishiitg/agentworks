@@ -43,6 +43,23 @@ func TestGoalChatImportPreservesOwnerAndExistingJournal(t *testing.T) {
 	if err != nil || !strings.Contains(string(raw), "Original question") || !strings.Contains(string(raw), "Original answer") {
 		t.Fatal("dialogue missing", string(raw), err)
 	}
+	// PLAT-746-336: a schedule receipt must join the imported journal, not
+	// remain invisible in a separate JSON transcript. Retrying is idempotent.
+	store := events.NewEventStore(20)
+	store.SetDurableJournal(journal)
+	scheduler := &SchedulerService{api: &StreamingAPI{eventStore: store}}
+	target := &ProductConversationRecord{SessionID: "saved"}
+	receipt := map[string]interface{}{"Role": "ai", "Parts": []map[string]string{{"Text": "Scheduled report completed"}}}
+	for i := 0; i < 2; i++ {
+		if err := scheduler.appendCrewAutomationEvent(&ScheduleContext{OwnerUserID: "owner"}, target, "run:completed", receipt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err = journal.ReadPage("saved", events.DurableEventPageOptions{Limit: 100})
+	raw, _ = json.Marshal(page)
+	if err != nil || len(page.Events) != 3 || !strings.Contains(string(raw), "Original answer") || !strings.Contains(string(raw), "Scheduled report completed") {
+		t.Fatal("receipt missing, duplicated, or replaced imported chat", string(raw), err)
+	}
 	// An unfinished archive must not become a permanently running Crew chat.
 	if err := os.WriteFile(archive, []byte(`{"session_id":"unfinished","user_id":"owner","updated_at":"2026-01-01T00:00:00Z","conversation_history":[{"Role":"human","Parts":[{"Text":"Unanswered question"}]}]}`), 0600); err != nil {
 		t.Fatal(err)
