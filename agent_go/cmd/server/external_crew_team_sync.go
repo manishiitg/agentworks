@@ -20,15 +20,16 @@ import (
 const externalCrewTeamSyncTool = "crew_team_sync"
 
 func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewTeamSyncTool, "A Crew Team: agents lists its agents as the Team tab shows them (what each uses, its person's \"When others ask\" rule, Answer only / Make changes, whether teammates can read its chat); agent_rule (agent_key, when_others_ask, can_make_changes and/or chat_visible) sets them for one of your own agents only. directory lists the people who can be added; people (add or remove, one user_id) adds a builder to the Crew's Team or removes one: the owner or a joined member may, and a person added is invited and joins when they accept. settings (on, share=whole or folders, folders, confirm) turns the Team on or off and chooses what it shares, the same as the Team tab: on, whole/folders and removing a folder are the Crew's main owner's; a joined member may add folders. Switching between Folders and the Whole Crew first returns what changes; show it to the person and call again with confirm=true. Open clashes in a Crew Team's shared folder (two people changed the same lines of a file) and how to resolve them. clashes lists each with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id) keeps current, puts the other back (keep=other), or saves merged text (content) as a new revision every copy downloads, and closes the clash.", true, false, map[string]any{
+	add(externalCrewTeamSyncTool, "A Crew Team: agents lists its agents as the Team tab shows them (what each uses, its person's \"When others ask\" rule, Answer only / Make changes, whether teammates can read its chat); agent_rule (agent_key, when_others_ask, can_make_changes and/or chat_visible) sets them for one of your own agents only. directory lists the people who can be added; people lists the Crew's people as the People card shows them (Works with me, Dashboards only, with what each gets); with person and level (works, dashboards or none) it adds, moves or removes one person and first returns what they gain or lose: show it and call again with confirm=true. Any builder adds or removes Works with me (they are invited and join when they accept); Dashboards only, and moving someone between the levels, is the owner's, and needs the Crew on the server. settings (on, share=whole or folders, folders, confirm) turns the Team on or off and chooses what it shares, the same as the Team tab: on, whole/folders and removing a folder are the Crew's main owner's; a joined member may add folders. Switching between Folders and the Whole Crew first returns what changes; show it to the person and call again with confirm=true. Open clashes in a Crew Team's shared folder (two people changed the same lines of a file) and how to resolve them. clashes lists each with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id) keeps current, puts the other back (keep=other), or saves merged text (content) as a new revision every copy downloads, and closes the clash.", true, false, map[string]any{
 		"crew_id":          externalString("Crew ID from workspace action=list."),
 		"action":           map[string]any{"type": "string", "enum": []any{"clashes", "resolve", "agents", "agent_rule", "directory", "people", "settings"}},
 		"on":               map[string]any{"type": "boolean", "description": "settings: turn the Team on or off (the Crew's main owner only)."},
 		"share":            map[string]any{"type": "string", "enum": []any{"whole", "folders"}, "description": "settings: share the Whole Crew, or only the folders named in folders (the main owner only)."},
 		"folders":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "settings: folders to share. With share=folders they are the whole list; alone they are added to it."},
-		"confirm":          map[string]any{"type": "boolean", "description": "settings: switching between Folders and the Whole Crew first returns what changes; show it to the person, ask, and call again with confirm=true."},
-		"add":              externalString("people: the user_id of one person to add to the Team (find them with directory). They are invited and join when they accept."),
-		"remove":           externalString("people: the user_id of one person to remove from the Team."),
+		"confirm":          map[string]any{"type": "boolean", "description": "people, settings: the change first returns what the person gains or loses (or what switching Folders and the Whole Crew changes); show it, ask, and call again with confirm=true."},
+		"person":           externalString("people: the user_id of one person (find them with directory). Without it, people returns the list."),
+		"level":            map[string]any{"type": "string", "enum": []any{"works", "dashboards", "none"}, "description": "people: works = Works with me (the Team: files, agents, dashboards; invited until they accept), dashboards = Dashboards only (all this Crew's dashboards and asking it, no files; the owner's, on a Crew on the server), none = remove."},
+		"create_dashboard": map[string]any{"type": "boolean", "description": "people, level=dashboards: make the Crew's standard dashboard first when it has none (ask the person first)."},
 		"agent_key":        externalString("agent_rule: one of your own agents: its key from agents, or its name."),
 		"when_others_ask":  map[string]any{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "agent_rule: what your own agent may do when someone else asks it (empty clears it). An instruction, not a lock."},
 		"can_make_changes": map[string]any{"type": "boolean", "description": "agent_rule: for an agent on a Mac, false answers others only (default), true may make changes for them."},
@@ -69,11 +70,23 @@ func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http
 		externalJSON(w, map[string]any{"people": people})
 		return
 	case "people":
-		// The Team tab's own route, one person at a time, with its checks: the owner or a joined member may change it.
-		in := map[string]string{"add": externalArg(args, "add"), "remove": externalArg(args, "remove")}
+		// The Crew's People list: no person returns the list as the People card shows it; person and level (works,
+		// dashboards or none to remove) change one person, first returning what they gain or lose (confirm=true applies).
+		// The Team tab's own route, with its checks: any builder adds or removes Works with me; dashboards only is the owner's.
+		vars := map[string]string{"project": project}
+		ctx := context.WithValue(r.Context(), UserContextKey, claims)
+		if externalArg(args, "person") == "" {
+			api.handleCrewPeopleView(w, mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/people", nil).WithContext(ctx), vars))
+			return
+		}
+		in := map[string]any{"person": externalArg(args, "person"), "level": externalArg(args, "level")}
+		for _, key := range []string{"confirm", "create_dashboard"} {
+			if value, ok := args[key]; ok {
+				in[key] = value
+			}
+		}
 		body, _ := json.Marshal(in)
-		req := httptest.NewRequest(http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/people", bytes.NewReader(body))
-		api.handleCrewTeamPeople(w, mux.SetURLVars(req.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), map[string]string{"project": project}))
+		api.handleCrewTeamPeople(w, mux.SetURLVars(httptest.NewRequest(http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/people", bytes.NewReader(body)).WithContext(ctx), vars))
 		return
 	case "settings":
 		// The Team tab's switch and shared folders, the same saved record and checks as the website, the Mac app and the

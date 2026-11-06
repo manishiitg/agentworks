@@ -27,7 +27,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 	}
 	gate.Declare("team_sync")
 	return reg.RegisterCustomToolWithTimeout("team_sync", "Use your team's shared folder and Sync history. status lists your teams; choose project from that list. recent, clashes, compare (path, left, right), read_revision (path, revision), files (at most 200 entries a call: next_offset in the reply is the offset for the next page; path narrows to one folder) and read_file read the shared folder. save_file (path, content, base from files) is a normal save; stale saves keep the previous version in history. clashes lists open clashes (two people changed the same lines of a file) with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id from clashes) keeps current, puts the other back (keep=other), restores keep=revision:N, or saves your merged text (content); each change is a NEW revision every copy downloads, and the clash is closed. restore uses revision and saves it as a NEW revision. leave removes you from a joined Team; agent_visibility (agent_key, in_team) shares one of your own agents with the Team (in_team=true) or not (false), (new agents are shared; keep at least one shared). agents lists the Team's agents as the Team tab shows them, each with its key (your own ones have can_edit_rule). agent_rule (agent_key, when_others_ask, can_make_changes and/or chat_visible) sets what your own agent does when someone else asks it and whether teammates can read its chat; agent_key is its key from agents, or simply its name. directory lists company people (find a person by name there, then use their user_id). configure, like the Team tab: people replaces the roster with user_id (anyone in the Team; the owner always stays); folders=[…] adds folders to share (anyone in the Team; a missing folder is made); only the Crew's owner turns the Team on or off (on=true/false; on starts with the team/ folder when nothing is shared), switches share=whole / share=folders (the first call only returns what changes, worded for the person: show it, ask, then repeat with confirm=true), or stops sharing a folder. Whole Crew is everything except chats, memory, app files, node_modules/.git/caches and files that look like passwords or keys. A person added is invited and joins only when they accept; every member reads and writes the shared folder. status with project shows the Team, including what your agents use from the owner (lent). status also lists your open invites; accept or decline one with its project (your own answer, from your own chat). This shares the selected folder with those enabled people; other files stay outside the Team folder. Only your admitted teams are available. Other people's private chats and sign-ins are never transferred. On this Mac a paired project uses its existing server connection.", map[string]any{"type": "object", "properties": map[string]any{
-		"action":           map[string]any{"type": "string", "enum": []string{"status", "recent", "clashes", "compare", "read_revision", "resolve", "restore", "files", "read_file", "save_file", "directory", "configure", "accept", "decline", "leave", "agents", "agent_visibility", "agent_rule"}},
+		"action":           map[string]any{"type": "string", "enum": []string{"status", "recent", "clashes", "compare", "read_revision", "resolve", "restore", "files", "read_file", "save_file", "directory", "people", "configure", "accept", "decline", "leave", "agents", "agent_visibility", "agent_rule"}},
 		"network":          map[string]any{"type": "string", "description": "Company name, if this Mac is connected to several companies and this project has no connection."},
 		"agent_key":        map[string]any{"type": "string", "description": "agent_visibility, agent_rule: one of your own agents, by its key from agents (agent_rule also takes its name)."},
 		"in_team":          map[string]any{"type": "boolean"},
@@ -35,6 +35,9 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 		"can_make_changes": map[string]any{"type": "boolean", "description": "agent_rule: for an agent on a Mac, false answers others only (the default), true may make changes for them."},
 		"chat_visible":     map[string]any{"type": "boolean", "description": "agent_rule: true (the default) lets teammates read your own agent's chat; false keeps it private, and they can still ask the agent."},
 		"on":               map[string]any{"type": "boolean", "description": "configure: the Team switch (the owner only)."},
+		"person":           map[string]any{"type": "string", "description": "people: the user_id of one person (from directory); without it, people lists the Crew's people as the People card shows them."},
+		"level":            map[string]any{"type": "string", "enum": []string{"works", "dashboards", "none"}, "description": "people: works = Works with me (the Team), dashboards = Dashboards only (the owner's; all this Crew's dashboards and asking it, no files), none = remove. The change first returns what the person gains or loses: show it, ask, then call again with confirm=true."},
+		"create_dashboard": map[string]any{"type": "boolean", "description": "people, level=dashboards: make the Crew's standard dashboard first when it has none (ask the person first)."},
 		"confirm":          map[string]any{"type": "boolean", "description": "configure: switching between Folders and the Whole Crew first returns what changes; show it to the person, ask, and call again with confirm=true to switch."},
 		"project":          map[string]any{"type": "string", "description": "Team project_id returned by status; defaults to this project's team."},
 		"path":             map[string]any{"type": "string"}, "revision": map[string]any{"type": "integer"}, "offset": map[string]any{"type": "integer", "description": "files: where the page starts (next_offset from the previous reply)."}, "left": map[string]any{"type": "integer"}, "right": map[string]any{"type": "integer"}, "winning_revision": map[string]any{"type": "integer"}, "clash_id": map[string]any{"type": "string", "description": "resolve: the clash's id from clashes."},
@@ -50,7 +53,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 			return "", fmt.Errorf("Open Sync in your own project chat to use this team's folder")
 		}
 		action := externalArg(args, "action")
-		writes := action == "resolve" || action == "restore" || action == "save_file" || action == "configure" || action == "leave" || action == "agent_visibility" || action == "agent_rule"
+		writes := action == "resolve" || action == "restore" || action == "save_file" || action == "configure" || action == "leave" || action == "agent_visibility" || action == "agent_rule" || action == "people" && externalArg(args, "person") != ""
 		if writes && readOnly {
 			return "", fmt.Errorf("This agent can explain the clash. Ask the owner to allow it to make changes, or resolve it in your own chat")
 		}
@@ -101,7 +104,7 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 				project = b.PeerProjectID
 			}
 		}
-		if action == "configure" || action == "directory" {
+		if action == "configure" || action == "directory" || action == "people" {
 			if sharedSender != "" {
 				return "", fmt.Errorf("Change the Team from your own chat")
 			}
@@ -294,6 +297,34 @@ func (api *StreamingAPI) crewTeamConfigureChat(ctx context.Context, caller *User
 			return "", fmt.Errorf("%s", laptopActionErrorText(w.Body.String()))
 		}
 		return w.Body.String(), nil
+	}
+	if action == "people" {
+		// The People list, or one change to a person's level (the confirm flow is the server's).
+		route, method, body := "/api/crew-teams/"+url.PathEscape(project)+"/people", http.MethodGet, []byte(nil)
+		if externalArg(args, "person") != "" {
+			method = http.MethodPost
+			in := map[string]any{"person": externalArg(args, "person"), "level": externalArg(args, "level")}
+			for _, key := range []string{"confirm", "create_dashboard"} {
+				if value, ok := args[key]; ok {
+					in[key] = value
+				}
+			}
+			body, _ = json.Marshal(in)
+		}
+		if connection != nil {
+			var out json.RawMessage
+			var payload any
+			if body != nil {
+				payload = json.RawMessage(body)
+			}
+			if err := crewTeamRemoteJSON(ctx, caller.UserID, *connection, method, route, payload, &out); err != nil {
+				return "", err
+			}
+			return string(out), nil
+		}
+		w := httptest.NewRecorder()
+		api.handleCrewTeamPeople(w, request(method, "", body))
+		return result(w)
 	}
 	if action == "directory" {
 		if connection != nil {

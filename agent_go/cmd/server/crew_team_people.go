@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -17,15 +16,30 @@ import (
 func (api *StreamingAPI) handleCrewTeamPeople(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	project := mux.Vars(r)["project"]
+	if r.Method == http.MethodGet {
+		api.handleCrewPeopleView(w, r)
+		return
+	}
 	if !crewTeamClaims(claims, project, true) {
 		externalError(w, 403, "team_forbidden", "Use your own account to change this team.")
 		return
 	}
 	var in struct {
+		crewPeopleChange
+		// Add and Remove are the Team tab's own shorthand for Works with me, saved at once; person and level (with
+		// confirm) are the People list's change.
 		Add    string `json:"add"`
 		Remove string `json:"remove"`
 	}
-	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in) != nil || (strings.TrimSpace(in.Add) == "") == (strings.TrimSpace(in.Remove) == "") {
+	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in) != nil {
+		externalError(w, 400, "invalid_person", "Choose one person to add or remove.")
+		return
+	}
+	if strings.TrimSpace(in.Person) != "" {
+		api.changeCrewPerson(w, r, claims, project, in.crewPeopleChange)
+		return
+	}
+	if (strings.TrimSpace(in.Add) == "") == (strings.TrimSpace(in.Remove) == "") {
 		externalError(w, 400, "invalid_person", "Choose one person to add or remove.")
 		return
 	}
@@ -46,10 +60,5 @@ func (api *StreamingAPI) handleCrewTeamPeople(w http.ResponseWriter, r *http.Req
 		t.People = slices.DeleteFunc(slices.Clone(t.People), func(p crewTeamPerson) bool { return p.UserID == remove })
 	}
 	t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) && p.UserID != add })
-	body, _ := json.Marshal(t)
-	save := r.Clone(r.Context())
-	save.Method = http.MethodPut
-	save.Body = io.NopCloser(bytes.NewReader(body))
-	save.ContentLength = int64(len(body))
-	api.handleCrewTeam(w, mux.SetURLVars(save, map[string]string{"project": project}))
+	api.putCrewTeam(w, r, project, t)
 }
