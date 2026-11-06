@@ -273,11 +273,9 @@ func crewNativeAssemble(dir string, files map[string]crewTeamFileVersion, chunk 
 		}
 	}()
 	for name, v := range files {
-		dest, err := sessiontransfer.Path(dir, name, false)
+		// A file the destination does not have yet is created; a link or special file in its place is refused.
+		dest, err := sessiontransfer.Path(dir, name, true)
 		if err != nil {
-			return err
-		}
-		if err = os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
 			return err
 		}
 		out, err := os.CreateTemp(filepath.Dir(dest), ".capture-")
