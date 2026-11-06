@@ -19,6 +19,7 @@ import (
 // offered a change or a public link, and a Mac Crew has no public link and says to put it online first.
 func TestCrewDashboardsTabIsServerWrittenForEachCrewKindAndViewer(t *testing.T) {
 	type tab struct {
+		Workspace string `json:"workspace"`
 		CanChange bool   `json:"can_change"`
 		OnMac     bool   `json:"on_mac"`
 		PutOnline bool   `json:"put_online"`
@@ -112,7 +113,7 @@ func TestCrewDashboardsTabIsServerWrittenForEachCrewKindAndViewer(t *testing.T) 
 			}
 			// The owner: can change, sees the kind's note and, on a server Crew only, may have public link rows.
 			status, owner := read(t, f, "owner", "")
-			if status != 200 || !owner.CanChange || owner.OnMac != kind.onMac || owner.PutOnline != kind.put || owner.Note != kind.line || owner.Filter != "all" {
+			if status != 200 || owner.Workspace == "" || !owner.CanChange || owner.OnMac != kind.onMac || owner.PutOnline != kind.put || owner.Note != kind.line || owner.Filter != "all" {
 				t.Fatalf("owner: %d %+v", status, owner)
 			}
 			if len(owner.Items) != 1 || owner.Items[0].Title != "Sales report" || owner.Items[0].Kind != "dashboard" || !strings.HasPrefix(owner.Items[0].Line, "Dashboard") || !strings.HasPrefix(owner.Items[0].Who, "people who work with you") {

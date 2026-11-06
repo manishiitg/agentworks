@@ -21,7 +21,6 @@ import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { openCrewAccess, openCrewSync } from './MacSharedAgents'
 import { useChatStore } from '../../stores/useChatStore'
-import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { activateTab } from '../../utils/activateTab'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
@@ -108,13 +107,9 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, agents: Bot, dashboard: LayoutDashboard, public: Link2, folder: FolderSync, clash: TriangleAlert, where: access?.where === 'mac' ? Laptop : Globe }
   // Each line opens the Access page (WorkSurface listens) at its tab, or at Sync (TeamSyncPanel scrolls to it).
   const openLine = (line: CrewAccessLine) => {
-    // The dashboard line (owner, 5 Nov): opens the dashboard, or with none puts the server's Ask in the person's Main.
-    if (line.kind === 'dashboard') {
-      const dashboard = byId.get('dashboard')
-      if (line.path && dashboard) open({ ...dashboard, reportPath: line.path })
-      else if (line.ask && !fillMainDraft(projectId, line.ask)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error')
-      return
-    }
+    // The dashboard line (owner, 6 Nov) opens the Share page's Dashboards tab, where the server lists them, or says
+    // there are none and offers its Ask.
+    if (line.kind === 'dashboard') { openCrewAccess(projectId, '', 'dashboards'); return }
     if (line.kind === 'folder' || line.kind === 'clash') openCrewSync(projectId)
     else openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
   }

@@ -28,7 +28,7 @@ export async function teamRequest<T>(target: TeamTarget, suffix = '', method = '
     method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': raw ? 'application/octet-stream' : 'application/json' },
     ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Blob ? body : JSON.stringify(body) }),
   })
-  if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error?.message || 'The shared folder is unavailable. Check your Team access.') }
+  if (!response.ok) { const data = await response.json().catch(() => null); throw Object.assign(new Error(data?.error?.message || 'The shared folder is unavailable. Check your Team access.'), { code: data?.error?.code as string | undefined }) }
   return (response.status === 204 ? '' : raw === 'blob' ? await response.blob() : raw ? await response.text() : await response.json()) as T
 }
 
@@ -167,10 +167,36 @@ export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {
   return saved
 }
 
-/** Adds or removes one person; the server changes its record (crew_team_people.go). */
-export async function changeTeamPeople(target: TeamTarget, change: { add: string } | { remove: string }) {
-  await teamRequest<Team>({ project: target.project, connection: target.connection }, '/people', 'POST', change)
-  changed()
+/** The People list (crew_people.go): the Team and the Share as one list with two levels. The server words every line and
+ * says what each person may be moved to; the card shows them and sends the person's choice. */
+export type CrewPeopleLevelKey = 'works' | 'dashboards'
+export type CrewPeoplePerson = { user_id: string; name: string; email?: string; level: CrewPeopleLevelKey | 'owner'; level_label: string; line: string; invited?: boolean; owner?: boolean; you?: boolean; moves?: (CrewPeopleLevelKey | 'none')[] }
+export type CrewPeopleLevel = { key: CrewPeopleLevelKey; label: string; line: string; available: boolean; why?: string }
+export type CrewPeopleView = {
+  kind: 'server' | 'mac_online' | 'mac_never_online'; team_on: boolean; intro: string; blocked?: string; put_online?: string; everyone?: string
+  can_add: boolean; can_share: boolean; owner: CrewPeoplePerson; people: CrewPeoplePerson[]; levels: CrewPeopleLevel[]
+  gets: { label: string; dashboards_only: string; works_with_me: string }[]
+}
+export type CrewPeoplePreview = { person: string; from: string; to: string; summary: string; gains: string[]; loses: string[]; notes: string[] }
+export type CrewPeopleChange = { person: string; level: CrewPeopleLevelKey | 'none'; confirm?: boolean; create_dashboard?: boolean }
+export type CrewPeopleReply = { confirm_needed?: boolean; preview?: CrewPeoplePreview; changed?: boolean; note?: string }
+
+/** The server's own words for a refusal, and its code (the one the card acts on is dashboard_needed). */
+export function teamFailure(cause: unknown): { code: string; message: string } {
+  const data = (cause as { response?: { data?: { error?: { code?: string; message?: string } | string } } })?.response?.data
+  const error = typeof data?.error === 'object' ? data.error : undefined
+  return { code: error?.code || (cause as { code?: string })?.code || '', message: error?.message || (typeof data?.error === 'string' ? data.error : '') || teamError(cause) }
+}
+
+export function crewPeople(target: TeamTarget): Promise<CrewPeopleView> {
+  return teamRequest<CrewPeopleView>({ project: target.project, connection: target.connection }, '/people')
+}
+
+/** One person's level: first what they gain and lose (confirm_needed), saved only with confirm=true (crew_people.go). */
+export async function changeCrewPerson(target: TeamTarget, change: CrewPeopleChange): Promise<CrewPeopleReply> {
+  const reply = await teamRequest<CrewPeopleReply>({ project: target.project, connection: target.connection }, '/people', 'POST', change)
+  if (!reply.confirm_needed) changed()
+  return reply
 }
 
 export type TeamSwitchResult = { team: Team; folder_created?: boolean }
@@ -210,9 +236,16 @@ export function teamAgentForTab(state: TeamTabState, key: string | undefined, ma
  * the same for the Mac app and the website: the server reads it where the Crew is (its own folder, or the owner's
  * Mac over Mac online) and, with that Mac off, says so in offline (crew_team_folders.go). */
 export type TeamFolderListing = { folders: string[]; path: string; files: number; bytes: number; offline?: string }
-export type TeamDashboards = { workspace: string; can_share: boolean; updated?: string; note?: string; dashboards: { id: string; title: string; path: string; artifact?: boolean; public_link?: PublicLink }[] }
-export function teamDashboards(target: TeamTarget): Promise<TeamDashboards> {
-  return teamRequest<TeamDashboards>({ project: target.project, connection: target.connection }, '/dashboards')
+/** The Dashboards tab (crew_dashboards_tab.go): everything the Crew publishes, each with who can open it and, on a
+ * server Crew, its public link. Every line is the server's; the card shows them. */
+export type CrewDashboardsTab = {
+  workspace: string; intro: string; can_change: boolean; on_mac?: boolean; put_online?: boolean; note?: string; filter: string
+  filters: { key: string; label: string; count: number }[]
+  items: { id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; public_link?: PublicLink }[]
+  empty?: { title: string; line: string; ask?: string; example?: string }
+}
+export function crewDashboardsTab(target: TeamTarget, kind: string): Promise<CrewDashboardsTab> {
+  return teamRequest<CrewDashboardsTab>({ project: target.project, connection: target.connection }, `/dashboards-tab?kind=${encodeURIComponent(kind)}`)
 }
 export function teamPublicLink(target: TeamTarget, id: string, mode: PublicLinkMode): Promise<PublicLink> {
   return teamRequest<PublicLink>({ project: target.project, connection: target.connection }, '/dashboards/public-link', 'POST', { dashboard_id: id, mode })
