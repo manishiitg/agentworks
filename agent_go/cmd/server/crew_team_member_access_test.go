@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -258,5 +259,32 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 				t.Fatalf("wrong work canceled: %v", canceled)
 			}
 		})
+	}
+}
+
+// PLAT-856-509 (owner, 6 Nov): everyone in a Crew's Team sees its dashboards, nothing to set; someone outside the Team
+// and an invited person who has not joined do not.
+func TestCrewTeamDashboardsAreForTheTeamOnly(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]},{"id":"invited","role":"editor","products":["work"]},{"id":"outsider","role":"editor","products":["work"]}]}`)
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}, {UserID: "invited", Invited: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	read := func(user string) *httptest.ResponseRecorder {
+		t.Helper()
+		r := adminRequest(http.MethodGet, "/api/crew-teams/team/dashboards", "", &UserClaims{UserID: user, Username: user}, map[string]string{"project": "team"})
+		w := httptest.NewRecorder()
+		f.api.handleCrewTeamDashboards(w, r)
+		return w
+	}
+	for user, canShare := range map[string]string{"owner": `"can_share":true`, "other": `"can_share":false`} {
+		if w := read(user); w.Code != 200 || !strings.Contains(w.Body.String(), canShare) {
+			t.Fatalf("%s: %d %s", user, w.Code, w.Body.String())
+		}
+	}
+	for _, user := range []string{"invited", "outsider"} {
+		if w := read(user); w.Code != http.StatusForbidden {
+			t.Fatalf("%s reached the Team's dashboards: %d %s", user, w.Code, w.Body.String())
+		}
 	}
 }
