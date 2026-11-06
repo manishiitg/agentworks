@@ -15,31 +15,23 @@ import { ServerIdentityIcon } from './ServerIdentityIcon'
 
 type SidebarProject = { id: string; name: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
 
-/** One list of Crews and Goals (owner, 6 Nov): My Crews (mine, and Crews I can build in), then the dashboards other
- * people shared with me, grouped by who shared them with the biggest group open. Team invites come first. The person's
- * own AgentWorks agent is rendered by its network group. */
+/** Crews first, then a flat shared-dashboard list. Each row names its owner once.
+ * The personal AgentWorks agent is rendered by its network group. */
 function ProjectList<T extends SidebarProject>({ projects, render, invites }: { projects: T[]; render: (project: T) => ReactNode; invites: ReactNode[] }) {
   const rest = projects.filter(project => !project.personal_agent)
   const mine = rest.filter(project => project.owned_by_caller === true || (project.owned_by_caller === false && project.mode !== 'run'))
   const dashboards = rest.filter(project => project.owned_by_caller === false && project.mode === 'run')
-  const byOwner = new Map<string, T[]>()
-  for (const project of dashboards) byOwner.set(project.owner_name || 'Others', [...(byOwner.get(project.owner_name || 'Others') || []), project])
-  const owners = [...byOwner.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
   return <>{invites.length > 0 && <div className="mb-2 space-y-1">{invites}</div>}
     {mine.length > 0 && <section aria-label="My Crews" className="mb-3 space-y-1">
       <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">My Crews</h2>
       {mine.map(render)}
     </section>}
+    {rest.filter(project => project.owned_by_caller === undefined).map(render)}
     {dashboards.length > 0 && <section aria-label="Dashboards shared with me" className="mb-3 space-y-1">
-      <h2 className="flex justify-between px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground"><span>Dashboards shared with me</span><span className="font-normal">{dashboards.length}</span></h2>
-      {owners.map(([owner, rows], index) => <details key={owner} open={index === 0} className="group">
-        <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-1 text-xs text-muted-foreground hover:text-foreground">
-          <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-90">▸</span><span className="font-medium text-foreground/80">{owner}</span><span>· {rows.length}</span>
-        </summary>
-        <div className="space-y-1">{rows.map(render)}</div>
-      </details>)}
+      <h2 className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">Shared</h2>
+      {dashboards.map(render)}
     </section>}
-    {rest.filter(project => project.owned_by_caller === undefined).map(render)}</>
+    </>
 }
 
 function useWorkHistory(projects: SidebarProject[]) {
@@ -132,7 +124,6 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     const key = keyFor(project)
     return <Fragment key={key}><SidebarProjectRow {...project}
       selected={project.connection.id === active && project.selected}
-      serverId={project.connection.id} remote={project.connection.id !== 'local'} serverColor={serverColors[project.connection.server]}
       location={project.connection.id === 'local' ? 'On your Mac' : project.connection.name} showLocation={shortcut}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && project.kind === 'crew' && !project.personal_agent ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
       onOpen={() => {
