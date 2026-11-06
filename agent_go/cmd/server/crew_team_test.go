@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -348,6 +349,48 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	sync(c1, d1, b1)
 	sync(c2, d2, b2)
 	read(b2.Root, "sync.md", "owner sends")
+	// PLAT-856-552: a full reconciliation (also used after missed watcher
+	// events) must detect preserved timestamps and propagate execute-only edits.
+	stampPath := filepath.Join(b1.Root, "stamp.md")
+	if err := os.WriteFile(stampPath, []byte("cached bytes A"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fullSync := func(c desktopConnection, dir string, b *crewTeamLocal) {
+		t.Helper()
+		watch := crewTeamWatchFor(dir, b.Root)
+		watch.mu.Lock()
+		watch.full = true
+		watch.mu.Unlock()
+		sync(c, dir, b)
+	}
+	fullSync(c1, d1, b1)
+	sync(c2, d2, b2)
+	stampInfo, err := os.Stat(stampPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(stampPath, []byte("cached bytes B"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chtimes(stampPath, stampInfo.ModTime(), stampInfo.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	fullSync(c1, d1, b1)
+	sync(c2, d2, b2)
+	read(b2.Root, "stamp.md", "cached bytes B")
+	if runtime.GOOS != "windows" {
+		for _, mode := range []os.FileMode{0700, 0600} {
+			if err := os.Chmod(stampPath, mode); err != nil {
+				t.Fatal(err)
+			}
+			fullSync(c1, d1, b1)
+			sync(c2, d2, b2)
+			info, err := os.Stat(filepath.Join(b2.Root, "stamp.md"))
+			if err != nil || (info.Mode()&0111 != 0) != (mode&0111 != 0) {
+				t.Fatalf("execute-only change did not reach member: mode=%v err=%v", mode, err)
+			}
+		}
+	}
 	_ = os.WriteFile(filepath.Join(b2.Root, "sync.md"), []byte("member returns"), 0600)
 	sync(c2, d2, b2)
 	sync(c1, d1, b1)
