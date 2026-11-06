@@ -1833,6 +1833,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	InitAuthSecretCache()
 	services.CacheSecretsKey(string(GetAuthSecret()))
 	ClearAuthSecretFromEnv()
+	if err := loadRevokedSessions(); err != nil {
+		log.Printf("[AUTH] Signed-out sessions not loaded: %v", err)
+	}
 	// Import AUTH_USERS into config/users.json and apply ADMIN_USERS once the
 	// workspace API (which stores that file) answers. Retried briefly because
 	// the workspace server usually starts in parallel with this one.

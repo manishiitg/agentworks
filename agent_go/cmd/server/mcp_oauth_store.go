@@ -143,6 +143,7 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 		`CREATE TABLE IF NOT EXISTS codes (hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, resource TEXT NOT NULL, scopes TEXT NOT NULL, challenge TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT NOT NULL, email TEXT NOT NULL, provider TEXT NOT NULL, expires_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS tokens (hash TEXT PRIMARY KEY, kind TEXT NOT NULL, family_id TEXT NOT NULL, client_id TEXT NOT NULL, resource TEXT NOT NULL, scopes TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT NOT NULL, email TEXT NOT NULL, provider TEXT NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)`,
 		`CREATE INDEX IF NOT EXISTS tokens_family ON tokens(family_id)`,
+		`CREATE TABLE IF NOT EXISTS revoked_sessions (id TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS cli_devices (hash TEXT PRIMARY KEY, verification_hash TEXT UNIQUE NOT NULL, scopes TEXT NOT NULL, status TEXT NOT NULL, expires_at INTEGER NOT NULL, polled_at INTEGER, user_id TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', provider TEXT NOT NULL DEFAULT '')`,
 		`INSERT OR IGNORE INTO clients (id,name,redirect_uris,created_at) VALUES ('agentworks-cli','AgentWorks CLI','[]',0)`,
 	} {

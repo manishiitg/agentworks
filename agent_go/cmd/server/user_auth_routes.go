@@ -607,11 +607,19 @@ func (api *StreamingAPI) handleDesktopConnectExchange(w http.ResponseWriter, r *
 	})
 }
 
-// handleLogout handles user logout
-// Since we use stateless JWTs, logout is handled client-side by clearing the token
+// handleLogout ends the sign-in that made this request (auth_revoked_sessions.go); the person's other sign-ins and
+// their access tokens stay.
 func (api *StreamingAPI) handleLogout(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
 	// Embedded product cookies are stateful and must not survive app logout.
-	revokeServerProductUISessions(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	revokeServerProductUISessions(token)
+	if user := GetUserFromContext(r.Context()); user != nil && user.AccessToken == nil {
+		revokeSession(sessionRevocationID(user, token))
+		log.Printf("[AUTH] Signed out user=%s", logUsernameForUserID(user.UserID))
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "success",
