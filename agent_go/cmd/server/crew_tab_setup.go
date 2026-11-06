@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -132,29 +133,46 @@ type crewTabSetupSource struct {
 	macOn       bool // the owner's Mac answers now (a Mac Crew); a Crew on the server is always online
 }
 
+// crewTabSetupSourceFor never waits (owner, 6 Nov: the agent card got slower). The Team tab is read again on every
+// crew_panel notice, so it serves the last automations list it has and reads a fresh one in the background once that
+// is 15 s old: a Mac Crew's from its owner's Mac over Mac online (the last list stays while the Mac is off), a Crew on
+// the server's from its schedules here. A Crew's first read has no list yet; the next read has it.
 func crewTabSetupSourceFor(ctx context.Context, t crewTeam, twin bool) crewTabSetupSource {
-	src := crewTabSetupSource{}
 	if twin {
-		// A Mac Crew's schedules, watchers and webhooks live on its owner's Mac: read there over Mac online.
-		src.automations, src.macOn = crewMacAutomations(ctx, t)
-		return src
+		pair, ok := crewMacPairFor(t.OwnerID, t.ProjectID)
+		if !ok {
+			return crewTabSetupSource{}
+		}
+		on := crewMacSocketFor(t.OwnerID, t.ProjectID, pair) != nil
+		items := crewTabAutomationsCached(ctx, t.ProjectID, on, func(ctx context.Context) ([]crewTabAutomation, bool) {
+			// The Mac answers its own relay op (runDesktopCrewChat); a Mac from before this keeps the last list.
+			result := callCrewMacPair(ctx, t.OwnerID, t.ProjectID, pair, crewChatCall{Operation: "automations"}, 5*time.Second)
+			var items []crewTabAutomation
+			return items, result.Status == 200 && json.Unmarshal(result.Body, &items) == nil
+		})
+		return crewTabSetupSource{automations: items, macOn: on}
 	}
-	if runningServerAPI != nil {
-		src.automations = runningServerAPI.projectActions.crewAutomationsByTab(ctx, t.OwnerID, t.ProjectID)
+	if runningServerAPI == nil {
+		return crewTabSetupSource{}
 	}
-	return src
+	actions := runningServerAPI.projectActions
+	return crewTabSetupSource{automations: crewTabAutomationsCached(ctx, t.ProjectID, true, func(ctx context.Context) ([]crewTabAutomation, bool) {
+		return actions.crewAutomationsByTab(ctx, t.OwnerID, t.ProjectID), true
+	})}
 }
 
-// setup is one Team tab row's setup. Automations belong to the Crew's owner (they run as the owner), so only the
-// owner's own agents list them; bridge is the owner's agent's AgentBridge setting (nil for anyone else's agent).
-func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person string, inTeam bool, bridge *crewTeamTabBridge) *crewTabSetup {
+// setup is one Team tab row's setup for the viewer. Automations belong to the Crew's owner (they run as the owner), so
+// only the owner's own agents list them; bridge is the owner's agent's AgentBridge setting (nil for anyone else's
+// agent). Shared with the team shows only on the viewer's own agents (owner, 6 Nov): someone else's agent they can see
+// is shared by definition, so its tab shows only what adds something, the globe (public on AgentBridge) and the bolt.
+func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person, viewer string, inTeam bool, bridge *crewTeamTabBridge) *crewTabSetup {
 	out := &crewTabSetup{Automations: []crewTabAutomation{}}
 	switch {
 	case bridge != nil && bridge.Public:
 		out.Reach = "agentbridge"
 		online := !crewRelayTwin(t.ProjectID) || a.Place == "server" || a.PlaceServer || src.macOn
 		out.AgentBridgeLine = map[bool]string{true: "public · online", false: "public · offline"}[online]
-	case t.On && inTeam:
+	case t.On && inTeam && person == viewer:
 		out.Reach = "team"
 	}
 	if person == t.OwnerID {
@@ -169,33 +187,41 @@ func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person string, 
 	return out
 }
 
-type crewMacAutomationsRead struct {
-	at    time.Time
-	items []crewTabAutomation
+type crewTabAutomationsRead struct {
+	mu         sync.Mutex
+	at         time.Time
+	items      []crewTabAutomation
+	refreshing bool
 }
 
-// crewMacAutomationsCache keeps the last list read from each Mac Crew's Mac, so the icons stay while it is off.
-var crewMacAutomationsCache sync.Map
+// crewTabAutomationsCache keeps the last automations list read for each Crew (by project), so the icons stay while a
+// Mac is off and no Team tab read waits for one.
+var crewTabAutomationsCache sync.Map
 
-// crewMacAutomations is the owner's Mac's list (at most 15 s old) and whether that Mac is on now.
-func crewMacAutomations(ctx context.Context, t crewTeam) ([]crewTabAutomation, bool) {
-	pair, ok := crewMacPairFor(t.OwnerID, t.ProjectID)
-	if !ok {
-		return nil, false
+// crewTabAutomationsCached returns the Crew's last list at once and, when it is 15 s old and its source can answer now
+// (a Mac Crew's Mac is on), reads it again in the background, one read at a time per Crew.
+func crewTabAutomationsCached(ctx context.Context, project string, canRead bool, read func(context.Context) ([]crewTabAutomation, bool)) []crewTabAutomation {
+	value, _ := crewTabAutomationsCache.LoadOrStore(project, &crewTabAutomationsRead{})
+	entry := value.(*crewTabAutomationsRead)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if canRead && !entry.refreshing && time.Since(entry.at) >= 15*time.Second {
+		entry.refreshing = true
+		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		go func() {
+			defer cancel()
+			started := time.Now()
+			items, ok := read(bg)
+			entry.mu.Lock()
+			if ok {
+				entry.items = items
+			}
+			entry.at, entry.refreshing = time.Now(), false
+			entry.mu.Unlock()
+			if elapsed := time.Since(started); elapsed > time.Second {
+				log.Printf("[CREW_TAB_SETUP] slow automations read project=%s elapsed_ms=%d ok=%v", project, elapsed.Milliseconds(), ok)
+			}
+		}()
 	}
-	cached, _ := crewMacAutomationsCache.Load(t.ProjectID)
-	last, _ := cached.(crewMacAutomationsRead)
-	on := crewMacSocketFor(t.OwnerID, t.ProjectID, pair) != nil
-	if !on || time.Since(last.at) < 15*time.Second {
-		return last.items, on
-	}
-	// The Mac answers its own relay op (runDesktopCrewChat); a Mac from before this keeps the last list.
-	result := callCrewMacPair(ctx, t.OwnerID, t.ProjectID, pair, crewChatCall{Operation: "automations"}, 5*time.Second)
-	var items []crewTabAutomation
-	if result.Status == 200 && json.Unmarshal(result.Body, &items) == nil {
-		last.items = items
-	}
-	last.at = time.Now()
-	crewMacAutomationsCache.Store(t.ProjectID, last)
-	return last.items, on
+	return entry.items
 }

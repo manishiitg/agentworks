@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -150,9 +151,15 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	started := time.Now()
 	t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) })
 	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, crewTeamTabFor(r.Context(), t, claims.UserID))
+	reply := crewTeamTabFor(r.Context(), t, claims.UserID)
+	// Every screen re-reads this on each crew_panel notice: a slow reply shows here with the Crew and its size.
+	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
+		log.Printf("[CREW_TEAM_TAB] project=%s viewer=%s team_on=%v agents=%d elapsed_ms=%d", t.ProjectID, claims.UserID, t.On, len(reply.Agents), elapsed.Milliseconds())
+	}
+	externalJSON(w, reply)
 }
 
 func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabReply {
@@ -262,7 +269,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if p.UserID == t.OwnerID && mine {
 				row.AgentBridge = bridge
 			}
-			row.Setup = setups.setup(t, a, p.UserID, row.InTeam, bridge)
+			row.Setup = setups.setup(t, a, p.UserID, viewer, row.InTeam, bridge)
 			out.Agents = append(out.Agents, row)
 		}
 	}
@@ -369,7 +376,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 			changes := rule.CanMakeChanges
 			row.CanMakeChanges = &changes
 		}
-		row.Setup = setups.setup(t, a, t.OwnerID, false, row.AgentBridge)
+		row.Setup = setups.setup(t, a, t.OwnerID, t.OwnerID, false, row.AgentBridge)
 		out = append(out, row)
 	}
 	return out
