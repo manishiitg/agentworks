@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, MoreHorizontal } from 'lucide-react'
-import { AgentActionsMenu, AgentHoverCard, useAgentsViewStore, useCrewAgentsStore, type CrewAgentRow } from '../chat/AgentCard'
+import { AgentActionsMenu, AgentHoverCard, useCrewAgentsStore, type CrewAgentRow } from '../chat/AgentCard'
 import { AGENT_KEY, AgentMark, AgentSetupMark, PersonPresenceDot } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
@@ -12,10 +12,9 @@ import { useAuthStore } from '../../stores/useAuthStore'
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
 const openAgent = (tabId: string) => { activateTab(tabId); closeDrawer() }
 
-/** The open Crew's agents in the app's left menu (owner, 4 Nov, "Left menu", the default): one row each with its
+/** The open Crew's agents in the app's left menu: one row each with its
  * name (no icon, owner 5 Nov) and a mark at the end only when needed, the agent card on hover, and "…" to manage it. "+" is in the top line. */
 export function SidebarCrewAgents({ projectId }: { projectId: string }) {
-  const view = useAgentsViewStore(state => state.view)
   const crew = useCrewAgentsStore()
   const activeTabId = useChatStore(state => state.activeTabId)
   const [showHidden, setShowHidden] = useState(false)
@@ -26,7 +25,7 @@ export function SidebarCrewAgents({ projectId }: { projectId: string }) {
   const me = useAuthStore(state => state.user?.id)
   const tabs = useChatStore(state => state.chatTabs)
   const teamPeople = (team?.team.on ? team.people : []).filter(person => person.user_id !== me && person.note !== 'invited')
-  if (view === 'tabs' || crew.projectId !== projectId || !crew.agents.length) return null
+  if (crew.projectId !== projectId || !crew.agents.length) return null
   // Hidden agents (unpinned, as on the tab bar) sit at the end; the open one always stays in view.
   const shown = crew.agents.filter(agent => agent.pinned !== false || agent.tabId === activeTabId)
   const hidden = crew.agents.filter(agent => agent.pinned === false && agent.tabId !== activeTabId)

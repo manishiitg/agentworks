@@ -12,14 +12,13 @@ import { routeView } from '../../utils/productRoutes'
 import { CREW_PRODUCT } from './projectProduct'
 import type { WorkSession } from './workSessions'
 import * as sessionRestore from '../../utils/sessionRestore'
-import { useAgentsViewStore } from '../../components/chat/AgentCard'
 
 vi.mock('../../stores/useChatStore', async original => ({ ...await original<typeof import('../../stores/useChatStore')>(), waitForChatStoreHydration: async () => {} }))
 
 vi.mock('../../utils/chatDeliveryTelemetry', async original => ({ ...await original<typeof import('../../utils/chatDeliveryTelemetry')>(), recordTabReorderTelemetry: vi.fn() }))
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-afterEach(() => useProductNavigationToolbarStore.setState({ sidebarWidth: 0 }))
+afterEach(() => useProductNavigationToolbarStore.setState({ sidebarWidth: 0, sidebarSettingsTarget: null }))
 // RunsOnPicker loads the provider manifest in an effect. This runner has no working
 // localStorage, so the real store's late write became an unhandled rejection after the
 // test ended. A store with the manifest already loaded starts no request at all.
@@ -54,8 +53,8 @@ describe('fresh deep links keep their view', () => {
 })
 
 describe('Crew native tab dragging', () => {
-  // The tab strip exists only when the person chose Tabs; Left menu is the default.
-  beforeEach(() => useAgentsViewStore.getState().set('tabs'))
+  // The full tab strip is shown while the sidebar is closed.
+  beforeEach(() => useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: null }))
   it('opens a newly imported chat deep link in an already mounted Crew', async () => {
     // PLAT-746-336: Create selects the Crew before the native import completes.
     const main = { tabId: 'main', sessionId: 'session-main', name: 'Main', config: {}, metadata: {
