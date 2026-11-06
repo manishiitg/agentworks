@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	agentEvents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -155,13 +157,10 @@ func (s *SchedulerService) appendCrewAutomationMessage(ctx context.Context, sctx
 	}
 	for _, message := range previous {
 		if message["automation_receipt_id"] == receiptID {
-			return nil
+			return s.appendCrewAutomationEvent(sctx, target, receiptID, message)
 		}
 	}
 	role := llmtypes.ChatMessageTypeAI
-	if status == "started" {
-		role = llmtypes.ChatMessageTypeHuman
-	}
 	text := fmt.Sprintf("%s · %s", sctx.Schedule.Name, status)
 	if detail != "" {
 		text += "\n\n" + detail
@@ -203,8 +202,41 @@ func (s *SchedulerService) appendCrewAutomationMessage(ctx context.Context, sctx
 	if err := updatePersistedChatHistoryIndexWithCount(sctx.OwnerUserID, target.SessionID, "agent_profile", []llmtypes.MessageContent{message}, total, runtime, file, 0, now, nil); err != nil {
 		return err
 	}
+	if err := s.appendCrewAutomationEvent(sctx, target, receiptID, event); err != nil {
+		return err
+	}
 	publishSessionsChanged()
 	return nil
+}
+
+// Receipts are whole assistant messages, not foreground turns. Persist them in
+// the canonical journal as well as the conversation JSON, with a stable ID so
+// retrying an interrupted append cannot duplicate a result (PLAT-746-336).
+func (s *SchedulerService) appendCrewAutomationEvent(sctx *ScheduleContext, target *ProductConversationRecord, receiptID string, message map[string]interface{}) error {
+	if s.api.eventStore == nil {
+		return fmt.Errorf("automation chat event journal is unavailable")
+	}
+	encoded, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+	var display builderConversationMessage
+	if err := json.Unmarshal(encoded, &display); err != nil {
+		return err
+	}
+	now := time.Now()
+	store := s.api.eventStore
+	store.SetSessionOwner(target.SessionID, sctx.OwnerUserID)
+	if err := store.SetSessionPersistenceClass(target.SessionID, storeEvents.SessionPersistenceInteractiveChat); err != nil {
+		return err
+	}
+	return store.AddEventChecked(target.SessionID, storeEvents.Event{
+		ID: "automation-receipt:" + receiptID, Type: "streaming_chunk", SessionID: target.SessionID, Timestamp: now,
+		Data: agentEvents.NewAgentEvent(&agentEvents.StreamingChunkEvent{
+			BaseEventData: agentEvents.BaseEventData{Timestamp: now, Metadata: map[string]interface{}{"automation": message["automation"]}},
+			Source:        "transcript", Content: builderConversationMessageText(display),
+		}),
+	})
 }
 
 func crewExecutableChatChoices(manifest *WorkflowManifest) []ScheduleRunDestination {

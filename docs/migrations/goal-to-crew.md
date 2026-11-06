@@ -21,6 +21,7 @@ Resolve any reported access, input or data conflict before applying. In particul
 - Destination owner, owners (including joined Team members) and sharing audience must match. Invitations alone grant no access. Old editors, source Team policies, individually shared destination agents and paired/synced destination Crews need an explicit mapping first.
 - An old enabled group batch must become one chosen input preset per entry. Function input schemas must map unambiguously to workflow inputs.
 - Saved Python must use `agentworks_db` for managed database access. Code, reports or database objects directly using measurement tables must use the Crew measurement API instead.
+- Code no longer sits beside runtime data. Review helpers that derive data paths from `WORKFLOW_CODE_ROOT`, `__file__` or their parents. Use runtime-provided data paths instead (for a database-enabled step, the managed `DB_PATH` identifies its database folder). The inspector catches direct `WORKFLOW_CODE_ROOT` parent lookups, but does not prove arbitrary path calculations are correct; execute the saved code after conversion.
 - Existing named outcomes must not be collapsed into one goal; multiple such outcomes need their own mapping first.
 - Source, goal or measurement ID collisions need resolution. Measurements are never silently merged or renumbered.
 - Human transcripts need their original owner and personal conversation registry, including prior sessions. Orphan human chats require repair. Automated run/bot transcripts stay with their run history.

@@ -382,7 +382,7 @@ func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {
 	// server-side setup binds the session's authenticated caller (server A latency-report, 2026-10-07).
 	stepTools, stepExecutors, stepCategories := createKnowledgebaseTools("admin", session, workspace)
 	_ = stepTools
-	bindKnowledgebaseStepIdentity(knowledgeTestCaller(t.Context(), "admin"), session, stepExecutors, stepCategories)
+	bindWorkflowStepIdentity(knowledgeTestCaller(t.Context(), "admin"), session, stepExecutors, stepCategories)
 	stepRead := stepExecutors["brain_read"].(func(context.Context, map[string]interface{}) (string, error))
 	if out, err := stepRead(executor.WithSessionID(t.Context(), session), args); err != nil || !strings.Contains(out, "identity-bound-marker") {
 		t.Fatalf("a bound step session must read as its owner: %s %v", out, err)

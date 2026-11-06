@@ -250,4 +250,18 @@ func TestSchedulePresetClearIsDifferentFromOmission(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"enabled_group_names":null}`), &options); err == nil {
 		t.Fatal("old batch selector silently became a default invocation")
 	}
+	// PLAT-746-336: the external step proxy serializes its own query before
+	// forwarding to /api/query. An absent selector must not become retired null.
+	query := QueryRequest{ExecutionOptions: &ExecutionOptions{WorkshopMode: "workshop", Inputs: map[string]string{"topic": "example"}}}
+	encoded, err := json.Marshal(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded QueryRequest
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("server-generated invocation rejected: %v", err)
+	}
+	if decoded.ExecutionOptions.Inputs["topic"] != "example" {
+		t.Fatal("invocation inputs lost during forwarding")
+	}
 }
