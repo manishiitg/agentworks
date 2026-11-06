@@ -119,7 +119,56 @@ func (s Store) turnPaths(ctx context.Context) (dirs, loose []string, err error) 
 	return
 }
 
-// turnRepos reads each checkout's changed paths. A checkout Git cannot read
+// turnCandidatePaths uses index/path metadata rather than status, whose refresh
+// can hash the same uncommitted file on every reply. A touched-but-unchanged file
+// may remain a candidate; the private stat index decides whether bytes changed.
+func (s Store) turnCandidatePaths(ctx context.Context, dir, head string) ([]string, error) {
+	paths := map[string]bool{}
+	rawPaths := func(args ...string) error {
+		out, err := gitIn(ctx, s.Root, dir, args...).Output()
+		if err != nil {
+			return err
+		}
+		rows := bytes.Split(out, []byte{0})
+		for i := 0; i < len(rows) && len(rows[i]) > 0; i += 2 {
+			if rows[i][0] != ':' || i+1 >= len(rows) || len(rows[i+1]) == 0 {
+				return errors.New("invalid Git path metadata")
+			}
+			paths[string(rows[i+1])] = true
+		}
+		return nil
+	}
+	if err := rawPaths("diff-files", "--raw", "--no-renames", "--no-ext-diff", "--no-textconv", "-z", "--"); err != nil {
+		return nil, err
+	}
+	if head != "" {
+		if err := rawPaths("diff-index", "--cached", "--raw", "--no-renames", "--no-ext-diff", "--no-textconv", "-z", head, "--"); err != nil {
+			return nil, err
+		}
+	} else {
+		out, err := gitIn(ctx, s.Root, dir, "ls-files", "-z").Output()
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range bytes.Split(out, []byte{0}) {
+			if len(p) > 0 {
+				paths[string(p)] = true
+			}
+		}
+	}
+	out, err := gitIn(ctx, s.Root, dir, "ls-files", "--others", "--exclude-standard", "-z").Output()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range bytes.Split(out, []byte{0}) {
+		if len(p) > 0 {
+			paths[string(p)] = true
+		}
+	}
+	return turnKeys(paths), nil
+}
+
+// turnRepos reads each checkout's candidate paths. A checkout Git cannot read
 // (a broken .git folder, an index the server account cannot open) is skipped
 // and named in the log, so one bad checkout never fails the whole reply.
 func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurnRepo, map[string]bool, error) {
@@ -137,12 +186,12 @@ func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurn
 			skipped[rel] = true
 			log.Printf("[SNAPSHOT] checkout_skipped dir=%q reason=%q", rel, gitReason(err))
 		}
-		raw, err := gitIn(ctx, s.Root, dir, "status", "--porcelain=v1", "-z", "--untracked-files=all").Output()
+		head, _ := gitIn(ctx, s.Root, dir, "rev-parse", "--verify", "HEAD").Output()
+		dirty, err := s.turnCandidatePaths(ctx, dir, strings.TrimSpace(string(head)))
 		if err != nil {
 			skip(err)
 			continue
 		}
-		head, _ := gitIn(ctx, s.Root, dir, "rev-parse", "--verify", "HEAD").Output()
 		branch, _ := gitIn(ctx, s.Root, dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
 		remote, _ := gitIn(ctx, s.Root, dir, "config", "--get", "remote.origin.url").Output()
 		gitdir, err := gitIn(ctx, s.Root, dir, "rev-parse", "--absolute-git-dir").Output()
@@ -155,21 +204,9 @@ func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurn
 			skip(err)
 			continue
 		}
-		repo := gitTurnRepo{Head: strings.TrimSpace(string(head)), Label: CheckoutLabel{ID: identity, Root: rel, Name: filepath.Base(dir), Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}}
+		repo := gitTurnRepo{Head: strings.TrimSpace(string(head)), Dirty: dirty, Label: CheckoutLabel{ID: identity, Root: rel, Name: filepath.Base(dir), Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}}
 		if repo.Label.Branch == "" && len(repo.Head) >= 8 {
 			repo.Label.Branch = "detached@" + repo.Head[:8]
-		}
-		rows := bytes.Split(raw, []byte{0})
-		for i := 0; i < len(rows); i++ {
-			row := rows[i]
-			if len(row) < 4 {
-				continue
-			}
-			repo.Dirty = append(repo.Dirty, string(row[3:]))
-			if bytes.ContainsAny(row[:2], "RC") && i+1 < len(rows) {
-				i++
-				repo.Dirty = append(repo.Dirty, string(rows[i]))
-			}
 		}
 		out[rel] = repo
 	}
