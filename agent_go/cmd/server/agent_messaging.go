@@ -1223,7 +1223,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		if claims == nil {
 			claims = &UserClaims{UserID: userID}
 		}
-		out, err := listAgentDirectory(ctx, claims)
+		out, err := listAgentDirectory(withDirectoryThisCrew(ctx, parentReq.SelectedFolder), claims)
 		if err != nil {
 			return "", err
 		}
