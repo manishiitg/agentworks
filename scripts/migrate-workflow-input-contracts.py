@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import uuid
 
 
 def has_schema_reference(value):
@@ -18,12 +19,67 @@ def has_schema_reference(value):
     return isinstance(value, list) and any(has_schema_reference(child) for child in value)
 
 
-def convert(root, agent_binary=None):
+def convert_saved_groups(root, split_schedule_groups=False):
+    """PLAT-746-362: migrate saved callers, without a legacy runtime reader."""
     changes, errors = {}, []
+    for filename, key in [('schedules.json', 'schedules'), ('functions.json', 'functions'), ('webhooks.json', 'webhooks')]:
+        for file in sorted(root.rglob(filename)):
+            if any(part in {'runs', '.relay_releases', '.git', 'migration-backups'} for part in file.relative_to(root).parts):
+                continue
+            manifest = file.parent / 'workflow.json'
+            if not manifest.is_file() or json.loads(manifest.read_text()).get('kind') == 'relay':
+                continue
+            document = json.loads(file.read_text())
+            definitions = file.parent / 'variables/variables.json'
+            presets = json.loads(definitions.read_text()).get('groups', []) if definitions.exists() else []
+            preset_names = [p['name'] for p in presets]
+            entries, changed = [], False
+            for record in document.get(key, []):
+                values = record.get('input') or {}
+                if 'groups' not in values:
+                    entries.append(record)
+                    continue
+                changed = True
+                groups = values.pop('groups')
+                action = record.get('action', {}).get('type')
+                if action == 'message':
+                    # Message executors consume messages, never preset batches.
+                    entries.append(record)
+                    continue
+                if action != 'run' or not isinstance(groups, list) or not groups or not all(isinstance(g, str) and g for g in groups):
+                    errors.append(f'{file.relative_to(root)}: saved groups need an explicit run/preset decision')
+                    continue
+                if values.get('input_preset') or any(preset_names.count(g) != 1 for g in groups) or len(set(groups)) != len(groups):
+                    errors.append(f'{file.relative_to(root)}: conflicting or unavailable saved presets')
+                    continue
+                if len(groups) > 1 and (key != 'schedules' or not split_schedule_groups):
+                    errors.append(f'{file.relative_to(root)}: batch needs an owner decision; --split-schedule-groups preserves one timer per preset')
+                    continue
+                if len(groups) > 1 and (not record.get('id') or record.get('when', {}).get('dates')):
+                    errors.append(f'{file.relative_to(root)}: split requires a timer identity and no dated input overrides')
+                    continue
+                for index, group in enumerate(groups):
+                    entry = copy.deepcopy(record)
+                    entry.setdefault('input', {})['input_preset'] = group
+                    if index:
+                        entry['id'] = str(uuid.uuid5(uuid.NAMESPACE_URL, f'agentworks:input-preset:{record["id"]}:{group}'))
+                        entry['name'] = f'{record.get("name", "Scheduled run")} · {group}'
+                    entries.append(entry)
+            if changed:
+                ids = [e.get('id') for e in entries if e.get('id')]
+                if len(ids) != len(set(ids)):
+                    errors.append(f'{file.relative_to(root)}: split timer identity already exists')
+                document[key] = entries
+                changes[file] = document
+    return changes, errors
+
+
+def convert(root, agent_binary=None, split_schedule_groups=False):
+    changes, errors = convert_saved_groups(root, split_schedule_groups)
     for file in sorted(root.rglob('functions.json')):
         if any(part in {'runs', '.relay_releases', '.git'} for part in file.relative_to(root).parts):
             continue
-        document = json.loads(file.read_text())
+        document = changes.get(file, json.loads(file.read_text()))
         definitions_file = file.parent / 'variables' / 'variables.json'
         workflow_file = file.parent / 'workflow.json'
         if not workflow_file.exists() or json.loads(workflow_file.read_text()).get('kind') == 'relay':
@@ -87,6 +143,35 @@ def convert(root, agent_binary=None):
                 errors.append(f'{file.relative_to(root)}: could not run input validation; use --agent-binary with the current refactor build')
         changes[file] = document
         changes[definitions_file] = definitions
+    # Every converted run caller must pass the actual input contract before
+    # --apply can restore an enabled timer. Message-only records do not consume
+    # workflow inputs; leave unrelated definitions (including credentials) alone.
+    for folder in sorted({f.parent for f in changes if f.name in {'schedules.json', 'functions.json', 'webhooks.json'}}):
+        callers = []
+        for filename, key in [('schedules.json', 'schedules'), ('functions.json', 'functions'), ('webhooks.json', 'webhooks')]:
+            file = folder / filename
+            if file not in changes:
+                continue
+            for index, record in enumerate(changes[file].get(key, [])):
+                if record.get('action', {}).get('type') == 'run':
+                    callers.append(record if key == 'functions' else
+                                   {'name': f'migration-{key}-{index}', 'action': {'type': 'run'}, 'input': record.get('input', {})})
+        if not callers:
+            continue
+        definitions_file = folder / 'variables/variables.json'
+        if not agent_binary or not definitions_file.is_file():
+            errors.append(f'{folder.relative_to(root)}: converted run callers need definitions and --agent-binary validation')
+            continue
+        definitions = changes.get(definitions_file, json.loads(definitions_file.read_text()))
+        try:
+            checked = subprocess.run([str(agent_binary), 'server', 'validate-workflow-input-migration'],
+                                     input=json.dumps({'definitions': definitions, 'functions': callers}),
+                                     text=True, capture_output=True, timeout=30)
+            if checked.returncode:
+                diagnostic = next((line for line in checked.stderr.splitlines() if line.startswith('Error:')), 'input validation failed')
+                errors.append(f'{folder.relative_to(root)}: {diagnostic}')
+        except (OSError, subprocess.TimeoutExpired):
+            errors.append(f'{folder.relative_to(root)}: could not validate converted run callers')
     return changes, errors
 
 
@@ -95,9 +180,11 @@ def main():
     parser.add_argument('--root', type=Path, required=True, help='Workspace docs directory to convert')
     parser.add_argument('--agent-binary', type=Path, required=True, help='Current refactor agent binary for offline validation')
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--split-schedule-groups', action='store_true',
+                        help='After the owner chooses this, keep one timer per saved preset, preserving timing, caller and enabled state')
     args = parser.parse_args()
     root = args.root.resolve(strict=True)
-    changes, errors = convert(root, args.agent_binary.resolve())
+    changes, errors = convert(root, args.agent_binary.resolve(), args.split_schedule_groups)
     if errors:
         for error in errors:
             print(error)
