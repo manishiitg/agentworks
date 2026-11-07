@@ -1506,18 +1506,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveScriptedScriptToLearnings(
 	stepID := step.GetID()
 	ctx := context.Background()
 
-	// Check if main.py exists in the code/ subfolder via workspace API.
-	// stepExecutionAbsPath = /app/workspace-docs/{workspace}/{runs}/execution/step-N
-	// Convert to relative path for workspace API: strip docsRoot + workspacePath prefix.
-	docsRoot := GetPromptDocsRoot()
+	// File APIs address the workflow key even when runtime lives in Crew storage.
 	workspacePath := hcpo.GetWorkspacePath()
-	wsPrefix := workflowAbsPath(workspacePath) + "/"
-	stepExecRelPath := strings.TrimPrefix(stepExecutionAbsPath, wsPrefix)
-	if stepExecRelPath == stepExecutionAbsPath {
-		// Couldn't strip — fall back to relative path extraction from absolute
-		stepExecRelPath = strings.TrimPrefix(stepExecutionAbsPath, docsRoot+"/")
-		stepExecRelPath = strings.TrimPrefix(stepExecRelPath, workspacePath+"/")
-	}
+	stepExecRelPath := strings.TrimPrefix(workflowAPIPath(workspacePath, stepExecutionAbsPath), workspacePath+"/")
 	codeRelPath := stepExecRelPath + "/code"
 	mainPyRelPath := codeRelPath + "/main.py"
 

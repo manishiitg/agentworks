@@ -549,10 +549,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) emitScriptedExecutionEvent(
 	}
 
 	// Read script content for UI display. Use workspace-relative path derived from scriptPath.
-	docsRoot := GetPromptDocsRoot()
 	scriptContent := ""
 	if scriptPath != "" {
-		scriptRelPath := strings.TrimPrefix(scriptPath, docsRoot+"/")
+		scriptRelPath := workflowAPIPath(hcpo.GetWorkspacePath(), scriptPath)
 		scriptRelPath = strings.TrimPrefix(scriptRelPath, hcpo.GetWorkspacePath()+"/")
 		if hcpo.crewAutomationCodeRoot != "" && strings.HasPrefix(scriptPath, hcpo.crewAutomationCodeRoot+string(filepath.Separator)) {
 			// Authored Crew source has a physical .agentworks path. Read it

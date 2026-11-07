@@ -297,7 +297,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) formatContextDependenciesWithContent(
 			sb.WriteString(fmt.Sprintf("**File**: `%s`\n", absPath))
 			continue
 		}
-		relPath := strings.TrimPrefix(absPath, docsRoot+"/")
+		relPath := workflowAPIPath(hcpo.GetWorkspacePath(), absPath)
 		content, readErr := hcpo.ReadWorkspaceFile(ctx, relPath)
 		if readErr != nil {
 			return "", fmt.Errorf(
@@ -392,7 +392,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveDependencyPathsWithWorkspace(
 			if !filepath.IsAbs(candidate) {
 				continue
 			}
-			relPath := strings.TrimPrefix(candidate, docsRoot+"/")
+			relPath := workflowAPIPath(hcpo.GetWorkspacePath(), candidate)
 			if relPath == candidate {
 				continue
 			}
