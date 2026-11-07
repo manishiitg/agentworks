@@ -405,6 +405,19 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 			if e := env.api.recheckAgentMessageAdmission(ctx, conversation, message); e == nil {
 				t.Fatal("queued message still admitted to removed co-owner")
 			}
+			// 7 Nov: a Team member's message from their Mac was dropped as "ownership changed"; they are no co-owner.
+			if e := writeCrewTeam(crewTeam{ProjectID: "beta", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "other-pair"}}}); e != nil {
+				t.Fatal(e)
+			}
+			if e := env.api.recheckAgentMessageAdmission(ctx, conversation, message); e != nil {
+				t.Fatalf("a Team member on their Mac was refused: %v", e)
+			}
+			if e := writeCrewTeam(crewTeam{ProjectID: "beta", OwnerID: "owner", On: true}); e != nil {
+				t.Fatal(e)
+			}
+			if e := env.api.recheckAgentMessageAdmission(ctx, conversation, message); e == nil {
+				t.Fatal("a member removed from the Team was still admitted")
+			}
 		}
 	}
 	if !checked {

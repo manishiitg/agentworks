@@ -142,6 +142,11 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			if err != nil || !userAllowedProduct(&UserClaims{UserID: actor}, profile.Product) {
 				return fmt.Errorf("message participant no longer has Crew access")
 			}
+			// A Team member on their Mac is an endpoint of a Crew they don't own (owner, 6 Nov: any two people in a Team can
+			// message each other's agents). Their Team record is the access, checked again at each delivery.
+			if crewTeamMemberOnMac(e.ID, e.UserID) {
+				continue
+			}
 			binding, err := resolveCrewProjectBinding(ctx, actor, profile, e.ID, "")
 			if err != nil || (binding.OwnerID != e.UserID && !(binding.OwnedByCaller && isSideChatConversationKey(e.ChatKey) && crewIsCoOwner(binding.Binding.WorkspacePath, e.UserID))) || canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath)) != canonicalCrewWorkspaceRoot(e.Path) {
 				return fmt.Errorf("message Crew is unavailable or ownership changed")
