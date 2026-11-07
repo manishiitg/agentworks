@@ -77,7 +77,7 @@ func submitCrewSuggestion(ctx context.Context, claims *UserClaims, crewPath, ses
 		Source: "user_suggestion", Priority: "medium", Question: "Review suggestion: " + suggestion,
 		Context: strings.TrimSpace(reason), Evidence: strings.TrimSpace(about), CreatedBy: actor,
 		CreatedByKind: "user", CreatedVia: "suggestion_tool", SessionID: sessionID,
-		Options: []ReportHumanInputOption{{ID: "approve", Title: "Accept suggestion", Description: "You can make this change in the Crew's builder chat."}, {ID: "reject", Title: "Decline suggestion"}}, AllowFreeText: true,
+		Options: []ReportHumanInputOption{{ID: "approve", Title: "Accept suggestion", Description: "You can make this change in the Crew's chat."}, {ID: "reject", Title: "Decline suggestion"}}, AllowFreeText: true,
 		ApplyContract: ReportHumanInputApplyContract{Mode: "no_change"},
 	})
 }
