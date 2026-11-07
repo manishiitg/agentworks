@@ -50,12 +50,9 @@ loadData when the person wants it available in the static snapshot too.
 
 ## Refresh through Publish automation
 
-Every Publish pass, including after-run auto-publish, calls dashboard action=export_static
-again before deploying. After every run is one Goal choice, `publish.after_runs`,
-off for a new Goal. Preserve its existing choice when configuring a destination.
-The Publish panel, settings action=update in MCP or chat change
-the same setting. An explicit Publish now action works with automatic publishing
-off; do not create a second publisher or a new schedule. Source change checks
+Every Publish pass calls dashboard action=export_static again before deploying.
+Publishing does not run by itself after a run; it runs when the person asks for it.
+Do not create a second publisher or a new schedule on your own. Source change checks
 include managed dashboard revisions and db/code files; generated publish/exports
 folders are excluded. Do not redeploy an older export when current data changed.
 Record the actual destination URL and current source hash in publish/status.json
@@ -396,7 +393,7 @@ others.
 **Record the source hash from the backend.** Read `current_source_hash` from the
 workflow Publish status and save it as `last_source_hash` after a successful
 deploy. It covers report/db/code sources, including managed TSX and JSON data;
-`publish/exports` is outside the hash. The existing after-run check compares these
+`publish/exports` is outside the hash. A later Publish compares these
 hashes to decide whether a new Publish is needed. A changed source does not turn
 a successful deployment into a failure; record destination health truthfully.
 

@@ -11,82 +11,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-// After-run options run backup and publish after ordinary Goal runs.
-// Notifications use the configured channels and recipients. Backup and publish
-// start a short provider turn only when their source files have changed.
-
-// afterRunOptions selects configured housekeeping after every full Goal run.
-type afterRunOptions struct {
-	Backup, Publish bool
-}
-
-func (m *WorkflowManifest) afterRunOptions() afterRunOptions {
-	if m == nil || m.Kind == "relay" {
-		return afterRunOptions{}
-	}
-	return afterRunOptions{Backup: m.Backup != nil && m.Backup.AfterRuns,
-		Publish: m.Publish != nil && m.Publish.AfterRuns}
-}
-
-// afterRunWork is what the code check found for backup and publish.
-type afterRunWork struct {
-	Backup, Publish bool
-	Notes           []string
-}
-
-// afterRunWorkDue decides in code whether backup and publish have anything
-// to do. Unchanged sources need no agent.
-func (s *SchedulerService) afterRunWorkDue(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, options afterRunOptions) afterRunWork {
-	var work afterRunWork
-	if options.Backup && (manifest == nil || manifest.Backup == nil || !manifest.Backup.Enabled) {
-		work.Notes = append(work.Notes, "backup skipped: backup is not set up")
-	} else if options.Backup {
-		// The managed SQLite snapshot is part of the backup source hash; make
-		// it current first so a database-only change counts.
-		_ = s.prepareWorkflowDatabaseBackupSnapshot(ctx, sctx)
-		hash, _ := computeWorkflowBackupSourceHash(ctx, sctx.WorkspacePath)
-		status, _, _ := readWorkflowBackupStatus(ctx, sctx.WorkspacePath)
-		if hash != "" && status != nil && strings.TrimSpace(status.LastSourceHash) == hash {
-			work.Notes = append(work.Notes, "backup skipped: nothing changed since the last backup")
-		} else {
-			work.Backup = true
-		}
-	}
-	if options.Publish {
-		switch {
-		case manifest == nil || manifest.Publish == nil || !manifest.Publish.Enabled:
-			work.Notes = append(work.Notes, "publish skipped: publishing is not set up")
-		default:
-			hash := computeWorkflowPublishSourceHash(ctx, sctx.WorkspacePath)
-			status, _, _ := readWorkflowPublishStatus(ctx, sctx.WorkspacePath)
-			if hash != "" && status != nil && strings.TrimSpace(status.LastSourceHash) == hash {
-				work.Notes = append(work.Notes, "publish skipped: the published report is current")
-			} else {
-				work.Publish = true
-			}
-		}
-	}
-	return work
-}
-
-// runAfterRunOptions runs a scheduled run's after-run options. It never
-// changes the run's recorded result; a failed housekeeping turn makes the
-// scheduled job partial, as the basic finalizer did.
-func (s *SchedulerService) runAfterRunOptions(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, status, errMsg, runFolder, sessionID, runID string, duration time.Duration) afterRunResult {
-	options := manifest.afterRunOptions()
-	result := afterRunNotRun
-	if strings.TrimSpace(runFolder) != "" && (options.Backup || options.Publish) {
-		work := s.afterRunWorkDue(ctx, sctx, manifest, options)
-		for _, note := range work.Notes {
-			s.sessionLogf(sctx, sessionID, "[AFTER RUN] %s", note)
-		}
-		if work.Backup || work.Publish {
-			sctx.AfterRunBackup, sctx.AfterRunPublish = work.Backup, work.Publish
-			result = s.runAfterRunHousekeeping(ctx, sctx, status, runFolder, sessionID, runID)
-		}
-	}
-	return result
-}
+// Run outcomes: a code-only summary goes to the configured channels and wakes
+// the linked Crew chat. No agent turn runs after a run.
 
 // afterRunNotificationArgs builds the code-only run summary.
 func afterRunNotificationArgs(workflowName, scheduleName, status, errMsg string, duration time.Duration, external bool) map[string]interface{} {
@@ -228,9 +154,9 @@ const manualAfterRunScheduleID = "manual-after-run"
 
 var manualAfterRunInflight sync.Map // workspace path -> true
 
-// runManualAfterRunOptions applies the Goal's settings after a
-// full run started from a chat. Scheduled runs are handled by the scheduler.
-func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, status, sessionID string) {
+// reportManualRunOutcome sends the outcome summary for a full run started from
+// a chat. Scheduled runs are reported by the scheduler.
+func (s *SchedulerService) reportManualRunOutcome(workspacePath, runFolder, status, sessionID string) {
 	if s == nil || s.api == nil || strings.TrimSpace(workspacePath) == "" {
 		return
 	}
@@ -242,7 +168,6 @@ func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, st
 	if err != nil || !found {
 		return
 	}
-	options := manifest.afterRunOptions()
 	if _, busy := manualAfterRunInflight.LoadOrStore(workspacePath, true); busy {
 		return
 	}
@@ -250,8 +175,6 @@ func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, st
 
 	sched := WorkflowSchedule{
 		ID:           manualAfterRunScheduleID,
-		Name:         "After-run options",
-		Description:  "Backup and publish after a manual run",
 		ScheduleType: "cron",
 		Timezone:     "UTC",
 		Mode:         "workshop",
@@ -268,47 +191,5 @@ func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, st
 	default:
 		scheduleStatus = "error"
 	}
-	if options.Backup || options.Publish {
-		work := s.afterRunWorkDue(ctx, sctx, manifest, options)
-		if work.Backup || work.Publish {
-			sctx.AfterRunBackup, sctx.AfterRunPublish = work.Backup, work.Publish
-			result := s.runAfterRunHousekeeping(ctx, sctx, scheduleStatus, runFolder, "", runFolder)
-			if result == afterRunStopped {
-				scheduleStatus = "stopped"
-			} else if result == afterRunPartial && scheduleStatus == "success" {
-				scheduleStatus = "partial"
-			}
-		}
-	}
-	sctx.Schedule.Name = ""
 	_ = s.sendAfterRunNotification(ctx, sctx, manifest, runFolder, scheduleStatus, "", 0)
-}
-
-func (s *SchedulerService) runAfterRunNow(workspacePath, option string) (bool, []string, error) {
-	if s == nil || s.api == nil {
-		return false, nil, fmt.Errorf("the scheduler is not running")
-	}
-	ctx := context.Background()
-	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil || !found {
-		return false, nil, fmt.Errorf("workflow unavailable")
-	}
-	sched := WorkflowSchedule{ID: manualAfterRunScheduleID, Name: "After-run options", Description: "Backup or publish started now",
-		ScheduleType: "cron", Timezone: "UTC", Mode: "workshop", WorkshopMode: "workshop"}
-	sctx := buildScheduleContext(workspacePath, manifest, sched)
-	sctx.TriggerSource = "manual"
-	sctx.ProducedRunEvidence = true
-	work := s.afterRunWorkDue(ctx, sctx, manifest, afterRunOptions{Backup: option == "backup", Publish: option == "publish"})
-	if !work.Backup && !work.Publish {
-		return false, work.Notes, nil
-	}
-	if _, busy := manualAfterRunInflight.LoadOrStore(workspacePath, true); busy {
-		return false, work.Notes, fmt.Errorf("a backup or publish pass is already running for this workflow")
-	}
-	sctx.AfterRunBackup, sctx.AfterRunPublish = work.Backup, work.Publish
-	go func() {
-		defer manualAfterRunInflight.Delete(workspacePath)
-		s.runAfterRunHousekeeping(context.Background(), sctx, "success", "", "", "")
-	}()
-	return true, work.Notes, nil
 }

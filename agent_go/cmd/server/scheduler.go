@@ -25,7 +25,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
 
 const scheduledBackgroundNoPollingInstruction = "After launching background workflow or step work, do not babysit it with sleep/list_executions/query_step polling loops. Use at most one immediate query_step if you need to confirm the execution_id/status, then stop; [AUTO-NOTIFICATION] messages will resume the conversation when background work completes."
@@ -56,11 +55,7 @@ type ScheduleContext struct {
 	// are invisible to the tab that asked for the run. Empty for cron.
 	OriginSessionID string
 
-	// AfterRunBackup and AfterRunPublish select the after-run housekeeping
-	// turn's actions (after_run.go): only those with something to do.
-	AfterRunBackup  bool
-	AfterRunPublish bool
-	CalendarItem    *CalendarScheduleItem
+	CalendarItem *CalendarScheduleItem
 	// ScheduledFor is the durable identity of a cron/calendar occurrence. It is
 	// empty for a manual trigger, whose actual trigger time is its identity.
 	ScheduledFor time.Time
@@ -205,11 +200,9 @@ type dueRegisteredJob struct {
 // the current wall-clock time. This approach is immune to macOS App Nap and sleep/wake
 // issues that wedge monotonic-clock-based timers (like gocron).
 type SchedulerService struct {
-	// The provider-turn boundary; automatic choices and freshness stay in the scheduler.
-	housekeepingTurn func(context.Context, map[string]interface{}, string, string) error
-	api              *StreamingAPI
-	mu               sync.Mutex
-	jobs             map[string]*registeredJob // scoped schedule key → job
+	api  *StreamingAPI
+	mu   sync.Mutex
+	jobs map[string]*registeredJob // scoped schedule key → job
 	// scheduleFingerprints tracks the persisted config loaded for each scoped
 	// schedule, including disabled and calendar schedules with no future items.
 	scheduleFingerprints map[string]string
@@ -286,9 +279,9 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 	workflows := s.discoverWorkflows(ctx)
 	scheduleLogf("[SCHEDULER] Discovered %d workflows with manifests", len(workflows))
 
-	// After-run options for full runs started from a chat (after_run.go).
+	// Outcome notification for full runs started from a chat (run_outcome.go).
 	stepworkflow.AfterWorkflowRunHook = func(workspacePath, runFolder, status, sessionID string) {
-		s.runManualAfterRunOptions(workspacePath, runFolder, status, sessionID)
+		s.reportManualRunOutcome(workspacePath, runFolder, status, sessionID)
 	}
 
 	// Reconcile the legacy/UI schedule-runs.json projection from the durable
@@ -2392,7 +2385,6 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		state.LastSessionID = sessionID
 	})
 
-	housekeepingResult := afterRunNotRun
 	if err := UpdateScheduleRun(persistenceCtx, sctx.WorkspacePath, runID, status, errMsg, &durationMs, runFolder, sessionID); err != nil {
 		s.sessionLogf(sctx, sessionID, "[SCHEDULER] Failed to update run entry for %s: %v", schedID, err)
 	}
@@ -2404,17 +2396,8 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 
 	migrationRequired := errors.Is(execErr, errWorkflowContractMigrationRequired)
 	if migrationRequired {
-		s.sessionLogf(sctx, sessionID, "[AFTER RUN] skipped for %s: this workflow requires a manual contract migration, so it did not run and there is no evidence to review", schedID)
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] %s did not run: this workflow requires a manual contract migration", schedID)
 	}
-	if status != scheduleRunStatusWaitingForCapacity && !migrationRequired && !userInterrupted {
-		if manifest, found, mErr := ReadWorkflowManifest(ctx, sctx.WorkspacePath); mErr == nil && found {
-			if sctx.WebhookInput == nil {
-				// The housekeeping turn, when needed, resumes the run's own chat.
-				housekeepingResult = s.runAfterRunOptions(ctx, sctx, manifest, status, errMsg, runFolder, sessionID, runID, time.Since(startTime))
-			}
-		}
-	}
-
 	// Now the whole scheduled job, including post-run side effects, is done.
 	terminalState := schedulerstate.StateCompleted
 	if status == scheduleRunStatusWaitingForCapacity {
@@ -2423,9 +2406,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		terminalState = schedulerstate.StateStopped
 	} else if status == "error" {
 		terminalState = schedulerstate.StateFailed
-	} else if housekeepingResult == afterRunStopped {
-		terminalState = schedulerstate.StateStopped
-	} else if status == "partial" || housekeepingResult == afterRunPartial {
+	} else if status == "partial" {
 		terminalState = schedulerstate.StatePartial
 	}
 	overallStatus := status
@@ -2438,11 +2419,11 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	} else if terminalState == schedulerstate.StatePartial {
 		overallStatus = "partial"
 		if overallError == "" {
-			overallError = "After-run housekeeping completed partially"
+			overallError = "The run finished with warnings"
 		}
 	}
 	// Both the informational Needs you status and linked Crew wake-up use
-	// the final outcome, including a failure of after-run housekeeping.
+	// the final outcome.
 	if sctx.WebhookInput == nil && overallStatus != scheduleRunStatusWaitingForCapacity && !userInterrupted {
 		if manifest, found, err := ReadWorkflowManifest(persistenceCtx, sctx.WorkspacePath); err == nil && found {
 			s.reportScheduledRunOutcome(persistenceCtx, sctx, manifest, runID, overallStatus, overallError, time.Since(startTime))
@@ -2480,105 +2461,6 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	return sessionID, execErr
 }
 
-type afterRunResult string
-
-const (
-	afterRunNotRun    afterRunResult = "not_run"
-	afterRunCompleted afterRunResult = "completed"
-	afterRunPartial   afterRunResult = "partial"
-	afterRunStopped   afterRunResult = "stopped"
-)
-
-func (s *SchedulerService) runAfterRunHousekeeping(ctx context.Context, sctx *ScheduleContext, runStatus, runFolder, runSessionID, scheduleRunID string) (result afterRunResult) {
-	ctx = costActivityContext(ctx, sctx.OwnerUserID, "schedule", "")
-	if sctx.WebhookInput != nil || strings.EqualFold(sctx.Schedule.ScheduleType, "webhook") || sctx.CrewExecutable != nil && sctx.CrewExecutable.Kind == "script" {
-		return afterRunNotRun
-	}
-
-	result = afterRunPartial
-	sessionID := strings.TrimSpace(runSessionID)
-	if sessionID == "" {
-		sessionID = s.newScheduleSessionID(sctx)
-	}
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping panic: %v", recovered)
-		}
-	}()
-	contractupgrade.Revoke(sessionID)
-	defer contractupgrade.Revoke(sessionID)
-
-	s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping for %s backup=%t publish=%t", sctx.Schedule.ID, sctx.AfterRunBackup, sctx.AfterRunPublish)
-	for _, step := range afterRunHousekeepingSteps(scheduleRunID, sctx.AfterRunBackup, sctx.AfterRunPublish) {
-		req := cloneStringInterfaceMap(s.buildWorkshopRequest(ctx, sctx, scheduleRunID))
-
-		req["query"] = fmt.Sprintf("AFTER-RUN CONTEXT. workspace_path=%q evidence_status=%q run_folder=%q.\n\n", sctx.WorkspacePath, runStatus, runFolder) + step.query + s.prepareWorkflowDatabaseBackupSnapshot(ctx, sctx)
-		runner := s.housekeepingTurn
-		if runner == nil {
-			runner = func(ctx context.Context, request map[string]interface{}, session, user string) error {
-				return s.api.startSessionInternal(ctx, request, session, user, nil)
-			}
-		}
-		if err := runner(ctx, req, sessionID, sctx.OwnerUserID); err != nil {
-			s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping unfinished: %v", err)
-			if errors.Is(err, context.Canceled) || errors.Is(err, errWorkshopSequenceInterrupted) {
-				return afterRunStopped
-			}
-			return afterRunPartial
-		}
-	}
-
-	s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping completed for %s", sctx.Schedule.ID)
-	return afterRunCompleted
-}
-
-// prepareWorkflowDatabaseBackupSnapshot makes the protected live SQLite DB
-// backupable before the agent begins the ordinary Git/object-store backup.
-// This is deliberately deterministic: an agent never needs shell access to
-// db.sqlite, its WAL, or its SHM file, and a snapshot failure cannot suppress
-// the later publish or notification operations.
-func (s *SchedulerService) prepareWorkflowDatabaseBackupSnapshot(ctx context.Context, sctx *ScheduleContext) string {
-	if sctx == nil {
-		return ""
-	}
-	manifest, exists, err := ReadWorkflowManifest(ctx, sctx.WorkspacePath)
-	if err != nil {
-		s.logf(sctx, "[BACKUP] could not inspect workflow backup config before finalization: %v", err)
-		return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend could not inspect workflow backup config: %v. Keep backup status truthful, but continue independently through Publish; the platform records the run outcome.", err)
-	}
-	if !exists || !workflowBackupRequiresDatabaseSnapshot(manifest.Backup) {
-		return ""
-	}
-
-	client := workspace.NewClient(getWorkspaceAPIURL())
-	dbPath := filepath.ToSlash(filepath.Join(sctx.WorkspacePath, "db", "db.sqlite"))
-	result, err := client.CreateWorkflowDatabaseBackupSnapshot(ctx, workspace.CreateWorkflowDatabaseBackupSnapshotParams{DBPath: dbPath})
-	if err != nil {
-		s.logf(sctx, "[BACKUP] managed workflow database snapshot failed: %v", err)
-		return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend attempted the required WAL-aware snapshot before this turn, but it failed: %v. Mark the database portion of Backup partial/failed as appropriate; do not try to read or stage live db/db.sqlite. Publish and run-outcome recording are independent and must still run.", err)
-	}
-	s.logf(sctx, "[BACKUP] managed workflow database snapshot ready at %s", result.SnapshotPath)
-	return fmt.Sprintf("\n\nMANAGED DATABASE SNAPSHOT. The backend already created and integrity-checked the current SQLite backup image at %q (sha256 %s, %d bytes). Stage that snapshot and its checksum at %q for every destination covering db-sqlite; never read or stage live db/db.sqlite. Publish and run-outcome recording are independent of the Backup result.", result.SnapshotPath, result.SHA256, result.SizeBytes, result.ChecksumPath)
-}
-
-func workflowBackupRequiresDatabaseSnapshot(config *WorkflowBackupConfig) bool {
-	if config == nil || !config.Enabled {
-		return false
-	}
-	for _, destination := range config.Destinations {
-		for _, covered := range destination.Covers {
-			if strings.EqualFold(strings.TrimSpace(covered), "db-sqlite") {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-type afterRunStep struct {
-	label, query string
-}
-
 type workflowNotificationContentInstructions struct {
 	runSummary           string
 	runSummaryChannels   []string
@@ -2612,21 +2494,6 @@ func notificationRecipients(config *WorkflowNotificationConfig, run bool) []stri
 		return append([]string(nil), config.RunSummaryRecipients...)
 	}
 	return nil
-}
-
-func afterRunHousekeepingSteps(runID string, backup, publish bool) []afterRunStep {
-	var actions []string
-	if backup {
-		actions = append(actions, "(backup) run the configured source-hash-gated backup following backup-strategy.md (read_skill builder-reference references/backup-strategy.md), directly in this turn, and report its actual result in the run chat")
-	}
-	if publish {
-		actions = append(actions, "(publish) independently of whether backup succeeded, publish workflow.json's publish.targets (the run's own report) following publish-strategy.md (read_skill builder-reference references/publish-strategy.md). Call export_dashboard_static afresh for each selected dashboard, then deploy its whole returned folder to the saved destination; do not redeploy an older snapshot. Report its actual result in the run chat. Never suppress a valid report publish merely because backup was partial or failed")
-	}
-	return []afterRunStep{{label: "finalize", query: fmt.Sprintf(
-		"AFTER-RUN HOUSEKEEPING. run_id=%q. This run's after-run options asked for this, and the platform found something to do. Do not review or change the workflow. The platform sends its notification itself.\n\n"+
-			"Do only these, in order: %s. Report what actually happened, including any failure and what could not be verified, in the run chat. Then stop.",
-		runID, strings.Join(actions, "; "),
-	)}}
 }
 
 func compactScheduleMessages(messages []string) []string {

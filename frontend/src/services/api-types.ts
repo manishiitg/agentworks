@@ -2433,7 +2433,6 @@ export interface PlanChangelogResponse {
 export interface WorkflowBackupConfig {
   enabled: boolean
   mode?: string
-  after_runs?: boolean
   destinations?: WorkflowBackupDestination[]
   notes?: string
 }
@@ -2502,7 +2501,6 @@ export interface WorkflowPublishConfig {
   targets?: Array<string | { id?: string; artifact?: string; [k: string]: unknown }>
   dashboard_mode?: string     // "snapshot"
   url?: string
-  after_runs?: boolean
   destinations?: WorkflowPublishDestination[]
   notes?: string
 }
@@ -3129,8 +3127,6 @@ export interface CreateWorkflowManifestRequest {
 }
 
 export interface UpdateWorkflowManifestRequest {
-  backup?: { after_runs: boolean }
-  publish?: { after_runs: boolean }
   workspace_path: string
   relay_output_step_id?: string
   relay_durability?: 'dbos' | ''

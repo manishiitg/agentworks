@@ -1193,24 +1193,6 @@ func TestPostRunMonitorPrependsArtifactPurityUpgradeForVersion120Manifest(t *tes
 	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.20"}, "1.0.20")
 }
 
-func TestWorkflowBackupRequiresDatabaseSnapshotForConfiguredCoverage(t *testing.T) {
-	config := &WorkflowBackupConfig{Enabled: true, AfterRuns: false,
-		Destinations: []WorkflowBackupDestination{{ID: "config-repo", Covers: []string{"workflow", "db-sqlite"}}}}
-	// Explicit Backup now still needs its snapshot when automatic Backup is off.
-	if !workflowBackupRequiresDatabaseSnapshot(config) {
-		t.Fatal("configured db-sqlite backup did not require a managed snapshot")
-	}
-	config.Destinations[0].Covers = []string{"workflow"}
-	if workflowBackupRequiresDatabaseSnapshot(config) {
-		t.Fatal("backup without db-sqlite coverage requested a database snapshot")
-	}
-	config.Enabled = false
-	config.Destinations[0].Covers = []string{"db-sqlite"}
-	if workflowBackupRequiresDatabaseSnapshot(config) {
-		t.Fatal("disabled backup requested a database snapshot")
-	}
-}
-
 // A Pulse lifecycle turn is tagged and elevated to Workshop while retaining the
 // workflow's Builder llm_config. background_llm is applied by the workshop to the
 // background review agents the tagged turn launches.
@@ -1734,36 +1716,6 @@ func TestRunFolderNameSetSkipsEmptyNames(t *testing.T) {
 		t.Fatalf("unexpected set: %#v", set)
 	}
 }
-
-// housekeepingQueryByLabel selects a stage by label so these assertions survive
-// new stages being added to the final sequence.
-func housekeepingQueryByLabel(t *testing.T, steps []afterRunStep, label string) string {
-	t.Helper()
-	for _, st := range steps {
-		if st.label == label {
-			return st.query
-		}
-	}
-	t.Fatalf("no %q stage in final steps", label)
-	return ""
-}
-
-// The dashboard stage used to say "mark command=dashboard done" without naming
-// a tool, unlike the finalize stage right below it, which spells out
-// record_pulse_result(command=...) explicitly. On 2026-08-04 latency-report's
-// dashboard stage rendered builder/improve.html correctly, then reached for
-// mutate_workflow_db to write pulse_final_command_state directly — a
-// reasonable guess for "mark this row," and the wrong one: that table is
-// framework-owned bookkeeping, mutate_workflow_db correctly denied a session
-// without db_access=read-write, and the stage ended without ever calling the
-// sanctioned command API. reconcilePulseDashboardCommand then marked the
-// whole stage failed even though the render was correct.
-//
-// This test is deliberately independent of
-// TestPostRunMonitorUsesDynamicModulesAndSingleFinalizer, whose detailed
-// per-stage assertions are currently unreachable dead code after a premature
-// return partway through that function (a concurrent, unrelated in-progress
-// edit — see the go vet "unreachable code" flag at this file's line 787).
 
 func TestWorkshopRunProducedEvidence(t *testing.T) {
 	start := time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC)

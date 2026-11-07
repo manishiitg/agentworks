@@ -3740,21 +3740,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if content, err := ctrl.ReadWorkspaceFile(ctx, "workflow.json"); err == nil {
 				var manifest struct {
 					Kind   string `json:"kind"`
-					Backup struct {
-						AfterRuns bool `json:"after_runs"`
-					} `json:"backup"`
-					Publish struct {
-						AfterRuns bool `json:"after_runs"`
-					} `json:"publish"`
 					Access *struct {
 						AllowedKBWriters []string `json:"allowed_kb_writers"`
 					} `json:"access"`
 					CrewAttachments []workflowtypes.CrewAttachment `json:"crew_attachments"`
 				}
 				if json.Unmarshal([]byte(content), &manifest) == nil {
-					if manifest.Kind != "relay" {
-						sb.WriteString(fmt.Sprintf("\n### After every run\nBackup: %v. Publish: %v. Change with update_workflow_config backup/publish.after_runs; configured destinations stay unchanged.\n", manifest.Backup.AfterRuns, manifest.Publish.AfterRuns))
-					}
 					sb.WriteString("\n### KB write grants (this workflow's own knowledgebase)\n")
 					if manifest.Access == nil || len(manifest.Access.AllowedKBWriters) == 0 {
 						sb.WriteString("No other workflow may write into this workflow's knowledgebase/notes/. Grant with update_workflow_config(kb_write_grants=[...]).\n")
@@ -4151,8 +4142,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"description": "Email addresses the workflow run summary is sent TO, stored in workflow.json capabilities.notifications.run_summary_recipients and applied automatically to every run_summary send. This is the positive 'send here' list — set it when the user names who should receive this workflow's run emails. Omit to leave unchanged; pass an empty array to stop summary emails. Never blocks anything: the account-wide denylist are still applied on top, so a blocked address listed here is skipped rather than unblocked.",
 				},
 
-				"backup":  map[string]interface{}{"type": "object", "additionalProperties": false, "description": "Goal Backup settings. after_runs runs configured Backup after every full run; off by default. Destinations are unchanged.", "properties": map[string]interface{}{"after_runs": map[string]interface{}{"type": "boolean"}}},
-				"publish": map[string]interface{}{"type": "object", "additionalProperties": false, "description": "Goal Publish settings. after_runs refreshes configured publishing after every full run; off by default. Destinations are unchanged.", "properties": map[string]interface{}{"after_runs": map[string]interface{}{"type": "boolean"}}},
 				"notification_gmail_connection_id": map[string]interface{}{
 					"type":        "string",
 					"description": "One enabled Gmail connection ID to send this workflow's workflow summary delivery emails FROM for configured team run messages. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
@@ -4752,66 +4741,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					}
 				}
 				logger.Info(fmt.Sprintf("Updated workflow notification instructions: run_configured=%v run_recipients=%d", strings.TrimSpace(runInstructions) != "", len(runRecipients)))
-			}
-
-			// Automatic housekeeping uses the same Goal settings for every full run.
-			afterRunUpdates := map[string]bool{}
-			for _, option := range []string{"backup", "publish"} {
-				raw, provided := args[option]
-				if !provided {
-					continue
-				}
-				opts, ok := raw.(map[string]interface{})
-				if !ok {
-					return "Error: " + option + " must contain after_runs as true or false.", nil
-				}
-				enabled, ok := opts["after_runs"].(bool)
-				if !ok {
-					return "Error: " + option + ".after_runs must be true or false.", nil
-				}
-				afterRunUpdates[option] = enabled
-			}
-			if len(afterRunUpdates) > 0 {
-				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if readErr != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
-				}
-				var manifest map[string]interface{}
-				if parseErr := json.Unmarshal([]byte(content), &manifest); parseErr != nil {
-					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
-				}
-				if manifest["kind"] == "relay" {
-					return "After every run is a Goal setting. Use this Flow's existing run actions instead.", nil
-				}
-				for option, enabled := range afterRunUpdates {
-					config, ok := manifest[option].(map[string]interface{})
-					if !ok && manifest[option] != nil {
-						return "Error: correct the existing " + option + " configuration before changing After every run.", nil
-					}
-					if config == nil {
-						config = map[string]interface{}{}
-					}
-					config["after_runs"] = enabled
-					manifest[option] = config
-				}
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
-				if marshalErr != nil {
-					return fmt.Sprintf("Failed to marshal workflow.json: %v", marshalErr), nil
-				}
-				if writeErr := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); writeErr != nil {
-					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
-				}
-				anyChanged = true
-				for _, option := range []string{"backup", "publish"} {
-					if enabled, ok := afterRunUpdates[option]; ok {
-						sb.WriteString(fmt.Sprintf("\n%s after every run: %v\n", option, enabled))
-						config, _ := manifest[option].(map[string]interface{})
-						if enabled && config["enabled"] != true {
-							sb.WriteString("Set up the destination in its panel or ask me to set it up.\n")
-						}
-					}
-				}
 			}
 
 			// --- Browser mode ---

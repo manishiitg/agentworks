@@ -205,7 +205,6 @@ type WorkflowManifest struct {
 type WorkflowBackupConfig struct {
 	Enabled      bool                        `json:"enabled"`
 	Mode         string                      `json:"mode,omitempty"` // "agent" (default)
-	AfterRuns    bool                        `json:"after_runs"`
 	Destinations []WorkflowBackupDestination `json:"destinations,omitempty"`
 	Notes        string                      `json:"notes,omitempty"`
 }
@@ -237,7 +236,6 @@ type WorkflowPublishConfig struct {
 	Targets       []json.RawMessage            `json:"targets,omitempty"`        // report targets, as strings or objects
 	DashboardMode string                       `json:"dashboard_mode,omitempty"` // "snapshot" (static HTML)
 	URL           string                       `json:"url,omitempty"`            // last published URL (agent-written, mirror of status)
-	AfterRuns     bool                         `json:"after_runs"`
 	Destinations  []WorkflowPublishDestination `json:"destinations,omitempty"`
 	Notes         string                       `json:"notes,omitempty"`
 }
