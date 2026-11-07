@@ -32,6 +32,9 @@ func TestMovedWorkflowStampChecksUseDefinitionsCodeAndRuntimeRoots(t *testing.T)
 	if err := os.MkdirAll(filepath.Join(docs, "Crew/example"), 0700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(docs, crewroot.PrivateDirectory, "crew"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	project := crewroot.Record{Product: "work", Folder: "example", ID: "crew", Owner: "owner"}
 	raw, _ := json.Marshal(map[string]interface{}{"projects": map[string]crewroot.Record{"work/example": project}})
 	write(filepath.Join(state, "ownership/projects.json"), string(raw))

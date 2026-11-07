@@ -32,15 +32,6 @@ func TestDescriptionNamedResourcesAreReadableWithoutInlining(t *testing.T) {
 	write("skills/job-selection/references/selection.md", "Skip jobs under $500.\n")
 	write("knowledgebase/notes/positioning.md", strings.Repeat("x", 5000))
 	write("skills/job-selection/SKILL.md", "not named, never attached")
-	// An unrelated binding-store failure is not evidence that this unmoved
-	// workflow lost its files (PLAT-746-396).
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	if err := os.MkdirAll(filepath.Join(os.Getenv("AGENTWORKS_STATE_ROOT"), "ownership"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(os.Getenv("AGENTWORKS_STATE_ROOT"), "ownership/crew-executables"), []byte("not a directory"), 0600); err != nil {
-		t.Fatal(err)
-	}
 
 	previous := BrainNoteReader
 	BrainNoteReader = func(_ context.Context, _, note string) (string, error) {
@@ -108,4 +99,20 @@ func TestDescriptionNamedResourcesAreReadableWithoutInlining(t *testing.T) {
 	if got := hcpo.referencedGuidesForStep(context.Background(), "pick", "Pick one job using skills/job-selection/references/selection.md."); got != "" {
 		t.Fatalf("description without Inputs/Guides changed the prompt: %q", got)
 	}
+	t.Run("binding discovery failure preserves an unmoved guide", func(t *testing.T) {
+		// PLAT-746-396: discovery errors are not evidence that an unmoved
+		// workflow's guide disappeared. KB cutover rules remain independent.
+		state := t.TempDir()
+		t.Setenv("AGENTWORKS_STATE_ROOT", state)
+		if err := os.MkdirAll(filepath.Join(state, "ownership"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(state, "ownership/crew-executables"), []byte("not a directory"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		got := descriptionReferenceReadPaths(workflow, "## Guides\nskills/job-selection/references/selection.md")
+		if !slices.Contains(got, workflow+"/skills/job-selection/references/selection.md") {
+			t.Fatalf("unmoved guide dropped after discovery error: %v", got)
+		}
+	})
 }

@@ -15,6 +15,7 @@ import (
 )
 
 func TestDirectExecutionLoadsCodeLayoutWithoutBuilder(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	for _, version := range []int{0, 1, 99} {
 		t.Run(fmt.Sprint(version), func(t *testing.T) {
 			base := newFakeWorkspaceAPIWithContent(t, map[string]string{
