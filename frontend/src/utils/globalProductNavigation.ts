@@ -14,7 +14,8 @@ const normalizedPath = (value?: string | null): string => (value || '')
   .replace(/\\/g, '/')
   .replace(/^\/+|\/+$/g, '')
 
-export function isWorkProductSession(session: Pick<ActiveSessionInfo, 'session_id' | 'workspace_path'>): boolean {
+export function isWorkProductSession(session: Pick<ActiveSessionInfo, 'session_id' | 'workspace_path' | 'crew_project_id'>): boolean {
+  if (session.crew_project_id) return true
   if (session.session_id.startsWith('work:project:')) return true
   const workspace = normalizedPath(session.workspace_path)
   return /^Crew\/[^/]+(?:\/|$)/i.test(workspace)
@@ -29,9 +30,10 @@ export function workProjectIdForTab(tab?: Pick<ChatTab, 'metadata'> | null): str
 }
 
 export function workProjectIdForSession(
-  session: Pick<ActiveSessionInfo, 'session_id' | 'preset_query_id'>,
+  session: Pick<ActiveSessionInfo, 'session_id' | 'preset_query_id' | 'crew_project_id'>,
   tab?: Pick<ChatTab, 'metadata'> | null,
 ): string | null {
+  if (session.crew_project_id) return session.crew_project_id
   const fromTab = workProjectIdForTab(tab)
   if (fromTab) return fromTab
   const preset = session.preset_query_id?.trim()
@@ -85,6 +87,11 @@ async function openGlobalActivitySessionInner(
 ): Promise<void> {
   const scheduled = isScheduledSession({ sessionId: session.session_id, triggeredBy: session.triggered_by })
   const workflowLane = (session.agent_mode || '').toLowerCase().includes('workflow')
+  if (session.crew_project_id && workflowLane) {
+    const { openWorkAutomationRunChat } = await import('../products/work/workAutomationRunRestore')
+    await openWorkAutomationRunChat(session, { title: options.title })
+    return
+  }
   // Crew trigger/schedule runs are work-product sessions on an isolated
   // conversation with no workflow preset. They open their own read-only run
   // tab — the crew's interactive chat never shows a trigger transcript, so

@@ -131,8 +131,14 @@ describe('openWorkAutomationRunChat', () => {
     expect(hydrateExecutionConversation).not.toHaveBeenCalled()
   })
 
-  it('opens the trigger run in its own read-only tab beside the crew chat', async () => {
-    await openWorkAutomationRunChat(runSession(), { title: 'News Monitor · news monitor trigger' })
+  it.each([false, true])('opens its own read-only run beside the Crew chat (moved workflow: %s)', async moved => {
+    const session = runSession(moved ? {
+      crew_project_id: project.id,
+      preset_query_id: 'workflow-id',
+      workspace_path: 'Workflow/daily',
+      agent_mode: 'workflow_phase',
+    } : {})
+    await openWorkAutomationRunChat(session, { title: 'News Monitor · news monitor trigger' })
 
     expect(useProductSurfaceStore.getState().productSurface).toBe('work')
     expect(useProductSurfaceStore.getState().selectedWorkProjectId).toBe('news-id')
@@ -156,9 +162,16 @@ describe('openWorkAutomationRunChat', () => {
 
     expect(hydrateExecutionConversation).toHaveBeenCalledWith(
       'product-af49f7f6-151d-4f94-9578-acd2c155e1a0',
-      'Chats/Work/projects/news-monitor',
+      session.workspace_path,
     )
     expect(useChatStore.getState().activeTabId).toBe(runTab?.tabId)
+  })
+
+  it('does not guess another Crew when the server destination is unavailable', async () => {
+    await expect(openWorkAutomationRunChat(runSession({ crew_project_id: 'missing-crew' })))
+      .rejects.toThrow('This Crew project is no longer available.')
+    expect(resolveAgentProfileConversation).not.toHaveBeenCalled()
+    expect(hydrateExecutionConversation).not.toHaveBeenCalled()
   })
 
   it('matches a physical project workspace against a public session workspace', async () => {
