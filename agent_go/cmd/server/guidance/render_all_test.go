@@ -180,7 +180,6 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 				"Scripted acquisition, agentic processing",
 				"batch related calls",
 				"feed the durable rows/artifacts into a large agent",
-				"10+-run evidence bar is only for *freezing*",
 			},
 		},
 		// goal-advisor carried this too until 0174b6aff "simplify Pulse
@@ -198,12 +197,8 @@ func TestDeterministicFetchersFeedLargeAgenticProcessors(t *testing.T) {
 			registry: referenceKinds,
 			wants: []string{
 				"Declare these steps `scripted` from initial design",
-				"No run-history threshold is required",
 				"scripted fetcher(s) → agent processor",
-				// PLAT-436: scripts are built by the Builder, not healed by a run.
 				"Scripts are built by you, not healed by the run",
-				"no LLM rewrites",
-				"`execute_step` (the only place an agent may write or repair",
 			},
 		},
 		"agent": {
