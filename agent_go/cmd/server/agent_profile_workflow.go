@@ -184,6 +184,13 @@ func (api *StreamingAPI) agentProfileWorkflowSession(ctx context.Context, resolv
 		sessionID,
 		runtimeWorkspacePath,
 	}, ":")
+	// Parallel tool calls share one first-use runtime, not two independent
+	// controllers that could both launch the same step.
+	release, err := lockCrewExecution(ctx, workshopKey)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	var workshopSession *todo_creation_human.WorkshopChatSession
 	if cached, ok := api.workshopChatSessions.Load(workshopKey); ok {
 		workshopSession, _ = cached.(*todo_creation_human.WorkshopChatSession)

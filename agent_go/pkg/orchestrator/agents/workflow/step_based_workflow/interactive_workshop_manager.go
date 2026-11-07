@@ -452,6 +452,7 @@ type TmuxLookupFunc func(ctx context.Context, mainSessionID, stepID string) (tmu
 
 // WorkshopStepExecution tracks a single background step execution
 type WorkshopStepExecution struct {
+	RunFolder               string
 	ID                      string
 	StepID                  string
 	AgentSessionID          string // correlation ID used to tag events for this execution
@@ -478,6 +479,7 @@ type WorkshopExecutionStart struct {
 
 // WorkshopStepSnapshot is a read-only copy of a tracked execution for external callers.
 type WorkshopStepSnapshot struct {
+	RunFolder          string
 	ID                 string
 	StepID             string
 	AgentSessionID     string
@@ -499,6 +501,7 @@ func (e *WorkshopStepExecution) Snapshot() WorkshopStepSnapshot {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	snapshot := WorkshopStepSnapshot{
+		RunFolder:      e.RunFolder,
 		ID:             e.ID,
 		StepID:         e.StepID,
 		AgentSessionID: e.AgentSessionID,
@@ -1938,7 +1941,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"description": "The step ID from plan.json or orphan_steps[] (e.g., 'step-create-report', 'validate-environment') or positional reference (e.g., '1', 'step-1', 'step1')",
 				},
 				"inputs":     map[string]interface{}{"type": "object", "description": "Explicit workflow input values overriding defaults and saved inputs.", "additionalProperties": map[string]interface{}{"type": "string"}},
-				"run_folder": map[string]interface{}{"type": "string", "description": "Existing run identity for continuing its steps; omit for a new run."},
+				"run_folder": map[string]interface{}{"type": "string", "description": "An existing run to continue. Crew chats use their current run when omitted, or start one if none is selected. Use new_run=true to start another."},
 				"new_run":    map[string]interface{}{"type": "boolean", "description": "Start a new run instead of continuing this chat's current step run. Cannot be combined with run_folder."},
 				"input_preset": map[string]interface{}{
 					"type":        "string",
@@ -1987,6 +1990,30 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if _, supplied := args["group_name"]; supplied {
 				return "", fmt.Errorf(RetiredWorkflowGroupsMessage)
 			}
+			// Resolve flexible step ID (handles "1", "step-1", "step1" etc.)
+			plan, err := iwm.controller.ReadCurrentPlan(ctx)
+			if err != nil {
+				return fmt.Sprintf("Failed to load plan: %v. Cannot resolve step ID.", err), nil
+			}
+			resolvedID, resolveErr := resolveWorkshopStepID(plan, stepID)
+			if resolveErr != nil {
+				return resolveErr.Error(), nil
+			}
+			stepID = resolvedID
+
+			// Guard against duplicate concurrent runs of the SAME step. If an
+			// execution for this step is already running (e.g. the agent
+			// re-issued execute_step, or any double-trigger), return the live
+			// execution instead of forking a second concurrent run. Two runs of
+			// one step race on shared state (db/ rows, the browser/CDP session)
+			// and can double-act — e.g. post the same tweet twice.
+			iwm.executeStartMu.Lock()
+			defer iwm.executeStartMu.Unlock()
+			if existing, found, _ := iwm.stepRegistry.LatestSnapshotForStep(stepID); found && existing.Status == WorkshopStepRunning {
+				logger.Info(fmt.Sprintf("⏭️ Workshop: execute_step(%q) skipped — already running (execution_id=%q)", stepID, existing.ID))
+				return fmt.Sprintf("Step %q is ALREADY RUNNING (execution_id: %q, run_folder: %q) — not starting a duplicate. You'll be notified when it completes. End the current agent turn instead of polling; use query_step(step_id=%q) only if the user explicitly requests a live status check, or stop that execution first if the user wants a fresh run.", stepID, existing.ID, existing.RunFolder, stepID), nil
+			}
+
 			// Extract group_name and other options
 			groupNameRaw, _ := args["input_preset"]
 			groupName, _ := groupNameRaw.(string)
@@ -2200,29 +2227,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				ScriptParametersSet: scriptParametersSet,
 			}
 
-			// Resolve flexible step ID (handles "1", "step-1", "step1" etc.)
-			plan, err := iwm.controller.ReadCurrentPlan(ctx)
-			if err != nil {
-				return fmt.Sprintf("Failed to load plan: %v. Cannot resolve step ID.", err), nil
-			}
-			resolvedID, resolveErr := resolveWorkshopStepID(plan, stepID)
-			if resolveErr != nil {
-				return resolveErr.Error(), nil
-			}
-			stepID = resolvedID
-
-			// Guard against duplicate concurrent runs of the SAME step. If an
-			// execution for this step is already running (e.g. the agent
-			// re-issued execute_step, or any double-trigger), return the live
-			// execution instead of forking a second concurrent run. Two runs of
-			// one step race on shared state (db/ rows, the browser/CDP session)
-			// and can double-act — e.g. post the same tweet twice.
-			iwm.executeStartMu.Lock()
-			defer iwm.executeStartMu.Unlock()
-			if existing, found, _ := iwm.stepRegistry.LatestSnapshotForStep(stepID); found && existing.Status == WorkshopStepRunning {
-				logger.Info(fmt.Sprintf("⏭️ Workshop: execute_step(%q) skipped — already running (execution_id=%q)", stepID, existing.ID))
-				return fmt.Sprintf("Step %q is ALREADY RUNNING (execution_id: %q) — not starting a duplicate. You'll be notified when it completes. End the current agent turn instead of polling; use query_step(step_id=%q) only if the user explicitly requests a live status check, or stop that execution first if the user wants a fresh run. (Concurrent runs of the same step race on shared state and can double-act.)", stepID, existing.ID, stepID), nil
-			}
 			if iwm.controller.isRelayExecution() {
 				for _, snap := range iwm.stepRegistry.ListSnapshots() {
 					if snap.Status == WorkshopStepRunning {
@@ -2243,7 +2247,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				for _, dep := range ResolveVariablesArray(resolvedStep.GetContextDependencies(), resolvedInputs) {
 					for _, candidate := range collectAllSteps(plan.Steps) {
 						if candidate.Step.GetID() != stepID && contextOutputMatchesDependency(candidate.Step.GetContextOutput().String(), dep) {
-							return "", fmt.Errorf("step %s needs earlier outputs from %s; run the earlier steps first, or choose their existing run with run_folder", stepID, candidate.Step.GetID())
+							return "", fmt.Errorf("step %q needs earlier outputs from %q; run that earlier step first, or choose a previous run with its results", resolvedStep.GetTitle(), candidate.Step.GetTitle())
 						}
 					}
 				}
@@ -2283,6 +2287,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			execCtx = context.WithValue(execCtx, orchestrator_events.IsSubAgentContextKey, true)
 
 			exec := &WorkshopStepExecution{
+				RunFolder:      runFolder,
 				ID:             execID,
 				StepID:         stepID,
 				AgentSessionID: agentSessionID,
@@ -2498,22 +2503,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				groupInfo = fmt.Sprintf(", group=%q", groupName)
 			}
 			logger.Info(fmt.Sprintf("🚀 Workshop: step %q started in background, execution_id=%q%s, fast_path_only=%v", stepID, execID, groupInfo, fastPathOnly))
-			// Surface the resolved run_folder/group explicitly. group_name is
-			// optional on this tool and silently falls back to the first
-			// enabled/manifest group when omitted — without this line, an
-			// omitted or mistyped group_name silently lands the run in a
-			// folder the caller never confirmed, discoverable only by reading
-			// runs/ directly (found live: a step run this way was invisible
-			// in the Execution Logs UI because its dropdown never listed the
-			// folder the run actually used).
-			displayGroupName := resolvedGroupName
-			if displayGroupName == "" {
-				displayGroupName = groupName
-			}
+			// Input presets do not identify runs. Always return the actual run.
 			runFolderNotice := fmt.Sprintf("\nrun_folder: %q", runFolder)
-			if displayGroupName == "" && !iwm.controller.isRelayExecution() {
-				runFolderNotice += " (no group resolved — this workspace may have no defined variable groups)"
-			}
 			return fmt.Sprintf("Step %q started in background.\nexecution_id: %q%s\nYou will be automatically notified when it completes. End the current agent turn now instead of polling. Use query_step(step_id=%q) only if the user explicitly requests a live status check. Use send_step_message(execution_id=%q, message=...) only for a necessary live correction while an agent turn is active.", stepID, execID, runFolderNotice, stepID, execID), nil
 		},
 		"workflow",
@@ -2627,7 +2618,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if isGenericAgent {
 				executionLabel = fmt.Sprintf("Generic agent %q", strings.TrimPrefix(stepID, "generic-agent:"))
 			}
-			if folder := exec.Metadata["run_folder"]; folder != "" {
+			if folder := exec.RunFolder; folder != "" {
 				executionLabel += fmt.Sprintf(" (run %s)", folder)
 			}
 
@@ -2697,7 +2688,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if strings.HasPrefix(execID, "bg-") {
 					return fmt.Sprintf("Background task %q completed.\n\n%s", stepID, result), nil
 				}
-				return fmt.Sprintf("Step %q completed.\nexecution_id: %s\n\n%s", stepID, execID, result), nil
+				return fmt.Sprintf("%s completed.\nexecution_id: %s\n\n%s", executionLabel, execID, result), nil
 			case WorkshopStepFailed:
 				if isGenericAgent {
 					return fmt.Sprintf("%s failed.\nexecution_id: %s\nerror: %v", executionLabel, execID, execErr), nil
@@ -2705,11 +2696,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if strings.HasPrefix(execID, "bg-") {
 					return fmt.Sprintf("Background task %q failed: %v", stepID, execErr), nil
 				}
-				return fmt.Sprintf("Step %q failed.\nexecution_id: %s\nerror: %v", stepID, execID, execErr), nil
+				return fmt.Sprintf("%s failed.\nexecution_id: %s\nerror: %v", executionLabel, execID, execErr), nil
 			case WorkshopStepCancelled:
 				return fmt.Sprintf("%s was cancelled.\nexecution_id: %s", executionLabel, execID), nil
 			default:
-				return fmt.Sprintf("Step %q has unknown status: %s\nexecution_id: %s", stepID, status, execID), nil
+				return fmt.Sprintf("%s has unknown status: %s\nexecution_id: %s", executionLabel, status, execID), nil
 			}
 		},
 		"workflow",
@@ -2931,7 +2922,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			logger.Info(fmt.Sprintf("🛑 Workshop: step %q (execution_id=%q) cancelled", exec.StepID, execID))
-			return fmt.Sprintf("Step %q (execution_id=%q, run_folder=%q) has been canceled.", exec.StepID, execID, exec.Metadata["run_folder"]), nil
+			return fmt.Sprintf("Step %q (execution_id=%q, run_folder=%q) has been canceled.", exec.StepID, execID, exec.RunFolder), nil
 		},
 		"workflow",
 	); err != nil {
