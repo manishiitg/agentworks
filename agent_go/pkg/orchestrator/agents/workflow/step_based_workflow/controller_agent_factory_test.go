@@ -209,44 +209,6 @@ func TestWorkshopToolAgentBridgeSessionOverridesParentRouting(t *testing.T) {
 	}
 }
 
-func TestKBMaintenanceAgentsGetQueryButNotMutation(t *testing.T) {
-	base, err := orchestrator.NewBaseOrchestrator(
-		loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0,
-		"", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil,
-	)
-	if err != nil {
-		t.Fatalf("NewBaseOrchestrator returned error: %v", err)
-	}
-	tool := func(name string) llmtypes.Tool {
-		return llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name}}
-	}
-	noop := func(context.Context, map[string]interface{}) (string, error) { return "", nil }
-	base.WorkspaceTools = []llmtypes.Tool{
-		tool("execute_shell_command"), tool("diff_patch_workspace_file"),
-		tool("query_workflow_db"), tool("mutate_workflow_db"),
-	}
-	base.WorkspaceToolExecutors = map[string]interface{}{
-		"execute_shell_command":     noop,
-		"diff_patch_workspace_file": noop,
-		"query_workflow_db":         noop,
-		"mutate_workflow_db":        noop,
-	}
-	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
-	tools, executors := hcpo.prepareWorkspaceToolsOnly()
-	names := make([]string, 0, len(tools))
-	for _, definition := range tools {
-		if definition.Function != nil {
-			names = append(names, definition.Function.Name)
-		}
-	}
-	if !slices.Contains(names, "query_workflow_db") || executors["query_workflow_db"] == nil {
-		t.Fatalf("KB maintenance missing query_workflow_db: tools=%v executors=%v", names, executors)
-	}
-	if slices.Contains(names, "mutate_workflow_db") || executors["mutate_workflow_db"] != nil {
-		t.Fatalf("KB maintenance received DB mutation authority: tools=%v executors=%v", names, executors)
-	}
-}
-
 func TestPrepareCustomToolsMaterializesDBCapabilityFromDBAccess(t *testing.T) {
 	base, err := orchestrator.NewBaseOrchestrator(
 		loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0,
@@ -858,12 +820,6 @@ func TestEveryFolderGuardBuilderGrantsToolOutputFolder(t *testing.T) {
 	})
 	t.Run("agent", func(t *testing.T) {
 		readPaths, _ := newOrch().setupAgentFolderGuard("step-1", "s", nil, AgentWriteAccess{})
-		if !slices.Contains(readPaths, want) {
-			t.Fatalf("read paths missing %q: %v", want, readPaths)
-		}
-	})
-	t.Run("kb_update", func(t *testing.T) {
-		readPaths, _ := newOrch().setupKBUpdateFolderGuard("s", "step-1")
 		if !slices.Contains(readPaths, want) {
 			t.Fatalf("read paths missing %q: %v", want, readPaths)
 		}

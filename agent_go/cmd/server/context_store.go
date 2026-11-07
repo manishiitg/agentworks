@@ -43,8 +43,7 @@ func AppendContextRule(ctx context.Context, workspacePath, section, ruleText str
 			"Each captured item lands as a bullet under a section heading. " +
 			"Steps with `knowledgebase_access` set to `read` (or `read-write`) automatically see this file at runtime — " +
 			"the context folder is a sub-section of the knowledgebase.\n\n" +
-			"This file is **excluded** from `reorganize_knowledgebase` and `consolidate_knowledgebase` passes — " +
-			"user-supplied content is never silently rewritten by the optimizer.\n\n"
+			"User-supplied content is never silently rewritten by the platform.\n\n"
 	}
 
 	body := existing

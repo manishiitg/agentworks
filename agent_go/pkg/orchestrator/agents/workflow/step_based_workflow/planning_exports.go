@@ -1120,112 +1120,6 @@ func (s *WorkshopChatSession) DetachSecretFromWorkflow(ctx context.Context, name
 	return nil
 }
 
-// RegisterReorganizeKnowledgebaseTool registers a reorganize_knowledgebase tool that
-// applies a natural-language transformation to the knowledgebase notes — merge or
-// rename topics, drop sections from bad runs, compact topic files. Runs synchronously
-// (the handler blocks until the agent finishes) but serialized through kbUpdateQueue
-// so it can't race with a live workflow's post-step KB updates.
-//
-// See the post-step KB update agent for the extraction counterpart.
-func RegisterReorganizeKnowledgebaseTool(
-	mcpAgent DefinitionToolRegistrar,
-	session *WorkshopChatSession,
-	logger loggerv2.Logger,
-) {
-	if err := mcpAgent.RegisterCustomTool(
-		"reorganize_knowledgebase",
-		"Apply a natural-language transformation to the knowledgebase notes only. Supported operations: merge two topic files, drop sections from a bad run, compact a topic file, rename a topic and rewrite cross-references, drop a topic entirely. Takes one argument 'instruction' describing what to do. The agent reads knowledgebase/notes/_index.json, scopes to the relevant topic files, applies the transformation, and resyncs the index. It must not read or write knowledgebase/context/. Serialized against post-step KB updates — safe to call while a workflow is running. Returns the agent's summary line describing what changed.",
-		map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"instruction": map[string]interface{}{
-					"type":        "string",
-					"description": "What to do to the knowledgebase, in natural language. Graph examples: 'merge company-acme and company-acme-corp into one entity by label', 'rename all type=organization entries to type=company', 'delete all entities and relationships whose source.run starts with iteration-0/abandoned', 'dedupe relationships by (from, type, to)'. Notes examples: 'merge notes/company-acme.md and notes/company-acme-corp.md', 'compact notes/pattern-tax-cycle.md to under 10KB', 'drop sections in notes/ that mention iteration-0/abandoned', 'rename topic company-acme to company-acme-corp'. Be specific — the agent follows the instruction literally and will not opportunistically clean up other parts of the KB.",
-				},
-			},
-			"required": []string{"instruction"},
-		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			instruction, _ := args["instruction"].(string)
-			instruction = strings.TrimSpace(instruction)
-			if instruction == "" {
-				return "instruction is required — describe the transformation in natural language, e.g. 'merge company-acme and company-acme-corp'", nil
-			}
-			if session == nil || session.controller == nil {
-				return "session controller not available — cannot run KB reorganize", nil
-			}
-			// Use the session's long-lived context so the wait aborts if the user closes
-			// the session. The agent itself runs with context.Background() inside the
-			// queue worker so it survives any individual tool-handler cancellation.
-			summary, err := session.controller.RunKBReorganize(session.sessionCtx, instruction)
-			if err != nil {
-				logger.Warn(fmt.Sprintf("⚠️ reorganize_knowledgebase failed: %v", err))
-				return fmt.Sprintf("KB reorganize failed: %v", err), nil
-			}
-			if summary == "" {
-				return "KB reorganize completed (no summary line returned by agent)", nil
-			}
-			return summary, nil
-		},
-		"knowledgebase_tools",
-	); err != nil {
-		logger.Warn(fmt.Sprintf("Failed to register reorganize_knowledgebase tool: %v", err))
-	}
-}
-
-// RegisterConsolidateKnowledgebaseTool registers a consolidate_knowledgebase tool that
-// runs a cross-step KB consolidation pass. Unlike per-step KB updates (scoped to one
-// step's output) or reorganize (operates only on existing graph/notes), consolidation
-// reads every step's knowledgebase_contribution + every step output folder from the
-// selected run and does work that is only possible with the holistic view: type-name
-// and property-name drift across steps, entity dedupe by label, cross-step pattern
-// narratives, contested-property surfacing.
-//
-// Runs synchronously — blocks until the agent finishes — but serialized through
-// kbUpdateQueue so it can't race with live post-step updates or a reorganize call.
-func RegisterConsolidateKnowledgebaseTool(
-	mcpAgent DefinitionToolRegistrar,
-	session *WorkshopChatSession,
-	logger loggerv2.Logger,
-) {
-	if err := mcpAgent.RegisterCustomTool(
-		"consolidate_knowledgebase",
-		"Run a holistic cross-step consolidation pass over knowledgebase/notes/. Use this AFTER multiple steps have contributed to catch drift that per-step KB updates can't see: two steps creating topic files under different slugs for the same entity, cross-step patterns that need a `pattern-*.md` note, contradictions between steps on the same subject. The agent reads every step's knowledgebase_contribution plus step output folders from the selected run. Takes one argument 'objective' describing the consolidation goal — be specific; the agent scopes work to it and won't opportunistically reorganize beyond. Returns the agent's summary line.",
-		map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"objective": map[string]interface{}{
-					"type":        "string",
-					"description": "What to consolidate, in natural language. Good examples: 'reconcile type-name drift across company/organization; canonicalize to company and rewrite references', 'write pattern notes for any repeating shape across per-account steps — balance dips, transaction-volume anomalies, or login-flow changes', 'surface contested properties where two steps disagree on the same entity (e.g. employee count) without rewriting the graph — add provenance-annotated notes sections instead'. Avoid vague objectives like 'clean up the KB' — the agent will ask for scope.",
-				},
-			},
-			"required": []string{"objective"},
-		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			objective, _ := args["objective"].(string)
-			objective = strings.TrimSpace(objective)
-			if objective == "" {
-				return "objective is required — describe the consolidation goal in natural language, e.g. 'reconcile company vs organization type-name drift'", nil
-			}
-			if session == nil || session.controller == nil {
-				return "session controller not available — cannot run KB consolidate", nil
-			}
-			summary, err := session.controller.RunKBConsolidate(session.sessionCtx, objective)
-			if err != nil {
-				logger.Warn(fmt.Sprintf("⚠️ consolidate_knowledgebase failed: %v", err))
-				return fmt.Sprintf("KB consolidate failed: %v", err), nil
-			}
-			if summary == "" {
-				return "KB consolidate completed (no summary line returned by agent)", nil
-			}
-			return summary, nil
-		},
-		"knowledgebase_tools",
-	); err != nil {
-		logger.Warn(fmt.Sprintf("Failed to register consolidate_knowledgebase tool: %v", err))
-	}
-}
-
 // workflowProgressBridge wraps an existing event bridge and intercepts step completion
 // events to send progress notifications to the main workshop agent via bgAgentRegistry.
 type workflowProgressBridge struct {
@@ -2058,22 +1952,6 @@ func RegisterRunFullWorkflowTool(
 					cfg.WorkspacePath,
 				)
 				result = firstNonEmpty(strings.TrimSpace(result), "Workflow execution completed successfully.")
-
-				// Whole-workflow completion must block until post-step side effects land:
-				// learning writes to _global/SKILL.md, KB writes to notes/. Per-step flow
-				// is still non-blocking — only this full-workflow exit waits. Without this,
-				// "workflow done" returned before the last steps' learnings finished queuing,
-				// so the next run started against stale SKILL.md.
-				//
-				// 30-minute cap sized to observed real-world timings: serialized learning
-				// queue with ~14-min agents can take tens of minutes to drain. The cap is
-				// the safety valve for pathological hangs, not the normal path.
-				const workflowDoneQueueTimeout = 30 * time.Minute
-				if waitErr := WaitForBackgroundJobs(execCtx, workflowDoneQueueTimeout); waitErr != nil {
-					logger.Warn(fmt.Sprintf("⚠️ run_full_workflow returning with background jobs still in flight: %v", waitErr))
-					// Do not overwrite execErr — step execution itself succeeded; the
-					// post-step queue tail is an observability concern.
-				}
 			}()
 
 			groupInfo := ""

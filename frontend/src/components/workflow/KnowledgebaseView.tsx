@@ -1,7 +1,7 @@
 // Knowledgebase popup — read-only viewer for the workspace KB:
 // notes/{topic}.md + notes/_index.json (per-topic narrative). Reads via the
 // existing workspace file API (same path as ReportViewer). All mutations happen
-// via the workshop builder's reorganize_knowledgebase tool — this popup never writes.
+// through the Builder's file tools — this popup never writes.
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {

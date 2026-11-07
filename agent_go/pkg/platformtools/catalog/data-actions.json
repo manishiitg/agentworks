@@ -110,18 +110,6 @@
   },
   {
     "family": "files",
-    "name": "consolidate_project_knowledge",
-    "member": "consolidate_knowledgebase",
-    "description": "Consolidate this workflow’s local knowledge under its existing access."
-  },
-  {
-    "family": "files",
-    "name": "reorganize_project_knowledge",
-    "member": "reorganize_knowledgebase",
-    "description": "Reorganize this workflow’s local knowledge under its existing access."
-  },
-  {
-    "family": "files",
     "name": "patch",
     "member": "patch_crew_file",
     "description": "Patch a Crew file using the owner, connection and revision checks.",

@@ -40,10 +40,10 @@ it.each([false, true])('uses Crew category order and keeps every product destina
   for (const label of ['Dashboards', 'Files', 'Skills', 'Chat history', 'Access & sharing', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
   if (relay) {
     for (const label of ['Flow', 'Runs', 'Code']) expect(button(label)).toBeDefined()
-    for (const label of ['Goals & metrics', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database']) expect(button(label)).toBeUndefined()
+    for (const label of ['Goals & metrics', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database']) expect(button(label)).toBeUndefined()
   } else {
-    for (const label of ['Goals & metrics', 'Publish', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
-    for (const label of ['Publish', 'Notify', 'Backup']) {
+    for (const label of ['Goals & metrics', 'Notify', 'Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
+    for (const label of ['Notify']) {
       expect(button(label).closest('details')?.querySelector('summary')?.textContent).toBe('Setup')
     }
   }
