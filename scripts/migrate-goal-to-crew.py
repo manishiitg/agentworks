@@ -198,45 +198,26 @@ def update_runtime_references(source, runtime):
         revised = rewrite_physical_paths(original, source, runtime)
         if revised != original:
             file.write_bytes(encode(revised)); changed += 1
-    for file in runtime.rglob('*.sqlite'):
-        # Trusted offline conversion. Preserve schemas, IDs and row counts.
-        with closing(sqlite3.connect(file)) as db, db:
-            # Historical tool-result columns can contain non-UTF-8 bytes even
-            # with TEXT affinity. Preserve them as opaque bytes, not a failure
-            # or a lossy decoded/re-encoded string.
-            def saved_text(raw):
-                try:
-                    return raw.decode('utf-8')
-                except UnicodeDecodeError:
-                    return raw
-            db.text_factory=saved_text
-            quote = lambda value: '"'+value.replace('"','""')+'"'
-            for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
-                info = db.execute('PRAGMA table_info('+quote(table)+')').fetchall()
-                columns = [row[1] for row in info]
-                keys = [row[1] for row in sorted(info,key=lambda row:row[5]) if row[5]]
-                where=' OR '.join(f"(typeof({quote(column)})='text' AND instr({quote(column)},?)>0)" for column in columns)
-                projection='*' if keys else 'rowid,*'
-                rows=db.execute('SELECT '+projection+' FROM '+quote(table)+' WHERE '+where,tuple(str(source) for _ in columns)).fetchall()
-                for row in rows:
-                    values = dict(zip(columns,row if keys else row[1:]))
-                    where = ' AND '.join(quote(key)+'=?' for key in keys) if keys else 'rowid=?'
-                    identity = tuple(values[key] for key in keys) if keys else (row[0],)
-                    for column, original in values.items():
-                        if not isinstance(original, str) or str(source) not in original:
-                            continue
-                        revised = rewrite_physical_paths(original, source, runtime)
-                        if revised == original:
-                            try:
-                                parsed = json.loads(original)
-                            except ValueError:
-                                continue
-                            value = rewrite_physical_paths(parsed, source, runtime)
-                            if value != parsed:
-                                revised = json.dumps(value, ensure_ascii=False)
-                        if revised != original:
-                            db.execute('UPDATE '+quote(table)+' SET '+quote(column)+'=? WHERE '+where, (revised,*identity)); changed += 1
     return changed
+
+
+def database_path_columns(source):
+    """Report locations needing judgment; never return values or rewrite cells."""
+    findings = []
+    logical = '/Workflow/' + source.name
+    needles = [str(source), logical+'/', logical.replace('/', '\\')+'\\']
+    quote = lambda name: '"'+name.replace('"', '""')+'"'
+    for file in sorted(source.rglob('*.sqlite')):
+        if '.cache' in file.relative_to(source).parts:
+            continue
+        with closing(db_read(file)) as db:
+            for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
+                for column in db.execute('PRAGMA table_info('+quote(table)+')').fetchall():
+                    name = column[1]
+                    checks = ' OR '.join('instr('+quote(name)+',?)>0' for _ in needles)
+                    if db.execute('SELECT 1 FROM '+quote(table)+' WHERE typeof('+quote(name)+")='text' AND ("+checks+') LIMIT 1', needles).fetchone():
+                        findings.append({'database':str(file.relative_to(source)), 'table':table, 'column':name})
+    return findings
 
 
 class RuntimeRelocation:
@@ -268,6 +249,7 @@ class RuntimeRelocation:
             raise ValueError('Expected one old runtime folder and an absent Crew runtime destination.')
         if not (self.definitions/'workflow.json').is_file():
             raise ValueError('The owning Crew must already contain this workflow definition.')
+        self.database_path_columns = database_path_columns(self.source)
         # Partial source moves must be resolved explicitly; never choose a plan.
         for name in ('workflow.json','variables','code','planning/plan.json','planning/step_config.json'):
             file = self.source/name
@@ -277,7 +259,8 @@ class RuntimeRelocation:
     def report(self):
         return {'status':'already migrated' if self.done else 'ready', 'workflow':self.root, 'crew_id':self.crew,
                 'runtime':str(self.runtime), 'files':len(tree_hashes(self.source)) if self.source.exists() else 0,
-                'backup':self.done.get('backup') if self.done else None}
+                'backup':self.done.get('backup') if self.done else None,
+                'database_columns_with_old_paths':self.done.get('database_columns_with_old_paths', []) if self.done else self.database_path_columns}
 
     def apply(self):
         if self.done:
@@ -688,8 +671,10 @@ class Conversion:
                 if action.get('type') not in ('run', 'message'):
                     raise ValueError('An entry has an unsupported action.')
                 action['tab'] = self.destination(action.get('tab'), user)
-                if action.get('conversation') == 'isolated':
-                    action['conversation'] = 'fresh'
+                if field == 'functions' and action.get('conversation') in ('isolated', 'fresh'):
+                    action['conversation'] = 'new'
+                if field == 'functions' and entry.get('execution') == 'fresh':
+                    entry['execution'] = 'new'
                 if entry.get('input_mapping') == {}:
                     entry.pop('input_mapping')
                 entry['action'] = action
@@ -731,6 +716,7 @@ class Conversion:
         self.source_db = self.source / 'db/db.sqlite'
         self.target_db = self.private / 'db/db.sqlite'
         no_links(self.source_db); no_links(self.target_db)
+        self.database_path_columns = database_path_columns(self.source)
         self.counts.update(measurements=0, observations=0)
         if self.source_db.exists():
             with closing(db_read(self.source_db)) as db:
@@ -766,6 +752,7 @@ class Conversion:
                 'needs_chat_import_binary':bool(self.chat_imports),
                 'next':'Ask this Crew’s chat to update this workflow before running it. Task text and code were not rewritten.',
                 'owner_evidence':self.owner_proof,
+                'database_columns_with_old_paths':self.database_path_columns,
                 'generated_caches_backup_only':[str(p.relative_to(self.source)) for p in self.caches],
                 'chat_map':[{'person':user,'from':old,'to':tab} for (user,old),tab in self.chat_keys.items()]}
 
