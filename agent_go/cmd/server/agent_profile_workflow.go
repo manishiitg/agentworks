@@ -20,6 +20,7 @@ var agentProfileWorkflowToolNames = map[string]struct{}{
 	"stop_all_executions": {},
 	"list_executions":     {},
 	"run_full_workflow":   {},
+	"debug_step":          {},
 }
 
 type agentProfileWorkflowRegistrar struct {
@@ -33,7 +34,7 @@ func (r *agentProfileWorkflowRegistrar) shouldRegister(name string) bool {
 }
 
 func (r *agentProfileWorkflowRegistrar) wrap(name string, execute func(context.Context, map[string]interface{}) (string, error)) func(context.Context, map[string]interface{}) (string, error) {
-	if execute == nil || (name != "execute_step" && name != "run_full_workflow") {
+	if execute == nil {
 		return execute
 	}
 	return func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -42,7 +43,7 @@ func (r *agentProfileWorkflowRegistrar) wrap(name string, execute func(context.C
 		}
 		if r.prepare != nil {
 			if err := r.prepare(ctx, name, args); err != nil {
-				return "Could not prepare this workflow run: " + err.Error(), nil
+				return "", err
 			}
 		}
 		return execute(ctx, args)
@@ -59,6 +60,9 @@ func (r *agentProfileWorkflowRegistrar) RegisterCustomTool(name, description str
 func (r *agentProfileWorkflowRegistrar) RegisterCustomToolWithTimeout(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, category string) error {
 	if !r.shouldRegister(name) {
 		return nil
+	}
+	if name == "execute_step" {
+		description += " In a Crew chat, omit run_folder to continue this chat's current saved run and inputs; the first call starts a new run. Use new_run=true for a separate run. The current run survives runtime eviction and restarts."
 	}
 	return r.target.RegisterCustomToolWithTimeout(name, description, parameters, r.wrap(name, execute), timeout, category)
 }
@@ -87,15 +91,88 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 	selectedServers []string,
 	mergedAPIKeys *llm.ProviderAPIKeys,
 	req QueryRequest,
+	readOnly bool,
 ) error {
-	if !profileRequiresWorkflowRuntime(resolved) {
+	if readOnly || !profileRequiresWorkflowRuntime(resolved) {
 		return nil
 	}
 
+	root := agentProfileRuntimeWorkspace(userID, publicWorkspacePath)
+	workflowID := ""
+	if isCrewProjectPath(publicWorkspacePath) {
+		binding, err := api.crewChatWorkflowTarget(ctx, resolved, userID, publicWorkspacePath, req)
+		if err != nil {
+			return err
+		}
+		if binding == nil {
+			return nil
+		}
+		root, workflowID = binding.Root, binding.ID
+	}
+	guarded := workflowContractExecutionGuardRegistrar{definitionRegistrar: registrar, workspacePath: root}
+	filtered := &agentProfileWorkflowRegistrar{target: guarded}
+	filtered.prepare = func(callCtx context.Context, _ string, _ map[string]interface{}) error {
+		if !isCrewProjectPath(publicWorkspacePath) {
+			return nil
+		}
+		binding, err := api.crewChatWorkflowTarget(callCtx, resolved, userID, publicWorkspacePath, req)
+		if err != nil {
+			return err
+		}
+		if binding == nil || binding.Root != root || binding.ID != workflowID {
+			return fmt.Errorf("this Crew's workflow or edit access changed; reopen its chat")
+		}
+		return nil
+	}
+	todo_creation_human.RegisterLazyWorkshopTools(filtered, func(callCtx context.Context) (*todo_creation_human.WorkshopChatSession, error) {
+		return api.agentProfileWorkflowSession(context.WithoutCancel(callCtx), resolved, userID, sessionID, publicWorkspacePath, root, workflowID, selectedServers, mergedAPIKeys, req)
+	}, api.logger)
+	return nil
+}
+
+// The caller never chooses a workflow path. Crew ownership and its trusted
+// executable binding select the one runtime, including joined Team editors.
+func (api *StreamingAPI) crewChatWorkflowTarget(ctx context.Context, resolved *resolvedAgentProfile, userID, root string, req QueryRequest) (*crewExecutableBinding, error) {
+	if req.PinRunMode || crewGuestCallerForTurn(req, userID) != "" {
+		return nil, nil
+	}
+	claims := GetUserFromContext(ctx)
+	if claims == nil && resolved != nil {
+		claims = resolved.ToolCallerClaims
+	}
+	if claims == nil {
+		claims = currentProjectCallerClaims(ctx, userID)
+	}
+	if claims == nil || claims.UserID != userID || !crewProjectOwnedByCaller(userID, root) || !workflowPermissionInfoForClaims(claims).CanWriteWorkflows {
+		return nil, nil
+	}
+	bindings, err := readCrewExecutables()
+	if err != nil {
+		return nil, err
+	}
+	var found *crewExecutableBinding
+	for _, binding := range bindings {
+		if binding.Kind != "workflow" || canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(root) {
+			continue
+		}
+		if found != nil {
+			return nil, fmt.Errorf("this Crew has conflicting workflows; repair its workflow registration first")
+		}
+		checked, err := findCrewExecutable(binding.Root)
+		if err != nil {
+			return nil, err
+		}
+		if checked != nil && checked.ID == binding.ID && checked.CrewID == binding.CrewID {
+			found = checked
+		}
+	}
+	return found, nil
+}
+
+func (api *StreamingAPI) agentProfileWorkflowSession(ctx context.Context, resolved *resolvedAgentProfile, userID, sessionID, publicWorkspacePath, runtimeWorkspacePath, workflowID string, selectedServers []string, mergedAPIKeys *llm.ProviderAPIKeys, req QueryRequest) (*todo_creation_human.WorkshopChatSession, error) {
 	// The registrar below exposes only execution tools to the profile. Use the
 	// normal Workshop runtime; Run is reserved for a read-only workflow user.
-	runtimeWorkspacePath := agentProfileRuntimeWorkspace(userID, publicWorkspacePath)
-	const runFolder = "iteration-0"
+	const runFolder = ""
 	// A browser tab/session can be reused after switching products or projects.
 	// Include the immutable profile and workspace binding so a retained workshop
 	// can never execute against the prior project's files.
@@ -103,6 +180,7 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 		"agent-profile-workflow",
 		resolved.Definition.ID,
 		fmt.Sprintf("v%d", resolved.Definition.Version),
+		userID,
 		sessionID,
 		runtimeWorkspacePath,
 	}, ":")
@@ -112,6 +190,7 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 		if workshopSession != nil {
 			workshopSession.UpdateAPIKeys(mergedAPIKeys)
 			workshopSession.SetWorkshopModeOverride("workshop")
+			return workshopSession, nil
 		}
 	}
 	if workshopSession == nil {
@@ -124,11 +203,21 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 		}
 		cfg, err := api.buildWorkshopConfig(ctx, syntheticReq, userID, runtimeWorkspacePath, runFolder, selectedServers, sessionID, mergedAPIKeys)
 		if err != nil {
-			return fmt.Errorf("build profile workflow runtime: %w", err)
+			return nil, fmt.Errorf("build profile workflow runtime: %w", err)
+		}
+		if isCrewProjectPath(publicWorkspacePath) {
+			store := defaultProductConversationRegistryStore()
+			cfg.CurrentStepRun = func(callCtx context.Context) (string, error) {
+				return store.workflowStepRun(callCtx, userID, sessionID, publicWorkspacePath, workflowID, nil)
+			}
+			cfg.SelectStepRun = func(callCtx context.Context, folder string) error {
+				_, err := store.workflowStepRun(callCtx, userID, sessionID, publicWorkspacePath, workflowID, &folder)
+				return err
+			}
 		}
 		created, err := todo_creation_human.NewWorkshopChatSession(ctx, cfg)
 		if err != nil {
-			return fmt.Errorf("create profile workflow runtime: %w", err)
+			return nil, fmt.Errorf("create profile workflow runtime: %w", err)
 		}
 		created.SetWorkshopModeOverride("workshop")
 		workshopSession = created
@@ -159,9 +248,5 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 		},
 	)
 
-	filtered := &agentProfileWorkflowRegistrar{target: registrar}
-
-	todo_creation_human.RegisterWorkshopChatTools(filtered, workshopSession, api.logger)
-	todo_creation_human.RegisterRunFullWorkflowTool(filtered, workshopSession, api.logger)
-	return nil
+	return workshopSession, nil
 }

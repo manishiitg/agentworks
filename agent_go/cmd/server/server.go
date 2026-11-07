@@ -7134,6 +7134,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				selectedServers,
 				mergedAPIKeys,
 				req,
+				crewReadOnly || currentUserIsReadOnly,
 			); err != nil {
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Failed to register workflow runtime: %v", err)
 				sendError(fmt.Sprintf("Failed to register agent profile workflow runtime: %v", err), true)

@@ -236,3 +236,147 @@ func TestBoundWorkflowStepOutputFeedsNextStep(t *testing.T) {
 		t.Fatal("retired physical workflow was recreated")
 	}
 }
+
+type crewStepRunTestNotifier struct{ done chan error }
+
+func (*crewStepRunTestNotifier) OnExecutionStart(WorkshopExecutionStart) {}
+func (n *crewStepRunTestNotifier) OnExecutionComplete(_, _, _ string, _ map[string]string, err error) {
+	n.done <- err
+}
+func (*crewStepRunTestNotifier) OnExecutionTerminated(string, string) {}
+
+// PLAT-746-405: the owner asks for step 1, then step 2 in the same run. Use
+// real saved Python and workspace HTTP; discard the runtime between the calls.
+func TestCrewStepToolsKeepRunOutputsAndInputsAfterRuntimeEviction(t *testing.T) {
+	docs, server := workflowHTTPTestWorkspace(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("MCP_API_URL", server.URL)
+	const workflow = "Workflow/crew-step-run"
+	write := func(rel, content string) {
+		t.Helper()
+		p := filepath.Join(docs, workflow, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("workflow.json", `{"code_layout_version":1}`)
+	write("variables/variables.json", `{"variables":[{"name":"COUNT","type":"integer","value":"42"}]}`)
+	write("planning/plan.json", `{"steps":[{"type":"scripted","id":"first","title":"First","description":"Write the input number.","script_only":true,"context_output":"first.json"},{"type":"scripted","id":"second","title":"Second","description":"Read the first step output.","script_only":true,"context_dependencies":["first.json"],"context_output":"second.json"}]}`)
+	write("planning/step_config.json", `{"steps":[{"id":"first","agent_configs":{"lock_code":true,"knowledgebase_access":"none"}},{"id":"second","agent_configs":{"lock_code":true,"knowledgebase_access":"none"}}]}`)
+	write("code/first/main.py", "import json,os\nfrom pathlib import Path\n(Path(os.environ['STEP_OUTPUT_DIR'])/'first.json').write_text(json.dumps({'value':os.environ['VAR_COUNT']}))\nprint('STATUS: COMPLETED')\n")
+	write("code/second/main.py", "import json,os,sys\nfrom pathlib import Path\nvalue=json.loads(Path(sys.argv[1]).read_text())['value']\nassert value == os.environ['VAR_COUNT'] == '7'\n(Path(os.environ['STEP_OUTPUT_DIR'])/'second.json').write_text(json.dumps({'value':value}))\nprint('STATUS: COMPLETED')\n")
+	selection := filepath.Join(t.TempDir(), "chat-current-run")
+	notifier := &crewStepRunTestNotifier{done: make(chan error, 4)}
+	var current *WorkshopChatSession
+	created := 0
+	resolve := func(ctx context.Context) (*WorkshopChatSession, error) {
+		if current != nil {
+			return current, nil
+		}
+		created++
+		c, err := NewStepBasedWorkflowOrchestrator(ctx, "", "", 0, "", nil, nil, false, "", &orchestrator.LLMConfig{}, 1, loggerv2.NewNoop(), nil, nil, nil, nil, nil, nil, nil, false, nil)
+		if err != nil {
+			return nil, err
+		}
+		c.SetWorkspacePath(workflow)
+		c.WorkspaceClient = workspace.NewClient(server.URL)
+		c.SetWorkspaceEnvRef(map[string]string{})
+		raw, err := os.ReadFile(filepath.Join(docs, workflow, "variables/variables.json"))
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(raw, &c.variablesManifest); err != nil {
+			return nil, err
+		}
+		cfg := &WorkshopConfig{WorkspacePath: workflow, Logger: loggerv2.NewNoop()}
+		cfg.CurrentStepRun = func(context.Context) (string, error) {
+			raw, err := os.ReadFile(selection)
+			if os.IsNotExist(err) {
+				return "", nil
+			}
+			return string(raw), err
+		}
+		cfg.SelectStepRun = func(_ context.Context, folder string) error { return os.WriteFile(selection, []byte(folder), 0600) }
+		sessionCtx, cancel := context.WithCancel(context.Background())
+		current = &WorkshopChatSession{controller: c, config: cfg, StepRegistry: NewWorkshopStepRegistry(), sessionCtx: sessionCtx, cancelFunc: cancel, mainSessionID: "crew-chat", workshopModeOverride: "workshop", executionNotifier: notifier}
+		return current, nil
+	}
+	t.Cleanup(func() {
+		if current != nil {
+			current.Close()
+		}
+	})
+	tools := newWorkshopDefinitionDraft()
+	RegisterLazyWorkshopTools(tools, resolve, loggerv2.NewNoop())
+	if created != 0 {
+		t.Fatal("merely listing tools initialized a workflow runtime")
+	}
+	run := tools.tools["execute_step"].Execute
+	wait := func() {
+		t.Helper()
+		select {
+		case err := <-notifier.done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(30 * time.Second):
+			t.Fatal("script step did not complete")
+		}
+	}
+	ctx := context.Background()
+	out, err := run(ctx, map[string]interface{}{"step_id": "1", "inputs": map[string]interface{}{"COUNT": "7"}, "fast_path_only": true})
+	if err != nil || !strings.Contains(out, "started in background") {
+		t.Fatalf("first step: %s %v", out, err)
+	}
+	wait()
+	folderRaw, err := os.ReadFile(selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := string(folderRaw)
+	if !strings.Contains(out, folder) {
+		t.Fatal("step result omitted its exact run identity")
+	}
+	status, err := tools.tools["query_step"].Execute(ctx, map[string]interface{}{"step_id": "first"})
+	if err != nil || !strings.Contains(status, folder) {
+		t.Fatalf("status omitted run: %s %v", status, err)
+	}
+	current.Close()
+	current = nil // idle eviction or backend restart, not a new conversation
+	write("variables/variables.json", `{"variables":[{"name":"COUNT","type":"integer","value":"99"}]}`)
+	out, err = run(ctx, map[string]interface{}{"step_id": "2", "fast_path_only": true})
+	if err != nil || !strings.Contains(out, folder) {
+		t.Fatalf("second step changed run: %s %v", out, err)
+	}
+	wait()
+	if created != 2 {
+		t.Fatal("test did not actually discard and recreate its runtime")
+	}
+	raw, err := os.ReadFile(filepath.Join(docs, workflow, "runs", folder, "execution/second/second.json"))
+	if err != nil || !strings.Contains(string(raw), `"7"`) {
+		t.Fatalf("second step failed to read first output and saved inputs: %s %v", raw, err)
+	}
+	if _, err = run(ctx, map[string]interface{}{"step_id": "first", "inputs": map[string]interface{}{"COUNT": "8"}, "fast_path_only": true}); err == nil {
+		t.Fatal("continuation silently changed saved inputs")
+	}
+	if _, err = run(ctx, map[string]interface{}{"step_id": "second", "new_run": true, "fast_path_only": true}); err == nil || !strings.Contains(err.Error(), "earlier outputs") {
+		t.Fatalf("missing earlier run lacked a next step: %v", err)
+	}
+	out, err = run(ctx, map[string]interface{}{"step_id": "first", "new_run": true, "fast_path_only": true})
+	if err != nil || !strings.Contains(out, "started in background") {
+		t.Fatalf("new run: %s %v", out, err)
+	}
+	wait()
+	next, err := os.ReadFile(selection)
+	if err != nil || string(next) == folder {
+		t.Fatal("explicit new run reused the previous run")
+	}
+	select {
+	case <-notifier.done:
+		t.Fatal("one step emitted duplicate completion")
+	default:
+	}
+}

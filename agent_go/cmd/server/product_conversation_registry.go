@@ -65,11 +65,12 @@ type ProductConversationRecord struct {
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	// FreshNative starts the next turn in a new native conversation (the tab's "Fresh chat", PLAT-872-71). The
 	// visible history stays; the new conversation gets the usual continuity notice with the recent turns.
-	FreshNative          bool     `json:"fresh_native,omitempty"`
-	EnabledServers       []string `json:"enabled_servers,omitempty"`
-	SelectedSkills       []string `json:"selected_skills,omitempty"`
-	SkillFilesDigest     string   `json:"skill_files_digest,omitempty"`
-	WorkflowContextPaths []string `json:"workflow_context_paths,omitempty"`
+	FreshNative          bool                            `json:"fresh_native,omitempty"`
+	EnabledServers       []string                        `json:"enabled_servers,omitempty"`
+	SelectedSkills       []string                        `json:"selected_skills,omitempty"`
+	SkillFilesDigest     string                          `json:"skill_files_digest,omitempty"`
+	WorkflowContextPaths []string                        `json:"workflow_context_paths,omitempty"`
+	CurrentWorkflowRun   *productConversationWorkflowRun `json:"current_workflow_run,omitempty"`
 	// ProjectLLMConfig is loaded from the project's runtime manifest for this request. It is not
 	// duplicated into the conversation registry.
 	ProjectLLMConfig            *workflowtypes.PresetLLMConfig `json:"-"`
@@ -78,6 +79,39 @@ type ProductConversationRecord struct {
 	ProjectWorkflowContextPaths []string                       `json:"-"`
 	CreatedAt                   string                         `json:"created_at"`
 	UpdatedAt                   string                         `json:"updated_at"`
+}
+
+// Current manual step-run selection, not a second execution registry. The
+// workflow's existing run folder contains its inputs, progress and outputs.
+type productConversationWorkflowRun struct {
+	WorkflowID string `json:"workflow_id"`
+	Folder     string `json:"run_folder"`
+}
+
+func (store productConversationRegistryStore) workflowStepRun(ctx context.Context, userID, sessionID, crewRoot, workflowID string, selected *string) (string, error) {
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	for key, record := range document.Entries {
+		if record.ProfileID != crewProfileID || record.SessionID != sessionID || record.WorkspacePath != crewRoot {
+			continue
+		}
+		if selected == nil {
+			if record.CurrentWorkflowRun != nil && record.CurrentWorkflowRun.WorkflowID == workflowID {
+				return record.CurrentWorkflowRun.Folder, nil
+			}
+			return "", nil
+		}
+		record.CurrentWorkflowRun = &productConversationWorkflowRun{WorkflowID: workflowID, Folder: *selected}
+		document.Entries[key] = record
+		return *selected, store.writeDocument(ctx, path, document)
+	}
+	return "", fmt.Errorf("this chat is unavailable; reopen the Crew chat before running its steps")
 }
 
 type productConversationRegistryDocument struct {

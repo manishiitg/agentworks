@@ -97,14 +97,14 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		t.Fatal("work must declare tool_policy.mode: allowlist -- fail-open would silently reach workflow/schedule/pulse tools")
 	}
 	// Pin the product boundary rather than duplicate every shared feature's
-	// tool list: Crew keeps project operations, while Goal planning/execution
-	// stays with the workflow product.
-	for _, name := range []string{"read_project_files", "execute_shell_command", "browser_connections", "manage_crew_model", "list_project_schedules", "create_project_schedule", "manage_condition_triggers", "project_functions_call"} {
+	// tool list: Crew keeps project operations and its own workflow execution.
+	// PLAT-746-405: excluding execute_step caused a real Crew run refusal.
+	for _, name := range []string{"read_project_files", "execute_shell_command", "browser_connections", "manage_crew_model", "list_project_schedules", "create_project_schedule", "manage_condition_triggers", "project_functions_call", "execute_step", "query_step", "send_step_message", "stop_step", "stop_all_executions", "list_executions", "run_full_workflow", "debug_step"} {
 		if !contains(manifest.Profile.ToolPolicy.Enabled, name) {
 			t.Fatalf("Crew lost project tool %q", name)
 		}
 	}
-	for _, name := range []string{"run_full_workflow", "execute_step", "workflow_team", "manage_workflow_schedule", "update_plan", "create_human_input_request"} {
+	for _, name := range []string{"workflow_team", "manage_workflow_schedule", "update_plan", "create_human_input_request"} {
 		if contains(manifest.Profile.ToolPolicy.Enabled, name) {
 			t.Fatalf("Crew admitted Goal planning/execution tool %q", name)
 		}
@@ -133,8 +133,8 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		t.Fatal("Crew must expose its project schedule panel")
 	}
 	caps := manifest.Profile.Runtime.Capabilities
-	if caps.WorkflowExecution != agentprofiles.CapabilityDisabled {
-		t.Fatalf("work must declare capabilities.workflow_execution: disabled, got %q", caps.WorkflowExecution)
+	if caps.WorkflowExecution != agentprofiles.CapabilityOptional {
+		t.Fatalf("work must declare capabilities.workflow_execution: optional, got %q", caps.WorkflowExecution)
 	}
 	if caps.RawTerminal == agentprofiles.CapabilityDisabled {
 		t.Fatalf("work must expose the selected coding CLI terminal, got %q", caps.RawTerminal)
