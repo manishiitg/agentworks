@@ -134,6 +134,23 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if !strings.Contains(string(directoryJSON), address) || strings.Contains(string(directoryJSON), "Private planning") {
 		t.Fatalf("Builder agent directory: %s", directoryJSON)
 	}
+	// The list says how each Crew relates to the person: shared with them, and "this Crew" when asked from inside it (owner, 7 Nov).
+	relationOf := func(c context.Context) string {
+		d, err := listAgentDirectory(c, GetUserFromContext(c))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range d["agents"].([]map[string]interface{}) {
+			if row["kind"] == "crew" && row["crew_id"] == "team" {
+				relation, _ := row["relation"].(string)
+				return relation
+			}
+		}
+		return ""
+	}
+	if got, here := relationOf(otherCtx), relationOf(withDirectoryThisCrew(otherCtx, externalCommandCrewRoot)); got != "shared" || here != "this_crew" {
+		t.Fatalf("directory relation: shared=%q this=%q", got, here)
+	}
 	privatePeer := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerCrew, ID: "team", Profile: "work", Path: externalCommandCrewRoot, ChatKey: private.ConversationKey, Session: private.SessionID}
 	for _, send := range []bool{false, true} {
 		if err := f.api.externalAuthorizeMessagePeer(context.WithValue(otherCtx, UserContextKey, reader), reader, privatePeer, send); err == nil {
