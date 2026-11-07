@@ -246,8 +246,8 @@ class RuntimeRelocation:
         self.runtime.parent.mkdir(parents=True,exist_ok=True)
         # Copy and check the final tree before removing the old source. This
         # deliberately runs offline; there is no concurrent-writer protocol.
-        shutil.copytree(self.source,self.runtime,ignore=shutil.ignore_patterns('learnings'))
-        expected = {key:value for key,value in tree_hashes(self.source).items() if 'learnings' not in Path(key).parts}
+        shutil.copytree(self.source,self.runtime)
+        expected = tree_hashes(self.source)
         if tree_hashes(self.runtime) != expected:
             raise ValueError('Runtime copy verification failed; old files remain intact.')
         changed = update_runtime_references(self.source,self.runtime)
@@ -880,8 +880,8 @@ class Conversion:
                 with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db, db:
                     for name in self.tables:
                         db.execute(f'DROP TABLE {name}')
-            # Retired guides stay in the verified external backup.
-            shutil.rmtree(self.runtime/'learnings',ignore_errors=True)
+            # Retired learning machinery is separate from the ordinary files
+            # that authored steps still read (PLAT-746-364). Preserve them.
             references = update_runtime_references(self.source,self.runtime)
             assert not self.source.exists(), 'Old runtime unexpectedly recreated'
             result = self.report(); result.update(updated_references=references,status='migrated', backup=str(backup), completed_at=stamp())

@@ -78,12 +78,21 @@ class Migration(unittest.TestCase):
 
     def test_retired_measurements_remain_unchanged_without_creating_crew_goals(self):
         # PLAT-746-364: preserve historical data, not the retired Goal concept.
+        # Existing steps still read ordinary helper files under this path.
+        helper = self.source/'learnings/_global/helper.py'
+        helper.parent.mkdir(parents=True)
+        helper.write_text('from pathlib import Path\ndef read_note(): return Path(__file__).with_name("note.txt").read_text()\n')
+        helper.with_name('note.txt').write_text('preserved guidance')
         before = (self.source/'db/db.sqlite').read_bytes()
         conversion = m.Conversion(self.docs,self.state,'old-goal','crew',keep_measurements=True)
         self.assertEqual(conversion.report()['counts']['goals'], 0)
         conversion.apply()
         self.assertEqual((self.runtime/'db/db.sqlite').read_bytes(), before)
         self.assertFalse((self.private/'db/db.sqlite').exists())
+        moved = self.runtime/'learnings/_global/helper.py'
+        spec = importlib.util.spec_from_file_location('retained_helper', moved)
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        self.assertEqual(module.read_note(), 'preserved guidance')
         with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM workflow_goal_metrics').fetchone()[0], 1)
             self.assertEqual(db.execute('SELECT run_id,evidence_json FROM goal_observations').fetchone(), ('source-run','["source report"]'))
@@ -225,7 +234,7 @@ class Migration(unittest.TestCase):
         self.assertEqual(conversion.report()['status'],'ready')
         result=conversion.apply()
         self.assertFalse(self.source.exists())
-        self.assertFalse((self.runtime/'learnings').exists())
+        self.assertEqual(m.read(self.runtime/'learnings/retired.json'), {'keep_in_backup':True})
         self.assertEqual(authored,hashes(self.docs/'Crew/target'))
         self.assertEqual(other,hashes(self.docs/'Workflow/unrelated'))
         evidence=m.read(self.runtime/'runs/history/run.json')
