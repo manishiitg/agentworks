@@ -1,16 +1,28 @@
 package step_based_workflow
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
 func TestGoalAgentRetiresOnlyLLMChildren(t *testing.T) {
 	routes := []PlanOrchestrationRoute{{RouteID: "llm", SubAgentStep: &AgentPlanStep{}}, {RouteID: "python", SubAgentStep: &ScriptedPlanStep{}}}
-	kept := goalScriptedRoutes(routes)
-	if len(kept) != 1 || kept[0].RouteID != "python" || len(routes) != 2 {
-		t.Fatal("runtime must retain scripts and leave stored routes unchanged")
+	before, _ := json.Marshal(routes)
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "old-manager"}, PredefinedRoutes: routes}
+	c := newAgentClosingTestOrchestrator(t)
+	_, _, err := c.executeDelegatingAgentStep(t.Context(), step, 0, nil, nil, nil, 0, nil, nil, "")
+	if err == nil || !strings.Contains(err.Error(), "main chat") {
+		t.Fatalf("old LLM helper must refuse with a conversion next step, got %v", err)
+	}
+	after, _ := json.Marshal(routes)
+	if string(after) != string(before) {
+		t.Fatal("runtime refusal changed saved helper instructions")
+	}
+	if err := validateGoalScriptedRouteAuthoring(routes[1:]); err != nil {
+		t.Fatalf("saved script helper was refused: %v", err)
 	}
 	if goalScriptHelperTool("call_sub_agent") || goalScriptHelperTool("call_generic_agent") || !goalScriptHelperTool("call_scripted_sub_agent") {
 		t.Fatal("wrong child tool surface")

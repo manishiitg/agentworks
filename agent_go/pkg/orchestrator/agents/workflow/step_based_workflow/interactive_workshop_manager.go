@@ -1198,7 +1198,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 		// These must always be allowed because SetToolAllowList also gates the code
 		// execution registry (HTTP calls), which blocks execution agents from calling
 		// sub-agents even though the restriction is intended only for the phase agent LLM.
-		"call_sub_agent", "call_scripted_sub_agent", "get_sub_agent_conversation", "get_route_description",
+		"call_scripted_sub_agent", "get_sub_agent_conversation", "get_route_description",
 	}
 	// Read-only info tools — safe in all modes
 	readOnly := []string{

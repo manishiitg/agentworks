@@ -146,10 +146,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 	}
 	if agent, ok := step.(*AgentPlanStep); ok {
 		hadHelpers := len(agent.PredefinedRoutes) > 0
-		runtimeAgent := *agent
-		runtimeAgent.PredefinedRoutes = goalScriptedRoutes(agent.PredefinedRoutes)
-		agent = &runtimeAgent
-		step = agent
+		if err := validateGoalScriptedRouteAuthoring(agent.PredefinedRoutes); err != nil {
+			return nil, err
+		}
 		if agent.AuthoredPrompt {
 			return nil, fmt.Errorf("authored-prompt steps use their own renderer; inspect their authored contract and get_step_prompts for a saved run")
 		}

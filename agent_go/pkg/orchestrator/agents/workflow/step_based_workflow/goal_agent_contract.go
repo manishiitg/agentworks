@@ -14,14 +14,8 @@ func goalScriptHelperTool(name string) bool {
 	return false
 }
 
-func goalScriptedRoutes(routes []PlanOrchestrationRoute) []PlanOrchestrationRoute {
-	out := make([]PlanOrchestrationRoute, 0, len(routes))
-	for _, route := range routes {
-		if _, ok := route.SubAgentStep.(*ScriptedPlanStep); ok {
-			out = append(out, route)
-		}
-	}
-	return out
+func retiredAgentHelperError(name string) error {
+	return fmt.Errorf("This workflow still has an old agent helper (%s). Ask the Crew's main chat to convert its agent helpers into normal agent steps before running it. Saved script helpers are still supported.", name)
 }
 
 func validateGoalScriptedRouteAuthoring(routes []PlanOrchestrationRoute, plans ...*PlanningResponse) error {
@@ -33,7 +27,7 @@ func validateGoalScriptedRouteAuthoring(routes []PlanOrchestrationRoute, plans .
 			route.SubAgentStep, _, _ = findStepByID(plans[0].OrphanSteps, route.OrphanStepRef)
 		}
 		if _, ok := route.SubAgentStep.(*ScriptedPlanStep); !ok {
-			return fmt.Errorf("route %q needs a saved scripted Python helper; put LLM specialists in an agent step using its Crew configuration", route.RouteID)
+			return retiredAgentHelperError(route.RouteID)
 		}
 	}
 	return nil

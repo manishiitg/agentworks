@@ -192,16 +192,8 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 					ctx := virtualtools.WithBackgroundAgentID(t.Context(), "registered-route-call")
 					ctx = context.WithValue(ctx, orchEvents.ParentExecutionIDKey, "registered-route-call")
 					_, _, err := c.executeRoutedSubAgentStep(ctx, &routed, "Check the evidence without repeating the action.", 0, "proof", nil, nil, nil, nil)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(notifier.starts) != 2 || effects != 1 {
-						t.Fatalf("routed capture or action changed: starts=%d effects=%d", len(notifier.starts), effects)
-					}
-					for _, start := range notifier.starts {
-						if start.ParentExecutionID != "registered-route-call" {
-							t.Fatalf("captured routed turn points to an unregistered parent: %q", start.ParentExecutionID)
-						}
+					if err == nil || !strings.Contains(err.Error(), "main chat") || len(notifier.starts) != 0 || effects != 1 {
+						t.Fatalf("retired LLM helper ran or lost conversion guidance: err=%v starts=%d effects=%d", err, len(notifier.starts), effects)
 					}
 				}
 			})

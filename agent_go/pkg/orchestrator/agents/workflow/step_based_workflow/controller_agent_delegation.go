@@ -85,7 +85,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupOrchestratorFolderGuard(step Pla
 // executeDelegatingAgentStep executes a todo task step by:
 //  1. The orchestrator LLM delegates to sub-agents and/or executes directly
 //  2. Processing tool calls:
-//     - call_sub_agent / call_scripted_sub_agent: Delegate to predefined agent or scripted routes
+//     - call_scripted_sub_agent: Run a saved Python helper
 //  3. Pre-validation checks output files after execution
 //  4. Retry with feedback on pre-validation failure (up to 3 attempts)
 //  5. Return success status and next step ID
@@ -119,13 +119,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 		return false, "", resolveErr
 	}
 
-	// Filter only the runtime copy: the saved plan remains available for explicit migration.
-	runtimeStep := *orchestratorStep
-	runtimeStep.PredefinedRoutes = goalScriptedRoutes(orchestratorStep.PredefinedRoutes)
-	if len(runtimeStep.PredefinedRoutes) != len(orchestratorStep.PredefinedRoutes) {
-		hcpo.GetLogger().Info(fmt.Sprintf("[STEP_ROUTES_RETIRED] workflow=%s step=%s: LLM specialist routes are retired; use saved Crew agent configuration; saved instructions await workflow_upgrade", hcpo.GetWorkspacePath(), step.GetID()))
+	if err := validateGoalScriptedRouteAuthoring(orchestratorStep.PredefinedRoutes); err != nil {
+		return false, "", err
 	}
-	orchestratorStep = &runtimeStep
 	step = orchestratorStep
 	hcpo.GetLogger().Info(fmt.Sprintf("🎯 Executing todo task step %d: %s", stepIndex+1, step.GetTitle()))
 
@@ -147,18 +143,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 
 	stepExecutionPath := hcpo.getOrchestratorStepExecutionPath(stepID, orchestratorStepPath)
 	readPaths, writePaths := hcpo.setupOrchestratorFolderGuard(step, orchestratorStepPath)
-
-	// Snapshot the shared orchestrator-level guard and restore it on exit. The
-	// todo_task orchestrator still enforces via this shared guard (unlike
-	// execution-only agents, which carry per-agent config guards precisely to
-	// avoid sharing this state). Without the restore, a nested todo_task route
-	// leaves its narrower guard in place when it returns, and the parent
-	// orchestrator's remaining turns — including the learnings/KB contribution
-	// turns — get validated against the nested step's paths.
-	prevGuardRead, prevGuardWrite := hcpo.GetFolderGuardPaths()
-	defer hcpo.SetWorkspacePathForFolderGuard(prevGuardRead, prevGuardWrite)
-	hcpo.SetWorkspacePathForFolderGuard(readPaths, writePaths)
-	hcpo.GetLogger().Info(fmt.Sprintf("🔒 Setting folder guard for todo task orchestrator agent - Read paths: %v, Write paths: %v", readPaths, writePaths))
 
 	// Ensure step execution folder exists before agent starts
 	if err := hcpo.ensureStepExecutionFolderExists(ctx, stepExecutionPath); err != nil {
@@ -247,18 +231,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 	}
 
 	createAgent := func(agentCtx context.Context) (orchestratoragents.OrchestratorAgent, error) {
-		agent, err := hcpo.createOrchestratorAgent(
-			agentCtx,
-			"agent",   // phase
-			stepIndex, // step
-			0,         // iteration
-			stepID,
-			orchestratorStepPath,
-			agentName,
-			stepConfig,
-			llmConfig,
-			subAgentExecCtx,
-		)
+		guard := &agentSequenceFolderGuardOverride{ReadPaths: readPaths, WritePaths: writePaths, OutputPath: stepExecutionPath}
+		agentCtx = context.WithValue(withParentStepIndex(agentCtx, stepIndex), agentSequenceFolderGuardOverrideKey{}, guard)
+		agent, err := hcpo.createExecutionOnlyAgent(agentCtx, "agent", orchestratorStepPath, agentName, stepConfig, orchestratorStep, stepID, "", subAgentExecCtx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create todo task orchestrator agent: %w", err)
 		}
@@ -340,18 +315,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 	return true, orchestratorStep.NextStepID, nil
 }
 
-func formatAgentRoutePromptBlock(step PlanStepInterface) string {
-	if !isAgentStep(step) {
-		return ""
-	}
-	return strings.TrimSpace(`Step type: agent
-Conversation: route-scoped session resumes within this orchestrator run
-First call: starts the sequence and sends the configured item queue
-Initial instructions: call_sub_agent instructions are added as initial context before the configured queue
-Re-entry: later call_sub_agent instructions are sent as the next user message in the existing conversation
-Start fresh: set agent_restart=true to archive the existing route session and replay the configured queue`)
-}
-
 // buildOrchestratorTemplateVars builds template variables for the orchestrator agent
 func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 	ctx context.Context,
@@ -385,9 +348,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 				fmt.Fprintf(&routesBuilder, " → output: `%s` | folder: `%s/`", contextOutput, subExecAbsPath)
 			} else {
 				fmt.Fprintf(&routesBuilder, " → folder: `%s/`", subExecAbsPath)
-			}
-			if isAgentStep(route.SubAgentStep) {
-				fmt.Fprintf(&routesBuilder, " | type: `%s` | repeated calls resume; `agent_restart=true` starts fresh", StepTypeAgent)
 			}
 			if definitions := scriptedParameterDefinitions(route.SubAgentStep); len(definitions) > 0 {
 				fmt.Fprintf(&routesBuilder, " | scripted params: `%s` (use get_route_description before calling)", strings.Join(sortedScriptParameterNames(definitions), "`, `"))
@@ -638,74 +598,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeRoutedSubAgentStep(
 		localExecCtx = &execCtxCopy
 	}
 
-	delegatingStep := stepToExecute
-	if isDelegatingAgentStep(stepToExecute) {
-		if orchestratorStep, ok := delegatingStep.(*AgentPlanStep); ok {
-			stepCopy := *orchestratorStep
-			stepCopy.Items = append([]AgentItem(nil), orchestratorStep.Items...)
-			if instruction := strings.TrimSpace(delegationInstructions); instruction != "" {
-				stepCopy.Items = append([]AgentItem{{
-					ID:      stepCopy.GetID() + "-initial-instruction",
-					Type:    "user_message",
-					Kind:    "execution",
-					Message: instruction,
-				}}, stepCopy.Items...)
-			}
-			delegatingStep = &stepCopy
-		}
-		successCriteriaMet, _, err := hcpo.executeDelegatingAgentStep(
-			ctx,
-			delegatingStep,
-			stepIndex,
-			progress,
-			[]string{},
-			[]string{},
-			0,
-			localExecCtx,
-			allSteps,
-			subAgentStepPath,
-		)
-		if err != nil {
-			return "", capturedHistory, err
-		}
-		if !successCriteriaMet {
-			return "", capturedHistory, fmt.Errorf("nested todo task step did not complete successfully")
-		}
-
-		if orchestratorStep, ok := stepToExecute.(*AgentPlanStep); ok && orchestratorStep.AgentDelegationDecision != nil {
-			if orchestratorStep.AgentDelegationDecision.CompletionReason != "" {
-				return orchestratorStep.AgentDelegationDecision.CompletionReason, capturedHistory, nil
-			}
-			if orchestratorStep.AgentDelegationDecision.ProgressSummary != "" {
-				return orchestratorStep.AgentDelegationDecision.ProgressSummary, capturedHistory, nil
-			}
-		}
-
-		return "Nested todo task completed successfully", capturedHistory, nil
-	}
-
-	sequenceExecutionStep := stepToExecute
-	if isAgentStep(sequenceExecutionStep) {
-		agentSequenceRestart, _ := ctx.Value(virtualtools.SubAgentAgentRestartKey).(bool)
-		// The caller already registered this delegation's execution identity.
-		// Keep it as the parent of the recorded turns. Minting an unregistered
-		// exec-* identity here leaves their transcripts outside the inspection
-		// tree, even though their prompts and tools were durably captured.
-		executionResult, capturedHistory, err := hcpo.executeAgentStep(
-			ctx,
-			sequenceExecutionStep,
-			stepIndex,
-			subAgentStepPath,
-			progress,
-			localExecCtx,
-			allSteps,
-			agentSequenceCallOptions{
-				Source:              "orchestrator_reentry",
-				ContinuationMessage: strings.TrimSpace(delegationInstructions),
-				Restart:             agentSequenceRestart,
-			},
-		)
-		return executionResult, capturedHistory, err
+	if !isScriptedStep(stepToExecute) {
+		return "", nil, retiredAgentHelperError(stepToExecute.GetTitle())
 	}
 
 	executionResult, _, err := hcpo.executeSingleStep(
@@ -756,6 +650,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 		return "", nil, fmt.Errorf("route %s has no sub_agent_step defined", response.SelectedRouteID)
 	}
 
+	if !isScriptedStep(route.SubAgentStep) {
+		return "", nil, retiredAgentHelperError(route.RouteName)
+	}
+
 	hcpo.GetLogger().Info(fmt.Sprintf("🤖 Executing predefined sub-agent: %s (%s)", route.RouteName, route.RouteID))
 	parentTodoTitle := step.GetTitle()
 	if parentTodoTitle == "" {
@@ -782,8 +680,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 	callID := subAgentCallID(asyncSubAgentExecutionID(ctx), response.TodoIDToExecute, time.Now().UnixNano())
 	isScriptedRoute := isScriptedStep(route.SubAgentStep)
 	subAgentStepPath := todoSubAgentArtifactFolderName(step.GetID(), stepPath, route.RouteID, callID, isScriptedRoute)
-	agentSequenceRestart, _ := ctx.Value(virtualtools.SubAgentAgentRestartKey).(bool)
-	if !isAgentStep(stepToExecute) || agentSequenceRestart {
+	if isScriptedRoute {
 		if err := hcpo.cleanupExecutionArtifactsForStepPath(ctx, subAgentStepPath, ""); err != nil {
 			return "", nil, fmt.Errorf("failed to cleanup sub-agent output %q: %w", subAgentStepPath, err)
 		}
@@ -955,8 +852,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) emitAgentRouteSelectedEvent(
 		}
 	}
 
-	// Extract preferred tier from context (set by call_sub_agent,
-	// or call_scripted_sub_agent).
+	// Extract the script repair tier from call_scripted_sub_agent.
 	var preferredTier int
 	var preferredTierLabel string
 	if tier, ok := ctx.Value(virtualtools.PreferredTierContextKey).(int); ok && tier >= 1 && tier <= 3 {
