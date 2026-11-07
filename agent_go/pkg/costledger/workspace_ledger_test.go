@@ -1,6 +1,9 @@
 package costledger
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -38,29 +41,60 @@ func TestWorkspaceLedgerPathScopesToWorkflowFolderOnly(t *testing.T) {
 }
 
 func TestWorkspaceLedgerOpensUnderTheWorkflowsOwnFolderAndIsReused(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	t.Cleanup(resetWorkspaceLedgersForTest)
+	for _, bound := range []bool{false, true} {
+		t.Run(fmt.Sprint(bound), func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("WORKSPACE_DOCS_PATH", root)
+			t.Cleanup(resetWorkspaceLedgersForTest)
+			t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+			if bound {
+				state := os.Getenv("AGENTWORKS_STATE_ROOT")
+				os.MkdirAll(filepath.Join(state, "ownership/crew-executables"), 0700)
+				os.MkdirAll(filepath.Join(root, "Crew/example"), 0700)
+				os.MkdirAll(filepath.Join(root, "_system/crew-data/crew"), 0700)
+				os.WriteFile(filepath.Join(state, "ownership/projects.json"), []byte(`{"projects":{"work/example":{"product":"work","folder":"example","project_id":"crew","owner_id":"owner"}}}`), 0600)
+				raw, _ := json.Marshal(map[string]string{"id": "sequence", "crew_id": "crew", "crew_root": "Crew/example", "workspace_path": "Workflow/social-media", "kind": "workflow"})
+				key := fmt.Sprintf("%x.json", sha256.Sum256([]byte("Workflow/social-media")))
+				os.WriteFile(filepath.Join(state, "ownership/crew-executables", key), raw, 0600)
+			}
 
-	ledger, err := WorkspaceLedger("Workflow/social-media")
-	if err != nil {
-		t.Fatalf("WorkspaceLedger: %v", err)
-	}
-	if ledger == nil {
-		t.Fatal("expected a non-nil ledger for a real workflow path")
-	}
+			ledger, err := WorkspaceLedger("Workflow/social-media")
+			if err != nil {
+				t.Fatalf("WorkspaceLedger: %v", err)
+			}
+			if ledger == nil {
+				t.Fatal("expected a non-nil ledger for a real workflow path")
+			}
 
-	wantPath := filepath.Join(root, "Workflow", "social-media", "costs", "costs.sqlite")
-	if _, err := os.Stat(wantPath); err != nil {
-		t.Fatalf("expected the ledger file at %s, stat error: %v", wantPath, err)
-	}
+			wantPath := filepath.Join(root, "Workflow", "social-media", "costs", "costs.sqlite")
+			if bound {
+				wantPath = filepath.Join(root, "_system/crew-data/crew/workflows/sequence/costs/costs.sqlite")
+			}
+			if _, err := os.Stat(wantPath); err != nil {
+				t.Fatalf("expected the ledger file at %s, stat error: %v", wantPath, err)
+			}
 
-	again, err := WorkspaceLedger("Workflow/social-media")
-	if err != nil {
-		t.Fatalf("WorkspaceLedger (second call): %v", err)
-	}
-	if again != ledger {
-		t.Fatal("expected the same *Ledger instance to be reused for the same workspace path, got a different one")
+			again, err := WorkspaceLedger("Workflow/social-media")
+			if err != nil {
+				t.Fatalf("WorkspaceLedger (second call): %v", err)
+			}
+			if again != ledger {
+				t.Fatal("expected the same *Ledger instance to be reused for the same workspace path, got a different one")
+			}
+			if err := ledger.Append(Entry{WorkflowID: "Workflow/social-media", ExecutionID: "moved-cost", Scope: "workflow_execution", LLMCallCount: 1, TotalCostUSD: 1.23}); err != nil {
+				t.Fatal(err)
+			}
+			summary, err := ledger.SummarizeWorkflow("Workflow/social-media")
+			if err != nil || summary == nil || summary.Total.TotalCostUSD != 1.23 {
+				t.Fatal("moved cost missing", summary, err)
+			}
+			if bound {
+				if _, err := os.Stat(filepath.Join(root, "Workflow/social-media")); !os.IsNotExist(err) {
+					t.Fatal("a cost event recreated the old workflow folder")
+				}
+			}
+
+		})
 	}
 }
 

@@ -201,6 +201,26 @@ func Discover(root string) (map[string][]string, error) {
 			result[m.ID] = append(result[m.ID], l.Binding.Root)
 		}
 	}
+	layouts, e := crewroot.ExecutableLayouts(root)
+	if e != nil {
+		return nil, e
+	}
+	for _, layout := range layouts {
+		if layout.Binding.Kind != "workflow" {
+			continue
+		}
+		manifest, e := ReadManifest(root, layout.Binding.Root)
+		if e != nil {
+			continue
+		}
+		duplicate := false
+		for _, path := range result[manifest.ID] {
+			duplicate = duplicate || path == layout.Binding.Root
+		}
+		if !duplicate {
+			result[manifest.ID] = append(result[manifest.ID], layout.Binding.Root)
+		}
+	}
 	return result, nil
 }
 
@@ -255,9 +275,18 @@ func Resolve(root, workspace string, sources []workflowtypes.KnowledgebaseSource
 		}
 		item.Label = source.Label
 		item.WorkspacePath = paths[0]
-		kb := filepath.Join(root, paths[0], "knowledgebase")
+		kb, resolveErr := fsutil.WorkspacePath(root, paths[0]+"/knowledgebase")
+		if resolveErr != nil {
+			item.Reason = "Source knowledge folder is unavailable"
+			result = append(result, item)
+			continue
+		}
 		canonical, err := filepath.EvalSymlinks(kb)
-		sourceRoot, rootErr := filepath.EvalSymlinks(filepath.Join(root, paths[0]))
+		sourcePath, rootErr := fsutil.WorkspacePath(root, paths[0])
+		sourceRoot := sourcePath
+		if rootErr == nil {
+			sourceRoot, rootErr = filepath.EvalSymlinks(sourcePath)
+		}
 		if err != nil || rootErr != nil || canonical != filepath.Join(sourceRoot, "knowledgebase") {
 			item.Reason = "Source knowledgebase is missing or redirects outside its canonical folder"
 			result = append(result, item)
@@ -358,7 +387,11 @@ func Candidates(root, workspace string) ([]ResolvedSource, error) {
 		if err != nil || !AudienceCanRead(consumer, m) {
 			continue
 		}
-		info, err := os.Stat(filepath.Join(root, paths[0], "knowledgebase"))
+		kb, err := fsutil.WorkspacePath(root, paths[0]+"/knowledgebase")
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(kb)
 		if err != nil || !info.IsDir() {
 			continue
 		}

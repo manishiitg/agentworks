@@ -67,6 +67,22 @@ func skillWorkspaceRoots(docs, workspace string) (skillWorkspace, error) {
 	if !(strings.HasPrefix(logical, "Workflow/") || strings.HasPrefix(logical, "Crew/") || (ref.HasOwner() && (logical == "Chats" || strings.HasPrefix(logical, "Chats/")))) {
 		return skillWorkspace{}, fmt.Errorf("skills require a project or workflow workspace")
 	}
+	if layout, found, err := crewroot.LookupExecutable(docs, workspace); found || err != nil {
+		if err != nil {
+			return skillWorkspace{}, err
+		}
+		if layout.Binding.Kind == "workflow" {
+			dir, _, err := crewroot.Resolve(docs, workspace)
+			if err != nil {
+				return skillWorkspace{}, err
+			}
+			manifest, _, err := crewroot.Resolve(docs, workspace+"/workflow.json")
+			if err != nil {
+				return skillWorkspace{}, err
+			}
+			return skillWorkspace{dir: dir, config: filepath.Dir(manifest)}, nil
+		}
+	}
 	if roots, bound, err := crewroot.Lookup(docs, workspace); bound || err != nil {
 		if err != nil {
 			return skillWorkspace{}, err

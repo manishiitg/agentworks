@@ -39,7 +39,11 @@ func WorkspaceLedgerPath(workspacePath string) string {
 	if workspacePath == "" || !strings.HasPrefix(workspacePath, workspaceCostsPathPrefix) {
 		return ""
 	}
-	return filepath.Join(fsutil.WorkspaceDocsRoot(), workspacePath, WorkspaceCostsRelativePath)
+	resolved, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), filepath.Join(workspacePath, WorkspaceCostsRelativePath))
+	if err != nil {
+		return ""
+	}
+	return resolved
 }
 
 // WorkspaceLedger returns the open per-workspace cost ledger for

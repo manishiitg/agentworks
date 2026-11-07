@@ -1,7 +1,9 @@
 package workflowkb
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,6 +35,7 @@ func refWrite(id, alias string) workflowtypes.KnowledgebaseSource {
 }
 
 func TestSourcesLiveReadsMultipleDirectSourcesAndMove(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	root := t.TempDir()
 	a := fixture(t, root, "consumer", "a", "owner", []workflowtypes.KnowledgebaseSource{ref("b", "project_a"), ref("c", "security")})
 	b := fixture(t, root, "project-a", "b", "owner", []workflowtypes.KnowledgebaseSource{ref("d", "private")})
@@ -65,6 +68,35 @@ func TestSourcesLiveReadsMultipleDirectSourcesAndMove(t *testing.T) {
 	}
 	if _, err := ReadFile(sources[0], "../workflow.json"); err == nil {
 		t.Fatal("sibling file exposed")
+	}
+
+	// PLAT-746-360: the same reference remains live after the source moves
+	// entirely into a Crew's Files/Private storage.
+	state := os.Getenv("AGENTWORKS_STATE_ROOT")
+	for _, dir := range []string{filepath.Join(state, "ownership/crew-executables"), filepath.Join(root, "Crew/example/.agentworks/workflows/b"), filepath.Join(root, "_system/crew-data/crew/workflows")} {
+		os.MkdirAll(dir, 0700)
+	}
+	os.WriteFile(filepath.Join(state, "ownership/projects.json"), []byte(`{"projects":{"work/example":{"product":"work","folder":"example","project_id":"crew","owner_id":"owner"}}}`), 0600)
+	encoded, _ := json.Marshal(map[string]string{"id": "b", "crew_id": "crew", "crew_root": "Crew/example", "workspace_path": "Workflow/renamed", "kind": "workflow"})
+	key := fmt.Sprintf("%x.json", sha256.Sum256([]byte("Workflow/renamed")))
+	os.WriteFile(filepath.Join(state, "ownership/crew-executables", key), encoded, 0600)
+	runtime := filepath.Join(root, "_system/crew-data/crew/workflows/b")
+	if err := os.Rename(filepath.Join(root, "Workflow/renamed"), runtime); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(runtime, "workflow.json"), filepath.Join(root, "Crew/example/.agentworks/workflows/b/workflow.json")); err != nil {
+		t.Fatal(err)
+	}
+	sources, err = Resolve(root, a, nil)
+	if err != nil || len(sources) != 2 || !sources[0].Available {
+		t.Fatal("moved knowledge unavailable", sources, err)
+	}
+	data, err = ReadFile(sources[0], "notes/fact.md")
+	if err != nil || string(data) != "updated" {
+		t.Fatal("moved knowledge unreadable", string(data), err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Workflow/renamed")); !os.IsNotExist(err) {
+		t.Fatal("knowledge recreated old workflow")
 	}
 	fixture(t, root, "clone", "b", "owner", nil)
 	sources, err = Resolve(root, a, nil)
