@@ -60,7 +60,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *a
 	if sharedKBRead {
 		effectiveSkills = appendUniqueSkill(effectiveSkills, "workflow-knowledgebase")
 	}
-	if config != nil && config.UseCodeExecutionMode {
+	if scriptedStep || (config != nil && config.UseCodeExecutionMode) {
 		effectiveSkills = appendUniqueSkill(effectiveSkills, "workflow-execution")
 	}
 	effectiveSkills = executionSelectedSkills(skills.WithAgentBrowserCapability(effectiveSkills, browserCfg.HasAgentBrowser))

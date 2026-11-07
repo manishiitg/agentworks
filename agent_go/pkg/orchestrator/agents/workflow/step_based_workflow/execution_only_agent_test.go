@@ -71,8 +71,8 @@ func TestExecutionOnlyPromptUsesManagedWorkflowDBTools(t *testing.T) {
 	})
 
 	requiredSnippets := []string{
-		"Use `query_workflow_db`",
-		"and `mutate_workflow_db`",
+		"Use `database action=query`",
+		"and `database action=mutate`",
 		"Open **workflow-database**",
 		"Use the database only when the task requests it",
 	}
@@ -101,17 +101,17 @@ func TestReadOnlyExecutionPromptCannotRecommendMutationOrRawSQLite(t *testing.T)
 		"IsScriptedMode":        "false",
 		"DBAccess":              DBAccessRead,
 	})
-	if !strings.Contains(prompt, "read access only") || !strings.Contains(prompt, "query_workflow_db") {
+	if !strings.Contains(prompt, "read access only") || !strings.Contains(prompt, "database action=query") {
 		t.Fatalf("read-only DB guidance missing:\n%s", prompt)
 	}
 	// Naming the forbidden tool is correct, explicit guidance -- "do not call
 	// mutate_workflow_db" cannot avoid the substring "mutate_workflow_db" and
 	// should not have to. What must never appear is an instruction that
 	// recommends calling it.
-	if !strings.Contains(prompt, "do not call `mutate_workflow_db`") {
+	if !strings.Contains(prompt, "do not call `database action=mutate`") {
 		t.Fatalf("read-only prompt does not explicitly prohibit mutate_workflow_db:\n%s", prompt)
 	}
-	for _, forbidden := range []string{"Use `mutate_workflow_db`", "$DB_PATH", "sqlite3", "INSERT ... ON CONFLICT"} {
+	for _, forbidden := range []string{"Use `database action=mutate`", "$DB_PATH", "sqlite3", "INSERT ... ON CONFLICT"} {
 		if strings.Contains(prompt, forbidden) {
 			t.Fatalf("read-only prompt contains %q:\n%s", forbidden, prompt)
 		}

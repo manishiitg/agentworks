@@ -41,6 +41,36 @@ The saved source layout is managed by the server. Ordinary configuration edits p
 - Write output files to `os.environ['STEP_OUTPUT_DIR']` with the exact filenames and structure the validation_schema requires. `STEP_OUTPUT_DIR` is **volatile** (per-run, wiped on re-run). A durable **file** that later steps, runs, or the builder must reach — a download, generated PDF/CSV/image/zip, any format — goes under `db/assets/` (write it via the workspace root, e.g. `os.path.join(os.path.dirname(os.environ['DB_PATH']), 'assets', name)`), with a reference row in `db.sqlite`. Use `db/assets/` for durable output files. Version 1 source and shared helpers belong in `code/`; other paths require explicit Folder Guard grants.
 - Check `python3 -m pip --version` before installing a Python dependency. Missing pip/venv is a server prerequisite failure; report it rather than repeatedly rewriting the test. For version 1, install with `python3 -m pip install --target "$WORKFLOW_CODE_DEPS" package`; the controller includes that persistent directory in `PYTHONPATH`. Do not choose a separate venv interpreter for a saved script: the runner uses `python3`. For legacy workflows verify the actual runner dependency path before installing. Never disable host package protections. Package caches persist under `.sandbox-cache/`. A saved `main.py` browser suite may use Python Playwright directly. For browser tests, first read `references/playwright-scripted.md`: JS/TS uses `@agentworks/playwright`; Python uses the `agentworks-playwright` helper/pytest fixture, while the saved-step runner remains Python. Anything needing root or `apt` must be installed by the server operator.
 
+**Python input/output example**
+
+Use the exact variable names, argument order and output filenames from this
+turn's runtime contract. For example, when the task declares `ACCOUNT`, one
+JSON input and `result.json`:
+
+```python
+import json
+import os
+import sys
+from pathlib import Path
+
+account = os.environ['VAR_ACCOUNT']
+output_dir = Path(os.environ['STEP_OUTPUT_DIR'])
+with open(sys.argv[1]) as source:
+    data = json.load(source)
+
+# Transform the real input or call an authorized service here.
+# For database rows, use agentworks_db; never open SQLite directly.
+with (output_dir / 'result.json').open('w') as target:
+    json.dump(data, target, indent=2)
+```
+
+Only read `SECRET_<NAME>` when the script needs that injected credential;
+never print it. For an HTTP helper, use the routes and response envelope in
+`references/mcp-bridge.md` and the bounded retry rules below. Do not log full
+request payloads or authorization headers. On failure, print useful,
+non-secret diagnostic context before raising; a debug file alone is not
+feedback to the repair turn.
+
 **Data authenticity — no fabrication**
 - Every value written to output files MUST trace to a real MCP tool call, API response, or input file. No hardcoded rows, no invented records.
 - If the script writes output without making any external calls or reading real input, it will be rejected.

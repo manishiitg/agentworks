@@ -153,23 +153,6 @@ func systemPromptForTurn(started string, history []llmtypes.MessageContent, rend
 	return rendered
 }
 
-// buildCodeExecBestPractices returns the Python best practices section — only for
-// learn-code mode, where main.py is the mandated output and a canonical call_mcp
-// helper is worth embedding. Pure code-exec mode is shell-first (curl/jq/etc.);
-// it doesn't need the 35-line Python helper and should avoid pinning agents to
-// any one language.
-func buildCodeExecBestPractices(isCodeExec bool, templateVars map[string]string, useProjectedReferenceSkills bool) string {
-	if !isCodeExec || templateVars["IsScriptedMode"] != "true" || useProjectedReferenceSkills {
-		return ""
-	}
-	var varMappingLines []string
-	if raw := templateVars["ScriptedVarMapping"]; raw != "" {
-		varMappingLines = strings.Split(raw, "\n")
-	}
-	hasInputArgs := templateVars["StepContextDependencies"] != ""
-	return BuildPythonBestPractices(varMappingLines, hasInputArgs)
-}
-
 var hardcodedStepPathCmdRegex = regexp.MustCompile(`(?i)cat\s+'?\{WORKSPACE_PATH\}/step-\d+/[^'\s]+`)
 
 func sanitizeScriptedDescription(desc string) string {
@@ -274,9 +257,8 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		}
 
 		validationSchemaJSON := templateVars["ValidationSchema"]
-		hasBrowser := templateVars["HasBrowserAccess"] == "true"
 		isCodeLocked := templateVars["IsScriptedLocked"] == "true"
-		codeExecutionSection += GetScriptedModeInstructions(codeDirAbsPath, stepExecutionPath, isRelearnMode, priorScript, priorError, inputArgPaths, envVarNames, varMappingLines, validationSchemaJSON, hasBrowser, isCodeLocked, useProjectedReferenceSkills, templateVars["DirectCodeSource"] == "true")
+		codeExecutionSection += GetScriptedModeInstructions(codeDirAbsPath, stepExecutionPath, isRelearnMode, priorScript, priorError, inputArgPaths, envVarNames, varMappingLines, validationSchemaJSON, isCodeLocked, templateVars["DirectCodeSource"] == "true")
 		if contract := strings.TrimSpace(templateVars["ScriptedParameterSchema"]); contract != "" {
 			codeExecutionSection += "\n**Script parameter contract:** This reusable script must read `STEP_PARAMS_JSON`, parse it as a JSON object, and support exactly this declared contract:\n```json\n" + contract + "\n```\nDo not hardcode current parameter values. `STEP_DELEGATION_ROUTE_ID` and `STEP_DELEGATION_TODO_ID` identify an orchestrated call. Positional arguments remain reserved for declared context dependencies.\n"
 			if values := strings.TrimSpace(templateVars["ScriptedParameterValues"]); values != "" {
