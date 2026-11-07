@@ -518,7 +518,6 @@ class Conversion:
                         for item in value if isinstance(value, list) else [value]:
                             item.update(profile_id='work', profile_version=1, conversation_key=newkey,
                                         workspace_path=self.crew_root, resource_id=self.crew, fresh_native=True)
-                            item['workflow_context_paths'] = list(dict.fromkeys([*item.get('workflow_context_paths', []), self.root]))
                     doc.setdefault(section, {})[fullkey] = value
                 if key == primary:
                     main_key = newkey
