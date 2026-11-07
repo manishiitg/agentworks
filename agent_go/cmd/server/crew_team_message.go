@@ -205,7 +205,7 @@ func teamMemberAgentRows(ctx context.Context, owner string, crews []map[string]i
 			person := strings.SplitN(firstNonEmptyTrimmed(tab.TabOwnerName, "Teammate"), "@", 2)[0]
 			rows = append(rows, map[string]interface{}{"kind": "team_agent", "type": "Team member's agent", "id": "team:" + id + ":" + tab.ConversationKey,
 				"name": person + "'s " + firstNonEmptyTrimmed(tab.Name, "Main"), "owner": person, "crew_name": name, "purpose": tab.Purpose, "presence": "Runs when messaged",
-				"reach": "send_message(target=<id>, message=…) from an agent of the same Crew; their reply comes back to that chat"})
+				"reach": "messages action=send(target=<id>, message=…) from an agent of the same Crew; their reply comes back to that chat"})
 		}
 	}
 	return rows

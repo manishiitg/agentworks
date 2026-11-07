@@ -924,7 +924,7 @@ func crewFunctionPlaceText(call *crewFunctionCall) string {
 // starts its supervisor.
 func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, fn crewFunction, args map[string]interface{}, timeout time.Duration, submissionIDs ...string) (*crewFunctionCall, error) {
 	if isBuiltinConversationalFunction(target, fn) || target.Chat != nil {
-		return nil, fmt.Errorf("conversations use send_message; functions action=call accepts declared internal triggers only")
+		return nil, fmt.Errorf("conversations use messages action=send; functions action=call accepts declared internal triggers only")
 	}
 	if caller.isTarget(target) {
 		return nil, fmt.Errorf("a %s cannot call its own function", target.Kind)
