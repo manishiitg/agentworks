@@ -146,6 +146,10 @@ func (api *StreamingAPI) sendTeamMessageFromMac(ctx context.Context, owner strin
 		for _, record := range records {
 			if record.ConversationKey == caller.Chat.Key || record.SessionID == caller.Chat.SessionID {
 				conversation = record.ConversationID
+				// The Team lists a Mac's main chat as Main, so that is the name a reply must come back to.
+				if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, owner) {
+					tab = macMainTab
+				}
 				break
 			}
 		}
