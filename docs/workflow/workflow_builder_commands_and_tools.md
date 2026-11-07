@@ -36,36 +36,19 @@ Current guidance kinds:
 
 ```text
 design-plan
-ready-to-optimize
-ops-review
-review-code
 run-plan-drift
-improve-knowledge
-improve-learnings
-improve-data
-setup-goals
-auto-improve
-improve-report
+design-dashboard
 ```
 
 ## Key Slash Commands
 
 | Command | Mode | Purpose |
 |---|---|---|
-| `/design-plan` | Workshop, Run | Comprehensive structural, artifact, and design-quality review through the read-only `review_plan` engine. |
-| `/ready-to-optimize` | Builder | Check whether the workflow is ready to hand to Optimizer. |
-| `/review-code` | Optimizer | Review all saved code artifacts, including learn-code scripts. |
-| `/ops-review` | Workshop | Agentically review cost, timing, tool/runtime reliability, model routing, setup, and plan-design hygiene; persist the full review plus trackable concerns. |
-| `/engineering-review` | Workshop | Run Engineering and LLM/Ops review, consolidate the findings, then apply and verify bounded fixes in one agent sequence. |
-| `/strategy-auditor` | Workshop | Diagnose plan-versus-goal strategy using cross-run evidence and persist the review plus trackable concerns. |
-| `/goal-advisor` | Workshop | Run the native Advisor → Critic → Finalizer pipeline and persist the complete result plus remaining open concerns. |
-| `/specialize-advisors` | Workshop | Propose two reusable workflow-specific lenses—one for Strategy Auditor and one for Goal Advisor—and create an Activate / Revise / Reject decision. Activation is approval-gated and stored in `workflow.json`. |
-| `/improve-knowledge` | Builder, Optimizer | Improve knowledgebase notes with targeted cleanup or cross-step consolidation. |
-| `/improve-learnings` | Builder, Optimizer | Improve global learnings with targeted cleanup or current-plan consolidation. |
-| `/improve-data` | Builder, Optimizer | Improve durable data contracts, schemas, and report compatibility. |
-| `/setup-goals` | Workshop | Confirm and normalize the durable Goal / Ikigai in `soul/soul.md`; do not seed a duplicate Goal card. |
-| `/auto-improve` | Optimizer | Create/update frequent Run-mode and Optimizer-mode schedules. |
-| `/improve-report` | Builder, Optimizer | Improve report layout, color, density, and widget/data wiring. |
+| `/design-plan` | Workshop | Comprehensive structural, artifact, and design-quality review. |
+| `/run-plan-drift` | Workshop | Check the plan still fits its steps, reports and schedules; apply bounded safe repairs. |
+| `/design-dashboard` | Workshop | Design the workflow's dashboard from its real data. |
+
+Other product commands (`/run`, `/fix`, `/schedule`, `/share`, `/connect`, `/notify`, `/upgrade`, `/backup`) are prompt-only files under `agent_go/internal/agentworksproduct/commands/`.
 
 ## Common Tool Groups
 

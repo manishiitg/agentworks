@@ -3,7 +3,7 @@
 Slash commands are quick actions triggered by typing `/` in the chat input. Commands come from three sources, merged by the registry (`frontend/src/commands/registry.ts`):
 
 - **Product commands** (`source: 'product'`): declared in a product's `product.yaml` under `commands:`, with the prompt inline or in a `commands/*.md` file. This is where builder slash commands live (`agent_go/internal/agentworksproduct/product.yaml`). The owning surface registers them on mount via `setProductCommands()` and clears them on unmount.
-- **Built-in commands** (`source: 'builtin'`): hardcoded in `frontend/src/commands/builtin-commands.tsx`. Only `/pulse` remains — it is an async frontend API call no static prompt can express.
+- **Built-in commands** (`source: 'builtin'`): hardcoded in `frontend/src/commands/builtin-commands.tsx`. The list is currently empty.
 - **User commands** (`source: 'user'`): custom prompt shortcuts stored in `workspace-docs/commands/custom/`.
 
 ## Overview
@@ -86,17 +86,9 @@ Builder slash commands are declared in `agent_go/internal/agentworksproduct/prod
 | Command | Aliases | Backend Kind |
 |---------|---------|--------------|
 | `/design-plan` | | `design-plan` |
-| `/run-plan-drift` (hidden; Pulse tab button) | | `run-plan-drift` |
+| `/run-plan-drift` (hidden from the menu) | | `run-plan-drift` |
 | `/design-dashboard` | | `design-dashboard` |
-| `/setup-goals` | | `setup-goals` |
-| `/run-goal-work` | `/strategy-auditor`, `/goal-advisor` | `strategy-auditor` |
-| `/run-technical-review` (hidden; Pulse tab button; + 7 hidden `pulse-review-*` focus shortcuts) | `/pulse-review` | `engineering-review` then `pulse-fixer` |
-| `/run-architecture-review` (hidden; Pulse tab button) | | prompt only (`references/architecture-review.md`) |
-| `/review-code` | | `design-plan` (architecture focus) |
-| `/backup` | | prompt only |
-| `/publish` | | prompt only |
-| `/notify` | | prompt only |
-| `/pulse` (hardcoded builtin, not yaml) | | scheduler API call |
+| `/run`, `/fix`, `/schedule`, `/share`, `/connect`, `/notify`, `/upgrade`, `/backup` | | prompt only (`commands/<name>.md`) |
 
 There is no `/ops-review`, `/improve-report`, `/improve-knowledge`, `/improve-learnings`, or `/improve-database` command. `ops-review` and `specialize-advisors` are `builder-reference` docs loaded by review turns that need them, not commands; the `improve-*` checklists were removed.
 
@@ -122,7 +114,7 @@ Add an entry under `commands:` in the product's `product.yaml` and a prompt file
   file: commands/my-command.md
 ```
 
-`{{context}}` in the prompt is replaced with whatever the user typed before the slash. For workflow guidance commands, also add the backend guidance kind in `agent_go/cmd/server/guidance/guidance.go` and the markdown template under `agent_go/cmd/server/guidance/templates/`. Only commands no static prompt can express (today: `/pulse`, an async API call) belong in `frontend/src/commands/builtin-commands.tsx`.
+`{{context}}` in the prompt is replaced with whatever the user typed before the slash. For workflow guidance commands, also add the backend guidance kind in `agent_go/cmd/server/guidance/guidance.go` and the markdown template under `agent_go/cmd/server/guidance/templates/`. Only commands no static prompt can express (none today) belong in `frontend/src/commands/builtin-commands.tsx`.
 
 ## User-Defined Commands
 
@@ -248,10 +240,9 @@ The commands package reuses `skills.WorkspaceAPIClient` for all file operations 
 ```
 frontend/src/commands/
 ├── types.ts                     # CommandDefinition, CommandContext interfaces
-├── builtin-commands.tsx          # Hardcoded builtins (/pulse only)
+├── builtin-commands.tsx          # Hardcoded builtins (none today)
 ├── agentworksProductData.ts      # Fetch agentworks product.yaml commands
 ├── agentworksProductCommands.tsx # Adapter: yaml entries to definitions
-├── pulse-review-focus.ts         # Review focus options shared by picker and adapter
 ├── registry.ts                   # getCommands(), findCommand(), setUserCommands(), setProductCommands()
 ├── user-commands.ts              # Load user commands from API, icon mapping
 └── index.ts                      # Re-exports

@@ -28,7 +28,7 @@ Follow [Build Your First Workflow](first-workflow.md) to create an automation, d
 
 - [Schedule recurring runs](../workflow/workflow_scheduling.md)
 - [Monitor runs, reports, and costs](../workflow/workflow_monitoring.md)
-- [Understand Pulse and reporting](../workflow/self_improvement_and_reporting.md)
+- [Understand reporting](../workflow/self_improvement_and_reporting.md)
 - [Configure evidence-based Auto Improve](../workflow/auto_improvement_framework.md)
 
 ## 5. Connect the Runtime

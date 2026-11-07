@@ -16,7 +16,7 @@ needs a defined task executed with checked inputs and a tracked terminal outcome
 
 ## Agent messages
 
-Internal agents send explicit messages using the message tool. Builder/Pulse and
+Internal agents send explicit messages using the message tool. Builder and
 Crew/workflow conversations follow the same rule: the recipient decides whether
 and what to send back. The platform does not capture the recipient's final chat
 text as an answer. There is no conversational `call_id`, required result or timeout

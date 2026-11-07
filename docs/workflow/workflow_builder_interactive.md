@@ -77,7 +77,6 @@ Allowed behavior:
 Use this after the basic workflow exists and needs hardening against run/eval/metric evidence.
 
 Adds:
-- `Pulse Bug Review/Fixer`
 - `debug_step`
 - `run_full_workflow`
 - evaluation helpers
@@ -146,7 +145,6 @@ Depending on mode, it may also expose:
 - `debug_step`
 - `run_full_workflow`
 - `run_full_report`
-- `Pulse Bug Review/Fixer`
 
 ## Step Execution From Builder
 

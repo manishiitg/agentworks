@@ -649,7 +649,7 @@ This is part of the same builder flow that produces `report_plan.md`, since the 
 ### What it is
 
 A Markdown file containing the workflow's stable north star. Runtime, evaluation,
-Pulse, and builder agents read its `## Objective` and `## Success Criteria`
+and builder agents read its `## Objective` and `## Success Criteria`
 sections to decide what the workflow must achieve.
 
 ### What it is NOT
@@ -668,11 +668,11 @@ It contains:
 2. `## Success Criteria` — observable, checkable conditions for success.
 3. Optional `## Constraints` — only boundaries explicitly stated or approved by
    the user as durable and non-negotiable.
-4. Optional `## Notifications` — the user's Pulse notification preference.
+4. Optional `## Notifications` — the user's notification preference.
 
 Architecture, providers, models, channels, thresholds, step boundaries, tactics,
 and other implementation choices are not stable merely because an agent wrote
-them down. Pulse and Goal Advisor may challenge and replace them when evidence
+them down. The Builder may challenge and replace them when evidence
 supports a better approach.
 
 ### Relationship to `objective` and `success_criteria`
@@ -704,11 +704,11 @@ Build a qualified list of prospects that can support effective outreach.
 
 - When the user confirms or changes the objective or success criteria.
 - When the user explicitly marks a boundary as a durable workflow-wide constraint.
-- When the user changes Pulse notification preferences.
+- When the user changes notification preferences.
 
 Do not silently promote agent-inferred assumptions or implementation decisions
 into `soul.md`. When authorship or durability is unclear and materially affects
-the goal, Pulse surfaces it under **Assumptions challenged** for user review.
+the goal, the Builder asks the user to review it.
 
 ### Location
 
@@ -718,7 +718,7 @@ soul/soul.md
 
 Dedicated top-level folder at workspace root, parallel to `planning/`, `db/`, `knowledgebase/`, and `learnings/`. It stays separate because it defines the stable outcome that the current plan is judged against.
 
-The `soul/` folder is added to the builder's writable folder-guard paths. Workshop/Pulse may update it under the stable-intent contract; execution and evaluation agents read it but treat it as read-only.
+The `soul/` folder is added to the builder's writable folder-guard paths. Workshop may update it under the stable-intent contract; execution and evaluation agents read it but treat it as read-only.
 
 ### Key implementation touchpoints
 

@@ -41,7 +41,7 @@ a required object `INPUT`. The returned value is the JSON result. Only owners an
 </div>
 
 External products invoke Relays through authenticated API function triggers.
-Cron/calendar schedules, bot chats and Pulse are not supported. Python and
+Cron/calendar schedules and bot chats are not supported. Python and
 explicitly selected MCP tools can use authorized Google, Slack or other APIs.
 The right pane shows Source and Calls. There is no agent resume or automatic
 recovery in this MVP. Selected Vault secrets and provider connections remain

@@ -58,8 +58,7 @@ queue, and restores a stuck session. Callers are one-liners:
 | Ask AI buttons (everywhere) | `AskAIButton.tsx` |
 | Crew views | `WorkWorkspacePane.tsx` (adds the project id, same function) |
 | Reports dashboard widgets | `reportWidgets/useReportChat.ts` |
-| Human decisions (Report + Pulse) | `utils/reportHumanInputChat.ts` |
-| Pulse manual review | `PulseWorkspace.tsx` |
+| Human decisions (Report) | `utils/reportHumanInputChat.ts` |
 | Capabilities panel | `WorkflowCapabilitiesPanel.tsx` |
 
 The only sender outside it is the main chat composer in `ChatArea.tsx`,

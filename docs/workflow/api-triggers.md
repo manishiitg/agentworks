@@ -117,8 +117,7 @@ Schedules or API triggers panels. The cards refresh from the scheduler every
 
 Highlight path starts at workflow entry, retaining prerequisite steps and
 following saved choices at routing/branch nodes. Unspecified decisions show
-possible paths. Missing route bindings are shown as unavailable. Pulse-only and
-optimizer jobs appear as maintenance triggers and do not link into plan execution.
+possible paths. Missing route bindings are shown as unavailable. Optimizer jobs appear as maintenance triggers and do not link into plan execution.
 
 
 ## Isolated outputs and CI polling
@@ -127,8 +126,7 @@ Each new delivery gets `runs/iteration-<n>-hook/<group>/`. These folders are not
 rotated into or overwritten by `iteration-0`; duplicate delivery IDs retain their
 original run. The latest 10 terminal hook folders are retained, plus every active hook. Hook
 retention is independent of ordinary run rotation; delivery payloads remain
-retained separately. A webhook does not drain answered Pulse
-decisions or start post-run Pulse, backup, publish or reviewer turns. A direct
+retained separately. A webhook does not start post-run backup, publish or reviewer turns. A direct
 webhook never performs a workflow contract upgrade: it fails closed when the
 saved contract is incompatible and tells the owner to update the workflow
 manually in Builder before retrying the delivery. Explicit steps in the selected

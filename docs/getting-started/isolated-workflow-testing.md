@@ -152,7 +152,7 @@ Before a live test:
 - Create independent test Owner and Run accounts in that instance's own database.
   Point both chats at its single `Workflow/testing` copy.
 - Build a harmless marker-only test route. Do not execute the original testing
-  plan merely because its name is “testing”. Leave schedules, Pulse, backup,
+  plan merely because its name is “testing”. Leave schedules, backup,
   publication, browser access and external integrations off.
 - Verify provider-specific native config/session isolation before launching real
   CLIs. The instance launcher alone does **not** prove this boundary. Do not

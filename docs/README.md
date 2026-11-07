@@ -23,7 +23,7 @@ Start with the operator journey, then use the subsystem references when you need
 
 - [Retiring fixed human-input steps](workflow/human-input-step-retirement.md): required launch variables, live human tools and a drained migration.
 - [Workflow](workflow/README.md): workflow authoring, execution, scheduling, metrics, reviews and notifications.
-- [Organization and Agents](multiagent/README.md): delegation, Org Pulse, shared memory, and agent-to-agent coordination.
+- [Organization and Agents](multiagent/README.md): delegation, shared memory, and agent-to-agent coordination.
 - [Core](core/README.md): providers, MCP, browser sessions, connectors, secrets, security, and shared runtime services.
 - [Security](security/README.md): the security model, per-user Linux accounts, and provider credentials.
 - [Relays](relay/README.md): versioned agent chains you run from anywhere — builder flow, releases, and the runs API.
