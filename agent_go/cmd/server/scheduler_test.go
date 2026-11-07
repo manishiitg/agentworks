@@ -1348,9 +1348,11 @@ func TestRunJobDoesNotJoinAnotherActiveRun(t *testing.T) {
 		"stale-run": func() {},
 	}}
 
+	// PLAT-871: a run that lost ownership before it started is refused with its own
+	// error and settles only its own starting claim; it is not a user stop.
 	_, err := svc.runJob(context.Background(), sctx, "stale-run")
-	if !errors.Is(err, errWorkshopSequenceInterrupted) {
-		t.Fatalf("runJob error = %v, want errWorkshopSequenceInterrupted", err)
+	if err == nil || !strings.Contains(err.Error(), "no longer owns") || errors.Is(err, errWorkshopSequenceInterrupted) {
+		t.Fatalf("runJob error = %v, want a refusal because the run no longer owns the schedule", err)
 	}
 	if got := svc.runtimeStates[runtimeKey].ActiveRunID; got != "active-run" {
 		t.Fatalf("active run ownership changed to %q", got)
@@ -2186,7 +2188,7 @@ func TestSchedulerRestartKeepsOutcomeAndAllowsNextOccurrence(t *testing.T) {
 
 // PLAT-871-8: an old queue expiry and a new cron activation in the same tick
 // must not revoke the new run or strand its durable starting claim.
-func TestScheduleQueueExpiryPreservesNewRunOwnership(t *testing.T) {
+func TestScheduleQueueScanPreservesNewRunOwnership(t *testing.T) {
 	ctx := context.Background()
 	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "schedule-state.sqlite"))
 	if err != nil {
@@ -2211,14 +2213,11 @@ func TestScheduleQueueExpiryPreservesNewRunOwnership(t *testing.T) {
 	if err := svc.claimScheduleRun(ctx, sctx, "new-cron", at); err != nil {
 		t.Fatal(err)
 	}
-	// Let queue expiry land after activation, as happened in the failing tick.
+	// Let the queue scan land after activation, as happened in the failing tick.
 	svc.resumeQueuedScheduleOccurrences(ctx, at)
 	state := svc.getRuntimeStateByKey(key)
 	if state.ActiveRunID != "new-cron" || state.LastStatus != "running" {
 		t.Fatalf("expiry revoked new owner: %+v", state)
-	}
-	if _, err := store.GetPendingOccurrence(ctx, "workflow", sctx.WorkspacePath, "daily"); err == nil {
-		t.Fatal("old queue row was not expired")
 	}
 	// A later queued slot's waiting projection must preserve the active owner too.
 	svc.markScheduleWaiting(sctx, "next slot is waiting", at.Add(time.Hour))

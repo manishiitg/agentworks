@@ -65,7 +65,7 @@ func TestManifestRefusesExtraFullRunMessageForSavedRoute(t *testing.T) {
 			manifest := NewWorkflowManifest("Scheduled work")
 			manifest.Schedules = []WorkflowSchedule{{
 				ID: "daily", Name: "Daily work", CronExpression: "0 9 * * *", Timezone: "UTC",
-				GroupNames: []string{"default"}, RouteSelections: tc.routes, Messages: tc.messages,
+				RouteSelections: tc.routes, Messages: tc.messages,
 			}}
 			err := ValidateManifest(manifest)
 			if tc.wantErr {
