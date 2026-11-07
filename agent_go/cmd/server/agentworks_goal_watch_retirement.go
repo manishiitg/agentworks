@@ -116,8 +116,14 @@ func (api *StreamingAPI) retireAgentWorksGoalWatchingFor(ctx context.Context, us
 	defer lockAgentWorks(userID)()
 	crew := agentWorksCrew{CrewID: agentWorksCrewID(userID)}
 	_, binding, manifest, err := api.projectActions.projectManifest(ctx, userID, crewProfileID, crew.CrewID)
-	if err != nil || manifest.Role != agentWorksRole {
-		return nil // this person has no AgentWorks yet
+	if err != nil {
+		if !errors.Is(err, errProjectNotFound) {
+			log.Printf("[AGENTWORKS] event=goal_watch_retirement_skipped user=%s crew=%s error=%v", userID, crew.CrewID, err)
+		}
+		return nil // no AgentWorks yet, or its manifest could not be read (logged)
+	}
+	if manifest.Role != agentWorksRole {
+		return nil
 	}
 	crew.WorkspacePath = binding.WorkspacePath
 	root := crew.WorkspacePath
