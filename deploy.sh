@@ -40,12 +40,12 @@ Build once, deploy everywhere (PLAT-426): rts, excellence, confida and all-hetzn
 Hetzner box (deploy/common/build-release.sh -> /srv/_builds/<name>, reused when the three revisions are unchanged), then each
 server only copies and activates it after verifying its manifest (architecture, glibc, every file hash).
   --build <name|sha>    deploy that existing build instead of main's head (see `builds`); its three revisions must be
-                        ancestors of origin/main of the three repositories
+                        on origin/main of the three repositories, or older main commits plus changes already on main
   DEPLOY_BUILD_TRANSPORT=auto|github|stream   how rts gets the build: RTS downloads it from the public builds repo on GitHub
                         (auto: streaming through this machine is the fallback when the release is missing), github (no fallback), stream (old path)
   DEPLOY_SHA_MCP_AGENT_BUILDER_GO / DEPLOY_SHA_MCPAGENT / DEPLOY_SHA_MULTI_LLM_PROVIDER_GO=<40-hex>   build that commit of the repository instead of main's head
                         (without it, mcpagent and multi-llm-provider-go build at the commits agent_go/go.mod pins)
-                        (it must already be on main); for a release that leaves out work still landing
+                        (it must be on main, or an older main commit plus changes already on main); for a release that leaves out work still landing
   DEPLOY_REFRESH_TOOLS=1    refresh provider CLIs and agent-browser from vendors; normal deploys reuse healthy unchanged tools
   DEPLOY_SECURITY_CHECKS=full|basic   how thorough the slot self-test at the end of a deploy of a slot host is (default full): basic = a
                         slotted `pwd` per slot + the refusal checks; full adds a live tmux server on the test slot that no slot
