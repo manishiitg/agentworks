@@ -82,6 +82,48 @@ class InputContractMigration(unittest.TestCase):
         changes, errors = m.convert(self.root, self.binary)
         self.assertEqual((changes, errors), ({}, []))
 
+    def test_timer_conversion_refuses_invalid_input_definition_before_apply(self):
+        # Restoring a timer must not bypass the runtime's credential-input rule.
+        self.write('variables/variables.json', {'variables': [{'name': 'PASSWORD', 'value': 'example-fixture'}], 'groups': [{'name': 'weekly'}]})
+        self.write('schedules.json', {'schedules': [{'id': 'timer', 'enabled': True,
+                   'action': {'type': 'run'}, 'input': {'groups': ['weekly']}}]})
+        self.assert_refused_without_writes('credential')
+
+
+class SavedGroupMigration(unittest.TestCase):
+    def test_batch_timers_preserve_accounts_and_state_only_after_owner_choice(self):
+        # PLAT-746-362: retired groups made linked workflows unreadable.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'variables').mkdir()
+            (root/'workflow.json').write_text('{"id":"example"}')
+            (root/'variables/variables.json').write_text(json.dumps({'groups': [{'name': 'a'}, {'name': 'b'}]}))
+            timer = {'id': 'timer', 'name': 'Process accounts', 'project': {'kind': 'goal', 'id': 'example'},
+                     'run_as': 'owner', 'enabled': True, 'when': {'cron': '0 9 * * *', 'timezone': 'UTC'},
+                     'action': {'type': 'run'}, 'input': {'groups': ['a', 'b'], 'inputs': {'month': 'current'}}}
+            message = dict(timer, id='message', enabled=False, action={'type': 'message'},
+                           input={'groups': ['a', 'b'], 'messages': ['Check progress']})
+            file = root/'schedules.json'
+            file.write_text(json.dumps({'schedules': [timer, message]}))
+            original = file.read_bytes()
+            _, errors = m.convert_saved_groups(root)
+            self.assertTrue(errors)
+            changes, errors = m.convert_saved_groups(root, True)
+            self.assertEqual(errors, [])
+            entries = changes[file]['schedules']
+            self.assertEqual([e['input'].get('input_preset') for e in entries], ['a', 'b', None])
+            self.assertEqual(entries[0]['id'], timer['id'])
+            for entry in entries[:2]:
+                for key in ['project', 'run_as', 'enabled', 'when', 'action']:
+                    self.assertEqual(entry[key], timer[key])
+                self.assertEqual(entry['input']['inputs'], timer['input']['inputs'])
+            self.assertFalse(entries[2]['enabled'])
+            self.assertEqual(entries[2]['input'], {'messages': ['Check progress']})
+            self.assertEqual(file.read_bytes(), original)
+            self.assertEqual(m.convert_saved_groups(root, True), (changes, []))
+            file.write_text(json.dumps(changes[file]))
+            self.assertEqual(m.convert_saved_groups(root, True), ({}, []))
+
 
 if __name__ == '__main__':
     unittest.main()
