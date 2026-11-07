@@ -5,7 +5,7 @@ const { waitForHealth } = require('./health');
 
 // The shell has already resolved the workspace, API port and configuration.
 // Unlike go run, a direct child preserves the private bootstrap pipe.
-async function startDevelopmentAgent({ env, appOrigin, secret, authSecret, log }) {
+async function startDevelopmentAgent({ env, appOrigin, secret, notifySecret, authSecret, log }) {
   const api = new URL(env.MCP_AGENT_SERVER_URL);
   const app = new URL(appOrigin);
   const loopback = url => url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname);
@@ -18,7 +18,7 @@ async function startDevelopmentAgent({ env, appOrigin, secret, authSecret, log }
   const child = spawnWithBootstrap(env.AGENTWORKS_DEV_AGENT_BINARY, args, {
     cwd: env.AGENTWORKS_DEV_AGENT_CWD,
     env: { ...withoutDesktopBootstrap(env), MCP_ENV_LOADED: '1' },
-  }, { secret, host: api.host, app_origin: app.origin, auth_secret: authSecret });
+  }, { secret, host: api.host, app_origin: app.origin, auth_secret: authSecret, notify_secret: notifySecret });
   let spawnError;
   child.on('error', error => { spawnError = error; });
   child.stdout.on('data', data => log.write(data));

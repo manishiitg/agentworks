@@ -98,7 +98,7 @@ export function webPushSupported(): boolean {
   return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 }
 
-// turnNotificationsOn asks this browser for permission (the Mac app needs none) and registers this device.
+// turnNotificationsOn asks this browser for permission (the Mac app uses native OS notifications) and registers this device.
 export async function turnNotificationsOn(settings: NotifySettings, sound: boolean): Promise<NotifyDevice[]> {
   const id = notifyDeviceId()
   if (isMacApp()) {

@@ -13,7 +13,7 @@ const isMacApp = () => !!window.electronAPI?.getDesktopConnection
 
 /**
  * The notifications bell (owner, 5 Nov, approved mockup): one click turns notifications on or off for this device;
- * right-click (or long-press) chooses which chats and, on a computer, the short sound. The server decides every send.
+ * hover (or long-press) chooses which chats and, on a computer, the short sound. The server decides every send.
  */
 export default function NotifyBell() {
   const [settings, setSettings] = useState<NotifySettings | null>(null)
@@ -21,6 +21,8 @@ export default function NotifyBell() {
   const [menu, setMenu] = useState(false)
   const wrapper = useRef<HTMLDivElement>(null)
   const press = useRef<number | null>(null)
+  const leave = useRef<number | null>(null)
+  const longPressed = useRef(false)
   const addToast = useChatStore(state => state.addToast)
 
   useEffect(() => {
@@ -38,6 +40,29 @@ export default function NotifyBell() {
     window.addEventListener('keydown', close)
     return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', close) }
   }, [menu])
+
+  useEffect(() => () => {
+    if (press.current !== null) window.clearTimeout(press.current)
+    if (leave.current !== null) window.clearTimeout(leave.current)
+  }, [])
+
+  const keepMenu = () => {
+    if (leave.current !== null) window.clearTimeout(leave.current)
+    leave.current = null
+  }
+  const hoverMenu = () => {
+    if (window.matchMedia?.('(hover: hover)').matches === false) return
+    keepMenu()
+    setMenu(true)
+  }
+  const leaveMenu = () => {
+    keepMenu()
+    leave.current = window.setTimeout(() => { setMenu(false); leave.current = null }, 200)
+  }
+  const cancelPress = () => {
+    if (press.current !== null) window.clearTimeout(press.current)
+    press.current = null
+  }
 
   const device = settings?.devices.find(item => item.id === notifyDeviceId())
   const on = !!device
@@ -73,21 +98,30 @@ export default function NotifyBell() {
     </button>
   )
 
-  return <div ref={wrapper} className="relative">
+  return <div ref={wrapper} className="relative" onMouseEnter={hoverMenu} onMouseLeave={leaveMenu}>
     <Tooltip>
       <TooltipTrigger asChild>
         <button type="button" aria-label={label} aria-pressed={on} disabled={busy || !settings} data-testid="notify-bell"
           className={`${iconButtonClass} ${on ? 'text-blue-600 dark:text-blue-400' : 'opacity-70'}`}
-          onClick={toggle}
-          onContextMenu={event => { event.preventDefault(); setMenu(true) }}
-          onTouchStart={() => { press.current = window.setTimeout(() => setMenu(true), 550) }}
-          onTouchEnd={() => { if (press.current) window.clearTimeout(press.current) }}>
+          aria-haspopup="menu" aria-expanded={menu}
+          onClick={event => {
+            if (longPressed.current) { longPressed.current = false; event.preventDefault(); return }
+            void toggle()
+          }}
+          onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); keepMenu(); setMenu(true) } }}
+          onTouchStart={() => {
+            cancelPress()
+            longPressed.current = false
+            press.current = window.setTimeout(() => { longPressed.current = true; keepMenu(); setMenu(true) }, 550)
+          }}
+          onTouchEnd={cancelPress}
+          onTouchCancel={() => { cancelPress(); longPressed.current = false }}>
           {on ? <Bell className="h-4 w-4" fill="currentColor" /> : <BellOff className="h-4 w-4" />}
         </button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
-    {menu && settings && <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-56 rounded-md border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+    {menu && settings && <div role="menu" onMouseEnter={keepMenu} onMouseLeave={leaveMenu} className="absolute right-0 top-full z-50 mt-1 w-56 rounded-md border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
       {choice(settings.chats !== 'all', 'Chats I started', () => setChats('mine'))}
       {choice(settings.chats === 'all', 'Every agent I can see', () => setChats('all'))}
       {on && !window.matchMedia?.('(pointer: coarse)').matches && <>

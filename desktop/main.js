@@ -977,6 +977,7 @@ function openMainWindow() {
   const devUrl = process.env.DEV_URL;
   if (devUrl) {
     createWindow(devUrl);
+    startNotifications();
     return;
   }
 
@@ -1112,7 +1113,7 @@ async function spawnDevelopmentAgent() {
   const { startDevelopmentAgent } = require('./lib/devAgent');
   developmentAuthSecret ??= fs.readFileSync(0, 'utf8').trim();
   const result = await startDevelopmentAgent({
-    env: process.env, appOrigin: currentDesktopAppOrigin(), secret: desktopConnectionSecret,
+    env: process.env, appOrigin: currentDesktopAppOrigin(), secret: desktopConnectionSecret, notifySecret,
     authSecret: developmentAuthSecret,
     log: createBoundedLogWriter(path.resolve(process.env.AGENTWORKS_DEV_AGENT_CWD, process.env.AGENTWORKS_DEV_AGENT_LOG)),
   });
@@ -1681,22 +1682,27 @@ function handleLocalServerExit(name, child, code, signal) {
 
 // Notifications this Mac has turned on arrive here, window open or not (lib/notify.js); clicking opens the chat.
 function startNotifications() {
-  if (stopNotifyStream || splitDevelopment || process.env.AGENTWORKS_DEV_AGENT_BINARY) return;
-  const { startNotifyStream, notifyRoute } = require('./lib/notify');
+  if (stopNotifyStream) return;
+  const { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders } = require('./lib/notify');
   stopNotifyStream = startNotifyStream({
-    getPort: () => dynamicAgentPort,
-    secret: notifySecret,
-    authSecret: process.env.AUTH_SECRET,
-    userId: process.env.DEFAULT_USER_ID || 'default',
+    getOrigin: currentDesktopOrigin,
+    getHeaders: origin => splitDevelopment
+      ? developmentNotifyHeaders(process.env.AGENTWORKS_DESKTOP_SOCKET, origin, currentDesktopAppOrigin())
+      : { 'X-AgentWorks-Notify': notifySecret, Authorization: `Bearer ${sessionToken(developmentAuthSecret || process.env.AUTH_SECRET, process.env.DEFAULT_USER_ID || 'default')}` },
     log: diagLog,
     show: msg => {
-      if (!Notification.isSupported() || typeof msg.title !== 'string') return;
+      if (!Notification.isSupported()) { diagLog('[notify] delivery=skipped reason=unsupported'); return; }
+      if (typeof msg.title !== 'string') return;
       const notice = new Notification({ title: msg.title, body: typeof msg.body === 'string' ? msg.body : '', silent: !msg.sound });
       notice.on('click', () => {
         const connection = typeof msg.connection === 'string' && /^[a-f0-9]{32}$/.test(msg.connection) ? msg.connection : 'local';
         openMainWindow();
         desktopConnectionsApi?.open(connection, notifyRoute(msg.route, connection !== 'local')).catch(err => diagLog('[notify] could not open the chat:', err.message));
       });
+      const event = ['finished', 'failed', 'needs_you', 'team_clash'].includes(msg.event) ? msg.event : 'notification';
+      notice.on('show', () => diagLog(`[notify] delivery=shown event=${event}`));
+      notice.on('failed', (_event, error) => diagLog(`[notify] delivery=failed event=${event} reason=${String(error)}`));
+      diagLog(`[notify] delivery=requested event=${event}`);
       notice.show();
     },
   });
@@ -1845,6 +1851,7 @@ app.whenReady().then(async () => {
       catch (error) { showErrorAndExit(error.message); return; }
     }
     createWindow(devUrl);
+    startNotifications();
     return;
   }
   
