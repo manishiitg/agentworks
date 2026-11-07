@@ -59,6 +59,9 @@ type DiffPatchResult struct {
 
 // ShellCommandResult is the typed response from ExecuteShellCommand
 type ShellCommandResult struct {
+	LogFile         string  `json:"log_file,omitempty"`
+	LogError        string  `json:"log_error,omitempty"`
+	LogComplete     bool    `json:"log_complete"`
 	Stdout          string  `json:"stdout"`
 	Stderr          string  `json:"stderr"`
 	ExitCode        int     `json:"exit_code"`

@@ -2,6 +2,11 @@ package models
 
 // ExecuteShellRequest represents the request to execute a shell command
 type ExecuteShellRequest struct {
+	// LogFile is selected by the trusted script harness, never by the shell
+	// tool schema. The service still checks the existing write guard.
+	LogFile          string `json:"log_file,omitempty"`
+	LogDirectory     string `json:"log_directory,omitempty"`
+	LogBufferBytes   int    `json:"log_buffer_bytes,omitempty"`
 	Command          string `json:"command" binding:"required"` // Shell command to execute (single string with all arguments)
 	WorkingDirectory string `json:"working_directory"`          // Relative working directory within docs-dir (default: "." for root)
 	Timeout          int    `json:"timeout,omitempty"`          // Timeout in seconds (default: 60, max: 300)
@@ -99,6 +104,9 @@ func (f *FolderGuardConfig) IsPathBlocked(path string) bool {
 
 // ExecuteShellResponse represents the response from shell command execution
 type ExecuteShellResponse struct {
+	LogFile         string `json:"log_file,omitempty"`
+	LogError        string `json:"log_error,omitempty"`
+	LogComplete     bool   `json:"log_complete"`
 	Stdout          string `json:"stdout"`            // Standard output
 	Stderr          string `json:"stderr"`            // Standard error
 	ExitCode        int    `json:"exit_code"`         // Process exit code

@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"sort"
@@ -22,7 +23,7 @@ var shellBackgroundGrace = 500 * time.Millisecond
 // pipes (cmd.Stdout = &buffer) make cmd.Wait wait until every process holding the pipe has closed it, so a
 // command with a background job never returned until that job ended, and the chat looked stuck. With our own
 // pipe, Wait returns when the shell exits; this reader keeps draining for as long as a background process writes
-// (so it never blocks on a full pipe), but once the call has returned it stops keeping the output.
+// (so it never blocks on a full pipe), the inline result freezes at detach while the file sink keeps every byte until EOF.
 type shellOutputCapture struct {
 	mu       sync.Mutex
 	buf      bytes.Buffer
@@ -30,7 +31,7 @@ type shellOutputCapture struct {
 	done     chan struct{}
 }
 
-func newShellOutputCapture(r *os.File) *shellOutputCapture {
+func newShellOutputCapture(r *os.File, sink io.Writer) *shellOutputCapture {
 	c := &shellOutputCapture{done: make(chan struct{})}
 	go func() {
 		defer close(c.done)
@@ -39,6 +40,9 @@ func newShellOutputCapture(r *os.File) *shellOutputCapture {
 		for {
 			n, err := r.Read(chunk)
 			if n > 0 {
+				if sink != nil {
+					_, _ = sink.Write(chunk[:n])
+				}
 				c.mu.Lock()
 				if !c.detached {
 					c.buf.Write(chunk[:n])
@@ -59,7 +63,7 @@ func (c *shellOutputCapture) String() string {
 	return c.buf.String()
 }
 
-// detach stops keeping output: what was read so far is the call's result, later output is discarded.
+// detach freezes the inline reply; the full file sink continues until EOF.
 func (c *shellOutputCapture) detach() {
 	c.mu.Lock()
 	c.detached = true

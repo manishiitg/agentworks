@@ -110,13 +110,13 @@ func TestSequenceScriptsP0ParallelBarrierAndFailureCoverage(t *testing.T) {
 	})
 	finished := make(chan []sequenceScriptResult, 1)
 	go func() {
-		results, err := runSequenceScriptBatch(t.Context(), sequenceBatchCalls(10), 2, func(ctx context.Context, call resolvedSequenceScript) (string, error) {
+		results, err := runSequenceScriptBatch(t.Context(), sequenceBatchCalls(10), 2, func(ctx context.Context, call resolvedSequenceScript) (sequenceScriptResult, error) {
 			started <- call.Call.ID
 			<-release
 			if call.Call.ID == "task-0" {
-				return "output", errors.New("validation failed")
+				return sequenceScriptResult{OutputDir: "output"}, errors.New("validation failed")
 			}
-			return "output", nil
+			return sequenceScriptResult{OutputDir: "output"}, nil
 		})
 		if err == nil {
 			t.Error("failed validation promoted to success")
@@ -160,11 +160,11 @@ func TestSequenceScriptsP0StopCancelsActiveAndSkipsPending(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var ran atomic.Int32
-	results, err := runSequenceScriptBatch(ctx, sequenceBatchCalls(10), 1, func(ctx context.Context, _ resolvedSequenceScript) (string, error) {
+	results, err := runSequenceScriptBatch(ctx, sequenceBatchCalls(10), 1, func(ctx context.Context, _ resolvedSequenceScript) (sequenceScriptResult, error) {
 		ran.Add(1)
 		cancel()
 		<-ctx.Done()
-		return "partial-output", ctx.Err()
+		return sequenceScriptResult{OutputDir: "partial-output"}, ctx.Err()
 	})
 	if !errors.Is(err, context.Canceled) || ran.Load() != 1 || results[0].Status != "cancelled" {
 		t.Fatalf("Stop failed: ran=%d err=%v results=%+v", ran.Load(), err, results)

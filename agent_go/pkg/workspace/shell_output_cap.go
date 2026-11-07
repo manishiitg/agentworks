@@ -186,6 +186,7 @@ func marshalCappedShellResultForAgent(result ShellCommandResult) (string, error)
 			len(result.Stdout), len(result.Stderr), limit,
 		),
 		ExitCode: result.ExitCode,
+		LogFile:  result.LogFile, LogError: result.LogError, LogComplete: result.LogComplete,
 	})
 }
 

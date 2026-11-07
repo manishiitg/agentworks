@@ -12,7 +12,7 @@ import (
 
 // All controller entry points run the same preflight and interpreter command.
 func scriptedCommand(main string, args []string) string {
-	command := "python3 -B -c " + shellQuotePath(scriptedBundlePreflight) + " " + shellQuotePath(main) + " && python3 -B " + shellQuotePath(main)
+	command := "python3 -B -c " + shellQuotePath(scriptedBundlePreflight) + " " + shellQuotePath(main) + " && python3 -u -B " + shellQuotePath(main)
 	for _, arg := range args {
 		command += " " + shellQuotePath(arg)
 	}

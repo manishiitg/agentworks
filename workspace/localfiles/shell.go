@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/runlog"
 	"io"
 	"os"
 	"os/exec"
@@ -180,8 +182,21 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	if err != nil {
 		return nil, err
 	}
+	fullLog := runlog.NewCapture(MaxShellOutputBytes, func() (*runlog.Log, error) {
+		return runlog.Create(journal, filepath.ToSlash(filepath.Join("shell-runs", strings.TrimSuffix(name, ".json")+".log")))
+	}, false)
+	fullLog.Note("command starting")
+	cmd.Stdout = io.MultiWriter(fullLog.Stream("stdout"), &stdout)
+	cmd.Stderr = io.MultiWriter(fullLog.Stream("stderr"), &stderr)
 	err = runShellCommand(cmd)
-	result := &ShellResult{RequestID: r.RequestID, Identity: r.Identity, Stdout: stdout.String(), Stderr: stderr.String(), Truncated: stdout.truncated || stderr.truncated, TimedOut: errors.Is(operationCtx.Err(), context.DeadlineExceeded)}
+	stop()
+	if operationCtx.Err() != nil {
+		fullLog.Force("command context ended: " + operationCtx.Err().Error())
+	}
+	fullLog.Note(fmt.Sprintf("command finished: error=%v, context=%v", err, operationCtx.Err()))
+	fullLog.Close()
+	logError := fullLog.Error()
+	result := &ShellResult{LogFile: fullLog.Path(), LogError: logError, LogComplete: fullLog.Complete(), RequestID: r.RequestID, Identity: r.Identity, Stdout: stdout.String(), Stderr: stderr.String(), Truncated: stdout.truncated || stderr.truncated, TimedOut: errors.Is(operationCtx.Err(), context.DeadlineExceeded)}
 	if err != nil {
 		result.ExitCode = -1
 		var exit *exec.ExitError

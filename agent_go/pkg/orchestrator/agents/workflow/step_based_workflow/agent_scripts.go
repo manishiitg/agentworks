@@ -117,17 +117,20 @@ func validateAgentScriptReferences(plan *PlanningResponse) error {
 }
 
 type sequenceScriptResult struct {
-	ID        string `json:"id"`
-	StepID    string `json:"step_id"`
-	Status    string `json:"status"`
-	OutputDir string `json:"output_dir,omitempty"`
-	Error     string `json:"error,omitempty"`
+	ID          string `json:"id"`
+	StepID      string `json:"step_id"`
+	Status      string `json:"status"`
+	OutputDir   string `json:"output_dir,omitempty"`
+	LogFile     string `json:"log_file,omitempty"`
+	LogError    string `json:"log_error,omitempty"`
+	LogComplete bool   `json:"log_complete"`
+	Error       string `json:"error,omitempty"`
 }
 
 // A finite worker pool owns every process until completion. Ordinary failure
 // does not hide the rest of the batch; Stop prevents pending calls from starting
 // and cancels active calls through their shared context. No LLM fallback exists.
-func runSequenceScriptBatch(ctx context.Context, calls []resolvedSequenceScript, parallel int, run func(context.Context, resolvedSequenceScript) (string, error)) ([]sequenceScriptResult, error) {
+func runSequenceScriptBatch(ctx context.Context, calls []resolvedSequenceScript, parallel int, run func(context.Context, resolvedSequenceScript) (sequenceScriptResult, error)) ([]sequenceScriptResult, error) {
 	if parallel <= 0 {
 		parallel = 1
 	}
@@ -160,8 +163,11 @@ func runSequenceScriptBatch(ctx context.Context, calls []resolvedSequenceScript,
 					lock.Unlock()
 					continue
 				}
-				outputDir, err := run(ctx, calls[i])
-				results[i].OutputDir = outputDir
+				receipt, err := run(ctx, calls[i])
+				results[i].OutputDir = receipt.OutputDir
+				results[i].LogFile = receipt.LogFile
+				results[i].LogError = receipt.LogError
+				results[i].LogComplete = receipt.LogComplete
 				results[i].Status = "completed"
 				if ctx.Err() != nil {
 					results[i].Status = "cancelled"
@@ -243,26 +249,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentScripts(ctx context.Conte
 		"scripts", "items", workflowSafeIDPart(item.ID, "item"),
 	)
 	batchPath := filepath.Join(itemPath, "calls")
-	results, batchErr := runSequenceScriptBatch(ctx, calls, item.MaxParallel, func(ctx context.Context, call resolvedSequenceScript) (string, error) {
+	results, batchErr := runSequenceScriptBatch(ctx, calls, item.MaxParallel, func(ctx context.Context, call resolvedSequenceScript) (sequenceScriptResult, error) {
 		outputPath := filepath.Join(batchPath, workflowSafeIDPart(call.Call.ID, "call"))
 		if err := createFolderViaAPI(ctx, outputPath); err != nil {
-			return outputPath, err
+			return sequenceScriptResult{OutputDir: outputPath, LogError: "script was not launched: " + err.Error()}, err
 		}
 		ctx = withScriptedDelegationContext(ctx, "", call.Call.ID, "", call.Call.Parameters)
 		result := hcpo.tryRunSavedScriptedScript(ctx, call.Step, stepIndex, stepPath, session.scriptedPlan.Steps, outputPath, executionRoot, hcpo.resolveDBAccess(call.Step.AgentConfigs))
-		// Preserve stdout and diagnostics outside the LLM context, including on Stop.
+		receipt := sequenceScriptResult{OutputDir: outputPath}
 		if result != nil {
-			logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
-			defer cancel()
-			log := result.Output
-			if result.Error != "" {
-				log += "\n" + result.Error
-			}
-			if err := hcpo.WriteWorkspaceFile(logCtx, outputPath+"/script-output.log", log); err != nil {
-				return outputPath, errors.Join(sequenceSavedScriptError(result), fmt.Errorf("save script output: %w", err))
-			}
+			receipt.LogFile = result.LogFile
+			receipt.LogError = result.LogError
+			receipt.LogComplete = result.LogComplete
 		}
-		return outputPath, sequenceSavedScriptError(result)
+		return receipt, sequenceSavedScriptError(result)
 	})
 	receipt, err := json.MarshalIndent(results, "", "  ")
 	if err != nil {
