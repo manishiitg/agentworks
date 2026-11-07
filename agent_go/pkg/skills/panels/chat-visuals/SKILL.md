@@ -2,7 +2,7 @@
 name: chat-visuals
 description: Present an explanation in app chat with native diagrams, swimlanes, sequences, charts, cards or timelines. Use when a visual makes the answer clearer.
 metadata:
-  version: 1.0.0
+  version: 1.1.0
   panel-tools: {}
   external-tools: []
 ---
@@ -15,5 +15,6 @@ for branches or architecture, and a chart for numbers. Ordinary comparisons
 usually need only a Markdown table.
 
 Read [formats and examples](references/formats.md) before authoring a `chat-ui`
-block. Keep a useful written answer alongside the visual. This skill changes
+block. Use the documented json-render SpecStream operations, not the retired
+single-object format. Keep a useful written answer alongside the visual. This skill changes
 presentation only; it grants no tools, access, account connections or actions.
