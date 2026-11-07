@@ -54,6 +54,14 @@ type ScheduleContext struct {
 	// A scheduled run mints its own session, so without this link its terminals
 	// are invisible to the tab that asked for the run. Empty for cron.
 	OriginSessionID string
+	// CallerSessionID is the active chat that started this run with run-now. It
+	// is resumed with the run's terminal result (schedule_caller_notice.go).
+	// CallerExecutionID is that chat's running turn when it asked.
+	CallerSessionID   string
+	CallerExecutionID string
+	// ChatDestinationSessionID is the chat the schedule itself posts to, when it
+	// has one, so a caller that is the same chat is not told twice.
+	ChatDestinationSessionID string
 
 	CalendarItem *CalendarScheduleItem
 	// ScheduledFor is the durable identity of a cron/calendar occurrence. It is
@@ -1356,6 +1364,9 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 		return "", errors.New("target is not a webhook")
 	}
 	sctx.OriginSessionID = originSessionID
+	if input == nil {
+		s.rememberScheduleCaller(sctx, originSessionID)
+	}
 	startTime := time.Now().UTC()
 	sctx.ScheduledFor = startTime
 	if disposition, reason := s.scheduleDependencyDisposition(ctx, sctx, startTime); disposition != scheduleDependencyReady {
@@ -2109,8 +2120,20 @@ func (s *SchedulerService) endQueuedLaunch(key string) {
 }
 
 // runJob executes a scheduled job: updates runtime state, creates run history, executes, updates results.
-func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, runID string) (string, error) {
-
+func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, runID string) (resultSession string, resultErr error) {
+	// A chat that started this run with run-now is owed its terminal result, even
+	// when the run ends before it has an outcome of its own.
+	callerNotice := s.beginCallerNotice(sctx, runID)
+	callerNoticed := false
+	defer func() {
+		if callerNotice != nil && !callerNoticed {
+			reason := "the run did not start"
+			if resultErr != nil {
+				reason = resultErr.Error()
+			}
+			callerNotice.finish(sctx, "error", reason, "")
+		}
+	}()
 	if sctx.WebhookInput != nil {
 		defer s.pruneWebhookRuns(sctx.WorkspacePath)
 	} else {
@@ -2452,6 +2475,8 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		SessionID: sessionID, RunFolder: runFolder, ErrorMessage: overallError, At: time.Now().UTC(),
 	})
 	s.cleanupRemovedScheduleRuntimeState(runtimeKey)
+	callerNotice.finish(sctx, overallStatus, overallError, runFolder)
+	callerNoticed = true
 
 	if overallStatus == "partial" {
 		// The terminal result is recorded above; a mixed outcome must not
@@ -2561,11 +2586,6 @@ func scheduledWorkshopMessages(sctx *ScheduleContext) []string {
 		}
 		return append([]string{instruction + " " + scheduledBackgroundNoPollingInstruction}, messages...)
 	}
-	if len(messages) == 0 {
-		preset, _ := json.Marshal(sctx.Schedule.InputPreset)
-		instruction := fmt.Sprintf("Run the workflow once using run_full_workflow with input_preset=%s. Omit input_preset when it is empty.", string(preset))
-		return []string{instruction + " " + scheduledBackgroundNoPollingInstruction}
-	}
 	if mode := strings.TrimSpace(sctx.Schedule.ExecutionMode); mode != "" {
 		prefix := fmt.Sprintf("This invocation has backend-enforced execution_mode=%q; do not weaken or reinterpret it. ", mode)
 		for i := range messages {
@@ -2599,6 +2619,7 @@ func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext
 			return "", "", err
 		}
 		sctx.OriginSessionID = target.SessionID
+		sctx.ChatDestinationSessionID = target.SessionID
 		defer func() {
 			status, detail := "completed", ""
 			if runErr != nil {
@@ -2624,6 +2645,9 @@ func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext
 	}
 	if sctx.CrewExecutable != nil && sctx.CrewExecutable.Kind == "script" {
 		return s.executeCrewScriptSchedule(ctx, sctx, runID)
+	}
+	if scheduleStartsRunDirectly(sctx) {
+		return s.executeDirectScheduledRun(ctx, sctx, runID)
 	}
 	if mode := strings.TrimSpace(sctx.Schedule.Mode); mode != "" && mode != "workshop" {
 		s.logf(sctx, "[SCHEDULER] Schedule %s uses legacy mode=%s; executing through workshop mode", sctx.Schedule.ID, mode)
@@ -2869,9 +2893,6 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	}
 	if !sctx.ProducedRunEvidence {
 		s.sessionLogf(sctx, sessionID, "[SCHEDULER] no run folder was created or restarted during this invocation for %s; AgentWorks evidence-dependent stages will be skipped", sctx.Schedule.ID)
-		if scheduleExpectsWorkflowRun(sctx) && postRunFoldersErr == nil && runFolderBaselineKnown {
-			return sessionID, runFolder, fmt.Errorf("the scheduled workflow did not start: the session finished without creating or restarting a run folder")
-		}
 	}
 	// Reconciliation is a set difference, so it is only meaningful when both
 	// sides are real. When either listing failed, skip it and say so rather than
@@ -2904,14 +2925,6 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 
 	s.sessionLogf(sctx, sessionID, "[SCHEDULER] ✅ Workshop execution completed for %s, session=%s, folder=%s", sctx.Schedule.ID, sessionID, runFolder)
 	return sessionID, runFolder, nil
-}
-
-func scheduleExpectsWorkflowRun(sctx *ScheduleContext) bool {
-	if sctx == nil || sctx.WebhookInput != nil {
-		return false
-	}
-	sched := sctx.Schedule
-	return len(sched.Messages) == 0 && strings.TrimSpace(sched.Query) == "" && strings.TrimSpace(sched.ExecutionMode) == ""
 }
 
 func runFolderNameSet(folders []RunFolderInfo) map[string]bool {

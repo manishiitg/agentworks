@@ -5,17 +5,26 @@ import (
 	"testing"
 )
 
-func TestScheduledWorkshopMessagesPassesDeclaredRouteSelections(t *testing.T) {
-	got := scheduledWorkshopMessages(&ScheduleContext{Schedule: WorkflowSchedule{
-		GroupNames:      []string{"draft"},
-		RouteSelections: map[string]string{"step-router": "draft-only"},
-	}})
-	if len(got) != 1 {
-		t.Fatalf("messages = %d, want 1", len(got))
+// A schedule with no messages only starts its saved run, so it starts it directly,
+// with or without saved routes; a schedule with messages keeps its agent.
+func TestScheduleStartsRunDirectlyOnlyWithoutMessages(t *testing.T) {
+	for name, sctx := range map[string]*ScheduleContext{
+		"plain":      {Schedule: WorkflowSchedule{ID: "daily", CronExpression: "0 9 * * *"}},
+		"routes":     {Schedule: WorkflowSchedule{ID: "r", RouteSelections: map[string]string{"step-router": "draft-only"}}},
+		"blank text": {Schedule: WorkflowSchedule{ID: "b", Messages: []string{"  "}}},
+		"exec mode":  {Schedule: WorkflowSchedule{ID: "m", ExecutionMode: "close_only"}},
+	} {
+		if !scheduleStartsRunDirectly(sctx) {
+			t.Errorf("%s schedule has nothing for an agent to do", name)
+		}
 	}
-	for _, want := range []string{"[\"draft\"]", `"step-router":"draft-only"`, "run_full_workflow"} {
-		if !strings.Contains(got[0], want) {
-			t.Fatalf("generated trigger missing %q: %s", want, got[0])
+	for name, sctx := range map[string]*ScheduleContext{
+		"messages":           {Schedule: WorkflowSchedule{ID: "m", Messages: []string{"Run only step-send-email-outreach"}}},
+		"routes and message": {Schedule: WorkflowSchedule{ID: "rm", RouteSelections: map[string]string{"step-router": "execution"}, Messages: []string{"Report the result."}}},
+		"webhook delivery":   {WebhookInput: &WorkflowWebhookDelivery{}, Schedule: WorkflowSchedule{ID: "w"}},
+	} {
+		if scheduleStartsRunDirectly(sctx) {
+			t.Errorf("%s schedule must keep its own start path", name)
 		}
 	}
 }
