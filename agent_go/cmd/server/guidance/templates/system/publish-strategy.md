@@ -1,6 +1,6 @@
 # Publish strategy — publish a dashboard on any static host
 
-Publish the saved dashboard to the destination in `workflow.json.publish`, using
+Publish the saved dashboard to the destination in `publish/config.json`, using
 that provider's CLI, git or file-sync. The same portable export works on Surge,
 Vercel, Netlify, Cloudflare Pages, GitHub Pages, Firebase and object storage.
 The destination and existing public/private settings are the contract.
@@ -56,7 +56,7 @@ Do not create a second publisher or a new schedule on your own. Source change ch
 include managed dashboard revisions and db/code files; generated publish/exports
 folders are excluded. Do not redeploy an older export when current data changed.
 Record the actual destination URL and current source hash in publish/status.json
-and workflow.json.publish only after the provider confirms the deploy. Open the
+and publish/config.json only after the provider confirms the deploy. Open the
 hosted URL and check its views, timestamp and assets. Never report an internal
 preview as successful external publishing.
 
@@ -235,7 +235,7 @@ inline the two views into the single nav page and encrypt just that one file.
 **Store the password as a named secret — never in plaintext.** For workflow publish, put it in
 the workflow's secret store (e.g. `PUBLISH_PASSWORD`) and read it as `$SECRET_PUBLISH_PASSWORD`,
 so the **auto-republish (AgentWorks)** step can re-encrypt without the user. Record only
-`visibility: "private"` and the `secret_name` in `workflow.json.publish` / `publish/status.json`.
+`visibility: "private"` and the `secret_name` in `publish/config.json` / `publish/status.json`.
 **Never the password itself.**
 
 **Honest limit:** a client-side gate is good *casual* privacy (keeps it out of public/search
@@ -268,15 +268,15 @@ with an explicit `--dir`, skipping any build step (the files are already built).
 `cd` inside the workspace or let the CLI build in place.
 
 **Then come back and persist state INTO the workflow folder — this is not optional.** The
-`/tmp` dir is throwaway; the record the UI reads lives in the workflow. A deploy that succeeds
-but leaves no `publish/status.json` + no `workflow.json.publish` block shows up as a **grey
-"not configured"** dot — i.e. it looks like you never published. After the CLI returns the URL,
-return to the workflow folder and, before you finish: (1) set `workflow.json.publish.enabled =
-true` with the destination + top-level `url`, and (2) write `publish/status.json` with
+`/tmp` dir is throwaway; the record of what you published lives in the workflow. A deploy that
+succeeds but leaves no `publish/status.json` and no `publish/config.json` looks like you never
+published. After the CLI returns the URL, return to the workflow folder and, before you finish:
+(1) set `enabled = true` in `publish/config.json` with the destination + top-level `url`, and
+(2) write `publish/status.json` with
 `state: "published"`, the `url`, and `last_source_hash` (see the two sections below). Never
 write these into the `/tmp` staging dir.
 
-Read the destination's `provider`, `method`, and `site` from `workflow.json.publish`.
+Read the destination's `provider`, `method`, and `site` from `publish/config.json`.
 Then deploy:
 
 1. **Provider CLI** (`method: cli`) — the default, and the host's own CLI **handles its own
@@ -348,17 +348,15 @@ named secret; never hardcode a token.
 Follow the same set-up-then-prove flow as backup:
 
 1. **Configure** (`action: "configure"`) — if the destination isn't set yet, add it to
-   `workflow.json.publish` (enabled, mode, targets, destination provider/method/site, visibility,
+   `publish/config.json` (enabled, mode, targets, destination provider/method/site, visibility,
    and secret name only). For a CLI host, **proactively suggest the one-time CLI install** (exact command from
    the table) and confirm the CLI is installed and **logged in** (`<cli> login`) — the CLI
    handles auth, so you don't store tokens. If critical details are missing, ask in this chat
    and write `publish/status.json` with state `configured_not_verified`. Do not publish yet.
 
-   **Edit workflow.json safely.** For workflow publish, change ONLY the `publish` block and preserve every other
-   field. The `targets` value must be a JSON array (of strings like `"report"`, or
-   objects). After writing, re-read it with a JSON parser
-   (`python3 -c "import json; json.load(open('workflow.json'))"`) to confirm it still parses —
-   a malformed workflow.json drops the workflow's config and can hide the workflow from the UI.
+   The `targets` value must be a JSON array (of strings like `"report"`, or
+   objects). After writing, re-read the file with a JSON parser
+   (`python3 -c "import json; json.load(open('publish/config.json'))"`) to confirm it still parses.
 2. **Verify** — on the first real publish, deploy, fetch the returned URL to confirm it loads,
    and only then mark `published`. Record the URL in both the destination and the top-level
    `url`.
@@ -386,7 +384,7 @@ Before you finish — even on failure — write `publish/status.json`:
 }
 ```
 
-Do not write operational publish status into `workflow.json`. Use `publish/status.json`.
+Do not write operational publish status into `publish/config.json`. Use `publish/status.json`.
 If a destination is missing credentials or setup, mark it `failed` and continue with any
 others.
 

@@ -36,7 +36,6 @@ type WorkflowContributor struct {
 	ManageSchedules bool     `json:"manage_schedules"`
 	Approve         bool     `json:"approve"`
 	ApprovalIDs     []string `json:"approval_ids,omitempty"`
-	Backup          bool     `json:"backup"`
 	Publish         bool     `json:"publish"`
 	Notify          bool     `json:"notify"`
 }

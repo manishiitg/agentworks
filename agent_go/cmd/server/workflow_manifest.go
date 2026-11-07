@@ -188,69 +188,11 @@ type WorkflowManifest struct {
 	// waits. Zero means the default.
 	PaceThresholdPercent int `json:"pace_threshold_percent,omitempty"`
 
-	// Backup is declarative configuration for builder-agent managed backup.
-	// Operational status is written separately to backup/status.json so normal
-	// backup attempts do not churn workflow.json.
-	Backup *WorkflowBackupConfig `json:"backup,omitempty"`
-
-	Publish *WorkflowPublishConfig `json:"publish,omitempty"`
-
-	// MalformedConfig lists optional config blocks (e.g. "backup", "publish") that
-	// failed to parse and were dropped so the workflow could still load. Transient
-	// (never serialized): set during ReadWorkflowManifest, used to avoid clobbering
-	// the on-disk config on write-back and to flag the issue.
-	MalformedConfig []string `json:"-"`
-}
-
-type WorkflowBackupConfig struct {
-	Enabled      bool                        `json:"enabled"`
-	Mode         string                      `json:"mode,omitempty"` // "agent" (default)
-	Destinations []WorkflowBackupDestination `json:"destinations,omitempty"`
-	Notes        string                      `json:"notes,omitempty"`
-}
-
-type WorkflowBackupDestination struct {
-	ID         string   `json:"id"`
-	Type       string   `json:"type"`     // git, object_store, huggingface, local_zip
-	Provider   string   `json:"provider"` // github, git, r2, s3, b2, huggingface, local
-	Repo       string   `json:"repo,omitempty"`
-	Branch     string   `json:"branch,omitempty"`
-	Bucket     string   `json:"bucket,omitempty"`
-	Prefix     string   `json:"prefix,omitempty"`
-	Covers     []string `json:"covers,omitempty"`
-	SecretRefs []string `json:"secret_refs,omitempty"`
-	Notes      string   `json:"notes,omitempty"`
-}
-
-// WorkflowPublishConfig is declarative config for publishing the workflow's HTML
-// artifacts to a public URL. Provider-agnostic: the destination's provider is a
-// free-form string and the per-host deploy logic lives in the publish-strategy
-// reference doc, not in Go.
-// NOTE: this config is authored by the builder agent, so its sub-fields are kept
-// deliberately tolerant. Free-form / variable-shape fields (e.g. targets, which the
-// agent may write as plain strings OR rich objects) use json.RawMessage so a shape
-// the agent chose can never fail manifest parsing and drop the whole workflow.
-type WorkflowPublishConfig struct {
-	Enabled       bool                         `json:"enabled"`
-	Mode          string                       `json:"mode,omitempty"`           // "agent" (default)
-	Targets       []json.RawMessage            `json:"targets,omitempty"`        // report targets, as strings or objects
-	DashboardMode string                       `json:"dashboard_mode,omitempty"` // "snapshot" (static HTML)
-	URL           string                       `json:"url,omitempty"`            // last published URL (agent-written, mirror of status)
-	Destinations  []WorkflowPublishDestination `json:"destinations,omitempty"`
-	Notes         string                       `json:"notes,omitempty"`
-}
-
-type WorkflowPublishDestination struct {
-	ID            string   `json:"id"`
-	Provider      string   `json:"provider"`                  // free-form: netlify, vercel, cloudflare-pages, github-pages, s3, ...
-	Method        string   `json:"method,omitempty"`          // cli | git | sync
-	Site          string   `json:"site,omitempty"`            // project / site / bucket / repo identifier
-	SecretName    string   `json:"secret_name,omitempty"`     // global secret holding the deploy token (CI only)
-	Visibility    string   `json:"visibility,omitempty"`      // public | private | unguessable-link (agent's choice)
-	PublicBaseURL string   `json:"public_base_url,omitempty"` // filled in by the agent after first deploy
-	URL           string   `json:"url,omitempty"`             // this destination's published URL
-	Covers        []string `json:"covers,omitempty"`
-	Notes         string   `json:"notes,omitempty"`
+	// Backup and Publish are retired workflow settings. A saved block stays in
+	// workflow.json as opaque data that nothing reads, so rewriting the manifest
+	// does not erase it. Delete both fields after the last server has moved.
+	Backup  json.RawMessage `json:"backup,omitempty"`
+	Publish json.RawMessage `json:"publish,omitempty"`
 }
 
 // WorkflowCapabilities stores workflow-wide agent and tool configuration.
@@ -907,22 +849,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	}
 	var m WorkflowManifest
 	if err := json.Unmarshal([]byte(content), &m); err != nil {
-		// Resilience: the backup/publish blocks are authored by the builder agent,
-		// so a shape it chose (e.g. a richer `targets`) must NEVER make the whole
-		// manifest unparseable and hide the workflow from the UI. Retry with those
-		// optional blocks dropped so the workflow still loads; only a genuinely
-		// broken core manifest is a hard error.
-		stripped, droppedKeys := stripOptionalConfigBlocks([]byte(content))
-		if len(droppedKeys) > 0 {
-			if err2 := json.Unmarshal(stripped, &m); err2 == nil {
-				log.Printf("[MANIFEST] %s: dropped malformed config block(s) %v so the workflow still loads (parse error: %v)", workspacePath, droppedKeys, err)
-				m.MalformedConfig = droppedKeys
-			} else {
-				return nil, false, fmt.Errorf("failed to parse workflow.json: %w", err)
-			}
-		} else {
-			return nil, false, fmt.Errorf("failed to parse workflow.json: %w", err)
-		}
+		return nil, false, fmt.Errorf("failed to parse workflow.json: %w", err)
 	}
 
 	binding, bindErr = findCrewExecutable(workspacePath)
@@ -1024,7 +951,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	// every read, and had it passed it would have dropped the product fields.
 	heldRoot, _ := ctx.Value(teamLockHeldKey{}).(string)
 	mayPersistManifestMigrations := persistMigrations && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
-	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) && len(m.MalformedConfig) == 0 {
+	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) {
 		if hasStaleFields {
 			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v capabilities=%v",
 				workspacePath, staleTopLevel, staleCapabilities)
@@ -1105,10 +1032,10 @@ func workflowLabelFromWorkspacePath(workspacePath string) string {
 // staleManifestFields reports JSON object keys present in raw workflow.json
 // content but absent from the current Go schema, scoped to the top-level
 // manifest and its capabilities object, where retired per-field knobs have historically
-// accumulated. backup, publish, pulse, and schedules are deliberately NOT
-// inspected here: those are agent-authored blocks that intentionally allow
-// shapes the Go structs don't fully model (see stripOptionalConfigBlocks),
-// so treating their contents as "stale" would risk deleting live data.
+// accumulated. backup and publish are kept as opaque saved blocks, and pulse
+// and schedules are deliberately NOT inspected here: their contents may have
+// shapes the Go structs don't fully model, so treating them as "stale" would
+// risk deleting live data.
 func staleManifestFields(content []byte) (topLevel, capabilities []string) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(content, &top); err != nil {
@@ -1158,33 +1085,6 @@ func unknownManifestKeys(obj map[string]json.RawMessage, known map[string]bool) 
 	}
 	sort.Strings(extra)
 	return extra
-}
-
-// stripOptionalConfigBlocks removes the agent-authored optional config blocks
-// ("backup", "publish") from raw workflow.json so a malformed one of them can't
-// fail the whole manifest parse. Returns the stripped bytes and the keys removed.
-// If the top-level JSON itself can't be parsed, returns no dropped keys (the
-// caller then surfaces the original, genuine parse error).
-func stripOptionalConfigBlocks(content []byte) ([]byte, []string) {
-	var top map[string]json.RawMessage
-	if err := json.Unmarshal(content, &top); err != nil {
-		return content, nil
-	}
-	var dropped []string
-	for _, key := range []string{"backup", "publish"} {
-		if _, ok := top[key]; ok {
-			delete(top, key)
-			dropped = append(dropped, key)
-		}
-	}
-	if len(dropped) == 0 {
-		return content, nil
-	}
-	stripped, err := json.Marshal(top)
-	if err != nil {
-		return content, nil
-	}
-	return stripped, dropped
 }
 
 func workflowManifestChangelogChanges(previous, current string) []step_based_workflow.PlanFieldChange {
@@ -1449,9 +1349,6 @@ func applyManifestDefaults(m *WorkflowManifest) {
 	}
 	if m.Schedules == nil {
 		m.Schedules = []WorkflowSchedule{}
-	}
-	if m.Backup != nil && m.Backup.Mode == "" {
-		m.Backup.Mode = "agent"
 	}
 	// Auto-assign IDs to schedules that pre-date the ID field.
 	for i := range m.Schedules {
