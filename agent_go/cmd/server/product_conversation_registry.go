@@ -672,6 +672,7 @@ func (store productConversationRegistryStore) switchTo(ctx context.Context, user
 		restored := current
 		restored.ConversationID = "conversation-" + store.newID()
 		restored.SessionID = sessionID
+		restored.CurrentWorkflowRun = nil
 		restored.CreatedAt = now
 		target = &restored
 	}
@@ -829,6 +830,7 @@ func (store productConversationRegistryStore) resolveOrCreate(
 		// updating the manifest and this registry document.
 		if authoritative := strings.TrimSpace(binding.AuthoritativeSessionID); authoritative != "" && existing.SessionID != authoritative {
 			existing.SessionID = authoritative
+			existing.CurrentWorkflowRun = nil
 			changed = true
 		}
 		if changed {

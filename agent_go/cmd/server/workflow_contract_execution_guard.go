@@ -17,6 +17,7 @@ type workflowContractExecutionGuardRegistrar struct {
 	definitionRegistrar
 	workspacePath string
 	scheduled     bool
+	boundWorkflow *crewExecutableBinding
 }
 
 func (r workflowContractExecutionGuardRegistrar) RegisterCustomTool(
@@ -48,7 +49,7 @@ func (r workflowContractExecutionGuardRegistrar) RegisterCustomToolWithTimeout(
 					return original(ctx, args) // Unmoved server retains its current schedule behavior.
 				}
 			}
-			if err := requireCurrentWorkflowContractForManualRun(ctx, r.workspacePath); err != nil {
+			if err := requireCurrentWorkflowContractForManualRun(ctx, r.workspacePath, r.boundWorkflow); err != nil {
 				return "", err
 			}
 			stepID := ""
@@ -69,7 +70,7 @@ func (r workflowContractExecutionGuardRegistrar) RegisterCustomToolWithTimeout(
 	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, execute, timeout, group)
 }
 
-func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePath string) error {
+func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePath string, trusted ...*crewExecutableBinding) error {
 	workspacePath = strings.TrimSpace(workspacePath)
 	if workspacePath == "" {
 		return fmt.Errorf("workflow_contract_check_failed: no workflow workspace is attached; no execution was started")
@@ -80,6 +81,12 @@ func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePa
 	}
 	if !found {
 		return fmt.Errorf("workflow_contract_check_failed: workflow.json was not found at %s; no execution was started", workspacePath)
+	}
+	// An admitted Crew binding is stronger than the editable manifest ID.
+	if len(trusted) > 0 && trusted[0] != nil && trusted[0].Kind == "workflow" && trusted[0].Root == workspacePath {
+		if workflowContractVersionForUpgrade(manifest) != workflowContractPortableVersion || manifest.CodeLayoutVersion != 1 {
+			return fmt.Errorf("this Crew's workflow needs its current update before running; ask this chat to update it")
+		}
 	}
 	if workflowContractNeedsRecreation(manifest) {
 		if workflowHasCrewBinding(manifest) {

@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
@@ -33,11 +32,7 @@ func (api *StreamingAPI) checkAndStampWorkflowContract(ctx context.Context, root
 		return false, err
 	}
 	checked := []string{}
-	directory, err := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), root)
-	if err != nil {
-		return false, err
-	}
-	if err := stepworkflow.CheckContractStamp(version, directory, []byte(raw), func() (string, error) {
+	if err := stepworkflow.CheckContractStamp(version, root, []byte(raw), func() (string, error) {
 		return read(ctx, root+"/planning/plan.json")
 	}, func() error {
 		var checkErr error

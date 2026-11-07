@@ -34,7 +34,7 @@ class Migration(unittest.TestCase):
         write(self.state/'ownership/projects.json',{'projects':{'work/target':{'product':'work','folder':'target','owner_id':'owner','project_id':'crew','private':True,'run_people':['runner']}}})
         (self.docs/'Crew/target').mkdir(parents=True)
         write(self.private/'product.json',{'id':'crew','product':'work','main_chat_key':'crew:chat:existing'})
-        write(self.source/'workflow.json',{'id':'old-goal','label':'Revenue goal','created_by':'owner','access':{'owners':['owner'],'readers':['runner']},'schedules':[], 'capabilities':{'selected_secrets':['api-name']}})
+        write(self.source/'workflow.json',{'id':'old-goal','code_layout_version':1,'label':'Revenue goal','created_by':'owner','access':{'owners':['owner'],'readers':['runner']},'schedules':[], 'capabilities':{'selected_secrets':['api-name']}})
         (self.source/'soul').mkdir(parents=True)
         (self.source/'soul/soul.md').write_text('## Objective\nGrow qualified revenue.\n\n## Success Criteria\nVerified revenue.\n')
         write(self.source/'planning/plan.json',{'steps':[{'id':'one','type':'scripted'}]})
@@ -148,12 +148,18 @@ class Migration(unittest.TestCase):
         self.assertTrue((self.runtime/'db/db.sqlite').is_file())
 
     def test_unsupported_source_layout_is_left_unchanged(self):
-        file = self.source/'workflow.json'; document = m.read(file)
-        document.update(version='1.0.29', code_layout_version=0); write(file, document)
-        before = hashes(self.base)
-        with self.assertRaisesRegex(ValueError, 'Not upgraded'):
-            self.conversion()
-        self.assertEqual(hashes(self.base), before)
+        file = self.source/'workflow.json'
+        original = m.read(file)
+        for layout in ('omitted', 0, None, 99, True):
+            with self.subTest(layout=layout):
+                document = dict(original)
+                if layout == 'omitted': document.pop('code_layout_version', None)
+                else: document['code_layout_version'] = layout
+                write(file, document)
+                before = hashes(self.base)
+                with self.assertRaisesRegex(ValueError, 'source layout'):
+                    self.conversion()
+                self.assertEqual(before, hashes(self.base))
 
     def test_report_does_not_create_or_update_wal_sidecars(self):
         # PLAT-746-396: the real copy dry-run created SQLite sidecars with

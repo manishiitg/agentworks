@@ -110,6 +110,9 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 		root, workflowID = binding.Root, binding.ID
 	}
 	guarded := workflowContractExecutionGuardRegistrar{definitionRegistrar: registrar, workspacePath: root}
+	if workflowID != "" {
+		guarded.boundWorkflow = &crewExecutableBinding{ID: workflowID, Root: root, Kind: "workflow"}
+	}
 	filtered := &agentProfileWorkflowRegistrar{target: guarded}
 	filtered.prepare = func(callCtx context.Context, _ string, _ map[string]interface{}) error {
 		if !isCrewProjectPath(publicWorkspacePath) {
@@ -125,7 +128,7 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 		return nil
 	}
 	todo_creation_human.RegisterLazyWorkshopTools(filtered, func(callCtx context.Context) (*todo_creation_human.WorkshopChatSession, error) {
-		return api.agentProfileWorkflowSession(context.WithoutCancel(callCtx), resolved, userID, sessionID, publicWorkspacePath, root, workflowID, selectedServers, mergedAPIKeys, req)
+		return api.agentProfileWorkflowSession(callCtx, resolved, userID, sessionID, publicWorkspacePath, root, workflowID, selectedServers, mergedAPIKeys, req)
 	}, api.logger)
 	return nil
 }
@@ -184,6 +187,12 @@ func (api *StreamingAPI) agentProfileWorkflowSession(ctx context.Context, resolv
 		sessionID,
 		runtimeWorkspacePath,
 	}, ":")
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if api.isSessionMarkedStopped(sessionID) {
+		return nil, fmt.Errorf("this chat was stopped; send a new message before running its steps")
+	}
 	// Parallel tool calls share one first-use runtime, not two independent
 	// controllers that could both launch the same step.
 	release, err := lockCrewExecution(ctx, workshopKey)
@@ -191,6 +200,9 @@ func (api *StreamingAPI) agentProfileWorkflowSession(ctx context.Context, resolv
 		return nil, err
 	}
 	defer release()
+	if api.isSessionMarkedStopped(sessionID) {
+		return nil, fmt.Errorf("this chat was stopped; send a new message before running its steps")
+	}
 	var workshopSession *todo_creation_human.WorkshopChatSession
 	if cached, ok := api.workshopChatSessions.Load(workshopKey); ok {
 		workshopSession, _ = cached.(*todo_creation_human.WorkshopChatSession)
@@ -228,7 +240,16 @@ func (api *StreamingAPI) agentProfileWorkflowSession(ctx context.Context, resolv
 		}
 		created.SetWorkshopModeOverride("workshop")
 		workshopSession = created
-		api.workshopChatSessions.Store(workshopKey, workshopSession)
+		api.stoppedSessionsMu.RLock()
+		stopped := api.stoppedSessions[sessionID] || ctx.Err() != nil
+		if !stopped {
+			api.workshopChatSessions.Store(workshopKey, workshopSession)
+		}
+		api.stoppedSessionsMu.RUnlock()
+		if stopped {
+			workshopSession.Close()
+			return nil, fmt.Errorf("this chat was stopped while its workflow was starting; no step started")
+		}
 	}
 
 	workshopSession.SetExtraSubAgentNotifier(&workflowSubAgentTrackingNotifier{api: api, sessionID: sessionID})

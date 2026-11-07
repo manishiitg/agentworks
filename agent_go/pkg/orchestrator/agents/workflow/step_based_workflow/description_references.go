@@ -3,6 +3,7 @@ package step_based_workflow
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -159,7 +160,7 @@ func cleanBrainReference(raw string) string {
 func resolvedWorkflowReference(workspacePath, relativePath string) (abs string, info os.FileInfo, ok bool) {
 	root := workflowAbsPath(workspacePath)
 	if layout, bound, err := crewroot.LookupExecutable(GetPromptDocsRoot(), workspacePath); err != nil {
-		return "", nil, false
+		log.Printf("workflow_reference_binding_lookup_failed workspace=%q error=%v; checking original workflow path", workspacePath, err)
 	} else if bound {
 		if strings.HasPrefix(relativePath, "learnings/") {
 			return "", nil, false

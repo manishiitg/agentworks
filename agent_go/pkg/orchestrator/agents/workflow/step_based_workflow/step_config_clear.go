@@ -115,6 +115,7 @@ func isKnownAgentConfigClearField(name string) bool {
 // answer: the field is gone, its stored value is already ignored, and there is
 // nothing left to clear.
 var retiredStepConfigClearFields = map[string]string{
+	"lock_code":                     "retired — scripts always execute saved source without automatic repair",
 	"transport":                     "never existed as a step config field",
 	"learning_mode":                 "retired with the per-step learning system",
 	"learnings_write_method":        "retired — direct write is the only mode",

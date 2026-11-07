@@ -116,10 +116,14 @@ func validateStepDescriptionLayoutStamp(version, workflowDir string) error {
 	if version != StepDescriptionLayoutContractVersion {
 		return nil
 	}
-	raw, err := os.ReadFile(filepath.Join(workflowDir, PlanningFolderName, "plan.json"))
+	layout, err := workflowStampLayout(workflowDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // no plan: no step descriptions to convert
+		return err
+	}
+	raw, err := os.ReadFile(filepath.Join(layout.Definitions, PlanningFolderName, "plan.json"))
+	if err != nil {
+		if os.IsNotExist(err) && layout.Binding.Kind == "" {
+			return nil // no standalone plan: no step descriptions to convert
 		}
 		return fmt.Errorf("could not read planning/plan.json: %w", err)
 	}
