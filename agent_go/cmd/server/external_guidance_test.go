@@ -243,6 +243,10 @@ func TestExternalGuidanceTopicsDiscloseUnavailableTools(t *testing.T) {
 	}
 	covered := map[string]bool{}
 	for _, topic := range externalGuidanceTopics {
+		// Check served guidance; disabled products have no exposed topic.
+		if !externalTopicVisible(nil, topic) {
+			continue
+		}
 		_, content, err := externalGuidanceContent(topic.Name)
 		if err != nil {
 			t.Fatalf("render %s: %v", topic.Name, err)
