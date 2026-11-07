@@ -43,7 +43,7 @@ func TestAskCrewDescriptionStatesTheModel(t *testing.T) {
 func TestGuestAskToolSurfaceIsAnExactAllowList(t *testing.T) {
 	want := []string{
 		"EndConversation", "WebSearch", crewAskFilesToolName, "query_workflow_db", "get_api_spec", "get_workflow_trigger_run", "list_accessible_workflows",
-		"list_attached_workflows", "project_functions_list", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
+		"project_functions_list", "list_mcp_servers", "list_project_schedules", "list_project_triggers",
 		"list_skills", "list_workflow_triggers", "read_agent_messages", "read_skill",
 		"search_skills", "search_tools", "send_message", crewSuggestionToolName,
 		crewPublishedCallToolName, crewPublishedGetToolName, "request_clarification",

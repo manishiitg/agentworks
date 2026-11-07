@@ -132,7 +132,7 @@ func TestWorkflowReferencesProjectScopedCrewInvocationTools(t *testing.T) {
 	if err := ResolveFeatures(&profile); err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range []string{"list_accessible_workflows", "attach_workflow_reference", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run"} {
+	for _, tool := range []string{"list_accessible_workflows", "attach_workflow_reference", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run"} {
 		if !containsString(profile.ToolPolicy.Enabled, tool) {
 			t.Fatalf("workflow-references feature omitted %s: %v", tool, profile.ToolPolicy.Enabled)
 		}

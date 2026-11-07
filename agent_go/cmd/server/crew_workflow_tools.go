@@ -9,17 +9,15 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
 var crewWorkflowExecutionMembers = map[string]bool{
-	"list_attached_workflows": true, "list_workflow_triggers": true,
-	"run_workflow_trigger": true, "get_workflow_trigger_run": true,
+	"list_workflow_triggers": true, "run_workflow_trigger": true,
+	"get_workflow_trigger_run": true,
 }
 
 // registerCrewWorkflowRunTools gives a Crew run the workflow side of the
-// bidirectional integration: list an attached workflow's triggers, run one
+// bidirectional integration: list a workflow's triggers, run one
 // through a platform-internal binding scoped to this Crew, and poll the run.
 // No secret is ever presented or exposed; the binding caller stamp (this
 // Crew's project ID plus profile) is the authorization, checked on dispatch
@@ -55,103 +53,6 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 			return nil, fmt.Errorf("attached workflow is outside current access or connection consent")
 		}
 		return crewAttachedWorkflowManifest(ctx, workspacePath, target)
-	}
-
-	if err := register("list_attached_workflows", "List the workflows attached to this Crew as durable read-only context, with their workspace paths, labels, and IDs. Pass one exact workspace_path to list_workflow_triggers, run_workflow_trigger, or get_workflow_trigger_run. Attach more with attach_workflow_reference.", map[string]interface{}{
-		"type": "object", "properties": map[string]interface{}{},
-	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx = withClaims(ctx)
-		refs, err := readWorkWorkflowReferences(ctx, workspacePath)
-		if err != nil {
-			return "", fmt.Errorf("Crew references are unavailable")
-		}
-		type attachedWorkflow struct {
-			WorkspacePath string `json:"workspace_path"`
-			Label         string `json:"label,omitempty"`
-			WorkflowID    string `json:"workflow_id,omitempty"`
-			Available     bool   `json:"available"`
-		}
-		attached := make([]attachedWorkflow, 0, len(refs))
-		// Crew Run mode: a reader lists the attached workflows they may
-		// open. References to other workflows are filtered rather than
-		// named, so a crew reused across workflows never leaks a
-		// workflow's existence to a reader who cannot open it.
-		reader := GetUserFromContext(ctx)
-		readerOnly := reader != nil && isCrewProjectPath(workspacePath) && !crewProjectOwnedByCaller(reader.UserID, workspacePath)
-		for _, ref := range refs {
-			if isExternalCrewDirectCall(ctx) && !api.externalCrewReferenceAllowed(ctx, reader, ref, false) {
-				continue
-			}
-			entry := attachedWorkflow{WorkspacePath: ref}
-			manifest, exists, err := ReadWorkflowManifest(ctx, ref)
-			if err != nil || !exists || manifest == nil {
-				if readerOnly {
-					continue
-				}
-				attached = append(attached, entry)
-				continue
-			}
-			if readerOnly && (workflowAccessForManifest(reader, manifest) == WorkflowAccessNone || !userAllowedWorkflowID(reader, manifest.ID)) {
-				continue
-			}
-			entry.Label = manifest.Label
-			entry.WorkflowID = manifest.ID
-			entry.Available = true
-			attached = append(attached, entry)
-		}
-		encoded, err := json.MarshalIndent(map[string]interface{}{"workflows": attached}, "", "  ")
-		return string(encoded), err
-	}); err != nil {
-		return err
-	}
-
-	// Reading a linked project's database: the same read-only, row-bounded query
-	// the dashboards and MCP query_database use. It needs the project to be one
-	// of this Crew's saved links AND the person to own or edit it (rechecked on
-	// every call), and it can never change a row.
-	if err := register("query_linked_workflow_db", "Read the database of one linked workflow you own or edit, read-only. Pass its exact workspace_path from list_attached_workflows and sql (one SELECT, WITH or EXPLAIN statement), or action=describe (optional table) for tables and columns. Row-bounded: give the query an ORDER BY and pass offset for the next page. It cannot change data.", map[string]interface{}{
-		"type": "object", "required": []string{"workspace_path"}, "properties": map[string]interface{}{
-			"workspace_path": map[string]interface{}{"type": "string", "description": "The linked workflow's exact workspace_path from list_attached_workflows."},
-			"action":         map[string]interface{}{"type": "string", "enum": []string{"query", "describe", "integrity_check"}},
-			"sql":            map[string]interface{}{"type": "string", "description": "One SELECT, WITH or EXPLAIN statement; ? placeholders bind params."},
-			"params":         map[string]interface{}{"type": "array"},
-			"table":          map[string]interface{}{"type": "string", "description": "For describe: one table."},
-			"max_rows":       map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 500},
-			"offset":         map[string]interface{}{"type": "integer", "minimum": 0},
-		},
-	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx = withClaims(ctx)
-		target, _ := args["workspace_path"].(string)
-		target = strings.TrimSuffix(strings.TrimSpace(target), "/")
-		refs, err := readWorkWorkflowReferences(ctx, workspacePath)
-		if err != nil {
-			return "", fmt.Errorf("Crew references are unavailable")
-		}
-		linked := false
-		for _, ref := range refs {
-			if strings.TrimSuffix(strings.TrimSpace(ref), "/") == target && target != "" {
-				linked = true
-			}
-		}
-		if !linked {
-			return "", fmt.Errorf("%q is not linked to this Crew; use the exact workspace_path from list_attached_workflows (link it first with attach_workflow_reference)", target)
-		}
-		if isCrewProjectPath(target) {
-			return "", fmt.Errorf("only linked workflows (Goals) have a database to read this way; for a linked Crew, read its files instead")
-		}
-		if _, err := attached(ctx, target); err != nil {
-			return "", err
-		}
-		query := map[string]interface{}{}
-		for _, key := range []string{"sql", "params", "action", "table", "max_rows", "offset"} {
-			if value, ok := args[key]; ok {
-				query[key] = value
-			}
-		}
-		client := api.reportPreviewWorkspaceClient(ctx, GetUserFromContext(ctx), target)
-		return virtualtools.RunWorkflowDBQuery(ctx, client, target+"/db/db.sqlite", query)
-	}); err != nil {
-		return err
 	}
 
 	if err := register("list_workflow_triggers", "List the triggers of one workflow you own or edit, with their IDs, names, enabled state, and kind. Pass its id from list_agents (workflow:<id>) or its workspace_path; Never reveals trigger secrets.", map[string]interface{}{

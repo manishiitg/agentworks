@@ -32,7 +32,6 @@ metadata:
     - read_agent_messages
     - files
     - list_accessible_workflows
-    - list_attached_workflows
     - database
     - attach_workflow_reference
     - detach_workflow_reference
