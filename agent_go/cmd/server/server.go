@@ -2440,7 +2440,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/users/directory", api.handleUserDirectory).Methods("GET", "OPTIONS")
 	api.registerCrewTeamRoutes(apiRouter)
 	apiRouter.HandleFunc("/me/token-usage", api.handleMyTokenUsage).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/share-tunnel/status", requireAdmin(api.handleGetShareTunnelStatus)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminListUsers)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/crew-storage", requireAdmin(api.handleCrewStorage)).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminCreateUser)).Methods("POST")
@@ -3166,7 +3165,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Dynamic report system. The frontend ReportViewer loads db/reports/index.html
 	// directly; HTML pages read durable data through window.report.
 
-	apiRouter.HandleFunc("/workflow/publish/secret", requireWorkflowWriteAccess(api.handleGetWorkflowPublishSecret)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/crew-executables", api.handleCrewExecutables).Methods("GET", "POST")
 	apiRouter.HandleFunc("/crew-dashboards", api.handleCrewDashboards).Methods("GET")
 	apiRouter.HandleFunc("/crew-script-file", api.handleCrewScriptFile).Methods("GET", "PUT")

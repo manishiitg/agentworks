@@ -34,25 +34,23 @@ durability.
 
 ## App contract: config vs status
 
-The app reads workflow backup configuration and backup health separately. Keep these separate.
+Keep the backup settings and the backup result separate, both inside the workflow's `backup/` folder.
 
 For a **workflow**:
 
-- `workflow.json.backup` is the declarative contract: whether backup is
-  enabled, which trigger should run it, which destinations exist, and what
-  each destination covers.
+- `backup/config.json` is what the person agreed to: whether backup is
+  enabled, which destinations exist, and what each destination covers.
 - `backup/status.json` is the operational result of the latest backup
   attempt. Update it after every configure or backup attempt, including
   partial and failed attempts.
-- Do not write frequently changing status fields into `workflow.json`.
-- **Edit workflow.json safely:** change only the `backup` block, preserve every other field,
-  and after writing re-read it with a JSON parser
-  (`python3 -c "import json; json.load(open('workflow.json'))"`) — a malformed workflow.json
-  drops the workflow's config and can hide the workflow from the UI.
+- Do not write changing status into `backup/config.json`, and do not edit
+  `workflow.json` for backup.
+- After writing either file, re-read it with a JSON parser
+  (`python3 -c "import json; json.load(open('backup/config.json'))"`).
 
 Backup does not run by itself after a run. It runs when the person asks for it, or from a schedule they set up for it.
 
-Recommended backup config shape (`workflow.json.backup`):
+Recommended backup config shape (`backup/config.json`):
 
 ```json
 {
@@ -286,7 +284,7 @@ lint failure) — fix the issue rather than skip the gate.
 ## Large-file backends — pick one per workflow
 
 Decide a backend once per workflow and persist the choice in
-`workflow.json.backup.destinations`. When chatting with the user, offer the
+`backup/config.json`. When chatting with the user, offer the
 options below and ask which they prefer — defaults vary by content type and
 existing account access.
 

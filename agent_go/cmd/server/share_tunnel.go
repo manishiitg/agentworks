@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
@@ -282,16 +281,6 @@ func (api *StreamingAPI) registerShareTunnelTools(reg definitionToolRegistrar, u
 			return "", fmt.Errorf("action must be start, stop, or status")
 		}
 	}, "user_management")
-}
-
-// handleGetShareTunnelStatus serves the Publish panel's internet-share
-// section. Admin-only: the URL reveals an exposed server.
-func (api *StreamingAPI) handleGetShareTunnelStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	writeAgentProfileJSON(w, http.StatusOK, GetShareTunnelStatus())
 }
 
 func shareTunnelStatusJSON(status ShareTunnelStatus) string {

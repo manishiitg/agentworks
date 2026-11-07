@@ -3123,7 +3123,6 @@ export interface WorkflowTeamMember {
   run: boolean
   manage_schedules: boolean
   approve: boolean
-  backup: boolean
   publish: boolean
 }
 export interface WorkflowTeamPolicy {

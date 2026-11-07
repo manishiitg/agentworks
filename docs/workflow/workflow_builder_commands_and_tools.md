@@ -48,7 +48,7 @@ design-dashboard
 | `/run-plan-drift` | Workshop | Check the plan still fits its steps, reports and schedules; apply bounded safe repairs. |
 | `/design-dashboard` | Workshop | Design the workflow's dashboard from its real data. |
 
-Other product commands (`/run`, `/fix`, `/schedule`, `/share`, `/connect`, `/notify`, `/upgrade`, `/backup`) are prompt-only files under `agent_go/internal/agentworksproduct/commands/`.
+Other product commands (`/run`, `/fix`, `/schedule`, `/share`, `/connect`, `/notify`, `/upgrade`) are prompt-only files under `agent_go/internal/agentworksproduct/commands/`.
 
 ## Common Tool Groups
 

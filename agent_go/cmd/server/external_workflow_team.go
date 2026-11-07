@@ -13,7 +13,7 @@ func externalWorkflowTeamDefinition(add func(string, string, bool, bool, map[str
 	ids := map[string]any{"type": "array", "items": externalString("Saved ID.")}
 	member := map[string]any{"type": "object", "additionalProperties": false,
 		"properties": map[string]any{"user_id": externalString("User ID from eligible_members; never a display name."), "approval_ids": ids}, "required": []any{"user_id"}}
-	for _, key := range []string{"run", "manage_schedules", "approve", "backup", "publish", "notify"} {
+	for _, key := range []string{"run", "manage_schedules", "approve", "publish", "notify"} {
 		member["properties"].(map[string]any)[key] = map[string]any{"type": "boolean"}
 	}
 	route := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{

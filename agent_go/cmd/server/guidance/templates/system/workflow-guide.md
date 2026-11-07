@@ -72,7 +72,7 @@ Use attached skills and live schemas, including product-specific differences.
 | Connected agents (AgentBridge), Cloud or Laptop access | `panel-access`; messages and computer connection grants remain separate |
 | Slack bot, WhatsApp or connecting an external AI app | `panel-channels`, `panel-channels`, `panel-access` |
 | Settings, instructions, Models, Costs and usage | `panel-settings`, `panel-settings`, `panel-settings` |
-| Publish, Notify, Backup, Upgrades | `panel-dashboard`, `panel-channels`, `panel-dashboard`, `panel-settings` |
+| Notify, Upgrades; asking for a backup or a publish | `panel-channels`, `panel-settings`, `panel-dashboard` |
 
 ## Current navigation and assistance
 
@@ -84,8 +84,8 @@ selected app accounts and configured automations. All tools (Cmd/Ctrl+K) opens t
 inventory, including Access & sharing, Models and Usage & cost. Visiting a
 setting does not promote it into Studio’s status panel. Finished files are
 linked in chat and remain accessible through Files; there is no separate file
-registry. Published Artifacts appear automatically under Dashboards. Publish, Notify and Backup
-are in Setup. Access summarizes owners, audience and shared agents; changes
+registry. Published Artifacts appear automatically under Dashboards. Notify is in Setup. Backup and
+publishing are asked for in chat. Access summarizes owners, audience and shared agents; changes
 are made through the visible project chat with the existing management tools.
 
 Panel **Ask AI** prepares a question in the current project's chat. It uses the
@@ -115,8 +115,7 @@ state the exact limitation and give the current menu destination when useful.
   Brain project access is Off, Read or Read & write; it is not folder binding.
   A selected computer is for authorized interactive work, not Goal steps,
   schedules or AgentWorks. Read the relevant skill before changing any grant.
-- Publishing to Surge, Vercel or another static host uses the existing Publish
-  automation and `dashboard action=export_static` for the same saved dashboard and
+- Publishing to Surge, Vercel or another static host is done when the person asks, and uses `dashboard action=export_static` for the same saved dashboard and
   authorized snapshot. It does not create a second app or export live private
   chat/tools/credentials. Inspect its saved visibility and actual publish status.
 - Slack account, Slack bot and WhatsApp are distinct channels. Inspect their

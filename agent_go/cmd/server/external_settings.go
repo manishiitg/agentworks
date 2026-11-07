@@ -475,11 +475,9 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 				view["vault"] = vault
 			}
 		}
-		// Backup, publish and notify status, as the app's views show them.
-		for key, handler := range map[string]http.HandlerFunc{"backup": api.handleGetWorkflowBackup, "publish": api.handleGetWorkflowPublish, "notify": api.handleGetWorkflowNotifications} {
-			if status, body := scheduleHandler(r, handler, http.MethodGet, "/api/workflow/"+key, nil, url.Values{"workspace_path": {workflow.WorkspacePath}}, nil); status == http.StatusOK && json.Valid(body) {
-				view[key] = json.RawMessage(body)
-			}
+		// Notify status, as the app's view shows it.
+		if status, body := scheduleHandler(r, api.handleGetWorkflowNotifications, http.MethodGet, "/api/workflow/notify", nil, url.Values{"workspace_path": {workflow.WorkspacePath}}, nil); status == http.StatusOK && json.Valid(body) {
+			view["notify"] = json.RawMessage(body)
 		}
 		externalSettingsReply(w, view, modelsOnly)
 		return
@@ -572,8 +570,6 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		Tools: caps.SelectedTools, Skills: caps.SelectedSkills, GlobalSecrets: caps.SelectedGlobalSecretNames,
 		BrowserMode: caps.BrowserMode, BrowserCDPPort: caps.BrowserCDPPort}, notifications(caps))
 	addWorkflowSettingsView(view, manifest)
-	view["backup"] = map[string]any{"config": manifest.Backup}
-	view["publish"] = map[string]any{"config": manifest.Publish}
 	view["changed"] = changed
 	if len(pending) > 0 {
 		view["pending_sign_in"] = pending

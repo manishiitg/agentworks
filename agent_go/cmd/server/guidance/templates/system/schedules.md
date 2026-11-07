@@ -78,15 +78,6 @@ The server keeps ten completed plain Builder archives, ten completed `-sched` ru
 - Dependencies express prerequisite completion; `collision_policy` still decides whether a due occurrence queues or is discarded while the workflow is busy. Use `queue_latest` with a bounded `max_start_delay_minutes` when the latest delayed occurrence remains useful.
 - Workflow-producing schedules are sequential by default. To opt one cron/calendar schedule into overlapping other schedules, set `concurrency_mode="parallel"` and `parallel_risk_acknowledged=true` through `create_schedule`, `create_calendar_schedule`, or `update_schedule`. Do this only after telling the human that `iteration-N-sched` isolates run output/log folders but not the shared workflow database, knowledge base, learnings, reports, planning/browser state or external actions; overlap may conflict, overwrite shared data, or duplicate actions. A resource/file claim list is not proof of safety. The same schedule never overlaps itself, manual workflow execution retains its existing exclusion, and `after_schedule_ids` always forces that occurrence to wait for all prerequisites. Without the explicit acknowledgement, preserve sequential behavior. Model schedules that must work in order with directional dependency chains/fan-in and collision queues.
 
-### Back up scheduled workflows
-
-Scheduled runs execute unattended and accumulate state (`workflow.json`, `planning/`, `knowledgebase/`, `learnings/`, `db/`, reports) that otherwise lives only on local disk. **Whenever you set up a recurring schedule, decide its backup coverage** against the existing owner policy and run cadence. For enabled backup, arrange off-device persistence; do not override an approved disabled/off policy. Load `read_skill(skills=[{"name":"builder-reference","path":"references/backup-strategy.md"}])`, follow it once to initialise the workflow's backup destination, and persist the result in `workflow.json.backup`.
-
-- When backup is enabled by the chosen policy, set `workflow.json.backup.enabled=true`, `mode="agent"`, and a `destinations` entry for each backup target (git/github for config, R2/S3/B2/HuggingFace for large artifacts as needed).
-- After each backup attempt, write `backup/status.json` with the destination results, timestamps, summary, and errors. Do not put changing backup status in `workflow.json`.
-
-Honor an existing user-approved disabled/off backup policy without asking again. If backup coverage has not been decided, leave automatic Backup off and explain how to set it up in the Goal’s Backup panel or chat. Do not add an interactive confirmation to an unattended run.
-
 ### Writing messages for scheduled runs
 
 `messages` is an ordered queue of strings sent to the workshop LLM one-by-one as user turns. The LLM completes all tool calls triggered by message N before message N+1 is sent.

@@ -18,7 +18,7 @@ All paths below are relative to the workspace root (prepend the absolute root wh
 ### Plan & Config
 | Path | Contents |
 |------|----------|
-| workflow.json | Workflow-level config — selected servers/tools/skills, LLM config, schedules, retention, publish/backup pointers |
+| workflow.json | Workflow-level config — selected servers/tools/skills, LLM config, schedules, retention |
 | planning/plan.json | Workflow plan — step definitions, descriptions, validation schemas |
 | planning/step_config.json | Step-level config overrides (LLM, execution mode, learnings, etc.) |
 | variables/variables.json | Runtime variables and groups |

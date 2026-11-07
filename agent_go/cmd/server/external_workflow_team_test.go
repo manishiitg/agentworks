@@ -54,7 +54,7 @@ func TestExternalWorkflowTeamManagementOverMCP(t *testing.T) {
 		t.Fatalf("missing member/route discovery: %s", text)
 	}
 	policy := &WorkflowTeam{LeaderID: "owner", Contributors: []WorkflowContributor{
-		{UserID: "outsider", Run: true, ManageSchedules: true, Approve: true, ApprovalIDs: []string{"decision-1"}, Backup: true, Notify: true}, {UserID: "reader"}},
+		{UserID: "outsider", Run: true, ManageSchedules: true, Approve: true, ApprovalIDs: []string{"decision-1"}, Notify: true}, {UserID: "reader"}},
 		Routes: []WorkflowRouteAssignment{{StepID: "parent", RouteID: "first", ContributorID: "outsider"}}, ReadOnlyStepIDs: []string{"second-step"}}
 	update := func(token string, team *WorkflowTeam, revision, want int) {
 		t.Helper()

@@ -175,15 +175,6 @@ Workflow schedules always use the workshop builder execution path. Do not create
 
 **After a run:** backup and publish do not run by themselves; ask for them, or set up a message schedule for them. Run outcomes are recorded in Activity independently. Configured team messages remain; there is no automatic owner email or daily digest. “Tell me when something breaks” (`break_alerts`) controls informational failures in Needs you. AgentWorks handles progress reports through ordinary Crew chats and schedules. Existing execution validation and access checks still apply.
 
-### Back up scheduled workflows
-
-Scheduled runs execute unattended and accumulate state (`workflow.json`, `planning/`, `knowledgebase/`, `learnings/`, `db/`, reports) that otherwise lives only on local disk. **Whenever you set up a recurring schedule, also arrange a backup** so each run persists its output off-box. Load `read_skill(skills=[{"name":"builder-reference","path":"references/backup-strategy.md"}])`, follow it once to initialise the workflow's backup destination, and persist the result in `workflow.json.backup`.
-
-- Set `workflow.json.backup.enabled=true`, `mode="agent"`, and a `destinations` entry for each backup target (git/github for config, R2/S3/B2/HuggingFace for large artifacts as needed).
-- After each backup attempt, write `backup/status.json` with the destination results, timestamps, summary, and errors. Do not put changing backup status in `workflow.json`.
-
-Confirm with the user before skipping backup on a recurring schedule.
-
 ### Writing messages for scheduled runs
 
 `messages` is an ordered queue of strings sent to the workshop LLM one-by-one as user turns. The LLM completes all tool calls triggered by message N before message N+1 is sent.

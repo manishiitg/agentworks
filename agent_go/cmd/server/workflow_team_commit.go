@@ -333,7 +333,7 @@ func authorizeTeamAction(ctx context.Context, root, action string) error {
 	if member == nil {
 		return fmt.Errorf("no current team membership")
 	}
-	allowed := action == "backup" && member.Backup || action == "publish" && member.Publish || action == "notify" && member.Notify
+	allowed := action == "publish" && member.Publish || action == "notify" && member.Notify
 	if !allowed {
 		return fmt.Errorf("%s requires its own team grant", action)
 	}

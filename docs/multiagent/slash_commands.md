@@ -88,7 +88,7 @@ Builder slash commands are declared in `agent_go/internal/agentworksproduct/prod
 | `/design-plan` | | `design-plan` |
 | `/run-plan-drift` (hidden from the menu) | | `run-plan-drift` |
 | `/design-dashboard` | | `design-dashboard` |
-| `/run`, `/fix`, `/schedule`, `/share`, `/connect`, `/notify`, `/upgrade`, `/backup` | | prompt only (`commands/<name>.md`) |
+| `/run`, `/fix`, `/schedule`, `/share`, `/connect`, `/notify`, `/upgrade` | | prompt only (`commands/<name>.md`) |
 
 There is no `/ops-review`, `/improve-report`, `/improve-knowledge`, `/improve-learnings`, or `/improve-database` command. `ops-review` and `specialize-advisors` are `builder-reference` docs loaded by review turns that need them, not commands; the `improve-*` checklists were removed.
 
