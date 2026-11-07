@@ -19,7 +19,7 @@ func TestCrewDashboardDiscoveryKeepsProjectAccessWithoutTrackingStore(t *testing
 	svc, files, ctx := newCrewCreationTestEnv(t)
 	docs, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Progress", IdempotencyKey: "dashboard-access"})
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Progress", Purpose: "Review progress", IdempotencyKey: "dashboard-access"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestWorkflowTrackingStaysInWorkflowDBAndRefusesCrewRoots(t *testing.T) {
 	svc, files, ctx := newCrewCreationTestEnv(t)
 	docs, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Data", IdempotencyKey: "tracking-data"})
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Data", Purpose: "Record progress", IdempotencyKey: "tracking-data"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,5 +124,4 @@ func TestWorkflowTrackingStaysInWorkflowDBAndRefusesCrewRoots(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(layout.Runtime, "db/db.sqlite")); err != nil {
 		t.Fatal(err)
 	}
-
 }
