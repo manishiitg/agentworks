@@ -17,12 +17,12 @@ import (
 // The server writes every line; the Mac app and the website show the same tree.
 
 type crewAccessPerson struct {
-	UserID      string   `json:"user_id"` // screens find the person's tabs by account, never by name
-	Name        string   `json:"name"`
-	Online      bool     `json:"online"`
-	OnlineLabel string   `json:"online_label,omitempty"` // the dot's words, from the server
-	Agents      []string `json:"agents,omitempty"`
-	StatusLabel string   `json:"status_label,omitempty"`
+	UserID      string `json:"user_id"` // screens find the person's tabs by account, never by name
+	Name        string `json:"name"`
+	Online      bool   `json:"online"`
+	OnlineLabel string `json:"online_label,omitempty"` // the dot's words, from the server
+	AgentsLabel string `json:"agents_label,omitempty"` // "8 agents": the person's chip in the tab strip names them
+	StatusLabel string `json:"status_label,omitempty"`
 }
 
 type crewAccessLine struct {
@@ -89,17 +89,19 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 		if p.You || p.UserID == f.Viewer {
 			continue
 		}
-		names := []string{}
 		status := ""
 		for _, a := range p.Agents {
-			names = append(names, a.Name)
 			if a.StatusLabel != "" {
 				status = a.StatusLabel
 			}
 		}
 		// The name the server gave (this Mac does not know the server's people), cut to its short form.
 		name := strings.SplitN(strings.TrimSpace(firstNonEmptyTrimmed(p.Name, crewPersonShortName(p.UserID))), "@", 2)[0]
-		people = append(people, crewAccessPerson{UserID: p.UserID, Name: name, Online: p.Active, OnlineLabel: p.ActiveLabel, Agents: names, StatusLabel: status})
+		agents := ""
+		if n := len(p.Agents); n > 0 {
+			agents = fmt.Sprintf("%d %s", n, plural(n, "agent", "agents"))
+		}
+		people = append(people, crewAccessPerson{UserID: p.UserID, Name: name, Online: p.Active, OnlineLabel: p.ActiveLabel, AgentsLabel: agents, StatusLabel: status})
 	}
 	// The viewer is not one of the people listed (owner, 5 Nov): their own agents have the lines below.
 	lines = append(lines, crewAccessLine{Kind: "team", Title: fmt.Sprintf("Team · %d other %s", len(people), plural(len(people), "person", "people")), People: people})
