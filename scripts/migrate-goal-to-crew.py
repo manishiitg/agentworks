@@ -259,13 +259,14 @@ class RuntimeRelocation:
 
 
 class Conversion:
-    def __init__(self, docs, state, workflow, crew, agent_binary=None):
+    def __init__(self, docs, state, workflow, crew, agent_binary=None, keep_measurements=False):
         self.docs, self.state = Path(docs).resolve(strict=True), Path(state).resolve(strict=True)
         self.source = self.docs / 'Workflow' / safe_id(workflow)
         self.root = 'Workflow/' + workflow
         self.crew = safe_id(crew)
         self.writes, self.moves = {}, []
         self.agent_binary = Path(agent_binary).resolve() if agent_binary else None
+        self.keep_measurements = keep_measurements
         self.journal = self.state/"structured-chat-events-v2.sqlite"
         self.archives = {}
         self.chat_imports = []
@@ -362,7 +363,7 @@ class Conversion:
         self.source_moves()
         self.writes[self.binding_file] = encode({'id': self.workflow, 'crew_id': crew, 'crew_root': self.crew_root,
                                                  'workspace_path': self.root, 'kind': 'workflow'})
-        self.counts.update(workflows=1, goals=1,
+        self.counts.update(workflows=1, goals=0 if self.keep_measurements else 1,
                            historical_runs=len(list((self.source / 'runs').glob('*'))),
                            dashboards=len(list((self.source / 'db/reports').glob('*.html'))))
 
@@ -662,6 +663,16 @@ class Conversion:
         self.tables = {}
         self.measurement_indexes = {}
         no_links(self.source_db); no_links(self.target_db)
+        if self.keep_measurements:
+            # PLAT-746-364: retired tracking stays ordinary workflow data.
+            # Do not rewrite IDs/evidence, move tables, or create a Crew goal.
+            self.counts.update(measurements=0, observations=0)
+            if self.source_db.exists():
+                with closing(db_read(self.source_db)) as db:
+                    for table, count in [('workflow_goal_metrics', 'measurements'), ('goal_observations', 'observations')]:
+                        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+                            self.counts[count] = db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]
+            return
         if self.source_db.exists():
             with closing(db_read(self.source_db)) as db:
                 for kind, name, table, sql in db.execute("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL"):
@@ -803,7 +814,7 @@ class Conversion:
     def report(self):
         if self.done:
             return {'status':'already migrated', 'crew_id':self.crew, 'workflow':self.root, 'backup':self.done['backup']}
-        return {'status':'ready', 'workflow':self.root, 'crew_id':self.crew, 'goal_id':self.goal_id,
+        return {'status':'ready', 'workflow':self.root, 'crew_id':self.crew, 'goal_id':None if self.keep_measurements else self.goal_id,
                 'counts':self.counts, 'moves':[{'from':str(a.relative_to(self.docs)), 'to':str(b)} for a,b in self.moves],
                 'preserved':['workflow identity','entry IDs and disabled state','run history and costs','business database','skills and knowledge','dashboard files and workflow-scoped links','secret references'],
                 'historical_run_note':'Old run folders remain readable; start a new run instead of resuming a retired grouped run.',
@@ -835,24 +846,25 @@ class Conversion:
                         src.backup(dst)
             (backup/'plan.json').write_bytes(encode(self.report()))
             (backup/'metadata-paths.json').write_bytes(encode(metadata_paths))
-            self.target_db.parent.mkdir(parents=True, exist_ok=True)
-            with closing(sqlite3.connect(self.target_db)) as db, db:
-                db.execute('CREATE TABLE IF NOT EXISTS crew_goals (id TEXT PRIMARY KEY, definition_json TEXT NOT NULL)')
-                for name, (schema, columns, rows) in self.tables.items():
-                    if not db.execute('SELECT 1 FROM sqlite_master WHERE type=\'table\' AND name=?', (name,)).fetchone():
-                        db.execute(schema)
-                    for row in rows:
-                        values = list(row)
-                        if name == 'workflow_goal_metrics':
-                            pos = columns.index('definition_json'); metric = json.loads(values[pos])
-                            if metric.get('role') == 'primary':
-                                metric.update(goal_id=self.goal_id, goal_name=self.goal['name'])
-                            values[pos] = json.dumps(metric)
-                        db.execute(f'INSERT INTO {name} ({",".join(columns)}) VALUES ({",".join("?" for _ in columns)})', values)
-                for name, (_, sql) in self.measurement_indexes.items():
-                    if not db.execute('SELECT 1 FROM sqlite_master WHERE name=?', (name,)).fetchone():
-                        db.execute(sql)
-                db.execute('INSERT INTO crew_goals VALUES (?,?)', (self.goal_id,json.dumps(self.goal)))
+            if not self.keep_measurements:
+                self.target_db.parent.mkdir(parents=True, exist_ok=True)
+                with closing(sqlite3.connect(self.target_db)) as db, db:
+                    db.execute('CREATE TABLE IF NOT EXISTS crew_goals (id TEXT PRIMARY KEY, definition_json TEXT NOT NULL)')
+                    for name, (schema, columns, rows) in self.tables.items():
+                        if not db.execute('SELECT 1 FROM sqlite_master WHERE type=\'table\' AND name=?', (name,)).fetchone():
+                            db.execute(schema)
+                        for row in rows:
+                            values = list(row)
+                            if name == 'workflow_goal_metrics':
+                                pos = columns.index('definition_json'); metric = json.loads(values[pos])
+                                if metric.get('role') == 'primary':
+                                    metric.update(goal_id=self.goal_id, goal_name=self.goal['name'])
+                                values[pos] = json.dumps(metric)
+                            db.execute(f'INSERT INTO {name} ({",".join(columns)}) VALUES ({",".join("?" for _ in columns)})', values)
+                    for name, (_, sql) in self.measurement_indexes.items():
+                        if not db.execute('SELECT 1 FROM sqlite_master WHERE name=?', (name,)).fetchone():
+                            db.execute(sql)
+                    db.execute('INSERT INTO crew_goals VALUES (?,?)', (self.goal_id,json.dumps(self.goal)))
             for source,target in self.moves:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(source), str(target))
@@ -887,11 +899,12 @@ def main():
     parser.add_argument('--workflow', required=True, help='One source folder name under Workflow/ (not a display name)')
     parser.add_argument('--crew', required=True, help='Destination Crew ID, created normally beforehand')
     parser.add_argument('--agent-binary', type=Path, help='This refactor build, for input validation and older JSON-only chat archives')
+    parser.add_argument('--keep-measurements', action='store_true', help='Keep historical tracking tables unchanged in the workflow database; do not create Crew goals')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--finish-runtime', action='store_true', help='Move remaining runtime for one already converted Crew workflow')
     args=parser.parse_args()
     try:
-        conversion = RuntimeRelocation(args.docs,args.state,args.workflow,args.crew) if args.finish_runtime else Conversion(args.docs,args.state,args.workflow,args.crew,args.agent_binary)
+        conversion = RuntimeRelocation(args.docs,args.state,args.workflow,args.crew) if args.finish_runtime else Conversion(args.docs,args.state,args.workflow,args.crew,args.agent_binary,keep_measurements=args.keep_measurements)
         print(json.dumps(conversion.apply() if args.apply else conversion.report(), indent=2))
     except (ValueError, SyntaxError, OSError, RuntimeError, sqlite3.Error) as exc:
         print(json.dumps({'status':'needs attention','error':str(exc)}))
