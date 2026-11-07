@@ -9,20 +9,20 @@ Secrets are credentials (API keys, tokens, passwords).
 
 ### Tools
 
-- **`list_secrets`** — lists the Vault names you may use (the `global` bucket) and the ones this project uses (the `project` bucket). Values are never exposed. Call before saving, removing or selecting.
-- **`set_workflow_secret(name, value)`** — saves a value in the project owner's Vault and uses it in this project (owner only). Over MCP, use `settings action=get/update` with `secrets.set` and the returned settings version. Values are not returned.
-- **`delete_workflow_secret(name)`** — stops this project using a secret. Its value stays in the owner's Vault.
+- **`vault action=list`** — lists the Vault names you may use (the `global` bucket) and the ones this project uses (the `project` bucket). Values are never exposed. Call before saving, removing or selecting.
+- **`vault action=set`** (name, value) — saves a value in the project owner's Vault and uses it in this project (owner only). Over MCP, use `settings action=get/update` with `secrets.set` and the returned settings version. Values are not returned.
+- **`vault action=delete`** (name) — stops this project using a secret. Its value stays in the owner's Vault.
 
 ### When a user says "store / save / set this key"
 
-1. Call `list_secrets` first to check whether the name already exists.
-2. In a project chat, use `set_workflow_secret(name, value)`.<!-- product:mcp-gateway --> For credentials shared with colleagues, a Vault administrator can store the provided value with `manage_vault_secret_access operation=set_value`, using `values: {NAME: value}`. Discover the current schema first.<!-- /product -->
-3. `set_workflow_secret` selects the saved secret and injects it at once. To use a Vault secret that already exists, select it (for example `settings(action="update", secrets={select:["<its Vault name>"]})`). It becomes available to the builder shell and workflow steps as `$SECRET_<NAME>` (the name after the Vault prefix) without revealing plaintext to the model.
+1. Call `vault action=list` first to check whether the name already exists.
+2. In a project chat, use `vault action=set` (name, value).<!-- product:mcp-gateway --> For credentials shared with colleagues, a Vault administrator can store the provided value with `manage_vault_secret_access operation=set_value`, using `values: {NAME: value}`. Discover the current schema first.<!-- /product -->
+3. `vault action=set` selects the saved secret and injects it at once. To use a Vault secret that already exists, select it (for example `settings(action="update", secrets={select:["<its Vault name>"]})`). It becomes available to the builder shell and workflow steps as `$SECRET_<NAME>` (the name after the Vault prefix) without revealing plaintext to the model.
 4. Confirm success. Do NOT echo the plaintext value back to the user — acknowledge by name only.
 
 ### Adding a secret value
 
-A person may give you a secret value in chat, in this app or over MCP from any client. Store it with the secret tool for the target (`set_workflow_secret`, the settings tool's `secrets.set` for a workflow or Crew owner<!-- product:relays --> or Flow owner<!-- /product --><!-- product:mcp-gateway -->, `manage_vault_secret_access` `set_value` for company Vault, or `manage_my_vaults` `set_secret` for your own Vault<!-- /product -->), say "I'll store it as NAME; I won't repeat it", then confirm by name only. Developers can instead run `agentworks secret set NAME --vault|--workflow ID|--crew ID|--relay ID`, or import a whole file with `agentworks secret import .env --vault`, in their own terminal. Tools never return a value.
+A person may give you a secret value in chat, in this app or over MCP from any client. Store it with the secret tool for the target (`vault action=set`, the settings tool's `secrets.set` for a workflow or Crew owner<!-- product:relays --> or Flow owner<!-- /product --><!-- product:mcp-gateway -->, `manage_vault_secret_access` `set_value` for company Vault, or `manage_my_vaults` `set_secret` for your own Vault<!-- /product -->), say "I'll store it as NAME; I won't repeat it", then confirm by name only. Developers can instead run `agentworks secret set NAME --vault|--workflow ID|--crew ID|--relay ID`, or import a whole file with `agentworks secret import .env --vault`, in their own terminal. Tools never return a value.
 
 ### Safety rules
 
@@ -32,11 +32,11 @@ Do not tell the user to rotate the secret after a normal requested save. Recomme
 
 ### Updating / re-storing a key
 
-- Call `set_workflow_secret` with the same name and new value — the value is replaced in the owner's Vault. No need to delete first.
+- Call `vault action=set` with the same name and new value — the value is replaced in the owner's Vault. No need to delete first.
 
 ### Removing a secret
 
-- `delete_workflow_secret(name)` stops this project using it; the value stays in the owner's Vault.
+- `vault action=delete` (name) stops this project using it; the value stays in the owner's Vault.
 <!-- product:mcp-gateway -->- Values are deleted in Vault. Environment globals are removed through server configuration.<!-- /product -->
 
 <!-- product:mcp-gateway -->## Reusing a secret across projects

@@ -3,9 +3,12 @@ package guidance
 import (
 	"io/fs"
 	"os"
+	"path"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -385,5 +388,90 @@ func TestNoTemplateNamesARemovedTool(t *testing.T) {
 	}
 	if visited == 0 {
 		t.Fatal("no templates were walked; the embed pattern or path changed")
+	}
+}
+
+// A chat shows a catalogued tool as its public `family action=name`; the catalog
+// member name is a private registration identity (live chats that followed a raw
+// member got tools_unavailable). Guidance must name the public form, and every
+// `family action=name` it quotes must be a catalog action. The kinds below still
+// name members: bridge and step-agent text that describes route names, or text
+// whose serving surface has not been classified yet (PLAT-746-415). Remove a kind
+// from the list when its text is converted; do not add one.
+var guidancePendingPublicNames = map[string]bool{
+	"browser-usage": true, "mcp-bridge": true, "scripted": true, "optimize-playbook": true,
+	"code-authoring": true, "debugging-flow": true, "step-description": true, "step-config": true,
+	"workspace-media-tools": true, "branch": true, "plan-design": true, "workflow-tools": true,
+	"design-dashboard": true, "run-plan-drift": true, "deployed-channel": true, "llm-selection": true,
+	"playwright-scripted": true, "reporting-policy": true, "routing": true, "secure-share-links": true,
+	"step-system-prompts": true, "assumption-audit": true, "llm-provider-config": true,
+	"running-steps": true, "stores": true, "user-management": true, "workflow-chat": true,
+	"workflow-guide": true, "workspace-views": true,
+}
+
+func TestGuidanceNamesPublicToolsOnly(t *testing.T) {
+	families := map[string]map[string]bool{}
+	private := map[string]string{}
+	for _, a := range catalog.Actions {
+		if families[a.Family] == nil {
+			families[a.Family] = map[string]bool{}
+		}
+		families[a.Family][a.Name] = true
+		names := append([]string{a.Member}, a.Aliases...)
+		names = append(names, strings.Split(a.ExternalMembers, "|")...)
+		for _, n := range names {
+			if strings.Contains(n, "_") {
+				private[n] = a.Family + " action=" + a.Name
+			}
+		}
+	}
+	for n := range private {
+		if families[n] != nil {
+			delete(private, n)
+		}
+	}
+	word := regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
+	action := regexp.MustCompile("`?([a-z][a-z0-9_]*) action=([a-z][a-z0-9_]*)")
+	used := map[string]bool{}
+	err := fs.WalkDir(templatesFS, "templates", func(file string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() || !strings.HasSuffix(file, ".md") {
+			return walkErr
+		}
+		raw, err := templatesFS.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		body := string(raw)
+		if parts := strings.SplitN(body, "\n---", 2); strings.HasPrefix(body, "---") && len(parts) == 2 {
+			body = parts[1]
+		}
+		kind := strings.TrimSuffix(path.Base(file), ".md")
+		for _, m := range action.FindAllStringSubmatch(body, -1) {
+			if actions, ok := families[m[1]]; ok && !actions[m[2]] {
+				t.Errorf("%s: `%s action=%s` is not a catalog action", file, m[1], m[2])
+			}
+		}
+		for _, loc := range word.FindAllStringIndex(body, -1) {
+			name := body[loc[0]:loc[1]]
+			before := body[:loc[0]]
+			public, ok := private[name]
+			if !ok || strings.HasSuffix(before, "action=") || strings.HasSuffix(before, "operation=") {
+				continue
+			}
+			if guidancePendingPublicNames[kind] {
+				used[kind] = true
+				continue
+			}
+			t.Errorf("%s: names private tool %q; write `%s`", file, name, public)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for kind := range guidancePendingPublicNames {
+		if !used[kind] {
+			t.Errorf("%s no longer names a private tool; remove it from guidancePendingPublicNames", kind)
+		}
 	}
 }
