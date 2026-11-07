@@ -124,7 +124,7 @@ class WiringTest(unittest.TestCase):
 class SlotcheckWrapperTest(unittest.TestCase):
     """slotcheck.sh with a fake release: it passes the service's slot settings (only those) and the exit code."""
 
-    def make_release(self, tmp, exit_code, slots_mode="optin"):
+    def make_release(self, tmp, exit_code, slots_mode="on"):
         app = Path(tmp) / "app"
         release = app / "releases" / "r1"
         (release / "bin").mkdir(parents=True)
@@ -156,7 +156,7 @@ class SlotcheckWrapperTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn("SLOT SELF-TEST FAILED", result.stderr)
             passed = captured.read_text()
-            self.assertIn("AGENTWORKS_SLOTS=optin", passed)
+            self.assertIn("AGENTWORKS_SLOTS=on", passed)
             self.assertIn("AGENT_BROWSER_SHARED_PROFILE=/srv/x/state/browser-profile", passed)
             self.assertNotIn("CAPLAYER_SERVICE_TOKEN", passed, "only the slot keys reach the self-test")
             self.assertNotIn("GLOBAL_SECRET_X", passed)
@@ -254,7 +254,7 @@ class SlotDockerOwnerOnlyTest(unittest.TestCase):
         fake.write_text(json.dumps({"slots": table_slots}))
         script = SLOTCHECK_SH.read_text()
         start = script.index("check_slot_docker_owner_only() {")
-        end = script.index("\ncase \"$slots_mode\" in on|optin) check_slot_docker_owner_only")
+        end = script.index("\nif [[ \"$slots_mode\" == on ]]; then check_slot_docker_owner_only")
         body = script[start:end]
         proc = subprocess.run(
             ["bash", "-c", f'PRODUCT=test; table="{fake}"; {body}\ncheck_slot_docker_owner_only'],

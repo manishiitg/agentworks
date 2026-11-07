@@ -323,9 +323,8 @@ server_env=(
   "LLM_CONFIG_LOCKED=true"
   "AGENTWORKS_CREW_SHARED_ROOT=on"
 )
-# Per-user accounts (deploy/common/provision-slots.sh): on a host an administrator has provisioned, run in opt-in mode, so
-# a user who holds a slot runs as it and everyone else is unchanged until their folders are slot-aware.
-[[ ! -r /etc/agentworks/slots.json ]] || server_env+=("AGENTWORKS_SLOTS=optin")
+# Per-user accounts (deploy/common/provision-slots.sh): on a host an administrator has provisioned, every user needs a slot.
+[[ ! -r /etc/agentworks/slots.json ]] || server_env+=("AGENTWORKS_SLOTS=on")
 EXTRA_ENV=("${server_env[@]}" "${EXTRA_ENV[@]:-}")
 # Secrets (the global secrets: Claude and Cursor tokens, GLOBAL_SECRET_*) and the published model list (its value has
 # spaces) go into .env only, never into a command line or a unit drop-in.

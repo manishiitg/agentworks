@@ -63,7 +63,7 @@ install -d -o vs -g vs -m 0700 "$APP/state" "$PROFILE_ROOT" "$PROFILE_ROOT-proje
 echo COOKIE > "$PROFILE/Cookies" && chown vs:vs "$PROFILE/Cookies" && chmod 0600 "$PROFILE/Cookies"
 cat > "$APP/.env" <<ENV
 ENVFILE=1
-AGENTWORKS_SLOTS=optin
+AGENTWORKS_SLOTS=on
 AGENTWORKS_SLOTCTL=$LIBEXEC/slotctl
 AGENTWORKS_SLOTCTL_CONFIG=$LIBEXEC/slotctl.json
 AGENTWORKS_SLOTS_FILE=$ETC/slots.json
@@ -109,7 +109,7 @@ SUDO
 chmod 0440 /etc/sudoers.d/agentworks-slots && visudo -cf /etc/sudoers.d/agentworks-slots >/dev/null
 
 as_vs() {
-  sudo -u vs env -i PATH=/usr/bin:/bin HOME=/home/vs AGENTWORKS_SLOTS=optin AGENTWORKS_SLOTCTL="$LIBEXEC/slotctl" \
+  sudo -u vs env -i PATH=/usr/bin:/bin HOME=/home/vs AGENTWORKS_SLOTS=on AGENTWORKS_SLOTCTL="$LIBEXEC/slotctl" \
     AGENTWORKS_SLOTCTL_CONFIG="$LIBEXEC/slotctl.json" AGENTWORKS_SLOTS_FILE="$ETC/slots.json" \
     AGENT_BROWSER_SHARED_PROFILE="$PROFILE_ROOT" WORKSPACE_DOCS_PATH="$DOCS" AGENTWORKS_STATE_ROOT="$APP/state" "$@"
 }

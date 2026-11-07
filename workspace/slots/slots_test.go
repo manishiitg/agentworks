@@ -69,22 +69,6 @@ func TestForRespectsTheFeatureFlagAndNeverFallsBack(t *testing.T) {
 	}
 }
 
-func TestForOptInRunsOnlySlotHoldersAsSlots(t *testing.T) {
-	t.Setenv(EnvEnabled, "optin")
-	t.Setenv(EnvTableFile, writeTable(t, `{"slots":{"slot03":"u1"}}`))
-	if slot, enabled, err := For("u1"); !enabled || err != nil || slot != "slot03" {
-		t.Fatalf("a slot holder runs as its slot: %q %v %v", slot, enabled, err)
-	}
-	if slot, enabled, err := For("u2"); enabled || err != nil || slot != "" {
-		t.Fatalf("a user without a slot is unchanged in opt-in mode: %q %v %v", slot, enabled, err)
-	}
-	// a damaged table is still an error, never a silent fallback
-	t.Setenv(EnvTableFile, writeTable(t, `{"slots": not json`))
-	if _, _, err := For("u1"); err == nil {
-		t.Fatal("a damaged table must be an error")
-	}
-}
-
 func TestSlotPrefixMakesAProductsOwnAccountsTheOnlyValidOnes(t *testing.T) {
 	t.Cleanup(func() { prefixMu.Lock(); configuredPref = ""; prefixMu.Unlock() })
 	if !ValidSlot("slot07") || ValidSlot("cf07") {
@@ -103,23 +87,10 @@ func TestSlotPrefixMakesAProductsOwnAccountsTheOnlyValidOnes(t *testing.T) {
 	if _, err := LoadExecConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
-	if !ValidSlot("confida03") || ValidSlot("slot03") {
+	if !ValidSlot("customer03") || ValidSlot("slot03") {
 		t.Fatalf("config prefix not applied: %q", Prefix())
 	}
-	if SlotOfDir("/x/state", "/x/state/confida03/work") != "confida03" || SlotOfDir("/x/state", "/x/state/slot03/work") != "" {
+	if SlotOfDir("/x/state", "/x/state/customer03/work") != "customer03" || SlotOfDir("/x/state", "/x/state/slot03/work") != "" {
 		t.Fatal("SlotOfDir must use the product's prefix")
-	}
-}
-
-func TestForOptInWithoutAProvisionedTableChangesNothing(t *testing.T) {
-	t.Setenv(EnvEnabled, "optin")
-	t.Setenv(EnvTableFile, filepath.Join(t.TempDir(), "not-provisioned-yet.json"))
-	if slot, enabled, err := For("u1"); enabled || err != nil || slot != "" {
-		t.Fatalf("an unprovisioned opt-in host must be unchanged: %q %v %v", slot, enabled, err)
-	}
-	// "on" still treats a missing table as an error
-	t.Setenv(EnvEnabled, "on")
-	if _, enabled, err := For("u1"); !enabled || err == nil {
-		t.Fatalf("on-mode must refuse without a table: enabled=%v err=%v", enabled, err)
 	}
 }

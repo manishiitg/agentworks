@@ -167,10 +167,9 @@ The shared add-user HTTP endpoint writes an account to the platform directory;
 it does not provision a Linux execution slot. The root-run
 `deploy/common/provision-slots.sh adduser` explicitly performs both steps:
 the platform `server add-user` command, followed by slot assignment, filesystem
-ownership and isolation configuration. Server B's deployment sets
-`AGENTWORKS_SLOTS=on`; unassigned identities fail slot-aware execution. server A's
-build sets `optin` when slots are installed, retaining legacy execution for
-unassigned users. These statements describe checked deployment source, not a
+ownership and isolation configuration. Deployments with slots set
+`AGENTWORKS_SLOTS=on`; unassigned identities fail slot-aware execution.
+These statements describe checked deployment source, not a
 fresh inspection of the running remote hosts.
 
 MCP-only consumers need a platform SSO identity and Vault group grants, not a
