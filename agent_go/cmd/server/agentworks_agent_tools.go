@@ -67,7 +67,7 @@ func (api *StreamingAPI) registerAgentWorksAgentTools(registrar definitionToolRe
 			encoded, err := json.Marshal(map[string]interface{}{"workflow_id": manifest.ID, "label": manifest.Label, "schedules": schedules})
 			return string(encoded), err
 		default:
-			return "", fmt.Errorf("action must be runs or metrics")
+			return "", fmt.Errorf("action must be runs")
 		}
 	}); err != nil {
 		return err
