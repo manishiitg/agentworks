@@ -105,6 +105,12 @@ func TestResolveGuardWritePath(t *testing.T) {
 }
 
 func TestGuardWritePathToCreatePreservesExistingHostGrants(t *testing.T) {
+	// PLAT-746-369: this allowance is for a native Mac. A Linux verifier must
+	// exercise the same production platform branch instead of assuming its host.
+	originalOS := interactiveShellHostOS
+	t.Cleanup(func() { interactiveShellHostOS = originalOS })
+	interactiveShellHostOS = "darwin"
+	t.Setenv("AGENTWORKS_SLOTS", "")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("NATIVE_WORKSPACE", "true")
@@ -112,6 +118,10 @@ func TestGuardWritePathToCreatePreservesExistingHostGrants(t *testing.T) {
 	got, err := guardWritePathToCreate(hostDir, docsDir)
 	if err != nil || got != "" {
 		t.Fatalf("existing host grant must not be created: path=%q err=%v", got, err)
+	}
+	t.Setenv("MULTI_USER_MODE", "")
+	if got, err := guardWritePathToCreate(hostDir, docsDir); err != nil || got != "" {
+		t.Fatalf("native Mac with default single-user mode must preserve host grant: path=%q err=%v", got, err)
 	}
 	inside := filepath.Join(docsDir, "project", "new")
 	if got, err := guardWritePathToCreate("project/new", docsDir); err != nil || got != inside {
@@ -133,20 +143,23 @@ func TestGuardWritePathToCreatePreservesExistingHostGrants(t *testing.T) {
 }
 
 func TestGuardWritePathToCreateRejectsHostGrantsOnServer(t *testing.T) {
+	originalOS := interactiveShellHostOS
+	t.Cleanup(func() { interactiveShellHostOS = originalOS })
 	docsDir, hostDir := t.TempDir(), t.TempDir()
-	for _, mode := range []struct{ name, local, multi, native string }{
-		{"defaults", "", "", ""},
-		{"native server", "false", "true", "true"},
-		{"multi-user local flag", "true", "true", "true"},
-		{"missing single-user mode", "true", "", "true"},
-		{"container workspace", "true", "false", "false"},
+	for _, mode := range []struct{ name, hostOS, multi, native, slots string }{
+		{"Linux even with local native flags", "linux", "false", "true", ""},
+		{"Mac without native mode", "darwin", "false", "false", ""},
+		{"multi-user Mac", "darwin", "true", "true", ""},
+		{"Mac with per-user accounts", "darwin", "false", "true", "on"},
 	} {
 		t.Run(mode.name, func(t *testing.T) {
-			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", map[string]string{"true": "local"}[mode.local])
+			interactiveShellHostOS = mode.hostOS
+			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 			t.Setenv("MULTI_USER_MODE", mode.multi)
 			t.Setenv("NATIVE_WORKSPACE", mode.native)
+			t.Setenv("AGENTWORKS_SLOTS", mode.slots)
 			if _, err := guardWritePathToCreate(hostDir, docsDir); err == nil {
-				t.Fatal("existing host directory accepted outside local native single-user mode")
+				t.Fatal("existing host directory accepted outside native single-user Mac")
 			}
 			if _, err := guardWritePathToCreate("project/new", docsDir); err != nil {
 				t.Fatalf("workspace path rejected: %v", err)
