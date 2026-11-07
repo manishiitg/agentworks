@@ -1134,7 +1134,7 @@
     "family": "functions",
     "name": "triggers",
     "member": "list_workflow_triggers",
-    "description": "Use an attached workflow\u2019s existing function-trigger entry point.",
+    "description": "List saved workflow or Python script entry points. Use run_trigger without trigger_id for a direct run with declared inputs.",
     "aliases": [
       "list_crew_attached_triggers"
     ],
@@ -1144,7 +1144,7 @@
     "family": "functions",
     "name": "run_trigger",
     "member": "run_workflow_trigger",
-    "description": "Use an attached workflow\u2019s existing function-trigger entry point.",
+    "description": "Run a saved workflow or Python script with its declared inputs. Omit trigger_id for a direct run; no function setup or schedule is needed. Check the returned run with trigger_status.",
     "aliases": [
       "run_crew_attached_trigger"
     ],
@@ -1154,7 +1154,7 @@
     "family": "functions",
     "name": "trigger_status",
     "member": "get_workflow_trigger_run",
-    "description": "Use an attached workflow\u2019s existing function-trigger entry point.",
+    "description": "Read the status, outputs and logs of the exact saved workflow or script run returned by run_trigger.",
     "aliases": [
       "get_crew_attached_trigger_run"
     ],
