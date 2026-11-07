@@ -465,7 +465,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				out["asked"] = sent
 				return jsonOut(out)
 			}},
-		{"ask_project_chat", "Send an explicit message to another chat (tab) of this project. Busy chats receive it after their current turn. Returns an inbox/reply address, not a function call. The recipient chooses whether and when to reply with send_message; final chat text is not forwarded. Read messages with read_agent_messages(inbox_id). Other chats share this folder but not this conversation, so make the message self-contained.", map[string]interface{}{
+		{"ask_project_chat", "Send an explicit message to another chat (tab) of this project. Busy chats receive it after their current turn. Returns an inbox/reply address, not a function call. The recipient chooses whether and when to reply with messages action=send; final chat text is not forwarded. Read messages with messages action=read(inbox_id). Other chats share this folder but not this conversation, so make the message self-contained.", map[string]interface{}{
 			"type": "object", "required": []string{"chat", "message"}, "properties": map[string]interface{}{
 				"chat":          map[string]interface{}{"type": "string", "description": "Chat id or name from list_project_chats."},
 				"message":       map[string]interface{}{"type": "string"},

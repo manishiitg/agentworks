@@ -69,7 +69,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		row := map[string]interface{}{
 			"kind": kind, "type": "Crew", "presence": "Runs when called", "delivery_mode": "on_request", "id": "workspace:" + profileID + ":" + id, "crew_id": id, "name": name, "owner": crew["owner"],
 			"your_access": crew["access"], "description": crew["description"], "functions": agentDirectoryFunctions(functions),
-			"reach": "functions action=call(target=<id>, function=<name>) for a function; send_message(target=<id>) to ask it",
+			"reach": "functions action=call(target=<id>, function=<name>) for a function; messages action=send(target=<id>) to ask it",
 		}
 		if role, _ := crew["role"].(string); role != "" {
 			row["role"] = role
@@ -92,11 +92,11 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			}
 			row["chats"] = selected
 		}
-		row["reach"] = "send_message(target=<id>, chat_id=<chat_id from chats>) messages that existing agent. Functions use functions action=call; omit chat_id for the Crew ask."
+		row["reach"] = "messages action=send(target=<id>, chat_id=<chat_id from chats>) messages that existing agent. Functions use functions action=call; omit chat_id for the Crew ask."
 		agents = append(agents, row)
 		if !owned {
 			for _, agent := range row["chats"].([]sharedCrewAgent) {
-				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "workspace:" + profileID + ":" + id, "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "purpose": agent.Purpose, "presence": "Runs when called", "your_access": "run", "reach": "send_message(target=<target>, chat_id=<chat_id>); same existing tab on the website and MCP"})
+				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "workspace:" + profileID + ":" + id, "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "purpose": agent.Purpose, "presence": "Runs when called", "your_access": "run", "reach": "messages action=send(target=<target>, chat_id=<chat_id>); same existing tab on the website and MCP"})
 			}
 		}
 	}
@@ -143,7 +143,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 				chats = append(chats, map[string]interface{}{"chat_id": tab.ID, "name": tab.Name, "owner_name": tab.OwnerName, "can_write": tab.CanWrite, "is_main": tab.IsMain})
 			}
 			row["chats"] = chats
-			row["reach"] = "send_message(target=<id>, chat_id=<chat_id>) for a named Builder tab; functions use functions action=call."
+			row["reach"] = "messages action=send(target=<id>, chat_id=<chat_id>) for a named Builder tab; functions use functions action=call."
 		}
 		agents = append(agents, row)
 	}
@@ -151,7 +151,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	if err == nil {
 		list, _ := connected["agents"].([]map[string]interface{})
 		for _, item := range list {
-			row := map[string]interface{}{"kind": "connected_agent", "reach": "send_message(target=<id>)"}
+			row := map[string]interface{}{"kind": "connected_agent", "reach": "messages action=send(target=<id>)"}
 			for key, value := range item {
 				row[key] = value
 			}

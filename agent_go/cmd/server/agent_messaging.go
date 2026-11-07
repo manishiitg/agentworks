@@ -674,7 +674,7 @@ func agentMessageText(c agentConversation, m agentMessage) string {
 }
 
 func agentMessageInstructions(inboxID string) string {
-	return fmt.Sprintf("Replies are optional. To send a message back, use the send_message tool with inbox_id=%q and message=... . If your tools are listed by get_api_spec and send_message is not a direct tool, call POST /tools/custom/send_message from the shell with those fields. Your final chat answer is NOT forwarded. Decide yourself whether to reply, set a one-time schedule, follow up or continue work.", inboxID)
+	return fmt.Sprintf("Replies are optional. To send a message back, use the `messages` tool with action=send, inbox_id=%q and message=... (a workflow step has it as `send_message`). If it is not one of your direct tools, reach it the way you reach your other tools, such as call_tool. Your final chat answer is NOT forwarded. Decide yourself whether to reply, set a one-time schedule, follow up or continue work.", inboxID)
 }
 
 // This key is set only by admitted agent delivery or the owner's own AI app ask, never from HTTP/JSON fields.
@@ -1213,7 +1213,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
-	}{"list_agents", "List every agent you can use, in one list: Crews, Goals and Relays you own or that are shared with you (with their functions), and your agents connected through AgentBridge (local Claude Code, Codex, Cursor, Muse, Pi). Nothing has to be linked first. Use an agent's id: functions action=call(target=<id>, function=<name>) runs one of its functions; send_message(target=<id>) asks it; read the answer with read_agent_messages(inbox_id)", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	}{"list_agents", "List every agent you can use, in one list: Crews, Goals and Relays you own or that are shared with you (with their functions), and your agents connected through AgentBridge (local Claude Code, Codex, Cursor, Muse, Pi). Nothing has to be linked first. Use an agent's id: functions action=call(target=<id>, function=<name>) runs one of its functions; messages action=send(target=<id>) asks it; read the answer with messages action=read(inbox_id)", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
 		claims := GetUserFromContext(ctx)
 		if claims == nil {
