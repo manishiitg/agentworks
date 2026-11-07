@@ -22,11 +22,6 @@ const (
 	// promptBudgetDuplicateWindow is the verbatim span (characters, after
 	// whitespace is collapsed) that counts as text repeated across steps.
 	promptBudgetDuplicateWindow = 300
-	// learningSettledRuns is how many successful runs on one description hash,
-	// with no new learning detected in the latest detections, make a read-write
-	// step's learning "settled" (Architecture learning_quality decides whether
-	// it becomes read).
-	learningSettledRuns = 5
 )
 
 // promptLayoutSections is the step-description layout (step-description.md).
@@ -289,23 +284,11 @@ func promptBudgetDuplication(inputs []promptBudgetInput) ([]int, [][]string) {
 	return covered, with
 }
 
-// LearningSettledStep is a read-write learning step whose learning has
-// settled: Architecture (focus learning_quality) decides whether it becomes
-// learnings_access=read.
-type LearningSettledStep struct {
-	StepID              string `json:"step_id"`
-	DescriptionHashRuns int    `json:"description_hash_runs"`
-	SuccessfulRuns      int    `json:"successful_runs"`
-	LastLearningAt      string `json:"last_learning_detected_at,omitempty"`
-}
-
 // PromptBudgetDue is the Go-precomputed Architecture trigger set Gate sees and
-// the worklist enforces: steps due for a prompt_design consolidation, and
-// read-write learning steps due for a learning_quality decision.
+// the worklist enforces: steps due for a prompt_design consolidation.
 type PromptBudgetDue struct {
-	Health          PromptHealthReport    `json:"health"`
-	PromptDesign    []string              `json:"prompt_design_steps"`
-	LearningSettled []LearningSettledStep `json:"learning_settled_steps,omitempty"`
+	Health       PromptHealthReport `json:"health"`
+	PromptDesign []string           `json:"prompt_design_steps"`
 	// Fingerprint changes whenever a flagged step's text or the flagged set
 	// changes, so a reviewed, unchanged state is not made due again.
 	Fingerprint string `json:"fingerprint,omitempty"`
@@ -313,7 +296,7 @@ type PromptBudgetDue struct {
 
 // Any reports whether a budget trigger is active.
 func (d PromptBudgetDue) Any() bool {
-	return len(d.PromptDesign) > 0 || len(d.LearningSettled) > 0
+	return len(d.PromptDesign) > 0
 }
 
 // FocusKeys returns the Architecture focuses the triggers ask for.
@@ -321,9 +304,6 @@ func (d PromptBudgetDue) FocusKeys() []string {
 	var keys []string
 	if len(d.PromptDesign) > 0 {
 		keys = append(keys, "prompt_design")
-	}
-	if len(d.LearningSettled) > 0 {
-		keys = append(keys, "learning_quality")
 	}
 	return keys
 }
@@ -348,36 +328,6 @@ func CollectPromptBudgetDue(ctx context.Context, workspacePath string) (PromptBu
 	due := PromptBudgetDue{Health: BuildPromptHealthReport(plan.Steps)}
 	due.PromptDesign = append([]string(nil), due.Health.ConsolidationDueSteps...)
 
-	var manifest struct {
-		Version string `json:"version"`
-	}
-	manifestRaw, _ := os.ReadFile(filepath.Join(root, "workflow.json"))
-	_ = json.Unmarshal(manifestRaw, &manifest)
-	if configRaw, err := os.ReadFile(filepath.Join(root, PlanningFolderName, "step_config.json")); err == nil && !UsesWorkflowSkills(manifest.Version) {
-		if configs, parseErr := ParseStepConfigContent(string(configRaw)); parseErr == nil {
-			for _, cfg := range configs {
-				if cfg.AgentConfigs == nil || strings.TrimSpace(cfg.AgentConfigs.LearningsAccess) != "read-write" {
-					continue
-				}
-				metaRaw, err := os.ReadFile(filepath.Join(root, "learnings", cfg.ID, ".learning_metadata.json"))
-				if err != nil {
-					continue
-				}
-				var meta LearningMetadata
-				if json.Unmarshal(metaRaw, &meta) != nil {
-					continue
-				}
-				if learningSettled(meta) {
-					due.LearningSettled = append(due.LearningSettled, LearningSettledStep{
-						StepID: cfg.ID, DescriptionHashRuns: meta.DescriptionHashRuns,
-						SuccessfulRuns: meta.SuccessfulRuns, LastLearningAt: meta.LastLearningDetectedAt,
-					})
-				}
-			}
-		}
-	}
-	sort.Slice(due.LearningSettled, func(i, j int) bool { return due.LearningSettled[i].StepID < due.LearningSettled[j].StepID })
-
 	if due.Any() {
 		descByID := map[string]string{}
 		for _, info := range collectAllSteps(plan.Steps) {
@@ -390,28 +340,7 @@ func CollectPromptBudgetDue(ctx context.Context, workspacePath string) (PromptBu
 			sum := sha256.Sum256([]byte(descByID[id]))
 			fmt.Fprintf(h, "p:%s:%x\n", id, sum[:6])
 		}
-		for _, s := range due.LearningSettled {
-			fmt.Fprintf(h, "l:%s:%d\n", s.StepID, s.DescriptionHashRuns/learningSettledRuns)
-		}
 		due.Fingerprint = hex.EncodeToString(h.Sum(nil))[:16]
 	}
 	return due, nil
-}
-
-// learningSettled: at least learningSettledRuns successful runs on the current
-// description hash, and none of the latest detections found new learning.
-func learningSettled(meta LearningMetadata) bool {
-	if meta.DescriptionHashRuns < learningSettledRuns {
-		return false
-	}
-	history := meta.DetectionHistory
-	if len(history) > learningSettledRuns {
-		history = history[len(history)-learningSettledRuns:]
-	}
-	for _, entry := range history {
-		if entry.HasNewLearning {
-			return false
-		}
-	}
-	return true
 }

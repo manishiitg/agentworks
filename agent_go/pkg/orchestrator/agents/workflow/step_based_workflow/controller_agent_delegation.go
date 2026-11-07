@@ -411,7 +411,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 
 	// Resolve KB access mode for this step (explicit step config > preset default).
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-	learningsAccess := hcpo.resolveExecutionLearningsAccess(stepConfig, step)
 	useKnowledgebase := kbAccess != KBAccessNone
 
 	// Build folder guard paths for prompt (same logic as executeDelegatingAgentStep setup)
@@ -452,7 +451,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 		"UseKnowledgebase":          fmt.Sprintf("%v", useKnowledgebase), // deprecated, retained for back-compat in template
 		"KbAccess":                  kbAccess,
 		"KbAccessLabel":             kbAccessLabel(kbAccess),
-		"LearningsAccess":           learningsAccess,
 		"KnowledgebaseContribution": kbContributionForPrompt(stepConfig),
 		"KBGuidanceBlock":           sharedStepKBGuidance(baseWorkspacePath, kbAccess, kbContributionForPrompt(stepConfig), workflowAbsPath(fgKnowledgebasePath, KBNotesFolderName)),
 		// Workspace paths and folder guard (consistent with execution agent)

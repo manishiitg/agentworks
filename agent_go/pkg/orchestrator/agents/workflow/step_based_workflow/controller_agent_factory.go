@@ -461,11 +461,10 @@ func isGenericAgentStep(stepID, stepPath string) bool {
 
 // setupExecutionFolderGuard sets up folder guard paths for execution agents.
 // kbAccess must be one of KBAccessRead / Write / ReadWrite / None — callers resolve it
-// via resolveKnowledgebaseAccess before invoking. learningsAccess must be resolved via
-// resolveExecutionLearningsAccess so evaluation/routing isolation matches the prompt.
+// via resolveKnowledgebaseAccess before invoking.
 // When kbAccess permits writes the step is the KB writer,
 // so knowledgebase/notes/ is added to writePaths. Returns readPaths and writePaths.
-func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath string, stepID string, kbAccess string, learningsAccess string, dbAccess string, stepConfig *AgentConfigs) (readPaths, writePaths []string) {
+func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath string, stepID string, kbAccess string, dbAccess string, stepConfig *AgentConfigs) (readPaths, writePaths []string) {
 	baseWorkspacePath := hcpo.GetWorkspacePath()
 	// Use run folder if available, otherwise use base workspace (backward compatibility)
 	var runWorkspacePath string
@@ -514,9 +513,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 	// base, learnings and database keep their own per-step write settings.
 	readPaths = append(workflowReadGrants(baseWorkspacePath), toolOutputPath)
 	genericStep := isGenericAgentStep(stepID, stepPath)
-	if learningsAccess != LearningsAccessNone {
-		readPaths = appendLearningReadPaths(readPaths, baseWorkspacePath, stepID)
-	}
 
 	// Every routed child shares its owning Agent subtree. This permits sibling
 	// agents and scripts under the same parent to exchange artifacts without
@@ -609,16 +605,6 @@ func appendAdditionalWorkflowReadPaths(readPaths []string, baseWorkspacePath str
 		readPaths = append(readPaths, filepath.Join(baseWorkspacePath, filepath.FromSlash(relativePath)))
 	}
 	return readPaths
-}
-
-// appendLearningReadPaths grants a step its own saved implementation/helpers. It deliberately does not grant the learnings root
-// or another step's folder, and it never grants write access.
-func appendLearningReadPaths(readPaths []string, baseWorkspacePath string, stepID string) []string {
-	stepID = strings.TrimSpace(stepID)
-	if stepID == "" || filepath.Base(stepID) != stepID || stepID == "." || stepID == ".." {
-		return readPaths
-	}
-	return append(readPaths, filepath.Join(baseWorkspacePath, LearningsFolderName, stepID))
 }
 
 // getCodeExecutionMode determines code execution mode with priority: step config > workflow/preset default
@@ -1289,9 +1275,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 
 	// 2. Setup folder guard (extracted method). Empty kbAccess defaults to orchestrator-level UseKnowledgebase.
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-	learningsAccess := hcpo.resolveExecutionLearningsAccess(stepConfig, planStep)
 	dbAccess := hcpo.resolveDBAccess(stepConfig)
-	readPaths, writePaths := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, kbAccess, learningsAccess, dbAccess, stepConfig)
+	readPaths, writePaths := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, kbAccess, dbAccess, stepConfig)
 	if planStep != nil {
 		// PLAT-556: what the description names under Inputs/Guides is readable.
 		readPaths = common.DeduplicateStrings(appendDescriptionReferenceReadPaths(readPaths, hcpo.GetWorkspacePath(), planStep.GetDescription()))

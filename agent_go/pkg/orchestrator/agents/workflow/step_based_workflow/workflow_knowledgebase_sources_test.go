@@ -165,7 +165,7 @@ func TestKBSourcesWriteGrantAppliesToAllThreeFolderGuards(t *testing.T) {
 	hcpo.selectedRunFolder = "iteration-0/default"
 
 	// Source has not granted "consumer" write access yet: no write path.
-	_, writes := hcpo.setupExecutionFolderGuard("step-1", "collect", KBAccessReadWrite, LearningsAccessNone, DBAccessRead, nil)
+	_, writes := hcpo.setupExecutionFolderGuard("step-1", "collect", KBAccessReadWrite, DBAccessRead, nil)
 	if containsString(writes, notesPath) {
 		t.Fatal("external notes/ writable before grant", writes)
 	}
@@ -175,13 +175,13 @@ func TestKBSourcesWriteGrantAppliesToAllThreeFolderGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, writes = hcpo.setupExecutionFolderGuard("step-1", "collect", KBAccessReadWrite, LearningsAccessNone, DBAccessRead, nil)
+	_, writes = hcpo.setupExecutionFolderGuard("step-1", "collect", KBAccessReadWrite, DBAccessRead, nil)
 	if !containsString(writes, notesPath) {
 		t.Fatal("execution folder guard did not grant external write source", writes)
 	}
 	// The step's own kbAccess still gates it -- read-only step access must not
 	// pick up the external write source either.
-	_, writes = hcpo.setupExecutionFolderGuard("step-1", "collect", KBAccessRead, LearningsAccessNone, DBAccessRead, nil)
+	_, writes = hcpo.setupExecutionFolderGuard("step-1", "collect", KBAccessRead, DBAccessRead, nil)
 	if containsString(writes, notesPath) {
 		t.Fatal("read-only step kbAccess still received external write source", writes)
 	}
@@ -210,7 +210,7 @@ func TestKBSourcesBuilderPromptAndExecutionScope(t *testing.T) {
 	hcpo.SetWorkspacePath(ws)
 	hcpo.selectedRunFolder = "iteration-0/default"
 	for _, mode := range []string{KBAccessNone, KBAccessRead} {
-		reads, _ := hcpo.setupExecutionFolderGuard("step-1", "collect", mode, LearningsAccessNone, DBAccessRead, nil)
+		reads, _ := hcpo.setupExecutionFolderGuard("step-1", "collect", mode, DBAccessRead, nil)
 		if containsString(reads, kb) != (mode == KBAccessRead) {
 			t.Fatal("execution KB mode not applied", mode, reads)
 		}

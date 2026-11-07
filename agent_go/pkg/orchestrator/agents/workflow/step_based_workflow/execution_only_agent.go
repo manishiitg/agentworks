@@ -52,7 +52,7 @@ type WorkflowExecutionOnlyTemplate struct {
 	PreviousIterationOutput  string // Previous iteration execution output
 	VariableNames            string // Variable names with descriptions ({{VAR_NAME}} - description)
 	VariableValues           string // Variable names with actual values ({{VAR_NAME}} = value)
-	LearningHistory          string // Formatted learning conversation history (REQUIRED for execution-only mode)
+	SavedScriptGuidance      string // Optional existing saved-script location, not learning history.
 	StepNumber               string // Step identifier (e.g., "step-8" or "step-3-sub-fetch")
 	StepExecutionPath        string // Full execution folder path (e.g., "execution/step-8")
 	PreviousStepsSummary     string // Summary of previous completed steps (titles, descriptions, outputs)
@@ -60,7 +60,6 @@ type WorkflowExecutionOnlyTemplate struct {
 	StepSuccessCriteria      string // Success criteria for the step
 	BaseDescription          string // Step description without orchestrator instructions
 	OrchestratorInstructions string // Orchestrator instructions (split from description)
-	HasSkill                 string // "true" if skill files are available
 	IsScriptedMode           string // "true" when scripted mode is enabled
 	DBAccess                 string // effective "read" or "read-write"
 	DBDirectAccess           string // "true" only for saved scripted-code compatibility
@@ -69,8 +68,8 @@ type WorkflowExecutionOnlyTemplate struct {
 	IsContributionTurn       string // "true" for a synthetic learnings/KB closing turn — renders JUST the contribution message, no execute-the-task/output-file scaffolding
 }
 
-// WorkflowExecutionOnlyAgent executes steps using pre-discovered learning context
-// This agent does NOT discover learnings - it receives learning history from readLearningHistory() method
+// WorkflowExecutionOnlyAgent executes the saved task with the step's granted tools.
+// Saved script guidance points to the current implementation for a repair attempt.
 type WorkflowExecutionOnlyAgent struct {
 	*agents.BaseOrchestratorAgent
 	// Standing runtime additions survive replacement of the per-turn prompt.
@@ -211,7 +210,7 @@ func promptExecutionFolder(templateVars map[string]string) string {
 func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(templateVars map[string]string) string {
 	stepContextOutput := templateVars["StepContextOutput"]
 	isCodeExecutionMode := templateVars["IsCodeExecutionMode"] == "true"
-	learningHistory := templateVars["LearningHistory"]
+	savedScriptGuidance := templateVars["SavedScriptGuidance"]
 	stepNumber := templateVars["StepNumber"]               // e.g., "step-8" or "step-3-sub-fetch"
 	stepExecutionPath := templateVars["StepExecutionPath"] // e.g., "execution/step-8"
 	previousStepsSummary := templateVars["PreviousStepsSummary"]
@@ -227,11 +226,11 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 	}
 	useProjectedReferenceSkills := hctpeoa.useProjectedReferenceSkills(templateVars)
 	if useProjectedReferenceSkills {
-		// Every transport receives builder-reference and workflow-learnings as
+		// Every transport receives its selected skills and builder reference as
 		// attached identity. Keep the prompt focused on this run's dynamic
 		// contract instead of repeating static reference text or a recursive
 		// legacy file inventory.
-		learningHistory = ""
+		savedScriptGuidance = ""
 	}
 
 	// Get current date and time
@@ -314,9 +313,7 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		"StepContextOutput":         stepContextOutput,
 		"CurrentDate":               currentDate,
 		"CurrentTime":               currentTime,
-		"LearningHistory":           learningHistory,
-		"HasLearnings":              fmt.Sprintf("%t", learningHistory != ""),
-		"LearningsAvailable":        learningHistory != "" || (templateVars["LearningsAccess"] != "" && templateVars["LearningsAccess"] != LearningsAccessNone) || strings.Contains(folderGuardReadPaths, "/learnings"),
+		"SavedScriptGuidance":       savedScriptGuidance,
 		"VariableNames":             variableNames,
 		"VariableValues":            variableValues,
 		"VarMapping":                templateVars["ScriptedVarMapping"], // {{VAR}} → SECRET_VAR mapping (for code exec guidance)
@@ -442,13 +439,12 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlyUserMessageProcessor(tem
 		PreviousIterationOutput:  templateVars["PreviousIterationOutput"],
 		VariableNames:            templateVars["VariableNames"],
 		VariableValues:           templateVars["VariableValues"],
-		LearningHistory:          templateVars["LearningHistory"],
+		SavedScriptGuidance:      templateVars["SavedScriptGuidance"],
 		StepNumber:               templateVars["StepNumber"],
 		StepExecutionPath:        templateVars["StepExecutionPath"],
 		PreviousStepsSummary:     templateVars["PreviousStepsSummary"],
 		WorkshopHumanInput:       templateVars["WorkshopHumanInput"],
 		StepSuccessCriteria:      templateVars["StepSuccessCriteria"],
-		HasSkill:                 fmt.Sprintf("%t", templateVars["LearningHistory"] != ""),
 		IsScriptedMode:           fmt.Sprintf("%t", isScriptedMode),
 		DBAccess:                 dbAccess,
 		DBDirectAccess:           dbDirectAccess,

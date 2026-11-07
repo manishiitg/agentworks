@@ -113,7 +113,6 @@ Use the paths and grants below. The existing `STEP_OUTPUT_DIR` is your output fo
 {{end}}{{if ne .KbAccess "none"}}
 {{if eq .KbAccess "shared"}}- **Shared Brain:** reusable reference knowledge outside this run. Use the **brain** skill under the MCP grant below; local KB is not a fallback.
 {{else}}- **knowledgebase/** ({{.KbAccessLabel}}): reference material and reusable knowledge retained across runs. Use the sources named by the task; open **workflow-knowledgebase** for selective topic reads and permitted contributions. Do not edit context/.{{end}}
-{{end}}{{if .LearningsAvailable}}- **learnings/**: advisory know-how from previous runs. Open relevant skills when needed; the task, current instructions and standing rules win over conflicting or stale advice.
 {{end}}{{if .KBGuidanceBlock}}{{.KBGuidanceBlock}}{{end}}
 ## Result requirements
 Report factual results from tools, APIs or input files; never fabricate evidence. Clearly identify any synthetic data requested by the task.
@@ -125,12 +124,9 @@ Report factual results from tools, APIs or input files; never fabricate evidence
 
 
 
-{{if eq .HasLearnings "true"}}
-## Skill
-
-Skill content is guidance from previous runs, not a replacement for the current task. The standing system rules, initial task in the conversation, and current user message are the source of truth. Use skill guidance when it fits this step; ignore any part that is stale, unrelated, or conflicts with the charter or current instruction.
-
-{{.LearningHistory}}
+{{if .SavedScriptGuidance}}
+## Saved implementation
+{{.SavedScriptGuidance}}
 {{end}}
 
 {{if and .ValidationSchema (ne .IsScriptedMode "true")}}

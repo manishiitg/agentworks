@@ -378,7 +378,7 @@ func TestExecutionFolderGuardAddsOnlySafeWorkflowRelativeReadPaths(t *testing.T)
 
 	config := &AgentConfigs{AdditionalReadPaths: []string{"variables", "reports/reference.json", "variables/"}}
 	readPaths, writePaths := hcpo.setupExecutionFolderGuard(
-		"step-1", "reader", KBAccessNone, LearningsAccessNone, DBAccessRead, config,
+		"step-1", "reader", KBAccessNone, DBAccessRead, config,
 	)
 	for _, expected := range []string{"Workflow/testing/variables", "Workflow/testing/reports/reference.json"} {
 		if !slices.Contains(readPaths, expected) {
@@ -391,7 +391,7 @@ func TestExecutionFolderGuardAddsOnlySafeWorkflowRelativeReadPaths(t *testing.T)
 
 	unsafe := &AgentConfigs{AdditionalReadPaths: []string{"../other-workflow"}}
 	unsafeReads, _ := hcpo.setupExecutionFolderGuard(
-		"step-1", "reader", KBAccessNone, LearningsAccessNone, DBAccessRead, unsafe,
+		"step-1", "reader", KBAccessNone, DBAccessRead, unsafe,
 	)
 	for _, granted := range unsafeReads {
 		if strings.Contains(granted, "other-workflow") {
@@ -757,7 +757,6 @@ func TestSetupExecutionFolderGuardHonorsLearningsAndKBNone(t *testing.T) {
 		"step-1",
 		"forbidden-probe",
 		KBAccessNone,
-		LearningsAccessNone,
 		DBAccessReadWrite,
 		nil,
 	)
@@ -797,7 +796,6 @@ func TestSetupExecutionFolderGuardGivesGenericReviewerWorkflowWideReadOnlyView(t
 		"parent-generic-report-health",
 		"generic-parent-report-health",
 		KBAccessRead,
-		LearningsAccessRead,
 		DBAccessRead,
 		nil,
 	)
@@ -842,7 +840,7 @@ func TestEveryFolderGuardBuilderGrantsToolOutputFolder(t *testing.T) {
 	const want = "Workflow/testing/tool_output_folder"
 
 	t.Run("execution", func(t *testing.T) {
-		readPaths, _ := newOrch().setupExecutionFolderGuard("step-1", "s", KBAccessNone, LearningsAccessNone, DBAccessRead, nil)
+		readPaths, _ := newOrch().setupExecutionFolderGuard("step-1", "s", KBAccessNone, DBAccessRead, nil)
 		if !slices.Contains(readPaths, want) {
 			t.Fatalf("read paths missing %q: %v", want, readPaths)
 		}
@@ -856,7 +854,7 @@ func TestEveryFolderGuardBuilderGrantsToolOutputFolder(t *testing.T) {
 		// sandbox matches on (security.SandboxPersistentDirName); renaming the
 		// constant without renaming folders must fail here.
 		const cache = "Workflow/testing/.sandbox-cache"
-		readPaths, writePaths := newOrch().setupExecutionFolderGuard("step-1", "s", KBAccessNone, LearningsAccessNone, DBAccessRead, nil)
+		readPaths, writePaths := newOrch().setupExecutionFolderGuard("step-1", "s", KBAccessNone, DBAccessRead, nil)
 		if !slices.Contains(writePaths, cache) {
 			t.Fatalf("write paths missing %q: %v", cache, writePaths)
 		}
@@ -909,7 +907,6 @@ func TestSetupExecutionFolderGuardAddsOnlyConfiguredStores(t *testing.T) {
 		"step-1",
 		"kb-direct",
 		KBAccessReadWrite,
-		LearningsAccessRead,
 		DBAccessReadWrite,
 		nil,
 	)
@@ -930,27 +927,6 @@ func TestSetupExecutionFolderGuardAddsOnlyConfiguredStores(t *testing.T) {
 	}
 	if slices.Contains(writePaths, "Workflow/testing/learnings/kb-direct") {
 		t.Fatalf("main execution should not write step learnings, got %v", writePaths)
-	}
-}
-
-func TestAppendLearningReadPathsScopesAccessToCurrentStep(t *testing.T) {
-	got := appendLearningReadPaths(nil, "Workflow/testing", "score-and-plan")
-	for _, expected := range []string{
-		"Workflow/testing/learnings/score-and-plan",
-	} {
-		if !slices.Contains(got, expected) {
-			t.Fatalf("expected learning read paths to include %q, got %v", expected, got)
-		}
-	}
-	if slices.Contains(got, "Workflow/testing/learnings/other-step") {
-		t.Fatalf("learning read paths unexpectedly include another step: %v", got)
-	}
-}
-
-func TestAppendLearningReadPathsRejectsNonSegmentStepID(t *testing.T) {
-	got := appendLearningReadPaths(nil, "Workflow/testing", "../other-workflow")
-	if len(got) != 0 {
-		t.Fatalf("unsafe step ID widened learning read scope: %v", got)
 	}
 }
 
@@ -1253,7 +1229,7 @@ func TestExecutionFolderGuardGrantsPlanningReadNeverWrite(t *testing.T) {
 	}
 
 	readPaths, writePaths := hcpo.setupExecutionFolderGuard(
-		"step-1", "some-step", KBAccessNone, LearningsAccessNone, DBAccessReadWrite,
+		"step-1", "some-step", KBAccessNone, DBAccessReadWrite,
 		nil,
 	)
 	planningPath := "Workflow/testing/planning"
@@ -1289,7 +1265,7 @@ func TestExecutionFolderGuardGrantsTheRunFolderNotOnlyItsExecutionChild(t *testi
 	}
 
 	readPaths, _ := hcpo.setupExecutionFolderGuard(
-		"step-0-cdp-test", "step-0-cdp-test", KBAccessNone, LearningsAccessNone,
+		"step-0-cdp-test", "step-0-cdp-test", KBAccessNone,
 		resolveDBAccess(nil),
 		nil,
 	)
@@ -1325,7 +1301,7 @@ func TestExecutionFolderGuardGrantsToolOutputFolderRead(t *testing.T) {
 	}
 
 	readPaths, _ := hcpo.setupExecutionFolderGuard(
-		"step-1", "some-step", KBAccessNone, LearningsAccessNone,
+		"step-1", "some-step", KBAccessNone,
 		resolveDBAccess(nil),
 		nil,
 	)
@@ -1418,7 +1394,7 @@ func TestStepFileAccessFollowsTheOwnersRule(t *testing.T) {
 	hcpo.codeLayoutVersion.Store(1)
 	builders := map[string]func() ([]string, []string){
 		"execution": func() ([]string, []string) {
-			return hcpo.setupExecutionFolderGuard("step-1", "s", KBAccessNone, LearningsAccessNone, DBAccessReadWrite, nil)
+			return hcpo.setupExecutionFolderGuard("step-1", "s", KBAccessNone, DBAccessReadWrite, nil)
 		},
 		"agent": func() ([]string, []string) { return hcpo.setupAgentFolderGuard("step-1", "s", nil, AgentWriteAccess{}) },
 		"orchestrator": func() ([]string, []string) {

@@ -98,7 +98,7 @@ func TestResourceIntentNamedGuidesKeepConfiguredAccess(t *testing.T) {
 				t.Fatalf("unexpected drift: %v / %v", problems, evaluated)
 			}
 			cfg := &AgentConfigs{KnowledgebaseAccess: KBAccessNone, LearningsAccess: mode}
-			reads, writes := controller.setupExecutionFolderGuard("work", "work", KBAccessNone, mode, DBAccessNone, cfg)
+			reads, writes := controller.setupExecutionFolderGuard("work", "work", KBAccessNone, DBAccessNone, cfg)
 			covers := func(paths []string, target string) bool {
 				for _, path := range paths {
 					if path == target || strings.HasPrefix(target, strings.TrimRight(path, "/")+"/") {
@@ -113,7 +113,7 @@ func TestResourceIntentNamedGuidesKeepConfiguredAccess(t *testing.T) {
 					t.Fatalf("guide access changed: reads=%v writes=%v", reads, writes)
 				}
 			}
-			if canWriteLearnings(cfg, nil) || kbAccessAllowsWrite(KBAccessNone) {
+			if kbAccessAllowsWrite(KBAccessNone) {
 				t.Fatal("readable guides enabled writes")
 			}
 			after, err := os.ReadFile(configPath)

@@ -106,7 +106,7 @@ func TestCodeLayoutGrantsRespectLock(t *testing.T) {
 	// code/ is writable only for a run the Builder started; lock_code is an extra lock on top.
 	c.codeWritableByRun.Store(true)
 	for _, locked := range []bool{false, true} {
-		reads, writes := c.setupExecutionFolderGuard("step", "out", KBAccessNone, LearningsAccessNone, resolveDBAccess(nil), &AgentConfigs{LockCode: &locked})
+		reads, writes := c.setupExecutionFolderGuard("step", "out", KBAccessNone, resolveDBAccess(nil), &AgentConfigs{LockCode: &locked})
 		if !slices.Contains(reads, "Workflow/testing/code") {
 			t.Fatal("missing code read grant")
 		}

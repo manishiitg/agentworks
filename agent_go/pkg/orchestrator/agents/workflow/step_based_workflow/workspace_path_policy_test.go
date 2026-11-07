@@ -45,7 +45,7 @@ func TestEveryWorkflowGuardMaterializesFreshWorkspacePaths(t *testing.T) {
 				{
 					name: "execution",
 					paths: func(hcpo *StepBasedWorkflowOrchestrator) ([]string, []string) {
-						return hcpo.setupExecutionFolderGuard("step-1", "brief", KBAccessNone, LearningsAccessNone, DBAccessRead, nil)
+						return hcpo.setupExecutionFolderGuard("step-1", "brief", KBAccessNone, DBAccessRead, nil)
 					},
 				},
 				{

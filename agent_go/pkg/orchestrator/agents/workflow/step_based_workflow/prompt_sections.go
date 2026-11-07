@@ -62,7 +62,6 @@ func BuildStepFilesListing(folderPath string) string {
 // use these common builders for consistency.
 type PromptSections struct {
 	CodeExecution string // Code execution instructions
-	Learnings     string // Formatted learning history section
 	PreviousSteps string // Previous steps context section
 }
 
@@ -97,28 +96,6 @@ or Python os.environ['VAR_NAME']); only $VAR_GROUP_NAME may be empty or absent.
 `
 	}
 	return ""
-}
-
-// BuildLearningsSection returns the formatted learning history section for the system prompt.
-// learningHistory: the formatted learning content (empty string means no learnings)
-// keepLearningFull: whether full learning content is included (vs paths-only)
-func BuildLearningsSection(learningHistory string, keepLearningFull bool) string {
-	if learningHistory == "" {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("## Learning History (Secondary Guidance)\n")
-	sb.WriteString(learningHistory)
-	sb.WriteString("\n\n")
-	sb.WriteString("- **Workflows**: Use validated sequences from learnings, but adapt args to this specific step.\n")
-	sb.WriteString("- **Patterns**: Use tool hints/error recovery patterns from learnings.\n")
-	sb.WriteString("- **Conflict**: If learning conflicts with step requirement, the step wins.\n")
-	if !keepLearningFull {
-		sb.WriteString("- **Note**: These learnings are incomplete. Rely primarily on the step description and your own capabilities.\n")
-	}
-
-	return sb.String()
 }
 
 // BuildPreviousStepsSection returns the previous steps context section for the system prompt.
@@ -185,31 +162,13 @@ func BuildMainPyAuthoringRules() string {
 func BuildBrowserAuthoringRules() string {
 	var sb strings.Builder
 	sb.WriteString("## Browser automation rules (this step has agent_browser)\n\n")
-	sb.WriteString("Read the attached `agent-browser` skill's **Selector Discipline** section before browser authoring. It is the shared contract for builder chats, steps, scripts, and learnings.\n\n")
+	sb.WriteString("Read the attached `agent-browser` skill's **Selector Discipline** section before browser authoring. It is the shared contract for Crew chats, steps and scripts.\n\n")
 	sb.WriteString("Start with a snapshot and use current refs for live actions. Saved main.py may resolve fresh refs at runtime or use verified durable locators; never hardcode a previous snapshot's ref. Use a scoped read-only eval only when the snapshot is insufficient. Verify the intended target and the action's outcome.\n\n")
-	sb.WriteString("- **Site-access resilience**: if a headless `open` returns \"Permission Denied\", a blank page, or a native-alert freeze, switch the workflow to CDP mode against an existing Chrome and document the precondition in learnings. Register a dialog handler before interacting if the page shows native alerts.\n")
+	sb.WriteString("- **Site-access resilience**: if a headless `open` returns \"Permission Denied\", a blank page, or a native-alert freeze, switch the workflow to CDP mode against an existing Chrome and document the precondition in the task or its selected skill. Register a dialog handler before interacting if the page shows native alerts.\n")
 	sb.WriteString("- Wait by polling snapshots in a loop checking for expected content / expected widget state (e.g. disabled→enabled). NOT `time.sleep(N)` for UI state (use short sleeps 1-2s only between polls).\n")
 	sb.WriteString("- On failure (element missing, navigation stuck), print **both** the current snapshot AND the last probe result (if any) so the fix loop sees both views.\n")
 	sb.WriteString("- Call `get_api_spec` to discover exact parameter schemas — don't guess parameter names.\n")
 	sb.WriteString("\n")
-	return sb.String()
-}
-
-// BuildBrowserLearningRules is the single selector-persistence contract used by
-// both the active direct-learning continuation and the legacy learning agent.
-// Keep selector mechanics in the attached agent-browser skill; this block only
-// describes the durable HOW knowledge that may be saved across runs.
-func BuildBrowserLearningRules() string {
-	var sb strings.Builder
-	sb.WriteString("## Browser automation learnings (required when this step used agent_browser)\n\n")
-	sb.WriteString("Save reusable browser HOW in `references/site-profile.md`, `references/selectors.md`, or a linked topic. Snapshots are runtime evidence, not configuration.\n\n")
-	sb.WriteString("1. **Never persist snapshot refs.** Do not store `@e1`, `e68`, or generated `ref` values. Save the semantic recipe that resolves a fresh ref from current page state; refresh after navigation, DOM updates, tab changes, or when freshness is uncertain.\n")
-	sb.WriteString("2. **Record the observed stable-hook inventory when useful.** Do not run a full DOM probe merely to complete learnings. Include the framework only if known and whether the inspected region exposes `data-testid`/`data-test`, hand-written `id` or `name`, `aria-label`, labels/placeholders, and stable roles/names. Explicitly list generated ID/class patterns to avoid.\n")
-	sb.WriteString("3. **Record semantic action recipes, not a raw selector dump.** For each important action save, in a compact form, the action name and purpose, page/state precondition, primary verified locator or fresh-snapshot resolution recipe, enclosing row/card scope, one or two fallbacks, expected postcondition, and timing/auth/modal quirks (e.g. `login.fill_user_id` → primary `{by: id, value: panAdhaarUserId}`, fallback `{by: placeholder, value: User ID}`, postcondition Continue enabled).\n")
-	sb.WriteString("4. **Follow the agent-browser skill selector contract:** role + accessible name or label, verified test attributes, hand-written semantic `id`/`name`, and `aria-label` are locator candidates, not guarantees of stability. Record state changes such as Like becoming Unlike. Structural CSS/XPath is a fragile last resort. Store classes only when verified hand-written and stable across runs; never store generated framework/build classes or long class chains.\n")
-	sb.WriteString("5. **Capture behavior that DOM inspection cannot explain.** Preserve login/CDP requirements, redirects, disabled-until-valid controls, portal/popover behavior, confirmation dialogs, OTP/captcha branches, polling conditions, and known false controls.\n")
-	sb.WriteString("6. **Keep confidence honest.** Save only locators actually used or verified in this run. Mark unverified fallbacks as candidates. If a saved locator failed, replace or qualify it and retain the failure signature in the known-bad section.\n")
-	sb.WriteString("7. **Do not save sensitive values.** Selector recipes may describe field identity, but never persist entered credentials, account identifiers, tokens, cookies, or user data.\n")
 	return sb.String()
 }
 

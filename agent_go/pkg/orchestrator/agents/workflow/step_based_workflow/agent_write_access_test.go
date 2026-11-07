@@ -143,7 +143,7 @@ func TestAgentItemInheritsStepWriteAccess(t *testing.T) {
 		ID:   "plain-turn",
 		Type: "user_message",
 	})
-	if !got.DB || !got.Knowledgebase || !got.Learnings {
+	if !got.DB || !got.Knowledgebase || got.Learnings {
 		t.Fatalf("plain sequence turn should inherit all step-level writes, got: %+v", got)
 	}
 }
