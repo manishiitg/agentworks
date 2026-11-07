@@ -1,18 +1,8 @@
 package step_based_workflow
 
 import (
-	"context"
-	"strings"
-
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
-
-func (hcpo *StepBasedWorkflowOrchestrator) refreshStepGoalPolicy(ctx context.Context, manifest string) {
-	objective, _ := hcpo.ResolveWorkflowObjective(ctx)
-	hasGoal := hcpo.platformStoresEnabled() && !hcpo.isRelayExecution() && strings.TrimSpace(objective) != ""
-	hcpo.stepHasGoal.Store(hasGoal)
-
-}
 
 // Apply after category filtering: an old explicit list or wildcard cannot
 // restore Builder-only or Crew function tools to an ordinary execution agent.
@@ -21,7 +11,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) filterOrdinaryStepTools(tools []llmty
 	blocked := map[string]bool{
 		"query_workflow_costs": true, "apply_workflow_db_migration": true,
 		"project_functions_list": true, "project_functions_call": true, "project_functions_get_call": true, "project_functions_reply": true,
-		"get_goal_metrics": !hcpo.stepHasGoal.Load(), "record_goal_observations": !hcpo.stepHasGoal.Load(),
 	}
 	result := make([]llmtypes.Tool, 0, len(tools))
 	resultExecutors := make(map[string]interface{}, len(executors))

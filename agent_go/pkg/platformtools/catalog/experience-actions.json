@@ -30,12 +30,6 @@
     "external_members": "configure_agent_inbox"
   },
   {
-    "family": "metrics",
-    "name": "configure",
-    "member": "configure_goal_metrics",
-    "description": "Use the current metrics configure operation."
-  },
-  {
     "family": "integrations",
     "name": "slack_bot_configure",
     "member": "configure_slack_bot",
@@ -83,12 +77,6 @@
     "member": "get_agent_inbox",
     "description": "Use the current messages mail inbox operation.",
     "external_members": "get_agent_inbox"
-  },
-  {
-    "family": "metrics",
-    "name": "get",
-    "member": "get_goal_metrics",
-    "description": "Use the current metrics get operation."
   },
   {
     "family": "needs_you",
@@ -256,12 +244,6 @@
     "description": "List the active and previous published versions with their functions.",
     "source": "read_relay",
     "source_action": "releases"
-  },
-  {
-    "family": "metrics",
-    "name": "record",
-    "member": "record_goal_observations",
-    "description": "Use the current metrics record operation."
   },
   {
     "family": "messages",

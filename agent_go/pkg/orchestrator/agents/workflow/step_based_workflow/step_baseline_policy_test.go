@@ -14,7 +14,7 @@ import (
 
 // Exercise the actual workspace reader and baseline registration. Explicit
 // saved lists must not resurrect administrative tools, and a database alone
-// must not make an agent believe it has a goal or a running Pulse.
+// must not introduce administrative or cross-project execution tools.
 func TestStepBaselineRolePolicy(t *testing.T) {
 	c := newAgentClosingTestOrchestrator(t)
 	manifest, soul := `{}`, ""
@@ -33,7 +33,7 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 	}))
 	defer s.Close()
 	c.WorkspaceClient = workspace.NewClient(s.URL)
-	names := []string{"execute_shell_command", "human_feedback", "create_human_input_request", "query_workflow_db", "mutate_workflow_db", "query_workflow_costs", "apply_workflow_db_migration", "project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "get_goal_metrics", "record_goal_observations", "send_email", "send_slack_message"}
+	names := []string{"execute_shell_command", "human_feedback", "create_human_input_request", "query_workflow_db", "mutate_workflow_db", "query_workflow_costs", "apply_workflow_db_migration", "project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "send_email", "send_slack_message"}
 	c.WorkspaceToolExecutors = map[string]interface{}{}
 	cfg := &AgentConfigs{}
 	for _, name := range names {
@@ -45,11 +45,9 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 	}
 	for _, test := range []struct {
 		name, manifest, soul string
-		goal                 bool
 	}{
-		{"no goal", `{}`, "", false},
-		{"goal", `{}`, "## Objective\nProduce verified research.\n## Success Criteria\nEvidence checked.", true},
-		{"Relay", `{"kind":"relay"}`, "## Objective\nTransform input.", false},
+		{"no goal", `{}`, ""},
+		{"Relay", `{"kind":"relay"}`, "## Objective\nTransform input."},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			manifest, soul = test.manifest, test.soul
@@ -79,9 +77,6 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 				if slices.Contains(got, name) || executors[name] != nil {
 					t.Fatalf("baseline includes %s", name)
 				}
-			}
-			if slices.Contains(got, "get_goal_metrics") != test.goal || slices.Contains(got, "record_goal_observations") != test.goal {
-				t.Fatalf("wrong Goal measurement surface: %v", got)
 			}
 		})
 	}

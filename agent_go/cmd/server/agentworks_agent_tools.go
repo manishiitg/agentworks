@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// read_linked_goal lets any Crew read a linked Goal's runs and measurements (PLAT-825-99). Crews differ by content,
+// read_linked_goal lets any Crew read a linked Goal's run history (PLAT-825-99). Crews differ by content,
 // not features (decisions log 2026-10-26): AgentWorks emails through the Crew's own Google account like any Crew.
 
 func (api *StreamingAPI) registerAgentWorksAgentTools(registrar definitionToolRegistrar, gate *productToolGate, userID, workspacePath string) error {
@@ -30,10 +28,10 @@ func (api *StreamingAPI) registerAgentWorksAgentTools(registrar definitionToolRe
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 
-	if err := register("read_linked_goal", "Read one linked Goal you can currently open as its owner or editor, read-only. action=runs: its scheduled runs, newest first (optional schedule_id; limit and offset page each schedule). action=metrics: its saved measurements and their history. Pass the Goal's exact workspace_path from the linked list.", map[string]interface{}{
+	if err := register("read_linked_goal", "Read one linked Goal you can currently open as its owner or editor, read-only. action=runs: its scheduled runs, newest first (optional schedule_id; limit and offset page each schedule). Pass the Goal's exact workspace_path from the linked list.", map[string]interface{}{
 		"type": "object", "required": []string{"workspace_path", "action"}, "properties": map[string]interface{}{
 			"workspace_path": map[string]interface{}{"type": "string", "description": "The linked Goal's exact workspace_path."},
-			"action":         map[string]interface{}{"type": "string", "enum": []string{"runs", "metrics"}},
+			"action":         map[string]interface{}{"type": "string", "enum": []string{"runs"}},
 			"schedule_id":    map[string]interface{}{"type": "string", "description": "For runs: one schedule; omit for every timer of the Goal."},
 			"limit":          map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 50},
 			"offset":         map[string]interface{}{"type": "integer", "minimum": 0},
@@ -45,13 +43,6 @@ func (api *StreamingAPI) registerAgentWorksAgentTools(registrar definitionToolRe
 			return "", err
 		}
 		switch stringToolArg(args, "action") {
-		case "metrics":
-			ledger, err := step.LoadGoalMeasurements(ctx, target, 200)
-			if err != nil {
-				return "", err
-			}
-			encoded, err := json.Marshal(map[string]interface{}{"workflow_id": manifest.ID, "metrics": ledger.Metrics, "observations": ledger.Observations})
-			return string(encoded), err
 		case "runs":
 			limit, offset := min(max(externalInt(args, "limit", 10), 1), 50), max(externalInt(args, "offset", 0), 0)
 			only := strings.TrimSpace(stringToolArg(args, "schedule_id"))

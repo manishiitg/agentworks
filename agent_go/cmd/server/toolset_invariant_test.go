@@ -198,12 +198,6 @@ func TestToolSetInvariants(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"get_goal_metrics", "configure_goal_metrics", "record_goal_observations"} {
-		if !pool[name] || cats[name] != "workflow" {
-			t.Fatalf("missing goal tool %s", name)
-		}
-	}
-
 	// The startup catalog validator covers tool availability. Keep the
 	// distinct forbidden-tool checks here rather than duplicating its catalog.
 	workshop := map[string]bool{}

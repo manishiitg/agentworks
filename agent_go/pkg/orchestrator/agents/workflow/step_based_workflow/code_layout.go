@@ -52,7 +52,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 			hcpo.codeLayoutVersion.Store(0)
 			hcpo.platformStoresDisabled.Store(false)
 			hcpo.relayExecution.Store(false)
-			hcpo.refreshStepGoalPolicy(ctx, "")
 			return nil
 		}
 		return fmt.Errorf("read code layout: %w", err)
@@ -70,7 +69,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 	if err := hcpo.configureExecutionProduct(m.Kind); err != nil {
 		return err
 	}
-	hcpo.refreshStepGoalPolicy(ctx, content)
 	hcpo.codeLayoutVersion.Store(int32(m.Version))
 	return nil
 }

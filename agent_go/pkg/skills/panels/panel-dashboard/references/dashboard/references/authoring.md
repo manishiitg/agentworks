@@ -71,7 +71,7 @@ MediaGallery and MediaPreview. Managed result writes refresh loadData during a
 turn; preserve stable result IDs so the selected player keeps its state.
 
 The report prop (also imported as `report` from @agentworks/dashboard) uses the
-same authorized query/get/run, file/media, updates, costs, goal metrics, Ask,
+same authorized query/get/run, file/media, updates, costs, saved progress, Ask,
 published-function and motion APIs documented below. Function buttons keep the
 same data-report-action attributes in JSX. Preview never sends chat or runs a
 published function. Use report.motion for seekable animations and MP4 exports.

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -91,11 +90,9 @@ func TestWorkflowTrackingStaysInWorkflowDBAndRefusesCrewRoots(t *testing.T) {
 	if err := step.ConfigureGoalMetrics(ctx, root, []step.GoalMetric{metric}); err != nil {
 		t.Fatal(err)
 	}
-	_, executors, _ := createGoalMetricTools()
-	record := executors["record_goal_observations"].(func(context.Context, map[string]interface{}) (string, error))
-	observation := map[string]interface{}{"metric": "readings", "criterion_id": "readings", "run_id": "capture", "unit": "count", "value": 7, "observed_at": "2026-11-07T00:00:00Z", "evidence": []string{"report"}}
-	args := map[string]interface{}{"workspace_path": root, "observations": []interface{}{observation}}
-	if _, err := record(ctx, args); err != nil {
+	value := 7.0
+	observations := []step.GoalObservation{{Metric: "readings", CriterionID: "readings", RunID: "capture", Unit: "count", Value: &value, ObservedAt: "2026-11-07T00:00:00Z", Evidence: []string{"report"}}}
+	if _, err := step.RecordGoalObservations(ctx, root, observations); err != nil {
 		t.Fatal(err)
 	}
 	ledger, err := step.LoadGoalMeasurements(ctx, root, 10)
@@ -105,8 +102,7 @@ func TestWorkflowTrackingStaysInWorkflowDBAndRefusesCrewRoots(t *testing.T) {
 	if ledger.Observations[0].RunID != "capture" {
 		t.Fatal("rewrote source run ID")
 	}
-	args["workspace_path"] = crew.WorkspacePath
-	if _, err := record(ctx, args); err == nil {
+	if _, err := step.RecordGoalObservations(ctx, crew.WorkspacePath, observations); err == nil {
 		t.Fatal("Crew-root write was accepted")
 	}
 	private, err := crewroot.PrivateRoot(docs, crew.CrewID)

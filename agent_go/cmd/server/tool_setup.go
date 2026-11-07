@@ -307,15 +307,6 @@ func createCustomTools(workflowMode bool, sessionInfo ...string) ([]llmtypes.Too
 			toolCategories[name] = category
 		}
 
-		goalTools, goalExecutors, goalCategories := createGoalMetricTools()
-		allTools = append(allTools, goalTools...)
-		for name, executor := range goalExecutors {
-			allExecutors[name] = executor
-		}
-		for name, category := range goalCategories {
-			toolCategories[name] = category
-		}
-
 	}
 
 	// Note: Todo tools (create_todo, complete_todo, etc.) have been removed.

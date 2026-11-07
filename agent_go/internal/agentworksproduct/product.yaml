@@ -277,7 +277,6 @@ chat:
       - apply_workflow_db_migration
       - ask_function_update
       - project_functions_call
-      - configure_goal_metrics
       - create_project
       - copy_project_files
       - create_workflow_database_snapshot
@@ -287,7 +286,6 @@ chat:
       - execute_shell_command
       - generate_text_llm
       - project_functions_get_call
-      - get_goal_metrics
       - image_edit
       - image_gen
       - list_accessible_workflows
@@ -303,7 +301,6 @@ chat:
       - query_workflow_costs
       - query_workflow_db
       - read_agent_messages
-      - record_goal_observations
       - project_functions_reply
       - report_function_progress
       - request_clarification
@@ -327,7 +324,6 @@ chat:
       - execute_shell_command
       - diff_patch_workspace_file
       - list_llm_capabilities
-      - get_goal_metrics
       - query_workflow_db
       - query_workflow_costs
       - brain_browse
@@ -404,7 +400,6 @@ chat:
       - execute_shell_command
       - diff_patch_workspace_file
       - list_llm_capabilities
-      - get_goal_metrics
       - query_workflow_db
       - query_workflow_costs
       - google_workspace_cli

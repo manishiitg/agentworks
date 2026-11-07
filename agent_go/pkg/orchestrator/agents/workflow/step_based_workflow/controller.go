@@ -68,7 +68,6 @@ type StepBasedWorkflowOrchestrator struct {
 	platformStoresDisabled  atomic.Bool
 	codeWritableByRun       atomic.Bool
 	relayExecution          atomic.Bool
-	stepHasGoal             atomic.Bool
 	// Base orchestrator for common functionality
 	*orchestrator.BaseOrchestrator
 	// NEW: Store planning conversation for iterative refinement

@@ -96,7 +96,7 @@ func configureNoPlatformStoresSession(sessionID, workspacePath string) {
 }
 
 func withoutPlatformStoreTools(tools []llmtypes.Tool, executors map[string]interface{}) ([]llmtypes.Tool, map[string]interface{}) {
-	blocked := map[string]bool{"query_workflow_db": true, "mutate_workflow_db": true, "apply_workflow_db_migration": true, "create_workflow_database_snapshot": true, "get_goal_metrics": true, "record_goal_observations": true}
+	blocked := map[string]bool{"query_workflow_db": true, "mutate_workflow_db": true, "apply_workflow_db_migration": true, "create_workflow_database_snapshot": true}
 	for _, name := range knowledgebase.ToolNames() {
 		blocked[name] = true
 	}

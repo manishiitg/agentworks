@@ -41,7 +41,7 @@ Start with the changed step and its declared consumers. Search the relevant arti
 - **Skills** — inspect the selected workflow skills and references touched by the changed behavior. Builder correct stale methods; steps consume them. Keep legacy learning files as migration history. Clear `lock_code` only when saved code must change under the existing code-lock rule.
 - **KB** — search `knowledgebase/notes/` for the step's topic. Notes describing the old behavior must be updated or flagged.
 
-It is tractable **because the contracts already exist** — `db/README.md` lists writers and shape, report HTML declares its queries, `get_goal_metrics` returns configured metric scope and observation history, and the plan holds the step handoffs. You are cross-linking what is already written, not inventing a dependency graph.
+It is tractable **because the contracts already exist** — `db/README.md` lists writers and shape, report HTML declares its queries, ordinary database queries expose the workflow’s saved measurement scope and history, and the plan holds the step handoffs. You are cross-linking what is already written, not inventing a dependency graph.
 
 ## 3. Reconcile or flag
 For each affected dependent:
