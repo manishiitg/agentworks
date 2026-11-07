@@ -19,18 +19,20 @@ import (
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
 	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's single workflow and reusable Python scripts. Use routes in the existing workflow for different tasks; list before creating. list returns workflow ID, workspace_path and agents. upgrade takes workflow_id: omit version to see status, the next update instructions and current check failures; supply version and reason after completing them to check and stamp. A failed check never stamps. read takes workspace_path and file. edit changes named steps or inputs, or manages schedules/webhooks; describe gives schemas. Functions use functions with project=workspace_path. Omitted steps stay unchanged; deletion is explicit. write is for code/script.json, never whole plans/config/inputs. Run with run_workflow_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "upgrade"}},
-			"workflow_id":    map[string]interface{}{"type": "string"},
-			"version":        map[string]interface{}{"type": "string"},
-			"reason":         map[string]interface{}{"type": "string"},
-			"repair_step":    map[string]interface{}{"type": "object", "description": "upgrade only: repair one malformed old step with step_id, changes and optional remove_fields. Unmentioned fields and other steps remain unchanged."},
-			"workspace_path": map[string]interface{}{"type": "string"},
-			"operation":      map[string]interface{}{"type": "string", "enum": crewPlanOperations},
-			"arguments":      map[string]interface{}{"type": "object", "description": "Arguments matching the operation schema returned by describe."},
-			"file":           map[string]interface{}{"type": "string"},
-			"content":        map[string]interface{}{"type": "string"},
-			"name":           map[string]interface{}{"type": "string"},
-			"kind":           map[string]interface{}{"type": "string", "enum": []string{"workflow", "script"}},
+			"action":              map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "upgrade"}},
+			"workflow_id":         map[string]interface{}{"type": "string"},
+			"version":             map[string]interface{}{"type": "string"},
+			"reason":              map[string]interface{}{"type": "string"},
+			"repair_step":         map[string]interface{}{"type": "object", "description": "upgrade only: repair one malformed old step with step_id, changes and optional remove_fields. Unmentioned fields and other steps remain unchanged."},
+			"repair_attachments":  map[string]interface{}{"type": "boolean", "description": "upgrade only: refresh moved Crew connection locations for the same target project IDs owned by the caller. Check status first; no access or version change."},
+			"repair_browser_mode": map[string]interface{}{"type": "boolean", "description": "upgrade only: convert a retired browser mode using the installation's existing migration policy. Check status first; no account or version change."},
+			"workspace_path":      map[string]interface{}{"type": "string"},
+			"operation":           map[string]interface{}{"type": "string", "enum": crewPlanOperations},
+			"arguments":           map[string]interface{}{"type": "object", "description": "Arguments matching the operation schema returned by describe."},
+			"file":                map[string]interface{}{"type": "string"},
+			"content":             map[string]interface{}{"type": "string"},
+			"name":                map[string]interface{}{"type": "string"},
+			"kind":                map[string]interface{}{"type": "string", "enum": []string{"workflow", "script"}},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)

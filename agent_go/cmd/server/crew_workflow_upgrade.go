@@ -26,6 +26,14 @@ func (api *StreamingAPI) checkAndStampWorkflowContract(ctx context.Context, root
 	if strings.TrimSpace(reason) == "" {
 		return false, fmt.Errorf("describe the reviewed changes in reason before stamping")
 	}
+	candidate := *current
+	candidate.Version = version
+	if err := ValidateManifest(&candidate); err != nil {
+		return false, fmt.Errorf("workflow was not stamped: %w", err)
+	}
+	if err := preflightCrewAttachments(ctx, api.projectActions, GetUserIDFromContext(ctx), root); err != nil {
+		return false, fmt.Errorf("workflow was not stamped: %w; check upgrade status for repair_attachments", err)
+	}
 	read := readWorkflowUpgradeFile
 	raw, err := read(ctx, root+"/workflow.json")
 	if err != nil {
@@ -41,13 +49,13 @@ func (api *StreamingAPI) checkAndStampWorkflowContract(ctx context.Context, root
 	}); err != nil {
 		return false, err
 	}
-	if err := stepworkflow.RecordWorkflowContractUpgrade(ctx, root, workflowContractVersionForUpgrade(current), version, reason, checked, read, writeFileToWorkspace); err != nil {
-		return false, fmt.Errorf("change log could not be saved; nothing was stamped: %w", err)
-	}
-	current.Version = version
-	if err := WriteWorkflowManifest(ctx, root, current); err != nil {
+	if err := WriteWorkflowManifest(ctx, root, &candidate); err != nil {
 		return false, fmt.Errorf("workflow version could not be saved: %w", err)
 	}
+	if err := stepworkflow.RecordWorkflowContractUpgrade(ctx, root, workflowContractVersionForUpgrade(current), version, reason, checked, read, writeFileToWorkspace); err != nil {
+		return true, fmt.Errorf("workflow version was saved, but its upgrade change log failed: %w", err)
+	}
+	current.Version = version
 	return true, nil
 }
 
@@ -57,10 +65,18 @@ func (api *StreamingAPI) crewWorkflowUpgrade(ctx context.Context, binding *crewE
 	}
 	version, _ := args["version"].(string)
 	repair, repairing := args["repair_step"].(map[string]interface{})
-	if repairing && version != "" {
-		return "", fmt.Errorf("repair a step first, then check and stamp separately")
+	repairAttachments, _ := args["repair_attachments"].(bool)
+	repairBrowser, _ := args["repair_browser_mode"].(bool)
+	repairs := 0
+	for _, enabled := range []bool{repairing, repairAttachments, repairBrowser} {
+		if enabled {
+			repairs++
+		}
 	}
-	if version == "" && !repairing {
+	if repairs > 1 || repairs > 0 && version != "" {
+		return "", fmt.Errorf("choose one named repair, then check and stamp separately")
+	}
+	if version == "" && repairs == 0 {
 		pending := []map[string]string{}
 		for _, step := range workflowVersionUpgradePlan(manifest) {
 			pending = append(pending, map[string]string{"version": step.to, "update": step.label, "instruction": step.query})
@@ -75,6 +91,19 @@ func (api *StreamingAPI) crewWorkflowUpgrade(ctx context.Context, binding *crewE
 			status["next"] = "Complete the next instruction in this Crew's chat, then use upgrade with that version and a reason."
 		}
 		if len(pending) == 1 && pending[0]["version"] == workflowContractPortableVersion || manifest.Version == workflowContractPortableVersion {
+			if err := ValidateManifest(manifest); err != nil {
+				status["manifest_check_failure"] = err.Error()
+			}
+			if mode, needed := workflowBrowserModeRepair(manifest.Capabilities.BrowserMode); needed {
+				status["browser_mode_repair"] = map[string]any{"field": "capabilities.browser_mode", "from": manifest.Capabilities.BrowserMode, "to": mode, "next": "Use upgrade with repair_browser_mode=true and a reason, then check status again."}
+			}
+			if err := preflightCrewAttachments(ctx, api.projectActions, GetUserIDFromContext(ctx), binding.Root); err != nil {
+				if _, repairErr := refreshedWorkflowAttachments(GetUserIDFromContext(ctx), manifest.CrewAttachments); repairErr != nil {
+					status["attachment_repair_error"] = repairErr.Error()
+				} else {
+					status["attachment_repair"] = map[string]string{"failure": err.Error(), "next": "Use upgrade with repair_attachments=true and a reason to refresh locations for the same owned target projects, then check status again."}
+				}
+			}
 			steps, err := stepworkflow.ValidatePortableWorkflowRuntime(ctx, binding.Root, crewResourcesForRun(ctx, api.projectActions), readWorkflowUpgradeFile)
 			if err != nil {
 				status["check_failure"] = err.Error()
@@ -105,6 +134,9 @@ func (api *StreamingAPI) crewWorkflowUpgrade(ctx context.Context, binding *crewE
 		return "", fmt.Errorf("this Crew is outside the connection's access")
 	}
 	reason, _ := args["reason"].(string)
+	if repairAttachments || repairBrowser {
+		return repairWorkflowManifest(ctx, binding.Root, current, repairAttachments, repairBrowser, reason)
+	}
 	if repairing {
 		pending := workflowVersionUpgradePlan(current)
 		if len(pending) == 0 || pending[0].to != workflowContractPortableVersion {

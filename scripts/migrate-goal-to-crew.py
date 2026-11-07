@@ -285,7 +285,7 @@ class RuntimeRelocation:
 
 
 class Conversion:
-    def __init__(self, docs, state, workflow, crew, agent_binary=None, split_schedule_groups=False):
+    def __init__(self, docs, state, workflow, crew, agent_binary=None, split_schedule_groups=False, deployment_mode="local"):
         self.docs, self.state = Path(docs).resolve(strict=True), Path(state).resolve(strict=True)
         self.source = self.docs / 'Workflow' / safe_id(workflow)
         self.root = 'Workflow/' + workflow
@@ -377,6 +377,7 @@ class Conversion:
         self.chat_keys = {}
         self.sessions = {}
         self.prepare_legacy()
+        self.prepare_manifest_locations(projects, deployment_mode)
         self.chats()
         self.chat_journal()
         self.prepare_saved_groups()
@@ -421,6 +422,45 @@ class Conversion:
                     if not target.exists() or file.read_bytes() != target.read_bytes():
                         self.writes[target] = file.read_bytes()
             self.manifest = self.document(self.source/'workflow.json')
+
+    def prepare_manifest_locations(self, projects, deployment_mode):
+        # PLAT-746-396: paths saved before a target Crew move are not identities.
+        # Resolve the exact registered target; never widen a shared connection.
+        manifest = self.document(self.source/'workflow.json')
+        changes = 0
+        for attachment in manifest.get('crew_attachments') or []:
+            profile = attachment.get('crew_profile_id') or 'work'
+            if profile == 'crewx':
+                profile = 'work'
+            target_id = safe_id(attachment.get('crew_project_id'))
+            matches = [p for p in projects.values() if p.get('product') == profile and p.get('project_id') == target_id]
+            if len(matches) != 1:
+                raise ValueError('Crew connection target is missing or ambiguous; restore it or choose its intended connection before converting. Nothing was changed.')
+            target = matches[0]
+            if target.get('owner_id') != self.owner:
+                raise ValueError('You do not own a Crew connection target; ask its owner to repair the connection before converting. Nothing was changed.')
+            root = 'Crew/' + safe_id(target['folder'])
+            if target.get('canonical_root') not in (None, '', root):
+                raise ValueError('Repair the registered Crew connection location before converting.')
+            if attachment.get('crew_workspace_path') != root:
+                attachment['crew_workspace_path'] = root
+                changes += 1
+        # Reuse the original PLAT-788 policy, rather than invent a new default.
+        browser_file = Path(__file__).with_name('migrate-browser-modes.py')
+        spec = importlib.util.spec_from_file_location('browser_modes', browser_file)
+        browser = importlib.util.module_from_spec(spec); spec.loader.exec_module(browser)
+        caps = manifest.get('capabilities') or {}
+        mode = caps.get('browser_mode')
+        if mode:
+            converted = browser.convert(mode, deployment_mode)
+            if converted != mode:
+                caps['browser_mode'] = converted
+                manifest['capabilities'] = caps
+                self.counts['browser_modes_refreshed'] = 1
+        self.counts['crew_attachment_locations_refreshed'] = changes
+        if manifest != self.document(self.source/'workflow.json'):
+            self.writes[self.source/'workflow.json'] = encode(manifest)
+        self.manifest = manifest
 
     def prepare_input_contracts(self):
         # Entries first convert old groups to one preset. Validate the final
@@ -852,6 +892,7 @@ def main():
     parser.add_argument('--crew', required=True, help='Destination Crew ID, created normally beforehand')
     parser.add_argument('--agent-binary', type=Path, help='This refactor build, for input validation and older JSON-only chat archives')
     parser.add_argument('--split-schedule-groups', action='store_true', help='Explicitly split a batched timer into one timer per saved input preset, preserving timing and enabled state')
+    parser.add_argument('--deployment-mode', choices=('local', 'server'), default='local', help='Use the existing browser conversion policy for this installation')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--finish-runtime', action='store_true', help='Move remaining runtime for one already converted Crew workflow')
     parser.add_argument('--cleanup-learnings', action='store_true', help='Report retired learnings; --apply backs up and deletes them only after the Crew stamps contract 1.0.52')
@@ -864,7 +905,7 @@ def main():
         elif args.finish_runtime:
             conversion = RuntimeRelocation(args.docs,args.state,args.workflow,args.crew)
         else:
-            conversion = Conversion(args.docs,args.state,args.workflow,args.crew,args.agent_binary,split_schedule_groups=args.split_schedule_groups)
+            conversion = Conversion(args.docs,args.state,args.workflow,args.crew,args.agent_binary,split_schedule_groups=args.split_schedule_groups,deployment_mode=args.deployment_mode)
         print(json.dumps(conversion.apply() if args.apply else conversion.report(), indent=2))
     except (ValueError, SyntaxError, OSError, RuntimeError, sqlite3.Error) as exc:
         print(json.dumps({'status':'needs attention','error':str(exc)}))
