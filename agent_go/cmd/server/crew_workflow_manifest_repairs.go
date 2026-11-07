@@ -80,7 +80,7 @@ func repairWorkflowManifest(ctx context.Context, root string, current *WorkflowM
 		field, before, after = "capabilities.browser_mode", current.Capabilities.BrowserMode, mode
 		current.Capabilities.BrowserMode = mode
 	}
-	if err := WriteWorkflowManifest(ctx, root, current); err != nil {
+	if err := writeWorkflowUpgradeField(ctx, root, field, current); err != nil {
 		return "", fmt.Errorf("repair was not saved: %w", err)
 	}
 	if err := stepworkflow.RecordWorkflowManifestRepair(ctx, root, field, before, after, reason, readWorkflowUpgradeFile, writeFileToWorkspace); err != nil {
