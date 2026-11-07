@@ -74,7 +74,7 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 		}
 		if bound {
 			resolved, _, e := resolver.Resolve(issued)
-			if e != nil || filepath.Clean(resolved) != filepath.Clean(path) {
+			if e != nil || filepath.Clean(resolved) != filepath.Clean(path) && !(path == searchPath && info.IsDir() && opts.virtualRoot != "") {
 				return "", false
 			}
 		} else {
@@ -227,4 +227,62 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 	}
 	err = walk(searchPath, -1)
 	return documents, err
+}
+
+// scanWorkflowDocuments combines the workflow's existing authored mounts and
+// its private records. Each scan retains the same visibility and path checks.
+func scanWorkflowDocuments(searchPath, docs string, opts documentScanOptions) ([]models.Document, error) {
+	l, found, err := crewroot.LookupExecutable(docs, opts.virtualRoot)
+	if err != nil {
+		return nil, err
+	}
+	if !found || l.Binding.Kind != "workflow" {
+		return scanDocuments(searchPath, docs, opts)
+	}
+	type mount struct{ logical, physical string }
+	paths := []mount{{opts.virtualRoot, searchPath}}
+	if opts.virtualRoot == l.Binding.Root {
+		paths = append(paths, mount{l.Binding.Root, l.Definitions})
+	}
+	for _, rel := range []string{"code", "planning/changelog", "planning/revisions"} {
+		logical := l.Binding.Root + "/" + rel
+		if strings.HasPrefix(logical, opts.virtualRoot+"/") {
+			physical, _, e := crewroot.Resolve(docs, logical)
+			if e != nil {
+				return nil, e
+			}
+			paths = append(paths, mount{logical, physical})
+		}
+	}
+	var result []models.Document
+	seen := map[string]bool{}
+	for _, mounted := range paths {
+		logical, physical := mounted.logical, mounted.physical
+		next := opts
+		next.virtualRoot = logical
+		if opts.maxDepth >= 0 {
+			depth := strings.Count(strings.TrimPrefix(logical, opts.virtualRoot), "/")
+			if depth-1 > opts.maxDepth {
+				continue
+			}
+			next.maxDepth = max(0, opts.maxDepth-depth)
+		}
+		rows, e := scanDocuments(physical, docs, next)
+		if os.IsNotExist(e) {
+			continue
+		}
+		if e != nil {
+			return nil, e
+		}
+		for _, row := range rows {
+			if opts.maxDepth >= 0 && strings.Count(strings.TrimPrefix(row.FilePath, opts.virtualRoot+"/"), "/") > opts.maxDepth && row.FilePath != opts.virtualRoot {
+				continue
+			}
+			if !seen[row.FilePath] {
+				seen[row.FilePath] = true
+				result = append(result, row)
+			}
+		}
+	}
+	return result, nil
 }

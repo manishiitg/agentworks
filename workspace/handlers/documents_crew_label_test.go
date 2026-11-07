@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
@@ -251,5 +252,47 @@ func TestTeamCopiesShowOnlyInTheirMembersFiles(t *testing.T) {
 	}
 	if got := paths("Crew/example/_files/team-copies/ann", "bob"); strings.Contains(got, "notes.md") {
 		t.Fatalf("bob sees ann's copy: %s", got)
+	}
+}
+
+// PLAT-746-360: a migrated workflow's file tree includes its code and plan,
+// without recreating the retired physical Workflow folder.
+func TestCrewWorkflowListingCombinesAuthoredFilesAndPrivateRecords(t *testing.T) {
+	docs, _ := setupLocalCrewDocuments(t)
+	state := os.Getenv("AGENTWORKS_STATE_ROOT")
+	binding := crewroot.ExecutableBinding{ID: "workflow", Root: "Workflow/example", CrewID: "example", CrewRoot: "Crew/example", Kind: "workflow"}
+	raw, _ := json.Marshal(binding)
+	os.MkdirAll(filepath.Join(state, "ownership/crew-executables"), 0700)
+	key := fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))
+	os.WriteFile(filepath.Join(state, "ownership/crew-executables", key), raw, 0600)
+	paths := []string{"workflow.json", "planning/plan.json", "code/helper.py", "planning/changelog/change.json", "runs/run-1/output.json"}
+	for _, rel := range paths {
+		target, _, err := crewroot.Resolve(docs, binding.Root+"/"+rel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.MkdirAll(filepath.Dir(target), 0700)
+		if err := os.WriteFile(target, []byte("saved"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	router := setupRouter(docs)
+	response := listDocs(t, router, binding.Root, "owner")
+	seen := map[string]bool{}
+	var collect func([]models.Document)
+	collect = func(rows []models.Document) {
+		for _, row := range rows {
+			seen[row.FilePath] = true
+			collect(row.Children)
+		}
+	}
+	collect(response.Data)
+	for _, rel := range paths {
+		if !seen[binding.Root+"/"+rel] {
+			t.Fatalf("missing moved file %s in %v", rel, seen)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(docs, binding.Root)); !os.IsNotExist(err) {
+		t.Fatal("old workflow folder recreated")
 	}
 }

@@ -158,15 +158,23 @@ def update_runtime_references(source, runtime):
     for file in runtime.rglob('*.sqlite'):
         # Trusted offline conversion. Preserve schemas, IDs and row counts.
         with closing(sqlite3.connect(file)) as db, db:
+            # Historical tool-result columns can contain non-UTF-8 bytes even
+            # with TEXT affinity. Preserve them as opaque bytes, not a failure
+            # or a lossy decoded/re-encoded string.
+            def saved_text(raw):
+                try:
+                    return raw.decode('utf-8')
+                except UnicodeDecodeError:
+                    return raw
+            db.text_factory=saved_text
             quote = lambda value: '"'+value.replace('"','""')+'"'
             for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
                 info = db.execute('PRAGMA table_info('+quote(table)+')').fetchall()
                 columns = [row[1] for row in info]
                 keys = [row[1] for row in sorted(info,key=lambda row:row[5]) if row[5]]
-                if keys:
-                    rows = db.execute('SELECT * FROM '+quote(table)).fetchall()
-                else:
-                    rows = db.execute('SELECT rowid,* FROM '+quote(table)).fetchall()
+                where=' OR '.join(f"(typeof({quote(column)})='text' AND instr({quote(column)},?)>0)" for column in columns)
+                projection='*' if keys else 'rowid,*'
+                rows=db.execute('SELECT '+projection+' FROM '+quote(table)+' WHERE '+where,tuple(str(source) for _ in columns)).fetchall()
                 for row in rows:
                     values = dict(zip(columns,row if keys else row[1:]))
                     where = ' AND '.join(quote(key)+'=?' for key in keys) if keys else 'rowid=?'

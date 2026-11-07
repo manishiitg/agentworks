@@ -163,6 +163,16 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		return wf.Result{}, err
 	}
 	shared := externalRootUsesSharedKnowledge(root)
+	if layout, found, e := crewroot.LookupExecutable(getWorkspaceDocsAbsPath(), req.Root); e != nil {
+		return wf.Result{}, e
+	} else if found && layout.Binding.Kind == "workflow" && layout.Binding.Root == req.Root {
+		definition, _, e := wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), req.Root, "workflow.json")
+		if e != nil {
+			return wf.Result{}, e
+		}
+		shared = externalRootUsesSharedKnowledge(definition)
+		definition.Close()
+	}
 	if localBound {
 		private, openErr := os.OpenRoot(localRoots.Private)
 		if openErr != nil {
@@ -363,7 +373,13 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 	truncated := false
 	depthLimited := false
 	searchedFiles := 0
-	err := fs.WalkDir(root.FS(), p, func(name string, d fs.DirEntry, walkErr error) error {
+	var filesystem fs.FS = root.FS()
+	if layout, found, e := crewroot.LookupExecutable(getWorkspaceDocsAbsPath(), req.Root); e != nil {
+		return wf.Result{}, e
+	} else if found && layout.Binding.Kind == "workflow" && layout.Binding.Root == req.Root {
+		filesystem = wf.WorkflowFS{Docs: getWorkspaceDocsAbsPath(), Root: req.Root}
+	}
+	err := fs.WalkDir(filesystem, p, func(name string, d fs.DirEntry, walkErr error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -429,7 +445,16 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 				truncated = true
 				return fs.SkipAll
 			}
-			f, err := externalScopedFile(root, name)
+			readRoot, readName := root, name
+			if _, ok := filesystem.(wf.WorkflowFS); ok {
+				var e error
+				readRoot, readName, e = wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), req.Root, name)
+				if e != nil {
+					return e
+				}
+				defer readRoot.Close()
+			}
+			f, err := externalScopedFile(readRoot, readName)
 			if err != nil {
 				return err
 			}

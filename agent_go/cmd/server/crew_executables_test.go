@@ -6,6 +6,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 
@@ -502,6 +503,22 @@ func TestCrewAutomationNativeCommitUsesMovedSource(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(docs, b.Root)); !os.IsNotExist(err) {
 		t.Fatal("retired root recreated")
 	}
+	listed := map[string]bool{}
+	err := fs.WalkDir(wf.WorkflowFS{Docs: docs, Root: b.Root}, ".", func(path string, d fs.DirEntry, err error) error {
+		if err == nil {
+			listed[path] = true
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"planning/plan.json", "code/step/main.py", "planning/changelog/entry.json"} {
+		if !listed[p] {
+			t.Fatalf("moved file missing from listing: %s (%v)", p, listed)
+		}
+	}
+
 	// A planted source directory cannot redirect native plan edits.
 	source := filepath.Join(docs, root, ".agentworks/workflows", b.ID, "planning")
 	os.RemoveAll(source)

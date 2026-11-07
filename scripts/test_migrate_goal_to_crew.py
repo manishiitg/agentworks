@@ -170,6 +170,8 @@ class Migration(unittest.TestCase):
         with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
             db.execute('CREATE TABLE file_index(id TEXT PRIMARY KEY,path TEXT,metadata TEXT) WITHOUT ROWID')
             db.execute('INSERT INTO file_index VALUES (?,?,?)',('stable-id',str(self.source/'db/assets/file.txt'),json.dumps({'path':str(self.source/'runs/history/out.json')})))
+            db.execute('CREATE TABLE historical_result(id INTEGER PRIMARY KEY,result TEXT,path TEXT)')
+            db.execute("INSERT INTO historical_result VALUES (1,CAST(x'FF' AS TEXT),?)",(str(self.source/'runs/history/out.json'),))
         authored=hashes(self.docs/'Crew/target')
         other=hashes(self.docs/'Workflow/unrelated')
         conversion=m.RuntimeRelocation(self.docs,self.state,'old-goal','crew')
@@ -187,6 +189,7 @@ class Migration(unittest.TestCase):
             self.assertEqual(key,'stable-id')
             self.assertEqual(path,str(self.runtime/'db/assets/file.txt'))
             self.assertEqual(json.loads(metadata)['path'],str(self.runtime/'runs/history/out.json'))
+            self.assertEqual(db.execute('SELECT hex(result),path FROM historical_result').fetchone(),('FF',str(self.runtime/'runs/history/out.json')))
         backup=Path(result['backup'])
         self.assertIn('source/learnings/retired.json',m.read(backup/'sha256.json'))
         self.assertEqual(m.RuntimeRelocation(self.docs,self.state,'old-goal','crew').apply()['status'],'already migrated')
