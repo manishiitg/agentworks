@@ -17,6 +17,24 @@ repo_dir() { # the local checkout of a repository: this one, or its sibling
   if [[ "$1" == mcp-agent-builder-go ]]; then echo "$REPO_ROOT"; else echo "$REPO_ROOT/../$1"; fi
 }
 
+# commit_on_main <dir> <sha>: main holds this commit, or the commit is an older main commit plus changes that are each already
+# on main. The second case lets a release carry finished fixes without newer work that a server cannot take yet. Nothing that
+# has not landed on main passes. The version file is left out of the comparison: every commit bumps it, so it always differs.
+patch_id() {
+  git -C "$1" diff-tree -p "$2" -- . ':(exclude)frontend/src/version.ts' | git patch-id --stable | cut -d' ' -f1
+}
+commit_on_main() {
+  local dir="$1" sha="$2" base commit landed id
+  git -C "$dir" merge-base --is-ancestor "$sha" origin/main 2>/dev/null && return 0
+  base="$(git -C "$dir" merge-base "$sha" origin/main 2>/dev/null)" || return 1
+  [[ -z "$(git -C "$dir" rev-list --merges "$base..$sha")" ]] || return 1
+  landed="$(for commit in $(git -C "$dir" rev-list --no-merges "$base..origin/main"); do patch_id "$dir" "$commit"; done)"
+  for commit in $(git -C "$dir" rev-list "$base..$sha"); do
+    id="$(patch_id "$dir" "$commit")"
+    [[ -n "$id" ]] && grep -qxF "$id" <<<"$landed" || return 1
+  done
+}
+
 to_https_url() {
   local url="$1"
   url="${url/ssh:\/\/git@github.com\//https://github.com/}"
@@ -54,14 +72,14 @@ build_release_remote() {
   for repo in $BUILD_REPOS; do
     url="$(to_https_url "$(git -C "$(repo_dir "$repo")" remote get-url origin)")" || return 1
     # DEPLOY_SHA_<REPO> (REPO upper-case, - as _) builds that commit instead of the branch head, so a release can leave out work still landing on main.
-    # It must already be on main of that repository.
+    # It must pass commit_on_main for that repository.
     local pin_var="DEPLOY_SHA_$(printf '%s' "$repo" | tr 'a-z-' 'A-Z_')" pinned
     pinned="${!pin_var:-}"
     source=""
     if [[ -n "$pinned" ]]; then
       [[ "$pinned" =~ ^[0-9a-f]{40}$ ]] || { echo "$pin_var must be a full 40-hex commit" >&2; return 1; }
-      git -C "$(repo_dir "$repo")" merge-base --is-ancestor "$pinned" origin/main 2>/dev/null \
-        || { echo "$pin_var ${pinned:0:10} is not an ancestor of origin/main of $repo; refusing." >&2; return 1; }
+      commit_on_main "$(repo_dir "$repo")" "$pinned" \
+        || { echo "$pin_var ${pinned:0:10} is not an ancestor of origin/main of $repo, and not an ancestor plus changes already on main; refusing." >&2; return 1; }
       sha="$pinned" source=" (pinned)"
     elif [[ "$repo" != mcp-agent-builder-go ]] && sha="$(gomod_pinned_sha "$app_sha" "$repo")"; then
       # The app's go.mod decides the dependency revisions; main's head of a dependency may be untested with this app.
@@ -125,15 +143,15 @@ find_build() {
   build_ssh "python3 - find '$BUILDS_DIR' '$1'" < "$REPO_ROOT/deploy/common/release_manifest.py"
 }
 
-# A chosen (older) build may be deployed only if each of its revisions is an ancestor of origin/main of its repository.
+# A chosen (older) build may be deployed only if each of its revisions passes commit_on_main.
 check_build_on_main() { # name sha1 sha2 sha3
   local name="$1" repo sha dir; shift
   for repo in $BUILD_REPOS; do
     sha="$1"; shift
     dir="$(repo_dir "$repo")"
     git -C "$dir" fetch -q origin main >/dev/null 2>&1 || { echo "Cannot fetch $repo to check ancestry" >&2; return 1; }
-    git -C "$dir" merge-base --is-ancestor "$sha" origin/main 2>/dev/null \
-      || { echo "Build $name holds $repo ${sha:0:10}, which is not an ancestor of origin/main; refusing." >&2; return 1; }
+    commit_on_main "$dir" "$sha" \
+      || { echo "Build $name holds $repo ${sha:0:10}, which is not an ancestor of origin/main, nor one plus changes already on main; refusing." >&2; return 1; }
   done
 }
 

@@ -85,6 +85,22 @@ class ChosenBuildTest(unittest.TestCase):
         self.assertIn("not an ancestor of origin/main", result.stderr)
         self.assertEqual(result.stdout.strip(), "")
 
+    def test_older_commit_plus_a_change_already_on_main_may_ship_but_nothing_unlanded(self):
+        # 7 Nov: a server could not take main's newest work, and finished fixes had no route to it.
+        local = self.root / "mcpagent"
+        git(local, "checkout", "-q", "-b", "patched", self.good["mcpagent"])
+        (local / "f").write_text("2")
+        version = local / "frontend/src/version.ts"
+        version.parent.mkdir(parents=True)
+        version.write_text("bumped by the commit hook")
+        git(local, "add", "-A"); git(local, "commit", "-qm", "the same change as main's")
+        patched = git(local, "rev-parse", "HEAD")
+        self.assertEqual(self.run_deploy_lib(f'commit_on_main "{local}" {patched}').returncode, 0)
+        (local / "f").write_text("unlanded")
+        git(local, "commit", "-qam", "not on main")
+        unlanded = git(local, "rev-parse", "HEAD")
+        self.assertNotEqual(self.run_deploy_lib(f'commit_on_main "{local}" {unlanded}').returncode, 0)
+
     def test_unknown_or_ambiguous_selector_is_refused(self):
         result = self.run_deploy_lib('DEPLOY_BUILD=99999999 ensure_prebuilt_build')
         self.assertNotEqual(result.returncode, 0)
