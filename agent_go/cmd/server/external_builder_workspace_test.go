@@ -162,11 +162,12 @@ func TestExternalBuilderManagedFileTools(t *testing.T) {
 	}
 	// PLAT-746-384: the same Builder tools must edit mapped source without
 	// recreating or modifying the retired workflow directory.
-	binding := crewExecutableBinding{ID: "task", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/test", Kind: "workflow"}
+	store.files["Workflow/test/workflow.json"] = `{"schema_version":1,"id":"test"}`
+	binding := crewExecutableBinding{ID: "test", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/test", Kind: "workflow"}
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "lab", ProjectID: binding.CrewID, OwnerID: "owner"}); err != nil {
 		t.Fatal(err)
 	}
-	code := filepath.Join(docs, "Crew/lab/.agentworks/code/task")
+	code := filepath.Join(docs, "Crew/lab/.agentworks/code/test")
 	for _, dir := range []string{code, filepath.Join(docs, "_system/crew-data", binding.CrewID)} {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			t.Fatal(err)
