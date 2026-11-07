@@ -405,7 +405,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   )
 
   // Your own agents' menu (the caret) sits with your tabs, before the divider and the other people's chips.
-  const moreMenu = (!menuMode || onImportLocalChat) && (tabs.length > 1 || phone || livesOnMac || onImportLocalChat) && (
+  // Keep general agent actions reachable with Main alone, including when local-chat import is unavailable.
+  const moreMenu = (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button
             type="button"
