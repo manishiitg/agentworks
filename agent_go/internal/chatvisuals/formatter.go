@@ -65,6 +65,9 @@ func Format(ctx context.Context, content string, final bool) (Reply, error) {
 		return Reply{}, err
 	}
 	cmd := exec.CommandContext(ctx, node, script)
+	// Formatting needs no server environment, including provider credentials.
+	cmd.Env = []string{}
+	cmd.Dir = filepath.Dir(script)
 	cmd.Stdin = strings.NewReader(string(data))
 	cmd.Stderr = io.Discard
 	out, err := cmd.Output()
