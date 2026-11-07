@@ -203,35 +203,12 @@ func TestToolSetInvariants(t *testing.T) {
 			t.Fatalf("missing goal tool %s", name)
 		}
 	}
-	// 4. Pulse and after-run tools are registered in the workflow tool pool and must
-	//    be visible in workshop mode, otherwise scheduled Pulse turns can ask
-	//    for get_pulse_state and then fail at
-	//    runtime with "not callable in this chat session".
-	for _, n := range []string{"get_pulse_state", "resolve_run_concern"} {
-		if !pool[n] || cats[n] != "workflow" {
-			t.Fatalf("workflow pool missing Autopilot state tool %q (in_pool=%v cat=%q)", n, pool[n], cats[n])
-		}
-	}
 
-	// 5. The workshop allow-list must still expose the plan/workflow tools
-	//    (guards against accidental loss during refactors).
+	// The startup catalog validator covers tool availability. Keep the
+	// distinct forbidden-tool checks here rather than duplicating its catalog.
 	workshop := map[string]bool{}
 	for _, n := range todo_creation_human.GetToolsForWorkshopMode("workshop") {
 		workshop[n] = true
-	}
-	for _, n := range []string{
-		"create_plan", "migrate_workflow_skills",
-		"add_step", "update_step", "manage_step_route", "delete_plan_steps", "preview_step_runtime",
-		"execute_step", "get_human_input_request", "create_human_input_request", "answer_human_input_request",
-		"update_workflow_config", "update_step_config", "validate_report_html",
-		"list_schedules", "update_schedule", "get_schedule_runs",
-		"execute_shell_command", "diff_patch_workspace_file",
-		"get_pulse_state", "resolve_run_concern",
-		"mark_changelog_artifact_reviewed",
-	} {
-		if !workshop[todo_creation_human.ConsolidatedPlanToolName(n)] {
-			t.Fatalf("workshop allow-list missing expected tool %q", n)
-		}
 	}
 	for _, removed := range []string{"improve_learnings", "improve_kb", "improve_db", "review_artifact_sync"} {
 		if workshop[removed] {

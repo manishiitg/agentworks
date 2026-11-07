@@ -987,11 +987,18 @@ func TestWorkflowScheduleListExposesEffectiveWebhookConcurrency(t *testing.T) {
 // deleting and recreating it (losing get_schedule_runs history).
 func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 	workspacePath := "Workflow/social-media"
+	t.Setenv("DEFAULT_USER_ID", "owner")
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	if err := os.MkdirAll(filepath.Join(docs, workspacePath), 0755); err != nil {
+		t.Fatal(err)
+	}
 	newManifest := func() *WorkflowManifest {
 		return &WorkflowManifest{
 			SchemaVersion: WorkflowManifestSchemaVersion,
 			ID:            "social-media",
 			Label:         "Social Media",
+			Access:        &WorkflowAccess{Owners: []string{"owner"}},
 			Schedules: []WorkflowSchedule{
 				{
 					ID:             "run-schedule",
@@ -999,10 +1006,9 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 					CronExpression: "0 9 * * *",
 					Timezone:       "Asia/Kolkata",
 					Enabled:        true,
-					GroupNames:     []string{"group-1"},
 					Mode:           "workshop",
 					WorkshopMode:   "run",
-					Messages:       []string{"Run the full workflow using run_full_workflow(group_name=\"group-1\")"},
+					Messages:       []string{"Run the workflow."},
 				},
 			},
 		}
@@ -1029,14 +1035,15 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 		t.Cleanup(workspace.Close)
 		t.Setenv("WORKSPACE_API_URL", workspace.URL)
 
+		// PLAT-871: timers now live in schedules.json, not the retired manifest array.
+		if err := saveWorkflowTimerActions(context.Background(), workspacePath, manifest); err != nil {
+			t.Fatal(err)
+		}
 		callbacks := (&StreamingAPI{}).buildSchedulerCallbacks()
 		currentMessages := func() []string {
-			mock.mu.Lock()
-			content := mock.files[workspacePath+"/workflow.json"]
-			mock.mu.Unlock()
-			var current WorkflowManifest
-			if err := json.Unmarshal([]byte(content), &current); err != nil {
-				t.Fatalf("unmarshal persisted manifest: %v", err)
+			current, found, err := ReadWorkflowManifest(context.Background(), workspacePath)
+			if err != nil || !found || len(current.Schedules) != 1 {
+				t.Fatalf("read saved timer: manifest=%+v found=%v err=%v", current, found, err)
 			}
 			return current.Schedules[0].Messages
 		}
