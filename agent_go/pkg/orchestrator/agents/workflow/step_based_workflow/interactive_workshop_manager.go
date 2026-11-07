@@ -1697,7 +1697,7 @@ func absPromptWorkspacePath(workspacePath string) string {
 	if workspacePath == "" {
 		return ""
 	}
-	return filepath.Join(GetPromptDocsRoot(), workspacePath)
+	return workflowAbsPath(workspacePath)
 }
 
 // Prompt sources and shared includes are selected by AgentWorks product.yaml.
@@ -5218,7 +5218,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
 				return fmt.Sprintf("Refused: nested Agent artifact migration is incomplete: %v", err), nil
 			}
-			if err := validateManagedDBScriptsStamp(version, filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
+			if err := validateManagedDBScriptsStamp(version, workflowAbsPath(iwm.controller.GetWorkspacePath())); err != nil {
 				return fmt.Sprintf("Refused: the managed database script migration is incomplete: %v", err), nil
 			}
 			if version == AgentDescriptionFirstContractVersion {
@@ -5231,7 +5231,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 			if version == WorkflowSkillsContractVersion {
-				if err := ValidateWorkflowSkillsStamp(filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
+				if err := ValidateWorkflowSkillsStamp(workflowAbsPath(iwm.controller.GetWorkspacePath())); err != nil {
 					return "", err
 				}
 			}
@@ -5253,7 +5253,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return "", err
 				}
 			}
-			if err := validateStepDescriptionLayoutStamp(version, filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
+			if err := validateStepDescriptionLayoutStamp(version, workflowAbsPath(iwm.controller.GetWorkspacePath())); err != nil {
 				return fmt.Sprintf("Refused: the step description layout migration is incomplete: %v", err), nil
 			}
 			if current, _ := manifest["version"].(string); strings.TrimSpace(current) == version {

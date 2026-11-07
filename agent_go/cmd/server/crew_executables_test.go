@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"net/http"
 	"net/http/httptest"
 
@@ -471,7 +472,7 @@ func TestCrewAutomationNativeCommitUsesMovedSource(t *testing.T) {
 			target = filepath.Join(docs, root, ".agentworks/code", b.ID, strings.TrimPrefix(rel, "code/"))
 		}
 		if strings.Contains(rel, "changelog") {
-			target = filepath.Join(docs, b.Root, rel)
+			target = filepath.Join(docs, "_system/crew-data", b.CrewID, "workflows", b.ID, rel)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 			t.Fatal(err)
@@ -483,12 +484,33 @@ func TestCrewAutomationNativeCommitUsesMovedSource(t *testing.T) {
 		if err != nil || string(raw) != "saved" {
 			t.Fatal(rel, string(raw), err)
 		}
+		opened, name, err := wf.OpenWorkflowDirectory(docs, b.Root, rel)
+		if err != nil {
+			t.Fatal(rel, err)
+		}
+		raw, err = opened.ReadFile(name)
+		opened.Close()
+		if err != nil || string(raw) != "saved" {
+			t.Fatal("direct plan routing", rel, err)
+		}
 		if !strings.Contains(rel, "changelog") {
 			if _, err := os.Stat(filepath.Join(docs, b.Root, rel)); !os.IsNotExist(err) {
 				t.Fatal("recreated old source", rel)
 			}
 		}
 	}
+	if _, err := os.Stat(filepath.Join(docs, b.Root)); !os.IsNotExist(err) {
+		t.Fatal("retired root recreated")
+	}
+	// A planted source directory cannot redirect native plan edits.
+	source := filepath.Join(docs, root, ".agentworks/workflows", b.ID, "planning")
+	os.RemoveAll(source)
+	os.Symlink(t.TempDir(), source)
+	if opened, _, err := wf.OpenWorkflowDirectory(docs, b.Root, "planning/plan.json"); err == nil {
+		opened.Close()
+		t.Fatal("source symlink admitted")
+	}
+
 }
 
 // PLAT-746: the Crew's single Schedules tab must retain its workflow timers,

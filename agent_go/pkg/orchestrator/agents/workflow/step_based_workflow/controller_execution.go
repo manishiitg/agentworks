@@ -453,7 +453,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) findExecutionPlanProducerCandidates(
 		}
 		// Prefer the stable artifact folder keyed by step_id.
 		for _, outputName := range outputNames {
-			appendCandidate(filepath.Join(docsRoot, getExecutionFolderPath(executionWorkspacePath, stepID, stepID), outputName))
+			appendCandidate(workflowAbsPath(getExecutionFolderPath(executionWorkspacePath, stepID, stepID), outputName))
 		}
 
 	}
@@ -1375,7 +1375,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			if filepath.IsAbs(path) {
 				return path
 			}
-			return filepath.Join(docsRoot, path)
+			return workflowAbsPath(path)
 		}
 
 		stepTitleForPrompt := ResolveVariables(step.GetTitle(), hcpo.variableValues)
@@ -1555,7 +1555,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				// Emit UI event for the saved-script execution attempt
 				savedScriptPath := filepath.Join(hcpo.scriptedSourceAbsolute(step.GetID()), "main.py")
 				if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
-					savedScriptPath = filepath.Join(GetPromptDocsRoot(), stepExecutionPath, "code", "main.py")
+					savedScriptPath = workflowAbsPath(stepExecutionPath, "code", "main.py")
 				}
 				hcpo.emitScriptedExecutionEvent(ctx, step, stepIndex, stepPath,
 					savedScriptPath, fastResult.Success, fastResult.ExitCode, fastResult.Output, fastResult.Error, 0, true)

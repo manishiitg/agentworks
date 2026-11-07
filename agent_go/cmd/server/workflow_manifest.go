@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"io"
 	"log"
 	"net/http"
@@ -1308,7 +1309,10 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		}
 	}
 
-	lockPath := filepath.Join(step_based_workflow.GetPromptDocsRoot(), filepath.FromSlash(manifestPath(workspacePath)))
+	lockPath, resolveErr := fsutil.WorkspacePath(step_based_workflow.GetPromptDocsRoot(), manifestPath(workspacePath))
+	if resolveErr != nil {
+		return resolveErr
+	}
 	if _, statErr := os.Stat(lockPath); statErr == nil {
 		unlock, lockErr := knowledgeManifestLockWithWait(ctx, lockPath)
 		if lockErr != nil {
@@ -1484,7 +1488,7 @@ func discoverWorkflowManifests(ctx context.Context, persistMigrations bool) ([]D
 		return nil, bindingErr
 	}
 	for _, binding := range bindings {
-		if binding.Kind == "script" && !slices.Contains(folders, binding.Root) {
+		if !slices.Contains(folders, binding.Root) {
 			folders = append(folders, binding.Root)
 		}
 	}

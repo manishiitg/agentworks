@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
@@ -130,7 +129,7 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 			logKnowledge()
 		}
 	}()
-	release, lockErr := wf.LockWorkspace(ctx, filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(rootPath)))
+	release, lockErr := teamLock(ctx, rootPath)
 	if lockErr != nil {
 		return wf.Result{}, lockErr
 	}
@@ -287,7 +286,7 @@ func externalBuilderRemoveFile(ctx context.Context, workspace, p, expected strin
 	if p, err = externalBuilderFilePath(p, true); err != nil {
 		return wf.Result{}, err
 	}
-	release, lockErr := wf.LockWorkspace(ctx, filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(rootPath)))
+	release, lockErr := teamLock(ctx, rootPath)
 	if lockErr != nil {
 		return wf.Result{}, lockErr
 	}

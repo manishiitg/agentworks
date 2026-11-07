@@ -30,7 +30,7 @@ func chatHistoryStoragePath(input string) string {
 func chatHistoryLocalStoragePath(input string) string {
 	current := chatHistoryStoragePath(input)
 	if filepath.IsAbs(input) && !filepath.IsAbs(current) {
-		return filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(current))
+		return resolvedChatHistoryPath(current)
 	}
 	return current
 }
@@ -56,4 +56,10 @@ func ownCanonicalProjectRestorePath(user, cleaned string) (string, bool) {
 		return "", false
 	}
 	return chatHistoryStoragePath(cleaned), true
+}
+
+// Resolved storage is used only after history access has been authorized.
+func resolvedChatHistoryPath(logical string) string {
+	physical, _ := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), logical)
+	return physical
 }

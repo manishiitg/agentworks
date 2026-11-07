@@ -114,16 +114,6 @@ func executeWorkflowSkillsBuilderTool(ctx context.Context, rootPath, user string
 	if manifest.Team != nil && !containsID(manifest.effectiveOwners(), user) {
 		return "", fmt.Errorf("shared workflow settings require the Leader")
 	}
-	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
-	if err != nil {
-		return "", err
-	}
-	defer base.Close()
-	root, err := wf.OpenDirectory(base, rootPath, false)
-	if err != nil {
-		return "", err
-	}
-	defer root.Close()
 	ctx = prepareTeamEdit(ctx, rootPath, stringToolArg(args, "expected_plan_revision"))
 	ctx = context.WithValue(ctx, workflowSkillsEditKey{}, true)
 	ctx = context.WithValue(ctx, teamManifestPermitKey{}, true)
@@ -135,6 +125,11 @@ func executeWorkflowSkillsBuilderTool(ctx context.Context, rootPath, user string
 		if err != nil {
 			return "", false, err
 		}
+		root, rel, err := wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), rootPath, rel)
+		if err != nil {
+			return "", false, err
+		}
+		defer root.Close()
 		raw, exists, err := readWorkflowSkillsFile(root, rel)
 		if err == nil {
 			rememberWorkflowSkillsRead(c, p, raw, exists)
@@ -165,6 +160,11 @@ func executeWorkflowSkillsBuilderTool(ctx context.Context, rootPath, user string
 		if err != nil {
 			return err
 		}
+		root, rel, err := wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), rootPath, rel)
+		if err != nil {
+			return err
+		}
+		defer root.Close()
 		return wf.ReplaceNativeManagedFile(root, rel, []byte(raw))
 	}
 	remove := func(c context.Context, p string) error {
@@ -172,6 +172,11 @@ func executeWorkflowSkillsBuilderTool(ctx context.Context, rootPath, user string
 		if err != nil {
 			return err
 		}
+		root, rel, err := wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), rootPath, rel)
+		if err != nil {
+			return err
+		}
+		defer root.Close()
 		parent, err := wf.OpenDirectory(root, path.Dir(rel), false)
 		if err != nil {
 			return err

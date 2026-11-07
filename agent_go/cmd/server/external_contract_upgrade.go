@@ -2,9 +2,9 @@ package server
 
 import (
 	"context"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -107,14 +107,27 @@ func (api *StreamingAPI) externalContractUpgradeCall(w http.ResponseWriter, r *h
 		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": version, "applied": false, "note": "Already on this contract version."})
 		return
 	}
-	workflowDir := filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(rootPath))
-	rawManifest, err := os.ReadFile(filepath.Join(workflowDir, "workflow.json"))
+	workflowDir, err := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), rootPath)
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	manifestFile, err := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), rootPath+"/workflow.json")
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	rawManifest, err := os.ReadFile(manifestFile)
 	if err != nil {
 		externalError(w, 502, "workflow_unavailable", "Cannot read this workflow's manifest.")
 		return
 	}
 	readPlan := func() (string, error) {
-		raw, err := os.ReadFile(filepath.Join(workflowDir, "planning", "plan.json"))
+		file, err := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), rootPath+"/planning/plan.json")
+		if err != nil {
+			return "", err
+		}
+		raw, err := os.ReadFile(file)
 		return string(raw), err
 	}
 	if err := stepworkflow.CheckContractStamp(version, workflowDir, rawManifest, readPlan); err != nil {

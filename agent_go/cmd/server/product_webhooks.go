@@ -781,7 +781,8 @@ func publishedFunctionPayloadReference(callID, payloadPath, relativePath string)
 		}
 	}
 	if call := lookupCrewFunctionCall(callID); call != nil && call.Publication != nil {
-		return filepath.Join(getWorkspaceDocsAbsPath(), filepath.FromSlash(payloadPath))
+		physical, _ := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), payloadPath)
+		return physical
 	}
 	return relativePath
 }

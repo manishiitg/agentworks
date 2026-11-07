@@ -1670,12 +1670,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceAbsPath(workflowRel stri
 		return filepath.Join(hcpo.crewAutomationCodeRoot, strings.TrimPrefix(workflowRel, "code/"))
 	}
 
-	full := filepath.Join(hcpo.GetWorkspacePath(), workflowRel)
-	docsRoot := GetPromptDocsRoot()
-	if docsRoot == "" {
-		return full
-	}
-	return filepath.Join(docsRoot, full)
+	return workflowAbsPath(hcpo.GetWorkspacePath(), workflowRel)
 }
 
 // agentSequenceExecutionRelPath returns the step's execution folder — the SAME

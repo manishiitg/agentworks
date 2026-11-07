@@ -380,7 +380,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 			scripted := isScriptedStep(route.SubAgentStep)
 			subStepPath := todoSubAgentArtifactFolderName(step.GetID(), stepPath, route.RouteID, "<call-id>", scripted)
 			subExecRelPath := getExecutionFolderPath(hcpo.getOrchestratorExecutionWorkspacePath(), "", subStepPath)
-			subExecAbsPath := filepath.Join(GetPromptDocsRoot(), subExecRelPath)
+			subExecAbsPath := workflowAbsPath(subExecRelPath)
 			contextOutput := strings.TrimSpace(ResolveVariables(route.SubAgentStep.GetContextOutput().String(), promptValues))
 			if contextOutput != "" {
 				fmt.Fprintf(&routesBuilder, " → output: `%s` | folder: `%s/`", contextOutput, subExecAbsPath)
@@ -402,7 +402,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 		stepID = fmt.Sprintf("step-%d", stepIndex+1)
 	}
 	executionPath := hcpo.getOrchestratorStepExecutionPath(stepID, stepPath)
-	shellWorkingDirectory := filepath.Join(GetPromptDocsRoot(), executionPath)
+	shellWorkingDirectory := workflowAbsPath(executionPath)
 
 	// Get step config for code execution mode: step config > workflow/preset default
 	stepConfig := getAgentConfigs(step)
@@ -439,11 +439,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 			}
 			return formatted
 		}(),
-		"WorkspacePath":         filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath()),
-		"ExecutionFolderPath":   filepath.Join(docsRoot, fgExecPath),
-		"DownloadsPath":         filepath.Join(docsRoot, fgExecPath, "Downloads"),
+		"WorkspacePath":         workflowAbsPath(hcpo.GetWorkspacePath()),
+		"ExecutionFolderPath":   workflowAbsPath(fgExecPath),
+		"DownloadsPath":         workflowAbsPath(fgExecPath, "Downloads"),
 		"StepNumber":            fmt.Sprintf("step-%d", stepIndex+1),
-		"StepExecutionPath":     filepath.Join(docsRoot, executionPath),
+		"StepExecutionPath":     workflowAbsPath(executionPath),
 		"ShellWorkingDirectory": shellWorkingDirectory,
 		"PredefinedRoutes":      routesBuilder.String(),
 		"HasBrowserAccess":      fmt.Sprintf("%t", hcpo.HasBrowserCapability()),
@@ -454,15 +454,15 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 		"KbAccessLabel":             kbAccessLabel(kbAccess),
 		"LearningsAccess":           learningsAccess,
 		"KnowledgebaseContribution": kbContributionForPrompt(stepConfig),
-		"KBGuidanceBlock":           sharedStepKBGuidance(baseWorkspacePath, kbAccess, kbContributionForPrompt(stepConfig), filepath.Join(docsRoot, fgKnowledgebasePath, KBNotesFolderName)),
+		"KBGuidanceBlock":           sharedStepKBGuidance(baseWorkspacePath, kbAccess, kbContributionForPrompt(stepConfig), workflowAbsPath(fgKnowledgebasePath, KBNotesFolderName)),
 		// Workspace paths and folder guard (consistent with execution agent)
 		"FolderGuardReadPaths":  folderGuardPromptText(baseWorkspacePath, fgReadPaths, false),
 		"FolderGuardWritePaths": folderGuardPromptText(baseWorkspacePath, fgWritePaths, true),
-		"KnowledgebasePath":     filepath.Join(docsRoot, fgKnowledgebasePath),
-		"DBPath":                filepath.Join(docsRoot, fgDBPath),
+		"KnowledgebasePath":     workflowAbsPath(fgKnowledgebasePath),
+		"DBPath":                workflowAbsPath(fgDBPath),
 		"DBAccess":              dbAccessForGuard,
 		"DBDirectAccess":        "false", // agent steps are never scripted (PLAT-287)
-		"WorkflowRoot":          filepath.Join(docsRoot, baseWorkspacePath),
+		"WorkflowRoot":          workflowAbsPath(baseWorkspacePath),
 	}
 
 	templateVars["PlanPosition"] = hcpo.buildStepPlacement(ctx, allSteps, stepIndex)
@@ -1110,7 +1110,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 	// output folder (PLAT-432). The caller gets that JSON instead of the run
 	// summary; an unusable file is logged and the summary is kept.
 	if isScriptedRoute {
-		resultJSON, readErr := readScriptedRouteResult(filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath()), hcpo.scriptedRouteOutputDir(subAgentStepPath))
+		resultJSON, readErr := readScriptedRouteResult(workflowAbsPath(hcpo.GetWorkspacePath()), hcpo.scriptedRouteOutputDir(subAgentStepPath))
 		if readErr != nil {
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Route %s: %s ignored: %v", route.RouteID, ScriptedRouteResultFile, readErr))
 			executionResult = fmt.Sprintf("%s\n(%s was ignored: %v)", executionResult, ScriptedRouteResultFile, readErr)

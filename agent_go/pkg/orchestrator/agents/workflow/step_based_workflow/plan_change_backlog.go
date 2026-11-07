@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
@@ -65,8 +66,32 @@ const legacyPlanChangeHorizon = 30 * 24 * time.Hour
 var planChangeBacklogNow = time.Now
 
 func workflowAbsPath(workspacePath string, parts ...string) string {
-	all := append([]string{fsutil.WorkspaceDocsRoot(), filepath.FromSlash(strings.Trim(strings.TrimSpace(workspacePath), "/"))}, parts...)
-	return filepath.Join(all...)
+	all := append([]string{filepath.FromSlash(strings.Trim(strings.TrimSpace(workspacePath), "/"))}, parts...)
+	resolved, err := fsutil.WorkspacePath(GetPromptDocsRoot(), filepath.Join(all...))
+	if err != nil {
+		return ""
+	}
+	return resolved
+}
+
+// File APIs keep the workflow identity; native processes receive physical
+// paths. Translate only this workflow's admitted roots back for API calls.
+func workflowAPIPath(workspace, physical string) string {
+	if l, found, err := crewroot.LookupExecutable(GetPromptDocsRoot(), workspace); found && err == nil {
+		for _, source := range []struct{ disk, logical string }{
+			{l.Code, workspace + "/code"}, {l.Definitions, workspace}, {l.Runtime, workspace},
+		} {
+			if crewroot.Within(source.disk, physical) {
+				rel, _ := filepath.Rel(source.disk, physical)
+				return filepath.ToSlash(filepath.Join(source.logical, rel))
+			}
+		}
+	}
+	if crewroot.Within(GetPromptDocsRoot(), physical) {
+		rel, _ := filepath.Rel(GetPromptDocsRoot(), physical)
+		return filepath.ToSlash(rel)
+	}
+	return physical
 }
 
 func CollectPlanChangeBacklog(workspacePath string) *PlanChangeBacklog {

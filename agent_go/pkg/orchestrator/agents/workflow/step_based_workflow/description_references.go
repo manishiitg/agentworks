@@ -156,7 +156,7 @@ func cleanBrainReference(raw string) string {
 // the absolute path and whether it exists inside the workflow root (a symlink
 // leading out of the workflow counts as missing and is never granted).
 func resolvedWorkflowReference(workspacePath, relativePath string) (abs string, info os.FileInfo, ok bool) {
-	root := filepath.Join(GetPromptDocsRoot(), workspacePath)
+	root := workflowAbsPath(workspacePath)
 	abs = filepath.Join(root, filepath.FromSlash(relativePath))
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {

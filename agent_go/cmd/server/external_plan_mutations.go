@@ -89,18 +89,6 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 		externalError(w, 400, "invalid_workspace", "One canonical workflow root is required.")
 		return
 	}
-	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
-	if err != nil {
-		externalError(w, 503, "workspace_unavailable", "Direct plan commits require the managed workspace mount.")
-		return
-	}
-	defer base.Close()
-	root, err := wf.OpenDirectory(base, rootPath, false)
-	if err != nil {
-		externalFailure(w, err)
-		return
-	}
-	defer root.Close()
 	release, err := teamLock(ctx, rootPath)
 	if err != nil {
 		externalFailure(w, err)
@@ -217,6 +205,11 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 		if e != nil {
 			return "", false, e
 		}
+		root, rel, e := wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), rootPath, rel)
+		if e != nil {
+			return "", false, e
+		}
+		defer root.Close()
 		if action == "migrate_workflow_skills" {
 			raw, exists, e := readWorkflowSkillsFile(root, rel)
 			if e == nil {
@@ -276,6 +269,11 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 		if e != nil {
 			return e
 		}
+		root, rel, e := wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), rootPath, rel)
+		if e != nil {
+			return e
+		}
+		defer root.Close()
 		return wf.ReplaceManagedFile(root, rel, []byte(raw))
 	}
 	remove := func(callCtx context.Context, p string) error {
@@ -283,6 +281,11 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 		if e != nil {
 			return e
 		}
+		root, rel, e := wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), rootPath, rel)
+		if e != nil {
+			return e
+		}
+		defer root.Close()
 		parent, e := wf.OpenDirectory(root, path.Dir(rel), false)
 		if e != nil {
 			return e

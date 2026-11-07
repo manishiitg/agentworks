@@ -1018,10 +1018,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) workflowStepShellWorkingDir() string 
 func (hcpo *StepBasedWorkflowOrchestrator) configureSubAgentSessionGuard(sessionID string, agentKind string, stepID string, readPaths []string, writePaths []string, kbReadOverride ...bool) {
 	// Every session of a test run is guarded from its first grant (PLAT-562).
 	kbRead := false
-	localKB := filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), "knowledgebase")
+	localKB := workflowAbsPath(hcpo.GetWorkspacePath(), "knowledgebase")
 	for _, path := range readPaths {
 		if !filepath.IsAbs(path) {
-			path = filepath.Join(GetPromptDocsRoot(), path)
+			path = workflowAbsPath(path)
 		}
 		if workflowkb.Within(path, localKB) {
 			kbRead = true
@@ -1437,14 +1437,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		if stepEnvOutputPathOverride != "" {
 			stepExecutionPath = stepEnvOutputPathOverride
 		}
-		stepOutputAbsPath := filepath.Join(GetPromptDocsRoot(), stepExecutionPath)
+		stepOutputAbsPath := workflowAbsPath(stepExecutionPath)
 		if common.IsCLIProvider(config.LLMConfig.Primary.Provider) {
 			config.CodingAgentOutputDir = stepOutputAbsPath
 		}
 		stepExecutionAbsPath := stepExecutionScopeAbsPath(stepOutputAbsPath)
 		dbAbsPath := ""
 		if directDBAccess {
-			dbAbsPath = filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
+			dbAbsPath = workflowAbsPath(hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
 		}
 		workspaceEnv := hcpo.codeRuntimeEnv(hcpo.snapshotWorkspaceEnv())
 		workspaceEnv["SHARED_KB_STEP_ACCESS"] = resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
@@ -1800,7 +1800,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	// rather than having to rebuild absolute paths from the step context.
 	{
 		stepExecutionRelPath := hcpo.getOrchestratorStepExecutionPath(stepID, stepPath)
-		stepOutputAbsPath := filepath.Join(GetPromptDocsRoot(), stepExecutionRelPath)
+		stepOutputAbsPath := workflowAbsPath(stepExecutionRelPath)
 		if common.IsCLIProvider(config.LLMConfig.Primary.Provider) {
 			config.CodingAgentOutputDir = stepOutputAbsPath
 		}
@@ -1810,7 +1810,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		// filesystem scope without breaking shared browser behavior with the builder.
 		dbAbsPath := ""
 		if directDBAccess {
-			dbAbsPath = filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
+			dbAbsPath = workflowAbsPath(hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
 		}
 		workspaceEnv := hcpo.codeRuntimeEnv(hcpo.snapshotWorkspaceEnv())
 		workspaceEnv["SHARED_KB_STEP_ACCESS"] = resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())

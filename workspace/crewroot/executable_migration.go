@@ -3,7 +3,6 @@ package crewroot
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -11,7 +10,8 @@ import (
 
 // MigrateExecutableSources is an explicitly invoked one-off conversion. It is
 // not called at startup. Stop the selected instance's writers before using it.
-// Skills, knowledge, histories and execution identities are left untouched.
+// Reusable scripts only. Workflows use scripts/migrate-goal-to-crew.py so a
+// source-only move cannot leave their records in the retired folder.
 func MigrateExecutableSources(docs string) (int, string, error) {
 	layouts, err := ExecutableLayouts(docs)
 	if err != nil {
@@ -37,6 +37,9 @@ func MigrateExecutableSources(docs string) (int, string, error) {
 		return nil
 	}
 	for _, l := range layouts {
+		if l.Binding.Kind != "script" {
+			continue
+		}
 		for _, target := range []string{l.Definitions, l.Code} {
 			rel, e := filepath.Rel(l.Crew.Files, target)
 			if e != nil {
@@ -47,57 +50,7 @@ func MigrateExecutableSources(docs string) (int, string, error) {
 			}
 		}
 
-		if l.Binding.Kind == "script" {
-			err = add(filepath.Join(l.Crew.Resources, "code", l.Binding.ID), l.Code)
-		} else {
-
-			// Plan edit history and script execution statistics stay in managed storage.
-			code := filepath.Join(l.Runtime, "code")
-			err = filepath.WalkDir(code, func(p string, d fs.DirEntry, e error) error {
-				if os.IsNotExist(e) {
-					return nil
-				}
-				if e != nil {
-					return e
-				}
-				if !d.IsDir() && d.Name() == "script_metadata.json" {
-					return add(p, filepath.Join(l.Runtime, "runs/script-metadata", filepath.Base(filepath.Dir(p))+".json"))
-				}
-				return nil
-			})
-			if err != nil {
-				return 0, "", err
-			}
-			entries, e := os.ReadDir(filepath.Join(l.Runtime, "planning"))
-			if e != nil && !os.IsNotExist(e) {
-				return 0, "", e
-			}
-			for _, entry := range entries {
-				if entry.Name() == "changelog" || entry.Name() == "revisions" {
-					continue
-				}
-				if err = add(filepath.Join(l.Runtime, "planning", entry.Name()), filepath.Join(l.Definitions, "planning", entry.Name())); err != nil {
-					return 0, "", err
-				}
-			}
-			for _, name := range []string{"workflow.json", "variables", "code"} {
-				target := filepath.Join(l.Definitions, name)
-				if name == "code" {
-					target = l.Code
-				}
-				// Resolve against the parent project before creating target directories.
-				rel, e := filepath.Rel(l.Crew.Files, target)
-				if e != nil {
-					return 0, "", e
-				}
-				if _, e = ResolveContained(l.Crew.Files, rel); e != nil {
-					return 0, "", e
-				}
-				if err = add(filepath.Join(l.Runtime, name), target); err != nil {
-					break
-				}
-			}
-		}
+		err = add(filepath.Join(l.Crew.Resources, "code", l.Binding.ID), l.Code)
 		if err != nil {
 			return 0, "", err
 		}

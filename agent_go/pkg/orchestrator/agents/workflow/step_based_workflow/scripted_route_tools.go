@@ -151,7 +151,7 @@ func readScriptedRouteResult(confineRoot, outputDir string) (string, error) {
 
 // scriptedRouteOutputDir is the absolute STEP_OUTPUT_DIR of one route call.
 func (hcpo *StepBasedWorkflowOrchestrator) scriptedRouteOutputDir(subAgentStepPath string) string {
-	return filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder, "execution", getArtifactFolderName("", subAgentStepPath))
+	return workflowAbsPath(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder, "execution", getArtifactFolderName("", subAgentStepPath))
 }
 
 // scriptedRouteSourceReadPaths grants an Agent step read access to the saved

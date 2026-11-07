@@ -1228,7 +1228,7 @@ func sanitizeValidationFileName(fileName string) (string, error) {
 
 func resolveAbsoluteValidationPath(fileName string, scopes validationPathScopes) (string, error) {
 	docsRoot := filepath.Clean(GetPromptDocsRoot())
-	workflowRootAbs := filepath.Join(docsRoot, scopes.WorkflowRootPath)
+	workflowRootAbs := workflowAbsPath(scopes.WorkflowRootPath)
 	cleanAbsPath := filepath.Clean(fileName)
 
 	if !strings.HasPrefix(cleanAbsPath, docsRoot+"/") && cleanAbsPath != docsRoot {

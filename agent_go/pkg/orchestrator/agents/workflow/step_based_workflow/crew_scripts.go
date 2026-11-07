@@ -283,7 +283,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveStepInputValues(ctx context.Co
 			if len(paths) != 1 {
 				return nil, fmt.Errorf("step input %q output is unavailable", name)
 			}
-			relative, err := filepath.Rel(filepath.Join(GetPromptDocsRoot(), executionRoot), paths[0])
+			relative, err := filepath.Rel(workflowAbsPath(executionRoot), paths[0])
 			if err != nil || strings.HasPrefix(relative, "..") || filepath.IsAbs(relative) {
 				return nil, fmt.Errorf("step input %q must use this run's output", name)
 			}

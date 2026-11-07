@@ -244,7 +244,7 @@ func buildCodingAgentContinuityNotice(conversationPath, workspacePath string, hi
 		logPath := strings.TrimSuffix(conversationPath, ".json") + ".history.jsonl"
 		abs := logPath
 		if !filepath.IsAbs(abs) {
-			abs = filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(strings.TrimSuffix(normalizedConversationPath, ".json")+".history.jsonl"))
+			abs, _ = fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), strings.TrimSuffix(normalizedConversationPath, ".json")+".history.jsonl")
 		}
 		if info, err := os.Stat(abs); err == nil && info.Mode().IsRegular() {
 			conversationPath = logPath

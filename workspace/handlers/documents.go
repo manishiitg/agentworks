@@ -366,7 +366,7 @@ func ListDocuments(c *gin.Context) {
 	// Force unlimited files (limit=-1) and no offset (offset=0) to ensure full tree structure is returned for the UI
 	// Skip metadata (last_modified, is_image) for root listings to reduce response size
 	virtualRoot := ""
-	if layout, found, e := crewroot.LookupExecutable(docsDir, normalizedFolder); e == nil && found && (crewroot.Within(layout.Code, searchPath) || crewroot.Within(layout.Definitions, searchPath)) {
+	if layout, found, e := crewroot.LookupExecutable(docsDir, normalizedFolder); e == nil && found && (crewroot.Within(layout.Code, searchPath) || crewroot.Within(layout.Definitions, searchPath) || crewroot.Within(layout.Runtime, searchPath)) {
 		virtualRoot = normalizedFolder
 	}
 	documents, err := scanDocuments(searchPath, docsDir, documentScanOptions{virtualRoot: virtualRoot, maxDepth: req.MaxDepth, limit: -1, metadata: !isRootListing, blocked: blockedPaths, visibility: req.FileTreeVisibility, userID: userID, ctx: c.Request.Context()})

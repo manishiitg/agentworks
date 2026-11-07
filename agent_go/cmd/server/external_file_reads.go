@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"io"
 	"io/fs"
 	"os"
@@ -118,7 +119,15 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	}
 
 	var root *os.Root
-	if localBound {
+	if _, executable, e := crewroot.LookupExecutable(getWorkspaceDocsAbsPath(), rootPath); executable || e != nil {
+		if e != nil {
+			return wf.Result{}, e
+		}
+		root, p, err = wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), rootPath, p)
+		if err != nil {
+			return wf.Result{}, err
+		}
+	} else if localBound {
 		physical := localRoots.ResourcePathRoot(p)
 		if localFiles {
 			physical = localRoots.Files

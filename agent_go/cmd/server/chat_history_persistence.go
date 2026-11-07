@@ -2357,7 +2357,7 @@ func workflowRelativeConversationPath(workflowPath, workflowDir, convPath string
 func resolveLocalChatHistoryDir(workspaceRoot string) (string, bool) {
 	workspaceRoot = chatHistoryStoragePath(workspaceRoot)
 	candidates := []string{
-		filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspaceRoot)),
+		resolvedChatHistoryPath(workspaceRoot),
 		filepath.Join("workspace-docs", filepath.FromSlash(workspaceRoot)),
 		filepath.Join("..", "workspace-docs", filepath.FromSlash(workspaceRoot)),
 		filepath.Join("/app/workspace-docs", filepath.FromSlash(workspaceRoot)),
@@ -2381,7 +2381,7 @@ func resolveLocalWorkflowDir(workflowPath string) (string, bool) {
 		return "", false
 	}
 	candidates := []string{
-		filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workflowPath)),
+		resolvedChatHistoryPath(workflowPath),
 		filepath.Join("workspace-docs", filepath.FromSlash(workflowPath)),
 		filepath.Join("..", "workspace-docs", filepath.FromSlash(workflowPath)),
 		filepath.Join("/app/workspace-docs", filepath.FromSlash(workflowPath)),
@@ -2684,8 +2684,9 @@ func chatHistoryDataMatchesWorkspace(data, workflowPath string) bool {
 		return true
 	}
 	workflowName := pathpkg.Base(workflowPath)
+	physical := resolvedChatHistoryPath(workflowPath)
 	return strings.Contains(data, workflowPath) ||
-		strings.Contains(data, filepath.ToSlash(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workflowPath)))) ||
+		physical != "" && strings.Contains(data, filepath.ToSlash(physical)) ||
 		strings.Contains(data, "/workspace-docs/"+workflowPath) ||
 		strings.Contains(data, "Workflow/"+workflowName+"/")
 }
@@ -3233,7 +3234,10 @@ func readChatHistoryConversationDataFromPath(normalizedPath string) ([]byte, boo
 	if normalizedPath == "" {
 		return nil, false, nil
 	}
-	localPath := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(normalizedPath))
+	localPath, resolveErr := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), normalizedPath)
+	if resolveErr != nil {
+		return nil, false, resolveErr
+	}
 	if localData, err := readConversationFileDirect(localPath); err == nil {
 		return localData, true, nil
 	} else if !os.IsNotExist(err) {

@@ -41,10 +41,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) runKBReorganizePhase(ctx context.Cont
 	ctx = context.WithValue(ctx, orchestratorevents.AgentSessionIDKey, agentSessionID)
 	ctx = context.WithValue(ctx, orchestratorevents.ForceCorrelationIDKey, agentSessionID)
 	ctx = context.WithValue(ctx, orchestratorevents.IsSubAgentContextKey, true)
-
-	docsRoot := GetPromptDocsRoot()
 	baseWorkspacePath := hcpo.GetWorkspacePath()
-	notesFolderPath := filepath.Join(docsRoot, baseWorkspacePath, KnowledgebaseFolderName, KBNotesFolderName)
+	notesFolderPath := workflowAbsPath(baseWorkspacePath, KnowledgebaseFolderName, KBNotesFolderName)
 	notesIndexPath := filepath.Join(notesFolderPath, KBNotesIndexFileName)
 
 	agentName := fmt.Sprintf("kb-reorganize-%d", nano)
@@ -170,7 +168,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runKBConsolidatePhase(ctx context.Con
 
 	docsRoot := GetPromptDocsRoot()
 	baseWorkspacePath := hcpo.GetWorkspacePath()
-	notesFolderPath := filepath.Join(docsRoot, baseWorkspacePath, KnowledgebaseFolderName, KBNotesFolderName)
+	notesFolderPath := workflowAbsPath(baseWorkspacePath, KnowledgebaseFolderName, KBNotesFolderName)
 	notesIndexPath := filepath.Join(notesFolderPath, KBNotesIndexFileName)
 
 	// Consolidation is a builder operation, not a continuation of whichever
@@ -332,7 +330,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildStepOutputFoldersBlock(docsRoot,
 	if runFolder == "" {
 		return "_No run folder selected — consolidate without step output access. Read graph.json + notes directly and rely on the contributions block for cross-step patterns._"
 	}
-	executionPath := filepath.Join(docsRoot, baseWorkspacePath, "runs", runFolder, "execution")
+	executionPath := workflowAbsPath(baseWorkspacePath, "runs", runFolder, "execution")
 	entries, err := os.ReadDir(executionPath)
 	if err != nil {
 		return fmt.Sprintf("_Selected run `%s` has no execution folder at `%s` (%v). Read notes/_index.json + notes/ directly._", runFolder, executionPath, err)
