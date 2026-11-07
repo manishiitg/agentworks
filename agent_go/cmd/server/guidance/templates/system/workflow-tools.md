@@ -205,7 +205,7 @@ Confirm with the user before skipping backup on a recurring schedule.
 - **Bad**: `"Run the workflow and ask me which steps to optimize"`.
 - **Good**: `"Review the current run and database measurements for this group, identify the failing contract, and ask Builder for a bounded evidence-backed repair. Verify the actual result."`
 
-Progress reviews use the ordinary AgentWorks Crew and its explicitly configured schedules/notifications. Do not recreate the retired Pulse/Autopilot engine or infer a recurring review from a failed run.
+Progress reviews use the ordinary AgentWorks Crew and its explicitly configured schedules/notifications. Do not infer a recurring review from a failed run.
 
 {{end}}
 
