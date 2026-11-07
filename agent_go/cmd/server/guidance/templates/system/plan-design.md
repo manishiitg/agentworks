@@ -169,5 +169,4 @@ Multiple goals or primary metrics do not require multiple workflows. Keep work t
 when investigations, changes or routine tradeoff decisions overlap. Suggest splitting
 when work operates independently, especially across owners or permission boundaries;
 sharing a server alone is insufficient. Different schedules can use separate routes.
-Use /setup-goals to configure primary metrics and linked supporting measurements;
-explain boundary recommendations and preserve existing boundaries unless authorized.
+Explain boundary recommendations and preserve existing boundaries unless authorized.

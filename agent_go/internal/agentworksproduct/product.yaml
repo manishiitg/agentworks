@@ -41,10 +41,6 @@ profile:
       description: Design this workflow's dashboard from its real data
       icon: check-circle
       file: commands/design-dashboard.md
-    - name: setup-goals
-      description: Say what this workflow is for and how to tell it is working
-      icon: target
-      file: commands/setup-goals.md
     - name: run
       description: Run the workflow, or one step, now
       icon: play

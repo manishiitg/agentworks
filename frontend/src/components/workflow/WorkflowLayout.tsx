@@ -6,7 +6,6 @@ import { currentWorkflowBuilderBinding, publishWorkflowBuilderBinding, useWorkfl
 import { isCurrentWorkflowBuilderTab } from '../../utils/currentWorkflowBuilder'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
-import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { PanelLeftOpen } from 'lucide-react'
@@ -2360,9 +2359,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                 ) : null}
               </div>
             )}
-
-            {/* Initial goal setup (goal -> plan -> metrics); optional and dismissible. */}
-            {!relayMode && activeWorkflowChatTabId && <WorkflowGoalSetupBar workspacePath={workspacePath} canEdit={activeWorkflowAccess !== 'read'} />}
 
             <div className="relative min-h-0 flex-1 overflow-hidden">
               {isWorkflowConversationResolving && (

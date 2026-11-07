@@ -35,14 +35,14 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-//go:embed templates/builder/*.md templates/review/*.md templates/improve/*.md templates/report/*.md templates/system/*.md
+//go:embed templates/builder/*.md templates/review/*.md templates/report/*.md templates/system/*.md
 var templatesFS embed.FS
 
 // kindMeta captures everything we know about a guided flow at registration
 // time: which file holds its template, which workshop modes are allowed to
 // invoke it, and a one-line description used in the tool-list enum.
 type kindMeta struct {
-	Group          string // builder | review | improve | report | kb | learning | db
+	Group          string // builder | review | report | kb | learning | db
 	Description    string // shown to the agent in the kind enum
 	Modes          []string
 	RawTemplate    bool // expose runtime template source without evaluating its conditions/placeholders
@@ -80,8 +80,6 @@ var allKinds = map[string]kindMeta{
 	// Reviews record concrete evidence and unresolved owner decisions.
 	"run-plan-drift": {Group: "review", Description: "Manual Plan Drift: check affected compatibility and prompt quality, apply bounded safe repairs through the scheduled candidate/receipt contract, and persist remaining dependency findings", Modes: []string{"workshop"}},
 
-	// Improvements — evidence-driven reliability and strategy flows
-	"setup-goals":      {Group: "improve", Description: "Set up primary and secondary outcome goals, primary and supporting metrics, collection and targets for new or existing workflows", Modes: []string{"workshop"}},
 	"design-dashboard": {Group: "report", Description: "Create or update user-designed db/reports/*.html views using the platform runtime and shared toolbar discovery: live goal/measurement/cost helpers, optional prebuilt metric widgets and daisyUI, report-owned approval buttons, live outside data via window.report.run scripts in code/reports/, and direct requests via window.report.sendChatMessage.", Modes: []string{"workshop"}},
 }
 
@@ -310,7 +308,7 @@ type DefinitionToolRegistrar interface {
 func RegisterGuidanceTool(agent DefinitionToolRegistrar, currentMode string, logger loggerv2.Logger) {
 	desc := "Get the canonical guided-flow text for any workflow command. " +
 		"Call this tool — and follow the returned instructions verbatim — when (1) the user invokes a slash command " +
-		"like /design-plan or /setup-goals. A command dispatch can supply the exact " +
+		"like /design-plan or /design-dashboard. A command dispatch can supply the exact " +
 		"" +
 		"kind and focus; when the dispatch message explicitly states kind=... and focus=... " +
 		"use those exact values. Pass the " +
@@ -441,7 +439,7 @@ func buildSystemToolsSkillWithMCP(mode string, mcpManagement bool) *llmtypes.Ski
 	if !mcpManagement {
 		referenceExamples = strings.ReplaceAll(referenceExamples, "`integration-discovery` before connecting a new third-party service/MCP server, ", "")
 	}
-	proceduralGuidance := "- `get_workflow_command_guidance(kind, focus?)` — canonical procedural flows (design-plan, run-plan-drift, setup-goals, etc.). The returned text is your instructions for that turn; follow it verbatim.\n"
+	proceduralGuidance := "- `get_workflow_command_guidance(kind, focus?)` — canonical procedural flows (design-plan, run-plan-drift, design-dashboard, etc.). The returned text is your instructions for that turn; follow it verbatim.\n"
 	if strings.EqualFold(strings.TrimSpace(mode), "run") {
 		referenceExamples = "`runtime-context` before answering from workflow state, `running-steps` before execution, or `human-in-the-loop` when work needs a user decision"
 		proceduralGuidance = ""
