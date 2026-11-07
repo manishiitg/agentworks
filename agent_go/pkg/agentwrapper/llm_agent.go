@@ -485,15 +485,8 @@ func NewLLMAgentWrapperWithTrace(ctx context.Context, config LLMAgentConfig, tra
 		return nil, fmt.Errorf("failed to initialize LLM: %w", err)
 	}
 
-	definition := mcpagent.AgentDefinition{}
-	for _, name := range configuredServerNames(config.ServerName) {
-		if common.ScopeAgentMCP != nil && common.IsBuiltinToolCategory(name) {
-			continue
-		}
-		definition.Tools.MCP = append(definition.Tools.MCP, mcpagent.MCPToolSource{Name: name})
-	}
-	if common.ScopeAgentMCP != nil && len(definition.Tools.MCP) == 0 {
-		definition.Tools.MCP = []mcpagent.MCPToolSource{{Name: mcpclient.NoServers}}
+	definition := mcpagent.AgentDefinition{
+		Tools: mcpagent.ToolSet{MCP: common.AppendAgentMCPToolSources(nil, configuredServerNames(config.ServerName))},
 	}
 	runtime := runtimeConfigForLLMAgent(config, model, tracer, traceID, logger)
 	agent, err := mcpagent.NewAgentFromDefinition(ctx, definition, runtime)

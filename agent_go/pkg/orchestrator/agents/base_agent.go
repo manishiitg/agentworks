@@ -241,19 +241,7 @@ func NewBaseAgent(
 			loggerv2.Int("overrides_count", len(runtimeOverrides)))
 	}
 
-	mcpSources := make([]mcpagent.MCPToolSource, 0, len(serverNames))
-	for _, serverName := range serverNames {
-		if common.ScopeAgentMCP != nil && common.IsBuiltinToolCategory(serverName) {
-			continue
-		}
-		if name := strings.TrimSpace(serverName); name != "" {
-			mcpSources = append(mcpSources, mcpagent.MCPToolSource{Name: name})
-		}
-	}
-
-	if common.ScopeAgentMCP != nil && len(mcpSources) == 0 {
-		mcpSources = []mcpagent.MCPToolSource{{Name: mcpclient.NoServers}}
-	}
+	mcpSources := common.AppendAgentMCPToolSources(make([]mcpagent.MCPToolSource, 0, len(serverNames)), serverNames)
 
 	// Create the agent from one identity value. Runtime options remain on the
 	// compatibility path while sessions/events are migrated, but instructions,

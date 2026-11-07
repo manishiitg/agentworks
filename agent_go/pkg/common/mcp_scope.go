@@ -5,12 +5,27 @@ import (
 	"sort"
 	"strings"
 
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // Installed by the host before serving. Agent constructors use one boundary
 // for chat, workflow steps, schedules and their subagents.
 var ScopeAgentMCP func(context.Context, string, []string, mcpclient.RuntimeOverrides) ([]string, mcpclient.RuntimeOverrides, map[string]string, error)
+
+// AppendAgentMCPToolSources excludes host-owned builtin categories and keeps an
+// empty scoped selection from becoming "all servers" in the SDK.
+func AppendAgentMCPToolSources(sources []mcpagent.MCPToolSource, servers []string) []mcpagent.MCPToolSource {
+	for _, server := range servers {
+		if name := strings.TrimSpace(server); name != "" && (ScopeAgentMCP == nil || !IsBuiltinToolCategory(server)) {
+			sources = append(sources, mcpagent.MCPToolSource{Name: name})
+		}
+	}
+	if ScopeAgentMCP != nil && len(sources) == 0 {
+		sources = []mcpagent.MCPToolSource{{Name: mcpclient.NoServers}}
+	}
+	return sources
+}
 
 // RemapMCPToolSelection preserves tool restrictions when connection names are
 // isolated per user in the process-wide MCP pool. Builtin categories stay intact.
