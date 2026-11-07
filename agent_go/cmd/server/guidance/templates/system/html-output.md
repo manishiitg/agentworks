@@ -15,7 +15,7 @@ navigation. This reference describes how the platform displays HTML.
 |---|---|
 | Structured data for a downstream step | JSON |
 | Live dashboards (data, buttons, functions) | TSX (platform generates HTML) |
-| Quick shareable pages (a decision, a report, a file view), org pages (`pulse/*.html`), HTML artifacts | HTML |
+| Quick shareable pages (a decision, a report, a file view), HTML artifacts | HTML |
 | Human-readable step reports, notes, KB entries and learnings | Markdown by default; HTML when requested or needed for the artifact |
 | Downloadable raw data | JSON or CSV |
 

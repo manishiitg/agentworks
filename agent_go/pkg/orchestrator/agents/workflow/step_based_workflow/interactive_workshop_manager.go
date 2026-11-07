@@ -117,10 +117,6 @@ func stringSliceArgument(args map[string]interface{}, key string) ([]string, boo
 	return result, true
 }
 
-// ValidatePulseReviewIdentity rejects a review identity that cannot name a
-// saved review. It is exported because the review read is served by the shared
-// get_pulse_state tool in the server tool pool, not by a workshop-local tool.
-
 func isMissingOrEmptyWorkspaceError(err error) bool {
 	if err == nil {
 		return false
@@ -3220,7 +3216,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 	const registerRetiredCostTimingReviewers = false
 	if registerRetiredCostTimingReviewers {
-		// Tool 7f3: review_workflow_timing — retired in favor of /pulse-review
+		// Tool 7f3: review_workflow_timing — retired
 		if err := mcpAgent.RegisterCustomTool(
 			"review_workflow_timing",
 			"Start a background agent that reviews workflow runtime and step timing from actual run evidence, identifies the main latency bottlenecks, and recommends how to make the workflow faster without compromising the objective or success criteria. Read-only. Returns execution_id immediately — you will be automatically notified when it completes.",
@@ -3359,7 +3355,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			logger.Warn(fmt.Sprintf("⚠️ Failed to register review_workflow_timing tool: %v", err))
 		}
 
-		// Tool 7f4: review_workflow_costs — retired in favor of /pulse-review
+		// Tool 7f4: review_workflow_costs — retired
 		if err := mcpAgent.RegisterCustomTool(
 			"review_workflow_costs",
 			"Start a background agent that reviews workflow token/cost data from actual run evidence, identifies the biggest cost drivers, and recommends how to reduce cost without compromising the objective or success criteria. Read-only. Returns execution_id immediately — you will be automatically notified when it completes.",

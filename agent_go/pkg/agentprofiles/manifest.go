@@ -48,8 +48,6 @@ type ChatPromptSource struct {
 	Includes []string `yaml:"includes,omitempty"`
 }
 
-// PulseDefinition is product.yaml's pulse section.
-
 // ExecutionFunctionTools admits server-owned function tools to workflow agents.
 // Omission or an empty tool list exposes no function tools.
 type ExecutionFunctionTools struct {

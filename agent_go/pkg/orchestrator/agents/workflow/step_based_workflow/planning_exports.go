@@ -593,16 +593,15 @@ type WorkshopConfig struct {
 	ToolCategories         map[string]string
 	// BrowserRuntime stores configured intent (auto/cdp/headless + candidate
 	// ports). The executor resolves live CDP reachability at tool-call time.
-	BrowserRuntime         *browser.BrowserRuntimeConfig
-	LLMConfig              *orchestrator.LLMConfig
-	PresetPhaseLLM         *AgentLLMConfig
-	PresetBackgroundLLM    *AgentLLMConfig
-	PulseReviewResultCheck func(ctx context.Context, module, pulseRunID string) error
-	UseKnowledgebase       bool
-	LLMAllocationMode      string
-	TieredConfig           *TieredLLMConfig
-	Logger                 loggerv2.Logger
-	EventBridge            mcpagent.AgentEventListener
+	BrowserRuntime      *browser.BrowserRuntimeConfig
+	LLMConfig           *orchestrator.LLMConfig
+	PresetPhaseLLM      *AgentLLMConfig
+	PresetBackgroundLLM *AgentLLMConfig
+	UseKnowledgebase    bool
+	LLMAllocationMode   string
+	TieredConfig        *TieredLLMConfig
+	Logger              loggerv2.Logger
+	EventBridge         mcpagent.AgentEventListener
 	// Session tracking — needed for MCP connection sharing and session cleanup
 	SessionID string
 	// Secrets for step execution (merged global + user secrets)
