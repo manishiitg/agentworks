@@ -68,7 +68,7 @@ function format(content: string, final: boolean) {
     const card = final || closed ? toCard(projected, { maxElements: 200 }) : toPartialCard(projected, { maxElements: 200 })
     if (card) children.push(Section([...(card.title ? [Text(card.title, { style: 'bold' })] : []), ...card.children]))
   }
-  for (const line of content.split('\n')) {
+  for (const line of content.replace(/\r\n?/g, '\n').split('\n')) {
     const opening = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*([^\s]*)[^\r]*$/)
     if (source) {
       if (opening && opening[1][0] === marker[0] && opening[1].length >= marker.length && !opening[2]) { visual(true); source = null; marker = '' }
