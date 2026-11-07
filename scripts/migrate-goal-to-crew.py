@@ -65,6 +65,44 @@ def references_measurement_table(text):
     return re.search(r'\b(?:goal_observations|workflow_goal_metrics)\b', text, re.IGNORECASE) is not None
 
 
+def split_named_outcomes(goal, definitions, workflow_root):
+    """Keep separately named outcomes inside the same single-workflow Crew."""
+    primaries = {item['id']: item for item, _ in definitions if item.get('role') == 'primary'}
+    names = {}
+    for item, _ in definitions:
+        if item.get('role') == 'primary' and item.get('goal_id'):
+            key = item['goal_id']
+            name = item.get('goal_name') or key
+            if key in names and names[key] != name:
+                raise ValueError('Resolve conflicting names for the same tracked outcome before conversion.')
+            names[key] = name
+    goals = {}
+    for key, name in names.items():
+        if len(name) > 160:
+            raise ValueError('Shorten the tracked outcome name before conversion.')
+        goals[key] = dict(goal, id='imported-'+str(uuid.uuid5(uuid.NAMESPACE_URL, workflow_root+'#'+key)),
+                          name=name, outcome=name, status='stopped', metric_ids=[])
+    mapping = {}
+    for item, active in definitions:
+        if item.get('role') == 'primary':
+            key = item.get('goal_id')
+            if key not in goals:
+                raise ValueError('Assign each primary measurement to a named outcome before conversion.')
+            mapping[item['id']] = goals[key]
+            if active:
+                goals[key]['status'] = 'active'
+        elif active:
+            owners = {primaries[mid].get('goal_id') for mid in item.get('supports', []) if mid in primaries}
+            if len(owners) != 1 or next(iter(owners)) not in goals:
+                raise ValueError('Assign supporting measurements to exactly one tracked outcome before conversion.')
+            key = next(iter(owners))
+        else:
+            continue
+        if active:
+            goals[key]['metric_ids'].append(item['id'])
+    return list(goals.values()), mapping
+
+
 def promote_builder_main(document, manifest, conversation_key):
     """Main is a role pointer. Keep session IDs and all earlier chats intact."""
     fullkey = 'work/' + conversation_key
@@ -340,6 +378,8 @@ class Conversion:
         self.goal = {'id': self.goal_id, 'name': self.manifest.get('label') or workflow,
                      'outcome': self.manifest.get('description') or '', 'status': 'active',
                      'workflow_ids': [self.workflow], 'metric_ids': [], 'updated_at': stamp()}
+        self.goals = [self.goal]
+        self.metric_goals = {}
         soul = self.source/'soul/soul.md'
         if soul.is_file():
             no_links(soul)
@@ -362,7 +402,7 @@ class Conversion:
         self.source_moves()
         self.writes[self.binding_file] = encode({'id': self.workflow, 'crew_id': crew, 'crew_root': self.crew_root,
                                                  'workspace_path': self.root, 'kind': 'workflow'})
-        self.counts.update(workflows=1, goals=1,
+        self.counts.update(workflows=1, goals=len(self.goals),
                            historical_runs=len(list((self.source / 'runs').glob('*'))),
                            dashboards=len(list((self.source / 'db/reports').glob('*.html'))))
 
@@ -720,12 +760,14 @@ class Conversion:
             raise ValueError('Destination would exceed the current 30-measurement limit; choose another Crew.')
         metrics = self.tables.get('workflow_goal_metrics')
         if metrics:
-            definitions = [json.loads(row[metrics[1].index('definition_json')]) for row in metrics[2] if row[metrics[1].index('active')]]
-            outcomes = {m['goal_id']: m.get('goal_name') for m in definitions if m.get('role')=='primary' and m.get('goal_id')}
+            definitions = [(json.loads(row[metrics[1].index('definition_json')]), bool(row[metrics[1].index('active')])) for row in metrics[2]]
+            outcomes = {m['goal_id']: m.get('goal_name') for m, _ in definitions if m.get('role')=='primary' and m.get('goal_id')}
             if len(outcomes) > 1:
-                raise ValueError('This Goal has several named outcomes. Map those to separate Crew goals before conversion; their meanings must not be collapsed.')
-            if outcomes and next(iter(outcomes.values())):
+                self.goals, self.metric_goals = split_named_outcomes(self.goal, definitions, self.root)
+            elif outcomes and next(iter(outcomes.values())):
                 self.goal['name'] = next(iter(outcomes.values()))
+        if {goal['id'] for goal in self.goals} & existing.get('crew_goals', set()):
+            raise ValueError('A tracked outcome ID is already present in the destination.')
         self.counts['measurements'] = len(self.goal['metric_ids'])
         self.counts['observations'] = len(self.tables.get('goal_observations', ('', [], []))[2])
         # Raw SQL/code writers must be updated deliberately to the parent ledger;
@@ -804,6 +846,7 @@ class Conversion:
         if self.done:
             return {'status':'already migrated', 'crew_id':self.crew, 'workflow':self.root, 'backup':self.done['backup']}
         return {'status':'ready', 'workflow':self.root, 'crew_id':self.crew, 'goal_id':self.goal_id,
+                'goal_ids':[goal['id'] for goal in self.goals],
                 'counts':self.counts, 'moves':[{'from':str(a.relative_to(self.docs)), 'to':str(b)} for a,b in self.moves],
                 'preserved':['workflow identity','entry IDs and disabled state','run history and costs','business database','skills and knowledge','dashboard files and workflow-scoped links','secret references'],
                 'historical_run_note':'Old run folders remain readable; start a new run instead of resuming a retired grouped run.',
@@ -846,13 +889,15 @@ class Conversion:
                         if name == 'workflow_goal_metrics':
                             pos = columns.index('definition_json'); metric = json.loads(values[pos])
                             if metric.get('role') == 'primary':
-                                metric.update(goal_id=self.goal_id, goal_name=self.goal['name'])
+                                goal = self.metric_goals.get(metric['id'], self.goal)
+                                metric.update(goal_id=goal['id'], goal_name=goal['name'])
                             values[pos] = json.dumps(metric)
                         db.execute(f'INSERT INTO {name} ({",".join(columns)}) VALUES ({",".join("?" for _ in columns)})', values)
                 for name, (_, sql) in self.measurement_indexes.items():
                     if not db.execute('SELECT 1 FROM sqlite_master WHERE name=?', (name,)).fetchone():
                         db.execute(sql)
-                db.execute('INSERT INTO crew_goals VALUES (?,?)', (self.goal_id,json.dumps(self.goal)))
+                for goal in self.goals:
+                    db.execute('INSERT INTO crew_goals VALUES (?,?)', (goal['id'],json.dumps(goal)))
             for source,target in self.moves:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(source), str(target))

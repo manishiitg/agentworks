@@ -76,6 +76,34 @@ class Migration(unittest.TestCase):
 
     def conversion(self):return m.Conversion(self.docs,self.state,'old-goal','crew')
 
+    def test_multiple_named_outcomes_keep_metrics_history_and_one_workflow(self):
+        # PLAT-746-364: a real saved workflow tracks two independent outcomes.
+        with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
+            db.execute('UPDATE workflow_goal_metrics SET definition_json=? WHERE metric_id=?',
+                       (json.dumps({'id':'revenue','role':'primary','goal_id':'grow','goal_name':'Grow revenue','target':20}), 'revenue'))
+            db.executemany('INSERT INTO workflow_goal_metrics VALUES (?,?,?)', [
+                ('quality', json.dumps({'id':'quality','role':'primary','goal_id':'quality','goal_name':'Improve quality','target':95}), 1),
+                ('old-quality', json.dumps({'id':'old-quality','role':'primary','goal_id':'quality','goal_name':'Improve quality'}), 0),
+                ('accuracy', json.dumps({'id':'accuracy','role':'supporting','supports':['quality']}), 1),
+            ])
+        before=hashes(self.base); conversion=self.conversion()
+        self.assertEqual(conversion.report()['counts']['goals'], 2)
+        self.assertEqual(conversion.report()['counts']['workflows'], 1)
+        self.assertEqual(hashes(self.base), before)
+        conversion.apply()
+        with closing(sqlite3.connect(self.private/'db/db.sqlite')) as db:
+            goals={g['name']:g for (raw,) in db.execute('SELECT definition_json FROM crew_goals') for g in [json.loads(raw)]}
+            self.assertEqual(goals['Grow revenue']['metric_ids'], ['revenue'])
+            self.assertEqual(goals['Improve quality']['metric_ids'], ['quality','accuracy'])
+            self.assertTrue(all(g['workflow_ids']==['old-goal'] for g in goals.values()))
+            metrics={mid:(json.loads(raw),active) for mid,raw,active in db.execute('SELECT * FROM workflow_goal_metrics')}
+            self.assertEqual(metrics['revenue'][0]['goal_id'], goals['Grow revenue']['id'])
+            self.assertEqual(metrics['quality'][0]['goal_id'], goals['Improve quality']['id'])
+            self.assertEqual(metrics['old-quality'][0]['goal_id'], goals['Improve quality']['id'])
+            self.assertEqual(metrics['old-quality'][1], 0)
+            self.assertEqual(metrics['accuracy'][0]['supports'], ['quality'])
+            self.assertEqual(db.execute('SELECT observation_id,value FROM goal_observations').fetchall(), [('original-observation',12)])
+
     def test_legacy_function_groups_convert_before_contract_validation(self):
         # PR498: runtime validation rejects groups, so validate only after the
         # one-Goal converter has produced the final preset/function envelope.
