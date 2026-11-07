@@ -326,7 +326,6 @@ func externalTools() ([]externalTool, error) {
 			return
 		}
 		externalDatabaseDefinitions(add)
-		externalAfterRunDefinitions(add)
 		externalMessagingDefinitions(add)
 		creatorSchema := workflowCreatorToolSchema()
 		// Normalize Go slices to JSON values for the schema compiler.
@@ -1062,10 +1061,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if tool.mutates && access != WorkflowAccessOwner && access != WorkflowAccessWrite {
 		externalError(w, 403, "forbidden", "Workflow write access is required.")
-		return
-	}
-	if tool.Name == "run_after_run" {
-		api.externalRunAfterRun(w, r, args, *selected)
 		return
 	}
 	if isExternalWorkflowAccountTool(tool.Name) {

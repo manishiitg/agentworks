@@ -65,8 +65,6 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"knowledgebase_sources": map[string]any{"type": "array", "maxItems": 20, "description": "Replace linked workflow knowledge sources. Existing sharing and write grants still apply. Empty removes the links.", "items": map[string]any{"type": "object", "additionalProperties": false, "required": []any{"workflow_id", "alias", "access"}, "properties": map[string]any{"workflow_id": externalString("Source workflow ID."), "alias": externalString("Short name for this source."), "access": map[string]any{"type": "string", "enum": []any{"read", "write"}}}}},
 		"kb_write_grants":       names,
 		"browser_mode":          map[string]any{"type": "string", "enum": browser.ConfigurationModes()},
-		"backup":                map[string]any{"type": "object", "additionalProperties": false, "description": "Goals only: after_runs runs configured Backup after every full run; off by default. Does not create or enable a destination.", "properties": map[string]any{"after_runs": map[string]any{"type": "boolean"}}},
-		"publish":               map[string]any{"type": "object", "additionalProperties": false, "description": "Goals only: after_runs refreshes configured publishing after every full run; off by default. Does not create or enable a destination.", "properties": map[string]any{"after_runs": map[string]any{"type": "boolean"}}},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
 			"run_instructions":    map[string]any{"type": "string", "maxLength": 4000},
 			"run_channels":        names,
@@ -549,23 +547,6 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		}
 		changed = append(changed, "notifications")
 	}
-	for key, target := range map[string]**WorkflowAfterRunsUpdate{"backup": &req.Backup, "publish": &req.Publish} {
-		if raw, provided := args[key]; provided {
-			option, ok := raw.(map[string]any)
-			if !ok {
-				externalError(w, 400, "invalid_settings", key+" must contain after_runs as true or false.")
-				return
-			}
-			value, ok := option["after_runs"].(bool)
-			if !ok {
-				externalError(w, 400, "invalid_settings", key+".after_runs must be true or false.")
-				return
-			}
-			*target = &WorkflowAfterRunsUpdate{AfterRuns: &value}
-			changed = append(changed, key)
-		}
-	}
-
 	if len(changed) == 0 {
 		externalError(w, 400, "invalid_settings", "Nothing to change; send at least one setting.")
 		return
@@ -593,16 +574,6 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	addWorkflowSettingsView(view, manifest)
 	view["backup"] = map[string]any{"config": manifest.Backup}
 	view["publish"] = map[string]any{"config": manifest.Publish}
-	notes := []string{}
-	if manifest.Backup != nil && manifest.Backup.AfterRuns && !manifest.Backup.Enabled {
-		notes = append(notes, "Backup after every run is saved. Set up a backup destination in the Backup panel or ask me to set it up.")
-	}
-	if manifest.Publish != nil && manifest.Publish.AfterRuns && !manifest.Publish.Enabled {
-		notes = append(notes, "Publish after every run is saved. Set up publishing in the Publish panel or ask me to set it up.")
-	}
-	if len(notes) > 0 {
-		view["notes"] = notes
-	}
 	view["changed"] = changed
 	if len(pending) > 0 {
 		view["pending_sign_in"] = pending
@@ -693,12 +664,6 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		return
 	}
 
-	for _, key := range []string{"backup", "publish"} {
-		if _, ok := args[key]; ok {
-			externalError(w, 400, "invalid_settings", "After every run applies to Goals. Use this Crew's existing Backup or Publish actions instead.")
-			return
-		}
-	}
 	if expected := externalArg(args, "expected_version"); expected != "" && expected != state.version() {
 		externalError(w, 409, "version_conflict", "Settings changed since you read them; read them again (settings action=get) and reapply your change.")
 		return

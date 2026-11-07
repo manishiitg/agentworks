@@ -68,7 +68,7 @@ The server keeps ten completed plain Builder archives, ten completed `-sched` ru
 
 **Default mode rule:** create workflow schedules with `mode="workshop"`. New schedules should never use `mode="workflow"`.
 
-**After every run:** Backup and Publish are Goal settings, `backup.after_runs` and `publish.after_runs`, off for a new Goal. Change them with `settings action=update` (or MCP `settings action=update`), passing `backup: {after_runs: true}` or `publish: {after_runs: true}`. Each applies after every full run, including runs started in chat. Only configured destinations are used and unchanged files are skipped; creating a schedule does not enable either action. Run outcomes are recorded in Activity independently. Configured team messages remain; there is no automatic owner email or daily digest. “Tell me when something breaks” (`break_alerts`) controls informational failures in Needs you. AgentWorks handles progress reports through ordinary Crew chats and schedules. Existing execution validation and access checks still apply.
+**After a run:** backup and publish do not run by themselves; ask for them, or set up a message schedule for them. Run outcomes are recorded in Activity independently. Configured team messages remain; there is no automatic owner email or daily digest. “Tell me when something breaks” (`break_alerts`) controls informational failures in Needs you. AgentWorks handles progress reports through ordinary Crew chats and schedules. Existing execution validation and access checks still apply.
 
 ### Schedule dependencies
 
@@ -82,9 +82,8 @@ The server keeps ten completed plain Builder archives, ten completed `-sched` ru
 
 Scheduled runs execute unattended and accumulate state (`workflow.json`, `planning/`, `knowledgebase/`, `learnings/`, `db/`, reports) that otherwise lives only on local disk. **Whenever you set up a recurring schedule, decide its backup coverage** against the existing owner policy and run cadence. For enabled backup, arrange off-device persistence; do not override an approved disabled/off policy. Load `read_skill(skills=[{"name":"builder-reference","path":"references/backup-strategy.md"}])`, follow it once to initialise the workflow's backup destination, and persist the result in `workflow.json.backup`.
 
-- When backup is enabled by the chosen policy, set `workflow.json.backup.enabled=true`, `mode="agent"`, the existing `after_runs` choice, and a `destinations` entry for each backup target (git/github for config, R2/S3/B2/HuggingFace for large artifacts as needed).
+- When backup is enabled by the chosen policy, set `workflow.json.backup.enabled=true`, `mode="agent"`, and a `destinations` entry for each backup target (git/github for config, R2/S3/B2/HuggingFace for large artifacts as needed).
 - After each backup attempt, write `backup/status.json` with the destination results, timestamps, summary, and errors. Do not put changing backup status in `workflow.json`.
-- If you rely on the default full-workflow message, the auto-notification after `run_full_workflow` will still ask the builder to honor `workflow.json.backup` and write `backup/status.json`.
 
 Honor an existing user-approved disabled/off backup policy without asking again. If backup coverage has not been decided, leave automatic Backup off and explain how to set it up in the Goal’s Backup panel or chat. Do not add an interactive confirmation to an unattended run.
 

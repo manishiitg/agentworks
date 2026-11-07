@@ -634,8 +634,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) finalizeRunMetadata(ctx context.Conte
 		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to finalize run metadata %s: %v", runFolder, err))
 	}
 	if !hcpo.isRelayExecution() {
-		// After-run options for a run started from a chat (PLAT-697 phase 0).
-		// The server decides; scheduled runs are handled by the scheduler.
+		// The outcome summary for a run started from a chat. The server decides;
+		// scheduled runs are handled by the scheduler.
 		if hook := AfterWorkflowRunHook; hook != nil {
 			sessionID := hcpo.httpSessionID
 			if sessionID == "" {
@@ -647,7 +647,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) finalizeRunMetadata(ctx context.Conte
 }
 
 // AfterWorkflowRunHook, when set (by the server at start), runs after a full
-// workflow run finished: the workflow's after-run options for manual runs.
+// workflow run finished: it reports the outcome of a manually started run.
 // It runs in its own goroutine and never affects the run.
 var AfterWorkflowRunHook func(workspacePath, runFolder, status, sessionID string)
 
