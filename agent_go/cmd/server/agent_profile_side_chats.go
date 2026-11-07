@@ -37,6 +37,9 @@ type AgentProfileSideChat struct {
 	Purpose string `json:"purpose,omitempty"`
 	// IsMain marks the caller's own main chat, listed only when asked with with_main=1 (for its purpose).
 	IsMain bool `json:"is_main,omitempty"`
+	// OnYourMac marks the caller's own Mac agent, watch only on the website. Their Mac app already has it as their own
+	// tab, so it must not list it again as a teammate's.
+	OnYourMac bool `json:"on_your_mac,omitempty"`
 }
 
 // handleListAgentProfileSideChats lists the caller's open side tabs of one project: GET /api/agent-profiles/{id}/side-chats
