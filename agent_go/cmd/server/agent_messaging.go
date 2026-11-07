@@ -32,12 +32,11 @@ func (api *StreamingAPI) appendWorkflowMessagingTools(tools []llmtypes.Tool, exe
 	if err := api.registerAgentMessagingTools(reg, user, session, req, workflowTriggerLinkCaller(root), nil); err != nil {
 		return nil, err
 	}
-	for _, name := range []string{"send_message", "read_agent_messages", "list_agents"} {
-		tool := reg[name]
-		tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name, Description: tool.description, Parameters: llmtypes.NewParameters(tool.schema)}})
-		executors[name] = tool.execute
-		categories[name] = "agent_messaging"
-	}
+	const name = "send_message"
+	tool := reg[name]
+	tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name, Description: tool.description, Parameters: llmtypes.NewParameters(tool.schema)}})
+	executors[name] = tool.execute
+	categories[name] = "agent_messaging"
 	return tools, nil
 }
 
