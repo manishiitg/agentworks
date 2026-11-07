@@ -39,26 +39,20 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 		externalError(w, 400, "invalid_sender", "Choose one of this Crew's agents to send from.")
 		return
 	}
-	member := crewTeamMemberTab(r.Context(), project, in.ChatKey)
-	if member == "" {
-		// A member's agent on their Mac (crew_team_mac_watch.go), not one of their server tabs.
-		if person, _, ok := crewMemberMacAgentFor(r.Context(), project, in.ChatKey, claims.UserID); ok {
-			member = person
+	// A reply names the conversation's inbox; sendAgentMessage admits only that conversation's own agents.
+	inbox := ""
+	if strings.HasPrefix(in.ChatKey, "inbox-") {
+		inbox = in.ChatKey
+	}
+	var target triggerTarget
+	member := ""
+	if inbox == "" {
+		var ok bool
+		if target, member, ok = api.crewTeamMessageTarget(w, r, project, in.ChatKey, claims); !ok {
+			return
 		}
 	}
-	if member == "" {
-		member = crewTeamOwnerAgent(r.Context(), project, in.ChatKey, claims.UserID)
-	}
-	if member == "" || member == claims.UserID {
-		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
-		return
-	}
 	ctx := internalBotRequestContext(r.Context(), claims.UserID)
-	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "workspace:"+crewProfileID+":"+project+"/agent/"+in.ChatKey)
-	if err != nil {
-		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
-		return
-	}
 	// The sending agent's conversation key is the one its Mac is listed under, so the answer comes back to that Mac: the
 	// owner's Mac by the project key, a member's Mac by their own key (crewMacTabRow).
 	key := macSharedAgentChatKey(project, in.FromTab)
@@ -67,7 +61,7 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	}
 	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: project, ProfileID: crewProfileID}, Label: firstNonEmptyTrimmed(in.Agent, "Main"),
 		Chat: &codeChat{OwnerID: claims.UserID, IsMain: in.FromTab == macMainTab, Key: key, ID: in.FromTab, Name: firstNonEmptyTrimmed(in.Agent, "Main"), SessionID: crewChatSessionID(project, in.ConversationID)}}
-	out, err := api.sendAgentMessage(ctx, claims.UserID, caller, target, in.Message, "", in.SubmissionID)
+	out, err := api.sendAgentMessage(ctx, claims.UserID, caller, target, in.Message, inbox, in.SubmissionID)
 	if err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=agent_message_failed from=%s to_member=%s reason=%q", project, in.FromTab, logUsernameForUserID(member), err)
 		externalError(w, 409, "message_failed", err.Error())
@@ -75,6 +69,31 @@ func (api *StreamingAPI) crewTeamMessage(w http.ResponseWriter, r *http.Request,
 	}
 	log.Printf("[CREW_TEAM] project=%s event=agent_message from=%s to_member=%s chat=%q", project, in.FromTab, logUsernameForUserID(member), in.ChatKey)
 	externalJSON(w, out)
+}
+
+// crewTeamMessageTarget is the Team agent a Mac's new message goes to; a refusal is already written to w.
+func (api *StreamingAPI) crewTeamMessageTarget(w http.ResponseWriter, r *http.Request, project, chatKey string, claims *UserClaims) (triggerTarget, string, bool) {
+	member := crewTeamMemberTab(r.Context(), project, chatKey)
+	if member == "" {
+		// A member's agent on their Mac (crew_team_mac_watch.go), not one of their server tabs.
+		if person, _, ok := crewMemberMacAgentFor(r.Context(), project, chatKey, claims.UserID); ok {
+			member = person
+		}
+	}
+	if member == "" {
+		member = crewTeamOwnerAgent(r.Context(), project, chatKey, claims.UserID)
+	}
+	if member == "" || member == claims.UserID {
+		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
+		return triggerTarget{}, "", false
+	}
+	ctx := internalBotRequestContext(r.Context(), claims.UserID)
+	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "workspace:"+crewProfileID+":"+project+"/agent/"+chatKey)
+	if err != nil {
+		externalError(w, 404, "not_in_team", "That agent isn't in this Crew's Team now.")
+		return triggerTarget{}, "", false
+	}
+	return target, member, true
 }
 
 // crewTeamMessagePairAdmitted: a Team message comes from the Mac that holds the sender's working copy of this Crew. The
