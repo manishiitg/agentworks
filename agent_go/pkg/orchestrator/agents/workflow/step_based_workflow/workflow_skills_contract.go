@@ -546,12 +546,16 @@ func createMigrateWorkflowSkillsExecutor(workspacePath string, logger loggerv2.L
 }
 
 func ValidateWorkflowSkillsStamp(workflowDir string) error {
-	root, err := os.OpenRoot(workflowDir)
+	layout, err := workflowStampLayout(workflowDir)
+	if err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(layout.Runtime)
 	if err != nil {
 		return err
 	}
 	defer root.Close()
-	raw, err := root.ReadFile("workflow.json")
+	raw, err := os.ReadFile(filepath.Join(layout.Definitions, "workflow.json"))
 	if err != nil {
 		return err
 	}
@@ -593,7 +597,7 @@ func ValidateWorkflowSkillsStamp(workflowDir string) error {
 			return fmt.Errorf("the migrated skill index is missing or changed; run migrate_workflow_skills again")
 		}
 	}
-	config, err := root.ReadFile(filepath.Join("planning", "step_config.json"))
+	config, err := os.ReadFile(filepath.Join(layout.Definitions, "planning", "step_config.json"))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}

@@ -3,6 +3,7 @@ package step_based_workflow
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"path/filepath"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
@@ -25,6 +26,23 @@ const ManagedDBScriptsContractVersion = "1.0.45"
 // validateStepDescriptionLayoutStamp gates the stamp (step_description_layout.go).
 const StepDescriptionLayoutContractVersion = "1.0.46"
 
+// Stamp validation must read definitions, code and retained guides from their
+// existing storage roots. A Crew workflow's runtime root contains neither its
+// manifest/plan nor its canonical code.
+func workflowStampLayout(workflowPath string) (crewroot.ExecutableLayout, error) {
+	if !filepath.IsAbs(workflowPath) {
+		layout, bound, err := crewroot.LookupExecutable(GetPromptDocsRoot(), workflowPath)
+		if err != nil {
+			return layout, err
+		}
+		if bound {
+			return layout, nil
+		}
+		workflowPath = workflowAbsPath(workflowPath)
+	}
+	return crewroot.ExecutableLayout{Definitions: workflowPath, Runtime: workflowPath, Code: filepath.Join(workflowPath, "code")}, nil
+}
+
 // validateManagedDBScriptsStamp refuses the 1.0.45 stamp while any script of the
 // workflow (workflowDir is its absolute folder) still opens the database itself or
 // carries a schema statement. Like the 1.0.44 layout check it lives in the stamp
@@ -34,7 +52,11 @@ func validateManagedDBScriptsStamp(version, workflowDir string) error {
 	if version != ManagedDBScriptsContractVersion {
 		return nil
 	}
-	findings, scanned, err := scriptdb.ScanDir(filepath.Join(workflowDir, "code"))
+	layout, err := workflowStampLayout(workflowDir)
+	if err != nil {
+		return err
+	}
+	findings, scanned, err := scriptdb.ScanDir(layout.Code)
 	if err != nil {
 		return fmt.Errorf("could not scan the scripts under code/: %w", err)
 	}

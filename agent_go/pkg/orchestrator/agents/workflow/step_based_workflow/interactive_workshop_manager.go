@@ -2250,8 +2250,41 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if ctxErr != nil {
 				return "Session was stopped — execution skipped", nil
 			}
+			if iwm.workshopConfig == nil {
+				cancel()
+				return "", fmt.Errorf("workflow session configuration is unavailable")
+			}
+			runConfig := *iwm.workshopConfig
+			runConfig.InputPreset, runConfig.Inputs = groupName, cloneWorkflowStringMap(inputValues)
+			if recordedInputs != nil {
+				runConfig.InputPreset, runConfig.Inputs = "", nil
+			}
+			runConfig.RunFolder = runFolder
+			runConfig.WorkspaceEnvRef = iwm.controller.snapshotWorkspaceEnv()
+			if runConfig.WorkspaceEnvRef == nil {
+				runConfig.WorkspaceEnvRef = map[string]string{}
+			}
+
+			stepSession, setupErr := NewWorkshopChatSession(execCtx, &runConfig)
+			if setupErr != nil {
+				cancel()
+				return "", setupErr
+			}
+			if !iwm.controller.isRelayExecution() {
+				if _, inputErr := stepSession.controller.resolveRunInputs(execCtx, runFolder, resolvedGroupName, resolvedInputs); inputErr != nil {
+					stepSession.Close()
+					cancel()
+					return "", inputErr
+				}
+			}
+			if err := execCtx.Err(); err != nil {
+				stepSession.Close()
+				cancel()
+				return "", err
+			}
 			if iwm.workshopConfig != nil && iwm.workshopConfig.SelectStepRun != nil {
 				if err := iwm.workshopConfig.SelectStepRun(ctx, runFolder); err != nil {
+					stepSession.Close()
 					cancel()
 					return "", fmt.Errorf("could not remember this chat's run; no step started: %w", err)
 				}
@@ -2336,22 +2369,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			execCtx = context.WithValue(execCtx, orchestrator_events.ParentExecutionIDKey, execID)
 			releaseRunningStep := RegisterRunningWorkflowStep(iwm.controller.GetWorkspacePath(), stepID, execID, iwm.mainSessionID)
 
-			if iwm.workshopConfig == nil {
-				cancel()
-				releaseRunningStep()
-				return "", fmt.Errorf("workflow session configuration is unavailable")
-			}
-			runConfig := *iwm.workshopConfig
-			runConfig.InputPreset, runConfig.Inputs = groupName, cloneWorkflowStringMap(inputValues)
-			if recordedInputs != nil {
-				runConfig.InputPreset, runConfig.Inputs = "", nil
-			}
-			runConfig.RunFolder = runFolder
-			runConfig.WorkspaceEnvRef = iwm.controller.snapshotWorkspaceEnv()
-			if runConfig.WorkspaceEnvRef == nil {
-				runConfig.WorkspaceEnvRef = map[string]string{}
-			}
-
 			go func() {
 				defer releaseRunningStep()
 				if workflowSessionID != "" {
@@ -2427,11 +2444,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					})
 				}
 
-				stepSession, setupErr := NewWorkshopChatSession(execCtx, &runConfig)
-				if setupErr != nil {
-					execErr = setupErr
-					return
-				}
 				defer stepSession.Close()
 				stepSession.SetWorkshopExecutionNotifier(iwm.executionNotifier)
 				childSessionID := stepSession.controller.GetMCPSessionID()
@@ -4899,7 +4911,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				return fmt.Sprintf("Failed to parse workflow.json: %v", err), nil
 			}
 			checked := []string{}
-			if err := CheckContractStamp(version, workflowAbsPath(iwm.controller.GetWorkspacePath()), []byte(content), func() (string, error) {
+			if err := CheckContractStamp(version, iwm.controller.GetWorkspacePath(), []byte(content), func() (string, error) {
 				return iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
 			}, func() error {
 				var checkErr error

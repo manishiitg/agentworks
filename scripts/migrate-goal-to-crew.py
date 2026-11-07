@@ -313,7 +313,7 @@ class Conversion:
         self.manifest = read(self.source / 'workflow.json')
         if not self.manifest or self.manifest.get('kind'):
             raise ValueError('Choose a standalone Goal workflow, not a script or Relay.')
-        if self.manifest.get('code_layout_version') == 0:
+        if type(self.manifest.get('code_layout_version')) is not int or self.manifest['code_layout_version'] != 1:
             raise ValueError('Not upgraded: source layout 0 needs manual recreation. Definitions, files and timers were left unchanged.')
         self.workflow = safe_id(self.manifest['id'])
         for file in (self.state/'ownership/crew-executables').glob('*.json'):
