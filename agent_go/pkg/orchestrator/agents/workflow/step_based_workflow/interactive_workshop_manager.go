@@ -4910,46 +4910,21 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := json.Unmarshal([]byte(content), &manifest); err != nil {
 				return fmt.Sprintf("Failed to parse workflow.json: %v", err), nil
 			}
-			if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
-				return fmt.Sprintf("Refused: nested Agent artifact migration is incomplete: %v", err), nil
-			}
-			if err := validateManagedDBScriptsStamp(version, workflowAbsPath(iwm.controller.GetWorkspacePath())); err != nil {
-				return fmt.Sprintf("Refused: the managed database script migration is incomplete: %v", err), nil
-			}
-			if version == AgentDescriptionFirstContractVersion {
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
-				if err != nil {
-					return "", err
+			checked := []string{}
+			if err := CheckContractStamp(version, workflowAbsPath(iwm.controller.GetWorkspacePath()), []byte(content), func() (string, error) {
+				return iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
+			}, func() error {
+				var checkErr error
+				var resources *CrewResources
+				if opts := iwm.controller.GetExecutionOptions(); opts != nil {
+					resources = opts.CrewResources
 				}
-				if err := ValidateAgentDescriptionFirstContractStamp(content); err != nil {
-					return "", err
-				}
-			}
-			if version == WorkflowSkillsContractVersion {
-				if err := ValidateWorkflowSkillsStamp(workflowAbsPath(iwm.controller.GetWorkspacePath())); err != nil {
-					return "", err
-				}
-			}
-			if version == ResourceIntentContractVersion {
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
-				if err != nil {
-					return "", err
-				}
-				if err := ValidateResourceIntentContractStamp(content); err != nil {
-					return "", err
-				}
-			}
-			if version == AgentStepContractVersion {
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
-				if err != nil {
-					return "", err
-				}
-				if err := ValidateAgentStepContractStamp(content); err != nil {
-					return "", err
-				}
-			}
-			if err := validateStepDescriptionLayoutStamp(version, workflowAbsPath(iwm.controller.GetWorkspacePath())); err != nil {
-				return fmt.Sprintf("Refused: the step description layout migration is incomplete: %v", err), nil
+				checked, checkErr = ValidatePortableWorkflowRuntime(ctx, iwm.controller.GetWorkspacePath(), resources, func(callCtx context.Context, file string) (string, error) {
+					return iwm.controller.ReadWorkspaceFile(callCtx, file)
+				})
+				return checkErr
+			}); err != nil {
+				return "", err
 			}
 			if current, _ := manifest["version"].(string); strings.TrimSpace(current) == version {
 				return fmt.Sprintf("Workflow contract version is already %s.", version), nil
@@ -4969,6 +4944,13 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				return refusal, nil
 			}
 
+			if version == PortableWorkflowContractVersion {
+				from, _ := manifest["version"].(string)
+				if err := RecordWorkflowContractUpgrade(ctx, iwm.controller.GetWorkspacePath(), from, version, "Operator completed the portable workflow review.", checked, iwm.controller.ReadWorkspaceFile, iwm.controller.WriteWorkspaceFile); err != nil {
+					contractupgrade.Restore(sessionID, version)
+					return "", err
+				}
+			}
 			appliedAt := time.Now().UTC()
 			manifest["version"] = version
 			manifest["updated_at"] = appliedAt.Format(time.RFC3339)

@@ -54,6 +54,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 	}
 	info := findWorkshopStepByID(plan.Steps, resolved)
 	if info == nil {
+		info = findWorkshopStepByID(plan.OrphanSteps, resolved)
+	}
+	if info == nil {
 		return nil, fmt.Errorf("step %q not found", resolved)
 	}
 	step := info.Step

@@ -76,6 +76,112 @@ class Migration(unittest.TestCase):
 
     def conversion(self):return m.Conversion(self.docs,self.state,'old-goal','crew')
 
+    def test_batch_split_is_explicit_and_keeps_timer_state_and_fresh_chat(self):
+        # PLAT-746-396: a batch must not silently shrink to one preset.
+        file = self.source/'variables/variables.json'
+        definitions = m.read(file)
+        definitions['groups'].append({'name':'second','values':{},'enabled':False})
+        write(file, definitions)
+        file = self.source/'schedules.json'
+        document = m.read(file)
+        original = document['schedules'][0]
+        original.update(enabled=True, when={'cron':'0 9 * * *','timezone':'UTC'}, input={'groups':['default','second']})
+        original['action']['conversation'] = 'isolated'
+        original['input_mapping'] = {}
+        write(file, document)
+        before = hashes(self.base)
+        with self.assertRaisesRegex(ValueError, 'batch needs an owner decision'):
+            self.conversion()
+        self.assertEqual(hashes(self.base), before)
+        conversion = m.Conversion(self.docs,self.state,'old-goal','crew',split_schedule_groups=True)
+        conversion.apply()
+        saved = m.read(self.runtime/'schedules.json')['schedules']
+        self.assertEqual([row['input']['input_preset'] for row in saved], ['default','second'])
+        self.assertEqual(saved[0]['id'], original['id'])
+        self.assertEqual(len({row['id'] for row in saved}), 2)
+        for row in saved:
+            self.assertEqual(row['when'], original['when'])
+            self.assertTrue(row['enabled'])
+            self.assertEqual(row['action']['conversation'], 'fresh')
+            self.assertNotIn('input_mapping', row)
+        after = hashes(self.base)
+        self.conversion().apply()
+        self.assertEqual(hashes(self.base), after)
+
+    def test_missing_owner_needs_consistent_chat_archive_and_entry_evidence(self):
+        # Never substitute a machine-wide default for a missing execution owner.
+        write(self.state/'ownership/workflows.json', {})
+        conversion = self.conversion()
+        self.assertEqual(conversion.report()['owner_evidence']['registered_people'], ['owner'])
+        file = self.source/'functions.json'
+        document = m.read(file); document['functions'][0]['run_as'] = 'another-person'; write(file, document)
+        before = hashes(self.base)
+        with self.assertRaisesRegex(ValueError, 'evidence must identify one person'):
+            self.conversion()
+        self.assertEqual(hashes(self.base), before)
+
+    def test_generated_cache_is_backed_up_with_links_then_excluded_from_runtime(self):
+        # The old cache carried package symlinks/hardlinks. Preserve the backup
+        # without following its symlink or treating cache as executable source.
+        cache = self.source/'.cache'
+        cache.mkdir(); (cache/'compiled').write_bytes(b'generated')
+        os.link(cache/'compiled', cache/'same-bytes')
+        (cache/'package-link').symlink_to('compiled')
+        conversion = self.conversion()
+        self.assertEqual(conversion.report()['generated_caches_backup_only'], ['.cache'])
+        result = conversion.apply()
+        self.assertFalse((self.runtime/'.cache').exists())
+        with m.tarfile.open(Path(result['backup'])/'files.tar.gz') as archive:
+            self.assertEqual(archive.extractfile('source/.cache/same-bytes').read(), b'generated')
+            self.assertEqual(archive.getmember('source/.cache/package-link').linkname, 'compiled')
+        self.assertTrue((self.runtime/'db/db.sqlite').is_file())
+
+    def test_unsupported_source_layout_is_left_unchanged(self):
+        file = self.source/'workflow.json'; document = m.read(file)
+        document.update(version='1.0.29', code_layout_version=0); write(file, document)
+        before = hashes(self.base)
+        with self.assertRaisesRegex(ValueError, 'Not upgraded'):
+            self.conversion()
+        self.assertEqual(hashes(self.base), before)
+
+    def test_report_does_not_create_or_update_wal_sidecars(self):
+        # PLAT-746-396: the real copy dry-run created SQLite sidecars with
+        # mode=ro. It must inspect committed WAL data without touching source.
+        database = self.source/'db/db.sqlite'
+        with closing(sqlite3.connect(database)) as db:
+            db.execute('PRAGMA journal_mode=WAL')
+        before = hashes(self.base)
+        m.Conversion(self.docs,self.state,'old-goal','crew').report()
+        self.assertEqual(hashes(self.base), before)
+        with closing(sqlite3.connect(database)) as db:
+            db.execute('INSERT INTO goal_observations(observation_id,metric,value) VALUES (?,?,?)', ('in-wal','revenue',5))
+            db.commit()
+            self.assertGreater(database.with_name(database.name+'-wal').stat().st_size, 0)
+            before = hashes(self.base)
+            report = m.Conversion(self.docs,self.state,'old-goal','crew').report()
+            self.assertEqual(report['counts']['observations'], 2)
+            self.assertEqual(hashes(self.base), before)
+
+    def test_learning_cleanup_requires_stamp_backs_up_and_reruns_without_writes(self):
+        helper = self.source/'learnings/_global/helper.py'
+        helper.parent.mkdir(parents=True); helper.write_text('original helper bytes')
+        conversion = m.Conversion(self.docs,self.state,'old-goal','crew')
+        conversion.apply()
+        cleanup = m.LearningCleanup(self.docs,self.state,'old-goal','crew')
+        before = hashes(self.base)
+        self.assertEqual(cleanup.apply()['status'], 'not upgraded')
+        self.assertEqual(hashes(self.base), before)
+        manifest = m.read(cleanup.manifest)
+        manifest.update(version='1.0.52', code_layout_version=1); write(cleanup.manifest, manifest)
+        result = cleanup.apply()
+        with m.tarfile.open(Path(result['backup'])/'files.tar.gz') as archive:
+            self.assertEqual(archive.extractfile('learnings/_global/helper.py').read(), b'original helper bytes')
+        self.assertFalse(cleanup.learning.exists())
+        after = hashes(self.base)
+        self.assertEqual(cleanup.apply()['status'], 'already clean')
+        self.assertEqual(hashes(self.base), after)
+        self.assertTrue((self.runtime/'runs/iteration-1/run_metadata.json').is_file())
+
     def test_retired_measurements_remain_unchanged_without_creating_crew_goals(self):
         # PLAT-746-364: preserve historical data, not the retired Goal concept.
         # Existing steps still read ordinary helper files under this path.
@@ -84,7 +190,7 @@ class Migration(unittest.TestCase):
         helper.write_text('from pathlib import Path\ndef read_note(): return Path(__file__).with_name("note.txt").read_text()\n')
         helper.with_name('note.txt').write_text('preserved guidance')
         before = (self.source/'db/db.sqlite').read_bytes()
-        conversion = m.Conversion(self.docs,self.state,'old-goal','crew',keep_measurements=True)
+        conversion = m.Conversion(self.docs,self.state,'old-goal','crew')
         self.assertEqual(conversion.report()['counts']['goals'], 0)
         conversion.apply()
         self.assertEqual((self.runtime/'db/db.sqlite').read_bytes(), before)
@@ -153,15 +259,10 @@ class Migration(unittest.TestCase):
         for name in ['skills/example/SKILL.md','knowledgebase/example.json','db/reports/index.html']:
             self.assertEqual(before['docs/Workflow/old-goal/'+name],after[str((self.runtime/name).relative_to(self.base))])
         self.assertFalse(self.source.exists())
-        with closing(sqlite3.connect(self.private/'db/db.sqlite')) as db, db:
-            self.assertEqual(db.execute('SELECT observation_id,metric,recorded_at FROM goal_observations').fetchall(),[('original-observation','revenue','2026-11-01T00:00:00Z')])
-            self.assertEqual(db.execute('SELECT run_id FROM goal_observations').fetchone()[0],'old-goal:source-run')
-            self.assertEqual(json.loads(db.execute('SELECT definition_json FROM crew_goals').fetchone()[0])['status'],'active')
-            self.assertEqual(json.loads(db.execute('SELECT definition_json FROM crew_goals').fetchone()[0])['outcome'], 'Grow qualified revenue.')
-            self.assertEqual([row[2] for row in db.execute('PRAGMA index_info(idx_pulse_goal_observations_criterion)')],['criterion_id','observed_at'])
-        with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db, db:
-            self.assertEqual(db.execute('SELECT * FROM business_data').fetchall(),[('unchanged',)])
-            self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name='goal_observations'").fetchall())
+        self.assertFalse((self.private/'db/db.sqlite').exists())
+        with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
+            self.assertEqual(db.execute('SELECT * FROM business_data').fetchall(), [('unchanged',)])
+            self.assertEqual(db.execute('SELECT observation_id,criterion_id,metric,run_id FROM goal_observations').fetchone(), ('original-observation','earned','revenue','source-run'))
         for filename,field in [('schedules.json','schedules'),('functions.json','functions'),('webhooks.json','webhooks')]:
             entry=m.read(self.runtime/filename)[field][0]
             self.assertFalse(entry['enabled']);self.assertTrue(entry['action']['tab'].startswith('imported-'))
@@ -254,25 +355,22 @@ class Migration(unittest.TestCase):
         self.assertEqual(m.RuntimeRelocation(self.docs,self.state,'old-goal','crew').apply()['status'],'already migrated')
         self.assertFalse(self.source.exists())
 
-    def test_moved_code_guidance_uses_runtime_anchor_and_reports_embedded_python(self):
-        # PLAT-746-358: migration moved the script but kept its old filename
-        # in agent instructions, so a real native step could not run it.
+    def test_mechanical_move_preserves_task_text_and_code_for_crew_upgrade(self):
+        # PLAT-746-396: semantic changes belong to the owning Crew upgrade,
+        # not a regex which treats shell text and embedded Python alike.
         write(self.source/'planning/plan.json', {'steps':[
             {'id':'one','type':'scripted','description':'Run `python3 code/one/main.py`. See https://example.com/code/one/main.py.', 'items':[{'message':'Read `code/one/main.py`.'}]},
             {'id':'two','type':'agent','description':"Use Path('code/one/main.py').read_text()"}]})
         write(self.source/'planning/step_config.json', {'one':{'command':'python3 code/one/main.py'}})
         before_script = (self.source/'code/one/main.py').read_bytes()
         conversion = self.conversion()
-        pending = conversion.report()['code_path_manual_fixes']
-        self.assertEqual(len(pending), 1)
-        self.assertEqual(pending[0]['paths'], ['code/one/main.py'])
         conversion.apply()
         target = self.docs/'Crew/target/.agentworks'
         plan = m.read(target/'workflows/old-goal/planning/plan.json')
-        self.assertEqual(plan['steps'][0]['description'], 'Run `python3 $WORKFLOW_CODE_ROOT/one/main.py`. See https://example.com/code/one/main.py.')
-        self.assertEqual(plan['steps'][0]['items'][0]['message'], 'Read `$WORKFLOW_CODE_ROOT/one/main.py`.')
+        self.assertEqual(plan['steps'][0]['description'], 'Run `python3 code/one/main.py`. See https://example.com/code/one/main.py.')
+        self.assertEqual(plan['steps'][0]['items'][0]['message'], 'Read `code/one/main.py`.')
         self.assertEqual(plan['steps'][1]['description'], "Use Path('code/one/main.py').read_text()")
-        self.assertEqual(m.read(target/'workflows/old-goal/planning/step_config.json')['one']['command'], 'python3 $WORKFLOW_CODE_ROOT/one/main.py')
+        self.assertEqual(m.read(target/'workflows/old-goal/planning/step_config.json')['one']['command'], 'python3 code/one/main.py')
         self.assertEqual((target/'code/old-goal/one/main.py').read_bytes(), before_script)
         self.assertEqual(m.read(self.runtime/'runs/iteration-1/run_metadata.json'), {'run_id':'original-run'})
 
@@ -314,29 +412,11 @@ class Migration(unittest.TestCase):
             m.Conversion(self.docs,self.state,'second-folder','crew').apply()
         self.assertEqual(hashes(self.base), before)
 
-    def test_legacy_batch_and_raw_database_scripts_report_before_any_writes(self):
+    def test_ambiguous_legacy_batch_reports_before_any_writes(self):
         file=self.source/'schedules.json';doc=m.read(file);doc['schedules'][0]['input']={'groups':['one','two']};write(file,doc)
         before=hashes(self.base)
-        with self.assertRaisesRegex(ValueError,'batch schedules'):self.conversion()
+        with self.assertRaisesRegex(ValueError,'Saved entries need a decision'):self.conversion()
         self.assertEqual(before,hashes(self.base))
         doc['schedules'][0]['input']={};write(file,doc)
-        (self.source/'code/one/main.py').write_text("import sqlite3, os\nsqlite3.connect(os.environ['DB_PATH'])\n")
-        before=hashes(self.base)
-        with self.assertRaisesRegex(ValueError,'agentworks_db'):self.conversion()
-        self.assertEqual(before,hashes(self.base))
-        (self.source/'code/one/main.py').write_text("sql = 'SELECT * FROM GOAL_OBSERVATIONS'\n")
-        with self.assertRaisesRegex(ValueError,'direct measurement-table'):self.conversion()
-        # PLAT-746-336: a real migrated helper looked for assets beside moved code.
-        (self.source/'code/one/main.py').write_text("root = Path(os.environ['WORKFLOW_CODE_ROOT']).resolve().parent\n")
-        before=hashes(self.base)
-        with self.assertRaisesRegex(ValueError,'Code moves independently'):self.conversion()
-        self.assertEqual(before,hashes(self.base))
-        (self.source/'code/one/main.py').write_text('# no direct database use\n')
-        with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db,db:
-            db.execute('CREATE VIEW measurement_summary AS SELECT * FROM goal_observations')
-        before=hashes(self.base)
-        with self.assertRaisesRegex(ValueError,'database dependencies'):self.conversion()
-        self.assertEqual(before,hashes(self.base))
-
 
 if __name__=='__main__':unittest.main()

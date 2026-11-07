@@ -38,7 +38,8 @@ var ErrInvalidWorkflowManifest = errors.New("manifest validation failed")
 // contract version. Unlike schema_version, this gates agent-run workflow
 // upgrades. An operator starts pending migrations from the workflow chat, and
 // the version is stamped only after the workflow has been checked or migrated.
-const WorkflowContractCurrentVersion = workflowContractSkillsVersion
+const WorkflowContractCurrentVersion = workflowContractPortableVersion
+const workflowContractPortableVersion = step_based_workflow.PortableWorkflowContractVersion
 const workflowContractSkillsVersion = step_based_workflow.WorkflowSkillsContractVersion
 const workflowContractGoalAgentVersion = step_based_workflow.GoalAgentContractVersion
 

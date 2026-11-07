@@ -63,11 +63,10 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	}
 	active, _ := api.getActiveSession(sessionID)
 	policy := resolveWorkflowChatPolicy(sessionID, syntheticReq, active, readOnly)
-	if shouldGuardWorkflowContractForRun(sessionID, syntheticReq.TriggeredBy) {
-		definitionAgent = workflowContractExecutionGuardRegistrar{
-			definitionRegistrar: definitionAgent,
-			workspacePath:       phaseWorkspacePath,
-		}
+	definitionAgent = workflowContractExecutionGuardRegistrar{
+		definitionRegistrar: definitionAgent,
+		workspacePath:       phaseWorkspacePath,
+		scheduled:           isScheduledSessionIdentity(sessionID, syntheticReq.TriggeredBy),
 	}
 	if err := api.registerWebhookTools(definitionAgent, userID, phaseWorkspacePath, policy); err != nil {
 		return err
@@ -552,8 +551,4 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	// — at the executor, and at construction for tool agents.
 
 	return nil
-}
-
-func shouldGuardWorkflowContractForRun(sessionID, triggeredBy string) bool {
-	return !isScheduledSessionIdentity(sessionID, triggeredBy)
 }

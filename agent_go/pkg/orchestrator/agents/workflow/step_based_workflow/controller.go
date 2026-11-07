@@ -60,6 +60,9 @@ func ChainSubAgentNotifiers(notifiers ...SubAgentNotifier) SubAgentNotifier {
 // - Always includes independent steps extraction for parallel execution
 // - Explicit task phases, skills and backend validation without automatic learning
 type StepBasedWorkflowOrchestrator struct {
+	// Construction checks use the caller's current definition view (including
+	// its existing namespace/staged edits), never an unscoped second HTTP reader.
+	definitionRead          func(context.Context, string) (string, error)
 	directCrewScriptConfig  *CrewScriptConfiguration
 	directCrewScript        *CrewScriptDefinition
 	workshopSubAgentCleanup *workshopSubAgentCleanup

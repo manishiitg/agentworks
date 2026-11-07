@@ -91,7 +91,7 @@ func TestResourceIntentNamedGuidesKeepConfiguredAccess(t *testing.T) {
 				t.Fatal(err)
 			}
 			// MCP stamps share this preflight; the Builder invokes the same Resources validator.
-			if err := CheckContractStamp(ResourceIntentContractVersion, root, []byte(`{}`), func() (string, error) { return string(raw), nil }); err != nil {
+			if err := CheckContractStamp(ResourceIntentContractVersion, root, []byte(`{}`), func() (string, error) { return string(raw), nil }, nil); err != nil {
 				t.Fatal(err)
 			}
 			if problems, evaluated := ResourceIntentProblems(raw); len(problems) != 0 || !evaluated["work"] {
