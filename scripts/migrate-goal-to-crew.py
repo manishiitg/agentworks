@@ -768,7 +768,7 @@ class Conversion:
                 self.goal['name'] = next(iter(outcomes.values()))
         if {goal['id'] for goal in self.goals} & existing.get('crew_goals', set()):
             raise ValueError('A tracked outcome ID is already present in the destination.')
-        self.counts['measurements'] = len(self.goal['metric_ids'])
+        self.counts['measurements'] = sum(len(goal['metric_ids']) for goal in self.goals)
         self.counts['observations'] = len(self.tables.get('goal_observations', ('', [], []))[2])
         # Raw SQL/code writers must be updated deliberately to the parent ledger;
         # do not leave a silently diverging source copy of measurement tables.
@@ -845,7 +845,7 @@ class Conversion:
     def report(self):
         if self.done:
             return {'status':'already migrated', 'crew_id':self.crew, 'workflow':self.root, 'backup':self.done['backup']}
-        return {'status':'ready', 'workflow':self.root, 'crew_id':self.crew, 'goal_id':self.goal_id,
+        return {'status':'ready', 'workflow':self.root, 'crew_id':self.crew, 'goal_id':self.goals[0]['id'],
                 'goal_ids':[goal['id'] for goal in self.goals],
                 'counts':self.counts, 'moves':[{'from':str(a.relative_to(self.docs)), 'to':str(b)} for a,b in self.moves],
                 'preserved':['workflow identity','entry IDs and disabled state','run history and costs','business database','skills and knowledge','dashboard files and workflow-scoped links','secret references'],
