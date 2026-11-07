@@ -142,6 +142,13 @@ func TestGetSessionEventsCannotPromoteExecutionToDurableChat(t *testing.T) {
 }
 
 func TestActiveSessionsIncludesTrackedWorkflowWithoutChatRow(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "lab", ProjectID: "crew-lab", OwnerID: GetDefaultUserID()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registerCrewExecutable(crewExecutableBinding{ID: "workflow-id", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/daily-qa", Kind: "workflow"}); err != nil {
+		t.Fatal(err)
+	}
 	const sessionID = "workflow-after-restart"
 	startedAt := time.Now().Add(-time.Minute).UTC()
 	api := &StreamingAPI{
@@ -151,7 +158,7 @@ func TestActiveSessionsIncludesTrackedWorkflowWithoutChatRow(t *testing.T) {
 			"workflow-1": {
 				ExecutionID: "workflow-1", SessionID: sessionID,
 				Source: trackedExecutionSourceWorkflowRun, Kind: "workflow", Status: trackedExecutionStatusRunning,
-				PresetName: "Daily QA", WorkspacePath: "Workflow/daily-qa", StartedAt: startedAt,
+				PresetName: "Daily QA", WorkspacePath: "Workflow/daily-qa", StartedAt: startedAt, TriggeredBy: "workflow_builder",
 			},
 		},
 	}
@@ -171,6 +178,9 @@ func TestActiveSessionsIncludesTrackedWorkflowWithoutChatRow(t *testing.T) {
 	}
 	if session.RuntimeState.Phase != runtimePhaseRunning || session.DisplayStatus != sessionExecutionDisplayBusy {
 		t.Fatalf("synthesized runtime state = %#v display=%q", session.RuntimeState, session.DisplayStatus)
+	}
+	if session.CrewProjectID != "crew-lab" || session.TriggeredByLabel != "Workflow run" {
+		t.Fatalf("moved workflow lost its server-owned activity destination: %#v", session)
 	}
 }
 

@@ -726,6 +726,15 @@ func (api *StreamingAPI) buildActiveSessionInfoSummary(session *ActiveSessionInf
 		enriched.CanSteer = runtimeStatus.CanSteer
 		enriched.HasRunningBackgroundAgents = runtimeStatus.HasRunningBackgroundAgents
 	}
+	// PLAT-746-376: moved workflows retain their logical Workflow address.
+	// Their server-owned binding, rather than a browser path heuristic, names
+	// the Crew that must open when the person selects this activity.
+	if binding, err := findCrewExecutable(enriched.WorkspacePath); err == nil && binding != nil && binding.Kind == "workflow" {
+		enriched.CrewProjectID = binding.CrewID
+		if enriched.TriggeredByLabel == "" && (enriched.TriggeredBy == "workflow_builder" || enriched.TriggeredBy == "workflow_phase") {
+			enriched.TriggeredByLabel = "Workflow run"
+		}
+	}
 	return &enriched
 }
 

@@ -342,6 +342,7 @@ type ActiveSessionInfo struct {
 	WorkflowName                string           `json:"workflow_name,omitempty"`
 	WorkflowLabel               string           `json:"workflow_label,omitempty"`
 	WorkspacePath               string           `json:"workspace_path,omitempty"`
+	CrewProjectID               string           `json:"crew_project_id,omitempty"`
 	PresetName                  string           `json:"preset_name,omitempty"`
 	PresetQueryID               string           `json:"preset_query_id,omitempty"`
 	PhaseID                     string           `json:"phase_id,omitempty"`

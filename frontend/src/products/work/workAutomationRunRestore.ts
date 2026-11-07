@@ -33,6 +33,9 @@ function runWorkspaceMatches(projectPath: string, sessionPath: string): boolean 
  */
 async function resolveRunProject(session: ActiveSessionInfo): Promise<WorkSession | null> {
   const projects = await loadWorkSessions()
+  if (session.crew_project_id) {
+    return projects.find(project => project.id === session.crew_project_id) || null
+  }
   const boundProjectId = Object.values(useChatStore.getState().chatTabs)
     .find(tab => tab.sessionId === session.session_id && tab.metadata?.agentProfileId === WORK_PROFILE_ID)
     ?.metadata?.agentProfileProjectId

@@ -91,6 +91,23 @@ describe('global AgentWorks and Crew navigation', () => {
     expect(workProjectIdForTab(workTab)).toBe('project-1')
     expect(workProjectIdForSession(session({ session_id: 'work:project:project-2' }))).toBe('project-2')
     expect(workProjectIdForSession(session({ preset_query_id: 'project-3' }))).toBe('project-3')
+    expect(workProjectIdForSession(session({ crew_project_id: 'owning-crew', preset_query_id: 'workflow-id' }), workTab)).toBe('owning-crew')
+  })
+
+  it.each(['workflow_builder', 'cron'])('opens a moved workflow %s activity in its server-owned Crew run tab', async triggeredBy => {
+    // PLAT-746-376: Workflow/<name> formerly fell through to the Goals surface.
+    const activity = session({
+      session_id: 'workflow-run',
+      agent_mode: 'workflow_phase',
+      crew_project_id: 'owning-crew',
+      workspace_path: 'Workflow/example',
+      preset_query_id: 'workflow-id',
+      triggered_by: triggeredBy,
+    })
+    expect(isWorkProductSession(activity)).toBe(true)
+    await openGlobalActivitySession(activity)
+    expect(openWorkAutomationRunChat).toHaveBeenCalledWith(activity, { title: undefined })
+    expect(openCanonicalActivitySession).not.toHaveBeenCalled()
   })
 
   it('switches surfaces and selects the Crew project before activating its tab', () => {

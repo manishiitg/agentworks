@@ -965,6 +965,8 @@ export interface ListTerminalsResponse {
 // Active Session Management Types
 export interface ActiveSessionInfo {
   session_id: string
+  /** Owning Crew resolved from the server's trusted workflow binding. */
+  crew_project_id?: string
   parent_session_id?: string
   session_kind?: string
   observer_id: string
