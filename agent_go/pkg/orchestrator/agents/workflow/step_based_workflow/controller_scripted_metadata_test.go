@@ -39,16 +39,3 @@ func TestNormalizeScriptedSuccessCountsDoesNotDoubleCountMirroredLegacyKeys(t *t
 		t.Fatalf("scripted successes = %d, want 9", got)
 	}
 }
-
-func TestScriptArtifactsChangedUsesBytesNotRewriteAttempt(t *testing.T) {
-	captured := map[string]string{"main.py": "print('same')\n"}
-	if scriptArtifactsChanged(captured, map[string]string{"main.py": "print('same')\n"}) {
-		t.Fatal("byte-identical script was classified as a new version")
-	}
-	if !scriptArtifactsChanged(captured, map[string]string{"main.py": "print('changed')\n"}) {
-		t.Fatal("changed script was not classified as a new version")
-	}
-	if !scriptArtifactsChanged(captured, map[string]string{"main.py": "print('same')\n", "helper.py": "pass\n"}) {
-		t.Fatal("added helper file was not classified as a new version")
-	}
-}

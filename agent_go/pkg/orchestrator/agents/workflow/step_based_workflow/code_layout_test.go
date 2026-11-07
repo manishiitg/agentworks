@@ -101,22 +101,18 @@ func TestCodeLayoutVersionOneNeverFallsBackToLegacyScript(t *testing.T) {
 	}
 }
 
-func TestCodeLayoutGrantsRespectLock(t *testing.T) {
+func TestWorkflowExecutionReadsSavedCodeWithoutWriteGrant(t *testing.T) {
 	c := codeLayoutController(t, 1)
-	// code/ is writable only for a run the Builder started; lock_code is an extra lock on top.
-	c.codeWritableByRun.Store(true)
-	for _, locked := range []bool{false, true} {
-		reads, writes := c.setupExecutionFolderGuard("step", "out", KBAccessNone, resolveDBAccess(nil), &AgentConfigs{LockCode: &locked})
-		if !slices.Contains(reads, "Workflow/testing/code") {
-			t.Fatal("missing code read grant")
-		}
-		if slices.Contains(writes, "Workflow/testing/code") == locked {
-			t.Fatalf("wrong code write grant for lock=%v", locked)
-		}
-		for _, p := range append(reads, writes...) {
-			if p == "Workflow" || p == "Workflow/other/code" {
-				t.Fatalf("overbroad grant %s", p)
-			}
+	reads, writes := c.setupExecutionFolderGuard("step", "out", KBAccessNone, resolveDBAccess(nil), nil)
+	if !slices.Contains(reads, "Workflow/testing/code") {
+		t.Fatal("saved source is not readable")
+	}
+	if slices.Contains(writes, "Workflow/testing/code") {
+		t.Fatal("execution may not rewrite saved source")
+	}
+	for _, path := range append(reads, writes...) {
+		if path == "Workflow" || path == "Workflow/other/code" {
+			t.Fatalf("overbroad grant %s", path)
 		}
 	}
 }
@@ -165,35 +161,5 @@ func TestCodeLayoutCanonicalPythonRepair(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "runs", "code")); !os.IsNotExist(err) {
 		t.Fatal("unexpected execution copy")
-	}
-}
-
-func TestCodeLayoutRuntimeEnvAndPrompt(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	c := codeLayoutController(t, 1)
-	env := c.codeRuntimeEnv(map[string]string{"VAR_BASE_URL": "https://example.test", "VAR_WORKFLOW_PATH": "Workflow/other", "VAR_WORKSPACE_PATH": "/old-laptop/records"})
-	// PLAT-746: a physical Crew runtime cannot be used as a tool API address.
-	if env["VAR_WORKFLOW_PATH"] != c.GetWorkspacePath() {
-		t.Fatal("runtime lost its server-owned workflow API address")
-	}
-	if env["VAR_WORKSPACE_PATH"] != workflowAbsPath(c.GetWorkspacePath()) {
-		t.Fatal("direct launch retained an authored records path instead of the current workflow's root")
-	}
-	if env["VAR_BASE_URL"] != "https://example.test" || !strings.HasSuffix(env["WORKFLOW_CODE_ROOT"], "Workflow/testing/code") || !strings.Contains(env["PYTHONPATH"], env["WORKFLOW_CODE_DEPS"]) {
-		t.Fatalf("incorrect runtime env keys")
-	}
-	// PLAT-746-358: a migrated Crew has a canonical code root even when its
-	// saved script layout predates version 1; authored guidance uses this anchor.
-	for _, version := range []int32{0, 1} {
-		converted := codeLayoutController(t, version)
-		converted.crewAutomationCodeRoot = filepath.Join(t.TempDir(), ".agentworks", "code", "workflow")
-		got := converted.codeRuntimeEnv(nil)
-		if got["WORKFLOW_CODE_ROOT"] != converted.crewAutomationCodeRoot || !strings.Contains(got["PYTHONPATH"], converted.crewAutomationCodeRoot) {
-			t.Fatalf("converted layout %d lost canonical code root", version)
-		}
-	}
-	prompt := GetScriptedModeInstructions("/docs/Workflow/testing/code/step", "/docs/Workflow/testing/runs/output", false, "", "", nil, nil, nil, "", false, true)
-	if strings.Contains(prompt, "To test, just run") || !strings.Contains(prompt, "controller executes") {
-		t.Fatal("canonical prompt must use controller execution")
 	}
 }

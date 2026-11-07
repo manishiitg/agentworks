@@ -27,8 +27,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) runResolvedExecution(ctx context.Cont
 	setup.VariableValues = hcpo.variableValues
 	if execCtx != nil {
 		setup.Context.HumanInputs = cloneWorkflowStringMap(execCtx.HumanInputs)
-		setup.Context.SavedScriptOnly = execCtx.SavedScriptOnly
-		setup.Context.AllowScriptRepair = execCtx.AllowScriptRepair
 	}
 	if err := manager.ApplyCleanup(ctx, setup); err != nil {
 		return err

@@ -276,7 +276,7 @@ func TestAuthoredScriptToolCollisionsFailInsteadOfBeingAdvertised(t *testing.T) 
 	base.SetWorkspacePath("Workflow/demo")
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
 	script := func(id string) PlanOrchestrationRoute {
-		return PlanOrchestrationRoute{RouteID: id, RouteName: id, Condition: "when " + id, SubAgentStep: &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: id, Description: "d"}, ScriptOnly: true}}
+		return PlanOrchestrationRoute{RouteID: id, RouteName: id, Condition: "when " + id, SubAgentStep: &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: id, Description: "d"}}}
 	}
 	authored := func(routes ...PlanOrchestrationRoute) *SubAgentExecutionContext {
 		return &SubAgentExecutionContext{OrchestratorStep: &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "agent"}, AuthoredPrompt: true, SystemPrompt: "x", PredefinedRoutes: routes}}

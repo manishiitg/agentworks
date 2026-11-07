@@ -21,13 +21,7 @@ when the answer can wait. Read `references/human-in-the-loop.md`.
 
 ## Scripts are built by you, not healed by the run
 
-A scripted step runs its saved `main.py` and nothing else. In any run (schedule,
-webhook, `run_full_workflow`, a route called by an agent) a missing or failing
-script fails the step with its real error, and AgentWorks reports it; no LLM rewrites
-the script, repairs it or stands in for it. You write and fix scripts: author
-`main.py`, test it with `execute_step` (the only place an agent may write or repair
-a script), and after a reported failure read the error and fix the script the same
-way. `lock_code` additionally stops that repair in your own `execute_step`.
+Scripts execute saved main.py only. Missing or failing source fails the step; create or fix it explicitly in this chat, then run it again. You can author source from Crew chat using its normal file tools. `execute_step` tests the saved source; it never authors code.
 
 ## When to use
 
@@ -78,8 +72,8 @@ for the exact item schema, permissions, parallelism, Stop behavior, and limits.
 ## Execution mode
 
 - **Scripted / code-execution mode** is the only mode for new scripted steps. Create one with `add_step`; the internal plan type remains `scripted`. The builder authors a `main.py` saved under
-  `code/{step-id}/` when workflow.json has `code_layout_version: 1`; absent/0 stays at `learnings/{step-id}/`. Prefer an explicit migration to `code/` for legacy scripted workflows using the "Deliberate migration to code/" procedure in `references/code-authoring.md`; never silently move files or change the layout flag. Test using `execute_step(fast_path_only=true)` so the actual runner supplies the selected group's environment, inputs, permissions and working directory. New-layout source and shared helpers are edited in place, not copied into a run. Use for
-  deterministic, repeatable execution. No run-history threshold is required to declare an obviously deterministic step scripted; 10+ representative successful runs are required only before `lock_code=true` freezes it. See `read_skill(skills=[{"name":"builder-reference","path":"references/code-authoring.md"}])`.
+  `code/{step-id}/` when workflow.json has `code_layout_version: 1`; absent/0 stays at `learnings/{step-id}/`. Prefer an explicit migration to `code/` for legacy scripted workflows using the "Deliberate migration to code/" procedure in `references/code-authoring.md`; never silently move files or change the layout flag. Test using `execute_step()` so the actual runner supplies the selected group's environment, inputs, permissions and working directory. New-layout source and shared helpers are edited in place, not copied into a run. Use for
+  deterministic, repeatable execution.
 - Judgment, adaptive discovery, ambiguous live evidence, and browser/UI work use `agent`.
 
 Preferred data shape: `scripted fetcher(s) → agent processor`. Fetchers own credentials, calls, retries/rate limits, provenance, freshness, idempotency, response parsing, and authoritative DB/file output. The agent reads that output and owns semantic analysis, synthesis, critique, and repair.
@@ -145,7 +139,7 @@ use `@agentworks/playwright`;
 they use the Playwright runner and do not replace the saved Python entry point. Read `references/playwright-scripted.md` before authoring or repairing the suite.
 The suite owns its Playwright objects, case isolation, timeouts, evidence, and cleanup;
 `agent_browser` remains the conversational browser tool and is not a test-harness API.
-Use `execute_step(fast_path_only=true)` for acceptance testing; direct builder shell runs
+Use `execute_step()` for acceptance testing; direct builder shell runs
 do not prove the selected step's permissions, variables, or output validation.
 Inspect `debug_step` for captured output and validation; use `log_offset` for more output.
 Each saved-script attempt is retained in the execution log directory as `scripted-*.json`;

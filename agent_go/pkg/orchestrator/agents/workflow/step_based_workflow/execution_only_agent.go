@@ -3,7 +3,6 @@ package step_based_workflow
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -25,8 +24,6 @@ var executionOnlyUserTemplate = MustRegisterTemplate("executionOnlyUser", `{{.Ba
 {{if .OrchestratorInstructions}}
 ## Delegated instruction
 {{.OrchestratorInstructions}}
-{{end}}{{if eq .IsScriptedMode "true"}}
-Implement this task as reusable Python at the exact main.py path supplied in Code Execution Mode. Use the resolved inputs as script arguments.
 {{end}}{{if .PreviousIterationOutput}}
 ## Previous attempt
 {{.PreviousIterationOutput}}
@@ -36,8 +33,6 @@ Implement this task as reusable Python at the exact main.py path supplied in Cod
 {{end}}{{if .ValidationFeedback}}
 ## Validation issues to repair
 {{.ValidationFeedback}}
-{{end}}{{if .ScriptedPriorContext}}
-{{.ScriptedPriorContext}}
 {{end}}`)
 
 // WorkflowExecutionOnlyTemplate holds template variables for execution-only agent prompts
@@ -64,7 +59,6 @@ type WorkflowExecutionOnlyTemplate struct {
 	DBAccess                 string // effective "read" or "read-write"
 	DBDirectAccess           string // "true" only for saved scripted-code compatibility
 	DBGuidance               string // shared managed DB contract for agentic steps
-	ScriptedPriorContext     string // Prior script context (failed script + error, or existing script for update)
 	IsContributionTurn       string // "true" for a synthetic learnings/KB closing turn — renders JUST the contribution message, no execute-the-task/output-file scaffolding
 }
 
@@ -216,49 +210,6 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		codeExecutionSection = "## Code execution\nOpen workflow-execution when calling tools through the HTTP bridge or authoring scripts.\n"
 	}
 
-	// Learn code mode: append instructions to write main.py (added on top of code execution section)
-	isScriptedMode := templateVars["IsScriptedMode"] == "true"
-	if isScriptedMode {
-		isRelearnMode := templateVars["IsRelearnMode"] == "true"
-		priorScript := templateVars["ScriptedPriorScript"]
-		priorError := templateVars["ScriptedPriorError"]
-		codeDirAbsPath := filepath.Join(stepExecutionPath, "code")
-		if supplied := templateVars["ScriptedWorkingDir"]; supplied != "" {
-			codeDirAbsPath = supplied
-		}
-
-		// Parse input arg paths from templateVars (newline-separated)
-		var inputArgPaths []string
-		if raw := templateVars["ScriptedInputArgs"]; raw != "" {
-			inputArgPaths = strings.Split(raw, "\n")
-		}
-
-		// Parse env var names from templateVars (newline-separated)
-		var envVarNames []string
-		if raw := templateVars["ScriptedEnvVarNames"]; raw != "" {
-			envVarNames = strings.Split(raw, "\n")
-		}
-
-		// Parse variable→env mapping lines (newline-separated)
-		var varMappingLines []string
-		if raw := templateVars["ScriptedVarMapping"]; raw != "" {
-			varMappingLines = strings.Split(raw, "\n")
-		}
-
-		validationSchemaJSON := templateVars["ValidationSchema"]
-		isCodeLocked := templateVars["IsScriptedLocked"] == "true"
-		codeExecutionSection += GetScriptedModeInstructions(codeDirAbsPath, stepExecutionPath, isRelearnMode, priorScript, priorError, inputArgPaths, envVarNames, varMappingLines, validationSchemaJSON, isCodeLocked, templateVars["DirectCodeSource"] == "true")
-		if contract := strings.TrimSpace(templateVars["ScriptedParameterSchema"]); contract != "" {
-			codeExecutionSection += "\n**Script parameter contract:** This reusable script must read `STEP_PARAMS_JSON`, parse it as a JSON object, and support exactly this declared contract:\n```json\n" + contract + "\n```\nDo not hardcode current parameter values. `STEP_DELEGATION_ROUTE_ID` and `STEP_DELEGATION_TODO_ID` identify an orchestrated call. Positional arguments remain reserved for declared context dependencies.\n"
-			if values := strings.TrimSpace(templateVars["ScriptedParameterValues"]); values != "" {
-				codeExecutionSection += "Current validated call values (also present in `STEP_PARAMS_JSON`): `" + values + "`\n"
-			}
-		}
-		if templateVars["DirectCodeSource"] == "true" && !isCodeLocked {
-			codeExecutionSection += "\nThis workflow uses canonical code/ source. Edit the supplied working directory and shared helpers in WORKFLOW_CODE_ROOT directly. The controller runs this code after each authoring/repair turn; do not execute main.py separately or fabricate outputs to satisfy validation. No copy-back is performed. Keep outputs at STEP_OUTPUT_DIR or db/assets.\n"
-		}
-	}
-
 	// Get variable names and values for system prompt
 	variableNames := templateVars["VariableNames"]
 	variableValues := templateVars["VariableValues"]
@@ -266,7 +217,7 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 	folderGuardReadPaths := templateVars["FolderGuardReadPaths"]
 	folderGuardWritePaths := templateVars["FolderGuardWritePaths"]
 	systemStepDescription := templateVars["StepDescription"]
-	if isScriptedMode {
+	if templateVars["IsScriptedMode"] == "true" {
 		systemStepDescription = sanitizeScriptedDescription(systemStepDescription)
 	}
 
@@ -419,7 +370,6 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlyUserMessageProcessor(tem
 		IsScriptedMode:           fmt.Sprintf("%t", isScriptedMode),
 		DBAccess:                 dbAccess,
 		DBDirectAccess:           dbDirectAccess,
-		ScriptedPriorContext:     BuildScriptedPriorContext(templateVars["ScriptedPriorScript"], templateVars["ScriptedPriorError"], templateVars["ScriptedMetadataPath"], templateVars["IsScriptedLocked"] == "true"),
 		IsContributionTurn:       templateVars["IsContributionTurn"],
 	}
 

@@ -1416,11 +1416,7 @@ func TestStepFileAccessFollowsTheOwnersRule(t *testing.T) {
 			}
 		})
 	}
-	// code/ belongs to the Builder: writable only for a run it started.
-	hcpo.codeWritableByRun.Store(true)
-	if _, writes := builders["execution"](); !guardCovers(writes, wf+"code/shared/helper.py") {
-		t.Errorf("a Builder-started run lost code/ writes: %v", writes)
-	}
+
 }
 
 // Read grants are made entry by entry so the raw database is closed by omission (no namespace needed to hide it).

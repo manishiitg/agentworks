@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -76,7 +75,7 @@ type BackgroundAgent struct {
 	CompletedAt       *time.Time            `json:"completed_at,omitempty"`
 	ReasoningLevel    string                `json:"reasoning_level,omitempty"`
 	ModelID           string                `json:"model_id,omitempty"`
-	Metadata          map[string]string     `json:"metadata,omitempty"` // arbitrary key-value pairs (e.g. workshop_mode, lock_code)
+	Metadata          map[string]string     `json:"metadata,omitempty"` // arbitrary key-value pairs (e.g. workshop_mode, run_folder)
 	cancel            context.CancelFunc
 	mu                sync.RWMutex
 	startNotified     bool
@@ -2305,21 +2304,7 @@ func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID stri
 		} else {
 			resultText = fmt.Sprintf("Status: %s", snap.Status)
 		}
-		workshopMode := ""
-		isLockCode := false
-		lockCodeConsecutiveFailures := 0
-		lockCodeNeedsReview := false
-		if snap.Metadata != nil {
-			workshopMode = snap.Metadata["workshop_mode"]
-			isLockCode = snap.Metadata["lock_code"] == "true"
-			if v := snap.Metadata["lock_code_consecutive_failures"]; v != "" {
-				if n, perr := strconv.Atoi(v); perr == nil {
-					lockCodeConsecutiveFailures = n
-				}
-			}
-			lockCodeNeedsReview = snap.Metadata["lock_code_needs_review"] == "true"
-		}
-		actionHint := buildWorkshopActionHint(workshopMode, isLockCode, lockCodeConsecutiveFailures, lockCodeNeedsReview, snap.Status == BGAgentFailed)
+		actionHint := ""
 		batchContext := autoNotificationBracketContext(snap.Metadata)
 		delayContext := autoNotificationDelayContext(snap, time.Now())
 		parts = append(parts, fmt.Sprintf("- **%s**%s: %s%s\n  Result: %s%s", strings.TrimSpace(snap.Name), batchContext, snap.Status, delayContext, resultText, actionHint))
@@ -2375,38 +2360,6 @@ func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID stri
 		api.scheduleUndispatchedCompletionRetry(sessionID)
 		log.Printf("[BG AGENT] Batched synthetic turn for session %s did not dispatch %d agent(s) — queued for retry", sessionID, len(emittedIDs))
 	}
-}
-
-// buildWorkshopActionHint returns a mode-specific instruction appended to AUTO-NOTIFICATION messages
-// so the agent knows what to do next. Most success/failure cases are handled by the system prompt;
-// this function only adds extra guidance for cases where the engine has silently degraded behavior
-// the orchestrator wouldn't otherwise know about — most notably fast-path failures on locked steps,
-// where the fix loop is disabled and the step gets exactly one shot at running the saved main.py.
-func buildWorkshopActionHint(workshopMode string, isLockCode bool, lockCodeConsecutiveFailures int, lockCodeNeedsReview, failed bool) string {
-	if !failed {
-		return ""
-	}
-	// Pattern hint shared by both locked-step branches: a streak of locked failures is
-	// strong evidence the lock itself is wrong (script no longer matches the site/API),
-	// not that each individual run is independently environmental.
-	streakHint := ""
-	if lockCodeNeedsReview || lockCodeConsecutiveFailures >= 3 {
-		streakHint = fmt.Sprintf(
-			"\n\n**Pattern signal:** the locked main.py has now failed %d times in a row "+
-				"(`script_metadata.json.lock_code_stats.consecutive_failures=%d`, `needs_review=%v`). "+
-				"At this point the lock is likely wrong — a single environmental failure is plausible, "+
-				"three in a row usually means the saved script no longer matches the site/API. "+
-				"Strongly consider clearing `lock_code` and patching the script rather than treating "+
-				"this as one more transient failure.",
-			lockCodeConsecutiveFailures, lockCodeConsecutiveFailures, lockCodeNeedsReview)
-	}
-	if isLockCode {
-		return "\n\n[CODE-LOCKED FAILURE] `lock_code=true` so the fix loop is disabled and the saved " +
-			"main.py is frozen. Inspect the run folder, then either clear `lock_code` and fix the " +
-			"script, or re-run with `fast_path_only=false` to engage agentic mode for this run." +
-			streakHint
-	}
-	return ""
 }
 
 // backgroundNotificationOwnedBySession keeps notification delivery tied to the
@@ -2518,23 +2471,7 @@ func (api *StreamingAPI) buildAutoNotificationMessage(sessionID string, snap Bac
 		resultText = fmt.Sprintf("Status: %s", snap.Status)
 	}
 
-	// Append mode-specific action hint so the agent knows what to do next.
-	workshopMode := ""
-	isLockCode := false
-	lockCodeConsecutiveFailures := 0
-	lockCodeNeedsReview := false
-	if snap.Metadata != nil {
-		workshopMode = snap.Metadata["workshop_mode"]
-		isLockCode = snap.Metadata["lock_code"] == "true"
-		if v := snap.Metadata["lock_code_consecutive_failures"]; v != "" {
-			if n, perr := strconv.Atoi(v); perr == nil {
-				lockCodeConsecutiveFailures = n
-			}
-		}
-		lockCodeNeedsReview = snap.Metadata["lock_code_needs_review"] == "true"
-	}
-	isFailed := snap.Status == BGAgentFailed
-	actionHint := buildWorkshopActionHint(workshopMode, isLockCode, lockCodeConsecutiveFailures, lockCodeNeedsReview, isFailed)
+	actionHint := ""
 	presentationOnly := snap.Metadata != nil && snap.Metadata["completion_mode"] == "present_result"
 	if presentationOnly {
 		// A guided review/fix child already owns evidence collection and durable

@@ -64,7 +64,7 @@ func CrewScriptPlan(definition *CrewScriptDefinition, root string) *PlanningResp
 	if description == "" {
 		description = definition.Name
 	}
-	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: definition.ID, Title: definition.Name, Description: description, ContextOutput: FlexibleContextOutput(strings.Join(definition.Outputs, ", ")), ValidationSchema: definition.ValidationSchema}, Script: definition.ID, ScriptOnly: true, crewScript: &CrewScriptConfiguration{Definition: *definition, Root: root}}
+	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: definition.ID, Title: definition.Name, Description: description, ContextOutput: FlexibleContextOutput(strings.Join(definition.Outputs, ", ")), ValidationSchema: definition.ValidationSchema}, Script: definition.ID, crewScript: &CrewScriptConfiguration{Definition: *definition, Root: root}}
 	return &PlanningResponse{Steps: []PlanStepInterface{step}}
 }
 
@@ -94,7 +94,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) hydrateCrewScripts(ctx context.Contex
 			return err
 		}
 		step.crewScript = &resolved
-		step.ScriptOnly = true
 		if step.ContextOutput == "" {
 			step.ContextOutput = FlexibleContextOutput(strings.Join(resolved.Definition.Outputs, ", "))
 		}

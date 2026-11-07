@@ -9,7 +9,7 @@ import (
 )
 
 // PLAT-061/E4. MergeAgentConfigFields copied 19 of 28 fields. The nine it
-// dropped included LockCode, KnowledgebaseAccess and KnowledgebaseContribution
+// dropped included KnowledgebaseAccess and KnowledgebaseContribution
 // — all of which gate writes — so on the merge path a saved lock or KB grant
 // never reached the runtime.
 //

@@ -36,9 +36,9 @@ func ValidateRelayPlanStructure(plan *PlanningResponse, outputStepID string) err
 			// script is never rewritten, like a Flow script node.
 			toolNames := map[string]string{}
 			for _, route := range s.PredefinedRoutes {
-				script, ok := route.SubAgentStep.(*ScriptedPlanStep)
-				if !ok || !script.ScriptOnly {
-					return fmt.Errorf("Flow agent %q route %q must be a saved script (type scripted, script_only: true); Flows do not support sub-agents", s.ID, route.RouteID)
+				_, ok := route.SubAgentStep.(*ScriptedPlanStep)
+				if !ok {
+					return fmt.Errorf("Flow agent %q route %q must be a saved script (type scripted); Flows do not support sub-agents", s.ID, route.RouteID)
 				}
 				// Route ids become tool names (a-b and a_b both become a_b); two
 				// routes of one agent must not share one (PLAT-444).
@@ -54,9 +54,6 @@ func ValidateRelayPlanStructure(plan *PlanningResponse, outputStepID string) err
 				}
 			}
 		case *ScriptedPlanStep:
-			if !s.ScriptOnly {
-				return fmt.Errorf("Flow script %q must set script_only to disable agent repair", s.ID)
-			}
 		case *BranchPlanStep:
 			if strings.TrimSpace(s.ValuePath) == "" || len(s.ValueCases) == 0 {
 				return fmt.Errorf("Flow decision %q needs value_path and value_cases", s.ID)

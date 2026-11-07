@@ -859,11 +859,7 @@ export function ReadOnlyStepDetailPanel({
               <div className="mt-2 flex max-w-2xl items-start gap-2 rounded-md border border-blue-500/20 bg-blue-500/5 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
                 <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500" />
                 <span>
-                  {step.script_only
-                    ? 'Runs the saved Python code exactly. Errors fail the step; automatic repair is off.'
-                    : agentConfigs?.lock_code
-                    ? 'Runs the saved Python code first. Automatic repair is off because this code is locked.'
-                    : 'Runs the saved Python code first. If it fails, an agent uses the description below to repair the code and retry.'}
+                  Runs the saved Python code. If it fails, fix it in chat before running again.
                 </span>
               </div>
             </div>
