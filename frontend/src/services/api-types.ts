@@ -2772,6 +2772,8 @@ export interface ScheduledJobRun {
   parallel_risk_acknowledged?: boolean
   artifacts_expired?: boolean
   session_id?: string
+  /** A Crew's run: what to open to see its saved conversation, given by the server. */
+  open?: { session_id: string; crew_project_id: string; workspace_path: string; title?: string }
   status: 'running' | 'success' | 'error' | 'failed' | 'partial' | 'stopped' | 'interrupted' | 'waiting_for_capacity' | 'waiting_for_workflow'
   error?: string
   /** Exact assistant answer produced by this execution. */

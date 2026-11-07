@@ -1523,7 +1523,11 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return true
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"runs": runs, "total": total, "limit": limit, "offset": offset})
+		var rows interface{} = runs
+		if projectOK {
+			rows = crewScheduleRunRows(runs, job.ProjectID, runsWorkspace, job.Schedule.Name)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"runs": rows, "total": total, "limit": limit, "offset": offset})
 	case "update":
 		if !projectOK {
 			http.Error(w, "product schedules are declared by the product and cannot be edited here", http.StatusMethodNotAllowed)
