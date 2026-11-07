@@ -11,7 +11,6 @@ vi.mock('./scheduleRuns/ScheduleTableView', () => ({ ScheduleTableView: () => <d
 vi.mock('./scheduleRuns/ScheduleListView', () => ({ ScheduleListView: () => null }))
 vi.mock('./scheduleRuns/ScheduleGroupsView', () => ({ ScheduleGroupsView: () => null }))
 vi.mock('./scheduleRuns/ScheduleCalendarView', () => ({ ScheduleCalendarView: () => null }))
-vi.mock('./scheduleRuns/ScheduleOverviewView', () => ({ ScheduleOverviewView: () => null }))
 vi.mock('../workflow/WorkflowAPITriggersView', () => ({ default: () => null }))
 vi.mock('../workflow/ProductAPITriggersView', () => ({ default: () => <div data-testid="product-webhooks" /> }))
 vi.mock('../automation/TriggerDeliveryHistoryPanel', () => ({ TriggerDeliveryHistoryPanel: () => <div data-testid="delivery-history" /> }))
