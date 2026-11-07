@@ -267,7 +267,7 @@ func (s *ProjectActionDispatcher) listProductWebhookRuns(w http.ResponseWriter, 
 			title = trigger.Name
 		}
 	}
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"runs": crewScheduleRunRows(runs, manifest.ID, runsWorkspace, title), "total": total, "limit": limit, "offset": 0})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"runs": crewScheduleRunRows(runs, manifest.ID, runsWorkspace, title, nil), "total": total, "limit": limit, "offset": 0})
 }
 
 func productWebhookCoordinates(r *http.Request) (string, string) {

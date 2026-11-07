@@ -1376,12 +1376,18 @@ func resolveIsolatedProjectAutomationBinding(ctx context.Context, userID string,
 	return isolateProjectAutomationBinding(base, projectID, kind, automationID, title)
 }
 
+// isolatedAutomationConversationKey is the conversation key of a schedule's or trigger's own conversation. The run
+// and the run list both use it, so a reply typed there lands where the next run continues.
+func isolatedAutomationConversationKey(projectID, kind, automationID string) string {
+	return strings.TrimSpace(projectID) + ":" + strings.ToLower(strings.TrimSpace(kind)) + ":" + strings.TrimSpace(automationID)
+}
+
 func isolateProjectAutomationBinding(base productConversationBinding, projectID, kind, automationID, title string) (productConversationBinding, error) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	if kind != "schedule" && kind != "trigger" && kind != "function" && kind != "messages" {
 		return productConversationBinding{}, fmt.Errorf("invalid isolated automation kind %q", kind)
 	}
-	key := strings.TrimSpace(projectID) + ":" + kind + ":" + strings.TrimSpace(automationID)
+	key := isolatedAutomationConversationKey(projectID, kind, automationID)
 	if !productConversationKeyPattern.MatchString(key) {
 		return productConversationBinding{}, fmt.Errorf("invalid isolated automation conversation key %q", key)
 	}

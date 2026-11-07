@@ -678,7 +678,10 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
       if (run.open) {
         try {
           const { openWorkAutomationRunChat, activitySessionFromRunTarget } = await import('../../../products/work/workAutomationRunRestore')
-          await openWorkAutomationRunChat(activitySessionFromRunTarget(run.open, run), { title: run.open.title })
+          await openWorkAutomationRunChat(activitySessionFromRunTarget(run.open, run), {
+            title: run.open.title,
+            writableConversationKey: run.open.writable ? run.open.conversation_key : undefined,
+          })
         } catch {
           chatStore.addToast('This run could not be opened. Its Crew may no longer exist.', 'error')
           return
