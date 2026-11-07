@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/gitcred"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
@@ -24,7 +25,7 @@ import (
 )
 
 // resolveGuardWritePath resolves one FolderGuard.WritePaths entry the way the
-// isolator resolves it (relative entries join to docsDir, absolute entries
+// isolator resolves it (Crew bindings first, then relative entries join to docsDir, absolute entries
 // used as-is) and requires the result to stay inside the workspace boundary,
 // following the same containment check as the working directory. Absolute
 // paths outside the boundary, .. escapes, and symlink redirects fail closed:
@@ -32,7 +33,15 @@ import (
 func resolveGuardWritePath(wp, docsDir string) (string, error) {
 	physicalPath := wp
 	if !filepath.IsAbs(physicalPath) {
-		physicalPath = filepath.Join(docsDir, physicalPath)
+		resolved, bound, err := crewroot.Resolve(docsDir, strings.TrimSuffix(wp, "/"))
+		if err != nil {
+			return "", err
+		}
+		if bound {
+			physicalPath = resolved
+		} else {
+			physicalPath = filepath.Join(docsDir, physicalPath)
+		}
 	}
 	if !utils.IsValidFilePath(physicalPath, docsDir) {
 		return "", fmt.Errorf("write path must be within the workspace boundary and cannot contain directory traversal")
