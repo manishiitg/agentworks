@@ -81,7 +81,7 @@ func crewExecutionDefinitions() ([]llmtypes.Tool, error) {
 	if err := native.registerCrewWorkflowRunTools(refs, "", "", "Crew/catalog"); err != nil {
 		return nil, fmt.Errorf("register native Crew workflow tools: %w", err)
 	}
-	for _, name := range []string{"list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run"} {
+	for _, name := range []string{"list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run"} {
 		tool := refs[name]
 		tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name, Description: tool.description, Parameters: llmtypes.NewParameters(tool.schema)}})
 	}

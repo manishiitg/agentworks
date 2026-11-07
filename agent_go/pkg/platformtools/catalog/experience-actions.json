@@ -186,12 +186,6 @@
     "external_members": "messages__list_agents"
   },
   {
-    "family": "workspace",
-    "name": "references_get",
-    "member": "list_attached_workflows",
-    "description": "Use the current workspace references get operation."
-  },
-  {
     "family": "integrations",
     "name": "google_connections",
     "member": "list_gmail_connections",

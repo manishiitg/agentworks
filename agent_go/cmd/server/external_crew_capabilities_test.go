@@ -188,11 +188,13 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	if !strings.Contains(result, "Workflow/research") {
 		t.Fatal(result)
 	}
-	crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "reference_attach", "workspace_path": "Workflow/research"}, 200)
-	if manifest, _, _ := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json"); !strings.Contains(manifest, "Workflow/research") {
-		t.Fatal("reference was not persisted")
+	// Workflows are not linked to a Crew; discovery still lists them for ask and functions.
+	attachName, attachArgs := canonicalTestCall("workspace", map[string]any{"action": "reference_attach", "workspace_path": "Workflow/research", "crew_id": "team"})
+	attachBody, _ := json.Marshal(map[string]any{"name": attachName, "arguments": attachArgs})
+	f.api.dispatchExternalCall(httptest.NewRecorder(), adminRequest(http.MethodPost, "/api/external/call", string(attachBody), claims, nil), false)
+	if manifest, _, _ := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json"); strings.Contains(manifest, "Workflow/research") {
+		t.Fatal("a workflow reference was persisted")
 	}
-	crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "reference_detach", "workspace_path": "Workflow/research"}, 200)
 	claims.AccessToken.AllWorkflows = false
 	claims.AccessToken.WorkflowIDs = []string{"other"}
 	crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "reference_attach", "workspace_path": "Workflow/research"}, 403)

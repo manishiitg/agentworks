@@ -3062,6 +3062,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := renameFunctionFreshToNew(); err != nil {
 		log.Printf("[CREW_FUNCTIONS] event=fresh_rename_failed error=%v", err)
 	}
+	// One-off, before any turn: a Crew's saved workflow links are removed, Crew links stay (migration file; delete
+	// once every server has started on this version).
+	if err := clearCrewWorkflowLinks(); err != nil {
+		log.Printf("[CREW_LINKS] event=workflow_links_clear_failed error=%v", err)
+	}
 	// One-off, before any schedule can fire: AgentWorks stops watching Goals (migration file; delete once every
 	// server has started on this version).
 	if err := api.retireAgentWorksGoalWatching(context.Background()); err != nil {

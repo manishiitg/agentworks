@@ -98,31 +98,6 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 	return reg.tools, mock, api
 }
 
-func TestListAttachedWorkflows(t *testing.T) {
-	tools, _, _ := newCrewWorkflowRunTestEnv(t)
-	out, err := tools["list_attached_workflows"].exec(context.Background(), map[string]interface{}{})
-	if err != nil {
-		t.Fatalf("list failed: %v", err)
-	}
-	var listed struct {
-		Workflows []struct {
-			WorkspacePath string `json:"workspace_path"`
-			Label         string `json:"label"`
-			WorkflowID    string `json:"workflow_id"`
-			Available     bool   `json:"available"`
-		} `json:"workflows"`
-	}
-	if err := json.Unmarshal([]byte(out), &listed); err != nil {
-		t.Fatal(err)
-	}
-	if len(listed.Workflows) != 1 || listed.Workflows[0].WorkspacePath != "Workflow/test" {
-		t.Fatalf("workflows = %+v, want the one attached workflow", listed.Workflows)
-	}
-	if listed.Workflows[0].Label != "Hook target" || listed.Workflows[0].WorkflowID == "" || !listed.Workflows[0].Available {
-		t.Fatalf("workflow = %+v, want resolved manifest", listed.Workflows[0])
-	}
-}
-
 func TestListWorkflowTriggersAttachedOnly(t *testing.T) {
 	tools, _, _ := newCrewWorkflowRunTestEnv(t)
 	tool := tools["list_workflow_triggers"]

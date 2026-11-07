@@ -36,8 +36,8 @@ Delete only the requested trigger. Owner/write checks are enforced by the server
 A Crew invokes a workflow through a platform-internal binding instead of a
 public webhook: `kind: internal` with a caller stamp, no URL or secret, usable
 only by the named caller. Crews manage their own bindings with
-`list_attached_workflows`, `list_workflow_triggers`, `run_workflow_trigger`,
-and `get_workflow_trigger_run`. The read-only attachment authorizes
+`list_workflow_triggers`, `run_workflow_trigger`,
+and `get_workflow_trigger_run`. The caller's owner or editor access authorizes
 `run_workflow_trigger` to create only the secretless internal binding scoped to
 that exact Crew; it does not permit general trigger management. The Builder
 may also create the same binding explicitly with `manage_workflow_webhook`.

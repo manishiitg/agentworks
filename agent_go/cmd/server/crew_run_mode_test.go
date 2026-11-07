@@ -161,7 +161,7 @@ func TestCrewReaderDeniedToolsGate(t *testing.T) {
 	for _, allowed := range []string{
 		"execute_shell_command", "generate_text_llm",
 		"get_file_link", "list_secrets", "list_accessible_workflows",
-		"list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run",
+		"list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run",
 		"list_project_schedules", "list_project_triggers",
 		"human_feedback", "manage_custom_commands",
 		"attach_work_folder", "list_work_folders",
@@ -1052,7 +1052,7 @@ func TestRegisterAgentProfileToolsReaderSplit(t *testing.T) {
 	}
 	for _, want := range []string{
 		crewAskFilesToolName,
-		"list_accessible_workflows", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run",
+		"list_accessible_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run",
 		"list_project_schedules", "list_project_triggers",
 		"manage_custom_commands", "list_work_folders", "attach_work_folder",
 		// A crew answering in Slack reads its thread in Run mode too.
@@ -1170,50 +1170,6 @@ func TestProjectManifestAnyOwner(t *testing.T) {
 			t.Fatalf("reader fallback rewrote %q", path)
 		}
 	}
-}
-
-func TestListAttachedWorkflowsReaderFiltersInvisible(t *testing.T) {
-	fx := newCrewRunModeFixture(t)
-	api := &StreamingAPI{projectActions: &ProjectActionDispatcher{}}
-	api.scheduler = NewSchedulerService(api)
-	// Registration stamps the turn user (as the query path does per turn),
-	// so register once per caller.
-	execAs := func(userID string) []string {
-		registrar := &recordingRegistrar{}
-		if err := api.registerCrewWorkflowRunTools(registrar, userID, "session-1", crewRunModeOwnerRoot); err != nil {
-			t.Fatalf("register for %s: %v", userID, err)
-		}
-		tool, ok := registrar.tools["list_attached_workflows"]
-		if !ok {
-			t.Fatal("list_attached_workflows not registered")
-		}
-		out, err := tool.exec(context.Background(), map[string]interface{}{})
-		if err != nil {
-			t.Fatalf("exec as %s: %v", userID, err)
-		}
-		var decoded struct {
-			Workflows []struct {
-				WorkspacePath string `json:"workspace_path"`
-			} `json:"workflows"`
-		}
-		if err := json.Unmarshal([]byte(out), &decoded); err != nil {
-			t.Fatal(err)
-		}
-		paths := []string{}
-		for _, entry := range decoded.Workflows {
-			paths = append(paths, entry.WorkspacePath)
-		}
-		return paths
-	}
-	readerPaths := execAs("reader")
-	if len(readerPaths) != 1 || readerPaths[0] != "Workflow/shared" {
-		t.Fatalf("reader refs = %v", readerPaths)
-	}
-	ownerPaths := execAs("owner")
-	if len(ownerPaths) != 2 {
-		t.Fatalf("owner refs = %v", ownerPaths)
-	}
-	_ = fx
 }
 
 // A refused write in a read-only session tells the model to offer the change
