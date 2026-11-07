@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
-import { readFileSync } from 'node:fs'
+import chatVisualFormats from '../../../../agent_go/pkg/skills/panels/chat-visuals/references/formats.md?raw'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -84,8 +84,7 @@ const fence = (spec: Record<string, unknown>) => '```chat-ui\n' + widgetStream(s
 
 // The shipped skill is the authoring contract for the migrated stream format.
 it('compiles every shipped chat-visual example with the actual json-render catalog (PLAT-750-88)', () => {
-  const guide = readFileSync(new URL('../../../../agent_go/pkg/skills/panels/chat-visuals/references/formats.md', import.meta.url), 'utf8')
-  const examples = [...guide.matchAll(/```chat-ui\n([\s\S]*?)\n```/g)]
+  const examples = [...chatVisualFormats.matchAll(/```chat-ui\n([\s\S]*?)\n```/g)]
   expect(examples.length).toBeGreaterThan(0)
   for (const example of examples) expect(compileChatVisual(example[1]), example[1]).not.toBeNull()
 })
