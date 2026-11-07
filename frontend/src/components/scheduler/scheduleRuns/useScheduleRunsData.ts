@@ -10,13 +10,12 @@ import { selectWorkflowPreset } from '../../../utils/workflowNavigation'
 import { scheduleTabLabel } from '../../../utils/scheduleTabLabel'
 import { resolveWorkflowTabForSession } from '../../../utils/workflowTabResolution'
 import { hydrateExecutionConversation } from '../../../utils/executionConversationRestore'
-import type { ScheduledJob, ScheduledJobRun, SchedulerConfig, SkippedWhilePaused, UpdateScheduledJobRequest } from '../../../services/api-types'
+import type { ScheduledJob, ScheduledJobRun, SchedulerConfig, UpdateScheduledJobRequest } from '../../../services/api-types'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import { useLiveRefetch } from '../../../hooks/useLiveRefetch'
 import {
   WORKFLOW_SCHEDULE_PANEL_LIMIT,
   defaultSchedulePanelView,
-  getMissedScheduleDelayMs,
   getPotentialScheduleOverlaps,
   getWorkflowFilterMeta,
   getWorkflowScopeLabel,
@@ -79,8 +78,6 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   const [selectedWorkflowFilter, setSelectedWorkflowFilter] = useState('all')
   const [schedulerConfig, setSchedulerConfig] = useState<SchedulerConfig | null>(null)
   // After a resume: the runs the pause skipped, offered for a manual catch-up.
-  const [pauseCatchUp, setPauseCatchUp] = useState<SkippedWhilePaused[]>([])
-  const [isRunningCatchUp, setIsRunningCatchUp] = useState(false)
   const [isUpdatingSchedulerPause, setIsUpdatingSchedulerPause] = useState(false)
   const [bulkUpdatingGroupKey, setBulkUpdatingGroupKey] = useState<string | null>(null)
 
@@ -269,24 +266,6 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     if (selectedWorkflowFilter === 'all') return panelJobs
     return panelJobs.filter(job => getWorkflowFilterMeta(job, presetMap).value === selectedWorkflowFilter)
   }, [panelJobs, presetMap, selectedWorkflowFilter])
-
-  const upcomingJobs = useMemo(() => {
-    return scopedJobs
-      .filter(job => job.enabled && !!job.next_run_at && !isMissedSchedule(job))
-      .sort((a, b) => (a.next_run_at || '').localeCompare(b.next_run_at || ''))
-      .slice(0, 4)
-  }, [scopedJobs])
-
-  const missedJobs = useMemo(() => {
-    return scopedJobs
-      .filter(job => isMissedSchedule(job))
-      .sort((a, b) => {
-        const aDelay = getMissedScheduleDelayMs(a) ?? 0
-        const bDelay = getMissedScheduleDelayMs(b) ?? 0
-        return bDelay - aDelay
-      })
-      .slice(0, 4)
-  }, [scopedJobs])
 
   const filteredJobs = useMemo(() => {
     return [...panelJobs]
@@ -792,30 +771,11 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
         ? { globally_paused: false, paused_by: '', paused_products: schedulerConfig?.paused_products ?? [] }
         : { globally_paused: false, paused_by: !isProductPaused ? 'frontend-user' : '', paused_products: isProductPaused ? others : [...others, pauseProduct] })
       setSchedulerConfig(updated)
-      if (isSchedulerPaused) setPauseCatchUp(updated.skipped_while_paused ?? [])
     } catch (e) {
       console.error('Failed to update scheduler config:', e)
     } finally {
       setIsUpdatingSchedulerPause(false)
     }
-  }
-
-  // Runs each chosen schedule once now. A pause may have skipped several
-  // occurrences of one schedule; one catch-up run stands for them.
-  const runPauseCatchUp = async (scheduleIds: string[]) => {
-    if (scheduleIds.length === 0) return
-    setIsRunningCatchUp(true)
-    const failed: string[] = []
-    for (const id of scheduleIds) {
-      try {
-        await schedulerApi.triggerJob(id)
-      } catch {
-        failed.push(id)
-      }
-    }
-    setIsRunningCatchUp(false)
-    setPauseCatchUp(prev => prev.filter(item => failed.includes(item.schedule_id)))
-    if (failed.length > 0) useChatStore.getState().addToast(`${failed.length} catch-up run(s) could not start.`, 'error')
   }
 
   const toggleWorkflowGroup = useCallback((workflowKey: string) => {
@@ -848,10 +808,6 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   const activeFilterLabel = filterPills.find((pill) => pill.key === activeFilter)?.label ?? 'All'
 
   return {
-    pauseCatchUp,
-    isRunningCatchUp,
-    runPauseCatchUp,
-    dismissPauseCatchUp: () => setPauseCatchUp([]),
     isReadOnlyUser,
     isLoading,
     error,
@@ -889,8 +845,6 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     summary,
     normalizedSearch,
     workflowOptions,
-    upcomingJobs,
-    missedJobs,
     filteredJobs,
     showWorkflowIdentityInScheduleRows,
     workflowGroups,

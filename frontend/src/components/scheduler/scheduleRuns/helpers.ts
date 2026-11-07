@@ -3,7 +3,7 @@ import type { ScheduledJob } from '../../../services/api-types'
 import { normalizeWorkspacePath } from '../../../utils/workspacePathUtils'
 
 export type JobFilter = 'running' | 'waiting' | 'enabled' | 'paused' | 'missed' | 'issues' | 'overlap' | 'all'
-export type SchedulePanelView = 'overview' | 'calendar' | 'by-workflow' | 'schedules'
+export type SchedulePanelView = 'calendar' | 'by-workflow' | 'schedules'
 
 /** Global views open on the per-workflow grouping with drill-down into each
  *  workflow's schedules; a workflow-scoped view already identifies one
@@ -136,27 +136,6 @@ export function formatDuration(ms?: number): string {
   const hrs = Math.floor(mins / 60)
   const remMins = mins % 60
   return `${hrs}h ${remMins}m`
-}
-
-export function formatTimeUntil(dateStr?: string): string {
-  if (!dateStr) return '—'
-
-  const diffMs = new Date(dateStr).getTime() - Date.now()
-  if (Number.isNaN(diffMs)) return '—'
-  if (diffMs <= 0) return 'due now'
-
-  const totalMinutes = Math.ceil(diffMs / 60000)
-  if (totalMinutes < 60) return `in ${totalMinutes}m`
-
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  if (hours < 24) return minutes > 0 ? `in ${hours}h ${minutes}m` : `in ${hours}h`
-
-  const days = Math.floor(hours / 24)
-  const remHours = hours % 24
-  if (days < 7) return remHours > 0 ? `in ${days}d ${remHours}h` : `in ${days}d`
-
-  return new Date(dateStr).toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
 export function getMissedScheduleDelayMs(job: ScheduledJob): number | null {
