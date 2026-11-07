@@ -103,6 +103,8 @@ func TestReadLinkedGoalNeedsCurrentAccess(t *testing.T) {
 	}
 	if out, err := run("owner"); err != nil || !strings.Contains(out, `"schedules"`) {
 		t.Fatalf("owner read = %s %v", out, err)
+	}
+}
 
 // From inside a Crew, list_agents shows the person's other Crews only when linked, except for their AgentWorks main
 // agent, which reaches all of them (owner, 7 Nov). The server decides by the Crew's role.
