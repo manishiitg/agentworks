@@ -345,9 +345,28 @@ func TestCrewStepToolsKeepRunOutputsAndInputsAfterRuntimeEviction(t *testing.T) 
 	if err := os.Remove(selection); err != nil {
 		t.Fatal(err)
 	}
+	// A rejected new run must not become this chat's selected run. This
+	// validation lives in the child setup, after ordinary input type checks.
+	session.config.Secrets = []orchestrator.SecretEntry{{Name: "fixture", Value: "7"}}
+	if _, err := run(ctx, map[string]interface{}{"step_id": "first", "inputs": map[string]interface{}{"COUNT": "7"}}); err == nil || !strings.Contains(err.Error(), "Vault value") {
+		t.Fatalf("launch bypassed child input validation: %v", err)
+	}
+	if _, err := os.Stat(selection); !os.IsNotExist(err) {
+		t.Fatal("failed launch replaced the selected run", err)
+	}
+	session.config.Secrets = nil
 	out, err := run(ctx, map[string]interface{}{"step_id": "1", "inputs": map[string]interface{}{"COUNT": "7"}})
 	if err != nil || !strings.Contains(out, "started in background") {
 		t.Fatalf("first step: %s %v", out, err)
+	}
+	// PLAT-746-405: acceptance must persist inputs before selecting a run,
+	// otherwise an immediate next call sees a selected but unreadable run.
+	acceptedFolder, err := os.ReadFile(selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(filepath.Join(docs, workflow, "runs", string(acceptedFolder), "inputs.json")); err != nil {
+		t.Fatalf("accepted step has no durable run inputs: %v", err)
 	}
 	wait()
 	folderRaw, err := os.ReadFile(selection)

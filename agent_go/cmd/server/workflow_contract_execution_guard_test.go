@@ -40,6 +40,19 @@ func TestRequireCurrentWorkflowContractForManualRunAllowsCurrent(t *testing.T) {
 	}
 }
 
+// PLAT-746-405: an editable manifest ID is not proof that a known Crew
+// workflow became standalone. Script/Relay bindings do not use this gate.
+func TestKnownCrewBindingGuardsAChangedManifestID(t *testing.T) {
+	root := serveContractGuardManifest(t, workflowContractSkillsVersion)
+	for _, kind := range []string{"workflow", "script", "relay"} {
+		binding := &crewExecutableBinding{ID: "trusted-id-different-from-manifest", Root: root, Kind: kind}
+		err := requireCurrentWorkflowContractForManualRun(t.Context(), root, binding)
+		if (err != nil) != (kind == "workflow") {
+			t.Fatalf("kind=%s wrong contract gate: %v", kind, err)
+		}
+	}
+}
+
 func TestManualRunRefusesUnsupportedOldContracts(t *testing.T) {
 	for _, version := range []string{
 		workflowContractExplicitSchedulePulseVersion,

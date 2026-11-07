@@ -84,6 +84,23 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			if response.status >= 400 {
 				return "", fmt.Errorf("%s", strings.TrimSpace(response.body.String()))
 			}
+			if action == "list" {
+				var result map[string]interface{}
+				if err := json.Unmarshal(response.body.Bytes(), &result); err != nil {
+					return "", err
+				}
+				if entries, ok := result["executables"].([]interface{}); ok {
+					for _, value := range entries {
+						if entry, ok := value.(map[string]interface{}); ok {
+							if workspace, ok := entry["workspace_path"].(string); ok {
+								entry["code_environment"] = workflow.CodeRuntimeEnvironment(workspace)
+							}
+						}
+					}
+				}
+				encoded, err := json.Marshal(result)
+				return string(encoded), err
+			}
 			return response.body.String(), nil
 		}
 		target, _ := args["workspace_path"].(string)

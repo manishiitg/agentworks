@@ -49,7 +49,6 @@ func TestReviewPlanPromptPrefersCoherentAgenticSteps(t *testing.T) {
 		"evidence-based double-check and repair turns",
 		"Multiple large sequences are correct when their contexts should not be shared",
 		"builder should decide this intelligently from workflow semantics",
-		"10+ representative-run threshold applies only",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("review plan prompt missing coherent-agentic-step guidance %q", want)

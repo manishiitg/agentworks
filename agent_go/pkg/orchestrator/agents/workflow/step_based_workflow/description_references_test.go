@@ -32,6 +32,15 @@ func TestDescriptionNamedResourcesAreReadableWithoutInlining(t *testing.T) {
 	write("skills/job-selection/references/selection.md", "Skip jobs under $500.\n")
 	write("knowledgebase/notes/positioning.md", strings.Repeat("x", 5000))
 	write("skills/job-selection/SKILL.md", "not named, never attached")
+	// An unrelated binding-store failure is not evidence that this unmoved
+	// workflow lost its files (PLAT-746-396).
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(os.Getenv("AGENTWORKS_STATE_ROOT"), "ownership"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(os.Getenv("AGENTWORKS_STATE_ROOT"), "ownership/crew-executables"), []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	previous := BrainNoteReader
 	BrainNoteReader = func(_ context.Context, _, note string) (string, error) {
