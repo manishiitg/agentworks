@@ -72,7 +72,7 @@ func TestCrewDashboardDiscoveryKeepsProjectAccessWithoutTrackingStore(t *testing
 	}
 }
 
-func TestWorkflowTrackingStaysInWorkflowDBAndRefusesCrewRoots(t *testing.T) {
+func TestWorkflowMeasurementReadRefusesCrewRootsAndCreatesNothing(t *testing.T) {
 	svc, files, ctx := newCrewCreationTestEnv(t)
 	docs, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
@@ -86,38 +86,18 @@ func TestWorkflowTrackingStaysInWorkflowDBAndRefusesCrewRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 	files.files[root+"/workflow.json"] = `{"id":"report","label":"Progress"}`
-	metric := step.GoalMetric{ID: "readings", CriterionID: "readings", Name: "Readings", Role: "primary", Unit: "count", Direction: "increase", Definition: "Observed count", Source: "Report", Window: "instant", CollectionFrequency: "daily", FreshnessHours: 48}
-	if err := step.ConfigureGoalMetrics(ctx, root, []step.GoalMetric{metric}); err != nil {
-		t.Fatal(err)
-	}
-	value := 7.0
-	observations := []step.GoalObservation{{Metric: "readings", CriterionID: "readings", RunID: "capture", Unit: "count", Value: &value, ObservedAt: "2026-11-07T00:00:00Z", Evidence: []string{"report"}}}
-	if _, err := step.RecordGoalObservations(ctx, root, observations); err != nil {
-		t.Fatal(err)
-	}
 	ledger, err := step.LoadGoalMeasurements(ctx, root, 10)
-	if err != nil || len(ledger.Observations) != 1 {
+	if err != nil || len(ledger.Observations) != 0 {
 		t.Fatalf("workflow data: %+v %v", ledger, err)
 	}
-	if ledger.Observations[0].RunID != "capture" {
-		t.Fatal("rewrote source run ID")
-	}
-	if _, err := step.RecordGoalObservations(ctx, crew.WorkspacePath, observations); err == nil {
-		t.Fatal("Crew-root write was accepted")
+	if _, err := step.LoadGoalMeasurements(ctx, crew.WorkspacePath, 10); err == nil {
+		t.Fatal("Crew-root read was accepted")
 	}
 	private, err := crewroot.PrivateRoot(docs, crew.CrewID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(private, "db/db.sqlite")); !os.IsNotExist(err) {
-		t.Fatalf("writer created Crew DB: %v", err)
-	}
-	// Dashboard readers use SQL on this same workflow data, not Goal APIs.
-	layout, found, err := crewroot.LookupExecutable(docs, root)
-	if err != nil || !found {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(layout.Runtime, "db/db.sqlite")); err != nil {
-		t.Fatal(err)
+		t.Fatalf("reader created Crew DB: %v", err)
 	}
 }
