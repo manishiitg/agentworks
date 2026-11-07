@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
 import chatVisualFormats from '../../../../agent_go/pkg/skills/panels/chat-visuals/references/formats.md?raw'
+import slackVisualFormats from '../../../../agent_go/pkg/skills/panels/chat-visuals/references/slack.md?raw'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { MarkdownRenderer } from './MarkdownRenderer'
@@ -84,7 +85,7 @@ const fence = (spec: Record<string, unknown>) => '```chat-ui\n' + widgetStream(s
 
 // The shipped skill is the authoring contract for the migrated stream format.
 it('compiles every shipped chat-visual example with the actual json-render catalog (PLAT-750-88)', () => {
-  const examples = [...chatVisualFormats.matchAll(/```chat-ui\n([\s\S]*?)\n```/g)]
+  const examples = [...(chatVisualFormats + slackVisualFormats).matchAll(/```chat-ui\n([\s\S]*?)\n```/g)]
   expect(examples.length).toBeGreaterThan(0)
   for (const example of examples) expect(compileChatVisual(example[1]), example[1]).not.toBeNull()
 })
@@ -286,4 +287,14 @@ it('renders native swimlanes and ordered call/reply sequences with strict actor 
     expect(compileChatVisual(widgetStream({ ...swimlane, steps: [{ ...swimlane.steps[0], lane: 'missing' }] }))).toBeNull()
     expect(compileChatVisual(widgetStream({ ...swimlane, steps: [swimlane.steps[0], swimlane.steps[0]] }))).toBeNull()
   } finally { await act(async () => root.unmount()) }
+})
+
+// The same table data must stay safe and readable on both message surfaces.
+it('renders structured tables with the existing copy control and refuses mismatched columns (PLAT-750-89)', async () => {
+  const table = { type: 'table', title: 'Saved totals', headers: ['Day', 'Total'], rows: [['<script>Monday</script>', 12]] }
+  const container = await renderContent(fence(table), true, true)
+  expect(container.querySelector('table')?.textContent).toContain('<script>Monday</script>')
+  expect(container.querySelector('script')).toBeNull()
+  expect(container.querySelector('button[aria-label="Copy table"]')).not.toBeNull()
+  expect(compileChatVisual(widgetStream({ ...table, rows: [['Missing total']] }))).toBeNull()
 })

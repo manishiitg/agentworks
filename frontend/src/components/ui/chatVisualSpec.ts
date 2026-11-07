@@ -34,7 +34,7 @@ export function compileChatVisual(source: string, progressive = false): Spec | n
       !['root', 'elements'].includes(parts[0]) ||
       (parts[0] === 'root' && parts.length !== 1) ||
       (parts[0] === 'elements' && parts.length > 1 && parts[1] !== 'visual') ||
-      parts.some(part => ['__proto__', 'prototype', 'constructor'].includes(part) || /^\d+$/.test(part) && Number(part) > 30)) return null
+      parts.some(part => ['__proto__', 'prototype', 'constructor'].includes(part) || /^\d+$/.test(part) && Number(part) > 100)) return null
     accepted.push(line)
   }
   try {

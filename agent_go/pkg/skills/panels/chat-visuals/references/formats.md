@@ -7,6 +7,7 @@ Use a visual only when it helps explain the answer. Supported formats:
 - **Calls and replies in order:** a native `sequence`, with named participants, chronological messages and optional dashed replies.
 - **Explain a process or architecture:** a native `diagram` with themed cards and connectors. Prefer it over Mermaid for new simple flows; use Mermaid when the person specifically asks for it or needs a diagram type the native widget does not cover.
 - **Show places, options or resources:** `cards` with images, titles, descriptions and optional links; choose `list` for image-and-text rows or `grid` for photos above the text.
+- **Structured table:** type `table`, title, headers and rows of equal-width string/number arrays (up to100rows and20columns). It uses the existing table presentation and copy control.
 - **Show numbers:** a compact line or bar chart, one series, at most 30 points.
 - **Explain events:** a vertical timeline, at most 20 events, in the order supplied.
 - **Supporting evidence:** expandable details, collapsed initially, with a short title and Markdown body.

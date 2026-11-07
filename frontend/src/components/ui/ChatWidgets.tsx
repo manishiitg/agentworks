@@ -2,10 +2,21 @@ import { useContext, type ReactNode } from 'react'
 import type { ChatElement as ElementSpec } from './chatElementSpec'
 
 import { ChatElementDisclosureContext } from './ChatElement'
+import { MarkdownTable } from './MarkdownTable'
 
 const frame = 'not-prose my-4 min-w-0 max-w-xl rounded-xl border border-border bg-muted/20 text-foreground'
 const summary = 'cursor-pointer break-words px-4 py-3 text-sm font-medium marker:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring'
 const number = (value: number) => new Intl.NumberFormat(undefined, { notation: 'compact', maximumSignificantDigits: 3 }).format(value)
+
+export function ChatTable({ spec }: { spec: Extract<ElementSpec, { type: 'table' }> }) {
+  return <section className="not-prose my-4 min-w-0 text-foreground" data-chat-element="table" aria-label={spec.title}>
+    <h3 className="text-sm font-semibold">{spec.title}</h3>
+    <MarkdownTable>
+      <thead><tr>{spec.headers.map((header, i) => <th key={i} className="px-4 py-3 text-left text-sm font-semibold">{header}</th>)}</tr></thead>
+      <tbody>{spec.rows.map((row, i) => <tr key={i} className="border-t border-border">{row.map((cell, j) => <td key={j} className="px-4 py-3 text-sm">{cell}</td>)}</tr>)}</tbody>
+    </MarkdownTable>
+  </section>
+}
 
 export function ChatChart({ spec }: { spec: Extract<ElementSpec, { type: 'chart' }> }) {
   const { data, style, unit } = spec

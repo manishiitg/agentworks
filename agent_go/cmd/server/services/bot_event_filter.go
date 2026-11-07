@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/chatvisuals"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/mcpagent/events"
 )
@@ -1314,7 +1315,12 @@ func (f *BotEventFilter) sendStreamingChunk(ctx context.Context, event BotEventD
 		return false
 	}
 
-	content := cleanBotStreamingContent(chunk.Content, chunk.IsDelta)
+	// Typed native content is already an assistant reply. Status-line cleanup
+	// would delete a whole JSON operation when a label contains e.g. "(MCP)".
+	content := chunk.Content
+	if chunk.Source != events.StreamingChunkSourceContent {
+		content = cleanBotStreamingContent(content, chunk.IsDelta)
+	}
 	if content == "" {
 		return false
 	}
@@ -1367,7 +1373,7 @@ func (f *BotEventFilter) pushStreamingText(ctx context.Context, gen int) bool {
 
 	if messageID == "" {
 		f.clearProgressMessage("Request finished.")
-		sentID, err := f.connector.SendThreadMessage(ctx, f.threadID, nextText)
+		sentID, err := writeBotReply(ctx, f.connector, f.threadID, "", nextText, false)
 		if err != nil {
 			log.Printf("[BOT_FILTER] Failed to send streaming message: %v", err)
 			return false
@@ -1385,7 +1391,7 @@ func (f *BotEventFilter) pushStreamingText(ctx context.Context, gen int) bool {
 		return true
 	}
 
-	if err := f.connector.UpdateMessage(ctx, f.threadID, messageID, nextText); err != nil {
+	if _, err := writeBotReply(ctx, f.connector, f.threadID, messageID, nextText, false); err != nil {
 		log.Printf("[BOT_FILTER] Failed to update streaming message: %v", err)
 		return false
 	}
@@ -1427,7 +1433,8 @@ func (f *BotEventFilter) flushStreamingMessage(ctx context.Context, finalText st
 	// running narration ("I'll check…", "Switching to us-east-2…") in front
 	// of the final answer in Slack, while the web chat showed the answer
 	// alone (server A 2026-09-25, QA bot).
-	if normalizeBotMainText(text) == normalizeBotMainText(f.streamingSentText) {
+	_, formatsReply := f.connector.(BotReplyWriter)
+	if normalizeBotMainText(text) == normalizeBotMainText(f.streamingSentText) && !formatsReply {
 		f.mainTextSent = true
 		f.lastMainText = strings.TrimSpace(f.streamingSentText)
 		f.mu.Unlock()
@@ -1436,7 +1443,7 @@ func (f *BotEventFilter) flushStreamingMessage(ctx context.Context, finalText st
 	f.streamingText = text
 	f.mu.Unlock()
 
-	if err := f.connector.UpdateMessage(ctx, f.threadID, messageID, text); err != nil {
+	if _, err := writeBotReply(ctx, f.connector, f.threadID, messageID, text, true); err != nil {
 		log.Printf("[BOT_FILTER] Failed to flush streaming message: %v", err)
 		return false
 	}
@@ -1597,6 +1604,10 @@ var bareWorkspacePath = regexp.MustCompile(`(?:^|[^(])(` + workspacePathPattern 
 // replaceWorkspacePaths converts workspace file paths in message text to shareable URLs.
 // Paths inside markdown links get their URL replaced; bare paths become new markdown links.
 func (f *BotEventFilter) replaceWorkspacePaths(text string) string {
+	return chatvisuals.MapProse(text, f.replaceProseWorkspacePaths, func(source string) string { return source })
+}
+
+func (f *BotEventFilter) replaceProseWorkspacePaths(text string) string {
 	if f.appBaseURL == "" {
 		return text
 	}
