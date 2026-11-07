@@ -600,12 +600,12 @@ func openStructuredFunctionOutputRoot(call *crewFunctionCall, name string) (*os.
 	if !allowed || !webhookOutputPath(name) {
 		return nil, fmt.Errorf("file is not an output of this function execution")
 	}
-	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
+	base, err := webhookWorkspaceRoot(call.TargetPath)
 	if err != nil {
 		return nil, err
 	}
 	defer base.Close()
-	if err := externalNoSymlinks(base, path.Join(call.TargetPath, "runs", folder)); err != nil {
+	if err := externalNoSymlinks(base, path.Join("runs", folder)); err != nil {
 		return nil, err
 	}
 	return openWebhookRunRoot(call.TargetPath, schedulerstate.Run{RunID: runID, RunFolder: folder})
