@@ -94,6 +94,8 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     setAnnouncement(`${displayName}: ${TAB_STATUS_DOT[status].label}`)
   }, [status, displayName])
   const isBusy = status === 'busy'
+  // Closing a temporary run view only hides it, even while its execution continues.
+  const closeBlocked = isBusy && tab.metadata?.isViewOnly !== true
   useEffect(() => {
     if (!isRenaming) setRenameDraft(tab.name)
   }, [isRenaming, tab.name])
@@ -222,16 +224,17 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       {canClose && (
         <button
           type="button"
-          disabled={isBusy}
+          disabled={closeBlocked}
           onClick={(event) => {
             event.stopPropagation()
-            if (isBusy) return
+            if (closeBlocked) return
             if (closeStopsSession && tab.sessionId) setClosingSessionId(tab.sessionId)
             else onCloseTab(tab.tabId)
           }}
-          className={`ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 transition-colors focus:opacity-100 ${isBusy ? 'cursor-not-allowed group-hover:opacity-40' : 'group-hover:opacity-100 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200'}`}
-          aria-label={isBusy ? `${displayName} is still running — stop it before closing` : `Close ${displayName}`}
-          title={isBusy ? 'Still running — stop the run before closing' : 'Close tab'}
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation() }}
+          className={`ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 transition-colors focus:opacity-100 ${closeBlocked ? 'cursor-not-allowed group-hover:opacity-40' : 'group-hover:opacity-100 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200'}`}
+          aria-label={closeBlocked ? `${displayName} is still running — stop it before closing` : `Close ${displayName}`}
+          title={closeBlocked ? 'Still running — stop the run before closing' : 'Close tab'}
         >
           <X className="h-3 w-3" />
         </button>
