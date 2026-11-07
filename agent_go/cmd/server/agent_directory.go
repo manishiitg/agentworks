@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -69,7 +70,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		row := map[string]interface{}{
 			"kind": kind, "type": "Crew", "presence": "Runs when called", "delivery_mode": "on_request", "id": "workspace:" + profileID + ":" + id, "crew_id": id, "name": name, "owner": crew["owner"],
 			"your_access": crew["access"], "description": crew["description"], "functions": agentDirectoryFunctions(functions),
-			"reach": "functions action=call(target=<id>, function=<name>) for a function; messages action=send(target=<id>) to ask it",
+			"reach": crewDirectoryReach(false),
 		}
 		if role, _ := crew["role"].(string); role != "" {
 			row["role"] = role
@@ -92,7 +93,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			}
 			row["chats"] = selected
 		}
-		row["reach"] = "messages action=send(target=<id>, chat_id=<chat_id from chats>) messages that existing agent. Functions use functions action=call; omit chat_id for the Crew ask."
+		row["reach"] = crewDirectoryReach(true)
 		agents = append(agents, row)
 		if !owned {
 			for _, agent := range row["chats"].([]sharedCrewAgent) {
@@ -143,7 +144,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 				chats = append(chats, map[string]interface{}{"chat_id": tab.ID, "name": tab.Name, "owner_name": tab.OwnerName, "can_write": tab.CanWrite, "is_main": tab.IsMain})
 			}
 			row["chats"] = chats
-			row["reach"] = "messages action=send(target=<id>, chat_id=<chat_id>) for a named Builder tab; functions use functions action=call."
+			row["reach"] = "messages action=send(target=<id>, chat_id=<chat_id>) for a named Builder tab; to use its features call its functions: functions action=call(project=<id>, function=<name>, input=...)."
 		}
 		agents = append(agents, row)
 	}
@@ -166,10 +167,60 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	}, nil
 }
 
+// crewDirectoryReach tells an agent how to use a Crew: its features are functions it calls, never the chat of a function's
+// own agent (owner, 7 Nov). chats is whether the row also lists agents it may message.
+func crewDirectoryReach(chats bool) string {
+	call := "To use its features call a function: functions action=call(project=<crew_id>, function=<name>, input=<its asks_for>), then functions action=status(call_id) until it settles. A function runs in its own agent, which only the owner talks to."
+	if chats {
+		return "messages action=send(target=<id>, chat_id=<chat_id from chats>) messages one of its agents; omit chat_id for the Crew ask. " + call
+	}
+	return call
+}
+
+// agentDirectoryFunctions are a Crew's functions as an agent reads them: the name, what it does and what it asks for.
 func agentDirectoryFunctions(functions []crewFunction) []map[string]interface{} {
 	out := make([]map[string]interface{}, 0, len(functions))
 	for _, fn := range functions {
-		out = append(out, map[string]interface{}{"name": fn.Name, "description": fn.Description})
+		row := map[string]interface{}{"name": fn.Name, "description": fn.Description}
+		if asks := crewFunctionAsksFor(fn.InputSchema); len(asks) > 0 {
+			row["asks_for"] = asks
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// crewFunctionAsksFor lists the inputs a function takes, in the order of its schema's required list first.
+func crewFunctionAsksFor(schema map[string]interface{}) []map[string]interface{} {
+	props, _ := schema["properties"].(map[string]interface{})
+	required := map[string]bool{}
+	switch list := schema["required"].(type) {
+	case []interface{}:
+		for _, name := range list {
+			if text, ok := name.(string); ok {
+				required[text] = true
+			}
+		}
+	case []string:
+		for _, name := range list {
+			required[name] = true
+		}
+	}
+	names := make([]string, 0, len(props))
+	for name := range props {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if required[names[i]] != required[names[j]] {
+			return required[names[i]]
+		}
+		return names[i] < names[j]
+	})
+	out := make([]map[string]interface{}, 0, len(names))
+	for _, name := range names {
+		field, _ := props[name].(map[string]interface{})
+		kind, _ := field["type"].(string)
+		out = append(out, map[string]interface{}{"name": name, "type": kind, "required": required[name]})
 	}
 	return out
 }
@@ -197,4 +248,30 @@ func filterAgentDirectory(directory map[string]any, query string) {
 		}
 		directory[key] = filtered
 	}
+}
+
+// agentDirectoryHowToCall is the one line on how to use what the list holds, naming only the kinds it has (owner, 7 Nov: Goals and
+// Relays are going away, so the line no longer teaches them to people who have none).
+func agentDirectoryHowToCall(rows any) string {
+	kinds := map[string]bool{}
+	if list, ok := rows.([]map[string]interface{}); ok {
+		for _, row := range list {
+			kind, _ := row["kind"].(string)
+			kinds[kind] = true
+		}
+	}
+	parts := []string{}
+	if kinds["crew"] {
+		parts = append(parts, "Crew: functions action=call(project=<crew_id>, function=<name>, input=<its asks_for>), then functions action=status(call_id) until it settles; or workspace action=ask. A function's own agent is not a chat to message")
+	}
+	if kinds["goal"] {
+		parts = append(parts, "Goal: functions action=call with workflow_id and function")
+	}
+	if kinds["relay"] {
+		parts = append(parts, "Relay: relay action=run with workflow_id")
+	}
+	if kinds["connected_agent"] {
+		parts = append(parts, "Connected agent: messages action=send target=agent:<name>")
+	}
+	return strings.Join(parts, ". ") + "."
 }
