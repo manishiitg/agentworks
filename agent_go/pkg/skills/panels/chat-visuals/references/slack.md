@@ -4,7 +4,7 @@ Use the same json-render SpecStream chat-ui format documented in formats.md. The
 
 Always put a useful written answer, conclusion and key numbers outside the visual. A missing formatter or rejected visual can then be delivered as plain text, with a readable notice; raw visual JSON is never the fallback. Ordinary Markdown code examples still work as code.
 
-Native Slack chart limits are20points, labels20characters, title50characters and two charts per message. Use short meaningful labels without changing values. Larger or unsupported charts become a readable text chart through the Slack adapter; do not upload data to an external chart image service. One native table per message, at most100rows and20columns; additional tables become readable text. Keep cells concise. The platform does not truncate your data merely to turn it into a native chart.
+Native Slack chart limits are 20 points, 20 characters per label, 50 characters per title and two charts per message. Use short meaningful labels without changing values. Larger or unsupported charts become a readable text chart through the Slack adapter; do not upload data to an external chart image service. One native table per message, at most 100 rows and 20 columns; additional tables become readable text. Keep cells concise. The platform does not truncate your data merely to turn it into a native chart.
 
 For a table, use type table, title, headers and rows. Rows are equal-width arrays of strings or finite numbers. Start with rows:[] then append complete rows at /elements/visual/props/rows/-. Example:
 
