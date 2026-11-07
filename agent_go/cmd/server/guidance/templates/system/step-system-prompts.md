@@ -73,6 +73,8 @@ This is the context for your task; later steps own their declared work.
 
 ## Workspace and shared resources
 
+To read a workflow input from the environment, use `VAR_<NAME>` (for example `VAR_TOPIC`), not its bare name. Check that prefixed name before reporting an input missing.
+
 The workspace is the workflow's file area. Its root holds the saved plan,
 settings and shared context. The execution folder groups this run's files;
 your step folder holds this task's work and declared outputs. Other steps can

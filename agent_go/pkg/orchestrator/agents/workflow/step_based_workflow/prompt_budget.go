@@ -12,8 +12,6 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
 // PLAT-556 decision 2: budgets are triggers, never gates. These measures make
@@ -335,7 +333,7 @@ func CollectPromptBudgetDue(ctx context.Context, workspacePath string) (PromptBu
 	if workspacePath == "" {
 		return PromptBudgetDue{}, nil
 	}
-	root := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath))
+	root := workflowAbsPath(workspacePath)
 	planRaw, err := os.ReadFile(filepath.Join(root, PlanningFolderName, "plan.json"))
 	if err != nil {
 		if os.IsNotExist(err) {

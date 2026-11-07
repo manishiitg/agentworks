@@ -61,7 +61,11 @@ func (q *Resolver) executable(virtual string) (ExecutableLayout, bool, error) {
 		return ExecutableLayout{}, true, fmt.Errorf("executable's owning Crew is unavailable")
 	}
 	automation := filepath.Join(r.Files, ".agentworks")
-	return ExecutableLayout{b, r, filepath.Join(automation, "workflows", b.ID), filepath.Join(automation, "code", b.ID), filepath.Join(q.docs, filepath.FromSlash(root))}, true, nil
+	runtime := filepath.Join(q.docs, filepath.FromSlash(root))
+	if b.Kind == "workflow" {
+		runtime = filepath.Join(r.Private, "workflows", b.ID)
+	}
+	return ExecutableLayout{b, r, filepath.Join(automation, "workflows", b.ID), filepath.Join(automation, "code", b.ID), runtime}, true, nil
 }
 
 // LookupExecutable is shared by file routes, native execution and discovery.
@@ -76,7 +80,7 @@ func LookupExecutable(docs, virtual string) (ExecutableLayout, bool, error) {
 func (l ExecutableLayout) source(rel string) (root, suffix string, mapped bool) {
 	switch {
 	case rel == "planning/changelog" || strings.HasPrefix(rel, "planning/changelog/") || rel == "planning/revisions" || strings.HasPrefix(rel, "planning/revisions/"):
-		return "", "", false
+		return l.Runtime, rel, l.Binding.Kind == "workflow"
 	case rel == "code" || strings.HasPrefix(rel, "code/"):
 		return l.Code, strings.TrimPrefix(strings.TrimPrefix(rel, "code"), "/"), true
 	case rel == "workflow.json" || rel == "workflow.json.kb-lock" || rel == "planning" || strings.HasPrefix(rel, "planning/") || rel == "variables" || strings.HasPrefix(rel, "variables/"):
@@ -84,7 +88,7 @@ func (l ExecutableLayout) source(rel string) (root, suffix string, mapped bool) 
 			return l.Definitions, rel, true
 		}
 	}
-	return "", "", false
+	return l.Runtime, rel, l.Binding.Kind == "workflow"
 }
 
 func (q *Resolver) resolveExecutable(virtual string) (string, bool, error) {
@@ -100,11 +104,15 @@ func (q *Resolver) resolveExecutable(virtual string) (string, bool, error) {
 	// Resolve against the existing project root so first writes can create the
 	// automation directories; a planted symlink cannot escape the project.
 	target := filepath.Join(root, filepath.FromSlash(suffix))
-	projectRel, err := filepath.Rel(l.Crew.Files, target)
+	storage := l.Crew.Files
+	if Within(l.Crew.Private, target) {
+		storage = l.Crew.Private
+	}
+	projectRel, err := filepath.Rel(storage, target)
 	if err != nil {
 		return "", true, err
 	}
-	target, err = ResolveContained(l.Crew.Files, projectRel)
+	target, err = ResolveContained(storage, projectRel)
 	return target, true, err
 }
 

@@ -36,7 +36,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) cleanStepOutputDir(ctx context.Contex
 		preserveSet[d] = true
 	}
 	workspacePath := hcpo.GetWorkspacePath()
-	docsRoot := GetPromptDocsRoot()
 	for _, entry := range entries {
 		name := filepath.Base(entry)
 		if name == "" || name == "." || preserveSet[name] {
@@ -47,9 +46,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) cleanStepOutputDir(ctx context.Contex
 		// stepExecutionRelPath may already include the workspacePath prefix.
 		var absPath string
 		if strings.HasPrefix(entryRelPath, workspacePath+"/") || entryRelPath == workspacePath {
-			absPath = filepath.Join(docsRoot, entryRelPath)
+			absPath = workflowAbsPath(entryRelPath)
 		} else {
-			absPath = filepath.Join(docsRoot, workspacePath, entryRelPath)
+			absPath = workflowAbsPath(workspacePath, entryRelPath)
 		}
 		// Try file delete first; if it fails (directory entries return error from /api/documents/),
 		// fall back to folder delete via /api/folders/.
@@ -969,11 +968,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	stepExecutionRelPath string,
 	dbAccess string,
 ) (output string, exitCode int, execErr error) {
-	docsRoot := GetPromptDocsRoot() // /app/workspace-docs
-
 	// Convert absolute workDir to workspace-relative for WorkingDirectory field.
 	// The workspace API prepends docsRoot, so passing the absolute path would double it.
-	workDirRel := strings.TrimPrefix(workDirAbsPath, docsRoot+"/")
+	workDirRel := workflowAPIPath(hcpo.GetWorkspacePath(), workDirAbsPath)
 	if workDirRel == workDirAbsPath {
 		// Didn't start with docsRoot — fall back to empty (workspace root)
 		workDirRel = hcpo.scriptedWorkingDir(step.GetID(), stepExecutionRelPath)
@@ -1026,7 +1023,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// fails with "DB_PATH unset and no root found". Set it here to the same absolute
 	// path the agent path uses. Set AFTER the workspace-env merge so it always wins.
 	if dbAccess != DBAccessNone {
-		extraEnv["DB_PATH"] = filepath.Join(docsRoot, hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
+		extraEnv["DB_PATH"] = workflowAbsPath(hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
 	}
 	extraEnv = hcpo.codeRuntimeEnv(extraEnv)
 
@@ -1115,7 +1112,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// Freeze the source at dispatch; later edits/retries must not rewrite this
 	// execution's evidence. A transport refusal is recorded as not started.
 	snapshotStart := time.Now()
-	scriptRel := strings.TrimPrefix(mainPyAbsPath, docsRoot+"/")
+	scriptRel := workflowAPIPath(hcpo.GetWorkspacePath(), mainPyAbsPath)
 	scriptSource, _ := hcpo.ReadWorkspaceFile(ctx, scriptRel)
 	hcpo.recordInspectionEvents(ctx,
 		orchevents.BackgroundAgentTranscriptEvent{Timestamp: snapshotStart, Type: "script_path", Text: scriptRel},
@@ -1209,9 +1206,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	scriptRelPath := learnDirRelPath + "/main.py"
 	existingScript, _ := hcpo.ReadWorkspaceFile(ctx, scriptRelPath)
 
-	stepExecutionAbsPath := filepath.Join(docsRoot, stepExecutionRelPath)
+	stepExecutionAbsPath := workflowAbsPath(stepExecutionRelPath)
 	codeDirRelPath := hcpo.scriptedWorkingDir(stepID, stepExecutionRelPath)
-	codeDirAbsPath := filepath.Join(docsRoot, codeDirRelPath)
+	codeDirAbsPath := workflowAbsPath(codeDirRelPath)
 	if hcpo.crewAutomationCodeRoot != "" && hcpo.usesCodeTree() {
 		codeDirAbsPath = hcpo.scriptedSourceAbsolute(stepID)
 	}
@@ -1223,7 +1220,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		}
 		ctx = withScriptedDelegationContext(ctx, stepID, "", "", parameters)
 		codeDirRelPath = stepExecutionRelPath + "/code"
-		codeDirAbsPath = filepath.Join(docsRoot, codeDirRelPath)
+		codeDirAbsPath = workflowAbsPath(codeDirRelPath)
 		mainPyAbsPath = filepath.Join(codeDirAbsPath, "main.py")
 		if err := createFolderViaAPI(ctx, codeDirRelPath); err != nil {
 			return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
@@ -1515,7 +1512,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveScriptedScriptToLearnings(
 	// Convert to relative path for workspace API: strip docsRoot + workspacePath prefix.
 	docsRoot := GetPromptDocsRoot()
 	workspacePath := hcpo.GetWorkspacePath()
-	wsPrefix := filepath.Join(docsRoot, workspacePath) + "/"
+	wsPrefix := workflowAbsPath(workspacePath) + "/"
 	stepExecRelPath := strings.TrimPrefix(stepExecutionAbsPath, wsPrefix)
 	if stepExecRelPath == stepExecutionAbsPath {
 		// Couldn't strip — fall back to relative path extraction from absolute
@@ -1556,7 +1553,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveScriptedScriptToLearnings(
 				continue // keep metadata and diffs/; refresh script files only
 			}
 			entryRelPath := learnDirRelPath + "/" + fileName
-			absPath := filepath.Join(GetPromptDocsRoot(), workspacePath, entryRelPath)
+			absPath := workflowAbsPath(workspacePath, entryRelPath)
 			// File delete first; fall back to folder delete for subdirectories (e.g. code/).
 			if fileDelErr := hcpo.DeleteWorkspaceFile(ctx, entryRelPath); fileDelErr != nil {
 				if folderErr := deleteFolderViaAPI(ctx, absPath); folderErr != nil {

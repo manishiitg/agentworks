@@ -135,18 +135,18 @@ func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string)
 	delete(env, "WORKFLOW_TRIGGER_INPUT_FILE")
 	delete(env, "WORKFLOW_TRIGGER_CONTEXT_FILE")
 	if opts := hcpo.GetExecutionOptions(); opts != nil && opts.TriggerContextFile != "" {
-		env["WORKFLOW_TRIGGER_CONTEXT_FILE"] = filepath.Join(GetPromptDocsRoot(), opts.TriggerContextFile)
+		env["WORKFLOW_TRIGGER_CONTEXT_FILE"] = workflowAbsPath(opts.TriggerContextFile)
 	}
 	if opts := hcpo.GetExecutionOptions(); opts != nil && opts.WebhookInputFile != "" {
-		env["WORKFLOW_TRIGGER_INPUT_FILE"] = filepath.Join(GetPromptDocsRoot(), opts.WebhookInputFile)
+		env["WORKFLOW_TRIGGER_INPUT_FILE"] = workflowAbsPath(opts.WebhookInputFile)
 	}
 	if hcpo.usesCodeTree() || hcpo.crewAutomationCodeRoot != "" {
-		root := filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), "code")
+		root := workflowAbsPath(hcpo.GetWorkspacePath(), "code")
 		if hcpo.crewAutomationCodeRoot != "" {
 			root = hcpo.crewAutomationCodeRoot
 		}
 		env["WORKFLOW_CODE_ROOT"] = root
-		deps := filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), ".sandbox-cache", "python-packages")
+		deps := workflowAbsPath(hcpo.GetWorkspacePath(), ".sandbox-cache", "python-packages")
 		env["WORKFLOW_CODE_DEPS"] = deps
 		env["PYTHONPATH"] = root + string(filepath.ListSeparator) + deps
 	}
@@ -165,5 +165,5 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptedSourceAbsolute(stepID string)
 	if hcpo.crewAutomationCodeRoot != "" && hcpo.usesCodeTree() {
 		return filepath.Join(hcpo.crewAutomationCodeRoot, stepID)
 	}
-	return filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), hcpo.scriptedSourceDir(stepID))
+	return workflowAbsPath(hcpo.GetWorkspacePath(), hcpo.scriptedSourceDir(stepID))
 }

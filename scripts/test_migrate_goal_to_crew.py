@@ -27,6 +27,7 @@ class Migration(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.base=Path(self.tmp.name).resolve();self.docs=self.base/'docs';self.state=self.base/'state'
         self.source=self.docs/'Workflow/old-goal';self.private=self.docs/'_system/crew-data/crew'
+        self.runtime=self.private/'workflows/old-goal'
         write(self.state/'ownership/workflows.json',{'Workflow/old-goal':'owner'})
         write(self.state/'ownership/projects.json',{'projects':{'work/target':{'product':'work','folder':'target','owner_id':'owner','project_id':'crew','private':True,'run_people':['runner']}}})
         (self.docs/'Crew/target').mkdir(parents=True)
@@ -93,7 +94,7 @@ class Migration(unittest.TestCase):
         conversion = m.Conversion(self.docs, self.state, 'old-goal', 'crew', binary)
         self.assertEqual(conversion.report()['status'], 'ready')
         conversion.apply()
-        fn = m.read(self.source/'functions.json')['functions'][0]
+        fn = m.read(self.runtime/'functions.json')['functions'][0]
         self.assertEqual(fn['inputs'], ['count'])
         self.assertEqual(fn['input'], {'input_preset': 'default'})
         self.assertNotIn('input_schema', fn)
@@ -121,21 +122,24 @@ class Migration(unittest.TestCase):
         result=c.apply();self.assertTrue(Path(result['backup'],'files.tar.gz').exists())
         self.assertFalse((self.source/'workflow.json').exists())
         self.assertTrue((self.docs/'Crew/target/.agentworks/workflows/old-goal/workflow.json').exists())
-        self.assertEqual((self.source/'runs/iteration-1/run_metadata.json').read_text(),'{"run_id": "original-run"}')
+        self.assertEqual((self.runtime/'runs/iteration-1/run_metadata.json').read_text(),'{"run_id": "original-run"}')
         after=hashes(self.base)
-        for name in ['docs/Workflow/unrelated/workflow.json','docs/Workflow/old-goal/skills/example/SKILL.md','docs/Workflow/old-goal/knowledgebase/example.json','docs/Workflow/old-goal/db/reports/index.html',str(self.receipt.relative_to(self.base))]:
+        for name in ['docs/Workflow/unrelated/workflow.json',str(self.receipt.relative_to(self.base))]:
             self.assertEqual(before[name],after[name])
+        for name in ['skills/example/SKILL.md','knowledgebase/example.json','db/reports/index.html']:
+            self.assertEqual(before['docs/Workflow/old-goal/'+name],after[str((self.runtime/name).relative_to(self.base))])
+        self.assertFalse(self.source.exists())
         with closing(sqlite3.connect(self.private/'db/db.sqlite')) as db, db:
             self.assertEqual(db.execute('SELECT observation_id,metric,recorded_at FROM goal_observations').fetchall(),[('original-observation','revenue','2026-11-01T00:00:00Z')])
             self.assertEqual(db.execute('SELECT run_id FROM goal_observations').fetchone()[0],'old-goal:source-run')
             self.assertEqual(json.loads(db.execute('SELECT definition_json FROM crew_goals').fetchone()[0])['status'],'active')
             self.assertEqual(json.loads(db.execute('SELECT definition_json FROM crew_goals').fetchone()[0])['outcome'], 'Grow qualified revenue.')
             self.assertEqual([row[2] for row in db.execute('PRAGMA index_info(idx_pulse_goal_observations_criterion)')],['criterion_id','observed_at'])
-        with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
+        with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db, db:
             self.assertEqual(db.execute('SELECT * FROM business_data').fetchall(),[('unchanged',)])
             self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name='goal_observations'").fetchall())
         for filename,field in [('schedules.json','schedules'),('functions.json','functions'),('webhooks.json','webhooks')]:
-            entry=m.read(self.source/filename)[field][0]
+            entry=m.read(self.runtime/filename)[field][0]
             self.assertFalse(entry['enabled']);self.assertTrue(entry['action']['tab'].startswith('imported-'))
             self.assertEqual(entry['input'],{'input_preset':'default'})
             self.assertEqual(entry['auth']['encrypted_secret'],'opaque-not-printed')
@@ -155,6 +159,38 @@ class Migration(unittest.TestCase):
         self.assertTrue(item['session']['conversation_path'].startswith('Crew/target/'))
         self.assertEqual(self.conversion().report()['status'],'already migrated')
         self.conversion().apply();self.assertEqual(after,hashes(self.base))
+
+    def test_finish_runtime_preserves_authored_files_and_references_without_recreating_old_folder(self):
+        # PLAT-746-360: a prior source-only migration left native helpers
+        # outside the runtime grant list. Finish only that workflow's records.
+        self.conversion().apply()
+        self.runtime.rename(self.source)
+        write(self.source/'learnings/retired.json', {'keep_in_backup':True})
+        write(self.source/'runs/history/run.json', {'output_path':str(self.source/'runs/history/out.json'), 'command':'cat '+str(self.source/'old.txt')})
+        with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
+            db.execute('CREATE TABLE file_index(id TEXT PRIMARY KEY,path TEXT,metadata TEXT) WITHOUT ROWID')
+            db.execute('INSERT INTO file_index VALUES (?,?,?)',('stable-id',str(self.source/'db/assets/file.txt'),json.dumps({'path':str(self.source/'runs/history/out.json')})))
+        authored=hashes(self.docs/'Crew/target')
+        other=hashes(self.docs/'Workflow/unrelated')
+        conversion=m.RuntimeRelocation(self.docs,self.state,'old-goal','crew')
+        self.assertEqual(conversion.report()['status'],'ready')
+        result=conversion.apply()
+        self.assertFalse(self.source.exists())
+        self.assertFalse((self.runtime/'learnings').exists())
+        self.assertEqual(authored,hashes(self.docs/'Crew/target'))
+        self.assertEqual(other,hashes(self.docs/'Workflow/unrelated'))
+        evidence=m.read(self.runtime/'runs/history/run.json')
+        self.assertEqual(evidence['output_path'],str(self.runtime/'runs/history/out.json'))
+        self.assertEqual(evidence['command'],'cat '+str(self.source/'old.txt'))
+        with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
+            key,path,metadata=db.execute('SELECT * FROM file_index').fetchone()
+            self.assertEqual(key,'stable-id')
+            self.assertEqual(path,str(self.runtime/'db/assets/file.txt'))
+            self.assertEqual(json.loads(metadata)['path'],str(self.runtime/'runs/history/out.json'))
+        backup=Path(result['backup'])
+        self.assertIn('source/learnings/retired.json',m.read(backup/'sha256.json'))
+        self.assertEqual(m.RuntimeRelocation(self.docs,self.state,'old-goal','crew').apply()['status'],'already migrated')
+        self.assertFalse(self.source.exists())
 
     def test_moved_code_guidance_uses_runtime_anchor_and_reports_embedded_python(self):
         # PLAT-746-358: migration moved the script but kept its old filename
@@ -176,7 +212,7 @@ class Migration(unittest.TestCase):
         self.assertEqual(plan['steps'][1]['description'], "Use Path('code/one/main.py').read_text()")
         self.assertEqual(m.read(target/'workflows/old-goal/planning/step_config.json')['one']['command'], 'python3 $WORKFLOW_CODE_ROOT/one/main.py')
         self.assertEqual((target/'code/old-goal/one/main.py').read_bytes(), before_script)
-        self.assertEqual(m.read(self.source/'runs/iteration-1/run_metadata.json'), {'run_id':'original-run'})
+        self.assertEqual(m.read(self.runtime/'runs/iteration-1/run_metadata.json'), {'run_id':'original-run'})
 
     def test_refuses_access_expansion_collision_and_escaping_source_without_writes(self):
         registry=self.state/'ownership/projects.json';original=m.read(registry)

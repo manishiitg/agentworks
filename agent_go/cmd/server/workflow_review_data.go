@@ -215,7 +215,10 @@ func timingDate(value string) string {
 func loadWorkflowActivityTiming(ctx context.Context, workspacePath string) workflowActivityTimingSummary {
 	summary := newWorkflowActivityTimingSummary()
 
-	workspaceRoot := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath))
+	workspaceRoot, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), workspacePath)
+	if err != nil {
+		return summary
+	}
 	loadWorkflowTimingFiles(&summary, filepath.Join(workspaceRoot, "runs"), "workflow_execution", "step:")
 	return summary
 }

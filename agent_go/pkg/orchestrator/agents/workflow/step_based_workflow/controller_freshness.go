@@ -237,7 +237,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) recordStoreConfirmation(
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) knowledgebaseItemsAbsDir() string {
-	return filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), KnowledgebaseFolderName, KBNotesFolderName)
+	return workflowAbsPath(hcpo.GetWorkspacePath(), KnowledgebaseFolderName, KBNotesFolderName)
 }
 
 // recordKnowledgebaseConfirmation stamps that a run reviewed the knowledgebase

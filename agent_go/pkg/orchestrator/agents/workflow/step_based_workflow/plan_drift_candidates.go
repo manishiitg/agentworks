@@ -5,11 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
 // planDriftReviewContractVersion identifies which set of checks a completed
@@ -129,7 +126,7 @@ func CollectPlanDriftDueItems(workspacePath string) ([]PlanDriftDueItem, error) 
 	if workspacePath == "" {
 		return nil, nil
 	}
-	planPath := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath), PlanningFolderName, "plan.json")
+	planPath := workflowAbsPath(workspacePath, PlanningFolderName, "plan.json")
 	planRaw, err := os.ReadFile(planPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -150,7 +147,7 @@ func CollectPlanDriftDueItems(workspacePath string) ([]PlanDriftDueItem, error) 
 		collectStepTypesByID(plan.Steps, stepTypeByID)
 	}
 
-	configPath := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath), PlanningFolderName, "step_config.json")
+	configPath := workflowAbsPath(workspacePath, PlanningFolderName, "step_config.json")
 	byID := map[string]StepConfig{}
 	configRaw, err := os.ReadFile(configPath)
 	if err != nil {
@@ -202,7 +199,7 @@ func CollectPlanDriftDueItems(workspacePath string) ([]PlanDriftDueItem, error) 
 // callers outside a tool-call context (no readFile callback available). This
 // is read-only evidence gathering, never a mutation path.
 func planDriftPlainFileReader(_ context.Context, workspaceRelativePath string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspaceRelativePath)))
+	data, err := os.ReadFile(workflowAbsPath(workspaceRelativePath))
 	if err != nil {
 		return "", err
 	}
@@ -293,7 +290,7 @@ func CollectPlanDriftCandidates(ctx context.Context, workspacePath string) ([]Pl
 		return nil, nil
 	}
 
-	planPath := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath), PlanningFolderName, "plan.json")
+	planPath := workflowAbsPath(workspacePath, PlanningFolderName, "plan.json")
 	planRaw, err := os.ReadFile(planPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -328,7 +325,7 @@ func CollectPlanDriftCandidates(ctx context.Context, workspacePath string) ([]Pl
 		collectStepTypesByID(plan.Steps, stepTypeByID)
 	}
 
-	configPath := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath), PlanningFolderName, "step_config.json")
+	configPath := workflowAbsPath(workspacePath, PlanningFolderName, "step_config.json")
 	byID := map[string]StepConfig{}
 	configRaw, err := os.ReadFile(configPath)
 	if err != nil {

@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 
 	_ "modernc.org/sqlite"
@@ -19,7 +18,7 @@ import (
 const reportDriftCheckID = "report_query_compatibility"
 
 func planDriftWorkflowDBPath(workspacePath string) string {
-	return filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(strings.Trim(strings.TrimSpace(workspacePath), "/")), "db", "db.sqlite")
+	return workflowAbsPath(workspacePath, "db", "db.sqlite")
 }
 
 // openPlanDriftQueryOnlyDB opens the workflow's db.sqlite read-only (WAL-capable,

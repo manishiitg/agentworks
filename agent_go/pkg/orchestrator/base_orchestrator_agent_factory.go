@@ -135,7 +135,11 @@ func resolveCodingAgentWorkingDir(workspacePath string) string {
 	if filepath.IsAbs(trimmed) {
 		return filepath.Clean(trimmed)
 	}
-	return filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(trimmed))
+	resolved, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), trimmed)
+	if err != nil {
+		return ""
+	}
+	return resolved
 }
 
 func syncCodingAgentWorkingDirWithShellSession(config *agents.OrchestratorAgentConfig) {

@@ -2,7 +2,10 @@ package step_based_workflow
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1452,32 +1455,75 @@ func TestStepFileAccessFollowsTheOwnersRule(t *testing.T) {
 
 // Read grants are made entry by entry so the raw database is closed by omission (no namespace needed to hide it).
 func TestWorkflowReadGrantsListEntriesAndOmitTheRawDatabase(t *testing.T) {
-	docs := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	wf := filepath.Join(docs, "Workflow", "demo")
-	for _, dir := range []string{"runs/iteration-0/default", "planning", "code/shared", "db/assets", "knowledgebase/notes"} {
-		if err := os.MkdirAll(filepath.Join(wf, dir), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, file := range []string{"workflow.json", "db/README.md", "db/db.sqlite", "db/db.sqlite-wal", "db/db.sqlite-shm"} {
-		if err := os.WriteFile(filepath.Join(wf, file), []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Symlink(docs, filepath.Join(wf, "outside")); err != nil {
-		t.Fatal(err)
-	}
-	grants := workflowReadGrants("Workflow/demo")
-	for _, want := range []string{"Workflow/demo/runs", "Workflow/demo/planning", "Workflow/demo/code", "Workflow/demo/workflow.json", "Workflow/demo/knowledgebase", "Workflow/demo/db/README.md", "Workflow/demo/db/assets"} {
-		if !slices.Contains(grants, want) {
-			t.Errorf("missing read grant %s in %v", want, grants)
-		}
-	}
-	for _, refused := range []string{"Workflow/demo", "Workflow/demo/db", "Workflow/demo/db/db.sqlite", "Workflow/demo/db/db.sqlite-wal", "Workflow/demo/db/db.sqlite-shm", "Workflow/demo/outside"} {
-		if slices.Contains(grants, refused) {
-			t.Errorf("read grant %s must not be listed: %v", refused, grants)
-		}
+	for _, bound := range []bool{false, true} {
+		t.Run(fmt.Sprint(bound), func(t *testing.T) {
+			docs := t.TempDir()
+			t.Setenv("WORKSPACE_DOCS_PATH", docs)
+			t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+			t.Setenv("LOCAL_MODE", "true")
+			if bound {
+				state := os.Getenv("AGENTWORKS_STATE_ROOT")
+				os.MkdirAll(filepath.Join(state, "ownership/crew-executables"), 0700)
+				os.MkdirAll(filepath.Join(docs, "Crew/example"), 0700)
+				os.MkdirAll(filepath.Join(docs, "_system/crew-data/crew"), 0700)
+				os.WriteFile(filepath.Join(state, "ownership/projects.json"), []byte(`{"projects":{"work/example":{"product":"work","folder":"example","project_id":"crew","owner_id":"owner"}}}`), 0600)
+				raw := []byte(`{"id":"demo","crew_id":"crew","crew_root":"Crew/example","workspace_path":"Workflow/demo","kind":"workflow"}`)
+				key := fmt.Sprintf("%x.json", sha256.Sum256([]byte("Workflow/demo")))
+				os.WriteFile(filepath.Join(state, "ownership/crew-executables", key), raw, 0600)
+			}
+			wf, err := fsutil.WorkspacePath(docs, "Workflow/demo")
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolve := func(rel string) string {
+				t.Helper()
+				p, e := fsutil.WorkspacePath(docs, "Workflow/demo/"+rel)
+				if e != nil {
+					t.Fatal(e)
+				}
+				return p
+			}
+			for _, dir := range []string{"runs/iteration-0/default", "planning", "code/shared", "db/assets", "knowledgebase/notes"} {
+				if err := os.MkdirAll(resolve(dir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, file := range []string{"workflow.json", "db/README.md", "db/db.sqlite", "db/db.sqlite-wal", "db/db.sqlite-shm"} {
+				if err := os.WriteFile(resolve(file), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink(docs, filepath.Join(wf, "outside")); err != nil {
+				t.Fatal(err)
+			}
+			grants := workflowReadGrants("Workflow/demo")
+			for _, want := range []string{"Workflow/demo/runs", "Workflow/demo/planning", "Workflow/demo/code", "Workflow/demo/workflow.json", "Workflow/demo/knowledgebase", "Workflow/demo/db/README.md", "Workflow/demo/db/assets"} {
+				if !slices.Contains(grants, want) {
+					t.Errorf("missing read grant %s in %v", want, grants)
+				}
+			}
+			for _, refused := range []string{"Workflow/demo", "Workflow/demo/db", "Workflow/demo/db/db.sqlite", "Workflow/demo/db/db.sqlite-wal", "Workflow/demo/db/db.sqlite-shm", "Workflow/demo/outside"} {
+				if slices.Contains(grants, refused) {
+					t.Errorf("read grant %s must not be listed: %v", refused, grants)
+				}
+			}
+			if bound {
+				helper := resolve("code/shared/helper.py")
+				if err := os.WriteFile(helper, []byte("helper"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if got := workflowAPIPath("Workflow/demo", helper); got != "Workflow/demo/code/shared/helper.py" {
+					t.Fatal(got)
+				}
+				if got := workflowAPIPath("Workflow/demo", resolve("runs/out.json")); got != "Workflow/demo/runs/out.json" {
+					t.Fatal(got)
+				}
+				if _, err := os.Stat(filepath.Join(docs, "Workflow/demo")); !os.IsNotExist(err) {
+					t.Fatal("old physical workflow recreated")
+				}
+			}
+
+		})
 	}
 }
 

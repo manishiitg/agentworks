@@ -3,9 +3,8 @@
 
 Default: inspect without writes. --apply: back up affected data, then convert.
 Create the destination Crew normally first (or choose an existing Crew). The
-source workflow ID, run folders, business DB, entry IDs and secrets stay put.
-Only authored source, goal measurements and saved chats change their ownership
-namespace. No startup fallback or automatic installation-wide conversion.
+workflow and entry IDs remain stable. Authored code/definitions live in Crew
+Files; runs, business data and history move into Crew private storage. No startup fallback or automatic installation-wide conversion.
 """
 import argparse
 import ast
@@ -88,6 +87,169 @@ def promote_builder_main(document, manifest, conversation_key):
     manifest['session_id'] = current['session_id']
 
 
+def file_sha256(file):
+    with file.open('rb') as stream:
+        return hashlib.file_digest(stream,'sha256').hexdigest()
+
+
+def tree_hashes(root):
+    return {str(file.relative_to(root)): file_sha256(file)
+            for file in root.rglob('*') if file.is_file()}
+
+
+def verified_backup(backup, entries):
+    """Backup must be outside the moving roots; verify bytes before any removal."""
+    entries = [(label, Path(file)) for label, file in entries if file.exists()]
+    for _, file in entries:
+        no_links(file)
+        if backup == file or file in backup.parents:
+            raise ValueError('Choose a backup outside the active workflow storage.')
+    required = sum(file.stat().st_size if file.is_file() else sum(p.stat().st_size for p in file.rglob('*') if p.is_file())
+                   for _, file in entries)
+    if shutil.disk_usage(backup.parent).free < required + (64 << 20):
+        raise ValueError('Not enough free space for the complete workflow backup.')
+    backup.mkdir(mode=0o700)
+    expected = {}
+    with tarfile.open(backup/'files.tar.gz', 'w:gz') as archive:
+        for label, file in entries:
+            archive.add(file, arcname=label)
+            if file.is_dir():
+                expected.update({label+'/'+key: value for key, value in tree_hashes(file).items()})
+            else:
+                expected[label] = file_sha256(file)
+    observed = {}
+    with tarfile.open(backup/'files.tar.gz', 'r:gz') as archive:
+        for member in archive.getmembers():
+            if member.isfile():
+                with archive.extractfile(member) as stream:
+                    observed[member.name] = hashlib.file_digest(stream,'sha256').hexdigest()
+    if expected != observed:
+        raise ValueError('Backup verification failed. No workflow files were moved.')
+    (backup/'sha256.json').write_bytes(encode(expected))
+
+
+def rewrite_physical_paths(value, source, runtime):
+    # Update structured file references, never historical conversation text or
+    # arbitrary substrings in prose, SQL or command bodies.
+    if isinstance(value, str):
+        if value == str(source) or value.startswith(str(source)+'/'):
+            return str(runtime) + value[len(str(source)):]
+        return value
+    if isinstance(value, list):
+        return [rewrite_physical_paths(item, source, runtime) for item in value]
+    if isinstance(value, dict):
+        return {key: item if key in ('conversation_history', 'messages', 'content', 'text', 'command')
+                else rewrite_physical_paths(item, source, runtime) for key, item in value.items()}
+    return value
+
+
+def update_runtime_references(source, runtime):
+    changed = 0
+    for file in runtime.rglob('*.json'):
+        if 'conversation' in file.parts or file.name.endswith('-conversation.json'):
+            continue
+        try:
+            original = read(file)
+        except (ValueError, UnicodeError):
+            continue
+        revised = rewrite_physical_paths(original, source, runtime)
+        if revised != original:
+            file.write_bytes(encode(revised)); changed += 1
+    for file in runtime.rglob('*.sqlite'):
+        # Trusted offline conversion. Preserve schemas, IDs and row counts.
+        with closing(sqlite3.connect(file)) as db, db:
+            quote = lambda value: '"'+value.replace('"','""')+'"'
+            for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
+                info = db.execute('PRAGMA table_info('+quote(table)+')').fetchall()
+                columns = [row[1] for row in info]
+                keys = [row[1] for row in sorted(info,key=lambda row:row[5]) if row[5]]
+                if keys:
+                    rows = db.execute('SELECT * FROM '+quote(table)).fetchall()
+                else:
+                    rows = db.execute('SELECT rowid,* FROM '+quote(table)).fetchall()
+                for row in rows:
+                    values = dict(zip(columns,row if keys else row[1:]))
+                    where = ' AND '.join(quote(key)+'=?' for key in keys) if keys else 'rowid=?'
+                    identity = tuple(values[key] for key in keys) if keys else (row[0],)
+                    for column, original in values.items():
+                        if not isinstance(original, str) or str(source) not in original:
+                            continue
+                        revised = rewrite_physical_paths(original, source, runtime)
+                        if revised == original:
+                            try:
+                                parsed = json.loads(original)
+                            except ValueError:
+                                continue
+                            value = rewrite_physical_paths(parsed, source, runtime)
+                            if value != parsed:
+                                revised = json.dumps(value, ensure_ascii=False)
+                        if revised != original:
+                            db.execute('UPDATE '+quote(table)+' SET '+quote(column)+'=? WHERE '+where, (revised,*identity)); changed += 1
+    return changed
+
+
+class RuntimeRelocation:
+    """Finish one previously converted Crew workflow using its saved binding."""
+    def __init__(self, docs, state, workflow, crew):
+        self.docs, self.state = Path(docs).resolve(strict=True), Path(state).resolve(strict=True)
+        self.root, self.crew = 'Workflow/'+safe_id(workflow), safe_id(crew)
+        binding = read(self.state/'ownership/crew-executables'/(hashlib.sha256(self.root.encode()).hexdigest()+'.json'))
+        if not binding or binding.get('kind') != 'workflow' or binding.get('workspace_path') != self.root or binding.get('crew_id') != crew:
+            raise ValueError('Choose an existing workflow bound to this Crew.')
+        self.workflow = safe_id(binding['id'])
+        self.source = self.docs/self.root
+        self.private = self.docs/'_system/crew-data'/crew
+        self.runtime = self.private/'workflows'/self.workflow
+        projects = read(self.state/'ownership/projects.json',{}).get('projects',{})
+        matches = [p for p in projects.values() if p.get('project_id') == crew and p.get('product') == 'work']
+        if len(matches) != 1 or binding['crew_root'] != 'Crew/'+safe_id(matches[0]['folder']):
+            raise ValueError('Repair the owning Crew registration before moving files.')
+        self.files = Path(matches[0].get('local_root') or self.docs/binding['crew_root'])
+        self.definitions = self.files/'.agentworks/workflows'/self.workflow
+        self.code = self.files/'.agentworks/code'/self.workflow
+        self.receipt = self.state/'migrations/goal-to-crew'/(workflow+'-runtime.json')
+        self.done = read(self.receipt)
+        for file in (self.source,self.runtime,self.definitions,self.code,self.receipt):
+            no_links(file)
+        if self.done and not self.source.exists() and self.runtime.is_dir():
+            return
+        if not self.source.is_dir() or self.runtime.exists():
+            raise ValueError('Expected one old runtime folder and an absent Crew runtime destination.')
+        if not (self.definitions/'workflow.json').is_file():
+            raise ValueError('The owning Crew must already contain this workflow definition.')
+        # Partial source moves must be resolved explicitly; never choose a plan.
+        for name in ('workflow.json','variables','code','planning/plan.json','planning/step_config.json'):
+            file = self.source/name
+            if file.is_file() or file.is_dir() and any(file.iterdir()):
+                raise ValueError('Old authored source still exists; resolve the collision before moving: '+name)
+
+    def report(self):
+        return {'status':'already migrated' if self.done else 'ready', 'workflow':self.root, 'crew_id':self.crew,
+                'runtime':str(self.runtime), 'files':len(tree_hashes(self.source)) if self.source.exists() else 0,
+                'backup':self.done.get('backup') if self.done else None}
+
+    def apply(self):
+        if self.done:
+            return self.report()
+        parent = self.state/'migrations/goal-to-crew'
+        parent.mkdir(parents=True,exist_ok=True)
+        backup = parent/('runtime-'+self.workflow+'-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f'))
+        verified_backup(backup,[('source',self.source),('definitions',self.definitions),('code',self.code),('destination-private',self.private)])
+        self.runtime.parent.mkdir(parents=True,exist_ok=True)
+        # Copy and check the final tree before removing the old source. This
+        # deliberately runs offline; there is no concurrent-writer protocol.
+        shutil.copytree(self.source,self.runtime,ignore=shutil.ignore_patterns('learnings'))
+        expected = {key:value for key,value in tree_hashes(self.source).items() if 'learnings' not in Path(key).parts}
+        if tree_hashes(self.runtime) != expected:
+            raise ValueError('Runtime copy verification failed; old files remain intact.')
+        changed = update_runtime_references(self.source,self.runtime)
+        shutil.rmtree(self.source)
+        result=self.report();result.update(status='migrated',backup=str(backup),updated_references=changed,completed_at=stamp())
+        self.receipt.write_bytes(encode(result))
+        self.done=result
+        return result
+
+
 class Conversion:
     def __init__(self, docs, state, workflow, crew, agent_binary=None):
         self.docs, self.state = Path(docs).resolve(strict=True), Path(state).resolve(strict=True)
@@ -132,6 +294,7 @@ class Conversion:
         self.project = matches[0]
         self.crew_root = 'Crew/' + safe_id(self.project['folder'])
         self.private = self.docs / '_system/crew-data' / crew
+        self.runtime = self.private/'workflows'/self.workflow
         self.files = Path(self.project.get('local_root') or self.docs / self.crew_root)
         if not self.files.is_absolute():
             raise ValueError('Destination project folder must be absolute.')
@@ -141,7 +304,7 @@ class Conversion:
             no_links(p)
         if not (self.private / 'product.json').is_file():
             raise ValueError('Destination Crew needs its current private storage layout first.')
-        if self.definitions.exists() or self.code.exists():
+        if self.definitions.exists() or self.code.exists() or self.runtime.exists():
             raise ValueError('Destination already has source for this workflow; resolve the collision first.')
         # No implicit promotion of Goal editors, sharing expansion, owner switch,
         # or cross-machine transfer. A matching Crew can be created first.
@@ -612,12 +775,13 @@ class Conversion:
         for item in (self.source/'code').glob('*/script_metadata.json'):
             self.move(item, self.source/'runs/script-metadata'/(item.parent.name+'.json'))
         self.move(self.source/'code', self.code)
-        # Rewrite staged edits at their final source location.
-        source_destinations = [*self.moves, (self.source/'variables', self.definitions/'variables')]
-        for source, target in source_destinations:
-            for file in list(self.writes):
+        self.move(self.source, self.runtime)
+        destinations = sorted([*self.moves, (self.source/'variables', self.definitions/'variables')], key=lambda pair:len(pair[0].parts), reverse=True)
+        for file in list(self.writes):
+            for source,target in destinations:
                 if file == source or source in file.parents:
                     self.writes[target/file.relative_to(source)] = self.writes.pop(file)
+                    break
 
     def report(self):
         if self.done:
@@ -638,16 +802,14 @@ class Conversion:
         # The operator stops this installation's writers first. A plain backup
         # is sufficient; this is not an online migration/rollback coordinator.
         backup = self.state/'migrations/goal-to-crew'/('backup-'+self.workflow+'-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f'))
-        backup.mkdir(parents=True, mode=0o700)
+        backup.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with tarfile.open(backup/'files.tar.gz', 'w:gz') as archive:
-                archive.add(self.source, arcname='source')
-                archive.add(self.private, arcname='destination-private')
-                metadata_paths = {}
-                for i, file in enumerate(self.writes):
-                    if file.exists() and self.source not in file.parents and self.private not in file.parents:
-                        archive.add(file, arcname='metadata/'+str(i))
-                        metadata_paths['metadata/'+str(i)] = str(file)
+            metadata_paths = {}
+            entries = [('source',self.source),('destination-private',self.private)]
+            for i,file in enumerate(self.writes):
+                if file.exists() and self.source not in file.parents and self.private not in file.parents:
+                    label='metadata/'+str(i);entries.append((label,file));metadata_paths[label]=str(file)
+            verified_backup(backup,entries)
             # Snapshot DBs through SQLite, including WAL contents.
             for label, file in [('source', self.source_db), ('destination', self.target_db), ('chat-journal', self.journal)]:
                 if file.exists():
@@ -685,10 +847,14 @@ class Conversion:
                 plan.write_bytes(encode(self.chat_imports))
                 subprocess.run([str(self.agent_binary),'server','import-goal-chats','--plan',str(plan),'--journal',str(self.journal)],check=True,capture_output=True)
             if self.tables:
-                with closing(sqlite3.connect(self.source_db)) as db, db:
+                with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db, db:
                     for name in self.tables:
                         db.execute(f'DROP TABLE {name}')
-            result = self.report(); result.update(status='migrated', backup=str(backup), completed_at=stamp())
+            # Retired guides stay in the verified external backup.
+            shutil.rmtree(self.runtime/'learnings',ignore_errors=True)
+            references = update_runtime_references(self.source,self.runtime)
+            assert not self.source.exists(), 'Old runtime unexpectedly recreated'
+            result = self.report(); result.update(updated_references=references,status='migrated', backup=str(backup), completed_at=stamp())
             self.receipt.parent.mkdir(parents=True, exist_ok=True)
             self.receipt.write_bytes(encode(result))
             return result
@@ -704,9 +870,10 @@ def main():
     parser.add_argument('--crew', required=True, help='Destination Crew ID, created normally beforehand')
     parser.add_argument('--agent-binary', type=Path, help='This refactor build, for input validation and older JSON-only chat archives')
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--finish-runtime', action='store_true', help='Move remaining runtime for one already converted Crew workflow')
     args=parser.parse_args()
     try:
-        conversion=Conversion(args.docs,args.state,args.workflow,args.crew,args.agent_binary)
+        conversion = RuntimeRelocation(args.docs,args.state,args.workflow,args.crew) if args.finish_runtime else Conversion(args.docs,args.state,args.workflow,args.crew,args.agent_binary)
         print(json.dumps(conversion.apply() if args.apply else conversion.report(), indent=2))
     except (ValueError, SyntaxError, OSError, RuntimeError, sqlite3.Error) as exc:
         print(json.dumps({'status':'needs attention','error':str(exc)}))

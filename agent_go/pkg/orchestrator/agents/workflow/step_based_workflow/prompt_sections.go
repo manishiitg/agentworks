@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	prompt "github.com/manishiitg/mcpagent/agent/prompt"
 )
 
@@ -369,7 +370,8 @@ func ResolveDependencyPathCandidates(
 		if path == "" || docsRoot == "" {
 			return path
 		}
-		return filepath.Join(docsRoot, path)
+		resolved, _ := fsutil.WorkspacePath(docsRoot, path)
+		return resolved
 	}
 	buildDepAbsPath := func(folderPath string, dep string) string {
 		return fmt.Sprintf("%s/%s", toAbs(folderPath), dep)
@@ -485,7 +487,7 @@ func toAbsPaths(docsRoot string, paths []string) []string {
 		if p == "" || docsRoot == "" || filepath.IsAbs(p) {
 			result[i] = p
 		} else {
-			result[i] = filepath.Join(docsRoot, p)
+			result[i], _ = fsutil.WorkspacePath(docsRoot, p)
 		}
 	}
 	return result

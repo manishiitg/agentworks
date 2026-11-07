@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // rawDatabaseFiles are never readable by a step: the managed helper is the only way into the workflow database.
@@ -22,13 +23,26 @@ var rawDatabaseFiles = map[string]bool{"db.sqlite": true, "db.sqlite-wal": true,
 func workflowReadGrants(baseWorkspacePath string) []string {
 	root := baseWorkspacePath
 	if !filepath.IsAbs(root) {
-		root = filepath.Join(GetPromptDocsRoot(), baseWorkspacePath)
+		root = workflowAbsPath(baseWorkspacePath)
+	}
+	var grants []string
+	bound := false
+	if layout, found, err := crewroot.LookupExecutable(GetPromptDocsRoot(), baseWorkspacePath); err == nil && found && layout.Binding.Kind == "workflow" {
+		bound = true
+		// Source and records share one workflow identity but use the Crew's
+		// existing Files/Private split. The records directory cannot enumerate
+		// its authored code and definitions; admit those exact roots too.
+		for _, name := range []string{"workflow.json", "planning", "variables", "code", "planning/changelog", "planning/revisions"} {
+			grants = append(grants, filepath.Join(baseWorkspacePath, name))
+		}
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil || len(entries) == 0 {
-		return []string{baseWorkspacePath}
+		if bound {
+			return grants
+		}
+		return append(grants, baseWorkspacePath)
 	}
-	var grants []string
 	for _, entry := range entries {
 		if entry.Type()&os.ModeSymlink != 0 {
 			continue
