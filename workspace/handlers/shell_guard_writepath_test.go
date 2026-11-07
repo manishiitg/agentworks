@@ -119,10 +119,6 @@ func TestGuardWritePathToCreatePreservesExistingHostGrants(t *testing.T) {
 	if err != nil || got != "" {
 		t.Fatalf("existing host grant must not be created: path=%q err=%v", got, err)
 	}
-	t.Setenv("MULTI_USER_MODE", "")
-	if got, err := guardWritePathToCreate(hostDir, docsDir); err != nil || got != "" {
-		t.Fatalf("native Mac with default single-user mode must preserve host grant: path=%q err=%v", got, err)
-	}
 	inside := filepath.Join(docsDir, "project", "new")
 	if got, err := guardWritePathToCreate("project/new", docsDir); err != nil || got != inside {
 		t.Fatalf("workspace directory should be prepared: path=%q err=%v", got, err)
@@ -146,15 +142,18 @@ func TestGuardWritePathToCreateRejectsHostGrantsOnServer(t *testing.T) {
 	originalOS := interactiveShellHostOS
 	t.Cleanup(func() { interactiveShellHostOS = originalOS })
 	docsDir, hostDir := t.TempDir(), t.TempDir()
-	for _, mode := range []struct{ name, hostOS, multi, native, slots string }{
-		{"Linux even with local native flags", "linux", "false", "true", ""},
-		{"Mac without native mode", "darwin", "false", "false", ""},
-		{"multi-user Mac", "darwin", "true", "true", ""},
-		{"Mac with per-user accounts", "darwin", "false", "true", "on"},
+	for _, mode := range []struct{ name, hostOS, local, multi, native, slots string }{
+		{"defaults", "darwin", "", "", "", ""},
+		{"Linux even with local native flags", "linux", "local", "false", "true", ""},
+		{"Mac without native mode", "darwin", "local", "false", "false", ""},
+		{"Mac outside local deployment", "darwin", "", "false", "true", ""},
+		{"multi-user Mac", "darwin", "local", "true", "true", ""},
+		{"missing explicit single-user flag", "darwin", "local", "", "true", ""},
+		{"Mac with per-user accounts", "darwin", "local", "false", "true", "on"},
 	} {
 		t.Run(mode.name, func(t *testing.T) {
 			interactiveShellHostOS = mode.hostOS
-			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", mode.local)
 			t.Setenv("MULTI_USER_MODE", mode.multi)
 			t.Setenv("NATIVE_WORKSPACE", mode.native)
 			t.Setenv("AGENTWORKS_SLOTS", mode.slots)
