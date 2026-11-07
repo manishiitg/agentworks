@@ -45,7 +45,7 @@ func (api *StreamingAPI) registerCrewNeedsYouChatTools(registrar definitionToolR
 		required          []string
 	}{
 		{"list_needs_you", "List what waits on you in this Crew, the same as the Suggestions panel and Needs you: suggestions sent by people using the Crew, open decisions (with the recommendation when there is one) and live questions. Urgent first. Answer one with answer_needs_you or dismiss it with dismiss_needs_you.", map[string]interface{}{}, nil},
-		{"answer_needs_you", "Answer or dismiss one item from list_needs_you for this Crew. Pass option (an option id or title) or answer (free text), or dismiss=true for a decision or suggestion. A live question goes back to the paused chat or run. For an apply_decision item, send the returned apply_message to the Crew's Builder chat. Needs write access to this Crew.", map[string]interface{}{
+		{"answer_needs_you", "Answer or dismiss one item from list_needs_you for this Crew. Pass option (an option id or title) or answer (free text), or dismiss=true for a decision or suggestion. A live question goes back to the paused chat or run. For an apply_decision item, send the returned apply_message to the Crew's chat. Needs write access to this Crew.", map[string]interface{}{
 			"id":      map[string]interface{}{"type": "string", "description": "Item id from list_needs_you"},
 			"option":  map[string]interface{}{"type": "string", "description": "Chosen option id or title, or your own choice when free text is allowed"},
 			"answer":  map[string]interface{}{"type": "string", "maxLength": 8000, "description": "Free-text answer or note"},

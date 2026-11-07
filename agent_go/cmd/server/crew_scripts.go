@@ -224,7 +224,7 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if claims.AccessToken != nil && !api.externalCrewReferenceAllowed(r.Context(), claims, binding.CrewRoot, true) {
-		http.Error(w, "This connection cannot edit this Crew's source. Open its Builder chat instead.", 403)
+		http.Error(w, "This connection cannot edit this Crew's source. Ask in its chat instead.", 403)
 		return
 	}
 	if r.Method != http.MethodGet && refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(binding.CrewRoot), claims.UserID) {
