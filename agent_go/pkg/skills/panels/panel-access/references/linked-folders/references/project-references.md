@@ -26,7 +26,7 @@ For a tagged Crew:
   for its Dashboard link when needed.
 - Schedule definitions live in `workflow.json`. For current enablement, next
   run or latest run status, send the Crew an explicit message and request its
-  `list_project_schedules` result. Your own `list_project_schedules` tool is
+  `automations action=list` result. Your own `automations action=list` is
   bound to this project, not the tagged Crew.
 - Edit only when the user requests it and the runtime grants write access.
   A referenced Crew's whole `db/` subtree is read-only, including Dashboard

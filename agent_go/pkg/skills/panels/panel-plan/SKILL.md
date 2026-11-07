@@ -37,7 +37,7 @@ In a Crew, **Automations** contains repeatable work. Each Crew has one workflow 
 
 Use the tools offered in this chat:
 - `crew_workflow_files`: list existing work, create a workflow/script, read it, or edit it. `describe` returns the exact schema for an editing operation. `edit` reuses the Builder's named-step and input operations; omitted steps stay unchanged. Use `write` for code or a saved script's definition, never to replace workflow plan/config/input files.
-- `run_workflow_trigger`: run either kind with `inputs`. No function setup is required. Check the returned run with `get_workflow_trigger_run`; accepted does not mean completed.
+- `functions action=run_trigger`: run either kind with `inputs`. No function setup is required. Check the returned run with `functions action=trigger_status`; accepted does not mean completed.
 
 Define inputs once, with types and optional defaults. A workflow with no inputs needs no input file or preset. Secrets belong in Vault. Reuse this Crew's saved agents when their role fits; do not copy another person's account or chat history.
 
