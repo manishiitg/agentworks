@@ -2676,7 +2676,7 @@ export interface ScheduledJob {
 
 export interface CreateScheduledJobRequest {
 
-  run_destination?: 'chat' | 'isolated'
+  run_destination?: 'chat' | 'isolated' | 'new'
   name: string
   description?: string
   entity_type: 'workflow' | 'chat' | 'multi-agent' | 'product'

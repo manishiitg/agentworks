@@ -689,15 +689,15 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				http.Error(w, "a Work project schedule requires exactly one message", http.StatusBadRequest)
 				return
 			}
-			isolated, err := isolatedForRunDestination(req.RunDestination)
+			destination, err := parseRunDestination(req.RunDestination)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			ownerID := productWorkspaceUserID(r.Context())
 			chatKey, err := projectScheduleChatKey(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, req.ChatID)
-			if err == nil && chatKey != "" && isolated {
-				err = fmt.Errorf("an isolated schedule has its own conversation; use either chat_id or run_destination isolated")
+			if err == nil && chatKey != "" && destination.Isolated {
+				err = fmt.Errorf("a schedule with its own or a new conversation does not use chat_id; choose chat_id or run_destination %s or %s", runDestinationNew, runDestinationIsolated)
 			}
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -715,7 +715,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			}
 			job, err := svc.api.projectActions.CreateProjectSchedule(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, productschedule.Schedule{
 				Name: req.Name, Description: req.Description, Enabled: req.Enabled,
-				CronExpression: req.CronExpression, RunAt: runAt, When: when, Timezone: timezone, Messages: req.Messages, Isolated: isolated, ChatKey: chatKey,
+				CronExpression: req.CronExpression, RunAt: runAt, When: when, Timezone: timezone, Messages: req.Messages, Isolated: destination.Isolated, New: destination.New, ChatKey: chatKey,
 			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1538,14 +1538,14 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return true
 		}
-		var requestedIsolation *bool
+		var requestedDestination *runDestinationSetting
 		if req.RunDestination != nil {
-			isolated, destinationErr := isolatedForRunDestination(*req.RunDestination)
+			destination, destinationErr := parseRunDestination(*req.RunDestination)
 			if destinationErr != nil {
 				http.Error(w, destinationErr.Error(), http.StatusBadRequest)
 				return true
 			}
-			requestedIsolation = &isolated
+			requestedDestination = &destination
 		}
 		var requestedChatKey *string
 		if req.ChatID != nil {
@@ -1571,7 +1571,7 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			if requestedChatKey != nil {
 				schedule.ChatKey = *requestedChatKey
 				if *requestedChatKey != "" {
-					schedule.Isolated = false
+					schedule.Isolated, schedule.New = false, false
 				}
 			}
 			if req.Name != "" {
@@ -1603,8 +1603,8 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			if req.Messages != nil {
 				schedule.Messages = req.Messages
 			}
-			if requestedIsolation != nil {
-				schedule.Isolated = *requestedIsolation
+			if requestedDestination != nil {
+				requestedDestination.apply(schedule)
 			}
 		})
 		if err != nil {

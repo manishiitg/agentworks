@@ -246,7 +246,7 @@ func crewWebhookDefinition(project projectactions.Project, caller string, trigge
 	}
 	action := projectactions.Action{Type: "message"}
 	if trigger.ownConversation() {
-		action.Conversation = "isolated"
+		action.Conversation = trigger.shownRunDestination()
 	}
 	return projectWebhookDefinition{ID: trigger.ID, Name: trigger.Name, Project: project, Enabled: trigger.Enabled, Path: "/api/hooks/" + trigger.ID, Action: action, Input: input, RunAs: caller, Auth: projectWebhookAuth{Mode: trigger.Webhook.AuthMode, EncryptedSecret: trigger.Webhook.EncryptedSecret}}, nil
 }
@@ -256,7 +256,7 @@ func crewWebhookExecutionView(record projectWebhookDefinition) (productWebhookTr
 	if err := json.Unmarshal(record.Input, &input); err != nil {
 		return productWebhookTrigger{}, err
 	}
-	return productWebhookTrigger{ID: record.ID, Name: record.Name, Enabled: record.Enabled, Message: strings.Join(input.Messages, "\n\n"), RunDestination: runDestination(record.Action.Conversation == "isolated"), Webhook: webhookExecutionConfig(record)}, nil
+	return productWebhookTrigger{ID: record.ID, Name: record.Name, Enabled: record.Enabled, Message: strings.Join(input.Messages, "\n\n"), RunDestination: runDestinationFromConversation(record.Action.Conversation), Webhook: webhookExecutionConfig(record)}, nil
 }
 
 func internalFunctionName(id string) string { return "binding_" + strings.ReplaceAll(id, "-", "_") }
@@ -286,7 +286,7 @@ func crewBindingDefinition(trigger productWebhookTrigger) (projectFunctionDefini
 	}
 	record := projectFunctionDefinition{ID: trigger.ID, Name: internalFunctionName(trigger.ID), Description: trigger.Name, Enabled: trigger.Enabled, Action: projectactions.Action{Type: "message"}, Input: input, InputSchema: map[string]interface{}{"type": "object"}, InputMapping: &projectWebhookInputMapping{}}
 	if trigger.ownConversation() {
-		record.Action.Conversation = "isolated"
+		record.Action.Conversation = trigger.shownRunDestination()
 	}
 	if trigger.Caller != nil {
 		record.AllowedCallers = []triggerCaller{*trigger.Caller}

@@ -10,10 +10,13 @@ export interface ProductAPITrigger {
   auth_mode: 'bearer' | 'github' | ''
   path: string
   secret?: string
-  run_destination: 'chat' | 'isolated'
+  run_destination: 'chat' | 'isolated' | 'new'
   kind?: string
   caller?: { type: string; id: string; profile_id?: string }
 }
+
+/** One place a trigger's messages can run, from the server's shared list of choices. */
+export interface RunDestinationChoice { id: string; label: string }
 
 export type ProductTriggerScope = { profileId: string; projectId: string }
 
@@ -23,7 +26,7 @@ function config() {
 }
 
 export const productWebhooksApi = {
-  list: (scope: ProductTriggerScope) => axios.get<{ triggers: ProductAPITrigger[] }>('/api/product-webhooks', {
+  list: (scope: ProductTriggerScope) => axios.get<{ triggers: ProductAPITrigger[]; run_destinations?: RunDestinationChoice[] }>('/api/product-webhooks', {
     ...config(), params: { profile_id: scope.profileId, project_id: scope.projectId },
   }).then(response => response.data),
   save: (scope: ProductTriggerScope, trigger: ProductAPITrigger, rotateSecret = false) => axios.put<ProductAPITrigger>(`/api/product-webhooks/${encodeURIComponent(trigger.id)}`, {

@@ -13,9 +13,6 @@ import (
 // a new run. Unlike a Crew, the Goal default stays a new conversation each fire
 // (PLAT-871-28).
 
-// runDestinationNew is the Goal default: a new conversation for every fire.
-const runDestinationNew = "new"
-
 // goalScheduleOwner is the person a Goal schedule runs as; its chats are theirs.
 func goalScheduleOwner(manifest *WorkflowManifest, sched WorkflowSchedule) string {
 	return firstNonEmptyTrimmed(sched.RunAs, workflowExecutionOwnerUserID(manifest))
@@ -142,7 +139,7 @@ func goalScheduleDestinationView(manifest *WorkflowManifest, workspace string, s
 	default:
 		destination = runDestinationNew
 	}
-	choices = []ScheduleRunDestination{{ID: runDestinationNew, Label: "New conversation each time"}, {ID: runDestinationChat, Label: "Main chat"}}
+	choices = []ScheduleRunDestination{{ID: runDestinationNew, Label: runDestinationChoiceNew.Label}, {ID: runDestinationChat, Label: runDestinationChoiceChat.Label}}
 	if chats, err := goalScheduleChats(context.Background(), owner, manifest.ID, workspace); err == nil {
 		for _, chat := range chats {
 			if !chat.Main {
@@ -150,7 +147,7 @@ func goalScheduleDestinationView(manifest *WorkflowManifest, workspace string, s
 			}
 		}
 	}
-	return destination, chatKey, chatID, append(choices, ScheduleRunDestination{ID: runDestinationIsolated, Label: "Own conversation"})
+	return destination, chatKey, chatID, append(choices, ScheduleRunDestination{ID: runDestinationIsolated, Label: runDestinationChoiceIsolated.Label})
 }
 
 // goalScheduleConversation is the session a Goal message schedule runs in when

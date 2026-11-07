@@ -251,7 +251,8 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 		s := productschedule.Schedule{ID: record.ID, Name: record.Name, Enabled: record.Enabled,
 			CronExpression: record.When.Cron, Timezone: record.When.Timezone, CreatedAt: record.When.Anchor,
 			Messages: input.Messages, Condition: input.Condition, ChatKey: record.Action.Tab,
-			Isolated: record.Action.Conversation == "isolated", When: &record.When}
+			Isolated: record.Action.Conversation == runDestinationIsolated || record.Action.Conversation == runDestinationNew,
+			New:      record.Action.Conversation == runDestinationNew, When: &record.When}
 		manifest.Schedules = append(manifest.Schedules, s)
 	}
 	return nil
@@ -276,7 +277,7 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 			record.RunAs = GetDefaultUserID()
 		}
 		if s.Isolated {
-			record.Action.Conversation = "isolated"
+			record.Action.Conversation = scheduleRunDestination(s)
 		}
 		if s.When != nil {
 			record.When = *s.When

@@ -113,7 +113,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 		"crew_id": crewID, "purpose": "Escalate the hard tickets.",
 		"functions": map[string]any{"upsert": []any{map[string]any{"name": "escalate", "description": "Escalate a ticket.", "instructions": "Page the on-call owner."}}},
 		"schedules": map[string]any{
-			"update": []any{map[string]any{"id": scheduleID, "enabled": false, "run_destination": "isolated"}},
+			"update": []any{map[string]any{"id": scheduleID, "enabled": false, "run_destination": "new"}},
 			"add":    []any{map[string]any{"name": "Weekly report", "message": "Summarize the week.", "cron_expression": "0 9 * * 1"}},
 		},
 		"files":       map[string]any{"notes/runbook.md": "Escalation runbook"},
@@ -126,7 +126,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 		t.Fatalf("functions after upsert = %v", fns)
 	}
 	schedules = out["schedules"].([]any)
-	if len(schedules) != 2 || schedules[0].(map[string]any)["enabled"] != false || schedules[0].(map[string]any)["run_destination"] != "isolated" {
+	if len(schedules) != 2 || schedules[0].(map[string]any)["enabled"] != false || schedules[0].(map[string]any)["run_destination"] != "new" {
 		t.Fatalf("schedules after update = %v", schedules)
 	}
 	if crewAuthoringFile(t, env, root+"/templates/old/SETUP.md") != "User notes from an existing Crew" || !strings.Contains(crewAuthoringFile(t, env, root+"/skills/triage/SKILL.md"), "Sort tickets by severity.") {
