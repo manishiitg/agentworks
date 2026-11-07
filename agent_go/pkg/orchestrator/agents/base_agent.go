@@ -310,6 +310,12 @@ func NewBaseAgent(
 			DirectToolExecutionEvents: true,
 		},
 	}
+	if runtime.Coding.AgentToolsMode == "full" {
+		// Use exactly the dedicated child's bridge environment, after its run
+		// paths, selected secrets and capability grants have been resolved.
+		// Builder/Run chats and non-execution agents never enter this branch.
+		runtime.Coding.SecretEnvironment = common.GetSessionShellEnv(mcpSessionID)
+	}
 	if forceStructuredCodingAgent {
 		runtime.Coding.Transport = internalLLM.CodingAgentTransportStructured
 	}

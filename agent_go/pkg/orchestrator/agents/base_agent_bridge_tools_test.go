@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -79,5 +80,56 @@ func TestNativeStepToolsStayScopedToLinkedExecutors(t *testing.T) {
 		if got := workflowExecutionNativeToolsMode(kind, true, true, true); got != "" {
 			t.Fatalf("non-executor %s received native mode", kind)
 		}
+	}
+}
+
+// PLAT-746-356: native steps previously lost the exact environment their
+// bridge shell held; copying it must never opt Builder/Run chats into it.
+func TestNativeWorkflowChildGetsItsOwnBridgeEnvironment(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(config, []byte(`{"mcpServers":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		kind   AgentType
+		linked bool
+		want   bool
+	}{
+		{"step", TodoPlannerExecutionAgentType, true, true},
+		{"unlinked-chat", GenericExecutionAgentType, false, false},
+		{"builder", TodoPlannerInteractiveWorkshopAgentType, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			session := "native-env-" + tc.name
+			common.SetSessionShellEnv(session, map[string]string{"STEP_OUTPUT_DIR": "/run/current/output", "SECRET_SELECTED": "selected", "VAR_TOPIC": "example"})
+			t.Cleanup(func() { common.ClearSessionShellConfig(session) })
+			output := ""
+			if tc.linked {
+				output = t.TempDir()
+			}
+			base, err := NewBaseAgent(t.Context(), tc.kind, "Fixture", &stepPromptCaptureModel{}, "Work.", []string{mcpclient.NoServers}, nil, nil, true, AgentMode(""), nil, "", config, "fixture", 0, "auto", 2, "", loggerv2.NewNoop(), false, false, nil, nil, session, t.TempDir(), false, true, true, output, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer base.Close()
+			env := base.runtime.Coding.SecretEnvironment
+			if !tc.want {
+				if len(env) != 0 {
+					t.Fatal("non-execution chat received child environment")
+				}
+				return
+			}
+			for key, want := range common.GetSessionShellEnv(session) {
+				if env[key] != want {
+					t.Errorf("native child lost %s", key)
+				}
+			}
+			// The constructor owns a snapshot, not a map that a later child can mutate.
+			common.SetSessionShellEnv(session, map[string]string{"STEP_OUTPUT_DIR": "/run/replacement/output"})
+			if env["STEP_OUTPUT_DIR"] != "/run/current/output" {
+				t.Fatal("child environment changed after construction")
+			}
+		})
 	}
 }

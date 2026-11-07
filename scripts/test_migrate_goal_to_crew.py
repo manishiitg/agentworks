@@ -156,6 +156,28 @@ class Migration(unittest.TestCase):
         self.assertEqual(self.conversion().report()['status'],'already migrated')
         self.conversion().apply();self.assertEqual(after,hashes(self.base))
 
+    def test_moved_code_guidance_uses_runtime_anchor_and_reports_embedded_python(self):
+        # PLAT-746-358: migration moved the script but kept its old filename
+        # in agent instructions, so a real native step could not run it.
+        write(self.source/'planning/plan.json', {'steps':[
+            {'id':'one','type':'scripted','description':'Run `python3 code/one/main.py`. See https://example.com/code/one/main.py.', 'items':[{'message':'Read `code/one/main.py`.'}]},
+            {'id':'two','type':'agent','description':"Use Path('code/one/main.py').read_text()"}]})
+        write(self.source/'planning/step_config.json', {'one':{'command':'python3 code/one/main.py'}})
+        before_script = (self.source/'code/one/main.py').read_bytes()
+        conversion = self.conversion()
+        pending = conversion.report()['code_path_manual_fixes']
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]['paths'], ['code/one/main.py'])
+        conversion.apply()
+        target = self.docs/'Crew/target/.agentworks'
+        plan = m.read(target/'workflows/old-goal/planning/plan.json')
+        self.assertEqual(plan['steps'][0]['description'], 'Run `python3 $WORKFLOW_CODE_ROOT/one/main.py`. See https://example.com/code/one/main.py.')
+        self.assertEqual(plan['steps'][0]['items'][0]['message'], 'Read `$WORKFLOW_CODE_ROOT/one/main.py`.')
+        self.assertEqual(plan['steps'][1]['description'], "Use Path('code/one/main.py').read_text()")
+        self.assertEqual(m.read(target/'workflows/old-goal/planning/step_config.json')['one']['command'], 'python3 $WORKFLOW_CODE_ROOT/one/main.py')
+        self.assertEqual((target/'code/old-goal/one/main.py').read_bytes(), before_script)
+        self.assertEqual(m.read(self.source/'runs/iteration-1/run_metadata.json'), {'run_id':'original-run'})
+
     def test_refuses_access_expansion_collision_and_escaping_source_without_writes(self):
         registry=self.state/'ownership/projects.json';original=m.read(registry)
         changed=m.read(registry);changed['projects']['work/target']['private']=False;write(registry,changed)

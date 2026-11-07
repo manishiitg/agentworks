@@ -174,6 +174,16 @@ func TestCodeLayoutRuntimeEnvAndPrompt(t *testing.T) {
 	if env["VAR_BASE_URL"] != "https://example.test" || !strings.HasSuffix(env["WORKFLOW_CODE_ROOT"], "Workflow/testing/code") || !strings.Contains(env["PYTHONPATH"], env["WORKFLOW_CODE_DEPS"]) {
 		t.Fatalf("incorrect runtime env keys")
 	}
+	// PLAT-746-358: a migrated Crew has a canonical code root even when its
+	// saved script layout predates version 1; authored guidance uses this anchor.
+	for _, version := range []int32{0, 1} {
+		converted := codeLayoutController(t, version)
+		converted.crewAutomationCodeRoot = filepath.Join(t.TempDir(), ".agentworks", "code", "workflow")
+		got := converted.codeRuntimeEnv(nil)
+		if got["WORKFLOW_CODE_ROOT"] != converted.crewAutomationCodeRoot || !strings.Contains(got["PYTHONPATH"], converted.crewAutomationCodeRoot) {
+			t.Fatalf("converted layout %d lost canonical code root", version)
+		}
+	}
 	prompt := GetScriptedModeInstructions("/docs/Workflow/testing/code/step", "/docs/Workflow/testing/runs/output", false, "", "", nil, nil, nil, "", false, false, true, true)
 	if strings.Contains(prompt, "To test, just run") || !strings.Contains(prompt, "controller executes") {
 		t.Fatal("canonical prompt must use controller execution")

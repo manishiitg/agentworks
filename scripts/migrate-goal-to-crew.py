@@ -100,6 +100,7 @@ class Conversion:
         self.archives = {}
         self.chat_imports = []
         self.counts = {}
+        self.code_path_manual_fixes = []
         self.goal_id = 'imported-' + str(uuid.uuid5(uuid.NAMESPACE_URL, self.root))
         self.binding_file = self.state / 'ownership/crew-executables' / (hashlib.sha256(self.root.encode()).hexdigest() + '.json')
         self.receipt = self.state / 'migrations/goal-to-crew' / (workflow + '.json')
@@ -566,7 +567,43 @@ class Conversion:
                     if references_measurement_table(text):
                         raise ValueError('Update direct measurement-table SQL/code to the Crew goal API before conversion: '+str(file.relative_to(self.source)))
 
+    def code_path_guidance(self):
+        # A runtime anchor survives a Crew moving to another machine. Only
+        # rewrite prose/shell guidance; embedded Python needs a person to use
+        # os.environ rather than replacing a quoted Python filename blindly.
+        pattern = re.compile(r'(?<![\w/.$-])code/([A-Za-z0-9_.${}-]+(?:/[A-Za-z0-9_.${}-]+)*)')
+        fields = {'description', 'instruction', 'instructions', 'prompt', 'message', 'command', 'shell'}
+        def visit(value, file, location=''):
+            if isinstance(value, list):
+                return [visit(item, file, location+'/'+str(i)) for i, item in enumerate(value)]
+            if not isinstance(value, dict):
+                return value
+            result = {}
+            for key, item in value.items():
+                field = location+'/'+key
+                if key in fields and isinstance(item, str):
+                    matches = [match for match in pattern.finditer(item)
+                               if (self.source/'code'/match[1].split('/')[0]).exists()]
+                    if matches:
+                        if re.search(r'```python|\bpython[23]?\b[^\n]*(?:<<| -c\b)|\bos\.|\b(?:Path|open)\s*\(', item):
+                            self.code_path_manual_fixes.append({'file':str(file.relative_to(self.source)),
+                                                               'field':field, 'paths':sorted({match[0] for match in matches})})
+                        else:
+                            allowed = {match.span() for match in matches}
+                            item = pattern.sub(lambda match: '$WORKFLOW_CODE_ROOT/'+match[1]
+                                               if match.span() in allowed else match[0], item)
+                result[key] = visit(item, file, field)
+            return result
+        for name in ['plan.json', 'step_config.json']:
+            file = self.source/'planning'/name
+            original = self.document(file)
+            if original is not None:
+                revised = visit(original, file)
+                if revised != original:
+                    self.write_json(file, revised)
+
     def source_moves(self):
+        self.code_path_guidance()
         for name in ['workflow.json', 'variables']:
             self.move(self.source/name, self.definitions/name)
         for item in (self.source/'planning').glob('*'):
@@ -590,6 +627,7 @@ class Conversion:
                 'preserved':['workflow identity','entry IDs and disabled state','run history and costs','business database','skills and knowledge','dashboard files and workflow-scoped links','secret references'],
                 'historical_run_note':'Old run folders remain readable; start a new run instead of resuming a retired grouped run.',
                 'needs_chat_import_binary':bool(self.chat_imports),
+                'code_path_manual_fixes':self.code_path_manual_fixes,
                 'chat_map':[{'person':user,'from':old,'to':tab} for (user,old),tab in self.chat_keys.items()]}
 
     def apply(self):
