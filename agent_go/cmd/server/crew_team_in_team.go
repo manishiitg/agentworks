@@ -50,6 +50,9 @@ func crewTeamChoiceKey(t crewTeam, person, key string) string {
 
 // agentInTeam: the person's own choice for the agent, else In team (new agents are shared).
 func (t crewTeam) agentInTeam(person, key string) bool {
+	if crewFunctionTabKey(key) {
+		return false
+	}
 	if in, ok := t.AgentChoices[person][crewTeamChoiceKey(t, person, key)]; ok {
 		return in
 	}

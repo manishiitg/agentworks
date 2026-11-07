@@ -73,6 +73,11 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	if !watches("owner") || !watches("teammate") || watches("outsider") || !notified("teammate") || notified("outsider") {
 		t.Fatalf("Team watch: owner=%t teammate=%t outsider=%t notified teammate=%t", watches("owner"), watches("teammate"), watches("outsider"), notified("teammate"))
 	}
+	// A function's own tab belongs to its owner: the Team never shares it, since a function is how others use a Crew.
+	fnTab := team.ProjectID + codeChatSideMarker + crewFunctionTabPrefix + "plan-release"
+	if team.agentInTeam("member", fnTab) || team.seesAgent("teammate", "member", fnTab) || !team.seesAgent("member", "member", fnTab) {
+		t.Fatal("a function tab is shared with the Team, or hidden from its owner")
+	}
 	w := call("member", "agent-visibility", `{"agent_key":"`+key+`","in_team":false}`)
 	if w.Code != 200 {
 		t.Fatalf("own visibility: %d %s", w.Code, w.Body.String())

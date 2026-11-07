@@ -168,7 +168,7 @@ func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []
 	identities, _ := store.agentIdentities(ctx, member, crewProfileID, project)
 	for _, record := range records {
 		identity := identities[record.ConversationKey]
-		if !t.seesAgent(caller, member, record.ConversationKey) || record.SessionID == "" || hiddenFromTabStrip(record.ConversationKey) {
+		if !t.seesAgent(caller, member, record.ConversationKey) || record.SessionID == "" || hiddenFromTabStrip(record.ConversationKey) || crewFunctionTabKey(record.ConversationKey) {
 			continue
 		}
 		_, tab, side := strings.Cut(record.ConversationKey, codeChatSideMarker)

@@ -99,6 +99,13 @@ const (
 // runs in a chat someone types in. Agent slugs are [a-z0-9-] only, so no agent name can produce the dot.
 const crewFunctionTabPrefix = "fn."
 
+// crewFunctionTabKey is a function's own tab (fn.<name>). It is the owner's agent: a function is how everyone else uses
+// a Crew, so the Team never lists, shares or lets anyone message that tab (owner, 7 Nov).
+func crewFunctionTabKey(key string) bool {
+	_, id, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
+	return ok && strings.HasPrefix(id, crewFunctionTabPrefix)
+}
+
 // tabName is the tab a call of this Crew function runs in, or "" for a fresh chat per call.
 func (fn crewFunction) tabName() string {
 	if strings.EqualFold(strings.TrimSpace(fn.Execution), "fresh") {
