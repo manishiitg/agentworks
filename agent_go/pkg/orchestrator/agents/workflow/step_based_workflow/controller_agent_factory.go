@@ -1390,12 +1390,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	config.EnableParallelToolExecution = true
 	hcpo.GetLogger().Info("⚡ Parallel tool execution enabled for execution-only agent")
 
-	// Allow step config to override parallel tool execution
-	if stepConfig != nil && stepConfig.DisableParallelToolExecution != nil && *stepConfig.DisableParallelToolExecution {
-		config.EnableParallelToolExecution = false
-		hcpo.GetLogger().Info("🔧 Parallel tool execution DISABLED for execution-only agent via step config")
-	}
-
 	// 5. Prepare custom tools (filtered by step config)
 	toolsToRegister, executorsToUse := hcpo.prepareCustomTools(stepConfigWithDescribedHumanTools(stepConfig, planStep))
 	if dbAccess == DBAccessRead {

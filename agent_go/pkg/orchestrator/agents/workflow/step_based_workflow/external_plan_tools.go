@@ -41,7 +41,7 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 			"clear_fields": map[string]interface{}{
 				"type":        "array",
 				"items":       map[string]interface{}{"type": "string"},
-				"description": "Field names to CLEAR (remove from step_config.json) so the step uses preset/default behavior again. Clearing enabled_skills removes explicit step skills; step execution does not inherit workflow-selected skills, so set enabled_skills explicitly when the step needs installed skills. Only fields with a corresponding setter in this tool are clearable. Valid names: execution_llm, execution_llm_reason, execution_tier, execution_tier_reason, servers, tools, enabled_custom_tools, enabled_skills, additional_read_paths, lock_code, use_code_execution_mode, disable_parallel_tool_execution, coding_agent_tmux_lifecycle, description_reviewed, knowledgebase_access, knowledgebase_contribution, review_notes, validation_schema. Unknown names are reported as errors; nothing else in the same call is applied.",
+				"description": "Field names to CLEAR (remove from step_config.json) so the step uses preset/default behavior again. Clearing enabled_skills removes explicit step skills; step execution does not inherit workflow-selected skills, so set enabled_skills explicitly when the step needs installed skills. Only fields with a corresponding setter in this tool are clearable. Valid names: execution_llm, execution_llm_reason, execution_tier, execution_tier_reason, servers, tools, enabled_custom_tools, enabled_skills, additional_read_paths, lock_code, use_code_execution_mode, coding_agent_tmux_lifecycle, description_reviewed, knowledgebase_access, knowledgebase_contribution, review_notes, validation_schema. Unknown names are reported as errors; nothing else in the same call is applied.",
 			},
 			"servers": map[string]interface{}{
 				"type":        "array",
@@ -80,10 +80,6 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 			"knowledgebase_contribution": map[string]interface{}{
 				"type":        "string",
 				"description": "Legacy automatic KB contribution objective, retained only for workflow_upgrade 1.0.50. Put required contributions in the task description and grant knowledgebase_access instead.",
-			},
-			"disable_parallel_tool_execution": map[string]interface{}{
-				"type":        "boolean",
-				"description": "If true, force the LLM to emit only one tool call per turn for this step. Use when tool calls must run strictly sequentially (e.g., stateful browser sessions, file edits with ordering dependencies, or when the agent is making mistakes by racing parallel calls). Default (omit/false) = parallel tool calls allowed. For todo_task steps, child tasks inherit this setting from the parent.",
 			},
 			"coding_agent_tmux_lifecycle": map[string]interface{}{
 				"type":        "string",
@@ -290,11 +286,6 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 		if val, ok := args["knowledgebase_contribution"]; ok && val != nil {
 			if s, ok := val.(string); ok {
 				targetConfig.AgentConfigs.KnowledgebaseContribution = s
-			}
-		}
-		if val, ok := args["disable_parallel_tool_execution"]; ok && val != nil {
-			if b, ok := val.(bool); ok {
-				targetConfig.AgentConfigs.DisableParallelToolExecution = &b
 			}
 		}
 		if val, ok := args["coding_agent_tmux_lifecycle"]; ok && val != nil {
