@@ -1,20 +1,21 @@
 package orchestrator
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/clisecurity"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // Prepare only explicit execution outputs, never an inherited parent-session
 // STEP_OUTPUT_DIR on a review/learning agent. The final dedicated session guard
 // is the authority, including nested/agent output overrides.
-func prepareCodingAgentOutputRuntime(config *agents.OrchestratorAgentConfig) error {
+func prepareCodingAgentOutputRuntime(ctx context.Context, config *agents.OrchestratorAgentConfig) error {
 	if config == nil || strings.TrimSpace(config.CodingAgentOutputDir) == "" {
 		return nil
 	}
@@ -29,29 +30,13 @@ func prepareCodingAgentOutputRuntime(config *agents.OrchestratorAgentConfig) err
 	if err != nil {
 		return err
 	}
-	policy := llmtypes.CLISecurityPolicy{}
-	if config.CLISecurityPolicy != nil {
-		policy = config.CLISecurityPolicy.Clone()
-	}
-	// Never inherit the chat's workflow-wide write grant. Keep independently
-	// admitted host capabilities and enforcement mode, and use this step's
-	// existing workspace grants (DB/cache/KB/owning subtree included).
-	policy.WorkspaceReadPaths = nil
-	policy.WorkspaceWritePaths = nil
-	for _, paths := range []struct {
-		source []string
-		target *[]string
-	}{{cfg.ReadPaths, &policy.WorkspaceReadPaths}, {cfg.WritePaths, &policy.WorkspaceWritePaths}} {
-		for _, path := range paths.source {
-			resolved, err := canonicalRuntimePath(resolveCodingAgentWorkingDir(path))
-			if err != nil {
-				return fmt.Errorf("resolve step CLI grant %q: %w", path, err)
-			}
-			*paths.target = append(*paths.target, resolved)
-		}
-	}
+	// Check the real output target against the child's guard before creating it.
 	allowed := false
-	for _, root := range policy.WorkspaceWritePaths {
+	for _, path := range cfg.WritePaths {
+		root, err := canonicalRuntimePath(resolveCodingAgentWorkingDir(path))
+		if err != nil {
+			return fmt.Errorf("resolve step CLI grant %q: %w", path, err)
+		}
 		rel, err := filepath.Rel(root, output)
 		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			allowed = true
@@ -65,7 +50,15 @@ func prepareCodingAgentOutputRuntime(config *agents.OrchestratorAgentConfig) err
 		return fmt.Errorf("create step output directory: %w", err)
 	}
 	config.CodingAgentOutputDir = output
-	config.CLISecurityPolicy = &policy
+	// No host resolver means bridge-only; never inherit the parent launch policy.
+	config.CLISecurityPolicy = nil
+	if clisecurity.ResolveWorkflowPolicy != nil {
+		resolved, err := clisecurity.ResolveWorkflowPolicy(ctx, config.MCPSessionID, config.LLMConfig.Primary.Provider, config.CodingAgentWorkingDir)
+		if err != nil {
+			return fmt.Errorf("resolve workflow CLI policy: %w", err)
+		}
+		config.CLISecurityPolicy = resolved
+	}
 	return nil
 }
 
