@@ -43,6 +43,9 @@ func (r *lazyWorkshopRegistrar) RegisterCustomToolWithTimeout(n, d string, schem
 		// registry. Serialize selection/start across replacement chat definitions.
 		session.toolCallMu.Lock()
 		defer session.toolCallMu.Unlock()
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		capture := &workshopToolCapture{name: n}
 		RegisterWorkshopChatTools(capture, session, r.logger)
 		RegisterRunFullWorkflowTool(capture, session, r.logger)

@@ -327,6 +327,24 @@ func TestCrewStepToolsKeepRunOutputsAndInputsAfterRuntimeEviction(t *testing.T) 
 		}
 	}
 	ctx := context.Background()
+	// A retry may arrive before the first goroutine has written inputs.json.
+	// Return its existing execution before trying to continue that folder.
+	session, err := resolve(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(selection, []byte("run-already-starting"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	session.StepRegistry.Register(&WorkshopStepExecution{ID: "already-starting", StepID: "first", RunFolder: "run-already-starting", Status: WorkshopStepRunning})
+	existing, err := run(ctx, map[string]interface{}{"step_id": "1"})
+	if err != nil || !strings.Contains(existing, "already-starting") {
+		t.Fatalf("retry lost the accepted execution: %s %v", existing, err)
+	}
+	session.StepRegistry = NewWorkshopStepRegistry()
+	if err := os.Remove(selection); err != nil {
+		t.Fatal(err)
+	}
 	out, err := run(ctx, map[string]interface{}{"step_id": "1", "inputs": map[string]interface{}{"COUNT": "7"}, "fast_path_only": true})
 	if err != nil || !strings.Contains(out, "started in background") {
 		t.Fatalf("first step: %s %v", out, err)
@@ -343,6 +361,18 @@ func TestCrewStepToolsKeepRunOutputsAndInputsAfterRuntimeEviction(t *testing.T) 
 	status, err := tools.tools["query_step"].Execute(ctx, map[string]interface{}{"step_id": "first"})
 	if err != nil || !strings.Contains(status, folder) {
 		t.Fatalf("status omitted run: %s %v", status, err)
+	}
+	debug, err := tools.tools["debug_step"].Execute(ctx, map[string]interface{}{"step_id": "first", "run_folder": folder})
+	if err != nil || !strings.Contains(debug, folder) {
+		t.Fatalf("debug did not inspect the selected run: %s %v", debug, err)
+	}
+	if selected, _ := os.ReadFile(selection); string(selected) != folder {
+		t.Fatal("debug changed the chat run selection")
+	}
+	select {
+	case <-notifier.done:
+		t.Fatal("debug started step work")
+	default:
 	}
 	current.Close()
 	current = nil // idle eviction or backend restart, not a new conversation

@@ -32,10 +32,11 @@ func TestCrewStepToolsRequireOwnEditableWorkflowAndStayLazy(t *testing.T) {
 	resolved.Definition.ID = crewProfileID
 	resolved.Definition.Runtime.Capabilities.WorkflowExecution = agentprofiles.CapabilityOptional
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	register := func(user string, readOnly bool) *recordingRegistrar {
+	register := func(user string, readOnly bool) *productSurfaceDraft {
 		t.Helper()
-		reg := &recordingRegistrar{}
-		if err := api.registerAgentProfileWorkflowTools(ctx, reg, resolved, user, "owner-chat", crewWorkflowTestCrewPath, nil, nil, QueryRequest{}, readOnly); err != nil {
+		reg := &productSurfaceDraft{}
+		callCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user})
+		if err := api.registerAgentProfileWorkflowTools(callCtx, reg, resolved, user, "owner-chat", crewWorkflowTestCrewPath, nil, nil, QueryRequest{}, readOnly); err != nil {
 			t.Fatal(err)
 		}
 		return reg

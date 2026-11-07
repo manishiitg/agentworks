@@ -1271,6 +1271,7 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 			// uses the resolved stepID to find tool calls under sub-<kind>-<stepID>-* sessions.
 			if b.session != nil && b.session.StepRegistry != nil {
 				b.session.StepRegistry.Register(&WorkshopStepExecution{
+					RunFolder: b.iteration,
 					ID:        execID,
 					StepID:    stepID,
 					Status:    WorkshopStepRunning,
@@ -1323,10 +1324,11 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 				}
 
 				progressExec := &WorkshopStepExecution{
-					ID:     progressID,
-					StepID: stepID,
-					Status: WorkshopStepDone,
-					Result: fmt.Sprintf("[Step %d: %s] %s — %s", endEvent.StepIndex, stepName, status, truncateResult(result, 500)),
+					RunFolder: b.iteration,
+					ID:        progressID,
+					StepID:    stepID,
+					Status:    WorkshopStepDone,
+					Result:    fmt.Sprintf("[Step %d: %s] %s — %s", endEvent.StepIndex, stepName, status, truncateResult(result, 500)),
 				}
 				if !endEvent.Success {
 					progressExec.Status = WorkshopStepFailed
@@ -1386,10 +1388,11 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 			progressID, alreadyStarted := b.workflowProgressExecIDForEnd(completedEvent.StepID, "delegating_agent", stepName, completedEvent.StepIndex)
 			if b.session != nil && b.session.StepRegistry != nil {
 				b.session.StepRegistry.Register(&WorkshopStepExecution{
-					ID:     progressID,
-					StepID: completedEvent.StepID,
-					Status: WorkshopStepDone,
-					Result: fmt.Sprintf("[Step %d: %s] completed — %s", completedEvent.StepIndex, stepName, truncateResult(result, 500)),
+					RunFolder: b.iteration,
+					ID:        progressID,
+					StepID:    completedEvent.StepID,
+					Status:    WorkshopStepDone,
+					Result:    fmt.Sprintf("[Step %d: %s] completed — %s", completedEvent.StepIndex, stepName, truncateResult(result, 500)),
 				})
 			}
 
@@ -1833,6 +1836,7 @@ func RegisterRunFullWorkflowTool(
 			execCtx = context.WithValue(execCtx, orchestrator_events.IsSubAgentContextKey, true)
 
 			exec := &WorkshopStepExecution{
+				RunFolder:      iteration,
 				ID:             execID,
 				StepID:         "full-workflow",
 				AgentSessionID: agentSessionID,
