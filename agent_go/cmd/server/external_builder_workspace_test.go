@@ -46,10 +46,10 @@ func TestExternalBuilderManagedFileTools(t *testing.T) {
 	if err := api.registerExternalBuilderWorkspaceTools(web, "Workflow/test", &UserClaims{UserID: "owner"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []string{"builder", "run"} {
-		if web.tools["read_file"].exec == nil || web.tools["write_file"].exec != nil || !newAgentWorksChatToolGate(mode).Admit("read_file") {
-			t.Fatalf("%s chat: read_file must be registered and admitted, write_file not registered: %+v", mode, web.tools)
-		}
+	// Native CLI reads now use the CLI tool surface (PLAT-861); this
+	// registration check covers the MCP reader/writer boundary itself.
+	if web.tools["read_file"].exec == nil || web.tools["write_file"].exec != nil {
+		t.Fatalf("read_file must be registered, write_file not registered: %+v", web.tools)
 	}
 	call := func(name string, args map[string]interface{}) wf.Result {
 		t.Helper()
@@ -159,6 +159,34 @@ func TestExternalBuilderManagedFileTools(t *testing.T) {
 		if entry.Path == "db" || entry.Path == "db/db.sqlite" || entry.Path == "link" {
 			t.Fatal("private list entry", entry)
 		}
+	}
+	// PLAT-746-384: the same Builder tools must edit mapped source without
+	// recreating or modifying the retired workflow directory.
+	binding := crewExecutableBinding{ID: "task", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/test", Kind: "workflow"}
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "lab", ProjectID: binding.CrewID, OwnerID: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	code := filepath.Join(docs, "Crew/lab/.agentworks/code/task")
+	for _, dir := range []string{code, filepath.Join(docs, "_system/crew-data", binding.CrewID)} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := registerCrewExecutable(binding); err != nil {
+		t.Fatal(err)
+	}
+	mapped := call("write_file", map[string]interface{}{"path": "code/new.py", "content": "print(3)", "expected_revision": wf.MissingRevision})
+	if raw, err := os.ReadFile(filepath.Join(code, "new.py")); err != nil || string(raw) != "print(3)" || mapped.Path != "code/new.py" {
+		t.Fatalf("mapped Builder write: %s %v %+v", raw, err, mapped)
+	}
+	if _, err := externalBuilderRemoveFile(ctx, binding.Root, "code/new.py", mapped.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(code, "new.py")); !os.IsNotExist(err) {
+		t.Fatalf("mapped Builder remove: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "code/new.py")); !os.IsNotExist(err) {
+		t.Fatalf("edited retired workflow directory: %v", err)
 	}
 }
 

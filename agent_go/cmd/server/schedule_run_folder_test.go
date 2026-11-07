@@ -170,6 +170,9 @@ func TestBoundWorkflowNonmanualRunFoldersUsePrivateRuntime(t *testing.T) {
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(docs, crewroot.PrivateDirectory, binding.CrewID), 0700); err != nil {
+		t.Fatal(err)
+	}
 	layout, found, err := crewroot.LookupExecutable(docs, binding.Root)
 	if err != nil || !found {
 		t.Fatalf("resolve binding: %v", err)
