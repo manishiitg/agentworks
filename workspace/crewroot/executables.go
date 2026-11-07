@@ -64,6 +64,8 @@ func (q *Resolver) executable(virtual string) (ExecutableLayout, bool, error) {
 	runtime := filepath.Join(q.docs, filepath.FromSlash(root))
 	if b.Kind == "workflow" {
 		runtime = filepath.Join(r.Private, "workflows", b.ID)
+	} else if b.Kind == "script" {
+		runtime = filepath.Join(r.Private, "scripts", b.ID)
 	}
 	return ExecutableLayout{b, r, filepath.Join(automation, "workflows", b.ID), filepath.Join(automation, "code", b.ID), runtime}, true, nil
 }
@@ -80,7 +82,7 @@ func LookupExecutable(docs, virtual string) (ExecutableLayout, bool, error) {
 func (l ExecutableLayout) source(rel string) (root, suffix string, mapped bool) {
 	switch {
 	case rel == "planning/changelog" || strings.HasPrefix(rel, "planning/changelog/") || rel == "planning/revisions" || strings.HasPrefix(rel, "planning/revisions/"):
-		return l.Runtime, rel, l.Binding.Kind == "workflow"
+		return l.Runtime, rel, l.Binding.Kind == "workflow" || l.Binding.Kind == "script"
 	case rel == "code" || strings.HasPrefix(rel, "code/"):
 		return l.Code, strings.TrimPrefix(strings.TrimPrefix(rel, "code"), "/"), true
 	case rel == "workflow.json" || rel == "workflow.json.kb-lock" || rel == "planning" || strings.HasPrefix(rel, "planning/") || rel == "variables" || strings.HasPrefix(rel, "variables/"):
@@ -88,7 +90,7 @@ func (l ExecutableLayout) source(rel string) (root, suffix string, mapped bool) 
 			return l.Definitions, rel, true
 		}
 	}
-	return l.Runtime, rel, l.Binding.Kind == "workflow"
+	return l.Runtime, rel, l.Binding.Kind == "workflow" || l.Binding.Kind == "script"
 }
 
 func (q *Resolver) resolveExecutable(virtual string) (string, bool, error) {

@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	handlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/spf13/viper"
@@ -104,7 +105,10 @@ values = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(values['count'], int)
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'python_ran':True}))
 `)
-	if err := writeFileToWorkspace(t.Context(), binding.CrewRoot+"/product.json", `{"schema_version":1,"product":"work","id":"crew-script-http","title":"Script HTTP"}`); err != nil {
+	if err := writeFileToWorkspace(t.Context(), binding.CrewRoot+"/product.json", `{"schema_version":1,"product":"work","id":"crew-script-http","title":"Script HTTP","session_id":"work:project:crew-script-http"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileToWorkspace(t.Context(), binding.CrewRoot+"/workflow.json", `{"schema_version":1,"id":"crew-script-http","label":"Script HTTP","capabilities":{}}`); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -178,7 +182,12 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
-	folders, err := os.ReadDir(filepath.Join(docs, binding.Root, "runs"))
+	layout, found, err := crewroot.LookupExecutable(docs, binding.Root)
+	if err != nil || !found {
+		t.Fatalf("script layout: %v", err)
+	}
+	runtimeRoot := layout.Runtime
+	folders, err := os.ReadDir(filepath.Join(runtimeRoot, "runs"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,9 +196,9 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		if !folder.IsDir() || !strings.HasPrefix(folder.Name(), "run-") {
 			continue
 		}
-		result, err := os.ReadFile(filepath.Join(docs, binding.Root, "runs", folder.Name(), "execution/saved/result.json"))
+		result, err := os.ReadFile(filepath.Join(runtimeRoot, "runs", folder.Name(), "execution/saved/result.json"))
 		if err == nil && strings.Contains(string(result), `"count": 9`) && strings.Contains(string(result), `"python_ran": true`) {
-			runRoot := filepath.Join(docs, binding.Root, "runs", folder.Name())
+			runRoot := filepath.Join(runtimeRoot, "runs", folder.Name())
 			rawLog, readErr := os.ReadFile(filepath.Join(runRoot, "logs/saved/execution/scripted_fast_path.json"))
 			if readErr != nil {
 				t.Fatal("script log receipt missing", readErr)
@@ -219,5 +228,8 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	}
 	if !verified {
 		t.Fatal("no real Python result")
+	}
+	if !local {
+		checkSavedScriptTriggerAndSchedule(t, docs, binding)
 	}
 }

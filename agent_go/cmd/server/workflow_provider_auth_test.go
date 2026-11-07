@@ -20,6 +20,13 @@ import (
 	"github.com/manishiitg/mcpagent/llm"
 )
 
+// PLAT-746-414: shared workflow setup must report an absent store, never panic.
+func TestWorkflowProviderCredentialMissingStoreReturnsError(t *testing.T) {
+	if token, err := (&StreamingAPI{}).loadWorkflowProviderSecret(t.Context(), "owner", "Workflow/script", "claude-code", "Claude Code"); err == nil || token != nil {
+		t.Fatalf("missing store: token=%v error=%v", token, err)
+	}
+}
+
 func TestWorkflowSessionIDsAreUserAndWorkflowScoped(t *testing.T) {
 	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{
 		"alice-target": {
