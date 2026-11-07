@@ -69,7 +69,6 @@ func copyAsyncSubAgentContextValues(base, source context.Context) context.Contex
 		virtualtools.SubAgentAgentRestartKey,
 		virtualtools.SubAgentParametersKey,
 		virtualtools.ScriptedSubAgentInvocationKey,
-		virtualtools.GenericAgentAgentKey,
 	} {
 		if value := source.Value(key); value != nil {
 			base = context.WithValue(base, key, value)
@@ -365,26 +364,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutePredefinedSubAgentFunc(
 			return syncExecute(childCtx, routeID, todoID, instructions)
 		})
 		return asyncSubAgentStartResult(executionID, todoID, routeID, "predefined"), nil
-	}
-}
-
-func (hcpo *StepBasedWorkflowOrchestrator) createExecuteGenericAgentFunc(
-	execCtx *SubAgentExecutionContext,
-) virtualtools.ExecuteGenericAgentFunc {
-	syncExecute := hcpo.createExecuteGenericAgentSyncFunc(execCtx)
-	if execCtx == nil || !execCtx.AsyncEnabled {
-		return syncExecute
-	}
-	return func(toolCtx context.Context, todoID, instructions string) (string, error) {
-		if execCtx == nil || execCtx.OrchestratorStep == nil {
-			return "", fmt.Errorf("call_generic_agent is only available inside a todo_task step")
-		}
-		executionID := fmt.Sprintf("todo-generic-%s-%d", workflowSafeIDPart(todoID, "todo"), time.Now().UnixNano())
-		childCtx, call := execCtx.registerAsyncCall(toolCtx, executionID, todoID, "", "generic")
-		execCtx.runAsyncCall(call, func() (string, error) {
-			return syncExecute(childCtx, todoID, instructions)
-		})
-		return asyncSubAgentStartResult(executionID, todoID, "", "generic"), nil
 	}
 }
 

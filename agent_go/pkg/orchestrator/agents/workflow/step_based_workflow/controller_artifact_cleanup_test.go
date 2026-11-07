@@ -30,14 +30,6 @@ func TestNestedAgentUsesItsCallFolderAsParentRoot(t *testing.T) {
 	}
 }
 
-func TestGenericAgentUsesNestedParentLayout(t *testing.T) {
-	got := genericAgentArtifactFolderName("parent", "step-2", "call-001")
-	want := "parent/agents/generic/calls/call-001"
-	if got != want {
-		t.Fatalf("genericAgentArtifactFolderName() = %q, want %q", got, want)
-	}
-}
-
 func TestAgentRouteRoot(t *testing.T) {
 	got := agentSequenceRouteRoot("parent/agents/research/calls/call-001")
 	want := "parent/agents/research"
