@@ -50,10 +50,14 @@ const button = (host: HTMLElement, label: string) => [...host.querySelectorAll<H
 it('closes a running temporary run view while keeping the run and saved history', async () => {
   const host = await render()
   const stop = vi.spyOn(agentApi, 'stopSession')
+  const closeSourceChat = vi.spyOn(agentApi, 'manageWorkflowChats')
   const removeHistory = vi.spyOn(agentApi, 'deleteChatHistorySession')
   try {
     await act(async () => {
-      useChatStore.setState(state => ({ activeTabId: 'schedule', chatTabs: { ...state.chatTabs, schedule: { ...state.chatTabs.schedule, isStreaming: true } } }))
+      useChatStore.setState(state => ({ activeTabId: 'schedule', chatTabs: { ...state.chatTabs, schedule: {
+        ...state.chatTabs.schedule, isStreaming: true,
+        metadata: { ...state.chatTabs.schedule.metadata, workflowOwnerTabID: 'example:chat:main', workflowOwnerTabIsMain: true, agentProfileTabCanWrite: true },
+      } } }))
     })
     expect(button(host, 'Close Main')).toBeUndefined()
     await act(async () => button(host, 'Close schedule').click())
@@ -62,8 +66,10 @@ it('closes a running temporary run view while keeping the run and saved history'
     expect(useChatStore.getState().getTab('chat')?.sessionId).toBe('parent')
     expect(stop).not.toHaveBeenCalled()
     expect(removeHistory).not.toHaveBeenCalled()
+    expect(closeSourceChat).not.toHaveBeenCalled()
   } finally {
     stop.mockRestore()
+    closeSourceChat.mockRestore()
     removeHistory.mockRestore()
   }
 })

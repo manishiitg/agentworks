@@ -9,10 +9,13 @@ import { captureChatIdentity, isChatIdentityCurrent } from './chatIdentity'
 /** Preserve the permanent chat and the product's existing close rules. */
 export function canCloseWorkspaceChatTab(tab: ChatTab, tabs: Record<string, ChatTab>): boolean {
   const meta = tab.metadata
+  // A run view may inherit its originating main chat's ownership metadata.
+  // Closing that local view never closes or controls the originating chat.
+  if (meta?.isViewOnly === true) return meta.mode === 'workflow' || meta.agentProfileId === 'work'
   if (meta?.agentProfileTabCanWrite === false) return false
   if (meta?.mode === 'workflow') {
     if (meta.workflowOwnerTabID) return meta.agentProfileTabCanWrite === true && !meta.workflowOwnerTabIsMain
-    if (meta.isViewOnly !== true && meta.phaseId === 'workflow-builder') return false
+    if (meta.phaseId === 'workflow-builder') return false
     return (
       Object.values(tabs).filter(
         (item) =>
@@ -20,8 +23,8 @@ export function canCloseWorkspaceChatTab(tab: ChatTab, tabs: Record<string, Chat
       ).length > 1
     )
   }
-  if (meta?.agentProfileId === 'work' || meta?.agentProfileId === 'work') {
-    return meta.isViewOnly === true || isWorkSideChatTab(tab, meta.agentProfileProjectId)
+  if (meta?.agentProfileId === 'work') {
+    return isWorkSideChatTab(tab, meta.agentProfileProjectId)
   }
   return false
 }
@@ -58,7 +61,7 @@ export async function closeWorkspaceChatTab(tabId: string, canonicalTabId?: stri
     useChatStore.getState().chatTabs[tabId]?.sessionId === tab.sessionId
   // The server decides whether a physical chat can close and releases idle
   // runtime resources. Never stop a running agent as a side effect of Close.
-  if (meta?.workflowOwnerTabID && meta.presetQueryId) {
+  if (meta?.isViewOnly !== true && meta?.workflowOwnerTabID && meta.presetQueryId) {
     const preset = useGlobalPresetStore.getState().workflowPresets.find(item => item.id === meta.presetQueryId)
     if (!preset?.selectedFolder?.filepath) return
     await agentApi.manageWorkflowChats(preset.id, preset.selectedFolder.filepath, 'close', meta.workflowOwnerTabID)
