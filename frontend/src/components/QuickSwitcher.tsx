@@ -421,7 +421,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       })
 
     const crewItems: CrewChatItem[] = Object.values(crewTabs)
-      .filter(tab => !tab.metadata?.isScheduledRun && !tab.metadata?.isBotRun && !tab.metadata?.isViewOnly)
+      // Other people's agents (watch-only tabs) are not in the person's own list, as in the tab strip.
+      .filter(tab => !tab.metadata?.isScheduledRun && !tab.metadata?.isBotRun && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
       .sort((a, b) => (b.lastAccessedAt || b.createdAt || 0) - (a.lastAccessedAt || a.createdAt || 0))
       .map(tab => {
         const activeSession = tab.sessionId ? visibleActiveSessions.find(session => session.session_id === tab.sessionId) : undefined
