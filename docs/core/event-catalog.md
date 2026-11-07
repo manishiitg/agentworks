@@ -1033,7 +1033,6 @@ Producers:
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/context_aware_bridge.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/base_orchestrator_tokens_helpers.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_execution.go`
-- `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/crew_step.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/pulse_agent_metrics.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_crew.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/interactive_workshop_manager.go`

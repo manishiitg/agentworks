@@ -85,11 +85,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) hydrateCrewScripts(ctx context.Contex
 		if options == nil {
 			return fmt.Errorf("Crew script resolver is unavailable")
 		}
-		resolver, ok := options.CrewRunner.(CrewScriptResolver)
-		if !ok {
+		resources := options.CrewResources
+		if resources == nil || resources.Scripts == nil {
 			return fmt.Errorf("Crew script resolver is unavailable")
 		}
-		resolved, err := resolver.ResolveCrewScript(ctx, hcpo.GetWorkspacePath(), step.Script)
+		resolved, err := resources.Scripts.ResolveCrewScript(ctx, hcpo.GetWorkspacePath(), step.Script)
 		if err != nil {
 			return err
 		}

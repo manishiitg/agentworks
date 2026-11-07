@@ -670,9 +670,6 @@ func externalPlanToolRegistry() []externalPlanTool {
 		add("update_branch_step", "Update an existing branch step.", getUpdateBranchStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createUpdateBranchStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
 		})
-		add("update_crew_step", "Update an existing crew step.", getUpdateCrewStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
-			return createUpdateCrewStepExecutor(r.workspacePath, l, r.readFile, r.writeFile)
-		})
 		add("add_scripted_step", "Add a scripted step to an existing plan.", getAddScriptedStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createAddScriptedStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
 		})
@@ -684,9 +681,6 @@ func externalPlanToolRegistry() []externalPlanTool {
 		})
 		add("add_branch_step", "Add a branch step.", getAddBranchStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createAddBranchStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
-		})
-		add("add_crew_step", "Add a crew step.", getAddCrewStepSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
-			return createAddCrewStepExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)
 		})
 		add("delete_plan_steps", "Delete steps, rejecting deletion when remaining steps reference them.", getDeletePlanStepsSchema(), func(r *externalPlanRuntime, l loggerv2.Logger) externalPlanExecutor {
 			return createDeletePlanStepsExecutor(r.workspacePath, l, r.readFile, r.writeFile, r.moveFile)

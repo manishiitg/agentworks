@@ -9,11 +9,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
-	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // Exercise real MCP, the shared native attachment executor and disk writer.
@@ -51,24 +49,14 @@ func TestExternalWorkflowCrewDetachOverMCP(t *testing.T) {
 	server := serveExternalMCP(t, f.api, claims)
 	cli := dialExternalMCP(t, t.Context(), server.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), cli)
-	result := callRemoteTool(t, t.Context(), cli, "get_api_spec", map[string]any{"names": []any{"workflow_crews"}})
+	result := callRemoteTool(t, t.Context(), cli, "get_api_spec", map[string]any{"names": []any{"workspace"}})
 	requireRemoteSuccess(t, result, "attachment discovery")
-	f.call(t, raw, "workflow_crews", map[string]any{"action": "list"}, 200)
+	f.call(t, raw, "workspace", map[string]any{"action": "crew_list"}, 200)
 	_, editor := f.issue(t, "outsider")
-	f.call(t, editor, "workflow_crews", map[string]any{"action": "list"}, 200)
+	f.call(t, editor, "workspace", map[string]any{"action": "crew_list"}, 200)
 	_, reader := f.issue(t, "reader")
-	f.call(t, reader, "workflow_crews", map[string]any{"action": "detach", "alias": "remove-crew"}, 403)
-	f.call(t, raw, "workflow_crews", map[string]any{"action": "attach", "alias": "new-crew"}, 400)
-	store, err := openAccessTokens()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	_, guarded, err := store.Issue(t.Context(), accesstokens.Token{Name: "Source only", UserID: "outsider", Scopes: builderConsentScopes, WorkflowIDs: []string{"invoices"}, FileGuard: &wf.FolderGuard{ReadPaths: []string{"code"}, WritePaths: []string{"code"}}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.call(t, guarded, "workflow_crews", map[string]any{"action": "detach", "alias": "remove-crew"}, 403)
+	f.call(t, reader, "workspace", map[string]any{"action": "crew_detach", "alias": "remove-crew"}, 403)
+	f.call(t, raw, "workspace", map[string]any{"action": "crew_attach", "alias": "new-crew"}, 400)
 	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"id":"fetch-invoices","type":"scripted","title":"Fetch","description":"Read remove-crew/report.md."}]}`)
 	if used, err := crewUsedByWorkflow(t.Context(), "work", "remove-project", removedRoot); err != nil || !used {
 		t.Fatalf("saved attachment must block Crew deletion: %v %v", used, err)
@@ -77,7 +65,7 @@ func TestExternalWorkflowCrewDetachOverMCP(t *testing.T) {
 	t.Cleanup(func() { common.ClearSessionShellConfig(session) })
 	common.ApplySessionWorkflowFolderAccess(session, "Workflow/invoices", []string{"Workflow/invoices/runs"}, nil, nil, map[string]string{"WORKFLOW_CREW_remove": removedRoot})
 	common.GrantSessionCrewAttachmentReads(session, []string{removedRoot})
-	result = callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": "workflow_crews", "arguments": map[string]any{"workflow_id": "invoices", "action": "detach", "alias": "remove-crew"}})
+	result = callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"workflow_id": "invoices", "action": "crew_detach", "alias": "remove-crew"}})
 	requireRemoteSuccess(t, result, "native detach")
 	reply, err := json.Marshal(result)
 	if err != nil || !strings.Contains(string(reply), "warnings") || !strings.Contains(string(reply), "fetch-invoices") {
@@ -107,10 +95,6 @@ func TestExternalWorkflowCrewDetachOverMCP(t *testing.T) {
 	if used, err := crewUsedByWorkflow(t.Context(), "work", "remove-project", removedRoot); err != nil || used {
 		t.Fatalf("unused detached Crew should be deletable: %v %v", used, err)
 	}
-	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"type":"crew","id":"crew-step","crew_profile_id":"work","crew_project_id":"remove-project"}]}`)
-	if used, err := crewUsedByWorkflow(t.Context(), "work", "remove-project", removedRoot); err != nil || !used {
-		t.Fatalf("remaining Crew step must still block deletion: %v %v", used, err)
-	}
 	m = &saved
 	release, err := teamLock(t.Context(), "Workflow/invoices")
 	if err != nil {
@@ -124,7 +108,7 @@ func TestExternalWorkflowCrewDetachOverMCP(t *testing.T) {
 	}()
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		request := httptest.NewRequest("POST", "/api/external/v1/call", strings.NewReader(`{"name":"workflow_crews","arguments":{"workflow_id":"invoices","action":"detach","alias":"keep-crew"}}`)).WithContext(t.Context())
+		request := httptest.NewRequest("POST", "/api/external/v1/call", strings.NewReader(`{"name":"workspace","arguments":{"workflow_id":"invoices","action":"crew_detach","alias":"keep-crew"}}`)).WithContext(t.Context())
 		request.Header.Set("Authorization", "Bearer "+raw)
 		response := httptest.NewRecorder()
 		AuthMiddleware(http.HandlerFunc(f.api.handleExternalCall)).ServeHTTP(response, request)
@@ -147,5 +131,5 @@ func TestExternalWorkflowCrewDetachOverMCP(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("queued detach did not finish after the lock was released")
 	}
-	f.call(t, raw, "workflow_crews", map[string]any{"action": "detach", "alias": "keep-crew"}, 403)
+	f.call(t, raw, "workspace", map[string]any{"action": "crew_detach", "alias": "keep-crew"}, 403)
 }

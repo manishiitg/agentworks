@@ -576,6 +576,14 @@
   {
     "family": "workspace",
     "name": "crew_list",
+    "member": "workflow_crews__list",
+    "description": "Use the current workspace crew list operation.",
+    "source": "workflow_crews",
+    "source_action": "list"
+  },
+  {
+    "family": "workspace",
+    "name": "crew_list",
     "member": "manage_crew_attachment__list",
     "description": "Use the current workspace crew list operation.",
     "source": "manage_crew_attachment",
@@ -592,25 +600,17 @@
   {
     "family": "workspace",
     "name": "crew_detach",
-    "member": "manage_crew_attachment__detach",
+    "member": "workflow_crews__detach",
     "description": "Use the current workspace crew detach operation.",
-    "source": "manage_crew_attachment",
+    "source": "workflow_crews",
     "source_action": "detach"
   },
   {
     "family": "workspace",
-    "name": "crew_list",
-    "member": "workflow_crews__list",
-    "description": "Use the current workspace crew list operation.",
-    "source": "workflow_crews",
-    "source_action": "list"
-  },
-  {
-    "family": "workspace",
     "name": "crew_detach",
-    "member": "workflow_crews__detach",
+    "member": "manage_crew_attachment__detach",
     "description": "Use the current workspace crew detach operation.",
-    "source": "workflow_crews",
+    "source": "manage_crew_attachment",
     "source_action": "detach"
   },
   {

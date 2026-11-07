@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatRunFolderLabel, getDefaultRunFolder, getStepLatestError, getRecordedStepType, getStepStatus, getStepTypeBadgeStyle, getStepTypeDescription, getStepTypeLabel, isWebhookRunFolder } from './helpers'
+import { formatRunFolderLabel, getDefaultRunFolder, getStepLatestError, getRecordedStepType, getStepTypeLabel, getStepStatus, isWebhookRunFolder } from './helpers'
 
 describe('isWebhookRunFolder', () => {
   it('recognizes webhook iteration roots and group folders', () => {
@@ -19,14 +19,6 @@ describe('execution log run selection', () => {
     expect(getDefaultRunFolder('iteration-85-slack-one', 'iteration-84/default')).toBe('iteration-85-slack-one')
     expect(getDefaultRunFolder(null, 'iteration-0/default')).toBe('iteration-0/default')
     expect(getDefaultRunFolder(null, undefined)).toBe('')
-  })
-})
-
-describe('crew step log presentation', () => {
-  it('labels crew steps as Crew, not Scripted', () => {
-    expect(getStepTypeLabel('crew')).toBe('Crew')
-    expect(getStepTypeDescription('crew')).toContain('Crew step')
-    expect(getStepTypeBadgeStyle('crew')).toContain('sky')
   })
 })
 

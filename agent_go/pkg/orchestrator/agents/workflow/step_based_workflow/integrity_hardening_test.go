@@ -6,19 +6,15 @@ import (
 	"testing"
 )
 
-func TestPlanningResponseRejectsLegacyConditionalStep(t *testing.T) {
-	const legacyPlan = `{"steps":[{
-		"type":"conditional","id":"legacy-branch","title":"Legacy branch"
-	}]}`
-
-	var plan PlanningResponse
-	err := json.Unmarshal([]byte(legacyPlan), &plan)
-	if err == nil {
-		t.Fatal("expected legacy conditional step to be rejected")
-	}
-	if !strings.Contains(err.Error(), `unknown step type "conditional"`) ||
-		!strings.Contains(err.Error(), "scripted, agent, routing, branch, or crew") {
-		t.Fatalf("unexpected legacy conditional error: %v", err)
+// PLAT-746-355: removed types must not be silently converted to agent/script steps.
+func TestPlanningResponseRejectsRemovedStepTypes(t *testing.T) {
+	for _, kind := range []string{"conditional", "crew"} {
+		var plan PlanningResponse
+		raw := `{"steps":[{"type":"` + kind + `","id":"removed","title":"Removed"}]}`
+		err := json.Unmarshal([]byte(raw), &plan)
+		if err == nil || !strings.Contains(err.Error(), `unknown step type "`+kind+`"`) {
+			t.Fatalf("removed %s type was not refused: %v", kind, err)
+		}
 	}
 }
 

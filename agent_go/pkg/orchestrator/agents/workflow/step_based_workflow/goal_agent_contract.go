@@ -33,13 +33,13 @@ func validateGoalScriptedRouteAuthoring(routes []PlanOrchestrationRoute, plans .
 			route.SubAgentStep, _, _ = findStepByID(plans[0].OrphanSteps, route.OrphanStepRef)
 		}
 		if _, ok := route.SubAgentStep.(*ScriptedPlanStep); !ok {
-			return fmt.Errorf("route %q needs a saved scripted Python helper; put LLM specialists in an explicit Crew step", route.RouteID)
+			return fmt.Errorf("route %q needs a saved scripted Python helper; put LLM specialists in an agent step using its Crew configuration", route.RouteID)
 		}
 	}
 	return nil
 }
 
-// ValidateGoalAgentAuthoring keeps specialist work in an explicit Crew step.
+// ValidateGoalAgentAuthoring keeps specialist work in an agent step using its Crew configuration.
 func ValidateGoalAgentAuthoring(plan *PlanningResponse) error {
 	if plan == nil {
 		return fmt.Errorf("a Goal plan is required")

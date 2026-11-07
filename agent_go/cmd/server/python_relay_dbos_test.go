@@ -150,7 +150,7 @@ async def run(INPUT):
 		registry := agentprofiles.NewRegistry()
 		registerWorkCrewProfile(t, registry)
 		api.projectActions = NewProjectActionDispatcher(api, registry)
-		created, e := api.projectActions.CreateCrewProject(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner"}), CreateCrewRequest{UserID: "owner", WorkflowPath: draft, Title: "Program lab", IdempotencyKey: "program-chat", StepInstruction: "Record deterministic program outcomes", Purpose: "Record program runs in its chat"})
+		created, e := api.projectActions.CreateCrewProject(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner"}), CreateCrewRequest{UserID: "owner", WorkflowPath: draft, Title: "Program lab", IdempotencyKey: "program-chat", Purpose: "Record program runs in its chat"})
 		if e != nil {
 			t.Fatal(e)
 		}

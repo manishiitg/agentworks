@@ -88,7 +88,7 @@ func TestCrewGoalsShareEvidenceWithoutSharingWriteAuthority(t *testing.T) {
 	docs := t.TempDir()
 	docs, _ = filepath.EvalSymlinks(docs)
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Goals lab", Purpose: "Track outcomes", StepInstruction: "Track real results", IdempotencyKey: "goal-test"})
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Goals lab", Purpose: "Track outcomes", IdempotencyKey: "goal-test"})
 	if err != nil {
 		t.Fatal(err)
 	}

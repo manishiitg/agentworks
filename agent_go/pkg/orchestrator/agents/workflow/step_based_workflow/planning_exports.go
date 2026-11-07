@@ -579,7 +579,7 @@ type WorkshopConfig struct {
 	SourcePlatform         string
 	WebhookInvocation      *WebhookInvocation  // Set internally by API trigger dispatch, never from tool arguments.
 	ScheduleInvocation     *ScheduleInvocation // Set internally by saved-schedule dispatch, never from tool arguments.
-	CrewRunner             CrewStepRunner      // Set internally by the server; lets Builder-run crew steps invoke Crew triggers.
+	CrewResources          *CrewResources      // Saved configuration and scripts supplied by the server.
 	AgentFunctionTools     AgentFunctionToolFactory
 	ScheduleCollisionCheck ScheduleCollisionCheck
 	WorkspacePath          string
@@ -709,7 +709,7 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	}
 
 	controller.SetWorkspacePath(cfg.WorkspacePath)
-	bindCrewRunner(controller, cfg.CrewRunner)
+	bindCrewResources(controller, cfg.CrewResources)
 	// Product policy must be loaded before the Builder registers execution tools.
 	if err := controller.loadCodeLayout(ctx); err != nil {
 		cancelFunc()
@@ -755,14 +755,14 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	}
 	if cfg.ScheduleInvocation != nil {
 		controller.SetExecutionOptions(&ExecutionOptions{
-			CrewRunner:        cfg.CrewRunner,
+			CrewResources:     cfg.CrewResources,
 			SelectedRunFolder: cfg.ScheduleInvocation.BoundRunFolder(),
 			RunKind:           cfg.ScheduleInvocation.RunKind(), ScheduleRunID: cfg.ScheduleInvocation.BoundRunID(),
 			ScheduleID: cfg.ScheduleInvocation.ScheduleID, TriggerSource: cfg.ScheduleInvocation.TriggerSource,
 			ScheduledFor: cfg.ScheduleInvocation.ScheduledFor,
 		})
 	}
-	// Crew steps resolve their runner from the controller's options, and
+	// Saved Crew resources resolve their service from the controller's options, and
 	// execute_step builds fresh strategy options without touching them —
 	// so the session runner must live on the controller from init.
 	bindAgentFunctionTools(controller, cfg.AgentFunctionTools)
@@ -2018,8 +2018,8 @@ func RegisterRunFullWorkflowTool(
 					HumanInputs:        humanInputs,
 					RouteSelections:    routeSelections,
 					// Fresh controllers start with no options: without the
-					// session runner, crew steps fail as unbound here.
-					CrewRunner:         cfg.CrewRunner,
+					// resource service, saved agent/script references cannot be resolved here.
+					CrewResources:      cfg.CrewResources,
 					AgentFunctionTools: cfg.AgentFunctionTools,
 				}
 				if cfg.ScheduleInvocation != nil {

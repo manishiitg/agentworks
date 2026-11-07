@@ -14,9 +14,6 @@ import (
 
 type savedCrewScriptFixture struct{ configuration CrewScriptConfiguration }
 
-func (r *savedCrewScriptFixture) RunCrewStep(context.Context, CrewStepRequest) (CrewStepResult, error) {
-	return CrewStepResult{}, nil
-}
 func (r *savedCrewScriptFixture) ResolveCrewScript(_ context.Context, workspace string, id string) (CrewScriptConfiguration, error) {
 	if id == "" && workspace != r.configuration.Root {
 		return CrewScriptConfiguration{}, nil
@@ -64,7 +61,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	defer cancel()
 	run := func(workspace string, args map[string]interface{}) string {
 		t.Helper()
-		cfg := &WorkshopConfig{WorkspacePath: workspace, Logger: loggerv2.NewNoop(), CrewRunner: resolver}
+		cfg := &WorkshopConfig{WorkspacePath: workspace, Logger: loggerv2.NewNoop(), CrewResources: &CrewResources{Scripts: resolver}}
 		if workspace == "Workflow/second" {
 			// PLAT-746: scheduler options must retain the saved-script resolver.
 			cfg.ScheduleInvocation = &ScheduleInvocation{ScheduleID: "timer", RunID: "scheduled-script", RunFolder: "run-scheduled-script"}
@@ -162,7 +159,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	const requiredRoot = "Workflow/required"
 	write(requiredRoot+"/workflow.json", `{"code_layout_version":1}`)
 	write(requiredRoot+"/planning/plan.json", `{"steps":[{"id":"agent","type":"agent","title":"Agent","description":"Read inputs","items":[{"id":"batch","type":"scripted","scripted_steps":[{"id":"one","step_id":"saved","parameters":{"count":9}}]}]}],"orphan_steps":[{"id":"saved","type":"scripted","title":"Saved","description":"Use saved source","script":"qualify","script_only":true}]}`)
-	session, err := NewWorkshopChatSession(ctx, &WorkshopConfig{WorkspacePath: requiredRoot, Logger: loggerv2.NewNoop(), CrewRunner: resolver})
+	session, err := NewWorkshopChatSession(ctx, &WorkshopConfig{WorkspacePath: requiredRoot, Logger: loggerv2.NewNoop(), CrewResources: &CrewResources{Scripts: resolver}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -132,7 +132,7 @@ read-only Crew attachments. Detach an alias explicitly with `action=detach` and
 `alias` from that list. Existing Builder consent and the current workflow
 owner/editor role apply, including connection bounds and file guards.
 This removes the read binding and its live grants; it leaves plan steps unchanged.
-Crew deletion still refuses remaining attachments and Crew steps. `crew_references`
+Crew deletion still refuses remaining attachments. `crew_references`
 handles Crew-to-workflow references instead. New workflow Crew attachments continue
 through the native Builder's `manage_crew_attachment` tool.
 # Product guide and Brain starter skill

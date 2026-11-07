@@ -1236,7 +1236,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
 
 		"add_agent_route", "update_agent_route", "delete_agent_route",
-		"add_crew_step", "update_crew_step",
 		"update_scripted_step", "update_agent_step", "update_routing_step", "update_branch_step",
 
 		"delete_plan_steps", "cleanup_orphan_step_configs",
@@ -3998,7 +3997,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					}
 					sb.WriteString("\n### Attached Crews (read-only)\n")
 					if len(manifest.CrewAttachments) == 0 {
-						sb.WriteString("No Crew projects are attached. Crew steps require their project attached; manage with manage_crew_attachment.\n")
+						sb.WriteString("No Crew projects are attached. Read attached projects through their alias; manage with manage_crew_attachment.\n")
 					} else {
 						for _, attachment := range manifest.CrewAttachments {
 							sb.WriteString(fmt.Sprintf("- **%s** → crew project %s (profile %s); read files as `%s/<path>`\n", attachment.Alias, attachment.CrewProjectID, attachment.CrewProfileID, attachment.Alias))

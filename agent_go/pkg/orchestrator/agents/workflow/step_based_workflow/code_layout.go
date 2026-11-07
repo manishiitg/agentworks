@@ -30,7 +30,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 	}
 
 	if options := hcpo.GetExecutionOptions(); options != nil {
-		if resolver, ok := options.CrewRunner.(CrewScriptResolver); ok {
+		if resources := options.CrewResources; resources != nil && resources.Scripts != nil {
+			resolver := resources.Scripts
 			resolved, err := resolver.ResolveCrewScript(ctx, hcpo.GetWorkspacePath(), "")
 			if err != nil {
 				return err

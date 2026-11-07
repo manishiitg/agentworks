@@ -1189,13 +1189,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 		return "", updatedContextFiles, err
 	}
 
-	// Crew steps run only as top-level steps through executeCrewStep; a crew
-	// step nested under an orchestrator route lands here via the sub-agent
-	// fallthrough and must fail clearly instead of running as an agent step.
-	if isCrewStep(step) {
-		return "", updatedContextFiles, fmt.Errorf("crew step %q runs only as a top-level step", step.GetID())
-	}
-
 	artifactStepID, artifactStepPath := getExecutionArtifactIdentity(step.GetID(), stepPath, execCtx)
 
 	// PLAT-174. Everything below reads step.AgentConfigs (folder guard scope,
@@ -2553,13 +2546,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 // boolean flags, making the execution routing logic more maintainable and
 // preparing for future migration to type-safe step types.
 
-// isCrewStep returns true if the step invokes a Crew trigger and waits for
-// its final response.
-func isCrewStep(step PlanStepInterface) bool {
-	_, ok := step.(*CrewPlanStep)
-	return ok
-}
-
 const validationConcernLinePrefix = "CONCERNS: Validation history:"
 
 type validationFailureConcern struct {
@@ -3237,70 +3223,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 					break
 				}
 			}
-			continue
-		}
-
-		// Execute crew step by invoking its Crew trigger and waiting for the
-		// final response.
-		if isCrewStep(step) {
-			if ctx != nil && ctx.Err() != nil {
-				hcpo.GetLogger().Info(fmt.Sprintf("[STOP] refusing to start step %d of %d (%q) — run is canceled: %v",
-					i+1, len(breakdownSteps), step.GetTitle(), ctx.Err()))
-				return fmt.Errorf("workflow halted before step %d: %w", i+1, ctx.Err())
-			}
-			previousContextFiles = make([]string, 0)
-			for prevIdx := 0; prevIdx < i; prevIdx++ {
-				if prevIdx < len(breakdownSteps) {
-					contextOutput := breakdownSteps[prevIdx].GetContextOutput().String()
-					if contextOutput != "" {
-						resolvedOutput := ResolveVariables(contextOutput, hcpo.variableValues)
-						previousContextFiles = append(previousContextFiles, resolvedOutput)
-					}
-				}
-			}
-
-			crewResult, _, err := hcpo.executeCrewStep(ctx, step, i, progress, previousContextFiles, execCtx, breakdownSteps)
-			if err != nil {
-				if ctx != nil && ctx.Err() != nil {
-					hcpo.GetLogger().Info(fmt.Sprintf("[STOP] crew step %d (%q) interrupted: %v", i+1, step.GetTitle(), ctx.Err()))
-					return fmt.Errorf("workflow halted during crew step %d: %w", i+1, ctx.Err())
-				}
-				hcpo.GetLogger().Error(fmt.Sprintf("❌ Crew step %d execution failed: %v", i+1, err), nil)
-				hcpo.EmitOrchestratorAgentError(ctx, "workflow", "crew-step-execution", fmt.Sprintf("Execute crew step: %s", step.GetTitle()), err.Error(), i, iteration)
-				return fmt.Errorf("crew step %d execution failed: %w", i+1, err)
-			}
-			hcpo.GetLogger().Info(fmt.Sprintf("✅ Crew step %d completed successfully: %s", i+1, step.GetTitle()))
-
-			// Track execution result in memory for use by subsequent steps.
-			executionResult := crewResult.FinalResponse
-			for len(previousExecutionResults) <= i {
-				previousExecutionResults = append(previousExecutionResults, "")
-			}
-			previousExecutionResults[i] = executionResult
-			hcpo.GetLogger().Info(fmt.Sprintf("💾 Stored execution result for crew step %d (will be used by subsequent steps)", i+1))
-			if lastOutcome != nil {
-				*lastOutcome = LastExecutedStepOutcome{StepIndex: i, StepID: step.GetID(), ExecutionResult: executionResult, Found: true}
-			}
-
-			// Check if we're in single step mode and should stop
-			if hcpo.runSingleStepOnly && i == hcpo.singleStepTarget {
-				hcpo.GetLogger().Info(fmt.Sprintf("🎯 Single step mode: completed target step %d, stopping execution", i+1))
-				break
-			}
-
-			crewStep, ok := step.(*CrewPlanStep)
-			if !ok {
-				return fmt.Errorf("step %d is not a CrewPlanStep", i+1)
-			}
-			outcome, navErr := hcpo.navigateToNextStepID(ctx, step.GetID(), crewStep.NextStepID, breakdownSteps, progress, &i, &startFromStep, maxLLMJumpRepeats)
-			if navErr != nil {
-				return navErr
-			}
-			if outcome == "end" {
-				hcpo.GetLogger().Info(fmt.Sprintf("🏁 Crew step %d specified 'end' - terminating workflow", i+1))
-				break
-			}
-			// "jump" repointed i; "none" falls through to the next sequential step.
 			continue
 		}
 

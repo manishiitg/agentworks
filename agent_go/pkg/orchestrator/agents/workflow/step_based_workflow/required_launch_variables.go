@@ -52,8 +52,6 @@ func validateRequiredLaunchVariables(steps []PlanStep, values map[string]string,
 				next = s.NextStepID
 			case *ScriptedPlanStep:
 				next = s.NextStepID
-			case *CrewPlanStep:
-				next = s.NextStepID
 			}
 		}
 		if strings.EqualFold(next, "end") {

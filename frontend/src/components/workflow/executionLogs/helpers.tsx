@@ -605,8 +605,6 @@ export const getStepTypeLabel = (type: string): string => {
     case 'message_sequence':
     case 'agent':
       return 'Agent'
-    case 'crew':
-      return 'Crew'
     case 'regular':
     case 'scripted':
     default:
@@ -630,8 +628,6 @@ export const getStepTypeDescription = (type: string): string => {
       return 'Branch step: a small in-flow decision that deterministically selects the next step.'
     case 'human_input':
       return 'Human-input step: waits for an operator response before continuing.'
-    case 'crew':
-      return 'Crew step: invokes a persistent crew trigger and waits for its final response.'
     case 'regular':
     case 'scripted':
     default:
@@ -657,8 +653,6 @@ export const getStepTypeBadgeStyle = (type: string): string => {
     case 'message_sequence':
     case 'agent':
       return 'bg-teal-500/10 text-teal-600 border-teal-500/20 dark:bg-teal-500/20 dark:text-teal-300'
-    case 'crew':
-      return 'bg-sky-500/10 text-sky-600 border-sky-500/20 dark:bg-sky-500/20 dark:text-sky-300'
     case 'regular':
     case 'scripted':
     default:

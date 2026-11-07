@@ -51,34 +51,11 @@ type CreateCrewRequest struct {
 	// Instructions, then Purpose, and is required after fallback.
 	TriggerName    string
 	TriggerMessage string
-	// StepID defaults to "crew-<selected alias>"; StepTitle defaults to the
-	// crew title; StepInstruction is required: the workflow-specific
-	// instruction is the Builder's core input for the step it adds next.
-	StepID              string
-	StepTitle           string
-	StepInstruction     string
-	ContextDependencies []string
 	// IdempotencyKey scopes one Builder proposal. Retrying with the same key
 	// and an unchanged proposal returns the existing crew instead of minting
 	// a duplicate; a changed proposal under a claimed key is a conflict and
 	// must use a new key.
 	IdempotencyKey string
-}
-
-// CreatedCrewStepConfig is the exact crew-step configuration the Builder
-// passes to add_step(type="crew") as the immediate follow-up, adding only
-// placement (insert_after_step_id) and reason. The step is deliberately not
-// written here: plan mutations flow through the gated tool path so schedule
-// collision and phase policies apply.
-type CreatedCrewStepConfig struct {
-	StepID              string   `json:"step_id"`
-	Title               string   `json:"title"`
-	Description         string   `json:"description"`
-	CrewProfileID       string   `json:"crew_profile_id"`
-	CrewProjectID       string   `json:"crew_project_id"`
-	TriggerID           string   `json:"trigger_id"`
-	Instruction         string   `json:"instruction"`
-	ContextDependencies []string `json:"context_dependencies"`
 }
 
 // CreatedCrew is the durable result of CreateCrewProject. Duplicate reports
@@ -93,7 +70,6 @@ type CreatedCrew struct {
 	SessionID       string
 	TriggerID       string
 	AttachmentAlias string
-	Step            CreatedCrewStepConfig
 	Pending         []PendingConnection
 	Duplicate       bool
 }
@@ -208,7 +184,6 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 		return CreatedCrew{}, err
 	}
 	wiring.alias = receipt.Alias
-	wiring.stepID = receipt.StepID
 	created := CreatedCrew{Pending: pending}
 	if adopted {
 		existing, ok, err := readCreatedCrew(ctx, receipt.WorkspacePath, receipt.CrewID)
@@ -261,15 +236,10 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 // from the selected alias. The claim resolves both to free values before
 // anything is created.
 type crewCreationWiring struct {
-	alias           string
-	autoAlias       bool
-	triggerName     string
-	triggerMessage  string
-	stepID          string
-	autoStepID      bool
-	stepTitle       string
-	stepInstruction string
-	contextDeps     []string
+	alias          string
+	autoAlias      bool
+	triggerName    string
+	triggerMessage string
 }
 
 func validateCrewCreationWiring(req CreateCrewRequest, title string) (crewCreationWiring, error) {
@@ -306,39 +276,11 @@ func validateCrewCreationWiring(req CreateCrewRequest, title string) (crewCreati
 	if len([]rune(out.triggerMessage)) > 8000 {
 		return out, fmt.Errorf("trigger message must be at most 8000 characters")
 	}
-	out.stepID = strings.TrimSpace(req.StepID)
-	if out.stepID == "" {
-		out.stepID = "crew-" + slugifyCrewTitle(title)
-		out.autoStepID = true
-	}
-	if len(out.stepID) > 120 {
-		return out, fmt.Errorf("step id must be at most 120 characters")
-	}
-	out.stepTitle = strings.TrimSpace(req.StepTitle)
-	if out.stepTitle == "" {
-		out.stepTitle = title
-	}
-	if len([]rune(out.stepTitle)) > 120 {
-		return out, fmt.Errorf("step title must be at most 120 characters")
-	}
-	out.stepInstruction = strings.TrimSpace(req.StepInstruction)
-	if out.stepInstruction == "" {
-		return out, fmt.Errorf("step instruction is required")
-	}
-	if len([]rune(out.stepInstruction)) > 8000 {
-		return out, fmt.Errorf("step instruction must be at most 8000 characters")
-	}
-	deps, err := validateCrewCreationNames("context dependency", req.ContextDependencies)
-	if err != nil {
-		return out, err
-	}
-	out.contextDeps = deps
 	return out, nil
 }
 
 // applyCrewCreationWiring creates the crew's workflow-bound trigger, attaches
-// the crew read-only, and builds the step configuration for the Builder's
-// follow-up add_step call. Trigger and attachment adoption make re-entry
+// the crew for authorized file access. Trigger and attachment adoption make re-entry
 // converge: matching records are reused, never duplicated.
 func applyCrewCreationWiring(ctx context.Context, svc *ProjectActionDispatcher, userID, profileID, workflowPath, crewID string, wiring crewCreationWiring, created *CreatedCrew) error {
 	workflowID, err := boundWorkflowID(ctx, workflowPath)
@@ -354,16 +296,7 @@ func applyCrewCreationWiring(ctx context.Context, svc *ProjectActionDispatcher, 
 	}
 	created.TriggerID = triggerID
 	created.AttachmentAlias = wiring.alias
-	created.Step = CreatedCrewStepConfig{
-		StepID:              wiring.stepID,
-		Title:               wiring.stepTitle,
-		Description:         strings.TrimSpace(created.Title) + " via the " + wiring.alias + " crew attachment",
-		CrewProfileID:       profileID,
-		CrewProjectID:       crewID,
-		TriggerID:           triggerID,
-		Instruction:         wiring.stepInstruction,
-		ContextDependencies: wiring.contextDeps,
-	}
+
 	return nil
 }
 
@@ -971,7 +904,6 @@ type crewCreationReceipt struct {
 	CrewID        string `json:"crew_id"`
 	WorkspacePath string `json:"workspace_path"`
 	Alias         string `json:"alias"`
-	StepID        string `json:"step_id"`
 	CreatedAt     string `json:"created_at"`
 }
 
@@ -995,16 +927,12 @@ func crewCreationFingerprint(userID, workflowPath, profileID string, req CreateC
 		Title, Purpose, Instructions       string
 		Skills, Servers, GlobalSecrets     []string
 		Alias, TriggerName, TriggerMessage string
-		StepID, StepTitle, StepInstruction string
-		ContextDependencies                []string
 	}{
 		UserID: userID, WorkflowPath: workflowPath, ProfileID: profileID,
 		Title:   trimmed(req.Title),
 		Purpose: trimmed(req.Purpose), Instructions: trimmed(req.Instructions),
 		Skills: lists(req.Skills), Servers: lists(req.Servers), GlobalSecrets: lists(req.GlobalSecrets),
 		Alias: trimmed(req.Alias), TriggerName: trimmed(req.TriggerName), TriggerMessage: trimmed(req.TriggerMessage),
-		StepID: trimmed(req.StepID), StepTitle: trimmed(req.StepTitle), StepInstruction: trimmed(req.StepInstruction),
-		ContextDependencies: lists(req.ContextDependencies),
 	}
 	encoded, _ := json.Marshal(payload)
 	sum := sha256.Sum256(encoded)
@@ -1056,23 +984,10 @@ func (s *ProjectActionDispatcher) claimCrewCreationReceipt(ctx context.Context, 
 	if err != nil {
 		return nil, false, err
 	}
-	stepWiring := wiring
-	if wiring.autoStepID {
-		// Pair the default step with the selected alias, not the title:
-		// the Builder adds steps after creation, so the plan cannot yet
-		// show the first crew's step when the second crew is created.
-		// Pairing keeps duplicate titles usable (slug-2 with crew-slug-2)
-		// even against an empty plan.
-		stepWiring.stepID = "crew-" + alias
-	}
-	stepID, err := selectCrewCreationStepID(ctx, workflowPath, stepWiring)
-	if err != nil {
-		return nil, false, err
-	}
 	receipt := &crewCreationReceipt{
 		Key: key, UserID: userID, WorkflowPath: workflowPath, ProfileID: profileID,
 		PayloadHash: fingerprint, Title: title, CrewID: crewID, WorkspacePath: workspacePath,
-		Alias: alias, StepID: stepID, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		Alias: alias, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	encoded, err := json.MarshalIndent(receipt, "", "  ")
 	if err != nil {
@@ -1116,56 +1031,4 @@ func selectCrewCreationAlias(ctx context.Context, workflowPath string, wiring cr
 		}
 	}
 	return "", fmt.Errorf("no free attachment alias for %q; pass an explicit alias", wiring.alias)
-}
-
-// selectCrewCreationStepID resolves the step ID against the workflow plan
-// before any resource exists, with the same explicit-or-suffixed rule as
-// aliases. The plan read is best-effort: a workflow still being built may
-// have no plan yet, and add_step enforces uniqueness when the step lands.
-func selectCrewCreationStepID(ctx context.Context, workflowPath string, wiring crewCreationWiring) (string, error) {
-	taken := crewCreationPlanStepIDs(ctx, workflowPath)
-	if !wiring.autoStepID {
-		if taken[wiring.stepID] {
-			return "", fmt.Errorf("step id %q is already used in this workflow; choose another step id", wiring.stepID)
-		}
-		return wiring.stepID, nil
-	}
-	for attempt := 0; attempt <= 100; attempt++ {
-		candidate := wiring.stepID
-		if attempt > 0 {
-			candidate = fmt.Sprintf("%s-%d", wiring.stepID, attempt+1)
-		}
-		if len(candidate) > 120 {
-			return "", fmt.Errorf("step id must be at most 120 characters")
-		}
-		if !taken[candidate] {
-			return candidate, nil
-		}
-	}
-	return "", fmt.Errorf("no free step id for %q; pass an explicit step id", wiring.stepID)
-}
-
-// crewCreationPlanStepIDs collects the step IDs declared in the workflow
-// plan. Any read problem yields an empty set: plan enforcement stays with
-// add_step.
-func crewCreationPlanStepIDs(ctx context.Context, workflowPath string) map[string]bool {
-	taken := map[string]bool{}
-	raw, found, err := readFileFromWorkspace(ctx, filepath.ToSlash(filepath.Join(workflowPath, "planning/plan.json")))
-	if err != nil || !found {
-		return taken
-	}
-	var plan struct {
-		Steps []struct {
-			ID string `json:"id"`
-		} `json:"steps"`
-	}
-	if json.Unmarshal([]byte(raw), &plan) != nil {
-		return taken
-	}
-	for _, step := range plan.Steps {
-		if id := strings.TrimSpace(step.ID); id != "" {
-			taken[id] = true
-		}
-	}
-	return taken
 }

@@ -663,7 +663,7 @@ func TestMacCrewSettingsChangeOnlyFromTheMac(t *testing.T) {
 	svc, files, ctx := newCrewCreationTestEnv(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator","can_create":true},{"id":"other","username":"other","role":"creator"}]}`)
-	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Mac lab", Purpose: "Run reports", StepInstruction: "Prepare reports", IdempotencyKey: "mac-automations"})
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Mac lab", Purpose: "Run reports", IdempotencyKey: "mac-automations"})
 	if err != nil {
 		t.Fatal(err)
 	}

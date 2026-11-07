@@ -14,7 +14,7 @@ Use `agent` as the canonical agent step: one persistent conversation where later
 
 An Agent can declare `predefined_routes` only for saved scripted Python helpers
 with typed inputs and outputs. The agent chooses when to call them. LLM
-specialists and persistent multi-agent work belong to an explicit Crew step.
+specialists and persistent multi-agent work belong to an agent step using its Crew configuration.
 The existing `agent` type stays; there is no new simple-agent type. Automatic
 reflection is retired. Knowledge-base writes happen only when the task explicitly asks and the step has write access. Steps read selected skills; Builder maintains them.
 
@@ -66,7 +66,7 @@ Do not use it when:
 - Work is a fixed API/SDK call, CLI command, data fetch, stable parse/normalize operation, or mechanical write; use a scripted step and consume its durable result here.
 - The workflow needs deterministic branching; use `branch` (small in-flow
   decision) or `routing` (major sub-workflow fork).
-- Persistent specialist coordination belongs to an explicit Crew step.
+- Persistent specialist coordination belongs to an agent step using its Crew configuration.
 
 ## SCRIPTED HELPERS
 
@@ -74,7 +74,7 @@ Do not use it when:
 owns its typed parameter/result contract, code and validation. Use its named
 tool to obtain the result, or the scripted-call lifecycle tools for an async
 script. No conversational or ad hoc LLM child agent is available inside a step.
-Use an explicit Crew step for that work.
+Use an agent step using its Crew configuration for that work.
 
 ## SCRIPTED BATCHES
 
@@ -251,7 +251,8 @@ a cap, a failed row, or an accidental filter must not look like full completion.
 A saved scripted route is also offered to its Agent step as a named tool (route id `lookup-customer` → tool `lookup_customer(...)`), with its parameters as the tool's input schema; this is how an agent calls a script of the workflow, e.g. a customer lookup. Declare inputs with `script_parameters` (flat typed list) or `script_parameters_schema` (one full JSON Schema for nested or constrained inputs), never both. The script reads them from `STEP_PARAMS_JSON` and returns a value by writing `route_result.json` in `$STEP_OUTPUT_DIR`; the agent receives exactly that JSON. Use these patterns when designing or repairing an agent's `predefined_routes`.
 
 LLM specialist routes and their re-entry conversations are retired. Use an
-explicit Crew step when persistent specialist memory or coordination is needed.
+agent step with `crew_agent` to reuse its Crew configuration. The workflow
+keeps its own run conversation; it does not import the Crew chat’s history.
 
 Use launch values already supplied by the user; do not ask for the same value again.
 

@@ -41,7 +41,7 @@ Combine actions into one step when they share one objective and output contract,
 |---|---|
 | A coherent task requiring judgment and tools | `agent`: complete task in the description, optional explicitly authored later phases, backend validation and repair in the same conversation |
 | Deterministic Python work | `scripted`: saved code, typed inputs, real outputs and validation |
-| A specialist that is reused, learns from past runs, or that people want to talk to | `crew`: explicit call to a named Crew agent (see Step 4) |
+| A specialist that is reused, learns from past runs, or that people want to talk to | `agent` with `crew_agent`: reuse its Crew configuration (see Step 4) |
 | A major fixed fork | `routing` |
 | A small fixed fork | `branch` |
 
@@ -71,24 +71,16 @@ Every step reads from prior steps and writes for downstream steps:
 - **The flow must be forward-only** — no circular dependencies
 - Use JSON for structured data consumed by downstream steps. Keep output files < 100KB. For a final human-readable report or analysis, **prefer `.md`** — markdown renders richly in the file viewer (headings, tables, lists), and unlike HTML gets clickable workspace file links; it is also simpler and more robust to author. Reach for HTML only when you genuinely need a rich/branded layout markdown cannot express — and for a real dashboard, author one or more `db/reports/*.html` documents that read live data through `window.report`. For prose appended into learnings/KB, use Markdown.
 
-### Step 4: Scripted helpers or Crew
+### Step 4: Scripted helpers and Crew configuration
 
-A Goal Agent can invoke declared Python helpers with typed inputs and outputs.
-Keep these as scripted `predefined_routes` or authored scripted batches. LLM
-specialists, ongoing memory and multi-agent coordination belong to an explicit
-Crew step. Do not put conversational child agents or ad hoc LLM spawning inside
-a Goal step. Preserve existing authored phases unless reviewed as redundant.
-
-Keep workflow agent steps simple and put specialist work in a Crew, where people
-can see, chat with and tune it (owner, 2026-10-19). Suggest moving a step to a
-Crew when any one is true: the same kind of work is needed by more than one
-workflow or route; it gets better by remembering past runs; or a person would
-want to ask it questions or tune it. Length or skills alone are not a reason.
-Keep mechanical work (fetch, transform, validate, deploy) and writing this
-workflow's own records in the workflow. Suggest, never move on your own: the
-owner decides. A Crew cannot write this workflow's database or files, so the
-Crew step returns its result (saved as the step's output) and a short workflow
-step after it saves that result where the workflow keeps its records.
+An agent can invoke declared Python helpers with typed inputs and outputs.
+Keep these as scripted `predefined_routes` or authored scripted batches.
+Reuse a saved Crew agent’s instructions, model, tools and skills with
+`crew_agent` on a regular `agent` step. Explicit step settings still override
+those defaults. The workflow owns its run conversation and folder guard;
+Crew chat history and session handles are not imported. Do not spawn
+conversational child agents inside a workflow step. Preserve authored phases
+unless reviewed as redundant.
 
 ### Step 5: When to Use Agent
 
@@ -142,7 +134,7 @@ Step-level `success_criteria` is deprecated. Rely on a strong `description` plus
 - **Missing validation**: No validation_schema means no automated quality gate
 - **Vague or bloated descriptions**: "Process the data appropriately" is too vague — state WHAT the step must achieve, its scope and success criteria, and WHERE its result belongs. Put reusable HOW-to-execute guidance in accessible skills/learnings and output structure in `validation_schema`. The opposite failure is just as real: restating the same instruction from several angles, copy-pasting shared policy into every step that needs it, or spelling out a rigid procedure a judgment call didn't need. See `references/step-description.md`.
 - **Over-sequencing**: Steps that don't depend on each other can potentially run in parallel via independent step groups
-- **Hidden specialist agents**: use an explicit Crew step for LLM specialists; predefined_routes are typed scripted helpers only.
+- **Hidden specialist agents**: use an agent step using its Crew configuration for LLM specialists; predefined_routes are typed scripted helpers only.
 
 ### Step Types Reference
 

@@ -217,7 +217,7 @@ Knowledge-base writes are explicit task work under that step's access. Builder c
 ### 9. Script helpers and Crew
 
 Use typed scripted helpers when a Goal agent chooses deterministic Python work.
-Use an explicit Crew step for LLM specialists, persistent skills/memory or
+Use an agent step using its Crew configuration for LLM specialists, persistent skills/memory or
 multi-agent coordination. Goal agents have no LLM sub-agent routes.
 
 ### 9a. Deterministic batches do not need specialist routes

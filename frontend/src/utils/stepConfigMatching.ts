@@ -187,23 +187,9 @@ export interface BranchPlanStep extends CommonStepFields {
   selected_route_id?: string;         // runtime: stores selected route
 }
 
-// Crew step -- invokes one trigger of a persistent Crew project and waits
-// for its final response, saved as the step's context output. The trigger
-// owns its base instruction and conversation destination; the step supplies
-// the workflow-specific instruction and runtime input. Mirrors the backend
-// CrewPlanStep; crew steps run only as top-level steps.
-export interface CrewPlanStep extends CommonStepFields {
-  type: 'crew';
-  crew_profile_id: string;        // Product profile of the target Crew; initially "work"
-  crew_project_id: string;        // Stable target Crew project ID
-  trigger_id: string;             // Crew trigger to invoke
-  instruction: string;            // Workflow-specific instruction, rendered with variables at run time
-  timeout_seconds?: number;       // Maximum wait for the Crew run; defaults to 1800
-  next_step_id?: string;          // Optional explicit successor; empty preserves sequential execution
-}
 
 // Discriminated union type for all step types
-export type PlanStep = ScriptedPlanStep | AgentPlanStep | RoutingPlanStep | BranchPlanStep | CrewPlanStep;
+export type PlanStep = ScriptedPlanStep | AgentPlanStep | RoutingPlanStep | BranchPlanStep;
 
 // PlanRoutingRoute represents a possible route/sub-agent for planning
 export interface PlanRoutingRoute {
@@ -232,9 +218,6 @@ export function isAgentStep(step: PlanStep): step is AgentPlanStep {
   return step.type === 'agent';
 }
 
-export function isCrewStep(step: PlanStep): step is CrewPlanStep {
-  return step.type === 'crew';
-}
 
 export type EffectiveExecutionMode = 'scripted' | 'agentic';
 

@@ -521,13 +521,13 @@ and its output files.
 
 Implementation starts in `agent_go/cmd/server/agent_messaging.go`,
 `external_agent_messages.go`, `crew_functions.go`, `workflow_function_triggers.go`,
-`workflow_agent_functions.go` and `crew_step_runner.go`; Relay execution lives in
+`workflow_agent_functions.go`; Relay execution lives in
 `agent_go/pkg/relaypython/`. The older `design/functions_and_calling.md` is a
 historical proposal, not the current communication contract.
 
 ## Human interaction during workflow execution
 
-The five step types are `agent`, `scripted`, `routing`, `branch` and `crew`.
+The four step types are `agent`, `scripted`, `routing` and `branch`.
 Known values belong in declared launch variables; a consumer can declare
 `required_variables: ["MONTH"]` so a missing or blank value stops the selected
 run before work starts. Per-step `human_inputs` supplies scoped instructions.

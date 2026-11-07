@@ -30,7 +30,7 @@ Track candidate IDs and owner decisions; compare actual billed results after an 
 
 ## Automation handoff
 
-For Cost Anomaly to Verified Savings, emit `cloud-cost-review/v1` at the Crew step path for one exact account, service, resource, environment, currency and billing basis. Include equal comparison windows, source IDs, recomputable usage/price/one-time effects, a bounded candidate saving range, risk, owner and next check. The Workflow validates this before Engineering Delivery Coordinator consumes it. A candidate is a proposal; no infrastructure change or realized saving follows from this handoff. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another Crew consumes it; source truth still needs review.
+For Cost Anomaly to Verified Savings, emit `cloud-cost-review/v1` at the workflow step output path for one exact account, service, resource, environment, currency and billing basis. Include equal comparison windows, source IDs, recomputable usage/price/one-time effects, a bounded candidate saving range, risk, owner and next check. The Workflow validates this before Engineering Delivery Coordinator consumes it. A candidate is a proposal; no infrastructure change or realized saving follows from this handoff. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another Crew consumes it; source truth still needs review.
 
 ## Boundaries
 

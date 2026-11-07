@@ -160,7 +160,7 @@ For each `_users/<owner>/Chats/Work/projects/<p>` with a valid work `product.jso
    - a reader gets Run mode and cannot write;
    - Slack DM and channel for a crew bot;
    - a crew trigger and schedule;
-   - a workflow crew step and the attachment env;
+   - a workflow attachment environment;
    - dashboard `window.report.run` and live refresh;
    - Costs for the crew;
    - browser logins kept;

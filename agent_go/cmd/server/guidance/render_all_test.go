@@ -87,7 +87,7 @@ func TestGoalAgentHelpersStayScriptedAcrossGuidance(t *testing.T) {
 		docs[kind] = RenderSystemDoc(kind)
 	}
 	for kind, doc := range docs {
-		for _, want := range []string{"scripted helpers", "Crew step"} {
+		for _, want := range []string{"scripted helpers", "Crew configuration"} {
 			if !containsNormalizedText(strings.ToLower(doc), strings.ToLower(want)) {
 				t.Fatalf("%s missing Goal helper boundary %q", kind, want)
 			}

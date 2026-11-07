@@ -118,7 +118,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		t.Fatal("wrong run-as", runAs)
 	}
 	executionCtx := internalBotRequestContext(context.WithValue(ctx, common.UserIDKey, runAs), runAs)
-	session, err := workflow.NewWorkshopChatSession(executionCtx, &workflow.WorkshopConfig{UserID: runAs, WorkspacePath: binding.Root, Logger: loggerv2.NewNoop(), CrewRunner: &crewStepRunner{userID: runAs}})
+	session, err := workflow.NewWorkshopChatSession(executionCtx, &workflow.WorkshopConfig{UserID: runAs, WorkspacePath: binding.Root, Logger: loggerv2.NewNoop(), CrewResources: &workflow.CrewResources{Scripts: &crewWorkflowResources{userID: runAs}}})
 	if err != nil {
 		t.Fatal(err)
 	}

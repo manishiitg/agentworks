@@ -9,8 +9,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
-// crewUsedByWorkflow checks saved workflow attachments and Crew steps before
-// deleting a Crew. A workflow owner must remove both references first.
+// crewUsedByWorkflow checks saved workflow attachments before deleting a Crew.
+// The workflow owner must remove attachments first.
 func crewUsedByWorkflow(ctx context.Context, profileID, projectID, workspacePath string) (bool, error) {
 	targetRoot := workflowtypes.CanonicalCrewAttachmentRoot(workspacePath)
 	if targetRoot == "" {
@@ -40,29 +40,7 @@ func crewUsedByWorkflow(ctx context.Context, profileID, projectID, workspacePath
 				}
 			}
 		}
-		content, exists, err = readFileFromWorkspace(ctx, folder+"/planning/plan.json")
-		if err != nil {
-			return false, fmt.Errorf("inspect workflow plan %s: %w", folder, err)
-		}
-		if !exists {
-			continue
-		}
-		var plan struct {
-			Steps []struct {
-				Type          string `json:"type"`
-				CrewProfileID string `json:"crew_profile_id"`
-				CrewProjectID string `json:"crew_project_id"`
-			} `json:"steps"`
-		}
-		if err := json.Unmarshal([]byte(content), &plan); err != nil {
-			return false, fmt.Errorf("parse workflow plan %s: %w", folder, err)
-		}
-		for _, step := range plan.Steps {
-			if step.Type == "crew" && strings.EqualFold(strings.TrimSpace(step.CrewProfileID), strings.TrimSpace(profileID)) &&
-				strings.TrimSpace(step.CrewProjectID) == strings.TrimSpace(projectID) {
-				return true, nil
-			}
-		}
 	}
+
 	return false, nil
 }
