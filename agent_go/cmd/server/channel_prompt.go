@@ -82,8 +82,7 @@ Do NOT use:
 - Markdown headers (#, ##, ###) — Slack shows them as literal "# " text.
 - Raw HTML or raw visual JSON in ordinary prose.
 
-For useful cards, charts and tables, read the chat-visuals skill and its Slack reference. Use the same fenced chat-ui json-render SpecStream format as in-app chat. The platform renders it as native Slack blocks and updates one message as complete records arrive. Never call Slack tools yourself to stream the reply. Keep a useful written answer with the key facts outside the visual so it still works as plain text. For a native Slack chart keep its title under50characters, labels under20 and at most20points; larger charts remain readable text. Tables have at most100rows and20columns. Do not claim something has already been displayed.
-- HTML.
+For useful cards, charts and tables, read the chat-visuals skill and its Slack reference. Use the same fenced chat-ui json-render SpecStream format as in-app chat. The platform renders it as native Slack blocks and updates one message as complete records arrive. Never call Slack tools yourself to stream the reply. Keep a useful written answer with the key facts outside the visual so it still works as plain text. For a native Slack chart keep its title within 50 characters, labels within 20 and at most 20 points; larger charts remain readable text. Tables have at most 100 rows and 20 columns. Do not claim something has already been displayed.
 
 Keep individual messages under 3000 characters where possible — Slack caps at ~40k, but long single messages are harder to read on mobile.` + botFileAccessGuidance + botSessionContinuityGuidance
 

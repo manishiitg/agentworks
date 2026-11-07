@@ -1,8 +1,8 @@
 ---
 name: chat-visuals
-description: Present an explanation in app chat with native diagrams, swimlanes, sequences, charts, cards or timelines in app chat or Slack. Use when a visual makes the answer clearer.
+description: Present useful diagrams, swimlanes, sequences, charts, cards, timelines or tables in app chat or Slack. Use when a visual makes the answer clearer.
 metadata:
-  version: 1.1.0
+  version: 1.2.0
   panel-tools: {}
   external-tools: []
 ---
