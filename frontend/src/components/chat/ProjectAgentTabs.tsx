@@ -23,6 +23,7 @@ import { useProductNavigationToolbarStore } from '../../stores/useProductNavigat
 import { fillAgentPurposeDraft, sendToTab } from '../../utils/agentPurposeDraft'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import { AgentMark, PersonPresenceDot } from './AgentIcon'
+import { canCloseWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 
 
 function AgentMenuActivity({ tabId, workspaceActivity }: { tabId: string; workspaceActivity?: 'running' | 'waiting' | null }) {
@@ -52,6 +53,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   renderAfterTab?: (tab: ChatTab) => ReactNode; isTabActive?: (tab: ChatTab) => boolean; onMakeInteractive?: (tabId: string) => void
 }) {
   const activeTabId = useChatStore(state => state.activeTabId)
+  const chatTabs = useChatStore(state => state.chatTabs)
   const canonicalSessionId = useChatStore(state => state.chatTabs[canonicalTabId]?.sessionId)
   const [newTabName, setNewTabName] = useState<string | null>(null)
   const listedFor = (tab: ChatTab) => listed.find(chat => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
@@ -536,7 +538,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         ><AgentWorksChatTabItem
         tab={tab}
         isActive={isTabActive ? isTabActive(tab) : tab.tabId === activeTabId}
-        canClose={false}
+        canClose={tab.tabId !== canonicalTabId && tab.metadata?.isViewOnly === true && canCloseWorkspaceChatTab(tab, chatTabs)}
         isBlank={false}
         displayName={tabLabel(tab)}
         workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
@@ -547,7 +549,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
         onTabClick={selectTab}
         onCloseTab={hideOrCloseTab}
         onRenameTab={key && canControl(tab) ? renameSideChat : undefined}
-        closeStopsSession={!!key}
+        closeStopsSession={tab.metadata?.isViewOnly !== true && !!key}
         onMakeInteractive={onMakeInteractive}
       />{renderAfterTab?.(tab)}</div></Fragment>
       })}

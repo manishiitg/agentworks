@@ -79,7 +79,10 @@ it('warns before stopping a chat, while view tabs close without stopping confirm
     await act(async () => { button('Close chat').click() })
     expect(onClose).toHaveBeenCalledWith('close-chat')
     onClose.mockClear()
+    tab.metadata = { isViewOnly: true, isScheduledRun: true }
+    tab.isStreaming = true
     await render(false)
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Close Reports"]')!.disabled).toBe(false)
     await act(async () => { container.querySelector<HTMLButtonElement>('[aria-label="Close Reports"]')!.click() })
     expect(onClose).toHaveBeenCalledWith('close-chat')
     expect(document.body.textContent).not.toContain('Closing this chat stops its background runs.')
@@ -230,7 +233,8 @@ it.each([true, false])('keeps full owner identity in tooltips without per-tab ow
     agentProfileId: 'work', agentProfileTabOwnerID: 'owner-one', agentProfileTabOwnerName: owner, agentProfileTabCanWrite: yours,
   })
   expect(host.textContent).toContain('Main')
-  expect(host.textContent).not.toContain(owner)
+  // The owner's name may remain in screen-reader text, but not in the visible tab label.
+  expect(host.querySelector('span[title]')?.textContent).not.toContain(owner)
   expect(host.textContent).not.toContain('You')
   expect(host.querySelector(`[aria-label="Tab owned by ${owner}"]`)).toBeNull()
   expect(host.querySelector(`[aria-label="Your tab · ${owner}"]`)).toBeNull()

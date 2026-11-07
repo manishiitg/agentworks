@@ -15,7 +15,7 @@ import { inspectionKey, openStepInspection, selectStepInspection } from '../../u
 import type { ExecutionInspectionTarget } from '../../services/api-types'
 
 vi.mock('../../utils/activateTab', () => ({ activateTab: (id: string) => { useChatStore.getState().switchTab(id); return true } }))
-vi.mock('../chat/AgentWorksChatTabItem', () => ({ AgentWorksChatTabItem: (props: any) => <button aria-pressed={props.isActive} onClick={() => props.onTabClick(props.tab.tabId)}>{props.displayName}</button> }))
+vi.mock('../chat/AgentWorksChatTabItem', () => ({ AgentWorksChatTabItem: (props: any) => <><button aria-pressed={props.isActive} onClick={() => props.onTabClick(props.tab.tabId)}>{props.displayName}</button>{props.canClose && <button aria-label={`Close ${props.displayName}`} onClick={() => props.onCloseTab(props.tab.tabId)}>Close</button>}</> }))
 vi.mock('../chat/StepInspectionPanel', () => ({ default: ({ target }: { target: ExecutionInspectionTarget }) => <p>Saved conversation: {target.execution_id}</p> }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const originalChat = useChatStore.getState()
@@ -46,6 +46,27 @@ async function render() {
 const button = (host: HTMLElement, label: string) => [...host.querySelectorAll<HTMLButtonElement>('button')].find(item => item.getAttribute('aria-label') === label || item.textContent === label)!
 // Since the 24 Oct Goal/Crew tab alignment the Builder's own chat is labelled Main, and another person's tab carries
 // their short name.
+
+it('closes a running temporary run view while keeping the run and saved history', async () => {
+  const host = await render()
+  const stop = vi.spyOn(agentApi, 'stopSession')
+  const removeHistory = vi.spyOn(agentApi, 'deleteChatHistorySession')
+  try {
+    await act(async () => {
+      useChatStore.setState(state => ({ activeTabId: 'schedule', chatTabs: { ...state.chatTabs, schedule: { ...state.chatTabs.schedule, isStreaming: true } } }))
+    })
+    expect(button(host, 'Close Main')).toBeUndefined()
+    await act(async () => button(host, 'Close schedule').click())
+    expect(useChatStore.getState().getTab('schedule')).toBeUndefined()
+    expect(useChatStore.getState().activeTabId).toBe('chat')
+    expect(useChatStore.getState().getTab('chat')?.sessionId).toBe('parent')
+    expect(stop).not.toHaveBeenCalled()
+    expect(removeHistory).not.toHaveBeenCalled()
+  } finally {
+    stop.mockRestore()
+    removeHistory.mockRestore()
+  }
+})
 
 it('opens a left-sidebar step in the same strip and returns to the parent draft without removing run tabs', async () => {
   const host = await render()
@@ -103,7 +124,7 @@ it.each(['agentworks', 'relays'] as const)('keeps the project name visible witho
   expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
   expect(host.querySelector('[data-project-title]')?.getAttribute('title')).toBe('Example')
   expect(host.querySelector('[data-chat-owner-group="me"]')).toBeNull()
-  await act(async () => button(host, 'Review · alex.taylor').click())
+  await act(async () => button(host, 'Review').click())
   expect(useChatStore.getState().activeTabId).toBe('review')
   expect(host.querySelectorAll('[data-chat-owner-label]')).toHaveLength(0)
 })
