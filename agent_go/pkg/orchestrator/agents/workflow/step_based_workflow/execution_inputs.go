@@ -122,14 +122,14 @@ func ValidatePlainWorkflowInput(name, value string) error {
 	return nil
 }
 
-// The authoring model calls named saved values groups. Selection only fills
-// one invocation; omitting it uses defaults, never all presets.
-func ResolveExecutionInputs(manifest *VariablesManifest, selected []string) ([]VariableGroup, error) {
+// ResolveSelectedInputPreset resolves one invocation from the workshop selection.
+// Omission uses defaults; saved presets never become an implicit batch.
+func ResolveSelectedInputPreset(manifest *VariablesManifest, selected []string) (VariableGroup, error) {
 	if selected != nil && len(selected) == 0 {
-		return nil, fmt.Errorf("no saved inputs selected; omit the selection to use defaults")
+		return VariableGroup{}, fmt.Errorf("no saved inputs selected; omit the selection to use defaults")
 	}
 	if len(selected) > 1 {
-		return nil, fmt.Errorf("choose one saved input preset per run; start separate runs for several presets")
+		return VariableGroup{}, fmt.Errorf("choose one saved input preset per run; start separate runs for several presets")
 	}
 	preset := ""
 	if len(selected) == 1 {
@@ -137,9 +137,9 @@ func ResolveExecutionInputs(manifest *VariablesManifest, selected []string) ([]V
 	}
 	values, err := ResolveWorkflowInputs(manifest, preset, nil)
 	if err != nil {
-		return nil, err
+		return VariableGroup{}, err
 	}
-	return []VariableGroup{{Name: preset, Values: values}}, nil
+	return VariableGroup{Name: preset, Values: values}, nil
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) resolveWorkshopInputGroup(ctx context.Context, requested string, selection []string) (string, error) {
@@ -154,11 +154,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveWorkshopInputGroup(ctx context
 	if requested != "" {
 		selection = []string{requested}
 	}
-	resolved, err := ResolveExecutionInputs(manifest, selection)
+	resolved, err := ResolveSelectedInputPreset(manifest, selection)
 	if err != nil {
 		return "", err
 	}
-	return resolved[0].Name, nil
+	return resolved.Name, nil
 }
 
 type workflowRunInputs struct {

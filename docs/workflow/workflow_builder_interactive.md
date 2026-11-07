@@ -137,7 +137,7 @@ The interactive builder commonly uses:
 - `update_step_config`
 - plan modification tools such as `add_*`, `update_*`, `delete_*`
 - `update_workflow_config`
-- `update_variable`, `add_group`, `update_group`, `delete_group`
+- `update_variable`
 - schedule tools
 
 Depending on mode, it may also expose:

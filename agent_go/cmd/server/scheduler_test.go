@@ -1016,7 +1016,7 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 			t.Fatalf("marshal manifest: %v", err)
 		}
 		variablesJSON, err := json.Marshal(VariablesManifest{
-			Groups: []VariableGroup{{Name: "group-1", Enabled: true, Values: map[string]string{}}},
+			Groups: []VariableGroup{{Name: "group-1", Values: map[string]string{}}},
 		})
 		if err != nil {
 			t.Fatalf("marshal variables manifest: %v", err)

@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import signal
+import time
 
 root = Path(__file__).resolve().parents[2]
 subprocess.run(["bash", "-n", str(root / "agent_go/run_server_with_logging.sh")], check=True)
@@ -28,6 +29,14 @@ with tempfile.TemporaryDirectory(prefix="desktop-proof-") as scratch:
             os.killpg(child.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        # SIGKILL delivery is asynchronous. Let this fixture's helper family
+        # exit before TemporaryDirectory races its final runtime-file writes.
+        for _ in range(100):
+            try:
+                os.killpg(child.pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
 for arch in ("arm64", "amd64"):
     subprocess.run(
         ["go", "build", "-o", os.devnull, "."],

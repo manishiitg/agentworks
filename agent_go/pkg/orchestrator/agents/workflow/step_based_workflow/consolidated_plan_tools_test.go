@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
@@ -148,30 +147,6 @@ func TestConsolidatedToolsPreserveScheduleCollisionGuard(t *testing.T) {
 	_, err := d.tools["update_step"].Execute(context.Background(), map[string]interface{}{"step_id": "fetch", "changes": map[string]interface{}{"title": "New", "reason": "Change title"}})
 	if !errors.Is(err, blocked) || f.writes != 0 {
 		t.Fatalf("collision protection lost: %v writes=%d", err, f.writes)
-	}
-}
-
-func TestWorkshopConsolidatesGroupsAndRemovesReviewLauncher(t *testing.T) {
-	d := newWorkshopDefinitionDraft()
-	base := &orchestrator.BaseOrchestrator{}
-	base.SetWorkspacePath(t.TempDir())
-	session := &WorkshopChatSession{controller: &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}, StepRegistry: NewWorkshopStepRegistry(), config: &WorkshopConfig{WorkspacePath: base.GetWorkspacePath()}}
-	RegisterWorkshopChatTools(d, session, workshopToolTestLogger{})
-	if _, ok := d.tools["manage_group"]; !ok {
-		t.Fatal("group adapter missing")
-	}
-	for _, n := range []string{"review_plan", "add_group", "update_group", "delete_group"} {
-		if _, ok := d.tools[n]; ok {
-			t.Errorf("removed tool %s still present", n)
-		}
-	}
-	if _, err := d.tools["manage_group"].Execute(context.Background(), map[string]interface{}{"action": "delete", "parameters": map[string]interface{}{"name": "x", "values": map[string]interface{}{"bad": "value"}}}); err == nil {
-		t.Fatal("delete accepted update-only fields")
-	}
-	for _, n := range []string{"add_step", "update_step", "manage_step_route", "manage_group", "maintain_plan", "convert_routing_branch_step_type"} {
-		if !ScheduleGuardedTool(n) {
-			t.Errorf("unguarded canonical tool %s", n)
-		}
 	}
 }
 

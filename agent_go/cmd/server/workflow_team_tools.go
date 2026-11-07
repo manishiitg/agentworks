@@ -49,7 +49,7 @@ func (r workflowTeamRegistrar) RegisterCustomToolWithTimeout(n, d string, p map[
 				return "", fmt.Errorf("no current workflow team access")
 			}
 			ctx = withTeamPlanReceipt(ctx)
-			if n == "update_variable" || n == "add_group" || n == "update_group" || n == "delete_group" {
+			if n == "update_variable" {
 				ctx = workspacepkg.WithSystemManagedWritePaths(ctx, r.root+"/variables/variables.json")
 			}
 			member := m.Team.member(r.user)
@@ -80,7 +80,7 @@ func (r workflowTeamRegistrar) RegisterCustomToolWithTimeout(n, d string, p map[
 						return "", fmt.Errorf("step is not in your assigned route")
 					}
 				}
-				if n == "execute_sql" || n == "configure_goal_metrics" || n == "update_variable" || n == "add_group" || n == "update_group" || n == "delete_group" || n == "update_workflow_config" || n == "set_workflow_contract_version" || n == "set_workflow_llm_config" || strings.HasPrefix(n, "configure_workflow") || n == "set_workflow_identity" {
+				if n == "execute_sql" || n == "configure_goal_metrics" || n == "update_variable" || n == "update_workflow_config" || n == "set_workflow_contract_version" || n == "set_workflow_llm_config" || strings.HasPrefix(n, "configure_workflow") || n == "set_workflow_identity" {
 					return "", fmt.Errorf("shared goal and workflow settings require the Leader")
 				}
 			}

@@ -193,14 +193,13 @@ func SyncExactVariablesToWorkspaceEnv(bo *orchestrator.BaseOrchestrator, variabl
 
 // ResolveWorkshopVariableValues selects the values that an interactive builder
 // session may safely expose to its shell tools. An explicit toolbar selection
-// wins. With no selection, a single group is unambiguous and is auto-selected;
-// multiple groups remain unset until the user chooses one.
+// wins. With no selection, only workflow defaults are exposed.
 func ResolveWorkshopVariableValues(manifest *VariablesManifest, selected []string) (map[string]string, string, bool) {
-	resolved, err := ResolveExecutionInputs(manifest, selected)
+	resolved, err := ResolveSelectedInputPreset(manifest, selected)
 	if err != nil {
 		return nil, "", false
 	}
-	return resolved[0].Values, resolved[0].Name, true
+	return resolved.Values, resolved.Name, true
 }
 
 // snapshotWorkspaceEnv returns a shallow copy of the workspace env map.

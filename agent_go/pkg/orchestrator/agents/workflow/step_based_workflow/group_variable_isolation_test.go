@@ -59,47 +59,46 @@ func TestResolvedGroupClearsPriorExecutionOverride(t *testing.T) {
 
 }
 
-// PLAT-746-265: omission may run once; an empty/disabled/unknown selection
+// PLAT-746-265: omission may run once; an empty/unknown selection
 // must never accidentally start work or select another group's data.
 func TestOptionalInputSetsDoNotEnableUnselectedWork(t *testing.T) {
 	manifest := &VariablesManifest{Variables: []Variable{{Name: "region", Value: "base"}}, Groups: []VariableGroup{
-		{Name: "one", Enabled: true, Values: map[string]string{"region": "one"}},
-		{Name: "two", Enabled: false, Values: map[string]string{"region": "two"}},
+		{Name: "one", Values: map[string]string{"region": "one"}},
+		{Name: "two", Values: map[string]string{"region": "two"}},
 	}}
 	cases := []struct {
 		name      string
 		manifest  *VariablesManifest
 		selection []string
-		count     int
 		wantError bool
 	}{
-		{"absent inputs", nil, nil, 1, false},
-		{"defaults only", &VariablesManifest{Variables: manifest.Variables}, nil, 1, false},
-		{"explicit empty", nil, []string{}, 0, true},
-		{"omitted preset uses defaults", manifest, nil, 1, false},
-		{"saved presets never auto-run", &VariablesManifest{Groups: manifest.Groups[1:]}, nil, 1, false},
-		{"unknown without groups", nil, []string{"missing"}, 0, true},
-		{"partly unknown", manifest, []string{"one", "missing"}, 0, true},
-		{"explicit selection", manifest, []string{"two"}, 1, false},
-		{"label is not a run folder", &VariablesManifest{Groups: []VariableGroup{{Name: " Execution! ", Enabled: true}}}, nil, 1, false},
-		{"dot label is plain data", &VariablesManifest{Groups: []VariableGroup{{Name: ".temporary", Enabled: true}}}, nil, 1, false},
+		{"absent inputs", nil, nil, false},
+		{"defaults only", &VariablesManifest{Variables: manifest.Variables}, nil, false},
+		{"explicit empty", nil, []string{}, true},
+		{"omitted preset uses defaults", manifest, nil, false},
+		{"saved presets never auto-run", &VariablesManifest{Groups: manifest.Groups[1:]}, nil, false},
+		{"unknown without groups", nil, []string{"missing"}, true},
+		{"partly unknown", manifest, []string{"one", "missing"}, true},
+		{"explicit selection", manifest, []string{"two"}, false},
+		{"label is not a run folder", &VariablesManifest{Groups: []VariableGroup{{Name: " Execution! "}}}, nil, false},
+		{"dot label is plain data", &VariablesManifest{Groups: []VariableGroup{{Name: ".temporary"}}}, nil, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			items, err := ResolveExecutionInputs(tc.manifest, tc.selection)
-			if (err != nil) != tc.wantError || len(items) != tc.count {
+			items, err := ResolveSelectedInputPreset(tc.manifest, tc.selection)
+			if (err != nil) != tc.wantError {
 				t.Fatalf("items=%+v err=%v", items, err)
 			}
-			if tc.manifest == nil && len(items) == 1 && items[0].Name != "" {
+			if tc.manifest == nil && err == nil && items.Name != "" {
 				t.Fatal("invented named group")
 			}
 		})
 	}
-	items, err := ResolveExecutionInputs(manifest, []string{"one"})
+	items, err := ResolveSelectedInputPreset(manifest, []string{"one"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	items[0].Values["region"] = "modified"
+	items.Values["region"] = "modified"
 	if manifest.Groups[0].Values["region"] != "one" {
 		t.Fatal("run changed saved inputs")
 	}

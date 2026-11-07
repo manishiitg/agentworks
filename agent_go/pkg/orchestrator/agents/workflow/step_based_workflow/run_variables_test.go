@@ -53,7 +53,7 @@ func TestSavedInputPrecedenceAndNoAutomaticSelection(t *testing.T) {
 	if err := ValidatePlainWorkflowInput("API_KEY", "credential"); err == nil {
 		t.Fatal("credential accepted as a plain saved input")
 	}
-	if _, err := ResolveExecutionInputs(manifest, []string{"Saved", "Other"}); err == nil {
+	if _, err := ResolveSelectedInputPreset(manifest, []string{"Saved", "Other"}); err == nil {
 		t.Fatal("preset selection became a batch")
 	}
 }

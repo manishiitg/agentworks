@@ -12612,12 +12612,8 @@ func buildWorkshopGroupInfo(
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("**%d variable groups** available:\n", len(manifest.Groups)))
+	sb.WriteString(fmt.Sprintf("**%d saved input presets** available:\n", len(manifest.Groups)))
 	for _, g := range manifest.Groups {
-		status := "enabled"
-		if !g.Enabled {
-			status = "disabled"
-		}
 		// Mark the user-selected group
 		selected := ""
 		for _, eid := range enabledGroupNames {
@@ -12626,7 +12622,7 @@ func buildWorkshopGroupInfo(
 				break
 			}
 		}
-		sb.WriteString(fmt.Sprintf("- **%s** (group_name: `%s`, %s)%s\n", g.Name, g.Name, status, selected))
+		sb.WriteString(fmt.Sprintf("- **%s** (input_preset: `%s`)%s\n", g.Name, g.Name, selected))
 	}
 
 	if selectedRunFolder != "" {
@@ -12634,7 +12630,7 @@ func buildWorkshopGroupInfo(
 	}
 
 	if len(enabledGroupNames) > 0 {
-		sb.WriteString(fmt.Sprintf("\nUser has selected group(s): %v — use these as default for execute_step calls.\n", enabledGroupNames))
+		sb.WriteString(fmt.Sprintf("\nSelected input preset: %v — use it as the default input_preset for execute_step calls.\n", enabledGroupNames))
 	}
 
 	return sb.String()
