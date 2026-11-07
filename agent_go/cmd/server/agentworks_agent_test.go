@@ -141,3 +141,57 @@ func TestAgentWorksDeleteIsRefused(t *testing.T) {
 		t.Fatal("AgentWorks was removed")
 	}
 }
+
+// From inside a Crew, list_agents shows the person's other Crews only when linked, except for their AgentWorks main
+// agent, which reaches all of them (owner, 7 Nov). The server decides by the Crew's role.
+func TestAgentDirectoryOtherOwnedCrewsNeedALinkExceptForAgentWorks(t *testing.T) {
+	f := newMultiUserFixture(t, sharedIdentityLayout())
+	f.WithSharing(true)
+	registry := agentprofiles.NewRegistry()
+	crew := f.Crew
+	crew.UIPanels.Schedules = true
+	for _, profile := range []agentprofiles.Profile{f.Code, crew} {
+		if err := registry.RegisterProfile(profile); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.API.agentProfiles = registry
+	f.API.projectActions = NewProjectActionDispatcher(f.API, registry)
+	aw, err := f.API.ensureAgentWorks(context.Background(), fixtureUserA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta := f.Layout.CrewPhysical(fixtureUserA, "beta-folder")
+	f.put(beta+"/product.json", `{"schema_version":1,"product":"work","id":"beta-crew","title":"Beta","session_id":"work:project:beta-crew","owner_id":"`+fixtureUserA+`"}`)
+	f.put(beta+"/workflow.json", `{"schema_version":1,"id":"beta-crew","label":"Beta","capabilities":{}}`)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "beta-folder", OwnerID: fixtureUserA, ProjectID: "beta-crew", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	crewIDs := func(here string) map[string]bool {
+		ctx := f.Ctx(fixtureUserA)
+		if here != "" {
+			ctx = withDirectoryThisCrew(ctx, here)
+		}
+		d, err := listAgentDirectory(ctx, GetUserFromContext(ctx))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids := map[string]bool{}
+		for _, row := range d["agents"].([]map[string]interface{}) {
+			if row["kind"] == "crew" {
+				id, _ := row["crew_id"].(string)
+				ids[id] = true
+			}
+		}
+		return ids
+	}
+	if got := crewIDs(aw.WorkspacePath); !got[fixtureCrewID] || !got["beta-crew"] {
+		t.Fatalf("AgentWorks must list the person's Crews: %v", got)
+	}
+	if got := crewIDs(beta); got[fixtureCrewID] || !got["beta-crew"] {
+		t.Fatalf("an unlinked Crew must list only itself: %v", got)
+	}
+	if got := crewIDs(""); !got[fixtureCrewID] || !got["beta-crew"] {
+		t.Fatalf("outside a Crew every owned Crew shows: %v", got)
+	}
+}
