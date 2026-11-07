@@ -11,6 +11,7 @@ export type DiagramParticipant = { id: string; title: string }
 export type SequenceMessage = { from: string; to: string; label: string; reply?: boolean }
 
 export type ChatElement =
+  | { type: 'table'; title: string; headers: string[]; rows: (string | number)[][] }
   | { type: 'chart'; title: string; style: 'line' | 'bar'; unit?: string; data: { label: string; value: number }[] }
   | { type: 'timeline'; title: string; items: { when: string; title: string; detail?: string }[] }
   | { type: 'details'; title: string; body: string }
@@ -34,6 +35,9 @@ const unique = (items: { id: string }[]) => new Set(items.map(item => item.id)).
 const actors = z.array(actor).min(1).max(6).refine(unique)
 
 export const chatWidgetSchemas = {
+  table: z.strictObject({ title: text(160), headers: z.array(text(80)).min(1).max(20),
+    rows: z.array(z.array(z.union([z.string().max(2000), z.number().finite()])).max(20)).min(1).max(100),
+  }).refine(value => value.rows.every(row => row.length === value.headers.length)),
   chart: z.strictObject({ title: text(160), style: z.enum(['line', 'bar']), unit: text(40).optional(),
     data: z.array(z.strictObject({ label: text(80), value: z.number().finite().min(-1e15).max(1e15) })).min(1).max(30) }),
   timeline: z.strictObject({ title: text(160), items: z.array(z.strictObject({ when: text(80), title: text(160), detail: text(1500).optional() })).min(1).max(20) }),
@@ -60,6 +64,7 @@ export const chatWidgetSchemas = {
 // presentation. No executable actions, bindings, arbitrary markup or page layouts.
 export const chatVisualCatalog = defineCatalog(schema, {
   components: {
+    table: { props: chatWidgetSchemas.table, slots: [], description: 'A compact table of saved values with named columns.' },
     chart: { props: chatWidgetSchemas.chart, slots: [], description: 'A compact line or bar chart of observed numbers.' },
     timeline: { props: chatWidgetSchemas.timeline, slots: [], description: 'Saved events in supplied order.' },
     details: { props: chatWidgetSchemas.details, slots: [], description: 'Initially collapsed supporting Markdown.' },

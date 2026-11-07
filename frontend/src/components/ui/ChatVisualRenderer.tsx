@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo } from 'react'
 import { defineRegistry, JSONUIProvider, Renderer } from '@json-render/react'
 import { chatVisualCatalog, type ChatElement } from './chatElementSpec'
-import { ChatChart, ChatDetails, ChatTimeline } from './ChatWidgets'
+import { ChatChart, ChatDetails, ChatTable, ChatTimeline } from './ChatWidgets'
 import { ChatCards } from './ChatCards'
 import { ChatDiagram } from './ChatDiagram'
 import { ChatSequence, ChatSwimlane } from './ChatProcessDiagram'
@@ -19,6 +19,7 @@ function Cards({ spec }: { spec: Extract<ChatElement, { type: 'cards' }> }) {
 
 const { registry } = defineRegistry(chatVisualCatalog, {
   components: {
+    table: ({ props }) => <ChatTable spec={{ ...props, type: 'table' }} />,
     chart: ({ props }) => <ChatChart spec={{ ...props, type: 'chart' }} />,
     timeline: ({ props }) => <ChatTimeline spec={{ ...props, type: 'timeline' }} />,
     details: ({ props }) => <Details spec={{ ...props, type: 'details' }} />,

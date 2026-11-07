@@ -1,6 +1,6 @@
 ---
 name: chat-visuals
-description: Present an explanation in app chat with native diagrams, swimlanes, sequences, charts, cards or timelines. Use when a visual makes the answer clearer.
+description: Present an explanation in app chat with native diagrams, swimlanes, sequences, charts, cards or timelines in app chat or Slack. Use when a visual makes the answer clearer.
 metadata:
   version: 1.1.0
   panel-tools: {}
@@ -18,3 +18,5 @@ Read [formats and examples](references/formats.md) before authoring a `chat-ui`
 block. Use the documented json-render SpecStream operations, not the retired
 single-object format. Keep a useful written answer alongside the visual. This skill changes
 presentation only; it grants no tools, access, account connections or actions.
+
+For a reply arriving through Slack, also read [Slack delivery](references/slack.md). The same widget data is adapted to native Slack blocks; sending, routing and access remain the platform’s job.

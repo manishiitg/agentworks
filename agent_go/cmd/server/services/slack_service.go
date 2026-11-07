@@ -20,6 +20,7 @@ import (
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/chatvisuals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
@@ -2244,10 +2245,17 @@ func (s *SlackService) GetChannelNameOnConnection(ctx context.Context, threadID 
 
 // SendThreadMessage sends a message to a Slack thread
 func (s *SlackService) SendThreadMessage(ctx context.Context, threadID ThreadID, message string) (string, error) {
+	if chatvisuals.HasVisual(message) {
+		return s.WriteReply(ctx, threadID, "", message, true)
+	}
+	return s.sendPlainThreadMessage(ctx, threadID, message)
+}
+
+func (s *SlackService) sendPlainThreadMessage(ctx context.Context, threadID ThreadID, message string) (string, error) {
 	if target, err := s.serviceForThread(threadID); err != nil {
 		return "", err
 	} else if target != s {
-		return target.SendThreadMessage(ctx, threadID, message)
+		return target.sendPlainThreadMessage(ctx, threadID, message)
 	}
 	if s.client == nil {
 		return "", fmt.Errorf("slack client not initialized")
@@ -2352,10 +2360,18 @@ func (s *SlackService) SendThreadMessageWithBlocks(ctx context.Context, threadID
 
 // UpdateMessage updates an existing Slack message
 func (s *SlackService) UpdateMessage(ctx context.Context, threadID ThreadID, messageID string, newText string) error {
+	if chatvisuals.HasVisual(newText) {
+		_, err := s.WriteReply(ctx, threadID, messageID, newText, true)
+		return err
+	}
+	return s.updatePlainMessage(ctx, threadID, messageID, newText)
+}
+
+func (s *SlackService) updatePlainMessage(ctx context.Context, threadID ThreadID, messageID string, newText string) error {
 	if target, err := s.serviceForThread(threadID); err != nil {
 		return err
 	} else if target != s {
-		return target.UpdateMessage(ctx, threadID, messageID, newText)
+		return target.updatePlainMessage(ctx, threadID, messageID, newText)
 	}
 	if s.client == nil {
 		return fmt.Errorf("slack client not initialized")
@@ -2364,7 +2380,7 @@ func (s *SlackService) UpdateMessage(ctx context.Context, threadID ThreadID, mes
 	formatted := convertMarkdownToSlackMrkdwn(newText)
 	logBotOutboundMessage("slack", threadID, "update", formatted, 1, 0)
 
-	opts := []slack.MsgOption{slack.MsgOptionText(formatted, false)}
+	opts := []slack.MsgOption{slack.MsgOptionText(formatted, false), slack.MsgOptionBlocks([]slack.Block{}...)}
 	if len(formatted) <= 3000 {
 		sectionBlock := slack.NewSectionBlock(
 			slack.NewTextBlockObject(slack.MarkdownType, formatted, false, false),

@@ -396,6 +396,22 @@ type BotMessageDeleter interface {
 	DeleteMessage(context.Context, ThreadID, string) error
 }
 
+// BotReplyWriter is presentation-only. final comes from the existing server
+// turn boundary; connectors never infer permissions or stream eligibility.
+type BotReplyWriter interface {
+	WriteReply(context.Context, ThreadID, string, string, bool) (string, error)
+}
+
+func writeBotReply(ctx context.Context, connector BotConnector, threadID ThreadID, messageID, content string, final bool) (string, error) {
+	if rich, ok := connector.(BotReplyWriter); ok {
+		return rich.WriteReply(ctx, threadID, messageID, content, final)
+	}
+	if messageID == "" {
+		return connector.SendThreadMessage(ctx, threadID, content)
+	}
+	return messageID, connector.UpdateMessage(ctx, threadID, messageID, content)
+}
+
 // BotConnector is the per-platform bidirectional bot interface
 type BotConnector interface {
 	NotificationConnector // embeds: Name(), IsEnabled(), SendNotification()
