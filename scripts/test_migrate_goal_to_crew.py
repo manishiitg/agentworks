@@ -76,6 +76,19 @@ class Migration(unittest.TestCase):
 
     def conversion(self):return m.Conversion(self.docs,self.state,'old-goal','crew')
 
+    def test_retired_measurements_remain_unchanged_without_creating_crew_goals(self):
+        # PLAT-746-364: preserve historical data, not the retired Goal concept.
+        before = (self.source/'db/db.sqlite').read_bytes()
+        conversion = m.Conversion(self.docs,self.state,'old-goal','crew',keep_measurements=True)
+        self.assertEqual(conversion.report()['counts']['goals'], 0)
+        conversion.apply()
+        self.assertEqual((self.runtime/'db/db.sqlite').read_bytes(), before)
+        self.assertFalse((self.private/'db/db.sqlite').exists())
+        with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM workflow_goal_metrics').fetchone()[0], 1)
+            self.assertEqual(db.execute('SELECT run_id,evidence_json FROM goal_observations').fetchone(), ('source-run','["source report"]'))
+            self.assertIsNotNone(db.execute("SELECT 1 FROM sqlite_master WHERE name='idx_pulse_goal_observations_criterion'").fetchone())
+
     def test_legacy_function_groups_convert_before_contract_validation(self):
         # PR498: runtime validation rejects groups, so validate only after the
         # one-Goal converter has produced the final preset/function envelope.
