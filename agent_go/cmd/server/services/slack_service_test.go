@@ -243,7 +243,7 @@ func TestSlackVisualReplyTablesCardsAndPlainFallback(t *testing.T) {
 	if _, err := svc.SendThreadMessage(context.Background(), thread, table); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(forms[0].Get("blocks"), `"type":"table"`) || strings.Contains(forms[0].Get("text"), `"op"`) {
+	if !strings.Contains(forms[0].Get("blocks"), `"type":"data_table"`) || strings.Contains(forms[0].Get("text"), `"op"`) {
 		t.Fatal("table was not rendered natively")
 	}
 	cards := makeReply("cards", map[string]interface{}{"title": "Options", "items": []interface{}{map[string]interface{}{"title": "Saved report", "description": "A useful result", "href": "https://example.com/report"}}})
