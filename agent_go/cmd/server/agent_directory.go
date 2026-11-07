@@ -41,11 +41,26 @@ func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Req
 // group of agents users can easily.. once shared"): every Crew, Goal and Relay they own or that is shared with them,
 // and their agents connected through AgentBridge (local Claude Code and others). Nothing has to be linked first.
 // Rows come only from the existing access paths, and the list is built only when asked, never at message start.
+// directoryThisCrewKey carries the folder of the Crew whose agent is asking, so the list can say which Crew is "this" one.
+type directoryThisCrewKey struct{}
+
+func withDirectoryThisCrew(ctx context.Context, crewPath string) context.Context {
+	if strings.TrimSpace(crewPath) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, directoryThisCrewKey{}, crewPath)
+}
+
+// directoryRelationRank orders the Crew rows: the Crew the agent works in, then the person's own, their Teams', then the rest.
+var directoryRelationRank = map[string]int{"this_crew": 0, "yours": 1, "team": 2, "shared": 3}
+
 func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]interface{}, error) {
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
 		return map[string]interface{}{"agents": []map[string]interface{}{}}, nil
 	}
 	agents := []map[string]interface{}{}
+	here, _ := ctx.Value(directoryThisCrewKey{}).(string)
+	thisCrew := ""
 	// The same rows on the website and over MCP: the person's live access decides, not connection scopes.
 	crews, err := listAccessibleWorkspaceProjects(ctx, claims, "")
 	if err != nil {
@@ -76,6 +91,19 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			row["role"] = role
 		}
 		owned := crewProjectOwnedByCaller(claims.UserID, crewPath)
+		// How this Crew relates to the person (backend decides): the Crew the asking agent works in, one they own, one whose
+		// Team they are in, or one shared with them (owner, 7 Nov).
+		relation := "shared"
+		if t, err := readCrewTeam(id); err == nil && t.On && t.member(claims.UserID) {
+			relation = "team"
+		}
+		if owned {
+			relation = "yours"
+		}
+		if here != "" && canonicalCrewWorkspaceRoot(crewPath) == canonicalCrewWorkspaceRoot(here) {
+			relation, thisCrew = "this_crew", id
+		}
+		row["relation"] = relation
 		if owned {
 			tabs, err := crewOwnerChatRecords(ctx, claims.UserID, profileID, id, crewPath)
 			if err != nil {
@@ -83,7 +111,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			}
 			chats := []map[string]interface{}{}
 			for _, tab := range tabs {
-				chats = append(chats, map[string]interface{}{"chat_id": tab.Record.ConversationKey, "name": firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), "purpose": tab.Identity.Purpose, "owner_name": crewOwnerDisplayName(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat})
+				chats = append(chats, map[string]interface{}{"chat_id": tab.Record.ConversationKey, "name": firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), "purpose": tab.Identity.Purpose, "owner_name": crewOwnerDisplayName(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
 			}
 			row["chats"] = chats
 		} else {
@@ -97,7 +125,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		agents = append(agents, row)
 		if !owned {
 			for _, agent := range row["chats"].([]sharedCrewAgent) {
-				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "workspace:" + profileID + ":" + id, "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "purpose": agent.Purpose, "presence": "Runs when called", "your_access": "run", "reach": "messages action=send(target=<target>, chat_id=<chat_id>); same existing tab on the website and MCP"})
+				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "workspace:" + profileID + ":" + id, "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "relation": relation, "shared_by": crewPersonShortName(agent.tab.OwnerID), "purpose": agent.Purpose, "presence": "Runs when called", "your_access": "run", "reach": "messages action=send(target=<target>, chat_id=<chat_id>); same existing tab on the website and MCP"})
 			}
 		}
 	}
@@ -160,11 +188,25 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			agents = append(agents, row)
 		}
 	}
-	return map[string]interface{}{
+	sort.SliceStable(agents, func(i, j int) bool {
+		rank := func(row map[string]interface{}) int {
+			relation, _ := row["relation"].(string)
+			if r, ok := directoryRelationRank[relation]; ok {
+				return r
+			}
+			return len(directoryRelationRank)
+		}
+		return rank(agents[i]) < rank(agents[j])
+	})
+	out := map[string]interface{}{
 		"signed_in_as": firstNonEmptyTrimmed(claims.Email, claims.Username, claims.UserID),
 		"agents":       agents,
-		"note":         "Every agent you own or that is shared with you. Show name, type, provider, presence and last_seen_at; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews, Goals and Relays run when called and have no laptop heartbeat. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
-	}, nil
+		"note":         "Every agent you own or that is shared with you. Show name, type, provider, presence and last_seen_at; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
+	}
+	if thisCrew != "" {
+		out["this_crew"] = thisCrew
+	}
+	return out, nil
 }
 
 // crewDirectoryReach tells an agent how to use a Crew: its features are functions it calls, never the chat of a function's
