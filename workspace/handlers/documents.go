@@ -369,7 +369,7 @@ func ListDocuments(c *gin.Context) {
 	if layout, found, e := crewroot.LookupExecutable(docsDir, normalizedFolder); e == nil && found && (crewroot.Within(layout.Code, searchPath) || crewroot.Within(layout.Definitions, searchPath) || crewroot.Within(layout.Runtime, searchPath)) {
 		virtualRoot = normalizedFolder
 	}
-	documents, err := scanDocuments(searchPath, docsDir, documentScanOptions{virtualRoot: virtualRoot, maxDepth: req.MaxDepth, limit: -1, metadata: !isRootListing, blocked: blockedPaths, visibility: req.FileTreeVisibility, userID: userID, ctx: c.Request.Context()})
+	documents, err := scanWorkflowDocuments(searchPath, docsDir, documentScanOptions{virtualRoot: virtualRoot, maxDepth: req.MaxDepth, limit: -1, metadata: !isRootListing, blocked: blockedPaths, visibility: req.FileTreeVisibility, userID: userID, ctx: c.Request.Context()})
 	if err != nil {
 		// Check if error is due to directory not existing
 		if os.IsNotExist(err) {
