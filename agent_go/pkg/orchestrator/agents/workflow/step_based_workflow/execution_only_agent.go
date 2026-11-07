@@ -77,33 +77,22 @@ type WorkflowExecutionOnlyAgent struct {
 }
 
 // NewWorkflowExecutionOnlyAgent creates a new execution-only agent
-func NewWorkflowExecutionOnlyAgent(config *agents.OrchestratorAgentConfig, logger loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener) *WorkflowExecutionOnlyAgent {
+func NewWorkflowExecutionOnlyAgent(config *agents.OrchestratorAgentConfig, logger loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener, roles ...agents.AgentType) *WorkflowExecutionOnlyAgent {
+	role := agents.TodoPlannerExecutionAgentType
+	if len(roles) > 0 {
+		role = roles[0]
+	}
 	baseAgent := agents.NewBaseOrchestratorAgentWithEventBridge(
 		config,
 		logger,
 		tracer,
-		agents.TodoPlannerExecutionAgentType, // Reuse execution agent type for consistency
+		role, // Retain the existing event role for scripted-helper callers.
 		eventBridge,
 	)
 
 	return &WorkflowExecutionOnlyAgent{
 		BaseOrchestratorAgent: baseAgent,
 	}
-}
-
-// NewWorkflowDelegatingAgent uses the common agent implementation
-// while retaining the orchestration agent type required by child lifecycle and
-// progress event plumbing.
-func NewWorkflowDelegatingAgent(config *agents.OrchestratorAgentConfig, logger loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener) *WorkflowExecutionOnlyAgent {
-	baseAgent := agents.NewBaseOrchestratorAgentWithEventBridge(
-		config,
-		logger,
-		tracer,
-		agents.DelegatingAgentType,
-		eventBridge,
-	)
-
-	return &WorkflowExecutionOnlyAgent{BaseOrchestratorAgent: baseAgent}
 }
 
 // Execute implements the OrchestratorAgent interface

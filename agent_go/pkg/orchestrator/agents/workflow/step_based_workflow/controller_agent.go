@@ -1244,7 +1244,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) getAgentRuntime(ctx context.Context, 
 
 	if session.delegation != nil {
 		// The orchestrator agent carries its own MCP session, tool registry, and
-		// shared folder guard (set by executeDelegatingAgentStep); none of the sequence's
+		// per-agent folder guard; none of the sequence's
 		// per-session overrides apply to it.
 		if session.runtime != nil && session.runtime.Agent != nil {
 			return session.runtime, ctx, nil

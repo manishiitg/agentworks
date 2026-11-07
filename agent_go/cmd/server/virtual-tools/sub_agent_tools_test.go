@@ -10,17 +10,17 @@ import (
 	"testing"
 )
 
-func TestHandleCallSubAgentReturnsTypedFailedEnvelope(t *testing.T) {
+func TestHandleCallScriptedSubAgentReturnsTypedFailedEnvelope(t *testing.T) {
 	ctx := context.WithValue(context.Background(), ExecutePredefinedSubAgentKey, ExecutePredefinedSubAgentFunc(
 		func(context.Context, string, string, string) (string, error) {
 			return "partial child evidence", errors.New("failed to create execution-only agent")
 		},
 	))
 
-	result, err := handleCallSubAgent(ctx, map[string]interface{}{
+	result, err := handleCallScriptedSubAgent(ctx, map[string]interface{}{
 		"route_id":       "review",
 		"task_id":        "todo-1",
-		"instructions":   "review the output",
+		"parameters":     map[string]interface{}{},
 		"preferred_tier": float64(1),
 	})
 	if err != nil {
@@ -60,11 +60,9 @@ func TestHandleCallScriptedSubAgentPropagatesParametersAndInvocationKind(t *test
 	}
 }
 
-func TestDedicatedSubAgentSchemasSeparateInstructionsFromParameters(t *testing.T) {
-	foundAgent := false
-	foundScripted := false
+func TestScriptedSubAgentSchemaRequiresTypedParameters(t *testing.T) {
 	for _, tool := range CreateSubAgentTools() {
-		if tool.Function == nil || (tool.Function.Name != "call_sub_agent" && tool.Function.Name != "call_scripted_sub_agent") {
+		if tool.Function == nil || tool.Function.Name != "call_scripted_sub_agent" {
 			continue
 		}
 		encoded, err := json.Marshal(tool.Function.Parameters)
@@ -78,39 +76,23 @@ func TestDedicatedSubAgentSchemasSeparateInstructionsFromParameters(t *testing.T
 		if err := json.Unmarshal(encoded, &schema); err != nil {
 			t.Fatal(err)
 		}
-		required := make(map[string]bool, len(schema.Required))
+		required := false
 		for _, name := range schema.Required {
-			required[name] = true
+			required = required || name == "parameters"
 		}
-		switch tool.Function.Name {
-		case "call_sub_agent":
-			foundAgent = true
-			if !required["instructions"] {
-				t.Fatalf("call_sub_agent must require instructions: %s", encoded)
-			}
-			if _, ok := schema.Properties["parameters"]; ok {
-				t.Fatalf("call_sub_agent must not publish parameters: %s", encoded)
-			}
-		case "call_scripted_sub_agent":
-			foundScripted = true
-			if !required["parameters"] {
-				t.Fatalf("call_scripted_sub_agent must require parameters: %s", encoded)
-			}
-			if _, ok := schema.Properties["instructions"]; ok {
-				t.Fatalf("call_scripted_sub_agent must not publish instructions: %s", encoded)
-			}
+		if !required || schema.Properties["instructions"] != nil {
+			t.Fatalf("script helper must require typed parameters, not instructions: %s", encoded)
 		}
+		return
 	}
-	if !foundAgent || !foundScripted {
-		t.Fatalf("dedicated tools missing: call_sub_agent=%v call_scripted_sub_agent=%v", foundAgent, foundScripted)
-	}
+	t.Fatal("scripted helper tool missing")
 }
 
 func TestDedicatedSubAgentHandlersRejectCrossedArgumentShapes(t *testing.T) {
-	if _, err := handleCallSubAgent(context.Background(), map[string]interface{}{
-		"route_id": "agent", "task_id": "todo", "preferred_tier": float64(2),
-	}); err == nil || !strings.Contains(err.Error(), "instructions are required") {
-		t.Fatalf("call_sub_agent missing-instructions error = %v", err)
+	if _, err := handleCallScriptedSubAgent(context.Background(), map[string]interface{}{
+		"route_id": "script", "task_id": "todo", "parameters": map[string]interface{}{}, "instructions": "change task",
+	}); err == nil || !strings.Contains(err.Error(), "instructions are not accepted") {
+		t.Fatalf("script helper accepted conversational instructions: %v", err)
 	}
 	if _, err := handleCallScriptedSubAgent(context.Background(), map[string]interface{}{
 		"route_id": "script", "task_id": "todo", "preferred_tier": float64(2),
@@ -119,40 +101,7 @@ func TestDedicatedSubAgentHandlersRejectCrossedArgumentShapes(t *testing.T) {
 	}
 }
 
-func TestHandleCallSubAgentPropagatesAgentRestart(t *testing.T) {
-	called := false
-	ctx := context.WithValue(context.Background(), ExecutePredefinedSubAgentKey, ExecutePredefinedSubAgentFunc(
-		func(ctx context.Context, routeID, todoID, instructions string) (string, error) {
-			called = true
-			if restart, _ := ctx.Value(SubAgentAgentRestartKey).(bool); !restart {
-				t.Fatalf("expected agent restart flag to be propagated")
-			}
-			if routeID != "seq-route" || todoID != "todo-1" || instructions != "run again" {
-				t.Fatalf("unexpected args: route=%q todo=%q instructions=%q", routeID, todoID, instructions)
-			}
-			return "ok", nil
-		},
-	))
-
-	result, err := handleCallSubAgent(ctx, map[string]interface{}{
-		"route_id":       "seq-route",
-		"task_id":        "todo-1",
-		"instructions":   "run again",
-		"preferred_tier": float64(1),
-		"agent_restart":  true,
-	})
-	if err != nil {
-		t.Fatalf("handleCallSubAgent returned error: %v", err)
-	}
-	if !called {
-		t.Fatalf("expected execute function to be called")
-	}
-	if !strings.Contains(result, `"success": true`) {
-		t.Fatalf("expected successful result JSON, got %s", result)
-	}
-}
-
-func TestHandleCallSubAgentPassesThroughAsyncStart(t *testing.T) {
+func TestHandleCallScriptedSubAgentPassesThroughAsyncStart(t *testing.T) {
 	const asyncResult = `{"async":true,"execution_id":"child-123","status":"running"}`
 	ctx := context.WithValue(context.Background(), ExecutePredefinedSubAgentKey, ExecutePredefinedSubAgentFunc(
 		func(context.Context, string, string, string) (string, error) {
@@ -160,10 +109,10 @@ func TestHandleCallSubAgentPassesThroughAsyncStart(t *testing.T) {
 		},
 	))
 
-	result, err := handleCallSubAgent(ctx, map[string]interface{}{
+	result, err := handleCallScriptedSubAgent(ctx, map[string]interface{}{
 		"route_id":       "review",
 		"task_id":        "todo-1",
-		"instructions":   "review the output",
+		"parameters":     map[string]interface{}{},
 		"preferred_tier": float64(1),
 	})
 	if err != nil {

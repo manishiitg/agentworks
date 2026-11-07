@@ -120,27 +120,6 @@ func TestOrchestratorCLIPromptUsesProjectedWorkflowLearnings(t *testing.T) {
 	}
 }
 
-func TestFormatAgentRoutePromptBlock(t *testing.T) {
-	block := formatAgentRoutePromptBlock(&AgentPlanStep{})
-
-	requiredSnippets := []string{
-		"Step type: agent",
-		"route-scoped session resumes",
-		"Initial instructions",
-		"Re-entry",
-		"agent_restart=true",
-	}
-	for _, snippet := range requiredSnippets {
-		if !strings.Contains(block, snippet) {
-			t.Fatalf("expected block to contain %q\n\nBlock:\n%s", snippet, block)
-		}
-	}
-
-	if got := formatAgentRoutePromptBlock(&ScriptedPlanStep{}); got != "" {
-		t.Fatalf("expected non-agent routes to produce no block, got %q", got)
-	}
-}
-
 func TestDelegatingAgentUserPromptIncludesWorkshopHumanInput(t *testing.T) {
 	agent := &WorkflowExecutionOnlyAgent{}
 

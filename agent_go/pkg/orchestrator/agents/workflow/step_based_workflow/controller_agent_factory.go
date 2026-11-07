@@ -1231,6 +1231,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyPostSetupToAgent(agent agents.Or
 	// Set folder guard paths on MCP agent (required for both code execution mode and simple mode)
 	// This ensures path validation works at the tool executor level
 	readPaths, writePaths := hcpo.GetFolderGuardPaths()
+	if config := agent.GetConfig(); config != nil && (config.FolderGuardReadPaths != nil || config.FolderGuardWritePaths != nil) {
+		readPaths, writePaths = config.FolderGuardReadPaths, config.FolderGuardWritePaths
+	}
 	baseAgent.SetWorkspacePolicy(readPaths, writePaths)
 	hcpo.GetLogger().Info(fmt.Sprintf("🔒 Folder guard paths set for %s agent - Read: %v, Write: %v", agentName, readPaths, writePaths))
 
@@ -1260,7 +1263,11 @@ func parentStepIndexFromContext(ctx context.Context, fallback int) int {
 	return fallback
 }
 
-func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.Context, phase string, stepPath string, agentName string, stepConfig *AgentConfigs, planStep PlanStepInterface, stepIDOverride string, artifactFolderNameOverride string) (agents.OrchestratorAgent, error) {
+func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.Context, phase string, stepPath string, agentName string, stepConfig *AgentConfigs, planStep PlanStepInterface, stepIDOverride string, artifactFolderNameOverride string, delegation ...*SubAgentExecutionContext) (agents.OrchestratorAgent, error) {
+	var subAgentExecCtx *SubAgentExecutionContext
+	if len(delegation) > 0 {
+		subAgentExecCtx = delegation[0]
+	}
 	// 1. Resolve stepID first (needed for folder guard setup)
 	stepID := hcpo.resolveStepID(stepPath, stepIDOverride)
 	artifactStepID := stepID
@@ -1288,14 +1295,18 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		// The item-specific override may narrow files/KB/learnings, but DB is a
 		// uniform workflow-step capability. Restore the workflow DB path instead
 		// of silently downgrading the child and removing mutate_workflow_db.
-		if dbAccess == DBAccessReadWrite && !dbWritePathGranted(writePaths, hcpo.GetWorkspacePath()) {
+		if subAgentExecCtx == nil && dbAccess == DBAccessReadWrite && !dbWritePathGranted(writePaths, hcpo.GetWorkspacePath()) {
 			dbPath := getDBPath(hcpo.GetWorkspacePath())
 			readPaths = common.DeduplicateStrings(append(readPaths, dbPath))
 			writePaths = common.DeduplicateStrings(append(writePaths, dbPath))
 		}
 		hcpo.GetLogger().Info(fmt.Sprintf("🔒 Agent folder guard override for execution agent - Read: %v Write: %v", readPaths, writePaths))
 	}
-	readPaths, writePaths, _, _ = appendWorkflowFolderAccess(hcpo.GetWorkspacePath(), readPaths, writePaths, kbAccessAllowsRead(kbAccess))
+	if subAgentExecCtx == nil {
+		readPaths, writePaths, _, _ = appendWorkflowFolderAccess(hcpo.GetWorkspacePath(), readPaths, writePaths, kbAccessAllowsRead(kbAccess))
+	} else {
+		readPaths = common.DeduplicateStrings(append(readPaths, hcpo.scriptedRouteSourceReadPaths(subAgentExecCtx)...))
+	}
 
 	// Scripted code mode: add code/ subdir to the enforced write paths so the LLM can write main.py there.
 	// writePaths[0] is the step execution folder (e.g. execution/step-1); appending /code gives execution/step-1/code.
@@ -1317,6 +1328,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		readPaths = append(readPaths, skillReadPaths...)
 		hcpo.GetLogger().Info(fmt.Sprintf("🎯 Added skill folder paths to folder guard: %v", skillReadPaths))
 	}
+	readPaths = common.DeduplicateStrings(readPaths)
+	writePaths = common.DeduplicateStrings(writePaths)
 	if err := hcpo.materializeWorkflowGuardPaths(readPaths, writePaths); err != nil {
 		return nil, err
 	}
@@ -1331,7 +1344,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	maxTurns := hcpo.GetMaxTurns()
 
 	// 4. Select LLM (extracted method)
-	llmConfig := hcpo.selectExecutionLLM(ctx, stepConfig, stepPath)
+	var llmConfig *orchestrator.LLMConfig
+	if subAgentExecCtx != nil {
+		llmConfig = hcpo.selectOrchestratorLLM(ctx, stepConfig, stepID, stepPath)
+	} else {
+		llmConfig = hcpo.selectExecutionLLM(ctx, stepConfig, stepPath)
+	}
 	if llmConfig == nil {
 		return nil, fmt.Errorf("no valid LLM configuration found for execution agent: step config and tier/preset execution LLM are all empty or invalid")
 	}
@@ -1361,6 +1379,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		execSessionID = hcpo.setupSubAgentSessionGuard("exec", stepID, readPaths, writePaths, kbAccessAllowsRead(kbAccess))
 	}
 	config.MCPSessionID = execSessionID
+	if subAgentExecCtx != nil {
+		subAgentExecCtx.ToolSessionID = execSessionID
+	}
 	directDBAccess := isScriptedStep(planStep) && dbAccess != DBAccessNone
 	configureWorkflowDBSession(execSessionID, hcpo.GetWorkspacePath(), dbAccess, directDBAccess)
 	// Bind the per-step tool session to the workflow's browser session. Tool-session
@@ -1404,6 +1425,41 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		delete(executorsToUse, "mutate_workflow_db")
 		delete(executorsToUse, "apply_workflow_db_migration")
 	}
+	if subAgentExecCtx != nil {
+		// Filter out human tools if "no human" execution mode is active
+		execOpts := hcpo.GetExecutionOptions()
+		if execOpts != nil && (execOpts.ExecutionStrategy == ExecutionStrategyStartFromBeginningNoHuman || execOpts.ExecutionStrategy == ExecutionStrategyResumeFromStepNoHuman) {
+			var filteredTools []llmtypes.Tool
+			filteredExecutors := make(map[string]interface{})
+
+			for _, tool := range toolsToRegister {
+				// Check if this tool is a human tool by looking at its category
+				if hcpo.ToolCategories != nil {
+					if category, exists := hcpo.ToolCategories[tool.Function.Name]; exists && virtualtools.IsHumanToolCategory(category) {
+						// Skip human tools in "no human" mode
+						hcpo.GetLogger().Info(fmt.Sprintf("🔧 Excluding human tool '%s' from todo task orchestrator agent (no human mode)", tool.Function.Name))
+						continue
+					}
+				}
+				filteredTools = append(filteredTools, tool)
+				// Also filter executors
+				if executor, exists := executorsToUse[tool.Function.Name]; exists {
+					filteredExecutors[tool.Function.Name] = executor
+				}
+			}
+
+			toolsToRegister = filteredTools
+			executorsToUse = filteredExecutors
+			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Filtered out human tools for todo task orchestrator agent (no human mode): %d tools remaining", len(toolsToRegister)))
+		}
+
+		var helperErr error
+		toolsToRegister, executorsToUse, helperErr = hcpo.appendScriptHelperTools(config, subAgentExecCtx, toolsToRegister, executorsToUse)
+		if helperErr != nil {
+			return nil, helperErr
+		}
+	}
+
 	// Inject STEP_OUTPUT_DIR and STEP_EXECUTION_DIR for all execution-only agents (both scripted and agentic).
 	// Any script run via execute_shell_command may need STEP_OUTPUT_DIR to know where to write output
 	// and STEP_EXECUTION_DIR to read sibling step outputs.
@@ -1447,7 +1503,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		0,      // iteration
 		stepID, // Step ID (resolved from step path)
 		func(cfg *agents.OrchestratorAgentConfig, logger loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener) agents.OrchestratorAgent {
-			return NewWorkflowExecutionOnlyAgent(cfg, logger, tracer, eventBridge)
+			role := agents.TodoPlannerExecutionAgentType
+			if subAgentExecCtx != nil {
+				role = agents.DelegatingAgentType
+			}
+			return NewWorkflowExecutionOnlyAgent(cfg, logger, tracer, eventBridge, role)
 		},
 		toolsToRegister,
 		executorsToUse,
@@ -1473,10 +1533,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 
 	// Apply post-setup configuration (folder guard paths and optional registry update)
 	if err := hcpo.applyPostSetupToAgent(agent, agentName); err != nil {
+		if subAgentExecCtx != nil {
+			return nil, fmt.Errorf("apply script-helper agent guards: %w", err)
+		}
 		// Log warning but don't fail agent creation
 		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Post-setup configuration failed for %s: %v", agentName, err))
 	}
 
+	if subAgentExecCtx != nil {
+		if inherited := backgroundAgentSkillsFromContext(ctx); len(inherited) > 0 {
+			if err := applyInheritedBackgroundSkills(ctx, baseAgent, inherited); err != nil {
+				return nil, fmt.Errorf("apply inherited background skills: %w", err)
+			}
+		}
+	}
 	return agent, nil
 }
 
@@ -1632,306 +1702,57 @@ func serializeConversationHistory(history []llmtypes.MessageContent) []Conversat
 	return entries
 }
 
-// createOrchestratorAgent creates a todo task orchestrator agent using the standard factory pattern
-// This agent manages todo lists, creates tasks, and delegates to predefined or generic sub-agents
-// Note: Folder guard paths should be set by the caller before calling this function (see controller_todo_task.go)
-// The stepPath parameter is used to inject context for todo tools (e.g., "step-1")
-// The subAgentExecCtx contains context for sub-agent tool execution (can be nil for simple cases)
-func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.Context, phase string, step, iteration int, stepID string, stepPath string, agentName string, stepConfig *AgentConfigs, orchestratorStepLLMConfig *orchestrator.LLMConfig, subAgentExecCtx *SubAgentExecutionContext) (agents.OrchestratorAgent, error) {
-	// Todo task orchestrator agent needs folder guard (can write files)
-	// Note: Folder guard is set by caller in controller_todo_task.go before agent creation
-	// We apply it to the agent here via post-setup
+// appendScriptHelperTools keeps saved-script calls and their child lifecycle on the normal agent.
+func (hcpo *StepBasedWorkflowOrchestrator) appendScriptHelperTools(config *agents.OrchestratorAgentConfig, subAgentExecCtx *SubAgentExecutionContext, toolsToRegister []llmtypes.Tool, executorsToUse map[string]interface{}) ([]llmtypes.Tool, map[string]interface{}, error) {
+	subAgentExecCtx.TierSelectionRequired = true
+	subAgentTools := virtualtools.CreateSubAgentTools()
+	subAgentExecutors := virtualtools.CreateSubAgentToolExecutors()
+	subAgentCategory := virtualtools.GetSubAgentToolCategory()
 
-	// Determine max turns: use orchestrator default
-	maxTurns := hcpo.GetMaxTurns()
-
-	// Determine LLM config: Priority: step config > preset default
-	var llmConfig *orchestrator.LLMConfig
-	orchestratorLLMConfig := hcpo.GetLLMConfig()
-	if orchestratorStepLLMConfig != nil && orchestratorStepLLMConfig.Primary.Provider != "" && orchestratorStepLLMConfig.Primary.ModelID != "" {
-		var apiKeys *orchestrator.APIKeys
-		if orchestratorLLMConfig != nil {
-			apiKeys = orchestratorLLMConfig.APIKeys
+	// Categories for built-in delegation tools are registered once when the
+	// BaseOrchestrator is constructed; the map stays immutable so nested
+	// orchestrators can be created in parallel safely.
+	// An authored agent (a Flow agent) calls only its saved scripts, through
+	// the named route tools below: no sub-agent, generic agent or delegation
+	// tools (PLAT-441).
+	authoredAgent := subAgentExecCtx.OrchestratorStep != nil && subAgentExecCtx.OrchestratorStep.AuthoredPrompt
+	for _, tool := range subAgentTools {
+		if authoredAgent || !goalScriptHelperTool(tool.Function.Name) {
+			continue
 		}
-		llmConfig = &orchestrator.LLMConfig{
-			Primary: orchestrator.LLMModel{
-				Provider:     orchestratorStepLLMConfig.Primary.Provider,
-				ModelID:      orchestratorStepLLMConfig.Primary.ModelID,
-				Options:      orchestratorStepLLMConfig.Primary.Options,
-				ConnectionID: orchestratorStepLLMConfig.Primary.ConnectionID,
-			},
-			APIKeys: apiKeys, // Preserve API keys from orchestrator (may be nil)
-		}
-		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using step-specific todo task orchestrator LLM: %s/%s", orchestratorStepLLMConfig.Primary.Provider, orchestratorStepLLMConfig.Primary.ModelID))
-	} else if hcpo.tierResolver != nil {
-		// Use tiered allocation (high tier for orchestration)
-		tieredLLM := hcpo.tierResolver.ResolveTier(TierHigh)
-		if tieredLLM != nil {
-			llmConfig = tieredLLM
-			hcpo.GetLogger().Info(fmt.Sprintf("🏷️ Using Tier 1 (High) for todo task orchestrator: %s/%s", tieredLLM.Primary.Provider, tieredLLM.Primary.ModelID))
-		}
-	}
-	if llmConfig == nil && hcpo.presetPhaseLLM != nil && hcpo.presetPhaseLLM.Provider != "" && hcpo.presetPhaseLLM.ModelID != "" {
-		llmConfig = &orchestrator.LLMConfig{
-			Primary: orchestrator.LLMModel{
-				Provider:     hcpo.presetPhaseLLM.Provider,
-				ModelID:      hcpo.presetPhaseLLM.ModelID,
-				Options:      hcpo.presetPhaseLLM.Options,
-				ConnectionID: hcpo.presetPhaseLLM.ConnectionID,
-			},
-			APIKeys: orchestratorLLMConfig.APIKeys, // Preserve API keys from orchestrator
-		}
-		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using preset phase LLM for todo task orchestrator: %s/%s", hcpo.presetPhaseLLM.Provider, hcpo.presetPhaseLLM.ModelID))
-	}
-	if llmConfig == nil {
-		return nil, fmt.Errorf("no valid LLM configuration found for todo task orchestrator agent: step config, tiered, and preset phase LLM are all empty or invalid")
+		toolsToRegister = append(toolsToRegister, tool)
+		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added sub-agent tool '%s' to todo task orchestrator (category: %s)", tool.Function.Name, subAgentCategory))
 	}
 
-	// Create agent config with custom LLM if needed
-	config := hcpo.CreateStandardAgentConfigWithLLM(agentName, maxTurns, agents.OutputFormatStructured, llmConfig)
-	effectiveTransport := hcpo.applyWorkflowTransportToAgentConfig(config, stepConfig, "todo task orchestrator agent")
-	hcpo.publishWorkflowTransportContext(effectiveTransport, StepModeAgentic)
-	hcpo.disableParentAgentTimeout(config, "todo task orchestrator agent")
-
-	// Run the coding-CLI session in a fresh os.MkdirTemp dir instead of
-	// CodingAgentWorkingDir — same protection the scripted execution-step
-	// path gets via applyStepConfigToAgentConfig. Without this, a
-	// todo-task orchestrator agent collides with any other coding-CLI
-	// session already attached to the workflow folder (notably the
-	// workshop chat that triggered the run): some coding CLIs reject
-	// concurrent sessions on the same dir with different MCP configs,
-	// failing the step with a "does not support concurrent sessions in
-	// working directory ... with different MCP configs"-style error. The
-	// MCP bridge remains the authoritative path for any file changes the
-	// model wants to make to the user's actual workspace.
-	config.IsolateCodingAgentWorkspace = true
-
-	// Give nested todo_task orchestrators their own session-level folder guard just like
-	// normal execution steps. Without this, shell calls fall back to the broader parent
-	// workflow/group MCP session and can see workflow-root files or sibling groups.
-	todoReadPaths, todoWritePaths := hcpo.GetFolderGuardPaths()
-	todoReadPaths = append(todoReadPaths, hcpo.scriptedRouteSourceReadPaths(subAgentExecCtx)...)
-	todoSessionID := hcpo.setupSubAgentSessionGuard("todo", stepID, todoReadPaths, todoWritePaths)
-	config.MCPSessionID = todoSessionID
-	dbAccess := hcpo.resolveDBAccess(stepConfig)
-	// An agent step is never scripted (its job is runtime delegation),
-	// so it never gets the scripted executor's direct DB path.
-	directDBAccess := false
-	configureWorkflowDBSession(todoSessionID, hcpo.GetWorkspacePath(), dbAccess, directDBAccess)
-	if subAgentExecCtx != nil {
-		subAgentExecCtx.ToolSessionID = todoSessionID
-	}
-	sharedBrowserSessionID := hcpo.resolveWorkshopBrowserSessionID(hcpo.currentGroupName)
-	hcpo.bindWorkshopBrowserSession(todoSessionID, sharedBrowserSessionID)
-	config.FolderGuardReadPaths = todoReadPaths
-	config.FolderGuardWritePaths = todoWritePaths
-
-	workflowServersTodo := hcpo.GetSelectedServers()
-	// Use step-specific servers filtered against workflow-level servers (workflow is the hard cap)
-	if stepConfig != nil && stepConfig.SelectedServers != nil && len(stepConfig.SelectedServers) > 0 {
-		filtered := filterServersByWorkflow(stepConfig.SelectedServers, workflowServersTodo)
-		config.ServerNames = filtered
-		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using step-specific todo task orchestrator servers (workflow-filtered): %v → %v", stepConfig.SelectedServers, filtered))
-	} else {
-		// Use orchestrator defaults when stepConfig is nil or SelectedServers is empty
-		config.ServerNames = normalizeServerNames(workflowServersTodo)
-		if stepConfig != nil {
-			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Step config found but SelectedServers is empty - using orchestrator defaults: %v", config.ServerNames))
-		} else {
-			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Step config not found - using orchestrator defaults: %v", config.ServerNames))
+	// Wrap sub-agent executors with context injection
+	for toolName, executor := range subAgentExecutors {
+		if authoredAgent || !goalScriptHelperTool(toolName) {
+			continue
 		}
-	}
-	hcpo.addPlaceMCPServers(ctx, config)
-	if stepConfig != nil && len(stepConfig.SelectedTools) > 0 {
-		filtered := filterToolsByWorkflow(stepConfig.SelectedTools, workflowServersTodo)
-		config.SelectedTools = filtered
-		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using step-specific todo task orchestrator tools (workflow-filtered): %v → %v", stepConfig.SelectedTools, filtered))
-	} else {
-		config.SelectedTools = hcpo.GetSelectedTools()
-		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using orchestrator default todo task orchestrator tools: %v", config.SelectedTools))
+		wrappedExecutor := hcpo.wrapSubAgentToolExecutor(executor, subAgentExecCtx)
+		executorsToUse[toolName] = wrappedExecutor
+		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Wrapped sub-agent tool '%s' with execution context injection", toolName))
 	}
 
-	// Enable code execution mode for CLI providers that need HTTP bridge tool routing.
-	// Non-CLI providers use simple agent mode (no code execution)
-	isCodeExecutionMode := common.IsCLIProvider(llmConfig.Primary.Provider)
-	config.UseCodeExecutionMode = isCodeExecutionMode
-	if isCodeExecutionMode {
-		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Todo task orchestrator: code execution mode enabled for CLI provider '%s'", llmConfig.Primary.Provider))
-	}
-
-	// Enable parallel tool execution for todo task orchestrator
-	// This allows concurrent execution of multiple tool calls (e.g., scripted route helpers)
-	config.EnableParallelToolExecution = true
-	hcpo.GetLogger().Info("⚡ Parallel tool execution enabled for todo task orchestrator agent")
-
-	// Setup Downloads folder for agent-browser.
-	hcpo.setupBrowserDownloadsPathOverride(ctx, config, stepConfig)
-
-	// Start with the exact same default custom-tool policy as every other
-	// execution agent. Specialist tools are the only conditional overlay.
-	toolsToRegister, executorsToUse := hcpo.prepareOrchestratorCustomTools(stepConfig, dbAccess)
-
-	// Inject STEP_OUTPUT_DIR and STEP_EXECUTION_DIR into execute_shell_command so the
-	// todo-task orchestrator's own shell calls resolve sibling step outputs via env vars
-	// rather than having to rebuild absolute paths from the step context.
-	{
-		stepExecutionRelPath := hcpo.getOrchestratorStepExecutionPath(stepID, stepPath)
-		stepOutputAbsPath := workflowAbsPath(stepExecutionRelPath)
-		if common.IsCLIProvider(config.LLMConfig.Primary.Provider) {
-			config.CodingAgentOutputDir = stepOutputAbsPath
-		}
-		stepExecutionAbsPath := stepExecutionScopeAbsPath(stepOutputAbsPath)
-		// The todo-task orchestrator now uses a dedicated MCP session for shell/file tools.
-		// Browser reuse is bound separately above, so this session override narrows
-		// filesystem scope without breaking shared browser behavior with the builder.
-		dbAbsPath := ""
-		if directDBAccess {
-			dbAbsPath = workflowAbsPath(hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
-		}
-		workspaceEnv := hcpo.codeRuntimeEnv(hcpo.snapshotWorkspaceEnv())
-		workspaceEnv["SHARED_KB_STEP_ACCESS"] = resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-		registerStepSessionShellEnv(config.MCPSessionID, stepOutputAbsPath, stepExecutionAbsPath, dbAbsPath, hcpo.selectedRunFolder, workspaceEnv)
-		injectStepEnvIntoShellExecutor(executorsToUse, stepOutputAbsPath, stepExecutionAbsPath, dbAbsPath, hcpo.selectedRunFolder, config.MCPSessionID, workspaceEnv)
-		hcpo.GetLogger().Info(fmt.Sprintf("📂 Injecting step shell env into execute_shell_command for todo task %s: STEP_OUTPUT_DIR=%s MCP_SESSION_ID=%s", stepID, stepOutputAbsPath, config.MCPSessionID))
-	}
-
-	// NOTE: Task management is handled directly by the orchestrator LLM via shell commands
-
-	// Filter out human tools if "no human" execution mode is active
-	execOpts := hcpo.GetExecutionOptions()
-	if execOpts != nil && (execOpts.ExecutionStrategy == ExecutionStrategyStartFromBeginningNoHuman || execOpts.ExecutionStrategy == ExecutionStrategyResumeFromStepNoHuman) {
-		var filteredTools []llmtypes.Tool
-		filteredExecutors := make(map[string]interface{})
-
-		for _, tool := range toolsToRegister {
-			// Check if this tool is a human tool by looking at its category
-			if hcpo.ToolCategories != nil {
-				if category, exists := hcpo.ToolCategories[tool.Function.Name]; exists && virtualtools.IsHumanToolCategory(category) {
-					// Skip human tools in "no human" mode
-					hcpo.GetLogger().Info(fmt.Sprintf("🔧 Excluding human tool '%s' from todo task orchestrator agent (no human mode)", tool.Function.Name))
-					continue
-				}
-			}
-			filteredTools = append(filteredTools, tool)
-			// Also filter executors
-			if executor, exists := executorsToUse[tool.Function.Name]; exists {
-				filteredExecutors[tool.Function.Name] = executor
-			}
-		}
-
-		toolsToRegister = filteredTools
-		executorsToUse = filteredExecutors
-		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Filtered out human tools for todo task orchestrator agent (no human mode): %d tools remaining", len(toolsToRegister)))
-	}
-
-	// IMPORTANT: Inject sub-agent tools for tool-based delegation
-	// These tools allow the orchestrator to delegate work to sub-agents directly via tool calls
-	if subAgentExecCtx != nil {
-		// Tier selection is always required on every sub-agent call. The orchestrator
-		// must reason about task difficulty per delegation — this is prompt-discipline
-		// even when the workflow has no tier resolver or the step pins an ExecutionLLM.
-		// In those cases the tier value is honored by the sub-agent LLM-selection path
-		// if possible, else silently falls through to the inherited/pinned LLM.
-		subAgentExecCtx.TierSelectionRequired = true
-		subAgentTools := virtualtools.CreateSubAgentTools()
-		subAgentExecutors := virtualtools.CreateSubAgentToolExecutors()
-		subAgentCategory := virtualtools.GetSubAgentToolCategory()
-
-		// Categories for built-in delegation tools are registered once when the
-		// BaseOrchestrator is constructed; the map stays immutable so nested
-		// orchestrators can be created in parallel safely.
-		// An authored agent (a Flow agent) calls only its saved scripts, through
-		// the named route tools below: no sub-agent, generic agent or delegation
-		// tools (PLAT-441).
-		authoredAgent := subAgentExecCtx.OrchestratorStep != nil && subAgentExecCtx.OrchestratorStep.AuthoredPrompt
-		for _, tool := range subAgentTools {
-			if authoredAgent || !goalScriptHelperTool(tool.Function.Name) {
-				continue
-			}
-			toolsToRegister = append(toolsToRegister, tool)
-			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added sub-agent tool '%s' to todo task orchestrator (category: %s)", tool.Function.Name, subAgentCategory))
-		}
-
-		// Wrap sub-agent executors with context injection
-		for toolName, executor := range subAgentExecutors {
-			if authoredAgent || !goalScriptHelperTool(toolName) {
-				continue
-			}
-			wrappedExecutor := hcpo.wrapSubAgentToolExecutor(executor, subAgentExecCtx)
-			executorsToUse[toolName] = wrappedExecutor
-			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Wrapped sub-agent tool '%s' with execution context injection", toolName))
-		}
-
-		// PLAT-432: each saved scripted route is also a named tool.
-		reserved := map[string]bool{}
-		for _, tool := range append(append([]llmtypes.Tool(nil), hcpo.WorkspaceTools...), toolsToRegister...) {
-			if tool.Function != nil {
-				reserved[tool.Function.Name] = true
-			}
-		}
-		for _, definition := range config.DirectTools {
-			reserved[definition.Name] = true
-		}
-		routeTools, routeToolErr := hcpo.scriptedRouteDirectTools(subAgentExecCtx, reserved)
-		if routeToolErr != nil {
-			return nil, routeToolErr
-		}
-		config.DirectTools = append(config.DirectTools, routeTools...)
-		for _, definition := range routeTools {
-			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added scripted route tool '%s' to todo task orchestrator", definition.Name))
-		}
-	} else {
-		hcpo.GetLogger().Info("🔧 Sub-agent execution context not provided - sub-agent tools will not be available")
-	}
-
-	// NOTE: mark_step_complete tool removed — completion is detected by pre-validation.
-
-	// Use standard factory pattern - this handles initialization, event bridge connection, and tool registration
-	agent, err := hcpo.CreateAndSetupStandardAgentWithConfig(
-		ctx,
-		config,
-		phase,
-		step,
-		iteration,
-		stepID, // Step ID
-		func(cfg *agents.OrchestratorAgentConfig, logger loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener) agents.OrchestratorAgent {
-			return NewWorkflowDelegatingAgent(cfg, logger, tracer, eventBridge)
-		},
-		toolsToRegister, // Pass workspace tools (filtered by step config if specified)
-		executorsToUse,  // Pass workspace tool executors
-		false,           // Don't overwrite system prompt - todo task orchestrator agent manages its own prompt
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create todo task orchestrator agent: %w", err)
-	}
-
-	// Post-setup: folder guard paths (todo task orchestrator agent may use code execution mode, so registry update may be needed)
-	// Note: Folder guard paths are already set on orchestrator by caller, but we need to apply them to the agent
-	if err := hcpo.applyPostSetupToAgent(agent, agentName); err != nil {
-		return nil, fmt.Errorf("failed to apply post-setup to todo task orchestrator agent: %w", err)
-	}
-
-	// Inject supplementary prompts (skills, secrets, browser instructions).
-	effectiveSkills := hcpo.effectiveStepSkills(stepConfig)
-	if baseAgent := agent.GetBaseAgent(); baseAgent != nil {
-		if baseAgent.Agent() != nil {
-
-			// An agent step is never scripted (PLAT-287).
-			supplements := hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, registeredToolNames(toolsToRegister), false)
-			if executionAgent, ok := agent.(*WorkflowExecutionOnlyAgent); ok {
-				executionAgent.runtimeSupplements = supplements
-			}
-			if inherited := backgroundAgentSkillsFromContext(ctx); len(inherited) > 0 {
-				if err := applyInheritedBackgroundSkills(ctx, baseAgent, inherited); err != nil {
-					return nil, fmt.Errorf("apply inherited background orchestrator skills: %w", err)
-				}
-				hcpo.GetLogger().Info(fmt.Sprintf("🎯 Inherited %d workflow-builder skill(s) for background todo task", len(backgroundSkillNames(inherited))))
-			}
+	// PLAT-432: each saved scripted route is also a named tool.
+	reserved := map[string]bool{}
+	for _, tool := range append(append([]llmtypes.Tool(nil), hcpo.WorkspaceTools...), toolsToRegister...) {
+		if tool.Function != nil {
+			reserved[tool.Function.Name] = true
 		}
 	}
-
-	hcpo.GetLogger().Info(fmt.Sprintf("✅ Created todo task orchestrator agent using standard factory pattern: %s (step %d, phase %s)", agentName, step+1, phase))
-	return agent, nil
+	for _, definition := range config.DirectTools {
+		reserved[definition.Name] = true
+	}
+	routeTools, routeToolErr := hcpo.scriptedRouteDirectTools(subAgentExecCtx, reserved)
+	if routeToolErr != nil {
+		return nil, nil, routeToolErr
+	}
+	config.DirectTools = append(config.DirectTools, routeTools...)
+	for _, definition := range routeTools {
+		hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added scripted route tool '%s' to todo task orchestrator", definition.Name))
+	}
+	return toolsToRegister, executorsToUse, nil
 }
 
 // restoreSubAgentToolExecutors re-registers a todo_task's handlers in that
@@ -2011,9 +1832,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) wrapSubAgentToolExecutor(
 						encoded, _ := json.MarshalIndent(schema, "", "  ")
 						desc += "\n\nScript parameters JSON Schema (call_scripted_sub_agent.parameters must match it):\n" + string(encoded)
 					}
-					if sequenceRouteInfo := formatAgentRoutePromptBlock(route.SubAgentStep); sequenceRouteInfo != "" {
-						desc += "\n\n" + sequenceRouteInfo
-					}
+
 				}
 				routeDescriptions[route.RouteID] = desc
 			}
@@ -2056,7 +1875,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutePredefinedSubAgentSyncFu
 			return "", fmt.Errorf("invalid or missing route_id")
 		}
 		if execCtx.OrchestratorStep == nil {
-			return "", fmt.Errorf("call_sub_agent is only available inside a todo_task step")
+			return "", fmt.Errorf("saved script helpers are only available inside their owning agent step")
 		}
 		validRouteIDs := make([]string, 0, len(execCtx.OrchestratorStep.PredefinedRoutes))
 		var selectedRoute *PlanOrchestrationRoute
@@ -2070,26 +1889,15 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutePredefinedSubAgentSyncFu
 		if selectedRoute == nil {
 			return "", fmt.Errorf("route_id %q not found in todo task step %q. Available route IDs: %v", routeID, execCtx.OrchestratorStep.GetID(), validRouteIDs)
 		}
-		parameters := virtualtools.SubAgentParametersFromContext(ctx)
-		isScriptedRoute := selectedRoute.SubAgentStep != nil && isScriptedStep(selectedRoute.SubAgentStep)
-		isScriptedCall := virtualtools.IsScriptedSubAgentInvocation(ctx)
-		if isScriptedRoute && isScriptedCall {
-			resolved, paramErr := validateAndResolveScriptParameters(selectedRoute.SubAgentStep, parameters)
-			if paramErr != nil {
-				return "", paramErr
-			}
-			parameters = resolved
-		} else if isScriptedRoute {
-			// Compatibility only: older scripted routes without a parameter contract
-			// were invoked through call_sub_agent with free-form instructions. New or
-			// parameterized routes must use the dedicated typed tool.
-			if len(scriptedParameterDefinitions(selectedRoute.SubAgentStep)) > 0 {
-				return "", fmt.Errorf("scripted route %q declares script_parameters and must be invoked with call_scripted_sub_agent", routeID)
-			}
-		} else if isScriptedCall {
-			return "", fmt.Errorf("route %q is %s, not scripted; use call_sub_agent with instructions", routeID, routeStepTypeSummary(selectedRoute.SubAgentStep))
-		} else if strings.TrimSpace(instructions) == "" {
-			return "", fmt.Errorf("instructions are required for non-scripted route %q", routeID)
+		if !isScriptedStep(selectedRoute.SubAgentStep) {
+			return "", retiredAgentHelperError(selectedRoute.RouteName)
+		}
+		if !virtualtools.IsScriptedSubAgentInvocation(ctx) {
+			return "", fmt.Errorf("use call_scripted_sub_agent to call saved script %q", routeID)
+		}
+		parameters, paramErr := validateAndResolveScriptParameters(selectedRoute.SubAgentStep, virtualtools.SubAgentParametersFromContext(ctx))
+		if paramErr != nil {
+			return "", paramErr
 		}
 
 		// Propagate workshop correlation IDs to sub-agent context so events are tagged correctly.
@@ -2130,11 +1938,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutePredefinedSubAgentSyncFu
 
 		executionTime := time.Since(startTime)
 
-		// RESTORE: Re-register outer sub-agent executors in the session registry.
-		// A nested todo_task sub-agent overwrites the session-scoped call_sub_agent executor
-		// with its own inner routes. After it returns, restore the outer executor so that
-		// subsequent call_sub_agent calls in the same LLM turn (code execution mode) hit the
-		// correct outer routes and not the inner ones.
+		// Keep the owning step's script-helper registry after the child completes.
 		hcpo.restoreSubAgentToolExecutors(execCtx)
 
 		// Store call record for get_sub_agent_conversation

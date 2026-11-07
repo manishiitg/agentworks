@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
@@ -183,7 +184,17 @@ func TestScriptedRouteToolUsesTheFullSchema(t *testing.T) {
 		{RouteID: "lookup", SubAgentStep: &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "lookup", Description: "d", ScriptParametersSchema: schema}}},
 	}}
 	execCtx := &SubAgentExecutionContext{OrchestratorStep: step}
-	tools, toolsErr := hcpo.scriptedRouteDirectTools(execCtx, map[string]bool{})
+	config := agents.NewOrchestratorAgentConfig("script-helper-parent")
+	helpers, executors, toolsErr := hcpo.appendScriptHelperTools(config, execCtx, nil, map[string]interface{}{})
+	tools := config.DirectTools
+	for _, helper := range helpers {
+		if !goalScriptHelperTool(helper.Function.Name) || executors[helper.Function.Name] == nil {
+			t.Fatalf("common agent leaked a retired helper or lost its executor: %s", helper.Function.Name)
+		}
+	}
+	if executors["call_scripted_sub_agent"] == nil || executors["query_sub_agent"] == nil || executors["stop_sub_agent"] == nil {
+		t.Fatal("common agent lost saved-script child dispatch/status/cancel tools")
+	}
 	if toolsErr != nil {
 		t.Fatal(toolsErr)
 	}

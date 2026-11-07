@@ -66,7 +66,6 @@ func subAgentParentExecutionID(ctx context.Context) string {
 func copyAsyncSubAgentContextValues(base, source context.Context) context.Context {
 	for _, key := range []interface{}{
 		virtualtools.PreferredTierContextKey,
-		virtualtools.SubAgentAgentRestartKey,
 		virtualtools.SubAgentParametersKey,
 		virtualtools.ScriptedSubAgentInvocationKey,
 	} {

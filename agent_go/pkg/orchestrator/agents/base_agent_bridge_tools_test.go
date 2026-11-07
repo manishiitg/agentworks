@@ -97,11 +97,14 @@ func TestNativeWorkflowChildGetsItsOwnBridgeEnvironment(t *testing.T) {
 		want   bool
 	}{
 		{"step", TodoPlannerExecutionAgentType, true, true},
+		{"script-helper", DelegatingAgentType, true, true},
 		{"unlinked-chat", GenericExecutionAgentType, false, false},
 		{"builder", TodoPlannerInteractiveWorkshopAgentType, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			session := "native-env-" + tc.name
+			// CLI runtime folders persist by session ID; a fresh fixture must not
+			// reuse an output link from a previous test run (PLAT-746-393).
+			session := "native-env-" + filepath.Base(filepath.Dir(t.TempDir()))
 			common.SetSessionShellEnv(session, map[string]string{"STEP_OUTPUT_DIR": "/run/current/output", "SECRET_SELECTED": "selected", "VAR_TOPIC": "example"})
 			t.Cleanup(func() { common.ClearSessionShellConfig(session) })
 			output := ""

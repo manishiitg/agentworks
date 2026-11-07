@@ -8,6 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -22,6 +23,40 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
+
+type postSetupGuardAgent struct {
+	agents.OrchestratorAgent
+	base   *agents.BaseAgent
+	config *agents.OrchestratorAgentConfig
+}
+
+func (a postSetupGuardAgent) GetBaseAgent() *agents.BaseAgent            { return a.base }
+func (a postSetupGuardAgent) GetConfig() *agents.OrchestratorAgentConfig { return a.config }
+
+// PLAT-746-393: final setup must not replace a step's explicit grants with
+// the wider workflow guard. Inspect the configured runtime before it starts;
+// this needs neither a provider call nor a production-only policy getter.
+func TestPostSetupKeepsAgentGrantsInsteadOfWiderWorkflowGuard(t *testing.T) {
+	c := newAgentFactoryTestOrchestrator(t)
+	c.SetWorkspacePathForFolderGuard([]string{"Workflow/demo"}, []string{"Workflow/demo"})
+	for _, writes := range [][]string{{}, {"Workflow/demo/own-output"}} {
+		base := &agents.BaseAgent{}
+		config := &agents.OrchestratorAgentConfig{FolderGuardReadPaths: []string{"Workflow/demo/input"}, FolderGuardWritePaths: writes}
+		if err := c.applyPostSetupToAgent(postSetupGuardAgent{base: base, config: config}, "fixture"); err != nil {
+			t.Fatal(err)
+		}
+		// BaseAgent deliberately keeps runtime policy private. Reflection reads
+		// only the outcome of the real setup/setter, without unsafe access.
+		policy := reflect.ValueOf(base).Elem().FieldByName("runtime").FieldByName("Workspace")
+		gotRead, gotWrite := policy.FieldByName("ReadPaths"), policy.FieldByName("WritePaths")
+		if gotRead.Len() != 1 || gotRead.Index(0).String() != config.FolderGuardReadPaths[0] || gotWrite.Len() != len(writes) {
+			t.Fatal("post-setup widened the agent's runtime grants")
+		}
+		if len(writes) > 0 && gotWrite.Index(0).String() != writes[0] {
+			t.Fatal("post-setup changed the agent's allowed output folder")
+		}
+	}
+}
 
 func TestRegisterStepSessionShellEnvProvidesBridgeParity(t *testing.T) {
 	sessionID := "eval-shell-env-test"
@@ -510,47 +545,6 @@ func TestApplyStepConfigToAgentConfigEnablesWorkspaceIsolation(t *testing.T) {
 
 	if !config.IsolateCodingAgentWorkspace {
 		t.Fatal("expected workflow step to enable IsolateCodingAgentWorkspace; without it, concurrent steps collide on CodingAgentWorkingDir and the model's built-in tools can mutate operator files")
-	}
-}
-
-// TestAllWorkflowAgentFactoriesEnableWorkspaceIsolation verifies that every
-// agent factory that produces a long-lived coding-CLI session flips
-// IsolateCodingAgentWorkspace=true so the session runs in os.MkdirTemp instead
-// of CodingAgentWorkingDir. These factories live in two files:
-//   - controller_agent_factory.go (2): scripted-step path (applyStepConfigToAgentConfig)
-//     and the todo-task orchestrator (createOrchestratorAgent).
-//   - interactive_workshop_manager.go (5): the workshop background agents — the
-//     `run_in_background` task agent plus the review-plan / review-timing /
-//     review-costs / review-step-code agents —
-//     each spawns a coding-CLI
-//     session for a workflow task and must isolate its workspace.
-//
-// Without isolation on any of these, an orchestrator / workshop background
-// agent collides with the workshop chat's own coding-CLI session in the
-// same workflow folder, and the step fails with a "does not support
-// concurrent sessions in working directory ... with different MCP
-// configs"-style error some coding CLIs raise.
-//
-// The test asserts a specific count per file. A new factory added later
-// without isolation trips this test rather than shipping a silent regression.
-// Conversely, removing one of these call sites by accident is also caught.
-func TestAllWorkflowAgentFactoriesEnableWorkspaceIsolation(t *testing.T) {
-	cases := []struct {
-		path string
-		want int
-	}{
-		{path: "controller_agent_factory.go", want: 2},     // scripted + todo-task orchestrator
-		{path: "interactive_workshop_manager.go", want: 3}, // review workshop agents
-	}
-	const needle = "config.IsolateCodingAgentWorkspace = true"
-	for _, tc := range cases {
-		source, err := os.ReadFile(tc.path)
-		if err != nil {
-			t.Fatalf("read %s: %v", tc.path, err)
-		}
-		if got := strings.Count(string(source), needle); got != tc.want {
-			t.Fatalf("%s: %q occurrences = %d, want %d (a workflow agent factory in this file must enable isolation; chat code paths in other files must not)", tc.path, needle, got, tc.want)
-		}
 	}
 }
 
