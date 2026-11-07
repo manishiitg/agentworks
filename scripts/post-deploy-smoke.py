@@ -2,8 +2,8 @@
 """Post-deploy coding-agent smoke check over a deployed server's public MCP (PLAT-424).
 
 For every company provider account the server has configured, open a side chat in a dedicated smoke Crew, choose
-that provider for the chat only (models action=set scope=tab), and ask for one AgentWorks tool call: the Crew's
-owners list. Then, in the same chat (the CLI's next launch, as a person's next message), a native shell command that
+that provider for the chat only (models action=set scope=tab), and ask for one AgentWorks tool call: the Crews it can
+reach. Then, in the same chat (the CLI's next launch, as a person's next message), a native shell command that
 reports the account it runs as and writes, reads and removes a file in the Crew (PLAT-872-90: a CLI that worked once
 failed on its next launch, and one turn per provider never saw it). A provider passes when each turn was accepted
 once and answered once with the expected reply, within the time limit. After turn 2 it also checks what was lost
@@ -28,8 +28,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-PROMPT = ("Post-deploy smoke check. Call workspace action=owners once for this Crew to list its owners, "
-          "then reply with exactly OWNERS=<number of owners, counting the main owner and co-owners> and nothing else.")
+PROMPT = ("Post-deploy smoke check. Call workspace action=references_list once for this Crew, "
+          "then reply with exactly CREWS=<number of entries in result.crews> and nothing else.")
 
 
 # The second turn: the CLI's own shell, in the Crew's folder, as whatever account the platform launched it as.
@@ -187,7 +187,7 @@ def continuity_problems(config, workspace, chat_id, provider, answer, notice):
     return problems
 
 
-def smoke(config, workspace, target, owners, limit, app=None):
+def smoke(config, workspace, target, crews, limit, app=None):
     started = time.monotonic()
     chat_id = None
     try:
@@ -203,7 +203,7 @@ def smoke(config, workspace, target, owners, limit, app=None):
             choice["model_id"] = target["model_id"]
         call(config, "models", choice)
         problems, _, _ = turn(config, workspace, chat_id, PROMPT, started, limit,
-                           lambda answer: f"OWNERS={owners}" in answer.replace(" ", ""), f"OWNERS={owners}")
+                           lambda answer: f"CREWS={crews}" in answer.replace(" ", ""), f"CREWS={crews}")
         if not problems:
             problems, answer, notice = turn(config, workspace, chat_id, SHELL_PROMPT, started, limit,
                                             lambda answer: "FILE=ok" in answer.replace(" ", ""), "FILE=ok")
@@ -270,11 +270,11 @@ def main():
         time.sleep(5)
     try:
         chats = call(config, "workspace", {"action": "chats", "workspace_id": args.workspace_id})
-        state = call(config, "workspace", {"action": "owners", "workspace_id": args.workspace_id})
+        state = call(config, "workspace", {"action": "references_list", "workspace_id": args.workspace_id})
     except Exception as error:
         print(f"SMOKE: could not run: {first_line(str(error))}")
         return 1
-    owners = 1 + len(state.get("co_owners") or [])
+    crews = len((state.get("result") or {}).get("crews") or [])
     targets = configured_providers(chats)
     wanted = {name.strip() for name in args.providers.split(",") if name.strip()}
     if wanted:
@@ -296,7 +296,7 @@ def main():
     # Each provider has its own side chat and its own file name, so they run at the same time: the check takes as long
     # as the slowest provider, not the sum (four providers took ~3 minutes one after another). Results print as they finish.
     with ThreadPoolExecutor(max_workers=len(targets)) as pool:
-        running = {pool.submit(smoke, config, args.workspace_id, target, owners, args.timeout,
+        running = {pool.submit(smoke, config, args.workspace_id, target, crews, args.timeout,
                                (args.app_host, app_port(target["provider"], args.app_port_base), started) if args.app_host else None): target
                    for target in targets}
         results = ((running[done], *done.result()) for done in as_completed(running))
