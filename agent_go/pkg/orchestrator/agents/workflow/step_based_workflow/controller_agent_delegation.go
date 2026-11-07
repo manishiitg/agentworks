@@ -803,8 +803,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 		}
 		if resultJSON != "" {
 			executionResult = resultJSON
-			if capture, ok := ctx.Value(scriptedRouteResultCaptureKey{}).(*scriptedRouteResultCapture); ok && capture != nil {
-				capture.json = resultJSON
+			if receipt, ok := ctx.Value(scriptLogKey{}).(*scriptLogReceipt); ok && receipt != nil {
+				receipt.value = resultJSON
 			}
 		}
 	}

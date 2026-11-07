@@ -1733,6 +1733,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutePredefinedSubAgentSyncFu
 			return "", paramErr
 		}
 
+		logReceipt := &scriptLogReceipt{LogError: "script did not start; no full log exists"}
+		ctx = context.WithValue(ctx, scriptLogKey{}, logReceipt)
+
 		// Propagate workshop correlation IDs to sub-agent context so events are tagged correctly.
 		// The ctx here comes from the tool call (mcpagent), which may not have the workshop's
 		// ForceCorrelationIDKey. Use the workshop correlation ID from SubAgentExecutionContext.
@@ -1768,6 +1771,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutePredefinedSubAgentSyncFu
 			execCtx.Progress,
 			execCtx.HumanInputs,
 		)
+
+		if logReceipt.value != "" {
+			result = logReceipt.value
+		}
+		result = logReceipt.result(result, err)
 
 		executionTime := time.Since(startTime)
 

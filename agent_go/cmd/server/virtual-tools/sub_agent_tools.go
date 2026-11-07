@@ -61,6 +61,9 @@ type StopSubAgentFunc func(ctx context.Context, executionID string) (string, err
 
 // SubAgentResult represents the result of a sub-agent execution
 type SubAgentResult struct {
+	LogFile       string    `json:"log_file,omitempty"`
+	LogError      string    `json:"log_error,omitempty"`
+	LogComplete   bool      `json:"log_complete"`
 	Success       bool      `json:"success"`
 	TodoID        string    `json:"task_id"`
 	RouteID       string    `json:"route_id,omitempty"`
@@ -340,6 +343,23 @@ func executePredefinedSubAgentCall(ctx context.Context, routeID, todoID, instruc
 		RetryAttempts: maxSubAgentRetryAttempts,
 		ExecutionTime: executionTime.String(),
 		CompletedAt:   time.Now(),
+	}
+	// The saved-script runner returns its declared value and log evidence on
+	// success and failure. Keep the file directly visible at this tool boundary.
+	var scriptLog struct {
+		LogFile     string `json:"log_file"`
+		LogError    string `json:"log_error"`
+		LogComplete bool   `json:"log_complete"`
+		OK          *bool  `json:"ok"`
+	}
+	if json.Unmarshal([]byte(result), &scriptLog) == nil {
+		subAgentResult.LogFile = scriptLog.LogFile
+		subAgentResult.LogError = scriptLog.LogError
+		subAgentResult.LogComplete = scriptLog.LogComplete
+		if scriptLog.OK != nil {
+			isSuccess = err == nil && *scriptLog.OK
+			subAgentResult.Success = isSuccess
+		}
 	}
 
 	if !isSuccess {

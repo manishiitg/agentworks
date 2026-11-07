@@ -13,7 +13,7 @@ import (
 func TestHandleCallScriptedSubAgentReturnsTypedFailedEnvelope(t *testing.T) {
 	ctx := context.WithValue(context.Background(), ExecutePredefinedSubAgentKey, ExecutePredefinedSubAgentFunc(
 		func(context.Context, string, string, string) (string, error) {
-			return "partial child evidence", errors.New("failed to create execution-only agent")
+			return `{"value":"partial child evidence","ok":false,"log_file":"runs/current/script.log","log_complete":true}`, errors.New("failed to create execution-only agent")
 		},
 	))
 
@@ -30,7 +30,7 @@ func TestHandleCallScriptedSubAgentReturnsTypedFailedEnvelope(t *testing.T) {
 	if err := json.Unmarshal([]byte(result), &payload); err != nil {
 		t.Fatalf("decode result: %v\n%s", err, result)
 	}
-	if payload.Success || payload.Error != "failed to create execution-only agent" || payload.Result != "partial child evidence" {
+	if payload.Success || payload.Error != "failed to create execution-only agent" || !strings.Contains(payload.Result, "partial child evidence") || payload.LogFile != "runs/current/script.log" || !payload.LogComplete {
 		t.Fatalf("failure envelope = %#v", payload)
 	}
 }

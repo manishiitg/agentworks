@@ -105,7 +105,8 @@ func TestEncodedShellResultStaysWithinBudget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			raw := strings.Repeat(tc.unit, 300000/len(tc.unit))
 			encoded, err := marshalCappedShellResultForAgent(ShellCommandResult{
-				Stdout: raw,
+				Stdout:  raw,
+				LogFile: "runs/current/complete.log", LogError: "", LogComplete: true,
 				Stderr: strings.Repeat("e", 20000),
 			})
 			if err != nil {
@@ -118,6 +119,9 @@ func TestEncodedShellResultStaysWithinBudget(t *testing.T) {
 			var back ShellCommandResult
 			if err := json.Unmarshal([]byte(encoded), &back); err != nil {
 				t.Fatalf("encoded payload is not valid JSON: %v", err)
+			}
+			if back.LogFile != "runs/current/complete.log" || !back.LogComplete {
+				t.Fatalf("reply cap discarded full log: %+v", back)
 			}
 		})
 	}

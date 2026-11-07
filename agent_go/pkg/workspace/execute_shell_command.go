@@ -65,6 +65,9 @@ func GetSessionShellConfig(sessionID string) *SessionShellConfig {
 }
 
 type ExecuteShellCommandParams struct {
+	LogFile          string             `json:"-"` // trusted harness only; ignored when decoding tool arguments
+	LogDirectory     string             `json:"-"`
+	LogBufferBytes   int                `json:"-"`
 	Command          string             `json:"command"`
 	WorkingDirectory string             `json:"working_directory,omitempty"`
 	Timeout          *int               `json:"timeout,omitempty"`
@@ -81,6 +84,16 @@ type ExecuteShellCommandParams struct {
 	// differs from the shell's own session: a scripted step's script calls the
 	// bridge as its step session while the shell runs under the group session.
 	BridgeSessionID string `json:"-"`
+}
+
+func (p ExecuteShellCommandParams) MarshalJSON() ([]byte, error) {
+	type plain ExecuteShellCommandParams
+	return json.Marshal(struct {
+		plain
+		LogFile        string `json:"log_file,omitempty"`
+		LogDirectory   string `json:"log_directory,omitempty"`
+		LogBufferBytes int    `json:"log_buffer_bytes,omitempty"`
+	}{plain(p), p.LogFile, p.LogDirectory, p.LogBufferBytes})
 }
 
 var shellCommandSecretReplacements = []struct {
@@ -507,6 +520,14 @@ func (c *Client) ExecuteShellCommand(ctx context.Context, params ExecuteShellCom
 	populateRunloopProcessEnv(params.ExtraEnv, sessionID, params.WorkingDirectory, params.Command)
 	common.PopulateMCPBridgeShortEnv(params.ExtraEnv)
 
+	if params.LogFile == "" {
+		params.LogDirectory = privateShellLogDirectory(params.FolderGuard)
+		params.LogBufferBytes = agentShellOutputBytes()
+		if params.LogBufferBytes <= 0 {
+			params.LogBufferBytes = 1 << 20
+		}
+	}
+
 	path := "/api/execute"
 	// Use a no-timeout HTTP client for shell execution. Shell commands can run
 	// much longer than normal file operations, especially when they wrap a
@@ -528,6 +549,12 @@ func (c *Client) ExecuteShellCommand(ctx context.Context, params ExecuteShellCom
 			}
 			result.Stderr += shellWorkingDirectoryHint(result, params.WorkingDirectory)
 			return result, nil
+		}
+		if errors.As(err, &statusErr) {
+			result := parseShellResponse(statusErr.body)
+			if result.LogFile != "" || result.LogError != "" {
+				return result, err
+			}
 		}
 		return ShellCommandResult{}, err
 	}
@@ -1031,12 +1058,18 @@ func parseShellResponse(respBody []byte) ShellCommandResult {
 	// Extract fields from the "data" envelope
 	if data, ok := resp["data"]; ok {
 		var dataFields struct {
+			LogFile         string  `json:"log_file"`
+			LogError        string  `json:"log_error"`
+			LogComplete     bool    `json:"log_complete"`
 			Stdout          string  `json:"stdout"`
 			Stderr          string  `json:"stderr"`
 			ExitCode        int     `json:"exit_code"`
 			ExecutionTimeMs float64 `json:"execution_time_ms"`
 		}
 		if json.Unmarshal(data, &dataFields) == nil {
+			result.LogFile = dataFields.LogFile
+			result.LogError = dataFields.LogError
+			result.LogComplete = dataFields.LogComplete
 			result.Stdout = dataFields.Stdout
 			result.Stderr = dataFields.Stderr
 			result.ExitCode = dataFields.ExitCode
@@ -1473,4 +1506,25 @@ func stripShellHeredocBodies(cmd string) string {
 		i++
 	}
 	return out.String()
+}
+
+// Pick only a private path already writable by this exact session. A project
+// cwd (including a Git checkout) is never a generic shell-log destination.
+func privateShellLogDirectory(guard *FolderGuardConfig) string {
+	if guard == nil || !guard.Enabled {
+		return ""
+	}
+	for _, raw := range guard.WritePaths {
+		p := strings.TrimSuffix(filepath.ToSlash(raw), "/")
+		if strings.HasPrefix(p, "Workflow/") && strings.Contains(p, "/runs/") {
+			return p + "/shell-runs"
+		}
+	}
+	for _, raw := range guard.WritePaths {
+		p := strings.TrimSuffix(filepath.ToSlash(raw), "/")
+		if strings.HasPrefix(p, "_users/") && strings.HasSuffix(p, "/chat_history") {
+			return p + "/shell-runs"
+		}
+	}
+	return ""
 }

@@ -131,6 +131,9 @@ var ErrScriptedHarnessTimeout = errors.New("script exceeded the workspace harnes
 
 // ScriptedFastPathResult is returned by tryRunSavedScriptedScript.
 type ScriptedFastPathResult struct {
+	LogFile         string
+	LogError        string
+	LogComplete     bool
 	RanScript       bool   // true if a saved script was found and attempted
 	Success         bool   // true if script ran and validation passed
 	ExitCode        int    // actual Python exit code (0 = success, -1 = not-run/API error)
@@ -697,6 +700,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		// The bridge and shell use this step session and its existing grants.
 		BridgeSessionID: strings.TrimSpace(extraEnv["MCP_SESSION_ID"]),
 	}
+	logReceipt, _ := ctx.Value(scriptLogKey{}).(*scriptLogReceipt)
+	if logReceipt != nil {
+		reqParams.LogFile = logReceipt.apiPath
+	}
 
 	// Dispatch through the same client the agent's own execute_shell_command uses.
 	//
@@ -742,7 +749,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	if sessionID := strings.TrimSpace(extraEnv["MCP_SESSION_ID"]); sessionID != "" {
 		shellCtx = context.WithValue(ctx, common.ChatSessionIDKey, sessionID)
 	}
+	if logReceipt != nil {
+		logReceipt.dispatched = true
+	}
 	result, err := hcpo.WorkspaceClient.ExecuteShellCommand(shellCtx, reqParams)
+	if logReceipt != nil {
+		if result.LogFile != "" {
+			logReceipt.LogFile = result.LogFile
+		}
+		logReceipt.LogError = result.LogError
+		logReceipt.LogComplete = result.LogComplete
+		if result.LogFile == "" && logReceipt.LogError == "" {
+			logReceipt.LogError = "workspace did not confirm a full log; inspect the saved run before retrying"
+		}
+	}
 	if err != nil {
 		// A transport failure can arrive after the process starts. Preserve the
 		// infrastructure error without claiming it produced no side effects.
@@ -789,7 +809,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	stepExecutionRelPath string, // workspace-relative, e.g. "Workflow/X/runs/iter-1/execution/step-2"
 	executionWorkspacePath string, // workspace-relative execution root
 	dbAccess string,
-) *ScriptedFastPathResult {
+) (finalResult *ScriptedFastPathResult) {
+	ctx, logReceipt := hcpo.prepareScriptLog(ctx, stepExecutionRelPath)
+	defer func() { hcpo.finishScriptLog(ctx, logReceipt, finalResult) }()
 	docsRoot := GetPromptDocsRoot()
 	stepID := step.GetID()
 
@@ -1208,6 +1230,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveScriptedFastPathLog(
 	}(), stepID, stepPath)
 
 	logData := map[string]interface{}{
+		"log_file":         result.LogFile,
+		"log_error":        result.LogError,
+		"log_complete":     result.LogComplete,
 		"step_index":       stepIndex + 1,
 		"step_path":        stepPath,
 		"mode":             "scripted_fast_path",

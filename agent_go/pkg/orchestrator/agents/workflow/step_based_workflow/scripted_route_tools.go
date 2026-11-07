@@ -79,12 +79,6 @@ func scriptedRouteInputSchema(definitions map[string]ScriptParameterDefinition) 
 	return schema
 }
 
-type scriptedRouteResultCaptureKey struct{}
-
-// scriptedRouteResultCapture receives the route's route_result.json from
-// executePredefinedSubAgent, so the named tool can return it unwrapped.
-type scriptedRouteResultCapture struct{ json string }
-
 // readScriptedRouteResult returns the route's route_result.json when it is
 // valid JSON of a bounded size. A missing file is no result. A file that is too
 // big, not JSON, or not a plain file inside the route's own output folder is
@@ -222,7 +216,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptedRouteDirectTools(execCtx *Sub
 		if len(description) > 3000 {
 			description = description[:3000] + "..."
 		}
-		description = strings.TrimSpace(description) + "\n\nRuns this workflow's saved script for route " + routeID + " and returns its result (the JSON it wrote to " + ScriptedRouteResultFile + ", or its completion summary). Same as call_scripted_sub_agent(route_id=\"" + routeID + "\"), and it waits for the result."
+		description = strings.TrimSpace(description) + "\n\nRuns this workflow's saved script for route " + routeID + " and returns value, ok/error and log_file (value is the JSON it wrote to " + ScriptedRouteResultFile + ", or its completion summary). Same as call_scripted_sub_agent(route_id=\"" + routeID + "\"), and it waits for the result."
 		inner := func(ctx context.Context, args map[string]interface{}) (string, error) {
 			supplied := make(map[string]interface{}, len(args))
 			for key, value := range args {
@@ -230,16 +224,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptedRouteDirectTools(execCtx *Sub
 			}
 			ctx = context.WithValue(ctx, virtualtools.SubAgentParametersKey, supplied)
 			ctx = context.WithValue(ctx, virtualtools.ScriptedSubAgentInvocationKey, true)
-			capture := &scriptedRouteResultCapture{}
-			ctx = context.WithValue(ctx, scriptedRouteResultCaptureKey{}, capture)
 			taskID := fmt.Sprintf("%s-%d", name, scriptedRouteToolCalls.Add(1))
 			result, err := hcpo.createExecutePredefinedSubAgentSyncFunc(execCtx)(ctx, routeID, taskID, "")
-			if err != nil {
+			if err != nil && !json.Valid([]byte(result)) {
 				return "", err
 			}
-			if capture.json != "" {
-				return capture.json, nil
-			}
+			// The execution record already retains a failed status. Return its
+			// typed ok=false receipt so tool-error conversion cannot discard log_file.
 			return result, nil
 		}
 		definitions = append(definitions, mcpagent.ToolDefinition{

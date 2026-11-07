@@ -1484,28 +1484,28 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 		if isScriptedMode {
 			fastResult := hcpo.tryRunSavedScriptedScript(ctx, step, stepIndex, stepPath, allSteps,
 				stepExecutionPath, executionWorkspacePath, dbAccess)
+			savedScriptPath := filepath.Join(hcpo.scriptedSourceAbsolute(step.GetID()), "main.py")
+			if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
+				savedScriptPath = workflowAbsPath(stepExecutionPath, "code", "main.py")
+			}
 			if fastResult.RanScript {
 				// Emit UI event for the saved-script execution attempt
-				savedScriptPath := filepath.Join(hcpo.scriptedSourceAbsolute(step.GetID()), "main.py")
-				if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
-					savedScriptPath = workflowAbsPath(stepExecutionPath, "code", "main.py")
-				}
 				hcpo.emitScriptedExecutionEvent(ctx, step, stepIndex, stepPath,
 					savedScriptPath, fastResult.Success, fastResult.ExitCode, fastResult.Output, fastResult.Error, 0, true)
-				// Save execution log so debug_step and direct file inspection can see fast-path output
-				hcpo.saveScriptedFastPathLog(ctx, stepIndex, artifactStepID, artifactStepPath, savedScriptPath, fastResult)
 			}
+			// Retain the log receipt even for a pre-launch refusal.
+			hcpo.saveScriptedFastPathLog(ctx, stepIndex, artifactStepID, artifactStepPath, savedScriptPath, fastResult)
 			if fastResult.HarnessTimeout {
-				return fastResult.Output, updatedContextFiles, fmt.Errorf("script for step %q exceeded the workspace timeout; check its saved run before retrying: %s", step.GetID(), fastResult.TimeoutError)
+				return fastResult.Output, updatedContextFiles, fmt.Errorf("script for step %q exceeded the workspace timeout; check its saved run before retrying: %s", step.GetID(), fastResult.TimeoutError+". Log file: "+fastResult.LogFile)
 			}
 			if fastResult.HarnessFailure {
-				return fastResult.Output, updatedContextFiles, fmt.Errorf("script for step %q has an unknown execution outcome; check its saved run before retrying: %s", step.GetID(), fastResult.HarnessError)
+				return fastResult.Output, updatedContextFiles, fmt.Errorf("script for step %q has an unknown execution outcome; check its saved run before retrying: %s", step.GetID(), fastResult.HarnessError+". Log file: "+fastResult.LogFile)
 			}
 			if !fastResult.RanScript {
-				return "", updatedContextFiles, fmt.Errorf("step %q has no saved main.py; ask this chat to create it", step.GetID())
+				return "", updatedContextFiles, fmt.Errorf("step %q has no saved main.py; ask this chat to create it. Log file: %s", step.GetID(), fastResult.LogFile)
 			}
 			if !fastResult.Success {
-				return fastResult.Output, updatedContextFiles, fmt.Errorf("script for step %q failed: %s. Ask this chat to fix it", step.GetID(), fastResult.Error)
+				return fastResult.Output, updatedContextFiles, fmt.Errorf("script for step %q failed: %s. Ask this chat to fix it. Log file: %s", step.GetID(), fastResult.Error, fastResult.LogFile)
 			}
 			executionResult = fastResult.Output
 			validationResponse = &ValidationResponse{IsSuccessCriteriaMet: true, ExecutionStatus: "COMPLETED", Reasoning: "saved script executed and validated"}
