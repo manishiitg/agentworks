@@ -2120,18 +2120,15 @@ func (s *SchedulerService) endQueuedLaunch(key string) {
 }
 
 // runJob executes a scheduled job: updates runtime state, creates run history, executes, updates results.
-func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, runID string) (resultSession string, resultErr error) {
+func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, runID string) (string, error) {
 	// A chat that started this run with run-now is owed its terminal result, even
 	// when the run ends before it has an outcome of its own.
 	callerNotice := s.beginCallerNotice(sctx, runID)
 	callerNoticed := false
 	defer func() {
 		if callerNotice != nil && !callerNoticed {
-			reason := "the run did not start"
-			if resultErr != nil {
-				reason = resultErr.Error()
-			}
-			callerNotice.finish(sctx, "error", reason, "")
+			// Plain words for the person; the cause is in the scheduler log.
+			callerNotice.finish(sctx, "error", "the run did not start", "")
 		}
 	}()
 	if sctx.WebhookInput != nil {

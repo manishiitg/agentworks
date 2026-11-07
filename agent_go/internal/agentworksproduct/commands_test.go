@@ -43,7 +43,7 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 			t.Fatalf("command %q prompt does not name its guidance kind %s", name, wantKind)
 		}
 	}
-	for _, name := range []string{"backup", "share", "notify", "run", "fix", "schedule", "connect", "upgrade"} {
+	for _, name := range []string{"share", "notify", "run", "fix", "schedule", "connect", "upgrade"} {
 		if _, ok := byName[name]; !ok {
 			t.Fatalf("command %q missing from product.yaml", name)
 		}

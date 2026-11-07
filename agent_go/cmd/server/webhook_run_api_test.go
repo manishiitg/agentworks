@@ -163,17 +163,6 @@ func TestWebhookFileTokenScopeAndExpiry(t *testing.T) {
 	}
 }
 
-func TestWebhookCompletionHasNoBackupDirective(t *testing.T) {
-	snap := BackgroundAgentSnapshot{Status: BGAgentCompleted, Kind: "workflow_run_tool", Metadata: map[string]string{"trigger_source": "webhook"}}
-	if workflowRunCompletionDirective(snap) != "" {
-		t.Fatal("webhook completion requested backup")
-	}
-	delete(snap.Metadata, "trigger_source")
-	if workflowRunCompletionDirective(snap) == "" {
-		t.Fatal("ordinary run lost backup")
-	}
-}
-
 // PLAT-812: a step's private scratch folder (Playwright's temp artifacts, written by the slot user) must not make the
 // whole run's result unavailable: a workflow function call would otherwise report "failed" while the run is healthy.
 func TestWebhookRunOutputsSkipUnreadableScratchFolders(t *testing.T) {

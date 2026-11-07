@@ -2280,7 +2280,6 @@ func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID stri
 	var parts []string
 	var emittedIDs []string
 	var agentRefs []*BackgroundAgent
-	var batchWorkflowRunDirective string // set once if any completed part is a workflow run
 	for _, agentID := range agentIDs {
 		agent := api.bgAgentRegistry.Get(sessionID, agentID)
 		if agent == nil {
@@ -2324,9 +2323,6 @@ func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID stri
 		batchContext := autoNotificationBracketContext(snap.Metadata)
 		delayContext := autoNotificationDelayContext(snap, time.Now())
 		parts = append(parts, fmt.Sprintf("- **%s**%s: %s%s\n  Result: %s%s", strings.TrimSpace(snap.Name), batchContext, snap.Status, delayContext, resultText, actionHint))
-		if batchWorkflowRunDirective == "" {
-			batchWorkflowRunDirective = workflowRunCompletionDirective(snap)
-		}
 		emittedIDs = append(emittedIDs, agentID)
 		agentRefs = append(agentRefs, agent)
 	}
@@ -2335,7 +2331,7 @@ func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID stri
 		return
 	}
 
-	syntheticMsg := fmt.Sprintf("[AUTO-NOTIFICATION] Multiple step completions:\n%s%s", strings.Join(parts, "\n"), batchWorkflowRunDirective)
+	syntheticMsg := fmt.Sprintf("[AUTO-NOTIFICATION] Multiple step completions:\n%s", strings.Join(parts, "\n"))
 	if strings.HasPrefix(sessionID, "bot-") {
 		syntheticMsg += botAutoNotificationProgressDirective(sessionID, api.isFinalBotAutoNotification(sessionID))
 	}
@@ -2508,24 +2504,6 @@ func (api *StreamingAPI) processBackgroundAgentCompletion(sessionID, agentID str
 	}
 }
 
-func workflowRunBackupDirective(snap BackgroundAgentSnapshot) string {
-	if snap.Status != BGAgentCompleted || snap.Metadata == nil || snap.Metadata["trigger_source"] == "webhook" {
-		return ""
-	}
-	if snap.Kind != "workflow_run_tool" && snap.Metadata["type"] != "workflow_run" {
-		return ""
-	}
-	return "\n\nThe run is complete - now back up this workflow. Call read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/backup-strategy.md\"}]), read workflow.json.backup, and use it as the backup contract. Perform backup and all Git commands directly in this parent workflow turn. Never delegate them through run_in_background, call_generic_agent, a reviewer, or another sub-agent: delegated agents intentionally cannot write the workflow .git directory. If any configured destination covers db-sqlite, call create_workflow_database_snapshot first and stage its returned backup/database/db.sqlite snapshot plus backup/database/db.sqlite.sha256 checksum; never read or stage protected live db/db.sqlite. If backup is enabled, perform the configured destinations (git/github, object store, HuggingFace, etc.). If backup is missing or disabled, do not silently skip: set it up with the zero-config local-git default (a local git repo needs no credentials) and back up. Skip the push only when backup/status.json shows the current source is already backed up (unchanged source hash) — i.e. an AgentWorks pass or an earlier turn already captured this state. Always write backup/status.json with state, last attempt/success timestamps, destination results, errors, and the current source hash; do not write operational backup status into workflow.json."
-}
-
-// workflowRunCompletionDirective used to also append a goal-alignment
-// directive (workflowRunGoalAlignmentDirective) reading/writing
-// pulse/goals.html against a workflow's named org goals. Removed alongside
-// the org goals feature -- backup is the only directive left.
-func workflowRunCompletionDirective(snap BackgroundAgentSnapshot) string {
-	return workflowRunBackupDirective(snap)
-}
-
 // buildAutoNotificationMessage formats the [AUTO-NOTIFICATION] user message for a
 // finished background agent. It is pure formatting (no dedup / no side effects) so
 // both the synthetic-turn path (idle session) and the live-steer path (busy
@@ -2574,8 +2552,8 @@ func (api *StreamingAPI) buildAutoNotificationMessage(sessionID string, snap Bac
 	contextInfo := autoNotificationInlineContext(snap.Metadata)
 	delayContext := autoNotificationDelayContext(snap, time.Now())
 	syntheticMsg := fmt.Sprintf(
-		"[AUTO-NOTIFICATION] Agent '%s' completed — status=%s%s%s.\nResult: %s%s%s",
-		strings.TrimSpace(snap.Name), snap.Status, contextInfo, delayContext, resultText, actionHint, workflowRunCompletionDirective(snap))
+		"[AUTO-NOTIFICATION] Agent '%s' completed — status=%s%s%s.\nResult: %s%s",
+		strings.TrimSpace(snap.Name), snap.Status, contextInfo, delayContext, resultText, actionHint)
 	if presentationOnly {
 		syntheticMsg += "\n\n[PRESENTATION-ONLY COMPLETION] The background agent above is the authoritative owner of this task's evidence collection and durable writes. Present its result to the user now. Do not call any tool, reload AgentWorks/SQLite/workspace state, inspect the child conversation, or independently revalidate the result. Do not start more work."
 	}

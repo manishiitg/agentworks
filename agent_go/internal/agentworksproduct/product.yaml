@@ -69,10 +69,6 @@ profile:
       description: Bring the workflow up to date with the platform
       icon: layers
       file: commands/upgrade.md
-    - name: backup
-      description: Set up, run, or restore this automation's backup
-      icon: cloud
-      file: commands/backup.md
 
 branding:
   icon: ""
