@@ -37,16 +37,20 @@ func externalRunProxyTool(name string) externalTool {
 	if hint, ok := externalRunToolHints[name]; ok {
 		description += " " + hint
 	}
+	properties := map[string]any{
+		"workflow_id": externalString("Workflow ID returned by workflow action=list. Never a filesystem path."),
+		"session_id":  map[string]any{"type": "string", "description": "Existing run session ID to continue. Omit to start a new run session."},
+	}
+	if name == "execute_step" {
+		properties["run_folder"] = externalString("Existing run identity for continuing its steps. The runtime rechecks Builder access, path and saved inputs; omit for a new run.")
+	}
 	return externalTool{
 		Name:        name,
 		Description: description,
 		executes:    true,
 		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"workflow_id": externalString("Workflow ID returned by workflow action=list. Never a filesystem path."),
-				"session_id":  map[string]any{"type": "string", "description": "Existing run session ID to continue. Omit to start a new run session."},
-			},
+			"type":                 "object",
+			"properties":           properties,
 			"required":             []any{"workflow_id"},
 			"additionalProperties": true,
 		},
