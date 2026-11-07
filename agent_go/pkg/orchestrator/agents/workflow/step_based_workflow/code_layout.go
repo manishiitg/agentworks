@@ -139,7 +139,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string)
 	if opts := hcpo.GetExecutionOptions(); opts != nil && opts.WebhookInputFile != "" {
 		env["WORKFLOW_TRIGGER_INPUT_FILE"] = filepath.Join(GetPromptDocsRoot(), opts.WebhookInputFile)
 	}
-	if hcpo.usesCodeTree() {
+	if hcpo.usesCodeTree() || hcpo.crewAutomationCodeRoot != "" {
 		root := filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), "code")
 		if hcpo.crewAutomationCodeRoot != "" {
 			root = hcpo.crewAutomationCodeRoot
