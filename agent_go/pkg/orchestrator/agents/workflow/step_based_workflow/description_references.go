@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // Naming a workflow path in Inputs, Resources or Guides grants read access
@@ -157,6 +158,17 @@ func cleanBrainReference(raw string) string {
 // leading out of the workflow counts as missing and is never granted).
 func resolvedWorkflowReference(workspacePath, relativePath string) (abs string, info os.FileInfo, ok bool) {
 	root := workflowAbsPath(workspacePath)
+	if layout, bound, err := crewroot.LookupExecutable(GetPromptDocsRoot(), workspacePath); err != nil {
+		return "", nil, false
+	} else if bound {
+		if strings.HasPrefix(relativePath, "learnings/") {
+			return "", nil, false
+		}
+		if strings.HasPrefix(relativePath, "code/") {
+			root = layout.Code
+			relativePath = strings.TrimPrefix(relativePath, "code/")
+		}
+	}
 	abs = filepath.Join(root, filepath.FromSlash(relativePath))
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {

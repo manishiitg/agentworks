@@ -18,7 +18,7 @@ import (
 // These groups reuse the website/chat registrars. Their external transport
 // supplies identity and the resolved Crew root, never an arbitrary workspace.
 var externalCrewCapabilities = map[string]map[string]string{
-	"crew_workflows":  {"list": "crew_workflow_files", "create": "crew_workflow_files", "read": "crew_workflow_files", "write": "crew_workflow_files", "describe": "crew_workflow_files", "edit": "crew_workflow_files"},
+	"crew_workflows":  {"list": "crew_workflow_files", "create": "crew_workflow_files", "read": "crew_workflow_files", "write": "crew_workflow_files", "describe": "crew_workflow_files", "edit": "crew_workflow_files", "upgrade": "crew_workflow_files"},
 	"crew_skills":     {"list": "list_skills", "search": "search_skills", "install": "install_skill", "import": "import_skill", "uninstall": "uninstall_skill"},
 	"crew_mcp":        {"list": "list_mcp_servers", "search": "search_mcp_catalog", "install": "install_mcp_server", "remove": "remove_mcp_server", "discover": "trigger_mcp_discovery"},
 	"crew_folders":    {"list": "list_work_folders", "attach": "attach_work_folder", "detach": "detach_work_folder"},

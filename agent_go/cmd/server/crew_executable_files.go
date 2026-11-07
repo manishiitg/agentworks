@@ -17,9 +17,13 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's single workflow and reusable Python scripts. Use routes in the existing workflow for different tasks; list before creating. list returns workspace_path and available agents; create takes name and kind. read takes workspace_path and file. edit changes named steps or inputs, or manages this workflow’s schedules and webhooks; describe returns each operation’s exact schema. Functions use the functions tool with project=workspace_path. Omitted steps stay unchanged; deletion must be explicit. write is only for code and script.json, never whole workflow plan/config/input files. Run either kind with run_workflow_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's single workflow and reusable Python scripts. Use routes in the existing workflow for different tasks; list before creating. list returns workflow ID, workspace_path and agents. upgrade takes workflow_id: omit version to see status, the next update instructions and current check failures; supply version and reason after completing them to check and stamp. A failed check never stamps. read takes workspace_path and file. edit changes named steps or inputs, or manages schedules/webhooks; describe gives schemas. Functions use functions with project=workspace_path. Omitted steps stay unchanged; deletion is explicit. write is for code/script.json, never whole plans/config/inputs. Run with run_workflow_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit"}},
+			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "upgrade"}},
+			"workflow_id":    map[string]interface{}{"type": "string"},
+			"version":        map[string]interface{}{"type": "string"},
+			"reason":         map[string]interface{}{"type": "string"},
+			"repair_step":    map[string]interface{}{"type": "object", "description": "upgrade only: repair one malformed old step with step_id, changes and optional remove_fields. Unmentioned fields and other steps remain unchanged."},
 			"workspace_path": map[string]interface{}{"type": "string"},
 			"operation":      map[string]interface{}{"type": "string", "enum": crewPlanOperations},
 			"arguments":      map[string]interface{}{"type": "object", "description": "Arguments matching the operation schema returned by describe."},
@@ -39,7 +43,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			return "", fmt.Errorf("this Crew is outside the connection's access")
 		}
 		action, _ := args["action"].(string)
-		if action == "create" || action == "write" || action == "edit" {
+		if action == "create" || action == "write" || action == "edit" || action == "upgrade" {
 			if !workflowPermissionInfoForClaims(claims).CanWriteWorkflows {
 				return "", fmt.Errorf("your account cannot edit workflows; ask an admin to restore edit access")
 			}
@@ -83,6 +87,14 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			return response.body.String(), nil
 		}
 		target, _ := args["workspace_path"].(string)
+		if action == "upgrade" {
+			id, _ := args["workflow_id"].(string)
+			binding, err := findCrewExecutableByID(id)
+			if err != nil || binding == nil || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
+				return "", fmt.Errorf("choose a workflow ID from this Crew's own list")
+			}
+			target = binding.Root
+		}
 		binding, err := findCrewExecutable(target)
 		if err != nil || binding == nil || (binding.Kind != "workflow" && binding.Kind != "script") || crewExecutableWorkspace(target) != binding.Root || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
 			return "", fmt.Errorf("choose a workflow from this Crew's own list")
@@ -91,10 +103,13 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		if err != nil || !found || manifest.Kind == "relay" || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner {
 			return "", fmt.Errorf("this workflow is unavailable")
 		}
-		if action == "edit" || action == "write" {
+		if action == "edit" || action == "write" || action == "upgrade" {
 			if err := refuseCrewOwnerTurnOnMacTwin(ctx, root, userID); err != nil {
 				return "", err
 			}
+		}
+		if action == "upgrade" {
+			return api.crewWorkflowUpgrade(ctx, binding, manifest, args)
 		}
 		if action == "edit" {
 			operation, _ := args["operation"].(string)
@@ -141,7 +156,11 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		}
 		file, _ := args["file"].(string)
 		clean, valid := cleanWorkspaceReadPath(file, false)
-		allowed := (binding.Kind == "script" && (clean == "script.json" || clean == "main.py" || strings.HasSuffix(clean, ".py") && !strings.Contains(clean, "/"))) || strings.HasPrefix(clean, "planning/") || strings.HasPrefix(clean, "code/") || clean == "variables/variables.json"
+		pending := workflowVersionUpgradePlan(manifest)
+		upgrading := binding.Kind == "workflow" && len(pending) > 0 && !workflowContractNeedsRecreation(manifest) && manifest.CodeLayoutVersion == 1
+		guide := upgrading && strings.HasSuffix(clean, ".md") && (strings.HasPrefix(clean, "skills/") || strings.HasPrefix(clean, "soul/"))
+		oldHelperRead := upgrading && action == "read" && strings.HasPrefix(clean, "learnings/")
+		allowed := guide || oldHelperRead || (binding.Kind == "script" && (clean == "script.json" || clean == "main.py" || strings.HasSuffix(clean, ".py") && !strings.Contains(clean, "/"))) || strings.HasPrefix(clean, "planning/") || strings.HasPrefix(clean, "code/") || clean == "variables/variables.json"
 		if !valid || !allowed {
 			return "", fmt.Errorf("choose a definition file under planning, code or variables; runtime and account files are not part of this editor")
 		}
@@ -165,7 +184,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			if !ok {
 				return "", fmt.Errorf("provide the file content")
 			}
-			if binding.Kind == "workflow" && !strings.HasPrefix(clean, "code/") {
+			if binding.Kind == "workflow" && !strings.HasPrefix(clean, "code/") && !guide {
 				return "", fmt.Errorf("use edit with a named step or input operation; whole plan/config/input files cannot be replaced")
 			}
 			if binding.Kind == "script" {

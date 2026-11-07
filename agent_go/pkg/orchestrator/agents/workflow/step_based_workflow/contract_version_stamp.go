@@ -106,10 +106,18 @@ func authorizeContractVersionStamp(sessionID, version string, nextPending func()
 // turn (the MCP workflow_upgrade route). Keep it in step with that tool.
 // workflowDir is the workflow's absolute folder; readPlan returns
 // planning/plan.json.
-func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPlan func() (string, error)) error {
+func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPlan func() (string, error), checkRuntime func() error) error {
 	var manifest map[string]interface{}
 	if err := json.Unmarshal(manifestJSON, &manifest); err != nil {
 		return fmt.Errorf("parse workflow.json: %w", err)
+	}
+	if version == PortableWorkflowContractVersion {
+		if manifest["code_layout_version"] != float64(1) || checkRuntime == nil {
+			return fmt.Errorf("the owning Crew must check every current step on source layout 1 before stamping")
+		}
+		if err := checkRuntime(); err != nil {
+			return fmt.Errorf("workflow update check failed; nothing was stamped: %w", err)
+		}
 	}
 	if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
 		return fmt.Errorf("the nested Agent artifact migration is incomplete: %w", err)

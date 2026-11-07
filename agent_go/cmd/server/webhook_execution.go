@@ -26,27 +26,28 @@ func turnInactivityLimit(ctx context.Context) time.Duration {
 	return schedulerWorkshopMaxInactivity
 }
 
-// directWebhookContractCompatible lets unattended triggers (webhooks, function
-// calls, mail and chat triggers) run a Goals workflow that is still on the
-// contract just before the agent-step unification. That migration only renames
-// saved step types and the runtime still reads the saved spellings, as it does
-// for scheduled runs. Older contracts owe earlier migrations and stay refused.
+// Unattended starts use the same required contract as manual execution.
 func directWebhookContractCompatible(manifest *WorkflowManifest) bool {
 	if manifestContractIsExecutionCompatible(manifest) {
 		return true
 	}
-	return manifest != nil && !manifestIsRelay(manifest) &&
-		workflowContractVersionForUpgrade(manifest) == workflowContractStepDescriptionLayoutVersion
+	return manifest != nil && !workflowHasCrewBinding(manifest) && !manifestIsRelay(manifest) && workflowContractVersionForUpgrade(manifest) == workflowContractStepDescriptionLayoutVersion
 }
 
 func directWebhookPreflight(manifest *WorkflowManifest) error {
 	if workflowContractNeedsRecreation(manifest) {
-		return fmt.Errorf("%s", oldWorkflowContractMessage)
+		if workflowHasCrewBinding(manifest) {
+			return fmt.Errorf("this workflow is too old to update automatically; leave it paused and ask this Crew's chat to recreate it: %w", errWorkflowContractMigrationRequired)
+		}
+		return fmt.Errorf("%s: %w", oldWorkflowContractMessage, errWorkflowContractMigrationRequired)
 	}
 	if isPythonRelay(manifest) {
 		return nil
 	}
 	if manifest == nil || !directWebhookContractCompatible(manifest) || manifest.CodeLayoutVersion != 1 {
+		if workflowHasCrewBinding(manifest) {
+			return fmt.Errorf("ask this Crew's chat to update this workflow: %w", errWorkflowContractMigrationRequired)
+		}
 		return fmt.Errorf("manually update the workflow contract in Workshop before invoking its webhook: %w", errWorkflowContractMigrationRequired)
 	}
 	return nil

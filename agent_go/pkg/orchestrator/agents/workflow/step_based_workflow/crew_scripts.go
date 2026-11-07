@@ -187,6 +187,9 @@ func CrewScriptReferencingSteps(plan *PlanningResponse, id string) []*ScriptedPl
 // Project the saved script into the runner's existing file interface. These
 // definitions are never saved alongside the owner's canonical script.json.
 func (hcpo *StepBasedWorkflowOrchestrator) ReadWorkspaceFile(ctx context.Context, file string) (string, error) {
+	if hcpo.definitionRead != nil {
+		return hcpo.definitionRead(ctx, normalizePathForWorkspaceAPI(file, hcpo.GetWorkspacePath()))
+	}
 	if hcpo.directCrewScriptConfig != nil {
 		relative := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(file)), hcpo.GetWorkspacePath()+"/")
 		var value interface{}

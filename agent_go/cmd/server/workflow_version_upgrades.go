@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 )
@@ -24,21 +25,32 @@ func workflowContractVersionForUpgrade(manifest *WorkflowManifest) string {
 	return version
 }
 
-// Current and previous agent prompt contracts are execution-compatible during
-// the reviewed description-first rollout. Historical 1.0.41-1.0.43
-// workflows owe the nested-agent-artifact migration, 1.0.44 workflows the
-// managed database script migration, and 1.0.45 workflows the step description
-// layout migration.
+// Unmoved workflows retain their current contract until that server migrates.
 func workflowContractVersionIsExecutionCompatible(version string) bool {
 	switch strings.TrimSpace(version) {
-	case workflowContractUnifiedAgentVersion, workflowContractDescriptionFirstVersion, workflowContractResourceIntentVersion, workflowContractGoalAgentVersion, workflowContractSkillsVersion:
+	case workflowContractUnifiedAgentVersion, workflowContractDescriptionFirstVersion, workflowContractResourceIntentVersion, workflowContractGoalAgentVersion, workflowContractSkillsVersion, workflowContractPortableVersion:
 		return true
 	}
 	return false
 }
 
+// Temporary migration split: only a trusted Crew binding owes the new stamp.
+// Never infer it from a label, path spelling or caller-provided Crew fields.
+func workflowHasCrewBinding(manifest *WorkflowManifest) bool {
+	if manifest == nil || manifest.ID == "" {
+		return false
+	}
+	binding, err := findCrewExecutableByID(manifest.ID)
+	if err != nil {
+		log.Printf("workflow_binding_lookup_failed workflow=%q error=%v; keeping unmoved workflow contract behavior", manifest.ID, err)
+		return false
+	}
+	return binding != nil && binding.Kind == "workflow"
+}
+
 var goalsOnlyWorkflowUpgrades = map[string]bool{
-	"upgrade-workflow-skills": true,
+	"upgrade-workflow-skills":   true,
+	"upgrade-portable-workflow": true,
 }
 
 var relayStoreUpgrades = map[string]bool{
@@ -59,6 +71,9 @@ func manifestContractIsExecutionCompatible(manifest *WorkflowManifest) bool {
 		return true
 	}
 	version := workflowContractVersionForUpgrade(manifest)
+	if workflowHasCrewBinding(manifest) {
+		return version == workflowContractPortableVersion
+	}
 	if workflowContractVersionIsExecutionCompatible(version) {
 		return true
 	}
@@ -118,6 +133,7 @@ func workflowContractVersionRank(version string) (int, bool) {
 		workflowContractResourceIntentVersion,
 		workflowContractGoalAgentVersion,
 		workflowContractSkillsVersion,
+		workflowContractPortableVersion,
 	}
 	for rank, candidate := range known {
 		if version == candidate {
@@ -218,14 +234,15 @@ func workflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersionUpg
 }
 
 func eligibleWorkflowVersionUpgrades(manifest *WorkflowManifest, plan []workflowVersionUpgrade) []workflowVersionUpgrade {
-	if !manifestIsRelay(manifest) {
-		return plan
-	}
 	shared := plan[:0:0]
 	for _, upgrade := range plan {
-		if !goalsOnlyWorkflowUpgrades[upgrade.label] && !relayStoreUpgrades[upgrade.label] {
-			shared = append(shared, upgrade)
+		if upgrade.label == "upgrade-portable-workflow" && !workflowHasCrewBinding(manifest) {
+			continue
 		}
+		if manifestIsRelay(manifest) && (goalsOnlyWorkflowUpgrades[upgrade.label] || relayStoreUpgrades[upgrade.label]) {
+			continue
+		}
+		shared = append(shared, upgrade)
 	}
 	return shared
 }
@@ -261,6 +278,9 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 	if rank < 50 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractSkillsVersion, label: "upgrade-workflow-skills", query: upgradeWorkflowSkills})
 	}
+	if rank < 51 {
+		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractPortableVersion, label: "upgrade-portable-workflow", query: upgradePortableWorkflow})
+	}
 
 	for i := range steps {
 		steps[i].query += fmt.Sprintf(
@@ -277,7 +297,19 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 // in the same conversation; the agent must not guess merely to obtain a stamp.
 const manualUpgradeTurnNote = `
 
-EXECUTION CONTEXT. This is a manual platform migration started by the workflow operator in Workshop chat. Complete and verify this migration before stamping it. If a genuine product, business, or safety choice is required, do not guess and do not stamp: explain the exact choice in this conversation and ask the operator.`
+EXECUTION CONTEXT. This is a manual platform migration started by the workflow operator in the owning Crew's chat. Complete and verify this migration before stamping it. If a genuine product, business, or safety choice is required, do not guess and do not stamp: explain the exact choice in this conversation and ask the operator.`
+
+const upgradePortableWorkflow = `WORKFLOW UPDATE: PORTABLE CODE AND RECORDS (1.0.52).
+
+Work from the owning Crew's main chat. Do not execute the workflow or enable a timer. Read every current step, route, follow-up, named script/helper and referenced guide before editing. Preserve business rules, approvals, quality checks, inputs/outputs, function targets, sharing, timer timing and paused state.
+
+Use WORKFLOW_CODE_ROOT for native code, VAR_WORKSPACE_PATH for native records/data and VAR_WORKFLOW_PATH for workspace API addresses. Python reads os.environ. Do not derive records from WORKFLOW_CODE_ROOT.parent or rewrite __file__ imports blindly. JSON defaults, read grants and regexes do not expand shell variables: grants stay workflow-relative (code/shared/helper.py), outputs and their validation patterns agree on db/assets/... values. Do not widen folder permissions or turn a denied-path probe into an allowed write.
+
+Move needed helper code and its dependencies out of learnings/ into the code root, update callers, and put needed guidance in the task or a Crew skill. Remove live learnings/ references; historical evidence is not rewritten. A one-off script backs up and removes the old tree only after the stamp. Do not keep every old note or delete history.
+
+Replace retired crew steps with ordinary agent steps calling the correct function, preserving task and mapping. A task entirely in description needs prompt_contract=description-first-v1, not empty legacy items. Repair protected input names only for verified non-secret identifiers/URLs, updating every reference without changing values. Real credentials belong in Vault; never rename one to bypass that rule. Ambiguous ownership, function mapping, cross-workflow dependency or too-old source layout is a blocker, not permission to guess.
+
+Use crew_workflow_files action=upgrade with workflow_id and no version for status, exact next instruction and current failures. Edit named steps through its edit action, code through write. If a malformed old step prevents normal edits, use upgrade with repair_step={step_id, changes, remove_fields} and reason; it overlays only that named step, keeps unmentioned fields and leaves the workflow unstamped. During this update, read can inspect old learnings helpers; write can update the workflow skills/soul Markdown needed by current steps. The cleanup script deletes the old tree only after the stamp. When complete, call the same upgrade action with version=1.0.52 and reason describing the changes. The backend rereads and checks every current step, records the plan change log and then stamps. A failed check leaves the workflow unstamped and unable to run; report the exact failure here. Stop after stamping. Older ladders are completed one version at a time; do not stamp past them.`
 
 const upgradeAgentStep = `WORKFLOW CONTRACT UPGRADE: CANONICAL AGENT STEPS (1.0.47).
 

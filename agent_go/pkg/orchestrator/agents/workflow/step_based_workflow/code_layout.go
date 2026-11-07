@@ -114,6 +114,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string)
 	// API address and physical runtime directory are different after a Crew move.
 	// Scripts use this server-owned address rather than deriving it from DB_PATH.
 	env["VAR_WORKFLOW_PATH"] = hcpo.GetWorkspacePath()
+	// PLAT-746-396: direct scripts and agent turns need the same server-owned
+	// records root. User inputs must never replace it with an old laptop path.
+	env["VAR_WORKSPACE_PATH"] = workflowAbsPath(hcpo.GetWorkspacePath())
 	if !hcpo.platformStoresEnabled() {
 		delete(env, "DB_PATH")
 		for key := range env {

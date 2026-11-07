@@ -2,13 +2,10 @@ package server
 
 import (
 	"context"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 
-	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -19,6 +16,7 @@ func externalContractUpgradeDefinition(add func(string, string, bool, bool, map[
 		"action":  map[string]any{"type": "string", "enum": []any{"status", "stamp"}},
 		"version": externalString("stamp: the next reviewed target version from status."),
 		"confirm": externalString("stamp: repeat the workflow_id to confirm."),
+		"reason":  externalString("stamp: describe the completed update; required for the portable workflow contract."),
 	}, "action")
 }
 
@@ -107,46 +105,17 @@ func (api *StreamingAPI) externalContractUpgradeCall(w http.ResponseWriter, r *h
 		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": version, "applied": false, "note": "Already on this contract version."})
 		return
 	}
-	workflowDir, err := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), rootPath)
+	reason := externalArg(args, "reason")
+	if reason == "" && version != workflowContractPortableVersion {
+		reason = "Operator completed the next workflow contract update."
+	}
+	applied, err := api.checkAndStampWorkflowContract(ctx, rootPath, current, version, reason)
 	if err != nil {
-		externalFailure(w, err)
-		return
-	}
-	manifestFile, err := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), rootPath+"/workflow.json")
-	if err != nil {
-		externalFailure(w, err)
-		return
-	}
-	rawManifest, err := os.ReadFile(manifestFile)
-	if err != nil {
-		externalError(w, 502, "workflow_unavailable", "Cannot read this workflow's manifest.")
-		return
-	}
-	readPlan := func() (string, error) {
-		file, err := fsutil.WorkspacePath(getWorkspaceDocsAbsPath(), rootPath+"/planning/plan.json")
-		if err != nil {
-			return "", err
-		}
-		raw, err := os.ReadFile(file)
-		return string(raw), err
-	}
-	if err := stepworkflow.CheckContractStamp(version, workflowDir, rawManifest, readPlan); err != nil {
-		externalError(w, 409, "stamp_refused", "Refused: "+err.Error())
-		return
-	}
-	if refusal, ok := stepworkflow.AuthorizeOperatorContractStamp(version, func() (string, string, error) {
-		return nextWorkflowContractUpgrade(ctx, rootPath)
-	}); !ok {
-		externalError(w, 409, "stamp_refused", refusal)
-		return
-	}
-	current.Version = version
-	if err := WriteWorkflowManifest(ctx, rootPath, current); err != nil {
-		externalError(w, 502, "stamp_failed", "The contract version could not be saved; nothing was recorded.")
+		externalError(w, 409, "stamp_refused", err.Error())
 		return
 	}
 	if api.logger != nil {
 		api.logger.Info("workflow contract stamped over MCP workflow=" + workflow.Manifest.ID + " version=" + version + " user=" + live.UserID)
 	}
-	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": version, "applied": true})
+	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": version, "applied": applied})
 }

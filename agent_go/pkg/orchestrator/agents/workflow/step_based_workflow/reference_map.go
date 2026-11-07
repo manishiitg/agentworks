@@ -68,6 +68,7 @@ type refText struct {
 }
 
 type referenceMap struct {
+	crewBound  bool
 	readScript func(string) ([]byte, error)
 	root       string
 	order      []*refStep
@@ -135,8 +136,12 @@ func loadReferenceMap(root string) (*referenceMap, error) {
 		}
 		return nil, fmt.Errorf("read planning/plan.json: %w", err)
 	}
+	return referenceMapForPlan(root, planRaw, nil, "")
+}
+
+func referenceMapForPlan(root string, planRaw []byte, readScript func(string) ([]byte, error), codeRoot string) (*referenceMap, error) {
 	m := &referenceMap{
-		root: root, steps: map[string]*refStep{}, retired: map[string]bool{}, evalIDs: map[string]bool{},
+		root: root, readScript: readScript, crewBound: codeRoot != "", steps: map[string]*refStep{}, retired: map[string]bool{}, evalIDs: map[string]bool{},
 		index: map[string]bool{}, seen: map[string]bool{}, producer: map[string][]string{}, declarer: map[string][]string{},
 	}
 	if err := m.loadPlan(planRaw); err != nil {
@@ -146,6 +151,14 @@ func loadReferenceMap(root string) (*referenceMap, error) {
 	m.loadRetired()
 	m.loadDocs()
 	m.buildIndex()
+	if codeRoot != "" {
+		_ = filepath.WalkDir(codeRoot, func(_ string, entry fs.DirEntry, err error) error {
+			if err == nil && !entry.IsDir() {
+				m.index[entry.Name()] = true
+			}
+			return nil
+		})
+	}
 	m.check()
 	return m, nil
 }
@@ -336,16 +349,18 @@ func (m *referenceMap) loadDocs() {
 		return nil
 	})
 	files = append(files, filepath.Join(m.root, "soul", "soul.md"))
-	_ = filepath.WalkDir(filepath.Join(m.root, "learnings", "_global"), func(path string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), ".md") {
-			files = append(files, path)
-		}
-		return nil
-	})
-	if entries, err := os.ReadDir(filepath.Join(m.root, "learnings")); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() && entry.Name() != "_global" && !strings.HasPrefix(entry.Name(), ".") {
-				files = append(files, filepath.Join(m.root, "learnings", entry.Name(), "SKILL.md"))
+	if !m.crewBound {
+		_ = filepath.WalkDir(filepath.Join(m.root, "learnings", "_global"), func(path string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), ".md") {
+				files = append(files, path)
+			}
+			return nil
+		})
+		if entries, err := os.ReadDir(filepath.Join(m.root, "learnings")); err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() && entry.Name() != "_global" && !strings.HasPrefix(entry.Name(), ".") {
+					files = append(files, filepath.Join(m.root, "learnings", entry.Name(), "SKILL.md"))
+				}
 			}
 		}
 	}
@@ -368,6 +383,9 @@ var refIndexSkip = map[string]bool{"runs": true, ".cache": true, ".local": true,
 func (m *referenceMap) buildIndex() {
 	count := 0
 	for _, top := range []string{"code", "learnings", "knowledgebase", "soul", "db", "evaluation", "reports", "variables"} {
+		if top == "learnings" && m.crewBound {
+			continue
+		}
 		_ = filepath.WalkDir(filepath.Join(m.root, top), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil
