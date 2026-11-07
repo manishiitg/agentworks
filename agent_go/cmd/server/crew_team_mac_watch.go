@@ -361,7 +361,9 @@ func (api *StreamingAPI) routeCrewMemberMacTabs(w http.ResponseWriter, r *http.R
 	}
 	if onMac {
 		for _, tab := range personMacTabs(r.Context(), caller, project) {
-			add(crewMacTabRow(project, tab))
+			row := crewMacTabRow(project, tab)
+			row.OnYourMac = true
+			add(row)
 		}
 	}
 	for _, row := range crewTeamMemberTabs(r.Context(), project, caller) {
@@ -534,7 +536,9 @@ func withServerCrewMacTabs(ctx context.Context, project, viewer string, rows []A
 	})
 	for _, person := range onMac {
 		for _, tab := range crewMacTabsFor(ctx, person, project, viewer) {
-			out = append(out, crewMacTabRow(project, tab))
+			row := crewMacTabRow(project, tab)
+			row.OnYourMac = person == viewer
+			out = append(out, row)
 		}
 	}
 	return out

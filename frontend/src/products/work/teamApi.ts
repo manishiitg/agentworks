@@ -269,7 +269,7 @@ export async function teamSideChats(profileId: string, projectId: string): Promi
   const response = await fetch(`${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(binding.connection)}/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats?project_id=${encodeURIComponent(binding.peer)}`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` } })
   if (!response.ok) return []
   const rows = await response.json() as AgentProfileSideChat[]
-  return (rows || []).filter(row => row.can_write === false && row.tab_owner_id && row.session_id && !row.is_main).map(row => {
+  return (rows || []).filter(row => row.can_write === false && !row.on_your_mac && row.tab_owner_id && row.session_id && !row.is_main).map(row => {
     registerRemoteSession(row.session_id, binding.connection)
     return { ...row, conversation_key: `${projectId}:team:${row.conversation_key}`, chat_location: undefined, agent_id: undefined }
   })
