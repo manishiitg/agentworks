@@ -15,18 +15,6 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-func TestAsyncGenericAgentPreservesAgentContext(t *testing.T) {
-	want := []virtualtools.GenericAgentMessage{{ID: "lens", Message: "inspect"}}
-	toolCtx := context.WithValue(context.Background(), virtualtools.GenericAgentAgentKey, want)
-	execCtx := &SubAgentExecutionContext{ParentContext: context.Background(), AsyncEnabled: true}
-	childCtx, call := execCtx.registerAsyncCall(toolCtx, "child-sequence", "review", "", "generic")
-	defer execCtx.completeAsyncCall(call, "done", nil)
-	got := virtualtools.GenericAgentAgentFromContext(childCtx)
-	if len(got) != 1 || got[0] != want[0] {
-		t.Fatalf("async child sequence = %#v, want %#v", got, want)
-	}
-}
-
 func TestAsyncScriptedAgentPreservesInvocationAndParameterContext(t *testing.T) {
 	parameters := map[string]interface{}{"market": "dubai", "limit": float64(5)}
 	toolCtx := context.WithValue(context.Background(), virtualtools.SubAgentParametersKey, parameters)

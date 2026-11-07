@@ -65,13 +65,6 @@ func todoSubAgentArtifactFolderName(parentStepID, parentStepPath, routeID, callI
 	return filepath.Join(root, "agents", routePart, "calls", callPart)
 }
 
-func genericAgentArtifactFolderName(parentStepID, parentStepPath, callID string) string {
-	return filepath.Join(
-		parentAgentArtifactRoot(parentStepID, parentStepPath),
-		"agents", "generic", "calls", workflowSafeIDPart(callID, "call"),
-	)
-}
-
 // agentSequenceRouteRoot returns the persistent agent-route directory for a
 // nested call. session.json lives here while each invocation writes beneath
 // calls/<call-id>/. Top-level sequences return no route root.

@@ -1766,7 +1766,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	}
 
 	// Enable parallel tool execution for todo task orchestrator
-	// This allows concurrent execution of multiple tool calls (e.g., call_sub_agent, call_generic_agent)
+	// This allows concurrent execution of multiple tool calls (e.g., scripted route helpers)
 	config.EnableParallelToolExecution = true
 	hcpo.GetLogger().Info("⚡ Parallel tool execution enabled for todo task orchestrator agent")
 
@@ -1970,7 +1970,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) restoreSubAgentToolExecutors(execCtx 
 }
 
 // wrapSubAgentToolExecutor wraps a sub-agent tool executor to inject execution functions
-// The wrapper adds: execute_predefined_sub_agent, execute_generic_agent, predefined_routes, sub_agent_llm
+// The wrapper adds predefined route execution, descriptions and model context.
 func (hcpo *StepBasedWorkflowOrchestrator) wrapSubAgentToolExecutor(
 	originalExecutor func(ctx context.Context, args map[string]interface{}) (string, error),
 	execCtx *SubAgentExecutionContext,
@@ -1986,10 +1986,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) wrapSubAgentToolExecutor(
 		// Inject execute_predefined_sub_agent function
 		executePredefinedFunc := hcpo.createExecutePredefinedSubAgentFunc(execCtx)
 		ctx = context.WithValue(ctx, virtualtools.ExecutePredefinedSubAgentKey, executePredefinedFunc)
-
-		// Inject execute_generic_agent function
-		executeGenericFunc := hcpo.createExecuteGenericAgentFunc(execCtx)
-		ctx = context.WithValue(ctx, virtualtools.ExecuteGenericAgentKey, executeGenericFunc)
 
 		ctx = context.WithValue(ctx, virtualtools.QuerySubAgentKey, virtualtools.QuerySubAgentFunc(
 			func(_ context.Context, executionID string) (string, error) {
@@ -2180,80 +2176,3 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutePredefinedSubAgentSyncFu
 		return result, nil
 	}
 }
-
-// createExecuteGenericAgentFunc creates a function that executes generic agents
-// This function is injected into context for the call_generic_agent tool to use
-// Sub-agents get all their input from the tool parameters (instructions)
-// They do NOT read the tasks.md file - the orchestrator provides everything via the tool call
-func (hcpo *StepBasedWorkflowOrchestrator) createExecuteGenericAgentSyncFunc(
-	execCtx *SubAgentExecutionContext,
-) virtualtools.ExecuteGenericAgentFunc {
-	return func(ctx context.Context, todoID, instructions string) (string, error) {
-		hcpo.GetLogger().Info(fmt.Sprintf("🤖 [TOOL] Executing generic agent via tool: todo=%s", todoID))
-
-		// Propagate workshop correlation IDs to sub-agent context
-		if execCtx.WorkshopCorrelationID != "" {
-			if forcedID, ok := ctx.Value(orchestrator_events.ForceCorrelationIDKey).(string); !ok || forcedID == "" {
-				ctx = context.WithValue(ctx, orchestrator_events.ForceCorrelationIDKey, execCtx.WorkshopCorrelationID)
-				ctx = context.WithValue(ctx, orchestrator_events.IsSubAgentContextKey, true)
-			}
-		}
-
-		// Build a AgentDelegationDecision to reuse existing execution logic
-		// All task info comes from the tool parameters, not from a file
-		response := &AgentDelegationDecision{
-			NextAction:             "delegate",
-			UseGenericAgent:        true,
-			TodoIDToExecute:        todoID,
-			InstructionsToSubAgent: instructions,
-		}
-
-		// Emit route selected event BEFORE sub-agent execution so it appears before the agent card
-		hcpo.emitAgentRouteSelectedEvent(ctx, execCtx.OrchestratorStep, execCtx.StepIndex, execCtx.StepPath, 0, response, "")
-
-		startTime := time.Now()
-
-		// Execute using existing method
-		// All task info comes from tool parameters
-		result, history, err := hcpo.executeGenericAgent(
-			ctx,
-			execCtx.OrchestratorStep,
-			execCtx.StepIndex,
-			execCtx.StepPath,
-			response,
-			execCtx.AllSteps,
-			execCtx.Progress,
-		)
-
-		executionTime := time.Since(startTime)
-
-		// Store call record for get_sub_agent_conversation
-		record := SubAgentCallRecord{
-			CalledAt:      startTime,
-			ExecutionID:   asyncSubAgentExecutionID(ctx),
-			TodoID:        todoID,
-			AgentType:     "generic",
-			Success:       err == nil,
-			Result:        result,
-			ExecutionTime: executionTime.String(),
-			Conversation:  serializeConversationHistory(history),
-		}
-		if err != nil {
-			record.Error = err.Error()
-		}
-		execCtx.callHistoryMu.Lock()
-		record.Index = len(execCtx.CallHistory) + 1
-		execCtx.CallHistory = append(execCtx.CallHistory, record)
-		execCtx.callHistoryMu.Unlock()
-
-		if err != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [TOOL] Generic agent execution failed: %v", err))
-			return result, err
-		}
-
-		hcpo.GetLogger().Info(fmt.Sprintf("✅ [TOOL] Generic agent completed successfully: todo=%s", todoID))
-		return result, nil
-	}
-}
-
-// Execute implements the Orchestrator interface

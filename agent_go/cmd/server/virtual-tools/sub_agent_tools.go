@@ -21,8 +21,6 @@ type subAgentContextKey string
 const (
 	// ExecutePredefinedSubAgentKey is the context key for the predefined sub-agent execution function
 	ExecutePredefinedSubAgentKey subAgentContextKey = "execute_predefined_sub_agent"
-	// ExecuteGenericAgentKey is the context key for the generic agent execution function
-	ExecuteGenericAgentKey subAgentContextKey = "execute_generic_agent"
 	// PredefinedRoutesKey is the context key for available predefined routes
 	PredefinedRoutesKey subAgentContextKey = "predefined_routes"
 	// PreferredTierContextKey is the context key for preferred LLM tier override (1/2/3)
@@ -42,9 +40,6 @@ const (
 	// ScriptedSubAgentInvocationKey distinguishes the dedicated scripted-route
 	// tool from the conversational predefined-route tool at the shared executor.
 	ScriptedSubAgentInvocationKey subAgentContextKey = "scripted_sub_agent_invocation"
-	// GenericAgentAgentKey carries optional ordered follow-up turns for
-	// call_generic_agent. The runtime reuses one agent/session for every turn.
-	GenericAgentAgentKey subAgentContextKey = "generic_agent_agent"
 	// GetSubAgentConversationKey is the context key for the get_sub_agent_conversation function
 	GetSubAgentConversationKey subAgentContextKey = "get_sub_agent_conversation"
 	// QuerySubAgentKey is the context key for querying one parent-owned sub-agent execution.
@@ -71,7 +66,7 @@ type SubAgentResult struct {
 	Success       bool      `json:"success"`
 	TodoID        string    `json:"task_id"`
 	RouteID       string    `json:"route_id,omitempty"`
-	AgentType     string    `json:"agent_type"` // "predefined" or "generic"
+	AgentType     string    `json:"agent_type"` // Predefined agent or scripted route
 	Result        string    `json:"result"`
 	Error         string    `json:"error,omitempty"`
 	Hint          string    `json:"hint,omitempty"`
@@ -105,25 +100,6 @@ func SubAgentParametersFromContext(ctx context.Context) map[string]interface{} {
 func IsScriptedSubAgentInvocation(ctx context.Context) bool {
 	value, _ := ctx.Value(ScriptedSubAgentInvocationKey).(bool)
 	return value
-}
-
-// ExecuteGenericAgentFunc is the function signature for executing generic agents
-// Injected via context by the controller
-type ExecuteGenericAgentFunc func(ctx context.Context, todoID, instructions string) (string, error)
-
-// GenericAgentMessage is one follow-up user turn after call_generic_agent's
-// opening instructions. ID is required for event/log diagnostics.
-type GenericAgentMessage struct {
-	ID      string
-	Title   string
-	Message string
-}
-
-// GenericAgentAgentFromContext returns a defensive copy of the
-// ordered follow-up messages attached by handleCallGenericAgent.
-func GenericAgentAgentFromContext(ctx context.Context) []GenericAgentMessage {
-	items, _ := ctx.Value(GenericAgentAgentKey).([]GenericAgentMessage)
-	return append([]GenericAgentMessage(nil), items...)
 }
 
 // CreateSubAgentTools creates the sub-agent calling virtual tools.
@@ -209,57 +185,11 @@ func CreateSubAgentTools() []llmtypes.Tool {
 	}
 	tools = append(tools, callScriptedSubAgentTool)
 
-	// call_generic_agent tool - Execute a generic agent for ad-hoc tasks
-	callGenericAgentProperties := map[string]interface{}{
-		"task_id": map[string]interface{}{
-			"type":        "string",
-			"description": "Stable label for this unit of delegated work (kebab-case, e.g. draft-intro-section). Used by the parent runtime for tracking and artifact naming; it is not child task context and should not be repeated inside instructions.",
-		},
-		"instructions": map[string]interface{}{
-			"type":        "string",
-			"description": "Detailed instructions for what the agent should accomplish. Be very specific since there's no predefined context.",
-		},
-		"agent": map[string]interface{}{
-			"type":        "array",
-			"minItems":    1,
-			"maxItems":    12,
-			"description": "Optional ordered follow-up turns sent to the same generic agent after the opening instructions turn. One conversation, MCP session, folder guard, and isolated workspace are preserved.",
-			"items": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"id":      map[string]interface{}{"type": "string"},
-					"title":   map[string]interface{}{"type": "string"},
-					"message": map[string]interface{}{"type": "string"},
-				},
-				"required": []string{"id", "message"},
-			},
-		},
-	}
-	callGenericAgentProperties["preferred_tier"] = map[string]interface{}{
-		"type":        "integer",
-		"description": "REQUIRED. LLM reasoning tier for this sub-agent. 1 = high reasoning (complex/novel tasks), 2 = medium reasoning (routine tasks), 3 = low reasoning (simple/validation tasks). You must pick a tier for every call based on the task's difficulty.",
-		"enum":        []int{1, 2, 3},
-	}
-	callGenericAgentRequired := []string{"task_id", "instructions", "preferred_tier"}
-	callGenericAgentTool := llmtypes.Tool{
-		Type: "function",
-		Function: &llmtypes.FunctionDefinition{
-			Name:        "call_generic_agent",
-			Description: "Start a generic agent for ad-hoc work that doesn't match predefined routes. The call returns an execution_id immediately; the workflow runtime waits outside this tool call and sends its terminal result back to this orchestrator. Use this sparingly and prefer predefined routes.",
-			Parameters: llmtypes.NewParameters(map[string]interface{}{
-				"type":       "object",
-				"properties": callGenericAgentProperties,
-				"required":   callGenericAgentRequired,
-			}),
-		},
-	}
-	tools = append(tools, callGenericAgentTool)
-
 	querySubAgentTool := llmtypes.Tool{
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "query_sub_agent",
-			Description: "Read the current state of one sub-agent execution returned by call_sub_agent, call_scripted_sub_agent, or call_generic_agent. This is for explicit inspection or debugging; do not poll it in a loop because the runtime automatically delivers completion results.",
+			Description: "Read the current state of one sub-agent execution returned by call_sub_agent or call_scripted_sub_agent. This is for explicit inspection or debugging; do not poll it in a loop because the runtime automatically delivers completion results.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -304,7 +234,7 @@ func CreateSubAgentTools() []llmtypes.Tool {
 				"properties": map[string]interface{}{
 					"execution_id": map[string]interface{}{
 						"type":        "string",
-						"description": "Required. The exact execution_id returned by call_sub_agent, call_scripted_sub_agent, or call_generic_agent.",
+						"description": "Required. The exact execution_id returned by call_sub_agent or call_scripted_sub_agent.",
 					},
 					"from_last_x": map[string]interface{}{
 						"type":        "integer",
@@ -351,7 +281,6 @@ func CreateSubAgentToolExecutors() map[string]func(ctx context.Context, args map
 
 	executors["call_sub_agent"] = handleCallSubAgent
 	executors["call_scripted_sub_agent"] = handleCallScriptedSubAgent
-	executors["call_generic_agent"] = handleCallGenericAgent
 	executors["query_sub_agent"] = handleQuerySubAgent
 	executors["stop_sub_agent"] = handleStopSubAgent
 	executors["get_sub_agent_conversation"] = handleGetSubAgentConversation
@@ -507,121 +436,6 @@ func executePredefinedSubAgentCall(ctx context.Context, routeID, todoID, instruc
 
 	resultJSON, _ := json.MarshalIndent(subAgentResult, "", "  ")
 	return string(resultJSON), nil
-}
-
-// handleCallGenericAgent executes a generic agent
-func handleCallGenericAgent(ctx context.Context, args map[string]interface{}) (string, error) {
-	// Extract arguments
-	todoID, ok := args["task_id"].(string)
-	if !ok || todoID == "" {
-		return "", fmt.Errorf("task_id is required")
-	}
-
-	instructions, ok := args["instructions"].(string)
-	if !ok || instructions == "" {
-		return "", fmt.Errorf("instructions are required")
-	}
-	agentSequence, err := parseGenericAgentAgent(args["agent"])
-	if err != nil {
-		return "", err
-	}
-	if len(agentSequence) > 0 {
-		ctx = context.WithValue(ctx, GenericAgentAgentKey, agentSequence)
-	}
-
-	tierRequired, _ := ctx.Value(TierSelectionRequiredKey).(bool)
-	preferredTierF, hasTier := args["preferred_tier"].(float64)
-	validTier := hasTier && int(preferredTierF) >= 1 && int(preferredTierF) <= 3
-	if tierRequired && !validTier {
-		return "", fmt.Errorf("preferred_tier is required and must be 1, 2, or 3 (1=high reasoning, 2=medium, 3=low) — pick a tier based on task difficulty")
-	}
-	if validTier {
-		ctx = context.WithValue(ctx, PreferredTierContextKey, int(preferredTierF))
-	}
-
-	// Get the execution function from context
-	executeFunc, ok := ctx.Value(ExecuteGenericAgentKey).(ExecuteGenericAgentFunc)
-	if !ok || executeFunc == nil {
-		return "", fmt.Errorf("generic agent execution function not available in context - this tool can only be used within a todo task orchestrator")
-	}
-
-	startTime := time.Now()
-
-	// Execute the generic agent
-	result, err := executeFunc(ctx, todoID, instructions)
-	if err == nil && isAsyncSubAgentStart(result) {
-		return result, nil
-	}
-
-	executionTime := time.Since(startTime)
-
-	// Build result
-	// Determine success: err must be nil AND result must not contain failure indicators
-	isSuccess := err == nil && !isSubAgentResultFailure(result)
-
-	subAgentResult := SubAgentResult{
-		Success:       isSuccess,
-		TodoID:        todoID,
-		AgentType:     "generic",
-		Result:        result,
-		RetryAttempts: maxSubAgentRetryAttempts,
-		ExecutionTime: executionTime.String(),
-		CompletedAt:   time.Now(),
-	}
-
-	if !isSuccess {
-		if err != nil {
-			subAgentResult.Error = err.Error()
-		} else {
-			// No Go error, but result contains failure details (e.g. "ERROR: agent execution failed: ...")
-			subAgentResult.Error = result
-		}
-		subAgentResult.Hint = fmt.Sprintf("Sub-agent failed after %d internal retry attempts. Consider using get_sub_agent_conversation to inspect what went wrong, review LEARNING HISTORY, and execute the task yourself — you have a higher-reasoning LLM and the same tool access.", maxSubAgentRetryAttempts)
-	}
-
-	resultJSON, _ := json.MarshalIndent(subAgentResult, "", "  ")
-	return string(resultJSON), nil
-}
-
-func parseGenericAgentAgent(raw interface{}) ([]GenericAgentMessage, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	items, ok := raw.([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("agent must be an array")
-	}
-	if len(items) == 0 {
-		return nil, fmt.Errorf("agent must contain at least one follow-up turn when supplied")
-	}
-	if len(items) > 12 {
-		return nil, fmt.Errorf("agent has %d items; maximum is 12", len(items))
-	}
-	seen := make(map[string]struct{}, len(items))
-	parsed := make([]GenericAgentMessage, 0, len(items))
-	for index, rawItem := range items {
-		item, ok := rawItem.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("agent[%d] must be an object", index)
-		}
-		id, _ := item["id"].(string)
-		id = strings.TrimSpace(id)
-		if id == "" {
-			return nil, fmt.Errorf("agent[%d].id is required", index)
-		}
-		if _, duplicate := seen[id]; duplicate {
-			return nil, fmt.Errorf("agent item id %q is duplicated", id)
-		}
-		seen[id] = struct{}{}
-		message, _ := item["message"].(string)
-		message = strings.TrimSpace(message)
-		if message == "" {
-			return nil, fmt.Errorf("agent[%d].message is required", index)
-		}
-		title, _ := item["title"].(string)
-		parsed = append(parsed, GenericAgentMessage{ID: id, Title: strings.TrimSpace(title), Message: message})
-	}
-	return parsed, nil
 }
 
 func isAsyncSubAgentStart(result string) bool {
