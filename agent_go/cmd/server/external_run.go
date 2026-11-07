@@ -545,7 +545,9 @@ func (api *StreamingAPI) externalTriggerSchedule(w http.ResponseWriter, r *http.
 		externalError(w, http.StatusServiceUnavailable, "scheduler_unavailable", "The scheduler is not running on this server.")
 		return
 	}
-	runID, err := api.scheduler.TriggerNow(workflow.WorkspacePath, externalArg(args, "schedule_id"))
+	// A chat that asks for the run is resumed with its result; a client with no
+	// chat has none to resume.
+	runID, err := api.scheduler.TriggerNowFromSession(workflow.WorkspacePath, externalArg(args, "schedule_id"), chatSessionIDFromContext(r.Context()))
 	if err != nil {
 		message := err.Error()
 		switch {
