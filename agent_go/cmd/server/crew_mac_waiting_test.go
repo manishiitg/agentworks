@@ -181,6 +181,7 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 	defer cancel()
+	delivered := false
 	for {
 		select {
 		case m := <-commands:
@@ -188,12 +189,15 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 				continue
 			}
 			var args struct {
-				Sender string `json:"sender_id"`
+				Sender    string `json:"sender_id"`
+				TeamInbox string `json:"team_inbox"`
 			}
 			_ = json.Unmarshal(m.Call.Args, &args)
 			if args.Sender != "other" {
 				t.Fatalf("revoked sender reached the Mac: %s", args.Sender)
 			}
+			// A Team message carries its original inbox, so the agent can answer there.
+			delivered = delivered || m.Call.Operation == "agent_ask" && args.TeamInbox == "inbox-other"
 			body := json.RawMessage(`{"ok":true}`)
 			if m.Call.Operation == "agent_read" {
 				body = json.RawMessage(`{"working":false,"messages":[{"role":"assistant","text":"answer from original Mac"}]}`)
@@ -204,21 +208,19 @@ func TestMacWaitingReconnectRepliesToOriginalInboxAndRechecksAccess(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			answered, refused := false, false
+			refused := false
 			for _, c := range s.Conversations {
 				for _, m := range c.Messages {
 					if c.ID == "inbox-removed" && m.From == 1 && strings.Contains(m.Text, "isn't shared with you anymore") {
 						refused = true
 					}
+					// Messages are async: the Mac agent's final chat text is never forwarded (owner, 7 Nov).
 					if m.Text == "answer from original Mac" {
-						if c.ID != "inbox-other" || m.From != 1 || m.Delivery != "stored" {
-							t.Fatalf("answer routed incorrectly: %+v", m)
-						}
-						answered = true
+						t.Fatalf("final answer forwarded: %+v", m)
 					}
 				}
 			}
-			if answered && refused && waitingCount() == 0 {
+			if delivered && refused && waitingCount() == 0 {
 				return
 			}
 		case <-ctx.Done():

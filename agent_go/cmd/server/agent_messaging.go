@@ -1153,6 +1153,10 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			// A Team member's agent, listed on this Mac from the Crew's online copy (crew_team_message.go); the Team
 			// tab's address for it (crewTeamAgentAddress) means the same agent here.
 			teamTarget, _ := args["target"].(string)
+			// A reply to a Team message: its inbox is on the server (crewTeamMessageText).
+			if strings.HasPrefix(id, "team:") && IsLocalMode() {
+				teamTarget, id = id, ""
+			}
 			if id == "" && IsLocalMode() {
 				if mapped := crewTeamAddressOnMac(teamTarget); mapped != "" {
 					teamTarget = mapped

@@ -371,7 +371,11 @@ func (api *StreamingAPI) deliverCrewMacWaiting(owner, project, pair string) {
 		if standby {
 			crewAlwaysOnLog(project, held.Tab, "held_delivered_on_server", map[bool]string{true: "agent_message", false: "ask"}[held.Inbox != ""], started)
 		}
-		if held.Inbox != "" {
+		var heldArgs struct {
+			TeamInbox string `json:"team_inbox"`
+		}
+		_ = json.Unmarshal(held.Args, &heldArgs)
+		if held.Inbox != "" && heldArgs.TeamInbox == "" {
 			api.startMacAgentAnswer(macAgentAwaiting{Inbox: held.Inbox, Submission: held.SubmissionID, From: held.From, Project: project, Tab: held.Tab, Mac: owner,
 				Member: person != "", Published: published, Standby: standby, SenderID: heldSender(held.Args), Caller: held.Caller})
 		}
