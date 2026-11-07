@@ -479,9 +479,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 	// + global and step-specific learnings (if mode grants read) + knowledgebase folder (if mode grants read)
 	// WRITE: only the specific step folder (including nested sub-agent folders) plus execution/Downloads.
 	// NOTE: under kbWriteMethod=direct we add knowledgebase/notes/ to writePaths so the
-	// step can write per-topic markdown through execute_shell_command. Under
-	// kbWriteMethod=agent we add nothing — notes/ is only writable by the post-step KB
-	// update agent (setupKBUpdateFolderGuard, triggered by a non-empty knowledgebase_contribution).
+	// step can write per-topic markdown through execute_shell_command.
 	// Use getExecutionFolderPath to support top-level and nested executions.
 	stepFolderPath := getExecutionFolderPath(executionWorkspacePath, stepID, stepPath)
 	writeRootPath := stepFolderPath
@@ -911,59 +909,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 	return tools, executors
 }
 
-// prepareWorkspaceToolsOnly prepares minimal tools for KB maintenance agents.
-// They can inspect structured workflow state through query_workflow_db and can
-// update their authorized files, but they do not receive database mutation or
-// human tools.
-func (hcpo *StepBasedWorkflowOrchestrator) prepareWorkspaceToolsOnly() ([]llmtypes.Tool, map[string]interface{}) {
-	tools, executors := orchestrator.FilterCustomToolsByCategory(
-		hcpo.WorkspaceTools,
-		hcpo.WorkspaceToolExecutors,
-		[]string{
-			"knowledgebase:" + knowledgebase.ToolBrowse, "knowledgebase:" + knowledgebase.ToolRead, "knowledgebase:" + knowledgebase.ToolUpdate,
-			"workspace_advanced:execute_shell_command",
-			"workspace_advanced:diff_patch_workspace_file",
-			"workflow_db:query_workflow_db",
-		},
-	)
-	hcpo.GetLogger().Info(fmt.Sprintf("🔧 Prepared %d KB maintenance tools (shell + diff_patch + DB query, no mutation/human tools)", len(tools)))
-	return tools, executors
-}
-
-// setupKBUpdateFolderGuard grants the KB update agent read on the step's execution
-// folder (+ siblings, so relative-path references to other step outputs resolve) and
-// knowledgebase/, and write on knowledgebase/ only.
-func (hcpo *StepBasedWorkflowOrchestrator) setupKBUpdateFolderGuard(stepID string, stepPath string) (readPaths, writePaths []string) {
-	baseWorkspacePath := hcpo.GetWorkspacePath()
-	var runWorkspacePath string
-	if hcpo.selectedRunFolder != "" {
-		runWorkspacePath = fmt.Sprintf("%s/runs/%s", baseWorkspacePath, hcpo.selectedRunFolder)
-	} else {
-		runWorkspacePath = baseWorkspacePath
-	}
-	executionWorkspacePath := fmt.Sprintf("%s/execution", runWorkspacePath)
-	stepFolderPath := getExecutionFolderPath(executionWorkspacePath, stepID, stepPath)
-	knowledgebasePath := getKnowledgebasePath(baseWorkspacePath)
-
-	// tool_output_folder for the same reason every other guard grants it: any
-	// bridge tool result past its inline cap is spilled there, and an agent told
-	// "full output saved to <path>" needs a legal way to read it back. A KB
-	// update agent reads large step artifacts to summarize them, so it hits this
-	// as readily as an execution step does.
-	toolOutputPath := fmt.Sprintf("%s/tool_output_folder", baseWorkspacePath)
-
-	readPaths = []string{executionWorkspacePath, stepFolderPath, knowledgebasePath, toolOutputPath}
-	writePaths = []string{knowledgebasePath}
-	return readPaths, writePaths
-}
-
 // setupSubAgentSessionGuard creates a dedicated MCP session ID for a sub-agent
 // that should NOT share the workflow's group MCP session, and registers its
 // folder guard at that session's level so sandbox-exec enforces the correct
 // writes when the sub-agent issues shell commands.
 //
 // Why this exists: sub-agents with `ServerNames = [NoServers]` (learning agent,
-// KB update/consolidate/reorganize, eval scoring when workspace-only) don't
+// eval scoring when workspace-only) don't
 // need to share the group's MCP session for browser/gmail connection reuse.
 // But if they DO share it, their folder guard is set at orchestrator level
 // (SetWorkspacePathForFolderGuard) while the group session's guard is set at
@@ -1083,137 +1035,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) selectBackgroundLLM(agentPurpose stri
 		},
 		APIKeys: hcpo.GetAPIKeys(),
 	}
-}
-
-func (hcpo *StepBasedWorkflowOrchestrator) selectBackgroundUpkeepLLM(agentPurpose string) *orchestrator.LLMConfig {
-	if hcpo.tierResolver != nil {
-		if cfg := hcpo.tierResolver.ResolveTier(TierMedium); cfg != nil {
-			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Using Medium tier for AgentWorks upkeep %s: %s/%s",
-				agentPurpose, cfg.Primary.Provider, cfg.Primary.ModelID))
-			return cfg
-		}
-	}
-	return hcpo.selectBackgroundLLM(agentPurpose)
-}
-
-// createKBConsolidateAgent builds the one-shot KB consolidate agent. Same folder-guard
-// shape as KB update/reorganize: read execution folder + KB, write KB only. The read
-// path on executionWorkspacePath is what gives it access to ALL step output folders
-// under the selected run, which is exactly what distinguishes consolidation from per-step
-// updates and from reorganize.
-func (hcpo *StepBasedWorkflowOrchestrator) createKBConsolidateAgent(ctx context.Context, phase string, agentName string, stepConfig *AgentConfigs) (agents.OrchestratorAgent, error) {
-	stepID := "builder-consolidate"
-	stepPath := "builder-consolidate"
-
-	readPaths, writePaths := hcpo.setupKBUpdateFolderGuard(stepID, stepPath)
-	if err := hcpo.materializeWorkflowGuardPaths(readPaths, writePaths); err != nil {
-		return nil, err
-	}
-	subAgentSessionID := hcpo.setupSubAgentSessionGuard("kb-consolidate", stepID, readPaths, writePaths)
-	configureWorkflowDBSession(subAgentSessionID, hcpo.GetWorkspacePath(), DBAccessRead, false)
-	hcpo.SetWorkspacePathForFolderGuard(readPaths, writePaths)
-	hcpo.GetLogger().Info(fmt.Sprintf("🔒 Setting folder guard for KB consolidate agent - Read: %v, Write: %v", readPaths, writePaths))
-
-	llmConfig := hcpo.selectBackgroundUpkeepLLM("KB consolidate agent")
-	if llmConfig == nil {
-		return nil, fmt.Errorf("no valid LLM configuration found for KB consolidate agent")
-	}
-
-	// Consolidation may touch many entities and write multiple pattern notes — give it
-	// the same headroom as reorganize (60 turns).
-	maxTurns := 60
-	config := hcpo.CreateStandardAgentConfigWithLLM(agentName, maxTurns, agents.OutputFormatStructured, llmConfig)
-	effectiveTransport := hcpo.applyWorkflowTransportToAgentConfig(config, stepConfig, "KB consolidate agent")
-	hcpo.publishWorkflowTransportContext(effectiveTransport, "")
-	config.ServerNames = []string{mcpclient.NoServers}
-	config.MCPSessionID = subAgentSessionID
-	config.UseCodeExecutionMode = requiresCodeExecutionForProvider(&AgentLLMConfig{
-		Provider: config.LLMConfig.Primary.Provider,
-		ModelID:  config.LLMConfig.Primary.ModelID,
-	})
-	toolsToRegister, executorsToUse := hcpo.prepareWorkspaceToolsOnly()
-
-	createAgentFunc := func(config *agents.OrchestratorAgentConfig, logger loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener) agents.OrchestratorAgent {
-		return NewKBConsolidateAgent(config, logger, tracer, eventBridge)
-	}
-	agent, err := hcpo.CreateAndSetupStandardAgentWithConfig(
-		ctx,
-		config,
-		phase,
-		0,
-		0,
-		stepID,
-		createAgentFunc,
-		toolsToRegister,
-		executorsToUse,
-		false,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create KB consolidate agent: %w", err)
-	}
-	if err := hcpo.applyPostSetupToAgent(agent, agentName); err != nil {
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Post-setup configuration failed for %s: %v", agentName, err))
-	}
-	return agent, nil
-}
-
-// createKBReorganizeAgent builds the one-shot KB reorganize agent. Same folder-guard
-// shape as KB update (read execution + KB, write KB only). stepID/stepPath are
-// synthetic because reorganize runs outside step context.
-func (hcpo *StepBasedWorkflowOrchestrator) createKBReorganizeAgent(ctx context.Context, phase string, agentName string, stepConfig *AgentConfigs) (agents.OrchestratorAgent, error) {
-	stepID := "builder-reorganize"
-	stepPath := "builder-reorganize"
-
-	readPaths, writePaths := hcpo.setupKBUpdateFolderGuard(stepID, stepPath)
-	if err := hcpo.materializeWorkflowGuardPaths(readPaths, writePaths); err != nil {
-		return nil, err
-	}
-	subAgentSessionID := hcpo.setupSubAgentSessionGuard("kb-reorganize", stepID, readPaths, writePaths)
-	configureWorkflowDBSession(subAgentSessionID, hcpo.GetWorkspacePath(), DBAccessRead, false)
-	hcpo.SetWorkspacePathForFolderGuard(readPaths, writePaths)
-	hcpo.GetLogger().Info(fmt.Sprintf("🔒 Setting folder guard for KB reorganize agent - Read: %v, Write: %v", readPaths, writePaths))
-
-	llmConfig := hcpo.selectBackgroundUpkeepLLM("KB reorganize agent")
-	if llmConfig == nil {
-		return nil, fmt.Errorf("no valid LLM configuration found for KB reorganize agent")
-	}
-
-	// Reorganize may do larger edits than an update; give it more turns than update's 40
-	// but still cap to prevent runaway agents under ambiguous instructions.
-	maxTurns := 60
-	config := hcpo.CreateStandardAgentConfigWithLLM(agentName, maxTurns, agents.OutputFormatStructured, llmConfig)
-	effectiveTransport := hcpo.applyWorkflowTransportToAgentConfig(config, stepConfig, "KB reorganize agent")
-	hcpo.publishWorkflowTransportContext(effectiveTransport, "")
-	config.ServerNames = []string{mcpclient.NoServers}
-	config.MCPSessionID = subAgentSessionID
-	config.UseCodeExecutionMode = requiresCodeExecutionForProvider(&AgentLLMConfig{
-		Provider: config.LLMConfig.Primary.Provider,
-		ModelID:  config.LLMConfig.Primary.ModelID,
-	})
-	toolsToRegister, executorsToUse := hcpo.prepareWorkspaceToolsOnly()
-
-	createAgentFunc := func(config *agents.OrchestratorAgentConfig, logger loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener) agents.OrchestratorAgent {
-		return NewKBReorganizeAgent(config, logger, tracer, eventBridge)
-	}
-	agent, err := hcpo.CreateAndSetupStandardAgentWithConfig(
-		ctx,
-		config,
-		phase,
-		0, // stepIndex (not applicable for reorganize)
-		0, // iteration (not applicable)
-		stepID,
-		createAgentFunc,
-		toolsToRegister,
-		executorsToUse,
-		false,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create KB reorganize agent: %w", err)
-	}
-	if err := hcpo.applyPostSetupToAgent(agent, agentName); err != nil {
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Post-setup configuration failed for %s: %v", agentName, err))
-	}
-	return agent, nil
 }
 
 // applyPostSetupToAgent applies post-setup configuration to an agent after base factory setup

@@ -54,12 +54,6 @@ func TestEveryWorkflowGuardMaterializesFreshWorkspacePaths(t *testing.T) {
 						return hcpo.setupAgentFolderGuard("step-1", "brief", nil, AgentWriteAccess{})
 					},
 				},
-				{
-					name: "kb_update",
-					paths: func(hcpo *StepBasedWorkflowOrchestrator) ([]string, []string) {
-						return hcpo.setupKBUpdateFolderGuard("brief", "step-1")
-					},
-				},
 			}
 
 			for _, tc := range cases {

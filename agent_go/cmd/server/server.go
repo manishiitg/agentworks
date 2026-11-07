@@ -14280,7 +14280,7 @@ func collectQueryToolCallSummaries(api *StreamingAPI, mainSessID, correlationID,
 	// in the parent chat event store before query_step runs, so query the live
 	// bridge log by the deterministic session prefix too.
 	if stepID != "" {
-		for _, kind := range []string{"exec", "todo", "learn", "kb-update", "kb-consolidate", "kb-reorganize"} {
+		for _, kind := range []string{"exec", "todo", "learn"} {
 			addSnapshots(toolcalllog.SnapshotBySessionPrefix(fmt.Sprintf("sub-%s-%s-", kind, stepID)))
 		}
 	}
