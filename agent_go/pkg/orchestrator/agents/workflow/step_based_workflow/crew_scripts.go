@@ -287,7 +287,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveStepInputValues(ctx context.Co
 			if err != nil || strings.HasPrefix(relative, "..") || filepath.IsAbs(relative) {
 				return nil, fmt.Errorf("step input %q must use this run's output", name)
 			}
-			content, err := hcpo.ReadWorkspaceFile(ctx, strings.TrimPrefix(paths[0], GetPromptDocsRoot()+"/"))
+			content, err := hcpo.ReadWorkspaceFile(ctx, workflowAPIPath(hcpo.GetWorkspacePath(), paths[0]))
 			if err != nil {
 				return nil, err
 			}

@@ -1238,7 +1238,7 @@ func resolveAbsoluteValidationPath(fileName string, scopes validationPathScopes)
 		return "", fmt.Errorf("absolute path outside workflow workspace")
 	}
 
-	return strings.TrimPrefix(cleanAbsPath, docsRoot+"/"), nil
+	return workflowAPIPath(scopes.WorkflowRootPath, cleanAbsPath), nil
 }
 
 // isDBSchemaPath reports whether a validation-schema file name targets the
