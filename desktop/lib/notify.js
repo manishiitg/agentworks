@@ -16,39 +16,79 @@ function sessionToken(authSecret, userId) {
   return `${body}.${crypto.createHmac('sha256', authSecret).update(body).digest('base64url')}`;
 }
 
-// startNotifyStream keeps one stream to the local server open, reconnecting, until stop() is called.
-function startNotifyStream({ getPort, secret, authSecret, userId, show, log }) {
+// The split launcher already owns a private desktop proof. Pair it with the
+// ordinary local-person session; no server signing key leaves the backend.
+async function developmentNotifyHeaders(socketPath, apiOrigin, appOrigin) {
+  const proof = await require('./devConnection').readDevelopmentProof(socketPath, apiOrigin, appOrigin);
+  const token = await new Promise((resolve, reject) => {
+    const req = http.request(new URL('/api/auth/login', apiOrigin), { method: 'POST', agent: false, headers: { 'Content-Type': 'application/json' } }, res => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => { body += chunk; if (body.length > 65536) req.destroy(new Error('Local notification sign-in unavailable.')); });
+      res.on('error', reject);
+      res.on('end', () => {
+        try {
+          const value = JSON.parse(body);
+          if (res.statusCode !== 200 || typeof value.token !== 'string' || !value.token) throw new Error();
+          resolve(value.token);
+        } catch { reject(new Error('Local notification sign-in unavailable.')); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(3000, () => req.destroy(new Error('Local notification sign-in unavailable.')));
+    req.end('{}');
+  });
+  return { Origin: appOrigin, 'X-AgentWorks-Desktop': proof, Authorization: `Bearer ${token}` };
+}
+
+// One window-independent stream. Every reconnect gets the current origin and
+// fresh credentials, including after a separately launched backend restarts.
+function startNotifyStream({ getOrigin, getHeaders, show, log }) {
   let stopped = false;
   let request = null;
   let timer = null;
-  const connect = () => {
+  const connect = async () => {
     if (stopped) return;
-    const port = getPort();
-    if (!port) { timer = setTimeout(connect, 3000); return; }
-    request = http.get({ host: '127.0.0.1', port, path: '/api/desktop/notify-stream', headers: { 'X-AgentWorks-Notify': secret, Authorization: `Bearer ${sessionToken(authSecret, userId)}`, Accept: 'text/event-stream' } }, res => {
-      if (res.statusCode !== 200) { res.resume(); retry(); return; }
-      res.setEncoding('utf8');
-      let buffer = '';
-      res.on('data', chunk => {
-        buffer += chunk;
-        let at;
-        while ((at = buffer.indexOf('\n\n')) >= 0) {
-          const block = buffer.slice(0, at);
-          buffer = buffer.slice(at + 2);
-          const event = /^event: (.*)$/m.exec(block)?.[1];
-          const data = /^data: (.*)$/m.exec(block)?.[1];
-          if (event !== 'notify' || !data) continue;
-          try { show(JSON.parse(data)); } catch (err) { log(`[notify] unreadable message: ${err.message}`); }
-        }
+    let retrying = false;
+    let current = null;
+    const retry = reason => {
+      if (stopped || retrying) return;
+      retrying = true;
+      log(`[notify] stream=retry reason=${reason}`);
+      current?.destroy();
+      timer = setTimeout(() => { timer = null; connect(); }, 3000);
+    };
+    try {
+      const origin = getOrigin();
+      if (!origin) { retry('backend_unavailable'); return; }
+      const headers = await getHeaders(origin);
+      if (stopped) return;
+      if (getOrigin() !== origin) { retry('backend_changed'); return; }
+      current = request = http.get(new URL('/api/desktop/notify-stream', origin), { headers, agent: false }, res => {
+        if (res.statusCode !== 200) { res.resume(); retry(`http_${res.statusCode}`); return; }
+        log('[notify] stream=connected');
+        res.setEncoding('utf8');
+        let buffer = '';
+        res.on('data', chunk => {
+          buffer += chunk;
+          let at;
+          while ((at = buffer.indexOf('\n\n')) >= 0) {
+            const block = buffer.slice(0, at);
+            buffer = buffer.slice(at + 2);
+            const event = /^event: (.*)$/m.exec(block)?.[1];
+            const data = /^data: (.*)$/m.exec(block)?.[1];
+            if (event !== 'notify' || !data) continue;
+            let message;
+            try { message = JSON.parse(data); } catch { log('[notify] delivery=failed reason=invalid_message'); continue; }
+            try { show(message); } catch { log('[notify] delivery=failed reason=display_failed'); }
+          }
+        });
+        res.once('end', () => retry('ended'));
+        res.once('close', () => retry('closed'));
+        res.once('error', () => retry('disconnected'));
       });
-      res.on('end', retry);
-      res.on('error', retry);
-    });
-    request.on('error', retry);
-  };
-  const retry = () => {
-    if (stopped || timer) return;
-    timer = setTimeout(() => { timer = null; connect(); }, 3000);
+      current.once('error', () => retry('unreachable'));
+    } catch { retry('credentials_unavailable'); }
   };
   connect();
   return () => {
@@ -66,4 +106,4 @@ function notifyRoute(route, remote) {
   return crew ? crew[0] : '/home';
 }
 
-module.exports = { startNotifyStream, notifyRoute };
+module.exports = { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders };

@@ -121,3 +121,72 @@ test('development window selects connections on Vite and sends proof only to its
   await openConnection(event, 'a'.repeat(32), '/crew/projects/example');
   assert.equal(loaded, appOrigin + '/crew/projects/example');
 });
+
+// PLAT-856-561: split development never connected the Mac notification stream.
+// Exercise the real private-socket reader, login and SSE client over real sockets.
+test('split desktop gets notifications again after its backend restarts with fresh proof', { timeout: 15000 }, async t => {
+  const http = require('node:http'), net = require('node:net');
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { startNotifyStream, developmentNotifyHeaders } = require('./notify');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aw-notify-'));
+  fs.chmodSync(directory, 0o700);
+  const socketPath = path.join(directory, 'desktop.sock');
+  const appOrigin = 'http://127.0.0.1:51733';
+  let origin, server, response, epoch = 1, signIns = 0, proofs = 0, streams = 0;
+  const delivered = [], logs = [];
+  const proof = () => String(epoch).repeat(64);
+  const ipc = net.createServer(connection => {
+    let body = '';
+    connection.on('data', chunk => { body += chunk; });
+    connection.on('end', () => {
+      assert.equal(JSON.parse(body).app_origin, appOrigin);
+      proofs++;
+      connection.end(JSON.stringify({ api_origin: origin, app_origin: appOrigin, secret: proof() }));
+    });
+  });
+  ipc.listen(socketPath); await once(ipc, 'listening'); fs.chmodSync(socketPath, 0o600);
+  let stop;
+  t.after(async () => {
+    stop?.(); server?.closeAllConnections();
+    if (server?.listening) await new Promise(resolve => server.close(resolve));
+    await new Promise(resolve => ipc.close(resolve));
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  const start = async () => {
+    server = http.createServer((req, res) => {
+      if (req.url === '/api/auth/login') {
+        signIns++; req.resume();
+        res.end(JSON.stringify({ token: `local-session-${epoch}` })); return;
+      }
+      assert.equal(req.url, '/api/desktop/notify-stream');
+      assert.equal(req.headers.origin, appOrigin);
+      assert.equal(req.headers['x-agentworks-desktop'], proof());
+      assert.equal(req.headers.authorization, `Bearer local-session-${epoch}`);
+      streams++; response = res;
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      const event = `event: notify\ndata: ${JSON.stringify({ title: `Finished ${epoch}`, event: 'finished' })}\n\n`;
+      res.write('event: ready\ndata: {}\n\n' + event.slice(0, 20));
+      setImmediate(() => res.write(event.slice(20)));
+    });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    origin = `http://127.0.0.1:${server.address().port}`;
+  };
+  const waitFor = async count => {
+    const deadline = Date.now() + 10000;
+    while (delivered.length < count && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(delivered.length, count, logs.join('\n'));
+  };
+  await start();
+  stop = startNotifyStream({ getOrigin: () => origin,
+    getHeaders: apiOrigin => developmentNotifyHeaders(socketPath, apiOrigin, appOrigin),
+    show: message => delivered.push(message.title), log: line => logs.push(line) });
+  await waitFor(1);
+  origin = null; response.destroy(); server.closeAllConnections();
+  await new Promise(resolve => server.close(resolve));
+  epoch++; await start(); await waitFor(2);
+  assert.deepEqual(delivered, ['Finished 1', 'Finished 2']);
+  assert.equal(signIns, 2); assert.equal(proofs, 2); assert.equal(streams, 2);
+  assert.ok(logs.some(line => line.includes('stream=retry')));
+  assert.ok(logs.every(line => !line.includes('local-session-') && !line.includes(proof())));
+  stop();
+});

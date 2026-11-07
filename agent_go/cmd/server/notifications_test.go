@@ -1,6 +1,11 @@
 package server
 
 import (
+	"context"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -57,3 +62,79 @@ func TestNotifyWebPushOnlyToBrowserPushServices(t *testing.T) {
 		}
 	}
 }
+
+// PLAT-856-561: the split app needs its existing private proof plus its local
+// person's session. A browser's session/Origin or a different caller is refused.
+func TestDesktopNotifyStreamRequiresThisMacAppAndPerson(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("DEFAULT_USER_ID", "owner")
+	oldStartup, oldHost, oldKey := desktopStartup, desktopBootstrapHost, desktopSocketKey
+	t.Cleanup(func() { desktopStartup, desktopBootstrapHost, desktopSocketKey = oldStartup, oldHost, oldKey })
+	desktopBootstrapHost = "127.0.0.1:18743"
+	desktopStartup.NotifySecret = "app-notify-proof"
+	api := &StreamingAPI{}
+	for _, mode := range []string{"packaged", "split"} {
+		kinds := []string{"allowed", "missing-proof", "forged-proof", "wrong-person", "access-token", "wrong-host", "missing-session"}
+		if mode == "split" {
+			kinds = append(kinds, "wrong-origin")
+		}
+		for _, kind := range kinds {
+			t.Run(mode+"/"+kind, func(t *testing.T) {
+				desktopSocketKey = nil
+				if mode == "split" {
+					desktopSocketKey = []byte("private-development-socket-key")
+				}
+				claims := &UserClaims{UserID: "owner"}
+				if kind == "wrong-person" {
+					claims.UserID = "other"
+				}
+				if kind == "access-token" {
+					claims.AccessToken = &accesstokens.Token{}
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				if kind != "missing-session" {
+					ctx = context.WithValue(ctx, UserContextKey, claims)
+				}
+				request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:18743/api/desktop/notify-stream", nil).WithContext(ctx)
+				request.Header.Set("Authorization", "Bearer local-session")
+				request.Header.Set("X-AgentWorks-Notify", desktopStartup.NotifySecret)
+				if mode == "split" {
+					request.Header.Set("Origin", "http://127.0.0.1:51733")
+					request.Header.Set("X-AgentWorks-Desktop", desktopSocketProof(request.Header.Get("Origin")))
+				}
+				if kind == "missing-proof" {
+					request.Header.Del("X-AgentWorks-Desktop")
+					request.Header.Del("X-AgentWorks-Notify")
+				}
+				if kind == "forged-proof" {
+					request.Header.Set("X-AgentWorks-Desktop", "forged")
+					request.Header.Set("X-AgentWorks-Notify", "forged")
+				}
+				if kind == "wrong-origin" {
+					request.Header.Set("Origin", "http://127.0.0.1:51734")
+				}
+				if kind == "wrong-host" {
+					request.Host = "127.0.0.1:18744"
+				}
+				output := &notifyCancelWriter{ResponseRecorder: httptest.NewRecorder(), cancel: cancel}
+				api.handleDesktopNotifyStream(output, request)
+				if kind == "allowed" {
+					if output.Code != http.StatusOK || !strings.Contains(output.Body.String(), "event: ready") {
+						t.Fatalf("app stream refused: %d", output.Code)
+					}
+				} else if output.Code != http.StatusForbidden {
+					t.Fatalf("invalid app admitted: %d", output.Code)
+				}
+			})
+		}
+	}
+}
+
+type notifyCancelWriter struct {
+	*httptest.ResponseRecorder
+	cancel context.CancelFunc
+}
+
+func (w *notifyCancelWriter) Flush() { w.ResponseRecorder.Flush(); w.cancel() }

@@ -484,17 +484,29 @@ func notifyServeStream(w http.ResponseWriter, r *http.Request, device string) {
 }
 
 // handleDesktopNotifyStream is the Mac app's own window-independent stream (its main process, not a page): every
-// message for this Mac's devices, its company servers' included. Admitted only for this Mac's person signed in (a
-// session token the app signs for itself) together with the secret the Mac app handed this server at start, on its
-// loopback host; neither alone is enough.
+// message for this Mac's devices, its company servers' included. Requires this Mac's person's session and a private
+// app proof on its loopback host: the startup secret in full launches, the existing owner-only socket proof in split
+// development. Neither the session nor a loopback Origin alone is enough.
 func (api *StreamingAPI) handleDesktopNotifyStream(w http.ResponseWriter, r *http.Request) {
-	secret := desktopStartup.NotifySecret
 	claims := GetUserFromContext(r.Context())
-	if !IsLocalMode() || secret == "" || r.Host != desktopBootstrapHost || claims == nil || claims.AccessToken != nil || claims.UserID != GetDefaultUserID() ||
-		!hmac.Equal([]byte(secret), []byte(r.Header.Get("X-AgentWorks-Notify"))) {
+	if !IsLocalMode() || claims == nil || claims.AccessToken != nil || claims.UserID != GetDefaultUserID() {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	if len(desktopSocketKey) != 0 {
+		// Split development uses the existing private socket proof and the
+		// normal local session. A session or a loopback Origin alone is not proof.
+		if !desktopConnectionGate(w, r) {
+			return
+		}
+	} else if desktopStartup.NotifySecret == "" || r.Host != desktopBootstrapHost ||
+		!hmac.Equal([]byte(desktopStartup.NotifySecret), []byte(r.Header.Get("X-AgentWorks-Notify"))) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	log.Printf("[NOTIFY] device=%s event=stream_connected", notifyMacAppDevice)
+	defer log.Printf("[NOTIFY] device=%s event=stream_disconnected", notifyMacAppDevice)
+
 	notifyServeStream(w, r, notifyMacAppDevice)
 }
 
