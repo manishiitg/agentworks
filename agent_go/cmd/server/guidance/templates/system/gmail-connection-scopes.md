@@ -8,7 +8,7 @@ read-only".
 ### Direct terminal use
 
 Builder and workflow terminals can run the real `gog` directly through
-`execute_shell_command`, including pipes and scripts. `GOG_HOME` is supplied by
+`terminal action=execute`, including pipes and scripts. `GOG_HOME` is supplied by
 the execution environment and identifies the shared credential store. Use
 `gog auth list --json` to discover the exact account/client pair, then run
 `gog --account '<email>' --client '<client-name>' <command>`. No hardcoded host
@@ -55,8 +55,8 @@ Personal accounts keep their owner; shared accounts remain admin-managed. Explic
 
 ### Always check current state first, from chat
 
-Call `list_gmail_connections` (optionally with `connection_id`) before answering
-any scope/permission question, and before every `update_gmail_connection_grants`
+Call `integrations action=google_connections` (optionally with `connection_id`) before answering
+any scope/permission question, and before every `integrations action=google_grants`
 call — `services` is a full replacement list, so acting without first reading
 the current one silently drops every service not repeated.
 
@@ -69,7 +69,7 @@ directly instead of asking the user to describe screenshots:
 - If `stored_but_not_granted` is empty, the connection has everything it's
   configured for.
 - If it lists something and the user hasn't reconnected since requesting it,
-  tell them to click **Reconnect** (or call `update_gmail_connection_grants`
+  tell them to click **Reconnect** (or call `integrations action=google_grants`
   to get a fresh `reconnect_url`) and complete Google's consent screen.
 - If it lists something **and the user says they already reconnected**, first
   check whether the browser callback actually reported **Gmail connected**.
@@ -81,13 +81,13 @@ directly instead of asking the user to describe screenshots:
 
 ### Changing what a connection is authorized for, from chat
 
-Call `update_gmail_connection_grants`:
+Call `integrations action=google_grants`:
 
 - `connection_id` — omit to target the account's default connection.
 - `allow_read_access` — omit to leave Gmail read access unchanged.
 - `allow_agent_write_access` — permit agents to create drafts and send/reply.
   It is off by default and requests `gmail.compose`; omit it to leave the
-  setting unchanged. Notification delivery through `record_summary` and `send_email` is separate.
+  setting unchanged. Notification delivery through `messages action=record_summary` and `messages action=email_send` is separate.
 - `services` — the **complete replacement list** of Workspace services this
   connection should be authorized for. Omit entirely to leave services
   unchanged. Pass `[]` to strip every service grant back to Gmail-only.
@@ -131,9 +131,9 @@ completed the consent screen — the tool call succeeding only means the
 ### A workflow's own permission is a third, separate layer
 
 Even once a connection's token genuinely has broad access, a specific
-*workflow* can only use a Google service through `google_workspace_cli` if
+*workflow* can only use a Google service through `integrations action=google` if
 that service is in the connection's `services` list — this is the exact
-same allowlist `update_gmail_connection_grants` edits, so fixing "this
+same allowlist `integrations action=google_grants` edits, so fixing "this
 workflow can't use Drive" and "widen this account's Drive access" are the
 same action, not two separate systems to reason about.
 
@@ -143,10 +143,10 @@ A Gmail connection's actual sending call may run through `gws` or `gog`
 (`GmailConfig.use_gog_backend`, a deployment-wide setting) — this is
 transparent to a connection's stored request and to this tool; don't try to
 detect or reason about which backend a deployment uses when managing
-scopes. `google_workspace_cli` (Drive/Sheets/Docs/Slides/Calendar) always
+scopes. `integrations action=google` (Drive/Sheets/Docs/Slides/Calendar) always
 uses `gog`, regardless of that setting.
 
-A provider login or billing email is not a Gmail connection or the signed-in AgentWorks user. The app login email also does not establish mailbox consent. Identify usable mailboxes through `list_gmail_connections` and verified scoped account checks. An empty list means no connected account; ask which account the user wants to connect without guessing from provider metadata.
+A provider login or billing email is not a Gmail connection or the signed-in AgentWorks user. The app login email also does not establish mailbox consent. Identify usable mailboxes through `integrations action=google_connections` and verified scoped account checks. An empty list means no connected account; ask which account the user wants to connect without guessing from provider metadata.
 
 
 ### Personal accounts and item selection
@@ -160,6 +160,6 @@ this Google account through it. `detach` removes only this item's selection;
 `disconnect` removes the saved connection everywhere. Only the account owner or
 an administrator changes the saved account's Google access. Company accounts
 remain administrator-managed. An account listed as saved is not automatically
-available to a run; `list_gmail_connections` shows accounts available here.
+available to a run; `integrations action=google_connections` shows accounts available here.
 Never show passwords or tokens. If sign-in expires, name the account and ask its
 owner to reconnect in Google apps or use the returned reconnect link.
