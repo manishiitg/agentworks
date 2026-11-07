@@ -94,6 +94,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
       <CrewWhereRow projectId={projectId} />
       <SharesCard view={view} target={target} projectId={projectId} />
       <AgentsCard view={view} target={target} projectId={projectId} />
+      {!!view.functions?.length && <FunctionsCard functions={view.functions} />}
       {team.lent && <LentCard lent={team.lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} />}
       {team.folder_access && <section aria-label="Sync" className={card}>
         <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
@@ -371,6 +372,19 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {change && <TeamFolderChangeDialog change={change} saving={pending === 'confirm'} onCancel={() => setChange(undefined)}
       onConfirm={() => void save('confirm', { ...team, folder: change.whole ? { whole: true } : { folders: [] } }).then(() => setChange(undefined))} />}
+  </section>
+}
+
+/** What the Team can call (owner, 7 Nov, mock "Team tab: a Functions card"): functions are how people use a Crew, so they sit
+ * with sharing. Read-only; the owner builds and edits them in Automations. */
+function FunctionsCard({ functions }: { functions: NonNullable<TeamTabView['functions']> }) {
+  return <section aria-label="Functions" className={card}>
+    <h3 className="font-semibold">Functions</h3>
+    <p className="text-xs text-muted-foreground">What the Team can call. Each runs in its own agent, which only the owner talks to.</p>
+    {functions.map(fn => <div key={fn.name} className="border-t border-border pt-2">
+      <p className="font-mono text-[13px] font-semibold">{fn.name}</p>
+      {fn.description && <p className="text-xs text-muted-foreground">{fn.description}</p>}
+    </div>)}
   </section>
 }
 
