@@ -2073,8 +2073,6 @@ func backgroundAgentStartLabel(snap BackgroundAgentSnapshot) string {
 		}
 	}
 	switch {
-	case kind == "pulse_reviewer":
-		return "AgentWorks reviewer"
 	case kind == "generic_agent":
 		return "Generic agent"
 	case strings.Contains(kind, "sub_agent"):
@@ -2094,7 +2092,7 @@ func backgroundAgentStartLabel(snap BackgroundAgentSnapshot) string {
 
 func backgroundAgentStartContext(snap BackgroundAgentSnapshot) string {
 	var fields []string
-	if snap.Kind == "generic_agent" || snap.Kind == "pulse_reviewer" {
+	if snap.Kind == "generic_agent" {
 		if executionID := strings.TrimSpace(snap.ID); executionID != "" {
 			fields = append(fields, "execution_id="+executionID)
 		}

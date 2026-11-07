@@ -271,17 +271,6 @@ func TestWorkshopExecutionNotifierQueuesReviewerCompletionForParent(t *testing.T
 	}
 }
 
-func TestWorkshopCompletionDisplayResultRejectsArtifactOutsideWorkspace(t *testing.T) {
-	workspacePath := t.TempDir()
-	got := workshopCompletionDisplayResult(workspacePath, "review saved", map[string]string{
-		"execution_type":     "pulse-reviewer",
-		"review_result_path": "../outside.md",
-	})
-	if got != "review saved" {
-		t.Fatalf("display result = %q, want fallback", got)
-	}
-}
-
 func TestWorkshopExecutionNotifierSuppressesNestedRunFailure(t *testing.T) {
 	registry := NewBackgroundAgentRegistry()
 	api := &StreamingAPI{bgAgentRegistry: registry}
