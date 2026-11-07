@@ -96,3 +96,20 @@ it('opens and saves the shared script source from its Crew', async () => {
     expect(api.put).toHaveBeenCalledWith('/api/crew-script-file', { content: "print('saved script')" }, { params: { workspace_path: 'Crew/lab/code/script', file: 'main.py' } })
   } finally { await act(async () => root.unmount()) }
 })
+
+// The Scripts tab lists the Python a workflow's own steps run (server-provided), not only saved Crew scripts.
+it('lists workflow step scripts in the Scripts tab with where each is used', async () => {
+  const spy = vi.spyOn(api, 'get').mockResolvedValueOnce({ data: { executables: [], step_scripts: [{ workflow_id: 'child', workflow: 'Reports', step_id: 's1', step: 'Normalize statement' }], agents: [] } })
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  try {
+    await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" kind="script" />))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    expect(host.textContent).toContain('Step: Normalize statement')
+    expect(host.textContent).toContain('in Reports')
+    expect(host.textContent).not.toContain('No scripts yet')
+  } finally {
+    spy.mockRestore()
+    await act(async () => root.unmount())
+  }
+})

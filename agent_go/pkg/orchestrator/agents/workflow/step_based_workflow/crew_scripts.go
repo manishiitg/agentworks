@@ -170,6 +170,21 @@ func (hcpo *StepBasedWorkflowOrchestrator) crewScriptParameters(ctx context.Cont
 	return typed, nil
 }
 
+// CrewWorkflowOwnScriptSteps lists the scripted steps that run their own saved Python (code/<step>/main.py)
+// rather than a saved Crew script, so a Crew can list everything runnable under its code.
+func CrewWorkflowOwnScriptSteps(plan *PlanningResponse) []*ScriptedPlanStep {
+	var result []*ScriptedPlanStep
+	if plan != nil {
+		steps := append(append([]PlanStepInterface{}, plan.Steps...), plan.OrphanSteps...)
+		for _, info := range collectAllSteps(steps) {
+			if step, ok := info.Step.(*ScriptedPlanStep); ok && strings.TrimSpace(step.Script) == "" {
+				result = append(result, step)
+			}
+		}
+	}
+	return result
+}
+
 func CrewScriptReferencingSteps(plan *PlanningResponse, id string) []*ScriptedPlanStep {
 	var result []*ScriptedPlanStep
 	if plan != nil {
