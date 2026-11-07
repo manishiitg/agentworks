@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 func TestAllocateScheduledRunFolderIsPermanentAndIndependentOfOtherRuns(t *testing.T) {
@@ -150,5 +151,94 @@ func TestAllocateScheduledRunFolderConcurrentOccurrencesDoNotCollide(t *testing.
 	}
 	if len(seen) != count {
 		t.Fatalf("allocated %d folders, want %d", len(seen), count)
+	}
+}
+
+// PLAT-746-384: converted workflows have no physical Workflow/<name> root.
+// Timer, webhook/function and Slack starts must allocate in Crew.Private.
+func TestBoundWorkflowNonmanualRunFoldersUsePrivateRuntime(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	binding := crewExecutableBinding{ID: "task", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/task", Kind: "workflow"}
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "lab", ProjectID: binding.CrewID, OwnerID: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(docs, binding.CrewRoot), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := registerCrewExecutable(binding); err != nil {
+		t.Fatal(err)
+	}
+	layout, found, err := crewroot.LookupExecutable(docs, binding.Root)
+	if err != nil || !found {
+		t.Fatalf("resolve binding: %v", err)
+	}
+	if err := os.MkdirAll(layout.Runtime, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, producer := range []struct {
+		name     string
+		allocate func(string, string) (string, error)
+		marker   string
+	}{
+		{"schedule", allocateScheduledRunFolder, ".schedule-run-id"},
+		{"webhook", allocateWebhookRunFolder, ".webhook-run-id"},
+		{"slack", allocateSlackRunFolder, ".slack-run-id"},
+	} {
+		t.Run(producer.name, func(t *testing.T) {
+			id := "bound-" + producer.name
+			folder, err := producer.allocate(binding.Root, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			marker, err := os.ReadFile(filepath.Join(layout.Runtime, "runs", folder, producer.marker))
+			if err != nil || string(marker) != id {
+				t.Fatalf("private invocation marker: %q %v", marker, err)
+			}
+			again, err := producer.allocate(binding.Root, id)
+			if err != nil || again != folder {
+				t.Fatalf("retry changed run folder: %q %v", again, err)
+			}
+			if producer.name == "webhook" {
+				output := "execution/task/output/result.txt"
+				file := filepath.Join(layout.Runtime, "runs", folder, filepath.FromSlash(output))
+				if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(file, []byte("completed"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				call := &crewFunctionCall{TargetKind: triggerCallerWorkflow, TargetPath: binding.Root, WorkflowRunFolder: folder, RunID: id, Files: []structuredFunctionFile{{Name: output}}}
+				root, err := openStructuredFunctionOutputRoot(call, output)
+				if err != nil {
+					t.Fatal(err)
+				}
+				raw, err := root.ReadFile(output)
+				root.Close()
+				if err != nil || string(raw) != "completed" {
+					t.Fatalf("function output: %q %v", raw, err)
+				}
+				call.RunID = "another-run"
+				if root, err := openStructuredFunctionOutputRoot(call, output); err == nil {
+					root.Close()
+					t.Fatal("accepted another invocation's output")
+				}
+			}
+		})
+	}
+	if _, err := os.Stat(filepath.Join(docs, binding.Root)); !os.IsNotExist(err) {
+		t.Fatalf("recreated standalone workflow: %v", err)
+	}
+	// Runtime storage itself must not be replaced by a symlink to another root.
+	if err := os.Rename(layout.Runtime, layout.Runtime+"-saved"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), layout.Runtime); err != nil {
+		t.Fatal(err)
+	}
+	if root, err := webhookWorkspaceRoot(binding.Root); err == nil {
+		root.Close()
+		t.Fatal("followed a planted runtime symlink")
 	}
 }

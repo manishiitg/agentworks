@@ -24,6 +24,7 @@ import (
 	"github.com/gorilla/mux"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 var permanentRunFolderPattern = regexp.MustCompile(`^run-[a-z0-9-]+$`)
@@ -32,12 +33,11 @@ func webhookWorkspaceRoot(workspace string) (*os.Root, error) {
 	if !strings.HasPrefix(workspace, "Workflow/") || path.Clean(workspace) != workspace || strings.ContainsAny(workspace, "\\\x00") {
 		return nil, fmt.Errorf("invalid workflow path")
 	}
-	docs, err := os.OpenRoot(stepworkflow.GetPromptDocsRoot())
-	if err != nil {
-		return nil, err
-	}
-	defer docs.Close()
-	return docs.OpenRoot(workspace)
+	// A logical Workflow key can be backed by its owning Crew's private
+	// runtime. Use the same contained, no-symlink opener as workflow files;
+	// opening the key under docs bypasses that binding after conversion.
+	root, _, err := wf.OpenWorkflowDirectory(stepworkflow.GetPromptDocsRoot(), workspace, ".")
+	return root, err
 }
 
 // Chat, webhook, schedule and workflow calls use the same permanent allocator.

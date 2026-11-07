@@ -137,23 +137,15 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 	if err := teamExternalSourceAuthority(ctx, rootPath, p); err != nil {
 		return wf.Result{}, err
 	}
-	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
-	if err != nil {
-		return wf.Result{}, fmt.Errorf("external Builder file writes require the local workspace mount: %w", err)
-	}
-	defer base.Close()
-	if err = externalNoSymlinks(base, rootPath); err != nil {
-		return wf.Result{}, err
-	}
-	root, err := base.OpenRoot(rootPath)
+	root, fileName, err := wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), rootPath, p)
 	if err != nil {
 		return wf.Result{}, err
 	}
 	defer root.Close()
-	if err = externalNoSymlinks(root, p); err != nil {
+	if err = externalNoSymlinks(root, fileName); err != nil {
 		return wf.Result{}, err
 	}
-	before, err := externalScopedFile(root, p)
+	before, err := externalScopedFile(root, fileName)
 	if err != nil {
 		return wf.Result{}, err
 	}
@@ -165,16 +157,16 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 	}
 	mode := os.FileMode(0644)
 	if before.Exists {
-		info, statErr := root.Stat(p)
+		info, statErr := root.Stat(fileName)
 		if statErr != nil {
 			return wf.Result{}, statErr
 		}
 		mode = info.Mode().Perm()
 	}
-	if err = root.MkdirAll(path.Dir(p), 0755); err != nil {
+	if err = root.MkdirAll(path.Dir(fileName), 0755); err != nil {
 		return wf.Result{}, err
 	}
-	tmp := path.Join(path.Dir(p), ".builder-"+uuid.NewString())
+	tmp := path.Join(path.Dir(fileName), ".builder-"+uuid.NewString())
 	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return wf.Result{}, err
@@ -193,7 +185,7 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 	}
 	// Check again after staging, so direct-editor changes during staging are
 	// detected rather than silently replacing the version used by the model.
-	current, err := externalScopedFile(root, p)
+	current, err := externalScopedFile(root, fileName)
 	if err != nil {
 		return wf.Result{}, err
 	}
@@ -213,7 +205,7 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 	if err != nil {
 		return wf.Result{}, fmt.Errorf("Builder edit audit unavailable: %w", err)
 	}
-	if err = root.Rename(tmp, p); err != nil {
+	if err = root.Rename(tmp, fileName); err != nil {
 		_ = finishExternalBuilderEdit(versionID, "failed", "replacement failed")
 		return wf.Result{}, err
 	}
@@ -294,20 +286,12 @@ func externalBuilderRemoveFile(ctx context.Context, workspace, p, expected strin
 	if err := teamExternalSourceAuthority(ctx, rootPath, p); err != nil {
 		return wf.Result{}, err
 	}
-	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
-	if err != nil {
-		return wf.Result{}, err
-	}
-	defer base.Close()
-	if err = externalNoSymlinks(base, rootPath); err != nil {
-		return wf.Result{}, err
-	}
-	root, err := base.OpenRoot(rootPath)
+	root, fileName, err := wf.OpenWorkflowDirectory(getWorkspaceDocsAbsPath(), rootPath, p)
 	if err != nil {
 		return wf.Result{}, err
 	}
 	defer root.Close()
-	before, err := externalScopedFile(root, p)
+	before, err := externalScopedFile(root, fileName)
 	if err != nil {
 		return wf.Result{}, err
 	}
@@ -327,7 +311,7 @@ func externalBuilderRemoveFile(ctx context.Context, workspace, p, expected strin
 	if err != nil {
 		return wf.Result{}, fmt.Errorf("Builder edit audit unavailable: %w", err)
 	}
-	if err = root.Remove(p); err != nil {
+	if err = root.Remove(fileName); err != nil {
 		_ = finishExternalBuilderEdit(id, "failed", "remove failed")
 		return wf.Result{}, err
 	}
