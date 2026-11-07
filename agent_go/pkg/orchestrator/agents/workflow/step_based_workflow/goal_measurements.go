@@ -2,11 +2,14 @@ package step_based_workflow
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 const goalObservationsSchema = `CREATE TABLE IF NOT EXISTS goal_observations (
@@ -56,27 +59,6 @@ func ensureGoalMeasurementSchema(ctx context.Context, db workflowEvidenceDB) err
 		}
 	}
 	return nil
-}
-
-func goalObservationID(parts ...string) string {
-	normalized := make([]string, 0, len(parts))
-	for _, part := range parts {
-		normalized = append(normalized, strings.TrimSpace(part))
-	}
-	sum := sha256.Sum256([]byte(strings.Join(normalized, "\x00")))
-	return hex.EncodeToString(sum[:])[:20]
-}
-
-func goalEvidenceJSON(values []string) string {
-	encoded, _ := json.Marshal(normalizedEvidenceStrings(values))
-	return string(encoded)
-}
-
-func nullableFloat(value *float64) interface{} {
-	if value == nil {
-		return nil
-	}
-	return *value
 }
 
 func decodeGoalEvidence(raw string) []string {
@@ -143,4 +125,24 @@ func LoadGoalMeasurements(ctx context.Context, workspacePath string, limit int) 
 	rows.Close()
 
 	return ledger, nil
+}
+
+// Existing measurement readers use the workflow database, never its Crew database.
+// The remaining metric API is retired separately after the data cutover.
+func GoalMeasurementWorkspace(root string) (string, error) {
+	layout, found, err := crewroot.LookupExecutable(fsutil.WorkspaceDocsRoot(), root)
+	if err != nil {
+		return "", err
+	}
+	if found {
+		if root != layout.Binding.Root {
+			return "", fmt.Errorf("use the workflow's root for goal measurements")
+		}
+		return layout.Binding.Root, nil
+	}
+	ref, valid := workspaceref.Parse(root)
+	if !valid || !strings.HasPrefix(ref.Logical(), "Workflow/") {
+		return "", fmt.Errorf("use the workflow database for progress; open its dashboard to view it")
+	}
+	return root, nil
 }
