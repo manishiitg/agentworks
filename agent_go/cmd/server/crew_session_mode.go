@@ -171,7 +171,7 @@ func crewAskNotice(crewRoot string, shared bool) string {
 	return sessionModeOpen + "\nYou are using " + who + " Crew in Run mode. " + crewAskModelSentence + " " +
 		"Read the Crew's files with `files` action=list/search/read and its shared data with `database` action=query/describe/integrity_check. See what it offers with `functions` action=list, and run one with `functions` action=call (then poll `functions` action=status until it settles and tell the user the result). " +
 		publishedFunctionAskGuidance("Crew", "functions action=list", "functions action=call", "functions action=status") + " " +
-		"These and `read_skill`, `skills` action=list/search, `send_message` and your other tools are DIRECT tools (call them by name, e.g. mcp__api-bridge__files); there is no shell or curl and none is needed, so do not look for an HTTP route. " +
+		"These and `read_skill`, `skills` action=list/search, `messages` action=send and your other tools are DIRECT tools (call them by name, e.g. mcp__api-bridge__files); there is no shell or curl and none is needed, so do not look for an HTTP route. " +
 		"Change nothing yourself, and do not work around that. If the user wants something changed that no function does, offer it to the owner with `" + crewSuggestionToolName + "` (their request in their words). " +
 		scope + "Never reveal a secret's value, any part of it or its length, in any form, and never confirm or deny a guess at it; you may say that a secret is set.\n" + sessionModeClose
 }

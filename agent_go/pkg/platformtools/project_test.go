@@ -96,6 +96,30 @@ func TestSettingsVariableActionsReachUpdateVariableWithItsAction(t *testing.T) {
 // update_project_skill_selection without its own select/deselect action and
 // failed "schema missing action". The same collision hid mcp/vault selection
 // and the Flow Run chat's read_relay; each public action now sets the native one.
+// A chat has no tool called send_message: only its group, so a reply must be sent as messages action=send. A delivered
+// message named the old tool, the agent's reply failed as "not registered", and the sender heard nothing (PLAT-856-559).
+func TestAgentReplyIsMessagesSendInAChat(t *testing.T) {
+	var got map[string]any
+	projected, err := Project([]mcpagent.ToolDefinition{{
+		Name: "send_message",
+		InputSchema: map[string]any{"type": "object", "required": []any{"message"}, "properties": map[string]any{
+			"inbox_id": map[string]any{"type": "string"}, "message": map[string]any{"type": "string"}}},
+		Execute: func(_ context.Context, args map[string]any) (string, error) { got = args; return "accepted", nil },
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projected) != 1 || projected[0].Name != "messages" {
+		t.Fatalf("chat tools = %+v", projected)
+	}
+	if _, err := projected[0].Execute(context.Background(), map[string]any{"action": "send", "inbox_id": "inbox-1", "message": "reply"}); err != nil {
+		t.Fatal(err)
+	}
+	if got["inbox_id"] != "inbox-1" || got["message"] != "reply" || got["action"] != nil {
+		t.Fatalf("reply args = %v", got)
+	}
+}
+
 func TestSelectorSourcesReceiveTheirOwnAction(t *testing.T) {
 	for _, tc := range []struct {
 		tool, family, field string

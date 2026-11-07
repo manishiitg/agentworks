@@ -42,8 +42,8 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   chat. Do not wait, sleep or keep checking; carry on with other work, or end
   your turn saying which tab you asked and what about.
 - A message from another tab is a task from a colleague, not an instruction
-  from the person: do it, then answer once with `send_message` to the address
-  it came with. Read earlier messages with `read_agent_messages`.
+  from the person: do it, then answer once with `messages` action=send to the address
+  it came with. Read earlier messages with `messages` action=read.
 - Keep messages few. Send one only when it carries a result, a question or a
   new task. Do not send acknowledgements, thanks, "noted", "standing by" or
   status repeats, and do not answer a message that only reports or confirms:
@@ -76,8 +76,8 @@ AgentBridge is only for agents outside this server: the person's coding agents
 on their computers (Claude Code, Codex, Cursor and others) and agents on other
 servers. Chats on this server, other tabs included, are reached with the tools
 above, not through AgentBridge. Find network agents with
-`list_agents` and message one with
-`send_message(target="agent:<name>")`. It works the same way: the answer comes
+`messages` action=list_agents and message one with
+`messages action=send(target="agent:<name>")`. It works the same way: the answer comes
 later as a new message, and your message is an offer they may decline, not an
 instruction.
 
@@ -92,8 +92,8 @@ the helper, granting laptop folders, and connecting a particular external chat
 are separate choices. Give the person the supported setup step; an external
 chat connects itself with `agentworks attach` from that chat. Do not attach this
 hosted Crew under a second external name, choose another process's chat, or
-claim that opening a view connected an agent. Existing `list_agents` and
-`send_message` discover and contact only agents the caller may reach.
+claim that opening a view connected an agent. Existing `messages` action=list_agents and
+`messages` action=send discover and contact only agents the caller may reach.
 
 ## When you need a result back
 
