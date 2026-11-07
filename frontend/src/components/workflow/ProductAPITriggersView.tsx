@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import axios from 'axios'
 import { Copy, Webhook } from 'lucide-react'
-import { apiTriggerURL, productWebhooksApi, type ProductAPITrigger, type ProductTriggerScope } from '../../api/productWebhooks'
+import { apiTriggerURL, productWebhooksApi, type ProductAPITrigger, type ProductTriggerScope, type RunDestinationChoice } from '../../api/productWebhooks'
 import { OnlineOnlyNote } from '../../products/work/useMacCrew'
 import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations } from '../automation/AutomationKit'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
@@ -17,6 +17,7 @@ function errorMessage(error: unknown): string {
 export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false, hideEmpty = false }: { embedded?: boolean; hideEmpty?: boolean; scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const { profileId, projectId } = scope
   const [triggers, setTriggers] = useState<ProductAPITrigger[]>([])
+  const [destinations, setDestinations] = useState<RunDestinationChoice[]>([])
   const [openId, setOpenId] = useState<string | null>(null)
   const [issued, setIssued] = useState<ProductAPITrigger | null>(null)
   const [error, setError] = useState('')
@@ -26,7 +27,11 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
   const refresh = useCallback(async () => {
     // Caller bindings (kind=internal) are listed under Functions → Callers;
     // this view is external webhooks only.
-    try { setTriggers((await productWebhooksApi.list({ profileId, projectId })).triggers.filter(trigger => trigger.kind !== 'internal')) }
+    try {
+      const listed = await productWebhooksApi.list({ profileId, projectId })
+      setTriggers(listed.triggers.filter(trigger => trigger.kind !== 'internal'))
+      setDestinations(listed.run_destinations || [])
+    }
     catch (cause) { setError(errorMessage(cause)) }
   }, [profileId, projectId])
 
@@ -91,9 +96,8 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <span className="shrink-0 font-medium text-foreground">Run in</span>
-        <select aria-label={`Run destination for ${trigger.name}`} disabled={busy} value={trigger.run_destination || 'chat'} onChange={event => void save({ ...trigger, run_destination: event.target.value as 'chat' | 'isolated' })} className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground">
-          <option value="chat">Main chat</option>
-          <option value="isolated">Own conversation</option>
+        <select aria-label={`Run destination for ${trigger.name}`} disabled={busy} value={trigger.run_destination || 'chat'} onChange={event => void save({ ...trigger, run_destination: event.target.value as ProductAPITrigger['run_destination'] })} className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground">
+          {(destinations.length ? destinations : [{ id: trigger.run_destination || 'chat', label: trigger.run_destination || 'chat' }]).map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
         </select>
         </label>
         <div className="flex flex-wrap gap-1.5"><button type="button" disabled={busy} className={buttonClass} onClick={() => void save({ ...trigger, enabled: !trigger.enabled })}>{trigger.enabled ? 'Disable' : 'Enable'}</button><button type="button" disabled={busy} className={buttonClass} onClick={() => void save(trigger, true)}>Rotate secret</button><button type="button" disabled={busy} className={buttonClass} onClick={() => void remove(trigger.id)}>Remove</button></div>

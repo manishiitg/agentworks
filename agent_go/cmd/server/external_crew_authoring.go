@@ -120,11 +120,11 @@ func (spec crewScheduleSpec) applyTo(schedule *productschedule.Schedule) error {
 		schedule.Enabled = *spec.Enabled
 	}
 	if strings.TrimSpace(spec.RunDestination) != "" {
-		isolated, err := isolatedForRunDestination(spec.RunDestination)
+		destination, err := parseRunDestination(spec.RunDestination)
 		if err != nil {
 			return err
 		}
-		schedule.Isolated = isolated
+		destination.apply(schedule)
 	}
 	return nil
 }
@@ -144,7 +144,7 @@ func crewScheduleSpecFrom(schedule productschedule.Schedule, withID bool) crewSc
 	out := crewScheduleSpec{
 		Name: schedule.Name, Description: schedule.Description, Messages: append([]string(nil), schedule.Messages...),
 		CronExpression: schedule.CronExpression, RunAt: schedule.RunAt, Timezone: schedule.Timezone, PreferredHour: schedule.PreferredHour,
-		Enabled: &enabled, RunDestination: runDestination(schedule.Isolated),
+		Enabled: &enabled, RunDestination: scheduleRunDestination(schedule),
 	}
 	if schedule.CadenceHours > 0 {
 		hours := schedule.CadenceHours
@@ -964,7 +964,7 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"cadence_hours":   map[string]any{"type": "integer", "minimum": 0, "description": "Run this many hours after the last run (instead of cron)."},
 		"preferred_hour":  map[string]any{"type": "integer", "minimum": 0, "maximum": 23},
 		"enabled":         map[string]any{"type": "boolean"},
-		"run_destination": map[string]any{"type": "string", "enum": []any{runDestinationChat, runDestinationIsolated}, "description": "chat (default) or isolated."},
+		"run_destination": map[string]any{"type": "string", "enum": runDestinationEnumAny(), "description": runDestinationHelp},
 	}}
 	props := map[string]any{
 		"root_path":         str("Local app only, at creation: full path of an existing folder to use directly. Crew resources are kept in its .agentworks folder; existing files and instructions are preserved. Omit for a managed folder."),

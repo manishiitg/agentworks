@@ -24,6 +24,10 @@ func TestProductWebhookTriggerValidationAndDTO(t *testing.T) {
 	if got := productWebhookDTO(trigger).RunDestination; got != runDestinationIsolated {
 		t.Fatalf("run destination = %q", got)
 	}
+	trigger.RunDestination = runDestinationNew
+	if got := productWebhookDTO(trigger).RunDestination; got != runDestinationNew || !trigger.ownConversation() || !trigger.runDestinationSetting().New {
+		t.Fatalf("a new conversation each time is saved and shown as %q", got)
+	}
 	for name, mutate := range map[string]func(*productWebhookTrigger){
 		"message": func(value *productWebhookTrigger) { value.Message = "" },
 		"auth":    func(value *productWebhookTrigger) { value.Webhook.AuthMode = "none" },
