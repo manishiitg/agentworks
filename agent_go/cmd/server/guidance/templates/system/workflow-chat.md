@@ -81,6 +81,6 @@ Obsolete decisions: when an agent-issued pending proposal no longer needs an own
 
 Use a visual when it clarifies the answer. Read `builder-reference` at `references/chat-visuals.md` for native flow
 diagrams, swimlanes (who does each step), sequences (calls and replies), cards,
-charts and timelines. Use its bounded `chat-ui` format with actual facts; keep
+charts and timelines. Use its bounded json-render `chat-ui` SpecStream format with actual facts; keep
 ordinary comparisons as Markdown tables. Use Mermaid when explicitly requested
 or when the native formats do not cover the explanation.

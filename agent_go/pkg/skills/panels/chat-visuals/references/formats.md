@@ -11,35 +11,42 @@ Use a visual only when it helps explain the answer. Supported formats:
 - **Explain events:** a vertical timeline, at most 20 events, in the order supplied.
 - **Supporting evidence:** expandable details, collapsed initially, with a short title and Markdown body.
 
-For native visuals, write a fenced `chat-ui` block containing JSON, exactly as in
+For native visuals, write a fenced `chat-ui` block containing json-render SpecStream: one complete JSON patch operation per line, exactly as in
 these fictional format examples (replace with the person's actual facts):
 
 ```chat-ui
-{"type":"chart","title":"Requests per day","style":"line","unit":"requests","data":[{"label":"Mon","value":12},{"label":"Tue","value":18},{"label":"Wed","value":15}]}
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"chart","props":{"title":"Requests per day","style":"line","unit":"requests","data":[{"label":"Mon","value":12},{"label":"Tue","value":18},{"label":"Wed","value":15}]},"children":[]}}
 ```
 
 ```chat-ui
-{"type":"timeline","title":"Request history","items":[{"when":"09:00","title":"Received","detail":"Request added to the queue."},{"when":"09:15","title":"Assigned","detail":"A teammate started work."}]}
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"timeline","props":{"title":"Request history","items":[{"when":"09:00","title":"Received","detail":"Request added to the queue."},{"when":"09:15","title":"Assigned","detail":"A teammate started work."}]},"children":[]}}
 ```
 
 ```chat-ui
-{"type":"details","title":"How this was calculated","body":"**Method:** sum the daily totals.\n\nInclude the source records or links here."}
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"details","props":{"title":"How this was calculated","body":"**Method:** sum the daily totals.\n\nInclude the source records or links here."},"children":[]}}
 ```
 
 ```chat-ui
-{"type":"cards","title":"Two options","layout":"grid","items":[{"title":"Riverside stay","description":"A quiet setting near the river.","image":"https://example.com/river.jpg","href":"https://example.com/stays/river"},{"title":"Forest stay","description":"A cabin surrounded by trees.","image":"Crew/example/db/assets/forest.jpg"}]}
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"cards","props":{"title":"Two options","layout":"grid","items":[{"title":"Riverside stay","description":"A quiet setting near the river.","image":"https://example.com/river.jpg","href":"https://example.com/stays/river"},{"title":"Forest stay","description":"A cabin surrounded by trees.","image":"Crew/example/db/assets/forest.jpg"}]},"children":[]}}
 ```
 
 ```chat-ui
-{"type":"diagram","title":"How requests move","direction":"vertical","edges":[{"from":"app","to":"service","bidirectional":true},{"from":"service","to":"handlers"}],"nodes":[{"id":"app","title":"Website","description":"The person sends a request."},{"id":"service","title":"Processing service","description":"Routes the request to the right handler.","emphasis":true},{"id":"handlers","title":"Handlers","items":[{"title":"Data","description":"Read saved records"},{"title":"Reports","description":"Prepare a result"}]}]}
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"diagram","props":{"title":"How requests move","direction":"vertical","edges":[{"from":"app","to":"service","bidirectional":true},{"from":"service","to":"handlers"}],"nodes":[{"id":"app","title":"Website","description":"The person sends a request."},{"id":"service","title":"Processing service","description":"Routes the request to the right handler.","emphasis":true},{"id":"handlers","title":"Handlers","items":[{"title":"Data","description":"Read saved records"},{"title":"Reports","description":"Prepare a result"}]}]},"children":[]}}
 ```
 
 ```chat-ui
-{"type":"swimlane","title":"From request to result","lanes":[{"id":"person","title":"Person"},{"id":"agent","title":"AI teammate"},{"id":"app","title":"Connected app"}],"steps":[{"id":"ask","lane":"person","title":"Send request"},{"id":"prepare","lane":"agent","title":"Prepare the work"},{"id":"save","lane":"app","title":"Save the result"}]}
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"swimlane","props":{"title":"From request to result","lanes":[{"id":"person","title":"Person"},{"id":"agent","title":"AI teammate"},{"id":"app","title":"Connected app"}],"steps":[{"id":"ask","lane":"person","title":"Send request"},{"id":"prepare","lane":"agent","title":"Prepare the work"},{"id":"save","lane":"app","title":"Save the result"}]},"children":[]}}
 ```
 
 ```chat-ui
-{"type":"sequence","title":"A question and its answer","participants":[{"id":"person","title":"Person"},{"id":"agent","title":"AI teammate"},{"id":"app","title":"Connected app"}],"messages":[{"from":"person","to":"agent","label":"Ask a question"},{"from":"agent","to":"app","label":"Read the relevant records"},{"from":"app","to":"agent","label":"Return the records","reply":true},{"from":"agent","to":"person","label":"Answer with evidence","reply":true}]}
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"sequence","props":{"title":"A question and its answer","participants":[{"id":"person","title":"Person"},{"id":"agent","title":"AI teammate"},{"id":"app","title":"Connected app"}],"messages":[{"from":"person","to":"agent","label":"Ask a question"},{"from":"agent","to":"app","label":"Read the relevant records"},{"from":"app","to":"agent","label":"Return the records","reply":true},{"from":"agent","to":"person","label":"Answer with evidence","reply":true}]},"children":[]}}
 ```
 
 Swimlanes accept 1–6 `lanes` (unique `id`, `title` up to 80 characters) and
@@ -50,7 +57,7 @@ Sequence diagrams accept 1–6 `participants` (unique `id`, `title` up to 80)
 and 1–24 `messages` in chronological order (`from`, `to` as participant IDs,
 `label` up to 120, optional `reply:true` for a dashed response). Self-messages
 are supported. Actor and step IDs use the same short ID rules as diagrams.
-Write lanes/participants before steps/messages so completed records can appear
+Add lanes/participants before appending steps/messages so completed records can appear
 while streaming. Keep labels concise and use actual facts, not invented calls.
 Every native diagram has Copy image (or Download image) for the full diagram;
 copying is local and does not send it to Slack or change access.
@@ -81,12 +88,33 @@ Label fictional examples. Put the main answer outside collapsed details, and
 prefer ordinary text where clearer. The app handles theme and mobile sizing.
 Do not author HTML/CSS/JavaScript/TSX, metric cards, progress widgets or freeform
 page layouts in chat. Choose the supported card layout or diagram direction/grouping instead. Use a Dashboard for a reusable page or full interactive app.
-For progressive display, put `type` and `title` first, then chart `style`/`unit` or
-card `layout`, then `data` or `items`. For diagrams, put `direction` and complete
-`edges` before `nodes`; a connector appears only when both complete nodes exist.
-Write each point/event/card/node as one complete JSON object, in display order. Put expandable details `body` last and escape it as a JSON string.
-Keep using the same single `chat-ui` fence; do not emit patches, terminal output,
-multiple replacement versions, or a separate raw JSON copy.
+The block uses the same format for streaming and saved replies. Set `/root` to
+`"visual"`, then add `/elements/visual` with a supported `type`, its `props`, and
+`children:[]`. Keep one widget per fence, and use multiple fences around your
+normal explanation when useful. The app uses Vercel json-render with its own
+compact catalog; do not use the Slack/Teams Card catalog, arbitrary components,
+child layouts, bindings, actions, HTML, CSS or scripts.
+
+For progressive display, start with the title, style and an empty data array,
+then append each complete record with `add` at the array's `/-` path. Empty
+widgets show a placeholder until they have content. Example:
+
+```chat-ui
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"chart","props":{"title":"Requests","style":"bar","data":[]},"children":[]}}
+{"op":"add","path":"/elements/visual/props/data/-","value":{"label":"Mon","value":12}}
+{"op":"add","path":"/elements/visual/props/data/-","value":{"label":"Tue","value":18}}
+```
+
+Append timeline/card records at `/elements/visual/props/items/-`, diagram nodes
+at `/elements/visual/props/nodes/-`, then edges after both nodes exist. Define
+lanes/participants before steps/messages. For details, use `replace` at
+`/elements/visual/props/body` with the complete updated Markdown string after
+another paragraph is ready. `replace` may correct a value and `remove` may remove
+an item. Only add, replace and remove operations are supported in chat. Do not
+send incomplete JSON as a completed operation, repeat old append operations,
+write a separate raw JSON copy, or use the retired single-object widget format.
+Keep each block under 50,000 characters and at most 256 operations.
 
 The app draws complete points/events as native message deltas arrive. Other
 connections show a small placeholder until the completed assistant reply arrives;
