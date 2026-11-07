@@ -17,9 +17,9 @@ func main() {
 		log.Fatal("supply --docs and --state for the stopped instance")
 	}
 	os.Setenv("AGENTWORKS_STATE_ROOT", *state)
-	n, backup, err := crewroot.MigrateExecutableSources(*docs)
+	n, backup, err := crewroot.MigrateCrewScripts(*docs)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("script migration failed after %d moves; backup=%s: %v", n, backup, err)
 	}
-	fmt.Printf("Moved %d authored paths; backup=%s\n", n, backup)
+	fmt.Printf("Moved %d script source/runtime paths; backup=%s\n", n, backup)
 }

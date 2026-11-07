@@ -167,6 +167,9 @@ func (api *StreamingAPI) loadWorkflowProviderSecret(ctx context.Context, userID,
 	if strings.TrimSpace(userID) == "" || strings.TrimSpace(workflowPath) == "" {
 		return nil, nil
 	}
+	if api.chatStore == nil {
+		return nil, fmt.Errorf("workflow provider credential store is unavailable")
+	}
 	credential, err := api.chatStore.GetWorkflowProviderCredential(ctx, userID, workflowPath, providerID)
 	if err != nil || credential == nil {
 		return nil, err
