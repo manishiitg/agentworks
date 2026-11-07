@@ -1,6 +1,5 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { Link2, X } from 'lucide-react'
-import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { normalizeWorkspacePath } from '../../utils/workspacePathUtils'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
@@ -25,30 +24,20 @@ type WorkflowReferenceAccessProps = {
 }
 
 export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorkspacePath, disabled = false, additionalReferences = [], additionalLabel = 'Crew', showAdditionalGroup = false, extraGroups = [], hideAdd = false }: WorkflowReferenceAccessProps) {
-  const workflows = useWorkflowManifestStore(state => state.workflows)
-  const refreshWorkflows = useWorkflowManifestStore(state => state.refreshWorkflows)
   const normalizedSelected = useMemo(
     () => [...new Set(selectedPaths.map(normalizeWorkspacePath).filter(Boolean))],
     [selectedPaths],
   )
   const excluded = normalizeWorkspacePath(excludeWorkspacePath || '')
-  const workflowReferences = workflows.map(workflow => ({
-    path: normalizeWorkspacePath(workflow.workspace_path),
-    label: workflow.manifest.label,
-    icon: workflow.manifest.icon,
-  })).filter(reference => reference.path && reference.path !== excluded)
   const crewReferences = additionalReferences.map(reference => ({
     ...reference,
     path: normalizeWorkspacePath(reference.path),
   })).filter(reference => reference.path && reference.path !== excluded)
-  const availableWorkflows = workflowReferences.filter(reference => {
-    return !normalizedSelected.includes(reference.path)
-  })
   const availableCrew = crewReferences.filter(reference => {
     return !normalizedSelected.includes(reference.path)
   })
   const extraReferences = extraGroups.map(group => group.references.map(reference => ({ ...reference, path: normalizeWorkspacePath(reference.path) })).filter(reference => reference.path && reference.path !== excluded))
-  const knownReferences = [...workflowReferences, ...crewReferences, ...extraReferences.flat()]
+  const knownReferences = [...crewReferences, ...extraReferences.flat()]
   const unknownSelected = normalizedSelected.filter(path => !knownReferences.some(reference => reference.path === path))
 
   const add = (path: string) => {
@@ -90,22 +79,17 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
     </div>
   )
 
-  useEffect(() => {
-    if (workflows.length === 0) void refreshWorkflows()
-  }, [refreshWorkflows, workflows.length])
-
   return (
     <section className="rounded-lg border border-border p-4">
       <div className="flex items-start gap-2">
         <Link2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
         <div>
           <h3 className="text-sm font-medium text-foreground">Work linked here</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Other Crews and workflows this one can open and use. {normalizedSelected.length} linked.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Other Crews this one can open and use. {normalizedSelected.length} linked.</p>
         </div>
       </div>
       <div className="mt-3 grid gap-3">
         {hideAdd && !normalizedSelected.length && <p className="text-xs text-muted-foreground">No linked work. Ask in chat to link a project.</p>}
-        {renderGroup('Workflows', 'Reusable automations you have built.', workflowReferences, availableWorkflows, 'Attach a workflow…')}
         {showAdditionalGroup && renderGroup(additionalLabel, 'Your other Crews.', crewReferences, availableCrew, `Attach ${additionalLabel}…`)}
         {extraGroups.map((group, index) => <div key={group.label}>{renderGroup(group.label, group.description, extraReferences[index], extraReferences[index].filter(reference => !normalizedSelected.includes(reference.path)), group.placeholder, true)}</div>)}
         {unknownSelected.length > 0 && <div className="rounded-md border border-border/80 p-3">
