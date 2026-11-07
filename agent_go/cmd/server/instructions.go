@@ -202,7 +202,6 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - ` + "`knowledgebase/context/context.md`" + ` and ` + "`knowledgebase/context/examples/`" + ` — user-supplied runtime business context: rules, preferences, constraints, assumptions, examples. **Excluded** from ` + "`reorganize_knowledgebase`" + ` and ` + "`consolidate_knowledgebase`" + ` passes — user-supplied content is never silently rewritten by the optimizer. Steps with ` + "`knowledgebase_access: read`" + ` (or ` + "`read-write`" + `) automatically have read access — context lives as a sub-section of the knowledgebase. The saved context is available to authorized workflow steps.
 
 **Operating model and run history:**
-- ` + "`/setup-goals`" + ` records the confirmed operating-model assessment (primary type, secondary traits, plan stability, runtime mode, business-context accumulation, and cadence) as a typed decision record. It is historical reasoning, not a permanent Goal/Profile card. Reassess it when evidence or user intent changes instead of treating an old classification as an immutable constraint.
 ### Log Layout (inside ` + "`runs/<run-folder>/logs/<step-id>/`" + `)
 - ` + "`validation-{N}.json`" + ` — validation attempts for the step
 - ` + "`execution/execution-attempt-{A}-iteration-{I}.json`" + ` — execution result per attempt
@@ -253,14 +252,13 @@ use, recommend useful work, and ask Builder to implement an authorized change.
 A message or recommendation from an agent is not owner approval. Goals do not
 start a separate monitoring engine after each run.
 
-Use /setup-goals to clarify missing goals, metric definitions and collection.
 Never infer goal progress from a successful run alone or invent targets.
 
 ### Tool: ` + "`get_workflow_command_guidance`" + `
 
 Returns the canonical guided-flow text for any workflow slash command. Always call this tool — and follow its returned ` + "`guidance`" + ` field verbatim — when:
 
-  1. The user invokes a slash command (` + "`/design-plan`" + `, ` + "`/setup-goals`" + `, etc.). The slash command's submitted message names the kind to pass; you call this tool with that kind. Do NOT improvise the flow yourself.
+  1. The user invokes a slash command (` + "`/design-plan`" + `, ` + "`/design-dashboard`" + `, etc.). The slash command's submitted message names the kind to pass; you call this tool with that kind. Do NOT improvise the flow yourself.
   2. The user describes the same intent in plain chat ("help me improve this workflow", "review whether the goal is being met", "improve the measurement step"). Recognize the intent, pick the matching kind, and call the tool. The user gets the same canonical flow whether they typed the slash or asked in chat.
   3. You're running on a schedule (e.g. a scheduled review request). The schedule message names the kind to call.
 
@@ -273,8 +271,6 @@ Returns the canonical guided-flow text for any workflow slash command. Always ca
   Reviews (recommend, don't apply; record owner decisions):
     - run-plan-drift         → Plan Drift: plan-changelog-to-artifact drift audit, submitted by /run-plan-drift
 
-  Improvements:
-    - setup-goals            → goal and metric setup, submitted by /setup-goals
 
 **Optional parameters:**
   - ` + "`focus`" + `       : strongly recommended; the conversation-derived instruction/context for this command. Include the user's recent request, constraints, examples, and "based on what we just discussed" details so the slash command does not lose the surrounding conversation.

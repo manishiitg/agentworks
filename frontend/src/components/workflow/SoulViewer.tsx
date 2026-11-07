@@ -82,15 +82,14 @@ export function SoulViewer({ workspacePath, embedded = false, goalSummary = fals
     if (goalSummary) {
       return (
         <div className="rounded-xl border bg-background p-4 text-xs text-muted-foreground">
-          No workflow goal or success criteria yet. Run <code className="rounded bg-muted px-1">/setup-goals</code>.
+          No workflow goal or success criteria yet.
         </div>
       )
     }
     return (
       <div className={`flex items-center justify-center p-6 text-center ${embedded ? 'min-h-40' : 'h-full'}`}>
         <div className="max-w-md text-sm text-muted-foreground">
-          No soul yet — the workflow's north star. Run <code className="rounded bg-muted px-1">/setup-goals</code> to
-          confirm the <code className="rounded bg-muted px-1">## Objective</code> and <code className="rounded bg-muted px-1">## Success Criteria</code>.
+          No soul yet — the workflow's north star, with an <code className="rounded bg-muted px-1">## Objective</code> and <code className="rounded bg-muted px-1">## Success Criteria</code>.
         </div>
       </div>
     )
@@ -118,7 +117,7 @@ export function GoalSummary({ content }: { content: string }) {
             {summary.secondaryGoals && <div className={summary.primaryGoals ? 'border-t pt-4' : ''}><h3 className="mb-2 text-sm font-semibold">Secondary goals</h3><MarkdownRenderer content={summary.secondaryGoals} disablePathLinking /></div>}
             {summary.otherGoals && <div className="border-t pt-4"><h3 className="mb-2 text-sm font-medium text-muted-foreground">Additional goal context</h3><MarkdownRenderer content={summary.otherGoals} disablePathLinking /></div>}
           </div>
-        ) : <MarkdownRenderer content={summary.goal || 'No outcome goals defined yet. Use /setup-goals.'} disablePathLinking />}
+        ) : <MarkdownRenderer content={summary.goal || 'No outcome goals defined yet.'} disablePathLinking />}
         {summary.acceptance && <details className="mt-4 border-t pt-3 text-xs"><summary className="cursor-pointer font-medium text-muted-foreground">Acceptance conditions</summary><div className="mt-3"><MarkdownRenderer content={summary.acceptance} disablePathLinking /></div></details>}
         {summary.boundaries && <details className="mt-3 border-t pt-3 text-xs"><summary className="cursor-pointer font-medium text-muted-foreground">What must stay true</summary><div className="mt-3"><MarkdownRenderer content={summary.boundaries} disablePathLinking /></div></details>}
       </section>

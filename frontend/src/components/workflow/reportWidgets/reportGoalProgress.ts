@@ -350,7 +350,7 @@ export async function renderReportGoalProgress(
         ? grid
         : el(
             "p",
-            "Measurement setup needed. Ask the builder to run /setup-goals.",
+            "No measurements recorded yet.",
             "message",
           ),
     );

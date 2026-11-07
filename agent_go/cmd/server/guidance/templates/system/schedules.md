@@ -113,9 +113,6 @@ after your Goals. A Goal's `notifications.wake_tab` can message the selected Cre
 chat when its run fails, ends partly complete or produces no workflow run.
 Neither channel grants additional access or changes the Goal's execution rules.
 
-## Goal measurement setup
-When setting up a Goal, use get_workflow_command_guidance(kind="setup-goals"). Propose outcomes, one or more primary metrics per goal, linked supporting measurements and boundaries using existing context. Ask only unresolved user decisions. Connect collection to producing runs or appropriate delayed refreshes, independently of any reviewing Crew schedule. Existing workflows without configured metrics keep running; recommend /setup-goals without repeatedly raising technical bugs for missing setup.
-
 ### API triggers (inbound webhooks)
 
 An API trigger runs a saved route on an authenticated JSON POST instead of a clock tick. Open the workflow **Schedules** view and select **Webhooks** to add a route and optional saved inputs binding, copy its endpoint, select generic bearer-token or GitHub signature authentication, and generate/rotate its secret. Multiple API and time triggers can target the same route. Creation uses `/api/workflow-webhooks`, not `create_schedule`; never invent a token or handwrite encrypted credentials.

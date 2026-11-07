@@ -34,7 +34,6 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 		"design-plan":      `kind="design-plan"`,
 		"run-plan-drift":   `kind="run-plan-drift"`,
 		"design-dashboard": `kind="design-dashboard"`,
-		"setup-goals":      `kind="setup-goals"`,
 	} {
 		prompt, ok := byName[name]
 		if !ok {
