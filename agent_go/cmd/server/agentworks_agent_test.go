@@ -153,6 +153,19 @@ func TestAgentDirectoryOtherOwnedCrewsNeedALinkExceptForAgentWorks(t *testing.T)
 	if got := crewIDs(beta); got[fixtureCrewID] || !got["beta-crew"] {
 		t.Fatalf("an unlinked Crew must list only itself: %v", got)
 	}
+	// Not just hidden: a message or function call from an unlinked Crew to another Crew of the same person is refused,
+	// while the AgentWorks main agent may.
+	ctxA := f.Ctx(fixtureUserA)
+	alphaTarget := triggerTarget{Kind: triggerCallerCrew, Path: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), CrewID: fixtureCrewID}
+	callerFrom := func(path, id string) triggerLinkCaller {
+		return triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: id}, Path: path}
+	}
+	if err := requireLinkedOwnCrew(ctxA, fixtureUserA, callerFrom(beta, "beta-crew"), alphaTarget); err == nil {
+		t.Fatal("an unlinked Crew reached another Crew of the same person")
+	}
+	if err := requireLinkedOwnCrew(ctxA, fixtureUserA, callerFrom(aw.WorkspacePath, aw.CrewID), alphaTarget); err != nil {
+		t.Fatalf("AgentWorks must reach the person's Crews: %v", err)
+	}
 	if got := crewIDs(""); !got[fixtureCrewID] || !got["beta-crew"] {
 		t.Fatalf("outside a Crew every owned Crew shows: %v", got)
 	}

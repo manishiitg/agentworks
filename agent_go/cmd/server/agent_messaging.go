@@ -294,6 +294,11 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			return nil, err
 		}
 	}
+	if inboxID == "" {
+		if err := requireLinkedOwnCrew(ctx, userID, caller, target); err != nil {
+			return nil, err
+		}
+	}
 	message = strings.TrimSpace(message)
 	var file *agentMessageFile
 	if len(files) > 0 {
@@ -1217,7 +1222,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
-	}{"list_agents", "List every agent you can use, in one list: Crews, Goals and Relays you own or that are shared with you (with their functions), and your agents connected through AgentBridge (local Claude Code, Codex, Cursor, Muse, Pi). Nothing has to be linked first. Use an agent's id: functions action=call(target=<id>, function=<name>) runs one of its functions; messages action=send(target=<id>) asks it; read the answer with messages action=read(inbox_id)", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	}{"list_agents", "List every agent you can use, in one list: Crews, Goals and Relays you own and linked to this Crew, or that are shared with you (with their functions), and your agents connected through AgentBridge (local Claude Code, Codex, Cursor, Muse, Pi). Use an agent's id: functions action=call(target=<id>, function=<name>) runs one of its functions; messages action=send(target=<id>) asks it; read the answer with messages action=read(inbox_id)", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)
 		claims := GetUserFromContext(ctx)
 		if claims == nil {
@@ -1324,4 +1329,32 @@ func (api *StreamingAPI) resumeAgentMessagesThrottled() {
 	if now-last >= 5 && agentMessageLastResume.CompareAndSwap(last, now) {
 		api.resumeAgentMessages()
 	}
+}
+
+// requireLinkedOwnCrew: an agent inside a Crew may start a message to another Crew of the same person only when that
+// Crew is linked to its own (owner, 7 Nov: not all of a person's Crews talk to each other). The person's AgentWorks main
+// agent is exempt, decided by its role on the server. Shared and Team Crews follow their own sharing rules, and a reply
+// in an existing conversation needs no new link.
+func requireLinkedOwnCrew(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget) error {
+	if caller.Stamp.Type != triggerCallerCrew || strings.TrimSpace(caller.Path) == "" || caller.ConditionJob != "" || caller.NamedAgentID != "" {
+		return nil
+	}
+	if target.Kind != triggerCallerCrew || strings.TrimSpace(target.Path) == "" || target.NamedAgentID != "" || !crewProjectOwnedByCaller(userID, target.Path) {
+		return nil
+	}
+	if canonicalCrewWorkspaceRoot(caller.Path) == canonicalCrewWorkspaceRoot(target.Path) || isAgentWorksCrew(ctx, caller.Path) {
+		return nil
+	}
+	refs, err := readWorkWorkflowReferences(ctx, caller.Path)
+	if err != nil {
+		// A read failure refuses rather than guesses; say so, so a linked Crew refused by a blip is not a mystery.
+		log.Printf("[CREW_LINK] could not read links of %s to check %s: %v", caller.Path, target.Path, err)
+		return fmt.Errorf("could not check this Crew's links just now; try again in a moment")
+	}
+	for _, ref := range refs {
+		if canonicalCrewWorkspaceRoot(ref) == canonicalCrewWorkspaceRoot(target.Path) {
+			return nil
+		}
+	}
+	return fmt.Errorf("that Crew is not linked to this one; ask this Crew's chat to link it, or use the Linked projects screen, and then try again")
 }
