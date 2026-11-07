@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,11 +12,18 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/spf13/viper"
 )
 
 func TestResolveGuardWritePath(t *testing.T) {
 	docsDir := t.TempDir()
+	docsDir, err := filepath.EvalSymlinks(docsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
 	outsideDir := t.TempDir()
 	insideDir := filepath.Join(docsDir, "Workflow", "allowed")
 	if err := os.MkdirAll(insideDir, 0755); err != nil {
@@ -54,6 +64,43 @@ func TestResolveGuardWritePath(t *testing.T) {
 		if got, err := resolveGuardWritePath(wp, docsDir); err == nil {
 			t.Errorf("resolveGuardWritePath(%q) = %q, want rejection", wp, got)
 		}
+	}
+	// PLAT-746: the first browser command of a moved workflow recreated its
+	// retired folders while preparing shell write grants. Kernel grants already
+	// resolve the Crew binding; directory creation must use the same root.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	for _, dir := range []string{filepath.Join(docsDir, "Crew/example/.agentworks"), filepath.Join(docsDir, crewroot.PrivateDirectory, "crew"), filepath.Join(state, "ownership/crew-executables")} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeJSON := func(path string, value any) {
+		t.Helper()
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeJSON(filepath.Join(state, "ownership/projects.json"), map[string]any{"projects": map[string]crewroot.Record{"work/example": {Product: "work", Folder: "example", ID: "crew", Owner: "owner"}}})
+	binding := crewroot.ExecutableBinding{ID: "sequence", Root: "Workflow/sequence", CrewID: "crew", CrewRoot: "Crew/example", Kind: "workflow"}
+	writeJSON(filepath.Join(state, "ownership/crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))), binding)
+	logical := binding.Root + "/runs/run-one/execution/step-output"
+	physical, err := resolveGuardWritePath(logical, docsDir)
+	want := filepath.Join(docsDir, crewroot.PrivateDirectory, "crew/workflows/sequence/runs/run-one/execution/step-output")
+	if err != nil || physical != want {
+		t.Fatalf("moved write grant: %q %v, want %q", physical, err, want)
+	}
+	if err := prepareGuardWriteDirectory(physical, docsDir, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(docsDir, binding.Root)); !os.IsNotExist(err) {
+		t.Fatal("write grant preparation recreated the retired physical workflow")
 	}
 }
 
