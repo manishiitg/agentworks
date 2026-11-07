@@ -89,6 +89,13 @@ class Migration(unittest.TestCase):
         original['action']['conversation'] = 'isolated'
         original['input_mapping'] = {}
         write(file, document)
+        hooks=m.read(self.source/'webhooks.json')
+        hooks['webhooks'][0]['action']['conversation']='isolated'
+        write(self.source/'webhooks.json',hooks)
+        functions=m.read(self.source/'functions.json')
+        functions['functions'][0].update(execution='fresh')
+        functions['functions'][0]['action']['conversation']='fresh'
+        write(self.source/'functions.json',functions)
         before = hashes(self.base)
         with self.assertRaisesRegex(ValueError, 'batch needs an owner decision'):
             self.conversion()
@@ -102,8 +109,12 @@ class Migration(unittest.TestCase):
         for row in saved:
             self.assertEqual(row['when'], original['when'])
             self.assertTrue(row['enabled'])
-            self.assertEqual(row['action']['conversation'], 'fresh')
+            self.assertEqual(row['action']['conversation'], 'isolated')
             self.assertNotIn('input_mapping', row)
+        self.assertEqual(m.read(self.runtime/'webhooks.json')['webhooks'][0]['action']['conversation'],'isolated')
+        function=m.read(self.runtime/'functions.json')['functions'][0]
+        self.assertEqual(function['action']['conversation'],'new')
+        self.assertEqual(function['execution'],'new')
         after = hashes(self.base)
         self.conversion().apply()
         self.assertEqual(hashes(self.base), after)
@@ -189,8 +200,11 @@ class Migration(unittest.TestCase):
         helper.parent.mkdir(parents=True)
         helper.write_text('from pathlib import Path\ndef read_note(): return Path(__file__).with_name("note.txt").read_text()\n')
         helper.with_name('note.txt').write_text('preserved guidance')
+        with closing(sqlite3.connect(self.source/'db/db.sqlite')) as db, db:
+            db.execute('INSERT INTO business_data VALUES (?)', (str(self.source/'db/reports/index.html'),))
         before = (self.source/'db/db.sqlite').read_bytes()
         conversion = m.Conversion(self.docs,self.state,'old-goal','crew')
+        self.assertEqual(conversion.report()['database_columns_with_old_paths'], [{'database':'db/db.sqlite','table':'business_data','column':'value'}])
         self.assertEqual(conversion.report()['counts']['goals'], 0)
         conversion.apply()
         self.assertEqual((self.runtime/'db/db.sqlite').read_bytes(), before)
@@ -329,12 +343,18 @@ class Migration(unittest.TestCase):
         cost_db.parent.mkdir()
         subprocess.run([sys.executable,'-c',"import sqlite3,os,sys; db=sqlite3.connect(sys.argv[1]); db.execute('PRAGMA journal_mode=WAL'); db.execute('CREATE TABLE cost_events(id INTEGER PRIMARY KEY,value REAL)'); db.execute('INSERT INTO cost_events VALUES (1,1.25)'); db.commit(); os._exit(0)",str(cost_db)],check=True)
         self.assertTrue(Path(str(cost_db)+'-wal').exists())
+        database_before={name:value for name,value in hashes(self.source).items() if '.sqlite' in name}
         authored=hashes(self.docs/'Crew/target')
         other=hashes(self.docs/'Workflow/unrelated')
         conversion=m.RuntimeRelocation(self.docs,self.state,'old-goal','crew')
         self.assertEqual(conversion.report()['status'],'ready')
         result=conversion.apply()
         self.assertFalse(self.source.exists())
+        self.assertEqual(database_before,{name:value for name,value in hashes(self.runtime).items() if '.sqlite' in name})
+        self.assertEqual(result['database_columns_with_old_paths'], [
+            {'database':'db/db.sqlite','table':'file_index','column':'path'},
+            {'database':'db/db.sqlite','table':'file_index','column':'metadata'},
+            {'database':'db/db.sqlite','table':'historical_result','column':'path'}])
         self.assertEqual(m.read(self.runtime/'learnings/retired.json'), {'keep_in_backup':True})
         self.assertEqual(authored,hashes(self.docs/'Crew/target'))
         self.assertEqual(other,hashes(self.docs/'Workflow/unrelated'))
@@ -344,9 +364,9 @@ class Migration(unittest.TestCase):
         with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
             key,path,metadata=db.execute('SELECT * FROM file_index').fetchone()
             self.assertEqual(key,'stable-id')
-            self.assertEqual(path,str(self.runtime/'db/assets/file.txt'))
-            self.assertEqual(json.loads(metadata)['path'],str(self.runtime/'runs/history/out.json'))
-            self.assertEqual(db.execute('SELECT hex(result),path FROM historical_result').fetchone(),('FF',str(self.runtime/'runs/history/out.json')))
+            self.assertEqual(path,str(self.source/'db/assets/file.txt'))
+            self.assertEqual(json.loads(metadata)['path'],str(self.source/'runs/history/out.json'))
+            self.assertEqual(db.execute('SELECT hex(result),path FROM historical_result').fetchone(),('FF',str(self.source/'runs/history/out.json')))
         with closing(sqlite3.connect(self.runtime/'costs/costs.sqlite')) as db:
             self.assertEqual(db.execute('SELECT * FROM cost_events').fetchall(),[(1,1.25)])
         backup=Path(result['backup'])
