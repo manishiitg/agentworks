@@ -3,7 +3,10 @@ package handlers
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -139,6 +142,35 @@ printf '{"success":true,"data":{"messages":["test console"]}}'
 	}
 	if code, state := guarded("stop", stepGuard); code != 200 || state.Recording {
 		t.Fatalf("step stop: %d %+v", code, state)
+	}
+
+	// The same recording and denied-write checks follow a moved workflow.
+	state := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	os.MkdirAll(filepath.Join(state, "ownership/crew-executables"), 0700)
+	os.MkdirAll(filepath.Join(root, "Crew/example"), 0700)
+	os.MkdirAll(filepath.Join(root, "_system/crew-data/crew/workflows"), 0700)
+	os.WriteFile(filepath.Join(state, "ownership/projects.json"), []byte(`{"projects":{"work/example":{"product":"work","folder":"example","project_id":"crew","owner_id":"owner"}}}`), 0600)
+	binding := crewroot.ExecutableBinding{ID: "one", Root: "Workflow/one", CrewRoot: "Crew/example", CrewID: "crew", Kind: "workflow"}
+	raw, _ := json.Marshal(binding)
+	key := fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))
+	os.WriteFile(filepath.Join(state, "ownership/crew-executables", key), raw, 0600)
+	runtime := filepath.Join(root, "_system/crew-data/crew/workflows/one")
+	if err := os.Rename(filepath.Join(root, "Workflow/one"), runtime); err != nil {
+		t.Fatal(err)
+	}
+	if code, capture := guarded("start", stepGuard); code != 200 || !capture.Recording {
+		t.Fatal("moved recording failed", code, capture)
+	}
+	denied := &models.FolderGuardConfig{Enabled: true, WritePaths: []string{"Workflow/one"}, BlockedWritePaths: []string{"Workflow/one/runs/step"}}
+	if code, _ := guarded("stop", denied); code != 403 {
+		t.Fatal("moved blocked path ignored", code)
+	}
+	if code, capture := guarded("stop", stepGuard); code != 200 || capture.Recording {
+		t.Fatal("moved stop failed", code, capture)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Workflow/one")); !os.IsNotExist(err) {
+		t.Fatal("recording recreated the old workflow")
 	}
 
 }

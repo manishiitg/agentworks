@@ -8,6 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
+	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 	"io"
 	"os"
 	"os/exec"
@@ -80,7 +81,10 @@ func BrowserRecording(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Workspace unavailable"})
 		return
 	}
-	workspace, err := filepath.EvalSymlinks(filepath.Join(root, req.Workspace))
+	workspace, err := utils.ResolveUserPath(root, req.Workspace, getUserID(c))
+	if err == nil {
+		workspace, err = filepath.EvalSymlinks(workspace)
+	}
 	if err != nil || !capturePathWithin(root, workspace) || workspace == root {
 		c.JSON(400, gin.H{"error": "Invalid workflow workspace"})
 		return
@@ -130,14 +134,18 @@ func BrowserRecording(c *gin.Context) {
 		}
 		target := base
 		if capture.Directory != "" && (req.Action != "start" || capture.Recording) {
-			target = filepath.Join(root, capture.Directory)
+			target, err = utils.ResolveUserPath(root, capture.Directory, getUserID(c))
+			if err != nil {
+				c.JSON(400, gin.H{"error": "Invalid recording directory"})
+				return
+			}
 		}
 		err := security.AuthorizeBrowserCaptureDirectory(target, root, allowed, blocked)
 		// Workflow steps may only write their run/step output directory. Keep
 		// their evidence there while retaining workflow ownership of the capture.
 		if err != nil && req.Action == "start" && !capture.Recording && req.WorkingDirectory != "" {
-			candidate := filepath.Join(root, req.WorkingDirectory, "browser-recordings")
-			if capturePathWithin(workspace, candidate) {
+			candidate, resolveErr := utils.ResolveUserPath(root, filepath.Join(req.WorkingDirectory, "browser-recordings"), getUserID(c))
+			if resolveErr == nil && capturePathWithin(workspace, candidate) {
 				err = security.AuthorizeBrowserCaptureDirectory(candidate, root, allowed, blocked)
 				base = candidate
 			}
@@ -181,7 +189,8 @@ func BrowserRecording(c *gin.Context) {
 			c.JSON(500, gin.H{"error": "Cannot create recording folder"})
 			return
 		}
-		rel, _ := filepath.Rel(root, dir)
+		rel, _ := filepath.Rel(workspace, dir)
+		rel = filepath.Join(req.Workspace, rel)
 		capture = browserCapture{OwnerSession: req.OwnerSession, BrowserSession: session, Workspace: req.Workspace, Directory: filepath.ToSlash(rel), StartedAt: time.Now().UTC()}
 		// Clear an abandoned HAR after a recording-service restart. Discard old-run
 		// traffic; it must not enter the new capture's evidence bundle.
@@ -233,7 +242,10 @@ func BrowserRecording(c *gin.Context) {
 		c.JSON(200, capture)
 		return
 	}
-	dir, err := filepath.EvalSymlinks(filepath.Join(root, capture.Directory))
+	dir, err := utils.ResolveUserPath(root, capture.Directory, getUserID(c))
+	if err == nil {
+		dir, err = filepath.EvalSymlinks(dir)
+	}
 	if err != nil || !capturePathWithin(workspace, dir) {
 		c.JSON(400, gin.H{"error": "Invalid recording destination"})
 		return
