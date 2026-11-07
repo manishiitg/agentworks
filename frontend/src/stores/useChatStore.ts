@@ -460,6 +460,7 @@ export interface ChatTab {
     stepInspections?: { items: import('../services/api-types').ExecutionInspectionTarget[]; activeId: string | null }
     isWorkflowDraft?: boolean // Empty input surface; current Builder identity comes from the server.
     isExecutionRun?: boolean // Execution diagnostics use JSON history, not the interactive chat journal.
+    isAutomationConversation?: boolean // A schedule's own conversation, opened as a chat; closing it only closes the tab.
     isScheduledRun?: boolean // True when tab is observing a scheduled-run session (read-only live view)
     scheduledJobName?: string // Display name of the scheduled job, surfaced in the view-only banner
     isBotRun?: boolean // True when tab is observing a bot-triggered session (read-only live view)

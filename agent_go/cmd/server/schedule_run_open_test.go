@@ -13,7 +13,7 @@ func TestCrewScheduleRunRowsNameWhatToOpen(t *testing.T) {
 	rows := crewScheduleRunRows([]ScheduleRunEntry{
 		{ID: "run-1", ScheduleID: "daily", SessionID: "session-1", Status: "success", StartedAt: started},
 		{ID: "run-2", ScheduleID: "daily", Status: "error", StartedAt: started},
-	}, "crew-1", "Crew/crew-1", "Daily check")
+	}, "crew-1", "Crew/crew-1", "Daily check", nil)
 	encoded, err := json.Marshal(rows)
 	if err != nil {
 		t.Fatal(err)
