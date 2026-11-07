@@ -239,7 +239,8 @@ func TestSlackVisualReplyTablesCardsAndPlainFallback(t *testing.T) {
 		widget, _ := json.Marshal(map[string]interface{}{"op": "add", "path": "/elements/visual", "value": map[string]interface{}{"type": kind, "props": props, "children": []string{}}})
 		return "Saved total is 12.\n```chat-ui\n" + string(root) + "\n" + string(widget) + "\n```"
 	}
-	table := makeReply("table", map[string]interface{}{"title": "Totals", "headers": []string{"Day", "Total"}, "rows": [][]interface{}{{"Monday", 12}}})
+	// Windows-style reply line endings must still hide visual source.
+	table := strings.ReplaceAll(makeReply("table", map[string]interface{}{"title": "Totals", "headers": []string{"Day", "Total"}, "rows": [][]interface{}{{"Monday", 12}}}), "\n", "\r\n")
 	if _, err := svc.SendThreadMessage(context.Background(), thread, table); err != nil {
 		t.Fatal(err)
 	}
