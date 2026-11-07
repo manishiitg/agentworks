@@ -45,6 +45,7 @@ For a **workflow**:
   partial and failed attempts.
 - Do not write changing status into `backup/config.json`, and do not edit
   `workflow.json` for backup.
+- Put names only in these files (a secret's name, never its value).
 - After writing either file, re-read it with a JSON parser
   (`python3 -c "import json; json.load(open('backup/config.json'))"`).
 

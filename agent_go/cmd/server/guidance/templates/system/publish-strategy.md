@@ -384,7 +384,7 @@ Before you finish — even on failure — write `publish/status.json`:
 }
 ```
 
-Do not write operational publish status into `publish/config.json`. Use `publish/status.json`.
+Do not write operational publish status into `publish/config.json`. Use `publish/status.json`. Put names only in both files (a secret's name, never its value).
 If a destination is missing credentials or setup, mark it `failed` and continue with any
 others.
 

@@ -5,7 +5,7 @@ description: "Use to inspect a Crew in depth: its instructions, files, tabs, sch
 
 # How to inspect a Crew in depth
 
-Start from the Crew's notes (`notes/crew-<name>.md`). A Crew has no success criteria like a Goal, so what it is for comes from its instructions and from what the person told you.
+Start from the Crew's instructions and what the person told you: a Crew has no success criteria, so what it is for comes from those.
 
 ## Tools and skills
 - The Crew's identity and path: `workspace` action `references_list`. Read its instructions and other files only where their own read grants allow. Use the linked metadata and authorized files until the platform adds a Crew inspection tool. Skills: `crew-builder`, `panel-data`, `panel-settings`, `panel-dashboard`.
@@ -22,4 +22,4 @@ Start from the Crew's notes (`notes/crew-<name>.md`). A Crew has no success crit
 5. **Output vs purpose:** is what it produces what the person actually uses.
 
 ## Finish
-One plain line on the cause, what you verified and what you could not, and what you did or propose. Save anything lasting to the Crew's notes file.
+One plain line on the cause, what you verified and what you could not, and what you did or propose.

@@ -220,7 +220,6 @@ func saveWorkflowTimerActions(ctx context.Context, root string, manifest *Workfl
 	if err := writeProjectSchedules(ctx, root, records); err != nil {
 		return err
 	}
-	notifyAgentWorksGoalChanged(manifest)
 	return nil
 }
 
