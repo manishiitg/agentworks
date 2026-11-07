@@ -1,4 +1,4 @@
-import { ArrowUpCircle, BookOpen, Cable, Cloud, Code2, Cpu, Database, DollarSign, Laptop, Files, FileText, Globe, Hand, History, LayoutDashboard, MessageSquareText, Monitor, Route, Settings, BellRing, ShieldCheck, Target, Sparkles, type LucideIcon } from 'lucide-react'
+import { ArrowUpCircle, BookOpen, Cable, Code2, Cpu, Database, DollarSign, Laptop, Files, FileText, Hand, History, LayoutDashboard, MessageSquareText, Monitor, Route, Settings, BellRing, ShieldCheck, Target, Sparkles, type LucideIcon } from 'lucide-react'
 import { projectAutomationSections, projectConnectionSections } from '../workspace/WorkspaceProjectNavigation'
 import { PROJECT_MENU_GROUPS, type ProjectMenuGroup } from '../workspace/projectMenuGroups'
 import type { WorkspaceViewId } from './workspaceViews'
@@ -45,10 +45,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   add('mcp', 'Use', 'MCP access', Cable, 'cli', 'Use from other apps')
   if (canShare) add('mcp', 'Share', 'Access & sharing', ShieldCheck, 'share')
   if (isMultiUser && !relayMode) add('access', 'Share', 'Team', ShieldCheck, 'workflow')
-  if (!relayMode) {
-    add('publish', 'Setup', 'Publish', Globe)
-    add('notify', 'Setup', 'Notify', BellRing)
-  }
+  if (!relayMode) add('notify', 'Setup', 'Notify', BellRing)
   for (const item of projectConnectionSections({ allowedProducts, relayMode, onOpen: () => {} })) {
     add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4), item.subgroup)
   }
@@ -59,9 +56,6 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   add('identity', 'Setup', 'Models', Cpu, 'llm')
   add('costs', 'Setup', 'Costs and usage', DollarSign)
   add('execution-logs', 'Setup', 'Run logs', FileText)
-  if (!relayMode) {
-    add('identity', 'Setup', 'Upgrades', ArrowUpCircle, 'upgrades')
-    add('backup', 'Setup', 'Backup', Cloud)
-  }
+  if (!relayMode) add('identity', 'Setup', 'Upgrades', ArrowUpCircle, 'upgrades')
   return items.sort((a, b) => PROJECT_MENU_GROUPS.indexOf(a.group) - PROJECT_MENU_GROUPS.indexOf(b.group))
 }

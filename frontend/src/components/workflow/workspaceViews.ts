@@ -3,14 +3,12 @@ import {
   Settings2,
   BookOpen,
   CalendarClock,
-  Cloud,
   DollarSign,
   Files,
   FileText,
   Fingerprint,
   Hand,
   Target,
-  Globe,
   LayoutDashboard,
   Monitor,
   Route,
@@ -86,8 +84,6 @@ const VIEWS = [
   // `capabilities` are filtered into their auto-rendered clusters below.
   { id: 'goals', kind: 'inspector', label: 'Goals & metrics', icon: Target, toolbarGroup: 'setup', pane: true },
   { id: 'human-actions', kind: 'inspector', label: 'Decisions', icon: Hand, toolbarGroup: 'setup', pane: true },
-  { id: 'backup', kind: 'inspector', label: 'Backup', icon: Cloud, toolbarGroup: 'setup', pane: true },
-  { id: 'publish', kind: 'inspector', label: 'Publish', icon: Globe, toolbarGroup: 'setup', pane: true },
   { id: 'notify', kind: 'inspector', label: 'Notify', icon: BellRing, toolbarGroup: 'setup', pane: true },
   // Access (share this workflow / manage users) opens in the pane like the
   // rest of Setup, not a modal (user request 2026-09-03). Button is hand-built
