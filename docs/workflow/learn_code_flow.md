@@ -5,7 +5,7 @@ This is the current source of truth for scripted workflow execution.
 > **Update 2026-10-04 (PLAT-436): runs never self-heal.** In any run (schedule,
 > webhook, `run_full_workflow`, a route called by an agent) a scripted step runs
 > its saved `main.py` and nothing else. A missing or failing script fails the step
-> with its real error and Pulse reports it; no LLM generates, repairs or stands in
+> with its real error; no LLM generates, repairs or stands in
 > for the script, nothing is saved back, and there is no `code_exec` fallback.
 > Generation, repair and save-back below happen only when the Builder runs the
 > step itself with `execute_step` (Workshop mode, not `fast_path_only`, not a

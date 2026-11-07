@@ -70,7 +70,7 @@ Retired with the eval subsystem. The `/api/workflow/evaluation-reports`
 endpoint and its All Iterations / Single Iteration UI are gone; old
 `evaluation_report.json` files on disk are read-only history. Outcome
 visibility now comes from producer outputs, goal observations
-(`get_goal_metrics`), and the dashboard.
+(saved rows in `goal_observations`), and the dashboard.
 
 ## Learnings
 

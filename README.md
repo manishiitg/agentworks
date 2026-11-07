@@ -18,8 +18,7 @@ AgentWorks is a source-available platform for goal-driven AI agents. You describ
 
 | | |
 |---|---|
-| **Goals** | Every workflow has a goal: the outcome in plain words, a primary metric with a target, supporting metrics, and rules that must stay true. Progress is shown as dated measurements. Missing or stale numbers are flagged, never guessed. [Goal measurement](docs/pulse-goal-measurement.md) |
-| **Auto-improve** | After runs, AgentWorks reviews the evidence against the goal. It repairs broken steps, drops approaches that didn't move the metric, does the work nobody was doing, and checks later whether it helped. [Improvement system](docs/pulse-workflow-improvement-system.md) · [Auto-improvement framework](docs/workflow/auto_improvement_framework.md) |
+| **Goals** | A workflow can save measurements (a number with a date) in its own database. The Goals view and dashboards show them as a dated trend; missing or stale numbers are flagged, never guessed. A step measures with ordinary database tools. [Goal measurements](docs/goal-measurements.md) |
 | **Autonomy** | You choose how far it goes, per workflow: *Ask first*, *Run steps*, *Edit workflow*, or *Full*. Anything outward-facing can always require your approval. |
 | **Crew** | Always-on teammates, each with its own files, tools, memory, browser, and schedule. Talk to them in the app, Slack, or WhatsApp. [Bot connectors](docs/core/bot_connector_system.md) |
 

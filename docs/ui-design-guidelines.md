@@ -101,7 +101,7 @@ One function sends every right-pane message to chat:
 (`frontend/src/utils/workspacePaneChat.ts`). It resolves the
 conversation (automation, tab, or Crew project), opens the left chat,
 queues behind a running turn, and restores stuck sessions. Every Ask
-AI button, report widget, human-decision card, and Pulse action
+AI button, report widget, and human-decision card
 funnels through it; new senders need only call it. Product surfaces
 with their own lane (Crew) route through `AskAIButton`'s `onAsk` prop
 and still land in the same function.

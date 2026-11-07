@@ -79,7 +79,7 @@ out subsequent phases or semantic checks after the description has completed. Ze
 
 The top-level `validation_schema` is the sequence's final contract. When it is present, the runtime automatically runs it after the configured work turns and before synthetic learning/knowledge closing turns. A failed gate is returned to the same conversation as a repair turn and retried. Explicit `prevalidation` items are only needed for intermediate checkpoints; a final explicit gate with the same schema is not run twice.
 
-Every agent turn is persisted through the normal execution-log pipeline, including its conversation, tool and LLM calls, model, timing, token usage, and failure details. The sequence also writes the standard final execution summary after all turns and final validation complete, so Pulse and cost analysis read it like any scripted step.
+Every agent turn is persisted through the normal execution-log pipeline, including its conversation, tool and LLM calls, model, timing, token usage, and failure details. The sequence also writes the standard final execution summary after all turns and final validation complete, so cost analysis reads it like any scripted step.
 
 ## Foreach
 
