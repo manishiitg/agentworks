@@ -686,7 +686,6 @@ func TestMacCrewSettingsChangeOnlyFromTheMac(t *testing.T) {
 	}{
 		{"new workflow", http.MethodPost, "/api/crew-executables" + crewQuery, `{"name":"Reports"}`, api.handleCrewExecutables},
 		{"script source", http.MethodPut, "/api/crew-script-file?workspace_path=" + script.Root + "&file=script.json", `{"content":"{}"}`, api.handleCrewScriptFile},
-		{"goals", http.MethodPost, "/api/crew-goals" + crewQuery, `{"action":"none"}`, api.handleCrewGoals},
 	} {
 		for _, tc := range []struct {
 			who, pair string

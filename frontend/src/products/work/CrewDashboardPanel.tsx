@@ -13,7 +13,7 @@ export function CrewDashboardPanel({ projectId, ...props }: ComponentProps<typeo
   useEffect(() => {
     const controller = new AbortController()
     setCatalog(null); setSelected(''); setError('')
-    void api.get('/api/crew-goals', { params: { crew_id: projectId }, signal: controller.signal }).then(({ data }) => setCatalog(data)).catch(() => { if (!controller.signal.aborted) setError('Could not load dashboards. Reopen this panel to try again.') })
+    void api.get('/api/crew-dashboards', { params: { crew_id: projectId }, signal: controller.signal }).then(({ data }) => setCatalog(data)).catch(() => { if (!controller.signal.aborted) setError('Could not load dashboards. Reopen this panel to try again.') })
     return () => controller.abort()
   }, [projectId])
   if (error) return <p role="alert" className="p-4 text-sm text-destructive">{error}</p>

@@ -34,6 +34,7 @@ Call `run_workflow_trigger` with `workspace_path` and optional `inputs`, such as
 
 ## Track outcomes
 
-Use `crew_goals action=list`, then save the goal's desired outcome, optional metrics and contributing workflow IDs. Record actual observations with their evidence and time. Keep metric IDs stable; use a new ID when its meaning or unit changes. Missing readings are not zero. Goal status changes explicitly; a successful workflow run is not proof that its goal was achieved.
+Use an ordinary workflow step to measure progress from its source and save the result, actual time and evidence in the workflow database. A dashboard reads that data. Missing readings are unavailable, never zero; a completed run alone does not prove an outcome.
+
 
 Automation starts/results go to their saved Crew chat. If it is missing, repair that destination explicitly. Preserve paused schedules. Definitions and code are resolved by the server inside `.agentworks`; ordinary project source, skills and knowledge stay in place.

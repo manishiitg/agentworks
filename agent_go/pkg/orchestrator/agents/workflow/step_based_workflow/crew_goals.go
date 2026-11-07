@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -26,8 +27,8 @@ type CrewGoal struct {
 
 const crewGoalsSchema = `CREATE TABLE IF NOT EXISTS crew_goals (id TEXT PRIMARY KEY, definition_json TEXT NOT NULL)`
 
-// GoalMeasurementWorkspace changes only the measurement namespace. Business
-// tables, reflection, run history and outputs still belong to each executable.
+// Existing measurement readers use the workflow database, never its Crew database.
+// The remaining metric API is retired separately after the data cutover.
 func GoalMeasurementWorkspace(root string) (string, error) {
 	layout, found, err := crewroot.LookupExecutable(fsutil.WorkspaceDocsRoot(), root)
 	if err != nil {
@@ -37,7 +38,11 @@ func GoalMeasurementWorkspace(root string) (string, error) {
 		if root != layout.Binding.Root {
 			return "", fmt.Errorf("use the workflow's root for goal measurements")
 		}
-		return layout.Binding.CrewRoot, nil
+		return layout.Binding.Root, nil
+	}
+	ref, valid := workspaceref.Parse(root)
+	if !valid || !strings.HasPrefix(ref.Logical(), "Workflow/") {
+		return "", fmt.Errorf("use the workflow database for progress; open its dashboard to view it")
 	}
 	return root, nil
 }

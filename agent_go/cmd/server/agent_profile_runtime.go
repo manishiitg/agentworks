@@ -1050,10 +1050,6 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		// Crew Run-mode readers never trigger other Crews or workflows.
 		if !readOnly {
 			gate.Declare("crew_workflow_files")
-			gate.Declare("crew_goals")
-			if err := api.registerCrewGoalTools(registrar, userID, workspacePath); err != nil {
-				return err
-			}
 			if err := api.registerCrewExecutableFileTools(registrar, userID, workspacePath); err != nil {
 				return err
 			}
