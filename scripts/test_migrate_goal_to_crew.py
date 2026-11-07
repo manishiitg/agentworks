@@ -293,6 +293,12 @@ class Migration(unittest.TestCase):
         self.assertEqual(len(registry['entries']), 2)
         self.assertTrue(any(r['session_id'] == 'research-session' for r in registry['entries'].values()))
         self.assertEqual(row['session_id'],'session-original');self.assertEqual(row['resource_id'],'crew')
+        # PLAT-746-396: own workflows use the Crew binding, not a stale attachment.
+        for entry in registry['entries'].values():
+            self.assertNotIn('Workflow/old-goal', entry.get('workflow_context_paths', []))
+        for entries in registry.get('previous', {}).values():
+            for entry in entries:
+                self.assertNotIn('Workflow/old-goal', entry.get('workflow_context_paths', []))
         index=m.read(self.docs/'_users/owner/chat_history/index.json')
         item=next(row for row in index['entries'].values() if row['session']['session_id']=='session-original')
         self.assertTrue(item['session']['conversation_path'].startswith('Crew/target/'))
