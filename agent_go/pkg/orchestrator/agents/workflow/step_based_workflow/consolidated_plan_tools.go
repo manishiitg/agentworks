@@ -50,8 +50,7 @@ func capturedPlanName(n string) bool {
 		}
 	}
 	switch n {
-	case "add_agent_route", "update_agent_route", "delete_agent_route",
-		"add_group", "update_group", "delete_group":
+	case "add_agent_route", "update_agent_route", "delete_agent_route":
 		return true
 	}
 	for _, v := range consolidatedMaintenance {
@@ -278,9 +277,6 @@ func (r *consolidatedPlanRegistrar) flush() error {
 	if err := r.registerActions("manage_step_route", "Manage predefined_routes for an agent with action=add/update/delete. parameters uses that action's native route schema, including parent_step_id and reason. ", map[string]string{"add": "add_agent_route", "update": "update_agent_route", "delete": "delete_agent_route"}); err != nil {
 		return err
 	}
-	if err := r.registerActions("manage_group", "Manage a variable group with action=add/update/delete. parameters uses that action's native fields. Existing group validation, current-session refresh and last-group deletion checks are preserved.", map[string]string{"add": "add_group", "update": "update_group", "delete": "delete_group"}); err != nil {
-		return err
-	}
 	if err := r.registerActions("maintain_plan", "Explicit plan maintenance only. Select a supported action and its parameters; normal edits use add_step/update_step. Keeps existing migration validation and changelog behavior.", consolidatedMaintenance); err != nil {
 		return err
 	}
@@ -325,9 +321,6 @@ func ConsolidatedPlanToolName(n string) string {
 	if strings.HasSuffix(n, "_route") && capturedPlanName(n) {
 		return "manage_step_route"
 	}
-	if n == "add_group" || n == "update_group" || n == "delete_group" {
-		return "manage_group"
-	}
 	for _, v := range consolidatedMaintenance {
 		if n == v {
 			return "maintain_plan"
@@ -346,7 +339,7 @@ func consolidatedPlanToolText(text string) string {
 			names = append(names, action+"_"+typ+"_route")
 		}
 	}
-	names = append(names, "add_group", "update_group", "delete_group", "convert_routing_branch_step_type")
+	names = append(names, "convert_routing_branch_step_type")
 	for _, n := range consolidatedMaintenance {
 		names = append(names, n)
 	}

@@ -7,7 +7,6 @@ Builder uses the tools declared by AgentWorks product.yaml. Run has no plan muta
 - `delete_plan_steps(deleted_step_ids, reason)` retains dependency-safe deletion.
 - `convert_routing_branch_step_type(existing_step_id, target_type, reason)` converts only `routing` ↔ `branch`, preserving identity and the plan changelog.
 - `manage_step_route(action, parameters)` supports `add`, `update`, `delete` for an agent's `predefined_routes` and persisted legacy agent records. `parameters` uses the selected native schema, including `parent_step_id`, `reason` and the corresponding new-route/update/delete fields.
-- `manage_group(action, parameters)` supports `add`, `update`, `delete` with the selected group schema. Last-group deletion and existing variable checks remain enforced.
 - `maintain_plan(action, parameters)` supports `cleanup_orphan_configs`, `migrate_agent_code`, `migrate_orchestrator_types`, `migrate_execution_modes`, `strip_execution_modes`. These are explicit maintenance operations, not substitutes for normal editing. Only advertised actions are available in a particular caller.
 
 `update_validation_schema(existing_step_id, validation_schema, reason)` changes the canonical plan contract. `update_step_config(step_id, validation_schema, reason)` sets a config override, which takes precedence over that plan contract. These remain separate tools because they write different stores. Neither is a substitute for the other. Do not silently create an override when the user requested a plan change.

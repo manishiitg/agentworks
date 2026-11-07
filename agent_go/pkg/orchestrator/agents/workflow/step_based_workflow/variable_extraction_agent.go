@@ -24,45 +24,16 @@ type Variable struct {
 
 // VariableGroup stores an optional named set of sparse input overrides.
 type VariableGroup struct {
-	Name    string            `json:"name"`   // Unique identifier and display label (e.g., "Production", "Staging")
-	Values  map[string]string `json:"values"` // Variable name -> value mapping
-	Enabled bool              `json:"-"`      // Inert internal field; never serialized or consulted for execution.
+	Name   string            `json:"name"`   // Unique identifier and display label (e.g., "Production", "Staging")
+	Values map[string]string `json:"values"` // Variable name -> value mapping
 }
 
 // VariablesManifest contains all extracted variables
 // Defaults and optional saved values share one invocation schema.
 type VariablesManifest struct {
 	Variables      []Variable      `json:"variables"`        // List of variable definitions
-	Groups         []VariableGroup `json:"groups,omitempty"` // Array of variable groups (multi-group mode)
+	Groups         []VariableGroup `json:"groups,omitempty"` // Optional saved sets of input overrides; storage key is unchanged.
 	ExtractionDate string          `json:"extraction_date"`
-}
-
-// HasGroups returns true if the manifest has multiple variable groups
-func (m *VariablesManifest) HasGroups() bool {
-	return len(m.Groups) > 0
-}
-
-// GetVariableValues returns variable values for a specific group.
-// For grouped manifests, this includes manifest-level defaults plus the group's
-// overrides so shared values (for example common sheet IDs) are always present.
-// If groupName is empty and no groups exist, returns values from Variables directly.
-func (m *VariablesManifest) GetVariableValues(groupName string) map[string]string {
-	if !m.HasGroups() {
-		// Old format: values are in Variables[].Value
-		values := make(map[string]string)
-		for _, v := range m.Variables {
-			values[v.Name] = v.Value
-		}
-		return values
-	}
-
-	// Find group by name
-	for _, g := range m.Groups {
-		if g.Name == groupName {
-			return MergeGroupWithDefaults(m, g.Values)
-		}
-	}
-	return nil
 }
 
 // GetVariableNames returns just the variable names (for display in UI)
@@ -72,45 +43,6 @@ func (m *VariablesManifest) GetVariableNames() []string {
 		names[i] = v.Name
 	}
 	return names
-}
-
-// AddGroup adds empty saved values; unspecified keys inherit workflow defaults.
-func (m *VariablesManifest) AddGroup() *VariableGroup {
-	// Generate next group name
-	nextID := len(m.Groups) + 1
-	name := fmt.Sprintf("group-%d", nextID)
-
-	values := make(map[string]string)
-
-	newGroup := VariableGroup{
-		Name:   name,
-		Values: values,
-	}
-
-	m.Groups = append(m.Groups, newGroup)
-	return &m.Groups[len(m.Groups)-1]
-}
-
-// DeleteGroup removes a group by name
-func (m *VariablesManifest) DeleteGroup(groupName string) bool {
-	for i, g := range m.Groups {
-		if g.Name == groupName {
-			m.Groups = append(m.Groups[:i], m.Groups[i+1:]...)
-			return true
-		}
-	}
-	return false
-}
-
-// UpdateGroupValues updates the values for a specific group
-func (m *VariablesManifest) UpdateGroupValues(groupName string, values map[string]string) bool {
-	for i := range m.Groups {
-		if m.Groups[i].Name == groupName {
-			m.Groups[i].Values = values
-			return true
-		}
-	}
-	return false
 }
 
 // variablesFileMutex ensures thread-safe access to variables.json

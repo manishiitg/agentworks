@@ -2,21 +2,15 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/mcpagent/llm"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
-
-var agentProfileWorkflowGroupPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$`)
 
 var agentProfileWorkflowToolNames = map[string]struct{}{
 	"execute_step":        {},
@@ -75,65 +69,6 @@ func (r *agentProfileWorkflowRegistrar) AttachSkill(skill *llmtypes.Skill) error
 
 func (r *agentProfileWorkflowRegistrar) AttachedSkills() []*llmtypes.Skill {
 	return r.target.AttachedSkills()
-}
-
-type agentProfileVariablesManifest struct {
-	Variables      []map[string]interface{}    `json:"variables"`
-	Groups         []agentProfileVariableGroup `json:"groups,omitempty"`
-	ExtractionDate string                      `json:"extraction_date"`
-}
-
-type agentProfileVariableGroup struct {
-	Name    string            `json:"name"`
-	Values  map[string]string `json:"values"`
-	Enabled bool              `json:"enabled"`
-}
-
-func addAgentProfileWorkflowGroup(content, groupName string, now time.Time) (string, bool, error) {
-	groupName = strings.TrimSpace(groupName)
-	if !agentProfileWorkflowGroupPattern.MatchString(groupName) {
-		return "", false, fmt.Errorf("group_name must be 1-80 letters, numbers, dots, underscores, or hyphens")
-	}
-	var manifest agentProfileVariablesManifest
-	if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-		return "", false, fmt.Errorf("read variables manifest: %w", err)
-	}
-	for i := range manifest.Groups {
-		if manifest.Groups[i].Name != groupName {
-			continue
-		}
-		if manifest.Groups[i].Enabled {
-			return content, false, nil
-		}
-		manifest.Groups[i].Enabled = true
-		manifest.ExtractionDate = now.UTC().Format(time.RFC3339)
-		updated, err := json.MarshalIndent(manifest, "", "  ")
-		return string(append(updated, '\n')), true, err
-	}
-	manifest.Groups = append(manifest.Groups, agentProfileVariableGroup{Name: groupName, Values: map[string]string{}, Enabled: true})
-	manifest.ExtractionDate = now.UTC().Format(time.RFC3339)
-	updated, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return "", false, err
-	}
-	return string(append(updated, '\n')), true, nil
-}
-
-func ensureAgentProfileWorkflowGroup(ctx context.Context, client *workspace.Client, workspacePath, groupName string) error {
-	path := filepath.ToSlash(filepath.Join(workspacePath, "variables/variables.json"))
-	file, err := client.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: path})
-	if err != nil {
-		return fmt.Errorf("read variables: %w", err)
-	}
-	updated, changed, err := addAgentProfileWorkflowGroup(file.Content, groupName, time.Now())
-	if err != nil || !changed {
-		return err
-	}
-	_, err = client.UpdateWorkspaceFile(ctx, workspace.UpdateWorkspaceFileParams{Filepath: path, Content: updated})
-	if err != nil {
-		return fmt.Errorf("write variables: %w", err)
-	}
-	return nil
 }
 
 func profileRequiresWorkflowRuntime(resolved *resolvedAgentProfile) bool {

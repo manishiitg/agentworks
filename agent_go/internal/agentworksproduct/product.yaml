@@ -143,7 +143,6 @@ chat:
       - brain_skills
       - brain_access
       - add_step
-      - manage_group
       - settings
       - models
       - workflow_team

@@ -77,20 +77,11 @@ func relayToolDefinition(name, description string, schema map[string]interface{}
 	}
 	return description, copied, executor
 }
-func relayGroupTool(name string) bool {
-	return name == "add_group" || name == "update_group" || name == "delete_group"
-}
 func (r relayToolRegistrar) RegisterCustomTool(n, d string, s map[string]interface{}, e func(context.Context, map[string]interface{}) (string, error), c string) error {
-	if relayGroupTool(n) {
-		return nil
-	}
 	d, s, e = relayToolDefinition(n, d, s, e)
 	return r.DefinitionToolRegistrar.RegisterCustomTool(n, d, s, e, c)
 }
 func (r relayToolRegistrar) RegisterCustomToolWithTimeout(n, d string, s map[string]interface{}, e func(context.Context, map[string]interface{}) (string, error), t time.Duration, c string) error {
-	if relayGroupTool(n) {
-		return nil
-	}
 	d, s, e = relayToolDefinition(n, d, s, e)
 	return r.DefinitionToolRegistrar.RegisterCustomToolWithTimeout(n, d, s, e, t, c)
 }

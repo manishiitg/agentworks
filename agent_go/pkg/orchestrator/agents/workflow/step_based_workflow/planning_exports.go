@@ -1563,7 +1563,7 @@ func truncateResult(s string, maxLen int) string {
 }
 
 // RegisterRunFullWorkflowTool registers a run_full_workflow tool that executes the complete
-// workflow pipeline (all steps, all enabled groups) in the background. The LLM is notified
+// workflow pipeline once with the resolved inputs in the background. The LLM is notified
 // when execution completes. This is the workshop-builder equivalent of the orchestrator-mode
 // full execution, but triggered as a tool call.
 func RegisterRunFullWorkflowTool(

@@ -16,7 +16,7 @@ type collisionToolRegistrar struct {
 
 func ScheduleGuardedTool(name string) bool {
 	switch name {
-	case "add_step", "update_step", "manage_step_route", "manage_group", "maintain_plan", "execute_step", "run_full_workflow", "debug_step", "convert_routing_branch_step_type",
+	case "add_step", "update_step", "manage_step_route", "maintain_plan", "execute_step", "run_full_workflow", "debug_step", "convert_routing_branch_step_type",
 		"create_plan", "delete_plan_steps", "cleanup_orphan_step_configs",
 		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
 		"add_agent_route",
@@ -24,7 +24,7 @@ func ScheduleGuardedTool(name string) bool {
 		"update_agent_route",
 		"delete_agent_route", "update_step_config", "update_validation_schema",
 		"migrate_workflow_skills",
-		"update_workflow_config", "set_workflow_llm_config", "update_variable", "add_group", "update_group", "delete_group":
+		"update_workflow_config", "set_workflow_llm_config", "update_variable":
 		return true
 	}
 	return false
