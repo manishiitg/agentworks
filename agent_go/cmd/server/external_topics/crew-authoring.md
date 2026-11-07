@@ -93,7 +93,7 @@ type, properties, required, items, enum).
 
 - By default, a function runs in its own named tab, keeps earlier calls' conversation and queues
   calls to take turns. It never runs in the Crew's main chat. Set `agent` to share a named tab
-  between functions. Set `execution: "fresh"` for a new chat for every call, especially when inputs
+  between functions. Set `execution: "new"` for a new chat for every call, especially when inputs
   are private or untrusted: earlier input in a shared tab can influence later answers.
 - Inputs are checked before anything starts. Each call has its own output folder
   (`.calls/<call_id>/`). A function runs with the OWNER's authority for every caller,
@@ -113,7 +113,7 @@ type, properties, required, items, enum).
 - For a conversation, use `workspace action=ask` with the discovered workspace ID and optional `chat_id`. Keep the returned chat and submission receipt; read progress and replies with `workspace action=read_chat`, `chat_id`, `after` and `wait_seconds` (up to 25). Ask without a chat ID opens or uses the caller's own conversation. A started turn is not a finished answer; inspect its returned status.
 - Ask is available to people the Crew is shared with. Use an ordinary one-time schedule for a later check, targeting the intended Crew chat. Schedules respect the scheduler pause.
 - Use `models action=set` with `scope=tab`, `workspace_id`, `chat_id`, `engine`, `model_id` and optional `reasoning_effort` and `connection_id` to select your own chat's model and personal or available company account; `models action=list` with `scope=tab` reads it. `workspace action=chats` returns `provider_connections` with available account IDs. Omit `engine` to use the Crew's model again.
-- Named function tabs keep earlier calls' conversation; `execution: "fresh"` starts without it.
+- Named function tabs keep earlier calls' conversation; `execution: "new"` starts without it.
   Put lasting instructions and shared knowledge in `MEMORY.md` or the Crew's files,
   and say how to use them in `purpose` and function `instructions`.
 

@@ -187,7 +187,7 @@ func crewFunctionDefinition(root string, fn crewFunction) (projectFunctionDefini
 	}
 	action := projectactions.Action{Type: "message", Tab: fn.tabName()}
 	if fn.tabName() == "" {
-		action.Conversation = "fresh"
+		action.Conversation = runDestinationNew
 	}
 	return projectFunctionDefinition{ID: id, Name: fn.Name, Description: fn.Description, Enabled: true, Action: action, Input: input, InputSchema: fn.InputSchema, ResultSchema: fn.ResultSchema, CreatedBy: fn.CreatedBy, CreatedAt: fn.CreatedAt, UpdatedAt: fn.UpdatedAt}, nil
 }
@@ -198,8 +198,8 @@ func crewFunctionExecutionView(record projectFunctionDefinition) (crewFunction, 
 		return crewFunction{}, err
 	}
 	execution := "tab"
-	if record.Action.Conversation == "fresh" {
-		execution = "fresh"
+	if record.Action.Conversation == runDestinationNew {
+		execution = runDestinationNew
 	}
 	return crewFunction{Name: record.Name, Description: record.Description, Instructions: strings.Join(input.Messages, "\n\n"), InputSchema: record.InputSchema, ResultSchema: record.ResultSchema, Execution: execution, Agent: record.Action.Tab, TriggerID: record.ID, CreatedBy: record.CreatedBy, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt}, nil
 }

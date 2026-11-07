@@ -3057,6 +3057,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	api.scheduler = schedulerSvc
 	productScheduleSvc := NewProjectActionDispatcher(api, profileRegistry)
 	api.projectActions = productScheduleSvc
+	// One-off, before any function can be called: a function's saved "fresh" becomes "new" (migration file; delete
+	// once every server has started on this version).
+	if err := renameFunctionFreshToNew(); err != nil {
+		log.Printf("[CREW_FUNCTIONS] event=fresh_rename_failed error=%v", err)
+	}
 	// One-off, before any schedule can fire: AgentWorks stops watching Goals (migration file; delete once every
 	// server has started on this version).
 	if err := api.retireAgentWorksGoalWatching(context.Background()); err != nil {
