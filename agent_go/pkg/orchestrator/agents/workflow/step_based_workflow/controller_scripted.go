@@ -1907,7 +1907,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveScriptedFastPathLog(
 // stepOutputAbsPath is the step output folder (execution/step-x/) — STEP_OUTPUT_DIR env var points here.
 // inputArgPaths are the absolute paths passed as sys.argv[1], sys.argv[2], ...
 // envVarNames are the env var names available to the script (SECRET_*, MCP_API_URL, STEP_OUTPUT_DIR).
-func GetScriptedModeInstructions(codeDirAbsPath, stepOutputAbsPath string, isRelearn bool, priorScript, priorError string, inputArgPaths []string, envVarNames []string, varMappingLines []string, validationSchemaJSON string, hasBrowser, isCodeLocked, useProjectedReferenceSkills bool, directSource ...bool) string {
+func GetScriptedModeInstructions(codeDirAbsPath, stepOutputAbsPath string, isRelearn bool, priorScript, priorError string, inputArgPaths []string, envVarNames []string, varMappingLines []string, validationSchemaJSON string, isCodeLocked bool, directSource ...bool) string {
 	canonical := len(directSource) > 0 && directSource[0]
 	var sb strings.Builder
 	sb.WriteString("\n\n## Code Execution Mode\n\n")
@@ -1938,29 +1938,8 @@ func GetScriptedModeInstructions(codeDirAbsPath, stepOutputAbsPath string, isRel
 		sb.WriteString("- A passing `main.py` becomes the saved script for this step and will be tried first on future runs before calling the LLM again\n\n")
 	}
 
-	// Shared authoring rules — single source of truth used by this prompt, the workshop
-	// builder prompt and review_step_code so all agents that write or
-	// review main.py agree on what "compliant" means. Skipped when the script is locked:
-	// the LLM isn't authoring or patching main.py this turn, so authoring rules would
-	// only re-anchor it on writing code.
-	if !isCodeLocked && !useProjectedReferenceSkills {
-		sb.WriteString(BuildMainPyAuthoringRules())
-	}
-
-	// Browser authoring rules are no longer emitted here — the execution_only
-	// template now injects them directly via {{.BrowserAuthoringRules}} (populated
-	// from HasBrowserAccess) so both learn-code and pure code-exec browser steps
-	// see the refs/selectors/probe guidance. Emitting them a second time here
-	// would duplicate ~60 lines. Keep the execution-mode call-examples here since
-	// they're learn-code-specific (they demonstrate the call_mcp Python wrapper
-	// the learn-code prompt teaches).
-	if hasBrowser && !useProjectedReferenceSkills {
-		sb.WriteString("**Browser automation — execution-mode tool call examples (Python):**\n")
-		sb.WriteString("- CDP mode: select/create a tab first with `command='tab'`. `command='open'` is URL-only, e.g. `args=['https://example.com']`; do not pass `['tab', 't1', url]` to open. After open, every page action must include an inline tab, e.g. `args=['tab', 't1', '-i']` for snapshot or `args=['tab', 't1', ref_parsed_from_snapshot]` for click.\n")
-		sb.WriteString("- Snapshot: `call_mcp('workspace_browser', 'agent_browser', {'command': 'snapshot', 'args': ['tab', 't1', '-i'], 'session': 'main'})`\n")
-		sb.WriteString("- Click with a runtime-parsed ref (never persist a literal snapshot ref): `call_mcp('workspace_browser', 'agent_browser', {'command': 'click', 'args': ['tab', 't1', ref_parsed_from_snapshot], 'session': 'main'})`\n")
-		sb.WriteString("- Click with a durable selector: `call_mcp('workspace_browser', 'agent_browser', {'command': 'click', 'args': ['tab', 't1', '[aria-label=\"Sign in\"]'], 'session': 'main'})`\n")
-		sb.WriteString("- Always `get_api_spec` first to see exact parameter schemas. Do NOT guess parameter names.\n\n")
+	if !isCodeLocked {
+		sb.WriteString("Before authoring main.py, open workflow-execution and builder-reference/references/code-authoring.md. Browser scripts also use references/playwright-scripted.md.\n\n")
 	}
 
 	// Show workflow variable → env var mapping so LLM knows exactly how to access each one

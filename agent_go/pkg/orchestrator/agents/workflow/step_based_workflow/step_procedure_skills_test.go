@@ -69,5 +69,20 @@ func TestStepProceduresResolveOnDemand(t *testing.T) {
 	if !usesProjectedReferenceSkills(cfg, map[string]string{"UseProjectedReferenceSkills": "false"}) {
 		t.Fatal("provider-specific procedural fallback survived")
 	}
+	// Script authoring needs the same discoverable procedures even when an API
+	// provider is configured without code-execution mode (PLAT-746-391).
+	apiIdentity, _ := c.assembleStepRuntimeIdentity(&agents.OrchestratorAgentConfig{MCPSessionID: session}, nil, nil, true, false)
+	var hasExecution, hasAuthoring bool
+	for _, skill := range apiIdentity {
+		hasExecution = hasExecution || skill.Name == "workflow-execution"
+		if skill.Name == "builder-reference" {
+			for _, file := range skill.SupportingFiles {
+				hasAuthoring = hasAuthoring || file.RelPath == "references/code-authoring.md"
+			}
+		}
+	}
+	if !hasExecution || !hasAuthoring {
+		t.Fatal("scripted API agent has no discoverable authoring procedure")
+	}
 	t.Logf("attached procedural skills: %v; supplementary system text: %d characters", names, len([]rune(text)))
 }

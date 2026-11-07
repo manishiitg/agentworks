@@ -189,7 +189,7 @@ func TestCodeLayoutRuntimeEnvAndPrompt(t *testing.T) {
 			t.Fatalf("converted layout %d lost canonical code root", version)
 		}
 	}
-	prompt := GetScriptedModeInstructions("/docs/Workflow/testing/code/step", "/docs/Workflow/testing/runs/output", false, "", "", nil, nil, nil, "", false, false, true, true)
+	prompt := GetScriptedModeInstructions("/docs/Workflow/testing/code/step", "/docs/Workflow/testing/runs/output", false, "", "", nil, nil, nil, "", false, true)
 	if strings.Contains(prompt, "To test, just run") || !strings.Contains(prompt, "controller executes") {
 		t.Fatal("canonical prompt must use controller execution")
 	}
