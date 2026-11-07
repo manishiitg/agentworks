@@ -673,9 +673,17 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     const chatStore = useChatStore.getState()
     const existingTab = Object.values(chatStore.chatTabs).find(t => t.sessionId === sessionId)
 
+    // A Crew's run opens in the same run view as elsewhere; the server names what to open.
     if (job.entity_type === 'product') {
-      if (existingTab) activateTab(existingTab.tabId)
-      else chatStore.addToast('Open this project\'s Builder chat to view the scheduled conversation.', 'info')
+      if (run.open) {
+        try {
+          const { openWorkAutomationRunChat, activitySessionFromRunTarget } = await import('../../../products/work/workAutomationRunRestore')
+          await openWorkAutomationRunChat(activitySessionFromRunTarget(run.open, run), { title: run.open.title })
+        } catch {
+          chatStore.addToast('This run could not be opened. Its Crew may no longer exist.', 'error')
+          return
+        }
+      }
       onClose()
       return
     }

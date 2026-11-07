@@ -1,5 +1,5 @@
 import { agentApi } from '../../services/api'
-import type { ActiveSessionInfo } from '../../services/api-types'
+import type { ActiveSessionInfo, ScheduledJobRun } from '../../services/api-types'
 import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -56,6 +56,24 @@ async function resolveRunProject(session: ActiveSessionInfo): Promise<WorkSessio
     if (byWorkspace) return byWorkspace
   }
   return null
+}
+
+/** The session a Crew run row's open target names, in the shape the run view takes. */
+export function activitySessionFromRunTarget(
+  target: NonNullable<ScheduledJobRun['open']>,
+  run: Pick<ScheduledJobRun, 'status' | 'started_at' | 'completed_at'>,
+): ActiveSessionInfo {
+  return {
+    session_id: target.session_id,
+    crew_project_id: target.crew_project_id,
+    workspace_path: target.workspace_path,
+    title: target.title,
+    observer_id: '',
+    agent_mode: '',
+    status: run.status,
+    last_activity: run.completed_at || run.started_at,
+    created_at: run.started_at,
+  }
 }
 
 /** Open the server-owned Crew chat, or an activity view for an isolated run. */
