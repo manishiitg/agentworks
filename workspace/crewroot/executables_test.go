@@ -29,7 +29,7 @@ func TestCrewAutomationSeparatesSourceAndRuntime(t *testing.T) {
 				}
 			}
 			t.Setenv("AGENTWORKS_STATE_ROOT", state)
-			t.Setenv("LOCAL_MODE", "true")
+			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 			data, _ := json.Marshal(map[string]any{"projects": map[string]Record{"work/example": rec}})
 			os.WriteFile(filepath.Join(state, "ownership", "projects.json"), data, 0600)
 			binding := ExecutableBinding{ID: "sequence", Root: "Workflow/sequence", CrewID: "crew", CrewRoot: "Crew/example", Kind: "workflow"}

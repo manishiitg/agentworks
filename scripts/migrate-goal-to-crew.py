@@ -110,7 +110,7 @@ def verified_backup(backup, entries):
         raise ValueError('Not enough free space for the complete workflow backup.')
     backup.mkdir(mode=0o700)
     expected = {}
-    with tarfile.open(backup/'files.tar.gz', 'w:gz') as archive:
+    with tarfile.open(backup/'files.tar.gz', 'w:gz',compresslevel=1) as archive:
         for label, file in entries:
             archive.add(file, arcname=label)
             if file.is_dir():
