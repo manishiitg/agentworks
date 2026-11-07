@@ -246,9 +246,9 @@ type AgentConfigs struct {
 	ExecutionLLMReason           string           `json:"execution_llm_reason,omitempty"`            // PLAT-060. Why this step is pinned to a specific model. Required whenever execution_llm is set — update_step_config rejects the pin without it. A pin outranks execution_tier entirely, so it silently overrides every tier decision above it. Cite the owning architecture_review finding id, and the human_input_id when the pin was user-approved.
 	ExecutionTier                string           `json:"execution_tier,omitempty"`                  // Persistent execution tier override in tiered mode: "high" | "medium" | "low"
 	ExecutionTierReason          string           `json:"execution_tier_reason,omitempty"`           // PLAT-060. Why this step's tier is pinned. Required whenever execution_tier is set — update_step_config rejects the override without it. The tier stays configured until explicitly changed; run counters do not select tiers. Cite the owning architecture_review finding id, and the human_input_id when approved.
-	LearningObjective            string           `json:"learning_objective,omitempty"`              // Legacy automatic contribution instruction; archived by contract 1.0.50. New contributions belong in the task.
-	LearningsAccess              string           `json:"learnings_access,omitempty"`                // read (default), read-write for explicit task contributions, or none. Legacy objective inference ends at migration.
-	LegacyLockLearnings          *bool            `json:"lock_learnings,omitempty"`                  // PLAT-263 migration-only. true is normalized to learnings_access="read"; false is removed. Never consumed by runtime.
+	LearningObjective            string           `json:"learning_objective,omitempty"`              // Archived input for the one-off skills converter; put new instructions in the task.
+	LearningsAccess              string           `json:"learnings_access,omitempty"`                // Archived input for the one-off skills converter; no execution effect.
+	LegacyLockLearnings          *bool            `json:"lock_learnings,omitempty"`                  // Archived input only; never consumed by runtime.
 	LegacyLockLearningsReason    string           `json:"lock_learnings_reason,omitempty"`           // PLAT-263 migration-only audit residue; removed with LegacyLockLearnings.
 	LockCode                     *bool            `json:"lock_code,omitempty"`                       // lock code (main.py) - prevents LLM-rewritten main.py from being saved back to learnings, skips fix loop (nil = not set/unlocked, true = locked, false = explicitly unlocked)
 	SelectedServers              []string         `json:"selected_servers,omitempty"`                // step-level MCP server selection (subset of preset servers)
@@ -656,17 +656,25 @@ func (b *BranchPlanStep) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// These labels are retained only for archived configs consumed by the one-off
+// skills converter. Workflow execution does not grant learning access.
+const (
+	LearningsAccessRead      = "read"
+	LearningsAccessReadWrite = "read-write"
+	LearningsAccessNone      = "none"
+)
+
 // AgentWriteAccess optionally narrows store writes for one sequence item.
-// When it is empty, the item inherits the step-level DB, KB, and learnings access.
+// When it is empty, the item inherits the step-level DB and KB access.
 // Read access remains governed by the step-level configuration.
 type AgentWriteAccess struct {
 	Knowledgebase bool `json:"knowledgebase,omitempty"`
 	DB            bool `json:"db,omitempty"`
-	Learnings     bool `json:"learnings,omitempty"`
+	Learnings     bool `json:"learnings,omitempty"` // Archived field; never grants access.
 }
 
 // UnmarshalJSON rejects per-file scoping attempts on write_access. The access is
-// folder-level booleans (knowledgebase/db/learnings); authors frequently try
+// folder-level booleans (knowledgebase/db); authors frequently try
 // {"db": true, "paths": ["db/foo.json"]} expecting a single file to be writable.
 // Standard decoding silently drops the unknown "paths" key, granting the whole
 // db/ folder while the author thinks it was scoped — a real footgun. Catch the
@@ -678,7 +686,7 @@ func (w *AgentWriteAccess) UnmarshalJSON(data []byte) error {
 	}
 	for _, key := range []string{"paths", "path", "files", "file"} {
 		if _, ok := raw[key]; ok {
-			return fmt.Errorf("write_access does not support per-file scoping (%q): it is folder-level booleans only — use {\"db\": true}, {\"knowledgebase\": true}, and/or {\"learnings\": true}", key)
+			return fmt.Errorf("write_access does not support per-file scoping (%q): it is folder-level booleans only — use {\"db\": true}, {\"knowledgebase\": true}, only", key)
 		}
 	}
 	type alias AgentWriteAccess
@@ -3780,7 +3788,6 @@ func buildAddedStepArtifactSetupNotice(stepID, stepType string) string {
 	b.WriteString("\n\nNew step artifact setup required.\n")
 	b.WriteString("- Step config: decide execution_llm/tier, servers/tools, browser mode, skills, secrets, and description_reviewed in planning/step_config.json.\n")
 	b.WriteString("- Pre-validation: add or confirm validation_schema for required inputs/outputs and generated files.\n")
-	b.WriteString("- Learnings: decide learnings_access, learning_objective, and whether this step should write reusable execution know-how.\n")
 	b.WriteString("- DB: decide whether the step reads/writes db/ files; update db/README.md and schemas/merge rules if it does.\n")
 	b.WriteString("- KB: decide knowledgebase_access and knowledgebase_contribution for business context and notes.\n")
 	b.WriteString("- Scripted code: if " + stepType + " step " + stepID + " should run code, create or review learnings/" + stepID + "/main.py and set code execution config; otherwise make sure no stale script is implied.\n")

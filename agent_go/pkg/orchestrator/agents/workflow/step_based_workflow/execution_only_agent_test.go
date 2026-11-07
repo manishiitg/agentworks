@@ -144,7 +144,7 @@ func TestExecutionOnlyUserPromptIncludesWorkshopHumanInput(t *testing.T) {
 	}
 }
 
-func TestExecutionOnlyPromptsTreatSkillAsAdvisory(t *testing.T) {
+func TestRetiredLearningInputsDoNotEnterStepPrompt(t *testing.T) {
 	agent := &WorkflowExecutionOnlyAgent{}
 
 	systemPrompt := agent.executionOnlySystemPromptProcessor(map[string]string{
@@ -160,15 +160,6 @@ func TestExecutionOnlyPromptsTreatSkillAsAdvisory(t *testing.T) {
 		"IsCodeExecutionMode":   "false",
 		"IsScriptedMode":        "false",
 	})
-	systemSnippets := []string{
-		"advisory know-how from previous runs",
-		"the task, current instructions and standing rules win over conflicting or stale advice",
-	}
-	for _, snippet := range systemSnippets {
-		if !strings.Contains(systemPrompt, snippet) {
-			t.Fatalf("expected system prompt to contain %q\n\nPrompt:\n%s", snippet, systemPrompt)
-		}
-	}
 	if strings.Contains(systemPrompt, "Use the legacy selector.") {
 		t.Fatal("attached-skill mode must not recursively inline legacy learning history")
 	}

@@ -98,9 +98,6 @@ func normalizeLegacyLearningLocks(configs []StepConfig) bool {
 		if ac == nil || (ac.LegacyLockLearnings == nil && ac.LegacyLockLearningsReason == "") {
 			continue
 		}
-		if ac.LegacyLockLearnings != nil && *ac.LegacyLockLearnings && resolveLearningsAccess(ac) != LearningsAccessNone {
-			ac.LearningsAccess = LearningsAccessRead
-		}
 		ac.LegacyLockLearnings = nil
 		ac.LegacyLockLearningsReason = ""
 		changed = true

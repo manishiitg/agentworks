@@ -73,34 +73,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveDBAccess(cfg *AgentConfigs) st
 	}
 	return resolveDBAccess(cfg)
 }
-func (hcpo *StepBasedWorkflowOrchestrator) legacyLearningsEnabled() bool {
-	return hcpo.platformStoresEnabled() && !hcpo.workflowSkillsOnly.Load()
-}
-
-func (hcpo *StepBasedWorkflowOrchestrator) resolveLearningsAccess(cfg *AgentConfigs) string {
-	if !hcpo.legacyLearningsEnabled() {
-		return LearningsAccessNone
-	}
-	return resolveLearningsAccess(cfg)
-}
-func (hcpo *StepBasedWorkflowOrchestrator) canReadLearnings(cfg *AgentConfigs, step PlanStepInterface) bool {
-	return hcpo.legacyLearningsEnabled() && canReadLearnings(cfg, step)
-}
-
-func (hcpo *StepBasedWorkflowOrchestrator) canWriteLearnings(cfg *AgentConfigs, step PlanStepInterface) bool {
-	return hcpo.legacyLearningsEnabled() && canWriteLearnings(cfg, step)
-}
-func (hcpo *StepBasedWorkflowOrchestrator) shouldDirectWriteLearnings(cfg *AgentConfigs, step PlanStepInterface) bool {
-	return hcpo.legacyLearningsEnabled() && shouldDirectWriteLearnings(cfg, step)
-}
-func (hcpo *StepBasedWorkflowOrchestrator) resolveExecutionLearningsAccess(cfg *AgentConfigs, step PlanStepInterface) string {
-	if !hcpo.legacyLearningsEnabled() {
-		return LearningsAccessNone
-	}
-	access := resolveExecutionLearningsAccess(cfg, step)
-	return access
-}
-
 func platformStoreBlockedPaths(workspacePath string) []string {
 	blocked := []string{filepath.Join(workspacePath, DBFolderName), filepath.Join(workspacePath, KnowledgebaseFolderName), filepath.Join(workspacePath, LearningsFolderName)}
 	if sources, err := workflowkb.Resolve(GetPromptDocsRoot(), workspacePath, nil); err == nil {

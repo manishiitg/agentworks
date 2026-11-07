@@ -41,7 +41,7 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 			"clear_fields": map[string]interface{}{
 				"type":        "array",
 				"items":       map[string]interface{}{"type": "string"},
-				"description": "Field names to CLEAR (remove from step_config.json) so the step uses preset/default behavior again. Clearing enabled_skills removes explicit step skills; step execution does not inherit workflow-selected skills, so set enabled_skills explicitly when the step needs installed skills. Only fields with a corresponding setter in this tool are clearable. Valid names: execution_llm, execution_llm_reason, execution_tier, execution_tier_reason, servers, tools, enabled_custom_tools, enabled_skills, additional_read_paths, learning_objective, lock_code, use_code_execution_mode, disable_parallel_tool_execution, coding_agent_tmux_lifecycle, description_reviewed, knowledgebase_access, knowledgebase_contribution, learnings_access, review_notes, validation_schema. Unknown names are reported as errors; nothing else in the same call is applied.",
+				"description": "Field names to CLEAR (remove from step_config.json) so the step uses preset/default behavior again. Clearing enabled_skills removes explicit step skills; step execution does not inherit workflow-selected skills, so set enabled_skills explicitly when the step needs installed skills. Only fields with a corresponding setter in this tool are clearable. Valid names: execution_llm, execution_llm_reason, execution_tier, execution_tier_reason, servers, tools, enabled_custom_tools, enabled_skills, additional_read_paths, lock_code, use_code_execution_mode, disable_parallel_tool_execution, coding_agent_tmux_lifecycle, description_reviewed, knowledgebase_access, knowledgebase_contribution, review_notes, validation_schema. Unknown names are reported as errors; nothing else in the same call is applied.",
 			},
 			"servers": map[string]interface{}{
 				"type":        "array",
@@ -494,19 +494,6 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 
 		}
 
-		// 6. Validate learning config consistency.
-		// Learnings access ↔ objective consistency. Mirror of the KB access ↔
-		// contribution rule below: write-capable access is meaningless without an
-		// extraction instruction for the direct post-completion learning turn.
-		learningsAccessRaw := strings.TrimSpace(targetConfig.AgentConfigs.LearningsAccess)
-		if learningsAccessRaw != "" {
-			validLearningsModes := map[string]bool{
-				LearningsAccessRead: true, LearningsAccessReadWrite: true, LearningsAccessNone: true,
-			}
-			if !validLearningsModes[learningsAccessRaw] {
-				errors = append(errors, fmt.Sprintf("learnings_access %q is not recognized. Valid values: \"read\", \"read-write\", \"none\".", learningsAccessRaw))
-			}
-		}
 		// 6b. Validate execution_tier.
 		if rawExecutionTier := strings.TrimSpace(targetConfig.AgentConfigs.ExecutionTier); rawExecutionTier != "" {
 			if NormalizeTierOverride(rawExecutionTier) == "" {

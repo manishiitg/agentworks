@@ -66,7 +66,6 @@ type StepBasedWorkflowOrchestrator struct {
 	codeLayoutVersion       atomic.Int32
 	crewAutomationCodeRoot  string
 	platformStoresDisabled  atomic.Bool
-	workflowSkillsOnly      atomic.Bool
 	codeWritableByRun       atomic.Bool
 	relayExecution          atomic.Bool
 	stepHasGoal             atomic.Bool

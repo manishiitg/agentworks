@@ -21,7 +21,7 @@ func TestRelayExecutionPolicyLoadedWithPlanForAllEntrypoints(t *testing.T) {
 				t.Fatal(err)
 			}
 			cfg := &AgentConfigs{KnowledgebaseAccess: KBAccessReadWrite, KnowledgebaseContribution: "remember", LearningsAccess: LearningsAccessReadWrite, LearningObjective: "remember"}
-			if c.resolveDBAccess(cfg) != DBAccessNone || c.UseKnowledgebase() || c.resolveExecutionLearningsAccess(cfg, nil) != LearningsAccessNone || c.canReadLearnings(cfg, nil) || c.canWriteLearnings(cfg, nil) {
+			if c.resolveDBAccess(cfg) != DBAccessNone || c.UseKnowledgebase() {
 				t.Fatal("legacy step config re-enabled platform stores")
 			}
 			access := c.constrainAgentWriteAccess(cfg, AgentWriteAccess{DB: true, Knowledgebase: true, Learnings: true})
@@ -39,7 +39,7 @@ func TestRelayExecutionPolicyLoadedWithPlanForAllEntrypoints(t *testing.T) {
 			if err := c.configureExecutionProduct(""); err != nil {
 				t.Fatal(err)
 			}
-			if c.resolveDBAccess(cfg) != DBAccessReadWrite || !c.UseKnowledgebase() || !c.canWriteLearnings(cfg, nil) {
+			if c.resolveDBAccess(cfg) != DBAccessReadWrite || !c.UseKnowledgebase() {
 				t.Fatal("ordinary workflow lost stores")
 			}
 		})
@@ -182,7 +182,7 @@ func TestRelayPythonGuardBlocksAttachedKnowledgebase(t *testing.T) {
 	}
 }
 
-func TestWorkflowSkillsContractRetiresLearningGrantsOnly(t *testing.T) {
+func TestRetiredLearningConfigDoesNotChangeDBKBOrSkills(t *testing.T) {
 	for _, version := range []string{"1.0.50", "1.0.51"} {
 		t.Run(version, func(t *testing.T) {
 			base := newFakeWorkspaceAPIWithContent(t, map[string]string{"Workflow/guides/workflow.json": `{"code_layout_version":1,"version":"` + version + `"}`})
@@ -192,15 +192,11 @@ func TestWorkflowSkillsContractRetiresLearningGrantsOnly(t *testing.T) {
 				t.Fatal(err)
 			}
 			cfg := &AgentConfigs{LearningsAccess: LearningsAccessReadWrite, LearningObjective: "Historical how-to objective", KnowledgebaseAccess: KBAccessReadWrite, EnabledSkills: []string{"workflow-how-to"}}
-			legacy := version == "1.0.50"
-			if c.canReadLearnings(cfg, nil) != legacy || c.canWriteLearnings(cfg, nil) != legacy {
-				t.Fatal("wrong learning policy", version)
-			}
 			if c.resolveDBAccess(cfg) != DBAccessReadWrite || !c.UseKnowledgebase() || len(cfg.EnabledSkills) != 1 {
 				t.Fatal("skills migration removed other capabilities")
 			}
 			access := c.constrainAgentWriteAccess(cfg, AgentWriteAccess{DB: true, Knowledgebase: true, Learnings: true})
-			if !access.DB || !access.Knowledgebase || access.Learnings != legacy {
+			if !access.DB || !access.Knowledgebase || access.Learnings {
 				t.Fatalf("wrong access: %+v", access)
 			}
 		})

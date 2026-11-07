@@ -831,9 +831,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveScriptedShellGuard(
 ) (*workspace.FolderGuardConfig, error) {
 	stepConfig := getAgentConfigs(step)
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-	learningsAccess := hcpo.resolveExecutionLearningsAccess(stepConfig, step)
 
-	readPaths, writePaths := hcpo.setupExecutionFolderGuard(stepPath, step.GetID(), kbAccess, learningsAccess, hcpo.resolveDBAccess(stepConfig), stepConfig)
+	readPaths, writePaths := hcpo.setupExecutionFolderGuard(stepPath, step.GetID(), kbAccess, hcpo.resolveDBAccess(stepConfig), stepConfig)
 	readPaths = common.DeduplicateStrings(appendDescriptionReferenceReadPaths(readPaths, hcpo.GetWorkspacePath(), step.GetDescription()))
 	// Sequence batches use an invocation-specific output folder while retaining
 	// the saved script's identity and store permissions. Never grant the script's

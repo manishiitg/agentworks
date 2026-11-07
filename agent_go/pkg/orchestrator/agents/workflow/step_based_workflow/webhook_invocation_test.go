@@ -59,7 +59,7 @@ func TestWebhookInputFileReachesScriptEnvironmentAndSandbox(t *testing.T) {
 	inputFile := "Workflow/testing/webhooks/deliveries/run.json"
 	controller.SetExecutionOptions(&ExecutionOptions{WebhookInputFile: inputFile, TriggerContextFile: "Workflow/testing/context.json"})
 	contextFile := "Workflow/testing/context.json"
-	readPaths, writePaths := controller.setupExecutionFolderGuard("step-1", "work", KBAccessNone, LearningsAccessNone, "none", nil)
+	readPaths, writePaths := controller.setupExecutionFolderGuard("step-1", "work", KBAccessNone, "none", nil)
 	if !slices.Contains(readPaths, inputFile) || slices.Contains(writePaths, inputFile) {
 		t.Fatalf("delivery grants: read=%v write=%v", readPaths, writePaths)
 	}

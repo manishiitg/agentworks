@@ -1427,7 +1427,7 @@ func requestedAgentItemWriteAccess(item AgentItem) (AgentWriteAccess, bool) {
 	var access AgentWriteAccess
 	switch item.Kind {
 	case "learning":
-		access.Learnings = true
+		return AgentWriteAccess{}, true
 	case "knowledgebase":
 		access.Knowledgebase = true
 	case "db":
@@ -1453,7 +1453,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveAgentItemWriteAccess(stepConfi
 		resolved = AgentWriteAccess{
 			DB:            hcpo.resolveDBAccess(stepConfig) == DBAccessReadWrite,
 			Knowledgebase: kbAccessAllowsWrite(kbAccess),
-			Learnings:     hcpo.resolveLearningsAccess(stepConfig) == LearningsAccessReadWrite,
 		}
 	}
 	return resolved
@@ -1469,7 +1468,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceStepFullWriteAccess(step
 	resolved := AgentWriteAccess{
 		DB:            hcpo.resolveDBAccess(stepConfig) == DBAccessReadWrite,
 		Knowledgebase: kbAccessAllowsWrite(kbAccess),
-		Learnings:     hcpo.resolveLearningsAccess(stepConfig) == LearningsAccessReadWrite,
 	}
 	return resolved
 }
@@ -1480,7 +1478,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) constrainAgentWriteAccess(stepConfig 
 		// workflow step and sequence turn receives the same managed DB tools.
 		DB:            hcpo.resolveDBAccess(stepConfig) == DBAccessReadWrite,
 		Knowledgebase: requested.Knowledgebase && kbAccessAllowsWrite(resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())),
-		Learnings:     requested.Learnings && hcpo.resolveLearningsAccess(stepConfig) == LearningsAccessReadWrite,
 	}
 }
 
@@ -1509,15 +1506,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string
 	// tool_output_folder, where any bridge tool result past its inline cap is spilled (MCP_TOOL_OUTPUT_DIR).
 	readPaths = append(workflowReadGrants(baseWorkspacePath), fmt.Sprintf("%s/tool_output_folder", baseWorkspacePath))
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-	learningsAccess := hcpo.resolveLearningsAccess(stepConfig)
 	if hcpo.platformStoresEnabled() {
 		readPaths, writePaths = appendManagedDBFileAccess(baseWorkspacePath, readPaths, nil)
 	}
 	if kbAccessAllowsRead(kbAccess) {
 		readPaths = append(readPaths, getKnowledgebasePath(baseWorkspacePath))
-	}
-	if learningsAccess != LearningsAccessNone {
-		readPaths = appendLearningReadPaths(readPaths, baseWorkspacePath, stepID)
 	}
 	writePaths = append(writePaths, writeRootPath, downloadsPath)
 	if hcpo.selectedRunFolder != "" {
@@ -1623,7 +1616,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildAgentTemplateVars(ctx context.Co
 		"KbAccessLabel":           kbAccessLabel(kbAccess),
 		"KBGuidanceBlock":         BuildStepKBGuidanceWithTarget(kbAccess, "", hcpo.agentSequenceAbsPath(filepath.Join(KnowledgebaseFolderName, KBNotesFolderName))),
 		"AgentAccessNote":         buildAgentAccessNote(writeAccess, dbAccess),
-		"HasLearnings":            "false",
 		"CurrentDate":             promptDate(time.Now()),
 		"CurrentTime":             promptTime(time.Now()),
 	}

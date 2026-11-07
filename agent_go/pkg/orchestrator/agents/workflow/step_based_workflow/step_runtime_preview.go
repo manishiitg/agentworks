@@ -112,9 +112,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 	result.Tools = registeredToolNames(tools)
 	sort.Strings(result.Tools)
 	kbAccess := resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
-	learningsAccess := hcpo.resolveExecutionLearningsAccess(stepConfig, step)
 	dbAccess := hcpo.resolveDBAccess(stepConfig)
-	readPaths, writePaths := hcpo.setupExecutionFolderGuard(step.GetID(), step.GetID(), kbAccess, learningsAccess, dbAccess, stepConfig)
+	readPaths, writePaths := hcpo.setupExecutionFolderGuard(step.GetID(), step.GetID(), kbAccess, dbAccess, stepConfig)
 	values := map[string]string{}
 	for name := range hcpo.variableValues {
 		values[name] = "<VARIABLE:" + name + ">"

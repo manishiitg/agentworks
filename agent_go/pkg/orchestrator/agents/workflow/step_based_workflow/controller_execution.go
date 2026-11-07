@@ -139,7 +139,7 @@ const (
 // resolveKnowledgebaseAccess resolves the effective KB access mode for a step.
 //
 // resolveKnowledgebaseAccess returns the effective knowledgebase_access for a
-// step. Explicit value wins. Unset mirrors resolveLearningsAccess's already-safe
+// step. Explicit value wins. Unset uses the workflow knowledge setting:
 // default pattern rather than introducing a new one: read by default (every
 // step sees KB context, same as learnings), auto-promoted to read-write only
 // when a contribution is already staged.
@@ -695,17 +695,6 @@ func getExecutionFolderPathForLogs(validationWorkspacePath string, stepID string
 
 const finalExecutionSummaryFilename = "execution-final-summary.json"
 
-// getLearningFolderPathByStepID returns the RELATIVE learning folder path using step ID.
-// All steps share the "learnings/{stepID}/" namespace; step-ID uniqueness
-// within plan.json guarantees no collision.
-// Returns a RELATIVE path for use with workspace functions — they auto-prepend workspacePath.
-// baseWorkspacePath and stepPath are retained for call-site compatibility.
-func getLearningFolderPathByStepID(baseWorkspacePath string, stepID string, stepPath string) string {
-	_ = baseWorkspacePath
-	_ = stepPath
-	return fmt.Sprintf("learnings/%s", stepID)
-}
-
 // addCompletedStepIndex safely adds a step index to the completed list, preventing duplicates
 // This is important when decision steps route back to previous steps, which can cause
 // the same step index to be added multiple times if not checked
@@ -720,13 +709,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) addCompletedStepIndex(progress *StepP
 	// Not found, safe to append
 	progress.CompletedStepIndices = append(progress.CompletedStepIndices, stepIndex)
 	hcpo.GetLogger().Debug(fmt.Sprintf("✅ Added step %d to completed list (total: %d)", stepIndex+1, len(progress.CompletedStepIndices)))
-}
-
-// getEffectiveLearningPathIdentifier returns the step ID for metadata tracking.
-// The learning agent always writes to the _global skill folder (controlled by the template),
-// but metadata is tracked per step for clarity.
-func getEffectiveLearningPathIdentifier(stepID string, stepPath string, agentConfigs *AgentConfigs) string {
-	return stepID
 }
 
 // executeConditionalStep is now in controller_conditional.go
@@ -1234,8 +1216,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 	if sessionID := hcpo.GetMCPSessionID(); sessionID != "" && !isSubAgent {
 		narrowAgentCfg := getAgentConfigs(step)
 		narrowKBAccess := resolveKnowledgebaseAccess(narrowAgentCfg, hcpo.UseKnowledgebase())
-		narrowLearningsAccess := hcpo.resolveExecutionLearningsAccess(narrowAgentCfg, step)
-		narrowRead, narrowWrite := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, narrowKBAccess, narrowLearningsAccess, hcpo.resolveDBAccess(narrowAgentCfg), narrowAgentCfg)
+		narrowRead, narrowWrite := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, narrowKBAccess, hcpo.resolveDBAccess(narrowAgentCfg), narrowAgentCfg)
 		narrowRead = common.DeduplicateStrings(appendDescriptionReferenceReadPaths(narrowRead, hcpo.GetWorkspacePath(), step.GetDescription()))
 		var prevRead, prevWrite []string
 		if prevCfg := common.GetSessionShellConfig(sessionID); prevCfg != nil {
@@ -1327,7 +1308,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 		}
 
 		// Always use learnings folder (unified folder for all learning types)
-		learningsPath := fmt.Sprintf("%s/learnings", hcpo.GetWorkspacePath())
 		// Get execution folder path for this step. Sub-agent calls may override the
 		// artifact folder while keeping the stable step ID for configs/learnings.
 		stepExecutionPath := getExecutionFolderPath(executionWorkspacePath, artifactStepID, artifactStepPath)
@@ -1350,9 +1330,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 		}
 
 		// Get folder guard paths for template (so agent knows exact paths it can access)
-		learningsAccess := hcpo.resolveExecutionLearningsAccess(agentConfigs, step)
 		dbAccess := hcpo.resolveDBAccess(agentConfigs)
-		folderGuardReadPaths, folderGuardWritePaths := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, kbAccess, learningsAccess, dbAccess, agentConfigs)
+		folderGuardReadPaths, folderGuardWritePaths := hcpo.setupExecutionFolderGuard(artifactStepPath, artifactStepID, kbAccess, dbAccess, agentConfigs)
 		// PLAT-556: what the description names under Inputs/Guides is readable (never writable).
 		folderGuardReadPaths = common.DeduplicateStrings(appendDescriptionReferenceReadPaths(folderGuardReadPaths, hcpo.GetWorkspacePath(), step.GetDescription()))
 
@@ -1435,7 +1414,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			"StepSuccessCriteria":       "",
 			"StepContextOutput":         ResolveVariables(step.GetContextOutput().String(), hcpo.variableValues),
 			"WorkspacePath":             toAbsPath(executionWorkspacePath),             // Absolute execution folder path (e.g., "/app/workspace-docs/Workflow/HRMS/runs/...")
-			"LearningsPath":             toAbsPath(learningsPath),                      // Absolute learnings folder path
 			"KnowledgebasePath":         toAbsPath(knowledgebasePath),                  // Absolute knowledgebase folder path
 			"DBPath":                    toAbsPath(getDBPath(hcpo.GetWorkspacePath())), // Absolute db folder path (always enabled)
 			"DBAccess":                  dbAccess,
@@ -1709,18 +1687,16 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				// Add learning history to template vars for execution-only agent (reused for all retry attempts)
 				// If a saved main.py exists for this step, point to the execution/code/ copy (not learnings/)
 				// so the LLM doesn't reference or hardcode learnings paths in generated scripts.
-				stepLearningHistory := ""
+				savedScriptGuidance := ""
 				execCodeMainPyRelPath := hcpo.scriptedWorkingDir(step.GetID(), stepExecutionPath) + "/main.py"
 				if _, mainPyReadErr := hcpo.ReadWorkspaceFile(ctx, execCodeMainPyRelPath); mainPyReadErr == nil {
 					execCodeMainPyAbsPath := filepath.Join(toAbsPath(hcpo.scriptedWorkingDir(step.GetID(), stepExecutionPath)), "main.py")
-					if stepLearningHistory != "" {
-						stepLearningHistory += "\n\n"
+					if savedScriptGuidance != "" {
+						savedScriptGuidance += "\n\n"
 					}
-					stepLearningHistory += fmt.Sprintf("📜 **Saved script available** at `%s` — this is a working implementation from a previous run. Read it before starting, then use `diff_patch_workspace_file` to update it rather than rewriting the entire file.", execCodeMainPyAbsPath)
+					savedScriptGuidance += fmt.Sprintf("📜 **Saved script available** at `%s` — this is a working implementation from a previous run. Read it before starting, then use `diff_patch_workspace_file` to update it rather than rewriting the entire file.", execCodeMainPyAbsPath)
 				}
-				templateVars["LearningHistory"] = stepLearningHistory
-				// Set HasLearnings flag to explicitly indicate whether learnings exist (prevents agent from searching)
-				templateVars["HasLearnings"] = fmt.Sprintf("%t", stepLearningHistory != "")
+				templateVars["SavedScriptGuidance"] = savedScriptGuidance
 
 				// Check for context cancellation before creating execution agent
 				select {

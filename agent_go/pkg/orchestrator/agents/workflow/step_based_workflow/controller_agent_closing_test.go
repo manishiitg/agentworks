@@ -61,7 +61,7 @@ func TestAgentClosingItems(t *testing.T) {
 	if items := c.agentSequenceClosingItems(context.Background(), step, 0); len(items) != 0 {
 		t.Fatalf("automatic closing turns: %+v", items)
 	}
-	if access := c.agentSequenceStepFullWriteAccess(step); !access.Learnings || !access.Knowledgebase {
+	if access := c.agentSequenceStepFullWriteAccess(step); access.Learnings || !access.Knowledgebase {
 		t.Fatalf("explicit task grants lost: %+v", access)
 	}
 }
