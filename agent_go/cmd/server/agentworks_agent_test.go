@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
 
 func newAgentWorksFixture(t *testing.T) *multiUserFixture {
@@ -40,17 +41,13 @@ func (f *multiUserFixture) agentWorksCrews() int {
 	return count
 }
 
-// One AgentWorks per person however often ensure runs, and a schedule the person paused stays paused (PLAT-825-99).
-func TestAgentWorksEnsureKeepsOneAgentAndThePersonsPause(t *testing.T) {
+// One AgentWorks per person however often ensure runs, and it starts with no routine of its own: no schedules, no
+// linked Goals.
+func TestAgentWorksEnsureKeepsOneAgentWithNoRoutine(t *testing.T) {
 	f := newAgentWorksFixture(t)
 	first, err := f.API.ensureAgentWorks(context.Background(), fixtureUserA)
 	if err != nil || !first.Created || first.CrewID != agentWorksCrewID(fixtureUserA) || first.ConversationKey == "" {
 		t.Fatalf("first ensure = %+v, %v", first, err)
-	}
-	jobID := projectScheduleJobID(crewProfileID, first.CrewID, "aw-morning")
-	ctx := f.Ctx(fixtureUserA)
-	if _, err := f.API.projectActions.SetEnabled(ctx, fixtureUserA, jobID, false); err != nil {
-		t.Fatalf("the owned Goal should have added the morning roll-up: %v", err)
 	}
 	second, err := f.API.ensureAgentWorks(context.Background(), fixtureUserA)
 	if err != nil || second.Created || second.CrewID != first.CrewID || second.ConversationKey != first.ConversationKey {
@@ -59,17 +56,74 @@ func TestAgentWorksEnsureKeepsOneAgentAndThePersonsPause(t *testing.T) {
 	if got := f.agentWorksCrews(); got != 1 {
 		t.Fatalf("AgentWorks Crews = %d, want 1", got)
 	}
-	job, err := f.API.projectActions.Job(ctx, fixtureUserA, jobID)
-	if err != nil || job.Schedule.Enabled {
-		t.Fatalf("paused roll-up must stay paused: %+v %v", job.Schedule, err)
+	ctx := f.Ctx(fixtureUserA)
+	if schedules, err := readProjectSchedules(ctx, first.WorkspacePath); err != nil || len(schedules) != 0 {
+		t.Fatalf("AgentWorks made itself a routine: %v %v", schedules, err)
 	}
-	refs, err := readWorkWorkflowReferences(ctx, first.WorkspacePath)
-	if err != nil || len(refs) != 1 || refs[0] != fixtureGoal {
-		t.Fatalf("the Goal the person runs is linked once: %v %v", refs, err)
+	if refs, err := readWorkWorkflowReferences(ctx, first.WorkspacePath); err != nil || len(refs) != 0 {
+		t.Fatalf("AgentWorks linked Goals on its own: %v %v", refs, err)
 	}
 }
 
-// AgentWorks is paused, never deleted; the refusal says how to pause it.
+// The one-off retirement removes only what AgentWorks made for itself, once: its three built-in schedules and the
+// earlier per-Goal tab checks, the Goals it linked and the wake_tab it set. A schedule the person made stays, and
+// so does a wake_tab pointing anywhere else.
+func TestAgentWorksRetirementRemovesOnlyItsOwnRoutineOnce(t *testing.T) {
+	f := newAgentWorksFixture(t)
+	crew, err := f.API.ensureAgentWorks(context.Background(), fixtureUserA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := f.Ctx(fixtureUserA)
+	for _, id := range []string{"aw-morning", "aw-evening", "aw-daily", "aw-tab-goal-1", "mine"} {
+		schedule := productschedule.Schedule{ID: id, Name: id, Enabled: true, CronExpression: "45 9 * * *", Timezone: "UTC", Messages: []string{"hello"}}
+		if _, err := f.API.projectActions.CreateProjectSchedule(ctx, fixtureUserA, crewProfileID, crew.CrewID, schedule); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	if err := updateGoalWakeTab(ctx, fixtureGoal, &WorkflowWakeTab{CrewID: crew.CrewID, ChatID: agentWorksMainChatID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAgentWorksState(ctx, crew.WorkspacePath, agentWorksState{Goals: map[string]*agentWorksGoalEntry{"goal-1": {Path: fixtureGoal}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.API.retireAgentWorksGoalWatchingFor(context.Background(), fixtureUserA); err != nil {
+		t.Fatal(err)
+	}
+	remaining := []string{}
+	schedules, err := readProjectSchedules(ctx, crew.WorkspacePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, schedule := range schedules {
+		remaining = append(remaining, schedule.ID)
+	}
+	if len(remaining) != 1 || remaining[0] != "mine" {
+		t.Fatalf("schedules after retirement = %v, want only the person's own", remaining)
+	}
+	if manifest, _, err := ReadWorkflowManifest(ctx, fixtureGoal); err != nil || manifest.Capabilities.Notifications != nil && manifest.Capabilities.Notifications.WakeTab != nil {
+		t.Fatalf("the wake_tab AgentWorks set was not cleared: %v", err)
+	}
+	state := readAgentWorksState(ctx, crew.WorkspacePath)
+	if state.GoalWatchRetired == "" || len(state.Goals) != 0 {
+		t.Fatalf("state after retirement = %+v", state)
+	}
+	if _, found, err := readFileFromWorkspace(ctx, crew.WorkspacePath+"/"+agentWorksRetirementBackup); err != nil || !found {
+		t.Fatalf("no copy of the old state and schedules was kept: %v %v", found, err)
+	}
+	// Done once: a schedule with a retired id made later is left alone.
+	if _, err := f.API.projectActions.CreateProjectSchedule(ctx, fixtureUserA, crewProfileID, crew.CrewID, productschedule.Schedule{ID: "aw-morning", Name: "mine again", Enabled: true, CronExpression: "45 9 * * *", Timezone: "UTC", Messages: []string{"hello"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.API.retireAgentWorksGoalWatchingFor(context.Background(), fixtureUserA); err != nil {
+		t.Fatal(err)
+	}
+	if schedules, _ := readProjectSchedules(ctx, crew.WorkspacePath); len(schedules) != 2 {
+		t.Fatalf("a second run removed a schedule: %d", len(schedules))
+	}
+}
+
+// AgentWorks cannot be deleted; the refusal says why there is nothing to pause.
 func TestAgentWorksDeleteIsRefused(t *testing.T) {
 	f := newAgentWorksFixture(t)
 	crew, err := f.API.ensureAgentWorks(context.Background(), fixtureUserA)
@@ -80,28 +134,10 @@ func TestAgentWorksDeleteIsRefused(t *testing.T) {
 	req = mux.SetURLVars(req, map[string]string{"id": crewProfileID, "project_id": crew.CrewID})
 	rec := httptest.NewRecorder()
 	f.API.handleDeleteAgentProfileProject(rec, req)
-	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "paused, not deleted") || !strings.Contains(rec.Body.String(), "schedules off") {
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "can't be deleted") {
 		t.Fatalf("delete = %d %s", rec.Code, rec.Body.String())
 	}
 	if f.agentWorksCrews() != 1 {
 		t.Fatal("AgentWorks was removed")
-	}
-}
-
-// read_linked_goal rechecks the person's current owner/editor access on every call; being linked is not enough.
-func TestReadLinkedGoalNeedsCurrentAccess(t *testing.T) {
-	_, _, api := newCrewWorkflowRunTestEnv(t)
-	run := func(userID string) (string, error) {
-		reg := &recordingRegistrar{}
-		if err := api.registerAgentWorksAgentTools(reg, nil, userID, crewWorkflowTestCrewPath); err != nil {
-			t.Fatal(err)
-		}
-		return reg.tools["read_linked_goal"].exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/test", "action": "runs"})
-	}
-	if _, err := run("reader"); err == nil || !strings.Contains(err.Error(), "owner or editor") {
-		t.Fatalf("a person without access read the Goal: %v", err)
-	}
-	if out, err := run("owner"); err != nil || !strings.Contains(out, `"schedules"`) {
-		t.Fatalf("owner read = %s %v", out, err)
 	}
 }

@@ -1,16 +1,16 @@
 ---
 name: agentworks-schedules-watchers
-description: "Use before creating or changing a schedule or watcher for a Goal or Crew."
+description: "Use before creating or changing a schedule or watcher for a Crew."
 ---
 
 # Setting up schedules and watchers
 
 Skills to read first: `panel-automations`, then `schedules` or `watchers`.
 
-- **List first.** Before creating, list the existing schedules and watchers of that Goal or Crew so you never duplicate one.
-- **Schedules:** `automations` actions `list`, `create`, and `update` with `scope=schedule` manage this Crew's schedules. A Crew schedule carries exactly one self-contained message. Leave `chat_id` empty so it runs in your main chat; set it only for a tab the person made and asked you to use. A Goal's own timers are read with `read_linked_goal` action `runs` and changed through its Builder. The platform already made one daily check of every linked Goal here; do not add a check per Goal.
+- **List first.** Before creating, list the existing schedules and watchers of that Crew so you never duplicate one.
+- **Schedules:** `automations` actions `list`, `create`, and `update` with `scope=schedule` manage this Crew's schedules. A Crew schedule carries exactly one self-contained message. Leave `chat_id` empty so it runs in your main chat; set it only for a tab the person made and asked you to use.
 - **Write the message so it needs no human answer:** what to check, what to report, what not to touch. Never ask a question in an unattended message.
-- **Time them after the thing they watch:** just after a Goal's scheduled run, not at the same minute. Never make a daily schedule depend on a weekly one.
+- **Time them after the thing they watch:** just after its scheduled run, not at the same minute. Never make a daily schedule depend on a weekly one.
 - **Watchers** (`automations` actions `list`, `create`, `update` with `scope=watcher`): for a condition that should wake you, such as a results page going stale, a reply arriving, or a target missed. A watcher is a small deterministic check, at least five minutes apart, with a stable request_id; list first and update instead of adding a second one.
 - **After you set one up,** say what it will catch and when it first fires. Do not create a check and delete it in the same turn.
 - Schedules never catch up; a missed slot is simply missed.

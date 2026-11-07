@@ -139,7 +139,6 @@ func (api *StreamingAPI) handleCreateAgentProfileProject(w http.ResponseWriter, 
 	if setupErr != nil {
 		response["warnings"] = []string{projectCreationWarning(setupErr)}
 	}
-	api.refreshAgentWorksSoon(claims.UserID)
 	writeAgentProfileJSON(w, http.StatusCreated, response)
 }
 
