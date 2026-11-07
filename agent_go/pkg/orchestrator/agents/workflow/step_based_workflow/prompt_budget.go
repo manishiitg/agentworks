@@ -1,13 +1,6 @@
 package step_based_workflow
 
 import (
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -282,65 +275,4 @@ func promptBudgetDuplication(inputs []promptBudgetInput) ([]int, [][]string) {
 		sort.Strings(with[i])
 	}
 	return covered, with
-}
-
-// PromptBudgetDue is the Go-precomputed Architecture trigger set Gate sees and
-// the worklist enforces: steps due for a prompt_design consolidation.
-type PromptBudgetDue struct {
-	Health       PromptHealthReport `json:"health"`
-	PromptDesign []string           `json:"prompt_design_steps"`
-	// Fingerprint changes whenever a flagged step's text or the flagged set
-	// changes, so a reviewed, unchanged state is not made due again.
-	Fingerprint string `json:"fingerprint,omitempty"`
-}
-
-// Any reports whether a budget trigger is active.
-func (d PromptBudgetDue) Any() bool {
-	return len(d.PromptDesign) > 0
-}
-
-// FocusKeys returns the Architecture focuses the triggers ask for.
-func (d PromptBudgetDue) FocusKeys() []string {
-	var keys []string
-	if len(d.PromptDesign) > 0 {
-		keys = append(keys, "prompt_design")
-	}
-	return keys
-}
-
-func CollectPromptBudgetDue(ctx context.Context, workspacePath string) (PromptBudgetDue, error) {
-	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
-	if workspacePath == "" {
-		return PromptBudgetDue{}, nil
-	}
-	root := workflowAbsPath(workspacePath)
-	planRaw, err := os.ReadFile(filepath.Join(root, PlanningFolderName, "plan.json"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return PromptBudgetDue{}, nil
-		}
-		return PromptBudgetDue{}, fmt.Errorf("read planning/plan.json: %w", err)
-	}
-	var plan PlanningResponse
-	if err := json.Unmarshal(planRaw, &plan); err != nil {
-		return PromptBudgetDue{}, fmt.Errorf("parse planning/plan.json: %w", err)
-	}
-	due := PromptBudgetDue{Health: BuildPromptHealthReport(plan.Steps)}
-	due.PromptDesign = append([]string(nil), due.Health.ConsolidationDueSteps...)
-
-	if due.Any() {
-		descByID := map[string]string{}
-		for _, info := range collectAllSteps(plan.Steps) {
-			if info.Step != nil {
-				descByID[info.Step.GetID()] = info.Step.GetDescription()
-			}
-		}
-		h := sha256.New()
-		for _, id := range due.PromptDesign {
-			sum := sha256.Sum256([]byte(descByID[id]))
-			fmt.Fprintf(h, "p:%s:%x\n", id, sum[:6])
-		}
-		due.Fingerprint = hex.EncodeToString(h.Sum(nil))[:16]
-	}
-	return due, nil
 }
