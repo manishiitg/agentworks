@@ -91,6 +91,8 @@ func TestCrewMainWorkflowUpgradeChecksRepairsAndStampsCurrentDefinitions(t *test
 		t.Fatal(err)
 	}
 	child := crewExecutableBinding{ID: "upgrade-report", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/upgrade-report", Kind: "workflow"}
+	refuseManifestWrite := false
+	upgradeRecordWrites := 0
 	// Native commits holding the workflow lock write real files to avoid a
 	// cross-process lock deadlock. Its HTTP reader must see the SAME files,
 	// rather than the old in-memory mock left behind after a native repair.
@@ -121,6 +123,13 @@ func TestCrewMainWorkflowUpgradeChecksRepairsAndStampsCurrentDefinitions(t *test
 		var body struct{ Content string }
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if strings.Contains(name, "/planning/changelog/") && strings.Contains(body.Content, `"tool": "workflow_upgrade"`) {
+			upgradeRecordWrites++
+		}
+		if refuseManifestWrite && name == child.Root+"/workflow.json" {
+			http.Error(w, "file edit serialization unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
@@ -232,6 +241,43 @@ func TestCrewMainWorkflowUpgradeChecksRepairsAndStampsCurrentDefinitions(t *test
 	}
 	*directory = `{"users":[{"id":"owner","username":"owner","role":"creator"}]}`
 	invalidateUserDirectoryCache()
+	// A real workspace write refusal must not leave a successful stamp receipt.
+	// The HTTP boundary is the only mock: the actual stamp/write/log code runs.
+	beforeFailure, _, err := ReadWorkflowManifest(ctx, child.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeFailure.Capabilities.BrowserMode = "auto"
+	retired, _ := json.Marshal(beforeFailure)
+	if err := writeFileToWorkspace(ctx, child.Root+"/workflow.json", string(retired)); err != nil {
+		t.Fatal(err)
+	}
+	status, err = call(map[string]interface{}{})
+	if err != nil || !strings.Contains(status, "repair_browser_mode") {
+		t.Fatalf("retired setting has no repair: %s %v", status, err)
+	}
+	if applied, err := api.checkAndStampWorkflowContract(ctx, child.Root, beforeFailure, workflowContractPortableVersion, "Check retired setting"); err == nil || applied || !strings.Contains(err.Error(), "capabilities.browser_mode") {
+		t.Fatalf("retired setting was stamped: %v %v", applied, err)
+	}
+	if _, err := call(map[string]interface{}{"repair_browser_mode": true, "reason": "Use the existing local browser conversion policy"}); err != nil {
+		t.Fatal(err)
+	}
+	beforeFailure, _, err = ReadWorkflowManifest(ctx, child.Root)
+	if err != nil || beforeFailure.Capabilities.BrowserMode != "extension" || beforeFailure.Version != workflowContractSkillsVersion {
+		t.Fatalf("named repair changed version or selected the wrong browser: %+v %v", beforeFailure, err)
+	}
+	refuseManifestWrite = true
+	if applied, err := api.checkAndStampWorkflowContract(ctx, child.Root, beforeFailure, workflowContractPortableVersion, "Check write refusal"); err == nil || applied || !strings.Contains(err.Error(), "503") {
+		t.Fatalf("failed manifest write was stamped: applied=%v err=%v", applied, err)
+	}
+	refuseManifestWrite = false
+	if upgradeRecordWrites != 0 {
+		t.Fatal("failed manifest write recorded a successful upgrade")
+	}
+	status, err = call(map[string]interface{}{})
+	if err != nil || !strings.Contains(status, `"version":"1.0.51"`) || !strings.Contains(status, `"pending":[{`) {
+		t.Fatalf("failed save lost pending update: %s %v", status, err)
+	}
 	out, err := call(map[string]interface{}{"version": workflowContractPortableVersion, "reason": "Reviewed all current steps and retained the tasks"})
 	if err != nil || !strings.Contains(out, `"applied":true`) {
 		t.Fatalf("authorized Crew Main stamp failed: %s %v", out, err)

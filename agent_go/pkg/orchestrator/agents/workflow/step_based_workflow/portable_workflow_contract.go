@@ -218,13 +218,21 @@ func portableReferences(value any, location, workspace string) error {
 	return nil
 }
 
-// RecordWorkflowContractUpgrade must succeed before the version changes. This
-// uses the plan's existing change log; no second migration ledger is needed.
+// RecordWorkflowContractUpgrade records a saved version, never an attempted
+// write. This uses the plan's existing change log, not a migration ledger.
 func RecordWorkflowContractUpgrade(ctx context.Context, workspace, from, to, reason string, steps []string, read func(context.Context, string) (string, error), write func(context.Context, string, string) error) error {
 	return writePlanChangelogEntry(ctx, workspace, PlanChangelogEntry{
 		Tool: "workflow_upgrade", Reason: reason, StepIDs: steps, Target: "workflow.json.version",
 		Changes:        []PlanFieldChange{{Field: "version", OldValue: from, NewValue: to}},
 		BeforeSnapshot: map[string]string{"version": from}, AfterSnapshot: map[string]string{"version": to},
+	}, read, write, loggerv2.NewNoop())
+}
+
+func RecordWorkflowManifestRepair(ctx context.Context, workspace, field string, before, after any, reason string, read func(context.Context, string) (string, error), write func(context.Context, string, string) error) error {
+	return writePlanChangelogEntry(ctx, workspace, PlanChangelogEntry{
+		Tool: "workflow_upgrade_repair", Reason: reason, Target: "workflow.json." + field,
+		Changes:        []PlanFieldChange{{Field: field, OldValue: before, NewValue: after}},
+		BeforeSnapshot: before, AfterSnapshot: after,
 	}, read, write, loggerv2.NewNoop())
 }
 

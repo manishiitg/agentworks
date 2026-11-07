@@ -76,6 +76,33 @@ class Migration(unittest.TestCase):
 
     def conversion(self):return m.Conversion(self.docs,self.state,'old-goal','crew')
 
+    def test_moved_attachment_keeps_target_identity_and_refuses_other_owner_or_missing(self):
+        # PLAT-746-396: a saved old root caused preflight refusals after migration.
+        file = self.source/'workflow.json'
+        manifest = m.read(file)
+        attachment = {'id':'attachment','alias':'source','crew_profile_id':'work','crew_project_id':'crew','crew_workspace_path':'_users/owner/Chats/Work/projects/target','created_at':'original'}
+        manifest['crew_attachments'] = [attachment]
+        manifest['capabilities']['browser_mode'] = 'auto'
+        write(file,manifest)
+        before = hashes(self.base)
+        candidate = self.conversion()
+        converted = candidate.document(candidate.definitions/'workflow.json')
+        self.assertEqual(converted['crew_attachments'], [dict(attachment,crew_workspace_path='Crew/target')])
+        self.assertEqual(converted['capabilities']['browser_mode'],'extension')
+        self.assertEqual(hashes(self.base),before)
+        server = m.Conversion(self.docs,self.state,'old-goal','crew',deployment_mode='server')
+        self.assertEqual(server.document(server.definitions/'workflow.json')['capabilities']['browser_mode'],'headless')
+        projects_file = self.state/'ownership/projects.json'
+        projects = m.read(projects_file)
+        projects['projects']['work/foreign'] = {'product':'work','folder':'foreign','project_id':'foreign','owner_id':'other'}
+        write(projects_file,projects)
+        for project_id,error in [('foreign','do not own'),('missing','missing or ambiguous')]:
+            manifest['crew_attachments'][0]['crew_project_id'] = project_id
+            write(file,manifest)
+            before = hashes(self.base)
+            with self.assertRaisesRegex(ValueError,error):self.conversion()
+            self.assertEqual(hashes(self.base),before)
+
     def test_batch_split_is_explicit_and_keeps_timer_state_and_fresh_chat(self):
         # PLAT-746-396: a batch must not silently shrink to one preset.
         file = self.source/'variables/variables.json'

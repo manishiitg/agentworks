@@ -633,7 +633,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 
 	if m.Capabilities.BrowserMode != "" {
 		if err := browser.ValidateMode(m.Capabilities.BrowserMode); err != nil {
-			return err
+			return fmt.Errorf("capabilities.browser_mode: %w; in this Crew's chat, check upgrade status and use repair_browser_mode for a retired mode", err)
 		}
 	}
 
