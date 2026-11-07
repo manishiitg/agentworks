@@ -37,6 +37,25 @@ it('closes a scheduled view without stopping the run and returns to its own buil
   expect(mocks.state.closeTab).toHaveBeenCalledWith('run', false)
   expect(mocks.activate).toHaveBeenCalledWith('builder')
 })
+// PLAT-746: migrated run projections inherited Main's owner ID; Close silently
+// returned when the old preset was absent, or tried to close Main on the server.
+it.each(['multi-agent', 'workflow'] as const)('closes a %s run view with inherited main ownership without closing its source chat', async mode => {
+  const run = tab('run', {
+    mode, agentProfileId: 'work', agentProfileProjectId: 'p',
+    agentProfileConversationKey: 'p', presetQueryId: 'moved-preset',
+    isViewOnly: true, isScheduledRun: true,
+    workflowOwnerTabID: 'moved-preset:chat:main', workflowOwnerTabIsMain: true,
+    agentProfileTabCanWrite: false,
+  }, { isStreaming: true })
+  setup(run)
+  expect(canCloseWorkspaceChatTab(run, mocks.state.chatTabs)).toBe(true)
+  await closeWorkspaceChatTab('run', 'primary')
+  expect(mocks.closeGoal).not.toHaveBeenCalled()
+  expect(mocks.closeSide).not.toHaveBeenCalled()
+  expect(mocks.stop).not.toHaveBeenCalled()
+  expect(mocks.state.closeTab).toHaveBeenCalledWith('run', false)
+  expect(mocks.activate).toHaveBeenCalledWith('primary')
+})
 it('lets the server release an idle chat and close its key before removing the tab', async () => {
   setup()
   await closeWorkspaceChatTab('side')

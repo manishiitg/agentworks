@@ -19,7 +19,7 @@ export function selectWorkflowTabsForStrip(
   const scopedCandidates = activePresetId
     ? candidates.filter(tab => !tab.metadata?.presetQueryId || tab.metadata.presetQueryId === activePresetId)
     : candidates
-  const named = scopedCandidates.filter(tab => !!tab.metadata?.workflowOwnerTabID)
+  const named = scopedCandidates.filter(tab => !tab.metadata?.isViewOnly && !!tab.metadata?.workflowOwnerTabID)
   const interactive = scopedCandidates
     .filter(tab => !tab.metadata?.workflowOwnerTabID && tab.metadata?.isViewOnly !== true && tab.metadata?.phaseId === 'workflow-builder')
     .sort((a, b) => {

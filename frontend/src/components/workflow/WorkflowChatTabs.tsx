@@ -145,7 +145,9 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
 
   const handleCloseTab = useCallback((tabId: string) => {
     const tab = useChatStore.getState().getTab(tabId)
-    const close = tab?.metadata?.workflowOwnerTabID ? mutateTab('close', tab.metadata.workflowOwnerTabID) : closeWorkspaceChatTab(tabId)
+    const close = tab?.metadata?.isViewOnly !== true && tab?.metadata?.workflowOwnerTabID
+      ? mutateTab('close', tab.metadata.workflowOwnerTabID)
+      : closeWorkspaceChatTab(tabId)
     void close.catch(() => {
       useChatStore.getState().addToast('Could not close this chat. Try again.', 'error')
     })
@@ -208,10 +210,10 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
 
   const ordered = binding?.tabs
     ? [...binding.tabs.flatMap(chat => activeWorkflowTabs.filter(tab => tab.sessionId === chat.session_id)),
-      ...activeWorkflowTabs.filter(tab => !tab.metadata?.workflowOwnerTabID)]
+      ...activeWorkflowTabs.filter(tab => tab.metadata?.isViewOnly || !tab.metadata?.workflowOwnerTabID)]
     : activeWorkflowTabs
   const resolvedTabs = ordered.length ? ordered : activeWorkflowTabs
-  const main = resolvedTabs.find(tab => tab.metadata?.workflowOwnerTabIsMain && tab.metadata.agentProfileTabCanWrite)
+  const main = resolvedTabs.find(tab => !tab.metadata?.isViewOnly && tab.metadata?.workflowOwnerTabIsMain && tab.metadata.agentProfileTabCanWrite)
     || resolvedTabs.find(tab => !tab.metadata?.isViewOnly && tab.metadata?.phaseId === 'workflow-builder') || resolvedTabs[0]
   const tabs = [main, ...resolvedTabs.filter(tab => tab.tabId !== main.tabId)]
   const listed = (binding?.tabs || []).filter(chat => chat.id !== main.metadata?.workflowOwnerTabID).map(chat => ({
