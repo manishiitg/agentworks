@@ -24,8 +24,6 @@ func TestRunPromptCoversKnowledgeAndRouteSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"learnings/_global/SKILL.md",
-		"learnings/<step-id>/",
 		"Attached knowledge bases",
 		"route_selections",
 		"runs action=start` `variables`",

@@ -1047,8 +1047,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyPostSetupToAgent(agent agents.Or
 		return nil // No base agent, nothing to configure
 	}
 
-	// Set folder guard paths on MCP agent (required for both code execution mode and simple mode)
-	// This ensures path validation works at the tool executor level
+	// Preserve the SDK policy projection. Enforcement comes from the per-step
+	// session guard and registered workspace tools, not this metadata setter.
 	readPaths, writePaths := hcpo.GetFolderGuardPaths()
 	if config := agent.GetConfig(); config != nil && (config.FolderGuardReadPaths != nil || config.FolderGuardWritePaths != nil) {
 		readPaths, writePaths = config.FolderGuardReadPaths, config.FolderGuardWritePaths
@@ -1080,6 +1080,32 @@ func parentStepIndexFromContext(ctx context.Context, fallback int) int {
 		return stepIndex
 	}
 	return fallback
+}
+
+// prepareExecutionTools keeps the script-helper parent's explicit tool choices;
+// ordinary agent descriptions retain their existing human-tool inference.
+func (hcpo *StepBasedWorkflowOrchestrator) prepareExecutionTools(stepConfig *AgentConfigs, planStep PlanStepInterface, subAgentExecCtx *SubAgentExecutionContext, dbAccess string) ([]llmtypes.Tool, map[string]interface{}) {
+	toolConfig := stepConfig
+	if subAgentExecCtx == nil {
+		toolConfig = stepConfigWithDescribedHumanTools(stepConfig, planStep)
+	}
+	toolsToRegister, executorsToUse := hcpo.prepareCustomTools(toolConfig)
+	if dbAccess == DBAccessRead || dbAccess == DBAccessNone {
+		filtered := toolsToRegister[:0]
+		for _, tool := range toolsToRegister {
+			if tool.Function != nil && (tool.Function.Name == "mutate_workflow_db" || tool.Function.Name == "apply_workflow_db_migration" || (dbAccess == DBAccessNone && tool.Function.Name == "query_workflow_db")) {
+				continue
+			}
+			filtered = append(filtered, tool)
+		}
+		toolsToRegister = filtered
+		delete(executorsToUse, "mutate_workflow_db")
+		delete(executorsToUse, "apply_workflow_db_migration")
+		if dbAccess == DBAccessNone {
+			delete(executorsToUse, "query_workflow_db")
+		}
+	}
+	return toolsToRegister, executorsToUse
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.Context, phase string, stepPath string, agentName string, stepConfig *AgentConfigs, planStep PlanStepInterface, stepIDOverride string, artifactFolderNameOverride string, delegation ...*SubAgentExecutionContext) (agents.OrchestratorAgent, error) {
@@ -1231,26 +1257,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	hcpo.GetLogger().Info("⚡ Parallel tool execution enabled for execution-only agent")
 
 	// 5. Prepare custom tools (filtered by step config)
-	toolConfig := stepConfig
-	if subAgentExecCtx == nil {
-		toolConfig = stepConfigWithDescribedHumanTools(stepConfig, planStep)
-	}
-	toolsToRegister, executorsToUse := hcpo.prepareCustomTools(toolConfig)
-	if dbAccess == DBAccessRead || dbAccess == DBAccessNone {
-		filtered := toolsToRegister[:0]
-		for _, tool := range toolsToRegister {
-			if tool.Function != nil && (tool.Function.Name == "mutate_workflow_db" || tool.Function.Name == "apply_workflow_db_migration" || (dbAccess == DBAccessNone && tool.Function.Name == "query_workflow_db")) {
-				continue
-			}
-			filtered = append(filtered, tool)
-		}
-		toolsToRegister = filtered
-		delete(executorsToUse, "mutate_workflow_db")
-		delete(executorsToUse, "apply_workflow_db_migration")
-		if dbAccess == DBAccessNone {
-			delete(executorsToUse, "query_workflow_db")
-		}
-	}
+	toolsToRegister, executorsToUse := hcpo.prepareExecutionTools(stepConfig, planStep, subAgentExecCtx, dbAccess)
 	if subAgentExecCtx != nil {
 		// Filter out human tools if "no human" execution mode is active
 		execOpts := hcpo.GetExecutionOptions()

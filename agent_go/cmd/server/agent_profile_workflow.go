@@ -234,7 +234,9 @@ func (api *StreamingAPI) agentProfileWorkflowSession(ctx context.Context, resolv
 				return err
 			}
 		}
-		created, err := todo_creation_human.NewWorkshopChatSession(ctx, cfg)
+		// An accepted background step outlives this tool request. Cancellation
+		// still fences initialization and publication below; Stop owns Close.
+		created, err := todo_creation_human.NewWorkshopChatSession(context.WithoutCancel(ctx), cfg)
 		if err != nil {
 			return nil, fmt.Errorf("create profile workflow runtime: %w", err)
 		}

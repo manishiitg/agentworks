@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -101,6 +102,19 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	listed, err := edit(ctx, map[string]interface{}{"action": "list"})
 	if err != nil || !strings.Contains(listed, child.Root) || !strings.Contains(listed, chat.ConversationKey) {
 		t.Fatalf("own children and agents unavailable: %s %v", listed, err)
+	}
+	var authoring struct {
+		Executables []struct {
+			Environment map[string]string `json:"code_environment"`
+		} `json:"executables"`
+	}
+	if err := json.Unmarshal([]byte(listed), &authoring); err != nil || len(authoring.Executables) != 1 {
+		t.Fatalf("authoring paths unavailable: %s %v", listed, err)
+	}
+	for key, want := range stepworkflow.CodeRuntimeEnvironment(child.Root) {
+		if got := authoring.Executables[0].Environment[key]; got == "" || got != want {
+			t.Fatalf("chat installs dependencies somewhere other than the runner: %s=%q want %q", key, got, want)
+		}
 	}
 	if _, err := edit(ctx, map[string]interface{}{"action": "write", "workspace_path": child.Root, "file": "code/report/main.py", "content": "print('report')"}); err != nil {
 		t.Fatal(err)

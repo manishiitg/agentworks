@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"strings"
@@ -21,6 +22,56 @@ func TestProfileRequiresWorkflowRuntime(t *testing.T) {
 	if !profileRequiresWorkflowRuntime(resolved) {
 		t.Fatal("required capability did not enable workflow runtime")
 	}
+}
+
+// PLAT-746-405: changing the native chat must not borrow another chat's run.
+func TestCrewStepRunSelectionDoesNotFollowAChangedSession(t *testing.T) {
+	for _, authoritative := range []bool{false, true} {
+		t.Run(fmt.Sprint(authoritative), func(t *testing.T) {
+			store, _ := memoryProductConversationStore()
+			profile := routeTestProfile("work", true, "")
+			binding := productConversationBinding{ConversationKey: "project", WorkspacePath: "Crew/example", ResourceID: "project"}
+			original, err := store.resolveOrCreate(t.Context(), "owner", profile, binding, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			folder := "run-original"
+			if _, err := store.workflowStepRun(t.Context(), "owner", original.SessionID, binding.WorkspacePath, "workflow", &folder); err != nil {
+				t.Fatal(err)
+			}
+			var changed ProductConversationRecord
+			if authoritative {
+				binding.AuthoritativeSessionID = "another-chat"
+				changed, err = store.resolveOrCreate(t.Context(), "owner", profile, binding, "")
+			} else {
+				changed, err = store.switchTo(t.Context(), "owner", profile, binding, "another-chat", true)
+			}
+			if err != nil || changed.SessionID != "another-chat" || changed.CurrentWorkflowRun != nil {
+				t.Fatalf("new session inherited another chat's selection: %+v %v", changed, err)
+			}
+			got, err := store.workflowStepRun(t.Context(), "owner", "another-chat", binding.WorkspacePath, "workflow", nil)
+			if err != nil || got != "" {
+				t.Fatalf("new session resolved old run: %q %v", got, err)
+			}
+		})
+	}
+}
+
+func TestStoppedOrCancelledCrewChatCannotCreateWorkflowRuntime(t *testing.T) {
+	api := &StreamingAPI{stoppedSessions: map[string]bool{"stopped": true}}
+	resolved := &resolvedAgentProfile{}
+	resolved.Definition.ID = crewProfileID
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, tc := range []struct {
+		ctx     context.Context
+		session string
+	}{{ctx, "cancelled"}, {t.Context(), "stopped"}} {
+		if _, err := api.agentProfileWorkflowSession(tc.ctx, resolved, "owner", tc.session, "Crew/example", "Workflow/example", "workflow", nil, nil, QueryRequest{}); err == nil {
+			t.Fatal("stopped chat initialized a runtime")
+		}
+	}
+	api.workshopChatSessions.Range(func(_, _ interface{}) bool { t.Error("stopped chat cached a runtime"); return false })
 }
 
 // PLAT-746-405: Crew's old policy refused single-step work entirely. Register

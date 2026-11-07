@@ -8,7 +8,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -24,36 +23,27 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-type postSetupGuardAgent struct {
-	agents.OrchestratorAgent
-	base   *agents.BaseAgent
-	config *agents.OrchestratorAgentConfig
-}
-
-func (a postSetupGuardAgent) GetBaseAgent() *agents.BaseAgent            { return a.base }
-func (a postSetupGuardAgent) GetConfig() *agents.OrchestratorAgentConfig { return a.config }
-
-// PLAT-746-393: final setup must not replace a step's explicit grants with
-// the wider workflow guard. Inspect the configured runtime before it starts;
-// this needs neither a provider call nor a production-only policy getter.
-func TestPostSetupKeepsAgentGrantsInsteadOfWiderWorkflowGuard(t *testing.T) {
+// PLAT-746-393: assert the enforcing session guard, not the SDK policy
+// metadata setter. The step can write its output and read an explicitly named
+// KB note with KB access off, but cannot write the note or another run.
+func TestStepSessionEnforcesOwnWritesAndNamedKBRead(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	c := newAgentFactoryTestOrchestrator(t)
-	c.SetWorkspacePathForFolderGuard([]string{"Workflow/demo"}, []string{"Workflow/demo"})
-	for _, writes := range [][]string{{}, {"Workflow/demo/own-output"}} {
-		base := &agents.BaseAgent{}
-		config := &agents.OrchestratorAgentConfig{FolderGuardReadPaths: []string{"Workflow/demo/input"}, FolderGuardWritePaths: writes}
-		if err := c.applyPostSetupToAgent(postSetupGuardAgent{base: base, config: config}, "fixture"); err != nil {
-			t.Fatal(err)
-		}
-		// BaseAgent deliberately keeps runtime policy private. Reflection reads
-		// only the outcome of the real setup/setter, without unsafe access.
-		policy := reflect.ValueOf(base).Elem().FieldByName("runtime").FieldByName("Workspace")
-		gotRead, gotWrite := policy.FieldByName("ReadPaths"), policy.FieldByName("WritePaths")
-		if gotRead.Len() != 1 || gotRead.Index(0).String() != config.FolderGuardReadPaths[0] || gotWrite.Len() != len(writes) {
-			t.Fatal("post-setup widened the agent's runtime grants")
-		}
-		if len(writes) > 0 && gotWrite.Index(0).String() != writes[0] {
-			t.Fatal("post-setup changed the agent's allowed output folder")
+	c.SetWorkspacePath("Workflow/demo")
+	const session = "step-session-policy"
+	defer common.ClearSessionShellConfig(session)
+	c.configureSubAgentSessionGuard(session, "agent", "step", []string{"Workflow/demo/knowledgebase/notes/named.md"}, []string{"Workflow/demo/runs/own/execution/step"}, false)
+	client := workspacepkg.NewClient("http://unused")
+	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, session)
+	if err := client.ValidatePathWithContext(ctx, "Workflow/demo/knowledgebase/notes/named.md", false); err != nil {
+		t.Fatalf("named KB read refused with KB mode off: %v", err)
+	}
+	if err := client.ValidatePathWithContext(ctx, "Workflow/demo/runs/own/execution/step/result.json", true); err != nil {
+		t.Fatalf("own output write refused: %v", err)
+	}
+	for _, path := range []string{"Workflow/demo/planning/plan.json", "Workflow/demo/runs/other/execution/step/result.json", "Workflow/demo/knowledgebase/notes/named.md"} {
+		if err := client.ValidatePathWithContext(ctx, path, true); err == nil {
+			t.Fatalf("step wrote outside its output: %s", path)
 		}
 	}
 }
@@ -338,16 +328,30 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 		}
 	}
 
-	described := stepConfigWithDescribedHumanTools(nil, &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "s", Description: "Send an email summary and post it to Slack"}})
-	dtools, _ := hcpo.prepareCustomTools(described)
-	var dnames []string
-	for _, definition := range dtools {
-		if definition.Function != nil {
-			dnames = append(dnames, definition.Function.Name)
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "s", Description: "Send an email summary and post it to Slack"}}
+	for _, parent := range []*SubAgentExecutionContext{nil, {}} {
+		tools, executors := hcpo.prepareExecutionTools(nil, step, parent, DBAccessReadWrite)
+		for _, name := range []string{"send_email", "send_slack_message"} {
+			present := slices.Contains(registeredToolNames(tools), name) && executors[name] != nil
+			if present != (parent == nil) {
+				t.Fatalf("description unexpectedly changed helper-parent grants: parent=%v tools=%v", parent != nil, registeredToolNames(tools))
+			}
 		}
 	}
-	if !slices.Contains(dnames, "send_email") || !slices.Contains(dnames, "send_slack_message") || slices.Contains(dnames, "human_feedback") {
-		t.Fatalf("a step whose text asks for email and Slack gets exactly those human tools: %v", dnames)
+	for _, name := range []string{"query_workflow_db", "mutate_workflow_db", "apply_workflow_db_migration"} {
+		base.WorkspaceTools = append(base.WorkspaceTools, tool(name))
+		base.WorkspaceToolExecutors[name] = noop
+		base.ToolCategories[name] = "workflow_db"
+	}
+	for _, access := range []string{DBAccessNone, DBAccessRead, DBAccessReadWrite} {
+		tools, executors := hcpo.prepareExecutionTools(nil, step, nil, access)
+		for _, name := range []string{"query_workflow_db", "mutate_workflow_db"} {
+			want := access == DBAccessReadWrite || access == DBAccessRead && name == "query_workflow_db"
+			present := slices.Contains(registeredToolNames(tools), name) && executors[name] != nil
+			if present != want {
+				t.Fatalf("DB tools disagree with access %s: %s present=%v", access, name, present)
+			}
+		}
 	}
 
 	tools, _ := hcpo.prepareCustomTools(&AgentConfigs{EnabledCustomTools: []string{"human_tools:get_notification_history"}})
@@ -862,7 +866,6 @@ func TestSetupExecutionFolderGuardAddsOnlyConfiguredStores(t *testing.T) {
 	)
 
 	for _, expected := range []string{
-		"Workflow/testing/learnings/kb-direct",
 		"Workflow/testing/knowledgebase",
 	} {
 		if !slices.Contains(readPaths, expected) {

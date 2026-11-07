@@ -437,7 +437,7 @@ class Migration(unittest.TestCase):
     def test_second_workflow_refused_without_changing_first(self):
         first=self.conversion().apply()
         source=self.docs/'Workflow/second-folder'
-        write(source/'workflow.json',{'id':'second-id','label':'Reporting','access':{'owners':['owner'],'readers':['runner']}})
+        write(source/'workflow.json',{'id':'second-id','label':'Reporting','code_layout_version':1,'access':{'owners':['owner'],'readers':['runner']}})
         owners=m.read(self.state/'ownership/workflows.json');owners['Workflow/second-folder']='owner';write(self.state/'ownership/workflows.json',owners)
         before = hashes(self.base)
         with self.assertRaisesRegex(ValueError, 'already has a workflow'):
