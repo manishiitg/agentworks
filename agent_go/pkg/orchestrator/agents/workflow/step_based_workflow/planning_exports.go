@@ -329,6 +329,7 @@ type LLMToolsCallbacks struct {
 // WorkshopChatSession holds the per-session controller and step registry for interactive
 // workshop in chat mode. Create with NewWorkshopChatSession; clean up with Close().
 type WorkshopChatSession struct {
+	toolCallMu             sync.Mutex
 	controller             *StepBasedWorkflowOrchestrator
 	StepRegistry           *WorkshopStepRegistry
 	sessionCtx             context.Context
@@ -571,6 +572,10 @@ func (s *WorkshopChatSession) SetWorkshopModeOverride(mode string) {
 // exact same tool/LLM/browser/image-gen setup as normal workflow execution.
 // Built by server.go using the same preset-loading logic as the normal workflow path.
 type WorkshopConfig struct {
+	// Crew step runs keep their current selection on the existing chat record,
+	// so evicting a runtime never silently creates a different run for step 2.
+	CurrentStepRun func(context.Context) (string, error)
+	SelectStepRun  func(context.Context, string) error
 	// Root Builder only. Never copied into the step tool pool.
 	KnowledgebaseProjectTool func(context.Context, string, map[string]interface{}) (string, error)
 	// UserID and SourcePlatform are server-resolved launch identity, never tool

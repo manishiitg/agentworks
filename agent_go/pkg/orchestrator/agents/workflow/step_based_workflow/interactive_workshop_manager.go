@@ -1939,6 +1939,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				},
 				"inputs":     map[string]interface{}{"type": "object", "description": "Explicit workflow input values overriding defaults and saved inputs.", "additionalProperties": map[string]interface{}{"type": "string"}},
 				"run_folder": map[string]interface{}{"type": "string", "description": "Existing run identity for continuing its steps; omit for a new run."},
+				"new_run":    map[string]interface{}{"type": "boolean", "description": "Start a new run instead of continuing this chat's current step run. Cannot be combined with run_folder."},
 				"input_preset": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional exact saved input name. Omit to use workflow defaults. Does not select a route or run folder.",
@@ -2003,6 +2004,22 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return "", fmt.Errorf("run_folder must be a string")
 				}
 			}
+			newRun, _ := args["new_run"].(bool)
+			if raw, present := args["new_run"]; present {
+				if _, ok := raw.(bool); !ok {
+					return "", fmt.Errorf("new_run must be true or false")
+				}
+			}
+			if newRun && requestedFolder != "" {
+				return "", fmt.Errorf("choose an earlier run or start a new run, not both")
+			}
+			if requestedFolder == "" && !newRun && iwm.workshopConfig != nil && iwm.workshopConfig.CurrentStepRun != nil {
+				var err error
+				requestedFolder, err = iwm.workshopConfig.CurrentStepRun(ctx)
+				if err != nil {
+					return "", err
+				}
+			}
 			boundSchedule := iwm.workshopConfig != nil && iwm.workshopConfig.ScheduleInvocation != nil
 			var recordedInputs map[string]string
 			if requestedFolder != "" && !boundSchedule {
@@ -2016,6 +2033,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					var err error
 					recordedInputs, err = iwm.controller.readExistingRunInputs(ctx, requestedFolder)
 					if err != nil {
+						if iwm.workshopConfig != nil && iwm.workshopConfig.CurrentStepRun != nil {
+							return "", fmt.Errorf("run %s is unavailable; choose another run with the earlier outputs, or use new_run=true and run the earlier steps first", requestedFolder)
+						}
 						return "", err
 					}
 				} else {
@@ -2044,7 +2064,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 
-			iteration, _ := args["run_folder"].(string)
+			iteration := requestedFolder
 			if iteration == "" {
 				iteration = "run-" + workflowExecutionIDToken()
 			}
@@ -2092,6 +2112,16 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 			resolvedInputs := recordedInputs
+			if recordedInputs != nil && iwm.workshopConfig != nil && iwm.workshopConfig.CurrentStepRun != nil {
+				for name, value := range inputValues {
+					if saved, ok := recordedInputs[name]; !ok || saved != value {
+						return "", fmt.Errorf("run %s keeps its saved inputs; use new_run=true to change inputs", requestedFolder)
+					}
+				}
+				if groupName != "" {
+					return "", fmt.Errorf("run %s keeps its saved inputs; omit input_preset or use new_run=true", requestedFolder)
+				}
+			}
 			if resolvedInputs == nil {
 				resolvedInputs, inputErr = ResolveWorkflowInputs(iwm.controller.variablesManifest, groupName, inputValues)
 				if inputErr == nil {
@@ -2209,6 +2239,15 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					scriptedStep = isScriptedStep(stepInfo.Step)
 				}
 			}
+			if requestedFolder == "" && resolvedStep != nil && iwm.workshopConfig != nil && iwm.workshopConfig.CurrentStepRun != nil {
+				for _, dep := range ResolveVariablesArray(resolvedStep.GetContextDependencies(), resolvedInputs) {
+					for _, candidate := range collectAllSteps(plan.Steps) {
+						if candidate.Step.GetID() != stepID && contextOutputMatchesDependency(candidate.Step.GetContextOutput().String(), dep) {
+							return "", fmt.Errorf("step %s needs earlier outputs from %s; run the earlier steps first, or choose their existing run with run_folder", stepID, candidate.Step.GetID())
+						}
+					}
+				}
+			}
 			if scriptParametersSet && !scriptedStep {
 				return fmt.Sprintf("step %q is not scripted; script_parameters is only supported for scripted steps", stepID), nil
 			}
@@ -2225,6 +2264,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			execCtx, cancel, ctxErr := iwm.newExecContext(ctx)
 			if ctxErr != nil {
 				return "Session was stopped — execution skipped", nil
+			}
+			if iwm.workshopConfig != nil && iwm.workshopConfig.SelectStepRun != nil {
+				if err := iwm.workshopConfig.SelectStepRun(ctx, runFolder); err != nil {
+					cancel()
+					return "", fmt.Errorf("could not remember this chat's run; no step started: %w", err)
+				}
 			}
 
 			// Inject correlation IDs so step execution events are tagged as sub-agent
@@ -2582,6 +2627,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if isGenericAgent {
 				executionLabel = fmt.Sprintf("Generic agent %q", strings.TrimPrefix(stepID, "generic-agent:"))
 			}
+			if folder := exec.Metadata["run_folder"]; folder != "" {
+				executionLabel += fmt.Sprintf(" (run %s)", folder)
+			}
 
 			switch status {
 			case WorkshopStepRunning:
@@ -2883,7 +2931,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			logger.Info(fmt.Sprintf("🛑 Workshop: step %q (execution_id=%q) cancelled", exec.StepID, execID))
-			return fmt.Sprintf("Step %q (execution_id=%q) has been canceled.", exec.StepID, execID), nil
+			return fmt.Sprintf("Step %q (execution_id=%q, run_folder=%q) has been canceled.", exec.StepID, execID, exec.Metadata["run_folder"]), nil
 		},
 		"workflow",
 	); err != nil {
