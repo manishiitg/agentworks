@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -172,6 +174,12 @@ class Migration(unittest.TestCase):
             db.execute('INSERT INTO file_index VALUES (?,?,?)',('stable-id',str(self.source/'db/assets/file.txt'),json.dumps({'path':str(self.source/'runs/history/out.json')})))
             db.execute('CREATE TABLE historical_result(id INTEGER PRIMARY KEY,result TEXT,path TEXT)')
             db.execute("INSERT INTO historical_result VALUES (1,CAST(x'FF' AS TEXT),?)",(str(self.source/'runs/history/out.json'),))
+        # A stopped/crashed SQLite writer can leave committed rows in WAL.
+        # Copy every sidecar and prove those rows survive opening the new DB.
+        cost_db=self.source/'costs/costs.sqlite'
+        cost_db.parent.mkdir()
+        subprocess.run([sys.executable,'-c',"import sqlite3,os,sys; db=sqlite3.connect(sys.argv[1]); db.execute('PRAGMA journal_mode=WAL'); db.execute('CREATE TABLE cost_events(id INTEGER PRIMARY KEY,value REAL)'); db.execute('INSERT INTO cost_events VALUES (1,1.25)'); db.commit(); os._exit(0)",str(cost_db)],check=True)
+        self.assertTrue(Path(str(cost_db)+'-wal').exists())
         authored=hashes(self.docs/'Crew/target')
         other=hashes(self.docs/'Workflow/unrelated')
         conversion=m.RuntimeRelocation(self.docs,self.state,'old-goal','crew')
@@ -190,8 +198,11 @@ class Migration(unittest.TestCase):
             self.assertEqual(path,str(self.runtime/'db/assets/file.txt'))
             self.assertEqual(json.loads(metadata)['path'],str(self.runtime/'runs/history/out.json'))
             self.assertEqual(db.execute('SELECT hex(result),path FROM historical_result').fetchone(),('FF',str(self.runtime/'runs/history/out.json')))
+        with closing(sqlite3.connect(self.runtime/'costs/costs.sqlite')) as db:
+            self.assertEqual(db.execute('SELECT * FROM cost_events').fetchall(),[(1,1.25)])
         backup=Path(result['backup'])
         self.assertIn('source/learnings/retired.json',m.read(backup/'sha256.json'))
+        self.assertIn('source/costs/costs.sqlite-wal',m.read(backup/'sha256.json'))
         self.assertEqual(m.RuntimeRelocation(self.docs,self.state,'old-goal','crew').apply()['status'],'already migrated')
         self.assertFalse(self.source.exists())
 
