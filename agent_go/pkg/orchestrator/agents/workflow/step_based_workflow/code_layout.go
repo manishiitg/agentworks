@@ -119,6 +119,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string)
 	if env == nil {
 		env = map[string]string{}
 	}
+	// API address and physical runtime directory are different after a Crew move.
+	// Scripts use this server-owned address rather than deriving it from DB_PATH.
+	env["VAR_WORKFLOW_PATH"] = hcpo.GetWorkspacePath()
 	if !hcpo.platformStoresEnabled() {
 		delete(env, "DB_PATH")
 		for key := range env {

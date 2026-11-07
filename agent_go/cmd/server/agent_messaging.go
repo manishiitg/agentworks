@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // Conversations have addresses and messages, never request/result settlement.
@@ -22,6 +23,23 @@ import (
 // completed any work.
 const agentMessageKeep = 1000
 const agentConversationKeep = 2000
+
+// Execution steps select messaging explicitly, just like other optional tools.
+// Keep the existing workflow run as the sender/reply channel, including runs
+// started by a schedule without an interactive chat.
+func (api *StreamingAPI) appendWorkflowMessagingTools(tools []llmtypes.Tool, executors map[string]interface{}, categories map[string]string, user, session, root string, req QueryRequest) ([]llmtypes.Tool, error) {
+	reg := crewCapabilityRegistrar{}
+	if err := api.registerAgentMessagingTools(reg, user, session, req, workflowTriggerLinkCaller(root), nil); err != nil {
+		return nil, err
+	}
+	for _, name := range []string{"send_message", "read_agent_messages", "list_agents"} {
+		tool := reg[name]
+		tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{Name: name, Description: tool.description, Parameters: llmtypes.NewParameters(tool.schema)}})
+		executors[name] = tool.execute
+		categories[name] = "agent_messaging"
+	}
+	return tools, nil
+}
 
 var agentMessageMu agentMessageMutex
 var agentMessageWorkers sync.Map
