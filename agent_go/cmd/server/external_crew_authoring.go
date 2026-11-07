@@ -950,7 +950,7 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"instructions":  str("What the Crew does when this function is called."),
 		"input_schema":  jsonSchema,
 		"result_schema": jsonSchema,
-		"execution":     map[string]any{"type": "string", "enum": []any{"tab", "fresh"}, "description": crewFunctionExecutionHelp},
+		"execution":     map[string]any{"type": "string", "enum": []any{"tab", runDestinationNew}, "description": crewFunctionExecutionHelp},
 		"agent":         map[string]any{"type": "string", "description": crewFunctionAgentHelp},
 	}}
 	scheduleSpec := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{

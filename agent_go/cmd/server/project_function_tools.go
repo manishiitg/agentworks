@@ -26,7 +26,7 @@ func projectFunctionAuthoringSchema() map[string]interface{} {
 		"action": map[string]interface{}{"type": "object", "additionalProperties": false, "required": []interface{}{"type"}, "properties": map[string]interface{}{
 			"type": map[string]interface{}{"type": "string", "enum": []interface{}{"run", "message"}},
 			"step": externalString("Optional saved Goal step."), "tab": externalString("Crew tab; omit for the function's named tab."),
-			"conversation": map[string]interface{}{"type": "string", "enum": []interface{}{"fresh"}},
+			"conversation": map[string]interface{}{"type": "string", "enum": []interface{}{runDestinationNew}},
 		}},
 		"input":           map[string]interface{}{"type": "object", "description": "Fixed values: inputs, input_preset, routes and payload for a workflow; messages for a Crew chat. Fixed input names cannot be supplied by callers."},
 		"inputs":          map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Workflow input names callers may supply. Define types, defaults and required fields once in workflow Inputs. Empty exposes none."},
