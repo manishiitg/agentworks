@@ -2404,6 +2404,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.PathPrefix("/caplayer/").HandlerFunc(api.handleCapLayerAdmin)
 	apiRouter.PathPrefix("/server-products/").HandlerFunc(api.handleServerProduct)
 	common.ScopeAgentMCP = api.scopeAgentMCP
+	clisecurity.ResolveWorkflowPolicy = api.resolveWorkflowCLIPolicy
 	router.HandleFunc("/internal/vault/mcp", api.handleVaultRuntimeMCP).Methods("GET", "POST", "DELETE")
 	router.HandleFunc("/internal/server-vault/mcp/{conn}/{id}", api.handleServerVaultMCP).Methods("GET", "POST", "DELETE")
 	router.HandleFunc("/internal/caplayer/oauth-token", api.handleCapLayerOAuthToken).Methods("POST")

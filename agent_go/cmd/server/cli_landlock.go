@@ -9,9 +9,8 @@ import (
 	"strings"
 
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/clisecurity"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -54,10 +53,10 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, prov
 	if llmAgent == nil {
 		return
 	}
-	decision, runner, why := decideCLIConfinement(provider, workingDir)
+	resolved, decision, why := cliConfinementHost().Policy(sessionID, provider, workingDir, base, runtimeDir...)
 	switch decision {
 	case cliRunPersonalWindows:
-		policy := llmtypes.CLISecurityPolicy{Provider: provider, Mode: llmtypes.CLISecurityModeCompatibility, ApprovedCapabilities: []string{"personal_windows"}}
+		policy := *resolved
 		if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
 			failClosedToBridgeOnly(llmAgent, sessionID, "personal Windows launch policy could not be attached")
 			return
@@ -65,16 +64,13 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, prov
 		log.Printf("[CLI_SANDBOX] session=%s provider=%s person=%s personal_windows=true sandbox=none tools=%s", sessionID, provider, personID, llmAgent.CodingAgentToolsMode())
 		return
 	case cliRunSeatbelt:
-		applyCLISeatbelt(llmAgent, sessionID, provider, workingDir, base, runtimeDir...)
+		applyCLISeatbelt(llmAgent, sessionID, provider, resolved)
 		return
 	case cliRunBridgeOnly:
 		failClosedToBridgeOnly(llmAgent, sessionID, why)
 		return
 	}
-	policy := cliLandlockPolicyForSession(sessionID, provider, workingDir, base, runtimeDir...)
-	policy.Mode = llmtypes.CLISecurityModeIsolated
-	policy.LandlockRunner = runner
-	policy.PrivateHome = cliPrivateHome(provider, workingDir, runtimeDir...)
+	policy := *resolved
 	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Landlock policy could not be attached (%v)", err))
 		return
@@ -94,8 +90,9 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, prov
 
 // Keep native storage routing and actual launch on the same private home.
 func cliPrivateHome(provider, workingDir string, runtimeDir ...string) string {
-	return filepath.Join(cliArtifactRoot(workingDir, runtimeDir...), security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
+	return clisecurity.PrivateHome(provider, workingDir, runtimeDir...)
 }
+
 func cliNativeHomeEnvironment(provider, runtimeDir string) map[string]string {
 	decision, runner, _ := decideCLIConfinement(provider, runtimeDir)
 	policy := llmtypes.CLISecurityPolicy{Provider: provider, Mode: llmtypes.CLISecurityModeIsolated, PrivateHome: cliPrivateHome(provider, runtimeDir)}
@@ -110,13 +107,13 @@ func cliNativeHomeEnvironment(provider, runtimeDir string) map[string]string {
 	return llmtypes.SandboxHomeEnvironment(&llmtypes.CallOptions{CLISecurity: &policy})
 }
 
-type cliRunDecision string
+type cliRunDecision = clisecurity.Decision
 
 const (
-	cliRunPersonalWindows cliRunDecision = "personal_windows" // owner-authorized local Windows execution
-	cliRunConfined        cliRunDecision = "confined"         // Full CLI inside the Landlock lock
-	cliRunBridgeOnly      cliRunDecision = "bridge_only"      // no native tools: no lock could be applied
-	cliRunSeatbelt        cliRunDecision = "seatbelt"         // Full CLI inside macOS Seatbelt: a person's own Mac
+	cliRunPersonalWindows = clisecurity.PersonalWindows
+	cliRunConfined        = clisecurity.Confined
+	cliRunBridgeOnly      = clisecurity.BridgeOnly
+	cliRunSeatbelt        = clisecurity.Seatbelt
 )
 
 // cliSeatbeltAvailable reports whether macOS sandbox-exec is present (a variable for tests).
@@ -129,23 +126,7 @@ var cliSeatbeltAvailable = func() bool {
 // be tested without an agent. Personal local Windows is explicitly unconfined;
 // other hosts retain their existing confinement requirements.
 func decideCLIConfinement(provider, workingDir string) (cliRunDecision, string, string) {
-	if strings.TrimSpace(workingDir) == "" {
-		return cliRunBridgeOnly, "", "the CLI has no working folder to confine it to"
-	}
-	if cliPersonalWindows() {
-		return cliRunPersonalWindows, "", ""
-	}
-	if cliPersonalMac() {
-		if !cliSeatbeltAvailable() {
-			return cliRunBridgeOnly, "", "this Mac has no sandbox-exec to confine coding CLIs"
-		}
-		return cliRunSeatbelt, "", ""
-	}
-	runner, ok := cliLandlockRunner()
-	if !ok {
-		return cliRunBridgeOnly, "", "this host cannot confine coding CLIs (no working Landlock launcher)"
-	}
-	return cliRunConfined, runner, ""
+	return cliConfinementHost().Decide(workingDir)
 }
 
 // applyCLISeatbelt confines the CLI on a person's own Mac with sandbox-exec.
@@ -155,17 +136,8 @@ func decideCLIConfinement(provider, workingDir string) (cliRunDecision, string, 
 // refused, and opening or scripting other apps is blocked. The CLI keeps its
 // real home (its Keychain login is tied to its config folder); PrivateHome only
 // holds the profile. If the policy cannot be attached the chat runs bridge-only.
-func applyCLISeatbelt(llmAgent *agent.LLMAgentWrapper, sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy, runtimeDir ...string) {
-	policy := cliLandlockPolicyForSession(sessionID, provider, workingDir, base, runtimeDir...)
-	policy.Mode = llmtypes.CLISecurityModeIsolated
-	policy.Seatbelt = true
-	policy.LandlockRunner = ""
-	policy.ProtectedRoots = cliSeatbeltProtectedRoots()
-	if len(runtimeDir) > 0 && runtimeDir[0] != "" {
-		policy.ProtectedRoots = append(policy.ProtectedRoots, workingDir)
-	}
-	policy.PrivateHome = cliPrivateHome(provider, workingDir, runtimeDir...)
-	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
+func applyCLISeatbelt(llmAgent *agent.LLMAgentWrapper, sessionID, provider string, policy *llmtypes.CLISecurityPolicy) {
+	if err := llmAgent.SetCLISecurityPolicy(policy); err != nil {
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Seatbelt policy could not be attached (%v)", err))
 		return
 	}
@@ -198,76 +170,7 @@ var cliLandlockRunner = security.CLILandlockRunner
 // or an attached folder alias. Landlock grants are additive, so dropping that
 // write authority is essential; the link is not a read-only boundary itself.
 func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy, runtimeDir ...string) llmtypes.CLISecurityPolicy {
-	policy := llmtypes.CLISecurityPolicy{Provider: provider}
-	if base != nil {
-		policy = base.Clone()
-	}
-	cfg := common.GetSessionShellConfig(sessionID)
-	readOnly := cfg != nil && (cfg.CrewReader || cfg.WorkflowReadOnly)
-	if readOnly {
-		policy.WorkspaceWritePaths = nil
-		// A Crew Run-mode turn may write its run folder, and nothing else of the project (PLAT-756).
-		if cfg.CrewReader && cfg.RunOutputPath != "" {
-			if path := cliPolicyPath(cfg.RunOutputPath); path != "" {
-				policy.WorkspaceWritePaths = append(policy.WorkspaceWritePaths, path)
-			}
-		}
-	}
-	policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, cliArtifactRoot(workingDir, runtimeDir...))
-	if cfg != nil {
-		for _, rel := range cfg.ReadPaths {
-			if path := cliPolicyPath(rel); path != "" {
-				policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, path)
-			}
-			if roots, found, err := crewStorageRoots(strings.TrimSuffix(rel, "/")); err == nil && found && strings.TrimSuffix(rel, "/") == roots.Virtual {
-				policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, roots.Private)
-				for _, name := range []string{"db.sqlite", "db.sqlite-wal", "db.sqlite-shm", "db.sqlite-journal"} {
-					policy.BlockedPaths = appendUniqueStrings(policy.BlockedPaths, filepath.Join(roots.Private, "db", name))
-				}
-			}
-		}
-		if !readOnly {
-			for _, rel := range cfg.WritePaths {
-				// Platform tools retain their logical write grants. Native tools
-				// write user resources, never the separated platform records.
-				if roots, found, err := crewStorageRoots(strings.TrimSuffix(rel, "/")); err == nil && found {
-					suffix := strings.TrimPrefix(strings.TrimPrefix(rel, roots.Virtual), "/")
-					if roots.ResourcePathRoot(suffix) == roots.Private {
-						continue
-					}
-				}
-				if path := cliPolicyPath(rel); path != "" {
-					policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, path)
-				}
-			}
-		}
-		for _, rel := range cfg.BlockedPaths {
-			if path := cliPolicyPath(rel); path != "" {
-				policy.BlockedPaths = appendUniqueStrings(policy.BlockedPaths, path)
-			}
-		}
-		for _, rel := range cfg.BlockedWritePaths {
-			if path := cliPolicyPath(rel); path != "" {
-				policy.BlockedWritePaths = appendUniqueStrings(policy.BlockedWritePaths, path)
-			}
-		}
-	}
-	// The person removed their Mac's Downloads folder: blocked last, so it wins over any grant.
-	if cliPersonalMac() && common.HostDownloadsRemoved.Load() {
-		if downloads := macDownloadsFolder(); downloads != "" {
-			policy.BlockedPaths = appendUniqueStrings(policy.BlockedPaths, downloads)
-		}
-	}
-	policy.WorkspaceWritePaths = crewroot.SyncWriteGrants(fsutil.WorkspaceDocsRoot(), policy.WorkspaceWritePaths)
-	return policy
-}
-
-func cliHomeName(provider string) string {
-	name := strings.ToLower(strings.TrimSpace(provider))
-	if name == "" || strings.ContainsAny(name, `/\.`) {
-		return "cli"
-	}
-	return name
+	return cliConfinementHost().Grants(sessionID, provider, workingDir, base, runtimeDir...)
 }
 
 // cliSeatbeltProtectedRoots are the AgentWorks folders inside a person's home
@@ -291,8 +194,11 @@ func cliSeatbeltProtectedRoots() []string {
 }
 
 func cliArtifactRoot(workingDir string, runtimeDir ...string) string {
-	if len(runtimeDir) > 0 && runtimeDir[0] != "" {
-		return runtimeDir[0]
-	}
-	return workingDir
+	return clisecurity.ArtifactRoot(workingDir, runtimeDir...)
 }
+
+func cliConfinementHost() clisecurity.Host {
+	return clisecurity.Host{PersonalMac: cliPersonalMac(), PersonalWindows: cliPersonalWindows(), SeatbeltAvailable: cliSeatbeltAvailable(), LandlockRunner: cliLandlockRunner, ResolvePath: cliPolicyPath, LookupRoots: crewStorageRoots, ProtectedRoots: cliSeatbeltProtectedRoots(), DownloadsFolder: macDownloadsFolder(), DocsRoot: fsutil.WorkspaceDocsRoot()}
+}
+
+func cliHomeName(provider string) string { return clisecurity.HomeName(provider) }

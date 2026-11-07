@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,7 +34,7 @@ func TestCodingAgentOutputRuntimeUsesDedicatedStepGuard(t *testing.T) {
 			config.IsolateCodingAgentWorkspace = true
 			config.CodingAgentOutputDir = output
 			config.CLISecurityPolicy = &parent
-			if err := prepareCodingAgentOutputRuntime(config); err != nil {
+			if err := prepareCodingAgentOutputRuntime(context.Background(), config); err != nil {
 				t.Fatal(err)
 			}
 			canonical, err := filepath.EvalSymlinks(output)
@@ -43,11 +44,8 @@ func TestCodingAgentOutputRuntimeUsesDedicatedStepGuard(t *testing.T) {
 			if config.CodingAgentOutputDir != canonical {
 				t.Fatalf("wrong output: %q", config.CodingAgentOutputDir)
 			}
-			if !reflect.DeepEqual(config.CLISecurityPolicy.WorkspaceWritePaths, []string{canonical}) {
-				t.Fatalf("parent write leaked: %#v", config.CLISecurityPolicy)
-			}
-			if config.CLISecurityPolicy.LandlockRunner != "/launcher" || config.CLISecurityPolicy.Mode != llmtypes.CLISecurityModeIsolated {
-				t.Fatal("lost confinement")
+			if config.CLISecurityPolicy != nil {
+				t.Fatal("child without a host resolver inherited parent launch permissions")
 			}
 			if !reflect.DeepEqual(parent.WorkspaceWritePaths, []string{docs}) {
 				t.Fatal("mutated parent policy")
@@ -77,7 +75,7 @@ func TestCodingAgentOutputRuntimeRejectsUnauthorizedAndEscapedTargets(t *testing
 		config.LLMConfig.Primary.Provider = "codex-cli"
 		config.IsolateCodingAgentWorkspace = true
 		config.CodingAgentOutputDir = output
-		if err := prepareCodingAgentOutputRuntime(config); err == nil {
+		if err := prepareCodingAgentOutputRuntime(context.Background(), config); err == nil {
 			t.Fatalf("accepted unauthorized output %q", output)
 		}
 		if _, err := os.Stat(output); !os.IsNotExist(err) {
@@ -96,14 +94,14 @@ func TestCodingAgentOutputRuntimeRequiresExplicitMatchingOutput(t *testing.T) {
 	config.MCPSessionID = session
 	config.LLMConfig.Primary.Provider = "claude-code"
 	config.IsolateCodingAgentWorkspace = true
-	if err := prepareCodingAgentOutputRuntime(config); err != nil {
+	if err := prepareCodingAgentOutputRuntime(context.Background(), config); err != nil {
 		t.Fatal(err)
 	}
 	if config.CodingAgentOutputDir != "" {
 		t.Fatal("review inherited output link")
 	}
 	config.CodingAgentOutputDir = t.TempDir()
-	if err := prepareCodingAgentOutputRuntime(config); err == nil {
+	if err := prepareCodingAgentOutputRuntime(context.Background(), config); err == nil {
 		t.Fatal("accepted output different from dedicated session")
 	}
 }
