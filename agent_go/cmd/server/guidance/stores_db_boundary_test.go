@@ -20,7 +20,7 @@ func TestStoresGuidanceRequiresManagedBuilderDatabaseTools(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		"apply_workflow_db_migration",
+		"database action=migrate",
 		"db.sqlite-wal",
 		"db.sqlite-shm",
 		"stop and report that exact permission failure",

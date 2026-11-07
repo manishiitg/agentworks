@@ -11,10 +11,10 @@ func TestBrowserGuidanceTreatsDisabledCDPAsDeploymentPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"status.cdp_supported",
-		"is disabled on that server",
-		"`auto` mode is intentionally headless-only",
-		"do not probe ports",
+		"\"cdp_supported\": false",
+		"deployment policy",
+		"Automatic is not a",
+		"probe CDP on a",
 		"skills get core",
 		"they do not require a shared tab",
 		`read_skill(skills=[{"name":"builder-reference","path":"references/browser-usage.md"}])`,

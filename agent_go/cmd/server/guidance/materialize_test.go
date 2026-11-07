@@ -226,7 +226,7 @@ func TestMaterializedReferenceSkillIncludesConfigToolOnlyDocs(t *testing.T) {
 	}
 
 	llmSelection := materializedFileContent(t, skill, "references/llm-selection.md")
-	for _, want := range []string{"list_published_llms", "set_provider_auth", "never paste API keys into shell or config files"} {
+	for _, want := range []string{"models action=list", "set_provider_auth", "never paste API keys into shell or config files"} {
 		if !strings.Contains(llmSelection, want) {
 			t.Fatalf("llm-selection reference should contain %q\n%s", want, llmSelection)
 		}
@@ -320,7 +320,7 @@ func TestMaterializedReferenceSkillUsesMultiAgentSurface(t *testing.T) {
 	}
 
 	llmProviderConfig := materializedFileContent(t, skill, "references/llm-provider-config.md")
-	for _, want := range []string{"list_published_llms", "list_provider_models", "save_published_llm", "reasoning_effort", "Never inspect or edit `config/` files"} {
+	for _, want := range []string{"models action=list", "action=catalog", "save_published_llm", "reasoning_effort", "Never inspect or edit `config/` files"} {
 		if !strings.Contains(llmProviderConfig, want) {
 			t.Fatalf("llm-provider-config reference should contain %q\n%s", want, llmProviderConfig)
 		}
