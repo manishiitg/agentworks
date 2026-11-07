@@ -36,7 +36,6 @@ import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { WorkSkillsPanel } from './WorkSkillsPanel'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
 import { CrewExecutablesPanel } from './CrewExecutablesPanel'
-import { CrewGoalsPanel } from './CrewGoalsPanel'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { sharedCrewFileClient } from './sharedCrewFiles'
@@ -315,7 +314,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {view === 'goals' && <CrewGoalsPanel key={projectId} projectId={projectId} onAsk={message => { void ask(message) }} />}
         {view === 'mcp' && <WorkIntegrationsPanel
           canEdit={canEditConnections}
           accessLoading={!shared && projectAccess?.key !== accessKey}
@@ -341,7 +339,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           skillsManager={<WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} onOpenFile={filePath => { void openProjectFile(filePath) }} onSelectedSkillsChange={onSelectedSkillsChange} />}
         />}
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>
-          {view === 'dashboard' && <CrewDashboardPanel
+          {(view === 'dashboard' || view === 'goals') && <CrewDashboardPanel
             projectId={projectId}
             workspacePath={workspacePath}
             dashboardConversation

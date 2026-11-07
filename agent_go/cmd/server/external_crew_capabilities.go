@@ -19,7 +19,6 @@ import (
 // supplies identity and the resolved Crew root, never an arbitrary workspace.
 var externalCrewCapabilities = map[string]map[string]string{
 	"crew_workflows":  {"list": "crew_workflow_files", "create": "crew_workflow_files", "read": "crew_workflow_files", "write": "crew_workflow_files", "describe": "crew_workflow_files", "edit": "crew_workflow_files"},
-	"crew_goals":      {"list": "crew_goals", "save": "crew_goals", "record": "crew_goals"},
 	"crew_skills":     {"list": "list_skills", "search": "search_skills", "install": "install_skill", "import": "import_skill", "uninstall": "uninstall_skill"},
 	"crew_mcp":        {"list": "list_mcp_servers", "search": "search_mcp_catalog", "install": "install_mcp_server", "remove": "remove_mcp_server", "discover": "trigger_mcp_discovery"},
 	"crew_folders":    {"list": "list_work_folders", "attach": "attach_work_folder", "detach": "detach_work_folder"},
@@ -69,8 +68,6 @@ func (api *StreamingAPI) crewCapabilityTools(group, user, root string, sessionID
 	switch group {
 	case "crew_workflows":
 		return reg, api.registerCrewExecutableFileTools(reg, user, root)
-	case "crew_goals":
-		return reg, api.registerCrewGoalTools(reg, user, root)
 	case "crew_skills":
 		return reg, api.registerMultiAgentSkillToolsIn(reg, nil, "work", root+"/skills")
 	case "crew_mcp":
@@ -95,10 +92,9 @@ func (api *StreamingAPI) crewCapabilityTools(group, user, root string, sessionID
 }
 func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) error {
 	api := &StreamingAPI{}
-	groups := []string{"crew_workflows", "crew_goals", "crew_skills", "crew_mcp", "crew_folders", "crew_references"}
+	groups := []string{"crew_workflows", "crew_skills", "crew_mcp", "crew_folders", "crew_references"}
 	descriptions := map[string]string{
 		"crew_workflows":  "Create and edit this Crew’s single workflow and saved scripts. Use routes for different tasks. describe returns schemas; edit changes named steps, inputs, schedules or webhooks. Source lives under the Crew automation folder; runtime history stays separate. Run with functions action=run_trigger.",
-		"crew_goals":      "Read this Crew’s goals and progress, save a goal with its metrics, or record source-backed observations. Other goals and saved observations are preserved.",
 		"crew_skills":     "Discover, search, install, import or uninstall skills in this Crew. Use settings to select installed skills. GitHub imports accept the same optional private-repository token as the website tool.",
 		"crew_mcp":        "List connections/catalog, search, install/attach using the exact name returned by list, or catalog; for a new verified remote MCP pass name and url. Complete API key or OAuth app setup in chat using the install action's encrypted credential fields, return the real sign-in link, then verify discovery. Never repeat credentials. Removing detaches only this Crew, preserving other projects and logins. Use settings to select connections.",
 		"crew_folders":    "List, attach or detach this account's additional server folders within administrator-assigned roots. This changes all of the account's Crews, so it requires consent for all Crews without a file guard.",
@@ -200,8 +196,8 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		externalFailure(w, err)
 		return
 	}
-	feature := map[string]string{"crew_workflows": "workflow-references", "crew_goals": "workflow-references", "crew_skills": "skills", "crew_mcp": "mcp", "crew_folders": "attached-folders", "crew_references": "workflow-references"}[group]
-	nativeCrewAutomation := group == "crew_workflows" || group == "crew_goals"
+	feature := map[string]string{"crew_workflows": "workflow-references", "crew_skills": "skills", "crew_mcp": "mcp", "crew_folders": "attached-folders", "crew_references": "workflow-references"}[group]
+	nativeCrewAutomation := group == "crew_workflows"
 	if !agentprofiles.HasFeature(profile, feature) || (!nativeCrewAutomation && !containsExactString(profile.ToolPolicy.Enabled, member)) {
 		externalError(w, 404, "tool_unavailable", "This Crew profile does not enable this capability.")
 		return

@@ -80,7 +80,7 @@ func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[strin
 		if b, err := findCrewExecutable(stringToolArg(args, "workspace_path")); err != nil {
 			return "", err
 		} else if b != nil || isCrewProjectPath(stringToolArg(args, "workspace_path")) {
-			return "", fmt.Errorf("configure goals in the owning Crew with crew_goals; workflows only record measurements")
+			return "", fmt.Errorf("edit tracking data in the workflow database; use its dashboard to view progress")
 		}
 		if _, m := workflowAccessForWorkspacePath(ctx, GetUserFromContext(ctx), stringToolArg(args, "workspace_path")); m != nil && m.Team != nil && teamActor(ctx) != m.Team.LeaderID {
 			return "", fmt.Errorf("only the Leader configures goal measurements")
@@ -120,15 +120,7 @@ func createGoalMetricTools() ([]llmtypes.Tool, map[string]interface{}, map[strin
 			if err := refuseCrewOwnerTurnOnMacTwin(ctx, binding.CrewRoot, GetUserIDFromContext(ctx)); err != nil {
 				return "", err
 			}
-			err = recordCrewGoalObservations(ctx, binding.CrewRoot, root, observations)
-		} else if crew := canonicalCrewWorkspaceRoot(root); isCrewProjectPath(crew) {
-			if !crewProjectOwnedByCaller(GetUserIDFromContext(ctx), crew) {
-				return "", fmt.Errorf("ask a Crew owner to record measurements")
-			}
-			if err := refuseCrewOwnerTurnOnMacTwin(ctx, crew, GetUserIDFromContext(ctx)); err != nil {
-				return "", err
-			}
-			err = recordCrewGoalObservations(ctx, crew, "", observations)
+			_, err = step.RecordGoalObservations(ctx, root, observations)
 		} else {
 			_, err = step.RecordGoalObservations(ctx, root, observations)
 		}
