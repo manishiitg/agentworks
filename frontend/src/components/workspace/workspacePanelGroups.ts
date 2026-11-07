@@ -4,7 +4,7 @@ const GROUPS = [
   ['Reviews & decisions', ['goals', 'human-actions', 'suggestions']],
   ['Knowledge & tools', ['knowledge', 'memory', 'browser', 'files', 'database', 'shell']],
   ['Activity', ['costs', 'execution-logs']],
-  ['Project setup', ['identity', 'mcp', 'access', 'backup', 'publish', 'notify']],
+  ['Project setup', ['identity', 'mcp', 'access', 'notify']],
 ] as const
 
 /** Group only the inventory already admitted by each product's permission gates. */

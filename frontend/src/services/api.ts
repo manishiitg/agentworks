@@ -41,7 +41,7 @@ import { apiTimingPathFor, recordApiTiming, sanitizeApiBody } from '../utils/api
 import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
 import { retryTurnRunningSubmission } from './turnRunningRetry'
 import { configureChatDeliveryTelemetryTransport } from '../utils/chatDeliveryTelemetry'
-import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, WorkflowBackupInfoResponse, WorkflowNotificationInfoResponse, WorkflowPublishSecretResponse, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
+import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, WorkflowNotificationInfoResponse, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
 import type { PlanStep, AgentConfigs } from '../utils/stepConfigMatching'
 
 // Re-export types for other components to use
@@ -2632,32 +2632,8 @@ export const agentApi = {
     return response.data
   },
 
-  getWorkflowBackup: async (workspacePath: string): Promise<WorkflowBackupInfoResponse> => {
-    const response = await api.get('/api/workflow/backup', {
-      params: { workspace_path: workspacePath }
-    })
-    return response.data
-  },
-
-  getWorkflowPublish: async (workspacePath: string): Promise<import('./api-types').WorkflowPublishInfoResponse> => {
-    const response = await api.get('/api/workflow/publish', { params: { workspace_path: workspacePath } })
-    return response.data
-  },
-
   getWorkflowNotifications: async (workspacePath: string): Promise<WorkflowNotificationInfoResponse> => {
     const response = await api.get('/api/workflow/notifications', { params: { workspace_path: workspacePath } })
-    return response.data
-  },
-
-  getWorkflowPublishSecret: async (workspacePath: string, secretName: string): Promise<WorkflowPublishSecretResponse> => {
-    const response = await api.get('/api/workflow/publish/secret', {
-      params: { workspace_path: workspacePath, secret_name: secretName }
-    })
-    return response.data
-  },
-
-  getShareTunnelStatus: async (): Promise<import('./api-types').ShareTunnelStatusResponse> => {
-    const response = await api.get('/api/share-tunnel/status')
     return response.data
   },
 
