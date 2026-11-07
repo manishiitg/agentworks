@@ -936,6 +936,9 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	if caller.isTarget(target) {
 		return nil, fmt.Errorf("a %s cannot call its own function", target.Kind)
 	}
+	if err := requireLinkedOwnCrew(ctx, userID, caller, target); err != nil {
+		return nil, err
+	}
 	if args == nil {
 		args = map[string]interface{}{}
 	}
