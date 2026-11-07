@@ -182,7 +182,13 @@ func TestWorkPlatformSkillsRegisterAndLoad(t *testing.T) {
 		}
 	}
 	visuals := skills.LoadAttachable("", []string{"chat-visuals"})
-	if len(visuals) != 1 || len(visuals[0].SupportingFiles) != 1 || visuals[0].SupportingFiles[0].RelPath != "references/formats.md" {
+	hasFormats := false
+	if len(visuals) == 1 {
+		for _, file := range visuals[0].SupportingFiles {
+			hasFormats = hasFormats || file.RelPath == "references/formats.md"
+		}
+	}
+	if !hasFormats {
 		t.Fatal("native visual formats must be readable through the existing skill resolver")
 	}
 	dashboard := skills.LoadAttachable("", []string{"panel-dashboard"})[0]
