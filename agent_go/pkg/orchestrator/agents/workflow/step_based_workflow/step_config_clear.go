@@ -61,8 +61,6 @@ func clearStepConfigField(sc *StepConfig, name string) bool {
 		ac.LockCode = nil
 	case "use_code_execution_mode":
 		ac.UseCodeExecutionMode = nil
-	case "disable_parallel_tool_execution":
-		ac.DisableParallelToolExecution = nil
 	case "description_reviewed":
 		ac.DescriptionReviewed = nil
 	case "drift_review":
@@ -96,7 +94,6 @@ func isKnownAgentConfigClearField(name string) bool {
 		"learning_objective", "lock_code",
 		"execution_llm_reason", "execution_tier_reason",
 		"use_code_execution_mode",
-		"disable_parallel_tool_execution",
 		"description_reviewed", "drift_review",
 		"knowledgebase_access", "knowledgebase_contribution",
 		"review_notes",

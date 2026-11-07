@@ -19,6 +19,7 @@ import (
 // Any mutation/model/tool call is a failure; the explicit platform selection
 // must still yield exactly one capability-filtered reference identity.
 func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	controller := newAgentClosingTestOrchestrator(t)
 	controller.selectedRunFolder = "iteration-0/default"
 	controller.variableValues = map[string]string{"TOPIC": "private runtime topic"}
@@ -89,7 +90,7 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	if strings.Contains(result, "synthetic-secret-for-preview") || strings.Contains(result, "private runtime topic") {
 		t.Fatal("preview exposed a secret or resolved variable value")
 	}
-	if preview.ParallelToolCalls || preview.ItemID != "work" || !strings.Contains(preview.UserMessage, "<VARIABLE:TOPIC>") || !strings.Contains(preview.UserMessage, "Research and verify") || len(preview.Unresolved) == 0 {
+	if preview.ItemID != "work" || !strings.Contains(preview.UserMessage, "<VARIABLE:TOPIC>") || !strings.Contains(preview.UserMessage, "Research and verify") || len(preview.Unresolved) == 0 {
 		t.Fatal("preview omitted current config, selected item, instructions or unresolved context")
 	}
 	if strings.Contains(strings.Join(preview.Tools, ","), "project_functions_call") {
@@ -139,7 +140,7 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	files["planning/plan.json"] = `{"steps":[{"id":"research","title":"Research","type":"scripted","description":"Measure."}]}`
 	result, err = tool.Execute(ctx, map[string]interface{}{"step_id": "research"})
 	if err != nil || !strings.Contains(result, "/Workflow/test-flow/code/") {
-		t.Fatalf("canonical scripted source preview failed: %v", err)
+		t.Fatalf("canonical scripted source preview failed: %v\n%s", err, result)
 	}
 	files["planning/plan.json"] = before["planning/plan.json"]
 	files["planning/step_config.json"] = strings.Replace(before["planning/step_config.json"], `"learnings_access":"none"`, `"learnings_access":"read-write"`, 1)

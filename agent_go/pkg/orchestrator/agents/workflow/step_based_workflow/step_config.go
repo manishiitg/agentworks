@@ -401,10 +401,6 @@ func MergeAgentConfigFields(target *AgentConfigs, source *AgentConfigs, stepID s
 	if source.AdditionalReadPaths != nil {
 		target.AdditionalReadPaths = source.AdditionalReadPaths
 	}
-	if source.DisableParallelToolExecution != nil {
-		target.DisableParallelToolExecution = source.DisableParallelToolExecution
-		logger.Info(fmt.Sprintf("🔧 Using step config (ID: %s) - disable_parallel_tool_execution: %v", stepID, *source.DisableParallelToolExecution))
-	}
 	if source.CodingAgentTmuxLifecycle != "" {
 		target.CodingAgentTmuxLifecycle = source.CodingAgentTmuxLifecycle
 		logger.Info(fmt.Sprintf("🔧 Using step config (ID: %s) - coding_agent_tmux_lifecycle: %s", stepID, source.CodingAgentTmuxLifecycle))

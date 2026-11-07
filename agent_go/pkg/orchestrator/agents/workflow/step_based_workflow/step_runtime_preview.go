@@ -36,7 +36,6 @@ type stepRuntimePreview struct {
 	MCPToolSelection   []string                  `json:"configured_mcp_tool_selection"`
 	ReadPaths          []string                  `json:"read_paths"`
 	WritePaths         []string                  `json:"write_paths"`
-	ParallelToolCalls  bool                      `json:"parallel_tool_calls"`
 	Unresolved         []string                  `json:"unresolved"`
 	ConfigurationNotes []string                  `json:"configuration_notes,omitempty"`
 }
@@ -81,15 +80,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 		return nil, fmt.Errorf("read current step config: %w", readErr)
 	}
 	stepConfig := getAgentConfigs(step)
-	result := &stepRuntimePreview{StepID: step.GetID(), ParallelToolCalls: true, Unresolved: []string{
+	result := &stepRuntimePreview{StepID: step.GetID(), Unresolved: []string{
 		"Preview of current construction, not execution or a historical run. Runtime may select another run/group.",
 		"Variable values are placeholders; dependency file contents, live human input, foreach rows and retry failures resolve during execution.",
 		"Provider-added instructions, intrinsic tools, live MCP tool discovery, browser connectivity and specialist invocation scope resolve during execution.",
 		"Skill bodies are read on demand; this result lists attached identities and reference paths separately from the system instructions.",
 	}}
-	if stepConfig != nil && stepConfig.DisableParallelToolExecution != nil {
-		result.ParallelToolCalls = !*stepConfig.DisableParallelToolExecution
-	}
 	config := &agents.OrchestratorAgentConfig{ServerNames: normalizeServerNames(hcpo.GetSelectedServers()), SelectedTools: hcpo.GetSelectedTools()}
 	if stepConfig != nil && len(stepConfig.SelectedServers) > 0 {
 		config.ServerNames = filterServersByWorkflow(stepConfig.SelectedServers, hcpo.GetSelectedServers())
