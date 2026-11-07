@@ -24,7 +24,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	store := defaultProductConversationRegistryStore()
 	create := func(name string) (CreatedCrew, ProductConversationRecord) {
 		t.Helper()
-		crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: name, Purpose: "Write clear reports", Instructions: "Cite the sources", StepInstruction: "Prepare a report", Servers: []string{"github"}, IdempotencyKey: name})
+		crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: name, Purpose: "Write clear reports", Instructions: "Cite the sources", Servers: []string{"github"}, IdempotencyKey: name})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -207,7 +207,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if _, err := edit(strangerCtx, map[string]interface{}{"action": "list"}); err == nil || !strings.Contains(err.Error(), "owners") {
 		t.Fatalf("foreign principal could edit Crew: %v", err)
 	}
-	runner := newCrewStepRunner(svc, "owner")
+	runner := newCrewWorkflowResources(svc, "owner")
 	configuration, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, chat.ConversationKey)
 	if err != nil {
 		t.Fatal(err)
@@ -222,7 +222,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if _, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, foreign.ConversationKey); err == nil || !strings.Contains(err.Error(), "selected Crew agent") {
 		t.Fatalf("cross-Crew selection did not fail at the intended rule: %v", err)
 	}
-	if _, err := newCrewStepRunner(svc, "stranger").ResolveCrewAgentConfiguration(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "stranger", Username: "stranger"}), child.Root, chat.ConversationKey); err == nil || err.Error() != "this Crew is unavailable" {
+	if _, err := newCrewWorkflowResources(svc, "stranger").ResolveCrewAgentConfiguration(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "stranger", Username: "stranger"}), child.Root, chat.ConversationKey); err == nil || err.Error() != "this Crew is unavailable" {
 		t.Fatalf("foreign user did not fail at access: %v", err)
 	}
 	// The Team roster includes other people's agents. Seeing

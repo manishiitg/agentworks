@@ -101,7 +101,7 @@ A routing step jumps execution **into** the selected branch, but it does not sto
 - A branch whose terminal step has **no** `next_step_id` falls through to the next step in the list — the classic "the non-selected branch also ran" bug. Always wire the convergence.
 
 If a task needs persistent LLM specialists,
-use an explicit Crew step. Use routing when an already
+use an agent step using its Crew configuration. Use routing when an already
 made decision selects exactly one genuinely different downstream path.
 
 ### Routing vs. other primitives

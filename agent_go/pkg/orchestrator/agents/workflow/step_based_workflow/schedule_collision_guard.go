@@ -20,10 +20,8 @@ func ScheduleGuardedTool(name string) bool {
 		"create_plan", "delete_plan_steps", "cleanup_orphan_step_configs",
 		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
 		"add_agent_route",
-		"add_crew_step",
 		"update_scripted_step", "update_agent_step", "update_routing_step", "update_branch_step",
 		"update_agent_route",
-		"update_crew_step",
 		"delete_agent_route", "update_step_config", "update_validation_schema",
 		"migrate_workflow_skills",
 		"update_workflow_config", "set_workflow_llm_config", "update_variable", "add_group", "update_group", "delete_group":

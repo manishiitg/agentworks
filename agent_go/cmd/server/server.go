@@ -5390,25 +5390,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if directWebhookOptions != nil {
 					controllerOpts = directWebhookOptions
 				}
-				// Crew steps invoke Crew triggers through a server-owned runner.
-				// The run owner scopes crew lookups; without a user there is no
-				// runner and crew steps fail with a clear error at execution.
-				controllerOpts.CrewRunner = crewRunnerForRun(r.Context(), api.projectActions)
+				// Resolve saved Crew agent settings and scripts through the run owner.
+				controllerOpts.CrewResources = crewResourcesForRun(r.Context(), api.projectActions)
 				controllerOpts.AgentFunctionTools = api.workflowAgentFunctionToolsForRun(r.Context())
 				log.Printf("[WORKFLOW EXECUTION] Setting strategy=%s folder=%s", controllerOpts.ExecutionStrategy, controllerOpts.SelectedRunFolder)
 				workflowOrchestrator.SetExecutionOptions(controllerOpts)
 				log.Printf("[EXECUTION_OPTIONS_DEBUG] [Backend] Execution options set on orchestrator successfully")
 			} else {
 				log.Printf("[EXECUTION_OPTIONS_DEBUG] [Backend] No execution options provided in request - req.ExecutionOptions is nil")
-				// Runs without execution options (Builder chat runs, live
-				// input) still need the server-owned crew runner: without
-				// it crew steps fail even though the run is fully
-				// authenticated. A minimal options value is behavior-neutral
-				// for every other consumer — they all nil-guard and match
-				// on specific fields.
-				if runner := crewRunnerForRun(r.Context(), api.projectActions); runner != nil {
+				// Saved Crew resources are needed on every authenticated run path.
+				if runner := crewResourcesForRun(r.Context(), api.projectActions); runner != nil {
 					workflowOrchestrator.SetExecutionOptions(&todo_creation_human.ExecutionOptions{
-						CrewRunner:         runner,
+						CrewResources:      runner,
 						AgentFunctionTools: api.workflowAgentFunctionToolsForRun(r.Context()),
 					})
 				}
@@ -5467,9 +5460,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[WORKFLOW DEBUG] Starting workflow execution for query %s with objective: %s, workspace: %s", queryID, workflowObjective, workflowWorkspacePath)
 			var err error
 			if claims := GetUserFromContext(r.Context()); claims != nil {
-				// Fail fast before any step executes when a crew step lost
-				// access to its Crew; shares the execution error reporting below.
-				err = preflightCrewSteps(workflowCtx, api.projectActions, claims.UserID, workflowWorkspacePath)
+				// Check attached Crew access before any step can read an alias.
+				err = preflightCrewAttachments(workflowCtx, api.projectActions, claims.UserID, workflowWorkspacePath)
 			}
 			if err == nil {
 				// An unreadable input is refused before anything runs (PLAT-579).
@@ -12889,10 +12881,8 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		ancestor = active.ParentSessionID
 	}
 
-	// Builder-run crew steps (execute_step, run_full_workflow) resolve their
-	// runner from the session config; without it they fail as unbound even
-	// on fully authenticated runs.
-	cfg.CrewRunner = crewRunnerForRun(ctx, api.projectActions)
+	// Workflow execution resolves saved Crew configuration and scripts from the session.
+	cfg.CrewResources = crewResourcesForRun(ctx, api.projectActions)
 	cfg.AgentFunctionTools = api.workflowAgentFunctionToolsForRun(ctx)
 
 	cfg.ScheduleCollisionCheck = api.scheduleCollisionCheck(cfg.WorkspacePath, sessionID, req.TriggeredBy)

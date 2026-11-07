@@ -351,7 +351,7 @@ func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
 	svc, _, ctx := newCrewCreationTestEnv(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"}]}`)
-	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Automation lab", Purpose: "Reports", StepInstruction: "Prepare reports", IdempotencyKey: "account-edit"})
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Automation lab", Purpose: "Reports", IdempotencyKey: "account-edit"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +387,7 @@ func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
 func TestCrewWorkflowsKeepRelayDataWhileFlowIsDisabled(t *testing.T) {
 	svc, files, ctx := newCrewCreationTestEnv(t)
 	t.Setenv("AGENT_PRODUCTS", "work,agentworks,relays")
-	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Workflow lab", Purpose: "Run reports", StepInstruction: "Prepare reports", IdempotencyKey: "park-relay"})
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Workflow lab", Purpose: "Run reports", IdempotencyKey: "park-relay"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -31,11 +31,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveCrewAgentStep(ctx context.Cont
 	if opts == nil {
 		return nil, fmt.Errorf("step %q: Crew agent configuration is unavailable", step.ID)
 	}
-	resolver, ok := opts.CrewRunner.(CrewAgentConfigurationResolver)
-	if !ok {
+	resolver := opts.CrewResources
+	if resolver == nil || resolver.Agents == nil {
 		return nil, fmt.Errorf("step %q: Crew agent configuration is unavailable", step.ID)
 	}
-	resolved, err := resolver.ResolveCrewAgentConfiguration(ctx, hcpo.GetWorkspacePath(), step.CrewAgent)
+	resolved, err := resolver.Agents.ResolveCrewAgentConfiguration(ctx, hcpo.GetWorkspacePath(), step.CrewAgent)
 	if err != nil {
 		return nil, fmt.Errorf("step %q: %w", step.ID, err)
 	}

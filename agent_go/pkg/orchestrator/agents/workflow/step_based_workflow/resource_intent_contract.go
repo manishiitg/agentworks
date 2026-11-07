@@ -163,7 +163,7 @@ func ValidateResourceIntentContractStamp(content string) error {
 			return nil
 		}
 		agent, isAgent := step.(*AgentPlanStep)
-		// Scripted, routing and Crew steps are driven by code or routes and keep
+		// Scripted, routing and branch steps are driven by code or routes and keep
 		// short descriptions (step-description.md); only agents carry the section.
 		if isAgent && !agent.AuthoredPrompt {
 			if reason := checkResourceIntent(step.GetDescription()); reason != "" {

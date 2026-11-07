@@ -38,7 +38,7 @@ func MissingDescriptionLayoutHeadings(description string) []string {
 }
 
 // descriptionLayoutStepTypes are the agent steps, whose description is the task
-// an agent works from. Scripted, routing, branch, human-input and Crew steps are
+// an agent works from. Scripted, routing and branch steps are
 // driven by code, routes, a question to a person or a Crew, so the layout does
 // not apply to them (owner, 2026-10-06; a routing step with an empty description
 // blocked the 1.0.46 stamp).

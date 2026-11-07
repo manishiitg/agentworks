@@ -93,7 +93,7 @@ func TestInteractiveWorkshopPromptDocumentsAgentRouteReuse(t *testing.T) {
 	docMustContain := []string{
 		"## SCRIPTED HELPERS",
 		"typed inputs and outputs",
-		"explicit Crew step",
+		"saved Crew configuration",
 	}
 	for _, snippet := range docMustContain {
 		if !strings.Contains(doc, snippet) {

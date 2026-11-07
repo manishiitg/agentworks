@@ -82,7 +82,7 @@ func crewScriptManifest(ctx context.Context, binding *crewExecutableBinding) (*W
 
 // Script ids are configuration, never derived from mapped values. Resolve source
 // only through the server's trusted executable-to-Crew ownership registry.
-func (r *crewStepRunner) ResolveCrewScript(ctx context.Context, workspace, id string) (workflow.CrewScriptConfiguration, error) {
+func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace, id string) (workflow.CrewScriptConfiguration, error) {
 	var result workflow.CrewScriptConfiguration
 	parent, err := findCrewExecutable(workspace)
 	if id == "" && err == nil && (parent == nil || parent.Kind != "script") {

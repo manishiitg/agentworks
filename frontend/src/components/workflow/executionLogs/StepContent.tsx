@@ -18,15 +18,12 @@ import {
   ListTodo,
   Archive,
   Search,
-  Users,
-  ExternalLink,
   Gauge,
   Lightbulb,
   SkipForward,
   Route as RouteIcon,
 } from 'lucide-react'
 import type { ExecutionLogsResponse } from '../../../services/api-types'
-import { useProductSurfaceStore } from '../../../stores/useProductSurfaceStore'
 import { ConversationViewer } from '../ConversationViewer'
 import { MarkdownRenderer } from '../../ui/MarkdownRenderer'
 import { StepMetadata, StructuredJsonView, StepMetricChip } from './LogPrimitives'
@@ -52,159 +49,6 @@ export interface StepContentProps {
   toggleFileExpansion: (path: string) => void
 }
 
-interface CrewRunRecord {
-  crew_profile_id?: string
-  crew_project_id?: string
-  trigger_id?: string
-  crew_run_id?: string
-  session_id?: string
-  status?: string
-  error?: string
-  started_at?: string
-  completed_at?: string
-  usage?: {
-    prompt_tokens?: number
-    completion_tokens?: number
-    cost_usd?: number
-    llm_call_count?: number
-  }
-  timeline?: { status?: string; at?: string }[]
-}
-
-
-const crewStatusChip = (status: string): string => {
-  switch (status) {
-    case 'success':
-      return 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-    case 'error':
-    case 'failed':
-      return 'bg-destructive/10 text-destructive'
-    case 'running':
-    case 'queued':
-      return 'bg-sky-500/15 text-sky-600 dark:text-sky-300'
-    default:
-      return 'bg-muted text-muted-foreground'
-  }
-}
-
-// CrewRunSection renders the crew-run.json artifact of a crew step inline:
-// the run's identity, status timeline, token spend, and a jump into the
-// owning crew. Content loads through the same artifact loader as the
-// Artifacts section below, so nothing fetches twice.
-function CrewRunSection({
-  stepLogs,
-  fileContents,
-  loadingFiles,
-  toggleFileExpansion,
-}: {
-  stepLogs: StepContentProps['stepLogs']
-  fileContents: Record<string, string>
-  loadingFiles: Set<string>
-  toggleFileExpansion: (path: string) => void
-}) {
-  const record = ((stepLogs.artifacts || []) as { file_name?: string; file_path: string }[]).find(
-    (artifact) => artifact.file_name === 'crew-run.json',
-  )
-  if (!record) return null
-  const raw = fileContents[record.file_path]
-  let parsed: CrewRunRecord | null = null
-  if (raw) {
-    try {
-      parsed = JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw)) as CrewRunRecord
-    } catch {
-      parsed = null
-    }
-  }
-  const status = parsed?.status || ''
-  const usage = parsed?.usage
-  const timeline = Array.isArray(parsed?.timeline) ? parsed.timeline : []
-  const openInCrew = () => {
-    if (!parsed?.crew_project_id) return
-    const surfaces = useProductSurfaceStore.getState()
-    surfaces.setSelectedWorkProjectId(parsed.crew_project_id)
-    surfaces.setProductSurface('work')
-  }
-
-  return (
-    <div className="p-4 bg-muted/30">
-      <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-        <Users className="w-3.5 h-3.5" />
-        Crew run
-        {status && (
-          <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] normal-case ${crewStatusChip(status)}`}>{status}</span>
-        )}
-      </h4>
-      {!parsed ? (
-        <button
-          onClick={() => toggleFileExpansion(record.file_path)}
-          disabled={loadingFiles.has(record.file_path)}
-          className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground/80 transition-colors hover:bg-accent/50 disabled:cursor-wait disabled:opacity-60"
-        >
-          {loadingFiles.has(record.file_path) ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-          {loadingFiles.has(record.file_path) ? 'Loading crew run…' : 'Load crew run record'}
-        </button>
-      ) : (
-        <div className="space-y-3">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-            <div className="flex items-baseline gap-2 min-w-0">
-              <dt className="shrink-0 text-muted-foreground">Crew</dt>
-              <dd className="truncate font-mono text-foreground/90" title={parsed.crew_project_id}>{parsed.crew_project_id || '—'}</dd>
-            </div>
-            <div className="flex items-baseline gap-2 min-w-0">
-              <dt className="shrink-0 text-muted-foreground">Run</dt>
-              <dd className="truncate font-mono text-foreground/90" title={parsed.crew_run_id}>{parsed.crew_run_id || '—'}</dd>
-            </div>
-            {parsed.session_id && (
-              <div className="flex items-baseline gap-2 min-w-0 col-span-2">
-                <dt className="shrink-0 text-muted-foreground">Session</dt>
-                <dd className="truncate font-mono text-foreground/90" title={parsed.session_id}>{parsed.session_id}</dd>
-              </div>
-            )}
-            {usage && (usage.prompt_tokens || usage.completion_tokens) ? (
-              <div className="flex items-baseline gap-2 min-w-0 col-span-2">
-                <dt className="shrink-0 text-muted-foreground">Spend</dt>
-                <dd className="text-foreground/90">
-                  {(usage.prompt_tokens || 0).toLocaleString()} in / {(usage.completion_tokens || 0).toLocaleString()} out
-                  {typeof usage.cost_usd === 'number' && usage.cost_usd > 0 && <> · ${usage.cost_usd.toFixed(4)}</>}
-                </dd>
-              </div>
-            ) : null}
-          </dl>
-          {parsed.error && (
-            <div className="flex items-start justify-between gap-2">
-              <p className="min-w-0 flex-1 text-xs leading-relaxed text-destructive">{parsed.error}</p>
-            </div>
-          )}
-          {timeline.length > 0 && (
-            <ol className="space-y-1">
-              {timeline.map((transition, index) => (
-                <li key={`${transition.status}-${index}`} className="flex items-center gap-2 text-xs text-foreground/80">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
-                  <span className="font-mono">{transition.status || '—'}</span>
-                  {transition.at && (
-                    <span className="text-muted-foreground">{new Date(transition.at).toLocaleTimeString()}</span>
-                  )}
-                </li>
-              ))}
-            </ol>
-          )}
-          {parsed.crew_project_id && (
-            <button
-              onClick={openInCrew}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground/80 transition-colors hover:bg-accent/50"
-            >
-              <ExternalLink className="w-3 h-3" />
-              Open in Crew
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Recursive: sub-agent executions render the nested step's content through
-// the same component.
 export function StepContent(props: StepContentProps) {
   const {
     stepId,
@@ -608,16 +452,6 @@ export function StepContent(props: StepContentProps) {
                 })}
               </div>
             </div>
-          )}
-
-          {/* Crew run record (crew steps only) */}
-          {stepLogs.type === 'crew' && (
-            <CrewRunSection
-              stepLogs={stepLogs}
-              fileContents={fileContents}
-              loadingFiles={loadingFiles}
-              toggleFileExpansion={toggleFileExpansion}
-            />
           )}
 
           {/* Step Output Section */}

@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react';
 import type { Node, Edge } from '@xyflow/react'
 import dagre from 'dagre'
 import type { PlanStep, PlanningResponse, AgentLLMConfig, ValidationSchema, RoutingRoute, AgentItem } from '../../../utils/stepConfigMatching'
-import { agentCardItems, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, isCrewStep, configuredAgentItems } from '../../../utils/stepConfigMatching'
+import { agentCardItems, isRoutingStep, isBranchStep, isAgentStep, isScriptedStep, configuredAgentItems } from '../../../utils/stepConfigMatching'
 import type { ChangeType, PlanChanges } from './usePlanData'
 import type { VariablesManifest, ScheduledJob } from '../../../services/api-types'
 import type { VariablesNodeData } from '../nodes/VariablesNode'
@@ -71,20 +71,6 @@ export interface AgentNodeData extends Record<string, unknown> {
   isOrphan?: boolean  // True for orphan steps (workshop-only, not in main execution flow)
 }
 
-export interface CrewStepNodeData extends Record<string, unknown> {
-  id: string
-  title: string
-  crew_profile_id?: string
-  crew_project_id?: string
-  trigger_id?: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
-  stepIndex: number
-  step: PlanStep
-  changeType?: ChangeType
-  workspacePath?: string | null
-  selectedRunFolder?: string
-  isOrphan?: boolean  // True for orphan steps (workshop-only, not in main execution flow)
-}
 
 export interface ValidationNodeData extends Record<string, unknown> {
   id: string
@@ -128,7 +114,7 @@ export interface WorkflowTriggerNodeData extends Record<string, unknown> {
   onRefresh?: () => void
 }
 
-export type WorkflowNodeData = WorkflowTriggerNodeData | StepNodeData | RoutingStepNodeData | AgentNodeData | CrewStepNodeData | ValidationNodeData | LearningNodeData | VariablesNodeData | WorkflowArtifactNodeData
+export type WorkflowNodeData = WorkflowTriggerNodeData | StepNodeData | RoutingStepNodeData | AgentNodeData | ValidationNodeData | LearningNodeData | VariablesNodeData | WorkflowArtifactNodeData
 
 // Node and edge types
 export type WorkflowNode = Node<WorkflowNodeData>
@@ -1068,20 +1054,6 @@ function stepToNode(
     }
   }
 
-  if (isCrewStep(step)) {
-    return {
-      id: nodeId,
-      type: 'crew',
-      position: { x: 0, y: 0 },
-      data: {
-        ...baseData,
-        crew_profile_id: step.crew_profile_id,
-        crew_project_id: step.crew_project_id,
-        trigger_id: step.trigger_id
-        // Note: status is inherited from baseData (computed based on completedStepIndices)
-      } as CrewStepNodeData
-    }
-  }
 
   if (isAgentStep(step)) {
     return {

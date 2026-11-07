@@ -184,7 +184,6 @@ this is the complete map.
 - [Backup, History & Versions Consolidation](workflow/backup_history_consolidation.md)
 - [Browser workflow authoring](core/browser.md#workflow-authoring)
 - [Cost And Log Measurement](workflow/cost_and_log_measurement.md)
-- [Crew workflow step](workflow/crew-step.md)
 - [Deterministic Routing (route-by-file)](workflow/deterministic_routing.md)
 - [Eval Removal Plan: Migrate to Producer-Owned Measurement](workflow/eval_removal_plan.md)
 - [Human Feedback System](workflow/human_feedback_system.md)

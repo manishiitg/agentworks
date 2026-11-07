@@ -35,7 +35,7 @@ func crewExecutableAgentChoices(ctx context.Context, caller, owner, crewID, root
 
 // Configuration-only reuse: never prepare/restore a product chat turn. The
 // shared workflow executor creates its own run-scoped sequence and native session.
-func (r *crewStepRunner) ResolveCrewAgentConfiguration(ctx context.Context, workspace, agentID string) (stepworkflow.CrewAgentConfiguration, error) {
+func (r *crewWorkflowResources) ResolveCrewAgentConfiguration(ctx context.Context, workspace, agentID string) (stepworkflow.CrewAgentConfiguration, error) {
 	var result stepworkflow.CrewAgentConfiguration
 	if r == nil || r.crews == nil || r.crews.registry == nil {
 		return result, fmt.Errorf("Crew services are unavailable")

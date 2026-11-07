@@ -48,7 +48,7 @@ For a fixed choice the user already gave the builder, prefer a deterministic
 switch instead of asking again — `branch` for a small in-flow decision,
 `routing` when the choice forks into a major, self-contained sub-workflow —
 and pass `route_selections` when running either.
-Declare scripted `predefined_routes` when the agent needs typed Python helpers. Use an explicit Crew step for LLM specialists. Several known actions in one shared context belong in the complete description task; use ordered items only for distinct subsequent phases. Do not add a
+Declare scripted `predefined_routes` when the agent needs typed Python helpers. Use an agent step using its Crew configuration for LLM specialists. Several known actions in one shared context belong in the complete description task; use ordered items only for distinct subsequent phases. Do not add a
 checkpoint just to ask the same branch choice again.
 
 ## Step types
@@ -63,7 +63,6 @@ checkpoint just to ask the same branch choice again.
   self-contained sub-workflow fork
 - **`branch`** — same deterministic route-map mechanics as `routing`, for a
   small in-flow next-step decision instead of a major fork
-- **`crew`** — invoke a Crew trigger and wait for its response
 - **orphan** (`is_orphan: true`) — reusable across agents via
   `shared_with.agent_ids` + `orphan_step_ref`
 

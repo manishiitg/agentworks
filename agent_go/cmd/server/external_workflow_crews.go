@@ -20,7 +20,7 @@ func externalWorkflowCrewDefinition(add func(string, string, bool, bool, map[str
 	delete(props, "crew_project_id")
 	delete(props, "crew_profile_id")
 	props["action"].(map[string]any)["enum"] = []any{"list", "detach"}
-	add("workflow_crews", "List or detach this workflow's read-only Crew attachments using the native Builder handler. These are workflow-to-Crew bindings; crew_references manages the opposite direction. Detach takes the alias returned by list, removes its live file grants immediately, and leaves plan steps unchanged. Crew deletion still refuses any remaining workflow attachment or Crew step. Requires existing Builder consent and current workflow owner/editor access; no model turn or new permission.", true, true, props, "action")
+	add("workflow_crews", "List or detach this workflow's read-only Crew attachments using the native Builder handler. These are workflow-to-Crew bindings; crew_references manages the opposite direction. Detach takes the alias returned by list, removes its live file grants immediately, and leaves plan steps unchanged. Crew deletion still refuses any remaining workflow attachment. Requires existing Builder consent and current workflow owner/editor access; no model turn or new permission.", true, true, props, "action")
 	return nil
 }
 

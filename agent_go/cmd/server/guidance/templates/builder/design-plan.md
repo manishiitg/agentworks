@@ -68,7 +68,7 @@ For each step, confirm it's the right type, and flag mis-modeling:
 - **routing** — a DETERMINISTIC N-way switch: no agent, **no description**, decided upstream (a prior agent writes `route_selection.json`, or the caller passes `route_selections`); `default_route_id` is the missing-file fallback. **Every branch must converge** to the shared downstream step via `next_step_id` (or end). "Loop/if in a description" is not routing.
 - **agent** — one complete description-first task in one conversation, optional authored later phases, then backend validation and same-conversation repair. Zero items is valid. Feed judgment-heavy work durable results from scripted fetchers; do not turn routine sub-actions into separate messages.
 - **scripted helpers** (`predefined_routes`) — saved Python with typed inputs and outputs; the Agent chooses when to call them. No LLM child agents run inside a Goal step.
-- **crew** — an explicit Crew step for persistent specialists, ongoing learning or multi-agent coordination. Do not auto-create one while upgrading an existing workflow.
+- **Crew configuration** — set `crew_agent` on a regular `agent` step to reuse its Crew agent’s instructions, model, tools and skills. The step keeps its own run conversation and folder guard.
 
 - **orphan** — a reusable plan-local definition or manual utility agent (data checks, env validation, one-off investigations, or a shared sub-agent several agents reuse). Reuse is explicit: `shared_with.agent_ids` + a route's `orphan_step_ref`.
 

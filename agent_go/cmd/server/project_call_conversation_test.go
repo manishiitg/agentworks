@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	productschedule "github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
 
@@ -110,41 +108,6 @@ func TestLegacyWorkflowTriggerRoutesLocalOwnerToMainChat(t *testing.T) {
 			}
 			t.Fatal("delivery did not queue")
 		})
-	}
-}
-
-func TestLegacyLocalCrewStepAdoptsMainChatDelivery(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("DEFAULT_USER_ID", "owner")
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	manifest, _, _ := ReadWorkflowManifest(ctx, "Workflow/reports")
-	manifest.Access, manifest.CreatedBy = nil, ""
-	raw, _ := json.Marshal(manifest)
-	env.mock.files[manifestPath("Workflow/reports")] = string(raw)
-	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}}
-	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
-	if err != nil {
-		t.Fatal(err)
-	}
-	triggerID, _, err := env.api.connectTriggerTarget(ctx, "owner", caller, target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req := stepworkflow.CrewStepRequest{WorkflowID: manifest.ID, ExecutionID: "exec-local", StepID: "notify", Group: "default", ProfileID: "work", ProjectID: "beta", TriggerID: triggerID, TimeoutSeconds: 1}
-	deliveryID := crewStepDeliveryBase(req.WorkflowID, req.ExecutionID, req.Group, req.StepID, req.TriggerID, runDestinationChat)
-	delivery, err := env.api.dispatchTargetTrigger(ctx, "owner", caller, target, triggerID, deliveryID, "test", map[string]interface{}{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := UpdateScheduleRunResult(ctx, linkBetaPath, delivery.RunID, ScheduleRunCompletion{Status: "success", SessionID: "sess-beta", FinalResponse: "Recorded"}); err != nil {
-		t.Fatal(err)
-	}
-	deadline, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	result, err := newCrewStepRunner(env.svc, "owner").RunCrewStep(deadline, req)
-	if err != nil || result.CrewRunID != delivery.RunID || result.SessionID != "sess-beta" || result.FinalResponse != "Recorded" {
-		t.Fatalf("local main-chat delivery was not adopted: result=%+v err=%v", result, err)
 	}
 }
 
@@ -258,37 +221,3 @@ func TestProjectCallerOwnersRejectMismatchedPath(t *testing.T) {
 
 // A workflow Crew step that names an agent talks to that agent's own chat in
 // the same owner's Crew; the same name always reaches the same chat (PLAT-861-261).
-func TestCrewStepNamedAgentRoutesToItsOwnChat(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("DEFAULT_USER_ID", "owner")
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	manifest, _, _ := ReadWorkflowManifest(ctx, "Workflow/reports")
-	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}}
-	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
-	if err != nil {
-		t.Fatal(err)
-	}
-	triggerID, _, err := env.api.connectTriggerTarget(ctx, "owner", caller, target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	delivery, err := env.svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{UserID: "owner", ProfileID: "work", ProjectID: "beta", TriggerID: triggerID, Caller: caller.Stamp, DeliveryID: "named-agent", Payload: []byte(`{"instruction":"audit"}`), AgentName: "Weekly Report"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	env.svc.mu.Lock()
-	defer env.svc.mu.Unlock()
-	for _, queue := range env.svc.queued {
-		for _, item := range queue {
-			if item.options.RunID != delivery.RunID {
-				continue
-			}
-			if item.job.Schedule.Isolated || item.job.Schedule.ChatKey != "beta"+codeChatSideMarker+"weekly-report" || item.job.AgentName != "Weekly Report" {
-				t.Fatalf("named agent job: isolated=%v chat=%q agent=%q", item.job.Schedule.Isolated, item.job.Schedule.ChatKey, item.job.AgentName)
-			}
-			return
-		}
-	}
-	t.Fatal("delivery did not queue")
-}

@@ -230,36 +230,3 @@ func TestDispatchInternalProductTriggerStampsCaller(t *testing.T) {
 		t.Fatalf("caller = %+v", entry.Caller)
 	}
 }
-
-func TestRunCrewStepAdoptsRunUsage(t *testing.T) {
-	svc, _ := newInternalDispatchCrew(t, crewRunnerTriggers)
-	svc.conversations = map[string]bool{"owner\x1fproduct-project:crewx:project-a:trig-1": true}
-	ctx := context.Background()
-	req := testCrewStepRequest()
-	runID := webhookDeliveryRunID("project-a", "trig-1", crewRunnerDeliveryBase(req))
-	first, err := svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
-		UserID: "owner", ProfileID: "crewx", ProjectID: "project-a", TriggerID: "trig-1",
-		Caller:     triggerCaller{Type: "workflow", ID: "wf-1"},
-		DeliveryID: crewRunnerDeliveryBase(req), Payload: []byte(`{}`),
-	})
-	if err != nil || first.RunID != runID {
-		t.Fatalf("seed dispatch = %+v err=%v", first, err)
-	}
-	runsWorkspace := agentProfileRuntimeWorkspace("owner", "_users/owner/Chats/Work/projects/project-a")
-	if err := UpdateScheduleRun(ctx, runsWorkspace, runID, "success", "", nil, "", "sess-9"); err != nil {
-		t.Fatal(err)
-	}
-	usage := &workflowtypes.CrewRunTokenUsage{}
-	usage.AddModel("model-a", "prov", 10, 5, 0, 0, 0, 0.1, 1)
-	if err := UpdateScheduleRunTokenUsage(ctx, runsWorkspace, runID, usage); err != nil {
-		t.Fatal(err)
-	}
-	runner := newCrewStepRunner(svc, "owner")
-	result, err := runner.RunCrewStep(ctx, req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Usage == nil || result.Usage.PromptTokens != 10 || result.Usage.ByModel["model-a"] == nil {
-		t.Fatalf("result usage = %+v", result.Usage)
-	}
-}

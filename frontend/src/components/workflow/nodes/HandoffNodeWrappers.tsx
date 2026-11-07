@@ -3,12 +3,10 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { StepNode } from './StepNode'
 import { RoutingStepNode } from './RoutingStepNode'
 import { AgentNode } from './AgentNode'
-import { CrewNode } from './CrewNode'
 import type {
   StepNodeData,
   RoutingStepNodeData,
   AgentNodeData,
-  CrewStepNodeData,
 } from '../hooks/usePlanToFlow'
 
 // Route-to-route branches are laid out as lateral handoffs. These invisible
@@ -38,12 +36,6 @@ export const HandoffAgentNode = memo((props: NodeProps) => (
   </>
 ))
 
-export const HandoffCrewNode = memo((props: NodeProps) => (
-  <>
-    <CrewNode data={props.data as CrewStepNodeData} selected={props.selected} />
-    <HandoffTarget />
-  </>
-))
 
 export const HandoffRoutingNode = memo((props: NodeProps) => {
   const data = props.data as RoutingStepNodeData
@@ -68,5 +60,4 @@ export const HandoffRoutingNode = memo((props: NodeProps) => {
 
 HandoffStepNode.displayName = 'HandoffStepNode'
 HandoffAgentNode.displayName = 'HandoffAgentNode'
-HandoffCrewNode.displayName = 'HandoffCrewNode'
 HandoffRoutingNode.displayName = 'HandoffRoutingNode'

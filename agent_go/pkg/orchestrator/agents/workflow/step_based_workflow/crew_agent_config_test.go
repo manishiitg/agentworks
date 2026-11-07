@@ -3,17 +3,13 @@ package step_based_workflow
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 )
 
-type configurationOnlyCrewRunner struct{ configuration CrewAgentConfiguration }
+type configurationOnlyCrewResources struct{ configuration CrewAgentConfiguration }
 
-func (*configurationOnlyCrewRunner) RunCrewStep(context.Context, CrewStepRequest) (CrewStepResult, error) {
-	return CrewStepResult{}, fmt.Errorf("configuration reuse must not call a Crew chat")
-}
-func (r *configurationOnlyCrewRunner) ResolveCrewAgentConfiguration(context.Context, string, string) (CrewAgentConfiguration, error) {
+func (r *configurationOnlyCrewResources) ResolveCrewAgentConfiguration(context.Context, string, string) (CrewAgentConfiguration, error) {
 	return r.configuration, nil
 }
 
@@ -28,8 +24,8 @@ func TestCrewAgentDefaultsArePerRunAndPreserveExplicitStepOverrides(t *testing.T
 		t.Fatal("agent reference lost during plan decoding")
 	}
 	controller := newAgentClosingTestOrchestrator(t)
-	runner := &configurationOnlyCrewRunner{configuration: CrewAgentConfiguration{Model: &AgentLLMConfig{Provider: "codex-cli", ModelID: "first"}, Instructions: "First saved role", Servers: []string{"github"}, Skills: []string{"research"}}}
-	controller.SetExecutionOptions(&ExecutionOptions{CrewRunner: runner})
+	runner := &configurationOnlyCrewResources{configuration: CrewAgentConfiguration{Model: &AgentLLMConfig{Provider: "codex-cli", ModelID: "first"}, Instructions: "First saved role", Servers: []string{"github"}, Skills: []string{"research"}}}
+	controller.SetExecutionOptions(&ExecutionOptions{CrewResources: &CrewResources{Agents: runner}})
 	first, err := controller.resolveCrewAgentStep(t.Context(), &saved)
 	if err != nil {
 		t.Fatal(err)

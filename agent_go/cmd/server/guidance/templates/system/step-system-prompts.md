@@ -165,7 +165,7 @@ Use each helper's named tool for a result in the same call. Alternatively,
 end the turn to receive its completion notification. Never report completion
 while an owned script is running. Inspect an exact script with `query_sub_agent`
 or `get_sub_agent_conversation`; use `stop_sub_agent` to cancel it.
-LLM specialists belong to a separate Crew step in the Goal plan.
+LLM specialists belong to an agent step with the needed Crew configuration.
 {{end}}
 
 {{define "managed-db-read"}}## Workflow database

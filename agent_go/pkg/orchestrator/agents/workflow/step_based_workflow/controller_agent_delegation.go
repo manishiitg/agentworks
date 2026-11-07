@@ -124,7 +124,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 	runtimeStep := *orchestratorStep
 	runtimeStep.PredefinedRoutes = goalScriptedRoutes(orchestratorStep.PredefinedRoutes)
 	if len(runtimeStep.PredefinedRoutes) != len(orchestratorStep.PredefinedRoutes) {
-		hcpo.GetLogger().Info(fmt.Sprintf("[STEP_ROUTES_RETIRED] workflow=%s step=%s: LLM specialist routes are retired; use a Crew step; saved instructions await workflow_upgrade", hcpo.GetWorkspacePath(), step.GetID()))
+		hcpo.GetLogger().Info(fmt.Sprintf("[STEP_ROUTES_RETIRED] workflow=%s step=%s: LLM specialist routes are retired; use saved Crew agent configuration; saved instructions await workflow_upgrade", hcpo.GetWorkspacePath(), step.GetID()))
 	}
 	orchestratorStep = &runtimeStep
 	step = orchestratorStep

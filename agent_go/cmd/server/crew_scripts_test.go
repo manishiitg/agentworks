@@ -93,7 +93,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if workflowAccessForManifest(&UserClaims{UserID: "runner", Username: "runner"}, manifest) != WorkflowAccessRead {
 		t.Fatal("Run person lost admitted execution access")
 	}
-	resolver := &crewStepRunner{userID: "owner"}
+	resolver := &crewWorkflowResources{userID: "owner"}
 	resolved, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "script:qualify")
 	if err != nil || resolved.Files["main.py"] != "print('owner update')\n" {
 		t.Fatalf("same-Crew script: %+v %v", resolved, err)
