@@ -806,7 +806,7 @@ type QueryRequest struct {
 	Message               string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
 	SessionTitle          string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
 	ParentSessionID       string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
-	SessionKind           string   `json:"session_kind,omitempty"`      // Stable runtime kind such as pulse_reviewer; never infer this from titles.
+	SessionKind           string   `json:"session_kind,omitempty"`      // Stable runtime kind such as generic_agent; never infer this from titles.
 	Servers               []string `json:"servers,omitempty"`
 	EnabledServers        []string `json:"enabled_servers,omitempty"`
 	SelectedTools         []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
@@ -6728,11 +6728,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 					log.Printf("[AGENT PROFILE FOLDER GUARD] Applied project restriction (profile=%s workspace=%s read-only=%v)", resolvedProfile.Definition.ID, profileWrite, profileReadOnly)
 				} else {
-					orgPulseWrite := "pulse/"
 					additionalFolders := append([]string{}, resolvedGrants.WriteFolders...)
 					additionalFolders = append(additionalFolders, fileContextWriteFolders...)
 					additionalFolders = append(additionalFolders, perUserChatHistory)
-					additionalFolders = append(additionalFolders, orgPulseWrite)
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, perUserChatsFolder, workflowReadOnlyFolders, additionalFolders...)
 					workspace.SetSessionWorkingDir(sessionID, crewFilesPath(chatWorkingFolder))
 					// Other workflows are readable only when attached to this chat

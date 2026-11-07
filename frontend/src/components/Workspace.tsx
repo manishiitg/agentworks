@@ -455,10 +455,10 @@ export default function Workspace({
       // Just adjust filepaths to show workflow folder as root
       result = adjustFilePathsRecursive(result, effectiveWorkflowFolderPath)
     } else if (selectedModeCategory === 'multi-agent') {
-      // Multi Agent Chat mode: show Chats/, Downloads/, pulse/, skills/, subagents/ and memories/ folders
+      // Multi Agent Chat mode: show Chats/, Downloads/, skills/, subagents/ and memories/ folders
       result = filesToProcess.filter(f => {
         const topFolder = f.filepath.split('/')[0]
-        return topFolder === 'Chats' || topFolder === 'Downloads' || topFolder === 'pulse' || topFolder === 'skills' || topFolder === 'subagents' || topFolder === 'memories' || topFolder === 'chat_history' || topFolder === '_users'
+        return topFolder === 'Chats' || topFolder === 'Downloads' || topFolder === 'skills' || topFolder === 'subagents' || topFolder === 'memories' || topFolder === 'chat_history' || topFolder === '_users'
       })
       // Scope _users/ to current user only — hide other users' folders
       result = result.map(f => {
@@ -681,10 +681,10 @@ export default function Workspace({
         result = result.map(node => pruneRunsToIteration(node, effectiveDisplayedIteration))
       }
     } else if (selectedModeCategory === 'multi-agent') {
-      // Multi Agent Chat mode: show Chats/, Downloads/, pulse/, skills/, subagents/ and memories/ folders
+      // Multi Agent Chat mode: show Chats/, Downloads/, skills/, subagents/ and memories/ folders
       result = result.filter(f => {
         const topFolder = f.filepath.split('/')[0]
-        return topFolder === 'Chats' || topFolder === 'Downloads' || topFolder === 'pulse' || topFolder === 'skills' || topFolder === 'subagents' || topFolder === 'memories' || topFolder === 'chat_history' || topFolder === '_users'
+        return topFolder === 'Chats' || topFolder === 'Downloads' || topFolder === 'skills' || topFolder === 'subagents' || topFolder === 'memories' || topFolder === 'chat_history' || topFolder === '_users'
       })
       // Scope _users/ to current user only — hide other users' folders
       result = result.map(f => {

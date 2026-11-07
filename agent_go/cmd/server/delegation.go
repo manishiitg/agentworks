@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -335,7 +334,7 @@ func (n *workshopExecutionBgNotifier) OnExecutionComplete(execID, name, result s
 			return
 		} // A concurrent stop owns the terminal outcome.
 		n.api.completeTrackedExecution(execID, trackedExecutionStatusCompleted, "", meta)
-		displayResult := workshopCompletionDisplayResult(n.workspacePath, result, meta)
+		displayResult := truncateForToolResponse(result, 500)
 		n.api.emitBackgroundAgentCompleted(n.sessionID, execID, name, "completed", displayResult, "", duration.Truncate(time.Second).String())
 	}
 
@@ -382,47 +381,6 @@ func (n *workshopExecutionBgNotifier) OnExecutionComplete(execID, name, result s
 	if agent.GetSnapshot().Metadata["suppress_auto_notification"] != "true" {
 		n.api.bgAgentRegistry.NotifyCompletion(n.sessionID, execID)
 	}
-}
-
-func workshopCompletionDisplayResult(workspacePath, result string, meta map[string]string) string {
-	const defaultLimit = 500
-	if strings.TrimSpace(meta["execution_type"]) != "pulse-reviewer" {
-		return truncateForToolResponse(result, defaultLimit)
-	}
-
-	resultPath := strings.TrimSpace(meta["review_result_path"])
-	workspacePath = strings.TrimSpace(workspacePath)
-	if resultPath == "" || workspacePath == "" || filepath.IsAbs(resultPath) {
-		return truncateForToolResponse(result, defaultLimit)
-	}
-	root, err := filepath.Abs(workspacePath)
-	if err != nil {
-		return truncateForToolResponse(result, defaultLimit)
-	}
-	candidate, err := filepath.Abs(filepath.Join(root, filepath.Clean(resultPath)))
-	if err != nil {
-		return truncateForToolResponse(result, defaultLimit)
-	}
-	relative, err := filepath.Rel(root, candidate)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return truncateForToolResponse(result, defaultLimit)
-	}
-	content, err := os.ReadFile(candidate)
-	if err != nil {
-		return truncateForToolResponse(result, defaultLimit)
-	}
-
-	findings := strings.TrimSpace(string(content))
-	if marker := "\n## Findings\n"; strings.Contains(findings, marker) {
-		findings = strings.TrimSpace(strings.SplitN(findings, marker, 2)[1])
-	}
-	if findings == "" {
-		return truncateForToolResponse(result, defaultLimit)
-	}
-	// Keep the complete review in SQLite. Only this immediate UI preview is
-	// bounded (and explicitly marked as truncated); this is not a finding or
-	// storage cap.
-	return truncateForToolResponse(findings, 6000)
 }
 
 func (n *workshopExecutionBgNotifier) OnExecutionTerminated(execID, name string) {
@@ -1044,11 +1002,9 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			subPerUserChatsFolder := perUserChatsFolderFor(subAgentUserID)
 			subPerUserChatsWrite := subPerUserChatsFolder + "/"
 			subPerUserChatHistory := strings.TrimSuffix(subPerUserChatsFolder, "Chats") + "chat_history/"
-			orgPulseWrite := "pulse/"
 			extraFolders := append([]string{}, subResolvedGrants.WriteFolders...)
 			extraFolders = append(extraFolders, fileContextWriteFolders...)
 			extraFolders = append(extraFolders, subPerUserChatHistory)
-			extraFolders = append(extraFolders, orgPulseWrite)
 			// Delegation path has no #workflow-derived blocked-write prefix (the parent
 			// session's blocked paths aren't inherited here; this call path is for sub-agents
 			// spawned with their own folder scope). Pass nil.

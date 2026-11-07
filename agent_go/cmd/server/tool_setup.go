@@ -402,13 +402,9 @@ func enhanceToolDescriptionForMultiAgentMode(toolName, originalDescription, chat
 			accessInfo.WriteString("\n" + line)
 		}
 	} else {
-		// Read-only tools name the writable scopes so the model knows where a
-		// companion write tool may put things. Only AgentWorks' own layout adds
-		// pulse/ here; a product's writable scope is its project folder.
+		// Read-only tools name the writable scope so the model knows where a
+		// companion write tool may put things.
 		writable := fmt.Sprintf("`%s/`", chatsFolder)
-		if profile == nil || isGlobalScopedProfile(profile) {
-			writable = fmt.Sprintf("`%s/`, `pulse/`,", chatsFolder)
-		}
 		accessInfo.WriteString(fmt.Sprintf("\n\nYou have READ access to allowed workspace folders. WRITE access is restricted to %s and any explicitly allowed subfolders. Configuration data is available through dedicated tools.", writable))
 	}
 
