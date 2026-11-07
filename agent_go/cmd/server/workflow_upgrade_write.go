@@ -18,6 +18,10 @@ func writeWorkflowUpgradeField(ctx context.Context, root, field string, current 
 	if err := json.Unmarshal([]byte(raw), &document); err != nil {
 		return err
 	}
+	var prior WorkflowManifest
+	if err := json.Unmarshal([]byte(raw), &prior); err != nil {
+		return err
+	}
 	encode := func(value any) json.RawMessage { data, _ := json.Marshal(value); return data }
 	switch field {
 	case "version":
@@ -70,8 +74,11 @@ func writeWorkflowUpgradeField(ctx context.Context, root, field string, current 
 	if err := ValidateManifest(&candidate); err != nil {
 		return err
 	}
-	// The permitted fields above cannot change ownership, Team policy or access.
-	// Keep the same authenticated, anchored writer and native-lock context.
+	if err := validateTeamManifestUpdate(ctx, &prior, &candidate); err != nil {
+		return err
+	}
+	// The field whitelist cannot change membership, but a Team Contributor still
+	// cannot change shared settings. Set the typed permit only after both checks.
 	ctx = context.WithValue(ctx, teamManifestPermitKey{}, true)
 	return writeFileToWorkspace(ctx, root+"/workflow.json", string(data)+"\n")
 }
