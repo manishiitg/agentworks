@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,6 +18,9 @@ import (
 // PLAT-746-265: selecting an agent reuses configuration only, and an ID from
 // another Crew must fail even when the same person owns both Crews.
 func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	svc, files, ctx := newCrewCreationTestEnvWithOptions(t, []agentprofiles.ProviderOption{{ID: "codex", Label: "Example coding agent", Provider: "codex-cli", ModelID: "example-model", Models: []string{"example-model"}, ReasoningEfforts: []string{"medium"}}})
 	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"stranger","username":"stranger","can_create":true}]}`)
 	profile, err := svc.registry.Resolve("work", 0, "owner")
@@ -44,6 +49,11 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	}
 	crew, chat := create("Reports")
 	foreignCrew, foreign := create("Other")
+	for _, root := range []string{crew.WorkspacePath, foreignCrew.WorkspacePath, filepath.Join(crewroot.PrivateDirectory, crew.CrewID), filepath.Join(crewroot.PrivateDirectory, foreignCrew.CrewID)} {
+		if err := os.MkdirAll(filepath.Join(docs, root), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := writeFileToWorkspace(ctx, crew.WorkspacePath+"/PROJECT_INSTRUCTIONS.md", "Cite the sources"); err != nil {
 		t.Fatal(err)
 	}
