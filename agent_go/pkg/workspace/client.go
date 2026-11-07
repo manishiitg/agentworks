@@ -54,14 +54,17 @@ type FolderGuardConfig struct {
 
 // Client handles communication with the workspace API directly via REST
 type Client struct {
-	BaseURL           string
-	HTTPClient        *http.Client
-	FolderGuard       *FolderGuardConfig
-	UserID            string            // User ID for auth/database scoping
-	DatabaseCallerID  string            // Requesting person for data parameters; does not change workspace authority
-	ExtraEnv          map[string]string // Extra env vars to inject into shell commands (e.g., MCP_API_URL, MCP_API_TOKEN). Guarded by extraEnvMu; read via extraEnvSnapshot.
-	extraEnvMu        sync.RWMutex
-	DefaultWorkingDir string // Default working directory for shell commands (relative to docs-dir)
+	BaseURL               string
+	HTTPClient            *http.Client
+	FolderGuard           *FolderGuardConfig
+	UserID                string            // User ID for auth/database scoping
+	DatabaseCallerID      string            // Requesting person for data parameters; does not change workspace authority
+	ExtraEnv              map[string]string // Extra env vars to inject into shell commands (e.g., MCP_API_URL, MCP_API_TOKEN). Guarded by extraEnvMu; read via extraEnvSnapshot.
+	extraEnvMu            sync.RWMutex
+	DefaultWorkingDir     string // Default working directory for shell commands (relative to docs-dir)
+	guardDiagnosticMu     sync.Mutex
+	guardDiagnosticWindow time.Time
+	guardDiagnosticSeen   map[string]struct{}
 }
 
 // httpStatusError preserves a non-2xx response body for callers that can
@@ -346,22 +349,26 @@ func (c *Client) ValidatePathWithContext(ctx context.Context, inputPath string, 
 		}
 	}
 	guard := c.resolveEffectiveFolderGuard(ctx)
-	if isWrite && systemManagedWriteAllowed(ctx, inputPath) {
+	managedWrite := isWrite && systemManagedWriteAllowed(ctx, inputPath)
+	if (guard == nil || !guard.Enabled) && !managedWrite {
+		return nil
+	}
+	validationPath, validationGuard, normalizeErr := c.userScopedFolderGuardPath(inputPath, guard)
+	if normalizeErr != nil {
+		return normalizeErr
+	}
+	if managedWrite {
 		// System-managed access may override a write-only deny, but never a hard
 		// read/write deny. This keeps secrets and other absolute exclusions closed.
-		if guard != nil {
-			for _, blocked := range guard.BlockedPaths {
-				if isPathUnder(filepath.Clean(inputPath), filepath.Clean(blocked)) {
+		if validationGuard != nil {
+			for _, blocked := range validationGuard.BlockedPaths {
+				if isPathUnder(filepath.Clean(validationPath), filepath.Clean(blocked)) {
 					return fmt.Errorf("path %q is blocked", inputPath)
 				}
 			}
 		}
 		return nil
 	}
-	if guard == nil || !guard.Enabled {
-		return nil
-	}
-	validationPath, validationGuard := c.userScopedFolderGuardPath(inputPath, guard)
 	if err := validatePathAgainstGuard(validationGuard, validationPath, isWrite); err != nil {
 		// Deny-only logging: shows which guard source (session / ctx snapshot /
 		// client fallback) denied, so a real learnings/KB denial is diagnosable
@@ -391,7 +398,10 @@ func (c *Client) ValidatePath(inputPath string, isWrite bool) error {
 	if c.FolderGuard == nil || !c.FolderGuard.Enabled {
 		return nil // No folder guard configured, allow all
 	}
-	validationPath, validationGuard := c.userScopedFolderGuardPath(inputPath, c.FolderGuard)
+	validationPath, validationGuard, err := c.userScopedFolderGuardPath(inputPath, c.FolderGuard)
+	if err != nil {
+		return err
+	}
 	return validatePathAgainstGuard(validationGuard, validationPath, isWrite)
 }
 
@@ -402,41 +412,71 @@ func (c *Client) ValidatePath(inputPath string, isWrite bool) error {
 // Normalize both the requested path and every guard path to the physical form
 // before authorization so the client-side check and server-side resolution
 // enforce the same location.
-func (c *Client) userScopedFolderGuardPath(inputPath string, guard *FolderGuardConfig) (string, *FolderGuardConfig) {
-	userID := strings.TrimSpace(c.UserID)
-	if guard == nil || userID == "" || !validWorkspaceUserID(userID) {
-		return inputPath, guard
+func (c *Client) userScopedFolderGuardPath(inputPath string, guard *FolderGuardConfig) (string, *FolderGuardConfig, error) {
+	if guard == nil {
+		return inputPath, guard, nil
 	}
-	normalize := func(path string) string {
-		clean := filepath.Clean(strings.TrimSpace(path))
-		if clean == "." || clean == "" || filepath.IsAbs(clean) {
+	root, err := configuredGuardRoot()
+	if err != nil {
+		return "", nil, fmt.Errorf("ACCESS DENIED: workspace root is unavailable: %w", err)
+	}
+	userID := strings.TrimSpace(c.UserID)
+	// Share resolved prefixes only within this operation. A later operation
+	// must observe changed symlinks, particularly in deny paths.
+	resolved := map[string]string{root.spelling: root.real, root.real: root.real}
+	scoped := func(raw string) string {
+		clean := filepath.Clean(strings.TrimSpace(raw))
+		// Preserve empty/dot sentinel entries rather than widening them into a
+		// physical grant for the entire documents root.
+		if clean == "." {
 			return clean
 		}
-		parts := strings.Split(filepath.ToSlash(clean), "/")
-		if len(parts) == 0 {
-			return clean
+		if !filepath.IsAbs(clean) && userID != "" && validWorkspaceUserID(userID) {
+			parts := strings.Split(filepath.ToSlash(clean), "/")
+			switch parts[0] {
+			case "Chats", "Downloads", "chat_history", "memories":
+				clean = filepath.Join(workspaceref.UsersDir, userID, clean)
+			}
 		}
-		switch parts[0] {
-		case "Chats", "Downloads", "chat_history", "memories":
-			return filepath.Join(workspaceref.UsersDir, userID, clean)
-		default:
-			return clean
+		return clean
+	}
+	normalize := func(raw string) (string, error) {
+		clean := scoped(raw)
+		if clean == "." {
+			return clean, nil
 		}
+		return canonicalWorkspaceGuardPath(root, clean, resolved)
 	}
 	normalized := cloneFolderGuard(guard)
-	for i, path := range normalized.ReadPaths {
-		normalized.ReadPaths[i] = normalize(path)
+	resolveGrants := func(paths []string, deny bool) []string {
+		resolved := make([]string, 0, len(paths))
+		for _, path := range paths {
+			value, err := normalize(path)
+			if err != nil {
+				c.logUnresolvedGrant(path, deny, err)
+				if !deny {
+					continue
+				}
+				// Never discard an exclusion. Its unresolved spelling remains
+				// blocked; requesting an unresolvable path also fails closed.
+				value = scoped(path)
+				if !filepath.IsAbs(value) && value != "." {
+					value = filepath.Join(root.real, value)
+				}
+			}
+			resolved = append(resolved, value)
+		}
+		return resolved
 	}
-	for i, path := range normalized.WritePaths {
-		normalized.WritePaths[i] = normalize(path)
+	normalized.ReadPaths = resolveGrants(normalized.ReadPaths, false)
+	normalized.WritePaths = resolveGrants(normalized.WritePaths, false)
+	normalized.BlockedPaths = resolveGrants(normalized.BlockedPaths, true)
+	normalized.BlockedWritePaths = resolveGrants(normalized.BlockedWritePaths, true)
+	input, err := normalize(inputPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("ACCESS DENIED: path cannot be resolved: %w", err)
 	}
-	for i, path := range normalized.BlockedPaths {
-		normalized.BlockedPaths[i] = normalize(path)
-	}
-	for i, path := range normalized.BlockedWritePaths {
-		normalized.BlockedWritePaths[i] = normalize(path)
-	}
-	return normalize(inputPath), normalized
+	return input, normalized, nil
 }
 
 func validWorkspaceUserID(userID string) bool {
