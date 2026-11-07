@@ -162,6 +162,32 @@ class Migration(unittest.TestCase):
         self.assertEqual(self.conversion().report()['status'],'already migrated')
         self.conversion().apply();self.assertEqual(after,hashes(self.base))
 
+    def test_unregistered_owner_history_keeps_bytes_without_creating_tabs(self):
+        # PLAT-746-364: real older archives have no surviving registry entry.
+        path = Path('builder/conversation/users/owner/2026-06-02/session-old-conversation.json')
+        archive = {'session_id':'old-session','user_id':'owner',
+                   'conversation_history':[{'role':'user','content':'Keep the old conversation.'}]}
+        write(self.source/path, archive)
+        original = (self.source/path).read_bytes()
+        before = hashes(self.base)
+        conversion = self.conversion()
+        self.assertEqual(conversion.report()['counts']['unregistered_chat_archives'], 1)
+        self.assertEqual(hashes(self.base), before)
+        conversion.apply()
+        self.assertEqual((self.runtime/path).read_bytes(), original)
+        registry = m.read(self.docs/'_users/owner/chat_history/product-conversations.json')
+        self.assertEqual(len(registry['entries']), 1)
+        self.assertNotIn('old-session', str(registry))
+
+    def test_unregistered_other_person_history_cannot_move_into_owner_records(self):
+        # An archive's age never grants access to another person's private chat.
+        write(self.source/'builder/conversation/users/other/2026-06-02/session-old-conversation.json',
+              {'session_id':'other-session','user_id':'other','conversation_history':[]})
+        before = hashes(self.base)
+        with self.assertRaisesRegex(ValueError, 'private owner mapping'):
+            self.conversion()
+        self.assertEqual(hashes(self.base), before)
+
     def test_finish_runtime_preserves_authored_files_and_references_without_recreating_old_folder(self):
         # PLAT-746-360: a prior source-only migration left native helpers
         # outside the runtime grant list. Finish only that workflow's records.

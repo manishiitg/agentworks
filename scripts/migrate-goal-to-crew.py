@@ -484,6 +484,7 @@ class Conversion:
                     self.write_json(manifest_path, manifest)
                 self.write_json(file, doc)
         source_files = list((self.source / 'builder/conversation').rglob('*-conversation.json'))
+        self.counts['unregistered_chat_archives'] = 0
         for file in source_files:
             record = read(file)
             session, user = record.get('session_id'), record.get('user_id')
@@ -491,7 +492,15 @@ class Conversion:
                 # Automated run/bot logs keep their existing runtime URLs and
                 # attribution; they are not private human Builder tabs.
                 continue
-            if session not in self.sessions or self.sessions[session][0] != user:
+            if session not in self.sessions:
+                # PLAT-746-364: older owner archives may predate the personal
+                # registry. Keep their bytes in private workflow records; do
+                # not invent live tabs or concatenate them into another chat.
+                if user not in self.owners:
+                    raise ValueError('An unregistered Builder transcript needs its private owner mapping repaired first.')
+                self.counts['unregistered_chat_archives'] += 1
+                continue
+            if self.sessions[session][0] != user:
                 raise ValueError('A Builder transcript lacks a matching personal chat registry, including previous sessions. Repair its owner/tab first.')
             # Keep each person's partition and actual date, even for co-owners.
             day = file.parent.name
@@ -798,6 +807,7 @@ class Conversion:
                 'counts':self.counts, 'moves':[{'from':str(a.relative_to(self.docs)), 'to':str(b)} for a,b in self.moves],
                 'preserved':['workflow identity','entry IDs and disabled state','run history and costs','business database','skills and knowledge','dashboard files and workflow-scoped links','secret references'],
                 'historical_run_note':'Old run folders remain readable; start a new run instead of resuming a retired grouped run.',
+                'historical_chat_note':'Unregistered owner chats remain unchanged in private workflow records; no chat tabs are created for them.',
                 'needs_chat_import_binary':bool(self.chat_imports),
                 'code_path_manual_fixes':self.code_path_manual_fixes,
                 'chat_map':[{'person':user,'from':old,'to':tab} for (user,old),tab in self.chat_keys.items()]}
