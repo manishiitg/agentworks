@@ -201,26 +201,7 @@ func Discover(root string) (map[string][]string, error) {
 			result[m.ID] = append(result[m.ID], l.Binding.Root)
 		}
 	}
-	layouts, e := crewroot.ExecutableLayouts(root)
-	if e != nil {
-		return nil, e
-	}
-	for _, layout := range layouts {
-		if layout.Binding.Kind != "workflow" {
-			continue
-		}
-		manifest, e := ReadManifest(root, layout.Binding.Root)
-		if e != nil {
-			continue
-		}
-		duplicate := false
-		for _, path := range result[manifest.ID] {
-			duplicate = duplicate || path == layout.Binding.Root
-		}
-		if !duplicate {
-			result[manifest.ID] = append(result[manifest.ID], layout.Binding.Root)
-		}
-	}
+
 	return result, nil
 }
 
