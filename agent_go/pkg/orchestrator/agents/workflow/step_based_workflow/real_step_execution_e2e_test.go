@@ -264,8 +264,8 @@ func TestCrewStepToolsKeepRunOutputsAndInputsAfterRuntimeEviction(t *testing.T) 
 	}
 	write("workflow.json", `{"code_layout_version":1}`)
 	write("variables/variables.json", `{"variables":[{"name":"COUNT","type":"integer","value":"42"}]}`)
-	write("planning/plan.json", `{"steps":[{"type":"scripted","id":"first","title":"First","description":"Write the input number.","script_only":true,"context_output":"first.json"},{"type":"scripted","id":"second","title":"Second","description":"Read the first step output.","script_only":true,"context_dependencies":["first.json"],"context_output":"second.json"}]}`)
-	write("planning/step_config.json", `{"steps":[{"id":"first","agent_configs":{"lock_code":true,"knowledgebase_access":"none"}},{"id":"second","agent_configs":{"lock_code":true,"knowledgebase_access":"none"}}]}`)
+	write("planning/plan.json", `{"steps":[{"type":"scripted","id":"first","title":"First","description":"Write the input number.","context_output":"first.json"},{"type":"scripted","id":"second","title":"Second","description":"Read the first step output.","context_dependencies":["first.json"],"context_output":"second.json"}]}`)
+	write("planning/step_config.json", `{"steps":[{"id":"first","agent_configs":{"knowledgebase_access":"none"}},{"id":"second","agent_configs":{"knowledgebase_access":"none"}}]}`)
 	write("code/first/main.py", "import json,os\nfrom pathlib import Path\n(Path(os.environ['STEP_OUTPUT_DIR'])/'first.json').write_text(json.dumps({'value':os.environ['VAR_COUNT']}))\nprint('STATUS: COMPLETED')\n")
 	write("code/second/main.py", "import json,os,sys\nfrom pathlib import Path\nvalue=json.loads(Path(sys.argv[1]).read_text())['value']\nassert value == os.environ['VAR_COUNT'] == '7'\n(Path(os.environ['STEP_OUTPUT_DIR'])/'second.json').write_text(json.dumps({'value':value}))\nprint('STATUS: COMPLETED')\n")
 	selection := filepath.Join(t.TempDir(), "chat-current-run")
@@ -345,7 +345,7 @@ func TestCrewStepToolsKeepRunOutputsAndInputsAfterRuntimeEviction(t *testing.T) 
 	if err := os.Remove(selection); err != nil {
 		t.Fatal(err)
 	}
-	out, err := run(ctx, map[string]interface{}{"step_id": "1", "inputs": map[string]interface{}{"COUNT": "7"}, "fast_path_only": true})
+	out, err := run(ctx, map[string]interface{}{"step_id": "1", "inputs": map[string]interface{}{"COUNT": "7"}})
 	if err != nil || !strings.Contains(out, "started in background") {
 		t.Fatalf("first step: %s %v", out, err)
 	}
@@ -377,7 +377,7 @@ func TestCrewStepToolsKeepRunOutputsAndInputsAfterRuntimeEviction(t *testing.T) 
 	current.Close()
 	current = nil // idle eviction or backend restart, not a new conversation
 	write("variables/variables.json", `{"variables":[{"name":"COUNT","type":"integer","value":"99"}]}`)
-	out, err = run(ctx, map[string]interface{}{"step_id": "2", "fast_path_only": true})
+	out, err = run(ctx, map[string]interface{}{"step_id": "2"})
 	if err != nil || !strings.Contains(out, folder) {
 		t.Fatalf("second step changed run: %s %v", out, err)
 	}
@@ -389,13 +389,13 @@ func TestCrewStepToolsKeepRunOutputsAndInputsAfterRuntimeEviction(t *testing.T) 
 	if err != nil || !strings.Contains(string(raw), `"7"`) {
 		t.Fatalf("second step failed to read first output and saved inputs: %s %v", raw, err)
 	}
-	if _, err = run(ctx, map[string]interface{}{"step_id": "first", "inputs": map[string]interface{}{"COUNT": "8"}, "fast_path_only": true}); err == nil {
+	if _, err = run(ctx, map[string]interface{}{"step_id": "first", "inputs": map[string]interface{}{"COUNT": "8"}}); err == nil {
 		t.Fatal("continuation silently changed saved inputs")
 	}
-	if _, err = run(ctx, map[string]interface{}{"step_id": "second", "new_run": true, "fast_path_only": true}); err == nil || !strings.Contains(err.Error(), "earlier outputs") {
+	if _, err = run(ctx, map[string]interface{}{"step_id": "second", "new_run": true}); err == nil || !strings.Contains(err.Error(), "earlier outputs") {
 		t.Fatalf("missing earlier run lacked a next step: %v", err)
 	}
-	out, err = run(ctx, map[string]interface{}{"step_id": "first", "new_run": true, "fast_path_only": true})
+	out, err = run(ctx, map[string]interface{}{"step_id": "first", "new_run": true})
 	if err != nil || !strings.Contains(out, "started in background") {
 		t.Fatalf("new run: %s %v", out, err)
 	}
@@ -408,5 +408,83 @@ func TestCrewStepToolsKeepRunOutputsAndInputsAfterRuntimeEviction(t *testing.T) 
 	case <-notifier.done:
 		t.Fatal("one step emitted duplicate completion")
 	default:
+	}
+}
+
+// PLAT-746-412: a manual step must never replace failed/missing saved code
+// with an agent, even when valid-looking artifacts exist after a nonzero exit.
+func TestManualScriptFailureNeverLaunchesRepairOrRewritesSource(t *testing.T) {
+	docs, server := workflowHTTPTestWorkspace(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("MCP_API_URL", server.URL)
+	const workflow = "Workflow/script-errors"
+	write := func(rel, text string) {
+		t.Helper()
+		path := filepath.Join(docs, workflow, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("workflow.json", `{"code_layout_version":1}`)
+	write("variables/variables.json", `{"variables":[]}`)
+	write("planning/plan.json", `{"steps":[{"type":"scripted","id":"saved","title":"Saved script","description":"Write the result.","context_output":"result.json","validation_schema":{"files":[{"file_name":"result.json","must_exist":true}]}}]}`)
+	write("planning/step_config.json", `{"steps":[{"id":"saved","agent_configs":{"knowledgebase_access":"none"}}]}`)
+	c, err := NewStepBasedWorkflowOrchestrator(t.Context(), "", "", 0, "", nil, nil, false, "", &orchestrator.LLMConfig{}, 1, loggerv2.NewNoop(), nil, nil, nil, nil, nil, nil, nil, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.SetWorkspacePath(workflow)
+	c.WorkspaceClient = workspace.NewClient(server.URL)
+	c.SetWorkspaceEnvRef(map[string]string{})
+	notifier := &crewStepRunTestNotifier{done: make(chan error, 1)}
+	sessionCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	session := &WorkshopChatSession{controller: c, config: &WorkshopConfig{WorkspacePath: workflow, Logger: loggerv2.NewNoop()}, StepRegistry: NewWorkshopStepRegistry(), sessionCtx: sessionCtx, cancelFunc: cancel, mainSessionID: "failure-chat", workshopModeOverride: "workshop", executionNotifier: notifier}
+	defer session.Close()
+	tools := newWorkshopDefinitionDraft()
+	RegisterWorkshopChatTools(tools, session, loggerv2.NewNoop())
+	cases := []struct{ name, source, want string }{
+		{"exit-one", "print('script-sentinel')\nraise SystemExit(1)\n", "exit code 1"},
+		{"exit-two-valid-output", "import os\nfrom pathlib import Path\n(Path(os.environ['STEP_OUTPUT_DIR'])/'result.json').write_text('{}')\nprint('script-sentinel')\nraise SystemExit(2)\n", "exit code 2"},
+		{"invalid-output", "print('script-sentinel')\n", "validation"},
+		{"missing-source", "", "ask this chat to create it"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sourcePath := filepath.Join(docs, workflow, "code/saved/main.py")
+			if tc.source == "" {
+				if err := os.Remove(sourcePath); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				write("code/saved/main.py", tc.source)
+			}
+			out, err := tools.tools["execute_step"].Execute(t.Context(), map[string]interface{}{"step_id": "saved", "new_run": true})
+			if err != nil || !strings.Contains(out, "started in background") {
+				t.Fatalf("start: %s %v", out, err)
+			}
+			select {
+			case err = <-notifier.done:
+			case <-time.After(30 * time.Second):
+				t.Fatal("script failure did not complete")
+			}
+			if err == nil || !strings.Contains(strings.ToLower(err.Error()), tc.want) {
+				t.Fatalf("saved-script failure was replaced or lost: %v", err)
+			}
+			raw, readErr := os.ReadFile(sourcePath)
+			if tc.source == "" {
+				if !os.IsNotExist(readErr) {
+					t.Fatalf("missing source was generated: %v", readErr)
+				}
+			} else if readErr != nil || string(raw) != tc.source {
+				t.Fatal("failed source was rewritten")
+			}
+			if tc.source != "" && tc.name != "invalid-output" && !strings.Contains(err.Error(), "script-sentinel") {
+				t.Fatal("execution output lost")
+			}
+		})
 	}
 }

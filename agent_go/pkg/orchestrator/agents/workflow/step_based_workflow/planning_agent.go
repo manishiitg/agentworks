@@ -250,7 +250,6 @@ type AgentConfigs struct {
 	LearningsAccess           string           `json:"learnings_access,omitempty"`            // Archived input for the one-off skills converter; no execution effect.
 	LegacyLockLearnings       *bool            `json:"lock_learnings,omitempty"`              // Archived input only; never consumed by runtime.
 	LegacyLockLearningsReason string           `json:"lock_learnings_reason,omitempty"`       // PLAT-263 migration-only audit residue; removed with LegacyLockLearnings.
-	LockCode                  *bool            `json:"lock_code,omitempty"`                   // lock code (main.py) - prevents LLM-rewritten main.py from being saved back to learnings, skips fix loop (nil = not set/unlocked, true = locked, false = explicitly unlocked)
 	SelectedServers           []string         `json:"selected_servers,omitempty"`            // step-level MCP server selection (subset of preset servers)
 	SelectedTools             []string         `json:"selected_tools,omitempty"`              // step-level tool selection (format: "server:tool" or "server:*" for all tools)
 	EnabledCustomTools        []string         `json:"enabled_custom_tools,omitempty"`        // optional additions, e.g. ["human_tools:get_notification_history"]; baseline is the workspace tools; name send_email, send_slack_message or create_human_input_request when a step needs them
@@ -478,12 +477,9 @@ type PlanStepInterface interface {
 type ScriptedPlanStep struct {
 	Type StepType `json:"type"` // Always "scripted" - required for JSON marshaling/unmarshaling
 	CommonStepFields
-	// ScriptOnly executes the saved main.py without agent generation or repair.
-	// Flow script nodes use this on the existing scripted step executor.
 	Script       string                        `json:"script,omitempty"`
 	ScriptInputs map[string]ScriptInputBinding `json:"script_inputs,omitempty"`
 	crewScript   *CrewScriptConfiguration
-	ScriptOnly   bool          `json:"script_only,omitempty"`
 	NextStepID   string        `json:"next_step_id,omitempty"` // Optional explicit successor; empty preserves sequential execution
 	AgentConfigs *AgentConfigs `json:"-"`                      // runtime: per-agent configuration (LLM, max turns, toggles) - not stored in plan.json
 }
@@ -1013,7 +1009,6 @@ type PartialPlanStep struct {
 	ValueCases      map[string]string             `json:"value_cases,omitempty"`
 	ScriptRef       *string                       `json:"script,omitempty"`
 	ScriptInputs    map[string]ScriptInputBinding `json:"script_inputs,omitempty"`
-	ScriptOnly      *bool                         `json:"script_only,omitempty"`
 	// Branch step fields (PLAT-259: same deterministic-switch shape as
 	// routing, just its own field name for the human-readable prompt)
 	BranchQuestion         string                               `json:"branch_question,omitempty"`          // Optional: Updated branch question
@@ -1309,7 +1304,6 @@ func getUpdateScriptedStepSchema() string {
 						},
 						"script": {"type":"string","description":"Optional stable id of a saved script in this Crew. Input types belong to the script."},
  "script_inputs": {"type":"object","description":"Values for saved script inputs. Each value selects one source: value (literal), input (workflow input name), or output (declared JSON context dependency) with optional field (dot-separated field)."},
- "script_only": {"type": "boolean", "description": "For a Flow script node, execute saved main.py strictly, without agent repair."},
 						"title": {
 							"type": "string",
 							"description": "OPTIONAL: New title for the step. Only include if you want to rename the step. If omitted, the existing title is preserved."
@@ -1383,7 +1377,6 @@ func getAddScriptedStepSchema() string {
             "is_orphan": {"type": "boolean", "description": "Set true to create a reusable saved script in orphan_steps instead of the main flow, for scripted agent batches. It does not auto-run. Use empty insert_after_step_id."},
 			"script": {"type":"string","description":"Optional stable id of a saved script in this Crew. Input types belong to the script."},
  "script_inputs": {"type":"object","description":"Values for saved script inputs. Each value selects one source: value (literal), input (workflow input name), or output (declared JSON context dependency) with optional field (dot-separated field)."},
- "script_only": {"type": "boolean", "description": "For a Flow script node, require an existing main.py and stop on any error without agent generation or repair."},
 			"id": {
 				"type": "string",
 				"description": "REQUIRED: Stable step ID for this new step. Generate a unique, URL-friendly ID based on the step title (e.g., 'deploy-application' from 'Deploy Application')."
@@ -2862,9 +2855,7 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		if partialUpdate.ScriptInputs != nil {
 			updated.ScriptInputs = partialUpdate.ScriptInputs
 		}
-		if partialUpdate.ScriptOnly != nil {
-			updated.ScriptOnly = *partialUpdate.ScriptOnly
-		}
+
 		// Loop fields ignored (feature removed)
 		if partialUpdate.ValidationSchema != nil {
 			updated.ValidationSchema = partialUpdate.ValidationSchema
@@ -3202,14 +3193,7 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			NewValue: partialUpdate.ScriptParametersSchema,
 		})
 	}
-	if partialUpdate.ScriptOnly != nil {
-		changedFields = append(changedFields, "script_only")
-		old := false
-		if regular, ok := existingStep.(*ScriptedPlanStep); ok {
-			old = regular.ScriptOnly
-		}
-		*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "script_only", OldValue: old, NewValue: *partialUpdate.ScriptOnly})
-	}
+
 	if partialUpdate.Items != nil {
 		changedFields = append(changedFields, "items")
 		oldItemsJSON := "[]"

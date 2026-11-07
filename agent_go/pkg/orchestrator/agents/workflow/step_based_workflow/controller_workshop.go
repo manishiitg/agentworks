@@ -18,8 +18,6 @@ type WorkshopExecuteOptions struct {
 	GroupName           string                 // e.g., "production" — overrides session-level group
 	Iteration           string                 // e.g., "iteration-3" — combined with group folder name to form RunFolder
 	RunFolder           string                 // e.g., "iteration-3/xtech" — auto-calculated from Iteration + group, or set directly
-	SavedScriptOnly     bool                   // If true, run only the saved learnings/{step-id}/main.py fast path with no LLM fallback
-	AllowScriptRepair   bool                   // Builder execute_step only: an LLM may author or repair the step's script (PLAT-436)
 	Instructions        string                 // Optional orchestrator instructions for inner steps — appended to step description as "## Orchestrator Instructions"
 	HumanInput          string                 // Optional human input for top-level steps — injected as critical feedback in PreviousStepsSummary
 	Tier                int                    // Optional LLM tier override (1=high, 2=medium, 3=low). 0 means no override.
@@ -64,7 +62,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 
 	// 1. Apply per-call overrides (group name, run_folder, human_input)
 	if opts != nil {
-		hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Per-call options: groupName=%s, runFolder=%s, humanInput=%d chars, savedScriptOnly=%v", opts.GroupName, opts.RunFolder, len(opts.HumanInput), opts.SavedScriptOnly))
+		hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Per-call options: groupName=%s, runFolder=%s, humanInput=%d chars", opts.GroupName, opts.RunFolder, len(opts.HumanInput)))
 		releaseFn, err := hcpo.applyWorkshopExecuteOptions(ctx, opts)
 		if err != nil {
 			releaseFn()
@@ -127,11 +125,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	ctx, err = applyWorkshopScriptParameters(ctx, stepInfo.Step, opts)
 	if err != nil {
 		return "", fmt.Errorf("invalid script_parameters for step %q: %w", stepID, err)
-	}
-	if opts != nil && opts.SavedScriptOnly {
-		if !isScriptedStep(stepInfo.Step) {
-			return "", fmt.Errorf("step %q is not in scripted code mode, so there is no saved main.py fast path to run", stepID)
-		}
 	}
 
 	isInnerStep := stepInfo.TopIndex < 0
@@ -201,18 +194,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	if err != nil {
 		return "", fmt.Errorf("failed to prepare execution: %w", err)
 	}
-	if opts != nil && opts.SavedScriptOnly {
-		setup.Context.SavedScriptOnly = true
-	}
-	// A scheduled, Slack or webhook invocation is a run even when it reaches a
-	// step through execute_step: it never repairs scripts.
-	if opts != nil && opts.AllowScriptRepair && !opts.SavedScriptOnly {
-		if runOpts := hcpo.GetExecutionOptions(); runOpts == nil || runOpts.RunKind == "" {
-			setup.Context.AllowScriptRepair = true
-		}
-	}
-
-	hcpo.codeWritableByRun.Store(setup.Context.AllowScriptRepair)
 
 	start := setup.StartFromStep
 	if setup.Context.RunSingleStepOnly {

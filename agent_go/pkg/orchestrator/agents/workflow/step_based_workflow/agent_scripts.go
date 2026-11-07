@@ -193,10 +193,8 @@ func sequenceSavedScriptError(result *ScriptedFastPathResult) error {
 		return fmt.Errorf("%w: %s", ErrScriptedHarnessRejection, result.HarnessError)
 	case result.HarnessTimeout:
 		return fmt.Errorf("%w: %s", ErrScriptedHarnessTimeout, result.TimeoutError)
-	case result.TerminalRefusal:
-		return scriptedTerminalStopError("sequence script", result.TerminalRefusalReason)
 	case !result.RanScript:
-		return fmt.Errorf("saved main.py is unavailable; author and test it in Workshop before running")
+		return fmt.Errorf("saved main.py is unavailable; ask this chat to create it")
 	case !result.Success:
 		return fmt.Errorf("saved script failed execution or validation: %s", result.Error)
 	default:

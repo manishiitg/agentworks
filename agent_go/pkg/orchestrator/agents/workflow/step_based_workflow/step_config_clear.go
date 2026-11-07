@@ -57,8 +57,6 @@ func clearStepConfigField(sc *StepConfig, name string) bool {
 	// keep_learning_full) since clearing what can't be set is a no-op from the agent's side.
 	case "learning_objective":
 		ac.LearningObjective = ""
-	case "lock_code":
-		ac.LockCode = nil
 	case "use_code_execution_mode":
 		ac.UseCodeExecutionMode = nil
 	case "description_reviewed":
@@ -91,7 +89,7 @@ func isKnownAgentConfigClearField(name string) bool {
 	switch name {
 	case "execution_llm", "execution_tier",
 		"servers", "tools", "enabled_custom_tools", "enabled_skills", "additional_read_paths",
-		"learning_objective", "lock_code",
+		"learning_objective",
 		"execution_llm_reason", "execution_tier_reason",
 		"use_code_execution_mode",
 		"description_reviewed", "drift_review",
@@ -125,7 +123,7 @@ var retiredStepConfigClearFields = map[string]string{
 	"disable_tier_optimization":     "retired in PLAT-061 — pin execution_tier (with its reason) instead",
 	"enable_context_offloading":     "retired in PLAT-061 — never settable, never used",
 	"delegating_agent_tier":         "retired in PLAT-061 — use execution_llm to override",
-	"learn_code_max_fix_iterations": "retired in PLAT-061 — every stored value was a migration artifact; use lock_code to skip script repair",
+	"learn_code_max_fix_iterations": "retired — scripts always run saved code without agent repair",
 	"lock_learnings":                "retired — put instructions in the task or a selected skill",
 	"lock_learnings_reason":         "retired with lock_learnings in PLAT-263",
 }

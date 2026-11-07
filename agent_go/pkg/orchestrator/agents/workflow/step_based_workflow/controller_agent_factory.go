@@ -581,9 +581,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 	if hcpo.usesCodeTree() {
 		codePath := baseWorkspacePath + "/code"
 		readPaths = append(readPaths, codePath)
-		if hcpo.codeWritableByRun.Load() && (stepConfig == nil || stepConfig.LockCode == nil || !*stepConfig.LockCode) {
-			writePaths = append(writePaths, codePath)
-		}
+
 	}
 	readPaths = append(readPaths, sandboxCachePath)
 	writePaths = append(writePaths, sandboxCachePath)

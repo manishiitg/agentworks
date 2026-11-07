@@ -1932,7 +1932,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 	// Tool 1: execute_step — start step in background
 	if err := mcpAgent.RegisterCustomTool(
 		"execute_step",
-		"Run a workflow step for real with its normal permissions, live database and actual tool actions. A user request to run or test a step authorizes that execution; do not ask again for the same request. Start it in the background, including a normal plan step, nested route step, or plan-local orphan utility step. Returns an execution_id immediately. You will be automatically notified when it completes. Idempotent while running: if the step already has a running execution, this returns that existing execution_id instead of starting a duplicate — use send_step_message with the returned execution_id to steer its currently active agent turn. For a scripted step that declares script_parameters, pass matching values in script_parameters; they are validated before main.py starts and exposed through STEP_PARAMS_JSON. Selected skills provide reusable instructions. Contributions are explicit task work; no automatic reflection turn runs after completion. Workshop mode only: set fast_path_only=true to run ONLY the saved main.py (code/{step-id}/main.py for code_layout_version=1, otherwise learnings/{step-id}/main.py) script with no LLM fallback when testing scripted patches.",
+		"Run a workflow step for real with its normal permissions, live database and actual tool actions. A user request to run or test a step authorizes that execution; do not ask again for the same request. Start it in the background, including a normal plan step, nested route step, or plan-local orphan utility step. Returns an execution_id immediately. You will be automatically notified when it completes. Idempotent while running: if the step already has a running execution, this returns that existing execution_id instead of starting a duplicate — use send_step_message with the returned execution_id to steer its currently active agent turn. For a scripted step that declares script_parameters, pass matching values in script_parameters; they are validated before main.py starts and exposed through STEP_PARAMS_JSON. Selected skills provide reusable instructions. Contributions are explicit task work; no automatic reflection turn runs after completion. Scripted steps always execute their saved main.py as-is. Missing or failing scripts fail the step; edit the code from this chat before running again.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -1963,10 +1963,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "string",
 					"enum":        []interface{}{"high", "medium", "low"},
 					"description": "Optional LLM tier override for this execution. 'high' = Tier 1 (most capable), 'medium' = Tier 2, 'low' = Tier 3 (fastest/cheapest). Overrides the default maturity-based tier selection. Only works in tiered mode.",
-				},
-				"fast_path_only": map[string]interface{}{
-					"type":        "boolean",
-					"description": "Workshop mode only. If true, run ONLY the saved main.py (code/{step-id}/main.py for code_layout_version=1, otherwise learnings/{step-id}/main.py) script with no LLM fallback. Fails if no saved script exists, the step is not in scripted mode, or the current workshop mode is Run. Use this to quickly test scripted main.py patches.",
 				},
 				"script_parameters": map[string]interface{}{
 					"type":                 "object",
@@ -2178,13 +2174,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 
-			// fast_path_only: run saved script only, no LLM fallback
-			fastPathOnly := false
-			if val, ok := args["fast_path_only"]; ok && val != nil {
-				if b, ok := val.(bool); ok {
-					fastPathOnly = b
-				}
-			}
 			agentSequenceRestart := false
 			if val, ok := args["agent_restart"]; ok && val != nil {
 				if b, ok := val.(bool); ok {
@@ -2204,21 +2193,13 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return "script_parameters must be an object", nil
 				}
 			}
-			if err := validateWorkshopFastPathRequest(iwm.currentWorkshopModeFromConfigs(nil), fastPathOnly); err != nil {
-				return "", err
-			}
 
 			execOpts := &WorkshopExecuteOptions{
-				GroupName:       resolvedGroupName,
-				Inputs:          inputValues,
-				ResolvedInputs:  resolvedInputs,
-				Iteration:       iteration,
-				RunFolder:       runFolder,
-				SavedScriptOnly: fastPathOnly,
-				// The Builder running a step itself may author or repair its
-				// script; a scheduled session never does (PLAT-436).
-				AllowScriptRepair: !fastPathOnly && iwm.currentWorkshopModeFromConfigs(nil) == "workshop" &&
-					(iwm.workshopConfig == nil || iwm.workshopConfig.ScheduleInvocation == nil),
+				GroupName:           resolvedGroupName,
+				Inputs:              inputValues,
+				ResolvedInputs:      resolvedInputs,
+				Iteration:           iteration,
+				RunFolder:           runFolder,
 				Instructions:        instructions,
 				HumanInput:          humanInput,
 				Tier:                tierValue,
@@ -2387,9 +2368,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 
 				// Variables captured after execution for metadata
-				var isLockCode bool
-				var lockCodeConsecutiveFailures int
-				var lockCodeNeedsReview bool
 				var workshopModeForMeta string
 
 				eventBridge := iwm.controller.GetContextAwareBridge()
@@ -2403,15 +2381,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 						execMeta["run_folder"] = execOpts.RunFolder
 						if iwm.controller.isRelayExecution() {
 							delete(execMeta, "input_preset")
-						}
-						if isLockCode {
-							execMeta["lock_code"] = "true"
-						}
-						if lockCodeConsecutiveFailures > 0 {
-							execMeta["lock_code_consecutive_failures"] = fmt.Sprintf("%d", lockCodeConsecutiveFailures)
-						}
-						if lockCodeNeedsReview {
-							execMeta["lock_code_needs_review"] = "true"
 						}
 						// Use frontend-selected mode if available, else fall back to auto-detection
 						if iwm.workshopModeOverride != "" {
@@ -2472,37 +2441,17 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 				result, execErr = stepSession.controller.ExecuteStepForWorkshop(execCtx, stepID, execOpts)
 
-				// Capture step lock flags so the auto-notification can tailor
-				// recovery guidance (e.g. fast-path failure on a locked step has only two
-				// recovery paths: fix main.py after unlocking, or rerun with fast_path_only=false).
 				if configs, configErr := iwm.controller.ReadStepConfigs(execCtx); configErr == nil {
-					for _, sc := range configs {
-						if sc.ID == stepID && sc.AgentConfigs != nil {
-							if sc.AgentConfigs.LockCode != nil && *sc.AgentConfigs.LockCode {
-								isLockCode = true
-							}
-							break
-						}
-					}
 					workshopModeForMeta = detectWorkshopMode(nil, configs)
 				}
 
-				// If the step is locked, surface its locked-script run history so the auto-
-				// notification can flag a "this frozen script keeps failing" pattern to the
-				// builder rather than letting it accumulate silently in script_metadata.json.
-				if isLockCode {
-					if meta := iwm.controller.readScriptedMetadataAPI(execCtx, stepID); meta != nil && meta.LockCodeStats != nil {
-						lockCodeConsecutiveFailures = meta.LockCodeStats.ConsecutiveFailures
-						lockCodeNeedsReview = meta.LockCodeStats.NeedsReview
-					}
-				}
 			}()
 
 			groupInfo := ""
 			if groupName != "" {
 				groupInfo = fmt.Sprintf(", group=%q", groupName)
 			}
-			logger.Info(fmt.Sprintf("🚀 Workshop: step %q started in background, execution_id=%q%s, fast_path_only=%v", stepID, execID, groupInfo, fastPathOnly))
+			logger.Info(fmt.Sprintf("🚀 Workshop: step %q started in background, execution_id=%q%s", stepID, execID, groupInfo))
 			// Input presets do not identify runs. Always return the actual run.
 			runFolderNotice := fmt.Sprintf("\nrun_folder: %q", runFolder)
 			return fmt.Sprintf("Step %q started in background.\nexecution_id: %q%s\nYou will be automatically notified when it completes. End the current agent turn now instead of polling. Use query_step(step_id=%q) only if the user explicitly requests a live status check. Use send_step_message(execution_id=%q, message=...) only for a necessary live correction while an agent turn is active.", stepID, execID, runFolderNotice, stepID, execID), nil
@@ -6197,11 +6146,11 @@ This is a **read-only review**:
 7. **Do not drift into full redesign**: You may suggest a concrete correction, but the primary task is to review and explain what is wrong with the current decision.
 8. **Check portability and secrecy**: Flag plan-visible secrets, user-specific values, absolute paths, run-folder-specific values, and brittle environment assumptions.
 9. **Check persistent-store discipline**: Stores survive across runs — workflow-local skills (HOW to run), `+"`knowledgebase/context/`"+` (user-supplied runtime business context), `+"`"+`knowledgebase/notes/`+"`"+` (workflow-discovered durable narrative observations), `+"`"+`db/db.sqlite`+"`"+` (structured durable SQLite tables for cross-run state, read live by HTML reports via `+"`window.report.query`"+`), and `+"`db/assets/`"+` (durable media/file assets referenced by db rows or reports). Flag steps that confuse these stores: stashing durable facts in learnings or plan.json, stashing user-owned context in notes, writing report data only to run folders, embedding assets as blobs, or failing to describe explicit task contributions or the `+"`"+`db/README.md`+"`"+` contract when steps produce persistent facts.
-10. **Check skill and mode discipline**: Steps consume selected workflow skills. Builder edits them when asked. Other products use this Goal’s shared entry points and existing access checks. No separate learning store or automatic reflection turn is added. Deterministic API/SDK calls, CLI commands, data fetching, known pagination, stable parsing/normalization/transforms, and mechanical persistence should be `+"`"+`scripted`+"`"+` from initial design with an authored/tested `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+`; no run-history threshold is required to choose that mode. Browser/UI work, adaptive discovery, and judgment stay agentic. The 10+ representative-run bar applies to `+"`"+`lock_code`+"`"+`, not to declaring deterministic work scripted.
+10. **Check execution mode**: Deterministic API/CLI/data work uses saved scripted steps; browser work, adaptive discovery and judgment use agents. Scripts never generate or repair source while running.
 11. **Check KB discipline**: KB writes require explicit task instructions and correct read/write access. `+"`knowledgebase/context/`"+` should contain user-supplied runtime context; `+"`knowledgebase/notes/`"+` should contain workflow-discovered durable narrative observations, not execution recipes, raw rows, or volatile run state. If `+"`"+`knowledgebase/notes/_index.json`+"`"+` exists, it must point to coherent topic notes.
 12. **Check db discipline**: `+"`"+`db/db.sqlite`+"`"+` should be a clean relational surface: each table documented in `+"`"+`db/README.md`+"`"+` with DDL, PRIMARY KEY, upsert rule (`+"`INSERT ... ON CONFLICT`"+`), indexes, writer ownership, group separation, report consumers (the HTML report `+"`window.report.query`"+` SQL that reads it), and correct references to durable assets under `+"`db/assets/`"+`.
 13. **Check skill discipline**: Installed skills live under `+"`skills/{folder}/SKILL.md`"+` and are reusable instructions local to the workflow. Review workflow-selected skills and per-step `+"`enabled_skills`"+` against the actual plan. Flag missing needed skills, selected-but-unused skills, descriptions that reference skills not enabled for the execution agent, malformed skill folders, and skills that duplicate other workflow skills or contain workflow-specific secrets/paths/run state. Do not assume workflow-level selected skills automatically reach step execution; verify step-level `+"`enabled_skills`"+` when runtime requires explicit scoping.
-14. **Check access and code-lock consistency**: `+"`"+`lock_code`+"`"+` freezes scripted `+"`"+`code/{step-id}/main.py (version 1), otherwise learnings/{step-id}/main.py`+"`"+` against fix-loop rewrites; flag it without the scripted evidence gate. KB write eligibility is an access decision, not a lock: review knowledgebase_access against explicit task contributions. Steps do not write skills. Legacy objectives belong in migration notes, never a hidden closing turn. If a step description has meaningfully changed since the last review, recommend clearing `+"`"+`description_reviewed`+"`"+` and re-reviewing before keeping a code lock or write grant.
+14. **Check access**: Review knowledgebase_access against the explicit task. Steps never write skill files or saved script source. Description changes need an explicit source review in this chat.
 
 ## STEP BOUNDARY STANDARD
 
@@ -6288,7 +6237,7 @@ Review the plan through these lenses:
 1. **Decision justification** — Does each important design choice have a clear reason, or does it look accidental?
 2. **Step boundaries** — Are steps split or merged according to the durable-boundary standard above, rather than by raw action/tool-call count?
 3. **Step type choice** — Is each step using the right type for the actual job?
-4. **Execution mode choice** — Does the declared mode fit the work? Deterministic API/SDK/CLI fetchers, known pagination, stable parsing/normalization/transforms, and mechanical persistence should be scripted from initial design and own an authored/tested `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+`; they do not need 10 prior runs just to select scripted mode. The 10+ representative-run threshold applies only before `+"`lock_code=true`"+`. Judgment, adaptive discovery, and browser/UI work should remain agentic. If an agentic step has `+"`main.py`"+`, flag stale mode debt; if an obviously deterministic fetcher is agentic, flag avoidable LLM execution.
+4. **Execution mode** — saved scripts perform deterministic work; agents perform judgment and browser tasks. Author and fix code explicitly in chat.
 5. **Context flow** — Are dependencies/output contracts minimal, correct, and sufficient? Are there artificial file handoffs or missing dependencies?
 6. **Validation & evaluation** — Is the workflow validating and evaluating the things that actually matter for success?
 7. **Portability & secrecy** — Does the current plan leak secrets or overfit to one user, machine, run, or folder structure?
@@ -6586,7 +6535,6 @@ This is a **read-only review** — do not modify any files.
 7. **Check MCP tool usage**: Verify that call_mcp() calls use consistent server/tool naming. Flag suspicious tool names that look guessed rather than discovered via get_api_spec.
 8. **Check browser automation quality**: For scripts using agent_browser, verify:
    - **Browser-heavy scripted is usually the wrong fit.** If a browser-enabled step has a saved `+"`main.py`"+`, flag it unless the user explicitly requested scripted browser execution AND the script uses durable selectors, state-driven waits, fresh snapshots, and has evidence of stability across runs. Browser/UI automation should generally remain `+"`agentic`"+` so the agent can adapt to live UI state, auth, dynamic selectors, pagination, and third-party page timing.
-   - **agentic must not keep main.py.** If a step is declared `+"`agentic`"+` but still has `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+`, flag the file as stale artifact debt. Recommend deleting it and clearing `+"`lock_code`"+`; agentic does not run or maintain persistent scripts.
    - **Selectors are DURABLE, not refs.** Hardcoded string refs like `+"`'abc123'`"+` or `+"`'@e1'`"+` in main.py are BUGS — refs are session-local. The durable alternatives are (in priority order): data-testid / hand-written id / aria-label / role+name / get_by_label|placeholder|text. Flag any ref that appears as a literal string (not a variable parsed from a current-run snapshot).
    - Uses agent_browser `+"`snapshot`"+` before interacting — never clicks or types blindly
    - Ref-based interaction is acceptable ONLY when the ref value is parsed from a snapshot taken earlier in the SAME run (`+"`ref = extract_ref(snapshot, role=..., name=...)` then `browser('click', [ref])`"+`). Hardcoded refs in main.py must be flagged.
@@ -6670,7 +6618,7 @@ For each step reviewed, output:
 - Drifted: N
 - No script: N
 - **Top priority fixes**: List the 3 most critical drifts that should be addressed first.
-- **Stale code-lock warning**: For every step marked `+"`"+`DRIFTED`+"`"+` whose `+"`"+`step_config`+"`"+` has `+"`"+`lock_code=true`+"`"+`, explicitly call out that the frozen main.py may no longer match the description, and the builder should `+"`"+`update_step_config(step_id, lock_code=false, description_reviewed=false)`+"`"+` before regenerating. Review the selected skills for stale instructions.
+- **Changed instructions**: Review saved code when a description changes; running a script does not update it.
 `)
 
 var reviewStepCodeAgentUserTemplate = MustRegisterTemplate("reviewStepCodeAgentUser", `Review the saved main.py scripts against their step descriptions and report any drift.{{if .Focus}} Focus especially on: {{.Focus}}{{end}}
@@ -6867,16 +6815,13 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowTimingAgent(ctx context.
 		for _, sc := range stepConfigs {
 			mode := executionModeLabel(isScriptedStep(planSteps[sc.ID]))
 			successfulRuns := 0
-			lockCode := false
 			if sc.AgentConfigs != nil {
 				if sc.AgentConfigs.SuccessfulRuns != nil {
 					successfulRuns = *sc.AgentConfigs.SuccessfulRuns
 				}
-				if sc.AgentConfigs.LockCode != nil {
-					lockCode = *sc.AgentConfigs.LockCode
-				}
+
 			}
-			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d, lock_code=%v\n", sc.ID, mode, successfulRuns, lockCode))
+			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d\n", sc.ID, mode, successfulRuns))
 		}
 		stepConfigSummary = sb.String()
 	}
@@ -6956,16 +6901,13 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowCostsAgent(ctx context.C
 		for _, sc := range stepConfigs {
 			mode := executionModeLabel(isScriptedStep(planSteps[sc.ID]))
 			successfulRuns := 0
-			lockCode := false
 			if sc.AgentConfigs != nil {
 				if sc.AgentConfigs.SuccessfulRuns != nil {
 					successfulRuns = *sc.AgentConfigs.SuccessfulRuns
 				}
-				if sc.AgentConfigs.LockCode != nil {
-					lockCode = *sc.AgentConfigs.LockCode
-				}
+
 			}
-			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d, lock_code=%v\n", sc.ID, mode, successfulRuns, lockCode))
+			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d\n", sc.ID, mode, successfulRuns))
 		}
 		stepConfigSummary = sb.String()
 	}

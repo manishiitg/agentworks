@@ -1,6 +1,6 @@
 ---
 name: "step-config"
-description: "Per-step config reference: store-access modes, locks, execution mode, model selection, validation_schema, skills, clearing fields. Load before tuning a step."
+description: "Per-step config reference: store-access modes, execution mode, model selection, validation_schema, skills, clearing fields. Load before tuning a step."
 external: true
 external_tools: ["settings"]
 external_note: "External mapping: discover current tool schemas before acting. Use plan action=list for native plan and step operations; read get_plan for expected_revision, then pass a stable request_id and listed native arguments. Internal operation names are plan action values, not standalone external tools. Settings uses settings get/update. For skill wiring, use list_workflow_knowledge and read_workflow_knowledge, Crew package actions and Brain skill packages under their existing roles and file/folder grants. Fetch referenced guidance by its listed topic name. Server-only scripts, bridge variables and internal URLs are not external client credentials."
@@ -30,13 +30,11 @@ A step's access to each store is independent and defaults differently. Grant the
 
 | Lock | Scope | Effect | Set when |
 |---|---|---|---|
-| `lock_code` | per-step (scripted) | Freezes `<script-dir>/main.py` even for the Builder's own `execute_step`. Runs never repair a script regardless: a failing script fails the step and AgentWorks reports it | **user asks to lock** → allow it; **Workshop auto-locking on its own** → only after 10+ scenario-covering runs |
 
 Knowledge-base writes are controlled per step instead: `knowledgebase_access`
 must permit writes and the task must state what durable facts the step owns. Change a mature/no-op contributor to `read`; do not freeze
 unrelated KB writers workflow-wide.
 
-Only pass `lock_code` when explicitly changing it. Steps read selected skills; Builder maintain skill files. Contract 1.0.51 removes `learnings_access` from new authoring and preserves old grants in migration audit notes without changing KB access.
 
 ### Execution mode + which model runs the step
 
@@ -44,7 +42,6 @@ Only pass `lock_code` when explicitly changing it. Steps read selected skills; B
   - **Scripts are the default for DETERMINISTIC execution** — fixed API/SDK calls, CLI commands, known pagination, data fetching, stable parsing/normalization, math, data transforms, mechanical persistence, and fixed SQL. Create these as `scripted` steps from initial design and author/test `main.py`; no prior run count is required. Give them typed `script_parameters` for whatever an agent may need to vary (IDs, windows, filters) so agent steps can reuse them as tools; keep fully fixed work (zero agent decisions) a pure script without invented parameters. See `references/scripted.md`. If behavior **varies run-to-run or needs adaptive judgment** (most browser/UI flows, LLM reasoning, fuzzy extraction, live discovery), keep it an `agent`.
   - **Use coherent scripted fetchers, not micro-scripts** — batch related calls and transforms when they share one source/auth/retry/output contract. Do not create one scripted step per endpoint, command, or tiny transformation, and do not put an entire branching business workflow into one script. The usual architecture is scripted fetcher(s) → durable DB/file output → one large agentic agent.
   - **User explicitly asks for a scripted step** → create it with `add_step(type="scripted", step=...)`, then author and test its saved script. Explain any concrete limitation once and honor the request.
-  - **Workshop mode selection** → create deterministic API, CLI and data work as `scripted` steps. The representative-run threshold applies before freezing code with `lock_code`, not before choosing scripted.
 - **`use_code_execution_mode`**: per-step override of the preset's code-execution toggle (nil = inherit).
 - **Model selection**: `execution_tier` (`high`/`medium`/`low`) maps to the workflow's tiered allocation; `execution_llm` / `validation_llm` pin a specific published model for that role. Prefer tiers over hard pins, and prefer leaving the tier unset over pinning it. Full framework: `read_skill(skills=[{"name":"builder-reference","path":"references/llm-selection.md"}])`.
 

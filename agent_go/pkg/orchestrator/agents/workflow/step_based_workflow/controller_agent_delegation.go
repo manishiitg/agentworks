@@ -165,12 +165,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 
 	stepConfig := getAgentConfigs(orchestratorStep)
 
-	// Agent steps have no scripted fast path. A fast_path_only request for one is a
-	// caller error rather than something to silently run through the LLM orchestrator.
-	if execCtx != nil && execCtx.SavedScriptOnly {
-		return false, "", fmt.Errorf("agent step %q does not support scripted execution; put deterministic delegation in a scripted step that calls its routes", stepID)
-	}
-
 	select {
 	case <-ctx.Done():
 		return false, "", fmt.Errorf("todo task execution canceled: %w", ctx.Err())
