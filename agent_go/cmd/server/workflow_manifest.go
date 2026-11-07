@@ -951,7 +951,9 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	// its schedules carry no group_names, so the rewrite failed validation on
 	// every read, and had it passed it would have dropped the product fields.
 	heldRoot, _ := ctx.Value(teamLockHeldKey{}).(string)
-	mayPersistManifestMigrations := persistMigrations && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
+	// A Crew-owned workflow has explicit chat upgrades. Reading its status must
+	// not silently prune fields through the settings writer and rewrite timers.
+	mayPersistManifestMigrations := persistMigrations && binding == nil && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
 	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) {
 		if hasStaleFields {
 			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v capabilities=%v",

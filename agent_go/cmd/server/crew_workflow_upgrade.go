@@ -49,7 +49,7 @@ func (api *StreamingAPI) checkAndStampWorkflowContract(ctx context.Context, root
 	}); err != nil {
 		return false, err
 	}
-	if err := WriteWorkflowManifest(ctx, root, &candidate); err != nil {
+	if err := writeWorkflowUpgradeField(ctx, root, "version", &candidate); err != nil {
 		return false, fmt.Errorf("workflow version could not be saved: %w", err)
 	}
 	if err := stepworkflow.RecordWorkflowContractUpgrade(ctx, root, workflowContractVersionForUpgrade(current), version, reason, checked, read, writeFileToWorkspace); err != nil {
