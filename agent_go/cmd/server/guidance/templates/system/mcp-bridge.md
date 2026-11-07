@@ -34,6 +34,7 @@ authorized tools.
 | `$MCP_API_URL` + `$MCP_API_TOKEN` | Full endpoint + bearer token fallback |
 | `$STEP_OUTPUT_DIR` | Write primary outputs here. The folder exists — do not `mkdir` it |
 | `$STEP_EXECUTION_DIR` | Parent of `$STEP_OUTPUT_DIR`. Use only as a fallback when reaching a sibling step's folder and `sys.argv` wasn't used |
+| `$VAR_WORKFLOW_PATH` | This workflow's address for tool API `workspace_path` fields; filesystem paths can differ after a move |
 | `$DB_PATH` | Backward compatibility for scripts written before contract 1.0.45 only: absolute path to `db/db.sqlite`. Do not use it in new or repaired scripts; use `from agentworks_db import query, execute, execute_many, transaction` (see code-authoring.md). Agentic steps use `database action=query` / `database action=mutate` and never receive this path. |
 | `$VAR_<NAME>` | Workflow config values (e.g. `$VAR_PAN`, `$VAR_SHEET_URL`). Reference always; never hardcode the literal value |
 | `$SECRET_<NAME>` | Credentials (e.g. `$SECRET_API_KEY`). Never echo to stdout, never write to files |

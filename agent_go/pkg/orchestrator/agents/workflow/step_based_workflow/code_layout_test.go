@@ -170,7 +170,11 @@ func TestCodeLayoutCanonicalPythonRepair(t *testing.T) {
 
 func TestCodeLayoutRuntimeEnvAndPrompt(t *testing.T) {
 	c := codeLayoutController(t, 1)
-	env := c.codeRuntimeEnv(map[string]string{"VAR_BASE_URL": "https://example.test"})
+	env := c.codeRuntimeEnv(map[string]string{"VAR_BASE_URL": "https://example.test", "VAR_WORKFLOW_PATH": "Workflow/other"})
+	// PLAT-746: a physical Crew runtime cannot be used as a tool API address.
+	if env["VAR_WORKFLOW_PATH"] != c.GetWorkspacePath() {
+		t.Fatal("runtime lost its server-owned workflow API address")
+	}
 	if env["VAR_BASE_URL"] != "https://example.test" || !strings.HasSuffix(env["WORKFLOW_CODE_ROOT"], "Workflow/testing/code") || !strings.Contains(env["PYTHONPATH"], env["WORKFLOW_CODE_DEPS"]) {
 		t.Fatalf("incorrect runtime env keys")
 	}

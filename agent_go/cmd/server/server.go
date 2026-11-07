@@ -4820,6 +4820,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if manifestWorkspacePath != "" {
+			var messagingErr error
+			allTools, messagingErr = api.appendWorkflowMessagingTools(allTools, allExecutors, toolCategories, currentUserID, sessionID, manifestWorkspacePath, req)
+			if messagingErr != nil {
+				http.Error(w, "Workflow messaging tools are unavailable", http.StatusInternalServerError)
+				return
+			}
 			queryLogCtx = queryLogCtx.WithWorkflow(manifestWorkspacePath)
 			registerServerLogContext(queryLogCtx, sessionID, queryID)
 			queryLogger = queryLogCtx.Logger(api.logger)
@@ -12703,6 +12709,11 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	// (/s/{session_id}/...) so per-tool HTTP calls from inside Docker hit the
 	// session-scoped route and get the correct executor.
 	allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, workspacePath)
+	var messagingErr error
+	allTools, messagingErr = api.appendWorkflowMessagingTools(allTools, allExecutors, toolCategories, currentUserID, sessionID, workspacePath, req)
+	if messagingErr != nil {
+		return nil, fmt.Errorf("workflow messaging tools: %w", messagingErr)
+	}
 
 	bindWorkflowStepIdentity(ctx, sessionID, allExecutors, toolCategories)
 	allTools = restrictWorkflowNotificationTools(allTools, allExecutors, toolCategories, workflowNotificationsForPath(workspacePath))
