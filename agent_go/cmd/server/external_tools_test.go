@@ -293,7 +293,7 @@ func TestExternalRunAuthorityBoundary(t *testing.T) {
 	// because they are the workflow running as configured, not the token
 	// acting beyond it. Changing either list is a deliberate API change.
 	denied := agentworksproduct.RunExternalDenylist()
-	wantDenied := []string{"execute_shell_command", "diff_patch_workspace_file", "list_llm_capabilities", "get_goal_metrics", "query_workflow_db", "query_workflow_costs", "google_workspace_cli", "list_mcp_servers", "send_email"}
+	wantDenied := []string{"execute_shell_command", "diff_patch_workspace_file", "list_llm_capabilities", "query_workflow_db", "query_workflow_costs", "google_workspace_cli", "list_mcp_servers", "send_email"}
 	if strings.Join(denied, ",") != strings.Join(wantDenied, ",") {
 		t.Fatalf("external denylist = %v, want %v", denied, wantDenied)
 	}

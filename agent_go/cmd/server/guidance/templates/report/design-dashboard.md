@@ -55,11 +55,8 @@ runtime; a dashboard edit does not authorize plan or execution changes.
 - `get`, `getText`, and `getHtml` read allowed workspace files. Use `getHtml`
   for a markdown file and `renderMarkdown` for a markdown string from a row.
   Workspace links and images in rendered markdown use the host file preview.
-- Goal data: `getGoalMetrics()` returns configured metrics, observations, and
-  progress. `renderGoalProgress(target)` is an optional ready-made section.
-  Missing measurements remain unavailable; do not turn them into zero.
-  Preserve Primary/Secondary outcome priorities separately from
-  primary/supporting metric roles.
+- Progress: read the workflow’s saved results with `window.report.query`; keep source times, actual windows, evidence and unavailable values visible. Use the existing dashboard layout rather than adding a mandatory tracking widget.
+
 - Costs: `getCosts({ days: 30 })` reads the canonical ledger;
   `renderCosts(target, options)` is an optional ready-made section.
   Total/activity scopes are all-time; model/daily breakdowns and

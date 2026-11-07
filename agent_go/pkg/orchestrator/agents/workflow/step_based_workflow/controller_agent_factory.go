@@ -868,9 +868,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 	// cannot introduce a tool withheld by the owning profile.
 	if hcpo.platformStoresEnabled() {
 		enabledTools = append(enabledTools, "workflow_db:query_workflow_db")
-		if hcpo.stepHasGoal.Load() {
-			enabledTools = append(enabledTools, "workflow:get_goal_metrics", "workflow:record_goal_observations")
-		}
 
 	}
 	if hcpo.resolveDBAccess(stepConfig) == DBAccessReadWrite {

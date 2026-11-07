@@ -430,42 +430,13 @@ For typed route rows, `summary_text` contains only the shared lead; `message`
 remains the complete rendered digest for older Dashboards. Render the lead plus
 route entries once, or the complete message as a fallback, never both.
 
-### Goal progress: shared data and an optional ready-made widget
+### Progress from saved workflow data
 
-Dashboards can show the same primary metric, supporting metrics, and measured history
-as AgentWorks. No additional collector, table, chart library, or custom CSS is needed:
+Use `window.report.query` inside `window.report.ready` to show measurements already saved by ordinary workflow steps. Inspect the existing database schema and producer contract; no special Goal or metric API or required table layout is needed. Preserve the dashboard’s own navigation and design.
 
-```html
-<section id="goal-progress"></section>
-<script>
-window.report.ready(async function () {
-  await window.report.renderGoalProgress('#goal-progress');
-});
-</script>
-```
+Show actual source observation times, reporting windows, units and evidence. Distinguish current measurements from stale or unavailable ones; never substitute zero, invent targets, infer missing period boundaries or relabel a snapshot as growth. Comparisons need compatible methods, scope and actual windows. A difference alone does not prove causation.
 
-The optional widget renders primary/supporting cards, targets, change since the
-previous measurement, trends, freshness, and expandable definitions/evidence/history.
-It inherits the Dashboard's text color, fits the available width, and replaces its
-contents on refresh. Use an empty `div` or `section` as the container. Keep the
-returned promise inside `ready` so dashboard action=preview can observe loading/errors.
-
-For a custom layout, `await window.report.getGoalMetrics()` returns
-`{ metrics, observations, progress }`. Each progress item contains `metric`,
-`current`, `delta`, `state`, `stale`, `targetMet`, `latest`, `history`, and `numeric`.
-`current` can be undefined: never turn missing data into zero. The latest failed
-measurement remains unavailable rather than falling back to an older good value.
-History includes up to 120 comparable observations per active metric, with scope,
-unit, and evidence preserved. Use `window.report.query` against
-`workflow_goal_metrics` and `goal_observations` for a longer/custom history;
-check `sqlite_master` first for workflows that have not configured measurements.
-These are platform-owned, read-only tables for Dashboards; use the managed goal tools
-for changes, not `updateField`/`updateFields` or direct SQL writes. Run `/setup-goals`
-when definitions or collection are missing. Do not invent targets or samples.
-
-Adding this section is optional and does not replace the Dashboard's own navigation
-or layout. Offer it when a user wants goal tracking in their dashboard. Validate
-and preview the Dashboard using the normal Dashboard tools after adding it.
+Dashboards read these saved results. Change collection through the ordinary owning workflow task and its database access, rather than adding dashboard writes or a second tracking store. Preview through the normal dashboard tools.
 
 ### Costs: matching Dashboard helper
 

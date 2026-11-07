@@ -1,84 +1,13 @@
-## MEASUREMENT — run-scoped, evidence-backed outcomes
+## Measurement through ordinary workflow steps
 
-Outcome measurement is produced by ordinary workflow steps, not a mandated
-route or table. Any normal step may produce a
-run-scoped, evidence-backed measurement. Measurement does not depend on which step
-or route produced it.
+The owner decides what success means. Measure it in an ordinary workflow task and save the result in that workflow's database; the dashboard reads those saved results. No separate collector, Goal engine, metric API or required schema is needed.
 
-### Who owns the measurement
+Inspect existing sources and producer contracts before changing anything. Reuse an appropriate step's measurements and existing tables. Add an ordinary measuring step only when no existing step can own the work. Routes and the number of outcomes do not force a topology change.
 
-The owner agrees the goals and numbers through the Goal's Builder. The Builder
-implements their definitions and collection. Ordinary steps record source-backed
-readings; the platform stores and serves those records. The Crew that looks after
-your Goals can read and judge them through the available tools. It does not gain
-Builder access or permission to change targets by reviewing them.
-Use `get_goal_metrics` to inspect the same definitions and history. Agree the
-formula, source method, unit, fixed dimensions, point-in-time or period window,
-collection cadence, freshness and evidence. Verify real readings against their
-sources. Setup alone is not verified collection. Do not invent a target or
-silently change goal meaning.
+A useful saved reading retains its definition, exact unit/scope, source method, actual observation time, source-run identity and evidence. Period-based comparisons need actual compatible window bounds. Preserve existing IDs and historical records; a changed measurement meaning must not rewrite an old series. An iteration folder is not a source-batch identity.
 
-### Shared DB format and history
+Use the normal workflow database tools. Retries read back the same source-run records, append missing results and report conflicts; do not overwrite history. Numeric zero means a measured zero. Missing, stale, blocked or incompatible data remains explicitly unavailable. Never invent a target, observation time or reporting period.
 
-- Reuse `workflow_goal_metrics` definitions and `goal_observations` in
-  the workflow DB for generic goal history. No separate collector subsystem.
-- A stable metric ID fixes formula, source/method, unit, window, environment,
-  route and dimensions. A changed meaning uses a new ID; old history stays.
-- Each observation records metric/criterion, exact unit/scope, actual
-  `observed_at`, numeric `value` or an explicit unavailable `status`, source
-  `evidence` and `run_id` identifying the source batch/execution. Run IDs are
-  opaque provenance: an iteration folder is not required to measure a goal.
-- Period-based measurements also record actual RFC3339 `window_start` and
-  `window_end`. Do not fabricate boundaries when backfilling legacy readings.
-  Use window `instant`, `snapshot` or `point_in_time` for totals at an instant.
-- Preserve original capture times and append history; retries are idempotent,
-  conflicts are rejected. Use distinct source batch IDs for distinct readings.
-  Unavailable is never zero. A recovered old batch is not a new measurement.
-- Go supplies per-metric freshness, bounded history and numeric differences
-  only across matching scopes and mechanically comparable periods/snapshots.
-  Missing/incompatible baselines stay unknown. Agents verify source quality,
-  sampling, calendar effects and attribution before calling a difference
-  progress. A numeric comparison is not a causal claim.
+Compare only matching methods, units, scope and supported windows. Separate business outcomes from supporting activity and diagnostics. A difference does not establish attribution or causation. Verify source evidence before saying that progress is real.
 
-### Placing measurement
-
-- Reuse an existing step's DB output when it already measures the outcome.
-  Existing workflow tables stay the source of truth; do not copy their values
-  into a second metrics store.
-- Add `record_goal_observations` to that producer only when the value should
-  enter the Goal's measurement history (definitions via
-  `configure_goal_metrics`, reads via `get_goal_metrics`).
-- Put route-specific measurements in existing route-local steps.
-- Use a shared convergence step only when multiple routes genuinely require
-  the same calculation.
-- Add a dedicated measurement step only when no existing step can safely own
-  it. It is an ordinary step with no special topology.
-- Make no topology change when existing measurement is already sufficient.
-- Flag ambiguous cases for manual migration rather than inventing steps or
-  routes.
-
-### Run scope and evidence
-
-- Scope every measurement to the run that produced it; never report "latest"
-  as the current run's outcome. Interactive runs reuse `iteration-0`, so a
-  run folder alone is not a stable measurement identity across runs.
-- Steps receive database-wide read-write access: there is no table-scoped
-  authorization. A measurement reader must therefore re-verify the producer's
-  rows (run scope, filters, freshness) instead of assuming a privileged write
-  path kept them clean.
-- A measurement failure is recorded as a measurement failure. It must never
-  erase or invalidate the successful business run it measured.
-
-### Legacy evaluation artifacts
-
-Old `evaluation/` plans and `evaluation_report.json` files are read-only history,
-as are retired `costs/evaluation/` ledgers and retired `eval_results` rows,
-unless a separate cleanup migration is approved. Never write to them; never let
-a new measurement depend on them.
-
-### Existing workflows
-
-Keep ordinary runs working while measurement is configured. Inspect existing
-sources, definitions and readings before proposing changes. An absent metric is
-missing setup, not proof the workflow failed. Change collection only within the
-owner's request and existing Builder permissions; preserve source history.
+Collection failure must not erase successful business work. Keep the task's existing partial-result behavior and permissions. Do not take extra actions merely to obtain measurements. Keep retired evaluation files and ledgers as historical evidence; new runs do not depend on them.

@@ -1175,7 +1175,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 	// System tools — always available regardless of mode.
 	// Includes workspace, shell, virtual tools, and human interaction/notification.
 	system := []string{
-		"record_goal_observations",
 		// Workspace advanced tools. Basic workspace file tools are intentionally
 		// not in the central workspace registry; use the active shell/diff/text/search tools.
 		"execute_shell_command", "diff_patch_workspace_file",
@@ -1207,7 +1206,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 	}
 	// Read-only info tools — safe in all modes
 	readOnly := []string{
-		"get_goal_metrics",
 		"get_step_prompts", "get_workflow_config", "request_workflow_folder_access", "get_llm_config", "get_cost_summary",
 	}
 
@@ -1247,7 +1245,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 
 	// Variable & config tools
 	variableConfig := []string{
-		"configure_goal_metrics",
 		"update_variable",
 		"update_workflow_config", "set_workflow_contract_version",
 	}
@@ -6312,7 +6309,7 @@ The files are the authority. Do not infer their content from controller prose,
 route labels, or prior review text.
 
 ## MEASUREMENT
-Read run-scoped, evidence-backed measurements where the producing steps already store them (`+"`db/db.sqlite`"+` tables, run outputs) and recent goal observations via `+"`get_goal_metrics`"+`, using shell commands. If no measurement exists, treat missing measurement as a review finding when the workflow clearly needs measurable verification.
+Read run-scoped, evidence-backed measurements where the producing steps already store them (`+"`db/db.sqlite`"+` tables, run outputs) and recent goal observations via ordinary database queries, using shell commands. If no measurement exists, treat missing measurement as a review finding when the workflow clearly needs measurable verification.
 
 ## DEPENDENT ARTIFACTS
 Review these files/directories when present. Stay read-only:
@@ -6440,7 +6437,7 @@ For shell commands, use absolute workspace paths: `+"`{{.AbsWorkspacePath}}/...`
    - `+"`tools.calls[]`"+` as per-tool breakdown
    - Reflection timing records may exist for historical runs only; current Goal steps finish after their task and validation.
 4. Read conversation logs only after the timing files show where the time went.
-5. Read the producing steps' stored measurements (and goal observations via `+"`get_goal_metrics`"+`) if they help determine whether a proposed speedup would threaten success criteria.
+5. Read the producing steps' stored measurements (including any existing saved observation tables) if they help determine whether a proposed speedup would threaten success criteria.
 
 {{if .Focus}}## FOCUS
 Prioritize this area: **{{.Focus}}**
