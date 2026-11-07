@@ -10,7 +10,7 @@
 #
 # `init` needs a release built from this layout already on the host (it installs that release's slotctl).
 # After the first `init`, redeploy once (or restart the services) so the build installs the tmux front-end and
-# switches the services to AGENTWORKS_SLOTS=optin.
+# switches the services to AGENTWORKS_SLOTS=on.
 set -euo pipefail
 
 AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-RTS}"

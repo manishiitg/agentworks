@@ -127,8 +127,7 @@ func interactiveShellSlot(c *gin.Context) (slot string, status int, message stri
 	if on && err == nil && slot != "" {
 		return slot, 0, ""
 	}
-	// Slots are available on this host (even only for some people): a person without one gets no shell, never one
-	// as the service account.
+	// A person without a slot gets no shell, never one as the service account.
 	if slots.Enabled() || err != nil {
 		return "", http.StatusForbidden, "the terminal needs a personal account on this server"
 	}

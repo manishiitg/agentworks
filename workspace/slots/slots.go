@@ -9,7 +9,7 @@
 //   - The platform reaches a slot's files through a per-slot group it belongs to; other slots are
 //     not in that group.
 //
-// The feature is off unless AGENTWORKS_SLOTS=on (or optin), so hosts and the desktop app are unchanged.
+// The feature is off unless AGENTWORKS_SLOTS=on, so the desktop app is unchanged.
 package slots
 
 import (
@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
-	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -122,18 +121,10 @@ func (t *Table) SlotFor(userID string) (string, bool) {
 	return "", false
 }
 
-// Enabled reports whether the feature is on for this process: "on" (every user needs a slot) or "optin"
-// (users who hold a slot run as it; everyone else is unchanged, which lets a host whose workflows and
-// shared folders are not slot-aware yet roll slots out user by user).
+// Enabled reports whether the feature is on for this process: every user needs a slot. The desktop app has it off.
 func Enabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(EnvEnabled))) {
-	case "on", "optin":
-		return true
-	}
-	return false
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(EnvEnabled)), "on")
 }
-
-func optIn() bool { return strings.EqualFold(strings.TrimSpace(os.Getenv(EnvEnabled)), "optin") }
 
 // Slotctl returns the launcher path.
 func Slotctl() string {
@@ -207,35 +198,22 @@ func For(userID string) (slot string, enabled bool, err error) {
 	}
 	table, err := cachedTable()
 	if err != nil {
-		// In opt-in mode a host that has not been provisioned yet has no table: nobody holds a slot, so
-		// nothing changes for anyone. Any other failure to read it (permissions, a damaged file) is still an
-		// error, never a silent fallback.
-		if optIn() && errors.Is(err, fs.ErrNotExist) {
-			return "", false, nil
-		}
 		return "", true, fmt.Errorf("slot table unavailable: %w", err)
 	}
 	slot, ok := table.SlotFor(userID)
 	if !ok {
-		if optIn() {
-			return "", false, nil
-		}
 		return "", true, ErrNoSlot
 	}
 	return slot, true, nil
 }
 
-// Assigned lists the slots the table gives to a user, sorted. It is empty when the feature is off or (in opt-in
-// mode) the host has no table yet.
+// Assigned lists the slots the table gives to a user, sorted. It is empty when the feature is off.
 func Assigned() ([]string, error) {
 	if !Enabled() {
 		return nil, nil
 	}
 	table, err := cachedTable()
 	if err != nil {
-		if optIn() && errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	var out []string

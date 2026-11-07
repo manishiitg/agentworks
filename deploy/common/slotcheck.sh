@@ -80,7 +80,7 @@ while IFS= read -r line; do
 done < <(service_env "$(main_pid "$PRODUCT-workspace")" "$APP/.env")
 rc=0
 case "$slots_mode" in
-  on|optin)
+  on)
     if [[ ! -x "$RELEASE/bin/slotcheck" ]]; then
       echo "FAIL slotcheck-binary: $RELEASE/bin/slotcheck is missing -- fix: deploy a release built with deploy/common/slots.sh slots_build"
       rc=1
@@ -128,7 +128,7 @@ check_shared_acl() {
   [[ "$missing" == 0 ]] && echo "PASS shared-acl: shared folders carry the default ACL for group $group"
   return 0
 }
-case "$slots_mode" in on|optin) check_shared_acl ;; esac
+[[ "$slots_mode" != on ]] || check_shared_acl
 
 # A slot's Docker is usable only by that slot (owner decision 2026-10-15): the service account is a member of every slot group, so
 # the only thing between it and a slot's rootless Docker is the slot's runtime folder /run/user/<uid> (0700, owner only). Prove it from
@@ -165,7 +165,7 @@ PY
   fi
   return 1
 }
-case "$slots_mode" in on|optin) check_slot_docker_owner_only || rc=1 ;; esac
+if [[ "$slots_mode" == on ]]; then check_slot_docker_owner_only || rc=1; fi
 
 echo "==> [$PRODUCT] secret admission scan (names only, warnings never fail the deploy)"
 if [[ -f "$RELEASE/admission_scan.py" ]]; then
