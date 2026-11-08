@@ -253,7 +253,7 @@ func TestCrewInboxSwitchIsOwnerOnlyAndPanelFollows(t *testing.T) {
 	if code := post(ctx, true); code != 200 {
 		t.Fatalf("owner could not turn email on: %d", code)
 	}
-	if row, err := env.api.crewPanelInboxRow(ctx, root); err != nil || !row.Connected || !strings.HasPrefix(row.Detail, "On · owner+agent-") || !strings.HasSuffix(row.Detail, "0 messages this week") {
+	if row, err := env.api.crewPanelInboxRow(ctx, root); err != nil || !row.Connected || row.Detail != "On · 0 messages this week" {
 		t.Fatalf("row after on: %+v %v", row, err)
 	}
 }

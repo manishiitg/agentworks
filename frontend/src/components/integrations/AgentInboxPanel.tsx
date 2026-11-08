@@ -49,7 +49,7 @@ export function AgentInboxPanel({ workspacePath, refreshToken = 0, embedded = fa
     const status = !state ? 'Loading…' : !state.enabled ? 'Incoming email is off for this Crew.' : state.receiving ? `${week} ${week === 1 ? 'message' : 'messages'} this week · each starts a chat` : 'Checking the Crew owner’s Gmail…'
     return <section aria-label="Agent inbox">
       {state && (state.can_configure
-        ? <PageRow lead={<Switch aria-label={state.enabled ? 'Turn incoming email off' : 'Turn incoming email on'} checked={state.enabled} disabled={busy} onCheckedChange={on => void setIncoming(on)} />} title="Incoming email" lines={[state.enabled ? 'On' : 'Incoming email is off for this Crew.']} />
+        ? <PageRow title="Incoming email" lines={[state.enabled ? 'Anyone can email this Crew’s address.' : 'Off. Email to this Crew is not received.']} action={<Switch aria-label={state.enabled ? 'Turn incoming email off' : 'Turn incoming email on'} checked={state.enabled} disabled={busy} onCheckedChange={on => void setIncoming(on)} />} />
         : !state.enabled && <p className="px-4 pt-3 text-xs text-muted-foreground">Incoming email is off for this Crew.</p>)}
       {error && <p role="alert" className="px-4 pt-3 text-xs text-destructive">{error}</p>}
       {notice && <p role="status" className="px-4 pt-3 text-xs">{notice}</p>}

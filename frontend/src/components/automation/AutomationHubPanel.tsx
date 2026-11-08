@@ -153,7 +153,7 @@ export function AutomationHubPanel({
   const inboxView = (wrap: string) => <div className={wrap}><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} embedded={crewPage} /></div>
 
   const askMessage = section === 'triggers' ? 'Help me set up a webhook for this Crew.' : section === 'conditions' ? 'Help me set up a watcher for this Crew.' : section === 'email' ? 'Help me with this Crew’s inbox.' : 'Help me set up a schedule for this Crew.'
-  const cardTitle = ({ schedules: ['Schedules', undefined], triggers: ['Webhooks', 'Another app starts this by calling a web address.'], conditions: ['Watchers', 'Keeps checking something, and acts when it finds a match.'], email: ['Inbox', 'Only for a Crew that has an email address or a bot.'] } as Record<string, [string, string | undefined]>)[section]
+  const cardTitle = ({ schedules: ['Schedules', undefined], triggers: ['Webhooks', 'Another app starts this by calling a web address.'], conditions: ['Watchers', 'Keeps checking something, and acts when it finds a match.'], email: ['Inbox', 'Email sent to this Crew starts a chat.'] } as Record<string, [string, string | undefined]>)[section]
   // On a Crew page each tab's content sits in one card with its own Ask (owner-approved mock, 8 Nov).
   const inCard = (content: ReactNode) => crewPage && cardTitle ? <div className="h-full overflow-y-auto p-4"><PageCard title={cardTitle[0]} hint={cardTitle[1]} onAsk={canManage === false ? undefined : () => ask(askMessage)} onRefresh={refreshAction?.run} refreshLabel={refreshAction?.label} refreshing={refreshAction?.spinning} action={section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} /> : undefined}>{content}</PageCard></div> : content
 

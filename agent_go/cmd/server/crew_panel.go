@@ -426,7 +426,7 @@ func crewPanelWorkflowLine(folders []RunFolderInfo, now time.Time) string {
 	return strings.Join(parts, " · ")
 }
 
-// crewPanelInboxRow is the Crew's incoming-email row: "On · address · N messages this week" or "Off".
+// crewPanelInboxRow is the Crew's incoming-email row: "On · N messages this week" or "Off".
 // The access checks are agentEmailCrew's and agentEmailInboxResult's, not repeated here.
 func (api *StreamingAPI) crewPanelInboxRow(ctx context.Context, workspace string) (crewPanelRow, error) {
 	row := crewPanelRow{ID: "inbox", Label: "Inbox", Destination: "schedules:email", Detail: "Off"}
@@ -445,7 +445,6 @@ func (api *StreamingAPI) crewPanelInboxRow(ctx context.Context, workspace string
 		return row, nil
 	}
 	result, _ := out.(map[string]any)
-	inbox, _ := result["inbox"].(gmailinbound.Inbox)
 	page, _ := result["mail"].(gmailinbound.Page)
 	week := 0
 	for _, item := range page.Messages {
@@ -457,10 +456,8 @@ func (api *StreamingAPI) crewPanelInboxRow(ctx context.Context, workspace string
 	if page.HasMore && week == len(page.Messages) {
 		count = fmt.Sprintf("%d+ messages", week)
 	}
-	row.Detail = strings.Join([]string{"On", inbox.Address, count + " this week"}, " · ")
-	if inbox.Address == "" {
-		row.Detail = "On · " + count + " this week"
-	}
+	// The address is on the Inbox page; the menu line stays short (approved mock, 8 Nov).
+	row.Detail = "On · " + count + " this week"
 	return row, nil
 }
 
