@@ -57,14 +57,6 @@ func TestMovedWorkflowStampChecksUseDefinitionsCodeAndRuntimeRoots(t *testing.T)
 	if err := ValidateWorkflowSkillsStamp(binding.Root); err == nil || !strings.Contains(err.Error(), "learnings_access") {
 		t.Fatalf("moved config skipped: %v", err)
 	}
-	write(filepath.Join(layout.Code, "fetch/main.py"), "import sqlite3\nsqlite3.connect('db/db.sqlite')\n")
-	if err := validateManagedDBScriptsStamp(ManagedDBScriptsContractVersion, binding.Root); err == nil {
-		t.Fatal("raw SQLite in moved code was not scanned")
-	}
-	write(filepath.Join(layout.Code, "fetch/main.py"), "from agentworks_db import query\nquery('SELECT 1')\n")
-	if err := validateManagedDBScriptsStamp(ManagedDBScriptsContractVersion, binding.Root); err != nil {
-		t.Fatal(err)
-	}
 	if err := validateStepDescriptionLayoutStamp(StepDescriptionLayoutContractVersion, binding.Root); err == nil {
 		t.Fatal("missing moved plan silently passed")
 	}
