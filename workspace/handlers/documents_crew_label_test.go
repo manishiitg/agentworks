@@ -174,10 +174,14 @@ func TestLazyCrewListingsLookAheadAndSearchUnloadedFiles(t *testing.T) {
 			t.Fatalf("returned grandchildren: %s", path)
 		}
 	}
-	for _, suffix := range []string{"escape", ".agentworks", ".hidden"} {
+	for _, suffix := range []string{"escape", ".hidden"} {
 		if _, exists := nodes[root+"/"+suffix]; exists {
 			t.Fatalf("disclosed excluded entry %s", suffix)
 		}
+	}
+	// The Crew's own .agentworks folder is listed even with dot entries hidden (owner, 8 Nov).
+	if _, exists := nodes[root+"/.agentworks"]; !exists {
+		t.Fatal(".agentworks should be visible in the Files tree")
 	}
 	for _, suffix := range []string{"empty", "blocked-only"} {
 		hint := nodes[root+"/"+suffix].HasChildren

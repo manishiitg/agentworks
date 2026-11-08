@@ -106,7 +106,8 @@ func scanDocuments(searchPath, docsDir string, opts documentScanOptions) ([]mode
 					concealed = e != nil || !custom.IsDir()
 				}
 			}
-			if concealed || opts.visibility.HideDotfiles && strings.HasPrefix(first, ".") {
+			// .agentworks holds the Crew's own workflows and code, so it is listed (owner, 8 Nov); other dot entries stay hidden.
+			if concealed || opts.visibility.HideDotfiles && strings.HasPrefix(first, ".") && first != ".agentworks" {
 				return "", false
 			}
 		}
