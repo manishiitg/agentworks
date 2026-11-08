@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
 // Drive real binding, trigger admission, isolated worker, saved terminal run,
@@ -29,7 +30,6 @@ func TestStructuredFunctionsIsolateParallelRunsAndKeepOutputsAfterRestart(t *tes
 	env.svc.automationTurnRunner = func(ctx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
 		vars := common.GetSessionShellEnv(session)
 		if vars["FUNCTION_CALL_ID"] == "" || !strings.HasPrefix(vars["FUNCTION_RESULT_FILE"], docs) {
-			t.Logf("fixture rejected call environment: call_id_present=%t result_file=%q output_dir=%q docs=%q", vars["FUNCTION_CALL_ID"] != "", vars["FUNCTION_RESULT_FILE"], vars["FUNCTION_OUTPUT_DIR"], docs)
 			return internalSessionTurnResult{}, context.Canceled
 		}
 		started <- session
@@ -55,7 +55,7 @@ func TestStructuredFunctionsIsolateParallelRunsAndKeepOutputsAfterRestart(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	fn := savedFunctionForTest(t, ctx, target, crewFunction{Name: "report", Instructions: "Prepare a report.", Execution: "fresh"})
+	fn := savedFunctionForTest(t, ctx, target, crewFunction{Name: "report", Instructions: "Prepare a report.", Execution: "new"})
 	calls := make([]*crewFunctionCall, 0, 3)
 	sessions := map[string]bool{}
 	for i := 0; i < 3; i++ {
@@ -113,7 +113,11 @@ func TestStructuredFunctionsIsolateParallelRunsAndKeepOutputsAfterRestart(t *tes
 	if err := os.WriteFile(outside, []byte("another scope's file"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(docs, filepath.FromSlash(calls[0].outputFolder()), "escape")); err != nil {
+	outputDir, err := fsutil.WorkspacePath(docs, calls[0].outputFolder())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(outputDir, "escape")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := readCrewFunctionOutput(ctx, calls[0], "escape", 0, 5); err == nil {
