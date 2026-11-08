@@ -657,16 +657,19 @@ type RunMetadataModels struct {
 
 // RunMetadata stores lifecycle information for a run folder
 type RunMetadata struct {
-	Recovery        map[string]interface{}   `json:"recovery,omitempty"`
-	RecoveryHistory []map[string]interface{} `json:"recovery_history,omitempty"`
-	CreatedAt       time.Time                `json:"created_at"`
-	StartedAt       time.Time                `json:"started_at,omitempty"`
-	CompletedAt     *time.Time               `json:"completed_at,omitempty"`
-	DurationMs      *int64                   `json:"duration_ms,omitempty"`
-	Status          string                   `json:"status"`                 // canonical execution outcome: "running", "completed", "failed", "canceled"
-	Warnings        []string                 `json:"warnings,omitempty"`     // non-fatal conditions; never encoded as another status
-	TriggeredBy     string                   `json:"triggered_by,omitempty"` // "manual", "cron", "workflow_builder"
-	Models          *RunMetadataModels       `json:"models,omitempty"`       // LLM config used for this run
+	ExecutionID     string                                            `json:"execution_id,omitempty"`
+	PythonSteps     map[string]todo_creation_human.PythonStepEvidence `json:"python_steps,omitempty"`
+	PythonEvidence  []todo_creation_human.PythonRunEvidence           `json:"python_evidence,omitempty"`
+	Recovery        map[string]interface{}                            `json:"recovery,omitempty"`
+	RecoveryHistory []map[string]interface{}                          `json:"recovery_history,omitempty"`
+	CreatedAt       time.Time                                         `json:"created_at"`
+	StartedAt       time.Time                                         `json:"started_at,omitempty"`
+	CompletedAt     *time.Time                                        `json:"completed_at,omitempty"`
+	DurationMs      *int64                                            `json:"duration_ms,omitempty"`
+	Status          string                                            `json:"status"`                 // canonical execution outcome: "running", "completed", "failed", "canceled"
+	Warnings        []string                                          `json:"warnings,omitempty"`     // non-fatal conditions; never encoded as another status
+	TriggeredBy     string                                            `json:"triggered_by,omitempty"` // "manual", "cron", "workflow_builder"
+	Models          *RunMetadataModels                                `json:"models,omitempty"`       // LLM config used for this run
 }
 
 // RunFolderInfo represents information about a single run folder

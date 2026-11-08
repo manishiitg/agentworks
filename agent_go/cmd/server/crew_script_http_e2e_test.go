@@ -342,6 +342,19 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 				t.Fatalf("direct script lost selected preset environment: %s", result)
 			}
 			runRoot := filepath.Join(runtimeRoot, "runs", folder.Name())
+			metadata, readErr := os.ReadFile(filepath.Join(runRoot, "run_metadata.json"))
+			var runRecord RunMetadata
+			if readErr != nil || json.Unmarshal(metadata, &runRecord) != nil || runRecord.ExecutionID == "" || len(runRecord.PythonSteps) != 1 || len(runRecord.PythonEvidence) != 1 {
+				t.Fatalf("actual script run lost durable attempt/step/check record: %s %v", metadata, readErr)
+			}
+			for _, recorded := range runRecord.PythonSteps {
+				start, startErr := time.Parse(time.RFC3339Nano, recorded.StartedAt)
+				end, endErr := time.Parse(time.RFC3339Nano, recorded.CompletedAt)
+				if recorded.ExecutionID != runRecord.ExecutionID || recorded.Name != "Prepare report" || recorded.SourceCall == "" || recorded.Status != "completed" || startErr != nil || endErr != nil || end.Before(start) || recorded.DurationMs < 0 || recorded.LogNote == "" {
+					t.Fatalf("Python step timing/attempt was not persisted: %+v", recorded)
+				}
+			}
+
 			snapshot, readErr := os.ReadFile(filepath.Join(runRoot, "inputs.json"))
 			var inputRecord map[string]interface{}
 			if readErr != nil || json.Unmarshal(snapshot, &inputRecord) != nil || inputRecord["extended"] != false || inputRecord["rate"] != float64(5) {

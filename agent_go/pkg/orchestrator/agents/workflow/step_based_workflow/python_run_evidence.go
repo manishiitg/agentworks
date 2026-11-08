@@ -19,6 +19,7 @@ import (
 // PythonRunEvidence is the public projection of one completed check or notice.
 // Arguments, helper results, credentials and private continuation state stay out.
 type PythonRunEvidence struct {
+	ID         string `json:"id,omitempty"`
 	Kind       string `json:"kind"`
 	At         string `json:"at"`
 	Name       string `json:"name,omitempty"`
@@ -40,7 +41,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) savePythonRunEvidence(ctx context.Con
 		return nil
 	}
 	now := time.Now().UTC()
-	event := PythonRunEvidence{Kind: action, At: now.Format(time.RFC3339Nano)}
+	event := PythonRunEvidence{ID: id, Kind: action, At: now.Format(time.RFC3339Nano)}
 	event.SourceCall, _ = arguments["source_call"].(string)
 	if action == "check" {
 		ok, valid := arguments["ok"].(bool)
@@ -67,7 +68,49 @@ func (hcpo *StepBasedWorkflowOrchestrator) savePythonRunEvidence(ctx context.Con
 	name := fmt.Sprintf("%020d-%s.json", now.UnixNano(), id)
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	return hcpo.writePythonHelperState(saveCtx, path.Join(hcpo.pythonHelperStateRoot(), "evidence", name), string(data))
+	if err := hcpo.writePythonHelperState(saveCtx, path.Join(hcpo.pythonHelperStateRoot(), "evidence", name), string(data)); err != nil {
+		return err
+	}
+	return hcpo.upsertRunMetadata(saveCtx, hcpo.selectedRunFolder, func(meta map[string]interface{}) {
+		items, _ := meta["python_evidence"].([]interface{})
+		items = append(items, event)
+		if len(items) > 200 {
+			items = items[len(items)-200:]
+		}
+		meta["python_evidence"] = items
+	})
+}
+
+// PythonStepEvidence records actual calls independently of a chat's live notifier.
+// The enclosing run's execution_id identifies the producing attempt.
+type PythonStepEvidence struct {
+	ExecutionID string `json:"execution_id,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	SourceCall  string `json:"source_call"`
+	StartedAt   string `json:"started_at"`
+	CompletedAt string `json:"completed_at,omitempty"`
+	DurationMs  int64  `json:"duration_ms"`
+	Status      string `json:"status"`
+	Detail      string `json:"detail,omitempty"`
+	LogNote     string `json:"log_note"`
+}
+
+func (hcpo *StepBasedWorkflowOrchestrator) savePythonStepEvidence(ctx context.Context, event PythonStepEvidence) error {
+	event.Name = boundedRunEvidenceText(event.Name)
+	event.SourceCall = boundedRunEvidenceText(event.SourceCall)
+	event.Detail = boundedRunEvidenceText(event.Detail)
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	return hcpo.upsertRunMetadata(saveCtx, hcpo.selectedRunFolder, func(meta map[string]interface{}) {
+		steps, _ := meta["python_steps"].(map[string]interface{})
+		if steps == nil {
+			steps = map[string]interface{}{}
+		}
+		event.ExecutionID, _ = meta["execution_id"].(string)
+		steps[event.ID] = event
+		meta["python_steps"] = steps
+	})
 }
 
 // ReadPythonRunEvidence is called only after the server authorizes the workspace.
@@ -120,7 +163,7 @@ func ReadPythonRunEvidence(docs, workspace, runFolder string) ([]PythonRunEviden
 			item.OK = nil
 			item.Name = ""
 		}
-		item.Name, item.Detail, item.SourceCall = boundedRunEvidenceText(item.Name), boundedRunEvidenceText(item.Detail), boundedRunEvidenceText(item.SourceCall)
+		item.ID, item.Name, item.Detail, item.SourceCall = boundedRunEvidenceText(item.ID), boundedRunEvidenceText(item.Name), boundedRunEvidenceText(item.Detail), boundedRunEvidenceText(item.SourceCall)
 		items = append(items, item)
 	}
 	return items, nil
