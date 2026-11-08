@@ -276,6 +276,34 @@ func TestCrewFilePathPolicyRequiresCurrentRegisteredPerson(t *testing.T) {
 	if err := requireCurrentCrewPathAccess(context.Background(), "runtime/system-output.txt"); err != nil {
 		t.Fatalf("unrelated system path refused: %v", err)
 	}
+	docs := os.Getenv("WORKSPACE_DOCS_PATH")
+	if err := requireCurrentCrewPathAccess(ctx, filepath.Join(docs, linkAlphaPath)); err != nil {
+		t.Fatalf("absolute owner path refused: %v", err)
+	}
+	if err := defaultProjectOwners().SetAudience("work", "gamma", true, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(docs, linkGammaPath), filepath.Join(docs, linkGammaPath, "file.txt"), "Crew/alpha/../../Crew/gamma/file.txt", `Crew\gamma/file.txt`} {
+		if err := requireCurrentCrewPathAccess(ctx, path); err == nil {
+			t.Errorf("nonmember admitted private spelling %q", path)
+		}
+	}
+	targetOwner := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
+	if err := requireCurrentCrewPathAccess(targetOwner, filepath.Join(docs, linkGammaPath)); err != nil {
+		t.Fatalf("absolute target-owner path refused: %v", err)
+	}
+	outside := filepath.Join(t.TempDir(), "Crew", "gamma", "file.txt")
+	if err := requireCurrentCrewPathAccess(ctx, outside); err != nil {
+		t.Fatalf("outside-docs path policy changed: %v", err)
+	}
+	alias := filepath.Join(docs, linkAlphaPath, "linked-private")
+	if err := os.Symlink(filepath.Join(docs, linkGammaPath), alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireCurrentCrewPathAccess(ctx, alias); err == nil {
+		t.Error("in-docs symlink granted another Crew")
+	}
+
 	if err := defaultProjectOwners().modify(func(records map[string]projectOwnerRecord) (bool, error) {
 		rec := records[projectOwnerKey("work", "alpha")]
 		rec.OwnerID = "other"
