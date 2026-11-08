@@ -73,7 +73,9 @@ export function CrewExecutableEditor({
       await api.post('/api/workflow/run', {}, { params: { workspace_path: item.workspace_path } })
       onStarted()
     } catch (cause) {
-      const message = isAxiosError(cause) && typeof cause.response?.data === 'string' ? cause.response.data : ''
+      // The route answers with plain text, or with the platform's {error: {message}} (for example an input that fails validation).
+      const data: unknown = isAxiosError(cause) ? cause.response?.data : undefined
+      const message = typeof data === 'string' ? data : (data as { error?: { message?: string } } | undefined)?.error?.message ?? ''
       setError(message || 'Could not start the workflow. Try again.')
     } finally { setStarting(false) }
   }
