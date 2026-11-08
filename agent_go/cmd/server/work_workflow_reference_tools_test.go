@@ -160,33 +160,49 @@ func containsWorkReferencePath(values []string, want string) bool {
 // Crews are shared server-wide and read-write: attaching another owner's
 // Crew by its physical path grants it in both the read and write sets,
 // while a workflow reference stays read-only.
+// PLAT-746-502: only already-admitted canonical Crew links enter the guard.
+// Current-access admission/refusal is exercised by TestLinkedPrivateCrewFileReadChecksLiveAccess.
 func TestUpdateWorkSessionWorkflowGuardCrewReferencesAreWritable(t *testing.T) {
-	common.SetSessionFolderGuard("session-crew-rw", []string{"_users/me/Chats/Work/projects/mine/"}, []string{"_users/me/Chats/Work/projects/mine/"})
-	updateWorkSessionWorkflowGuard("session-crew-rw", []string{"_users/other/Chats/Work/projects/theirs", "Workflow/reports"})
-	cfg := common.GetSessionShellConfig("session-crew-rw")
-	if cfg == nil || !containsWorkReferencePath(cfg.WritePaths, "_users/other/Chats/Work/projects/theirs/") || !containsWorkReferencePath(cfg.ReadPaths, "_users/other/Chats/Work/projects/theirs") {
-		t.Fatalf("another owner's Crew reference must be read-write: %+v", cfg)
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	registerTestCrew(t, "mine", "me", false)
+	registerTestCrew(t, "theirs", "other", true)
+	const session = "session-crew-rw"
+	const own = "Crew/mine"
+	const linked = "Crew/theirs"
+	common.SetSessionFolderGuard(session, []string{own}, []string{own})
+	t.Cleanup(func() { common.ClearSessionShellConfig(session) })
+	updateWorkSessionWorkflowGuard(session, []string{linked, "Workflow/reports"})
+	cfg := common.GetSessionShellConfig(session)
+	if cfg == nil || !containsWorkReferencePath(cfg.WritePaths, linked+"/") || !containsWorkReferencePath(cfg.ReadPaths, linked) {
+		t.Fatalf("admitted Crew reference must be read-write: %+v", cfg)
 	}
-	if containsWorkReferencePath(cfg.WritePaths, "Workflow/reports") {
+	if containsWorkReferencePath(cfg.WritePaths, "Workflow/reports") || !containsWorkReferencePath(cfg.ReadPaths, "Workflow/reports") {
 		t.Fatalf("workflow reference must stay read-only: %+v", cfg)
 	}
-	updateWorkSessionWorkflowGuard("session-crew-rw", nil, "_users/other/Chats/Work/projects/theirs")
-	if cfg = common.GetSessionShellConfig("session-crew-rw"); containsWorkReferencePath(cfg.WritePaths, "_users/other/Chats/Work/projects/theirs/") {
-		t.Fatalf("detached Crew reference kept write access: %+v", cfg)
+	if !containsWorkReferencePath(cfg.BlockedPaths, linked+"/builder/") || !containsWorkReferencePath(cfg.BlockedWritePaths, linked+"/db/") {
+		t.Fatalf("linked Crew chats must stay private and its database must not become writable: %+v", cfg)
+	}
+	updateWorkSessionWorkflowGuard(session, nil, linked)
+	cfg = common.GetSessionShellConfig(session)
+	if containsWorkReferencePath(cfg.WritePaths, linked+"/") || containsWorkReferencePath(cfg.ReadPaths, linked) {
+		t.Fatalf("detached Crew reference kept access: %+v", cfg)
+	}
+	if !containsWorkReferencePath(cfg.WritePaths, own) || !containsWorkReferencePath(cfg.ReadPaths, "Workflow/reports") {
+		t.Fatalf("detaching a link removed unrelated access: %+v", cfg)
 	}
 }
 
-func TestContextReferenceAcceptsOtherOwnerCrewPath(t *testing.T) {
-	root, ok := contextReferenceReadRoot("me", "_users/other/Chats/Work/projects/theirs")
-	if !ok || root != "_users/other/Chats/Work/projects/theirs" {
+func TestContextReferenceResolvesCanonicalCrewRoots(t *testing.T) {
+	root, ok := contextReferenceReadRoot("me", "Crew/theirs")
+	if !ok || root != "Crew/theirs" {
 		t.Fatalf("root=%q ok=%v", root, ok)
 	}
-	for _, bad := range []string{"_users/other/Chats/Work/projects/..", "_users/../Chats/Work/projects/x", "_users/other/Chats/Work/other/x"} {
+	// Parsing a root is not authority; the request authorizer checks the
+	// registered owner and current person/audience before granting access.
+	for _, bad := range []string{"Crew/..", "Crew/.hidden", "Crew/theirs/subfolder", "Crew/theirs/../other", "_users/other/Chats/Work/projects/theirs", "Chats/Work/projects/mine"} {
 		if _, ok := contextReferenceReadRoot("me", bad); ok {
-			t.Fatalf("accepted malformed crew path %q", bad)
+			t.Fatalf("accepted malformed or retired Crew path %q", bad)
 		}
-	}
-	if _, ok := contextReferenceReadRoot("", "_users/other/Chats/Work/projects/theirs"); ok {
-		t.Fatal("unauthenticated caller must not resolve a crew reference")
 	}
 }
