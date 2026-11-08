@@ -17,7 +17,7 @@ func TestOnlyTheCrewOwnerGetsLaptopTools(t *testing.T) {
 	}{
 		{QueryRequest{AgentProfileID: "work"}, true},
 		{QueryRequest{AgentProfileID: "work", IsAutoNotification: true, TriggeredBy: "schedule"}, true},
-		{QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", admittedWorkflowPhase: true}, false},
+		{QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder"}, false},
 		{QueryRequest{AgentProfileID: "work", PinRunMode: true}, false},
 		{QueryRequest{AgentProfileID: "work", BotPlatform: "slack"}, false},
 		{QueryRequest{AgentProfileID: "work", AgentMessageFromOtherPerson: true}, false},
