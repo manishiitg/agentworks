@@ -1,4 +1,4 @@
-import { ArrowUpCircle, BookOpen, Cable, Cpu, Database, DollarSign, Laptop, Files, FileText, Hand, LayoutDashboard, MessageSquareText, Monitor, Settings, ShieldCheck, Sparkles, type LucideIcon } from 'lucide-react'
+import { ArrowUpCircle, BookOpen, Cable, Cpu, Database, DollarSign, Files, FileText, Hand, LayoutDashboard, MessageSquareText, Monitor, Settings, ShieldCheck, Sparkles, type LucideIcon } from 'lucide-react'
 import { projectAutomationSections, projectConnectionSections } from '../workspace/WorkspaceProjectNavigation'
 import { PROJECT_MENU_GROUPS, type ProjectMenuGroup } from '../workspace/projectMenuGroups'
 import type { WorkspaceViewId } from './workspaceViews'
@@ -41,7 +41,6 @@ export function workflowProjectMenuItems({ isMultiUser = false, allowedProducts,
     add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4), item.subgroup)
   }
   add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
-  add('mcp', 'Integrations', 'Local laptop', Laptop, 'laptop')
   if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Integrations', 'AgentBridge', Cable, 'agentbridge')
   add('identity', 'Setup', 'Settings', Settings, 'general')
   add('identity', 'Setup', 'Models', Cpu, 'llm')

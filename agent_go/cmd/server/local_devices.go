@@ -46,15 +46,11 @@ func (target *laptopConnectionTarget) valid() bool {
 	return target != nil && localfiles.ValidID(target.DeviceID)
 }
 
-// A connection is extra authority for the person's own chat: a Crew chat or a Goal's Builder chat. Every turn
-// of that chat has it, automatic ones too (schedules, watches, the person's own agents' messages,
-// auto-notifications, background agents; owner, 5 Nov: "allow everything for automatic agents", Goals too), so
-// the tools never change between turns. Turns that work for other people never have it: Run people, Slack bot
-// replies, shared-Crew Ask (read-only, refused at admission) and another person's agent's message.
+// Every turn of the owner's Crew chat keeps its laptop connection, including
+// automatic work. Run people, bot replies and other people's messages get none.
 func laptopBuilderTurn(req QueryRequest, profile *resolvedAgentProfile) bool {
-	crew := profile != nil && isProjectProfileID(profile.Definition.ID)
-	goal := profile == nil && (req.AgentMode == "workflow_phase" || req.admittedWorkflowPhase) && req.PhaseID == "workflow-builder" && workflowCLIMode(&req, false) != "run"
-	return (crew || goal) && !req.PinRunMode && req.BotPlatform == "" && !req.AgentMessageFromOtherPerson
+	return profile != nil && isProjectProfileID(profile.Definition.ID) &&
+		!req.PinRunMode && req.BotPlatform == "" && !req.AgentMessageFromOtherPerson
 }
 
 func laptopProfileForRequest(req QueryRequest) *resolvedAgentProfile {
