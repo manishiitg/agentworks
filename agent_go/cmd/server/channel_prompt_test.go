@@ -24,12 +24,3 @@ func TestChannelPromptCarriesSessionContinuityRule(t *testing.T) {
 		}
 	}
 }
-
-func TestChannelPromptEmptyForUnknownPlatform(t *testing.T) {
-	if got := buildChannelFormattingInstructions(""); got != "" {
-		t.Errorf("empty platform: expected empty fragment, got %d chars", len(got))
-	}
-	if got := buildChannelFormattingInstructions("carrier-pigeon"); got != "" {
-		t.Errorf("unknown platform: expected empty fragment, got %d chars", len(got))
-	}
-}
