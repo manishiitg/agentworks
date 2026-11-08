@@ -123,7 +123,7 @@ Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumpti
      own, and the queue silently owns the sequence
    - a message queue that only restates steps the plan already orders, which is
      duplication that will drift the next time either side changes
-   - schedule cron/timezone that contradicts what `soul.md` or the plan claims
+   - schedule cron/timezone that contradicts what the Crew's instructions or the plan claim
      about cadence or the window the work is valid for
    - a schedule message that should invoke canonical work but bypasses
      `runs action=start`/`runs action=step`; use `validate_plan_change` when a repair

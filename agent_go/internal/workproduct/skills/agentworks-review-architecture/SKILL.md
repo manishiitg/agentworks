@@ -8,7 +8,7 @@ description: "Use when results stay weak or the plan keeps growing: is this the 
 This is the old Autopilot 'architecture review', now yours. Use it when results stay weak, the plan keeps growing without a matching gain, the person's intent changes, or on a monthly objective check. Size is a reason to look, not proof of a defect.
 
 ## Method
-1. Start from the goal (soul file), current company facts and the person's recorded decisions. Then real outputs, comparable results, cost and earlier lessons. Read only as much plan, config or logs as it takes to settle the question. Missing measurements limit your conclusion; they do not forbid considering a clearly better approach.
+1. Start from the goal (the Crew's instructions), current company facts and the person's recorded decisions. Then real outputs, comparable results, cost and earlier lessons. Read only as much plan, config or logs as it takes to settle the question. Missing measurements limit your conclusion; they do not forbid considering a clearly better approach.
 2. Ask: **what would I build today if this plan did not exist?** Then compare: keep it, remove unproductive work, combine steps, change the approach, or retire it.
 3. Use the design skills when needed: `plan-design`, `routing`, `schedules`, `step-config`, `step-description`, and `measurement-plan` guidance. For a model change, keep the person's explicit choices and compare real quality, cost and latency; run counts alone never justify a downgrade.
 

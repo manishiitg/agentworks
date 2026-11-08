@@ -20,7 +20,6 @@ func TestStepPlacementAcrossExecutionPaths(t *testing.T) {
 	c := newAgentClosingTestOrchestrator(t)
 	c.selectedRunFolder = "iteration-0/default"
 	files := map[string]string{
-		"soul/soul.md": "## Objective\nProduce trustworthy research.\n## Success Criteria\nAll evidence checked.\n## Constraints\nPRIVATE_CONSTRAINT_BODY",
 		"runs/iteration-0/default/logs/fetch/execution/execution-attempt-9-iteration-0.json": `{"execution_result":"Old attempt.\nSTATUS: FAILED","completed_at":"2026-10-13T16:00:00Z"}`,
 		"runs/iteration-0/default/logs/fetch/execution/execution-final-summary.json":         `{"status":"completed","execution_result":"Fetched evidence.\nSTATUS: COMPLETED","completed_at":"2026-10-13T17:00:00Z"}`,
 		"runs/iteration-0/default/logs/fetch/execution/execution-attempt-1-iteration-0.json": `{"execution_result":"Provider unavailable.\nSTATUS: FAILED","completed_at":"2026-10-13T18:00:00Z"}`,
@@ -68,12 +67,12 @@ func TestStepPlacementAcrossExecutionPaths(t *testing.T) {
 				vars = c.buildAgentTemplateVars(active, step, AgentItem{}, 1, "transform", "", nil, nil, AgentWriteAccess{})
 			}
 			block := vars["PlanPosition"]
-			for _, text := range []string{"Goal: Produce trustworthy research.", "Success: All evidence checked.", "step 2 of 3", "Before: Fetch evidence — FAILED; Provider unavailable.", "After: Report", "Output consumers: Report"} {
+			for _, text := range []string{"step 2 of 3", "Before: Fetch evidence — FAILED; Provider unavailable.", "After: Report", "Output consumers: Report"} {
 				if !strings.Contains(block, text) {
 					t.Fatalf("%s placement lacks %q: %s", path, text, block)
 				}
 			}
-			if strings.Contains(block, "PRIVATE_CONSTRAINT_BODY") || strings.Contains(block, "Fetched evidence") {
+			if strings.Contains(block, "Fetched evidence") {
 				t.Fatal("placement dumped Constraints or selected stale success")
 			}
 			if path == "child" && (!strings.Contains(block, "Parent: Research manager") || !strings.Contains(block, "Delegated task: Normalize")) {
@@ -94,7 +93,6 @@ func TestStepPlacementAcrossExecutionPaths(t *testing.T) {
 			delete(files, key)
 		}
 	}
-	files["soul/soul.md"] = "## Objective\n" + strings.Repeat("long objective ", 300) + "\n## Success Criteria\n" + strings.Repeat("long success ", 300)
 	block := c.buildStepPlacement(withStepParentPlacement(ctx, strings.Repeat("parent ", 300), strings.Repeat("task ", 300)), all, 1)
 	if len([]rune(block)) > 2100 || strings.Contains(block, "Before: Fetch evidence —") {
 		t.Fatal("size bound or missing evidence policy failed")

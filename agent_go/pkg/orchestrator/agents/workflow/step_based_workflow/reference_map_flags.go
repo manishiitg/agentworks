@@ -213,7 +213,7 @@ func referenceMapFingerprint(root string) string {
 		files++
 		fmt.Fprintf(h, "%s|%d|%d;", path, info.Size(), info.ModTime().UnixNano())
 	}
-	for _, rel := range []string{"workflow.json", "planning/plan.json", "planning/step_config.json", "evaluation/evaluation_plan.json", "soul/soul.md"} {
+	for _, rel := range []string{"workflow.json", "planning/plan.json", "planning/step_config.json", "evaluation/evaluation_plan.json"} {
 		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
 			add(rel, info)
 		}

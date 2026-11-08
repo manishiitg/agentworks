@@ -2886,7 +2886,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// a reviewer prompt just to establish whether prompt-contract bloat exists.
 		if err := mcpAgent.RegisterCustomTool(
 			"get_plan_prompt_health",
-			"Measure authored plan-description health without dumping the plan: per-step character counts, 5k/10k/20k thresholds, long verbatim duplicate paragraphs, and the PLAT-556 budget per step (size vs this plan's median with OVER budget above 3x the median, floor 12,000 chars; dated/incident text; 300+ characters repeated verbatim across steps; missing ## Goal/Inputs/Output/Rules/Done when/Guides sections). consolidation_due_steps are the steps that make Architecture (prompt_design) due. reference_map (PLAT-561) lists references that no longer resolve: dependencies no step produces or stages, step folders and retired step ids, missing workflow files and eval routes named by steps, evals, KB notes, soul.md and learnings guides. Budgets and breaks are reports, never gates: they never block a run or an edit.",
+			"Measure authored plan-description health without dumping the plan: per-step character counts, 5k/10k/20k thresholds, long verbatim duplicate paragraphs, and the PLAT-556 budget per step (size vs this plan's median with OVER budget above 3x the median, floor 12,000 chars; dated/incident text; 300+ characters repeated verbatim across steps; missing ## Goal/Inputs/Output/Rules/Done when/Guides sections). consolidation_due_steps are the steps that make Architecture (prompt_design) due. reference_map (PLAT-561) lists references that no longer resolve: dependencies no step produces or stages, step folders and retired step ids, missing workflow files and eval routes named by steps, evals, KB notes and learnings guides. Budgets and breaks are reports, never gates: they never block a run or an edit.",
 			map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -5961,8 +5961,6 @@ For shell commands, use absolute workspace paths: `+"`{{.AbsWorkspacePath}}/...`
 Read the workflow's source artifacts yourself before forming findings. The Go
 controller deliberately does not paste or summarize them into this prompt:
 
-- read `+"`soul/soul.md`"+` for the objective and success criteria; report them as
-  missing only after checking the file
 - read `+"`workflow.json`"+` for workflow-selected skills and capability settings
 - inspect `+"`planning/plan.json`"+` with targeted `+"`jq`"+` queries, one relevant
   step/route/field set at a time; do not dump the full plan into the conversation
@@ -6077,8 +6075,6 @@ This is a **read-only review**:
 ## CONTEXT
 
 - **Workspace**: {{.WorkspacePath}}
-{{if .WorkflowObjective}}- **Workflow Objective**: {{.WorkflowObjective}}{{else}}- **Workflow Objective**: ⚠️ NOT SET — treat missing objective as a top-level finding{{end}}
-{{if .WorkflowSuccessCriteria}}- **Success Criteria**: {{.WorkflowSuccessCriteria}}{{else}}- **Success Criteria**: ⚠️ NOT SET — treat missing success criteria as a top-level finding{{end}}
 {{if .TargetRunFolder}}- **Target Run Folder**: {{.TargetRunFolder}}{{else}}- **Target Run Folder**: not preset — find the latest meaningful run evidence before judging speed{{end}}
 
 ## PATH DISCIPLINE
@@ -6198,8 +6194,6 @@ This is a **read-only review**:
 ## CONTEXT
 
 - **Workspace**: {{.WorkspacePath}}
-{{if .WorkflowObjective}}- **Workflow Objective**: {{.WorkflowObjective}}{{else}}- **Workflow Objective**: ⚠️ NOT SET — treat missing objective as a top-level finding{{end}}
-{{if .WorkflowSuccessCriteria}}- **Success Criteria**: {{.WorkflowSuccessCriteria}}{{else}}- **Success Criteria**: ⚠️ NOT SET — treat missing success criteria as a top-level finding{{end}}
 {{if .TargetRunFolder}}- **Target Run Folder**: {{.TargetRunFolder}}{{else}}- **Target Run Folder**: not preset — find the latest meaningful cost/run evidence before judging cost{{end}}
 
 ## PATH DISCIPLINE
@@ -6365,7 +6359,6 @@ agent_browser(command='click', args=['.form > div:nth-child(3)'], session='main'
 ## CONTEXT
 
 - **Workspace**: {{.WorkspacePath}}
-{{if .WorkflowObjective}}- **Workflow Objective**: {{.WorkflowObjective}}{{end}}
 
 ## PATH DISCIPLINE
 
@@ -6601,8 +6594,6 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowTimingAgent(ctx context.
 		stepConfigSummary = sb.String()
 	}
 
-	workflowObjective, workflowSuccessCriteria := iwm.controller.ResolveWorkflowObjective(ctx)
-
 	readPaths := []string{
 		workspacePath,
 		fmt.Sprintf("%s/runs", workspacePath),
@@ -6639,19 +6630,17 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowTimingAgent(ctx context.
 	}
 
 	templateVars := map[string]string{
-		"WorkspacePath":           workspacePath,
-		"AbsWorkspacePath":        absPromptWorkspacePath(workspacePath),
-		"TargetRunFolder":         targetRunFolder,
-		"PlanJSON":                planJSON,
-		"StepConfigSummary":       stepConfigSummary,
-		"WorkflowObjective":       workflowObjective,
-		"WorkflowSuccessCriteria": workflowSuccessCriteria,
-		"Focus":                   focus,
-		"SessionID":               iwm.sessionID,
-		"WorkflowID":              iwm.workflowID,
+		"WorkspacePath":     workspacePath,
+		"AbsWorkspacePath":  absPromptWorkspacePath(workspacePath),
+		"TargetRunFolder":   targetRunFolder,
+		"PlanJSON":          planJSON,
+		"StepConfigSummary": stepConfigSummary,
+		"Focus":             focus,
+		"SessionID":         iwm.sessionID,
+		"WorkflowID":        iwm.workflowID,
 	}
 
-	logger.Info(fmt.Sprintf("⏱️ Running review_workflow_timing agent (target_run_folder: %q, objective: %q, success_criteria: %q, focus: %q)", targetRunFolder, workflowObjective, workflowSuccessCriteria, focus))
+	logger.Info(fmt.Sprintf("⏱️ Running review_workflow_timing agent (target_run_folder: %q, focus: %q)", targetRunFolder, focus))
 	result, _, err := agent.Execute(ctx, templateVars, nil)
 	if err != nil {
 		return "", fmt.Errorf("review_workflow_timing agent failed: %w", err)
@@ -6686,8 +6675,6 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowCostsAgent(ctx context.C
 		}
 		stepConfigSummary = sb.String()
 	}
-
-	workflowObjective, workflowSuccessCriteria := iwm.controller.ResolveWorkflowObjective(ctx)
 
 	readPaths := []string{
 		workspacePath,
@@ -6729,19 +6716,17 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowCostsAgent(ctx context.C
 	}
 
 	templateVars := map[string]string{
-		"WorkspacePath":           workspacePath,
-		"AbsWorkspacePath":        absPromptWorkspacePath(workspacePath),
-		"TargetRunFolder":         targetRunFolder,
-		"PlanJSON":                planJSON,
-		"StepConfigSummary":       stepConfigSummary,
-		"WorkflowObjective":       workflowObjective,
-		"WorkflowSuccessCriteria": workflowSuccessCriteria,
-		"Focus":                   focus,
-		"SessionID":               iwm.sessionID,
-		"WorkflowID":              iwm.workflowID,
+		"WorkspacePath":     workspacePath,
+		"AbsWorkspacePath":  absPromptWorkspacePath(workspacePath),
+		"TargetRunFolder":   targetRunFolder,
+		"PlanJSON":          planJSON,
+		"StepConfigSummary": stepConfigSummary,
+		"Focus":             focus,
+		"SessionID":         iwm.sessionID,
+		"WorkflowID":        iwm.workflowID,
 	}
 
-	logger.Info(fmt.Sprintf("💸 Running review_workflow_costs agent (target_run_folder: %q, objective: %q, success_criteria: %q, focus: %q)", targetRunFolder, workflowObjective, workflowSuccessCriteria, focus))
+	logger.Info(fmt.Sprintf("💸 Running review_workflow_costs agent (target_run_folder: %q, focus: %q)", targetRunFolder, focus))
 	result, _, err := agent.Execute(ctx, templateVars, nil)
 	if err != nil {
 		return "", fmt.Errorf("review_workflow_costs agent failed: %w", err)
@@ -6761,8 +6746,6 @@ func (iwm *InteractiveWorkshopManager) runReviewStepCodeAgent(ctx context.Contex
 	if plan == nil {
 		return "", fmt.Errorf("no approved plan found")
 	}
-
-	workflowObjective, _ := iwm.controller.ResolveWorkflowObjective(ctx)
 
 	// Collect saved code to review — either a specific step/scoring agent or all
 	// saved main.py scripts across workflow, evaluation, and scoring code.
@@ -6888,11 +6871,10 @@ func (iwm *InteractiveWorkshopManager) runReviewStepCodeAgent(ctx context.Contex
 	}
 
 	templateVars := map[string]string{
-		"WorkspacePath":     workspacePath,
-		"AbsWorkspacePath":  absPromptWorkspacePath(workspacePath),
-		"WorkflowObjective": workflowObjective,
-		"StepsToReview":     stepsToReview.String(),
-		"Focus":             focus,
+		"WorkspacePath":    workspacePath,
+		"AbsWorkspacePath": absPromptWorkspacePath(workspacePath),
+		"StepsToReview":    stepsToReview.String(),
+		"Focus":            focus,
 		// Browser-authoring rules slot is populated inside the agent's Execute
 		// method via BrowserAuthoringRulesFromTemplateVars; without this flag
 		// the review agent is blind to the durable-selector contract it's

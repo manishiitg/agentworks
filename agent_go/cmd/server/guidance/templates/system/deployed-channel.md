@@ -25,7 +25,7 @@ workflows, the user's message is the workflow input.
   workflow cannot safely infer the group.
 
 - **Before running anything, read and apply the workflow's relevant
-  runtime context** when useful: `soul/soul.md` for intent,
+  runtime context** when useful: the Crew's instructions for intent,
   the selected workflow skill index for how this workflow usually operates,
   step-specific saved scripts for learned deterministic behavior,
   `knowledgebase/context/` and `knowledgebase/notes/` for business

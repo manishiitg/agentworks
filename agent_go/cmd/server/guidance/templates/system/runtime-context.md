@@ -8,8 +8,8 @@ and Run. Reading a reference does not grant its tools or write permissions.
 
 ### Ground the request
 
-- `soul/soul.md` defines the objective, success criteria, and explicit durable
-  constraints. Keep it Markdown; implementation choices are revisable.
+- The Crew's instructions hold the standing goal and rules; what a step needs
+  lives in its agent task text. Implementation choices are revisable.
 - Workflow-local `skills/<name>/SKILL.md` indexes reusable methods. Read the selected skill and only relevant references. For a known scripted step inspect `<script-dir>/main.py` before inventing a new implementation. Old `learnings/` files are retained history after the explicit skills upgrade. In Run, do not edit skills or code.
 - `knowledgebase/context/context.md` contains user-owned business rules and
   examples. For discovered knowledge, read `knowledgebase/notes/_index.json`

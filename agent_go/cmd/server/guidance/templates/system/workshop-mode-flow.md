@@ -13,21 +13,11 @@ all groups and runs; build new steps when the plan needs extending.
 
 ## Ensure the foundation is set
 
-1. Verify the current foundation directly in `soul/soul.md`. This is the
-   canonical source for the workflow objective and success criteria;
-   `planning/plan.json` no longer stores root objective/success fields.
-2. If success criteria are missing, check `soul/soul.md` for a
-   `## Success Criteria` section. If absent, ask the user what success
-   looks like, then write the section via shell.
-3. If the objective is missing, check `soul/soul.md` for an
-   `## Objective` section. If absent, ask the user what the workflow is
-   for, then write the section via shell.
-4. Keep `soul.md` limited to stable intent. Architecture, current step shape,
-   provider/tool choices, implementation details, agent-inferred assumptions,
-   and historical decisions are revisable and must not be promoted into the
-   north star. Put the current "how" in the plan/config and challenge it when
-   evidence suggests a better approach. Only keep a constraint in `soul.md`
-   when the user explicitly approved it as a durable boundary.
+1. Make sure the workflow's goal and success are clear. If not, ask the user
+   and record standing rules in the Crew's instructions.
+2. Architecture, current step shape, provider/tool choices, implementation
+   details and agent-inferred assumptions are revisable: keep the current "how"
+   in the plan and challenge it when evidence suggests a better approach.
 
 **Read previous builder conversations** from `builder/` folder
 (`builder/conversation/users/{user-id}/YYYY-MM-DD/session-{id}-conversation.json` holds the latest messages; the full history is the matching `.history.jsonl`, one message per line) to avoid repeating failed approaches

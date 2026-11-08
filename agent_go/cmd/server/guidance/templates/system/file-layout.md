@@ -22,11 +22,10 @@ All paths below are relative to the workspace root (prepend the absolute root wh
 | planning/plan.json | Workflow plan — step definitions, descriptions, validation schemas |
 | planning/step_config.json | Step-level config overrides (LLM, execution mode, learnings, etc.) |
 | variables/variables.json | Runtime variables and groups |
-| soul/soul.md | Stable workflow intent only: objective, success criteria, and optional explicit user-approved constraints. Never store notification preferences, architecture, implementation choices, or agent-inferred assumptions here; notifications belong in `workflow.json`. |
 
 ### Step file access
 
-A workflow step can read throughout its workflow folder, including other runs, saved code and shared helpers. Writes belong in the current run and the shared `db/assets`, reports and `tool_output_folder` areas. Past runs, planning, workflow/settings files, variables, functions and soul remain protected. `code/` changes belong to Builder and AgentWorks: a Builder-started execution may repair unlocked code when allowed; MCP, scheduled, webhook, function, Watcher and Run executions do not gain code-write access. Knowledge base, learnings and database writes keep the step's own access setting. Product-disabled paths, raw database files and private chat paths keep their existing guards. These rules describe the step runtime; external file tools still enforce the current caller's connection and path permissions.
+A workflow step can read throughout its workflow folder, including other runs, saved code and shared helpers. Writes belong in the current run and the shared `db/assets`, reports and `tool_output_folder` areas. Past runs, planning, workflow/settings files, variables and functions remain protected. `code/` changes belong to Builder and AgentWorks: a Builder-started execution may repair unlocked code when allowed; MCP, scheduled, webhook, function, Watcher and Run executions do not gain code-write access. Knowledge base, learnings and database writes keep the step's own access setting. Product-disabled paths, raw database files and private chat paths keep their existing guards. These rules describe the step runtime; external file tools still enforce the current caller's connection and path permissions.
 
 ### Execution Outputs (per run, per group)
 | Path | Contents |

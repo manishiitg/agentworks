@@ -64,8 +64,8 @@ runtime; a dashboard edit does not authorize plan or execution changes.
 - `renderTable(target, { query, searchable, sortable })` and
   `renderActivity(target, { limit })` are optional composition helpers.
   Custom rendering can use the same underlying data.
-- Activity data already exists in `org_dashboard_notifications` from
-  `record_summary(kind="run_summary")`. No new step or collector is needed.
+- Activity data already exists in `org_dashboard_notifications`: every run's
+  outcome is recorded there. No new step or collector is needed.
   For route-specific activity, use `(routing_step_id, route_id)` from
   `route_summaries_json`, preserve timestamps, and display the recorded label.
   Missing route scope is unknown. Inspect the schema before querying additive

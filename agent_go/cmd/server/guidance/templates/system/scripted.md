@@ -65,7 +65,7 @@ for the exact item schema, permissions, parallelism, Stop behavior, and limits.
   fix the script with `execute_step`. Prefer **db checks** when the step writes its results to the db: they gate on
   the source of truth, so you don't need a hand-written output file just to validate (a
   duplicated summary file drifts from the db — e.g. a `status` that ends up null).
-- Stores: reads soul / db / knowledgebase / learnings per access; writes its own step
+- Stores: reads db / knowledgebase / learnings per access; writes its own step
   folder + `db/`, plus knowledgebase notes / learnings when access is read-write
   (learnings writes happen in a dedicated post-step turn — see `read_skill(skills=[{"name":"builder-reference","path":"references/stores.md"}])`).
 

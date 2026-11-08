@@ -131,7 +131,7 @@ func cleanWorkflowReference(raw string) string {
 	if clean == "db/README.md" {
 		return clean
 	}
-	for _, root := range []string{"skills/", "learnings/", "knowledgebase/", "code/shared/", "soul/"} {
+	for _, root := range []string{"skills/", "learnings/", "knowledgebase/", "code/shared/"} {
 		if strings.HasPrefix(clean, root) && len(clean) > len(root) {
 			return clean
 		}

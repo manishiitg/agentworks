@@ -52,7 +52,7 @@ see:
    window).
 
 Use `add_step(type="branch", step={..., route_source:"human", ...})` for a
-planned fixed choice. Agents collect urgent free-form input with `needs_you action=ask`;
+planned fixed choice. Runs never wait for a person;
 known inputs arrive through run variables or per-step instructions.
 
 ### When to use branch
@@ -152,7 +152,7 @@ each option a `next_step_id` pointing to the shared downstream step, or
   fixed alternative.
 - **Branch vs. plain agent**: a plain sequence is one ordered
   conversation; add routes only for adaptive delegation.
-- **Known human choices**: use `route_selections` instead of asking again. Agents use `needs_you action=ask` for urgent missing values.
+- **Known human choices**: use `route_selections` instead of asking again. A missing value fails the run with a clear reason.
 ### Anti-patterns
 
 - Branch with only one route, or with a generic catch-all route that should

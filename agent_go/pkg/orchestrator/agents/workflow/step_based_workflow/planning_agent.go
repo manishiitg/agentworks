@@ -5373,7 +5373,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"create_plan",
-		"Initialize an empty planning/plan.json for a new workflow. Call this FIRST when the workflow has no plan.json yet, before using add_scripted_step / add_agent_step / add_routing_step to populate it. Refuses to overwrite an existing plan.json. Takes no arguments. Note: workflow objective lives in soul/soul.md — edit that file separately; plan.json no longer stores it.",
+		"Initialize an empty planning/plan.json for a new workflow. Call this FIRST when the workflow has no plan.json yet, before using add_scripted_step / add_agent_step / add_routing_step to populate it. Refuses to overwrite an existing plan.json. Takes no arguments.",
 		createPlanParams,
 		createCreatePlanExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -5762,7 +5762,6 @@ func createValidatePlanChangeExecutor(
 			"db/reports/index.html",
 			"db/README.md",
 			"workflow.json",
-			"soul/soul.md",
 			"learnings/_global/SKILL.md",
 			"knowledgebase/_index.json",
 		}

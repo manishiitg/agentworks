@@ -54,28 +54,11 @@ func getDBPath(workspaceRoot string) string {
 	return fmt.Sprintf("%s/%s", workspaceRoot, DBFolderName)
 }
 
-// SoulFolderName is the name of the builder's long-term memory folder at workspace root.
-// Contains soul.md — a free-form markdown file maintained by the workflow interactive builder
-// across sessions.
-//
-// WRITE is builder-only: soul/ never appears in an execution step's write paths, so a
-// constraint has exactly one author. READ is granted to every execution step
-// unconditionally (see setupExecutionFolderGuard, which puts soul/ in readPaths alongside
-// execution/ and builder/), and `## Objective` / `## Success Criteria` / `## Constraints`
-// are extracted and injected into agent prompts — see soul_helpers.go. An earlier version
-// of this comment claimed soul/ was "not read by execution, learning, or KB
-// agents"; that was never true of the folder guard and is not true of prompt injection.
-//
-// Kept outside planning/ because planning/ is read-only to the builder (modifications go
-// through typed plan-mod tools); soul.md is updated by shell write directly.
-// See docs/workflow/persistent_stores_design.md section 8.
-const SoulFolderName = "soul"
-
 // Standard workflow subfolder names. Kept as constants so every site that needs to
 // reference them (folder-guard allow-lists, prompt paths, pre-creation scaffolds)
 // goes through a single source. When adding a new workflow subfolder, update the
 // constant AND WorkflowWritableSubfolders below — skipping either half is what
-// produced the reports/ + db/ + soul/ drift bug previously.
+// produced the reports/ + db/ drift bug previously.
 const (
 	ReportsFolderName   = "reports"
 	PlanningFolderName  = "planning"
@@ -100,30 +83,11 @@ const (
 var WorkflowWritableSubfolders = []string{
 	KnowledgebaseFolderName + "/",
 	DBFolderName + "/",
-	SoulFolderName + "/",
 	ReportsFolderName + "/",
 	ExecutionFolderName + "/",
 	LearningsFolderName + "/",
 	ScriptsFolderName + "/",
 	RunsFolderName + "/",
-}
-
-// SoulFileName is the fixed markdown filename inside soul/.
-const SoulFileName = "soul.md"
-
-// getSoulPath returns the full path to the soul folder.
-// Path format: {workspaceRoot}/soul/
-//
-//nolint:unused // reserved for the upcoming soul-store read/write helpers.
-func getSoulPath(workspaceRoot string) string {
-	return fmt.Sprintf("%s/%s", workspaceRoot, SoulFolderName)
-}
-
-// getSoulFilePath returns the full path to soul/soul.md.
-//
-//nolint:unused // reserved for the upcoming soul-store read/write helpers.
-func getSoulFilePath(workspaceRoot string) string {
-	return fmt.Sprintf("%s/%s/%s", workspaceRoot, SoulFolderName, SoulFileName)
 }
 
 // Knowledgebase access modes — see docs/workflow/persistent_stores_design.md section 3.

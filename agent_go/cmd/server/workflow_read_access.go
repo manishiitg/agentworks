@@ -196,7 +196,6 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	read("/workflow/logs", api.handleGetExecutionLogs)
 	read("/workflow/review-data", api.handleGetWorkflowReviewData)
 	read("/workflow/builder-doc", api.handleGetBuilderDoc)
-	read("/workflow/framework-health", api.handleGetFrameworkHealth)
 	read("/workflow/notifications", api.handleGetWorkflowNotifications)
 	read("/workflow/active-executions", api.handleGetActiveExecutions)
 	apiRouter.HandleFunc("/workflow/costs", requireWorkflowReadAccessCallerRelative(api.handleGetCosts)).Methods("GET", "OPTIONS")

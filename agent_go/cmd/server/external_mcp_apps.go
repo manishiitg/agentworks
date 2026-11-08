@@ -138,7 +138,7 @@ func (api *StreamingAPI) readDashboardAppData(r *http.Request, args map[string]a
 	case "file":
 		p := externalArg(args, "path")
 		// Bundle-relative files refer to this immutable publication, never a draft.
-		if p != "" && p != "MEMORY.md" && p != "soul.md" && p != "workflow.json" && !strings.HasPrefix(p, "db/") && !strings.HasPrefix(p, "knowledgebase/") && !strings.HasPrefix(p, "docs/") {
+		if p != "" && p != "MEMORY.md" && p != "workflow.json" && !strings.HasPrefix(p, "db/") && !strings.HasPrefix(p, "knowledgebase/") && !strings.HasPrefix(p, "docs/") {
 			p = path.Dir(dashboards.Document(resolved.Document.ID, resolved.Document.Published)) + "/" + p
 		}
 		query := url.Values{"workspace": {resolved.Target.Root}, "path": {p}}

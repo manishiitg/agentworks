@@ -157,7 +157,7 @@ quoting is the bug, not the logic — move the text out of the code.
 - **JSON** — for structured data consumed by downstream steps or db writes. Always use JSON for `context_output` files other steps read.
 - **Markdown (`.md`) — the default for human-readable output**: reports, analyses, summaries. It renders richly in the file viewer (headings, tables, lists), gets clickable workspace file links that HTML doesn't, and is simpler and more robust to author than self-contained HTML.
 - **HTML** — only when you genuinely need a rich/branded layout markdown cannot express. For an actual dashboard, use workflow-owned documents under `db/reports/` with `window.report`; `index.html` is the default and optional `views.json` controls only toolbar metadata.
-- Do NOT make HTML copies of Markdown stores (`soul.md`, learnings, KB) — those stay Markdown and are read as Markdown.
+- Do NOT make HTML copies of Markdown stores (learnings, KB) — those stay Markdown and are read as Markdown.
 
 Before writing a `.html` output file, call `read_skill(skills=[{"name":"builder-reference","path":"references/html-output.md"}])` — it has the full layout baseline, dark-mode styles, inline chart pattern, and quality checklist.
 

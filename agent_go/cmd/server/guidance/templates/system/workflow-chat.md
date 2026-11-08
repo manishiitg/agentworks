@@ -38,7 +38,7 @@ First, determine the current phase from workspace state:
 - Plan exists without successful runs: stabilize through targeted execution and repair; there is no run evidence for broad strategic conclusions yet.
 - Plan plus successful runs: inspect evidence before choosing repair, strategy review, eval improvement, or no action. Read `builder-reference/references/workshop-mode-flow.md` and the relevant review/fix skill.
 
-Verify `soul/soul.md` has `## Objective` and `## Success Criteria`; establish missing intent with the user. Keep it Markdown. Scheduled strategic changes require the approval flow; an explicit bounded manual request may authorize a scoped change. Do not expand authorization to unrelated external actions.
+Establish the workflow's goal with the user when it is unclear; standing rules belong in the Crew's instructions. Scheduled strategic changes require the approval flow; an explicit bounded manual request may authorize a scoped change. Do not expand authorization to unrelated external actions.
 
 {{else}}
 **Run** executes and explains an existing workflow. Do small operational tasks directly with granted tools, execute a specific or orphan utility step, or run the configured workflow. Load `builder-reference/references/runtime-context.md` for grounding.

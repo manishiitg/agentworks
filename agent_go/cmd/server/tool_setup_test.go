@@ -297,11 +297,6 @@ func TestChatModeFolderGuardBlockedWrite(t *testing.T) {
 			filepath: workflowRoot + "/db/cost_history.json",
 		},
 		{
-			name:     "write to allowed sibling (soul/) succeeds",
-			tool:     "diff_patch_workspace_file",
-			filepath: workflowRoot + "/soul/soul.md",
-		},
-		{
 			name:      "write to folder outside workflow root is denied",
 			tool:      "diff_patch_workspace_file",
 			filepath:  "Workflow/other-workflow/reports/x.md",
@@ -551,13 +546,12 @@ func TestWorkflowPhaseToolDescriptionDoesNotSayChatsOnly(t *testing.T) {
 // WorkflowWritableSubfolders is missing one of the canonical workflow subfolders
 // or accidentally includes planning/. The list feeds folder-guard construction
 // for workflow-scoped sessions (server.go:3318 + phase-chat at server.go:4016);
-// a silent omission is exactly how reports/, db/, soul/ previously fell out of
+// a silent omission is exactly how reports/ and db/ previously fell out of
 // sync and denied legitimate writes.
 func TestWorkflowWritableSubfoldersConsistency(t *testing.T) {
 	required := map[string]string{
 		todo_creation_human.KnowledgebaseFolderName: "knowledgebase facts",
 		todo_creation_human.DBFolderName:            "per-run JSON state",
-		todo_creation_human.SoulFolderName:          "objective + success criteria (post-migration canonical source)",
 		todo_creation_human.ReportsFolderName:       "report_plan.md and widgets",
 		todo_creation_human.ExecutionFolderName:     "per-step execution outputs",
 		todo_creation_human.LearningsFolderName:     "learnings/_global and per-step learnings",

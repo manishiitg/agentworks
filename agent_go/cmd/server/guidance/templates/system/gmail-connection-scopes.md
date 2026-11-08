@@ -87,7 +87,7 @@ Call `integrations action=google_grants`:
 - `allow_read_access` — omit to leave Gmail read access unchanged.
 - `allow_agent_write_access` — permit agents to create drafts and send/reply.
   It is off by default and requests `gmail.compose`; omit it to leave the
-  setting unchanged. Notification delivery through `messages action=record_summary` and `messages action=email_send` is separate.
+  setting unchanged. Sending through `messages action=email_send` is separate.
 - `services` — the **complete replacement list** of Workspace services this
   connection should be authorized for. Omit entirely to leave services
   unchanged. Pass `[]` to strip every service grant back to Gmail-only.

@@ -55,7 +55,7 @@ func TestExternalWorkflowCreationThroughMCP(t *testing.T) {
 	if err := requireCurrentWorkflowContractForManualRun(ctx, "Workflow/kb-reader"); err != nil {
 		t.Fatalf("fresh workflow cannot execute: %v", err)
 	}
-	for _, path := range []string{"planning/plan.json", "soul/soul.md", "db/.gitkeep", "db/reports/.gitkeep"} {
+	for _, path := range []string{"planning/plan.json", "db/.gitkeep", "db/reports/.gitkeep"} {
 		if _, found, err := readFileFromWorkspace(ctx, "Workflow/kb-reader/"+path); err != nil || !found {
 			t.Fatalf("shared creator scaffold %s missing: %v", path, err)
 		}
