@@ -155,7 +155,7 @@ import {
   workflowTabsNeedingHydration,
 } from '../../utils/workflowTabHydration'
 import { isVisibleActivitySession } from '../../utils/activitySessions'
-import { isWorkspacePaneView } from './workspaceViews'
+import { isWorkspacePaneView, resolveWorkspaceView } from './workspaceViews'
 import { WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT } from './workflowContractUpgradeEvents'
 import { ensureWorkflowComposerTab } from '../../utils/workflowSessionRestore'
 // Inactive workflow tabs hydrate lazily and fall back to workflow-scoped chat history.
@@ -621,7 +621,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   const restoredPresetId = useWorkflowStore(state => state._currentPresetId)
   const setWorkflowWorkspaceView = useWorkflowStore(state => state.setWorkflowWorkspaceView)
   const lastCanvasView = useWorkflowStore(state => state.lastCanvasView)
-  const dashboardView = (workflowWorkspaceView ?? lastCanvasView) === 'report'
   const minimizeWorkflow = useRunningWorkflowsStore(state => state.minimizeWorkflow)
   const showRunningDrawer = useShowRunningDrawer()
 
@@ -817,6 +816,8 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   const workflowManifests = useWorkflowManifestStore(state => state.workflows)
   const activeWorkflowManifest = workflowManifests.find(workflow => workflow.manifest.id === activePresetId || workflow.workspace_path === activeWorkflowPreset?.selectedFolder?.filepath)?.manifest
   const relayMode = activeWorkflowManifest?.kind === 'relay' || isRelaySurface
+  const effectiveWorkspaceView = resolveWorkspaceView(workflowWorkspaceView ?? lastCanvasView, relayMode && activeWorkflowManifest?.relay_runtime === 'python')
+  const dashboardView = effectiveWorkspaceView === 'report'
   const activeWorkflowWorkspacePath = resolveWorkflowHistoryPath(
     activePresetId,
     workflowManifests,
@@ -1020,8 +1021,8 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     reportPreviewPreference: dashboardView ? reportPreviewPreference : 'desktop',
     laptopPreview: dashboardView && reportPreviewPreference === 'desktop',
     workspaceSplitRatio: dashboardView ? workspaceSplitRatio : 0.5,
-    isWorkspaceViewActive: isWorkspacePaneView(workflowWorkspaceView),
-    compactContext: workflowWorkspaceView === 'context',
+    isWorkspaceViewActive: isWorkspacePaneView(effectiveWorkspaceView),
+    compactContext: effectiveWorkspaceView === 'context',
   })
   const workspacePaneVisible = layout.workspacePaneVisible
   const previousPanelLocation = useRef<string | null>(null)

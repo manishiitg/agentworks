@@ -23,7 +23,7 @@ import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestSto
 import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
 import { agentApi, workspaceApi } from '../../../services/api'
 import type { ExecutionOptions } from '../../../services/api-types'
-import { assertNeverView, getWorkspaceView, isInspectorView, type InspectorViewId, type WorkspaceViewId, type WorkspaceViewKind } from '../workspaceViews'
+import { assertNeverView, getWorkspaceView, isInspectorView, resolveWorkspaceView, type InspectorViewId, type WorkspaceViewId, type WorkspaceViewKind } from '../workspaceViews'
 import { WorkspaceViewDataContext, useWorkspaceViewData, type WorkspaceViewData } from './workspaceViewData'
 import { WORKFLOW_REPORT_EXPORT_EVENT, usePreviewDevice } from './reportPreview'
 import type { WorkflowCanvasProps } from './workspaceViewTypes'
@@ -235,7 +235,7 @@ export const WorkspaceViewHost = React.memo((props: WorkflowCanvasProps) => {
 
   // The graph destination belongs only to the Python Relay source view.
   const selectedView = scope?.view ?? workflowWorkspaceView ?? lastCanvasView
-  const effectiveView: WorkspaceViewId = selectedView === 'flow' && !pythonRelay ? 'report' : selectedView
+  const effectiveView: WorkspaceViewId = resolveWorkspaceView(selectedView, pythonRelay)
   const canWrite = useCanWriteWorkflow(workspacePath)
   const kind: WorkspaceViewKind = getWorkspaceView(effectiveView).kind
 
