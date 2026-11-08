@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -27,6 +28,11 @@ func localDeviceTestServer(t *testing.T) (*StreamingAPI, *httptest.Server, *acce
 	f.write(t, "Crew/local-test/workflow.json", `{"capabilities":{}}`)
 	registry := withProjectOwnerRegistry(t)
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "local-test", ProjectID: "local-test", OwnerID: "owner", CanonicalRoot: "Crew/local-test"}); err != nil {
+		t.Fatal(err)
+	}
+	// Real creation also makes the Crew's private-record folder (df0a2e472); the workspace refuses a Crew without it.
+	private, _ := crewroot.PrivateRoot(f.docs, "local-test")
+	if err := os.MkdirAll(private, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	store, err := openAccessTokens()
@@ -285,7 +291,8 @@ func TestLocalDeviceConnectionExplainsRejection(t *testing.T) {
 		name, token, code, message string
 		status                     int
 	}{
-		{"sign_in", "invalid-test-token", "executor_connection_failed", "sign-in could not be verified", 401},
+		// An invalid sign-in is refused by the owner check that precedes the socket (Oct 23 CLI refresh), in the server's own words.
+		{"sign_in", "invalid-test-token", "http_error", "Invalid or expired token", 401},
 		{"consent", unscoped, "insufficient_scope", "permission to share local folders", 403},
 		{"handshake", token, "invalid_executor_handshake", "local folder connection could not be verified", 409},
 	} {

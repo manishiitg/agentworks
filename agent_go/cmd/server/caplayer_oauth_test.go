@@ -16,13 +16,27 @@ import (
 	oauth2 "golang.org/x/oauth2"
 )
 
+// The broker serves a live Vault connection's sign-in only (the shared platform identity was retired, 6f8a64143f):
+// its refresh is serialized, and a deleted credential stops being served.
 func TestCapLayerOAuthReusesRefreshAndObservesRevocation(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("AUTH_SECRET", strings.Repeat("k", 32))
 	secret := strings.Repeat("s", 32)
-	t.Setenv("CAPLAYER_SERVICE_URL", "http://127.0.0.1:18163")
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", secret)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	oauth.SetTokenSealer(platformClientSealer{})
+	defer oauth.SetTokenSealer(nil)
+	const id = "c-aaaaaaaa"
+	vaultService := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+secret || r.URL.Path != "/api/admin/connectors/"+id {
+			w.WriteHeader(404)
+			return
+		}
+		json.NewEncoder(w).Encode(vaultOAuthConnection{ID: id, OAuthServer: "Test", OAuthCredentialID: id, UpstreamURL: "https://example.com/mcp", Label: id, Status: "active"})
+	}))
+	defer vaultService.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", vaultService.URL)
 	refreshes := 0
 	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
@@ -35,20 +49,27 @@ func TestCapLayerOAuthReusesRefreshAndObservesRevocation(t *testing.T) {
 	}))
 	defer issuer.Close()
 	path := filepath.Join(t.TempDir(), "mcp.json")
-	tokenPath := filepath.Join(t.TempDir(), "token.json")
+	setup := &oauth.OAuthConfig{ClientID: "app", AuthURL: "https://example.com/authorize", TokenURL: issuer.URL}
 	cfg := &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{
-		"Test": {URL: "https://example.com/mcp", OAuth: &oauth.OAuthConfig{ClientID: "app", TokenURL: issuer.URL, TokenFile: tokenPath}},
+		"Test": {URL: "https://example.com/mcp", OAuth: setup},
 	}}
 	if err := mcpclient.SaveConfig(path, cfg); err != nil {
 		t.Fatal(err)
 	}
-	tokens := oauth.NewTokenStore(tokenPath)
+	savedSetup, err := json.Marshal(setup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := oauth.WriteTokenFile(vaultCredentialConfigPath(id), savedSetup); err != nil {
+		t.Fatal(err)
+	}
+	tokens := oauth.NewTokenStore(getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id)))
 	if err := tokens.Save(&oauth2.Token{AccessToken: "expired", RefreshToken: "refresh", Expiry: time.Now().Add(-time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{mcpConfigPath: path, logger: loggerv2.NewNoop()}
 	request := func(auth, origin, resource string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest("POST", "/internal/caplayer/oauth-token", strings.NewReader(`{"server_name":"Test","url":"`+resource+`"}`))
+		req := httptest.NewRequest("POST", "/internal/caplayer/oauth-token", strings.NewReader(`{"server_name":"Test","url":"`+resource+`","connection_id":"`+id+`"}`))
 		req.Header.Set("Authorization", "Bearer "+auth)
 		req.Header.Set("Origin", origin)
 		rec := httptest.NewRecorder()

@@ -150,7 +150,7 @@ func TestExternalRunToolsThroughMCPBridge(t *testing.T) {
 	for _, name := range []string{"execute_step", "run_full_workflow"} {
 		want := "step_id must be a non-empty string"
 		if name == "run_full_workflow" {
-			want = "group_name is required"
+			want = "group_name is retired" // the executor refuses the retired argument, so the call reached it
 		}
 		if content, _ := via(name, map[string]any{"step_id": "", "group_name": ""}); !strings.Contains(content, want) {
 			t.Fatalf("%s did not reach its registered executor through call_tool: %s", name, content)

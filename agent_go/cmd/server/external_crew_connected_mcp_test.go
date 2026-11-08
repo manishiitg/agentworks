@@ -28,7 +28,7 @@ func TestExternalCrewConnectedMCP(t *testing.T) {
 	t.Setenv("AUTH_SECRET", "crew-connected-mcp-test-signing-secret")
 	withMCPConnectionsRoot(t)
 	f, _ := newExternalCrewCommandFixture(t)
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_one"]}}`)
+	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_one"],"chosen_vault_apps_only":true}}`)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	credential := strings.Repeat("s", 32)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", credential)

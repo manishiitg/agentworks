@@ -229,7 +229,6 @@ chat:
       # Shared platform and interactive function tools, previously measured
       # outside this declaration by the Goals shadow gate. Admission now
       # happens here before agent construction; executor authority still applies.
-      - apply_workflow_db_migration
       - ask_function_update
       - project_functions_call
       - create_project

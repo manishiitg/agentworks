@@ -105,7 +105,6 @@ chat:
       - preview_report
       - query_workflow_db
       - mutate_workflow_db
-      - apply_workflow_db_migration
       - agent_browser
   run:
     # Everyone with access to a Flow who is not its Builder: read the published side, see every run, run a published version.

@@ -356,6 +356,9 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	}))
 	t.Cleanup(probe.Close)
 	t.Setenv("WORKSPACE_API_URL", probe.URL)
+	// The tool catalog follows the deployment mode, so the first MCP session ended with the change; connect again.
+	cli = dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, cli)
 	call(map[string]any{"action": "browser"})
 	connected = true
 	if got := call(map[string]any{"action": "browser"})["capabilities"].(map[string]any)["effective_mode"]; got != "cdp" {
@@ -363,6 +366,8 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	}
 	// Vault connections are a server feature; leave the local mode used for the CDP probe.
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "")
+	cli = dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, cli)
 	connections := call(map[string]any{"action": "connections"})
 	if connections["connections"].(map[string]any)["total"] != float64(1) {
 		t.Fatalf("attached connections = %v", connections)

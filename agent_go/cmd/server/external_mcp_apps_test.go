@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -23,9 +24,16 @@ func TestExternalMCPDashboardAppPublishedAccessAndRevocation(t *testing.T) {
 	registry := withProjectOwnerRegistry(t)
 	const root = "Crew/dashboard-team"
 	stubCrewLookups(t, map[string]string{root: "owner"}, nil)
-	record := projectOwnerRecord{Product: "work", Folder: "dashboard-team", OwnerID: "owner", Shared: true, Private: true, RunPeople: []string{"reader"}}
+	// Real creation registers the Crew's project ID and makes its folder and private-record folder.
+	record := projectOwnerRecord{Product: "work", Folder: "dashboard-team", ProjectID: "dashboard-team", OwnerID: "owner", Shared: true, Private: true, RunPeople: []string{"reader"}}
 	if err := registry.Register(record); err != nil {
 		t.Fatal(err)
+	}
+	recordRoot, _ := crewroot.PrivateRoot(f.docs, "dashboard-team")
+	for _, dir := range []string{filepath.Join(f.docs, "Crew", "dashboard-team"), recordRoot} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	f.write(t, root+"/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
 	t.Setenv("PUBLIC_URL", "https://example.com")
