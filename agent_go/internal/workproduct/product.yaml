@@ -92,7 +92,7 @@ profile:
   # Crew reuses the platform coding and background-agent surfaces (shell,
   # guarded file patching, browser, secrets, web research, run_in_background).
   # Its only product-specific wrappers are folder grants and message-only
-  # project schedules; its own workflow uses the existing execution tools.
+  # project schedules; its saved Python workflow uses the direct start tool.
   tool_policy:
     mode: allowlist
     enabled:
@@ -100,14 +100,7 @@ profile:
       - show_character
       - show_reference
       - show_document
-      - execute_step
-      - query_step
-      - send_step_message
-      - stop_step
-      - stop_all_executions
-      - list_executions
       - run_full_workflow
-      - debug_step
       - read_project_files
       - get_file_link
       - get_report_link

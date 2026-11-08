@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
 func TestProfileRequiresWorkflowRuntime(t *testing.T) {
@@ -74,10 +75,9 @@ func TestStoppedOrCancelledCrewChatCannotCreateWorkflowRuntime(t *testing.T) {
 	api.workshopChatSessions.Range(func(_, _ interface{}) bool { t.Error("stopped chat cached a runtime"); return false })
 }
 
-// PLAT-746-405: Crew's old policy refused single-step work entirely. Register
-// native tools only for an editable Crew's bound workflow, without initializing it.
-func TestCrewStepToolsRequireOwnEditableWorkflowAndStayLazy(t *testing.T) {
-	_, files, api := newCrewWorkflowRunTestEnv(t)
+// PLAT-746: a saved Python start stays lazy and rechecks its Crew owner binding.
+func TestCrewPythonStartRequiresOwnEditableWorkflowAndStaysLazy(t *testing.T) {
+	_, _, api := newCrewWorkflowRunTestEnv(t)
 	api.logger = loggerv2.NewNoop()
 	resolved := &resolvedAgentProfile{}
 	resolved.Definition.ID = crewProfileID
@@ -107,28 +107,20 @@ func TestCrewStepToolsRequireOwnEditableWorkflowAndStayLazy(t *testing.T) {
 		t.Fatal("Run person received owner step controls")
 	}
 	reg := register("owner", false)
-	for _, name := range []string{"execute_step", "query_step", "send_step_message", "stop_step", "stop_all_executions", "list_executions", "run_full_workflow", "debug_step"} {
-		if _, ok := reg.tools[name]; !ok {
-			t.Fatalf("missing existing step control %s", name)
-		}
+	start, ok := reg.tools["run_full_workflow"]
+	if !ok {
+		t.Fatal("editable Crew lost its saved Python start")
 	}
+
 	assertNoRuntime := func() {
 		t.Helper()
 		api.workshopChatSessions.Range(func(_, _ interface{}) bool { t.Error("Workshop initialized before admitted tool use"); return false })
 	}
 	assertNoRuntime()
-	// A workflow one contract behind keeps running (owner, 8 Nov); two behind is refused with the operator pointer.
-	manifest.Version = workflowContractManagedDBScriptsVersion
-	raw, _ := json.Marshal(manifest)
-	files.files[manifestPath(binding.Root)] = string(raw)
-	if _, err := reg.tools["execute_step"].exec(ctx, map[string]interface{}{"step_id": "work"}); err == nil || !strings.Contains(err.Error(), "platform operator") {
-		t.Fatalf("Crew start bypassed contract gate: %v", err)
-	}
-	assertNoRuntime()
-	// The account was demoted after its tool catalog was built. Even a status
-	// call must recheck the intended edit rule before opening its runtime.
+	// The account was demoted after its tool catalog was built. Starting work
+	// must recheck the intended edit rule before opening its runtime.
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":false}]}`)
-	if _, err := reg.tools["query_step"].exec(ctx, map[string]interface{}{"step_id": "work"}); err == nil || !strings.Contains(err.Error(), "edit access") {
+	if _, err := start.exec(ctx, map[string]interface{}{}); err == nil || !strings.Contains(err.Error(), "edit access") {
 		t.Fatalf("demoted owner kept workflow controls: %v", err)
 	}
 	assertNoRuntime()

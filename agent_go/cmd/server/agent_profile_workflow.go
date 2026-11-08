@@ -12,25 +12,13 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-var agentProfileWorkflowToolNames = map[string]struct{}{
-	"execute_step":        {},
-	"query_step":          {},
-	"send_step_message":   {},
-	"stop_step":           {},
-	"stop_all_executions": {},
-	"list_executions":     {},
-	"run_full_workflow":   {},
-	"debug_step":          {},
-}
-
 type agentProfileWorkflowRegistrar struct {
 	target  definitionRegistrar
 	prepare func(context.Context, string, map[string]interface{}) error
 }
 
 func (r *agentProfileWorkflowRegistrar) shouldRegister(name string) bool {
-	_, ok := agentProfileWorkflowToolNames[name]
-	return ok
+	return name == "run_full_workflow"
 }
 
 func (r *agentProfileWorkflowRegistrar) wrap(name string, execute func(context.Context, map[string]interface{}) (string, error)) func(context.Context, map[string]interface{}) (string, error) {
@@ -61,9 +49,7 @@ func (r *agentProfileWorkflowRegistrar) RegisterCustomToolWithTimeout(name, desc
 	if !r.shouldRegister(name) {
 		return nil
 	}
-	if name == "execute_step" {
-		description += " In a Crew chat, omit run_folder to continue this chat's current saved run and inputs; the first call starts a new run. Use new_run=true for a separate run. The current run survives runtime eviction and restarts."
-	}
+
 	return r.target.RegisterCustomToolWithTimeout(name, description, parameters, r.wrap(name, execute), timeout, category)
 }
 
@@ -127,7 +113,7 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 		}
 		return nil
 	}
-	todo_creation_human.RegisterLazyWorkshopTools(filtered, func(callCtx context.Context) (*todo_creation_human.WorkshopChatSession, error) {
+	todo_creation_human.RegisterLazyPythonRunTool(filtered, func(callCtx context.Context) (*todo_creation_human.WorkshopChatSession, error) {
 		return api.agentProfileWorkflowSession(callCtx, resolved, userID, sessionID, publicWorkspacePath, root, workflowID, selectedServers, mergedAPIKeys, req)
 	}, api.logger)
 	return nil
