@@ -17,9 +17,10 @@ import (
 // Drive real binding, trigger admission, isolated worker, saved terminal run,
 // supervisor and post-restart call read; only the model turn is replaced.
 func TestStructuredFunctionsIsolateParallelRunsAndKeepOutputsAfterRestart(t *testing.T) {
-	env := newCrewFunctionEnv(t)
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	// Crew registration creates its private folders in this exact docs root.
+	env := newCrewFunctionEnv(t)
 	env.svc.heldConversation = nil
 	started := make(chan string, 4)
 	release := make(chan struct{})
@@ -107,7 +108,11 @@ func TestStructuredFunctionsIsolateParallelRunsAndKeepOutputsAfterRestart(t *tes
 	if _, err := readCrewFunctionOutput(ctx, calls[0], "../"+calls[1].ID+"/report.pdf", 0, 5); err == nil {
 		t.Fatal("read a different call's output")
 	}
-	if err := os.Symlink(filepath.Join(docs, "outside"), filepath.Join(docs, filepath.FromSlash(calls[0].outputFolder()), "escape")); err != nil {
+	outside := filepath.Join(docs, "outside")
+	if err := os.WriteFile(outside, []byte("another scope's file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(docs, filepath.FromSlash(calls[0].outputFolder()), "escape")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := readCrewFunctionOutput(ctx, calls[0], "escape", 0, 5); err == nil {
@@ -131,8 +136,8 @@ func TestStructuredFunctionsIsolateParallelRunsAndKeepOutputsAfterRestart(t *tes
 }
 
 func TestStructuredFunctionFileCorrectionUsesSameExecutionAndRejectsInvalidResult(t *testing.T) {
-	env := newCrewFunctionEnv(t)
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newCrewFunctionEnv(t)
 	env.svc.heldConversation = nil
 	var mu sync.Mutex
 	turns := map[string]int{}
