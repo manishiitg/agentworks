@@ -127,7 +127,10 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=3 if action == "step" else None) as response:
+        # The owning script deadline and Stop bound helper calls. A shorter
+        # activity-only timeout can lose an accepted start ID and leave a
+        # successful Python function recorded as failed at process exit.
+        with urllib.request.urlopen(request) as response:
             envelope = json.load(response)
     except (urllib.error.URLError, OSError, ValueError) as error:
         raise AutomationError("Helper delivery is uncertain. Check this run before trying again.") from error
