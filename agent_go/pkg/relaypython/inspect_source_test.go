@@ -19,7 +19,7 @@ func TestTypeNotesAnalyzeSavedSourceWithInstalledChecker(t *testing.T) {
 		}
 	}
 	root := t.TempDir()
-	source := "raise RuntimeError('Never execute authored source')\nvalue: int = 'wrong'\n"
+	source := "value: int = 'wrong'\nraise RuntimeError('Never execute authored source')\n"
 	if err := os.WriteFile(filepath.Join(root, "main.py"), []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestTypeNotesAnalyzeSavedSourceWithInstalledChecker(t *testing.T) {
 		t.Fatalf("type notes: %s %v", out, err)
 	}
 	for _, note := range graph.Notes {
-		if note.File == "main.py" && note.Line == 2 && strings.Contains(note.Message, "int") {
+		if note.File == "main.py" && note.Line == 1 && strings.Contains(note.Message, "int") {
 			return
 		}
 	}
