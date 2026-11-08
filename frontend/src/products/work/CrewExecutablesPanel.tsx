@@ -6,6 +6,7 @@ import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { PageCard, PageRow, RowButton } from '../../components/automation/AutomationKit'
 import { CrewExecutableEditor, type CrewExecutable } from './CrewExecutableEditor'
+import { noRunsView, type RunsView } from './CrewWorkflowRuns'
 import { StepsRunsSwitch, type StepsRunsSection } from './StepsRunsSwitch'
 
 function failureMessage(error: unknown, fallback: string) {
@@ -20,6 +21,8 @@ function failureMessage(error: unknown, fallback: string) {
 export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { projectId: string; chatTabId: string; onBack?: () => void }) {
   const [selected, setSelected] = useState<CrewExecutable | null>(null)
   const [section, setSection] = useState<StepsRunsSection>('steps')
+  const [file, setFile] = useState<string | null>(null)
+  const [runs, setRuns] = useState<RunsView>(noRunsView)
   const [items, setItems] = useState<CrewExecutable[]>([])
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
@@ -32,7 +35,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
   }, [projectId])
   useEffect(() => {
     const controller = new AbortController()
-    setItems([]); setSelected(null); setSection('steps'); setLoaded(false); setError('')
+    setItems([]); setSelected(null); setSection('steps'); setFile(null); setRuns(noRunsView); setLoaded(false); setError('')
     void refresh(controller.signal).catch(e => { if (!controller.signal.aborted) setError(failureMessage(e, 'Could not load. Try again.')) })
     return () => controller.abort()
   }, [refresh])
@@ -43,10 +46,12 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
   }
   const item = selected ?? (items.length === 1 ? items[0] : null)
   if (item) {
-    const back = selected ? () => { setSelected(null); setSection('steps') } : onBack
+    // Back goes one step at a time: out of an open file, then out of a workflow to the list, then to the project menu.
+    const inRun = section === 'runs' && (runs.run !== null || runs.costs)
+    const back = file ? () => setFile(null) : inRun ? () => setRuns(noRunsView) : selected ? () => { setSelected(null); setSection('steps') } : onBack
     return <div className="space-y-4">
-      <StepsRunsSwitch section={section} onChange={setSection} onBack={back} />
-      <CrewExecutableEditor key={item.id} item={item} chatTabId={chatTabId} section={section} onBack={back} />
+      <StepsRunsSwitch section={section} onChange={next => { setFile(null); setRuns(noRunsView); setSection(next) }} onBack={back} />
+      <CrewExecutableEditor key={item.id} item={item} chatTabId={chatTabId} section={section} file={file} onFile={setFile} runs={runs} onRuns={setRuns} onBack={back} />
     </div>
   }
   const lead = <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted"><FileCode2 className="h-4 w-4" aria-hidden="true" /></span>

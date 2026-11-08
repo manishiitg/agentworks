@@ -150,9 +150,15 @@ export function runStepLines(records: WorkspaceStepInspection[], outline: RelayS
   return [...lines, ...records.filter(record => !used.has(record)).map(record => recordLine(record)), ...extra.filter(step => !used.has(step)).map(step => persistedLine(step))]
 }
 
+export type RunsView = { run: string | null; costs: boolean }
+export const noRunsView: RunsView = { run: null, costs: false }
+
 /** The Runs tab: a card of runs, a Costs card, and one opened run with its steps, logs and cost. */
-export function CrewWorkflowRuns({ workspacePath, script = false, folders, loading, onRefresh, onAsk }: {
+export function CrewWorkflowRuns({ workspacePath, script = false, folders, loading, onRefresh, onAsk, view, onView }: {
   workspacePath: string
+  /** Which run (or the Costs card) is open. The page owns it so its back arrow can close it first. */
+  view: RunsView
+  onView: (view: RunsView) => void
   /** A saved Python workflow: its source outline orders the opened run's steps. */
   script?: boolean
   folders: RunFolderInfo[]
@@ -160,8 +166,10 @@ export function CrewWorkflowRuns({ workspacePath, script = false, folders, loadi
   onRefresh: () => Promise<void>
   onAsk: (task: string) => void | Promise<void>
 }) {
-  const [open, setOpen] = useState<string | null>(null)
-  const [showCosts, setShowCosts] = useState(false)
+  const open = view.run
+  const showCosts = view.costs
+  const setOpen = (run: string | null) => onView({ run, costs: false })
+  const setShowCosts = (costs: boolean) => onView({ run: null, costs })
   const totals = useRunTotals(workspacePath, folders.length)
   const costOf = (name: string) => totals?.[name]
   const opened = open ? folders.find(folder => folder.name === open) : undefined
