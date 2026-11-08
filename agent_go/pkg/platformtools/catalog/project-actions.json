@@ -3,6 +3,6 @@
     "family": "workspace",
     "name": "create",
     "member": "create_project",
-    "description": "Create a Crew or Flow you own. New workflows are Python scripts inside a Crew. Reuse idempotency_key for an unchanged retry; creation does not run the project."
+    "description": "Create a Crew you own. New workflows are Python scripts inside a Crew. Reuse idempotency_key for an unchanged retry; creation does not run the project."
   }
 ]
