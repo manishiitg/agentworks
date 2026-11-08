@@ -189,7 +189,6 @@ func externalTools() ([]externalTool, error) {
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, status, times, duration, error and run folder per run. Pass false for group lists, final responses and usage."}
 		addRun("get_schedule_runs", "Page a schedule's retained run history with limit and offset, including after schedule deletion: status, duration, run folder, errors, and webhook deploy metadata when present. Workflow runs are kept for at least 90 days.", false, p, "schedule_id")
 		addRun("trigger_schedule", "Trigger a schedule to run immediately, outside its normal timing. Requires the runs:execute scope.", true, map[string]any{"schedule_id": externalString("Schedule ID from list_schedules.")}, "schedule_id")
-		addRun("chat", "Send a conversational message to the workflow assistant. Returns an inbox delivery receipt, without call_id or automatic answer capture. The agent explicitly chooses whether and what to send back; read messages action=read with inbox_id. Requires runs:execute.", true, map[string]any{"message": externalString("Message to send."), "inbox_id": externalString("Inbox from an earlier send to continue this external conversation."), "submission_id": externalString("Unique message submission ID; reuse after uncertain delivery.")}, "message")
 		addRun("run_reply_input", "Answer a pending human-input request in a run session (see runs action=status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from runs action=status."), "request_id": externalString("Pending input request ID from runs action=status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
 		// Stop commands execute directly instead of through the assistant
 		// proxy: halting the wrong execution (or none) is not acceptable.
@@ -1071,18 +1070,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalSettingsCall(w, r, tool.Name, args, *selected, access)
 		return
 	}
-	if selected.Manifest.Kind == "relay" {
-		switch tool.Name {
-		case "list_schedules", "create_schedule", "create_calendar_schedule", "update_schedule", "delete_schedule", "trigger_schedule", "get_schedule_runs":
-			externalError(w, 400, "relay_api_only", "Flows use API function triggers. Use relay action=test or relay action=run and relay action=get_run.")
-			return
-		}
-	}
-	// Flow chat is Builder-only; direct API tools handle published execution.
-	if selected.Manifest.Kind == "relay" && (tool.Name == "chat" || tool.Name == "project_functions_call" && externalArg(args, "function") == "ask") {
-		externalError(w, 400, "relay_builder_only", "Use guarded files to edit Flow source, relay action=test for draft tests, or relay action=run for published versions.")
-		return
-	}
 	if tool.Name == "workflow_crews" {
 		api.externalWorkflowCrewCall(w, r, args, *selected)
 		return
@@ -1139,7 +1126,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	// to the asynchronous query runtime (which must never run under this
 	// lock), and the status and schedule readers need no lock.
 	switch tool.Name {
-	case "run_status", "list_executions", "list_schedules", "get_schedule_runs", "trigger_schedule", "chat", "run_reply_input", "stop_step", "stop_all_executions":
+	case "run_status", "list_executions", "list_schedules", "get_schedule_runs", "trigger_schedule", "run_reply_input", "stop_step", "stop_all_executions":
 		api.externalRunCall(w, r, tool.Name, args, *selected)
 		return
 	}
