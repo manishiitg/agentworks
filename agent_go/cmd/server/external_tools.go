@@ -17,7 +17,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -331,7 +330,6 @@ func externalTools() ([]externalTool, error) {
 		}
 		externalDatabaseDefinitions(add)
 		externalMessagingDefinitions(add)
-		externalRelayDefinitions(add)
 		// Dispatch validates against the full external surface; discovery narrows
 		// it per connection and live action/Owner/admin checks still authorize it.
 		// A content-only schema here would reject advertised setup/access/Git
@@ -379,13 +377,7 @@ func externalTools() ([]externalTool, error) {
 		for _, name := range agentworksproduct.RunExternalDenylist() {
 			denied[name] = true
 		}
-		relayTools, err := relayproduct.BuilderExternalTools()
-		if err != nil {
-			externalCatalogErr = err
-			return
-		}
 		admitted := append(agentworksproduct.RunExternalTools(), agentworksproduct.BuilderExternalTools()...)
-		admitted = append(admitted, relayTools...)
 		crewTools, err := workproduct.BuilderExternalTools()
 		if err != nil {
 			externalCatalogErr = err
@@ -935,10 +927,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalCopyProjectFiles(w, r, call.Arguments)
 		return
 	}
-	if tool.Name == "create_relay" {
-		api.externalCreateRelay(w, r, call.Arguments)
-		return
-	}
 
 	discovered, err := discoverWorkflowManifests(r.Context(), tool.Name != "get_secret_sources")
 	if err != nil {
@@ -1080,10 +1068,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if isExternalSettingsTool(tool.Name) {
 		api.externalSettingsCall(w, r, tool.Name, args, *selected, access)
-		return
-	}
-	if isExternalRelayTool(tool.Name) {
-		api.externalRelayCall(w, r, tool.Name, args, *selected)
 		return
 	}
 	if selected.Manifest.Kind == "relay" {

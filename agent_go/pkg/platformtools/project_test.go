@@ -95,7 +95,7 @@ func TestSettingsVariableActionsReachUpdateVariableWithItsAction(t *testing.T) {
 // A Crew could not select its own saved skill: skills action=select reached
 // update_project_skill_selection without its own select/deselect action and
 // failed "schema missing action". The same collision hid mcp/vault selection
-// and the Flow Run chat's read_relay; each public action now sets the native one.
+// each public action sets the native selector.
 // A chat has no tool called send_message: only its group, so a reply must be sent as messages action=send. A delivered
 // message named the old tool, the agent's reply failed as "not registered", and the sender heard nothing (PLAT-856-559).
 func TestAgentReplyIsMessagesSendInAChat(t *testing.T) {
@@ -129,7 +129,6 @@ func TestSelectorSourcesReceiveTheirOwnAction(t *testing.T) {
 		{"update_project_skill_selection", "skills", "skill", []any{"select", "deselect"}, map[string]string{"select": "select", "deselect": "deselect"}},
 		{"update_project_mcp_server_selection", "mcp", "server", []any{"select", "deselect"}, map[string]string{"select": "select", "deselect": "deselect"}},
 		{"update_project_global_secret_selection", "vault", "name", []any{"select", "deselect"}, map[string]string{"select": "select", "deselect": "deselect"}},
-		{"read_relay", "relay", "version", []any{"source", "releases"}, map[string]string{"get": "source", "releases": "releases"}},
 	} {
 		var got map[string]any
 		schema := map[string]any{"type": "object", "additionalProperties": false, "required": []any{"action"}, "properties": map[string]any{

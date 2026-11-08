@@ -377,10 +377,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if !agentSourceConsentAllowed(c, tool) {
 		return false
 	}
-	// Flow tools appear only where Flows are on (PLAT-746-265: off in every installation for now).
-	if isExternalRelayTool(tool.Name) && !userAllowedProduct(c, "relays") {
-		return false
-	}
 	if source, operation := dataSourceAction(tool.Name); source == "crew_folders" && c != nil && c.AccessToken != nil {
 		scope := "crews:write"
 		if crewCapabilityRead(operation) {
@@ -528,9 +524,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	}
 	if tool.Name == "workflow_upgrade" || tool.Name == "workflow_crews" || isExternalWorkflowAccountTool(tool.Name) {
 		return c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
-	}
-	if isExternalRelayAuthoringTool(tool.Name) {
-		return c.AccessToken != nil && (c.AccessToken.RelayBuilderAccess() || tool.Name != "create_relay" && c.AccessToken.BuilderAccess())
 	}
 	if tool.Name == "write_file" || tool.Name == "patch_file" {
 		return externalFileAuthoringAllowed(c, nil)

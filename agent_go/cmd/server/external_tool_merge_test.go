@@ -118,21 +118,7 @@ func TestExternalMergedFilesAreNarrowedForReaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader := &UserClaims{UserID: "r", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "files:read"}, AllWorkflows: true}}
-	for _, tool := range externalListedTools(reader, catalog) {
-		if tool.Name != "relay" {
-			continue
-		}
-		required, _ := tool.InputSchema["required"].([]any)
-		found := false
-		for _, key := range required {
-			if key == "action" {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("narrowed Relay permits omitted action: %+v", tool.InputSchema)
-		}
-	}
+
 	for _, tool := range externalListedTools(reader, catalog) {
 		if tool.Name != "files" {
 			continue

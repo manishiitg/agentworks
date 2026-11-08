@@ -157,31 +157,6 @@ func flowRootOfPath(workspacePath string) string {
 	return ""
 }
 
-// relay_owners: the MCP face of the Flow's Owners section (list for anyone who can see the Flow; add and remove for the main owner).
-func (api *StreamingAPI) externalRelayOwnersCall(w http.ResponseWriter, r *http.Request, args map[string]any, selected DiscoveredWorkflow) {
-	claims := GetUserFromContext(r.Context())
-	action, email := externalArg(args, "action"), strings.TrimSpace(externalArg(args, "email"))
-	manifest := selected.Manifest
-	switch action {
-	case "list":
-		externalJSON(w, flowOwnersStateFor(manifest, claims.UserID))
-	case "add", "remove":
-		live, err := validateBuilderGrant(r.Context(), claims, manifest.ID, selected.WorkspacePath)
-		if err != nil {
-			externalError(w, 403, "builder_not_authorized", err.Error())
-			return
-		}
-		state, status, code, message := api.changeFlowOwners(r.Context(), live, selected.WorkspacePath, manifest, action, email)
-		if status != 0 {
-			externalError(w, status, code, message)
-			return
-		}
-		externalJSON(w, state)
-	default:
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "action must be list, add or remove.")
-	}
-}
-
 // projectAccessKind is the dashboards target kind of a Goal ("workflow") or Flow ("relay").
 func projectAccessKind(manifest *WorkflowManifest) string {
 	if manifest.Kind == "relay" {
