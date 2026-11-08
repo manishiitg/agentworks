@@ -16,10 +16,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	baseevents "github.com/manishiitg/mcpagent/events"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -123,125 +121,6 @@ func collectKnownWorkflowStepIDs(steps []PlanStepInterface, known map[string]str
 			}
 		}
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Chat-mode system prompt templates for debugger phases
-// Key difference from orchestrator versions: no human_feedback requirement,
-// conversational style, agent reads files on demand via workspace tools.
-// ---------------------------------------------------------------------------
-
-var executionDebuggerChatTemplate = MustRegisterTemplate("executionDebuggerChatSystem", `# Execution Debugger (Chat Mode)
-
-## 🤖 ROLE
-You are a **read-only** execution analysis assistant. Help the user understand what happened during workflow execution.
-
-## ⚠️ RULES
-1. **Read-Only**: You MUST NOT modify any files. You have no write access or plan modification tools.
-2. **Answer Directly**: For general questions, answer from the plan context below.
-3. **Read Files Only When Needed**: Only read execution logs if user asks about specific failures or "why did X happen".
-4. **Conversational**: Ask follow-up questions if the user's query is ambiguous.
-
-## 📋 CONTEXT
-- **Workspace**: {{.WorkspacePath}}
-- **Run folder**: Check 'runs/' directory for available iterations. Ask the user which run to analyze if unclear.
-
-### Current Plan
-{{if .ExistingPlanJSON}}`+"`"+`json
-{{.ExistingPlanJSON}}
-`+"`"+`{{else}}No plan provided. Read it from 'planning/plan.json'.{{end}}
-
-## 📁 FILE LOCATIONS
-- **Plan file**: '{{.WorkspacePath}}/planning/plan.json'
-- **Runs**: '{{.WorkspacePath}}/runs/' — list to find available iterations
-- **Execution outputs**: '{{.WorkspacePath}}/runs/{iteration}/{group}/execution/{step-id}/'
-- **Validation logs**: '{{.WorkspacePath}}/runs/{iteration}/{group}/logs/{step-id}/validation-{N}.json'
-- **Execution logs**: '{{.WorkspacePath}}/runs/{iteration}/{group}/logs/{step-id}/execution/'
-- **Routing evaluations**: '{{.WorkspacePath}}/runs/{iteration}/{group}/logs/{step-id}/routing-evaluation.json'
-- **Orchestration routing**: '{{.WorkspacePath}}/runs/{iteration}/{group}/logs/{step-id}/orchestration-execution.json' (JSONL)
-- **Todo task progress**: '{{.WorkspacePath}}/runs/{iteration}/{group}/execution/{step-id}/tasks.md'
-
-## 📖 STEP FOLDER NAMING
-- Scripted steps: '{step-id}/' using the declared ID from planning/plan.json
-- Conversational specialist calls: '{parent-step}/agents/{route-id}/calls/{call-id}/'
-- Generic agent calls: '{parent-step}/agents/generic/calls/{call-id}/'
-- Scripted Agent items: '{parent-step}/scripts/items/{item-id}/calls/{call-id}/'
-- Scripted routes: '{parent-step}/scripts/routes/{route-id}/calls/{call-id}/'
-- Specialist session logs: '{parent-step}/agents/{route-id}/session.json'
-
-All nested runtime artifacts belong to the parent Agent subtree. Do not look for
-retired flattened sub-agent or agents folders.
-
-{{if .IsCodeExecutionMode}}{{"{{TOOL_STRUCTURE}}"}}{{end}}`)
-
-// PhaseChatSystemPrompt generates the system prompt for any chat-compatible phase.
-// Dispatches to the correct template based on phaseId.
-func PhaseChatSystemPrompt(phaseId string, templateVars map[string]string) string {
-	now := time.Now()
-	templateData := map[string]interface{}{
-		"WorkspacePath":               templateVars["WorkspacePath"],
-		"ExistingPlanJSON":            templateVars["ExistingPlanJSON"],
-		"VariableNames":               templateVars["VariableNames"],
-		"IsCodeExecutionMode":         templateVars["IsCodeExecutionMode"],
-		"UseProjectedReferenceSkills": templateVars["UseProjectedReferenceSkills"],
-		"CurrentDate":                 promptDate(now),
-		"CurrentTime":                 promptTime(now),
-	}
-
-	var tmpl = interactiveWorkshopSystemTemplate // default: workflow-builder template
-	switch phaseId {
-	case "execution-qa":
-		tmpl = executionDebuggerChatTemplate
-	case "workflow-builder":
-		// Use the full workshop system template (same as orchestrator mode)
-		// so the chat agent gets all plan design guidance, optimization tips, etc.
-		// PlanJSON is intentionally NOT injected here — the agent reads plan.json
-		// via shell command on demand, avoiding a large static injection on every request.
-		templateData["RunFolder"] = templateVars["RunFolder"]
-		templateData["StepConfigSummary"] = templateVars["StepConfigSummary"]
-		templateData["ProgressSummary"] = templateVars["ProgressSummary"]
-		templateData["GroupInfo"] = templateVars["GroupInfo"]
-		templateData["UseKnowledgebase"] = templateVars["UseKnowledgebase"]
-		kbShape := templateVars["KBShape"]
-		if kbShape == "" {
-			kbShape = workflowtypes.KBShapeGraphNotes
-		}
-		templateData["KBShape"] = kbShape
-		templateData["CustomInstructions"] = templateVars["CustomInstructions"]
-		templateData["StepSummary"] = templateVars["StepSummary"]
-		templateData["WorkshopMode"] = templateVars["WorkshopMode"]
-		templateData["ExecutionMode"] = templateVars["ExecutionMode"]
-		templateData["AvailableGroups"] = templateVars["AvailableGroups"]
-		// Both native API and CLI sessions attach the same mode-filtered reference skill.
-		templateData["SpecialWorkspaceToolsInstructions"] = instructions.GetSpecialWorkspaceToolsPointer()
-		wsPath := templateVars["WorkspacePath"]
-		templateData["AbsWorkspacePath"] = GetPromptDocsRoot() + "/" + wsPath
-		templateData["AbsDocsRoot"] = GetPromptDocsRoot()
-		templateData["PlanJSON"] = ""    // Intentionally empty — agent reads plan.json on demand via shell command
-		templateData["UserRequest"] = "" // Not applicable in chat mode — user messages come via conversation
-		tmpl = interactiveWorkshopSystemTemplate
-		if templateVars["WorkshopMode"] != "workshop" {
-			tmpl = interactiveRunSystemTemplate
-		}
-	}
-
-	var result strings.Builder
-	if err := tmpl.Execute(&result, templateData); err != nil {
-		panic(fmt.Sprintf("[FATAL] Phase chat system prompt template failed for phase=%q: %v — this means the LLM will receive no system prompt. Fix the template or templateData.", phaseId, err))
-	}
-	rendered := result.String()
-	if phaseId == "workflow-builder" {
-		rendered += "\n\n" + workflowFolderAccessBuilderPrompt(templateVars["WorkspacePath"])
-	}
-	// Guard against empty or suspiciously short prompts — the workshop template should be 10K+ chars
-	if len(rendered) < 1000 {
-		panic(fmt.Sprintf("[FATAL] Phase chat system prompt for phase=%q is only %d chars (expected 10000+). Template likely has missing variables or rendering issues.", phaseId, len(rendered)))
-	}
-	// Conditional blocks in the template each carry their own surrounding blank
-	// line, so a block that renders empty (an {{if}} that's false, or one whose
-	// body is itself blank in this mode) leaves runs of 3+ newlines behind.
-	// Harmless to the model, but it reads like the prompt has holes in it.
-	return collapseBlankLines(rendered)
 }
 
 // collapseBlankLines squashes 3+ consecutive newlines down to a single blank
@@ -991,45 +870,6 @@ func (s *WorkshopChatSession) UpdateInvocationInputs(ctx context.Context, preset
 	s.controller.variableValues = values
 	SyncExactVariablesToWorkspaceEnv(s.controller.BaseOrchestrator, values)
 	return nil
-}
-
-// RegisterWorkshopChatTools registers the complete workshop-only tool surface on
-// the given agent using the session's controller.
-func RegisterWorkshopChatTools(
-	mcpAgent DefinitionRegistrar,
-	session *WorkshopChatSession,
-	logger loggerv2.Logger,
-) {
-	if session.config != nil {
-		mcpAgent = guardScheduleRegistrar(mcpAgent, session.config.ScheduleCollisionCheck)
-	}
-	iwm := &InteractiveWorkshopManager{
-		controller:             session.controller,
-		workshopConfig:         session.config,
-		sessionID:              session.mainSessionID,
-		stepRegistry:           session.StepRegistry,
-		sessionCtx:             session.sessionCtx,
-		toolCallQueryFunc:      session.toolCallQueryFunc,
-		tmuxLookupFunc:         session.tmuxLookupFunc,
-		mainSessionID:          session.mainSessionID,
-		schedulerWorkspacePath: session.schedulerWorkspacePath,
-		schedulerFuncs:         session.schedulerFuncs,
-		llmToolsFuncs:          session.llmToolsFuncs,
-		skillFuncs:             session.skillFuncs,
-		listAvailableSecrets:   session.listAvailableSecrets,
-		resolveSecretValues:    session.resolveSecretValues,
-		secretsAttached:        session.secretsAttached,
-		executionNotifier:      session.executionNotifier,
-		hasPendingCompletions:  session.hasPendingCompletions,
-		hasRunningAgents:       session.hasRunningAgents,
-		cancelAllServerAgents:  session.cancelAllServerAgents,
-		listServerAgents:       session.listServerAgents,
-		workshopModeOverride:   session.workshopModeOverride,
-	}
-	if session.controller.isRelayExecution() {
-		mcpAgent = relayDefinitionRegistrar{DefinitionRegistrar: mcpAgent}
-	}
-	registerWorkshopAgentTools(iwm, mcpAgent, session.config.WorkspacePath, logger)
 }
 
 // Close cancels all background goroutines for this workshop session.

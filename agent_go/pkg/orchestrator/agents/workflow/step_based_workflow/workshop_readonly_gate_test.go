@@ -125,27 +125,3 @@ func isRunModeRestrictedGuard(cond ast.Expr) bool {
 	ident, ok := selector.X.(*ast.Ident)
 	return ok && ident.Name == "iwm"
 }
-
-// TestRunModeZeroesBackgroundAgentWritePaths proves the write-path narrowing
-// runBackgroundTaskAgentSequence applies before creating a background
-// sub-agent's folder guard: full reads always, but zero write grants once
-// iwm.isRunModeRestricted() is true. workshopWritePaths itself must keep
-// returning a non-empty allow-list for a normal (Workshop-mode) caller, or
-// this test would pass vacuously.
-func TestRunModeZeroesBackgroundAgentWritePaths(t *testing.T) {
-	const workspacePath = "Workflow/example"
-
-	normalWritePaths := workshopWritePaths(workspacePath)
-	if len(normalWritePaths) == 0 {
-		t.Fatal("workshopWritePaths returned no paths for a normal caller — test would pass vacuously")
-	}
-
-	iwm := &InteractiveWorkshopManager{workshopModeOverride: "run"}
-	writePaths := workshopWritePaths(workspacePath)
-	if iwm.isRunModeRestricted() {
-		writePaths = []string{}
-	}
-	if len(writePaths) != 0 {
-		t.Fatalf("run mode must zero the background agent's write paths, got %v", writePaths)
-	}
-}

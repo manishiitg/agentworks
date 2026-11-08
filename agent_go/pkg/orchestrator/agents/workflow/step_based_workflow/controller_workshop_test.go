@@ -11,15 +11,6 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-func TestWorkshopStepLogFolderUsesDeclaredStepID(t *testing.T) {
-	if got := workshopStepLogFolder("  compile-report  "); got != "compile-report" {
-		t.Fatalf("workshopStepLogFolder() = %q, want declared step ID", got)
-	}
-	if got := workshopStepLogFolder(""); got != "" {
-		t.Fatalf("workshopStepLogFolder() invented fallback %q for empty step ID", got)
-	}
-}
-
 func TestSwitchWorkshopGroupSessionCachesPerGroup(t *testing.T) {
 	t.Setenv("MCP_API_URL", "http://example.test")
 
