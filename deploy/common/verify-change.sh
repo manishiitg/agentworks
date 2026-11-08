@@ -78,8 +78,8 @@ if [[ "$INNER" == 0 ]]; then
   [[ "$(git -C "$WORK/repo" rev-parse HEAD)" == "$SHA" ]] || { echo "Checked out the wrong commit" >&2; exit 1; }
   GROUP_AS="$(id -gn "$USER_AS")"
   chown -R "$USER_AS:$GROUP_AS" "$WORK" "$CACHE"
-  SELF="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-  cp "$SELF" "$WORK/verify-change.sh"; chmod 0755 "$WORK/verify-change.sh"; chown "$USER_AS:$GROUP_AS" "$WORK/verify-change.sh"
+  # A queued caller may replace the shared launcher; test this commit's script.
+  cp "$WORK/repo/deploy/common/verify-change.sh" "$WORK/verify-change.sh"; chmod 0755 "$WORK/verify-change.sh"; chown "$USER_AS:$GROUP_AS" "$WORK/verify-change.sh"
   step "Verifier hashes: checkout=$(sha256sum "$WORK/repo/deploy/common/verify-change.sh" | cut -d' ' -f1) inner=$(sha256sum "$WORK/verify-change.sh" | cut -d' ' -f1)"
   # Not exec: the trap must still remove the scratch folder and the lock (fd 8) stays held.
   runuser -u "$USER_AS" -- env "PATH=$PATH" "HOME=$WORK/home" "VERIFY_STARTED=$STARTED" "VERIFY_CACHE=$CACHE" "VERIFY_SLOT=$slot" \
