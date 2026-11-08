@@ -218,15 +218,28 @@ for line in sys.stdin:
 		t.Fatalf("missing account fell through to a default login or failed at another boundary: %+v", missing)
 	}
 	c.finishPythonAgentSessions("waiting_for_capacity")
+	c.finishPythonAgentSessions("interrupted")
 	for _, home := range nativeHomes {
 		if _, err := os.Stat(home); err != nil {
 			t.Fatalf("an unfinished run lost its native home: %v", err)
 		}
 	}
+	// No in-memory runtime list survives a process restart. The finalizer uses
+	// only the protected conversation files written before each launch.
+	c = newController()
 	c.finishPythonAgentSessions("completed")
 	for _, home := range nativeHomes {
 		if _, err := os.Stat(home); !os.IsNotExist(err) {
 			t.Fatalf("a finished run retained its native home: %s %v", home, err)
+		}
+	}
+	for _, status := range []string{"failed", "stopped", "cancelled"} {
+		if err := os.MkdirAll(nativeHomes[0], 0700); err != nil {
+			t.Fatal(err)
+		}
+		c.finishPythonAgentSessions(status)
+		if _, err := os.Stat(nativeHomes[0]); !os.IsNotExist(err) {
+			t.Fatalf("terminal %s retained its native home: %v", status, err)
 		}
 	}
 	denied.finishPythonAgentSessions("failed")
