@@ -337,6 +337,30 @@ func TestCrewMainWorkflowUpgradeChecksRepairsAndStampsCurrentDefinitions(t *test
 	if err != nil || beforeFailure.Capabilities.BrowserMode != "extension" || beforeFailure.Version != workflowContractSkillsVersion {
 		t.Fatalf("named repair changed version or selected the wrong browser: %+v %v", beforeFailure, err)
 	}
+	// PLAT-746: a portable plan could be stamped with retired tool names.
+	// Check actual status/stamp paths, including the separate override file;
+	// current action identities and a category wildcard remain valid.
+	configPath := child.Root + "/planning/step_config.json"
+	if err := writeFileToWorkspace(ctx, configPath, `{"steps":[{"id":"draft","agent_configs":{"enabled_custom_tools":["human_tools:notify_user","workspace_advanced:files.image","workspace_advanced:*"]}}]}`); err != nil {
+		t.Fatal(err)
+	}
+	overridePath := child.Root + "/planning/step_override.json"
+	if err := writeFileToWorkspace(ctx, overridePath, `{"step_override":{"enabled_custom_tools":["human_tools:missing_tool","human_tools:needs_you.ask"]}}`); err != nil {
+		t.Fatal(err)
+	}
+	status, err = call(map[string]interface{}{})
+	if err != nil || !strings.Contains(status, "check_failure") || !strings.Contains(status, "notify_user") || !strings.Contains(status, "files.image") || !strings.Contains(status, "missing_tool") || !strings.Contains(status, "planning/step_override.json") {
+		t.Fatalf("retired tools were not all reported with their locations: %s %v", status, err)
+	}
+	if applied, err := api.checkAndStampWorkflowContract(ctx, child.Root, beforeFailure, workflowContractPortableVersion, "Check retired tools"); err == nil || applied || !strings.Contains(err.Error(), "record_summary") || !strings.Contains(err.Error(), "native image reader") {
+		t.Fatalf("retired selections were stamped or their repairs were unclear: %v %v", applied, err)
+	}
+	if err := writeFileToWorkspace(ctx, configPath, `{"steps":[]}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileToWorkspace(ctx, overridePath, `{"step_override":{"enabled_custom_tools":["human_tools:needs_you.ask","workspace_advanced:terminal.execute","workspace_advanced:*"]}}`); err != nil {
+		t.Fatal(err)
+	}
 	refuseManifestWrite = true
 	if applied, err := api.checkAndStampWorkflowContract(ctx, child.Root, beforeFailure, workflowContractPortableVersion, "Check write refusal"); err == nil || applied || !strings.Contains(err.Error(), "503") {
 		t.Fatalf("failed manifest write was stamped: applied=%v err=%v", applied, err)

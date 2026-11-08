@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -39,7 +40,8 @@ func ValidatePortableWorkflowRuntime(ctx context.Context, workspace string, reso
 	if !c.usesCodeTree() {
 		return nil, fmt.Errorf("code_layout_version must be 1; old source layouts are not upgraded automatically")
 	}
-	for _, name := range []string{"planning/plan.json", "planning/step_config.json", "variables/variables.json"} {
+	var toolErrors []error
+	for _, name := range []string{"workflow.json", "planning/plan.json", "planning/step_config.json", "planning/step_override.json", "variables/variables.json"} {
 		text, readErr := c.ReadWorkspaceFile(ctx, name)
 		if readErr != nil {
 			if name == "planning/plan.json" || !errors.Is(readErr, os.ErrNotExist) && !strings.Contains(strings.ToLower(readErr.Error()), "not found") && !strings.Contains(readErr.Error(), "404") {
@@ -51,8 +53,15 @@ func ValidatePortableWorkflowRuntime(ctx context.Context, workspace string, reso
 		if err := json.Unmarshal([]byte(text), &value); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
-		if err := portableReferences(value, name, workspace); err != nil {
-			return nil, err
+		if name != "workflow.json" && name != "planning/step_override.json" {
+			if err := portableReferences(value, name, workspace); err != nil {
+				return nil, err
+			}
+		}
+		if name != "variables/variables.json" {
+			if err := portableCustomToolSelections(value, name); err != nil {
+				toolErrors = append(toolErrors, err)
+			}
 		}
 		if name == "variables/variables.json" {
 			var inputs VariablesManifest
@@ -64,6 +73,9 @@ func ValidatePortableWorkflowRuntime(ctx context.Context, workspace string, reso
 			}
 			c.variablesManifest = &inputs
 		}
+	}
+	if err := errors.Join(toolErrors...); err != nil {
+		return nil, err
 	}
 	steps := append(collectAllSteps(plan.Steps), collectAllSteps(plan.OrphanSteps)...)
 	rawPlan, err := json.Marshal(plan)
@@ -170,6 +182,51 @@ func ValidatePortableWorkflowRuntime(ctx context.Context, workspace string, reso
 		}
 	}
 	return checked, nil
+}
+
+// Inspect authored definitions, including nested step overrides, before typed
+// loading can discard an unknown field or merge away a stale selection.
+func portableCustomToolSelections(value any, location string) error {
+	var failures []error
+	switch v := value.(type) {
+	case []any:
+		for index, child := range v {
+			if err := portableCustomToolSelections(child, fmt.Sprintf("%s/%d", location, index)); err != nil {
+				failures = append(failures, err)
+			}
+		}
+	case map[string]any:
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			child, path := v[key], location+"/"+key
+			if key == "enabled_custom_tools" && child != nil {
+				entries, ok := child.([]any)
+				if !ok {
+					failures = append(failures, fmt.Errorf("%s must be a list of category:tool selections", path))
+					continue
+				}
+				for index, entry := range entries {
+					selection, ok := entry.(string)
+					if !ok {
+						failures = append(failures, fmt.Errorf("%s/%d must be a tool name", path, index))
+						continue
+					}
+					if err := orchestrator.ValidateCustomToolSelection(selection); err != nil {
+						failures = append(failures, fmt.Errorf("%s/%d: %w", path, index, err))
+					}
+				}
+			} else if key != "drift_review" && key != "review_notes" {
+				if err := portableCustomToolSelections(child, path); err != nil {
+					failures = append(failures, err)
+				}
+			}
+		}
+	}
+	return errors.Join(failures...)
 }
 
 // Historical evidence is not a live instruction and must not be rewritten.
