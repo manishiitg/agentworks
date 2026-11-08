@@ -61,6 +61,7 @@ func TestCrewChatSavedPythonStartAndHTTPStop(t *testing.T) {
 	t.Setenv("MCP_API_URL", bridge.URL)
 	const sessionID = "crew-python-chat"
 	api := f.api
+	api.projectActions = NewProjectActionDispatcher(api, api.agentProfiles)
 	var err error
 	api.chatStore, err = chathistory.NewFilesystemStore(t.TempDir())
 	if err != nil {
