@@ -15,7 +15,6 @@ import {
 import { workflowManifestApi } from '../../services/api'
 import { READ_ONLY_TITLE, useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { formatNotificationStateLabel } from './notificationStatus'
-import NotificationInstructions from './NotificationInstructions'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 
@@ -120,23 +119,6 @@ export default function WorkflowNotificationView({
   const gmailSender = info?.gmail?.default_sender?.trim() || ''
   const gmailSenderChoices = info?.gmail?.sender_choices || []
   const scopeName = info?.scopeLabel || workspacePath?.split('/').filter(Boolean).pop() || 'Workflow'
-  const senderLabel = (id: string) => {
-    const choice = gmailSenderChoices.find(entry => entry.id === id)
-    return choice ? (choice.email || choice.display_name || id) : id
-  }
-  // Run outcomes stay visible in Activity. Team delivery uses saved destinations.
-  // Summary content and recipients remain edited through /notify in chat.
-  // The single Notify sender is selected directly above these summaries.
-  const summaries = info ? [
-    {
-      key: 'run',
-      title: 'Run summary',
-      instructions: info.runSummaryInstructions.trim(),
-      channels: info.runSummaryChannels,
-      senders: info.gmailConnectionId ? [senderLabel(info.gmailConnectionId)] : [],
-      recipients: info.runSummaryRecipients,
-    },
-  ] : []
   const overrides = info ? [
     ...info.excludeChannels.map(channel => ({ key: `x-${channel}`, text: `No ${channel}` })),
     ...gmailBlocked.map(email => ({ key: `b-${email}`, text: `Never to ${email}` })),
@@ -147,9 +129,6 @@ export default function WorkflowNotificationView({
   const chipBase = 'inline-flex max-w-full items-center truncate rounded-full border px-2 py-0.5 text-xs'
   const chipMuted = `${chipBase} border-dashed border-border bg-background text-muted-foreground`
   const chipWarn = `${chipBase} border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300`
-  const chipChannel = `${chipBase} border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300`
-  const chipFrom = `${chipBase} border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300`
-  const chipTo = `${chipBase} border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300`
   const rowClass = 'flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5'
   const labelClass = 'flex w-28 shrink-0 items-center gap-1.5 text-xs font-medium text-foreground'
   const sectionHeadClass = 'flex items-center gap-2 border-b border-border bg-muted/50 px-4 py-2 text-sm font-semibold text-foreground'
@@ -240,44 +219,6 @@ export default function WorkflowNotificationView({
                         {overrides.map(item => <span key={item.key} className={chipWarn}>{item.text}</span>)}
                       </div>
                     )}
-                  </div>
-                </section>
-
-                <section className="rounded-md border border-border">
-                  <h3 className={sectionHeadClass}><span className="h-2 w-2 rounded-full bg-violet-500" />What gets sent</h3>
-                  <div className="divide-y divide-border">
-                    {summaries.map(summary => (
-                      <div key={summary.key} className="space-y-2 px-4 py-2.5">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs font-medium text-foreground">{summary.title}</span>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="w-16 shrink-0 text-[11px] text-muted-foreground">Channels</span>
-                            {summary.channels.length > 0
-                              ? summary.channels.map(channel => <span key={channel} className={`${chipChannel} capitalize`}>{channel}</span>)
-                              : <span className={chipChannel}>All channels</span>}
-                          </div>
-                          {summary.senders.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="w-16 shrink-0 text-[11px] text-muted-foreground">From</span>
-                              {summary.senders.map(sender => <span key={sender} className={`${chipFrom} font-mono`}>{sender}</span>)}
-                            </div>
-                          )}
-                          {summary.recipients.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="w-16 shrink-0 text-[11px] text-muted-foreground">To</span>
-                              {summary.recipients.length > 0
-                                ? summary.recipients.map(email => <span key={email} className={`${chipTo} font-mono`}>{email}</span>)
-                                : <span className={chipMuted}>Summary emails are off</span>}
-                            </div>
-                          )}
-                        </div>
-                        {summary.instructions && (
-                          <NotificationInstructions target={'run_summary'} title={summary.title} instructions={summary.instructions} />
-                        )}
-                      </div>
-                    ))}
                   </div>
                 </section>
               </div>
