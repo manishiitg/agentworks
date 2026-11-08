@@ -6,6 +6,13 @@ runtime references before starting a binary that requires them. No history moves
 DB table merge, timer activation or startup compatibility path is performed.
 Original model, browser, MCP and selected secret names are copied from the
 workflow manifest. Secret values and account logins are never copied.
+
+The new --source folder holds flat Python files and script.json. Its
+script.json must NOT carry capabilities or input_presets: both are copied from
+the saved workflow. The owning Crew database must be empty (no rows) before
+converting. --adopt-into-crew needs the helper scripts that ship beside this
+one (listed at start when any is missing) and moves a shared workflow only
+when the Crew owner plus accepted Crew Team members cover everyone with access.
 """
 import argparse
 import ast
@@ -117,6 +124,39 @@ def clean_agent_selections(raw):
     return raw, removed
 
 
+def drop_retired_selections(capabilities):
+    """Remove retired tool names from carried selections; returns what was removed."""
+    removed = []
+    for key in ('selected_tools', 'enabled_custom_tools'):
+        values = capabilities.get(key)
+        if not isinstance(values, list):
+            continue
+        kept = [v for v in values if not (isinstance(v, str) and v.split(':', 1)[-1] in RETIRED_TOOLS)]
+        removed += [v for v in values if v not in kept]
+        capabilities[key] = kept
+    return removed
+
+
+def knowledge_write_steps(definitions):
+    """Old steps that could write the knowledge base. The converter cannot tell
+    which hand-written agent() call replaces a step, so it only lists them."""
+    steps = set()
+    plan_file, config_file = definitions / 'planning/plan.json', definitions / 'planning/step_config.json'
+    if plan_file.is_file():
+        for step in json.loads(plan_file.read_text()).get('steps', []):
+            if isinstance(step, dict) and (step.get('write_access') or {}).get('knowledgebase'):
+                steps.add(step.get('id'))
+    if config_file.is_file():
+        for step in json.loads(config_file.read_text()).get('steps', []):
+            access = (step.get('agent_configs') or {}).get('knowledgebase_access', '') if isinstance(step, dict) else ''
+            if access in ('write', 'read-write'):
+                steps.add(step.get('id'))
+    if not steps:
+        return {}
+    return {'knowledge_write_steps': sorted(s for s in steps if s),
+            'knowledge_write_note': "These old steps could write the knowledge base. Agents now read it by default; add knowledge='write' only to the agent() calls that replace these steps."}
+
+
 def python_payload(source, workflow_id, original_capabilities, original_inputs):
     source = source.resolve()
     payload, removed_tools = {}, []
@@ -133,24 +173,18 @@ def python_payload(source, workflow_id, original_capabilities, original_inputs):
         raise ValueError('The saved workflow settings must be an object.')
     original_capabilities = dict(original_capabilities)
     retired_notifications = original_capabilities.pop('notifications', {})
-    proposed = definition.get('capabilities', {})
-    if not isinstance(proposed, dict):
-        raise ValueError('The Python source settings must be an object.')
-    for name, value in proposed.items():
-        if name == 'notifications': continue
-        if value != original_capabilities.get(name):
-            raise ValueError(f'The Python source changes the saved {name} selection. Keep the original settings during conversion.')
+    for name in ('capabilities', 'input_presets'):
+        if name in definition:
+            raise ValueError(f'Remove {name} from the source script.json: the converter copies it from the saved workflow.')
+    removed_selections = drop_retired_selections(original_capabilities)
     definition['capabilities'] = original_capabilities
     names = {item['name'] for item in definition.get('inputs', [])}
     definition.setdefault('inputs', []).extend(item for item in original_inputs.get('variables', []) if item['name'] not in names)
-    presets = original_inputs.get('groups', [])
-    if definition.get('input_presets', presets) != presets:
-        raise ValueError('Keep the original named input presets during conversion.')
-    definition['input_presets'] = presets
+    definition['input_presets'] = original_inputs.get('groups', [])
     payload['script.json'] = encode(definition)
     if definition.get('id') != workflow_id or 'main.py' not in payload:
         raise ValueError('The Python definition must retain the existing workflow ID and include main.py.')
-    return payload, definition, {'removed_tools': sorted(set(removed_tools)), 'removed_notification_fields': sorted(retired_notifications)}
+    return payload, definition, {'removed_tools': sorted(set(removed_tools) | set(removed_selections)), 'removed_notification_fields': sorted(retired_notifications)}
 
 
 def plan(docs, state, initialize=False, workflow_id=None, source=None):
@@ -223,7 +257,7 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     binding['kind'] = 'script'
     changes[binding_file] = encode(binding)
     documents = {'definitions': definitions, 'code': code, 'runtime': runtime, 'crew-db': private / 'db', 'crew-db-source': files / 'db'}
-    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, 'carried_input_presets': len(definition['input_presets'])}}
+    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, **knowledge_write_steps(definitions), 'carried_input_presets': len(definition['input_presets'])}}
     return changes, documents, report
 
 
@@ -251,6 +285,17 @@ def apply(changes, documents, state, backup=None, identity='runtime-roots'):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
     return str(backup)
+
+
+# Standalone adoption reuses the Goal-to-Crew converter, which loads these
+# sibling scripts. Copy them together; a missing one fails before any read.
+ADOPTION_HELPERS = ('migrate-goal-to-crew', 'migrate-project-schedules', 'migrate-browser-modes',
+                    'migrate-workflow-input-contracts', 'migrate-crew-product')
+
+
+def missing_adoption_helpers():
+    here = Path(__file__).resolve().parent
+    return [name + '.py' for name in ADOPTION_HELPERS if not (here / (name + '.py')).is_file()]
 
 
 def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None, deployment_mode=None):
@@ -288,7 +333,7 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
     binding = json.loads(conversion.writes[conversion.binding_file])
     binding.update(kind='script', runtime_root='workflows/' + workflow_id)
     conversion.writes[conversion.binding_file] = encode(binding)
-    conversion.counts.update(carried_input_presets=len(definition['input_presets']), python_scripts=1, **removed)
+    conversion.counts.update(carried_input_presets=len(definition['input_presets']), python_scripts=1, **removed, **knowledge_write_steps(conversion.definitions))
     conversion.python_source = True
     return conversion
 
@@ -309,6 +354,9 @@ def main():
     if bool(args.workflow_id) != bool(args.source):
         parser.error('--workflow-id and --source are required together')
     if args.adopt_into_crew:
+        missing = missing_adoption_helpers()
+        if missing:
+            parser.error('copy these helper scripts beside this one first: ' + ', '.join(missing))
         if not args.workflow_id or args.initialize_runtime_roots or not args.deployment_mode:
             parser.error('--adopt-into-crew needs --workflow-id, --source and --deployment-mode local|server; initialize existing bindings separately')
         conversion = adopt_into_crew(args.docs.resolve(), args.state.resolve(), args.workflow_id, args.adopt_into_crew, args.source, args.agent_binary, args.deployment_mode)
