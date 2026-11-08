@@ -2,12 +2,32 @@ package orchestrator
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
+
+// PLAT-746: the upgrade check missed retired selectors; a missing runtime
+// resource must not turn a current static name into a retired name.
+func TestSavedCustomToolSelectionsUseStaticDefinitions(t *testing.T) {
+	base, err := NewBaseOrchestrator(loggerv2.NewNoop(), nil, OrchestratorTypeWorkflow, "", 0, "", nil, nil, false, &LLMConfig{}, 1, nil, nil, nil)
+	if err != nil || len(base.WorkspaceTools) != 0 {
+		t.Fatalf("fixture must have no admitted runtime tools: %v", err)
+	}
+	for _, selection := range []string{"workspace_browser:browser.execute", "workspace_browser:agent_browser", "human_tools:needs_you.ask", "human_tools:needs_you.consume", "human_tools:needs_you.create", "human_tools:needs_you.get", "workspace_advanced:terminal.execute", "workspace_advanced:files.patch", "agent_messaging:send_message", "workspace_advanced:*"} {
+		if err := ValidateCustomToolSelection(selection); err != nil {
+			t.Fatalf("current definition %s was mistaken for a retired resource: %v", selection, err)
+		}
+	}
+	for selection, guidance := range map[string]string{"human_tools:notify_user": "record_summary", "workspace_advanced:files.image": "native image reader", "human_tools:missing_tool": "absent from the current catalog"} {
+		if err := ValidateCustomToolSelection(selection); err == nil || !strings.Contains(err.Error(), guidance) {
+			t.Fatalf("stale selection %s lacks its repair: %v", selection, err)
+		}
+	}
+}
 
 func TestWorkspaceAdvancedCategoryIncludesProviderMediaTools(t *testing.T) {
 	names := getToolNamesByCategory("workspace_advanced")
