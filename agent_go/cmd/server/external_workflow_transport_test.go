@@ -42,7 +42,7 @@ func TestCrewRunToolsThroughMCPBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", AgentProfileConversationKey: "team", SelectedFolder: externalCommandCrewRoot, PinRunMode: true}
-	gate := newProductToolGateForAllowlist("work", []string{crewPublishedCallToolName, crewPublishedGetToolName, "project_functions_define"})
+	gate := newProductToolGateForAllowlist("work", []string{crewPublishedCallToolName, crewPublishedGetToolName, "set_work_identity"})
 	gate.DenyWhere(func(name string) bool { return accessTokenRunToolDenied(claims, name) })
 	gate.DenyReaderTools(crewReaderDeniedTools()...)
 	if code, names := externalProjectTransport(claims, gate, true); !code || len(names) != 0 {
@@ -53,7 +53,7 @@ func TestCrewRunToolsThroughMCPBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	builderRan := false
-	_ = draft.RegisterCustomTool("project_functions_define", "Owner-only", map[string]interface{}{"type": "object"}, func(context.Context, map[string]interface{}) (string, error) {
+	_ = draft.RegisterCustomTool("set_work_identity", "Owner-only", map[string]interface{}{"type": "object"}, func(context.Context, map[string]interface{}) (string, error) {
 		builderRan = true
 		return "updated", nil
 	}, "workflow")
@@ -111,7 +111,7 @@ func TestCrewRunToolsThroughMCPBridge(t *testing.T) {
 	if content, _ := via(crewPublishedCallToolName, map[string]any{"function": "missing"}); !strings.Contains(content, "no published function") {
 		t.Fatalf("Crew call did not reach its registered executor through call_tool: %s", content)
 	}
-	if content, _ := via("project_functions_define", map[string]any{}); builderRan || !strings.Contains(content, "not registered") {
+	if content, _ := via("set_work_identity", map[string]any{}); builderRan || !strings.Contains(content, "not registered") {
 		t.Fatalf("Run chat reached an owner-only action through call_tool: ran=%v %s", builderRan, content)
 	}
 	if _, err := resolve(executor.WithSessionID(ctx, sessionID), "execute_shell_command"); err == nil || !strings.Contains(err.Error(), "unavailable to external access tokens") {
