@@ -254,3 +254,68 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 		t.Fatalf("Relay advertised Goal steps: %d", denied.Code)
 	}
 }
+
+// PLAT-746-453: checks/notices share the workspace, not anyone's private chat.
+func TestWorkspaceRunEvidenceUsesProjectReadGrantAndBoundsPublicFields(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","role":"creator"},{"id":"bob","username":"bob","role":"creator"},{"id":"stranger","username":"stranger","role":"creator"}]}`)
+	workspace := &mockWorkspaceAPI{files: map[string]string{"Workflow/evidence/workflow.json": `{"id":"evidence","kind":"workflow","created_by":"alice","access":{"owners":["alice"],"readers":["bob"]}}`}}
+	server := httptest.NewServer(workspace)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	dir := filepath.Join(docs, "Workflow/evidence/runs/run-one/helpers/evidence")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 205; i++ {
+		body, _ := json.Marshal(map[string]interface{}{"kind": "check", "at": time.Date(2026, 1, 1, 0, 0, i, 0, time.UTC).Format(time.RFC3339), "name": "Known check", "ok": i%2 == 0, "detail": "MCP_API_TOKEN=synthetic-secret " + strings.Repeat("λ", 700), "arguments": "PRIVATE_ARGUMENTS", "result": "PRIVATE_RESULTS"})
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%04d.json", i)), body, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A model-planted link must not turn the reader into a file preview.
+	if err := os.Symlink(filepath.Join(docs, "outside.json"), filepath.Join(dir, "9999.json")); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	call := func(user, run string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest("GET", "/api/workspace/run-evidence?workspace_path=Workflow%2Fevidence&run_folder="+url.QueryEscape(run), nil)
+		if user != "" {
+			request = request.WithContext(context.WithValue(request.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+		}
+		out := httptest.NewRecorder()
+		api.handleWorkspaceRunEvidence(out, request)
+		return out
+	}
+	for _, check := range []struct {
+		user   string
+		status int
+	}{{"alice", 200}, {"bob", 200}, {"stranger", 404}, {"", 401}} {
+		reply := call(check.user, "run-one")
+		if reply.Code != check.status {
+			t.Fatalf("evidence access user=%q: HTTP%d %s", check.user, reply.Code, reply.Body)
+		}
+		if check.status != 200 {
+			continue
+		}
+		var body struct {
+			Items []stepworkflow.PythonRunEvidence `json:"items"`
+		}
+		if json.Unmarshal(reply.Body.Bytes(), &body) != nil || len(body.Items) != 200 {
+			t.Fatalf("bounded evidence missing: %s", reply.Body)
+		}
+		if strings.Contains(reply.Body.String(), "synthetic-secret") || strings.Contains(reply.Body.String(), "PRIVATE_") {
+			t.Fatal("run evidence exposed private fields")
+		}
+		for _, item := range body.Items {
+			if len([]rune(item.Detail)) > 500 || item.OK == nil {
+				t.Fatal("run evidence projection lost its bounds/check result")
+			}
+		}
+	}
+	if reply := call("alice", "../run-one"); reply.Code != 400 {
+		t.Fatalf("run traversal admitted: HTTP%d", reply.Code)
+	}
+}

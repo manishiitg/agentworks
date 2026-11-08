@@ -127,12 +127,19 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 		}
 	}
 	write(filepath.Join(sourceRoot, "script.json"), `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true},{"name":"extended","type":"boolean","value":"false"},{"name":"rate","type":"number","value":"5"},{"name":"RDS_SECRET_ID_DEV","type":"string","value":"example/dev/app"}],"input_presets":[{"name":"Saved","values":{"extended":"false","rate":"5"}}],"outputs":["result.json"]}`)
-	write(filepath.Join(sourceRoot, "helper.py"), "from agentworks import step\n@step('Prepare report')\ndef prepare(): return True\n")
+	write(filepath.Join(sourceRoot, "helper.py"), "from agentworks import step, check\n@step('Prepare report')\ndef prepare():\n    assert check('Prepared', True, 'Fixture ready').ok\n    return True\n")
 	kbPath, err := fsutil.WorkspacePath(docs, binding.Root+"/knowledgebase/context/rules.md")
 	if err != nil {
 		t.Fatal(err)
 	}
 	write(kbPath, "fixture knowledge")
+	// Retired plan settings must not participate in a converted Python run or
+	// its executable revision, even if the old file is malformed.
+	legacyConfig, err := fsutil.WorkspacePath(docs, binding.Root+"/planning/step_config.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(legacyConfig, "retired settings: not a JSON definition")
 	kbJSON, _ := json.Marshal(kbPath)
 	write(filepath.Join(sourceRoot, "main.py"), "from pathlib import Path\nassert Path("+string(kbJSON)+").read_text() == 'fixture knowledge'\n"+`import json, os, sys
 from helper import prepare
@@ -339,6 +346,18 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			rel, relErr := filepath.Rel(runRoot, logReceipt.LogFile)
 			if relErr != nil || rel == ".." || strings.HasPrefix(rel, "../") {
 				t.Fatalf("log is outside its run: %s", logReceipt.LogFile)
+			}
+			for _, user := range []string{"owner", "runner"} {
+				request := httptest.NewRequest(http.MethodGet, "/api/workspace/run-evidence?workspace_path="+binding.Root+"&run_folder="+folder.Name(), nil)
+				request = request.WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: user, Username: user}))
+				reply := httptest.NewRecorder()
+				(&StreamingAPI{}).handleWorkspaceRunEvidence(reply, request)
+				var evidence struct {
+					Items []workflow.PythonRunEvidence `json:"items"`
+				}
+				if reply.Code != 200 || json.Unmarshal(reply.Body.Bytes(), &evidence) != nil || len(evidence.Items) != 1 || evidence.Items[0].OK == nil || !*evidence.Items[0].OK || evidence.Items[0].SourceCall == "" {
+					t.Fatalf("converted run evidence user=%s: HTTP%d %s", user, reply.Code, reply.Body)
+				}
 			}
 			verified = true
 			t.Logf("script completed run=%s run_as=%s real_python=true", folder.Name(), runAs)
