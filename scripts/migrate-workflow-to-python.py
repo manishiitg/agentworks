@@ -338,6 +338,85 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
     return conversion
 
 
+def retire_old_plan(docs, state, workflow_id):
+    """List the old plan-engine files a converted workflow no longer uses.
+
+    Only after the conversion proved itself: the binding is kind=script and at
+    least one converted run completed. Removes the old planning/ definitions and
+    the old plan-edit changelog, and plan revisions no converted run refers to.
+    Never workflow.json, variables, code/, runs, the database or timers."""
+    matches = []
+    for file in sorted((state / 'ownership/crew-executables').glob('*.json')):
+        binding = json.loads(file.read_text())
+        if binding.get('id') == workflow_id:
+            matches.append(binding)
+    if len(matches) != 1:
+        raise ValueError('Choose one registered workflow ID.')
+    binding = matches[0]
+    if binding.get('kind') != 'script' or not binding.get('runtime_root'):
+        raise ValueError('Convert this workflow first: its binding is not a converted script yet.')
+    runtime_root(binding['runtime_root'], workflow_id)
+    projects = json.loads((state / 'ownership/projects.json').read_text())['projects']
+    owners = [rec for rec in projects.values() if rec.get('project_id') == binding['crew_id']]
+    if len(owners) != 1:
+        raise ValueError('The owning Crew is unavailable.')
+    crew = owners[0]
+    private = contained(docs, '_system/crew-data/' + safe_id(binding['crew_id']))
+    files = Path(crew['local_root']).resolve() if crew.get('local_root') else contained(docs, binding['crew_root'])
+    definitions = contained(files, '.agentworks/workflows/' + workflow_id)
+    runtime = contained(private, binding['runtime_root'])
+    completed, keep = [], set()
+    for meta_file in sorted((runtime / 'runs').rglob('run_metadata.json')):
+        meta = json.loads(meta_file.read_text())
+        # Every run keeps the plan revision it recorded, whatever its status:
+        # failed and stopped runs are inspected and resumed from it too.
+        pinned = [meta.get('plan_revision')] + [r.get('plan_revision') for r in (meta.get('completion_receipts') or {}).values() if isinstance(r, dict)]
+        keep.update(r + '.json' for r in pinned if isinstance(r, str) and r)
+        # A converted run executes the one script step named after the workflow.
+        if meta.get('status') == 'completed' and meta.get('required_step_ids') == [workflow_id]:
+            completed.append(str(meta_file.parent.relative_to(runtime / 'runs')))
+    if not completed:
+        raise ValueError('Run the converted workflow successfully at least once before retiring its old plan.')
+    removals = sorted(p for p in (definitions / 'planning').rglob('*') if p.is_file()) if (definitions / 'planning').is_dir() else []
+    changelog, revisions = runtime / 'planning/changelog', runtime / 'planning/revisions'
+    if changelog.is_dir():
+        removals += sorted(p for p in changelog.rglob('*') if p.is_file())
+    if revisions.is_dir():
+        removals += sorted(p for p in revisions.iterdir() if p.is_file() and p.name not in keep)
+    for path in removals:
+        if path.is_symlink():
+            raise ValueError('Resolve the linked plan file before retiring it: ' + str(path))
+    documents = {'definitions-planning': definitions / 'planning', 'runtime-planning': runtime / 'planning'}
+    report = {'workflow_id': workflow_id, 'completed_converted_runs': completed, 'kept_revisions': sorted(keep),
+              'removed': [str(p.relative_to(definitions if p.is_relative_to(definitions) else runtime)) for p in removals]}
+    return removals, documents, report
+
+
+def apply_retirement(removals, documents, state, backup, workflow_id):
+    if not removals:
+        return None
+    backup = (backup or state / 'migrations' / ('workflow-python-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ'))) / (safe_id(workflow_id) + '-retire-old-plan')
+    if backup.exists() and (not backup.is_dir() or any(backup.iterdir())):
+        raise ValueError('This retirement backup already contains a snapshot. Keep it and choose a new backup folder.')
+    for source in documents.values():
+        if backup == source or source in backup.parents or backup in source.parents:
+            raise ValueError('Choose a backup outside the active automation storage.')
+    backup.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # One plain snapshot of both planning folders before anything is removed.
+    for label, path in documents.items():
+        if path.is_dir():
+            shutil.copytree(path, backup / label, symlinks=True)
+    for path in removals:
+        path.unlink()
+    for path in documents.values():
+        if not path.is_dir():
+            continue
+        for folder in sorted([p for p in path.rglob('*') if p.is_dir()] + [path], key=lambda p: -len(p.parts)):
+            if not any(folder.iterdir()):
+                folder.rmdir()
+    return str(backup)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--docs', type=Path, required=True)
@@ -348,9 +427,17 @@ def main():
     parser.add_argument('--adopt-into-crew', help='Adopt one standalone workflow into an existing same-owner Crew, reusing the Goal-to-Crew converter.')
     parser.add_argument('--agent-binary', type=Path, help='Current server binary for importing older chat archives and validating inputs.')
     parser.add_argument('--deployment-mode', choices=('local', 'server'), help='Required for standalone adoption: this installation runs locally or on a server.')
+    parser.add_argument('--retire-old-plan', action='store_true', help='After at least one completed converted run, remove the old plan-engine files (planning/, its changelog and unused plan revisions). Never workflow.json, variables, code/, runs, the database or timers.')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--backup', type=Path, help='Backup parent folder; each workflow gets its own new snapshot, never overwriting an earlier one.')
     args = parser.parse_args()
+    if args.retire_old_plan:
+        if not args.workflow_id or args.source or args.adopt_into_crew or args.initialize_runtime_roots:
+            parser.error('--retire-old-plan takes only --workflow-id (with --backup and --apply)')
+        removals, documents, report = retire_old_plan(args.docs.resolve(), args.state.resolve(), args.workflow_id)
+        report['backup'] = apply_retirement(removals, documents, args.state.resolve(), args.backup, args.workflow_id) if args.apply else None
+        print(json.dumps(report, indent=2))
+        return
     if bool(args.workflow_id) != bool(args.source):
         parser.error('--workflow-id and --source are required together')
     if args.adopt_into_crew:
