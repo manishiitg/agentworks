@@ -37,6 +37,10 @@ What you can make, and the skill to read first:
 - Files, tables, Brain and memory: `panel-data`. Slack, Google, WhatsApp and
   email: `panel-channels`. Crew agents and tabs: `crew-agents`.
 
+When this Crew has several saved Python workflows, ask which one if unclear,
+then use `crew_execution` action `run_workflow_trigger` with its ID in
+`arguments.workspace_path`. Never choose one silently.
+
 A platform tool missing from your tool list
 is not missing: find it with `search_tools` and run it with `call_tool`. Use the
 database and dashboard tools; never open `db.sqlite` or its sidecar files
