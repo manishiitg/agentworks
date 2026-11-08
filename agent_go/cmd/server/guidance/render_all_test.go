@@ -389,16 +389,17 @@ func TestNoTemplateNamesARemovedTool(t *testing.T) {
 // A chat shows a catalogued tool as its public `family action=name`; the catalog
 // member name is a private registration identity (live chats that followed a raw
 // member got tools_unavailable). Guidance must name the public form, and every
-// `family action=name` it quotes must be a catalog action. The kinds below still
+// `family action=name` it quotes must be a catalog action. A name after a colon is a
+// config key such as human_tools:send_email, which keeps its registration name. The kinds below still
 // name members: bridge and step-agent text that describes route names, or text
 // whose serving surface has not been classified yet (PLAT-746-415). Remove a kind
 // from the list when its text is converted; do not add one.
 var guidancePendingPublicNames = map[string]bool{
 	"browser-usage": true, "mcp-bridge": true, "scripted": true, "optimize-playbook": true,
-	"code-authoring": true, "debugging-flow": true, "step-description": true, "step-config": true,
-	"workspace-media-tools": true, "branch": true, "plan-design": true, "workflow-tools": true,
-	"design-dashboard": true, "run-plan-drift": true, "deployed-channel": true, "llm-selection": true,
-	"playwright-scripted": true, "reporting-policy": true, "routing": true, "secure-share-links": true,
+	"code-authoring":        true,
+	"workspace-media-tools": true, "workflow-tools": true,
+	"design-dashboard":    true,
+	"playwright-scripted": true, "reporting-policy": true, "secure-share-links": true,
 	"step-system-prompts": true, "assumption-audit": true, "llm-provider-config": true,
 	"running-steps": true, "stores": true, "user-management": true, "workflow-chat": true,
 	"workflow-guide": true, "workspace-views": true,
@@ -450,7 +451,7 @@ func TestGuidanceNamesPublicToolsOnly(t *testing.T) {
 			name := body[loc[0]:loc[1]]
 			before := body[:loc[0]]
 			public, ok := private[name]
-			if !ok || strings.HasSuffix(before, "action=") || strings.HasSuffix(before, "operation=") {
+			if !ok || strings.HasSuffix(before, "action=") || strings.HasSuffix(before, "operation=") || strings.HasSuffix(before, ":") {
 				continue
 			}
 			if guidancePendingPublicNames[kind] {

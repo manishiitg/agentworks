@@ -43,7 +43,7 @@ see:
 1. caller `route_selections[step_id]`, a preseeded `route_selection.json`,
    `route_source_file`, or a `context_dependencies` entry — used as-is, no
    prompt (this is how a schedule answers the question up front);
-2. workshop `execute_step(step_id, human_input=...)` — test answer;
+2. workshop `runs action=step` (step_id, human_input=...) — test answer;
 3. unattended run (`start_from_beginning_no_human`) — `default_route_id`, or
    the run fails with an actionable error if none is set. Set
    `default_route_id` to the safe do-nothing route (typically the one that
@@ -52,7 +52,7 @@ see:
    window).
 
 Use `add_step(type="branch", step={..., route_source:"human", ...})` for a
-planned fixed choice. Agents collect urgent free-form input with `human_feedback`;
+planned fixed choice. Agents collect urgent free-form input with `needs_you action=ask`;
 known inputs arrive through run variables or per-step instructions.
 
 ### When to use branch
@@ -152,7 +152,7 @@ each option a `next_step_id` pointing to the shared downstream step, or
   fixed alternative.
 - **Branch vs. plain agent**: a plain sequence is one ordered
   conversation; add routes only for adaptive delegation.
-- **Known human choices**: use `route_selections` instead of asking again. Agents use `human_feedback` for urgent missing values.
+- **Known human choices**: use `route_selections` instead of asking again. Agents use `needs_you action=ask` for urgent missing values.
 ### Anti-patterns
 
 - Branch with only one route, or with a generic catch-all route that should

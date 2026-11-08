@@ -41,13 +41,13 @@ Do not add connection instructions, raw SQLite commands, or general shell/path
 rules that duplicate or contradict the runtime. Confirm that referenced files
 exist and are accessible under the step's configured permissions.
 
-After creating or changing a step, use `preview_step_runtime(step_id="...")`
+After creating or changing a step, use `runs action=step_runtime` (step_id="...")
 to inspect assembled instructions, attached skill identities, available workspace
 tools and access scope without executing it. The preview masks secrets and marks
 unresolved run/provider context; fix conflicts or missing capabilities before
 launching. Use `include_prompt=false` for a compact capability check.
 
-For an existing run, use `get_step_prompts(step_id="...")` to inspect its saved
+For an existing run, use `runs action=step_prompts` (step_id="...") to inspect its saved
 system prompt and user message, selecting the relevant attempt/iteration. This
 also shows run-specific context unavailable in the source template. A saved
 prompt is evidence for that run, not a preview of later configuration changes;
@@ -230,10 +230,10 @@ and workflow-execution skill listings when applicable. The agent opens a relevan
 skill on demand; do not paste these procedures into descriptions, system_rules
 or verification messages. Keep enabled_skills for useful task/domain skills.
 Ordinary steps do not have the costs query action,
-apply_workflow_db_migration or function-service tools. Report results through the
-run summary and workflow notifications. The baseline includes send_email and
-send_slack_message for task-required sends, subject to actual connection/access
-gates; use human_feedback for a needed answer.
+`database action=migrate` or function-service tools. Report results through the
+run summary and workflow notifications. The baseline includes `messages action=email_send` and
+`messages action=slack_send` for task-required sends, subject to actual connection/access
+gates; use `needs_you action=ask` for a needed answer.
 Schema changes belong to Builder; external function-service work belongs to Crew.
 Goal metrics require a real soul objective. The runtime supplies bounded goal/position/parent context separately; do not
 repeat it in each sequence instruction.

@@ -145,13 +145,13 @@ Step-level `success_criteria` is deprecated. Rely on a strong `description` plus
 - **Branch** (type: "branch"): shares file-based selection with Routing, for a small in-flow next-step decision instead of a major fork. Uses **branch_question**; additionally supports **route_source="human"** for a fixed-choice prompt.
 - **Orphan** (is_orphan: true): Not part of the main execution flow. Orphan steps are plan-local reusable definitions and manual utility agents. Use them for data checks, environment validation, one-off investigations, or shared sub-agent definitions that multiple agents in the same plan may reuse. Reuse is explicit: an orphan step must declare `shared_with.agent_ids`, and an agent route must point to it with `orphan_step_ref`. Do not assume every orphan step is shared with every agent.
 
-Known values belong in declared launch variables. Set `required_variables` on their first consumer so missing values fail before work starts on the selected route. Use `human_feedback` inside an agent for a live CAPTCHA or other urgent interaction; use `create_human_input_request` for a durable request.
+Known values belong in declared launch variables. Set `required_variables` on their first consumer so missing values fail before work starts on the selected route. Use `needs_you action=ask` inside an agent for a live CAPTCHA or other urgent interaction; use `needs_you action=create` for a durable request.
 
 ### Inner Steps
 
 Inner steps live inside an agent's `predefined_routes[].sub_agent_step` (including
 the legacy orchestrator compatibility shape). They have their own step IDs and
-can be individually executed and configured via **execute_step** and
+can be individually executed and configured via **`runs action=step`** and
 **update_step_config** using the inner step ID. Routing steps do not have inner
 steps—their `routes[].next_step_id` points to existing plan steps.
 

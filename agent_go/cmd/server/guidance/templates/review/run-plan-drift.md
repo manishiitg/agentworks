@@ -126,7 +126,7 @@ Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumpti
    - schedule cron/timezone that contradicts what `soul.md` or the plan claims
      about cadence or the window the work is valid for
    - a schedule message that should invoke canonical work but bypasses
-     `run_full_workflow`/`execute_step`; use `validate_plan_change` when a repair
+     `runs action=start`/`runs action=step`; use `validate_plan_change` when a repair
      changes plan references or dependency wiring
 5. Include clean checks briefly. Do not manufacture drift merely because an artifact exists.
 

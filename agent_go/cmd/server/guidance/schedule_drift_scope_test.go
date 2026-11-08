@@ -18,11 +18,11 @@ func TestArtifactDriftAuditsTheSchedule(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"workflow.json", // the schedule lives here
-		"messages",      // the queue itself
-		"cron",          // cadence
-		"execute_step",  // what a message should be doing
-		"validate_plan", // why inline work is a problem
+		"workflow.json",    // the schedule lives here
+		"messages",         // the queue itself
+		"cron",             // cadence
+		"runs action=step", // what a message should be doing
+		"validate_plan",    // why inline work is a problem
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("schedule evidence missing %q from the artifact-drift checklist", want)

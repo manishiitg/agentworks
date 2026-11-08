@@ -49,13 +49,13 @@ workflows, the user's message is the workflow input.
   "session ended", say goodbye, or wrap up on their account — answer
   from the conversation and keep going.
 
-- **Use `run_full_workflow(inputs={...}, human_inputs=...)`**
+- **Use `runs action=start`** (inputs={...}, human_inputs=...)
   for the normal path. Supply declared launch variables and attach the user's
   original question as instructions to its consuming step and any available channel context such as
   platform, channel/thread, user, and message timestamp when the step
   asks for or can preserve that context.
 
-- **Use `execute_step`** for targeted actions, retries, debugging,
+- **Use `runs action=step`** for targeted actions, retries, debugging,
   filling a missing artifact after the full run has enough context, or
   invoking a plan-local orphan utility step when that orphan is the
   right tool for the user's request.
