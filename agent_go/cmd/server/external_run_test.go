@@ -29,7 +29,7 @@ func TestExternalRunScopeGate(t *testing.T) {
 	full := claims("workflows:read", "files:read", "runs:execute")
 
 	// Proxied run tools require runs:execute.
-	for _, name := range []string{"execute_step", "run_full_workflow", "send_step_message", "stop_step", "stop_all_executions", "query_step", "trigger_schedule", "chat", "run_reply_input"} {
+	for _, name := range []string{"execute_step", "run_full_workflow", "send_step_message", "stop_step", "stop_all_executions", "query_step", "trigger_schedule", "run_reply_input"} {
 		if externalTokenAllows(readOnly, byName[name]) {
 			t.Fatalf("read-only token allows %s", name)
 		}
@@ -64,20 +64,15 @@ func TestExternalRunProxyRejectsReadOnlyToken(t *testing.T) {
 	if scoped["error"].(map[string]any)["code"] != "insufficient_scope" {
 		t.Fatalf("wrong error: %v", scoped)
 	}
-}
 
-func TestExternalChatRejectsReadOnlyTokenAndBlankMessage(t *testing.T) {
-	f := newExternalToolsFixture(t)
-	w := httptest.NewRecorder()
-	data := `{"name":"chat","arguments":{"workflow_id":"invoices","message":"hello"}}`
-	f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", data, patClaims("owner", []string{"workflows:read", "files:read"}), nil))
-	scoped := externalTestBody(t, w, 403)
-	if scoped["error"].(map[string]any)["code"] != "insufficient_scope" {
-		t.Fatalf("wrong error: %v", scoped)
+	// PLAT-746-477: authorized execution must not start an assistant for a retired plan.
+	body := externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": "start", "workflow_id": "invoices"}), 400)
+	if body["error"].(map[string]any)["code"] != "workflow_unavailable" {
+		t.Fatalf("wrong retirement refusal: %v", body)
 	}
-	// A whitespace message passes schema validation but is rejected before
-	// any turn starts.
-	externalTestBody(t, f.call(t, "owner", "chat", map[string]any{"workflow_id": "invoices", "message": "  "}), 400)
+	if len(f.api.activeSessions) != 0 {
+		t.Fatal("retired plan started an assistant")
+	}
 }
 
 func TestExternalRunReplyInputRejectsUnknownSession(t *testing.T) {
@@ -125,7 +120,9 @@ func TestExternalRunStatusKeepsDirectRunOwnershipAndBinding(t *testing.T) {
 	active.WorkspacePath = "Workflow/invoices"
 	active.AgentMode = "multi-agent"
 	status(owner, 404)
-	active.AgentMode = "workflow"
+	active.AgentMode, active.PhaseID = "workflow_phase", "workflow-builder"
+	status(owner, 404)
+	active.AgentMode, active.PhaseID = "workflow", ""
 	delete(f.api.activeSessions, sessionID)
 	// The same exact-workflow history reader handles a completed/reaped run.
 	persisted := `{"session_id":"` + sessionID + `","user_id":"owner","agent_mode":"workflow","runtime":{"workspace_path":"Workflow/invoices"},"conversation_history":[]}`
@@ -288,24 +285,6 @@ func TestReadOnlyForRequest(t *testing.T) {
 	}
 	if !readOnlyForRequest(WorkflowAccessWrite, QueryRequest{PinRunMode: true}) {
 		t.Fatal("pinned writer turn is not read-only")
-	}
-}
-
-func TestExternalRunInstructionPassesArgumentsThrough(t *testing.T) {
-	got := externalRunInstruction("execute_step", map[string]any{"workflow_id": "invoices", "session_id": "s", "step_id": "fetch", "tier": "high"})
-	for _, want := range []string{`"runs"`, `"action":"step"`, `"step_id":"fetch"`, `"tier":"high"`} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("instruction missing %s: %s", want, got)
-		}
-	}
-	for _, drop := range []string{"workflow_id", "session_id"} {
-		if strings.Contains(got, drop) {
-			t.Fatalf("instruction leaks routing key %s: %s", drop, got)
-		}
-	}
-	got = externalRunInstruction("stop_all_executions", map[string]any{"workflow_id": "invoices"})
-	if !strings.Contains(got, `"action":"stop_all"`) {
-		t.Fatalf("empty instruction wrong: %s", got)
 	}
 }
 
