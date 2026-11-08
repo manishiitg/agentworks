@@ -29,6 +29,7 @@ func TestStructuredFunctionsIsolateParallelRunsAndKeepOutputsAfterRestart(t *tes
 	env.svc.automationTurnRunner = func(ctx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
 		vars := common.GetSessionShellEnv(session)
 		if vars["FUNCTION_CALL_ID"] == "" || !strings.HasPrefix(vars["FUNCTION_RESULT_FILE"], docs) {
+			t.Logf("fixture rejected call environment: call_id_present=%t result_file=%q output_dir=%q docs=%q", vars["FUNCTION_CALL_ID"] != "", vars["FUNCTION_RESULT_FILE"], vars["FUNCTION_OUTPUT_DIR"], docs)
 			return internalSessionTurnResult{}, context.Canceled
 		}
 		started <- session
