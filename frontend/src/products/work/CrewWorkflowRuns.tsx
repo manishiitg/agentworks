@@ -139,8 +139,9 @@ export function runStepLines(records: WorkspaceStepInspection[], outline: RelayS
   const named = outline.nodes.filter(node => !node.id.startsWith('other-') && (node.type === 'script' || node.type === 'agent'))
   const used = new Set<WorkspaceStepInspection | RunPythonStep>()
   const lines = named.flatMap((node): StepLine[] => {
-    const fromRecords = records.filter(record => record.inspection.source_call && record.inspection.source_call === node.call)
-    const fromMetadata = extra.filter(step => step.source_call && step.source_call === node.call)
+    // The same call can appear in two cases (a helper called from two branches) and the run records only the call, so a record is shown once, at the first row that names it.
+    const fromRecords = records.filter(record => !used.has(record) && record.inspection.source_call && record.inspection.source_call === node.call)
+    const fromMetadata = extra.filter(step => !used.has(step) && step.source_call && step.source_call === node.call)
     fromRecords.forEach(record => used.add(record))
     fromMetadata.forEach(step => used.add(step))
     const found = [...fromRecords.map(record => recordLine(record, node.label || record.inspection.name)), ...fromMetadata.map(step => persistedLine(step, node.label))]
