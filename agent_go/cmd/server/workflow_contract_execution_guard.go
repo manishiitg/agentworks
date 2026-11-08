@@ -70,7 +70,7 @@ func (r workflowContractExecutionGuardRegistrar) RegisterCustomToolWithTimeout(
 	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, execute, timeout, group)
 }
 
-func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePath string, trusted ...*crewExecutableBinding) error {
+func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePath string, _ ...*crewExecutableBinding) error {
 	workspacePath = strings.TrimSpace(workspacePath)
 	if workspacePath == "" {
 		return fmt.Errorf("workflow_contract_check_failed: no workflow workspace is attached; no execution was started")
@@ -82,16 +82,7 @@ func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePa
 	if !found {
 		return fmt.Errorf("workflow_contract_check_failed: workflow.json was not found at %s; no execution was started", workspacePath)
 	}
-	// An admitted Crew binding is stronger than the editable manifest ID.
-	if len(trusted) > 0 && trusted[0] != nil && trusted[0].Kind == "workflow" && trusted[0].Root == workspacePath {
-		if workflowContractVersionForUpgrade(manifest) != workflowContractPortableVersion || manifest.CodeLayoutVersion != 1 {
-			return fmt.Errorf("this Crew's workflow needs its current update before running; ask this chat to update it")
-		}
-	}
 	if workflowContractNeedsRecreation(manifest) {
-		if workflowHasCrewBinding(manifest) {
-			return fmt.Errorf("this workflow is too old to update automatically; leave it paused and ask this Crew's chat to recreate it")
-		}
 		return fmt.Errorf("%s", oldWorkflowContractMessage)
 	}
 	current := workflowContractVersionForUpgrade(manifest)
@@ -107,10 +98,7 @@ func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePa
 	if len(pending) > 0 {
 		next = fmt.Sprintf(" The next required migration is %s to v%s.", pending[0].label, pending[0].to)
 	}
-	nextStep := "Open this workflow's Builder chat to complete its next update."
-	if workflowHasCrewBinding(manifest) {
-		nextStep = "Ask this Crew's chat to update this workflow."
-	}
+	nextStep := "Converting an existing workflow to a Python script is done by the platform operator for now."
 	return fmt.Errorf(
 		"workflow_contract_migration_required: this workflow is on v%s while the platform requires v%s; no step was started.%s %s",
 		current,

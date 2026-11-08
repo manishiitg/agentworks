@@ -31,24 +31,19 @@ func directWebhookContractCompatible(manifest *WorkflowManifest) bool {
 	if manifestContractIsExecutionCompatible(manifest) {
 		return true
 	}
-	return manifest != nil && !workflowHasCrewBinding(manifest) && !manifestIsRelay(manifest) && workflowContractVersionForUpgrade(manifest) == workflowContractStepDescriptionLayoutVersion
+	// The previous contract still starts unattended, in a Crew too: the update to the next one needed plan edits that are gone.
+	return manifest != nil && !manifestIsRelay(manifest) && workflowContractVersionForUpgrade(manifest) == workflowContractStepDescriptionLayoutVersion
 }
 
 func directWebhookPreflight(manifest *WorkflowManifest) error {
 	if workflowContractNeedsRecreation(manifest) {
-		if workflowHasCrewBinding(manifest) {
-			return fmt.Errorf("this workflow is too old to update automatically; leave it paused and ask this Crew's chat to recreate it: %w", errWorkflowContractMigrationRequired)
-		}
 		return fmt.Errorf("%s: %w", oldWorkflowContractMessage, errWorkflowContractMigrationRequired)
 	}
 	if isPythonRelay(manifest) {
 		return nil
 	}
 	if manifest == nil || !directWebhookContractCompatible(manifest) || manifest.CodeLayoutVersion != 1 {
-		if workflowHasCrewBinding(manifest) {
-			return fmt.Errorf("ask this Crew's chat to update this workflow: %w", errWorkflowContractMigrationRequired)
-		}
-		return fmt.Errorf("manually update the workflow contract in Workshop before invoking its webhook: %w", errWorkflowContractMigrationRequired)
+		return fmt.Errorf("this workflow's contract is not supported for unattended runs; converting it to a Python script is done by the platform operator for now: %w", errWorkflowContractMigrationRequired)
 	}
 	return nil
 }
