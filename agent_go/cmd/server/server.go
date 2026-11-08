@@ -6418,14 +6418,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if tool.Function != nil {
 					toolName := tool.Function.Name
 					toolCategory := toolCategories[toolName]
-					chatMode := "builder"
-					if currentUserIsReadOnly {
-						chatMode = "run"
-					}
-					allowedHumanTool := false
-
-					allowedHumanTool = agentworksproduct.ChatAllowsTool(chatMode, toolName)
-
 					// Skip workspace tools - already registered above.
 					switch toolCategories[toolName] {
 					case "workspace_tools", virtualtools.GetWorkspaceAdvancedToolCategory(), virtualtools.GetWorkspaceBrowserToolCategory():
