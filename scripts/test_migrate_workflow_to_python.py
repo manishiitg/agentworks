@@ -64,6 +64,15 @@ class SameIdentityConversion(unittest.TestCase):
             for key in ('id','name','enabled','auth','caller','run_as','project','when'):
                 self.assertEqual(converted[key],hook[key])
             self.assertEqual(converted['input_mapping']['payload'],{'inputs':{'ACTION':{'source':'kind','values':{'issue':'review'}}}})
+            # Review4506403845/46: a preset-only update must retain raw input
+            # mappings and submit the actual mapping to the server validator.
+            (root/'webhooks.json').write_bytes(m.encode({'webhooks':[converted]}))
+            validator.write_text('#!/usr/bin/env python3\nimport json,sys\nx=json.load(sys.stdin)\nf=x["functions"][0]\nassert f["input_mapping"]["payload"]["inputs"]["ACTION"]["values"]=={"issue":"review"}\nassert f["input_mapping"]["variables"]==["ACTION"]\n')
+            staged={}
+            m.remap_entry_inputs(definition,staged,root,read,{'webhooks':{'hook':{'input_preset':'review'}}},validator)
+            preserved=json.loads(staged[root/'webhooks.json'])['webhooks'][0]
+            self.assertEqual(preserved['input_mapping'],converted['input_mapping'])
+
 
     def test_shared_backup_root_keeps_each_workflow_and_refuses_readonly_snapshot_overwrite(self):
         with tempfile.TemporaryDirectory() as directory:

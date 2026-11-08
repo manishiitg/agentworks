@@ -688,6 +688,10 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 			http.Error(w, err.Error(), 400)
 			return
 		}
+		if err := validateWebhookInputMappingContract(definitions, cfg, sched.Inputs); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
 		exposed := webhookMappedInputNames(cfg.PayloadMappings)
 		if cfg.InputMode == "envelope" {
 			exposed = cfg.AllowedVariables

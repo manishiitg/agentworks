@@ -43,10 +43,27 @@ func validateWebhookInputMappings(ctx context.Context, root string, cfg *Workflo
 	if err != nil {
 		return err
 	}
-	names := []string{}
+	if err := validateWebhookInputMappingContract(definitions, cfg, nil); err != nil {
+		return err
+	}
+	return validateWebhookVariableNames(ctx, root, webhookMappedInputNames(cfg.PayloadMappings))
+}
+
+// Shared by live configuration and the one-off migration's server validator.
+// Neither caller may substitute exposed names for the actual mapping contract.
+func validateWebhookInputMappingContract(definitions *VariablesManifest, cfg *WorkflowWebhookConfig, fixed map[string]string) error {
+	if cfg.PayloadMappings == nil || len(cfg.PayloadMappings.Inputs) == 0 {
+		return nil
+	}
+	if cfg.InputMode != "raw" && cfg.InputMode != "" {
+		return fmt.Errorf("payload input mappings require raw input mode")
+	}
 	for name, mapping := range cfg.PayloadMappings.Inputs {
 		if !slices.Contains(cfg.AllowedVariables, name) {
 			return fmt.Errorf("input %q is not allowed by this trigger", name)
+		}
+		if _, exists := fixed[name]; exists {
+			return fmt.Errorf("input %q has a fixed value and cannot be overridden", name)
 		}
 		field, err := webhookInputDefinition(definitions, name)
 		if err != nil {
@@ -73,13 +90,16 @@ func validateWebhookInputMappings(ctx context.Context, root string, cfg *Workflo
 			if err != nil {
 				return fmt.Errorf("input %q has an invalid mapped JSON value", name)
 			}
-			if _, err := workflow.WorkflowInputValue(*field, value); err != nil {
+			encoded, err := workflow.WorkflowInputValue(*field, value)
+			if err != nil {
 				return err
 			}
+			if len(encoded) > 16384 {
+				return fmt.Errorf("input %q exceeds 16 KiB", name)
+			}
 		}
-		names = append(names, name)
 	}
-	return validateWebhookVariableNames(ctx, root, names)
+	return nil
 }
 
 func resolveWebhookMappedInputs(s WorkflowSchedule, delivery *WorkflowWebhookDelivery, definitions ...*VariablesManifest) error {
