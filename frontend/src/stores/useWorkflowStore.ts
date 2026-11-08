@@ -994,7 +994,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
         if (resolvedTarget) {
           set(state => ({ workspaceViewTarget: { view: resolvedView, target: resolvedTarget, token: (state.workspaceViewTarget?.token ?? 0) + 1 } }))
         }
-        if ((kind === 'canvas' || kind === 'preview') && isCanvasView(resolvedView)) {
+        if (kind === 'preview' && isCanvasView(resolvedView)) {
           const presetId = useGlobalPresetStore.getState().activePresetIds.workflow ?? get()._currentPresetId
           persistWorkflowUIStateForPreset(presetId ?? null, { lastCanvasView: resolvedView })
           set({ lastCanvasView: resolvedView })
