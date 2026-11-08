@@ -17,20 +17,37 @@ repo_dir() { # the local checkout of a repository: this one, or its sibling
   if [[ "$1" == mcp-agent-builder-go ]]; then echo "$REPO_ROOT"; else echo "$REPO_ROOT/../$1"; fi
 }
 
-# commit_on_main <dir> <sha>: main holds this commit, or the commit is an older main commit plus changes that are each already
-# on main. The second case lets a release carry finished fixes without newer work that a server cannot take yet. Nothing that
-# has not landed on main passes. The version file is left out of the comparison: every commit bumps it, so it always differs.
+# DEPLOY_BRANCH chooses what a deploy ships: main (default) or dev, the shared integration branch of this repository.
+deploy_branch() {
+  case "${DEPLOY_BRANCH:-main}" in
+    main|dev) printf '%s\n' "${DEPLOY_BRANCH:-main}" ;;
+    *) echo "DEPLOY_BRANCH must be main or dev (got '${DEPLOY_BRANCH}')" >&2; return 1 ;;
+  esac
+}
+
+# branch_ref <dir>: origin/<DEPLOY_BRANCH> of that checkout; a sibling repository without that branch uses its origin/main.
+branch_ref() {
+  local branch
+  branch="$(deploy_branch)" || return 1
+  if git -C "$1" rev-parse -q --verify "refs/remotes/origin/$branch^{commit}" >/dev/null 2>&1; then echo "origin/$branch"; else echo origin/main; fi
+}
+
+# commit_on_branch <dir> <sha>: the pushed deploy branch (branch_ref) holds this commit, or the commit is an older commit of it plus
+# changes that are each already on it. The second case lets a release carry finished fixes without newer work that a server cannot
+# take yet. Nothing that has not landed on that pushed branch passes, never an arbitrary local commit. The version file is left out
+# of the comparison: every commit bumps it, so it always differs.
 # Go test files are left out too (reviewer, 7 Nov): deploy builds do not compile tests, and a test file often cannot cherry-pick
-# cleanly because main's earlier test edits sit in its context. All production code in a pinned build must still be on main.
+# cleanly because the branch's earlier test edits sit in its context. All production code in a pinned build must still be on the branch.
 patch_id() {
   git -C "$1" diff-tree -p "$2" -- . ':(exclude)frontend/src/version.ts' ':(exclude)*_test.go' | git patch-id --stable | cut -d' ' -f1
 }
-commit_on_main() {
-  local dir="$1" sha="$2" base commit landed id
-  git -C "$dir" merge-base --is-ancestor "$sha" origin/main 2>/dev/null && return 0
-  base="$(git -C "$dir" merge-base "$sha" origin/main 2>/dev/null)" || return 1
+commit_on_branch() {
+  local dir="$1" sha="$2" ref base commit landed id
+  ref="$(branch_ref "$dir")" || return 1
+  git -C "$dir" merge-base --is-ancestor "$sha" "$ref" 2>/dev/null && return 0
+  base="$(git -C "$dir" merge-base "$sha" "$ref" 2>/dev/null)" || return 1
   [[ -z "$(git -C "$dir" rev-list --merges "$base..$sha")" ]] || return 1
-  landed="$(for commit in $(git -C "$dir" rev-list --no-merges "$base..origin/main"); do patch_id "$dir" "$commit"; done)"
+  landed="$(for commit in $(git -C "$dir" rev-list --no-merges "$base..$ref"); do patch_id "$dir" "$commit"; done)"
   for commit in $(git -C "$dir" rev-list "$base..$sha"); do
     id="$(patch_id "$dir" "$commit")"
     # No ID: the commit changes only the version file or test files, so it carries no production code to compare.
@@ -72,18 +89,19 @@ gomod_pinned_sha() {
 }
 
 build_release_remote() {
-  local branch="${DEPLOY_BRANCH:-main}" repo url sha args=() out name app_sha="" source
+  local branch repo url sha args=() out name app_sha="" source
+  branch="$(deploy_branch)" || return 1
   for repo in $BUILD_REPOS; do
     url="$(to_https_url "$(git -C "$(repo_dir "$repo")" remote get-url origin)")" || return 1
-    # DEPLOY_SHA_<REPO> (REPO upper-case, - as _) builds that commit instead of the branch head, so a release can leave out work still landing on main.
-    # It must pass commit_on_main for that repository.
+    # DEPLOY_SHA_<REPO> (REPO upper-case, - as _) builds that commit instead of the branch head, so a release can leave out work still landing on the branch.
+    # It must pass commit_on_branch for that repository.
     local pin_var="DEPLOY_SHA_$(printf '%s' "$repo" | tr 'a-z-' 'A-Z_')" pinned
     pinned="${!pin_var:-}"
     source=""
     if [[ -n "$pinned" ]]; then
       [[ "$pinned" =~ ^[0-9a-f]{40}$ ]] || { echo "$pin_var must be a full 40-hex commit" >&2; return 1; }
-      commit_on_main "$(repo_dir "$repo")" "$pinned" \
-        || { echo "$pin_var ${pinned:0:10} is not an ancestor of origin/main of $repo, and not an ancestor plus changes already on main; refusing." >&2; return 1; }
+      commit_on_branch "$(repo_dir "$repo")" "$pinned" \
+        || { echo "$pin_var ${pinned:0:10} is not an ancestor of $(branch_ref "$(repo_dir "$repo")") of $repo, and not an ancestor plus changes already on it; refusing." >&2; return 1; }
       sha="$pinned" source=" (pinned)"
     elif [[ "$repo" != mcp-agent-builder-go ]] && sha="$(gomod_pinned_sha "$app_sha" "$repo")"; then
       # The app's go.mod decides the dependency revisions; main's head of a dependency may be untested with this app.
@@ -147,15 +165,17 @@ find_build() {
   build_ssh "python3 - find '$BUILDS_DIR' '$1'" < "$REPO_ROOT/deploy/common/release_manifest.py"
 }
 
-# A chosen (older) build may be deployed only if each of its revisions passes commit_on_main.
-check_build_on_main() { # name sha1 sha2 sha3
-  local name="$1" repo sha dir; shift
+# A chosen (older) build may be deployed only if each of its revisions passes commit_on_branch.
+check_build_on_branch() { # name sha1 sha2 sha3
+  local name="$1" repo sha dir branch; shift
+  branch="$(deploy_branch)" || return 1
   for repo in $BUILD_REPOS; do
     sha="$1"; shift
     dir="$(repo_dir "$repo")"
     git -C "$dir" fetch -q origin main >/dev/null 2>&1 || { echo "Cannot fetch $repo to check ancestry" >&2; return 1; }
-    commit_on_main "$dir" "$sha" \
-      || { echo "Build $name holds $repo ${sha:0:10}, which is not an ancestor of origin/main, nor one plus changes already on main; refusing." >&2; return 1; }
+    [[ "$branch" == main ]] || git -C "$dir" fetch -q origin "$branch" >/dev/null 2>&1 || true  # a sibling may have no such branch
+    commit_on_branch "$dir" "$sha" \
+      || { echo "Build $name holds $repo ${sha:0:10}, which is not an ancestor of $(branch_ref "$dir"), nor one plus changes already on it; refusing." >&2; return 1; }
   done
 }
 
@@ -167,7 +187,7 @@ ensure_prebuilt_build() {
     found="$(find_build "$DEPLOY_BUILD")" || { echo "No unique build matches '$DEPLOY_BUILD' (see ./deploy.sh builds)" >&2; return 1; }
     echo "==> Using existing build: $found" >&2
     # shellcheck disable=SC2086
-    check_build_on_main $found || return 1
+    check_build_on_branch $found || return 1
     printf '%s\n' "${found%% *}"
     return
   fi

@@ -27,7 +27,7 @@ Servers (each one's host, domain and settings live in the private deployments re
   slotcheck <server> [basic|full]   the slot self-test of a deployed server (read-only; PLAT-478): a real slotted `pwd` per slot in the
                         docs root, a workflow, a Crew and a Code project, the slotctl/slot table/launcher checks, and the
                         secret admission scan (warnings). Exits 1 on any FAIL. Every deploy of a slot host runs it too.
-  build [--force]       build a release of the current main of the three repositories on the build host; deploys nothing
+  build [--force]       build a release of the DEPLOY_BRANCH head (default main) on the build host; deploys nothing
   queue                 which servers are being deployed right now, by whom and since when (a deploy waits for one to the same server)
   builds                list the builds on the build host (name, age, the three revisions, pinned) and the builds on GitHub
   publish [build]       upload a build (default: the newest) to github.com/manishiitg/agentworks-builds from the build host
@@ -39,13 +39,16 @@ Servers (each one's host, domain and settings live in the private deployments re
 Build once, deploy everywhere (PLAT-426): rts, excellence, confida and all-hetzner build the release ONCE on the
 Hetzner box (deploy/common/build-release.sh -> /srv/_builds/<name>, reused when the three revisions are unchanged), then each
 server only copies and activates it after verifying its manifest (architecture, glibc, every file hash).
-  --build <name|sha>    deploy that existing build instead of main's head (see `builds`); its three revisions must be
-                        on origin/main of the three repositories, or older main commits plus changes already on main
+  --build <name|sha>    deploy that existing build instead of the branch head (see `builds`); its three revisions must be
+                        on origin/<DEPLOY_BRANCH> of the three repositories (origin/main for a sibling without that branch),
+                        or older commits of it plus changes already on it
+  DEPLOY_BRANCH=main|dev   what to deploy (default main); dev deploys the head of origin/dev of this repository, with
+                        mcpagent and multi-llm-provider-go at the commits its agent_go/go.mod pins. Example: DEPLOY_BRANCH=dev ./deploy.sh <server>
   DEPLOY_BUILD_TRANSPORT=auto|github|stream   how rts gets the build: RTS downloads it from the public builds repo on GitHub
                         (auto: streaming through this machine is the fallback when the release is missing), github (no fallback), stream (old path)
-  DEPLOY_SHA_MCP_AGENT_BUILDER_GO / DEPLOY_SHA_MCPAGENT / DEPLOY_SHA_MULTI_LLM_PROVIDER_GO=<40-hex>   build that commit of the repository instead of main's head
+  DEPLOY_SHA_MCP_AGENT_BUILDER_GO / DEPLOY_SHA_MCPAGENT / DEPLOY_SHA_MULTI_LLM_PROVIDER_GO=<40-hex>   build that commit of the repository instead of the branch head
                         (without it, mcpagent and multi-llm-provider-go build at the commits agent_go/go.mod pins)
-                        (it must be on main, or an older main commit plus changes already on main); for a release that leaves out work still landing
+                        (it must be on the deploy branch, or an older commit of it plus changes already on it); for a release that leaves out work still landing
   DEPLOY_REFRESH_TOOLS=1    refresh provider CLIs and agent-browser from vendors; normal deploys reuse healthy unchanged tools
   DEPLOY_SECURITY_CHECKS=full|basic   how thorough the slot self-test at the end of a deploy of a slot host is (default full): basic = a
                         slotted `pwd` per slot + the refusal checks; full adds a live tmux server on the test slot that no slot
@@ -102,7 +105,7 @@ deploy_rts() {
   local SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
   local GLOBAL_SECRETS_SECRET_ID="${GLOBAL_SECRETS_SECRET_ID:-video-studio/global-secrets}"
   local RTS_DIR="$REPO_ROOT/deploy/aws-ec2"
-  [[ "${DEPLOY_BRANCH:-main}" == main && "${DEPLOY_SOURCE_MODE:-remote-main}" == remote-main ]] || { echo 'Production deployment requires main from all three repositories.' >&2; exit 1; }
+  [[ "${DEPLOY_BRANCH:-main}" =~ ^(main|dev)$ && "${DEPLOY_SOURCE_MODE:-remote-main}" == remote-main ]] || { echo 'Deployment requires DEPLOY_BRANCH=main or dev, pushed to origin.' >&2; exit 1; }
   for command in aws git jq rsync ssh; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
   aws_rts() { aws --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION" "$@"; }
   HOST_IP="$(aws_rts cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ElasticIp`].OutputValue | [0]' --output text)"
