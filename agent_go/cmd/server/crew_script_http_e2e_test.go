@@ -211,6 +211,15 @@ def verify():
 		t.Fatal(err)
 	}
 	write(legacyConfig, "retired settings: not a JSON definition")
+	// PLAT-746-471: stale plan/variable records cannot displace the saved
+	// script, its canonical typed inputs or its real HTTP/timer/MCP execution.
+	for _, old := range []string{"planning/plan.json", "variables/variables.json"} {
+		path, err := fsutil.WorkspacePath(docs, binding.Root+"/"+old)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(path, "retired record: not a JSON definition")
+	}
 	kbJSON, _ := json.Marshal(kbPath)
 	write(filepath.Join(sourceRoot, "main.py"), "from pathlib import Path\nassert Path("+string(kbJSON)+").read_text() == 'fixture knowledge'\n"+`import json, os, sys
 from bridge_probe import verify
