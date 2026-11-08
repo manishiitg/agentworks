@@ -169,6 +169,10 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			if err != nil {
 				return "", err
 			}
+			if notes := crewScriptSaveNotes(ctx, binding, clean); notes != nil {
+				raw, _ := json.Marshal(notes)
+				return "Saved. The Crew's Steps view will refresh.\n" + string(raw), nil
+			}
 			return "Saved. The Crew's Steps view will refresh.", nil
 		default:
 			return "", fmt.Errorf("choose list, create, read, describe, edit or write")

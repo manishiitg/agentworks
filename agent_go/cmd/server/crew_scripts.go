@@ -316,7 +316,12 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	result := crewScriptSaveNotes(r.Context(), binding, file)
+	if result == nil {
+		result = map[string]interface{}{}
+	}
+	result["success"] = true
+	json.NewEncoder(w).Encode(result)
 }
 
 // The Plan view reads exactly the saved code under the same authoring access
