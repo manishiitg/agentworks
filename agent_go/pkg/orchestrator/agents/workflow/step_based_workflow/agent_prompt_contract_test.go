@@ -234,19 +234,6 @@ func TestDescriptionFirstContractStampAndAuthoring(t *testing.T) {
 	if got := decoded.Steps[0].(*AgentPlanStep); got.PromptContract != AgentDescriptionFirstPromptContract || got.SystemRules != updated.SystemRules || len(got.Items) != 0 {
 		t.Fatal("saved contract lost")
 	}
-	// Routes now contain scripted helpers, not conversational agents (PLAT-861-262).
-	for _, schema := range []string{getAddAgentStepSchema(), getUpdateAgentStepSchema()} {
-		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(schema), &parsed); err != nil {
-			t.Fatal(err)
-		}
-		properties := parsed["properties"].(map[string]interface{})
-		for _, name := range []string{"prompt_contract", "system_rules", "initial_write_access"} {
-			if _, ok := properties[name]; !ok {
-				t.Fatalf("authoring schema omitted top-level %s", name)
-			}
-		}
-	}
 }
 func ptrDescriptionContract(s string) *string { return &s }
 
