@@ -239,6 +239,10 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 			releaseScratch()
 			return nil, nil, fmt.Errorf("prepare slot automation helpers: %w", err)
 		}
+		if err := stagePythonPlaywrightRuntime(helperDir, 0640); err != nil {
+			releaseScratch()
+			return nil, nil, err
+		}
 		local.ReadPaths = append(append([]string{}, iso.ReadPaths...), helperDir)
 		local.ExtraEnv = make(map[string]string, len(iso.ExtraEnv)+1)
 		for key, value := range iso.ExtraEnv {
@@ -265,6 +269,10 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 	if err := stagePythonAutomationRuntime(tmp, 0600); err != nil {
 		releaseScratch()
 		return nil, nil, fmt.Errorf("prepare automation helpers: %w", err)
+	}
+	if err := stagePythonPlaywrightRuntime(tmp, 0600); err != nil {
+		releaseScratch()
+		return nil, nil, err
 	}
 	local.WritePaths = append(append([]string{}, iso.WritePaths...), canonicalPath(tmp))
 	var crewBlocked []string
