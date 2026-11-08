@@ -161,8 +161,8 @@ export function runStepLines(records: WorkspaceStepInspection[], outline: RelayS
   return [...lines, ...records.filter(record => !used.has(record)).map(record => recordLine(record)), ...extra.filter(step => !used.has(step)).map(step => persistedLine(step))]
 }
 
-export type RunsView = { run: string | null; costs: boolean }
-export const noRunsView: RunsView = { run: null, costs: false }
+export type RunsView = { run: string | null; costs: boolean; detail: 'log' | 'costs' | null }
+export const noRunsView: RunsView = { run: null, costs: false, detail: null }
 
 /** The Runs tab: a card of runs, a Costs card, and one opened run with its steps, logs and cost. */
 export function CrewWorkflowRuns({ workspacePath, script = false, folders, loading, onRefresh, onAsk, view, onView }: {
@@ -179,8 +179,8 @@ export function CrewWorkflowRuns({ workspacePath, script = false, folders, loadi
 }) {
   const open = view.run
   const showCosts = view.costs
-  const setOpen = (run: string | null) => onView({ run, costs: false })
-  const setShowCosts = (costs: boolean) => onView({ run: null, costs })
+  const setOpen = (run: string | null) => onView({ run, costs: false, detail: null })
+  const setShowCosts = (costs: boolean) => onView({ run: null, costs, detail: null })
   const totals = useRunTotals(workspacePath, folders.length)
   const costOf = (name: string) => totals?.[name]
   const opened = open ? folders.find(folder => folder.name === open) : undefined
@@ -191,7 +191,7 @@ export function CrewWorkflowRuns({ workspacePath, script = false, folders, loadi
       <Costs workspacePath={workspacePath} runFolders={folders.map(folder => folder.name)} selectedRunFolder={null} />
     </Suspense></div>
   </div>
-  if (opened) return <OpenedRun workspacePath={workspacePath} script={script} folder={opened} cost={costOf(opened.name)} onBack={() => setOpen(null)} onRefresh={onRefresh} onAsk={onAsk} />
+  if (opened) return <OpenedRun workspacePath={workspacePath} script={script} folder={opened} cost={costOf(opened.name)} detail={view.detail} onDetail={detail => onView({ ...view, detail })} onBack={() => view.detail ? onView({ ...view, detail: null }) : setOpen(null)} onRefresh={onRefresh} onAsk={onAsk} />
   const weekAgo = Date.now() - 7 * 86_400_000
   const finishedCount = folders.filter(folder => folder.metadata?.status === 'completed').length
   const failedCount = folders.filter(folder => folder.metadata?.status === 'failed').length
@@ -213,11 +213,13 @@ export function CrewWorkflowRuns({ workspacePath, script = false, folders, loadi
   </div>
 }
 
-function OpenedRun({ workspacePath, script, folder, cost, onBack, onRefresh, onAsk }: {
+function OpenedRun({ workspacePath, script, folder, cost, detail, onDetail: setDetail, onBack, onRefresh, onAsk }: {
   workspacePath: string
   script: boolean
   folder: RunFolderInfo
   cost?: number
+  detail: RunsView['detail']
+  onDetail: (detail: RunsView['detail']) => void
   onBack: () => void
   onRefresh: () => Promise<void>
   onAsk: (task: string) => void | Promise<void>
@@ -233,13 +235,12 @@ function OpenedRun({ workspacePath, script, folder, cost, onBack, onRefresh, onA
   // The one opened run's step costs, read for that run only.
   const stepCosts = useCostsData({ workspacePath, selectedRunFolder: folder.name, runOnly: true }).runCosts.find(run => run.runFolder === folder.name)?.costSummary?.stepCosts ?? []
   const [target, setTarget] = useState<ExecutionInspectionTarget | null>(null)
-  const [detail, setDetail] = useState<'log' | 'costs' | null>(null)
   const stepCost = (record: WorkspaceStepInspection) => stepCosts.find(step => (record.inspection.step_id && step.stepID === record.inspection.step_id) || step.stepTitle === record.inspection.name)?.totalCost
   const failed = records.find(record => stepDot(record.status) === 'stopped')
   const meta = folder.metadata
   const summary = [statusLine(folder).toLowerCase(), cost !== undefined ? formatCost(cost) : ''].filter(Boolean).join(' · ')
   return <PageCard title={runTitle(folder)} hint={summary} onAsk={() => onAsk(`Tell me what happened in the run "${folder.name}".`)}
-    action={<button type="button" onClick={onBack} aria-label="Back to runs" className="shrink-0 text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /></button>}>
+    action={<button type="button" onClick={onBack} aria-label={detail ? "Back to run" : "Back to runs"} className="shrink-0 text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /></button>}>
     {meta?.status === 'failed' && <p role="alert" className="px-4 py-3 text-xs text-red-600 dark:text-red-400">{failed ? `Stopped at ${failed.inspection.name || failed.inspection.step_id}.` : 'This run stopped.'}</p>}
     {error && <p role="alert" className="px-4 py-3 text-xs text-destructive">{error}</p>}
     {runStepLines(records, outline, persistedSteps).map(line => {

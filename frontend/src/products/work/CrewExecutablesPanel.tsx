@@ -47,7 +47,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     if (!loaded || target?.crewId !== projectId) return
     const item = items.find(entry => entry.id === target.executableId && entry.workspace_path === target.workspacePath)
     if (item) {
-      setSelectedId(item.id); setSection('runs'); setFile(null); setRuns({ run: target.runFolder, costs: false })
+      setSelectedId(item.id); setSection('runs'); setFile(null); setRuns({ run: target.runFolder, costs: false, detail: null })
     } else setError('Run view unavailable.')
     useWorkflowRunNavigation.setState({ target: null })
   }, [target, loaded, items, projectId])
@@ -63,7 +63,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
   if (item) {
     // Back goes one step at a time: out of an open file, then out of a workflow to the list, then to the project menu.
     const inRun = section === 'runs' && (runs.run !== null || runs.costs)
-    const back = file ? () => setFile(null) : inRun ? () => setRuns(noRunsView) : selected ? () => { setSelectedId(null); setSection('steps') } : onBack
+    const back = file ? () => setFile(null) : inRun ? () => setRuns(runs.detail ? { ...runs, detail: null } : noRunsView) : selected ? () => { setSelectedId(null); setSection('steps') } : onBack
     return <div className="space-y-4">
       <StepsRunsSwitch section={section} onChange={next => { setFile(null); setRuns(noRunsView); setSection(next) }} onBack={back} />
       <CrewExecutableEditor key={item.id} item={item} chatTabId={chatTabId} section={section} file={file} onFile={setFile} runs={runs} onRuns={setRuns} onStarted={() => { setFile(null); setRuns(noRunsView); setSection('runs') }} onBack={back} />
