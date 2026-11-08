@@ -34,11 +34,6 @@ import (
 // could disagree about what the CLI had been told exists, which is precisely
 // how a registered tool became undiscoverable. Mode is a focus rule now and
 // lives in the Builder prompt. See docs/design/agent_tool_surface_single_source.md.
-//
-// Returns an error instead of fatal-exiting on RegisterPlanModificationTools
-// failure. /api/query wraps the error with log.Fatalf to preserve the pre-refactor
-// semantics; the restore path logs and skips so a partial-registration failure
-// doesn't crash the server during a routine auto-restore.
 func (api *StreamingAPI) installWorkflowPhaseTools(
 	ctx context.Context,
 	definitionAgent definitionRegistrar,

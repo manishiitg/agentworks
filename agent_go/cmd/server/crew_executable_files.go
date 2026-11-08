@@ -202,8 +202,8 @@ const oldPlanWorkflowNotEditable = "This workflow uses the older plan format. It
 // The edit operations that remain: a workflow's schedules and webhooks.
 var crewPlanOperations = []string{"manage_schedules", "manage_webhooks"}
 
-func crewPlanDefinitions() []workflow.ExternalPlanToolDefinition {
-	var definitions []workflow.ExternalPlanToolDefinition
+func crewPlanDefinitions() []workflow.WorkflowToolDefinition {
+	var definitions []workflow.WorkflowToolDefinition
 	// Reuse the public action schemas and handlers; only the target is fixed to this Crew's child.
 	add := func(name, description string, _, _ bool, properties map[string]any, required ...string) {
 		delete(properties, "project")
@@ -213,7 +213,7 @@ func crewPlanDefinitions() []workflow.ExternalPlanToolDefinition {
 			name = "manage_webhooks"
 		}
 		schema, _ := json.Marshal(map[string]any{"type": "object", "properties": properties, "required": required})
-		definitions = append(definitions, workflow.ExternalPlanToolDefinition{Name: name, Description: description, InputSchema: schema})
+		definitions = append(definitions, workflow.WorkflowToolDefinition{Name: name, Description: description, InputSchema: schema})
 	}
 	externalScheduleDefinitions(add)
 	externalTriggerDefinitions(add)

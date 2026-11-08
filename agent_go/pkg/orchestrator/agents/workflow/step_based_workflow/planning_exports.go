@@ -1983,20 +1983,6 @@ func RegisterHTMLReportTools(
 	return registerHTMLReportTools(mcpAgent, workspacePath, logger, readFile, hooks)
 }
 
-// RegisterPlanModificationTools is the exported wrapper for registering plan modification tools
-// on an MCP agent. Used by server.go for workflow phase chat sessions.
-func RegisterPlanModificationTools(
-	mcpAgent DefinitionToolRegistrar,
-	workspacePath string,
-	logger loggerv2.Logger,
-	readFile func(context.Context, string) (string, error),
-	writeFile func(context.Context, string, string) error,
-	moveFile func(context.Context, string, string) error,
-	agentName string,
-) error {
-	return registerPlanModificationTools(mcpAgent, workspacePath, logger, readFile, writeFile, moveFile, agentName)
-}
-
 // ReadPlanFromWorkspace reads plan.json from the workspace and returns it as JSON string.
 // Returns empty string if plan doesn't exist.
 func ReadPlanFromWorkspace(ctx context.Context, workspacePath string, readFile func(context.Context, string) (string, error)) string {
@@ -2034,15 +2020,6 @@ func ReadVariablesFromWorkspace(ctx context.Context, workspacePath string, readF
 		return ""
 	}
 	return FormatVariableNames(&manifest)
-}
-
-func registerPlanModificationTools(mcpAgent DefinitionToolRegistrar, workspacePath string, logger loggerv2.Logger, readFile func(context.Context, string) (string, error), writeFile func(context.Context, string, string) error, moveFile func(context.Context, string, string) error, agentName string) error {
-	readFile = nativePlanReadFile(readFile)
-	r := newConsolidatedPlanRegistrar(mcpAgent, workspacePath, readFile)
-	if err := registerNativePlanModificationTools(r, workspacePath, logger, readFile, writeFile, moveFile, agentName); err != nil {
-		return err
-	}
-	return r.flush()
 }
 
 // undeclaredRunVariables refuses per-run variables the workflow does not

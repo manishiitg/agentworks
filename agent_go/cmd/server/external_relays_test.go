@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,9 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
-	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
-	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
 var relayConsentScopes = []string{"workflows:read", "files:read", "runs:execute", "relays:write"}
@@ -147,29 +144,6 @@ func TestExternalRelayBuilderAndPublishingRespectRoles(t *testing.T) {
 	p := resolveWorkflowChatPolicy(op.SessionID, QueryRequest{ExternalBuilderOperationID: op.ID}, nil, false)
 	if p.Mode != "builder" || p.Origin != "external_builder" {
 		t.Fatalf("wrong mode %+v", p)
-	}
-	// Drive the actual shared plan mutation behind the MCP operation, with
-	// its normal input validation and edit audit; no model fixture is needed.
-	reg := &productSurfaceDraft{}
-	read := func(ctx context.Context, p string) (string, error) {
-		raw, found, err := readFileFromWorkspace(ctx, p)
-		if err != nil {
-			return "", err
-		}
-		if !found {
-			return "", errors.New("missing file")
-		}
-		return raw, nil
-	}
-	if err := stepworkflow.RegisterPlanModificationTools(externalBuilderRegistrar(reg, GetUserFromContext(ctx)), "Workflow/invoices", loggerv2.NewNoop(), read, writeFileToWorkspace, nil, "Relay MCP builder"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := reg.tools["update_step"].exec(ctx, map[string]interface{}{"step_id": "answer", "changes": map[string]interface{}{"system_prompt": "Return JSON after MCP edit", "reason": "Relay MCP edit test"}}); err != nil {
-		t.Fatal(err)
-	}
-	raw, _, err := readFileFromWorkspace(ctx, "Workflow/invoices/planning/plan.json")
-	if err != nil || !strings.Contains(raw, "Return JSON after MCP edit") {
-		t.Fatalf("plan edit not persisted %s %v", raw, err)
 	}
 	f.relayCall(t, writer, "publish_relay", map[string]any{"workflow_id": "invoices"}, 200)
 	versions := f.relayCall(t, writer, "get_relay_releases", map[string]any{"workflow_id": "invoices"}, 200)
