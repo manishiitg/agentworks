@@ -394,6 +394,12 @@ func TestNoTemplateNamesARemovedTool(t *testing.T) {
 // name members: bridge and step-agent text that describes route names, or text
 // whose serving surface has not been classified yet (PLAT-746-415). Remove a kind
 // from the list when its text is converted; do not add one.
+// Bridge text is valid as written: configureScriptBridgeSession keeps every step member
+// executor under its member name and adds the family names beside it, so
+// $MCP_CUSTOM/<member> routes still work for a saved script (mcp-bridge,
+// secure-share-links, scripted). The other kinds mix chat and script text and have
+// not been split; browser-usage and optimize-playbook name agent_browser, whose
+// public browser arguments are unconfirmed.
 var guidancePendingPublicNames = map[string]bool{
 	"browser-usage":         true,
 	"code-authoring":        true,
