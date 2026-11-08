@@ -1178,6 +1178,7 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 			if clear {
 				clearCDPTabStateForOwner(cdpPort, cdpOwner, tab)
 				log.Printf("[BROWSER] CDP: cleared tab %q for owner=%q port=%d", tab, cdpOwner, cdpPort)
+				return fmt.Sprintf("Closed CDP tab %q.", tab), nil
 			} else if tab != "" {
 				activeTab := tab
 				if tabID := findCDPTabID(output, tab); tabID != "" {
