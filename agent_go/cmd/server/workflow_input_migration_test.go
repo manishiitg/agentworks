@@ -40,4 +40,18 @@ func TestWorkflowInputMigrationRejectsInvalidRawMappingsBeforeApply(t *testing.T
 			}
 		})
 	}
+	// PR1544 review4506503823: raw selected names without mappings must
+	// still be declared, while a valid unmapped selection may use a default.
+	for _, names := range []string{`["count"]`, `["count","missing"]`} {
+		candidate := `{"definitions":{"variables":[{"name":"count","type":"integer","value":"1"}]},"functions":[{"name":"hook","action":{"type":"run"},"input_mapping":{"mode":"raw","variables":` + names + `}}]}`
+		err := validateWorkflowInputMigration(strings.NewReader(candidate))
+		invalid := strings.Contains(names, "missing")
+		if (err != nil) != invalid {
+			t.Fatalf("selected raw names: %v", err)
+		}
+		if invalid && !strings.Contains(err.Error(), "missing") {
+			t.Fatalf("refusal must name the invalid selection: %v", err)
+		}
+	}
+
 }
