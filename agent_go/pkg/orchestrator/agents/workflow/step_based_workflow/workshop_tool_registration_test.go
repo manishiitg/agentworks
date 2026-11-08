@@ -2,7 +2,7 @@ package step_based_workflow
 
 import (
 	"context"
-	"testing"
+	"time"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -40,6 +40,3 @@ func (workshopToolTestLogger) Error(string, error, ...loggerv2.Field)   {}
 func (workshopToolTestLogger) Fatal(string, error, ...loggerv2.Field)   {}
 func (l workshopToolTestLogger) With(...loggerv2.Field) loggerv2.Logger { return l }
 func (workshopToolTestLogger) Close() error                             { return nil }
-
-// An old full-mode schedule used to turn an owner's OFF back on after the
-// Builder saved raw workflow.json. Drive the actual registered config tool.
