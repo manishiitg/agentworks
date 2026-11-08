@@ -40,7 +40,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 				hcpo.directCrewScript = &resolved.Definition
 				hcpo.directCrewScriptConfig = &resolved
 				hcpo.codeLayoutVersion.Store(1)
-				hcpo.platformStoresDisabled.Store(true)
+				hcpo.platformStoresDisabled.Store(false)
 				hcpo.relayExecution.Store(false)
 				return nil
 			}

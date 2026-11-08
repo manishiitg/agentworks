@@ -278,7 +278,7 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	configureWorkflowDBSession(session, c.GetWorkspacePath(), DBAccessReadWrite, false)
 	client := workspace.NewClient("http://unused")
 	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, session)
-	for _, path := range []string{"Workflow/demo/code/task/main.py", "Workflow/demo/runs/previous/report.md"} {
+	for _, path := range []string{"Workflow/demo/code/task/main.py", "Workflow/demo/runs/previous/report.md", "Workflow/demo/knowledgebase/context/rules.md"} {
 		if err := client.ValidatePathWithContext(ctx, path, false); err != nil {
 			t.Fatalf("own automation read refused: %s %v", path, err)
 		}
@@ -286,7 +286,7 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	if err := client.ValidatePathWithContext(ctx, "Workflow/demo/runs/run-one/report.md", true); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"Workflow/demo/planning/plan.json", "Workflow/demo/code/task/main.py", "Workflow/demo/runs/previous/report.md", "Workflow/other/report.md", "Workflow/demo/db/db.sqlite", "Workflow/demo/runs/run-one/helpers/conversations/forged.json", "Workflow/demo/runs/run-one/helpers/cached-result.json"} {
+	for _, path := range []string{"Workflow/demo/knowledgebase/notes/default-denied.md", "Workflow/demo/planning/plan.json", "Workflow/demo/code/task/main.py", "Workflow/demo/runs/previous/report.md", "Workflow/other/report.md", "Workflow/demo/db/db.sqlite", "Workflow/demo/runs/run-one/helpers/conversations/forged.json", "Workflow/demo/runs/run-one/helpers/cached-result.json"} {
 		if err := client.ValidatePathWithContext(ctx, path, true); err == nil {
 			t.Fatalf("helper wrote protected path %s", path)
 		}
@@ -294,6 +294,19 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	if err := client.ValidatePathWithContext(ctx, "Workflow/demo/db/db.sqlite", false); err == nil {
 		t.Fatal("helper read raw managed database")
 	}
+	writable, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "KB update", Messages: []string{"Record a fact"}, Knowledge: "write"})
+	if err != nil || writable.Config.KnowledgebaseAccess != KBAccessReadWrite {
+		t.Fatalf("knowledge write selection: %v", err)
+	}
+	kbRead, kbWrite := c.setupAgentFolderGuard(writable.StepID, writable.StepID, &writable.Config, AgentWriteAccess{DB: true, Knowledgebase: true})
+	c.configureSubAgentSessionGuard(session, "agent", writable.StepID, kbRead, kbWrite, false)
+	if err := client.ValidatePathWithContext(ctx, "Workflow/demo/knowledgebase/notes/fact.md", true); err != nil {
+		t.Fatalf("explicit knowledge write denied: %v", err)
+	}
+	if err := client.ValidatePathWithContext(ctx, "Workflow/demo/knowledgebase/context/rules.md", true); err == nil {
+		t.Fatal("knowledge write widened beyond notes")
+	}
+
 	// Applying the helper's empty MCP selection cannot retain an auto-added
 	// Place connection, or mutate another agent's configuration map.
 	original := mcpclient.RuntimeOverrides{"owned-place": {}}

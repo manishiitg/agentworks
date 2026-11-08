@@ -15,10 +15,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/mux"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	workspacepkg "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	handlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	mcpexecutor "github.com/manishiitg/mcpagent/executor"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/spf13/viper"
 )
@@ -43,6 +48,8 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 	t.Setenv("AGENT_PRODUCTS", "work,agentworks")
 	t.Setenv("NATIVE_WORKSPACE", "true")
 	t.Setenv("AUTH_SECRET", "script-http-fixture-secret-01234567890123456789")
+	common.SetBridgeTokenSecret("script-http-session-fixture")
+	t.Cleanup(func() { common.SetBridgeTokenSecret("") })
 	previous := viper.Get("docs-dir")
 	viper.Set("docs-dir", docs)
 	t.Cleanup(func() { viper.Set("docs-dir", previous) })
@@ -73,11 +80,35 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 	router.POST("/api/folders", handlers.CreateFolder)
 	router.DELETE("/api/folders/*folderpath", handlers.DeleteFolder)
 	router.POST("/api/execute", handlers.ExecuteShellCommand)
+	router.POST("/api/query", handlers.QueryWorkflowDB)
+	router.POST("/api/mutate", handlers.MutateWorkflowDB)
+	router.POST("/api/db/initialize", handlers.InitializeWorkflowDB)
 	workspace := httptest.NewServer(router)
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
-	binding := crewExecutableBinding{ID: "saved", CrewID: "crew-script-http", CrewRoot: "Crew/script-http", Root: "Workflow/script-http-saved", Kind: "script"}
+	binding := crewExecutableBinding{ID: "saved", CrewID: "crew-script-http", CrewRoot: "Crew/script-http", Root: "Workflow/script-http-saved", Kind: "script", RuntimeRoot: "workflows/saved"}
 	if err := registerCrewExecutable(binding); err != nil {
+		t.Fatal(err)
+	}
+	// Model the explicit conversion's existing database routing.
+	if err := defaultProjectOwners().modify(func(records map[string]projectOwnerRecord) (bool, error) {
+		record := records["work/script-http"]
+		record.DatabaseRoot = "workflows/saved/db"
+		records["work/script-http"] = record
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	executorHandlers := mcpexecutor.NewExecutorHandlers("", loggerv2.NewNoop())
+	bridgeRouter := mux.NewRouter()
+	bridgeRouter.Use(bridgeAuthMiddleware(""))
+	bridgeRouter.HandleFunc("/s/{session_id}/tools/custom/{tool}", func(w http.ResponseWriter, r *http.Request) {
+		executorHandlers.HandlePerToolCustomRequest(w, r, mux.Vars(r)["tool"])
+	})
+	bridge := httptest.NewServer(bridgeRouter)
+	defer bridge.Close()
+	t.Setenv("MCP_API_URL", bridge.URL)
+	if _, err := workspacepkg.NewClient(workspace.URL, workspacepkg.WithUserID("owner")).InitializeWorkflowDB(t.Context(), workspacepkg.InitializeWorkflowDBParams{DBPath: binding.CrewRoot + "/db/db.sqlite"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := initializeCrewScriptSource(t.Context(), binding, "Saved Python"); err != nil {
@@ -95,9 +126,15 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 			t.Fatal(err)
 		}
 	}
-	write(filepath.Join(sourceRoot, "script.json"), `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true}],"outputs":["result.json"]}`)
+	write(filepath.Join(sourceRoot, "script.json"), `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true},{"name":"extended","type":"boolean","value":"false"},{"name":"rate","type":"number","value":"5"},{"name":"RDS_SECRET_ID_DEV","type":"string","value":"example/dev/app"}],"input_presets":[{"name":"Saved","values":{"extended":"false","rate":"5"}}],"outputs":["result.json"]}`)
 	write(filepath.Join(sourceRoot, "helper.py"), "from agentworks import step\n@step('Prepare report')\ndef prepare(): return True\n")
-	write(filepath.Join(sourceRoot, "main.py"), `import json, os, sys
+	kbPath, err := fsutil.WorkspacePath(docs, binding.Root+"/knowledgebase/context/rules.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(kbPath, "fixture knowledge")
+	kbJSON, _ := json.Marshal(kbPath)
+	write(filepath.Join(sourceRoot, "main.py"), "from pathlib import Path\nassert Path("+string(kbJSON)+").read_text() == 'fixture knowledge'\n"+`import json, os, sys
 from helper import prepare
 prepare()
 from pathlib import Path
@@ -106,6 +143,17 @@ sys.stdout.write('Q' * 2097152)
 sys.stderr.write('stderr-last-line')
 values = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(values['count'], int)
+assert values['extended'] is False and isinstance(values['rate'], (int,float))
+assert values['RDS_SECRET_ID_DEV'] == 'example/dev/app'
+assert not {'PUBLISH_URL','SLACK_CHANNEL_ID','EXT_DISCOVERY_TCP_SCOPE_NOTE'} & set(values)
+from agentworks_db import execute, scalar
+execute('CREATE TABLE IF NOT EXISTS fixture_rows (id INTEGER PRIMARY KEY, value TEXT)')
+execute('INSERT INTO fixture_rows(id,value) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value', [values['count'],'through script bridge'])
+assert scalar('SELECT value FROM fixture_rows WHERE id=?', [values['count']]) == 'through script bridge'
+# Ordinary subprocess steps retain the same managed bridge.
+import subprocess
+subprocess.run([sys.executable,'-c',"from agentworks_db import scalar; assert scalar('SELECT COUNT(*) FROM fixture_rows') >= 1"],check=True)
+
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'python_ran':True, 'run_folder':str(__import__('agentworks').run_folder)}))
 `)
 	if err := writeFileToWorkspace(t.Context(), binding.CrewRoot+"/product.json", `{"schema_version":1,"product":"work","id":"crew-script-http","title":"Script HTTP","session_id":"work:project:crew-script-http"}`); err != nil {
@@ -174,7 +222,14 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		t.Fatal("wrong run-as", runAs)
 	}
 	executionCtx := internalBotRequestContext(context.WithValue(ctx, common.UserIDKey, runAs), runAs)
-	session, err := workflow.NewWorkshopChatSession(executionCtx, &workflow.WorkshopConfig{UserID: runAs, WorkspacePath: binding.Root, Logger: loggerv2.NewNoop(), CrewResources: &workflow.CrewResources{Scripts: &crewWorkflowResources{userID: runAs}}})
+	// Supply the real server database pool; the script's capability filter and
+	// per-invocation registry decide whether Python can use it.
+	dbTools := virtualtools.CreateWorkflowDBToolRegistry(workspace.URL, runAs, "")
+	dbExecutors := map[string]interface{}{}
+	for name, executor := range dbTools.Executors {
+		dbExecutors[name] = executor
+	}
+	session, err := workflow.NewWorkshopChatSession(executionCtx, &workflow.WorkshopConfig{UserID: runAs, WorkspacePath: binding.Root, Logger: loggerv2.NewNoop(), CustomTools: dbTools.Tools, CustomToolExecutors: dbExecutors, ToolCategories: dbTools.Categories, CrewResources: &workflow.CrewResources{Scripts: &crewWorkflowResources{userID: runAs}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +261,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	if err != nil {
 		t.Fatal(err)
 	}
-	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.URL+"/api/test-script-run", bytes.NewBufferString(`{"inputs":{"count":"9"}}`))
+	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.URL+"/api/test-script-run", bytes.NewBufferString(`{"input_preset":"Saved","inputs":{"count":"9","extended":"false","rate":"5"}}`))
 	request.Header.Set("Authorization", "Bearer "+token)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
@@ -248,6 +303,15 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		result, err := os.ReadFile(filepath.Join(runtimeRoot, "runs", folder.Name(), "execution/saved/result.json"))
 		if err == nil && strings.Contains(string(result), `"count": 9`) && strings.Contains(string(result), `"python_ran": true`) {
 			runRoot := filepath.Join(runtimeRoot, "runs", folder.Name())
+			snapshot, readErr := os.ReadFile(filepath.Join(runRoot, "inputs.json"))
+			var inputRecord map[string]interface{}
+			if readErr != nil || json.Unmarshal(snapshot, &inputRecord) != nil || inputRecord["extended"] != false || inputRecord["rate"] != float64(5) {
+				t.Fatalf("untyped script input evidence: %s %v", snapshot, readErr)
+			}
+			if _, err := os.Stat(filepath.Join(runRoot, "execution/saved/inputs.json")); !os.IsNotExist(err) {
+				t.Fatalf("duplicate direct-script input snapshot remains: %v", err)
+			}
+
 			rawLog, readErr := os.ReadFile(filepath.Join(runRoot, "logs/saved/execution/scripted_fast_path.json"))
 			if readErr != nil {
 				t.Fatal("script log receipt missing", readErr)

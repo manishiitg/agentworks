@@ -161,6 +161,29 @@ func checkSavedScriptTriggerAndSchedule(t *testing.T, docs string, binding crewE
 		}
 		return raw
 	}
+	for _, target := range []string{binding.Root, binding.ID, "workflow:" + binding.ID} {
+		args, _ := json.Marshal(map[string]interface{}{"action": "triggers", "workspace_path": target})
+		raw := call("/functions", string(args))
+		var listed struct {
+			Inputs []struct {
+				Name string `json:"name"`
+				Type string `json:"type"`
+			} `json:"inputs"`
+			Routes  []interface{} `json:"routes"`
+			Presets []string      `json:"input_presets"`
+		}
+		if err := json.Unmarshal(raw, &listed); err != nil {
+			t.Fatal(err)
+		}
+		types := map[string]string{}
+		for _, input := range listed.Inputs {
+			types[input.Name] = input.Type
+		}
+		if types["extended"] != "boolean" || types["rate"] != "number" || len(listed.Routes) != 0 || len(listed.Presets) != 1 {
+			t.Fatalf("script discovery lost typed inputs/presets for %s: %s", target, raw)
+		}
+	}
+
 	triggerArgs, _ := json.Marshal(map[string]interface{}{"action": "run_trigger", "workspace_path": binding.Root, "inputs": map[string]interface{}{"count": 5}, "delivery_id": "fixture-once"})
 	var accepted struct {
 		RunID string `json:"run_id"`

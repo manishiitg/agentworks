@@ -922,7 +922,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		call, _ := scriptedDelegationFromContext(ctx)
 		inputs, _ := json.MarshalIndent(call.Parameters, "", "  ")
 		definition, _ := json.MarshalIndent(shared.crewScript.Definition, "", "  ")
-		for file, content := range map[string][]byte{"inputs.json": inputs, "code/script.json": definition} {
+		files := map[string][]byte{"code/script.json": definition}
+		if hcpo.directCrewScript == nil {
+			files["inputs.json"] = inputs
+		}
+		for file, content := range files {
 			if err := hcpo.WriteWorkspaceFile(ctx, stepExecutionRelPath+"/"+file, string(content)); err != nil {
 				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
 			}

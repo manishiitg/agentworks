@@ -33,14 +33,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) readExistingRunInputs(ctx context.Con
 	if err != nil {
 		return nil, fmt.Errorf("run is unavailable; choose an existing run or omit run_folder to start a new one: %w", err)
 	}
-	var recorded workflowRunInputs
-	if err := json.Unmarshal([]byte(raw), &recorded); err != nil {
-		return nil, fmt.Errorf("read saved run inputs: %w", err)
-	}
-	if recorded.Values == nil {
-		return nil, fmt.Errorf("saved run inputs are missing")
-	}
-	return recorded.Values, nil
+	return hcpo.decodeRunInputSnapshot(raw)
 }
 
 // Saved input labels are data, never directory names or execution identities.
@@ -105,21 +98,8 @@ func ResolveWorkflowInputs(manifest *VariablesManifest, preset string, overrides
 				return nil, err
 			}
 		}
-		if err := ValidatePlainWorkflowInput(name, value); err != nil {
-			return nil, err
-		}
 	}
 	return values, nil
-}
-
-// Saved inputs and run records are plain data. Credential values stay in the
-// existing Vault/SECRET_* path, not in a preset or invocation payload.
-func ValidatePlainWorkflowInput(name, value string) error {
-	key := strings.ToUpper(name)
-	if value != "" && (strings.HasPrefix(key, "SECRET_") || strings.HasSuffix(key, "API_KEY") || strings.HasSuffix(key, "ACCESS_TOKEN") || strings.HasSuffix(key, "PASSWORD") || strings.HasSuffix(key, "CLIENT_SECRET")) {
-		return fmt.Errorf("input %q is a credential; save it in Vault and use its configured connection instead", name)
-	}
-	return nil
 }
 
 // ResolveSelectedInputPreset resolves one invocation from the workshop selection.
@@ -172,39 +152,39 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveRunInputs(ctx context.Context,
 	path := filepath.Join(hcpo.GetWorkspacePath(), "runs", folder, "inputs.json")
 	raw, err := hcpo.ReadWorkspaceFile(ctx, path)
 	if err == nil {
-		var recorded workflowRunInputs
-		if err := json.Unmarshal([]byte(raw), &recorded); err != nil {
-			return nil, fmt.Errorf("read saved run inputs: %w", err)
-		}
-		if recorded.Values == nil {
-			return nil, fmt.Errorf("saved run inputs are missing")
-		}
-		return recorded.Values, nil
+		return hcpo.decodeRunInputSnapshot(raw)
 	}
 	text := strings.ToLower(err.Error())
 	if !strings.Contains(text, "not found") && !strings.Contains(text, "no such file") && !strings.Contains(text, "does not exist") {
 		return nil, fmt.Errorf("read run inputs: %w", err)
 	}
-	for name, value := range overrides {
-		for _, secret := range hcpo.GetSecrets() {
-			if secret.Value != "" && value == secret.Value {
-				return nil, fmt.Errorf("input %q contains a Vault value; use the configured secret binding instead", name)
-			}
-		}
+	if err := hcpo.validateInputSecretBindings(overrides); err != nil {
+		return nil, err
 	}
+
 	values := cloneWorkflowStringMap(overrides)
 	if values == nil {
 		values = map[string]string{}
 	}
-	for name, value := range values {
-		if err := ValidatePlainWorkflowInput(name, value); err != nil {
-			return nil, err
-		}
-	}
 	if err := hcpo.createRunFolderStructure(ctx, filepath.Dir(path)); err != nil {
 		return nil, err
 	}
-	rawBytes, err := json.MarshalIndent(workflowRunInputs{Preset: preset, Values: values}, "", "  ")
+	var snapshot interface{} = workflowRunInputs{Preset: preset, Values: values}
+	if hcpo.directCrewScript != nil {
+		resolved, err := ResolveWorkflowInputs(hcpo.directCrewScript.InputDefinitions(), "", values)
+		if err != nil {
+			return nil, err
+		}
+		values = resolved
+		if err := hcpo.validateInputSecretBindings(values); err != nil {
+			return nil, err
+		}
+		snapshot, err = typedWorkflowInputs(hcpo.directCrewScript.InputDefinitions(), resolved)
+		if err != nil {
+			return nil, err
+		}
+	}
+	rawBytes, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
 		return nil, err
 	}
@@ -263,4 +243,71 @@ func ValidateWorkflowInputDefinitions(manifest *VariablesManifest) error {
 		}
 	}
 	return nil
+}
+
+// Inputs are ordinary data. Their names cannot impersonate a selected Vault binding.
+func (hcpo *StepBasedWorkflowOrchestrator) validateInputSecretBindings(values map[string]string) error {
+	for _, secret := range hcpo.GetSecrets() {
+		for name, value := range values {
+			if secret.Value != "" && value == secret.Value {
+				return fmt.Errorf("input %q contains a Vault value; use the configured secret binding instead", name)
+			}
+		}
+		for _, name := range []string{secret.Name, "SECRET_" + secret.Name} {
+			if _, exists := values[name]; exists {
+				return fmt.Errorf("input %q clashes with a selected Vault secret; rename the input or use its Vault binding", name)
+			}
+		}
+	}
+	return nil
+}
+
+func (hcpo *StepBasedWorkflowOrchestrator) decodeRunInputSnapshot(raw string) (map[string]string, error) {
+
+	if hcpo.directCrewScript != nil {
+		var typed map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(raw), &typed); err != nil {
+			return nil, fmt.Errorf("read saved script inputs: %w", err)
+		}
+		values := map[string]string{}
+		for _, input := range hcpo.directCrewScript.Inputs {
+			value, exists := typed[input.Name]
+			if !exists {
+				continue
+			}
+			if WorkflowInputType(input) == "string" {
+				var decoded interface{}
+				if err := json.Unmarshal(value, &decoded); err != nil {
+					return nil, err
+				}
+				text, ok := decoded.(string)
+				if !ok {
+					return nil, fmt.Errorf("saved input %q must be text", input.Name)
+				}
+				values[input.Name] = text
+			} else {
+				values[input.Name] = string(value)
+			}
+			delete(typed, input.Name)
+		}
+		if len(typed) > 0 {
+			return nil, fmt.Errorf("saved script inputs contain undeclared names")
+		}
+		if err := hcpo.validateInputSecretBindings(values); err != nil {
+			return nil, err
+		}
+		return ResolveWorkflowInputs(hcpo.directCrewScript.InputDefinitions(), "", values)
+	}
+
+	var recorded workflowRunInputs
+	if err := json.Unmarshal([]byte(raw), &recorded); err != nil {
+		return nil, fmt.Errorf("read saved run inputs: %w", err)
+	}
+	if recorded.Values == nil {
+		return nil, fmt.Errorf("saved run inputs are missing")
+	}
+	if err := hcpo.validateInputSecretBindings(recorded.Values); err != nil {
+		return nil, err
+	}
+	return recorded.Values, nil
 }
