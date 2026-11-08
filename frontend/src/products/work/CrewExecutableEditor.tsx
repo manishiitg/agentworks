@@ -1,5 +1,4 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import api, { agentApi } from '../../services/api'
 import { CrewWorkflowRuns } from './CrewWorkflowRuns'
 import { PageCard, RowButton } from '../../components/automation/AutomationKit'
@@ -27,22 +26,21 @@ export function CrewExecutableEditor({
   crewAgents,
   crewScripts = [],
   chatTabId,
-  section: controlledSection,
+  section,
   onBack,
 }: {
   item: CrewExecutable
   crewAgents: Array<{ id: string; name: string }>
   crewScripts?: Array<{ id: string; name: string }>
   chatTabId: string
-  /** Set by the Workflow page, which owns the Plan | Runs switch. Without it the editor shows its own header and tabs. */
-  section?: 'plan' | 'runs'
+  /** The page owns the Plan | Runs switch (PlanRunsSwitch). */
+  section: 'plan' | 'runs'
   onBack?: () => void
 }) {
-  const [ownSection, setSection] = useState<'plan' | 'runs'>('plan')
-  const embedded = controlledSection !== undefined
-  const section = controlledSection ?? ownSection
   const [view, setView] = useState<WorkspaceViewId>('flow')
   const [file, setFile] = useState<string | null>(null)
+  // Switching Plan | Runs leaves any opened file.
+  useEffect(() => { setFile(null) }, [section])
   const [runFolder, setRunFolder] = useState<string | null>(null)
   const [error, setError] = useState('')
   const workspace = useWorkspaceState(item.workspace_path, runFolder, false)
@@ -89,50 +87,17 @@ export function CrewExecutableEditor({
     }
   }
   return (
-    <div className={embedded ? 'space-y-4' : 'flex h-full min-h-0 flex-col'}>
-      {!embedded && <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
-        {onBack && <button className={button} onClick={onBack} aria-label={item.kind === 'script' ? 'Back to scripts' : 'Back to workflows'}>
-          <ArrowLeft className="h-4 w-4" />
-        </button>}
-        <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{item.manifest.label}</h2>
-        <button
-          className={button}
-          onClick={() =>
-            void ask(
-              section === 'runs'
-                ? 'Run this workflow and report the result in this chat.'
-                : 'Help me edit this workflow.',
-            )
-          }
-        >
-          {section === 'runs' ? 'Run in chat' : 'Edit in chat'}
-        </button>
-      </div>}
+    <div className="space-y-4">
       {item.kind === 'script' && !!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes apply to the next run.</p>}
-      {!embedded && <nav aria-label="Workflow" className="flex shrink-0 gap-2 border-b p-2">
-        {(['plan', 'runs'] as const).map((value) => (
-          <button
-            key={value}
-            aria-current={section === value ? 'page' : undefined}
-            className={`${button} ${section === value ? 'bg-muted font-medium' : ''}`}
-            onClick={() => {
-              setSection(value)
-              setFile(null)
-            }}
-          >
-            {value === 'plan' ? (item.kind === 'script' ? 'Code' : 'Plan') : 'Runs'}
-          </button>
-        ))}
-      </nav>}
       {(error || workspace.error) && (
         <p role="alert" className="p-3 text-sm text-destructive">
           {error || workspace.error}
         </p>
       )}
       <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
-        <div className={embedded ? '' : 'min-h-0 flex-1'}>
+        <div>
           {file ? (
-            <div className={embedded ? 'h-[75vh] min-h-96' : 'h-full'}>
+            <div className="h-[75vh] min-h-96">
               <ExecutableFile
                 key={file}
                 workspacePath={item.workspace_path}

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
-import { FileCode2, Route, Zap } from 'lucide-react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { ArrowLeft, FileCode2, Route, Zap } from 'lucide-react'
 import { isAxiosError } from 'axios'
 import api from '../../services/api'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { PageCard, PageRow, RowButton } from '../../components/automation/AutomationKit'
 import { CrewExecutableEditor, type CrewExecutable } from './CrewExecutableEditor'
+import { PlanRunsSwitch, type PlanRunsSection } from './PlanRunsSwitch'
 
 type StepScript = { workflow_id: string; workflow: string; step_id: string; step: string }
 
@@ -60,9 +61,9 @@ export function CrewExecutablesPanel({ projectId, chatTabId, kind, section, onSc
   const item = selected ?? single
   if (item) {
     const standalone = item !== single
-    const editor = <CrewExecutableEditor key={item.id} item={item} crewAgents={agents} crewScripts={scripts.map(script => ({ id: script.id, name: script.manifest.label }))} chatTabId={chatTabId} section={standalone ? undefined : section} onBack={standalone ? () => setSelected(null) : undefined} />
-    if (standalone) return <div className="h-[75vh] min-h-96 overflow-hidden rounded-xl border border-border">{editor}</div>
-    return <div className="space-y-4">{editor}{section !== 'runs' && scriptsCard}</div>
+    const editor = (own?: PlanRunsSection) => <CrewExecutableEditor key={item.id} item={item} crewAgents={agents} crewScripts={scripts.map(script => ({ id: script.id, name: script.manifest.label }))} chatTabId={chatTabId} section={standalone ? (own ?? 'plan') : (section ?? 'plan')} onBack={standalone ? () => setSelected(null) : undefined} />
+    if (standalone) return <StandaloneExecutable key={item.id} item={item} onBack={() => setSelected(null)} editor={editor} />
+    return <div className="space-y-4">{editor()}{section !== 'runs' && scriptsCard}</div>
   }
   const nothing = loaded && workflows.length === 0 && scripts.length === 0 && stepScripts.length === 0
   return <div className="space-y-4">
@@ -100,4 +101,15 @@ function ScriptsCard({ scripts, stepScripts, onOpen, onOpenWorkflow, onAsk, onRu
     {stepScripts.map(script => <PageRow key={script.workflow_id + script.step_id} lead={lead} title={script.step} lines={[`Step: ${script.step}`]}
       open={false} onToggle={() => onOpenWorkflow(script.workflow_id)}>{null}</PageRow>)}
   </PageCard>
+}
+
+/** A script, or a workflow other than the Crew's main one, opened from the Scripts card or the list: the same page, with its own switch. */
+function StandaloneExecutable({ item, onBack, editor }: { item: CrewExecutable; onBack: () => void; editor: (section: PlanRunsSection) => ReactNode }) {
+  const [section, setSection] = useState<PlanRunsSection>('plan')
+  const script = item.kind === 'script'
+  return <div className="space-y-4">
+    <button type="button" onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-3.5 w-3.5" /> Back to {script ? 'scripts' : 'workflows'}</button>
+    <PlanRunsSwitch section={section} onChange={setSection} planLabel={script ? 'Code' : 'Plan'} planHint={script ? 'what it runs' : 'what it does'} />
+    {editor(section)}
+  </div>
 }
