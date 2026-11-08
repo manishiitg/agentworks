@@ -113,13 +113,24 @@ func CodingAgentModelMetadata(provider, modelID string) (*llmtypes.ModelMetadata
 	case "cursor-cli":
 		return (&cursorcli.CursorCLIAdapter{}).GetModelMetadata(modelID)
 	case "pi-cli":
-		// Model-specific overrides include providers that do not offer effort.
-		for _, model := range picli.GetAllPiCLIModels() {
-			if model.ModelID == modelID {
-				return model, nil
+		model, err := (&picli.PiCLIAdapter{}).GetModelMetadata(modelID)
+		if err != nil {
+			return nil, err
+		}
+		template, err := picli.LoadPiAgentTemplate()
+		if err != nil {
+			return nil, fmt.Errorf("Pi model configuration is unavailable")
+		}
+		// Pi applies a deployment pin before the caller's requested effort,
+		// including for built-in models. Never accept a value it would drop.
+		if pinned, ok := template.PinnedThinkingLevel("", model.ModelID); ok {
+			model.SupportsReasoningEffort = pinned != "off"
+			model.ReasoningEffortLevels = nil
+			if model.SupportsReasoningEffort {
+				model.ReasoningEffortLevels = []string{pinned}
 			}
 		}
-		return (&picli.PiCLIAdapter{}).GetModelMetadata(modelID)
+		return model, nil
 	case "muse-cli":
 		return (&musecli.MuseCLIAdapter{}).GetModelMetadata(modelID)
 	case "agy-cli":
