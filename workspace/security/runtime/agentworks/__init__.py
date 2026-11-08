@@ -191,13 +191,24 @@ def run_script(script_id: str, inputs: Mapping[str, JSONValue], *,
         return ScriptResult(ok=False, error=str(error))
 
 
+def _source_name(filename) -> str:
+    source = Path(filename)
+    root = os.environ.get("SCRIPT_SOURCE_DIR")
+    if root:
+        try:
+            return source.resolve().relative_to(Path(root).resolve()).as_posix()
+        except ValueError:
+            pass
+    return source.name
+
+
 def _source_site(frame) -> str:
-    return f"{Path(frame.f_code.co_filename).name}:{frame.f_lineno}" if frame else "unknown:0"
+    return f"{_source_name(frame.f_code.co_filename)}:{frame.f_lineno}" if frame else "unknown:0"
 
 
 @contextmanager
 def _step_activity(title: str, function, site: str):
-    identity = f"{Path(function.__code__.co_filename).name}:{function.__name__}@{site}"
+    identity = f"{_source_name(function.__code__.co_filename)}:{function.__name__}@{site}"
     try:
         started = _call("step", {"phase": "start", "title": title, "source_call": identity}, None, True)
     except Exception:

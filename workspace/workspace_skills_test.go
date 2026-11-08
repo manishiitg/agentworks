@@ -347,21 +347,38 @@ func TestWorkspaceSkillsReadABoundCrewsResourceRoot(t *testing.T) {
 	}
 	// A migrated workflow selects definitions in Files and skill bundles in
 	// its private runtime, with no remaining old Workflow directory.
-	binding := map[string]string{"id": "sequence", "crew_id": "stable-id", "crew_root": "Crew/example", "workspace_path": "Workflow/sequence", "kind": "workflow"}
+	binding := map[string]string{"id": "sequence", "crew_id": "stable-id", "crew_root": "Crew/example", "workspace_path": "Workflow/sequence", "kind": "workflow", "runtime_root": "workflows/sequence"}
 	encoded, _ := json.Marshal(binding)
 	key := fmt.Sprintf("%x.json", sha256.Sum256([]byte("Workflow/sequence")))
 	write(filepath.Join(state, "ownership/crew-executables", key), string(encoded))
 	write(filepath.Join(project, ".agentworks/workflows/sequence/workflow.json"), `{"capabilities":{"selected_skills":["workflow-review"]}}`)
 	write(filepath.Join(private, "workflows/sequence/skills/workflow-review/SKILL.md"), skill("workflow-review"))
-	var selected struct {
-		Documents []workspaceSkillDocument `json:"documents"`
+	write(filepath.Join(private, "workflows/sequence/skills/workflow-review/references/login/SKILL.md"), "local login guide")
+	write(filepath.Join(private, "workflows/sequence/skills/workflow-review/references/_global/SKILL.md"), "local shared guide")
+	write(filepath.Join(private, "workflows/sequence/skills/review/SKILL.md"), skill("review")+"Workflow override")
+	for _, kind := range []string{"workflow", "script"} {
+		binding["kind"] = kind
+		encoded, _ = json.Marshal(binding)
+		write(filepath.Join(state, "ownership/crew-executables", key), string(encoded))
+		var selected struct {
+			Documents []workspaceSkillDocument `json:"documents"`
+		}
+		if err := json.Unmarshal(call("/list", `{"workspace_path":"Workflow/sequence"}`), &selected); err != nil {
+			t.Fatal(err)
+		}
+		byName := map[string]workspaceSkillDocument{}
+		for _, doc := range selected.Documents {
+			byName[doc.Name] = doc
+		}
+		if byName["workflow-review"].Name == "" || !strings.Contains(byName["review"].Content, "Workflow override") || byName["native"].FilePath != "Crew/example/_files/.claude/skills/native/SKILL.md" {
+			t.Fatalf("%s lost own/parent skill precedence: %+v", kind, byName)
+		}
+		files := string(call("/files", `{"workspace_path":"Workflow/sequence","name":"workflow-review"}`))
+		if !strings.Contains(files, "references/login/SKILL.md") || !strings.Contains(files, "references/_global/SKILL.md") {
+			t.Fatal("workflow skill lost nested guides", files)
+		}
 	}
-	if err := json.Unmarshal(call("/list", `{"workspace_path":"Workflow/sequence"}`), &selected); err != nil {
-		t.Fatal(err)
-	}
-	if len(selected.Documents) != 1 || selected.Documents[0].Name != "workflow-review" || len(selected.Documents[0].UsedBy) != 1 {
-		t.Fatalf("moved skill missing: %+v", selected)
-	}
+
 	if _, err := os.Stat(filepath.Join(docs, "Workflow/sequence")); !os.IsNotExist(err) {
 		t.Fatal("skills recreated old workflow")
 	}

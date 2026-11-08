@@ -2278,14 +2278,6 @@ export const agentApi = {
   },
 
   // Workflow API
-  createWorkflow: async (presetQueryId: string, humanVerificationRequired: boolean = true) => {
-    const response = await api.post('/api/workflow/create', {
-      preset_query_id: presetQueryId,
-      human_verification_required: humanVerificationRequired
-    })
-    return response.data
-  },
-
   // executeWorkflow removed - now using normal agent execution flow
 
   getWorkflowStatus: async (presetQueryId: string): Promise<WorkflowStatusResponse> => {

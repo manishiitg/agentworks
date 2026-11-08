@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -184,8 +185,20 @@ def verify():
     assert result.get('success') and 'bridge-probe' in json.dumps(result), str(result)
     assert not call('send_email', {}).get('success')
 `)
+	// Copy an actual CPython extension as a vendored dependency. The old
+	// text-file resolver refused it before Python could start (PLAT-746-435).
+	extensionPath, err := exec.Command("python3", "-c", "import _json; print(_json.__file__)").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	extension, err := os.ReadFile(strings.TrimSpace(string(extensionPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	vendorFile := filepath.Base(strings.TrimSpace(string(extensionPath)))
+	write(filepath.Join(sourceRoot, "_vendor", vendorFile), string(extension))
+	write(filepath.Join(sourceRoot, "_vendor/vendor_fixture/__init__.py"), "from pathlib import Path\nimport _json\nassert Path(_json.__file__).parent == Path(__file__).parents[1]\nassert _json.scanstring('\\\"vendored\\\"', 1)[0] == 'vendored'\n")
 	write(filepath.Join(sourceRoot, "script.json"), `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true},{"name":"extended","type":"boolean","value":"false"},{"name":"rate","type":"number","value":"5"},{"name":"RDS_SECRET_ID_DEV","type":"string","value":"example/dev/app"}],"input_presets":[{"name":"Saved","values":{"extended":"false","rate":"5"}}],"outputs":["result.json"]}`)
-	write(filepath.Join(sourceRoot, "helper.py"), "from agentworks import step, check\n@step('Prepare report')\ndef prepare():\n    assert check('Prepared', True, 'Fixture ready').ok\n    return True\n")
 	kbPath, err := fsutil.WorkspacePath(docs, binding.Root+"/knowledgebase/context/rules.md")
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +215,7 @@ def verify():
 	write(filepath.Join(sourceRoot, "main.py"), "from pathlib import Path\nassert Path("+string(kbJSON)+").read_text() == 'fixture knowledge'\n"+`import json, os, sys
 from bridge_probe import verify
 verify()
-from helper import prepare
+from nested.prepare import prepare
 prepare()
 from pathlib import Path
 print('start-marker')
@@ -222,7 +235,7 @@ report.parent.mkdir(parents=True, exist_ok=True)
 report.write_text(json.dumps({'count': values['count']}))
 assert json.loads(report.read_text())['count'] == values['count']
 from agentworks import run_folder
-for protected in (Path(os.environ['WORKFLOW_CODE_ROOT']) / 'unexpected.py', run_folder / 'helpers' / 'forged.json'):
+for protected in (Path(os.environ['WORKFLOW_CODE_ROOT']) / 'unexpected.py', run_folder / 'helpers' / 'forged.json', Path(__file__)):
     try: protected.write_text('{}')
     except OSError: pass
     else: raise AssertionError('Saved source/helper write was allowed: ' + str(protected))
@@ -233,6 +246,7 @@ execute('INSERT INTO fixture_rows(id,value) VALUES (?,?) ON CONFLICT(id) DO UPDA
 assert scalar('SELECT value FROM fixture_rows WHERE id=?', [values['count']]) == 'through script bridge'
 # Ordinary subprocess steps retain the same managed bridge.
 import subprocess
+subprocess.run([sys.executable, '-B', '-c', "import sys; sys.path.insert(0, '_vendor'); import vendor_fixture"], check=True)
 subprocess.run([sys.executable,'-c',"import os; from pathlib import Path; from agentworks_db import scalar; assert scalar('SELECT COUNT(*) FROM fixture_rows') >= 1; assert (Path(os.environ['WORKFLOW_DATA_ROOT'])/'reports/runtime-fixture.json').is_file(); from bridge_probe import verify; verify()"],check=True)
 
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'preset':os.environ.get('VAR_GROUP_NAME'), 'python_ran':True, 'run_folder':str(__import__('agentworks').run_folder)}))
@@ -252,8 +266,35 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	// PLAT-746-440: source inspection uses the file editor's current Builder
 	// access and never imports/executes the bundle, even in an attached folder.
 	sourceAPI := &StreamingAPI{}
-	graphEndpoint := httptest.NewServer(AuthMiddleware(http.HandlerFunc(sourceAPI.handleCrewScriptGraph)))
+	graphEndpoint := httptest.NewServer(AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/crew-script-file" {
+			sourceAPI.handleCrewScriptFile(w, r)
+			return
+		}
+		sourceAPI.handleCrewScriptGraph(w, r)
+	})))
 	defer graphEndpoint.Close()
+	// Save a real nested helper through the same owner-authorized editor that
+	// rejected package paths, then import it in every actual Python entrance.
+	ownerToken, err := GenerateJWT("owner", "owner", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for file, content := range map[string]string{"nested/__init__.py": "", "nested/prepare.py": "from agentworks import step, check\n@step('Prepare report')\ndef prepare():\n    assert check('Prepared', True, 'Fixture ready').ok\n    return True\n"} {
+		body, _ := json.Marshal(map[string]string{"content": content})
+		request, _ := http.NewRequestWithContext(ctx, http.MethodPut, graphEndpoint.URL+"/api/crew-script-file?workspace_path="+binding.Root+"&file="+file, bytes.NewReader(body))
+		request.Header.Set("Authorization", "Bearer "+ownerToken)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(response.Body)
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("nested source save HTTP%d %s", response.StatusCode, raw)
+		}
+	}
+	expectedSourceCall := ""
 	for _, user := range []string{"owner", "runner"} {
 		token, err := GenerateJWT(user, user, "")
 		if err != nil {
@@ -275,6 +316,23 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			t.Fatalf("saved source graph did not inspect safely: HTTP%d %s", response.StatusCode, body)
 		}
 		if user == "owner" {
+			var graph struct {
+				Nodes []struct {
+					Label string `json:"label"`
+					Call  string `json:"call"`
+				} `json:"nodes"`
+			}
+			if err := json.Unmarshal(body, &graph); err != nil {
+				t.Fatal(err)
+			}
+			for _, node := range graph.Nodes {
+				if node.Label == "Prepare report" {
+					expectedSourceCall = node.Call
+				}
+			}
+			if expectedSourceCall == "" {
+				t.Fatal("nested step has no overview identity")
+			}
 			// Large code remains runnable: outline returns its normal graph
 			// envelope with a readable limit message, not a failed page request.
 			padding := filepath.Join(sourceRoot, "padding.py")
@@ -389,6 +447,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		if !folder.IsDir() || !strings.HasPrefix(folder.Name(), "run-") {
 			continue
 		}
+
 		result, err := os.ReadFile(filepath.Join(runtimeRoot, "runs", folder.Name(), "execution/saved/result.json"))
 		if err == nil && strings.Contains(string(result), `"count": 9`) && strings.Contains(string(result), `"python_ran": true`) {
 			if !strings.Contains(string(result), `"preset": "Saved"`) {
@@ -403,7 +462,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			for _, recorded := range runRecord.PythonSteps {
 				start, startErr := time.Parse(time.RFC3339Nano, recorded.StartedAt)
 				end, endErr := time.Parse(time.RFC3339Nano, recorded.CompletedAt)
-				if recorded.ExecutionID != runRecord.ExecutionID || recorded.Name != "Prepare report" || recorded.SourceCall == "" || recorded.Status != "completed" || startErr != nil || endErr != nil || end.Before(start) || recorded.DurationMs < 0 || recorded.LogNote == "" {
+				if recorded.ExecutionID != runRecord.ExecutionID || recorded.Name != "Prepare report" || recorded.SourceCall != expectedSourceCall || recorded.Status != "completed" || startErr != nil || endErr != nil || end.Before(start) || recorded.DurationMs < 0 || recorded.LogNote == "" {
 					t.Fatalf("Python step timing/attempt was not persisted: %+v", recorded)
 				}
 			}
@@ -469,5 +528,37 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	}
 	if !local {
 		checkSavedScriptTriggerAndSchedule(t, docs, binding)
+	}
+	var sharedExtension os.FileInfo
+	linkedRuns := 0
+	folders, err = os.ReadDir(filepath.Join(runtimeRoot, "runs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range folders {
+		if !strings.HasPrefix(folder.Name(), "run-") {
+			continue
+		}
+		snapshotFile := filepath.Join(runtimeRoot, "runs", folder.Name(), "execution/saved/code/_vendor", vendorFile)
+		info, err := os.Stat(snapshotFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sharedExtension != nil && !os.SameFile(sharedExtension, info) {
+			t.Fatal("unchanged vendored binary was copied instead of linking its immutable snapshot")
+		}
+		sharedExtension = info
+		linkedRuns++
+		actual, readErr := os.ReadFile(snapshotFile)
+		if readErr != nil || !bytes.Equal(actual, extension) {
+			t.Fatal("binary source bytes changed", readErr)
+		}
+	}
+	if !local && linkedRuns < 3 {
+		t.Fatal("manual/trigger/timer binary snapshots were not all retained")
+	}
+	authored, err := os.Stat(filepath.Join(sourceRoot, "_vendor", vendorFile))
+	if err != nil || sharedExtension == nil || os.SameFile(authored, sharedExtension) {
+		t.Fatal("run linked mutable authored source", err)
 	}
 }

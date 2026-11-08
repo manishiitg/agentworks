@@ -112,6 +112,8 @@ func TestExternalMCPRequiresIdentity(t *testing.T) {
 
 func TestExternalMCPLocalProductSelection(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	// A local install's person can use Crews; the shared fixture limits its users to workflows.
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","work"]}]}`)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
 	t.Setenv("AGENT_PRODUCTS", "")
@@ -129,7 +131,7 @@ func TestExternalMCPLocalProductSelection(t *testing.T) {
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "local catalog")
 	text := marshalStructured(t, spec)
-	for _, name := range []string{"brain_read", "manage_vault_access", "run_relay"} {
+	for _, name := range []string{"brain_read", "manage_vault_access", "run_relay", "relay_owners", "get_contract_upgrades", "read_team_source", "human_feedback"} {
 		if strings.Contains(text, name) {
 			t.Fatalf("local MCP catalog advertised %s", name)
 		}
@@ -138,8 +140,8 @@ func TestExternalMCPLocalProductSelection(t *testing.T) {
 			t.Fatalf("local MCP accepted disabled tool %s", name)
 		}
 	}
-	if !strings.Contains(text, `"name":"workflow"`) || !strings.Contains(text, `"name":"crew"`) {
-		t.Fatal("local project tools disappeared")
+	if !strings.Contains(text, `"name":"workflow"`) || !strings.Contains(text, `"name":"workspace"`) {
+		t.Fatalf("local project tools disappeared: %s", text)
 	}
 }
 
@@ -179,7 +181,7 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initResult := initializeExternalMCP(t, ctx, cli)
 	// A session login holds every scope, so Crew authoring is announced too.
-	if !strings.HasPrefix(initResult.Instructions, (productpolicy.Selection{}).Text(externalMCPInstructions)) || !strings.Contains(initResult.Instructions, externalMCPCrewAuthoringInstructions) || !strings.Contains(initResult.Instructions, externalMCPRelayInstructions) {
+	if !strings.HasPrefix(initResult.Instructions, (productpolicy.Selection{}).Text(externalMCPInstructions)) || !strings.Contains(initResult.Instructions, externalMCPCrewAuthoringInstructions) {
 		t.Fatalf("run-capable connection got read-only instructions: %q", initResult.Instructions)
 	}
 
@@ -297,8 +299,9 @@ func TestExternalMCPRespectsTokenScopes(t *testing.T) {
 			t.Fatalf("read-only spec missing %q", name)
 		}
 	}
+	// Tool names, not action names: settings action=chat (personal display) is fine to read.
 	for _, name := range []string{"execute_step", "chat", "trigger_schedule", "run_reply_input"} {
-		if strings.Contains(listed, `"`+name+`"`) {
+		if strings.Contains(listed, `"name":"`+name+`"`) {
 			t.Fatalf("read-only spec unexpectedly exposes %q", name)
 		}
 	}

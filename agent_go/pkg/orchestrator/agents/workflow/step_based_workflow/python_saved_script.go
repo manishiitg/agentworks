@@ -40,7 +40,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonScriptCall(ctx context.C
 	if err != nil {
 		return nil, nil, err
 	}
-	if child.Definition.ID == "" || strings.TrimSpace(child.Files["main.py"]) == "" {
+	if child.Definition.ID == "" || strings.TrimSpace(string(child.Files["main.py"])) == "" {
 		return nil, nil, fmt.Errorf("Save this script's main.py in its Crew before running it.")
 	}
 	// A top may pass its complete input object. Forward only this child's

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"path"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // A typed create writes the initial definition before the derived manifest can
@@ -146,7 +148,7 @@ func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace
 			return result, fmt.Errorf("saved script identity is invalid")
 		}
 		sourceRoot := path.Join(binding.Root, "code")
-		result = workflow.CrewScriptConfiguration{Definition: *definition, Root: sourceRoot, Files: map[string]string{}}
+		result = workflow.CrewScriptConfiguration{Definition: *definition, Root: sourceRoot, Files: map[string][]byte{}}
 		// Match the existing account executor's scope, including its established
 		// shared default. Tool admission must neither narrow nor widen its grants.
 		if google := services.GetGmailService(); google != nil {
@@ -165,15 +167,13 @@ func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace
 			if !workflow.CrewScriptBundleFile(relative) {
 				continue
 			}
-			content, found, err := readFileFromWorkspace(ctx, path.Join(sourceRoot, relative))
+			content, err := fs.ReadFile(workflowfiles.WorkflowFS{Docs: workflow.GetPromptDocsRoot(), Root: binding.Root}, path.Join("code", relative))
 			if err != nil {
 				return result, err
 			}
-			if found {
-				result.Files[relative] = content
-			}
+			result.Files[relative] = content
 		}
-		if result.Files["main.py"] == "" {
+		if len(result.Files["main.py"]) == 0 {
 			return result, fmt.Errorf("save main.py before running this script")
 		}
 		return result, nil
@@ -216,8 +216,12 @@ func saveCrewScriptInputs(ctx context.Context, root string, inputs *VariablesMan
 	return nil
 }
 
+func crewScriptEditableFile(file string) bool {
+	return workflow.CrewScriptBundleFile(file) && (file == "script.json" || strings.HasSuffix(file, ".py"))
+}
+
 func writeCrewScriptFile(ctx context.Context, binding *crewExecutableBinding, file, content string) error {
-	if path.Base(file) != file || file != "script.json" && !strings.HasSuffix(file, ".py") {
+	if !crewScriptEditableFile(file) {
 		return fmt.Errorf("choose script.json or a Python file from this script")
 	}
 	if file == "script.json" {
@@ -274,7 +278,7 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 		return
 	}
 	file := r.URL.Query().Get("file")
-	if path.Base(file) != file || file != "script.json" && !strings.HasSuffix(file, ".py") {
+	if !crewScriptEditableFile(file) {
 		http.Error(w, "Choose script.json or a Python file.", 400)
 		return
 	}
@@ -323,7 +327,7 @@ func (api *StreamingAPI) handleCrewScriptGraph(w http.ResponseWriter, r *http.Re
 	files := map[string]string{}
 	for name, content := range source.Files {
 		if strings.HasSuffix(name, ".py") {
-			files[name] = content
+			files[name] = string(content)
 		}
 	}
 	graph, err := inspectPythonAutomationSource(r.Context(), binding.Root, files)

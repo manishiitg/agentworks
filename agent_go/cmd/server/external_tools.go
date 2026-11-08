@@ -619,6 +619,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		externalError(w, 404, "unknown_tool", "Refresh the tool catalog with get_api_spec and choose its current action tool.")
 		return
 	}
+	family, action := tool.Name, externalArg(call.Arguments, "action")
 	if tool.actions != nil {
 		member, args, err := externalResolveMerged(*tool, call.Arguments)
 		if err != nil {
@@ -629,6 +630,14 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if !externalTokenAllows(GetUserFromContext(r.Context()), *tool) {
 		externalError(w, 403, "insufficient_scope", "This access token does not allow this operation."+externalMissingScopeHint(GetUserFromContext(r.Context()), *tool))
+		return
+	}
+	if missing := externalMissingFields(*tool, action, call.Arguments); len(missing) > 0 {
+		label := family
+		if action != "" {
+			label += " action=" + action
+		}
+		externalError(w, 400, "invalid_arguments", label+" is missing: "+strings.Join(missing, ", "))
 		return
 	}
 	retryWriter, retryArgs, retryFinish, answered := api.externalRetryReceipt(w, r, *tool, call.Arguments)

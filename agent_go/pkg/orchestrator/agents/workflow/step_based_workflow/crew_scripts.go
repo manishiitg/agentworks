@@ -37,7 +37,7 @@ type CrewScriptConfiguration struct {
 	ToolSelections []string // Server-resolved connected apps; never authored input.
 	Definition     CrewScriptDefinition
 	Root           string
-	Files          map[string]string
+	Files          map[string][]byte
 }
 type CrewScriptResolver interface {
 	ResolveCrewScript(context.Context, string, string) (CrewScriptConfiguration, error)
@@ -82,7 +82,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) hydrateCrewScripts(ctx context.Contex
 	steps := append(append([]PlanStepInterface{}, plan.Steps...), plan.OrphanSteps...)
 	for _, info := range collectAllSteps(steps) {
 		step, ok := info.Step.(*ScriptedPlanStep)
-		if !ok || step.Script == "" || step.crewScript != nil {
+		if !ok || step.Script == "" || (step.crewScript != nil && step.crewScript.Files != nil) {
 			continue
 		}
 		if len(step.ScriptParameters) > 0 || len(step.ScriptParametersSchema) > 0 {

@@ -377,6 +377,10 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if !agentSourceConsentAllowed(c, tool) {
 		return false
 	}
+	// Flow tools appear only where Flows are on (PLAT-746-265: off in every installation for now).
+	if isExternalRelayTool(tool.Name) && !userAllowedProduct(c, "relays") {
+		return false
+	}
 	if source, operation := dataSourceAction(tool.Name); source == "crew_folders" && c != nil && c.AccessToken != nil {
 		scope := "crews:write"
 		if crewCapabilityRead(operation) {

@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,6 +19,8 @@ import (
 // PLAT-746-265: an admitted Run person may execute a script, but cannot edit
 // shared source. A workflow reference cannot select another Crew's source.
 func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENT_PRODUCTS", "work,agentworks")
@@ -27,6 +31,11 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	for _, record := range []projectOwnerRecord{{Product: "work", Folder: "lab", ProjectID: "crew-lab", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true, RunPeople: []string{"runner"}}, {Product: "work", Folder: "other", ProjectID: "crew-other", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true}} {
 		if err := defaultProjectOwners().Register(record); err != nil {
 			t.Fatal(err)
+		}
+		for _, dir := range []string{filepath.Join(docs, "Crew", record.Folder), filepath.Join(docs, "_system/crew-data", record.ProjectID)} {
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	script := crewExecutableBinding{ID: "qualify", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/qualify", Kind: "script"}
@@ -91,6 +100,18 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if code := request("owner", "print('owner update')\n"); code != 200 {
 		t.Fatalf("restored Builder edit HTTP%d", code)
 	}
+	// PLAT-746-459: helper packages use the same source writer and authority.
+	if code := request("runner", "print('forged')", "helper/values.py"); code != 403 {
+		t.Fatalf("Run person edited nested source HTTP%d", code)
+	}
+	if code := request("owner", "VALUE = 7\n", "helper/values.py"); code != 200 {
+		t.Fatalf("Builder nested source HTTP%d", code)
+	}
+	for _, file := range []string{"../outside.py", "/outside.py", "helper/../../outside.py", "helper/../outside.py", "helper/.private.py", "helper\\outside.py", "helper/script.json"} {
+		if code := request("owner", "refused", file); code != 400 {
+			t.Fatalf("source path %q admitted HTTP%d", file, code)
+		}
+	}
 	manifest, found, err := ReadWorkflowManifest(context.Background(), script.Root)
 	if err != nil || !found {
 		t.Fatal(err)
@@ -116,8 +137,13 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 		t.Fatal("Run person lost admitted execution access")
 	}
 	resolver := &crewWorkflowResources{userID: "owner"}
+	// The binary-safe resolver reads bytes from the admitted storage root;
+	// mirror this HTTP boundary fixture's saved files into that real storage.
+	for file := range files.files {
+		materializeWorkspaceFixtureFile(t, files, docs, file)
+	}
 	resolved, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "script:qualify")
-	if err != nil || resolved.Files["main.py"] != "print('owner update')\n" {
+	if err != nil || string(resolved.Files["main.py"]) != "print('owner update')\n" || string(resolved.Files["helper/values.py"]) != "VALUE = 7\n" {
 		t.Fatalf("same-Crew script: %+v %v", resolved, err)
 	}
 	if _, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "other-script"); err == nil || !strings.Contains(err.Error(), "shared function") {

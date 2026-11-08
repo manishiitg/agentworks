@@ -92,7 +92,7 @@ print('saved-script-finished')
 		write("code/"+id+"/main.py", source)
 		raw, _ := json.Marshal(definition)
 		write("code/"+id+"/script.json", string(raw))
-		scripts[id] = CrewScriptConfiguration{Definition: definition, Root: root + "/code/" + id, Files: map[string]string{"main.py": source, "script.json": string(raw)}}
+		scripts[id] = CrewScriptConfiguration{Definition: definition, Root: root + "/code/" + id, Files: map[string][]byte{"main.py": []byte(source), "script.json": raw}}
 	}
 	// The caller is A. Its extra launch value must not leak into B's defaults.
 	c.directCrewScript = &CrewScriptDefinition{ID: "A", Name: "A", Inputs: []Variable{{Name: "parent_only", Type: "string"}}}
@@ -240,7 +240,7 @@ print('saved-script-finished')
 		t.Fatal("explicit redo did not retain a fresh attempt")
 	}
 	changed := scripts["B"]
-	changed.Files["main.py"] += "\n# changed source\n"
+	changed.Files["main.py"] = append(append([]byte{}, changed.Files["main.py"]...), []byte("\n# changed source\n")...)
 	scripts["B"] = changed
 	if reply := call("saved-b", "B", map[string]interface{}{"count": 3}, true); reply.OK || !strings.Contains(reply.Error, "Start a new run") {
 		t.Fatalf("changed child reused old result: %+v", reply)
