@@ -1082,6 +1082,8 @@ export interface ExecutionInspectionTarget {
  step_id?: string
  run_folder?: string
  item_id?: string
+ /** A Python step or agent call: joins it to a node of the workflow's source outline. */
+ source_call?: string
  started_at: string
 }
 
@@ -3123,6 +3125,8 @@ export interface WorkFolderAddRequest {
 export interface WorkspaceStepInspection {
   inspection: ExecutionInspectionTarget
   status: string
+  completed_at?: string
+  duration?: string
   parent: Pick<ActiveSessionInfo, 'session_id' | 'workspace_path' | 'status' | 'triggered_by' | 'bot_platform'>
 }
 export interface WorkspaceStepInspectionsResponse {
