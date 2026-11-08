@@ -4,10 +4,15 @@ package slotcheck
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // TestRealSlotChain runs on a prepared Linux host only (container_e2e.sh builds one: real slot accounts, sudo rule,
@@ -134,6 +139,97 @@ func TestRealSlotChain(t *testing.T) {
 		body, err := os.ReadFile(answer)
 		if err != nil || string(body) != "answer" {
 			t.Fatalf("answer changed: %q %v", body, err)
+		}
+	})
+	// PLAT-746: server source snapshots lost the slotshared group when the
+	// content-addressed cache was forced to 0700. Exercise the production writer,
+	// not a hand-created readable fixture, under the service's restrictive umask.
+	t.Run("Python imports immutable snapshots as the slot including reused blobs", func(t *testing.T) {
+		runtime, err := os.MkdirTemp(filepath.Join(docs, "Workflow/wf1"), "source-snapshot-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(runtime) })
+		if err := os.Chmod(runtime, os.ModeSetgid|0770); err != nil {
+			t.Fatal(err)
+		}
+		root, err := os.OpenRoot(runtime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer root.Close()
+		cache, code := "runs/source-blobs", "runs/run-one/execution/task/code"
+		oldCode := filepath.Join(runtime, "runs/old/execution/task/code")
+		if err := os.MkdirAll(oldCode, 0750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(filepath.Join(runtime, "runs"), os.ModeSetgid|0770); err != nil {
+			t.Fatal(err)
+		}
+		cacheDir := filepath.Join(runtime, cache)
+		if err := os.MkdirAll(cacheDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chown(cacheDir, -1, os.Getgid()); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(cacheDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		checks := []byte("source-checks")
+		oldBlob := filepath.Join(cacheDir, fmt.Sprintf("%x", sha256.Sum256(checks)))
+		if err := os.WriteFile(oldBlob, checks, 0440); err != nil {
+			t.Fatal(err)
+		}
+		oldCopy := filepath.Join(oldCode, "checks.py")
+		if err := os.Link(oldBlob, oldCopy); err != nil {
+			t.Fatal(err)
+		}
+		probe := base
+		probe.ReadPaths = append(append([]string{}, base.ReadPaths...), runtime)
+		probe.WritePaths = append(append([]string{}, base.WritePaths...), runtime)
+		if out, stderr, err := runThroughShellTool(ctx, probe, "cat "+shQuote(oldCopy)); err == nil || !strings.Contains(stderr, "Permission denied") {
+			t.Fatalf("old blob did not reproduce the server refusal: out=%q stderr=%q err=%v", out, stderr, err)
+		}
+		libraryPath, err := exec.Command("python3", "-c", "import importlib.util; print(importlib.util.find_spec('_json').origin)").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		libraryName := filepath.Base(strings.TrimSpace(string(libraryPath)))
+		library, err := os.ReadFile(strings.TrimSpace(string(libraryPath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files := map[string][]byte{"checks.py": checks, "vendor/" + libraryName: library}
+		if err := workflowfiles.MaterializeSourceSnapshot(ctx, root, cache, code, files); err != nil {
+			t.Fatal(err)
+		}
+		if err := workflowfiles.MaterializeSourceSnapshot(ctx, root, cache, "runs/run-two/execution/task/code", files); err != nil {
+			t.Fatal(err)
+		}
+		current := filepath.Join(runtime, code, "checks.py")
+		first, _ := os.Stat(oldCopy)
+		second, _ := os.Stat(current)
+		if first == nil || second == nil || !os.SameFile(first, second) {
+			t.Fatal("reused snapshot was copied instead of repairing the same inode")
+		}
+		program := "from pathlib import Path; import sys; assert Path(sys.argv[1]).read_text() == 'source-checks'; assert Path(sys.argv[2]).read_text() == 'source-checks'; sys.path.insert(0, sys.argv[3]); import _json; assert Path(_json.__file__).parent == Path(sys.argv[3]); print('snapshot-read-import-ok')"
+		command := "python3 -B -c " + shQuote(program) + " " + shQuote(current) + " " + shQuote(oldCopy) + " " + shQuote(filepath.Join(runtime, code, "vendor"))
+		if out, stderr, err := runThroughShellTool(ctx, probe, command); err != nil || strings.TrimSpace(out) != "snapshot-read-import-ok" {
+			t.Fatalf("slot snapshot read/import failed: out=%q stderr=%q err=%v", out, stderr, err)
+		}
+		for _, command := range []string{
+			"printf forged > " + shQuote(current),
+			"rm " + shQuote(current),
+			"printf forged > " + shQuote(filepath.Join(runtime, code, "new.py")),
+			"printf forged > " + shQuote(oldBlob),
+		} {
+			if out, stderr, err := runThroughShellTool(ctx, probe, command); err == nil || !strings.Contains(stderr, "Permission denied") {
+				t.Fatalf("snapshot writable with broad project grant: out=%q stderr=%q err=%v", out, stderr, err)
+			}
+		}
+		if out, stderr, err := runThroughShellTool(ctx, probe, "printf output > "+shQuote(filepath.Join(runtime, "runs/run-one/result.txt"))); err != nil {
+			t.Fatalf("ordinary output was blocked: out=%q stderr=%q err=%v", out, stderr, err)
 		}
 	})
 	negatives := map[string]string{

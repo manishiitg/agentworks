@@ -111,7 +111,8 @@ chmod 0440 /etc/sudoers.d/agentworks-slots && visudo -cf /etc/sudoers.d/agentwor
 as_vs() {
   sudo -u vs env -i PATH=/usr/bin:/bin HOME=/home/vs AGENTWORKS_SLOTS=on AGENTWORKS_SLOTCTL="$LIBEXEC/slotctl" \
     AGENTWORKS_SLOTCTL_CONFIG="$LIBEXEC/slotctl.json" AGENTWORKS_SLOTS_FILE="$ETC/slots.json" \
-    AGENT_BROWSER_SHARED_PROFILE="$PROFILE_ROOT" WORKSPACE_DOCS_PATH="$DOCS" AGENTWORKS_STATE_ROOT="$APP/state" "$@"
+    AGENT_BROWSER_SHARED_PROFILE="$PROFILE_ROOT" WORKSPACE_DOCS_PATH="$DOCS" AGENTWORKS_STATE_ROOT="$APP/state" \
+    sh -c 'umask 027; exec "$@"' sh "$@"
 }
 fails=0
 expect() { # expect <exit code> <description> -- command...

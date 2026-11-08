@@ -4,6 +4,8 @@ package filemetadata
 
 import "os"
 
+func InheritGroup(dst, src *os.File) error { return nil }
+
 func Preserve(dst, src *os.File) error {
 	info, err := src.Stat()
 	if err != nil {
