@@ -274,14 +274,17 @@ func (api *StreamingAPI) externalGuidanceResponse(w http.ResponseWriter, r *http
 			}
 			if len(versions) > 0 {
 				failure, _ := value["error"].(map[string]any)
-				receipt := api.guidanceReceipt(r, handle, len(delivered) > 0, versions, delivered, failure["code"] == "invalid_arguments" || failure["code"] == "invalid_dashboard" || value["valid"] == false)
+				invalid := failure["code"] == "invalid_arguments" || failure["code"] == "invalid_dashboard" || value["valid"] == false
+				receipt := api.guidanceReceipt(r, handle, len(delivered) > 0, versions, delivered, invalid)
 				if resource != nil {
 					receipt.Fetch = "Reuse this delivered skill in this conversation. Fetch it again through the original authorized skill/package or file tool after context loss or a version change."
 					value["guidance_resources"] = []any{resource}
 				}
+				// A successful operation gets no reminder line (PLAT-746-464: it ended every
+				// reply); a rejected one points at the guide that explains the fields.
 				if name == "get_guidance_topic" || name == "get_guidance_skills" || resource != nil {
 					value["guidance"] = receipt
-				} else {
+				} else if invalid {
 					value["guidance"] = externalCompactGuidance(receipt)
 				}
 				if data, err := json.Marshal(value); err == nil {

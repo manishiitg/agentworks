@@ -468,9 +468,16 @@ func externalMCPAPISpec(args map[string]any, listed []externalTool, prepare ...f
 	}
 	raw, hasNames := args["names"]
 	if !hasNames || raw == nil {
-		entries := make([]map[string]string, 0, len(listed))
+		// The plain list stays small (PLAT-746-464): one sentence and the action
+		// names per tool; get_api_spec with names returns the full schemas.
+		entries := make([]map[string]any, 0, len(listed))
 		for _, tool := range listed {
-			entries = append(entries, map[string]string{"name": tool.Name, "description": tool.Description})
+			entry := map[string]any{"name": tool.Name, "description": firstSentence(strings.SplitN(tool.Description, "\n", 2)[0])}
+			props, _ := tool.InputSchema["properties"].(map[string]any)
+			if action, _ := props["action"].(map[string]any); action != nil && action["enum"] != nil {
+				entry["actions"] = action["enum"]
+			}
+			entries = append(entries, entry)
 		}
 		result, err := mcp.NewToolResultJSON(map[string]any{"tools": entries, "count": len(entries)})
 		if err != nil {

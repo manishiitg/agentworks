@@ -170,6 +170,15 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	}
 	measured := call("dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "measured", "title": "Measured", "files": map[string]any{"index.html": "<html><title>Measured</title><body>Data</body></html>"}}, handle)
 	revision := measured["dashboard"].(map[string]any)["revision"].(string)
+	// PLAT-746-464: a retry after a dropped connection returns the first result
+	// instead of failing on the dashboard it already created.
+	retry := map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "retry-probe", "title": "Retry probe", "files": map[string]any{"index.html": "<html><body>Retry</body></html>"}, "request_id": "retry-probe-1"}
+	first, again := call("dashboard", retry, handle), call("dashboard", retry, handle)
+	if first["dashboard"].(map[string]any)["revision"] != again["dashboard"].(map[string]any)["revision"] {
+		t.Fatalf("retry did not return the first result: %+v / %+v", first, again)
+	}
+	retry["title"] = "Different"
+	requireRemoteError(t, callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": retry, "guidance_session_id": handle}), "reused request_id", "request_id_conflict")
 	beforeCalls, err := f.api.guidanceStore.Stats(ctx)
 	if err != nil || beforeCalls.Deliveries != int64(2*len(prepared)) {
 		t.Fatalf("independent preparations must each deliver the selected skills once: %+v %v", beforeCalls, err)
@@ -179,8 +188,9 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 		name, args := "dashboard", map[string]any{"action": "update", "workspace": "Workflow/invoices", "dashboard_id": "measured", "title": fmt.Sprintf("Measured %02d", i), "expected_revision": revision}
 		body := call(name, args, handle)
 		revision = body["dashboard"].(map[string]any)["revision"].(string)
-		if status(body) != "delivered_to_client" || body["guidance_skills"] != nil {
-			t.Fatalf("duplicate guidance delivery: %+v", body)
+		// PLAT-746-464: a successful operation carries no reminder line.
+		if body["guidance"] != nil || body["guidance_skills"] != nil {
+			t.Fatalf("successful update carried guidance: %+v", body)
 		}
 		raw := wire(body)
 		advisoryBytes += len(raw)
@@ -193,7 +203,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 		args["title"] = fmt.Sprintf("Legacy %02d", i)
 		legacy := call(name, args, "")
 		revision = legacy["dashboard"].(map[string]any)["revision"].(string)
-		if id(legacy) != "" || legacy["guidance_skills"] != nil || status(legacy) != "missing" {
+		if id(legacy) != "" || legacy["guidance_skills"] != nil || legacy["guidance"] != nil {
 			t.Fatal("legacy client got repeated body")
 		}
 		raw = wire(legacy)
@@ -238,7 +248,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	}
 	var created map[string]any
 	_ = json.Unmarshal(raw, &created)
-	if status(created) != "missing" {
+	if id(created) != "" || created["guidance"] != nil {
 		t.Fatal("forged context gained receipt")
 	}
 	other, _ := agentworksclient.New(srv.URL, "another-connection")
@@ -249,7 +259,7 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	}
 	var foreign map[string]any
 	_ = json.Unmarshal(raw, &foreign)
-	if id(foreign) != "" || status(foreign) != "missing" {
+	if id(foreign) != "" || foreign["guidance"] != nil {
 		t.Fatal("cross-connection receipt leaked")
 	}
 	// Same user with narrowed live consent cannot reuse guidance to gain editing.
@@ -280,8 +290,8 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status(call("dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "stale-probe", "title": "Stale probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}}, handle)) != "stale" {
-		t.Fatal("stale receipt not flagged")
+	if call("dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "stale-probe", "title": "Stale probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}}, handle)["guidance"] != nil {
+		t.Fatal("successful create carried a stale reminder")
 	}
 	refreshed := decode(callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": "dashboard", "guidance_session_id": handle}))
 	if id(refreshed) != handle || refreshed["guidance_skills"] == nil {
@@ -336,8 +346,8 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 		t.Fatal("stdio validation includes unnecessary guidance")
 	}
 	stdioCreated := decode(callRemoteTool(t, ctx, stdio, "dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "stdio-probe", "title": "Stdio probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}, "guidance_session_id": handle}))
-	if status(stdioCreated) != "delivered_to_client" {
-		t.Fatal("stdio lost common envelope")
+	if stdioCreated["guidance"] != nil {
+		t.Fatal("stdio create carried a reminder")
 	}
 	_ = writeIn.Close()
 	select {
@@ -373,8 +383,8 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	fallback := call("dashboard", map[string]any{"action": "create", "workspace": "Workflow/invoices", "dashboard_id": "unavailable-probe", "title": "Unavailable probe", "files": map[string]any{"index.html": "<html><body>Probe</body></html>"}}, handle)
-	if status(fallback) != "unavailable" {
-		t.Fatal("storage failure refused ordinary operation")
+	if fallback["dashboard"] == nil || fallback["guidance"] != nil {
+		t.Fatal("storage failure refused ordinary operation or added a reminder")
 	}
 	// An invalid shared root also refuses creating receipt state in user files;
 	// do not use it for a product operation, because other workspace services
