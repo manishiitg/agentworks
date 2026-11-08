@@ -50,7 +50,7 @@ Every schedule in `workflow.json` has a `schedule_type` — `"cron"` (default), 
 
 ### How workflow schedules execute
 
-Every workflow schedule (cron, calendar or API trigger) starts the run directly: no chat and no agent turn decide whether to run it. A schedule never carries messages. If you want an agent involved, schedule a message on an existing Crew agent instead (below); that agent can run the workflow or one of its steps.
+Every workflow schedule (cron, calendar or API trigger) starts the run directly: no chat and no agent turn decide whether to run it. A schedule never carries messages. If you want an agent involved, schedule a message on an existing Crew agent instead (below); that agent can run the workflow.
 
 Every workflow-producing cron/calendar occurrence is bound by the server to one immutable `runs/iteration-N-sched` folder before it starts. Interactive runs each have a unique run folder; webhooks own their bound `iteration-N-hook`. A scheduled run writes to its server-bound folder. This prevents scheduled run outputs and logs from overwriting one another, but it does not isolate shared database, knowledge or external state.
 
@@ -76,7 +76,7 @@ The server keeps ten completed plain Builder archives, ten completed `-sched` ru
 
 ### A schedule that involves an agent
 
-A workflow schedule only starts the workflow. When a person wants an agent to do something on a timer (for example run the workflow and then judge the result), schedule a message on an existing Crew agent: the Crew's schedule sends its `message` on a cron or calendar to the chosen agent chat, and that agent can run the workflow or one of its steps with its normal tools.
+A workflow schedule only starts the workflow. When a person wants an agent to do something on a timer (for example run the workflow and then judge the result), schedule a message on an existing Crew agent: the Crew's schedule sends its `message` on a cron or calendar to the chosen agent chat, and that agent can run the workflow with its normal tools. A script's `@step` labels are not separately runnable, so an agent runs the whole workflow, not one step.
 
 **Schedules run unattended; the message must never require human input:**
 

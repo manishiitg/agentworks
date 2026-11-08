@@ -96,7 +96,7 @@ Sharing gives people the current Run experience: Ask, published actions and thei
 
 <!-- product:agentworks --><!-- product:crew -->### Should I use a workflow or the Crew's chat?
 
-Use a **workflow** for a job with known steps that should run the same way every time, on a schedule or when called. Use the **Crew's chat** when the work needs an agent's judgment, files or a conversation. Both live in the same Crew: the agent can run a workflow or one of its steps when you ask, and a schedule can choose an agent to run on.
+Use a **workflow** for a job with known steps that should run the same way every time, on a schedule or when called. Use the **Crew's chat** when the work needs an agent's judgment, files or a conversation. Both live in the same Crew: the agent can run a workflow when you ask, and a schedule can choose an agent to run on.
 
 <!-- /product --><!-- /product --><!-- product:crew --><!-- product:relays -->### Should I use a Crew or a Flow?
 
