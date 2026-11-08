@@ -67,16 +67,21 @@ export function CrewExecutableEditor({
     { kinds: ['sessions', 'plan'], workflow: item.workspace_path, fallbackMs: 15_000, minIntervalMs: 1000 },
   )
   // Run starts the workflow directly, the same way a schedule does: no chat and no model turn.
-  async function run() {
+  async function run(preset?: string) {
     setError(''); setStarting(true)
     try {
-      await api.post('/api/workflow/run', {}, { params: { workspace_path: item.workspace_path } })
+      await api.post('/api/workflow/run', preset ? { input_preset: preset } : {}, { params: { workspace_path: item.workspace_path } })
       onStarted()
     } catch (cause) {
       // The route answers with plain text, or with the platform's {error: {message}} (for example an input that fails validation).
       const data: unknown = isAxiosError(cause) ? cause.response?.data : undefined
       const message = typeof data === 'string' ? data : (data as { error?: { message?: string } } | undefined)?.error?.message ?? ''
-      setError(message || 'Could not start the workflow. Try again.')
+      const nextStep = /missing required input/i.test(message)
+        ? item.input_presets?.length
+          ? ' Pick saved settings from Run with, or run it from chat or the CLI with inputs.'
+          : ' Run it from chat or the CLI with inputs, or ask your agent to save a preset.'
+        : ''
+      setError((message || 'Could not start the workflow. Try again.') + nextStep)
     } finally { setStarting(false) }
   }
   async function ask(task: string) {
@@ -111,7 +116,7 @@ export function CrewExecutableEditor({
           ) : (
             <div className="space-y-4">
               <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []}
-                onRun={() => void run()} runBusy={starting} onCode={() => onFile('main.py')} onAsk={ask} />
+                onRun={preset => void run(preset)} runPresets={item.input_presets?.map(preset => preset.name)} runBusy={starting} onCode={() => onFile('main.py')} onAsk={ask} />
               {!!(item.inputs?.length || item.input_presets?.length) && <PageCard title="Inputs" hint="What you can change before a run." onAsk={() => ask('Help me change the inputs of this workflow.')}>
                 {item.inputs?.map(input => <PageRow key={input.name} title={input.name}
                   lines={[`${inputKind(input.type)}${input.required ? ' · required' : ''}${input.value ? ` · default “${input.value}”` : ''}`, input.description]} />)}

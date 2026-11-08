@@ -50,13 +50,14 @@ function OutlineRows({ nodes, byName, checkLines, parent, numbered = false, open
  * each with how it went in the latest run. With no outline (too large, or unreadable) the steps of the latest run
  * are listed instead; with neither, the card still shows Run and a way to the code.
  */
-export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvidence = [], onRun, runBusy = false, onCode, onAsk }: {
+export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvidence = [], onRun, runPresets = [], runBusy = false, onCode, onAsk }: {
   workspacePath: string
   title: string
   /** The python steps of the latest run, in the order they started. */
   latestSteps: RunPythonStep[]
   latestEvidence?: RunPythonEvidence[]
-  onRun: () => void
+  onRun: (preset?: string) => void
+  runPresets?: string[]
   runBusy?: boolean
   onCode: () => void
   onAsk: (task: string) => void | Promise<void>
@@ -82,7 +83,15 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   const lastAt = latestSteps.map(step => step.completed_at || step.started_at).sort().pop()
   const lastRun = !latestSteps.length ? 'not run yet' : latestSteps.some(step => step.status === 'failed') ? 'last run failed' : latestSteps.some(step => step.status === 'running') ? 'running now' : `last run finished ${relativeTime(lastAt)}`.trim()
   return <PageCard title={title} hint={`${count} step${count === 1 ? '' : 's'} · ${lastRun}`} onAsk={() => onAsk('Help me change this workflow.')}
-    action={<RowButton primary disabled={runBusy} onClick={onRun}>{runBusy ? 'Starting…' : 'Run'}</RowButton>} testId="crew-workflow-steps">
+    action={<div className="flex shrink-0 items-center gap-1">
+      <RowButton primary disabled={runBusy} onClick={() => onRun()}>{runBusy ? 'Starting…' : 'Run'}</RowButton>
+      {runPresets.length > 0 && <select aria-label="Run with saved settings" value="" disabled={runBusy}
+        onChange={event => { if (event.target.value) onRun(event.target.value) }}
+        className="max-w-40 rounded-full border border-border bg-background px-2 py-0.5 text-xs disabled:opacity-50">
+        <option value="" disabled>Run with…</option>
+        {runPresets.map(preset => <option key={preset} value={preset}>{preset}</option>)}
+      </select>}
+    </div>} testId="crew-workflow-steps">
     {nodes.length
       ? <OutlineRows nodes={nodes} byName={byName} checkLines={checkLines} numbered open={open} toggle={toggle} />
       : !latestSteps.length ? <div className="flex items-center gap-3 px-4 py-3"><p className="min-w-0 flex-1 text-xs text-muted-foreground">No steps to show yet. They appear once the workflow has run, or you can read its code.</p><RowButton onClick={onCode}>View code</RowButton></div>
