@@ -425,6 +425,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	defer func() { log.Close(); reply.LogComplete, reply.LogError = log.Error() == "", log.Error() }()
 	step := &AgentPlanStep{Type: StepTypeAgent, CommonStepFields: CommonStepFields{ID: saved.StepID, Title: saved.Name, Description: saved.FirstMessage}, AgentConfigs: &saved.Config}
 	runRoot := filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder))
+	// The native cwd is this writable run root. Frozen source uses read-only
+	// modes; deliberate chmod by the service UID is an accepted boundary limit.
 	read, write := hcpo.setupAgentFolderGuard(saved.StepID, saved.StepID, &saved.Config, AgentWriteAccess{DB: true, Knowledgebase: saved.Settings.Knowledge == "write"})
 	write = append(write, hcpo.GetWorkspacePath()+"/.sandbox-cache")
 	// A native continuation retains its original private cwd and owner session.
