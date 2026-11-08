@@ -19,7 +19,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
     items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
   }
   add('report', 'Build', 'Dashboards', LayoutDashboard)
-  add('flow', 'Build', relayMode ? 'Flow' : 'Plan & progress', Route, relayMode ? 'graph' : undefined)
+  if (relayMode) add('flow', 'Build', 'Flow', Route, 'graph')
   add('mcp', 'Build', 'Skills', Sparkles, 'skills')
   add('files', 'Build', 'Files', Files)
   if (!relayMode) {

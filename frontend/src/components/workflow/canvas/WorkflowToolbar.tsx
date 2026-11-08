@@ -10,7 +10,6 @@ import { useWorkflowStore, type RunFolder } from '../../../stores/useWorkflowSto
 import { useChatStore } from '../../../stores/useChatStore'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import type { VariablesManifest } from '../../../services/api-types'
-import type { PlanningResponse } from '../../../utils/stepConfigMatching'
 import type { WorkflowExecutionStatus } from '../hooks/useWorkflowExecution'
 import type { ExecutionOptions } from '../../../services/api-types'
 import { TooltipProvider } from '../../ui/tooltip'
@@ -28,7 +27,6 @@ interface WorkflowToolbarProps {
   relayMode?: boolean
   pythonRelay?: boolean
   status: WorkflowExecutionStatus
-  plan?: PlanningResponse | null  // Plan data used by toolbar actions
   currentPhase?: string
   workspacePath?: string | null
   presetQueryId?: string | null  // Used to persist settings per workflow

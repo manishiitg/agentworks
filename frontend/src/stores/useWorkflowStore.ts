@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { WORKFLOW_REPORT_REFRESH_EVENT } from '../components/workflow/reportRefreshEvent'
 import type { WorkflowPhase, ExecutionOptions, VariablesManifest } from '../services/api-types'
 import type { WorkshopMode } from '../commands/types'
-import type { AgentConfigs } from '../utils/stepConfigMatching'
+import type { AgentConfigs } from '../utils/workflowPlan'
 
 // Interactive automation chats always use Workshop. Run remains a backend
 // execution mode for bot and scheduled routes, but is not selectable or

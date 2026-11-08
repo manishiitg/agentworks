@@ -10,7 +10,7 @@ import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } 
 import { useShallow } from 'zustand/react/shallow'
 import { PanelLeftOpen } from 'lucide-react'
 import { WorkspacePanelVisibilityContext } from '../workspace/WorkspacePanelToggle'
-import { WorkflowCanvas, type WorkflowCanvasRef } from './canvas'
+import { WorkflowCanvas } from './canvas'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useModeStore } from '../../stores/useModeStore'
 import { normalizeEventViewMode, useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
@@ -632,8 +632,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   
   // Ref for the ChatArea component
   const chatAreaRef = useRef<ChatAreaRef>(null)
-  // Ref for the WorkflowCanvas component (for triggering refresh)
-  const canvasRef = useRef<WorkflowCanvasRef>(null)
   // Store pending query to submit after ChatArea mounts
   const pendingQueryRef = useRef<{ query: string; executionOptions?: ExecutionOptions } | null>(null)
   // A background refresh of a transcript that is already on screen is not a
@@ -1084,26 +1082,13 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       setShowChatArea(true)
     }
   }, [selectedModeCategory, workspacePath, workflowWorkspaceView, lastCanvasView, workspacePaneVisible, showRunningDrawer, activeWorkflowAccess, showChatArea, setShowChatArea])
-  // Below md, layout.canvasPaneClassName above toggles this pane between `hidden`
-  // (display:none) and visible as focusedPane changes. Two things inside it
-  // size themselves from their own element-level ResizeObserver rather than
-  // from this pane's own layout: a report's auto-height iframe
-  // (HtmlWidgetFrame's HtmlReportFrame, observing elements inside its own
-  // document) and React Flow's plan canvas (observing its wrapper). Chromium
-  // suspends a display:none iframe's rendering, and neither observer
-  // reliably resumes with an accurate reading once it's un-hidden — the
-  // report's outer scroll container gets stuck at a stale (often zero)
-  // height, and the canvas renders blank at its last size. Both listen for
-  // this window resize and force a fresh measurement instead of trusting
-  // their observer to catch up on its own (HtmlWidgetFrame.tsx; WorkflowCanvas's
-  // resyncViewport).
+  // Below md, the report iframe needs a fresh measurement after its hidden pane opens.
   const workspacePaneHiddenByFocus = workspacePaneVisible && focusedPane === 'chat'
   const previousWorkspacePaneHiddenByFocus = useRef(workspacePaneHiddenByFocus)
   useEffect(() => {
     if (previousWorkspacePaneHiddenByFocus.current && !workspacePaneHiddenByFocus) {
       const id = window.setTimeout(() => {
         window.dispatchEvent(new Event('resize'))
-        canvasRef.current?.resyncViewport()
       }, 50)
       previousWorkspacePaneHiddenByFocus.current = workspacePaneHiddenByFocus
       return () => window.clearTimeout(id)
@@ -2222,11 +2207,9 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       onToggleChat={() => { if (showChatArea) collapseChatFromRail(); else handleToggleChatArea() }}
     /> : null}>
     <WorkflowCanvas
-      ref={canvasRef}
       workspacePath={workspacePath}
       presetQueryId={activePresetId}
       relayMode={relayMode}
-      relayOutputStepID={activeWorkflowManifest?.relay_output_step_id}
       currentPhase={activePhase || currentWorkflowPhase}
       onStartPhase={handleStartPhase}
       onCreatePlan={onCreatePlan || handleCreatePlan}

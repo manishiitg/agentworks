@@ -29,7 +29,7 @@ import {
  * fails to compile.
  *
  * `kind` is what the host and layout switch on:
- *   - `canvas`     the React Flow plan (`flow`).
+ *   - `canvas`     the Python Relay source view (`flow`).
  *   - `preview`    the report preview (`report`) -- no React Flow tree.
  *   - `files`      the file browser.
  *   - `inspector`  a full-pane inspector (costs, logs, ...).
@@ -66,7 +66,7 @@ const VIEWS = [
   { id: 'context', kind: 'inspector', label: 'Project menu', icon: Settings2, pane: true },
   // -- canvas / preview (dispatched by WorkspaceViewHost) ------------------
   { id: 'report', kind: 'preview', label: 'Dashboard', icon: LayoutDashboard, toolbarGroup: 'views', pane: true },
-  { id: 'flow', kind: 'canvas', label: 'Plan', icon: Route, toolbarGroup: 'views', pane: true },
+  { id: 'flow', kind: 'canvas', label: 'Flow', icon: Route, toolbarGroup: 'views', pane: true },
   // -- inspectors (toolbar "views" cluster, in button order) ---------------
   { id: 'costs', kind: 'inspector', label: 'Costs and usage', icon: DollarSign, toolbarGroup: 'views', pane: true },
   { id: 'execution-logs', kind: 'inspector', label: 'Run logs', icon: FileText, toolbarGroup: 'views', pane: true },
@@ -111,7 +111,7 @@ export const RELAY_WORKSPACE_VIEWS = new Set<WorkspaceViewId>([
 export function workflowContextViews(relayMode: boolean, isMultiUser: boolean) {
   return WORKSPACE_VIEWS.filter(view => view.id !== 'context'
     && (view.id !== 'access' || isMultiUser)
-    && (!relayMode || RELAY_WORKSPACE_VIEWS.has(view.id)))
+    && (relayMode ? RELAY_WORKSPACE_VIEWS.has(view.id) : view.id !== 'flow'))
 }
 
 type ViewOfKind<K extends WorkspaceViewKind> = Extract<typeof VIEWS[number], { kind: K }>['id']
@@ -119,7 +119,7 @@ type ViewOfKind<K extends WorkspaceViewKind> = Extract<typeof VIEWS[number], { k
 export type InspectorViewId = ViewOfKind<'inspector'> | ViewOfKind<'capability'>
 export type CapabilityViewId = ViewOfKind<'capability'>
 export type PreviewViewId = ViewOfKind<'preview'>
-/** The two views that render in the canvas slot (Plan and Report); the store
+/** The two views that render in the canvas slot (Flow and Dashboard); the store
  * remembers the last one opened as the fallback for "no explicit view". */
 export type CanvasViewId = ViewOfKind<'canvas'> | ViewOfKind<'preview'>
 
@@ -165,7 +165,6 @@ export function isWorkspacePaneView(id: WorkspaceViewId | null | undefined): boo
 const LEGACY_VIEW_IDS: Record<string, WorkspaceViewId | null> = {
   soul: 'report',
   log: 'report',
-  plan: 'flow',
   builder: null,
   'api-triggers': 'workshop',
   schedules: 'workshop',
