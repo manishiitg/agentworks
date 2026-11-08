@@ -22,6 +22,11 @@ Changed requirements create a new entry; normal runs cannot overwrite installed
 package files. Package setup uses the existing sandbox, never a global install.
 You can ask the Crew's agent to create or change it; no terminal is needed.
 
+`agent(..., reasoning="low" | "medium" | "high")` optionally chooses that
+call’s effort where its model supports the level. Unsupported choices return
+a named error; omit it to keep the existing default. A continued conversation
+keeps its original reasoning choice, recorded with its run.
+
 ## Find and edit
 
 1. Use `workflow action=list`. Each saved script has `kind=script`, typed `inputs`

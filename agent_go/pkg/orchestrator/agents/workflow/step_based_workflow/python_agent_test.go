@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +33,7 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 )
 
 // Exercise the real coding-provider factory and ordinary turn executor. Only
@@ -141,7 +143,7 @@ for line in sys.stdin:
     trace(method)
     params=request.get('params',{})
     with (root/'fixture-requests.jsonl').open('a') as out:
-        out.write(json.dumps({'method':method,'thread':params.get('threadId'),'input':params.get('input'),'cwd':str(Path.cwd())})+'\n')
+        out.write(json.dumps({'method':method,'thread':params.get('threadId'),'input':params.get('input'),'effort':params.get('effort'),'cwd':str(Path.cwd())})+'\n')
     result={}
     if method=='thread/start':
         thread=str(uuid.uuid4())
@@ -164,6 +166,8 @@ for line in sys.stdin:
         prompt=json.dumps(params.get('input'))
         if 'cancel-this-call' in prompt:continue
         try:
+            if 'first task' in prompt or 'follow-up' in prompt:
+                assert params.get('effort')=='high', 'per-call reasoning did not reach the native provider'
             if 'first task' in prompt:
                 if %s: assert pwd.getpwuid(os.geteuid()).pw_name=='slot01', 'native provider did not run as slot01'
                 assert Path.cwd()==root, 'native provider did not start in its run root'
@@ -318,7 +322,17 @@ for line in sys.stdin:
 		}
 	}
 	t.Cleanup(func() { clisecurity.ResolveWorkflowPolicy = previousResolver })
-	parent := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "parent"}, AgentConfigs: &AgentConfigs{ExecutionLLM: &AgentLLMConfig{Provider: "codex-cli", ModelID: "fixture"}, KnowledgebaseAccess: "none"}, crewScript: &CrewScriptConfiguration{Definition: CrewScriptDefinition{ID: "fixture-script"}, Files: map[string][]byte{"requirements.txt": []byte("tiny-fixture==1.0\n")}}}
+	supportedModel := ""
+	for _, model := range codexcli.GetAllCodexCLIModels() {
+		if model.SupportsReasoningEffort && slices.Contains(model.ReasoningEffortLevels, "high") {
+			supportedModel = model.ModelID
+			break
+		}
+	}
+	if supportedModel == "" {
+		t.Fatal("no Codex model offers the reasoning needed by this protocol fixture")
+	}
+	parent := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "parent"}, AgentConfigs: &AgentConfigs{ExecutionLLM: &AgentLLMConfig{Provider: "codex-cli", ModelID: supportedModel, Options: map[string]interface{}{"reasoning_effort": "low"}}, KnowledgebaseAccess: "none"}, crewScript: &CrewScriptConfiguration{Definition: CrewScriptDefinition{ID: "fixture-script"}, Files: map[string][]byte{"requirements.txt": []byte("tiny-fixture==1.0\n")}}}
 	dependencies := c.scriptDependencies(parent)
 	if err := os.MkdirAll(dependencies, 0750|os.ModeSetgid); err != nil {
 		t.Fatal(err)
@@ -359,7 +373,7 @@ for line in sys.stdin:
 		t.Fatal("provider launched before database preflight")
 	}
 	handler := c.pythonAutomationHandler(ctx, parent, sourceDir, runRoot)
-	rawFirst, firstErr := handler(ctx, map[string]interface{}{"action": "agent", "key": "first", "order": float64(1), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}}})
+	rawFirst, firstErr := handler(ctx, map[string]interface{}{"action": "agent", "key": "first", "order": float64(1), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}, "reasoning": "high"}})
 	var first pythonHelperReply
 	if firstErr != nil || json.Unmarshal([]byte(rawFirst), &first) != nil {
 		t.Fatalf("Python helper dispatch failed: %v %s", firstErr, rawFirst)
@@ -431,6 +445,9 @@ for line in sys.stdin:
 		if err != nil || json.Unmarshal([]byte(raw), &saved) != nil || saved.AgentSessionHandle == nil {
 			t.Fatalf("missing native continuation state: %v", err)
 		}
+		if conversation == first.ConversationID && (saved.Settings.Reasoning != "high" || saved.Config.ExecutionLLM.Options["reasoning_effort"] != "high") {
+			t.Fatal("saved continuation lost the requested reasoning level")
+		}
 		identities = append(identities, saved.AgentSessionHandle.SessionID)
 		home := saved.AgentSessionHandle.Provider.WorkingDir
 		rollout := filepath.Join(home, ".codex/sessions/2026/01/01", "rollout-fixture-"+saved.AgentSessionHandle.Provider.NativeSessionID+".jsonl")
@@ -452,6 +469,13 @@ for line in sys.stdin:
 	changed := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Research", "messages": []string{"change"}, "conversation_id": first.ConversationID, "model": "codex-cli/another"}, "changed")
 	if changed.OK || !strings.Contains(changed.Error, "original model") {
 		t.Fatalf("changed settings resumed silently: %+v", changed)
+	}
+	if parent.AgentConfigs.ExecutionLLM.Options["reasoning_effort"] != "low" {
+		t.Fatal("per-call reasoning changed the parent model's default")
+	}
+	changedReasoning := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Research", "messages": []string{"change"}, "conversation_id": first.ConversationID, "reasoning": "low"}, "changed-reasoning")
+	if changedReasoning.OK || !strings.Contains(changedReasoning.Error, "original model") {
+		t.Fatalf("continued conversation silently changed reasoning: %+v", changedReasoning)
 	}
 	foreign := *parent
 	foreign.ID = "another-parent"
@@ -522,6 +546,35 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	changedModel, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Write", Messages: []string{"Write evidence"}, Model: "codex-cli/another-model"})
 	if err != nil || changedModel.Config.ExecutionLLM.ConnectionID != "selected-login" {
 		t.Fatalf("changing a model silently changed the selected account: %v", err)
+	}
+	// A deployment-pinned Pi model must not silently discard a requested level.
+	template := t.TempDir()
+	for name, data := range map[string]string{
+		"models.json":   `{"providers":{"example":{"baseUrl":"https://example.com/v1","api":"openai-completions","apiKey":"$EXAMPLE_API_KEY","models":[{"id":"example-model","contextWindow":1000}]}}}`,
+		"settings.json": `{"modelThinkingLevels":{"example/example-model":"off"}}`,
+	} {
+		if err := os.WriteFile(filepath.Join(template, name), []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PI_CLI_AGENT_TEMPLATE_DIR", template)
+	for _, choice := range []struct{ model, effort, want string }{
+		{"cursor-cli/auto", "high", "cursor-cli/auto does not offer reasoning=high"},
+		{"cursor-cli/glm-5.3", "medium", "does not offer reasoning=medium"},
+		{"codex-cli/fixture", "max", "Choose reasoning="},
+		{"pi-cli/example/example-model", "high", "does not offer reasoning=high"},
+		{"claude-code/claude-code", "high", ""},
+	} {
+		selected, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Reason", Messages: []string{"Task"}, Model: choice.model, Reasoning: choice.effort})
+		if choice.want == "" {
+			if err != nil || selected.Config.ExecutionLLM.Options["reasoning_effort"] != choice.effort {
+				t.Fatalf("offered reasoning refused or dropped: %s %s: %v", choice.model, choice.effort, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), choice.want) {
+			t.Fatalf("unsupported reasoning must refuse by name: %s %s: %v", choice.model, choice.effort, err)
+		}
 	}
 	const session = "python-helper-guard"
 	defer common.ClearSessionShellConfig(session)

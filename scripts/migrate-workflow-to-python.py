@@ -219,6 +219,35 @@ def output_check_steps(definitions):
             'output_check_note': 'These old steps had their output checked and repaired automatically. In the Python source, check each matching agent reply; on a failed check send the error once to the same agent (conversation_id=reply.conversation_id), check again, and fail plainly if it still fails.'}
 
 
+def reasoning_steps(definitions):
+    """Report explicit effort choices; hand-written calls must preserve their
+    matching old step, rather than silently inheriting a different tier."""
+    choices = []
+    def visit(value, source):
+        if isinstance(value, list):
+            for item in value:
+                visit(item, source)
+        elif isinstance(value, dict):
+            config = value.get('agent_configs') or value
+            model = config.get('execution_llm') or {}
+            effort = (model.get('options') or {}).get('reasoning_effort')
+            if value.get('id') and effort:
+                choices.append({'step': value['id'], 'reasoning': effort,
+                                'model': model.get('provider', '') + '/' + model.get('model_id', ''),
+                                'source': source})
+            for key, item in value.items():
+                if key != 'agent_configs':
+                    visit(item, source)
+    for name in ('planning/plan.json', 'planning/step_config.json'):
+        file = definitions / name
+        if file.is_file():
+            visit(json.loads(file.read_text()), name)
+    if not choices:
+        return {}
+    return {'reasoning_steps': choices,
+            'reasoning_note': 'Keep each listed effort on its matching agent() call with reasoning="low", "medium" or "high" and the same model. Unsupported levels/models refuse by name; choose an offered level explicitly instead of dropping the old choice.'}
+
+
 def python_payload(source, workflow_id, original_capabilities, original_inputs):
     source = source.resolve()
     payload, removed_tools = {}, []
@@ -436,7 +465,7 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None, entry_inp
     documents = {'definitions': definitions, 'code': code, 'runtime': runtime, 'crew-db': private / 'db', 'crew-db-source': files / 'db'}
     if links_file is not None:
         documents['crew-links'] = links_file
-    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'appended_crew_platform_rows': sum(rows.values()), 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, **knowledge_write_steps(definitions), **output_check_steps(definitions), 'carried_input_presets': len(definition['input_presets'])}}
+    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'appended_crew_platform_rows': sum(rows.values()), 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, **knowledge_write_steps(definitions), **output_check_steps(definitions), **reasoning_steps(definitions), 'carried_input_presets': len(definition['input_presets'])}}
     report['conversion'].update(entry_report)
     report['conversion']['carried_crew_links'] = links
     return changes, documents, report
@@ -530,7 +559,7 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
     binding = json.loads(conversion.writes[conversion.binding_file])
     binding.update(kind='script', runtime_root='workflows/' + workflow_id)
     conversion.writes[conversion.binding_file] = encode(binding)
-    conversion.counts.update(carried_input_presets=len(definition['input_presets']), python_scripts=1, **removed, **knowledge_write_steps(conversion.definitions), **output_check_steps(conversion.definitions))
+    conversion.counts.update(carried_input_presets=len(definition['input_presets']), python_scripts=1, **removed, **knowledge_write_steps(conversion.definitions), **output_check_steps(conversion.definitions), **reasoning_steps(conversion.definitions))
     links, links_file, links_data = carried_crew_links(manifest, projects['projects'], conversion.private, conversion.document)
     if links_file is not None:
         conversion.writes[links_file] = links_data

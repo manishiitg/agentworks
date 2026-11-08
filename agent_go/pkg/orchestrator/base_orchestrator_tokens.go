@@ -96,6 +96,39 @@ func getModelMetadata(provider, modelID string) (*llmtypes.ModelMetadata, error)
 	}
 }
 
+// CodingAgentModelMetadata reads the provider's local execution contract,
+// without launching an agent or fetching an unrelated model catalog.
+func CodingAgentModelMetadata(provider, modelID string) (*llmtypes.ModelMetadata, error) {
+	switch provider {
+	case "claude-code":
+		// The offered catalog adds effort capabilities to the CLI's rate card.
+		for _, model := range claudecode.GetAllClaudeCodeModels() {
+			if model.ModelID == claudecode.CurrentClaudeCodeModel(modelID) {
+				return model, nil
+			}
+		}
+		return (&claudecode.ClaudeCodeAdapter{}).GetModelMetadata(modelID)
+	case "codex-cli":
+		return (&codexcli.CodexCLIAdapter{}).GetModelMetadata(modelID)
+	case "cursor-cli":
+		return (&cursorcli.CursorCLIAdapter{}).GetModelMetadata(modelID)
+	case "pi-cli":
+		// Model-specific overrides include providers that do not offer effort.
+		for _, model := range picli.GetAllPiCLIModels() {
+			if model.ModelID == modelID {
+				return model, nil
+			}
+		}
+		return (&picli.PiCLIAdapter{}).GetModelMetadata(modelID)
+	case "muse-cli":
+		return (&musecli.MuseCLIAdapter{}).GetModelMetadata(modelID)
+	case "agy-cli":
+		return agycli.GetAgyModelMetadata(modelID)
+	default:
+		return nil, fmt.Errorf("unsupported coding provider: %s", provider)
+	}
+}
+
 func resolvePricingProviderAndModel(provider, modelID string) (string, string) {
 	normalizedProvider := strings.ToLower(strings.TrimSpace(provider))
 	normalizedModelID := strings.TrimSpace(modelID)
