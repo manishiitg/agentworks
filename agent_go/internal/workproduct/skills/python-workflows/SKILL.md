@@ -7,7 +7,7 @@ description: Read before creating or changing a workflow in a Crew. New workflow
 
 A new workflow is a Python script: a `script.json` that declares its inputs and outputs, and a `main.py` that does the work with the `agentworks` helpers. There is no plan file to build. Ordinary Python decides the order: functions, `if`/`elif`, loops.
 
-Create it with `crew_workflow_files action=create kind=script`, then write `script.json` and `main.py` with the same tool's `write` action. Run it with `functions action=run_trigger`, then read the result with `functions action=trigger_status`.
+Create it with `crew_workflow_files action=create kind=script`, then write `script.json` and `main.py` with the same tool's `write` action. In Crew chat, run it with `run_workflow_trigger`, passing its `workflow:<id>` in `workspace_path`, then read the result with `get_workflow_trigger_run`. If several saved workflows could match the request, ask which one; never choose silently.
 
 ## External MCP and CLI
 

@@ -111,7 +111,7 @@ func TestCrewQueryStartsWithZeroOneAndMultipleSavedScripts(t *testing.T) {
 			if tool.Name == "run_full_workflow" {
 				offered.bound = true
 			}
-			if tool.Name == "crew_execution" {
+			if tool.Name == "run_workflow_trigger" {
 				offered.named = true
 			}
 		}
