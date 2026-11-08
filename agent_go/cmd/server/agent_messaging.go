@@ -987,27 +987,19 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		if err != nil || !exists || manifest == nil || manifest.ID != dest.ID {
 			return session, fmt.Errorf("workflow unavailable")
 		}
-		if strings.Contains(dest.ChatKey, codeChatSideMarker) {
-			view := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: dest.UserID})
-			if !api.authorizeGoalMessageTab(view, dest) {
-				return session, fmt.Errorf("receiving chat is unavailable or ownership changed")
-			}
+		// A workflow has no Builder chat or named tabs (owner, 8 Nov: "we only have crew chats"):
+		// everyone who can reach it asks it in Run mode; changes go through its Crew chat.
+		if strings.HasPrefix(dest.ChatKey, "session:") || strings.Contains(dest.ChatKey, codeChatSideMarker) {
+			return session, fmt.Errorf("workflow chat tabs no longer exist; message the workflow itself")
 		}
 		access := workflowAccessForManifest(GetUserFromContext(ctx), manifest)
-		builder := strings.HasPrefix(dest.ChatKey, "session:") || strings.Contains(dest.ChatKey, codeChatSideMarker)
-		if access != WorkflowAccessOwner && access != WorkflowAccessWrite && (builder || access != WorkflowAccessRead) {
+		if access != WorkflowAccessOwner && access != WorkflowAccessWrite && access != WorkflowAccessRead {
 			return session, fmt.Errorf("workflow unavailable or access denied")
 		}
-		// A sender acts with their own role: owners and editors are the Builder,
-		// only people who can just use the workflow get Run (owner, 2026-10-20).
-		builder = access == WorkflowAccessOwner || access == WorkflowAccessWrite
 		if session == "" {
 			session = "wfmsg-" + strings.TrimPrefix(c.ID, "inbox-")
 		}
-		query := QueryRequest{Query: text, AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: dest.Path, PresetQueryID: manifest.ID, PinRunMode: !builder, TriggeredBy: "external", TriggeredByLabel: "From " + source.Label, SessionTitle: "Messages: " + source.Label, ExecutionOptions: &ExecutionOptions{WorkshopMode: "run"}}
-		if builder {
-			query.ExecutionOptions.WorkshopMode = "workshop"
-		}
+		query := QueryRequest{Query: text, AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: dest.Path, PresetQueryID: manifest.ID, PinRunMode: true, TriggeredBy: "external", TriggeredByLabel: "From " + source.Label, SessionTitle: "Messages: " + source.Label, ExecutionOptions: &ExecutionOptions{WorkshopMode: "run"}}
 		if api.workflowAskSessionExists(session, dest.Path) {
 			query.RestoredConversationSessionID = session
 		}

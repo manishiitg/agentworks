@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -110,35 +109,4 @@ func authorizeWorkflowBuilderScope(ctx context.Context, scope workflowBuilderSco
 		return scope, http.StatusBadRequest
 	}
 	return scope, 0
-}
-
-// Register only an admitted interactive Builder session. Automated runs and
-// notifications never become owner-controlled tabs.
-func recordWorkflowBuilderSend(ctx context.Context, scope workflowBuilderScope, session string) error {
-	// PLAT-746-149: an owner can have Builder authority during a run without
-	// turning that execution into a named interactive Builder tab.
-	if workflowBuilderHistoryKind(session, "", "", "") == "run" {
-		return nil
-	}
-	scope, status := authorizeWorkflowBuilderScope(ctx, scope, true)
-	if status != 0 {
-		return fmt.Errorf("Builder binding access denied")
-	}
-	user := GetUserIDFromContext(ctx)
-	store := defaultProductConversationRegistryStore()
-	tabs, err := store.projectChats(ctx, user, goalChatProfile, scope.PresetID)
-	if err != nil {
-		return err
-	}
-	main := true
-	for _, tab := range tabs {
-		if tab.WorkspacePath == scope.Workspace && tab.SessionID == session {
-			return nil
-		}
-		if tab.ConversationKey == crewOwnerDefaultChatKey(scope.PresetID, user) {
-			main = false
-		}
-	}
-	_, err = storeGoalOwnerTab(ctx, scope, "Builder", main, session)
-	return err
 }

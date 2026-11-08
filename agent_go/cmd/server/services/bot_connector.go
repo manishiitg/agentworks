@@ -159,10 +159,9 @@ func NormalizeBotRouteGrant(grant, workshopMode string) string {
 	return "run"
 }
 
+// A bot never edits a workflow: the Builder chat is gone (owner, 8 Nov), so every grant asks it in Run mode
+// and changes go through its Crew chat.
 func WorkshopModeForBotGrant(grant string) string {
-	if NormalizeBotRouteGrant(grant, "") == "owner" {
-		return "workshop"
-	}
 	return "run"
 }
 
