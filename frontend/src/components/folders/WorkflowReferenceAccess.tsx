@@ -84,13 +84,13 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
       <div className="flex items-start gap-2">
         <Link2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
         <div>
-          <h3 className="text-sm font-medium text-foreground">Work linked here</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Other Crews this one can open and use. {normalizedSelected.length} linked.</p>
+          <h3 className="text-sm font-medium text-foreground">Crews linked here</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Agents here can message and call these Crews, and work in their files. Crews you haven’t linked stay out of reach. {normalizedSelected.length} linked.</p>
         </div>
       </div>
       <div className="mt-3 grid gap-3">
-        {hideAdd && !normalizedSelected.length && <p className="text-xs text-muted-foreground">No linked work. Ask in chat to link a project.</p>}
-        {showAdditionalGroup && renderGroup(additionalLabel, 'Your other Crews.', crewReferences, availableCrew, `Attach ${additionalLabel}…`)}
+        {hideAdd && !normalizedSelected.length && <p className="text-xs text-muted-foreground">No linked Crews. Ask this Crew’s chat to link one.</p>}
+        {showAdditionalGroup && renderGroup(additionalLabel, 'Your other Crews. Link one to let this Crew use it.', crewReferences, availableCrew, `Link a ${additionalLabel}…`)}
         {extraGroups.map((group, index) => <div key={group.label}>{renderGroup(group.label, group.description, extraReferences[index], extraReferences[index].filter(reference => !normalizedSelected.includes(reference.path)), group.placeholder, true)}</div>)}
         {unknownSelected.length > 0 && <div className="rounded-md border border-border/80 p-3">
           <div className="text-xs font-medium text-foreground">Other linked folders</div>

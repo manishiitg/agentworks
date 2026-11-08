@@ -276,7 +276,7 @@ it("keeps the connected work view free of manual attach forms", async () => {
     <WorkflowFolderAccessView workspacePath="Workflow/consumer" />,
   );
   expect(host.textContent).not.toContain("Attach knowledge");
-  expect(host.textContent).toContain("No linked work.");
+  expect(host.textContent).toContain("No linked Crews.");
   expect(host.querySelector("form")).toBeNull();
   expect(host.textContent).not.toContain("External folders");
   expect(host.textContent).not.toContain("Want to link something else?");
