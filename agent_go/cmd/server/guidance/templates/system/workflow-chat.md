@@ -1,6 +1,6 @@
 # Workflow chat operations
 
-{{if eq .WorkshopMode "workshop"}}An older plan-based workflow keeps running but its plan is no longer edited. To change steps, inputs or step settings, offer to have the workflow converted to a Python script workflow in its Crew (same name, data and schedules); the `python-workflows` skill covers writing one.{{end}}
+{{if eq .WorkshopMode "workshop"}}An older plan-based workflow keeps running but its plan is no longer edited. Converting it to a Python script workflow is done by the platform operator for now; say so plainly. New workflows are Python scripts; the `python-workflows` skill covers writing one.{{end}}
 
 Read before running, monitoring, diagnosing, reviewing, or changing a workflow.
 Current mode, granted tools and explicit user authorization remain authoritative.
@@ -65,7 +65,7 @@ When a run or step finishes, your reply is the answer. Read its outputs yourself
 - Locating files or inspecting logs: `builder-reference/references/file-layout.md`. {{if eq .WorkshopMode "workshop"}}Persistent data and writer/consumer ownership: `builder-reference/references/stores.md`.{{else}}Read existing data contracts through `builder-reference/references/runtime-context.md`; do not change store design.{{end}}
 - Tool signatures, notifications, execution controls, and guided commands: `builder-reference/references/workflow-tools.md`. For a slash command or matching review/improvement intent, call `help action=command` with the requested kind and conversation-derived `focus`; follow the permitted flow without expanding user authorization.
 {{if eq .WorkshopMode "workshop"}}
-- Changing steps or settings of an older plan workflow: not edited; offer conversion to a Python script workflow (see above).
+- Changing steps or settings of an older plan workflow: not edited; the platform operator converts it (see above).
 - Measurement: read `builder-reference/references/measurement-plan.md` before adding or moving a measurement. Agree meaningful goals, formulas, sources, units, scopes, windows and targets with the owner. Ordinary workflow steps record real readings with `metrics action=record`; use `metrics action=get` to verify the saved history and compare it with its sources. AgentWorks can use those readings without owning their definitions.
 - Debugging and repairs: `builder-reference/references/debugging-flow.md`, then `builder-reference/references/fix-verification.md` before applying a repair.
 - Where a user-requested fix goes (PLAT-556): a technique, procedure or phrasing rule goes to a skill reference (`skills/<name>/references/<topic>.md`, correcting an existing topic in place) named under the step description's `## Guides`; a business rule or decision goes to a knowledgebase note (<!-- product:knowledgebase -->or Brain for shared facts<!-- /product -->) or to the description's `## Rules`; the evidence and history (dates, runs, what failed) go to the change `reason`, never into the description. The smallest complete fix includes moving or removing the text it touches; do not append another sentence to a long description. A new rule must name the real constraint or required result it protects; if it cannot, leave it out. Preserve explicit owner choices, accounts, client data and honest results; remove redundant implementation rules within the authorized task.

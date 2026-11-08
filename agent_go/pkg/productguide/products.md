@@ -31,7 +31,7 @@ Use Goals when the task is a continuing outcome, rather than a single question o
 
 - **Abilities:** define the objective and success measures; write workflows as Python scripts in a Crew; configure skills, schedules and integrations; run a workflow; inspect results, reports and costs; inspect the saved goals and measurements.
 - **Start from chat:** new work is a Python script workflow inside a Crew: ask your agent to create one, with a name and what it should do. Older Goals keep running.
-- **MCP route:** discover workflows with `workflow action=list`; read an older plan with `workflow action=plan` (plans are no longer edited; changing one means converting it to a script); inspect run state and evidence through the available run tools. Load the relevant execution and measurement guidance.
+- **MCP route:** discover workflows with `workflow action=list`; read an older plan with `workflow action=plan` (plans are no longer edited; the platform operator converts them to scripts); inspect run state and evidence through the available run tools. Load the relevant execution and measurement guidance.
 - **Access:** owners and workflow editors can build through MCP just as on the website. Running, sharing and integration access use the same server checks.
 - **Example:** monitor incoming support requests, measure response time and follow up on unresolved cases.
 
