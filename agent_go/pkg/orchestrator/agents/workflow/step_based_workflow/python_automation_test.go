@@ -180,6 +180,12 @@ if os.environ['VAR_PHASE'] == 'asks':
     pending = ask_agent('Beta', 'pending question', wait_seconds=0)
     assert pending.ok and pending.status == 'pending' and pending.inbox_id and pending.message_id
     assert not pending.text and not pending.error and 'do not resend' in pending.receipt['note']
+    large = ask_agent('Beta', 'long question', wait_seconds=999)
+    assert large.ok and large.status == 'replied' and len(large.text) < 20000 and '[output truncated;' in large.text
+    assert 'fixture-credential' not in large.text and 'fixture-credential' not in large.answer_file.read_text()
+    assert '[redacted]' in large.answer_file.read_text() and len(large.answer_file.read_text()) > len(large.text)
+    unknown = ask_agent('Beta', 'unreadable question', wait_seconds=0)
+    assert not unknown.ok and unknown.status == 'unknown' and 'do not resend' in unknown.error.lower()
     refused = ask_agent('unavailable', 'private question', wait_seconds=0)
     assert not refused.ok and refused.status == 'refused' and not refused.inbox_id and not refused.text
     raise SystemExit(0)
@@ -393,6 +399,9 @@ assert first.log_complete and second.log_complete and passed.log_complete
 				if args["crew"] == "unavailable" {
 					return "", fmt.Errorf("Choose a Crew you can access by its exact name or ID.")
 				}
+				if args["message"] == "unreadable question" {
+					return "null", nil
+				}
 				inbox := "inbox-" + args["submission_id"].(string)
 				askMu.Lock()
 				askQuestions[inbox] = args["message"].(string)
@@ -423,9 +432,16 @@ assert first.log_complete and second.log_complete and passed.log_complete
 				if question == "pending question" {
 					return `{"messages":[]}`, nil
 				}
+				answer := "Answer to " + question
+				if question == "long question" {
+					if args["wait_seconds"] != float64(25) {
+						return "", fmt.Errorf("ask wait exceeded 25 seconds")
+					}
+					answer = strings.Repeat("Large reply ", 2500) + "MCP_API_TOKEN=fixture-credential"
+				}
 				data, err := json.Marshal(map[string]interface{}{"messages": []map[string]interface{}{
 					{"inbox_id": "another-inbox", "message_id": "foreign-answer", "message": "must never consume another question's reply"},
-					{"inbox_id": inbox, "message_id": "reply-" + inbox, "message": "Answer to " + question},
+					{"inbox_id": inbox, "message_id": "reply-" + inbox, "message": answer},
 				}})
 				return string(data), err
 			},
@@ -547,7 +563,7 @@ assert first.log_complete and second.log_complete and passed.log_complete
 			t.Fatal("ask lacks log evidence", item)
 		}
 	}
-	if askStatuses["replied"] != 2 || askStatuses["pending"] != 1 || askStatuses["refused"] != 1 {
+	if askStatuses["replied"] != 3 || askStatuses["pending"] != 1 || askStatuses["refused"] != 1 || askStatuses["unknown"] != 1 {
 		t.Fatalf("ask outcomes missing: %v", askStatuses)
 	}
 	run(false, false, "apps")
