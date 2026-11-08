@@ -37,6 +37,18 @@ func TestExternalScriptPresetsUseCanonicalWriterAndAuthority(t *testing.T) {
 	if got := crewCapabilityHTTP(t, f, owner, "workspace", map[string]any{"action": "automation_read", "workspace_path": script.Root, "file": "nested/report.py"}, 200); !strings.Contains(got, "return 7") {
 		t.Fatal(got)
 	}
+	// PR1567: canonical MCP authoring reaches the same requirements writer.
+	const pins = "httpx==0.28.1\n"
+	crewCapabilityHTTP(t, f, owner, "workspace", map[string]any{"action": "automation_write", "workspace_path": script.Root, "file": "requirements.txt", "content": pins}, 200)
+	if got := crewCapabilityHTTP(t, f, owner, "workspace", map[string]any{"action": "automation_read", "workspace_path": script.Root, "file": "requirements.txt"}, 200); !strings.Contains(got, "httpx==0.28.1") {
+		t.Fatal("saved requirements unavailable through canonical read", got)
+	}
+	for _, file := range []string{"requirements.txt", "nested/requirements.txt"} {
+		crewCapabilityHTTP(t, f, owner, "workspace", map[string]any{"action": "automation_write", "workspace_path": script.Root, "file": file, "content": "-r more.txt\n"}, 400)
+	}
+	if saved, _, err := readFileFromWorkspace(t.Context(), script.Root+"/code/requirements.txt"); err != nil || saved != pins {
+		t.Fatal("invalid MCP save replaced requirements", err)
+	}
 	update := func(claims *UserClaims, args map[string]any, status int) {
 		t.Helper()
 		args["action"], args["workflow_id"] = "save_inputs", script.ID
