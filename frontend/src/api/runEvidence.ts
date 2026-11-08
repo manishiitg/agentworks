@@ -9,6 +9,8 @@ export interface RunEvidenceItem {
   ok?: boolean
   detail: string
   source_call?: string
+  step_execution_id?: string
+  step_name?: string
 }
 
 function config() {

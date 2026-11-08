@@ -174,6 +174,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 				return nil, err
 			}
 		}
+		refreshLinkedCrewSessionAccess(ctx, toolSession)
 		return productpolicy.WithSelection(ctx, builderProductSelection(&copy)), nil
 	}
 }

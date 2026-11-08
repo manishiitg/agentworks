@@ -23,23 +23,6 @@ func TestScriptedToolNamesArePlanMutationsAndLegacyNamesAreNot(t *testing.T) {
 	}
 }
 
-func TestScriptedToolSchemasExposeNextStepID(t *testing.T) {
-	for name, schema := range map[string]string{
-		"add_scripted_step":    getAddScriptedStepSchema(),
-		"update_scripted_step": getUpdateScriptedStepSchema(),
-	} {
-		var decoded struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-		}
-		if err := json.Unmarshal([]byte(schema), &decoded); err != nil {
-			t.Fatalf("%s schema is invalid JSON: %v", name, err)
-		}
-		if _, ok := decoded.Properties["next_step_id"]; !ok {
-			t.Fatalf("%s schema does not expose next_step_id", name)
-		}
-	}
-}
-
 func TestScriptedStepNextStepIDRoundTripAndUpdate(t *testing.T) {
 	original := &ScriptedPlanStep{
 		Type:             StepTypeScripted,

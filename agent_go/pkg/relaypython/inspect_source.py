@@ -183,9 +183,60 @@ def inspect_source(source):
     return graph
 
 
+def python_type_notes(files):
+    """Optional static hints. Never import authored files or inherit credentials."""
+    import pathlib
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+    checker = shutil.which('pyright') or shutil.which('basedpyright')
+    if not checker:
+        return [], ['The checker is not installed here. The script can still run.']
+    root = pathlib.Path.cwd().resolve()
+    saved = [file.resolve() for name in files for file in [root / name]
+             if not file.is_symlink() and file.is_file() and file.resolve().is_relative_to(root)]
+    sdk = next((entry for entry in os.environ.get('PYTHONPATH', '').split(os.pathsep)
+                if entry and (pathlib.Path(entry) / 'agentworks' / '__init__.py').is_file()), None)
+    if not saved or not sdk:
+        return [], ['Type hints could not be checked this time. The script can still run.']
+    try:
+        with tempfile.TemporaryDirectory(prefix='python-hints-') as directory:
+            config = pathlib.Path(directory) / 'pyrightconfig.json'
+            config.write_text(json.dumps({'include': [os.path.relpath(file, directory) for file in saved],
+                'extraPaths': [sdk, str(root)], 'typeCheckingMode': 'basic',
+                'useLibraryCodeForTypes': True}), encoding='utf-8')
+            environment = {'PATH': os.environ.get('PATH', ''), 'HOME': directory,
+                           'TMPDIR': directory, 'LANG': 'C.UTF-8'}
+            result = subprocess.run([checker, '--outputjson', '--project', str(config),
+                                     '--pythonpath', sys.executable], cwd=root,
+                                    env=environment, capture_output=True, text=True, timeout=10)
+            if result.returncode not in (0, 1):
+                raise ValueError('checker unavailable')
+            report = json.loads(result.stdout)
+            if report.get('summary', {}).get('filesAnalyzed', 0) <= 0:
+                return [], ['The type check did not analyze any files. The script can still run.']
+            diagnostics = report['generalDiagnostics']
+            notes = []
+            for item in diagnostics:
+                file = pathlib.Path(item['file']).resolve()
+                if file not in saved:
+                    continue
+                line = item.get('range', {}).get('start', {}).get('line', 0)
+                notes.append({'file': file.relative_to(root).as_posix(),
+                              'line': max(1, int(line) + 1), 'message': str(item['message'])})
+            summary = []
+            if notes:
+                noun = 'problem' if len(notes) == 1 else 'problems'
+                summary = [f'Type hints show {len(notes)} possible {noun}. The script can still run.']
+            return notes, summary
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        return [], ['Type hints could not be checked this time. The script can still run.']
+
+
 def inspect_automation_source(files):
     """A source outline, not a Python execution plan. Authored modules never run."""
-    graph = {"native": True, "nodes": [], "edges": [], "errors": []}
+    graph = {"native": True, "nodes": [], "edges": [], "errors": [], "unkeyed_calls": [], "notes": []}
     try:
         if not isinstance(files, dict) or 'main.py' not in files:
             raise ValueError('Save main.py before viewing this automation.')
@@ -232,6 +283,22 @@ def inspect_automation_source(files):
                 if imported and imported[1] is None:
                     return imported[0], expression.attr
             return None, None
+
+        # Inventory only calls whose imported target is known. No source is
+        # rewritten: a loop/helper needs the author's logical work identity.
+        for module, tree in trees.items():
+            for call in ast.walk(tree):
+                if not isinstance(call, ast.Call):
+                    continue
+                origin, helper = target(module, call.func)
+                if origin != 'agentworks' or helper not in ('agent', 'run_script'):
+                    continue
+                key = next((item.value for item in call.keywords if item.arg == 'key'), None)
+                if key is None or isinstance(key, ast.Constant) and key.value is None:
+                    graph['unkeyed_calls'].append({'file': filenames[module], 'line': call.lineno, 'helper': helper})
+        graph['unkeyed_calls'].sort(key=lambda item: (item['file'], item['line'], item['helper']))
+        if graph['unkeyed_calls']:
+            graph['notes'].append('Some agent or saved-script calls have no visible saved-result key. Add a stable key to costly work you want to reuse after a failure, such as one key per record. Scripts still run without keys.')
 
         def literal(module, value):
             seen = set()
@@ -468,6 +535,9 @@ def inspect_automation_source(files):
     except (SyntaxError, ValueError, RecursionError, TypeError) as error:
         graph['nodes'], graph['edges'] = [], []
         graph['errors'] = [str(error)]
+    if os.environ.get('VAR_AUTOMATION_TYPE_CHECK') == '1' and isinstance(files, dict):
+        graph['type_notes'], notes = python_type_notes(files)
+        graph['notes'].extend(notes)
     return graph
 
 

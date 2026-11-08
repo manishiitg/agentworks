@@ -116,26 +116,7 @@ func (api *StreamingAPI) revalidateExecutionPrincipal(ctx context.Context, req Q
 	return context.WithValue(ctx, UserContextKey, &copy), nil
 }
 
-// conversationTargetAccess is shared by all adapters. Resolve authority from
-// the concrete workflow or Crew, rechecking it for each tool invocation.
-// backfillWorkflowPhaseFolder resolves a workflow-phase request's workspace
-// folder from its preset when the client did not send one. Callers must run
-// this before conversationTargetAccess so manifest membership answers for
-// these turns. An unresolvable preset leaves the request untouched and access
-// falls through to the account tier, as before.
-func (api *StreamingAPI) backfillWorkflowPhaseFolder(ctx context.Context, req *QueryRequest) {
-	if req == nil || req.AgentMode != "workflow_phase" || strings.TrimSpace(req.SelectedFolder) != "" {
-		return
-	}
-	resolved, err := api.resolveWorkspacePathFromPreset(ctx, req.PresetQueryID)
-	if err != nil {
-		return
-	}
-	if folder := strings.Trim(strings.TrimSpace(resolved), "/"); strings.HasPrefix(folder, "Workflow/") {
-		req.SelectedFolder = folder
-	}
-}
-
+// conversationTargetAccess resolves the current concrete target for every adapter.
 func (api *StreamingAPI) conversationTargetAccess(ctx context.Context, req QueryRequest) (WorkflowAccessLevel, error) {
 	claims := GetUserFromContext(ctx)
 	if level, scoped := botRouteProfileAccessForRequest(claims, req); scoped {

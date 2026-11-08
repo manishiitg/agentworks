@@ -57,7 +57,7 @@ Reuse the same idempotency key for retries of one logical send. Use a different 
 
 ## Deterministic listeners
 
-A saved route may include a `trigger`: `human_message` or `trusted_app`, an optional text `contains` filter, and exact trusted `app_id`/`bot_id` values for app messages. Only top-level messages trigger automation; edits, thread replies, and this bot's own messages do not. A workflow trigger fixes optional `input_preset`/`inputs` plus either `route_selections` or `step_id` in owner configuration. The backend validates these against the saved plan on save and dispatch. Event content cannot change the target, grant, input preset, or selected routes.
+A saved route may include a `trigger`: `human_message` or `trusted_app`, an optional text `contains` filter, and exact trusted `app_id`/`bot_id` values for app messages. Only top-level messages trigger automation; edits, thread replies, and this bot's own messages do not. A workflow trigger fixes optional `input_preset`/`inputs` in owner configuration; declared inputs can receive approved event fields or fixed values. The backend validates them against the saved Python script on save and dispatch. Event content cannot change the target, grant or input preset.
 
 Events are stored as untrusted data. Preserve normal approvals for high-risk actions. Send progress and the final result/RCA with `messages action=slack_send` into the inherited source thread. Slack workflow runs use server-bound immutable `iteration-N-slack-<id>` folders and must never substitute another run folder.
 

@@ -26,7 +26,7 @@ export interface RelaySourceNode {
   line: number
 }
 export interface RelaySourceEdge { from: string; to: string; label?: string; line: number }
-export interface RelaySourceGraph { nodes: RelaySourceNode[]; edges: RelaySourceEdge[]; errors: string[]; native?: boolean; recorded?: boolean }
+export interface RelaySourceGraph { type_notes?: Array<{ file: string; line: number; message: string }>; notes?: string[]; unkeyed_calls?: Array<{ file: string; line: number; helper: string }>; nodes: RelaySourceNode[]; edges: RelaySourceEdge[]; errors: string[]; native?: boolean; recorded?: boolean }
 const kinds: RelayNodeKind[] = ['input', 'agent', 'classifier', 'script', 'decision', 'output']
 const validID = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z][\w-]{0,63}$/.test(value)
 const stringList = (value: unknown) => Array.isArray(value) && value.every(item => typeof item === 'string')

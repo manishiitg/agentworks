@@ -187,30 +187,3 @@ func TestManagedRetentionManifestWriteIsScoped(t *testing.T) {
 		}
 	}
 }
-
-// Live on social-media 2026-09-22 (PLAT-304 recurrence): the typed config
-// tool's retention write succeeded through the managed path, but the follow-up
-// persistWorkflowConfigToManifest rewrote workflow.json with a raw write, was
-// denied in the background session, and failed the whole tool call.
-func TestPersistWorkflowConfigToManifestUsesManagedWrite(t *testing.T) {
-	hcpo, dir := newPreValidationConcernTestOrchestrator(t)
-	const sessionID = "persist-config-write"
-	root := hcpo.GetWorkspacePath()
-	if err := os.WriteFile(filepath.Join(dir, "workflow.json"), []byte(`{"id":"wf","label":"keep","capabilities":{}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	workspacepkg.SetSessionFolderGuard(sessionID, []string{root}, []string{root + "/runs"})
-	defer workspacepkg.ClearSessionShellConfig(sessionID)
-	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sessionID)
-	iwm := &InteractiveWorkshopManager{controller: hcpo}
-	if err := iwm.persistWorkflowConfigToManifest(ctx, loggerv2.NewNoop()); err != nil {
-		t.Fatalf("persisting workflow config in a guarded session failed: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, "workflow.json"))
-	if err != nil || !strings.Contains(string(data), `"label": "keep"`) || !strings.Contains(string(data), `"capabilities"`) {
-		t.Fatalf("manifest not persisted with preserved fields: %s %v", data, err)
-	}
-	if err := hcpo.WriteWorkspaceFile(ctx, "workflow.json", "{}"); err == nil {
-		t.Fatal("raw manifest write must stay denied")
-	}
-}

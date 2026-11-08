@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -110,44 +109,6 @@ type chatPolicyTestDefinition struct{ recordingRegistrar }
 
 func (*chatPolicyTestDefinition) AttachSkill(*llmtypes.Skill) error { return nil }
 func (*chatPolicyTestDefinition) AttachedSkills() []*llmtypes.Skill { return nil }
-
-func TestBuilderPhaseActuallyRegistersMCPManagement(t *testing.T) {
-	for _, readOnly := range []bool{false, true} {
-		api := &StreamingAPI{logger: loggerv2.NewNoop(), stoppedSessions: map[string]bool{"policy-chat": true}}
-		reg := &chatPolicyTestDefinition{}
-		err := api.installWorkflowPhaseTools(context.Background(), reg, "policy-chat", "test-user", "workflow-builder", "", "", map[string]string{"WorkshopMode": "workshop"}, nil, nil, nil, nil, nil, QueryRequest{}, readOnly)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, name := range []string{"search_mcp_catalog", "install_mcp_server", "add_mcp_server"} {
-			_, exists := reg.tools[name]
-			if exists == readOnly {
-				t.Fatalf("phase setup %s present=%v readOnly=%v", name, exists, readOnly)
-			}
-		}
-	}
-}
-
-func TestScheduledBuilderActuallyRegistersPlanMigrationTools(t *testing.T) {
-	for _, readOnly := range []bool{false, true} {
-		api := &StreamingAPI{logger: loggerv2.NewNoop(), stoppedSessions: map[string]bool{"schedule-policy-chat": true}}
-		reg := &chatPolicyTestDefinition{}
-		err := api.installWorkflowPhaseTools(
-			context.Background(), reg, "schedule-policy-chat", "test-user", "workflow-builder", "", "",
-			map[string]string{"WorkshopMode": "workshop"}, nil, nil, nil, nil, nil,
-			QueryRequest{TriggeredBy: "cron"}, readOnly,
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, name := range []string{"maintain_plan"} {
-			_, exists := reg.tools[name]
-			if exists == readOnly {
-				t.Fatalf("scheduled phase tool %s present=%v readOnly=%v", name, exists, readOnly)
-			}
-		}
-	}
-}
 
 func TestChatPolicyReconnectPreservesCompatibleHistory(t *testing.T) {
 	for _, tc := range []struct {

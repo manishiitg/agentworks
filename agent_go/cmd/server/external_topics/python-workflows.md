@@ -46,7 +46,7 @@ keeps its original reasoning choice, recorded with its run.
    Optionally supply the complete typed `inputs` list; omitting it preserves
    current inputs. Values in saved definitions/presets use the script contract's
    string encoding; invocation values below are typed JSON.
-5. Use `workflow action=plan` with `view=outline` for the saved Python outline.
+5. Use `workflow action=outline` for the saved Python outline.
    This inspects the syntax without executing or importing authored code and
    requires source-editor access. Python `@step` labels are normal function
    calls, not separate runnable or resumable plan steps. Branches and loops
@@ -57,6 +57,14 @@ Never put secret values into source or presets. Use the project's existing
 secret selection. Sharing and connected-account authority do not change here.
 
 ## Run and inspect
+
+The owning Crew's in-app chat can offer a bound `runs action=start` with
+only `input_preset` and typed `inputs`. That tool chooses the workflow from the
+Crew when exactly one saved script matches and uses the same input validation
+as MCP. With several scripts, ask which one and use `functions action=run_trigger`
+with its `workflow:<id>` in `workspace_path`. It starts a real background
+run; the chat's background work control stops it. Workflow run instructions
+belong in the saved Python/Crew setup.
 
 Use `runs action=start` with `workflow_id`, optional `input_preset`, and optional
 `inputs` as a JSON object, for example `{"LIMIT":3}`. Explicit values override
@@ -102,6 +110,27 @@ of `run_trigger`.
 Runs do real work, including database writes, app calls and sends. No new
 mid-run question or individual Python step execution is introduced.
 
+## Resume a failed run
+
+Use `runs action=resume` with `workflow_id` and the failed `run_folder`.
+Only the Crew's Builder or an admitted workflow editor can resume. It keeps
+that folder and the captured source and typed inputs, starts a new execution
+attempt, and preserves the old logs. Python starts at the top again.
+
+Only successful `agent()` and `run_script()` calls with an explicit `key=`
+can reuse their recorded results. Use a distinct logical key for each call,
+including each loop iteration; reusing a key within one attempt is refused.
+The same key and arguments can reuse a successful result even if unrelated
+calls move. Changed arguments execute fresh and are recorded as such.
+Returned replies expose `reused=true` when reused.
+
+Ordinary Python, database writes, app calls, checks and notices execute again.
+An interrupted call whose completion is uncertain keeps its existing refusal;
+resume never silently repeats an uncertain send. Missing or changed frozen
+source, source hash or input proof says to start a new run. Older runs without
+that proof cannot resume. Use `rerun` when you want current source and a new
+run folder instead.
+
 ## Laptop CLI
 
 The CLI calls these same server operations; it is not a local workflow engine.
@@ -120,6 +149,7 @@ agentworks runs status --workflow sample --session returned-session
 agentworks runs get --workflow sample --run-folder returned-run
 agentworks runs logs --workflow sample --run-folder returned-run
 agentworks runs rerun --workflow sample --run-folder returned-run
+agentworks runs resume --workflow sample --run-folder failed-run
 agentworks functions run-trigger --crew team --workspace Workflow/sample --preset weekly --inputs '{"LIMIT":3}'
 agentworks functions trigger-status --crew team --workspace Workflow/sample --trigger-id returned-trigger --run-id returned-run
 ```
@@ -154,3 +184,7 @@ fields use actual JSON types (`2`, `false`, objects), as declared by the input.
 Discovery also returns `secrets`: required Vault names declared by the script.
 These are names, never values or new grants. Connect or select missing names
 through the existing Vault settings before running.
+
+Failed runs keep native agent conversation history for 72 hours. After that, a continued agent call starts fresh and the run records “conversation expired: this call restarts fresh”. Completed or stopped runs release that history immediately.
+
+Run metadata exposes `can_resume`: eligible now under the current account and workflow access, failed status and saved proof headers. It is computed by the server, never saved in run files. Admission still verifies the complete captured source and inputs and can refuse; show its plain message.

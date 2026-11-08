@@ -198,7 +198,6 @@ run_required_go_tests go -C "$MCPAGENT_DIR" test -json ./agent \
   -run '^(TestRetainedProgressStreamsWhileFinalIsPending|TestRetainedCompletionFlushesProgressCommittedAfterPoll)$' -count=1
 run_required_go_tests go -C "$ROOT_DIR/agent_go" test -json ./cmd/testing \
   -run '^TestProgressP0' -count=1
-npm --prefix "$ROOT_DIR/frontend" test -- src/utils/transcriptChunkUpdates.test.ts
 
 # Account contracts always accompany the optional two-account live matrix.
 run_required_go_tests go -C "$MULTI_LLM_DIR" test -json . ./llmtypes ./pkg/adapters/claudecode ./pkg/adapters/codexcli \

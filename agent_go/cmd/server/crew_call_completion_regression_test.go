@@ -52,12 +52,9 @@ func TestCodeAskSharedCrewCompletesOrReportsRevocation(t *testing.T) {
 			}
 			env.svc.mu.Unlock()
 			if revoke {
-				_, binding, manifest, err := env.svc.projectManifest(ctx, "owner", "work", "beta")
-				if err != nil {
-					t.Fatal(err)
-				}
-				manifest.Triggers = nil
-				if err := env.svc.writeProjectManifest(ctx, binding, manifest); err != nil {
+				// Published functions live in functions.json. The webhook writer
+				// intentionally preserves them, so use the function authoring path.
+				if err := writeCrewFunctions(ctx, call.target, nil); err != nil {
 					t.Fatal(err)
 				}
 			} else if err := UpdateScheduleRunResult(ctx, targetRoot, call.RunID, ScheduleRunCompletion{Status: "success", SessionID: "sess-beta", FinalResponse: "Three open bugs."}); err != nil {
@@ -73,7 +70,7 @@ func TestCodeAskSharedCrewCompletesOrReportsRevocation(t *testing.T) {
 				if result["status"] != "failed" || !strings.Contains(result["error"].(string), "trigger not found") {
 					t.Fatalf("revoked call = %v", result)
 				}
-			} else if result["status"] != "completed" || result["result"].(map[string]interface{})["answer"] != "Three open bugs." {
+			} else if result["status"] != "completed" || result["result"] != "Three open bugs." {
 				t.Fatalf("answer = %v", result)
 			}
 			// The caller's background footer reads this same registry.

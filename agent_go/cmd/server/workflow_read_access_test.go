@@ -308,18 +308,19 @@ func TestUpdateRunningWorkflowRequiresVisibility(t *testing.T) {
 }
 
 // A Run share grants filtered product use, never the owner's raw workspace.
-func TestCodeRunCannotReadRawWorkspaceRoutes(t *testing.T) {
+func TestCrewRunCannotReadRawWorkspaceRoutes(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
 	registry := withProjectOwnerRegistry(t)
 	withProjectSharing(t, true)
-	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
+	if err := registry.SetRunPeople("work", "app-c0de0001", []string{"other"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := codeRoleFor(context.Background(), "other", "owner", "app-c0de0001"); got != codeRoleRun {
-		t.Fatalf("fixture is not shared: %q", got)
+	ref, ok := resolveCrewPath(context.Background(), "other", codePrivacyOwnerRoot)
+	if !ok || crewAccessFor(&UserClaims{UserID: "other"}, ref) != crewAccessReader {
+		t.Fatal("fixture must be shared with the Run caller")
 	}
 	router := mux.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {

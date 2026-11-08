@@ -7,7 +7,7 @@ description: Read before creating or changing a workflow in a Crew. New workflow
 
 A new workflow is a Python script: a `script.json` that declares its inputs and outputs, and a `main.py` that does the work with the `agentworks` helpers. There is no plan file to build. Ordinary Python decides the order: functions, `if`/`elif`, loops.
 
-Create it with `crew_workflow_files action=create kind=script`, then write `script.json` and `main.py` with the same tool's `write` action. Run it with `functions action=run_trigger`, then read the result with `functions action=trigger_status`.
+Create it with `crew_workflow_files action=create kind=script`, then write `script.json` and `main.py` with the same tool's `write` action. In Crew chat, run it with `functions action=run_trigger`, passing its `workflow:<id>` in `workspace_path`, then read the result with `functions action=trigger_status`. If several saved workflows could match the request, ask which one; never choose silently.
 
 ## External MCP and CLI
 
@@ -16,8 +16,19 @@ An external MCP agent uses `workspace action=automation_create/read/write` with
 (root `script.json`, `main.py` or a nested Python path). Use `workflow action=list/get`
 for script kind, typed inputs and presets; `workflow action=save_inputs` replaces
 `input_presets` and optionally `inputs` through the same validated editor.
-`workflow action=plan view=outline` inspects saved source without running it and
+`workflow action=outline` inspects saved source without running it and
 keeps Builder source-editor authority. `@step` labels are not independently runnable.
+
+In the owning Crew chat, use its bound `runs action=start` when offered:
+optional `input_preset` selects saved values and `inputs` carries typed JSON
+values (numbers, booleans, objects and arrays stay typed). The workflow is
+selected by the Crew, so do not supply a path or workflow ID. This shortcut is
+offered only when one saved script matches. With several, ask which one and use
+`functions action=run_trigger` with its `workflow:<id>` in `workspace_path`.
+Inputs override
+the preset and defaults; unknown names and wrong types are refused before a
+run starts. Stop it through the chat's background work control. For different
+behavior or instructions, edit the saved Python/Crew configuration first.
 
 Start with `runs action=start` (`workflow_id`, optional `input_preset`, typed
 `inputs`) and poll `runs action=status` with its `session_id`, or use the existing
@@ -33,6 +44,27 @@ an uncertain start. External
 agents can read `help action=topic topic=python-workflows` for the complete MCP
 and named laptop CLI instructions. These operations keep current project,
 source-editing, account and file grants.
+
+For a failed run, `runs action=resume` with its `workflow_id` and `run_folder`
+keeps the frozen source, input proof and folder, preserves logs and starts a new
+attempt from the top of Python. Builder/edit authority is required. Successful
+explicitly keyed `agent()` or `run_script()` results may be reused and expose
+`reply.reused`; keys name logical calls, so use a unique key per loop iteration.
+The same key twice in one attempt is refused. Changed arguments execute fresh.
+Other Python code, database/app calls, checks and notices execute again;
+uncertain completed effects are not silently retried. If frozen source/hash or
+input proof is missing or changed, start a new run. `rerun` uses current source
+in a new folder instead. Inspect the failed receipt before choosing either.
+
+During an upgrade, inspect the source outline's notes for calls without keys.
+Give expensive or effectful work a semantic key, such as one per record ID;
+never insert a fixed key per source line or rewrite loops automatically.
+To make long phases resumable, give each `agent()` or `run_script()` a stable
+explicit `key`, such as `key="research"` or `key=f"research:{customer_id}"` in
+a loop. Keys identify work, so do not reuse one for different calls. Keep sends
+and orders as ordinary calls; keys are not permission to resend them. Inspect
+an uncertain delivery receipt before deciding what to do next. A second resume
+is refused while the same run is active.
 
 ## script.json
 
@@ -121,6 +153,7 @@ else:
 - A comment on the line above an `if`, `elif`, `else` or `with` names that branch in the outline, like a step title (`# Corporate accounts`); without one the outline words the condition itself.
 - `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None, scripts=(...))`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right, so check its files or `reply.answer_file.read_text()`. Keep task texts as module constants so the Plan can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
 - `run_script(id, inputs)`: run another saved script of this Crew and get its output files.
+- `ask_agent(crew, message, wait_seconds=25)`: ask an accessible Crew by its exact name or ID. `ok` means sent; use `text` only when `status == "replied"`. Pending keeps its `inbox_id` and `message_id`: no reply yet, do not resend. The wait is at most 25 seconds within the run's deadline. Use a published function when you need a tracked result.
 - `call_function(crew, name, inputs)`: call another Crew's published function. A running receipt is not the answer; refresh it with `function_status(call_id)`.
 - `check(name, ok, detail)`: record a check in the run. A failed check stays visible; your code decides what happens next.
 - `notify(text)`: a progress line to the owner in the Crew chat.
@@ -259,3 +292,5 @@ A missing raw payload source uses the mapping's default first, then the script
 input's declared `value`; a supplied invalid value still refuses. An input with
 neither default is named in the refusal. A mapped payload cannot choose a preset
 or replace fixed inputs.
+
+Failed runs keep native agent conversation history for 72 hours. After that, a continued agent call starts fresh and the run records “conversation expired: this call restarts fresh”. Completed or stopped runs release that history immediately.

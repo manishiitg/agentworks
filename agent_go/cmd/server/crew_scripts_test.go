@@ -3,16 +3,21 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/relaypython"
+	workspaceclient "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/spf13/viper"
 
@@ -60,15 +65,82 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	for file := range files.files {
 		materializeWorkspaceFixtureFile(t, files, docs, file)
 	}
+	// The external checker is the only executable boundary fixture. Source
+	// writes, runtime routing, SDK source, inspection and notes are production.
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkerDir := t.TempDir()
+	checker := filepath.Join(checkerDir, "pyright")
+	fixture := "#!" + python + "\n" + `import json,os,sys
+from pathlib import Path
+assert not any(k.startswith(('SECRET_', 'VLT_', 'MCP_')) for k in os.environ)
+config_file=Path(sys.argv[sys.argv.index('--project')+1])
+config=json.loads(config_file.read_text())
+assert len(config['extraPaths'])==2 and str(Path.cwd()) in config['extraPaths']
+assert sum((Path(p)/'agentworks/__init__.py').is_file() for p in config['extraPaths'])==1
+assert all(not Path(p).is_absolute() and not (config_file.parent/p).is_symlink() and (config_file.parent/p).resolve().is_relative_to(Path.cwd()) for p in config['include'])
+source=Path.cwd()/'main.py'
+print(json.dumps({'summary':{'filesAnalyzed':len(config['include'])},'generalDiagnostics':[{'file':str(source),'message':'Use an integer; MCP_API_TOKEN=fixture-credential','range':{'start':{'line':2}}}]}))
+sys.exit(1)
+`
+	if err := os.WriteFile(checker, []byte(fixture), 0755); err != nil {
+		t.Fatal(err)
+	}
+	sdk, err := filepath.Abs("../../../workspace/security/runtime")
+	if err != nil {
+		t.Fatal(err)
+	}
 	router := gin.New()
 	router.Any("/api/documents/*filepath", workspacehandlers.HandleDocumentRequest)
 	router.GET("/api/documents", workspacehandlers.ListDocuments)
+	router.POST("/api/execute", func(c *gin.Context) {
+		var params workspaceclient.ExecuteShellCommandParams
+		if err := c.ShouldBindJSON(&params); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		provided, _ := base64.StdEncoding.DecodeString(params.ExtraEnv["VAR_AUTOMATION_CHECK_FILES"])
+		if strings.Contains(string(provided), `"outside.py"`) {
+			t.Error("source inspection followed a link into another Crew")
+			c.JSON(400, gin.H{"error": "source link refused"})
+			return
+		}
+		guard := params.FolderGuard
+		if guard == nil || !guard.StrictAllowlist || !guard.DenyNetwork || len(guard.ReadPaths) != 1 || guard.ReadPaths[0] != script.Root+"/code" || len(guard.WritePaths) != 0 {
+			c.JSON(400, gin.H{"error": "inspection lost its source-only no-network policy"})
+			return
+		}
+		layout, found, err := crewroot.LookupExecutable(docs, script.Root)
+		if err != nil || !found {
+			c.JSON(500, gin.H{"error": "source unavailable"})
+			return
+		}
+		cmd := exec.CommandContext(c.Request.Context(), python, "-I", "-c", relaypython.SourceInspector)
+		cmd.Dir = layout.Code
+		cmd.Env = []string{"PATH=" + checkerDir, "PYTHONPATH=" + sdk, "SECRET_FIXTURE=must-not-reach-checker", "MCP_AUTH=fixture-only"}
+		for key, value := range params.ExtraEnv {
+			if strings.HasPrefix(key, "VAR_") {
+				cmd.Env = append(cmd.Env, key+"="+value)
+			}
+		}
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		runErr := cmd.Run()
+		exit := 0
+		if runErr != nil {
+			exit = 1
+		}
+		c.JSON(200, gin.H{"success": true, "data": workspaceclient.ShellCommandResult{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exit}})
+	})
 	workspace := httptest.NewServer(router)
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	api := &StreamingAPI{}
 	endpoint := httptest.NewServer(AuthMiddleware(http.HandlerFunc(api.handleCrewScriptFile)))
 	defer endpoint.Close()
+	lastReply := ""
 	request := func(user, content string, names ...string) int {
 		t.Helper()
 		token, err := GenerateJWT(user, user, "")
@@ -88,6 +160,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 		}
 		defer response.Body.Close()
 		bodyText, _ := io.ReadAll(response.Body)
+		lastReply = string(bodyText)
 		t.Logf("source edit user=%s HTTP%d %s", user, response.StatusCode, strings.TrimSpace(string(bodyText)))
 		return response.StatusCode
 	}
@@ -97,6 +170,52 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if code := request("owner", "print('owner update')\n"); code != 200 {
 		t.Fatalf("Builder edit HTTP%d", code)
 	}
+	var savedWithNotes struct {
+		Success   bool     `json:"success"`
+		Notes     []string `json:"notes"`
+		TypeNotes []struct {
+			File, Message string
+			Line          int
+		} `json:"type_notes"`
+	}
+	if err := json.Unmarshal([]byte(lastReply), &savedWithNotes); err != nil || !savedWithNotes.Success || len(savedWithNotes.TypeNotes) != 1 || savedWithNotes.TypeNotes[0].File != "main.py" || savedWithNotes.TypeNotes[0].Line != 3 || strings.Contains(lastReply, "fixture-credential") {
+		t.Fatalf("checker diagnostics changed save success or lost normalized/redacted notes: %s %v", lastReply, err)
+	}
+	if saved, _, err := readFileFromWorkspace(t.Context(), script.Root+"/code/main.py"); err != nil || saved != "print('owner update')\n" {
+		t.Fatal("checker errors prevented source save", err)
+	}
+	// A planted source link must not give inspection a read into another
+	// Crew. The source resolver must refuse or omit it, and checker includes
+	// must never follow it; inspecting the remaining safe files is allowed.
+	layout, foundLayout, layoutErr := crewroot.LookupExecutable(docs, script.Root)
+	otherLayout, otherFound, otherErr := crewroot.LookupExecutable(docs, other.Root)
+	if layoutErr != nil || otherErr != nil || !foundLayout || !otherFound {
+		t.Fatalf("source layouts unavailable: %v %v", layoutErr, otherErr)
+	}
+	link := filepath.Join(layout.Code, "outside.py")
+	if err := os.Symlink(filepath.Join(otherLayout.Code, "main.py"), link); err != nil {
+		t.Fatal(err)
+	}
+	if code := request("owner", "print('owner update')\n"); code != 200 || strings.Contains(lastReply, "outside.py") {
+		t.Fatalf("source symlink reached inspection or prevented save: HTTP%d %s", code, lastReply)
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	zeroFiles := strings.Replace(fixture, "len(config['include'])", "0", 1)
+	if err := os.WriteFile(checker, []byte(zeroFiles), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if code := request("owner", "print('owner update')\n"); code != 200 || !strings.Contains(lastReply, "did not analyze any files") {
+		t.Fatalf("zero analyzed files silently reported clean or blocked save: HTTP%d %s", code, lastReply)
+	}
+	if err := os.Remove(checker); err != nil {
+		t.Fatal(err)
+	}
+	if code := request("owner", "print('owner update')\n"); code != 200 || !strings.Contains(lastReply, "checker is not installed") {
+		t.Fatalf("missing checker blocked save or prompted installation: HTTP%d %s", code, lastReply)
+	}
+
 	// PLAT-746-265 / PR498: ownership alone cannot restore revoked account rights.
 	originalDirectory := *directory
 	for _, record := range []string{

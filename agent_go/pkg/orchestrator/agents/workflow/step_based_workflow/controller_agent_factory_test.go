@@ -964,25 +964,6 @@ func TestWorkflowClaudeCodeUsesStructuredTransport(t *testing.T) {
 	}
 }
 
-func TestUnattendedWorkshopClaudeCodeUsesStructuredTransport(t *testing.T) {
-	hcpo := newAgentFactoryTestOrchestrator(t)
-	hcpo.SetMCPSessionID("pulse-reviewer-transport-test")
-	iwm := &InteractiveWorkshopManager{controller: hcpo}
-	config := iwm.createUnattendedWorkshopAgentConfig("pulse-reviewer", 100, &orchestrator.LLMConfig{
-		Primary: orchestrator.LLMModel{
-			Provider: string(mcpllm.ProviderClaudeCode),
-			ModelID:  "claude-opus-5",
-		},
-	}, "Autopilot reviewer")
-
-	if !config.ForceStructuredCodingAgent {
-		t.Fatal("ForceStructuredCodingAgent = false, want true")
-	}
-	if config.LLMConfig.Primary.Provider != string(mcpllm.ProviderClaudeCode) {
-		t.Fatalf("provider = %q, want %q", config.LLMConfig.Primary.Provider, mcpllm.ProviderClaudeCode)
-	}
-}
-
 func TestSelectExecutionLLM_PrefersStepExecutionLLMOverSubAgentAndTiered(t *testing.T) {
 	base, err := orchestrator.NewBaseOrchestrator(
 		loggerv2.NewNoop(),

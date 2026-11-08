@@ -25,8 +25,8 @@ var dbosRunner string
 //go:embed native.py
 var nativeBridge string
 
-// SourceInspector uses only Python's standard AST library, without imports of
-// authored modules. Shared by source admission and the UI source overview.
+// SourceInspector parses authored Python without importing it. Optional static
+// type notes use an installed checker; they never decide save/run admission.
 //
 //go:embed inspect_source.py
 var SourceInspector string

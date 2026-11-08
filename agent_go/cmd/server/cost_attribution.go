@@ -112,17 +112,6 @@ func (api *StreamingAPI) costTurnAttribution(ctx context.Context, req QueryReque
 	}
 	if a.Activity == "" {
 		a.Activity = "person_chat"
-		// The phase marker was set after native admission, not client JSON.
-		if req.admittedWorkflowPhase {
-			switch scope {
-			case costobserver.ScopeBuilder:
-				a.Activity = "builder"
-			case costobserver.ScopePulse:
-				a.Activity = "pulse"
-			case costobserver.ScopeWorkflowExecution:
-				a.Activity = "workflow_run"
-			}
-		}
 		if claims := GetUserFromContext(ctx); claims != nil && strings.HasPrefix(claims.Provider, "bot_") {
 			switch req.BotPlatform {
 			case "slack":

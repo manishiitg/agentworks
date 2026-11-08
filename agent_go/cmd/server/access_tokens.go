@@ -525,7 +525,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "save_script_inputs" {
 		return userAllowedProduct(c, "work") && (c.AccessToken == nil || c.AccessToken.Allows("crews:write"))
 	}
-	if tool.Name == "workflow_upgrade" || tool.Name == "workflow_crews" || isExternalWorkflowAccountTool(tool.Name) {
+	if tool.Name == "workflow_crews" || isExternalWorkflowAccountTool(tool.Name) {
 		return c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
 	}
 	if tool.Name == "write_file" || tool.Name == "patch_file" {

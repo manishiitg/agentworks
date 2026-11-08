@@ -10,30 +10,29 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// RegisterLazyWorkshopTools uses the native schemas without initializing a
+// RegisterLazyPythonRunTool uses the saved-Python start schema without initializing a
 // controller, credentials or connections until a tool is actually called.
 // The caller's registrar still decides which of the native tools are admitted.
-func RegisterLazyWorkshopTools(target DefinitionRegistrar, resolve func(context.Context) (*WorkshopChatSession, error), logger loggerv2.Logger) {
+func RegisterLazyPythonRunTool(target DefinitionRegistrar, resolve func(context.Context) (*WorkshopChatSession, error), logger loggerv2.Logger) {
 	schemaSession := &WorkshopChatSession{
 		controller: &StepBasedWorkflowOrchestrator{BaseOrchestrator: &orchestrator.BaseOrchestrator{}},
 		config:     &WorkshopConfig{},
 	}
-	lazy := &lazyWorkshopRegistrar{target: target, resolve: resolve, logger: logger}
-	RegisterWorkshopChatTools(lazy, schemaSession, logger)
+	lazy := &lazyPythonRunRegistrar{target: target, resolve: resolve, logger: logger}
 	RegisterRunFullWorkflowTool(lazy, schemaSession, logger)
 }
 
-type lazyWorkshopRegistrar struct {
+type lazyPythonRunRegistrar struct {
 	target  DefinitionRegistrar
 	resolve func(context.Context) (*WorkshopChatSession, error)
 	logger  loggerv2.Logger
 }
 
-func (r *lazyWorkshopRegistrar) AttachedSkills() []*llmtypes.Skill { return r.target.AttachedSkills() }
-func (r *lazyWorkshopRegistrar) RegisterCustomTool(n, d string, schema map[string]interface{}, _ func(context.Context, map[string]interface{}) (string, error), group string) error {
+func (r *lazyPythonRunRegistrar) AttachedSkills() []*llmtypes.Skill { return r.target.AttachedSkills() }
+func (r *lazyPythonRunRegistrar) RegisterCustomTool(n, d string, schema map[string]interface{}, _ func(context.Context, map[string]interface{}) (string, error), group string) error {
 	return r.RegisterCustomToolWithTimeout(n, d, schema, nil, 0, group)
 }
-func (r *lazyWorkshopRegistrar) RegisterCustomToolWithTimeout(n, d string, schema map[string]interface{}, _ func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, group string) error {
+func (r *lazyPythonRunRegistrar) RegisterCustomToolWithTimeout(n, d string, schema map[string]interface{}, _ func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, group string) error {
 	return r.target.RegisterCustomToolWithTimeout(n, d, schema, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		session, err := r.resolve(ctx)
 		if err != nil {
@@ -46,28 +45,27 @@ func (r *lazyWorkshopRegistrar) RegisterCustomToolWithTimeout(n, d string, schem
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		capture := &workshopToolCapture{name: n}
-		RegisterWorkshopChatTools(capture, session, r.logger)
+		capture := &pythonRunToolCapture{name: n}
 		RegisterRunFullWorkflowTool(capture, session, r.logger)
 		if capture.execute == nil {
-			return "", fmt.Errorf("this workflow tool is unavailable")
+			return "", fmt.Errorf("this Python workflow is unavailable")
 		}
 		return capture.execute(ctx, args)
 	}, timeout, group)
 }
 
-type workshopToolCapture struct {
+type pythonRunToolCapture struct {
 	name    string
 	execute func(context.Context, map[string]interface{}) (string, error)
 }
 
-func (*workshopToolCapture) AttachedSkills() []*llmtypes.Skill { return nil }
-func (r *workshopToolCapture) RegisterCustomTool(n, _ string, _ map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), _ string) error {
+func (*pythonRunToolCapture) AttachedSkills() []*llmtypes.Skill { return nil }
+func (r *pythonRunToolCapture) RegisterCustomTool(n, _ string, _ map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), _ string) error {
 	if n == r.name {
 		r.execute = execute
 	}
 	return nil
 }
-func (r *workshopToolCapture) RegisterCustomToolWithTimeout(n, d string, schema map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), _ time.Duration, group string) error {
+func (r *pythonRunToolCapture) RegisterCustomToolWithTimeout(n, d string, schema map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error), _ time.Duration, group string) error {
 	return r.RegisterCustomTool(n, d, schema, execute, group)
 }

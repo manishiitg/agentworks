@@ -54,6 +54,7 @@ type CrewScriptConfiguration struct {
 	Files          map[string][]byte
 }
 type CrewScriptResolver interface {
+	ResolveCrewScriptScope(context.Context, string, string) (CrewScriptConfiguration, error)
 	ResolveCrewScript(context.Context, string, string) (CrewScriptConfiguration, error)
 }
 

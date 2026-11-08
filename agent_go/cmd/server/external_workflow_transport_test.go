@@ -12,59 +12,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
-	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	"github.com/manishiitg/mcpagent/executor"
-	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func TestExternalWorkflowTransportKeepsRunBoundary(t *testing.T) {
-	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"runs:execute"}}}
-	gate := newAgentWorksChatToolGate("run")
-	gate.AllowWorkflowNotifications(true)
-	gate.DenyWhere(func(name string) bool { return accessTokenRunToolDenied(claims, name) })
-	code, bridge := externalWorkflowTransport(claims, true, gate, false)
-	if code || !slices.Contains(bridge, "execute_step") || !slices.Contains(bridge, "run_full_workflow") {
-		t.Fatalf("Run tools still require the unavailable shell: code=%v bridge=%v", code, bridge)
-	}
-	for _, name := range append(agentworksproduct.RunExternalDenylist(), "update_step", "write_file", "set_workflow_secret") {
-		if slices.Contains(bridge, name) || gate.Allows(name) {
-			t.Fatalf("token Run bridge admitted %s", name)
-		}
-	}
-	gate.DenyWhere(func(name string) bool { return name == "execute_step" })
-	_, filtered := externalWorkflowTransport(claims, true, gate, false)
-	if slices.Contains(filtered, "execute_step") {
-		t.Fatal("bridge bypasses the product registration gate")
-	}
-	for _, input := range []struct {
-		claims *UserClaims
-		run    bool
-	}{{nil, true}, {&UserClaims{}, true}, {claims, false}} {
-		if code, bridge := externalWorkflowTransport(input.claims, input.run, gate, false); !code || len(bridge) != 0 {
-			t.Fatal("changed app or non-workflow transport")
-		}
-	}
-}
-
-// A token Run chat on a coding CLI reaches tools only through call_tool, over
+// A shared Crew chat on a coding CLI reaches tools only through call_tool, over
 // the real stdio bridge. call_tool must reach the registered Run executors and
 // nothing the gate refused: a Builder-only action is not callable, and the
-// bound execution context still rejects a Run-denied tool, a foreign session
+// bound execution context still rejects shell access, a foreign session
 // and revoked access.
-func TestExternalRunToolsThroughMCPBridge(t *testing.T) {
+func TestCrewRunToolsThroughMCPBridge(t *testing.T) {
 	tokenTestSetup(t)
-	f := newExternalToolsFixture(t)
+	f, _ := newExternalCrewCommandFixture(t)
 	const sessionID = "pat-token-run-bridge"
 	store, err := openAccessTokens()
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, _, err := store.Issue(t.Context(), accesstokens.Token{Name: "Run", UserID: "reader", Username: "reader", AllWorkflows: true, Scopes: []string{"runs:execute"}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
+	token, _, err := store.Issue(t.Context(), accesstokens.Token{Name: "Crew use", UserID: "other", Username: "other", AllCrews: true, Scopes: []string{"crews:read", "crews:run"}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
 	store.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -73,29 +41,22 @@ func TestExternalRunToolsThroughMCPBridge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: "Workflow/invoices", PinRunMode: true}
-	gate := newWorkflowConversationToolGate(sessionID, req, readOnlyForRequest(WorkflowAccessRead, req))
+	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", AgentProfileConversationKey: "team", SelectedFolder: externalCommandCrewRoot, PinRunMode: true}
+	gate := newProductToolGateForAllowlist("work", []string{crewPublishedCallToolName, crewPublishedGetToolName, "set_work_identity"})
 	gate.DenyWhere(func(name string) bool { return accessTokenRunToolDenied(claims, name) })
-	if code, names := externalWorkflowTransport(claims, true, gate, true); !code || len(names) != 0 {
-		t.Fatalf("token Run on a bridge model kept direct tools: code=%v names=%v", code, names)
+	gate.DenyReaderTools(crewReaderDeniedTools()...)
+	if code, names := externalProjectTransport(claims, gate, true); !code || len(names) != 0 {
+		t.Fatalf("Crew token on a bridge model kept direct tools: code=%v names=%v", code, names)
 	}
-	logger := loggerv2.NewNoop()
-	session, err := workflow.NewWorkshopChatSession(t.Context(), &workflow.WorkshopConfig{Logger: logger, WorkspacePath: req.SelectedFolder})
-	if err != nil {
+	draft := &productSurfaceDraft{gate: gate}
+	if err := f.api.registerCrewPublishedFunctionTools(draft, "other", sessionID, req.SelectedFolder); err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close()
-	draft := &productSurfaceDraft{gate: gate}
-	workflow.RegisterWorkshopChatTools(draft, session, logger)
-	workflow.RegisterRunFullWorkflowTool(draft, session, logger)
 	builderRan := false
-	_ = draft.RegisterCustomTool("update_step", "Builder-only", map[string]interface{}{"type": "object"}, func(context.Context, map[string]interface{}) (string, error) {
+	_ = draft.RegisterCustomTool("set_work_identity", "Owner-only", map[string]interface{}{"type": "object"}, func(context.Context, map[string]interface{}) (string, error) {
 		builderRan = true
 		return "updated", nil
 	}, "workflow")
-	if _, filtered := gate.summary(); !slices.Contains(filtered, "update_step") {
-		t.Fatal("update_step was not refused by the Run gate")
-	}
 	resolve := f.api.bindToolExecutionContext(context.WithValue(t.Context(), UserContextKey, claims), sessionID, req, true)
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, "/tools/custom/")
@@ -147,28 +108,29 @@ func TestExternalRunToolsThroughMCPBridge(t *testing.T) {
 		}
 		return fmt.Sprint(result.Content), result.IsError
 	}
-	for _, name := range []string{"execute_step", "run_full_workflow"} {
-		want := "step_id must be a non-empty string"
-		if name == "run_full_workflow" {
-			want = "group_name is retired" // the executor refuses the retired argument, so the call reached it
-		}
-		if content, _ := via(name, map[string]any{"step_id": "", "group_name": ""}); !strings.Contains(content, want) {
-			t.Fatalf("%s did not reach its registered executor through call_tool: %s", name, content)
-		}
+	if content, _ := via(crewPublishedCallToolName, map[string]any{"function": "missing"}); !strings.Contains(content, "no published function") {
+		t.Fatalf("Crew call did not reach its registered executor through call_tool: %s", content)
 	}
-	if content, _ := via("update_step", map[string]any{"step_id": "s1"}); builderRan || !strings.Contains(content, "not registered") {
-		t.Fatalf("Run token chat reached a Builder-only action through call_tool: ran=%v %s", builderRan, content)
+	if content, _ := via("set_work_identity", map[string]any{}); builderRan || !strings.Contains(content, "not registered") {
+		t.Fatalf("Run chat reached an owner-only action through call_tool: ran=%v %s", builderRan, content)
 	}
-	if _, err := resolve(executor.WithSessionID(ctx, sessionID), "execute_shell_command"); err == nil {
-		t.Fatal("execution context admitted a Run-denied tool for a token chat")
+	if _, err := resolve(executor.WithSessionID(ctx, sessionID), "execute_shell_command"); err == nil || !strings.Contains(err.Error(), "unavailable to external access tokens") {
+		t.Fatalf("wrong Run shell refusal: %v", err)
 	}
-	if _, err := resolve(executor.WithSessionID(ctx, "foreign-session"), "run_full_workflow"); err == nil {
-		t.Fatal("bridge accepted another session")
+	if _, err := resolve(executor.WithSessionID(ctx, "foreign-session"), crewPublishedCallToolName); err == nil || !strings.Contains(err.Error(), "does not own this tool session") {
+		t.Fatalf("wrong foreign-session refusal: %v", err)
 	}
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","created_by":"owner","access":{"owners":["owner"]}}`)
-	if content, _ := via("run_full_workflow", map[string]any{"group_name": ""}); !strings.Contains(content, "workflow access denied") {
-		t.Fatalf("call_tool retained revoked workflow access: %s", content)
+	if err := defaultProjectOwners().SetAudience("work", "test-team", true, nil); err != nil {
+		t.Fatal(err)
 	}
+	_, refusal := resolve(executor.WithSessionID(ctx, sessionID), crewPublishedCallToolName)
+	if refusal == nil {
+		t.Fatal("bound Crew tools retained removed access")
+	}
+	if content, _ := via(crewPublishedCallToolName, map[string]any{"function": "missing"}); !strings.Contains(content, refusal.Error()) {
+		t.Fatalf("call_tool did not carry the current Crew access refusal: %s", content)
+	}
+
 }
 
 // PLAT-856-199: a token project chat on a coding CLI takes the website route

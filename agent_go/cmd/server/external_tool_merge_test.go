@@ -165,33 +165,15 @@ func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
 	if rest["bogus"] == nil {
 		t.Fatalf("an unknown field was silently dropped: %v", rest)
 	}
-	// PLAT-825-113: a generic Run proxy admits operation parameters such as
-	// run_folder. Its aggregate must advertise that pass-through without relaxing a
-	// different selected member's strict schema.
 	costs, ok := externalCatalogTool("costs")
 	if !ok {
 		t.Fatal("costs unavailable")
-	}
-	if err := costs.validator.Validate(map[string]any{"action": "summary", "workflow_id": "w", "run_folder": "runs/iteration-1"}); err != nil {
-		t.Fatalf("aggregate hid the admitted proxy's run parameter: %v", err)
 	}
 	strict, args, err := externalResolveMerged(costs, map[string]any{"action": "breakdown", "bogus": true})
 	if err != nil || strict.validator.Validate(args) == nil {
 		t.Fatalf("strict selected member accepted an unknown argument: %v", err)
 	}
-	// PLAT-746: a real writer retry lost run_folder, started a new run and
-	// failed on missing upstream topic data. Preserve it through the merged action.
-	runs, ok := externalCatalogTool("runs")
-	if !ok {
-		t.Fatal("runs unavailable")
-	}
-	step, args, err := externalResolveMerged(runs, map[string]any{"action": "step", "workflow_id": "w", "step_id": "write", "run_folder": "run-existing"})
-	if err != nil || step.Name != "execute_step" || args["run_folder"] != "run-existing" {
-		t.Fatalf("existing-run step arguments lost: %v %v", args, err)
-	}
-	if step.validator.Validate(map[string]any{"workflow_id": "w", "run_folder": 5}) == nil {
-		t.Fatal("non-string run folder accepted")
-	}
+
 }
 
 // The advertised shape used to include a nested functions patch that dispatch

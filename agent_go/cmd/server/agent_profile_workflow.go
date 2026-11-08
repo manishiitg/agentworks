@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -12,25 +13,13 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-var agentProfileWorkflowToolNames = map[string]struct{}{
-	"execute_step":        {},
-	"query_step":          {},
-	"send_step_message":   {},
-	"stop_step":           {},
-	"stop_all_executions": {},
-	"list_executions":     {},
-	"run_full_workflow":   {},
-	"debug_step":          {},
-}
-
 type agentProfileWorkflowRegistrar struct {
 	target  definitionRegistrar
 	prepare func(context.Context, string, map[string]interface{}) error
 }
 
 func (r *agentProfileWorkflowRegistrar) shouldRegister(name string) bool {
-	_, ok := agentProfileWorkflowToolNames[name]
-	return ok
+	return name == "run_full_workflow"
 }
 
 func (r *agentProfileWorkflowRegistrar) wrap(name string, execute func(context.Context, map[string]interface{}) (string, error)) func(context.Context, map[string]interface{}) (string, error) {
@@ -61,9 +50,7 @@ func (r *agentProfileWorkflowRegistrar) RegisterCustomToolWithTimeout(name, desc
 	if !r.shouldRegister(name) {
 		return nil
 	}
-	if name == "execute_step" {
-		description += " In a Crew chat, omit run_folder to continue this chat's current saved run and inputs; the first call starts a new run. Use new_run=true for a separate run. The current run survives runtime eviction and restarts."
-	}
+
 	return r.target.RegisterCustomToolWithTimeout(name, description, parameters, r.wrap(name, execute), timeout, category)
 }
 
@@ -111,7 +98,7 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 	}
 	guarded := workflowContractExecutionGuardRegistrar{definitionRegistrar: registrar, workspacePath: root}
 	if workflowID != "" {
-		guarded.boundWorkflow = &crewExecutableBinding{ID: workflowID, Root: root, Kind: "workflow"}
+		guarded.boundWorkflow = &crewExecutableBinding{ID: workflowID, Root: root, Kind: "script"}
 	}
 	filtered := &agentProfileWorkflowRegistrar{target: guarded}
 	filtered.prepare = func(callCtx context.Context, _ string, _ map[string]interface{}) error {
@@ -127,7 +114,7 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 		}
 		return nil
 	}
-	todo_creation_human.RegisterLazyWorkshopTools(filtered, func(callCtx context.Context) (*todo_creation_human.WorkshopChatSession, error) {
+	todo_creation_human.RegisterLazyPythonRunTool(filtered, func(callCtx context.Context) (*todo_creation_human.WorkshopChatSession, error) {
 		return api.agentProfileWorkflowSession(callCtx, resolved, userID, sessionID, publicWorkspacePath, root, workflowID, selectedServers, mergedAPIKeys, req)
 	}, api.logger)
 	return nil
@@ -155,11 +142,14 @@ func (api *StreamingAPI) crewChatWorkflowTarget(ctx context.Context, resolved *r
 	}
 	var found *crewExecutableBinding
 	for _, binding := range bindings {
-		if binding.Kind != "workflow" || canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(root) {
+		if binding.Kind != "script" || canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(root) {
 			continue
 		}
 		if found != nil {
-			return nil, fmt.Errorf("this Crew has conflicting workflows; repair its workflow registration first")
+			// Multiple saved scripts are valid. This shortcut has no target
+			// argument, so omit it rather than guessing or breaking the chat.
+			log.Printf("[CREW_SCRIPT_START] crew=%s reason=multiple_scripts action=omit_bound_tool", root)
+			return nil, nil
 		}
 		checked, err := findCrewExecutable(binding.Root)
 		if err != nil {

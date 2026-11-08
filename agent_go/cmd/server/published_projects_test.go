@@ -12,11 +12,17 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	workspaceclient "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
+	"github.com/spf13/viper"
 )
 
 // Website history uses llmtypes human/ai roles, unlike native CLI archives.
@@ -51,24 +57,86 @@ func TestPublicationHandoffPreservesStoredConversationRoles(t *testing.T) {
 }
 
 func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
+	// Linux's launcher gives private /tmp scratch access. Hosted source must
+	// be outside it so that scratch access cannot mask a broken write guard.
+	if runtime.GOOS == "linux" && os.Getenv("AGENTWORKS_LANDLOCK_RUNNER") != "" {
+		root := os.Getenv("AGENTWORKS_LINUX_TEST_ROOT")
+		if !filepath.IsAbs(root) || root == "/tmp" || strings.HasPrefix(root, "/tmp/") {
+			t.Fatal("native source-write check needs the verifier's hosted fixture root")
+		}
+		t.Setenv("TMPDIR", root)
+	}
 	api, _ := newCodePrivacyFixture(t)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	registry := withProjectOwnerRegistry(t)
 	withProjectSharing(t, true)
-	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
-	record := &publishedProject{Root: codePrivacyOwnerRoot, WorkspaceID: "c0de0001-0000", ProfileID: "code", OwnerID: "owner", ProjectID: "stable-project", Revision: "rev-1"}
+	record := &publishedProject{Root: codePrivacyOwnerRoot, WorkspaceID: "c0de0001-0000", ProfileID: "work", OwnerID: "owner", ProjectID: "stable-project", Revision: "rev-1"}
 	if err := savePublishedProject(record); err != nil {
 		t.Fatal(err)
 	}
 	terminal := api.codeShellFolderGuard(ctx, "owner", record.Root)
+	// Source revisions live outside the mutable Crew folder. Check both
+	// logical and absolute grants against that actual immutable location.
+	source := filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), filepath.FromSlash(record.sourceRoot()))
 	for _, write := range terminal.WritePaths {
-		if strings.TrimSuffix(write, "/") == record.Root || strings.HasPrefix(record.sourceRoot(), strings.TrimSuffix(write, "/")+"/") {
+		grant := filepath.FromSlash(write)
+		if !filepath.IsAbs(grant) {
+			grant = filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), grant)
+		}
+		relative, err := filepath.Rel(grant, source)
+		if err != nil || relative == "." || relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			t.Fatal("Terminal can write published source:", write)
 		}
 	}
+	t.Run("native shell refuses published source write", func(t *testing.T) {
+		if runtime.GOOS != "linux" || os.Getenv("AGENTWORKS_LANDLOCK_RUNNER") == "" {
+			t.Skip("actual kernel refusal requires the built Linux runner")
+		}
+		t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+		sourceFile := filepath.Join(source, "code", "frozen.txt")
+		if err := os.MkdirAll(filepath.Dir(sourceFile), 0700); err != nil {
+			t.Fatal(err)
+		}
+		const original = "PUBLICATION_SOURCE_ORIGINAL"
+		if err := os.WriteFile(sourceFile, []byte(original), 0600); err != nil {
+			t.Fatal(err)
+		}
+		docs := os.Getenv("WORKSPACE_DOCS_PATH")
+		previousDocs := viper.Get("docs-dir")
+		viper.Set("docs-dir", docs)
+		t.Cleanup(func() { viper.Set("docs-dir", previousDocs) })
+		if err := os.MkdirAll(filepath.Join(docs, record.Root, "outputs"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		router := gin.New()
+		router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
+		server := httptest.NewServer(router)
+		defer server.Close()
+		client := workspaceclient.NewClient(server.URL, workspaceclient.WithUserID("owner"))
+		runCtx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		seconds := 15
+		quotedSource := "'" + strings.ReplaceAll(sourceFile, "'", "'\"'\"'") + "'"
+		out, err := client.ExecuteShellCommand(runCtx, workspaceclient.ExecuteShellCommandParams{
+			Command:          "if printf changed > " + quotedSource + "; then exit 41; fi && cat " + quotedSource + " && printf allowed > outputs/publication-guard-proof.txt",
+			WorkingDirectory: record.Root, Timeout: &seconds, FolderGuard: terminal,
+			ExtraEnv: map[string]string{"PUBLICATION_SOURCE_TEST": sourceFile},
+		})
+		if err != nil || out.ExitCode != 0 || !strings.Contains(out.Stdout, original) || !strings.Contains(strings.ToLower(out.Stderr), "permission denied") {
+			t.Fatalf("native source-write refusal or allowed control failed: exit=%d err=%v stdout=%q stderr=%q", out.ExitCode, err, out.Stdout, out.Stderr)
+		}
+		if got := mustRead(t, sourceFile); got != original {
+			t.Fatal("native shell changed the frozen source")
+		}
+		if got := mustRead(t, filepath.Join(docs, record.Root, "outputs", "publication-guard-proof.txt")); got != "allowed" {
+			t.Fatal("native shell did not complete the allowed write")
+		}
+		t.Log("native published-source write refused; source read and runtime output write completed")
+	})
 	for _, rel := range []string{"code/main.py", "functions.json", "skills/prepare/SKILL.md", "PROJECT_INSTRUCTIONS.md", ".published/rev-1/source/code/main.py"} {
 		if publishedWriteRefusal(ctx, record.Root+"/"+rel) == "" {
 			t.Fatalf("source write admitted: %s", rel)
@@ -120,7 +188,7 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(latestHistory, "raw.jsonl"), rawArchive, 0600); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodGet, "/api/external/v1/publication-history?workspace_id=code:c0de0001-0000&agent_id=main", nil).WithContext(ctx)
+	request := httptest.NewRequest(http.MethodGet, "/api/external/v1/publication-history?workspace_id=work:c0de0001-0000&agent_id=main", nil).WithContext(ctx)
 	ownerDownload := httptest.NewRecorder()
 	api.handlePublicationHistory(ownerDownload, request)
 	if ownerDownload.Code != 200 || !strings.Contains(ownerDownload.Body.String(), "PRIVATE_RAW_HISTORY") {
@@ -129,7 +197,7 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	readSaved := func(c context.Context, offset, limit int) *httptest.ResponseRecorder {
 		t.Helper()
 		response := httptest.NewRecorder()
-		api.externalWorkspaceCall(response, httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(c), map[string]any{"action": "read_saved_chat", "workspace_id": "code:c0de0001-0000", "agent_id": "main", "offset": offset, "limit": limit})
+		api.externalWorkspaceCall(response, httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(c), map[string]any{"action": "read_saved_chat", "workspace_id": "work:c0de0001-0000", "agent_id": "main", "offset": offset, "limit": limit})
 		return response
 	}
 	expectedHash := sha256.Sum256(rawArchive)
@@ -158,15 +226,15 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	if !bytes.Equal(rebuilt, rawArchive) {
 		t.Fatal("MCP changed archived bytes across page boundaries")
 	}
-	narrow := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}}})
+	narrow := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"c0de0001-0000"}}})
 	if response := readSaved(narrow, 0, 7); response.Code < 400 {
 		t.Fatal("saved history ignored connection scope")
 	}
-	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
+	if err := registry.SetRunPeople("work", "app-c0de0001", []string{"other"}); err != nil {
 		t.Fatal(err)
 	}
 	other := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other", Username: "other"})
-	if binding, _, ok := api.resolveExternalWorkspace(other, GetUserFromContext(other), "code:c0de0001-0000"); !ok || binding.OwnedByCaller {
+	if binding, _, ok := api.resolveExternalWorkspace(other, GetUserFromContext(other), "work:c0de0001-0000"); !ok || binding.OwnedByCaller {
 		t.Fatal("history refusal did not exercise a shared Run caller")
 	}
 	denied := httptest.NewRecorder()
@@ -177,7 +245,7 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	if response := readSaved(other, 0, 7); response.Code < 400 {
 		t.Fatal("Run caller read saved chat over MCP")
 	}
-	if err := registry.SetRunPeople("code", "app-c0de0001", nil); err != nil {
+	if err := registry.SetRunPeople("work", "app-c0de0001", nil); err != nil {
 		t.Fatal(err)
 	}
 	if response := readSaved(other, 7, 7); response.Code < 400 {
@@ -195,11 +263,11 @@ func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	registry := withProjectOwnerRegistry(t)
-	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
-	p := &publishedProject{Root: codePrivacyOwnerRoot, WorkspaceID: "c0de0001-0000", ProfileID: "code", OwnerID: "owner", PublisherID: "owner", AgentID: "37b46a91-e76d-4b5c-8e05-ad78acbc1fd3", Name: "Invoices", ProjectID: "source", Revision: "revision-one", SourcePaths: []string{"code/run.py", "assets/logo.png"}}
+	p := &publishedProject{Root: codePrivacyOwnerRoot, WorkspaceID: "c0de0001-0000", ProfileID: "work", OwnerID: "owner", PublisherID: "owner", AgentID: "37b46a91-e76d-4b5c-8e05-ad78acbc1fd3", Name: "Invoices", ProjectID: "source", Revision: "revision-one", SourcePaths: []string{"code/run.py", "assets/logo.png"}}
 	if err := savePublishedProject(p); err != nil {
 		t.Fatal(err)
 	}
@@ -237,8 +305,7 @@ func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
 	if got := publishedReadPath(running, p.Root+"/code/run.py"); got != p.sourceRoot()+"/code/run.py" {
 		t.Fatal("running agent changed revision:", got)
 	}
-	docs := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	docs := os.Getenv("WORKSPACE_DOCS_PATH")
 	sourceFile := filepath.Join(docs, filepath.FromSlash(next.sourceRoot()), "code/run.py")
 	if err := os.MkdirAll(filepath.Dir(sourceFile), 0700); err != nil {
 		t.Fatal(err)
@@ -247,16 +314,22 @@ func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	withProjectSharing(t, true)
-	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
+	if err := registry.SetRunPeople("work", "app-c0de0001", []string{"other"}); err != nil {
 		t.Fatal(err)
 	}
 	other := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other", Username: "other"})
 	request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(other)
-	args := map[string]any{"crew_id": "code:" + p.WorkspaceID, "agent_id": p.AgentID, "path": "code/run.py"}
+	args := map[string]any{"crew_id": p.WorkspaceID, "agent_id": p.AgentID, "path": "code/run.py"}
 	shared := httptest.NewRecorder()
 	api.externalCrewCall(shared, request, "read_crew_file", args)
 	if shared.Code != 200 || !strings.Contains(shared.Body.String(), "SHARED_AGENT_SOURCE") {
 		t.Fatalf("shared source selector=%d %s", shared.Code, shared.Body.String())
+	}
+	prefixed := httptest.NewRecorder()
+	prefixedArgs := map[string]any{"crew_id": "work:" + p.WorkspaceID, "agent_id": p.AgentID, "path": "code/run.py"}
+	api.externalCrewCall(prefixed, request, "read_crew_file", prefixedArgs)
+	if prefixed.Code != http.StatusNotFound || !strings.Contains(prefixed.Body.String(), `"code":"not_found"`) || strings.Contains(prefixed.Body.String(), "SHARED_AGENT_SOURCE") {
+		t.Fatalf("prefixed Crew identity was admitted or exposed source: HTTP%d", prefixed.Code)
 	}
 	privateHistory, err := next.historyDir()
 	if err != nil {
@@ -271,7 +344,7 @@ func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
 		}
 		for _, tool := range []string{"read_crew_file", "list_crew_files"} {
 			private := httptest.NewRecorder()
-			api.externalCrewCall(private, request, tool, map[string]any{"crew_id": "code:" + p.WorkspaceID, "agent_id": p.AgentID, "path": filepath.ToSlash(filepath.Join(privateHistory, name))})
+			api.externalCrewCall(private, request, tool, map[string]any{"crew_id": p.WorkspaceID, "agent_id": p.AgentID, "path": filepath.ToSlash(filepath.Join(privateHistory, name))})
 			if private.Code < 400 || strings.Contains(private.Body.String(), "PRIVATE_BUILDER_HANDOFF") {
 				t.Fatalf("Run source selector reached private Builder history: %s %d %s", tool, private.Code, private.Body.String())
 			}
@@ -299,7 +372,7 @@ func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
 		t.Fatalf("shared Main resource=%d %s", sharedMemory.Code, sharedMemory.Body.String())
 	}
 	args["path"] = "code/run.py"
-	if err := registry.SetRunPeople("code", "app-c0de0001", nil); err != nil {
+	if err := registry.SetRunPeople("work", "app-c0de0001", nil); err != nil {
 		t.Fatal(err)
 	}
 	revoked := httptest.NewRecorder()

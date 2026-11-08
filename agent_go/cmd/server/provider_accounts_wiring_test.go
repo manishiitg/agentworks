@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
@@ -43,7 +43,7 @@ func (e *providerAccountsEnv) setWorkflowW(t *testing.T, connectionID string) {
 
 // queryToolsMode sends a Builder message through handleQuery and returns
 // the agent-tools mode the turn decided.
-func (e *providerAccountsEnv) queryToolsMode(t *testing.T, user, sessionID string) (string, int) {
+func (e *providerAccountsEnv) queryToolsMode(t *testing.T, user, sessionID, root, projectID, accountID string) (string, int) {
 	t.Helper()
 	decided := ""
 	e.api.internalAgentToolsModeDecided = func(_ string, mode string) bool {
@@ -51,75 +51,57 @@ func (e *providerAccountsEnv) queryToolsMode(t *testing.T, user, sessionID strin
 		return true
 	}
 	req := QueryRequest{
-		Query: "tidy the plan", AgentMode: "workflow_phase", SelectedFolder: "Workflow/w",
-		// The Builder names no account; the workflow's saved model does.
+		Query: "Continue", AgentMode: "multi-agent", AgentProfileID: crewProfileID, AgentProfileConversationKey: projectID, SelectedFolder: root, ConnectionID: accountID, Provider: "claude-code", ModelID: "sonnet", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Fixture Crew"},
+		// A current Crew turn selects the account explicitly.
 		LLMConfig: &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "claude-code", ModelID: "sonnet"}},
 	}
 	w := httptest.NewRecorder()
 	httpReq := sharedSecretsRequest(http.MethodPost, "/api/query", user, req)
 	httpReq.Header.Set("X-Session-ID", sessionID)
 	e.api.handleQuery(w, httpReq)
+	if w.Code != http.StatusNoContent && w.Code != http.StatusForbidden {
+		t.Logf("current Crew query HTTP%d: %s", w.Code, w.Body.String())
+	}
 	return decided, w.Code
 }
 
-// Owner decision 2026-09-28: native tools are on by default everywhere. A
-// Builder turn on someone else's shared account keeps the workflow's
-// configured mode (hybrid), and so does a Code turn.
-func TestProviderAccountsSharedAccountAndCodeTurnsAreFull(t *testing.T) {
-	env := newProviderAccountsEnv(t, "")
-	setDirectoryAdmin(t, "alice", true) // workflow shares are admin-only (PLAT-715)
-	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
-	env.setWorkflowW(t, account.ID)
-	if mode, code := env.queryToolsMode(t, "bob", "bob-builder"); mode != "full" {
-		t.Fatalf("bob's Builder turn on Alice's shared account decided %q (status %d), want full", mode, code)
+// A shared account must keep native tools, and its current sharing still
+// decides admission. Use current owned Crews, not retired workflow/Code chats.
+func TestProviderAccountsSharedAccountAndCrewTurnsAreFull(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"other","username":"other","can_create":true,"products":["work"]}]}`)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AUTH_SECRET", "provider-query-fixture")
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code")
+	t.Setenv("ALLOW_PERSONAL_PROVIDER_CONNECTIONS", "")
+	t.Setenv("LLM_CONFIG_LOCKED", "")
+	t.Setenv("AGENTWORKS_PROVIDER_POLICY", "")
+	var err error
+	f.api.chatStore, err = chathistory.NewFilesystemStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if mode, _ := env.queryToolsMode(t, "alice", "alice-builder"); mode != "full" {
-		t.Fatalf("alice's own Builder turn decided %q, want full", mode)
+	env := &providerAccountsEnv{api: f.api}
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "other-team", ProjectID: "other-team", OwnerID: "other", Shared: true}); err != nil {
+		t.Fatal(err)
 	}
-	// The final account still decides admission.
-	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "alice", map[string]interface{}{"sharing": map[string]interface{}{"mode": "private"}}, map[string]string{"connectionID": account.ID}); w.Code != http.StatusNoContent {
-		t.Fatalf("unshare: %d", w.Code)
-	}
-	if mode, code := env.queryToolsMode(t, "bob", "bob-builder-2"); code != http.StatusForbidden || mode != "" {
-		t.Fatalf("bob's turn after unsharing: status %d mode %q", code, mode)
-	}
-
-	// A Code turn: the real Code profile, a Code with no switch set.
-	const codeRoot = "_users/alice/Chats/Code/projects/site"
-	env.mock.mu.Lock()
-	env.mock.files[codeRoot+"/product.json"] = `{"schema_version":1,"product":"code","id":"site","title":"Site","session_id":"code:site"}`
-	env.mock.files[codeRoot+"/workflow.json"] = `{"capabilities":{}}`
-	env.mock.mu.Unlock()
-	registry := agentprofiles.NewRegistry()
-	for _, profile := range workproduct.BuiltinAgentProfiles() {
-		profile.Product = workproduct.ProfileID
-		if err := registry.RegisterProfile(profile); err != nil {
-			t.Fatal(err)
+	f.write(t, "Crew/other-team/.fixture", "")
+	f.write(t, "_system/crew-data/other-team/product.json", `{"schema_version":1,"product":"work","id":"other-team","title":"Other team","session_id":"other-main"}`)
+	f.write(t, "_system/crew-data/other-team/workflow.json", `{"id":"other-team","created_by":"other"}`)
+	account := env.addAccount(t, "owner", map[string]interface{}{"provider": "claude-code", "display_name": "Shared coding account", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "users": []string{"other"}}})
+	for _, turn := range []struct{ user, root, project string }{{"owner", externalCommandCrewRoot, "team"}, {"other", "Crew/other-team", "other-team"}} {
+		if mode, code := env.queryToolsMode(t, turn.user, turn.user+"-builder", turn.root, turn.project, account.ID); mode != "full" {
+			t.Fatalf("current Crew turn as %s decided %q (HTTP%d)", turn.user, mode, code)
 		}
 	}
-	env.api.agentProfiles = registry
-	codeTurn := func() string {
-		req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: workproduct.ProfileID, AgentProfileConversationKey: "site", SelectedFolder: "Chats/Code/projects/site", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Site"}}
-		resolved, err := env.api.resolveAgentProfileForQuery(context.Background(), &req, "alice", "code-session")
-		if err != nil {
-			t.Fatalf("resolve Code turn: %v", err)
-		}
-		return normalizeAgentToolsMode(resolved.Definition.Runtime.AgentTools.Mode)
+	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "owner", map[string]interface{}{"sharing": map[string]interface{}{"mode": "private"}}, map[string]string{"connectionID": account.ID}); w.Code != http.StatusNoContent {
+		t.Fatalf("unshare: %d %s", w.Code, w.Body.String())
 	}
-	if mode := codeTurn(); mode != "full" {
-		t.Fatalf("Code turn with no switch set decided %q, want full", mode)
-	}
-	env.mock.mu.Lock()
-	env.mock.files[codeRoot+"/workflow.json"] = `{"capabilities":{"native_agent_tools":false}}`
-	env.mock.mu.Unlock()
-	// No switch any more (2026-09-29): an older Code's stored "off" is ignored.
-	if mode := codeTurn(); mode != "full" {
-		t.Fatalf("a Code with a stored off decided %q, want full: native tools are always on", mode)
+	if mode, code := env.queryToolsMode(t, "other", "other-after-revoke", "Crew/other-team", "other-team", account.ID); code != http.StatusForbidden || mode != "" {
+		t.Fatalf("revoked account admitted: HTTP%d mode=%q", code, mode)
 	}
 }
 
-// Delegation runs as the parent turn's principal in the parent's
-// workspace; a scheduled run uses the workflow owner.
 func TestProviderAccountsDelegationAndScheduledScopes(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
 	setDirectoryAdmin(t, "alice", true) // workflow shares are admin-only (PLAT-715)

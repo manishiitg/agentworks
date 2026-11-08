@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -21,6 +23,163 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/observability"
 )
+
+// PLAT-746: private Python asks retain actual run authority, and concurrent
+// questions to one Crew never read each other's explicit inbox reply.
+func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newWorkflowFunctionEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	if err := defaultProjectOwners().SetPrivate("work", "gamma", true); err != nil {
+		t.Fatal(err)
+	}
+	resetCrewOwnerCache()
+	type askTurn struct{ actor, owner string }
+	turns := make(chan askTurn, 3)
+	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, _ map[string]interface{}, sessionID, owner string) (internalSessionTurnResult, error) {
+		turns <- askTurn{actor: costobserver.AttributionFromContext(ctx).ActorID, owner: owner}
+		return internalSessionTurnResult{FinalResponse: "Ordinary final text is not an explicit reply."}, nil
+	}
+	t.Cleanup(func() { agentMessageTurn = nil })
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	binding := crewExecutableBinding{ID: "python-asks", CrewID: "alpha", CrewRoot: linkAlphaPath, Root: "Workflow/python-asks", Kind: "script"}
+	if err := registerCrewExecutable(binding); err != nil {
+		t.Fatal(err)
+	}
+	env.mock.mu.Lock()
+	env.mock.files[binding.Root+"/code/script.json"] = `{"id":"python-asks","name":"Python asks"}`
+	env.mock.mu.Unlock()
+	scope := stepworkflow.AgentFunctionScope{WorkspacePath: binding.Root, ExecutionID: "run-one", StepID: "ask", SessionID: "python-asks"}
+	_, executors, err := env.api.workflowAgentFunctionToolsForRun(ctx)(ctx, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ask := executors["ask_crew"].(func(context.Context, map[string]interface{}) (string, error))
+	read := executors["read_agent_messages"].(func(context.Context, map[string]interface{}) (string, error))
+	if _, err := ask(ctx, map[string]interface{}{"crew": "alpha", "message": "Ask myself", "submission_id": "self"}); err == nil || !strings.Contains(err.Error(), "own Crew") {
+		t.Fatalf("script asked its own Crew: %v", err)
+	}
+	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ask(ctx, map[string]interface{}{"crew": "beta", "message": "Unlinked", "submission_id": "unlinked"}); err == nil || !strings.Contains(err.Error(), "not linked") {
+		t.Fatalf("script bypassed Crew link rule: %v", err)
+	}
+	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return []string{linkBetaPath}, nil }); err != nil {
+		t.Fatal(err)
+	}
+	var unavailable string
+	for _, name := range []string{"gamma", "unknown"} {
+		_, err := ask(ctx, map[string]interface{}{"crew": name, "message": "Please review", "submission_id": name})
+		if err == nil || strings.Contains(err.Error(), name) {
+			t.Fatalf("private/unknown Crew leaked or accepted: %s %v", name, err)
+		}
+		if unavailable != "" && unavailable != err.Error() {
+			t.Fatalf("private Crew existence disclosed: %q vs %q", unavailable, err)
+		}
+		unavailable = err.Error()
+	}
+	var wg sync.WaitGroup
+	receipts := make([]map[string]interface{}, 2)
+	errors := make([]error, 2)
+	for i := range receipts {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			raw, err := ask(ctx, map[string]interface{}{"crew": "Beta", "message": []string{"First question", "Second question"}[i], "submission_id": []string{"first-question", "second-question"}[i]})
+			if err == nil {
+				err = json.Unmarshal([]byte(raw), &receipts[i])
+			}
+			errors[i] = err
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errors {
+		if err != nil || receipts[i]["inbox_id"] == nil {
+			t.Fatalf("allowed ask %d refused: %v %v", i, err, receipts[i])
+		}
+		select {
+		case turn := <-turns:
+			if turn.actor != "owner" || turn.owner != "owner" {
+				t.Fatalf("same-owner attribution changed: %+v", turn)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("accepted ask never reached its agent")
+		}
+	}
+	if receipts[0]["inbox_id"] == receipts[1]["inbox_id"] {
+		t.Fatal("independent questions reused one inbox")
+	}
+	for i, receipt := range receipts {
+		inbox := receipt["inbox_id"].(string)
+		before, err := read(ctx, map[string]interface{}{"inbox_id": inbox, "wait_seconds": float64(0)})
+		if err != nil || len(decodeToolJSON(t, before)["messages"].([]interface{})) != 0 {
+			t.Fatalf("ordinary final text was fabricated into an answer: %s %v", before, err)
+		}
+		store, err := readAgentMessageSnapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, conversation := range store.Conversations {
+			if conversation.ID != inbox {
+				continue
+			}
+			peer := conversation.Endpoints[1]
+			caller := triggerLinkCaller{Stamp: triggerCaller{Type: peer.Kind, ID: peer.ID, ProfileID: peer.Profile}, Label: peer.Label, Path: peer.Path, Chat: &codeChat{Key: peer.ChatKey, SessionID: peer.Session}}
+			if _, err := env.api.sendAgentMessage(context.Background(), peer.UserID, caller, triggerTarget{}, []string{"First answer", "Second answer"}[i], inbox, "reply-"+inbox); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for i, receipt := range receipts {
+		raw, err := read(ctx, map[string]interface{}{"inbox_id": receipt["inbox_id"], "after": receipt["sequence"], "wait_seconds": float64(0)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		messages := decodeToolJSON(t, raw)["messages"].([]interface{})
+		if len(messages) != 1 || messages[0].(map[string]interface{})["message"] != []string{"First answer", "Second answer"}[i] {
+			t.Fatalf("ask consumed another inbox reply: %s", raw)
+		}
+	}
+	// A shared Crew executes as its own owner, while the requesting person
+	// remains the cost actor and the source endpoint in the audit store.
+	if err := defaultProjectOwners().SetPrivate("work", "gamma", false); err != nil {
+		t.Fatal(err)
+	}
+	resetCrewOwnerCache()
+	raw, err := ask(ctx, map[string]interface{}{"crew": "gamma", "message": "Attribution check", "submission_id": "cross-owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	crossOwner := decodeToolJSON(t, raw)
+	select {
+	case turn := <-turns:
+		if turn.actor != "owner" || turn.owner != "other" {
+			t.Fatalf("target borrowed caller authority or lost cost actor: %+v", turn)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cross-owner ask never reached its own owner")
+	}
+	audit, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audited := false
+	for _, conversation := range audit.Conversations {
+		if conversation.ID == crossOwner["inbox_id"] {
+			audited = conversation.Endpoints[0].UserID == "owner" && conversation.Endpoints[1].UserID == "other"
+		}
+	}
+	if !audited {
+		t.Fatal("ask audit record lost source person or target owner")
+	}
+	// Revoke the source account after admission: a saved executor is no lasting grant.
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","disabled":true},{"id":"other","username":"other","can_create":true}]}`)
+	if _, err := read(ctx, map[string]interface{}{"inbox_id": receipts[0]["inbox_id"]}); err == nil {
+		t.Fatal("revoked source account still read an ask reply")
+	}
+
+}
 
 // The older dispatcher fixture names its manifests alpha/beta/gamma. Registry
 // IDs must match those manifests; the real resolver refuses mismatched IDs.
@@ -237,6 +396,11 @@ func TestPythonScriptFunctionCallerRequiresCrewLinkAndKeepsRunScope(t *testing.T
 		return internalSessionTurnResult{FinalResponse: "Checked build."}, nil
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	// The common function fixture links Alpha to Beta. This regression starts
+	// unlinked so its first refusal must come from the real link rule.
+	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
 	binding := crewExecutableBinding{ID: "python-source", CrewID: "alpha", CrewRoot: linkAlphaPath, Root: "Workflow/python-source", Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)

@@ -749,6 +749,9 @@ func init() {
 	workspacepkg.FileWriteReceipt = teamPlanSaved
 	workspacepkg.BeforeFileUpdate = teamManagedWrite
 	workspacepkg.AdditionalPathPolicy = func(ctx context.Context, path string, write bool) error {
+		if err := requireCurrentCrewPathAccess(ctx, path); err != nil {
+			return err
+		}
 		if write {
 			if reason := publishedWriteRefusal(ctx, path); reason != "" {
 				return fmt.Errorf("%s", reason)

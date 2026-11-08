@@ -226,8 +226,16 @@ func makeConflict(t *testing.T, repo string) {
 	gitRun(t, repo, "switch", "main")
 	writeFile(t, filepath.Join(repo, "a.txt"), "main side\n")
 	gitRun(t, repo, "commit", "-qam", "main change")
-	cmd := exec.Command("git", "-C", repo, "merge", "feature")
-	_ = cmd.Run() // conflicts: non-zero exit is expected
+	// A clean qualifier host has no global committer identity. Without the
+	// fixture identity, merge fails before creating any conflict to resolve.
+	cmd := exec.Command("git", "-C", repo, "-c", "user.email=fixture@example.com", "-c", "user.name=Fixture", "-c", "commit.gpgsign=false", "merge", "feature")
+	out, err := cmd.CombinedOutput()
+	if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
+		t.Fatalf("fixture did not create a merge conflict: %v: %s", err, out)
+	}
+	if unmerged := gitOut(t, repo, "ls-files", "-u", "--", "a.txt"); unmerged == "" {
+		t.Fatal("fixture merge left no unmerged a.txt to resolve")
+	}
 }
 
 func TestWorkspaceGitResolveConflict(t *testing.T) {

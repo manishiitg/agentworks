@@ -28,7 +28,7 @@ func (api *StreamingAPI) externalScriptRerun(w http.ResponseWriter, r *http.Requ
 	}
 	folder := externalArg(args, "run_folder")
 	record := map[string]any{}
-	if err := externalScriptRunRecord(r.Context(), item.WorkspacePath, folder, record); err != nil {
+	if err := externalScriptRunRecord(r.Context(), item, folder, record); err != nil {
 		externalFailure(w, err)
 		return
 	}
@@ -58,7 +58,7 @@ func (api *StreamingAPI) externalScriptRerun(w http.ResponseWriter, r *http.Requ
 	// Preserve the ordinary query receipt/status code and session lifecycle.
 	// This only adds the relation and bounded changed-file summary to its JSON.
 	response := &internalResponseCapture{header: http.Header{}}
-	api.externalRunProxy(response, r, "run_full_workflow", start, item)
+	api.externalScriptStart(response, r, start, item)
 	if response.status >= 400 {
 		copyInternalResponse(w, response)
 		return

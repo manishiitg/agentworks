@@ -29,7 +29,10 @@ func TestExternalRunScopeGate(t *testing.T) {
 	full := claims("workflows:read", "files:read", "runs:execute")
 
 	// Proxied run tools require runs:execute.
-	for _, name := range []string{"execute_step", "run_full_workflow", "send_step_message", "stop_step", "stop_all_executions", "query_step", "trigger_schedule", "run_reply_input"} {
+	for _, name := range []string{"run_full_workflow", "stop_step", "stop_all_executions", "trigger_schedule", "run_reply_input"} {
+		if _, found := byName[name]; !found {
+			t.Fatalf("current run operation %s missing", name)
+		}
 		if externalTokenAllows(readOnly, byName[name]) {
 			t.Fatalf("read-only token allows %s", name)
 		}
@@ -38,7 +41,7 @@ func TestExternalRunScopeGate(t *testing.T) {
 		}
 	}
 	// Execution implies workflow visibility, never file content.
-	for _, name := range []string{"list_workflows", "get_workflow", "get_plan", "list_runs", "get_run", "get_logs", "run_status", "list_executions", "list_schedules", "get_schedule_runs", "get_agent_context"} {
+	for _, name := range []string{"list_workflows", "get_workflow", "get_script_outline", "list_runs", "get_run", "get_logs", "run_status", "list_executions", "list_schedules", "get_schedule_runs", "get_agent_context"} {
 		if !externalTokenAllows(executeOnly, byName[name]) {
 			t.Fatalf("execute-only token denies workflow read %s", name)
 		}
@@ -53,12 +56,12 @@ func TestExternalRunScopeGate(t *testing.T) {
 	}
 }
 
-func TestExternalRunProxyRejectsReadOnlyToken(t *testing.T) {
+func TestExternalScriptStartRejectsReadOnlyToken(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	// The scope gate bites before dispatch: a read-only PAT calling a
 	// proxied run tool is rejected without touching the run runtime.
 	w := httptest.NewRecorder()
-	data := `{"name":"runs","arguments":{"action":"step","workflow_id":"invoices","step_id":"fetch-invoices"}}`
+	data := `{"name":"runs","arguments":{"action":"start","workflow_id":"invoices"}}`
 	f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", data, patClaims("owner", []string{"workflows:read", "files:read"}), nil))
 	scoped := externalTestBody(t, w, 403)
 	if scoped["error"].(map[string]any)["code"] != "insufficient_scope" {

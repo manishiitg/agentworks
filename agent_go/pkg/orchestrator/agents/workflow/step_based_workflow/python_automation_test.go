@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -53,6 +54,14 @@ func (r *helperCheckRecorder) counts() (int, int) {
 	return r.failures, r.passes
 }
 
+type blockedStepRecorder struct {
+	helperCheckRecorder
+	started chan struct{}
+	proceed chan struct{}
+}
+
+func (r *blockedStepRecorder) OnExecutionStart(WorkshopExecutionStart) { close(r.started); <-r.proceed }
+
 type helperNotificationRecorder struct {
 	CrewScriptResolver
 	mu    sync.Mutex
@@ -68,7 +77,7 @@ func (r *helperNotificationRecorder) NotifyScript(_ context.Context, _, _, _, te
 
 // Real Python imports the staged package inside the existing sandbox, crosses
 // HTTP and the real script-session registry, and reads back durable receipts.
-// Repeating a key inside one execution must never skip a call in a loop.
+// Checks/notices remain ordinary calls, including during a resumed script.
 func TestPythonHelpersRepeatCallsAndReuseOnlyResumedOccurrences(t *testing.T) {
 	docs, files := workflowHTTPTestWorkspace(t)
 	t.Setenv("AGENTWORKS_SLOTS", "off")
@@ -125,6 +134,17 @@ if os.environ['VAR_PHASE'] == 'unavailable-app':
     except AutomationError as error: assert 'unavailable' in str(error), str(error)
     else: raise AssertionError('unavailable app borrowed an executor outside its tool pool')
     raise SystemExit(0)
+if os.environ['VAR_PHASE'] == 'missing-finish':
+    @step('Missing finish receipt')
+    def done(): return 42
+    assert done() == 42
+    raise SystemExit(0)
+if os.environ['VAR_PHASE'] == 'slow-step':
+    @step('Delayed receipt')
+    def normal():
+        return 42
+    assert normal() == 42
+    raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'evidence':
     @step('Evidence')
     def evidence():
@@ -133,8 +153,41 @@ if os.environ['VAR_PHASE'] == 'evidence':
         assert check('Evidence inside', True, 'MCP_API_TOKEN=fixture-credential ' + 'λ' * 700).ok
         assert not check('Evidence expected failure', False, 'expected').ok
         notify('MCP_API_TOKEN=fixture-credential progress')
+        @step('Nested evidence')
+        def nested(): check('Nested check', True)
+        nested()
+        check('Restored outer check', True)
     evidence()
+    def shared_check(label): check('Shared ' + label, True)
+    for label in ['first', 'second']:
+        step('Shared ' + label)(shared_check)(label)
     check('Evidence outside', True)
+    from agentworks import _call
+    assert _call('check', {'name':'Unknown step check', 'ok':True, 'step_execution_id':'python-unknown', 'step_name':'Forged name'}, None, False).ok
+    raise SystemExit(0)
+if os.environ['VAR_PHASE'] == 'asks':
+    from agentworks import ask_agent, AskResult
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        questions = ['first question', 'second question']
+        answers = list(pool.map(lambda q: ask_agent('Beta', q, wait_seconds=1), questions))
+    assert len({reply.inbox_id for reply in answers}) == 2
+    for question, reply in zip(questions, answers):
+        assert isinstance(reply, AskResult) and reply.ok and reply.status == 'replied'
+        assert reply.text == 'Answer to ' + question
+        assert reply.answer_file.read_text() == reply.text
+        assert reply.log_file.is_file() and reply.receipt['reply_message_id']
+    pending = ask_agent('Beta', 'pending question', wait_seconds=0)
+    assert pending.ok and pending.status == 'pending' and pending.inbox_id and pending.message_id
+    assert not pending.text and not pending.error and 'do not resend' in pending.receipt['note']
+    large = ask_agent('Beta', 'long question', wait_seconds=999)
+    assert large.ok and large.status == 'replied' and len(large.text) < 20000 and '[output truncated;' in large.text
+    assert 'fixture-credential' not in large.text and 'fixture-credential' not in large.answer_file.read_text()
+    assert '[redacted]' in large.answer_file.read_text() and len(large.answer_file.read_text()) > len(large.text)
+    unknown = ask_agent('Beta', 'unreadable question', wait_seconds=0)
+    assert not unknown.ok and unknown.status == 'unknown' and 'do not resend' in unknown.error.lower()
+    refused = ask_agent('unavailable', 'private question', wait_seconds=0)
+    assert not refused.ok and refused.status == 'refused' and not refused.inbox_id and not refused.text
     raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'functions':
     first = call_function('Beta', 'check_build', {'build': '7'})
@@ -256,6 +309,7 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	c.SetWorkshopExecutionNotifier(recorder)
 	notifications := &helperNotificationRecorder{}
 	executorHandlers := executor.NewExecutorHandlers("", loggerv2.NewNoop())
+	var dropFinish atomic.Bool
 	bridge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		if len(parts) != 5 || parts[0] != "s" || r.Header.Get("Authorization") != "Bearer helper-test-token" {
@@ -276,6 +330,13 @@ assert first.log_complete and second.log_complete and passed.log_complete
 			http.Error(w, "fixture delivery unavailable", http.StatusServiceUnavailable)
 			return
 		}
+		if args["action"] == "step" && arguments["phase"] == "start" && arguments["title"] == "Missing finish receipt" {
+			dropFinish.Store(true)
+		}
+		if args["action"] == "step" && arguments["phase"] == "finish" && dropFinish.Swap(false) {
+			http.Error(w, "finish delivery unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		// Exercise the production per-tool envelope, including canonical failure
 		// for a check's ok:false payload. A homemade success envelope hid the
 		// live loss of its log path and completion evidence (PLAT-746).
@@ -287,6 +348,19 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		if arguments["text"] == "fixture-handler-error" || arguments["detail"] == "fixture-handler-error" {
 			// A missing session-scoped executor is an actual handler failure.
 			tool = "unregistered_fixture_handler"
+		}
+		if args["action"] == "step" && arguments["phase"] == "start" && arguments["title"] == "Delayed receipt" {
+			// PLAT-746: the step has been durably started, but a slow response
+			// exceeds the old SDK-only 3s timer. The Python work still succeeds.
+			reply := httptest.NewRecorder()
+			executorHandlers.HandlePerToolCustomRequest(reply, r, tool)
+			time.Sleep(3500 * time.Millisecond)
+			for key, values := range reply.Header() {
+				w.Header()[key] = values
+			}
+			w.WriteHeader(reply.Code)
+			_, _ = w.Write(reply.Body.Bytes())
+			return
 		}
 		executorHandlers.HandlePerToolCustomRequest(w, r, tool)
 	}))
@@ -312,11 +386,65 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		return result
 	}
 	functionCalls, statusReads := 0, 0
+	var askMu sync.Mutex
+	askQuestions := map[string]string{}
 	factory := func(_ context.Context, scope AgentFunctionScope) ([]llmtypes.Tool, map[string]interface{}, error) {
 		if scope.ExecutionID != "run-one" || scope.StepID != step.GetID() {
 			t.Fatal("untrusted function scope", scope)
 		}
 		return nil, map[string]interface{}{
+			// Existing Crew send/read is the external boundary here. The server
+			// fixture separately exercises its real access checks and inboxes.
+			"ask_crew": func(_ context.Context, args map[string]interface{}) (string, error) {
+				if args["crew"] == "unavailable" {
+					return "", fmt.Errorf("Choose a Crew you can access by its exact name or ID.")
+				}
+				if args["message"] == "unreadable question" {
+					return "null", nil
+				}
+				inbox := "inbox-" + args["submission_id"].(string)
+				askMu.Lock()
+				askQuestions[inbox] = args["message"].(string)
+				askMu.Unlock()
+				return fmt.Sprintf(`{"inbox_id":%q,"message_id":%q,"sequence":1}`, inbox, "sent-"+inbox), nil
+			},
+			"read_agent_messages": func(_ context.Context, args map[string]interface{}) (string, error) {
+				inbox := args["inbox_id"].(string)
+				// An accepted send must be on disk before a possibly blocking read.
+				saved := false
+				filepath.WalkDir(filepath.Join(docs, root, "runs/run-one/helpers"), func(path string, entry os.DirEntry, err error) error {
+					if err == nil && !entry.IsDir() && strings.HasSuffix(path, ".json") {
+						data, _ := os.ReadFile(path)
+						var receipt pythonHelperCall
+						if json.Unmarshal(data, &receipt) == nil {
+							value, _ := receipt.Reply.Value.(map[string]interface{})
+							saved = saved || value["inbox_id"] == inbox && value["status"] == "pending"
+						}
+					}
+					return err
+				})
+				if !saved {
+					return "", fmt.Errorf("send receipt missing before read")
+				}
+				askMu.Lock()
+				question := askQuestions[inbox]
+				askMu.Unlock()
+				if question == "pending question" {
+					return `{"messages":[]}`, nil
+				}
+				answer := "Answer to " + question
+				if question == "long question" {
+					if args["wait_seconds"] != float64(25) {
+						return "", fmt.Errorf("ask wait exceeded 25 seconds")
+					}
+					answer = strings.Repeat("Large reply ", 2500) + "MCP_API_TOKEN=fixture-credential"
+				}
+				data, err := json.Marshal(map[string]interface{}{"messages": []map[string]interface{}{
+					{"inbox_id": "another-inbox", "message_id": "foreign-answer", "message": "must never consume another question's reply"},
+					{"inbox_id": inbox, "message_id": "reply-" + inbox, "message": answer},
+				}})
+				return string(data), err
+			},
 			"project_functions_call": func(_ context.Context, args map[string]interface{}) (string, error) {
 				functionCalls++
 				return fmt.Sprintf(`{"call_id":%q,"status":"running"}`, args["submission_id"]), nil
@@ -329,13 +457,16 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	}
 	run := func(resume, redo bool, phase string) {
 		t.Helper()
-		c.SetExecutionOptions(&ExecutionOptions{AllowRunContinuation: resume, AgentFunctionTools: factory, CrewResources: &CrewResources{Scripts: notifications}})
+		ctx, endInvocation := context.WithCancel(ctx)
+		defer endInvocation()
+		c.SetExecutionOptions(&ExecutionOptions{AgentFunctionTools: factory, CrewResources: &CrewResources{Scripts: notifications}})
 		if resume {
-			c.executionOptions.ResumeFromStep = 1
+			c.executionOptions.PythonResume = &PythonRunResume{}
 		}
 		env := map[string]string{"MCP_API_TOKEN": "helper-test-token", "VAR_PHASE": phase, "VAR_REDO": map[bool]string{true: "yes", false: "no"}[redo]}
+		processSucceeded := false
 		release := c.configureScriptBridgeSession(ctx, step, guard, DBAccessNone, env, code, root+"/runs/run-one/execution/task")
-		defer release()
+		defer func() { release(processSucceeded) }()
 		if _, err := codeexec.CallCustomToolWithSession(ctx, "unrelated-script-step", "python_automation", map[string]interface{}{}); err == nil {
 			t.Fatal("unregistered step borrowed the private Python helper")
 		}
@@ -348,6 +479,7 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		// The normal workspace shell adds approved per-call values after isolation.
 		command.Env = security.MergeExtraEnv(command.Env, env)
 		raw, err := command.CombinedOutput()
+		processSucceeded = err == nil
 		if phase == "interrupt" {
 			if err == nil || !strings.Contains(err.Error(), "17") {
 				t.Fatalf("expected interruption after a completed call: %s %v", raw, err)
@@ -361,19 +493,19 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	run(true, false, "complete")
 	resumed := read("reply.json")
 	failures, passes := recorder.counts()
-	if resumed["first"] != first || resumed["second"] == first || failures != 2 || passes != 1 {
+	if resumed["first"] == first || resumed["second"] == first || failures != 3 || passes != 1 {
 		t.Fatalf("resume skipped/repeated wrong calls: %v failures=%d passes=%d", resumed, failures, passes)
 	}
 	run(false, false, "complete")
 	fresh := read("reply.json")
 	failures, passes = recorder.counts()
-	if fresh["first"] == first || fresh["first"] == fresh["second"] || failures != 4 || passes != 2 {
+	if fresh["first"] == first || fresh["first"] == fresh["second"] || failures != 5 || passes != 2 {
 		t.Fatalf("ordinary calls were cached: %v", fresh)
 	}
 	run(true, true, "complete")
 	redone := read("reply.json")
 	failures, passes = recorder.counts()
-	if redone["first"] == fresh["first"] || redone["second"] != fresh["second"] || failures != 5 || passes != 2 {
+	if redone["first"] == fresh["first"] || redone["second"] == fresh["second"] || failures != 7 || passes != 3 {
 		t.Fatalf("redo lost its attempt or repeated other calls: %v", redone)
 	}
 	for _, path := range redone {
@@ -413,8 +545,26 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	}
 	run(false, false, "functions")
 	run(true, false, "functions")
-	if functionCalls != 2 || statusReads != 2 {
-		t.Fatalf("function work repeated or status read cached: calls=%d reads=%d", functionCalls, statusReads)
+	if functionCalls != 4 || statusReads != 2 {
+		t.Fatalf("ordinary function work or status read incorrectly reused: calls=%d reads=%d", functionCalls, statusReads)
+	}
+	run(false, false, "asks")
+	askMetadata, err := os.ReadFile(filepath.Join(docs, root, "runs/run-one/run_metadata.json"))
+	var askRecord struct {
+		Asks map[string]PythonAskEvidence `json:"python_asks"`
+	}
+	if err != nil || json.Unmarshal(askMetadata, &askRecord) != nil {
+		t.Fatalf("ask evidence unavailable: %v", err)
+	}
+	askStatuses := map[string]int{}
+	for _, item := range askRecord.Asks {
+		askStatuses[item.Status]++
+		if item.LogFile == "" {
+			t.Fatal("ask lacks log evidence", item)
+		}
+	}
+	if askStatuses["replied"] != 3 || askStatuses["pending"] != 1 || askStatuses["refused"] != 1 || askStatuses["unknown"] != 1 {
+		t.Fatalf("ask outcomes missing: %v", askStatuses)
 	}
 	run(false, false, "apps")
 	beforeAppCalls := appCalls
@@ -436,6 +586,52 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		t.Fatal("evidence notification did not reach the real chat target adapter")
 	}
 
+	// A valid ID from another invocation still proves no relationship to this
+	// handler. Keep the check, without accepting its supplied step name.
+	ownerHandler, finishOwner := c.pythonAutomationHandler(ctx, step, code, root+"/runs/run-one/execution/task")
+	otherHandler, finishOther := c.pythonAutomationHandler(ctx, step, code, root+"/runs/run-one/execution/task")
+	startRaw, err := ownerHandler(ctx, map[string]interface{}{"action": "step", "key": "foreign-start", "order": float64(1), "arguments": map[string]interface{}{"phase": "start", "title": "Other invocation", "source_call": "main.py:shared@main.py:1"}})
+	var foreignStart pythonHelperReply
+	if err != nil || json.Unmarshal([]byte(startRaw), &foreignStart) != nil || !foreignStart.OK {
+		t.Fatalf("other invocation setup failed: %s %v", startRaw, err)
+	}
+	checkRaw, err := otherHandler(ctx, map[string]interface{}{"action": "check", "key": "foreign-check", "order": float64(1), "arguments": map[string]interface{}{"name": "Other invocation check", "ok": true, "step_execution_id": foreignStart.ConversationID, "step_name": "Forged name"}})
+	var foreignCheck pythonHelperReply
+	if err != nil || json.Unmarshal([]byte(checkRaw), &foreignCheck) != nil || !foreignCheck.OK {
+		t.Fatalf("unassigned check did not run: %s %v", checkRaw, err)
+	}
+	finishOwner(true)
+	finishOther(true)
+	run(false, false, "slow-step")
+	run(false, false, "missing-finish")
+	// A successful script must not acquire a failed/running step simply
+	// because the already-accepted start response took more than three seconds.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		data, _ := os.ReadFile(filepath.Join(docs, root, "runs/run-one/run_metadata.json"))
+		var record struct {
+			Steps map[string]PythonStepEvidence `json:"python_steps"`
+		}
+		_ = json.Unmarshal(data, &record)
+		settled := false
+		for _, item := range record.Steps {
+			if item.Name == "Delayed receipt" {
+				if item.Status == "completed" {
+					settled = true
+				} else if item.Status == "failed" || time.Now().After(deadline) {
+					t.Fatalf("successful Python acquired a false failed/incomplete step after delayed start receipt: %+v", item)
+				}
+			}
+		}
+		if settled {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("successful delayed step has no completed record")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	metadata, err := os.ReadFile(filepath.Join(docs, root, "runs/run-one/run_metadata.json"))
 	var recorded struct {
 		Steps    map[string]PythonStepEvidence `json:"python_steps"`
@@ -444,10 +640,16 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	if err != nil || json.Unmarshal(metadata, &recorded) != nil || len(recorded.Evidence) == 0 || len(recorded.Evidence) > 200 {
 		t.Fatalf("bounded helper results absent from run record: %s %v", metadata, err)
 	}
-	foundCompleted, foundFailure, foundWithoutNotifier := false, false, false
+	foundCompleted, foundFailure, foundWithoutNotifier, foundMissingFinish := false, false, false, false
 	for _, item := range recorded.Steps {
 		if item.StartedAt == "" || item.CompletedAt == "" || item.DurationMs < 0 || item.SourceCall == "" || item.LogNote == "" {
 			t.Fatalf("step record lacks timing/source/log explanation: %+v", item)
+		}
+		if item.Name == "Missing finish receipt" {
+			if item.Status != "completed" || item.Detail != "finish receipt not received" {
+				t.Fatalf("exit-0 missing finish receipt recorded dishonestly: %+v", item)
+			}
+			foundMissingFinish = true
 		}
 		foundCompleted = foundCompleted || item.Status == "completed"
 		foundFailure = foundFailure || item.Status == "failed"
@@ -458,6 +660,9 @@ assert first.log_complete and second.log_complete and passed.log_complete
 			}
 			foundWithoutNotifier = true
 		}
+	}
+	if !foundMissingFinish {
+		t.Fatal("successful missing-finish step was not recorded")
 	}
 	if !foundCompleted || !foundFailure || !foundWithoutNotifier {
 		t.Fatalf("notifier-independent step evidence missing: completed=%t failed=%t no_notifier=%t", foundCompleted, foundFailure, foundWithoutNotifier)
@@ -472,21 +677,107 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		if strings.Contains(string(encoded), "fixture-credential") || len([]rune(item.Detail)) > 500 {
 			t.Fatalf("run evidence missed existing credential redaction or bounded detail: %s", encoded)
 		}
+		if item.StepExecutionID != "" {
+			step, found := recorded.Steps[item.StepExecutionID]
+			if !found || step.Name != item.StepName {
+				t.Fatalf("check did not identify the actual recorded step: %+v", item)
+			}
+		} else if item.StepName != "" {
+			t.Fatalf("unassigned check accepted an authored step name: %+v", item)
+		}
 		switch item.Name {
 		case "Evidence inside":
-			foundInside = item.OK != nil && *item.OK && strings.HasPrefix(item.SourceCall, "main.py:evidence@")
+			foundInside = item.OK != nil && *item.OK && strings.HasPrefix(item.SourceCall, "main.py:evidence@") && item.StepName == "Evidence"
 		case "Evidence expected failure":
 			foundFailed = item.OK != nil && !*item.OK && item.SourceCall != ""
 		case "Evidence outside":
-			foundOutside = item.SourceCall == ""
+			foundOutside = item.SourceCall == "" && item.StepExecutionID == "" && item.StepName == ""
 		}
 		if item.Kind == "notify" && strings.Contains(item.Detail, "progress") {
-			foundNotify = item.OK == nil && item.SourceCall != ""
+			foundNotify = item.OK == nil && item.SourceCall != "" && item.StepName == "Evidence"
 		}
 	}
 	if !foundInside || !foundFailed || !foundOutside || !foundNotify {
 		t.Fatalf("real Python run evidence missing: inside=%t failed=%t outside=%t notify=%t", foundInside, foundFailed, foundOutside, foundNotify)
 	}
-	t.Log(fmt.Sprintf("real_python=true resumed_first=true repeated_key_runs=true failed_checks_retained=%d", failures))
+	byName := map[string]PythonRunEvidence{}
+	for _, item := range items {
+		byName[item.Name] = item
+	}
+	firstEvidence, secondEvidence := byName["Shared first"], byName["Shared second"]
+	if firstEvidence.StepExecutionID == "" || secondEvidence.StepExecutionID == "" || firstEvidence.StepExecutionID == secondEvidence.StepExecutionID || firstEvidence.SourceCall != secondEvidence.SourceCall || firstEvidence.StepName != "Shared first" || secondEvidence.StepName != "Shared second" {
+		t.Fatalf("shared Python helper attribution is ambiguous: first=%+v second=%+v", firstEvidence, secondEvidence)
+	}
+	if byName["Nested check"].StepName != "Nested evidence" || byName["Restored outer check"].StepName != "Evidence" || byName["Restored outer check"].StepExecutionID != byName["Evidence inside"].StepExecutionID {
+		t.Fatal("nested step context did not restore its outer execution")
+	}
+	for _, name := range []string{"Unknown step check", "Other invocation check"} {
+		if unassigned, found := byName[name]; !found || unassigned.StepExecutionID != "" || unassigned.StepName != "" {
+			t.Fatalf("unproven execution ID gained step attribution: %+v", unassigned)
+		}
+	}
+	t.Logf("shared helper source=%s attributed distinct executions=%s,%s; nested/outer/outside/unknown cases passed", firstEvidence.SourceCall, firstEvidence.StepExecutionID, secondEvidence.StepExecutionID)
+	// PR1642: Stop may finalize the invocation while OnExecutionStart is
+	// blocked after the initial durable record but before activity registration.
+	for _, succeeded := range []bool{false, true} {
+		blocked := &blockedStepRecorder{started: make(chan struct{}), proceed: make(chan struct{})}
+		c.SetWorkshopExecutionNotifier(blocked)
+		env := map[string]string{"MCP_API_TOKEN": "helper-test-token"}
+		closeBridge := c.configureScriptBridgeSession(ctx, step, guard, DBAccessNone, env, code, root+"/runs/run-one/execution/task")
+		title := fmt.Sprintf("Registered after invocation end %t", succeeded)
+		body, _ := json.Marshal(map[string]interface{}{"action": "step", "key": title, "order": 1, "arguments": map[string]interface{}{"phase": "start", "title": title, "source_call": "main.py:late@main.py:1"}})
+		request, _ := http.NewRequestWithContext(ctx, http.MethodPost, env["MCP_API_URL"]+"/tools/custom/python_automation", bytes.NewReader(body))
+		request.Header.Set("Authorization", "Bearer helper-test-token")
+		done := make(chan error, 1)
+		go func() {
+			response, err := http.DefaultClient.Do(request)
+			if err == nil {
+				_, _ = io.Copy(io.Discard, response.Body)
+				response.Body.Close()
+			}
+			done <- err
+		}()
+		select {
+		case <-blocked.started:
+		case <-ctx.Done():
+			close(blocked.proceed)
+			closeBridge(false)
+			t.Fatal(ctx.Err())
+		}
+		closeBridge(succeeded)
+		close(blocked.proceed)
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		data, err := os.ReadFile(filepath.Join(docs, root, "runs/run-one/run_metadata.json"))
+		var record struct {
+			Steps map[string]PythonStepEvidence `json:"python_steps"`
+		}
+		if err != nil || json.Unmarshal(data, &record) != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, item := range record.Steps {
+			if item.Name == title {
+				found = true
+				want := "failed"
+				if succeeded {
+					want = "completed"
+				}
+				if item.Status != want || item.CompletedAt == "" {
+					t.Fatalf("late step remained running after invocation ended: %+v", item)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("late step record missing")
+		}
+	}
+	t.Log(fmt.Sprintf("real_python=true checks_reexecuted_on_resume=true repeated_labels_run=true failed_checks_retained=%d", failures))
 	common.ClearSessionShellConfig(c.GetMCPSessionID())
 }

@@ -129,7 +129,7 @@ export function CrewExecutableEditor({
             </div>
           )
         ) : (
-          <CrewWorkflowRuns workspacePath={item.workspace_path} script={script} view={runs} onView={onRuns} folders={folders} loading={workspace.loading || !workspace.state} onRefresh={workspace.refresh} onAsk={ask} />
+          <CrewWorkflowRuns workflowId={item.id} workspacePath={item.workspace_path} script={script} view={runs} onView={onRuns} folders={folders} loading={workspace.loading || !workspace.state} onRefresh={workspace.refresh} onAsk={ask} />
         )}
       </Suspense>
     </div>

@@ -856,11 +856,8 @@ func (api *StreamingAPI) normalizeProviderSharing(ctx context.Context, ownerID s
 // queryProviderAccountScope is the account scope of a /api/query turn: the
 // signed-in principal, the workflow folder for a workflow run, else the
 // selected folder (Crew or Code root), and the product of its profile.
-func queryProviderAccountScope(req QueryRequest, principal string, profile *resolvedAgentProfile, isWorkflowPhase bool, workflowPhaseFolder string) providerAccountScope {
+func queryProviderAccountScope(req QueryRequest, principal string, profile *resolvedAgentProfile) providerAccountScope {
 	scope := providerAccountScope{Principal: principal, WorkspacePath: req.SelectedFolder, Product: req.AgentProfileID}
-	if isWorkflowPhase && strings.TrimSpace(workflowPhaseFolder) != "" {
-		scope.WorkspacePath = workflowPhaseFolder
-	}
 	if profile != nil && strings.TrimSpace(profile.Definition.Product) != "" {
 		scope.Product = profile.Definition.Product
 	}
@@ -899,39 +896,9 @@ func (api *StreamingAPI) queryTurnConnectionForSession(req QueryRequest, session
 	return "", ""
 }
 
-// finalQueryTurnConnection is the account a /api/query turn will run on
-// after every override handleQuery applies: a workflow phase chat that does
-// not override its manifest runs on the manifest's model and account (the
-// same rule as handleQuery's workflow-phase block, which only phase chats
-// take; any other chat runs on the account it names, so admission checks
-// that one, the same one the cost ledger records).
-func (api *StreamingAPI) finalQueryTurnConnection(ctx context.Context, req QueryRequest, sessionID string) (provider, connectionID string) {
-	provider, connectionID = api.queryTurnConnectionForSession(req, sessionID)
-	isPhase := strings.TrimSpace(req.AgentMode) == "workflow_phase" || req.admittedWorkflowPhase
-	if !isPhase || isGlobalLLMConfigLocked() || req.LLMConfig == nil || requestLLMConfigOverridesManifest(req) {
-		return provider, connectionID
-	}
-	workspace := ""
-	if strings.TrimSpace(req.PresetQueryID) != "" {
-		if resolved, err := api.resolveWorkspacePathFromPreset(ctx, req.PresetQueryID); err == nil {
-			workspace = resolved
-		}
-	}
-	if workspace == "" {
-		workspace = req.SelectedFolder
-	}
-	if strings.TrimSpace(workspace) == "" {
-		return provider, connectionID
-	}
-	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
-	if err != nil || !found || manifest == nil || manifest.Capabilities.LLMConfig == nil {
-		return provider, connectionID
-	}
-	phaseLLM, _ := workshopResolveLLMConfig(lockedPresetLLMConfig(manifest.Capabilities.LLMConfig))
-	if phaseLLM == nil || phaseLLM.Provider == "" || phaseLLM.ModelID == "" {
-		return provider, connectionID
-	}
-	return phaseLLM.Provider, phaseLLM.ConnectionID
+// finalQueryTurnConnection returns the current turn's selected account, or its retained request's account.
+func (api *StreamingAPI) finalQueryTurnConnection(_ context.Context, req QueryRequest, sessionID string) (provider, connectionID string) {
+	return api.queryTurnConnectionForSession(req, sessionID)
 }
 
 // delegationProviderAccountScope is a sub-agent's account scope: the
