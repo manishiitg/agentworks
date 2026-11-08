@@ -1,24 +1,8 @@
-# Editing an existing plan-based workflow
+# Older plan-based workflows
 
-New workflows are Python scripts: use the `python-workflows` skill. This guide only covers workflows created before that, until they are converted.
+New workflows are Python scripts: use the `python-workflows` skill. A workflow created before that keeps running, but its plan is no longer edited. When someone asks to change its steps, inputs or step settings, say plainly that it can't be edited: converting an existing workflow to a Python script is done by the platform operator for now (it keeps its name, data and schedules), and new workflows are scripts.
 
-The tool schemas are authoritative; these examples are optional. Use `crew_workflow_files action=list` for exact workspace identities and this Crew's available agents.
-
-Configure steps, inputs, step settings and goals in Crew chat; the screens show the plan, progress and run evidence.
-
-## Change a step without replacing the plan
-
-Read `planning/plan.json`, then call `crew_workflow_files` with `action=edit`, the returned `workspace_path`, `operation=update_step` and:
-
-```json
-{"step_id":"summarize","changes":{"title":"Summarize approved results","reason":"Clarify the result"}}
-```
-
-Use `describe` with `operation=add_step` for a new step's schema. Only `delete_plan_steps` removes named steps. Use `update_step_config` for a step's model/tools/skills and `update_variable` to add, update or delete one input. These use the same validators and change history as the workflow Builder. Other steps and inputs remain unchanged.
-
-An agent step can select a `crew_agent` returned by list. It reuses its saved role and model, with a separate run context. It does not import private chat history or another person's credentials. Explicit settings override defaults; an empty skills list deliberately selects none.
-
-Agent steps have one initial task (`description`), optional ordered follow-ups or required script calls (`items`), and explicit settings. Optional script tools remain available for the agent to choose when needed. `inputs` maps a name to one fixed value, workflow input or declared earlier output, using the same mapping shape as `script_inputs` below. An output without `field` gives the agent a file reference; choosing `field` supplies that JSON value. Do not paste previous output files into task instructions.
+Use `crew_workflow_files action=list` for exact workspace identities. To inspect one, `read` its `planning/plan.json` (pass `step_id` or `step_ids` for named steps); the screens show the plan, progress and run evidence.
 
 ## Schedule or expose the workflow
 

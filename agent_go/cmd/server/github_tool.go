@@ -31,6 +31,20 @@ var githubAPIBase = "https://api.github.com"
 
 const githubNotConnected = "No GitHub account is connected here. Connect GitHub in Vault (Settings → Vault → GitHub), then use it from this Crew, or select a GITHUB_TOKEN secret for this workflow."
 
+// githubStepOwner is whose Vault a workflow step's GitHub login comes from: the person its shell takes secrets
+// from (runSecretsOwner), never just whoever started the run. A Crew's owner wins for its workflows.
+func (api *StreamingAPI) githubStepOwner(ctx context.Context, starter, workspace string) string {
+	owner := api.runSecretsOwner(ctx, starter, workspace)
+	crewRoot := workspace
+	if binding, _ := findCrewExecutable(workspace); binding != nil {
+		crewRoot = binding.CrewRoot
+	}
+	if crewOwner, ok := crewProjectOwnerID(crewRoot); ok {
+		return crewOwner
+	}
+	return owner
+}
+
 func (api *StreamingAPI) githubToolToken(ctx context.Context) (string, error) {
 	user := common.SessionUserIDFromContext(ctx)
 	var secrets []resolvedSecret
@@ -58,8 +72,9 @@ func (api *StreamingAPI) githubToolToken(ctx context.Context) (string, error) {
 		if caps, found, err := LoadManifestForExecution(ctx, workspace); err == nil && found && caps.SelectedGlobalSecretNames != nil {
 			names = append(names, (*caps.SelectedGlobalSecretNames)...)
 		}
-		if owner, ok := crewProjectOwnerID(crewRoot); ok {
-			user = owner
+		// The step's shell takes its secrets from the project's owner, whoever started the run.
+		user = api.githubStepOwner(ctx, user, workspace)
+		if _, ok := crewProjectOwnerID(crewRoot); ok {
 			if selected, err := productSelectedGlobalSecrets(ctx, crewProfileID, crewRoot); err == nil && selected != nil {
 				names = append(names, (*selected)...)
 			}

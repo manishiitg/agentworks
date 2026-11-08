@@ -350,10 +350,15 @@ func TestExternalToolsHTTPMutationsAreNotExposed(t *testing.T) {
 	}
 	for name, args := range calls {
 		wantStatus, wantCode := 404, "unknown_tool"
-		if name == "write_file" {
+		// Builder actions live under the sessions tool: a read-only connection is refused by scope.
+		if name == "write_file" || strings.HasPrefix(name, "builder_") {
 			wantStatus, wantCode = 403, "insufficient_scope"
 		}
-		body := externalTestBody(t, f.call(t, "readonly-owner", name, args), wantStatus)
+		w := f.call(t, "readonly-owner", name, args)
+		if w.Code != wantStatus {
+			t.Fatalf("%s: status %d, want %d: %s", name, w.Code, wantStatus, w.Body)
+		}
+		body := externalTestBody(t, w, wantStatus)
 		if body["error"].(map[string]any)["code"] != wantCode {
 			t.Fatalf("wrong error for %s: %v", name, body)
 		}

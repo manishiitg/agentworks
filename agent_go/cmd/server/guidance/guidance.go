@@ -35,7 +35,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-//go:embed templates/builder/*.md templates/review/*.md templates/report/*.md templates/system/*.md
+//go:embed templates/report/*.md templates/system/*.md
 var templatesFS embed.FS
 
 // kindMeta captures everything we know about a guided flow at registration
@@ -74,11 +74,6 @@ type kindMeta struct {
 // not allowed in the caller's mode and tells the agent to suggest a mode
 // switch.
 var allKinds = map[string]kindMeta{
-	// Comprehensive plan review: critical artifact audit plus better-shape design guidance.
-	"design-plan": {Group: "builder", Description: "Comprehensive workflow plan and dependent-artifact review with better design recommendations", Modes: []string{"workshop"}},
-
-	// Reviews record concrete evidence and unresolved owner decisions.
-	"run-plan-drift": {Group: "review", Description: "Manual Plan Drift: check affected compatibility and prompt quality, apply bounded safe repairs through the scheduled candidate/receipt contract, and persist remaining dependency findings", Modes: []string{"workshop"}},
 
 	"design-dashboard": {Group: "report", Description: "Create or update user-designed db/reports/*.html views using the platform runtime and shared toolbar discovery: live goal/measurement/cost helpers, optional prebuilt metric widgets and daisyUI, report-owned approval buttons, live outside data via window.report.run scripts in code/reports/, and direct requests via window.report.sendChatMessage.", Modes: []string{"workshop"}},
 }
@@ -114,20 +109,10 @@ var referenceKinds = map[string]kindMeta{
 	"assumption-audit": {Group: "system", Description: "Bounded cross-artifact check that separates explicit user constraints and verified external facts from revisable design choices and agent-inferred assumptions; prevents plan/measurement/report/KB/learnings/DB/code from freezing an outdated approach", Modes: []string{"workshop"}},
 	// Shared authoring and review references.
 	"fix-verification":      {Group: "system", Description: "Proportional immediate checks for bounded repairs. Record what actually passed; changed_unverified still closes an applied fix when stronger runtime proof is unavailable. Reopen only on reproduction, with no future-run verification queue. Load before applying fixes.", Modes: []string{"workshop"}},
-	"agent":                 {Group: "system", Description: "Agent steps: a description-only first user turn plus optional subsequent items in one shared conversation, with optional predefined_routes chosen by the agent, SQL foreach, validation/repair turns, and saved-script batches. Load before authoring items, routes, scripted_steps/parameters, or reusable specialist sequences.", Modes: []string{"workshop"}},
-	"routing":               {Group: "system", Description: "Routing step design: deterministic major sub-workflow selection versus branch, plain agent, or an agent with adaptive specialist routes; route_selection.json, route_selections, convergence, and anti-patterns.", Modes: []string{"workshop"}},
-	"branch":                {Group: "system", Description: "Branch step design: deterministic small in-flow next-step selection versus routing, human input, plain agent, or an agent with adaptive specialists; branch_question, convergence, and anti-patterns.", Modes: []string{"workshop"}},
-	"scripted":              {Group: "system", Description: "Scripted step design: deterministic API/CLI/data work, script_parameters contracts and defaults, STEP_PARAMS_JSON, validation, permissions, and reuse from agent script batches or agent routes. Canonical plan type is scripted; conversational work uses agent. Load before adding or parameterizing a saved script.", Modes: []string{"workshop"}},
 	"playwright-scripted":   {Group: "system", Description: "Repeatable browser tests: use @agentworks/playwright for JS/TS or agentworks-playwright Python sync/async/pytest fixtures for Chromium live viewing and Builder interaction", Modes: []string{"multi-agent", "workshop", "run"}, Tools: []string{"agent_browser", "execute_shell_command"}},
-	"optimize-playbook":     {Group: "system", Description: "Optimizer deep-dive: harden vs replan decision tree, measurement, and the AgentWorks/Strategic Review framework", Modes: []string{"workshop"}},
-	"step-config":           {Group: "system", Description: "Per-step config reference (planning/step_config.json via update_step_config): store-access modes (including db_access mapped to managed query/mutation tools, with $DB_PATH only for saved scripted compatibility), locks, execution mode, model selection, validation_schema, skills/tools, and clearing fields. Load before tuning a step's access, locks, mode, or model.", Modes: []string{"workshop"}},
 	"file-layout":           {Group: "system", Description: "Workspace file layout reference and path discipline", Modes: []string{"multi-agent", "workshop", "run"}},
 	"workflow-guide":        {Group: "system", Description: "Plain-language help for first-time users: explain the current view and core workflow concepts, answer before acting, and offer relevant next actions without unrequested changes.", Modes: []string{"workshop", "run"}},
 	"workspace-views":       {Group: "system", Description: "What each workspace view on the workflow page shows and when to open or refresh it for the user (perform_ui_action)", Modes: []string{"workshop", "run"}, Tools: []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action"}},
-	"plan-editing-tools":    {Group: "system", Description: "Consolidated typed plan mutation arguments, native handler reuse and plan/config validation-store boundaries", Modes: []string{"workshop"}},
-	"plan-design":           {Group: "system", Description: "Plan-design guide: step boundaries, step-type selection, context flow, validation/failure design, anti-patterns, step-types reference. Load when designing a new plan or restructuring an existing one in DESIGN phase.", Modes: []string{"workshop"}},
-	"step-description":      {Group: "system", Description: "Write agent prompts with the correct authority boundary: description and its task rules execute as the first user turn alone, and optional items are later user turns, skills/learnings carry reusable HOW, and validation_schema defines the load-bearing output shape. Load before writing or editing a step description, sequence items, or validation schema.", Modes: []string{"workshop"}},
-	"plan-change-impact":    {Group: "system", Description: "Plan-change impact analysis: when a step changes (add/remove/reorder, output contract, db writes, or behavior) trace and reconcile the blast radius across downstream steps, measurement, the report dashboard, db, learnings, and KB — by searching the workspace for references to the change's surface, then fixing the clear ones and flagging the judgment calls. The planning/changelog is the work-list; record an impact summary and let run-plan-drift be the audit backstop. After related edits, do one combined compatibility check in the current agent before the targeted test; reserve a full drift audit for AgentWorks or an explicit user request. Load before treating a plan change as done.", Modes: []string{"workshop"}},
 	"measurement-plan":      {Group: "system", Description: "Ordinary steps save source-backed measurements in their workflow database; dashboards query them. Load before changing collection, comparisons or stored history.", Modes: []string{"workshop"}},
 	"llm-provider-config":   {Group: "system", Description: "Model Library and provider-auth management for multi-agent chat and workflow workshop: discover provider models, validate candidates, optionally save reusable provider/model/options configurations, preserve reasoning_effort, and never read or edit config/ files directly. Load when the user asks which LLMs exist, wants a reusable saved configuration, or needs provider auth.", Modes: []string{"multi-agent", "workshop"}},
 	"llm-selection":         {Group: "system", Description: "Choosing the LLM that runs workflow work: provider-profile vs explicit Builder/high/medium/low roles via set_workflow_llm_config, per-step overrides (execution_tier, execution_llm, validation_llm), precedence rules, cost review tools, and provider auth. Load when picking, pinning, or changing which model executes a workflow step (not media generation — see workspace-media-tools for that).", Modes: []string{"workshop"}},
@@ -161,7 +146,6 @@ var referenceKinds = map[string]kindMeta{
 	"motion-guide":            {Group: "system", Description: "On-demand dashboard motion usage: designer-controlled interactive playback with window.report.motion, real historical data, refresh, and optional snapshot MP4 through the core dashboard export operation.", Modes: []string{"workshop"}, Tools: []string{"export_dashboard_motion"}, PanelSkill: "panel-dashboard", PanelReference: "references/dashboard/references/motion-guide.md"},
 	"reporting-policy":        {Group: "system", Description: "Dashboard contract: hosted React TSX with shared shadcn/Recharts components, live project data and actions, validation/preview/publication, shared Run chat widgets, and HTML pages for quick sharing. Read dashboard-authoring for the current component/API procedure. Load for reports, dashboards, actions, themes, or layouts.", Modes: []string{"workshop", "run"}},
 	"running-steps":           {Group: "system", Description: "Step execution mechanics: iterations & groups (always iteration-0 in workshop builder, read variables.json for group names), the 6-step execution procedure (determine group → execute_step → handle human_input → wait/notification → success/failure handling → always follow up), auto-notification system (no polling, system-generated [AUTO-NOTIFICATION] prefix, may be delayed), and stopping tasks (stop_all_executions / stop_step are required, text alone does NOT stop). Load before calling execute_step / run_full_workflow or when a user asks how to stop/cancel.", Modes: []string{"workshop", "run"}},
-	"planning-steps":          {Group: "system", Description: "Workshop plan composition: take-action-by-default discipline, one large agent per shared-context span with proof/double-check/repair turns, intelligent separation when contexts should not be shared, scripted deterministic boundaries, required validation_schema, forward-only context flow, step types, fixed-branch routing, and deeper references. Load before adding/editing plan steps.", Modes: []string{"workshop"}},
 	"workshop-mode-flow":      {Group: "system", Description: "Build or improve the workflow through its normal typed tools. Keep useful work small and verify actual results.", Modes: []string{"workshop"}},
 	"debugging-flow":          {Group: "system", Description: "Debugging failed/stuck workflow steps: read-only investigation, AgentWorks Bug Review/Fixer, bounded manual fixes, run-mode inspection, root-cause mapping, and retry versus design-change decisions. Load when a step fails or behaves unexpectedly.", Modes: []string{"multi-agent", "workshop", "run"}},
 	"publish-strategy":        {Group: "system", Description: "Publish workflow report dashboards to a public URL on any static host — the share-twin of backup. Provider-agnostic + agentic (no per-provider code): three universal deploy paths (provider CLI like netlify/vercel/wrangler/gh-pages/surge/firebase; git-push-to-deploy; object-store/rclone/rsync sync), auth from a named secret. Includes export_dashboard_static (same TSX/HTML page, shared runtimes and captured authorized data, no SQL extraction or raw DB), existing publishing visibility, the configure->verify->auto flow, workflow publish/status.json. Load when the user asks to publish/share/host a workflow report, or to set up a publish destination.", Modes: []string{"multi-agent", "workshop"}},
@@ -308,7 +292,7 @@ type DefinitionToolRegistrar interface {
 func RegisterGuidanceTool(agent DefinitionToolRegistrar, currentMode string, logger loggerv2.Logger) {
 	desc := "Get the canonical guided-flow text for any workflow command. " +
 		"Call this tool — and follow the returned instructions verbatim — when (1) the user invokes a slash command " +
-		"like /design-plan or /design-dashboard. A command dispatch can supply the exact " +
+		"like /design-dashboard. A command dispatch can supply the exact " +
 		"" +
 		"kind and focus; when the dispatch message explicitly states kind=... and focus=... " +
 		"use those exact values. Pass the " +
@@ -439,7 +423,7 @@ func buildSystemToolsSkillWithMCP(mode string, mcpManagement bool) *llmtypes.Ski
 	if !mcpManagement {
 		referenceExamples = strings.ReplaceAll(referenceExamples, "`integration-discovery` before connecting a new third-party service/MCP server, ", "")
 	}
-	proceduralGuidance := "- `get_workflow_command_guidance(kind, focus?)` — canonical procedural flows (design-plan, run-plan-drift, design-dashboard, etc.). The returned text is your instructions for that turn; follow it verbatim.\n"
+	proceduralGuidance := "- `get_workflow_command_guidance(kind, focus?)` — canonical procedural flows (design-dashboard, etc.). The returned text is your instructions for that turn; follow it verbatim.\n"
 	if strings.EqualFold(strings.TrimSpace(mode), "run") {
 		referenceExamples = "`runtime-context` before answering from workflow state, `running-steps` before execution, or `human-in-the-loop` when work needs a user decision"
 		proceduralGuidance = ""

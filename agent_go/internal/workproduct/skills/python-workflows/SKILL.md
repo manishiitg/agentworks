@@ -9,6 +9,31 @@ A new workflow is a Python script: a `script.json` that declares its inputs and 
 
 Create it with `crew_workflow_files action=create kind=script`, then write `script.json` and `main.py` with the same tool's `write` action. Run it with `functions action=run_trigger`, then read the result with `functions action=trigger_status`.
 
+## External MCP and CLI
+
+An external MCP agent uses `workspace action=automation_create/read/write` with
+`crew_id`; `read` and `write` also take the returned `workspace_path` and `file`
+(root `script.json`, `main.py` or a nested Python path). Use `workflow action=list/get`
+for script kind, typed inputs and presets; `workflow action=save_inputs` replaces
+`input_presets` and optionally `inputs` through the same validated editor.
+`workflow action=plan view=outline` inspects saved source without running it and
+keeps Builder source-editor authority. `@step` labels are not independently runnable.
+
+Start with `runs action=start` (`workflow_id`, optional `input_preset`, typed
+`inputs`) and poll `runs action=status` with its `session_id`, or use the existing
+`functions action=run_trigger/trigger_status` receipt. Do not start both for one
+intended run. Read `runs action=get` for `metadata.python_steps` and canonical
+`evidence` checks/notices; full run files keep the same read grants. Use
+`runs action=logs` for bounded stdout/stderr tails, failure traceback, saved
+inputs, step timings and agent answer/provider-log paths. After editing nested
+source, `runs action=rerun` with the old `run_folder` starts current source with
+the recorded values/preset and reports changed source files. It repeats real
+effects (including database writes and sends), so do not rerun merely to inspect
+an uncertain start. External
+agents can read `help action=topic topic=python-workflows` for the complete MCP
+and named laptop CLI instructions. These operations keep current project,
+source-editing, account and file grants.
+
 ## script.json
 
 ```json
@@ -91,12 +116,13 @@ else:
 - `inputs`: this run's typed values, by name.
 - `run_folder`: this run's own folder. Write outputs here.
 - `@step("Title")` on a function: a label in the Plan and Runs views. The function runs normally every time; nothing is cached or retried.
-- `agent(name, task, tools=(...), browser=False, knowledge=None, scripts=(...))`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right, so check its files or `reply.answer_file.read_text()`. Keep task texts as module constants so the Plan can show them. `tools` selects connected app tools such as `"human_tools:integrations.google"`; `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
+- `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None, scripts=(...))`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right, so check its files or `reply.answer_file.read_text()`. Keep task texts as module constants so the Plan can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
 - `run_script(id, inputs)`: run another saved script of this Crew and get its output files.
 - `call_function(crew, name, inputs)`: call another Crew's published function. A running receipt is not the answer; refresh it with `function_status(call_id)`.
 - `check(name, ok, detail)`: record a check in the run. A failed check stays visible; your code decides what happens next.
 - `notify(text)`: a progress line to the owner in the Crew chat.
 - `send_email(to, subject, body)` and `send_slack(route, text)`: explicit sends through the connected account or Slack route. Only send when the workflow's job is to reach people.
+- `from agentworks import google, slack, github`: call connected apps directly from Python, with the same accounts and permissions. `google.sheets.read(id, range)`, `.write(id, range, rows)` and `.append(...)`; `google.gmail.search(query)`; `google.calendar.list(start, end)` and `.create(title, start, end)`; `google.drive.read(doc_id)` saves Google Doc text in this run. `slack.read(route)` reads channel messages; `.send(route, text)` and `.reply(route, thread_ts, text)` use the tracked sender. `github.files(repo)`, `.read(repo, path)`, `.issues(repo)`, `.prs(repo)`, `.create_issue(repo, title, body)`, `.comment(repo, number, body)`, `.create_pr(repo, head, base, title)` and `.diff(repo, number)` use the Crew's GitHub connection. JSON results keep the service's shape; failures raise `AutomationError`. Sends and app calls do real work, including in mocked-agent runs.
 
 ## Rules
 
@@ -106,6 +132,6 @@ else:
 - **Durable files** that later runs need go under `WORKFLOW_DATA_ROOT`; everything else stays in `run_folder`.
 - **Nobody is asked mid-run.** A run never waits for a person. A missing value fails the run with a clear reason.
 - **The run record is the summary.** Do not write a separate run summary; Activity records every outcome. Use `notify` for the owner and the send helpers only for people the workflow exists to reach.
-- **Mocked test runs.** Put canned agent replies in `code/agent_mocks.json` as `{"Agent name": {"text": "...", "files": {"leads.json": "..."}}}` and start a run with mocked agents. Only the agents are mocked: scripts, databases, sends and app calls are real, and an agent missing from the file fails the run.
+- **Mocked test runs.** Use this only when the installation's current start schema offers `mock_agents`; otherwise do not claim a mocked run. Put canned agent replies in `code/agent_mocks.json` as `{"Agent name": {"text": "...", "files": {"leads.json": "..."}}}` and start a run with mocked agents. Only the agents are mocked: scripts, databases, sends and app calls are real, and an agent missing from the file fails the run.
 
 Existing plan-based workflows keep working until they are converted; edit them with the guide in `references/crew-plan/SKILL.md`.

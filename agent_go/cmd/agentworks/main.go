@@ -67,15 +67,15 @@ var cliOperationGroups = []struct {
 	name, description string
 	operations        []struct{ command, tool string }
 }{
-	{"workflows", "Discover workflows", []struct{ command, tool string }{{"list", "list_workflows"}, {"get", "get_workflow"}}},
+	{"workflows", "Find, create and edit saved Python workflows", []struct{ command, tool string }{{"list", "list_workflows"}, {"get", "get_workflow"}, {"outline", "get_plan"}, {"create", "crew_workflows__create"}, {"source", "crew_workflows__read"}, {"save-source", "crew_workflows__write"}, {"save-inputs", "save_script_inputs"}}},
 	{"files", "Read and edit guarded workspace files", []struct{ command, tool string }{{"code", "list_step_code"}, {"link", "get_file_link"}, {"list", "list_files"}, {"read", "read_file"}, {"write", "write_file"}, {"search", "search_files"}}},
-	{"runs", "Start, steer, stop, and inspect runs", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"start-step", "execute_step"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"message", "send_step_message"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
+	{"runs", "Start, steer, stop, and inspect runs", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"rerun", "rerun_workflow"}, {"start-step", "execute_step"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"message", "send_step_message"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
 	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "project_schedules_list"}, {"runs", "project_schedules_runs"}, {"trigger", "project_schedules_run_now"}}},
 	{"chat", "Send messages to the workflow assistant", []struct{ command, tool string }{{"ask", "chat"}}},
 	{"messages", "Register named agents, discover addresses and manage your inbox", []struct{ command, tool string }{{"register", "messages"}, {"unregister", "messages"}, {"list", "messages"}, {"send", "messages"}, {"read", "messages"}, {"count", "messages"}, {"delete", "messages"}, {"clear", "messages"}}},
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
-	{"functions", "List, call and manage project functions", []struct{ command, tool string }{{"list", "project_functions_list"}, {"call", "project_functions_call"}, {"call-status", "project_functions_get_call"}, {"call-file", "project_functions_get_call"}, {"suggest", "suggest_workflow_change"}}},
+	{"functions", "List, call and manage project functions", []struct{ command, tool string }{{"triggers", "list_crew_attached_triggers"}, {"run-trigger", "run_crew_attached_trigger"}, {"trigger-status", "get_crew_attached_trigger_run"}, {"list", "project_functions_list"}, {"call", "project_functions_call"}, {"call-status", "project_functions_get_call"}, {"call-file", "project_functions_get_call"}, {"suggest", "suggest_workflow_change"}}},
 	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"ask", "ask_crew"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
 }
 
@@ -202,9 +202,9 @@ func newCommand(o *options) *cobra.Command {
 		root.AddCommand(groupCmd)
 	}
 	plan := &cobra.Command{
-		Use: "plan get|list|edit", Args: cobra.MaximumNArgs(1),
-		Short: "Read or edit a workflow plan with existing authoring consent",
-		Long:  "Read with plan get. Discover native edit schemas with plan list. Use plan edit --input FILE with action, arguments, expected_revision from get_plan and a unique request_id. Identical retries return the saved receipt; current owner/editor/team roles and existing Builder consent apply.",
+		Use: "plan get", Args: cobra.MaximumNArgs(1),
+		Short: "Read an older plan-based workflow's plan",
+		Long:  "Read with plan get. Older plan-based workflows keep running but are no longer edited; the platform operator converts them to Python script workflows.",
 	}
 	addOperationFlags(plan, "get_plan")
 	plan.RunE = func(cmd *cobra.Command, args []string) error {
@@ -214,12 +214,10 @@ func newCommand(o *options) *cobra.Command {
 		switch args[0] {
 		case "get":
 			return o.call(cmd, "get_plan")
-		case "list":
-			return o.callWithArguments(cmd, "plan", map[string]any{"action": "list"})
-		case "edit":
-			return o.call(cmd, "plan")
+		case "list", "edit":
+			return fmt.Errorf("older plan-based workflows are no longer edited; converting one to a Python script workflow is done by the platform operator for now")
 		default:
-			return fmt.Errorf("unknown plan operation %q: use get, list or edit", args[0])
+			return fmt.Errorf("unknown plan operation %q: use get", args[0])
 		}
 	}
 	root.AddCommand(plan)
@@ -618,7 +616,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	if tool == "search_files" || tool == "list_workflows" || tool == "list_crews" || tool == "search_crew_files" {
 		f.String("query", "", "Search query")
 	}
-	if tool == "get_run" || tool == "get_logs" {
+	if tool == "get_run" || tool == "get_logs" || tool == "rerun_workflow" {
 		f.String("run-folder", "", "Run folder from list_runs")
 	}
 	if tool == "execute_step" {
@@ -627,8 +625,40 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.String("human-input", "", "Run-specific instructions or human_input response")
 		f.String("tier", "", "LLM tier override: high, medium, or low")
 	}
-	if tool == "run_full_workflow" {
-		f.String("group", "", "Variable group name to execute")
+	if tool == "run_full_workflow" || tool == "run_crew_attached_trigger" {
+		f.String("preset", "", "Saved input preset from workflows get")
+		f.String("inputs", "", "Declared input values as a JSON object")
+	}
+	if tool == "get_plan" {
+		f.String("view", "", "outline or full; Python scripts return their saved-source outline")
+		f.String("step-id", "", "Older plan workflows only: read one plan step")
+	}
+	if strings.HasPrefix(tool, "crew_workflows__") {
+		if tool == "crew_workflows__create" {
+			f.String("name", "", "Name of the new Python workflow")
+		} else {
+			f.String("workspace", "", "workspace_path returned by workflow creation or discovery")
+			f.String("file", "", "Source path such as main.py, nested/report.py or script.json")
+			if tool == "crew_workflows__write" {
+				f.String("content-file", "", "Local UTF-8 source file, or - for stdin")
+			}
+		}
+	}
+	if tool == "save_script_inputs" {
+		f.String("inputs", "", "Optional complete typed input definitions as a JSON array")
+		f.String("input-presets", "", "Complete presets as a JSON array of objects with name and values; [] removes all")
+	}
+	if tool == "list_crew_attached_triggers" || tool == "run_crew_attached_trigger" || tool == "get_crew_attached_trigger_run" {
+		f.String("workspace", "", "Saved workflow workspace_path or workflow:<id> from discovery")
+		if tool != "list_crew_attached_triggers" {
+			f.String("trigger-id", "", "trigger_id from a prior receipt; omit on run-trigger for a direct run")
+		}
+		if tool == "get_crew_attached_trigger_run" {
+			f.String("run-id", "", "run_id from run-trigger")
+		}
+		if tool == "run_crew_attached_trigger" {
+			f.String("delivery-id", "", "Reuse only when retrying the same intended delivery")
+		}
 	}
 	if tool == "run_status" || tool == "send_step_message" || tool == "stop_step" || tool == "stop_all_executions" || tool == "run_reply_input" {
 		f.String("session", "", "Run session ID from a previous run call")
@@ -728,7 +758,7 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 			return nil, errors.New("--input must contain exactly one JSON object")
 		}
 	}
-	for flagName, field := range map[string]string{"project": "project", "workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id", "idempotency-key": "idempotency_key", "agent": "agent_name"} {
+	for flagName, field := range map[string]string{"project": "project", "workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id", "idempotency-key": "idempotency_key", "agent": "agent_name", "workspace": "workspace_path", "name": "name", "preset": "input_preset", "view": "view", "trigger-id": "trigger_id", "run-id": "run_id", "delivery-id": "delivery_id"} {
 		if cmd.Flags().Changed(flagName) {
 			value, _ := cmd.Flags().GetString(flagName)
 			arguments[field] = value
@@ -748,6 +778,24 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 				arguments[field], _ = cmd.Flags().GetBool(flag)
 			}
 		}
+	}
+	for flagName, field := range map[string]string{"inputs": "inputs", "input-presets": "input_presets"} {
+		if cmd.Flags().Changed(flagName) {
+			raw, _ := cmd.Flags().GetString(flagName)
+			decoder := json.NewDecoder(strings.NewReader(raw))
+			decoder.UseNumber()
+			var value any
+			if err := decoder.Decode(&value); err != nil {
+				return nil, fmt.Errorf("--%s must contain JSON: %w", flagName, err)
+			}
+			if err := decoder.Decode(new(any)); err != io.EOF {
+				return nil, fmt.Errorf("--%s must contain one JSON value", flagName)
+			}
+			arguments[field] = value
+		}
+	}
+	if cmd.Flags().Lookup("file") != nil && cmd.Flags().Changed("file") && cmd.Parent() != nil && cmd.Parent().Name() == "workflows" {
+		arguments["file"], _ = cmd.Flags().GetString("file")
 	}
 	if cmd.Flags().Lookup("function-input") != nil && cmd.Flags().Changed("function-input") {
 		raw, _ := cmd.Flags().GetString("function-input")
@@ -819,6 +867,9 @@ func (o *options) call(cmd *cobra.Command, name string) error {
 	arguments, err := operationArguments(cmd, o.stdin)
 	if err != nil {
 		return err
+	}
+	if name == "get_plan" && cmd.Name() == "outline" && arguments["view"] == nil {
+		arguments["view"] = "outline"
 	}
 	if name == "messages" && cmd.Name() != "call" {
 		arguments["action"] = cmd.Name()
@@ -948,6 +999,20 @@ func crewCommandCall(name string, args map[string]any) (string, map[string]any) 
 		family, action = "workflow", "list"
 	case "get_workflow":
 		family, action = "workflow", "get"
+	case "save_script_inputs":
+		family, action = "workflow", "save_inputs"
+	case "crew_workflows__create":
+		family, action = "workspace", "automation_create"
+	case "crew_workflows__read":
+		family, action = "workspace", "automation_read"
+	case "crew_workflows__write":
+		family, action = "workspace", "automation_write"
+	case "list_crew_attached_triggers":
+		family, action = "functions", "triggers"
+	case "run_crew_attached_trigger":
+		family, action = "functions", "run_trigger"
+	case "get_crew_attached_trigger_run":
+		family, action = "functions", "trigger_status"
 	case "get_plan":
 		family, action = "workflow", "plan"
 	default:
@@ -958,7 +1023,7 @@ func crewCommandCall(name string, args map[string]any) (string, map[string]any) 
 		out[k] = v
 	}
 	out["action"] = action
-	if family == "workspace" {
+	if family == "workspace" && !strings.HasPrefix(action, "automation_") {
 		if id, ok := out["crew_id"]; ok {
 			out["workspace_id"] = id
 			delete(out, "crew_id")

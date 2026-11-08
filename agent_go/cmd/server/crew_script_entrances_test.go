@@ -184,7 +184,7 @@ func checkSavedScriptTriggerAndSchedule(t *testing.T, docs string, binding crewE
 		}
 	}
 
-	triggerArgs, _ := json.Marshal(map[string]interface{}{"action": "run_trigger", "workspace_path": binding.Root, "inputs": map[string]interface{}{"count": 5}, "delivery_id": "fixture-once"})
+	triggerArgs, _ := json.Marshal(map[string]interface{}{"action": "run_trigger", "workspace_path": binding.Root, "inputs": map[string]interface{}{"count": 5}, "delivery_id": "fixture-once", "input_preset": "Saved"})
 	var accepted struct {
 		RunID string `json:"run_id"`
 	}
@@ -249,9 +249,10 @@ func checkSavedScriptTriggerAndSchedule(t *testing.T, docs string, binding crewE
 			}
 		}
 	}
-	verify(accepted.RunID, "", "5", "")
+	verify(accepted.RunID, "", "5", "Saved")
 	call("/timer", `{}`)
 	verify("", "fixture-timer", "6", "Saved")
+	checkSavedScriptMCPStart(t, api, binding, docs)
 	if _, err := os.Stat(filepath.Join(docs, binding.Root)); !os.IsNotExist(err) {
 		t.Fatalf("script recreated retired runtime: %v", err)
 	}

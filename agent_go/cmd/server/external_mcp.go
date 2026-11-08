@@ -181,9 +181,6 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	for _, tool := range allowed {
-		if tool.Name == "plan" {
-			instructions += " Direct plans: plan action=list returns native schemas. Read workflow action=plan for expected_revision, then edit with the exact arguments and a unique request_id; identical retries return the receipt. Current roles, Builder consent, native validators and plan changelog apply."
-		}
 		if tool.Name == "workflow_upgrade" {
 			instructions += " Contract upgrades: workflow_upgrade action=status only lists owed migrations. Begin an explicit upgrade with action=prepare before Builder chat or plan checkers; this converts retired agent records without stamping. Do each migration's work in order, then action=stamp with version and confirm=workflow_id. The Builder's stamp checks and ordering apply."
 		}

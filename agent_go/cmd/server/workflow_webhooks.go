@@ -48,17 +48,18 @@ type WorkflowWebhookPayloadMappings = workflowtrigger.PayloadMappings
 type WorkflowWebhookDelivery struct {
 	// Set by authenticated direct-run dispatch, never decoded from public payloads.
 	// Persisted with the delivery so capacity resume revalidates the same contract.
-	DirectRun       bool                  `json:"direct_run,omitempty"`
-	ConditionCaller *conditionRouteCaller `json:"condition_caller,omitempty"`
-	Group           string                `json:"group,omitempty"`
-	Variables       map[string]string     `json:"variables,omitempty"`
-	RunID           string                `json:"run_id"`
-	DeliveryID      string                `json:"delivery_id"`
-	Event           string                `json:"event,omitempty"`
-	ReceivedAt      time.Time             `json:"received_at"`
-	Payload         json.RawMessage       `json:"payload"`
-	RouteSelections map[string]string     `json:"route_selections,omitempty"`
-	StepID          string                `json:"step_id,omitempty"`
+	DirectInputPreset string                `json:"direct_input_preset,omitempty"`
+	DirectRun         bool                  `json:"direct_run,omitempty"`
+	ConditionCaller   *conditionRouteCaller `json:"condition_caller,omitempty"`
+	Group             string                `json:"group,omitempty"`
+	Variables         map[string]string     `json:"variables,omitempty"`
+	RunID             string                `json:"run_id"`
+	DeliveryID        string                `json:"delivery_id"`
+	Event             string                `json:"event,omitempty"`
+	ReceivedAt        time.Time             `json:"received_at"`
+	Payload           json.RawMessage       `json:"payload"`
+	RouteSelections   map[string]string     `json:"route_selections,omitempty"`
+	StepID            string                `json:"step_id,omitempty"`
 }
 
 // WebhookRunMetadata is bounded delivery context for history; it never includes
@@ -957,6 +958,7 @@ func (receiver webhookReceiver) dispatchInternal(ctx context.Context, workspaceP
 	}
 	deliverySchedule := *sched
 	if call.DirectInputs != nil {
+		deliverySchedule.InputPreset = call.DirectInputPreset
 		// Reuse the native envelope decoder for this invocation, without
 		// rewriting the saved entry used by other internal/event callers.
 		if _, err := authorizeWorkflowContextPaths(ctx, []string{workspacePath}); err != nil {
@@ -974,6 +976,7 @@ func (receiver webhookReceiver) dispatchInternal(ctx context.Context, workspaceP
 		start := receiver.start
 		receiver.start = func(root, trigger, session string, input *WorkflowWebhookDelivery) (string, error) {
 			input.DirectRun = true
+			input.DirectInputPreset = call.DirectInputPreset
 			return start(root, trigger, session, input)
 		}
 

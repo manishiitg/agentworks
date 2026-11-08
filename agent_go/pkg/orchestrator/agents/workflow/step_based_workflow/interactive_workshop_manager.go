@@ -1213,9 +1213,9 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"list_executions",
 	}
 
-	// Step config & analysis tools
+	// Step code review (reading only; old plans are no longer edited, PLAT-746).
 	stepConfig := []string{
-		"update_step_config", "review_step_code",
+		"review_step_code",
 	}
 
 	// LLM config tools — inspect published/available models and save tiered LLM
@@ -1224,26 +1224,8 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"list_published_llms", "list_provider_models", "test_llm", "set_workflow_llm_config",
 	}
 
-	// Plan modification tools
-	planMod := []string{
-		"create_plan",
-		"validate_plan_change",
-		"migrate_workflow_skills",
-		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
-
-		"add_agent_route", "update_agent_route", "delete_agent_route",
-		"update_scripted_step", "update_agent_step", "update_routing_step", "update_branch_step",
-
-		"delete_plan_steps", "cleanup_orphan_step_configs",
-		"update_validation_schema",
-		"convert_routing_branch_step_type",
-		"record_plan_drift_review",
-		"check_plan_no_loss", "restore_step_from_changelog",
-	}
-
 	// Variable & config tools
 	variableConfig := []string{
-		"update_variable",
 		"update_workflow_config", "set_workflow_contract_version",
 	}
 
@@ -1294,7 +1276,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 		// when state isn't ready.
 		tools = append(tools, execution...)
 		tools = append(tools, stepConfig...)
-		tools = append(tools, planMod...)
 		tools = append(tools, variableConfig...)
 		tools = append(tools, schedule...)
 		tools = append(tools, skills...)
@@ -1326,7 +1307,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 		// Unknown mode — allow everything (no restriction)
 		tools = append(tools, execution...)
 		tools = append(tools, stepConfig...)
-		tools = append(tools, planMod...)
 		tools = append(tools, variableConfig...)
 		tools = append(tools, schedule...)
 		tools = append(tools, skills...)

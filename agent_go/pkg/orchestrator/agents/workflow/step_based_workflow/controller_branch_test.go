@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -466,33 +465,6 @@ func TestParseStepFromJSONHandlesBranchType(t *testing.T) {
 	}
 	if len(branchStep.Routes) != 2 {
 		t.Fatalf("expected 2 routes, got %d", len(branchStep.Routes))
-	}
-}
-
-// TestCanonicalWorkshopPromptOffersBranchForFixedChoices is the third
-// independent PLAT-259 review's finding #1: the canonical planning
-// instruction inside interactive_workshop_manager.go (the primary text the
-// Builder agent actually reads every workshop turn, distinct from the
-// references/*.md deep-dive docs) told the agent to use deterministic
-// `routing` for every fixed branch choice and omitted `branch` from its
-// step-types list entirely -- so normal plan creation could keep producing
-// routing steps for the small decisions PLAT-259 introduced `branch` to
-// represent, regardless of how well the reference docs described `branch`.
-// Mirrors the existing source-scan pattern in
-// TestRunInBackgroundPassesBuilderSkillSnapshotToBothAgentKinds
-// (background_skill_inheritance_test.go).
-func TestCanonicalWorkshopPromptOffersBranchForFixedChoices(t *testing.T) {
-	prompt := executeInteractiveWorkshopPromptForMode(t, "workshop")
-	operations, err := guidance.RenderReferenceKindForTest("workflow-chat", "workshop")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(prompt, "references/workflow-chat.md") || !strings.Contains(operations, "references/plan-design.md") || !strings.Contains(operations, "`branch`") {
-		t.Fatal("workshop must route step design to the canonical skill and expose branch")
-	}
-	doc := guidance.RenderSystemDoc("plan-design")
-	if !strings.Contains(doc, "small in-flow decision") || !strings.Contains(doc, "major sub-workflow fork") {
-		t.Fatal("design skill must distinguish small branches from major workflow routes")
 	}
 }
 

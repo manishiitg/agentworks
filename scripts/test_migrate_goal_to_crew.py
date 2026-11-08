@@ -83,6 +83,13 @@ class Migration(unittest.TestCase):
         # conversion must retain their real records, not create a trial copy.
         spec = importlib.util.spec_from_file_location('workflow_python', Path(__file__).with_name('migrate-workflow-to-python.py'))
         python = importlib.util.module_from_spec(spec); spec.loader.exec_module(python)
+        projects_file = self.state/'ownership/projects.json'
+        projects = m.read(projects_file)
+        projects['projects']['work/linked'] = {'product':'work','owner_id':'owner','project_id':'linked','folder':'linked'}
+        write(projects_file, projects)
+        manifest = m.read(self.source/'workflow.json')
+        manifest['capabilities']['workflow_context_paths'] = ['Crew/linked']
+        write(self.source/'workflow.json', manifest)
         source = self.base/'python-source'
         write(source/'script.json', {'id':'old-goal','name':'Converted report'})
         (source/'main.py').write_text('print("new engine")\n')
@@ -90,6 +97,7 @@ class Migration(unittest.TestCase):
         conversion = python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source,deployment_mode='server')
         self.assertEqual(hashes(self.base),before)
         self.assertEqual(conversion.report()['counts']['python_scripts'],1)
+        self.assertEqual(conversion.report()['carried_crew_links'], ['Crew/linked'])
         backup = self.state/'migrations/one-operator-backup'
         with self.assertRaisesRegex(ValueError,'outside the active workflow'):
             conversion.apply(backup=conversion.code/'bad-backup',plain_backup=True)
@@ -107,7 +115,8 @@ class Migration(unittest.TestCase):
         project = m.read(self.state/'ownership/projects.json')['projects']['work/target']
         self.assertEqual(project['database_root'],'workflows/old-goal/db')
         definition = m.read(conversion.code/'script.json')
-        self.assertEqual(definition['capabilities'],{'selected_secrets':['api-name']})
+        self.assertEqual(definition['capabilities'],{'selected_secrets':['api-name'],'workflow_context_paths':['Crew/linked']})
+        self.assertEqual(m.read(self.private/'product.json')['workflow_context_paths'], ['Crew/linked'])
         self.assertEqual(definition['input_presets'],[{'name':'default','values':{}}])
         with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
             self.assertEqual(db.execute('SELECT value FROM business_data').fetchall(),[('unchanged',)])
@@ -207,21 +216,40 @@ class Migration(unittest.TestCase):
             self.conversion()
         self.assertEqual(hashes(self.base), before)
 
-    def test_generated_cache_is_backed_up_with_links_then_excluded_from_runtime(self):
-        # The old cache carried package symlinks/hardlinks. Preserve the backup
-        # without following its symlink or treating cache as executable source.
-        cache = self.source/'.cache'
-        cache.mkdir(); (cache/'compiled').write_bytes(b'generated')
-        os.link(cache/'compiled', cache/'same-bytes')
-        (cache/'package-link').symlink_to('compiled')
+    def test_slot_cache_is_skipped_in_backup_and_never_read_or_deleted(self):
+        # PLAT-746-435: real conversion failed on a dangling sandbox link and
+        # slot-owned 0600 cache files. Mode 000 reproduces the read refusal
+        # without requiring a second OS account in the fixture.
+        caches = ['.cache', '.tmp', '.sandbox-cache', '.scratch-generated']
+        for name in caches:
+            cache = self.source/name
+            cache.mkdir()
+            (cache/'unreadable').write_bytes(b'generated')
+            (cache/'unreadable').chmod(0)
+            (cache/'dangling').symlink_to('absent-target')
         conversion = self.conversion()
-        self.assertEqual(conversion.report()['generated_caches_backup_only'], ['.cache'])
-        result = conversion.apply()
-        self.assertFalse((self.runtime/'.cache').exists())
-        with m.tarfile.open(Path(result['backup'])/'files.tar.gz') as archive:
-            self.assertEqual(archive.extractfile('source/.cache/same-bytes').read(), b'generated')
-            self.assertEqual(archive.getmember('source/.cache/package-link').linkname, 'compiled')
+        self.assertEqual(sorted(conversion.report()['backup_skipped']), sorted(caches))
+        result = conversion.apply(plain_backup=True)
+        backup = Path(result['backup'])
+        self.assertEqual(json.loads((backup/'skipped.json').read_text()), sorted('source/'+name for name in caches))
+        self.assertFalse(any((backup/'source'/name).exists() for name in caches))
+        for name in caches:
+            cache = self.runtime/name
+            self.assertTrue((cache/'dangling').is_symlink())
+            self.assertEqual((cache/'unreadable').stat().st_mode & 0o777, 0)
         self.assertTrue((self.runtime/'db/db.sqlite').is_file())
+        # The optional archive backup follows exactly the same exclusion.
+        archive_backup = self.base/'archive-backup'
+        m.verified_backup(archive_backup, [('runtime', self.runtime)])
+        self.assertEqual(json.loads((archive_backup/'skipped.json').read_text()), sorted('runtime/'+name for name in caches))
+        with m.tarfile.open(archive_backup/'files.tar.gz') as archive:
+            self.assertFalse(any('/'+name+'/' in p for p in archive.getnames() for name in caches))
+
+        (self.runtime/'code').mkdir(exist_ok=True)
+        bad = self.runtime/'code/broken-link'
+        bad.symlink_to('absent-target')
+        with self.assertRaisesRegex(ValueError, str(bad)):
+            m.no_links(self.runtime)
 
     def test_unsupported_source_layout_is_left_unchanged(self):
         file = self.source/'workflow.json'

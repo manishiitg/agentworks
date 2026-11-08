@@ -23,3 +23,17 @@ func TestGitHubToolUsesTheTurnsShellSecrets(t *testing.T) {
 		t.Fatalf("a turn without shell secrets got GitHub: %v", err)
 	}
 }
+
+// PLAT-746 review: a workflow step started by a Run person uses the workflow owner's
+// GitHub login, as its shell's secrets do, not the Run person's.
+func TestGitHubStepUsesTheWorkflowOwnersLoginNotTheRunPerson(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	registerWorkflowOwner("Workflow/shared-report", "owner")
+	api := &StreamingAPI{}
+	if got := api.githubStepOwner(context.Background(), "runner", "Workflow/shared-report"); got != "owner" {
+		t.Fatalf("a Run person's run looked up %q's GitHub, want the workflow owner's", got)
+	}
+	if got := api.githubStepOwner(context.Background(), "runner", "Workflow/unregistered"); got != "runner" {
+		t.Fatalf("a workflow with no recorded owner should keep the caller, got %q", got)
+	}
+}

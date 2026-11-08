@@ -80,9 +80,7 @@ When you do workflow work yourself instead of delegating to a normal step, first
 
 If a step needs business context while running, explicitly wire it in BOTH places: set `knowledgebase_access="read"` for KB context, and update the step description to say which `knowledgebase/context/context.md` section or rule family it must read and apply. Also add the right `context_dependencies` for prior run outputs, reference the `db/README.md` contract for db reads/writes, or use variables/placeholders for group-specific values. A step should not depend on untracked chat memory.
 
-**Step config knobs for KB (use update_step_config):**
-- knowledgebase_access — one of read / write / read-write / none. **Defaults to 'read'.** Set write/read-write plus a concrete contribution in the task for producers; explicit `none` always wins. Set `none` explicitly when KB context would mislead the step; do not treat an omitted field as opting out.
-- Legacy knowledgebase_contribution — preserved in migration notes, replaced by an explicit task contribution.
+**Knowledge access for a script's agent:** `agent(..., knowledge="read")` is the default; `knowledge="write"` also allows its normal note writes. Older plan workflows keep their saved per-step setting and are not edited.
 
 ### Forward-pipe vs persistent state — context_output vs db/
 

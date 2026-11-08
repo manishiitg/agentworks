@@ -2,14 +2,10 @@ package step_based_workflow
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -41,14 +37,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) materializeScriptBundle(ctx context.C
 		return err
 	}
 	defer root.Close()
-	cache, err := workflowfiles.OpenDirectory(root, cachePath, true)
-	if err != nil {
-		return err
-	}
-	defer cache.Close()
-	if err := cache.Chmod(".", 0700); err != nil {
-		return err
-	}
 	output, outputPath, err := workflowfiles.OpenWorkflowDirectory(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), strings.TrimPrefix(destination, hcpo.GetWorkspacePath()+"/"))
 	if err != nil {
 		return err
@@ -57,10 +45,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) materializeScriptBundle(ctx context.C
 	if root.Name() != output.Name() {
 		return fmt.Errorf("script snapshot must stay in its owning runtime")
 	}
+	bundle := make(map[string][]byte, len(files))
 	for name, data := range files {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
 		if !CrewScriptBundleFile(name) {
 			return fmt.Errorf("invalid saved script bundle")
 		}
@@ -68,46 +54,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) materializeScriptBundle(ctx context.C
 		if name == "script.json" {
 			continue
 		}
-		hash := fmt.Sprintf("%x", sha256.Sum256(data))
-		if info, err := cache.Lstat(hash); os.IsNotExist(err) {
-			temporary := ".new-" + uuid.NewString()
-			file, err := cache.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0444)
-			if err != nil {
-				return err
-			}
-			_, writeErr := file.Write(data)
-			closeErr := file.Close()
-			if writeErr == nil && closeErr == nil {
-				err = cache.Link(temporary, hash)
-			}
-			_ = cache.Remove(temporary)
-			if writeErr != nil {
-				return writeErr
-			}
-			if closeErr != nil {
-				return closeErr
-			}
-			if err != nil && !os.IsExist(err) {
-				return err
-			}
-		} else if err != nil {
-			return err
-		} else if !info.Mode().IsRegular() || info.Size() != int64(len(data)) {
-			return fmt.Errorf("invalid immutable script snapshot")
-		}
-		target := filepath.Join(outputPath, filepath.FromSlash(name))
-		parent, err := workflowfiles.OpenDirectory(root, filepath.Dir(target), true)
-		if err != nil {
-			return err
-		}
-		parent.Close()
-		// Remove only this invocation's old directory entry, never a blob inode.
-		if err := root.Remove(target); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		if err := root.Link(filepath.Join(cachePath, hash), target); err != nil {
-			return err
-		}
+		bundle[name] = data
 	}
-	return nil
+	return workflowfiles.MaterializeSourceSnapshot(ctx, root, cachePath, outputPath, bundle)
 }

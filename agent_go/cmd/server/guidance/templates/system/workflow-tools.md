@@ -1,5 +1,3 @@
-**Plan-editing tool arguments:** Before a plan mutation, read `builder-reference/references/plan-editing-tools.md`. Step fields described below belong inside `add_step.step` or `update_step.changes`; route/group/maintenance fields belong inside `parameters`. Use the live type/action-specific schema; these field descriptions do not authorize flat arguments or extra fields.
-
 **Saved Crew scripts:** For a step with `script`, follow `panel-plan/references/crew-plan/SKILL.md`: the runner snapshots the saved source and does not repair shared code. For step-local code, read `workflow.json.code_layout_version` first. In this reference, `<script-dir>` means `code/<step-id>` for version 1, or `learnings/<step-id>` for absent/zero (legacy). Resolve the placeholder before using a path; never infer the version from folders or migrate an existing workflow implicitly. Version 1 executes and repairs canonical source directly, with shared helpers under `WORKFLOW_CODE_ROOT`; only legacy workflows copy code into runs and save it back.
 
 ## Workflow Tools — Mode-Scoped Reference
@@ -77,7 +75,6 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 {{if ne .WorkshopMode "run"}}
 ## Step Config & Analysis (Workshop mode)
 
-- **`update_step_config(step_id, ...)`** — Update servers, tools, skills, learning settings, execution mode, LLMs, locks, review notes, description review state, and read-only `additional_read_paths` grants for declared workflow-relative inputs outside the standard run/db/KB/learnings surfaces.
 - **AgentWorks** — One continuing conversation checks the goal and evidence, then works with Builder on useful improvements. Use the current goal tools and existing permissions. There are no separate Gate, reviewer or fixer agents. OFF starts no AgentWorks work.
 - **Telling people** — Each run's outcome is recorded in Activity and the owner is told in the Crew chat. A workflow that must reach other people calls send_email or send_slack explicitly. Runs never wait for a person.
 - **Notification Gmail sender** — `settings action=get` shows the selected sender and available enabled Gmail connection IDs. Set the one workflow Notify sender with `settings(action="update", notifications={"gmail_connection_id":"<id>"})`, or pass `""` to inherit the account default. This controls the FROM account for `messages action=email_send`; ordinary workflow Gmail actions can choose their own sender.
@@ -94,22 +91,8 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 - **`runs(action="step_prompts", step_id, attempt?, iteration?)`** — System prompt and user message for a step.
 - **`settings action=get`** — Inspect the workflow's current MCP servers, selected skills, available secrets, notification content instructions and configured team delivery, LLM config, and schedules. Use this instead of `cat workflow.json` when you need the full workflow config. For the global installed skill catalog, use `skills action=list`.
 - **`models action=get`** — Per-step LLM overrides.
-- **`help(action="command", kind="run-plan-drift", focus?)`** *(Workshop only)* — Full artifact drift audit for scheduled AgentWorks or an explicit user request, including the plan-drift repair procedure and a read-only dependency checklist. Ordinary edits and targeted tests use `builder-reference/references/plan-change-impact.md` for one combined compatibility check in the current agent.
 
 {{if ne .WorkshopMode "run"}}
-## Plan Modification (Workshop mode)
-
-- **Create steps**: `create_plan`, `add_step`, `add_step`, `add_step`, `add_step`, `add_step`, `add_step`, `delete_plan_steps`, `maintain_plan`.
-- **Update steps**: `update_step(step_id, changes)` edits a step using its saved type. Each updater accepts only that type. Create a different execution model with `add_step` and explicitly wire its dependencies and routes; `update_step_config` does not change a step type.
-- **Reclassify routing/branch**: `convert_routing_branch_step_type(existing_step_id, target_type, reason)` atomically relabels an existing `routing` step as `branch` or vice versa — same id, same routes, only the question-field name changes. `reason` is the one-sentence classification rationale written to the plan changelog. Never use `add_step`/`add_step` + `delete_plan_steps` to do this by hand: deleting the old step prunes its `step_config.json` row (`drift_review`, `execution_tier`, etc.) before the id can be reused, so it does not actually preserve history.
-- **Scripted helper routes**: `manage_step_route` adds, updates, or deletes
-  `predefined_routes` on an agent (and on persisted legacy
-  agent records). Choose one scripted helper pattern per route: inline
-  `sub_agent_step`, or `orphan_step_ref` to reuse an allowlisted shared orphan.
-  Do not set both.
-- **Validation**: `update_validation_schema`.
-- **Graph integrity is atomic**: every plan mutation validates all routing/branch routes, agent/scripted/crew `next_step_id` fields before saving. `PLAN_GRAPH_INVALID` means nothing was saved. Repair every reference listed in the error with the appropriate `update_*_step` tool (target an existing step ID or `end`), then retry the original mutation. In particular, reroute inbound references before deleting their target step.
-
 ## Variables & Config
 
 - **`settings action=variable_add`** (name, value, description), **`action=variable_update`** (existing_variable_name, then name, value or description) and **`action=variable_delete`** (existing_variable_name) — Add, change or delete a variable.
@@ -120,13 +103,10 @@ Run mode consumes existing attachments; configuration changes require Workshop.
      - To **register a new server first**: use `mcp action=install` with the exact catalog name, or a verified public remote `url`. Complete setup in chat. Supply the user-provided `api_key` (with documented `api_key_header`/`api_key_format` when needed), or `client_id` and `client_secret` if a provider without dynamic registration needs an OAuth app. The server encrypts credentials; never repeat them or write them to project files. Guide the provider app setup with the exact returned callback URL, then retry the existing exact connection `name` without label or catalog. Return only the actual sign-in link for the person to approve at the provider; never ask for their password or send them to AgentWorks settings to finish. After consent, verify discovery and select the connection as part of the original request. A missing callback address is a server configuration problem, not a missing menu. Use only the arguments and remote transports the current tool schema advertises; no arbitrary process configuration.
      - `mcp action=edit` / `mcp action=remove` manage an already user-defined server (base/catalog servers can't be touched from chat). **`mcp action=remove` deletes the server account-wide, not just from one workflow** — it does not detach it from any workflow's `selected_servers`, so a workflow that had it attached keeps a dangling reference; the tool itself now checks and warns you which workflows are affected so you can tell the user and offer `settings action=update` with `mcp_servers.remove` for each one.
   3. Optional workflow-level allowlist: `settings(action="update", tools={"add":["server:*"]})` or `tools={"add":["server:tool_name"]}`. Tool entries must reference selected workflow servers.
-  4. `update_step_config(step_id, servers=["server-name"], tools=["server:tool_name"])` to scope specific servers/tools to a step.
   5. `mcp action=list` shows what's actually installed/authorized vs. merely present in the catalog but never connected — use this, not `mcp action=search`, to check the status of something already configured. `mcp action=logs` shows recent connection/discovery logs for one server, or lists which servers have logs — use it when a server isn't showing the tools you expect. `mcp action=discover` manually re-scans every configured server's tools in the background, for when metadata looks stale but nothing about the config itself changed.
 - **Browser workflow**:
   0. Call `browser(action="execute", command="status", ...)` when browser capability is available. If it returns `cdp_supported=false`, CDP is disabled for this deployment: do not configure `cdp`, probe ports, or offer CDP setup. Use `auto` (managed headless here), `headless`, or `none`.
   1. Pick the workflow mode with `settings action=update` with `browser_mode`. Prefer `auto` unless the workflow must require an authenticated visible Chrome (`cdp`) or must stay isolated in the background (`headless`).
-  2. For `browser action=execute` steps, enable `workspace_browser:agent_browser` via `update_step_config(enabled_custom_tools=[...])` and attach the matching runtime skill with `enabled_skills=["agent-browser"]`.
-  3. For browser steps, attach `enabled_skills=["agent-browser"]`; the runtime provides the managed `browser action=execute` tool.
 - **`settings action=update`** — Change offered MCP, tool and skill selections, secret names, knowledge links and grants, browser mode or notification choices. Use nested `mcp_servers`, `tools`, `skills`, `secrets` and `notifications` objects from the live schema. Models use `models action=set`. The server retains ten completed runs independently for Builder, schedules and webhooks.
 
   ```

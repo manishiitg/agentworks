@@ -1194,6 +1194,12 @@
   },
   {
     "family": "runs",
+    "name": "rerun",
+    "member": "rerun_workflow",
+    "description": "Repeat a saved Python run with its recorded inputs/preset and the current saved source. Real effects happen again; the receipt includes changed source files."
+  },
+  {
+    "family": "runs",
     "name": "list",
     "member": "list_runs",
     "description": "List accessible workflow runs."

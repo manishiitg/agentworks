@@ -26,6 +26,11 @@ class SameIdentityConversion(unittest.TestCase):
             original = source/'db.sqlite'
             original.write_bytes(b'first database')
             original.chmod(0o444)
+            cache = source/'.tmp'
+            cache.mkdir()
+            (cache/'git-askpass.sh').write_bytes(b'temporary')
+            (cache/'git-askpass.sh').chmod(0)
+            (cache/'dangling').symlink_to('missing')
             changed = state/'selected.json'
             first = Path(m.apply({changed:b'first'}, {'runtime':source}, state, backup, 'first'))
             source2 = root/'second-source'
@@ -33,6 +38,10 @@ class SameIdentityConversion(unittest.TestCase):
             (source2/'db.sqlite').write_bytes(b'second database')
             second = Path(m.apply({changed:b'second'}, {'runtime':source2}, state, backup, 'second'))
             self.assertEqual((first/'runtime/db.sqlite').read_bytes(),b'first database')
+            self.assertEqual(json.loads((first/'skipped.json').read_text()), ['runtime/.tmp'])
+            self.assertFalse((first/'runtime/.tmp').exists())
+            self.assertEqual((cache/'git-askpass.sh').stat().st_mode & 0o777, 0)
+            self.assertTrue((cache/'dangling').is_symlink())
             self.assertEqual((second/'runtime/db.sqlite').read_bytes(),b'second database')
             with self.assertRaisesRegex(ValueError,'already contains a snapshot'):
                 m.apply({changed:b'overwritten'}, {'runtime':source2}, state, backup, 'first')
@@ -53,7 +62,11 @@ class SameIdentityConversion(unittest.TestCase):
                 p.mkdir(parents=True)
             projects_file = state/'ownership/projects.json'
             projects = {'projects': {'work/example': {'product':'work','owner_id':'owner','project_id':'crew','folder':'example'}}}
+            projects['projects'].update({name:{'product':'work','owner_id':'owner','project_id':name,'folder':name}
+                                         for name in ('linked', 'already')})
             projects_file.write_bytes(m.encode(projects))
+            crew_manifest = {'id':'crew','workflow_context_paths':['Crew/already'], 'capabilities':{'selected_global_secret_names':['UNCHANGED']}}
+            (private/'workflow.json').write_bytes(m.encode(crew_manifest))
             binding = {'id':'task','crew_id':'crew','crew_root':'Crew/example','workspace_path':'Workflow/kept-name','kind':'workflow'}
             binding_file = state/'ownership/crew-executables'/(hashlib.sha256(binding['workspace_path'].encode()).hexdigest()+'.json')
             binding_file.write_bytes(m.encode(binding))
@@ -62,7 +75,7 @@ class SameIdentityConversion(unittest.TestCase):
             (definitions/'planning/plan.json').write_text('{"steps":[{"id":"old","write_access":{"knowledgebase":true},"validation_schema":{"required_files":["result.json"]}}]}')
             capabilities={'browser_mode':'cdp','browser_cdp_port':9222,'selected_global_secret_names':['EXAMPLE_TEST_SECRET'],'llm_config':{'mode':'provider','provider':'codex-cli'},'selected_servers':['example-app'],'selected_tools':['example-app:*']}
             # A retired tool in carried selections is dropped (PLAT-746).
-            (definitions/'workflow.json').write_bytes(m.encode({'id':'task','capabilities':dict(capabilities,selected_tools=['example-app:*','human_tools:record_summary'])}))
+            (definitions/'workflow.json').write_bytes(m.encode({'id':'task','workflow_context_paths':['Crew/linked'], 'capabilities':dict(capabilities,selected_tools=['example-app:*','human_tools:record_summary'])}))
             (definitions/'variables').mkdir()
             presets=[{'name':'Account A','values':{'account':'first'}},{'name':'Account B','values':{'account':'second'}}]
             (definitions/'variables/variables.json').write_bytes(m.encode({'variables':[{'name':'account','type':'string','value':'first'}],'groups':presets}))
@@ -107,12 +120,23 @@ class SameIdentityConversion(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'Remove '+name):
                     m.plan(docs,state,False,'task',source)
             (source/'script.json').write_bytes(m.encode(source_definition))
+            # A missing existing target refuses inspect before any data writes.
+            missing = projects['projects'].pop('linked')
+            projects_file.write_bytes(m.encode(projects))
+            with self.assertRaisesRegex(ValueError, 'existing Linked project'):
+                m.plan(docs,state,False,'task',source)
+            self.assertEqual(json.loads((private/'workflow.json').read_text()), crew_manifest)
+            projects['projects']['linked'] = missing
+            projects_file.write_bytes(m.encode(projects))
             changes,documents,report = m.plan(docs,state,False,'task',source)
+            self.assertEqual(report['conversion']['carried_crew_links'], ['Crew/linked'])
             self.assertEqual(report['conversion']['database_rows'],{'historical':1,'background_agent_log':1})
             self.assertEqual(report['conversion']['removed_tools'],['human_tools:record_summary'])
             self.assertEqual(report['conversion']['knowledge_write_steps'],['old'])
             self.assertEqual(report['conversion']['output_check_steps'],['old'])
             backup = Path(m.apply(changes,documents,state,identity="task", append_platform_rows=bool(report["conversion"]["appended_crew_platform_rows"])))
+            self.assertEqual(json.loads((backup/'crew-links').read_text()), crew_manifest)
+            self.assertEqual(json.loads((private/'workflow.json').read_text()), dict(crew_manifest, workflow_context_paths=['Crew/already','Crew/linked']))
             self.assertEqual({k:v for k,v in hashes(runtime).items() if k != 'db/db.sqlite'}, {k:v for k,v in before.items() if k != 'db/db.sqlite'})
             self.assertEqual(hashes(backup/'runtime'),before)
             self.assertEqual((private/'db/db.sqlite').read_bytes(), crew_db_before)

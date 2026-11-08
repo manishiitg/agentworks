@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"slices"
 	"strings"
@@ -17,13 +16,12 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's workflows. A new workflow is a Python script (script.json and main.py); read the python-workflows skill first. Older plan-based workflows are edited with the operations below until they are converted. list returns workflow ID, workspace_path and agents. upgrade takes workflow_id: omit version to see status, the next update instructions and current check failures; supply version and reason after completing them to check and stamp. A failed check never stamps. read takes workspace_path and file. edit changes named steps or inputs, or manages schedules/webhooks; describe lists the operations, and describe with operation returns that operation's schema (add_step takes step_type for one step type). A large planning/plan.json read comes back in pages; pass step_id/step_ids for named steps. Functions use functions with project=workspace_path. Omitted steps stay unchanged; deletion is explicit. write is for code/script.json, never whole plans/config/inputs. Run with functions action=run_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's workflows. A new workflow is a Python script (script.json and main.py); read the python-workflows skill first. Older plan-based workflows keep running but are not edited; read their files to inspect them, and ask to convert one to change it. list returns workflow ID, workspace_path and agents. read takes workspace_path and file; a large planning/plan.json read comes back in pages (pass step_id/step_ids for named steps). write saves script.json or a script's Python files. edit with operation manage_schedules or manage_webhooks manages a workflow's schedules and webhooks; describe returns those schemas. upgrade takes workflow_id: omit version to see status; supply version and reason to check and stamp. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":              map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "upgrade"}},
 			"workflow_id":         map[string]interface{}{"type": "string"},
 			"version":             map[string]interface{}{"type": "string"},
 			"reason":              map[string]interface{}{"type": "string"},
-			"repair_step":         map[string]interface{}{"type": "object", "description": "upgrade only: repair one malformed old step with step_id, changes and optional remove_fields. Unmentioned fields and other steps remain unchanged."},
 			"repair_attachments":  map[string]interface{}{"type": "boolean", "description": "upgrade only: refresh moved Crew connection locations for the same target project IDs owned by the caller. Check status first; no access or version change."},
 			"repair_browser_mode": map[string]interface{}{"type": "boolean", "description": "upgrade only: convert a retired browser mode using the installation's existing migration policy. Check status first; no account or version change."},
 			"workspace_path":      map[string]interface{}{"type": "string"},
@@ -31,7 +29,6 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			"arguments":           map[string]interface{}{"type": "object", "description": "Arguments matching the operation schema returned by describe."},
 			"file":                map[string]interface{}{"type": "string"},
 			"step_id":             map[string]interface{}{"type": "string", "description": "read planning/plan.json only: return this step."},
-			"step_type":           map[string]interface{}{"type": "string", "description": "describe add_step only: the step type whose fields to return."},
 			"step_ids":            map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "read planning/plan.json only: return these steps."},
 			"offset":              map[string]interface{}{"type": "integer", "description": "read planning/plan.json only: continue a large reply from next_offset."},
 			"content":             map[string]interface{}{"type": "string"},
@@ -56,8 +53,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		}
 		if action == "describe" {
 			operation, _ := args["operation"].(string)
-			stepType, _ := args["step_type"].(string)
-			return crewDescribeOperations(operation, stepType)
+			return crewDescribeOperations(operation)
 		}
 		if action == "list" || action == "create" {
 			identity, ok := projectIdentityOf(root)
@@ -150,25 +146,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			if binding.Kind != "workflow" {
 				return "", fmt.Errorf("edit script.json or Python source with write for a saved script")
 			}
-			if !slices.Contains(crewPlanOperations, operation) {
-				return "", fmt.Errorf("choose a supported editing operation; describe lists their schemas")
-			}
-			arguments, ok := args["arguments"].(map[string]interface{})
-			if !ok {
-				return "", fmt.Errorf("provide arguments matching the operation schema")
-			}
-			read := func(callCtx context.Context, file string) (string, error) {
-				content, found, err := readFileFromWorkspace(callCtx, file)
-				if err == nil && !found {
-					err = os.ErrNotExist
-				}
-				return content, err
-			}
-			ctx = workflow.WithExternalPlanSelectedServers(ctx, manifest.Capabilities.RuntimeServers())
-			if operation == "update_variable" {
-				return workflow.ExecuteWorkflowInputEdit(ctx, arguments, binding.Root, api.logger, read, writeFileToWorkspace)
-			}
-			return workflow.ExecuteExternalBuilderPlanTool(ctx, operation, arguments, binding.Root, api.logger, read, writeFileToWorkspace, nil)
+			return "", fmt.Errorf("%s", oldPlanWorkflowNotEditable)
 		}
 		file, _ := args["file"].(string)
 		clean, valid := cleanWorkspaceReadPath(file, false)
@@ -199,8 +177,8 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			if !ok {
 				return "", fmt.Errorf("provide the file content")
 			}
-			if binding.Kind == "workflow" && !strings.HasPrefix(clean, "code/") && !guide {
-				return "", fmt.Errorf("use edit with a named step or input operation; whole plan/config/input files cannot be replaced")
+			if binding.Kind == "workflow" && !guide {
+				return "", fmt.Errorf("%s", oldPlanWorkflowNotEditable)
 			}
 			if binding.Kind == "script" {
 				err = writeCrewScriptFile(ctx, binding, clean, content)
@@ -217,13 +195,15 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 	}, "work_workflow_reference_tools")
 }
 
-// One editing vocabulary, backed by the same native handlers as the Builder.
-var crewPlanOperations = []string{"create_plan", "add_step", "update_step", "delete_plan_steps", "manage_step_route", "update_step_config", "update_validation_schema", "update_variable", "manage_schedules", "manage_webhooks"}
+// PLAT-746 (owner, 8 Nov: "the old plan tools would be removed"): an older
+// plan-based workflow keeps running but is no longer edited; it is converted.
+const oldPlanWorkflowNotEditable = "This workflow uses the older plan format. It keeps running, but it can no longer be edited. Converting an existing workflow to a Python script is done by the platform operator for now; new workflows are Python scripts. Schedules and webhooks can still be managed with edit."
+
+// The edit operations that remain: a workflow's schedules and webhooks.
+var crewPlanOperations = []string{"manage_schedules", "manage_webhooks"}
 
 func crewPlanDefinitions() []workflow.ExternalPlanToolDefinition {
-	definitions := workflow.ExternalBuilderPlanToolDefinitions()
-	definitions = slices.DeleteFunc(definitions, func(d workflow.ExternalPlanToolDefinition) bool { return !slices.Contains(crewPlanOperations, d.Name) })
-	definitions = append(definitions, workflow.WorkflowInputEditDefinition())
+	var definitions []workflow.ExternalPlanToolDefinition
 	// Reuse the public action schemas and handlers; only the target is fixed to this Crew's child.
 	add := func(name, description string, _, _ bool, properties map[string]any, required ...string) {
 		delete(properties, "project")

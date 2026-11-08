@@ -45,14 +45,40 @@ def safe_id(value):
     return value
 
 
-def no_links(path, generated_caches=()):
+def transient_name(name):
+    return name in ('.tmp', '.cache', '.sandbox-cache') or name.startswith('.scratch-')
+
+
+def migration_paths(root, skipped=None):
+    """Never descend into disposable slot-owned caches, even to inspect them."""
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        for name in sorted(dirs + files):
+            child = Path(directory) / name
+            if transient_name(name):
+                if name in dirs:
+                    dirs.remove(name)
+                if skipped is not None:
+                    skipped.append(child)
+                continue
+            yield child
+
+
+def copy_migration_tree(source, target, skipped):
+    def ignore(directory, names):
+        ignored = [name for name in names if transient_name(name)]
+        skipped.extend(str(Path(directory, name).relative_to(source)) for name in ignored)
+        return ignored
+    shutil.copytree(source, target, symlinks=True, ignore=ignore)
+
+
+def no_links(path):
     for parent in [path, *path.parents]:
         if parent.is_symlink():
-            raise ValueError(f'Symlink is not a migration source/destination: {parent.name}')
+            raise ValueError(f'Symlink is not a migration source/destination: {parent}')
     if path.is_dir():
-        for p in path.rglob('*'):
-            if p.is_symlink() and not any(cache in p.parents for cache in generated_caches):
-                raise ValueError(f'Resolve the symlink before converting: {p.relative_to(path)}')
+        for p in migration_paths(path):
+            if p.is_symlink():
+                raise ValueError(f'Resolve the symlink before converting: {p}')
 
 
 class MigrationReadConnection(sqlite3.Connection):
@@ -132,28 +158,30 @@ def file_sha256(file):
 
 def tree_hashes(root):
     return {str(file.relative_to(root)): file_sha256(file)
-            for file in root.rglob('*') if file.is_file() and not file.is_symlink()}
+            for file in migration_paths(root) if file.is_file() and not file.is_symlink()}
 
 
-def verified_backup(backup, entries, generated_caches=()):
+def verified_backup(backup, entries):
     """Backup must be outside the moving roots; verify bytes before any removal."""
     entries = [(label, Path(file)) for label, file in entries if file.exists()]
     for _, file in entries:
-        no_links(file, generated_caches)
+        no_links(file)
         if backup == file or file in backup.parents:
             raise ValueError('Choose a backup outside the active workflow storage.')
-    required = sum(file.stat().st_size if file.is_file() else sum(p.stat().st_size for p in file.rglob('*') if p.is_file())
+    required = sum(file.stat().st_size if file.is_file() else sum(p.stat().st_size for p in migration_paths(file) if p.is_file())
                    for _, file in entries)
     if shutil.disk_usage(backup.parent).free < required + (64 << 20):
         raise ValueError('Not enough free space for the complete workflow backup.')
     backup.mkdir(mode=0o700)
-    expected, expected_links = {}, {}
+    expected, expected_links, skipped = {}, {}, []
     with tarfile.open(backup/'files.tar.gz', 'w:gz',compresslevel=1) as archive:
         for label, file in entries:
-            archive.add(file, arcname=label)
+            archive.add(file, arcname=label, filter=lambda member: None if any(transient_name(part) for part in Path(member.name).parts) else member)
             if file.is_dir():
                 expected.update({label+'/'+key: value for key, value in tree_hashes(file).items()})
-                expected_links.update({label+'/'+str(p.relative_to(file)): os.readlink(p) for p in file.rglob('*') if p.is_symlink()})
+                omitted = []
+                list(migration_paths(file, omitted))
+                skipped.extend(label+'/'+str(p.relative_to(file)) for p in omitted)
             else:
                 expected[label] = file_sha256(file)
     observed, observed_links = {}, {}
@@ -169,6 +197,7 @@ def verified_backup(backup, entries, generated_caches=()):
     (backup/'sha256.json').write_bytes(encode(expected))
     if expected_links:
         (backup/'symlinks.json').write_bytes(encode(expected_links))
+    (backup/'skipped.json').write_bytes(encode(sorted(skipped)))
 
 
 def rewrite_physical_paths(value, source, runtime):
@@ -188,7 +217,9 @@ def rewrite_physical_paths(value, source, runtime):
 
 def update_runtime_references(source, runtime):
     changed = 0
-    for file in runtime.rglob('*.json'):
+    for file in migration_paths(runtime):
+        if file.suffix != '.json' or not file.is_file():
+            continue
         if 'conversation' in file.parts or file.name.endswith('-conversation.json'):
             continue
         try:
@@ -207,8 +238,8 @@ def database_path_columns(source):
     logical = '/Workflow/' + source.name
     needles = [str(source), logical+'/', logical.replace('/', '\\')+'\\']
     quote = lambda name: '"'+name.replace('"', '""')+'"'
-    for file in sorted(source.rglob('*.sqlite')):
-        if '.cache' in file.relative_to(source).parts:
+    for file in sorted(migration_paths(source)):
+        if file.suffix != '.sqlite' or not file.is_file():
             continue
         with closing(db_read(file)) as db:
             for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
@@ -307,9 +338,9 @@ class Conversion:
             return
         if self.binding_file.exists():
             raise ValueError('This workflow is already Crew-owned. Do not import it twice.')
-        caches = [p for p in self.source.rglob('.cache') if p.is_dir() and not p.is_symlink()]
-        self.caches = [p for p in caches if not any(other != p and other in p.parents for other in caches)]
-        no_links(self.source, self.caches)
+        self.backup_skipped = []
+        list(migration_paths(self.source, self.backup_skipped))
+        no_links(self.source)
         self.manifest = read(self.source / 'workflow.json')
         if not self.manifest or self.manifest.get('kind'):
             raise ValueError('Choose a standalone Goal workflow, not a script or Relay.')
@@ -515,7 +546,7 @@ class Conversion:
     def move(self, source, target):
         if not source.exists():
             return
-        no_links(source, self.caches); no_links(target)
+        no_links(source); no_links(target)
         if target.exists():
             raise ValueError(f'Destination already exists: {target.name}')
         self.moves.append((source, target))
@@ -796,8 +827,9 @@ class Conversion:
                 'needs_chat_import_binary':bool(self.chat_imports),
                 'next':('Start the upgraded app and test this Python automation from its Crew chat.' if getattr(self, 'python_source', False) else 'Ask this Crew’s chat to update this workflow before running it. Task text and code were not rewritten.'),
                 'owner_evidence':self.owner_proof,
+                'carried_crew_links':getattr(self, 'carried_crew_links', []),
                 'database_columns_with_old_paths':self.database_path_columns,
-                'generated_caches_backup_only':[str(p.relative_to(self.source)) for p in self.caches],
+                'backup_skipped':[str(p.relative_to(self.source)) for p in self.backup_skipped],
                 'chat_map':[{'person':user,'from':old,'to':tab} for (user,old),tab in self.chat_keys.items()]}
 
     def apply(self, backup=None, plain_backup=False):
@@ -823,6 +855,7 @@ class Conversion:
                 if file.exists() and self.source not in file.parents and self.private not in file.parents:
                     label='metadata/'+str(i);entries.append((label,file));metadata_paths[label]=str(file)
             if plain_backup:
+                skipped = []
                 for suffix in ('', '-wal', '-shm'):
                     file = self.journal.with_name(self.journal.name + suffix)
                     if file.exists():
@@ -836,11 +869,14 @@ class Conversion:
                     target = backup/label
                     target.parent.mkdir(parents=True, exist_ok=True)
                     if file.is_dir():
-                        shutil.copytree(file, target, symlinks=True)
+                        omitted = []
+                        copy_migration_tree(file, target, omitted)
+                        skipped.extend(label+'/'+name for name in omitted)
                     else:
                         shutil.copy2(file, target)
+                (backup/'skipped.json').write_bytes(encode(sorted(skipped)))
             else:
-                verified_backup(backup,entries,self.caches)
+                verified_backup(backup,entries)
             # Snapshot DBs through SQLite, including WAL contents.
             for label, file in [('source', self.source_db), ('destination', self.target_db), ('chat-journal', self.journal)]:
                 if file.exists() and not plain_backup:
@@ -848,8 +884,6 @@ class Conversion:
                         src.backup(dst)
             (backup/'plan.json').write_bytes(encode(self.report()))
             (backup/'metadata-paths.json').write_bytes(encode(metadata_paths))
-            for cache in self.caches:
-                shutil.rmtree(cache)
             for source,target in self.moves:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(source), str(target))

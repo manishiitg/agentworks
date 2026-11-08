@@ -257,7 +257,10 @@ for line in sys.stdin:
 // A helper has the same whole-automation read / current-run write boundary;
 // raw managed DB and authored definitions stay protected by the real client.
 func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
-	_, _ = workflowHTTPTestWorkspace(t)
+	docs, _ := workflowHTTPTestWorkspace(t)
+	if err := os.MkdirAll(filepath.Join(docs, "Workflow/demo"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	c := newAgentFactoryTestOrchestrator(t)
 	c.SetWorkspacePath("Workflow/demo")
 	c.selectedRunFolder = "run-one"
@@ -371,12 +374,43 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	if googleExecutors["google_workspace_cli"] == nil || googleExecutors["human_feedback"] != nil || googleExecutors["send_email"] != nil {
 		t.Fatal("named Google selection was lost or broadened")
 	}
+	withGoogle, _, err = c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Google", Messages: []string{"Use the selected app"}, Apps: []string{"google"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, googleExecutors = c.prepareExecutionTools(&withGoogle.Config, parent, nil, DBAccessReadWrite)
+	if googleExecutors["google_workspace_cli"] == nil || googleExecutors["send_email"] != nil || googleExecutors["human_feedback"] != nil {
+		t.Fatal("apps shorthand broadened or lost the connected Google selection")
+	}
+	path, err := c.pythonAgentConversationPath(withGoogle.StepID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(withGoogle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.writePythonHelperState(context.Background(), path, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Google", Messages: []string{"Continue"}, ConversationID: withGoogle.StepID}); err != nil {
+		t.Fatalf("omitted apps lost the original conversation selection: %v", err)
+	}
+	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Google", Messages: []string{"Continue"}, ConversationID: withGoogle.StepID, Apps: []string{"github"}}); err == nil {
+		t.Fatal("continued agent changed its original app selection")
+	}
+	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Unknown", Messages: []string{"task"}, Apps: []string{"not-connected"}}); err == nil {
+		t.Fatal("unknown app selection was admitted")
+	}
 	delete(c.WorkspaceToolExecutors, "google_workspace_cli")
 	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Native files", Messages: []string{"task"}, Tools: []string{"workspace_advanced:*", "workspace_advanced:terminal.execute", "workspace_advanced:files.patch", "workspace_advanced:browser.execute"}}); err != nil {
 		t.Fatalf("old native tool entries blocked conversion: %v", err)
 	}
 	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Google", Messages: []string{"task"}, Tools: []string{"human_tools:integrations.google"}}); err == nil {
 		t.Fatal("unavailable app selection was admitted")
+	}
+	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Google", Messages: []string{"task"}, Apps: []string{"google"}}); err == nil {
+		t.Fatal("apps shorthand bypassed an unavailable app")
 	}
 	c.executionOptions.AgentFunctionTools = func(context.Context, AgentFunctionScope) ([]llmtypes.Tool, map[string]interface{}, error) {
 		return []llmtypes.Tool{{Type: "function", Function: &llmtypes.FunctionDefinition{Name: "project_functions_call", Parameters: llmtypes.NewParameters(map[string]interface{}{"type": "object"})}}}, map[string]interface{}{

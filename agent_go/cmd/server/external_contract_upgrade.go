@@ -12,7 +12,7 @@ import (
 var contractVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 func externalContractUpgradeDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workflow_upgrade", "Temporary one-time upgrades for older Goals; removed once every Goal has moved. action=status lists the remaining migrations in order. Review and complete each migration through Builder before action=stamp, passing version and confirm (repeat the workflow_id). The stamp uses the same prerequisite and ordering checks as Builder. The remaining skills copy is plan action=migrate_workflow_skills. Saved step-shape preparation is performed by deployment. Goals only, with existing Builder consent and current owner/editor checks.", true, true, map[string]any{
+	add("workflow_upgrade", "Retiring (removed with the old plan runner). action=status lists the contract migrations an older workflow still owes; they are no longer carried out one by one because plan editing is gone. Converting an existing workflow to a Python script is done by the platform operator for now. action=stamp (version, confirm = the workflow_id) still records a version only when the prerequisite and ordering checks accept it.", true, true, map[string]any{
 		"action":  map[string]any{"type": "string", "enum": []any{"status", "stamp"}},
 		"version": externalString("stamp: the next reviewed target version from status."),
 		"confirm": externalString("stamp: repeat the workflow_id to confirm."),
@@ -61,7 +61,7 @@ func (api *StreamingAPI) externalContractUpgradeCall(w http.ResponseWriter, r *h
 		for _, step := range workflowVersionUpgradePlan(current) {
 			pending = append(pending, map[string]string{"version": step.to, "migration": step.label})
 		}
-		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": workflowContractVersionForUpgrade(current), "platform_version": WorkflowContractCurrentVersion, "code_layout_version": current.CodeLayoutVersion, "pending": pending, "next": "Temporary upgrade for older Goals: complete the migration status lists, then stamp its version in order. Use Builder to review descriptions and resource intent; the skills copy uses plan action=migrate_workflow_skills. Step-shape preparation is part of deployment. Inside Builder use get_contract_upgrades and set_workflow_contract_version."})
+		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": workflowContractVersionForUpgrade(current), "platform_version": WorkflowContractCurrentVersion, "code_layout_version": current.CodeLayoutVersion, "pending": pending, "next": "This workflow keeps running on its current contract. Converting it to a Python script is done by the platform operator for now."})
 		return
 	}
 	if action != "stamp" {

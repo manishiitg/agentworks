@@ -64,11 +64,10 @@ func (api *StreamingAPI) crewWorkflowUpgrade(ctx context.Context, binding *crewE
 		return "", fmt.Errorf("choose this Crew's workflow; saved scripts have no workflow upgrade ladder")
 	}
 	version, _ := args["version"].(string)
-	repair, repairing := args["repair_step"].(map[string]interface{})
 	repairAttachments, _ := args["repair_attachments"].(bool)
 	repairBrowser, _ := args["repair_browser_mode"].(bool)
 	repairs := 0
-	for _, enabled := range []bool{repairing, repairAttachments, repairBrowser} {
+	for _, enabled := range []bool{repairAttachments, repairBrowser} {
 		if enabled {
 			repairs++
 		}
@@ -79,16 +78,17 @@ func (api *StreamingAPI) crewWorkflowUpgrade(ctx context.Context, binding *crewE
 	if version == "" && repairs == 0 {
 		pending := []map[string]string{}
 		for _, step := range workflowVersionUpgradePlan(manifest) {
-			pending = append(pending, map[string]string{"version": step.to, "update": step.label, "instruction": step.query})
+			// The instructions needed plan edits, which no longer exist; only the owed versions are listed.
+			pending = append(pending, map[string]string{"version": step.to, "update": step.label})
 		}
 		status := map[string]any{"workflow_id": binding.ID, "version": workflowContractVersionForUpgrade(manifest), "platform_version": WorkflowContractCurrentVersion, "pending": pending}
 		if _, known := workflowContractVersionRank(workflowContractVersionForUpgrade(manifest)); !known {
 			status["unsupported_version"] = true
-			status["next"] = "This server does not recognize the saved workflow version. Leave it paused and ask this Crew's chat to check it; do not downgrade or stamp it."
+			status["next"] = "This server does not recognize the saved workflow version. Leave it paused and tell the platform operator; do not downgrade or stamp it."
 		} else if workflowContractNeedsRecreation(manifest) || manifest.CodeLayoutVersion != 1 {
-			status["next"] = "This workflow is too old to update automatically. Leave it paused and ask this Crew's chat to recreate it."
+			status["next"] = "This workflow is too old to run. Converting it to a Python script is done by the platform operator for now."
 		} else if len(pending) > 0 {
-			status["next"] = "Complete the next instruction in this Crew's chat, then use upgrade with that version and a reason."
+			status["next"] = "This workflow keeps running on its current contract. Converting it to a Python script is done by the platform operator for now."
 		}
 		if len(pending) == 1 && pending[0]["version"] == workflowContractPortableVersion || manifest.Version == workflowContractPortableVersion {
 			if err := ValidateManifest(manifest); err != nil {
@@ -136,13 +136,6 @@ func (api *StreamingAPI) crewWorkflowUpgrade(ctx context.Context, binding *crewE
 	reason, _ := args["reason"].(string)
 	if repairAttachments || repairBrowser {
 		return repairWorkflowManifest(ctx, binding.Root, current, repairAttachments, repairBrowser, reason)
-	}
-	if repairing {
-		pending := workflowVersionUpgradePlan(current)
-		if len(pending) == 0 || pending[0].to != workflowContractPortableVersion {
-			return "", fmt.Errorf("step repair belongs to the pending portable workflow update; use normal named edits for an updated workflow")
-		}
-		return stepworkflow.RepairPortableWorkflowStep(ctx, binding.Root, repair, reason, readWorkflowUpgradeFile, writeFileToWorkspace)
 	}
 	applied, err := api.checkAndStampWorkflowContract(ctx, binding.Root, current, version, reason)
 	if err != nil {

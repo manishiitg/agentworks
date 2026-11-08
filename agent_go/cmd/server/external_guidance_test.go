@@ -96,7 +96,7 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 	for _, raw := range topics {
 		original[raw.(map[string]any)["name"].(string)] = true
 	}
-	for _, name := range []string{"dashboard-authoring", "motion-guide", "plan-change-impact", "plan-design", "planning-steps", "step-description", "step-config", "skill-management", "file-layout", "secure-share-links"} {
+	for _, name := range []string{"dashboard-authoring", "motion-guide", "schedules", "skill-management", "file-layout", "secure-share-links"} {
 		if !original[name] {
 			t.Fatalf("original reference lost during source migration: %s", name)
 		}
@@ -107,9 +107,9 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 			t.Fatalf("topic without a version: %v", topic)
 		}
 	}
-	body = externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "plan-change-impact"}), 200)
+	body = externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "schedules"}), 200)
 	content, _ := body["content"].(string)
-	if !strings.Contains(content, "blast radius") {
+	if !strings.Contains(content, "cron") {
 		t.Fatalf("topic content not rendered from canonical reference: %.120s", content)
 	}
 	if _, ok := body["external_note"]; !ok {
@@ -120,7 +120,7 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 	if version == "" {
 		t.Fatal("topic has no version")
 	}
-	same := externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "plan-change-impact", "known_version": version}), 200)
+	same := externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "schedules", "known_version": version}), 200)
 	if same["unchanged"] != true || same["content"] != nil {
 		t.Fatalf("unchanged topic was resent: %v", same)
 	}
@@ -134,7 +134,7 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 	externalTestBody(t, f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "panel-dashboard", "path": "../workflow.json"}), 404)
 	// A topic outside the external profile is rejected even though it exists
 	// in the builder reference.
-	unknown := f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "plan-editing-tools"})
+	unknown := f.call(t, "owner", "help", map[string]any{"action": "topic", "topic": "stores"})
 	denied := externalTestBody(t, unknown, 404)
 	if denied["error"].(map[string]any)["code"] != "unknown_topic" {
 		t.Fatalf("wrong error: %v", denied)
