@@ -283,7 +283,7 @@ print('saved-script-finished')
 	if reply := call("unfinished", "B", map[string]interface{}{}, true); reply.OK || !strings.Contains(reply.Error, "no completed receipt") {
 		t.Fatalf("uncertain script replayed: %+v", reply)
 	}
-	if redone := call("unfinished", "B", map[string]interface{}{}, true, true); redone.LogFile == unfinished.LogFile || read(redone) == "" {
+	if redone := call("unfinished", "B", map[string]interface{}{}, true, true); redone.LogFile == unfinished.LogFile || read(redone) == "" || redone.Value.(map[string]interface{})["output_dir"] == unfinished.Value.(map[string]interface{})["output_dir"] {
 		t.Fatal("explicit redo did not retain a fresh attempt")
 	}
 	changed := scripts["B"]

@@ -241,6 +241,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				}
 				if previous.ArgumentsHash != argumentsHash {
 					resumeReason = "arguments_changed"
+				} else if redo {
+					resumeReason = "explicit_redo"
 				} else {
 					scriptInvocation = previous.ScriptInvocationID
 					resumeReason = "retry_failed_call"
