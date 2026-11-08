@@ -294,6 +294,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			t.Fatalf("nested source save HTTP%d %s", response.StatusCode, raw)
 		}
 	}
+	expectedSourceCall := ""
 	for _, user := range []string{"owner", "runner"} {
 		token, err := GenerateJWT(user, user, "")
 		if err != nil {
@@ -315,6 +316,23 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			t.Fatalf("saved source graph did not inspect safely: HTTP%d %s", response.StatusCode, body)
 		}
 		if user == "owner" {
+			var graph struct {
+				Nodes []struct {
+					Label string `json:"label"`
+					Call  string `json:"call"`
+				} `json:"nodes"`
+			}
+			if err := json.Unmarshal(body, &graph); err != nil {
+				t.Fatal(err)
+			}
+			for _, node := range graph.Nodes {
+				if node.Label == "Prepare report" {
+					expectedSourceCall = node.Call
+				}
+			}
+			if expectedSourceCall == "" {
+				t.Fatal("nested step has no overview identity")
+			}
 			// Large code remains runnable: outline returns its normal graph
 			// envelope with a readable limit message, not a failed page request.
 			padding := filepath.Join(sourceRoot, "padding.py")
@@ -444,7 +462,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			for _, recorded := range runRecord.PythonSteps {
 				start, startErr := time.Parse(time.RFC3339Nano, recorded.StartedAt)
 				end, endErr := time.Parse(time.RFC3339Nano, recorded.CompletedAt)
-				if recorded.ExecutionID != runRecord.ExecutionID || recorded.Name != "Prepare report" || recorded.SourceCall == "" || recorded.Status != "completed" || startErr != nil || endErr != nil || end.Before(start) || recorded.DurationMs < 0 || recorded.LogNote == "" {
+				if recorded.ExecutionID != runRecord.ExecutionID || recorded.Name != "Prepare report" || recorded.SourceCall != expectedSourceCall || recorded.Status != "completed" || startErr != nil || endErr != nil || end.Before(start) || recorded.DurationMs < 0 || recorded.LogNote == "" {
 					t.Fatalf("Python step timing/attempt was not persisted: %+v", recorded)
 				}
 			}

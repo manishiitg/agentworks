@@ -48,9 +48,11 @@ type workspaceSkillDocument struct {
 // laptop folder) and its settings in private storage, the same split the file
 // tools use; everything else keeps both in its docs folder.
 type skillWorkspace struct {
-	dir    string // skill installs, skills-lock.json
-	config string // workflow.json and planning/
-	native string // a laptop Crew's own folder: native CLIs also find provider skills there
+	dir             string          // skill installs, skills-lock.json
+	config          string          // workflow.json and planning/
+	native          string          // a laptop Crew's own folder: native CLIs also find provider skills there
+	parent          *skillWorkspace // owning Crew skills are readable, never edited through a workflow
+	parentWorkspace string
 }
 
 func skillWorkspaceDir(docs, workspace string) (string, error) {
@@ -71,7 +73,7 @@ func skillWorkspaceRoots(docs, workspace string) (skillWorkspace, error) {
 		if err != nil {
 			return skillWorkspace{}, err
 		}
-		if layout.Binding.Kind == "workflow" {
+		if layout.Binding.Kind == "workflow" || layout.Binding.Kind == "script" {
 			dir, _, err := crewroot.Resolve(docs, workspace)
 			if err != nil {
 				return skillWorkspace{}, err
@@ -80,7 +82,11 @@ func skillWorkspaceRoots(docs, workspace string) (skillWorkspace, error) {
 			if err != nil {
 				return skillWorkspace{}, err
 			}
-			return skillWorkspace{dir: dir, config: filepath.Dir(manifest)}, nil
+			parent, err := skillWorkspaceRoots(docs, layout.Binding.CrewRoot)
+			if err != nil {
+				return skillWorkspace{}, err
+			}
+			return skillWorkspace{dir: dir, config: filepath.Dir(manifest), parent: &parent, parentWorkspace: layout.Binding.CrewRoot}, nil
 		}
 	}
 	if roots, bound, err := crewroot.Lookup(docs, workspace); bound || err != nil {
@@ -197,6 +203,17 @@ func (w skillWorkspace) locations(name string) []skillLocation {
 			if info, err := os.Stat(filepath.Join(folder, "SKILL.md")); err == nil && info.Mode().IsRegular() {
 				found = append(found, skillLocation{w.native, folder, crewroot.FilesSegment + "/" + root + "/" + name})
 			}
+		}
+	}
+	return found
+}
+
+func (w skillWorkspace) readLocations(name string) []skillLocation {
+	found := w.locations(name)
+	if w.parent != nil {
+		for _, location := range w.parent.locations(name) {
+			location.path = w.parentWorkspace + "/" + location.path
+			found = append(found, location)
 		}
 	}
 	return found
@@ -341,9 +358,15 @@ func handleWorkspaceSkillList(c *gin.Context) {
 	if w.native != "" {
 		scan(w.native, nativeSkillRoots())
 	}
+	if w.parent != nil {
+		scan(w.parent.dir, workspaceSkillRoots)
+		if w.parent.native != "" {
+			scan(w.parent.native, nativeSkillRoots())
+		}
+	}
 	documents := []workspaceSkillDocument{}
 	for name := range names {
-		locations := w.locations(name)
+		locations := w.readLocations(name)
 		if len(locations) == 0 {
 			continue
 		}
@@ -556,7 +579,7 @@ func handleWorkspaceSkillFiles(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	locations := w.locations(req.Name)
+	locations := w.readLocations(req.Name)
 	if len(locations) == 0 {
 		c.JSON(404, gin.H{"error": "skill not found"})
 		return
