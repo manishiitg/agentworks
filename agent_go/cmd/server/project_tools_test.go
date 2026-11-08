@@ -276,11 +276,13 @@ func TestProjectCopyRequiresSourceReadAndDestinationWrite(t *testing.T) {
 	for i := 0; i < 65; i++ {
 		f.write(t, fmt.Sprintf("Workflow/source/many/file-%02d.txt", i), "sample")
 	}
-	if _, err = tool.exec(t.Context(), map[string]any{"source_project": "source", "source_path": "many", "target_project": "work:team", "target_path": "too-many"}); err == nil {
-		t.Fatal("copied over the file count limit")
+	// PLAT-825: a007cd577 removed the artificial 64-file copy limit.
+	// Keep the larger-folder success case along with the secret/access refusals.
+	if _, err = tool.exec(t.Context(), map[string]any{"source_project": "source", "source_path": "many", "target_project": "work:team", "target_path": "many-copy"}); err != nil {
+		t.Fatalf("copy of a larger shared folder failed: %v", err)
 	}
-	if _, err = os.Stat(filepath.Join(f.docs, externalCommandCrewRoot, "too-many")); !os.IsNotExist(err) {
-		t.Fatal("over-limit copy wrote a partial folder")
+	if got := f.read(t, externalCommandCrewRoot+"/many-copy/file-64.txt"); got != "sample" {
+		t.Fatalf("copy lost the last file: %q", got)
 	}
 	// Exercise the public MCP copy action as well, through real workspace I/O.
 	srv := serveExternalMCP(t, f.api, claims)
