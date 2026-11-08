@@ -32,6 +32,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			"step_ids":            map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "read planning/plan.json only: return these steps."},
 			"offset":              map[string]interface{}{"type": "integer", "description": "read planning/plan.json only: continue a large reply from next_offset."},
 			"content":             map[string]interface{}{"type": "string"},
+			"entry_mappings":      scriptEntryInputEditsSchema(),
 			"name":                map[string]interface{}{"type": "string"},
 			"kind":                map[string]interface{}{"type": "string", "enum": []string{"script"}, "description": "create only: always script."},
 		},
@@ -181,7 +182,11 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 				return "", fmt.Errorf("%s", oldPlanWorkflowNotEditable)
 			}
 			if binding.Kind == "script" {
-				err = writeCrewScriptFile(ctx, binding, clean, content)
+				entries, decodeErr := decodeScriptEntryInputEdits(args["entry_mappings"])
+				if decodeErr != nil {
+					return "", decodeErr
+				}
+				err = writeCrewScriptFile(ctx, binding, clean, content, entries)
 			} else {
 				err = writeFileToWorkspace(ctx, binding.Root+"/"+clean, content)
 			}

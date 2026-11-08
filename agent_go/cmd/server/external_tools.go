@@ -117,8 +117,9 @@ func externalTools() ([]externalTool, error) {
 			"step_id": externalString("Read only this step: its plan entry and its configuration."),
 		})
 		add("save_script_inputs", "Save a Python workflow's input presets, and optionally its typed inputs. Replaces the supplied lists, preserving other script settings. Requires this Crew's Builder and the same source-editing consent as the script editor.", true, true, map[string]any{
-			"inputs":        map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Optional complete typed input definitions; omit to keep current inputs."},
-			"input_presets": map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Complete list of named presets, each with name and values. An empty list removes all presets."},
+			"inputs":         map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Optional complete typed input definitions; omit to keep current inputs."},
+			"input_presets":  map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Complete list of named presets, each with name and values. An empty list removes all presets."},
+			"entry_mappings": scriptEntryInputEditsSchema(),
 		}, "input_presets")
 		add("get_agent_context", "Describe this connection for an external agent: token capabilities, available tools, and guidance version. No workflow required; pass workflow_id for the caller's role on it.", false, false, map[string]any{"workflow_id": map[string]any{"type": "string", "description": "Optional workflow ID to report the caller's role on."}})
 		add("list_guidance_topics", "List the server-owned external guidance topics and their descriptions.", false, false, nil)
