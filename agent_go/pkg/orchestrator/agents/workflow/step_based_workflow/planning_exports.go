@@ -770,13 +770,16 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	bindAgentFunctionTools(controller, cfg.AgentFunctionTools)
 
 	controller.enabledGroupNames = nil
-	variablesPath := fmt.Sprintf("%s/variables/variables.json", cfg.WorkspacePath)
-	_, existingManifest, varErr := controller.variableManager.checkExistingVariables(ctx, variablesPath)
-	if varErr != nil {
-		return nil, fmt.Errorf("read workflow inputs: %w", varErr)
-	}
+	var existingManifest *VariablesManifest
 	if controller.directCrewScript != nil {
 		existingManifest = controller.directCrewScript.InputDefinitions()
+	} else {
+		variablesPath := fmt.Sprintf("%s/variables/variables.json", cfg.WorkspacePath)
+		_, existing, varErr := controller.variableManager.checkExistingVariables(ctx, variablesPath)
+		if varErr != nil {
+			return nil, fmt.Errorf("read workflow inputs: %w", varErr)
+		}
+		existingManifest = existing
 	}
 	controller.variablesManifest = existingManifest
 	if controller.isRelayExecution() {
