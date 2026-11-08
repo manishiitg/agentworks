@@ -34,6 +34,7 @@ import (
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
 )
 
 // Exercise the real coding-provider factory and ordinary turn executor. Only
@@ -551,7 +552,7 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	template := t.TempDir()
 	for name, data := range map[string]string{
 		"models.json":   `{"providers":{"example":{"baseUrl":"https://example.com/v1","api":"openai-completions","apiKey":"$EXAMPLE_API_KEY","models":[{"id":"example-model","contextWindow":1000}]}}}`,
-		"settings.json": `{"modelThinkingLevels":{"example/example-model":"off"}}`,
+		"settings.json": fmt.Sprintf(`{"modelThinkingLevels":{"example/example-model":"off",%q:"low"}}`, picli.DefaultModelID),
 	} {
 		if err := os.WriteFile(filepath.Join(template, name), []byte(data), 0600); err != nil {
 			t.Fatal(err)
@@ -564,6 +565,8 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 		{"codex-cli/fixture", "max", "Choose reasoning="},
 		{"pi-cli/example/example-model", "high", "does not offer reasoning=high"},
 		{"claude-code/claude-code", "high", ""},
+		{"pi-cli/" + picli.DefaultModelID, "high", "does not offer reasoning=high"},
+		{"pi-cli/" + picli.DefaultModelID, "low", ""},
 	} {
 		selected, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Reason", Messages: []string{"Task"}, Model: choice.model, Reasoning: choice.effort})
 		if choice.want == "" {
