@@ -931,7 +931,9 @@ type QueryRequest struct {
 	// Workspace path passed directly (used by scheduler to bypass preset lookup)
 	SelectedFolder string `json:"selected_folder,omitempty"`
 	// Set only after target admission, or by an internal scheduled run.
-	notificationItemWorkspace string
+	notificationItemWorkspace         string
+	notificationMailConnectionID      string
+	notificationMailBlockedRecipients []string
 
 	// Triggered by: "manual", "cron" — for tracking execution source
 	TriggeredBy string `json:"triggered_by,omitempty"`
@@ -1007,8 +1009,11 @@ func notificationDestinationFromQuery(req QueryRequest, userID string) *services
 			}
 		}
 	}
-	if dest.Gmail != nil {
-		dest.Gmail.Workspace = req.notificationItemWorkspace
+	if req.notificationItemWorkspace != "" {
+		dest.Gmail = &services.GmailDest{Workspace: req.notificationItemWorkspace, BlockedRecipients: append([]string(nil), req.notificationMailBlockedRecipients...)}
+		if req.notificationMailConnectionID != "" {
+			dest.Gmail.ConnectionIDs = []string{req.notificationMailConnectionID}
+		}
 	}
 	if dest.UserID == "" && dest.WorkspacePath == "" && dest.Slack == nil && dest.WhatsApp == nil && dest.Gmail == nil {
 		return nil
@@ -14176,6 +14181,15 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 		if _, exists, readErr := ReadWorkflowManifest(ctx, req.SelectedFolder); readErr == nil && exists {
 			req.notificationItemWorkspace = personalConnectionItemRoot(currentUserID, req.SelectedFolder)
 		}
+	}
+	req.notificationMailConnectionID, req.notificationMailBlockedRecipients = "", nil
+	if req.notificationItemWorkspace != "" && strings.HasPrefix(req.SelectedFolder, "Workflow/") {
+		manifest, found, err := ReadWorkflowManifest(ctx, req.SelectedFolder)
+		if err != nil || !found {
+			return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("This workflow's mail settings are unavailable; open its Crew and try again.")}
+		}
+		req.notificationMailConnectionID = manifest.Capabilities.GmailConnectionID
+		req.notificationMailBlockedRecipients = append([]string(nil), manifest.Capabilities.GmailBlockedRecipients...)
 	}
 	crewReadOnly := readOnlyForRequest(access, *req) || crewGuestCallerForTurn(*req, currentUserID) != ""
 	// The server selects grants only after resolving and authorizing the project.

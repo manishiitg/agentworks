@@ -209,6 +209,9 @@ type WorkflowCapabilities struct {
 	UseCodeExecutionMode      bool                           `json:"use_code_execution_mode"`
 	LLMConfig                 *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 	Notifications             *WorkflowNotificationConfig    `json:"notifications,omitempty"`
+	// Explicit mail uses the existing Google scope; an override names an already admitted account.
+	GmailConnectionID      string   `json:"gmail_connection_id,omitempty"`
+	GmailBlockedRecipients []string `json:"gmail_blocked_recipients,omitempty"`
 	// SlackConnectionID selects WHICH configured Slack app identity this
 	// workflow talks through — for bot replies, tool sends, and
 	// notifications alike. Empty means "inherit the platform default

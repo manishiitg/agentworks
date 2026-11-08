@@ -263,7 +263,17 @@ def python_payload(source, workflow_id, original_capabilities, original_inputs):
     if not isinstance(original_capabilities, dict):
         raise ValueError('The saved workflow settings must be an object.')
     original_capabilities = dict(original_capabilities)
-    retired_notifications = original_capabilities.pop('notifications', {})
+    retired_notifications = dict(original_capabilities.pop('notifications', {}) or {})
+    carried_mail_binding = {}
+    for old, current in (('gmail_connection_id', 'gmail_connection_id'), ('block_recipients', 'gmail_blocked_recipients')):
+        if old in retired_notifications:
+            value = retired_notifications.pop(old)
+            if (old == 'gmail_connection_id' and not isinstance(value, str)) or (old == 'block_recipients' and (not isinstance(value, list) or any(not isinstance(item, str) for item in value))):
+                raise ValueError('The saved mail sender and blocked recipients must be account references and address lists, without credentials.')
+            if current in original_capabilities and original_capabilities[current] != value:
+                raise ValueError('The saved mail sender or blocked recipients conflict; choose the intended binding before converting.')
+            original_capabilities[current] = value
+            carried_mail_binding[current] = value
     for name in ('capabilities', 'input_presets'):
         if name in definition:
             raise ValueError(f'Remove {name} from the source script.json: the converter copies it from the saved workflow.')
@@ -280,7 +290,7 @@ def python_payload(source, workflow_id, original_capabilities, original_inputs):
     payload['script.json'] = encode(definition)
     if definition.get('id') != workflow_id or 'main.py' not in payload:
         raise ValueError('The Python definition must retain the existing workflow ID and include main.py.')
-    return payload, definition, {'removed_tools': sorted(set(removed_tools) | set(removed_selections)), 'removed_notification_fields': sorted(retired_notifications)}
+    return payload, definition, {'removed_tools': sorted(set(removed_tools) | set(removed_selections)), 'removed_notification_fields': sorted(retired_notifications), 'carried_mail_binding': carried_mail_binding}
 
 
 def remap_entry_inputs(definition, changes, runtime, document, mapping=None, agent_binary=None):
