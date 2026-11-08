@@ -369,89 +369,84 @@ func TestCrewFunctionGuards(t *testing.T) {
 	}
 }
 
-// The Automation panel's Functions tab lists declared functions plus the
-// declared functions and recent calls; owners can remove their declarations.
-func TestCrewFunctionsHTTPListAndDelete(t *testing.T) {
+// Functions are read by everyone a Crew is shared with and changed only by its owner (owner, 8 Nov): the server
+// resolves the Crew through the shared-Crew lookup, says can_manage, and refuses a teammate's delete from that rule
+// (403), while the owner lists and deletes. Deleting one function must not erase its sibling.
+func TestCrewFunctionsHTTPOwnerChangesTeamMemberOnlyReads(t *testing.T) {
 	env := newCrewFunctionEnv(t)
-	ctx := context.Background()
-	if _, err := env.alpha["project_functions_define"].exec(ctx, loginFlowArgs); err != nil {
+	crewOwnerTabsFixture(t, env.triggerLinkEnv)
+	if err := defaultProjectOwners().SetPrivate("work", "owner-tabs", false); err != nil {
 		t.Fatal(err)
 	}
-	// PLAT-871: deleting a callable function must not erase a disabled sibling.
-	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{
-		"project": "Beta", "definition": map[string]interface{}{
-			"name": "paused_flow", "description": "A paused function", "enabled": false,
-			"action": map[string]interface{}{"type": "message"},
-			"input":  map[string]interface{}{"messages": []string{"Keep these saved instructions."}},
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	ownerCtx := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner"})
-	target := triggerTarget{Kind: triggerCallerCrew, Path: linkBetaPath, CrewOwner: "owner"}
-	root := crewFunctionRoot(ownerCtx, target)
-	before, err := readProjectFunctionDefinitions(ownerCtx, root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var pausedBefore []byte
-	for _, fn := range before {
-		if fn.Name == "paused_flow" {
-			pausedBefore, _ = json.Marshal(fn)
-		}
-	}
-	if len(pausedBefore) == 0 {
-		t.Fatal("disabled sibling was not saved by setup")
-	}
+	ownerCtx := internalBotRequestContext(context.Background(), "owner")
+	target := triggerTarget{Kind: triggerCallerCrew, Path: "Crew/owner-tabs", CrewID: "beta", CrewProfile: "work", CrewOwner: "owner"}
+	savedFunctionForTest(t, ownerCtx, target, crewFunction{Name: "run_login_flow", Description: "Log in", Instructions: "Log in."})
+	savedFunctionForTest(t, ownerCtx, target, crewFunction{Name: "keep_me", Description: "Keep", Instructions: "Keep."})
 	router := muxRouterForCrewFunctions(env.svc)
-	get := httptest.NewRequest(http.MethodGet, "/api/crew-functions?profile_id=work&project_id=beta", nil)
-	get = get.WithContext(context.WithValue(get.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, get)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("list status %d: %s", recorder.Code, recorder.Body.String())
+	call := func(method, url, user string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, url, nil)
+		req = req.WithContext(internalBotRequestContext(req.Context(), user))
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, req)
+		return recorder
 	}
-	var listed struct {
+	type listed struct {
+		CanManage bool `json:"can_manage"`
 		Functions []struct {
 			Name     string `json:"name"`
 			Implicit bool   `json:"implicit"`
 		} `json:"functions"`
-		Calls []interface{} `json:"calls"`
 	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &listed); err != nil {
-		t.Fatal(err)
+	read := func(user string) listed {
+		recorder := call(http.MethodGet, "/api/crew-functions?profile_id=work&project_id=beta", user)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("%s list status %d: %s", user, recorder.Code, recorder.Body.String())
+		}
+		var out listed
+		if err := json.Unmarshal(recorder.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
 	}
-	names := map[string]bool{}
-	for _, fn := range listed.Functions {
-		names[fn.Name] = fn.Implicit
+	declared := func(view listed) map[string]bool {
+		names := map[string]bool{}
+		for _, fn := range view.Functions {
+			names[fn.Name] = fn.Implicit
+		}
+		return names
 	}
-	if _, ok := names["ask"]; ok {
-		t.Fatalf("functions = %+v", listed.Functions)
+	owner, member := read("owner"), read("other")
+	if implicit, ok := declared(owner)["run_login_flow"]; !owner.CanManage || !ok || implicit {
+		t.Fatalf("owner view = %+v", owner)
 	}
-	if implicit, ok := names["run_login_flow"]; !ok || implicit {
-		t.Fatalf("functions = %+v", listed.Functions)
+	if _, ok := declared(owner)["ask"]; ok {
+		t.Fatalf("the implicit ask function is listed: %+v", owner)
+	}
+	if _, ok := declared(member)["run_login_flow"]; member.CanManage || !ok {
+		t.Fatalf("teammate view = %+v, want the same functions without can_manage", member)
+	}
+	deleteURL := func(name string) string {
+		return "/api/crew-functions/" + name + "?profile_id=work&project_id=beta"
+	}
+	if refused := call(http.MethodDelete, deleteURL("run_login_flow"), "other"); refused.Code != http.StatusForbidden || !strings.Contains(refused.Body.String(), "owner") {
+		t.Fatalf("teammate delete = %d %q, want a plain 403", refused.Code, refused.Body.String())
+	}
+	if _, ok := declared(read("owner"))["run_login_flow"]; !ok {
+		t.Fatal("the refused delete removed the function")
 	}
 	for _, tc := range []struct {
 		name string
 		code int
 	}{{"ask", http.StatusNotFound}, {"run_login_flow", http.StatusNoContent}, {"run_login_flow", http.StatusNotFound}} {
-		del := httptest.NewRequest(http.MethodDelete, "/api/crew-functions/"+tc.name+"?profile_id=work&project_id=beta", nil)
-		del = del.WithContext(context.WithValue(del.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
-		recorder := httptest.NewRecorder()
-		router.ServeHTTP(recorder, del)
-		if recorder.Code != tc.code {
-			t.Fatalf("delete %s = %d, want %d: %s", tc.name, recorder.Code, tc.code, recorder.Body.String())
+		if recorder := call(http.MethodDelete, deleteURL(tc.name), "owner"); recorder.Code != tc.code {
+			t.Fatalf("owner delete %s = %d, want %d: %s", tc.name, recorder.Code, tc.code, recorder.Body.String())
 		}
 	}
-	after, err := readProjectFunctionDefinitions(ownerCtx, root)
-	if err != nil || len(after) != 1 {
-		t.Fatalf("disabled sibling lost after HTTP deletion: records=%v err=%v", after, err)
+	if names := declared(read("owner")); len(names) != 1 {
+		if _, kept := names["keep_me"]; !kept {
+			t.Fatalf("deleting one function erased its sibling: %+v", names)
+		}
 	}
-	pausedAfter, _ := json.Marshal(after[0])
-	if string(pausedAfter) != string(pausedBefore) {
-		t.Fatalf("disabled sibling changed: before=%s after=%s", pausedBefore, pausedAfter)
-	}
-
 }
 
 func TestCrewFunctionFailureDetailKeepsPartialWork(t *testing.T) {

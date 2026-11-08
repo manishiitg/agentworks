@@ -52,7 +52,7 @@ function config() {
 }
 
 export const crewFunctionsApi = {
-  list: (scope: ProductTriggerScope) => axios.get<{ functions: CrewFunction[]; calls: CrewFunctionCall[] }>('/api/crew-functions', {
+  list: (scope: ProductTriggerScope) => axios.get<{ can_manage?: boolean; functions: CrewFunction[]; calls: CrewFunctionCall[] }>('/api/crew-functions', {
     ...config(), params: { profile_id: scope.profileId, project_id: scope.projectId },
   }).then(response => response.data),
   delete: (scope: ProductTriggerScope, name: string) => axios.delete(`/api/crew-functions/${encodeURIComponent(name)}`, {

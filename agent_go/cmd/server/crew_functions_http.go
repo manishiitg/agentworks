@@ -14,26 +14,46 @@ import (
 // Crew functions in the Automation panel (PLAT-357): the Functions tab lists
 // a Crew's declared functions and recent calls
 // made to them, including saved calls from before a restart. Deletion is limited to the
-// Crew owner, like triggers (projectManifest resolves the caller's own
-// projects only).
+// Crew owner.
 
 const crewFunctionRecentCallsLimit = 25
 
-func (s *ProjectActionDispatcher) crewFunctionTarget(r *http.Request) (triggerTarget, string, int, string) {
+// crewFunctionTarget resolves the Crew a functions request is about through the shared-Crew lookup
+// (resolveCrewProjectBinding: the caller's own Crew, else a Crew shared with them or that they co-own, else
+// refused). Everyone it resolves for reads the functions; only the owner (or a joined Team member with owner rights,
+// OwnedByCaller) may change them, which `manage` asks for. canManage tells the screen which it is. Other products
+// (Code) keep the caller's own projects only.
+func (s *ProjectActionDispatcher) crewFunctionTarget(r *http.Request, manage bool) (target triggerTarget, canManage bool, status int, message string) {
 	profileID, projectID := productWebhookCoordinates(r)
 	if profileID == "" {
 		profileID = "work"
 	}
 	userID := productWorkspaceUserID(r.Context())
-	_, binding, _, err := s.projectManifest(r.Context(), userID, profileID, projectID)
+	if profileID != crewProfileID {
+		_, binding, _, err := s.projectManifest(r.Context(), userID, profileID, projectID)
+		if err != nil {
+			return triggerTarget{}, false, http.StatusNotFound, err.Error()
+		}
+		return triggerTarget{
+			Kind: triggerCallerCrew, Path: agentProfileRuntimeWorkspace(userID, binding.WorkspacePath),
+			CrewID: projectID, CrewProfile: profileID, CrewOwner: userID,
+		}, true, 0, ""
+	}
+	if s.registry == nil {
+		return triggerTarget{}, false, http.StatusNotFound, "Crew not found"
+	}
+	profile, err := s.registry.Resolve(profileID, 0, userID)
 	if err != nil {
-		return triggerTarget{}, "", http.StatusNotFound, err.Error()
+		return triggerTarget{}, false, http.StatusNotFound, "Crew not found"
 	}
-	target := triggerTarget{
-		Kind: triggerCallerCrew, Path: agentProfileRuntimeWorkspace(userID, binding.WorkspacePath),
-		CrewID: projectID, CrewProfile: profileID, CrewOwner: userID,
+	project, err := resolveCrewProjectBinding(r.Context(), userID, profile, projectID, "")
+	if err != nil {
+		return triggerTarget{}, false, http.StatusNotFound, "Crew not found"
 	}
-	return target, userID, 0, ""
+	if manage && !project.OwnedByCaller {
+		return triggerTarget{}, false, http.StatusForbidden, "Only the Crew's owner can change its functions."
+	}
+	return triggerTarget{Kind: triggerCallerCrew, Path: project.Binding.WorkspacePath, CrewID: projectID, CrewProfile: profileID, CrewOwner: project.OwnerID}, project.OwnedByCaller, 0, ""
 }
 
 type crewFunctionCallView struct {
@@ -98,7 +118,7 @@ func recentCrewFunctionCalls(ctx context.Context, targetID, requesterID string) 
 }
 
 func (s *ProjectActionDispatcher) listCrewFunctionsHTTP(w http.ResponseWriter, r *http.Request) {
-	target, _, status, message := s.crewFunctionTarget(r)
+	target, canManage, status, message := s.crewFunctionTarget(r, false)
 	if status != 0 {
 		http.Error(w, message, status)
 		return
@@ -118,11 +138,11 @@ func (s *ProjectActionDispatcher) listCrewFunctionsHTTP(w http.ResponseWriter, r
 		views = append(views, functionView{crewFunction: fn, Implicit: !declared})
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"functions": views, "calls": recentCrewFunctionCalls(r.Context(), target.CrewID, GetUserIDFromContext(r.Context()))})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"can_manage": canManage, "functions": views, "calls": recentCrewFunctionCalls(r.Context(), target.CrewID, GetUserIDFromContext(r.Context()))})
 }
 
 func (s *ProjectActionDispatcher) deleteCrewFunctionHTTP(w http.ResponseWriter, r *http.Request) {
-	target, _, status, message := s.crewFunctionTarget(r)
+	target, _, status, message := s.crewFunctionTarget(r, true)
 	if status != 0 {
 		http.Error(w, message, status)
 		return

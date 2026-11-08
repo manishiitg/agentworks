@@ -129,38 +129,12 @@ type crewTeamTabSync struct {
 	Progress *crewTeamRound `json:"progress,omitempty"`
 }
 
-// crewTeamTabFunction is one function of the Crew, as the Team lists it.
-type crewTeamTabFunction struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-}
-
-// crewTeamFunctionsFor lists the functions of a Crew that lives on the server, for anyone in its Team.
-func crewTeamFunctionsFor(ctx context.Context, t crewTeam) []crewTeamTabFunction {
-	root := crewProjectRootByID(t.ProjectID)
-	if root == "" {
-		return nil
-	}
-	functions, err := readCrewFunctions(ctx, triggerTarget{Kind: triggerCallerCrew, Path: root, CrewID: t.ProjectID, CrewProfile: crewProfileID, CrewOwner: t.OwnerID})
-	if err != nil {
-		return nil
-	}
-	out := make([]crewTeamTabFunction, 0, len(functions))
-	for _, fn := range functions {
-		out = append(out, crewTeamTabFunction{Name: fn.Name, Description: fn.Description})
-	}
-	return out
-}
-
 type crewTeamTabReply struct {
 	Team   crewTeam            `json:"team"`
 	Intro  string              `json:"intro"`
 	People []crewTeamTabPerson `json:"people"`
 	Agents []crewTeamTabAgent  `json:"agents"`
 	Sync   *crewTeamTabSync    `json:"sync,omitempty"`
-	// Functions are what the Team can call in a Crew that lives on the server (owner, 7 Nov): the way people use the
-	// Crew, never its agents. A Crew whose home is a Mac has none: functions work only online.
-	Functions []crewTeamTabFunction `json:"functions,omitempty"`
 	// The Team's settings are the server's record, changed from the website, the Mac app, chat or MCP; the owner's Mac
 	// applies it when it syncs (crew_team_apply.go). CanSwitch: the Team on/off switch, the Crew's main owner only
 	// (owner, 5 Nov).
@@ -235,9 +209,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			out.Agents = crewTeamSoloAgents(ctx, t, bridges, setups)
 		}
 		return out
-	}
-	if !twin {
-		out.Functions = crewTeamFunctionsFor(ctx, t)
 	}
 	byPerson := teamAgentsByPerson(ctx, t, viewer)
 	seen := map[string]crewTeamAgentsPerson{}
