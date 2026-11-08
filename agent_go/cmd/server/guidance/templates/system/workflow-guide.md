@@ -96,7 +96,7 @@ Panel Back returns to the project menu, or to the parent list for nested details
 Help popups and tours are removed. Give useful guidance directly in the answer.
 
 For UI presentation, read the attached `workflow-ui-control` skill. Inspect
-`list_ui_capabilities`, use only advertised views/targets, and require an
+`ui action=capabilities`, use only advertised views/targets, and require an
 `applied` receipt before claiming the switch. A menu item is not proof that its
 UI-control target or management tool is available. If a capability is absent,
 state the exact limitation and give the current menu destination when useful.

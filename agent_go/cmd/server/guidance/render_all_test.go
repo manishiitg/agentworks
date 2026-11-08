@@ -395,14 +395,16 @@ func TestNoTemplateNamesARemovedTool(t *testing.T) {
 // whose serving surface has not been classified yet (PLAT-746-415). Remove a kind
 // from the list when its text is converted; do not add one.
 var guidancePendingPublicNames = map[string]bool{
-	"browser-usage": true, "mcp-bridge": true, "scripted": true, "optimize-playbook": true,
+	"browser-usage":         true,
 	"code-authoring":        true,
-	"workspace-media-tools": true, "workflow-tools": true,
-	"design-dashboard":    true,
-	"playwright-scripted": true, "reporting-policy": true, "secure-share-links": true,
-	"step-system-prompts": true, "assumption-audit": true, "llm-provider-config": true,
-	"running-steps": true, "stores": true, "user-management": true, "workflow-chat": true,
-	"workflow-guide": true, "workspace-views": true,
+	"llm-provider-config":   true,
+	"mcp-bridge":            true,
+	"optimize-playbook":     true,
+	"playwright-scripted":   true,
+	"scripted":              true,
+	"secure-share-links":    true,
+	"workflow-tools":        true,
+	"workspace-media-tools": true,
 }
 
 func TestGuidanceNamesPublicToolsOnly(t *testing.T) {
@@ -416,7 +418,7 @@ func TestGuidanceNamesPublicToolsOnly(t *testing.T) {
 		names := append([]string{a.Member}, a.Aliases...)
 		names = append(names, strings.Split(a.ExternalMembers, "|")...)
 		for _, n := range names {
-			if strings.Contains(n, "_") {
+			if strings.Contains(n, "_") && n != a.Name {
 				private[n] = a.Family + " action=" + a.Name
 			}
 		}
@@ -451,7 +453,7 @@ func TestGuidanceNamesPublicToolsOnly(t *testing.T) {
 			name := body[loc[0]:loc[1]]
 			before := body[:loc[0]]
 			public, ok := private[name]
-			if !ok || strings.HasSuffix(before, "action=") || strings.HasSuffix(before, "operation=") || strings.HasSuffix(before, ":") {
+			if !ok || strings.HasSuffix(before, "action=") || strings.HasSuffix(before, "operation=") || strings.HasSuffix(before, ":") || strings.HasPrefix(body[loc[1]:], "=") {
 				continue
 			}
 			if guidancePendingPublicNames[kind] {
