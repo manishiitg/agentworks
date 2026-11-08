@@ -19,25 +19,25 @@ with the correct approach.
 
 ## Run investigation workflow
 
-1. If the user asks for live status, call `query_step(step_id=...)` for
-   the relevant step. Use `list_executions(status_filter="running")`
+1. If the user asks for live status, call `runs action=step_status` (step_id=...) for
+   the relevant step. Use `runs action=active` (status_filter="running")
    only if you need to identify running steps.
-2. If a running step appears stuck, use `query_step` to inspect
+2. If a running step appears stuck, use `runs action=step_status` to inspect
    captured structured MCP tool calls and summarize what is known. If
    no tool calls are listed for a coding CLI provider, say that
    terminal/TUI progress is separate and wait for auto-notification
    unless the user asks you to stop or check again. Do not poll in a
    tight loop.
 3. If a step already completed or failed, use
-   `debug_step(step_id, iteration="<returned run_folder>")` plus targeted reads of run
+   `runs action=debug` (step_id, iteration="<returned run_folder>") plus targeted reads of run
    outputs/log summaries. For whole-run questions, use
    the relevant timing, cost, eval, report, and goal reviews.
 4. Explain the observed failure or data gap in plain English and offer
    retry/skip/help when appropriate.
 5. If the right action is a targeted retry, utility check, or one-off
    investigation, run the relevant normal or orphan step with
-   `execute_step`; if the request needs the whole workflow, call
-   `run_full_workflow`.
+   `runs action=step`; if the request needs the whole workflow, call
+   `runs action=start`.
 6. If fixing requires changing step descriptions, validation, config,
    skills, KB, db shape, report wiring, or evaluation, tell the
    user to switch to Workshop. Do not mutate

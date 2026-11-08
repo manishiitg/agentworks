@@ -60,7 +60,7 @@ Cite the owning `architecture_review` finding id, the current state, and the evi
 clears its reason; clearing never requires one.
 
 **If the evidence does not settle it, do not make the change.** Raise a decision
-with `create_human_input_request` and park the finding `awaiting_user`.
+with `needs_you action=create` and park the finding `awaiting_user`.
 Uncertainty is a legitimate terminal state; an invented reason is worse than no
 change, because a fabricated justification is harder to challenge later than a
 missing one.
@@ -72,7 +72,7 @@ and destinations; put required contributions in the task description instead.
 ### Other common fields
 
 - **`validation_schema`** — the only automated gate (set via `update_validation_schema`); catches stale files, missing fields, constraint violations. Every step needs one.
-- **`enabled_skills`** — step-level skill selection (step execution does NOT inherit workflow-selected skills; set explicitly). `enabled_custom_tools`, `selected_servers`, `selected_tools` — narrow the step's tool surface. Human tools are not baseline: when a step sends email, posts to Slack or asks a person for a decision, name `human_tools:send_email`, `human_tools:send_slack_message` or `human_tools:create_human_input_request` in its `enabled_custom_tools` (keep the existing entries); never rely on the description's wording. `human_feedback` blocks a run, so unattended steps do not get it.
+- **`enabled_skills`** — step-level skill selection (step execution does NOT inherit workflow-selected skills; set explicitly). `enabled_custom_tools`, `selected_servers`, `selected_tools` — narrow the step's tool surface. Human tools are not baseline: when a step sends email, posts to Slack or asks a person for a decision, name `human_tools:send_email`, `human_tools:send_slack_message` or `human_tools:create_human_input_request` in its `enabled_custom_tools` (keep the existing entries); never rely on the description's wording. `needs_you action=ask` blocks a run, so unattended steps do not get it.
 - **`additional_read_paths`** — not needed for files inside the workflow: a step can already READ everything in its workflow folder (every run, code, knowledge base, skills, db files, notes, reports). Do not add it for those reads. It remains for read-only grants outside the workflow folder's usual surfaces that a product defines. Absolute paths, `.` and `..` traversal are rejected, and the grant never expands writes. A step WRITES only its current run folder and the shared areas db/assets, reports and tool_output_folder (plus its own knowledge base and database access); never past runs, planning, settings, skills or code, which belong to the Builder and AgentWorks.
 - **`review_notes`** — one-line WHY for non-obvious config (future AgentWorks and Workshop reviews read it). Record it whenever you set KB access or skill selections or designate a db writer.
 - **`description_reviewed`**, `coding_agent_tmux_lifecycle` — situational. (`transport` was never a step-config field; naming it in `clear_fields` is reported as a no-op.)

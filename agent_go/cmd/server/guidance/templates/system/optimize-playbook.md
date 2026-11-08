@@ -70,7 +70,7 @@ For steps in scripted mode, the saved Python script at `<script-dir>/main.py` is
 - Read the execution log: `cat runs/{iteration}/{group}/logs/{step-id}/execution/scripted_fast_path.json` — contains exit_code, stdout output, and error
 - Read script_metadata.json: `cat <script-dir>/script_metadata.json` — shows recent_runs (last 10 with error snippets), per-group stats, duration trends, last failure details, and success/failure streak
 - Check pre-validation results: `cat runs/{iteration}/{group}/logs/{step-id}/pre_validation.json`
-- Use `debug_step(step_id)` for a comprehensive analysis including the script metadata
+- Use `runs action=debug` (step_id) for a comprehensive analysis including the script metadata
 
 **1b. Live diagnosis with MCP tools** — You share the same agent-browser session and MCP tools as the step execution. You can directly call browser tools and other MCP servers to investigate issues interactively:
 - Use `agent_browser(command="snapshot", args=["-i"])` to see the current browser state
@@ -87,8 +87,8 @@ For steps in scripted mode, the saved Python script at `<script-dir>/main.py` is
 - If diagnosis revealed the fix (e.g., a selector changed), apply it directly. If the issue is complex, use your live MCP access to prototype the fix interactively before patching.
 
 **3. Test** — Run the patched script:
-- Use `execute_step(step_id, input_preset?, inputs?)` to test the fix directly — this runs ONLY the saved script without invoking the step agent, so you see exactly what your patch does
-- Or use `execute_step(step_id, input_preset?, inputs?)` to let the selected step agent handle a script failure
+- Use `runs action=step` (step_id, input_preset?, inputs?) to test the fix directly — this runs ONLY the saved script without invoking the step agent, so you see exactly what your patch does
+- Or use `runs action=step` (step_id, input_preset?, inputs?) to let the selected step agent handle a script failure
 - After running, use `agent_browser(command="snapshot", args=["-i"])` to confirm the expected page state, or read output files to check correctness
 - Check the output files and logs to confirm the fix
 
@@ -100,7 +100,7 @@ For steps in scripted mode, the saved Python script at `<script-dir>/main.py` is
 
 **Force complete rewrite**: If the saved script has fundamental issues (wrong approach, bad patterns like JavaScript injection instead of ref-based browser interaction), delete the learnings script to force the LLM to write from scratch:
 - `rm <script-dir>/main.py` — deletes the saved script
-- Then run `execute_step(step_id, input_preset?, inputs?)` — the LLM will generate a fresh main.py using the step description, skill files, and proper tool discovery via get_api_spec
+- Then run `runs action=step` (step_id, input_preset?, inputs?) — the LLM will generate a fresh main.py using the step description, skill files, and proper tool discovery via get_api_spec
 - Do NOT just delete `execution/{step-id}/code/main.py` — in legacy workflows this disposable copy is restored from saved source; version 1 has no such copy
 
 ### 4. Server & Tool Scoping
@@ -123,7 +123,7 @@ In tiered mode, prefer a persistent `execution_tier` when a step should usually 
 
 - **Use `execution_tier` for persistent behavior**: `update_step_config(step_id, execution_tier="medium", execution_tier_reason="Finding, evidence, and approved decision")` or `"low"` when the step is stable and you want future runs to default to that tier.
 - **Use `execution_llm` only when you need an exact model**: this pins a specific provider/model and overrides tier selection entirely.
-- **Use `execute_step(step_id, input_preset?, inputs?, tier="...")` for one-off trials**: this is for testing a single run without changing the step's persistent config.
+- **Use `runs action=step` (step_id, input_preset?, inputs?, tier="...") for one-off trials**: this is for testing a single run without changing the step's persistent config.
 - **Prefer `execution_tier` over exact-model pinning for mature steps**: if the goal is "this step can usually run on medium/low", set the tier, don't hardcode a model.
 - **Do not force a cheaper tier while material goals are below target**: preserve the current model/reasoning tier for outcome-bearing, planning, judgment, diagnostic, recovery, eval, and verification work. First make the workflow reliable and achieve representative at-target evidence. Only a mechanical deterministic non-bottleneck step with proven quality-equivalent outputs and no downstream outcome loss may be proposed as an explicitly approved reversible downgrade trial.
 - **If a step has `execution_llm` set, `execution_tier` is ignored** until the exact-model override is cleared.
@@ -194,9 +194,9 @@ A step's execution mode is its plan type: `scripted` runs a saved script and `ag
 
 **There is no mode field to fill in**: the plan type is the declaration. When the user asks to make a step scripted, create a scripted step with `add_step`, then author and test `<script-dir>/main.py`. `use_code_execution_mode` is a separate, independent toggle — an `agent` can use code execution without being scripted.
 
-**Workshop agent behavior for code-exec steps**: When you (the workshop agent) are asked to explore, investigate, or do manual work related to a step marked with code execution mode, you should also adopt the code-exec approach — use **execute_shell_command** to write and run Python/shell scripts that combine multiple MCP tool calls together, rather than making individual tool calls one by one. This mirrors how the step's execution agent works and helps you build reusable scripts and patterns that can inform the step's learnings.
+**Workshop agent behavior for code-exec steps**: When you (the workshop agent) are asked to explore, investigate, or do manual work related to a step marked with code execution mode, you should also adopt the code-exec approach — use **`terminal action=execute`** to write and run Python/shell scripts that combine multiple MCP tool calls together, rather than making individual tool calls one by one. This mirrors how the step's execution agent works and helps you build reusable scripts and patterns that can inform the step's learnings.
 
-**Code-exec efficiency goal**: The goal of code execution mode is to minimize tool calls. Ideally, the agent should run the entire step in a **single execute_shell_command call** — one Python script that handles everything (API calls, data processing, output writing). After a code-exec step runs, review the learnings and check: did the agent use multiple tool calls where a single script would suffice? If so, update the learnings to consolidate into fewer calls. Good code-exec learnings produce steps that complete in 1-2 tool calls instead of 10+.
+**Code-exec efficiency goal**: The goal of code execution mode is to minimize tool calls. Ideally, the agent should run the entire step in a **single `terminal action=execute` call** — one Python script that handles everything (API calls, data processing, output writing). After a code-exec step runs, review the learnings and check: did the agent use multiple tool calls where a single script would suffice? If so, update the learnings to consolidate into fewer calls. Good code-exec learnings produce steps that complete in 1-2 tool calls instead of 10+.
 
 **Variable handling in code-exec learnings**: When writing or reviewing learnings for code execution steps, **never hardcode variable values** (account IDs, URLs, credentials, etc.) in the code. Variables are available in the step description as resolved values — the generated code should use sys.argv or argparse to accept them as CLI arguments. There is no automatic learning agent to rewrite these values; author runtime inputs explicitly. If you notice hardcoded values in code learnings, fix them immediately.
 
