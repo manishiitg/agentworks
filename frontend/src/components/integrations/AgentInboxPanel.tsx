@@ -3,11 +3,12 @@ import { Copy, Download, Mail } from 'lucide-react'
 import api from '../../services/api'
 import { Button } from '../ui/Button'
 import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
+import { Switch } from '../ui/Switch'
 import { PageRow, RowButton } from '../automation/AutomationKit'
 
 export function useAgentInboxEnabled() { return useCapabilitiesStore(state => state.capabilities?.agent_inboxes === true) }
 export interface InboxMail { sequence: number; id: string; thread_id: string; from: string; recipients: string[]; subject: string; body: string; received_at: number; authenticated: boolean; labels: string[]; attachments?: { id: string; name: string; size: number }[] }
-interface InboxState { enabled: boolean; inbox: { id: string; address: string }; receiving: boolean; error?: string; mail: { messages: InboxMail[]; next_cursor: number; has_more: boolean } }
+interface InboxState { enabled: boolean; can_configure?: boolean;inbox: { id: string; address: string }; receiving: boolean; error?: string; mail: { messages: InboxMail[]; next_cursor: number; has_more: boolean } }
 const errorText = (cause: unknown) => { const data = (cause as { response?: { data?: unknown } })?.response?.data; return typeof data === 'string' ? data : 'Could not load this inbox. Please try again.' }
 export function AgentInboxPanel({ workspacePath, refreshToken = 0, embedded = false }: { workspacePath: string; refreshToken?: number; embedded?: boolean }) {
   const [state, setState] = useState<InboxState | null>(null)
@@ -25,6 +26,12 @@ export function AgentInboxPanel({ workspacePath, refreshToken = 0, embedded = fa
     finally { setBusy(false) }
   }, [workspacePath])
   useEffect(() => { setState(null); setMail([]); setThread(null); if (enabled) void load() }, [enabled, load, refreshToken])
+  // The owner's switch: the server turns the Crew's incoming email on or off, then the page reads it again.
+  const setIncoming = async (on: boolean) => {
+    setBusy(true); setError(''); setNotice('')
+    try { await api.post('/api/agent-email/inbox', { workspace_path: workspacePath, enabled: on }); await load() }
+    catch (cause) { setError(errorText(cause)); setBusy(false) }
+  }
   const threads = useMemo(() => {
     const grouped = new Map<string, InboxMail[]>()
     for (const message of mail) grouped.set(message.thread_id, [...(grouped.get(message.thread_id) ?? []), message])
@@ -39,12 +46,15 @@ export function AgentInboxPanel({ workspacePath, refreshToken = 0, embedded = fa
   if (embedded) {
     const address = state?.inbox.address
     const week = mail.filter(message => message.received_at > Date.now() - 7 * 86400000).length
-    const status = !state ? 'Loading…' : !state.enabled ? 'Incoming email is off for this Crew. Ask in chat to enable it.' : state.receiving ? `${week} ${week === 1 ? 'message' : 'messages'} this week · each starts a chat` : 'Checking the Crew owner’s Gmail…'
+    const status = !state ? 'Loading…' : !state.enabled ? 'Incoming email is off for this Crew.' : state.receiving ? `${week} ${week === 1 ? 'message' : 'messages'} this week · each starts a chat` : 'Checking the Crew owner’s Gmail…'
     return <section aria-label="Agent inbox">
+      {state && (state.can_configure
+        ? <PageRow lead={<Switch aria-label={state.enabled ? 'Turn incoming email off' : 'Turn incoming email on'} checked={state.enabled} disabled={busy} onCheckedChange={on => void setIncoming(on)} />} title="Incoming email" lines={[state.enabled ? 'On' : 'Incoming email is off for this Crew.']} />
+        : !state.enabled && <p className="px-4 pt-3 text-xs text-muted-foreground">Incoming email is off for this Crew.</p>)}
       {error && <p role="alert" className="px-4 pt-3 text-xs text-destructive">{error}</p>}
       {notice && <p role="status" className="px-4 pt-3 text-xs">{notice}</p>}
       {state && state.enabled && state.error && <p className="px-4 pt-3 text-xs text-destructive">{state.error}</p>}
-      {!busy && !error && state && !address && mail.length === 0 && <p className="px-4 py-6 text-center text-sm text-muted-foreground">{state.enabled ? 'No email yet.' : 'This Crew has no email address yet. Ask your agent to set one up.'}</p>}
+      {!busy && !error && state && state.enabled && !address && mail.length === 0 && <p className="px-4 py-6 text-center text-sm text-muted-foreground">No email yet.</p>}
       {(address || mail.length > 0) && <PageRow lead={<Mail className="h-4 w-4 text-muted-foreground" />} title={address || 'Inbox'} lines={[status]}
         action={address ? <RowButton onClick={() => void navigator.clipboard.writeText(address).then(() => setNotice('Address copied.'), () => setError('Could not copy the address. Select and copy it.'))}>Copy address</RowButton> : undefined}
         open={open} onToggle={() => setOpen(value => !value)}>
