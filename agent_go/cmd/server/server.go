@@ -7276,13 +7276,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			restoredNativeCodingResume := false
 			restoredConversationPath := strings.TrimSpace(req.RestoredConversationPath)
 			restoredConversationSessionID := strings.TrimSpace(req.RestoredConversationSessionID)
-			restoredConversationWorkspace := normalizeConversationWorkspace(req.SelectedFolder)
-			if restoredConversationWorkspace == "" {
-				// Product-owned chats resolve SelectedFolder server-side. Work keeps
-				// its transcripts inside that project, so use the trusted project
-				// workspace when locating the native provider resume handle.
-				restoredConversationWorkspace = productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder)
-			}
+			// Product-owned chats locate native resume handles in their trusted runtime workspace.
+			restoredConversationWorkspace := productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder)
 			restoredConversationPathForFallback := restoredConversationPath
 			var restoredRuntime *ChatHistoryAgentRuntime
 			threadCwd, threadTransport := "", ""
