@@ -58,7 +58,7 @@ Example argument file for a source read:
 agentworks tools call workspace --input ./read-source.json
 ```
 
-`automation_write` takes the same fields plus `content`. Native Crew chat uses its current workflow file tools. Both paths retain the backend's existing ownership, account and source-validation checks.
+`automation_write` takes the same fields plus `content`. These file arguments are relative to the authored source directory. On disk, authored files are `code/script.json` and `code/main.py` under the returned workflow workspace; do not add `code/` to the tool's source-relative file argument. Native Crew chat uses `crew_workflow_files` with the same source-relative filenames. Both paths retain the backend's existing ownership, account and source-validation checks.
 
 Define inputs in `script.json`. Defaults and preset values are strings; runtime calls and raw-event mappings carry typed JSON. Put an enum inside the input's `schema`. Required values, selected apps and Vault names must be available before work that depends on them can run.
 
@@ -114,7 +114,7 @@ The CLI detects the exact native session. A person can publish that attached age
 
 ## A connected computer
 
-Use the Crew's Local laptop panel to connect a computer and choose its folders and command access. The app returns the current install and connection instructions; this is available without using a terminal as the only setup path.
+Use the Crew's Access panel to connect a computer and choose its folders and command access. The app returns the current install and connection instructions; this is available without using a terminal as the only setup path.
 
 Folder reads, writes, copying files and running local commands are separate permissions. A saved connection does not sync files or make every agent turn eligible. The existing `crew-laptop` guidance covers the owner's interactive, scheduled, watch and own-agent turns and the restrictions for Run, bot and other-person turns. The backend rechecks live account, device, folder and command grants.
 
