@@ -43,7 +43,7 @@ func validateSlackTrigger(ctx context.Context, route ChannelRoute) error {
 		return err
 	}
 
-	if err := validateWebhookPayloadMappings(ctx, route.WorkspacePath, &WorkflowWebhookConfig{InputMode: "raw", StepID: trigger.StepID, PayloadMappings: trigger.PayloadMappings}, trigger.GroupNames, trigger.RouteSelections); err != nil {
+	if err := validateWebhookPayloadMappings(ctx, route.WorkspacePath, &WorkflowWebhookConfig{InputMode: "raw", StepID: trigger.StepID, PayloadMappings: trigger.PayloadMappings, AllowedVariables: webhookMappedInputNames(trigger.PayloadMappings)}, trigger.GroupNames, trigger.RouteSelections); err != nil {
 		return err
 	}
 	return validateWebhookTarget(ctx, route.WorkspacePath, trigger.StepID, trigger.RouteSelections)
@@ -247,9 +247,13 @@ func slackTriggerActorEmail(connID, user string) string {
 
 func resolveSlackTriggerDelivery(ctx context.Context, route ChannelRoute, id string, payload []byte) (WorkflowSchedule, *WorkflowWebhookDelivery, error) {
 	t := route.Trigger
-	schedule := WorkflowSchedule{ID: id, Name: "Slack trigger", InputPreset: t.InputPreset, Inputs: t.Inputs, RouteSelections: t.RouteSelections, Webhook: &WorkflowWebhookConfig{InputMode: "raw", StepID: t.StepID, PayloadMappings: t.PayloadMappings}}
+	schedule := WorkflowSchedule{ID: id, Name: "Slack trigger", InputPreset: t.InputPreset, Inputs: t.Inputs, RouteSelections: t.RouteSelections, Webhook: &WorkflowWebhookConfig{InputMode: "raw", StepID: t.StepID, PayloadMappings: t.PayloadMappings, AllowedVariables: webhookMappedInputNames(t.PayloadMappings)}}
 	input := &WorkflowWebhookDelivery{RunID: id, DeliveryID: id, Payload: json.RawMessage(payload)}
-	if err := resolveWebhookDeliveryOptions(schedule, input); err != nil {
+	definitions, err := readWorkflowInputDefinitions(ctx, route.WorkspacePath)
+	if err != nil {
+		return schedule, nil, err
+	}
+	if err := resolveWebhookDeliveryOptions(schedule, input, definitions); err != nil {
 		return schedule, nil, err
 	}
 	if input.Group != "" {
@@ -258,6 +262,9 @@ func resolveSlackTriggerDelivery(ctx context.Context, route ChannelRoute, id str
 
 	step, routes := resolvedWebhookExecutionTarget(schedule, input)
 	if err := validateWebhookTarget(ctx, route.WorkspacePath, step, routes); err != nil {
+		return schedule, nil, err
+	}
+	if err := resolveWorkflowWebhookInputs(ctx, route.WorkspacePath, schedule, input); err != nil {
 		return schedule, nil, err
 	}
 	schedule.Webhook.StepID = step

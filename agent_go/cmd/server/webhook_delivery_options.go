@@ -29,6 +29,9 @@ func resolveWebhookDeliveryOptions(s WorkflowSchedule, input *WorkflowWebhookDel
 		if err := resolveWebhookPayloadMappings(s.Webhook.PayloadMappings, input); err != nil {
 			return err
 		}
+		if err := resolveWebhookMappedInputs(s, input, definitions...); err != nil {
+			return err
+		}
 	}
 	if s.Webhook == nil || s.Webhook.InputMode != "envelope" {
 		return nil

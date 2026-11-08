@@ -184,6 +184,8 @@ func validateWorkflowInputReferences(ctx context.Context, root string, next *Var
 		var exposed []string
 		if hook.InputMapping.Mode == "envelope" {
 			exposed = hook.InputMapping.Variables
+		} else if hook.InputMapping.Mode == "raw" {
+			exposed = webhookMappedInputNames(hook.InputMapping.Payload)
 		}
 		check("webhook "+hook.Name, append([]string(nil), hook.InputMapping.Variables...), exposed, hook.Input)
 	}

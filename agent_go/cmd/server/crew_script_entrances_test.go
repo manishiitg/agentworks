@@ -252,6 +252,7 @@ func checkSavedScriptTriggerAndSchedule(t *testing.T, docs string, binding crewE
 	verify(accepted.RunID, "", "5", "Saved")
 	call("/timer", `{}`)
 	verify("", "fixture-timer", "6", "Saved")
+	checkSavedScriptRawWebhook(t, api, binding, verify)
 	checkSavedScriptMCPStart(t, api, binding, docs)
 	if _, err := os.Stat(filepath.Join(docs, binding.Root)); !os.IsNotExist(err) {
 		t.Fatalf("script recreated retired runtime: %v", err)
