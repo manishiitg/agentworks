@@ -169,6 +169,8 @@ for line in sys.stdin:
                 assert Path.cwd()==root, 'native provider did not start in its run root'
                 assert Path(os.environ['WORKFLOW_CODE_ROOT'])==root/'execution/frozen/code'
                 assert os.environ['SCRIPT_SOURCE_DIR']==os.environ['WORKFLOW_CODE_ROOT']
+                package=subprocess.check_output(['python3','-B','-c',"import os,tiny_fixture; from pathlib import Path; assert Path(tiny_fixture.__file__).is_relative_to(Path(os.environ['WORKFLOW_CODE_DEPS'])); print(tiny_fixture.marker)"],text=True)
+                assert package.strip()=='native-package-ok', package
                 assert json.loads((Path(os.environ['WORKFLOW_CODE_ROOT'])/'script.json').read_text())['id']=='fixture-script'
                 shared=subprocess.check_output(['/bin/sh','-c','python3 "$WORKFLOW_CODE_ROOT/shared/x.py"'],text=True)
                 assert shared.strip()=='frozen-shared-ok', shared
@@ -274,7 +276,7 @@ for line in sys.stdin:
 		return c
 	}
 	c := newController()
-	if err := c.materializeScriptBundle(context.Background(), root+"/runs/run-one/execution/frozen/code", map[string][]byte{"main.py": []byte("frozen-source"), "shared/x.py": []byte("print('frozen-shared-ok')")}); err != nil {
+	if err := c.materializeScriptBundle(context.Background(), root+"/runs/run-one/execution/frozen/code", map[string][]byte{"main.py": []byte("frozen-source"), "shared/x.py": []byte("print('frozen-shared-ok')"), "requirements.txt": []byte("tiny-fixture==1.0\n")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.WriteWorkspaceFile(context.Background(), root+"/runs/run-one/execution/frozen/code/script.json", `{"id":"fixture-script","name":"Fixture"}`); err != nil {
@@ -316,7 +318,35 @@ for line in sys.stdin:
 		}
 	}
 	t.Cleanup(func() { clisecurity.ResolveWorkflowPolicy = previousResolver })
-	parent := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "parent"}, AgentConfigs: &AgentConfigs{ExecutionLLM: &AgentLLMConfig{Provider: "codex-cli", ModelID: "fixture"}, KnowledgebaseAccess: "none"}}
+	parent := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "parent"}, AgentConfigs: &AgentConfigs{ExecutionLLM: &AgentLLMConfig{Provider: "codex-cli", ModelID: "fixture"}, KnowledgebaseAccess: "none"}, crewScript: &CrewScriptConfiguration{Definition: CrewScriptDefinition{ID: "fixture-script"}, Files: map[string][]byte{"requirements.txt": []byte("tiny-fixture==1.0\n")}}}
+	dependencies := c.scriptDependencies(parent)
+	if err := os.MkdirAll(dependencies, 0750|os.ModeSetgid); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dependencies, "tiny_fixture.py"), []byte("marker='native-package-ok'\n"), 0440); err != nil {
+		t.Fatal(err)
+	}
+	if slotProof {
+		group, err := user.LookupGroup("slot01")
+		if err != nil {
+			t.Fatal(err)
+		}
+		gid, err := strconv.Atoi(group.Gid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for directory := dependencies; strings.HasPrefix(directory, filepath.Join(docs, root, ".sandbox-cache")); directory = filepath.Dir(directory) {
+			if err := os.Chown(directory, -1, gid); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(directory, 0750|os.ModeSetgid); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.Chown(filepath.Join(dependencies, "tiny_fixture.py"), -1, gid); err != nil {
+			t.Fatal(err)
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	missingDB := newController()
@@ -356,7 +386,7 @@ for line in sys.stdin:
 		t.Log("native slot01 executed shared/x.py from the frozen code root, created run-root outputs, refused source/record writes and used its signed child DB bridge")
 		return
 	}
-	ctx = context.WithValue(ctx, pythonScriptSourceDirKey{}, sourceDir)
+	ctx = context.WithValue(ctx, pythonScriptRuntimeKey{}, pythonScriptRuntime{SourceDir: sourceDir, DependenciesDir: dependencies})
 	log, err := os.ReadFile(first.LogFile)
 	if err != nil || !strings.Contains(string(log), large) {
 		t.Fatalf("full answer missing from transcript: %v", err)

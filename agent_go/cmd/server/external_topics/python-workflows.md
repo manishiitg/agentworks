@@ -12,6 +12,12 @@ The server runs it in that Crew with its current permissions and connected apps.
 An optional `timeout_seconds` in `script.json` limits the whole script, including
 its helper calls: default 3600 seconds, allowed integers 1 through 21600 (six
 hours). Stop can end it sooner.
+
+Declare third-party Python packages in `requirements.txt` beside `main.py`.
+The runner uses bundled uv (pip if uv is unavailable), caches the installation
+per script and requirements hash, and gives its agents the same package path.
+Changed requirements create a new entry; normal runs cannot overwrite installed
+package files. Package setup uses the existing sandbox, never a global install.
 You can ask the Crew's agent to create or change it; no terminal is needed.
 
 ## Find and edit

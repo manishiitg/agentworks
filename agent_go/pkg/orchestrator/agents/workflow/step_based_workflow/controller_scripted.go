@@ -618,6 +618,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// Build command: STEP_OUTPUT_DIR is passed via ExtraEnv so no inline env prefix needed.
 	// Use absolute paths for main.py and args — /app/workspace-docs/... is valid inside Docker.
 	command := scriptedCommand(mainPyAbsPath, inputArgs)
+	dependencies := hcpo.scriptDependencies(step)
+	if dependencies != "" {
+		// Install before the ordinary import preflight; a first run has no
+		// third-party modules yet. The bootstrap uses this same shell and guard.
+		command = "python3 -B -m agentworks._dependencies && " + command
+	}
 
 	includeCodeDir := workDirRel == stepExecutionRelPath+"/code"
 	guard, guardErr := hcpo.resolveScriptedShellGuard(ctx, step, stepIndex, stepPath, stepExecutionRelPath, includeCodeDir)
@@ -667,8 +673,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		extraEnv["DB_PATH"] = workflowAbsPath(hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
 	}
 	extraEnv = hcpo.codeRuntimeEnv(extraEnv)
+	if dependencies != "" {
+		extraEnv["SCRIPT_INSTALL_REQUIREMENTS"] = "1"
+	}
 	if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
-		useExecutedScriptSource(extraEnv, workDirAbsPath)
+		(pythonScriptRuntime{SourceDir: workDirAbsPath, DependenciesDir: dependencies}).apply(extraEnv)
 	}
 
 	// RUN_FOLDER: the workspace-relative "iteration-N/<group>" segment under
