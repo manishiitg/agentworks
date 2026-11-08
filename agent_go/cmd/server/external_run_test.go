@@ -56,7 +56,7 @@ func TestExternalRunScopeGate(t *testing.T) {
 	}
 }
 
-func TestExternalRunProxyRejectsReadOnlyToken(t *testing.T) {
+func TestExternalScriptStartRejectsReadOnlyToken(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	// The scope gate bites before dispatch: a read-only PAT calling a
 	// proxied run tool is rejected without touching the run runtime.
