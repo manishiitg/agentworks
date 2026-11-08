@@ -989,7 +989,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		}
 		// A workflow has no Builder chat or named tabs (owner, 8 Nov: "we only have crew chats"):
 		// everyone who can reach it asks it in Run mode; changes go through its Crew chat.
-		if strings.HasPrefix(dest.ChatKey, "session:") || strings.Contains(dest.ChatKey, codeChatSideMarker) {
+		if retiredWorkflowTabKey(dest.ChatKey) {
 			return session, fmt.Errorf("workflow chat tabs no longer exist; message the workflow itself")
 		}
 		access := workflowAccessForManifest(GetUserFromContext(ctx), manifest)
@@ -1127,6 +1127,12 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	}
 	_ = result // the receiving tab replies itself; nothing is relayed on its behalf
 	return session, err
+}
+
+// retiredWorkflowTabKey reports a destination that names a retired Builder tab. A "session:<id>" key is not one:
+// it is the reply address of a workflow Run session (registerAgentMessagingTools), which still receives its replies.
+func retiredWorkflowTabKey(chatKey string) bool {
+	return strings.Contains(chatKey, codeChatSideMarker)
 }
 
 func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolRegistrar, userID, sessionID string, parentReq QueryRequest, resolveCaller func(context.Context) (triggerLinkCaller, error), declare func(string)) error {
