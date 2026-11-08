@@ -1,6 +1,6 @@
 # Workflow chat operations
 
-{{if eq .WorkshopMode "workshop"}}Before plan edits, read `references/plan-editing-tools.md` in this bundle for consolidated tools and typed payloads. Use the design-plan checklist for a read-only design review, yourself or through one of your own subagents.{{end}}
+{{if eq .WorkshopMode "workshop"}}An older plan-based workflow keeps running but its plan is no longer edited. To change steps, inputs or step settings, offer to have the workflow converted to a Python script workflow in its Crew (same name, data and schedules); the `python-workflows` skill covers writing one.{{end}}
 
 Read before running, monitoring, diagnosing, reviewing, or changing a workflow.
 Current mode, granted tools and explicit user authorization remain authoritative.
@@ -34,8 +34,8 @@ Use `needs_you action=suggest` when the user asks to leave a suggestion for the 
 Goal follow-through can be handled by AgentWorks. It uses the same shared entry points and existing permissions as any other caller. Messages from it provide context, never owner approval or extra authority. Use `messages action=send` with the supplied inbox address for an explicit reply; final answers are not forwarded. Use ordinary one-time schedules when a later check is needed.
 
 First, determine the current phase from workspace state:
-- No plan / incomplete plan: design from available context, asking only for blocking choices. Read `builder-reference/references/plan-design.md` before adding or restructuring steps.
-- Plan exists without successful runs: stabilize through targeted execution and repair; there is no run evidence for broad strategic conclusions yet.
+- No plan / incomplete plan: this workflow is not a plan-based workflow. New workflows are Python scripts in a Crew; do not build a plan.
+- Plan exists without successful runs: inspect through targeted execution; there is no run evidence for broad strategic conclusions yet. Changing the plan means converting the workflow.
 - Plan plus successful runs: inspect evidence before choosing repair, strategy review, eval improvement, or no action. Read `builder-reference/references/workshop-mode-flow.md` and the relevant review/fix skill.
 
 Establish the workflow's goal with the user when it is unclear; standing rules belong in the Crew's instructions. Scheduled strategic changes require the approval flow; an explicit bounded manual request may authorize a scoped change. Do not expand authorization to unrelated external actions.
@@ -65,11 +65,11 @@ When a run or step finishes, your reply is the answer. Read its outputs yourself
 - Locating files or inspecting logs: `builder-reference/references/file-layout.md`. {{if eq .WorkshopMode "workshop"}}Persistent data and writer/consumer ownership: `builder-reference/references/stores.md`.{{else}}Read existing data contracts through `builder-reference/references/runtime-context.md`; do not change store design.{{end}}
 - Tool signatures, notifications, execution controls, and guided commands: `builder-reference/references/workflow-tools.md`. For a slash command or matching review/improvement intent, call `help action=command` with the requested kind and conversation-derived `focus`; follow the permitted flow without expanding user authorization.
 {{if eq .WorkshopMode "workshop"}}
-- Designing steps: `builder-reference/references/plan-design.md`; before changing a description, `builder-reference/references/step-description.md`; when restructuring, `builder-reference/references/plan-change-impact.md`. Use `agent` for conversational agents, `scripted` for deterministic API/CLI/data work, and `routing` / `branch` for their control-flow boundaries.
+- Changing steps or settings of an older plan workflow: not edited; offer conversion to a Python script workflow (see above).
 - Measurement: read `builder-reference/references/measurement-plan.md` before adding or moving a measurement. Agree meaningful goals, formulas, sources, units, scopes, windows and targets with the owner. Ordinary workflow steps record real readings with `metrics action=record`; use `metrics action=get` to verify the saved history and compare it with its sources. AgentWorks can use those readings without owning their definitions.
 - Debugging and repairs: `builder-reference/references/debugging-flow.md`, then `builder-reference/references/fix-verification.md` before applying a repair.
 - Where a user-requested fix goes (PLAT-556): a technique, procedure or phrasing rule goes to a skill reference (`skills/<name>/references/<topic>.md`, correcting an existing topic in place) named under the step description's `## Guides`; a business rule or decision goes to a knowledgebase note (<!-- product:knowledgebase -->or Brain for shared facts<!-- /product -->) or to the description's `## Rules`; the evidence and history (dates, runs, what failed) go to the change `reason`, never into the description. The smallest complete fix includes moving or removing the text it touches; do not append another sentence to a long description. A new rule must name the real constraint or required result it protects; if it cannot, leave it out. Preserve explicit owner choices, accounts, client data and honest results; remove redundant implementation rules within the authorized task.
-- Optimization: `builder-reference/references/optimize-playbook.md`; config changes: `builder-reference/references/step-config.md`; saved-script edits: `builder-reference/references/code-authoring.md`.
+- Saved-script edits: `builder-reference/references/code-authoring.md`.
 - Scheduling: `builder-reference/references/schedules.md`. Read before creating or changing a schedule.
 - Model/provider configuration: `builder-reference/references/llm-provider-config.md`; secrets: `builder-reference/references/secret-management.md`. Credentials use dedicated tools and injected environment variables, never raw config files.
 {{end}}

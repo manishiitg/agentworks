@@ -41,19 +41,7 @@ Existing explicit settings and one-run caller overrides keep their precedence.
 Use measured, approved trials with quality guardrails and a rollback checkpoint;
 
 
-Set via `update_step_config(step_id, ...)`:
-
-- **`execution_tier`** (`"high"` | `"medium"` | `"low"`) — a *persistent* tier override for one step in tiered mode. Use **high** for subjective/ambiguous judgment, **medium** for normal checks, **low** for deterministic/file-shape checks. Prefer this over pinning an exact model when the intent is just "this step can usually run cheaper/faster".
-- **`execution_llm`** (`{provider, model_id}`) — pins an *exact* model for one step. Use only when a specific model is genuinely required (a capability only that model has).
-- **`validation_llm`** — same shape, overrides the model used for that step's validation. There is no separate learning turn or `learning_llm` setting.
-
-**Precedence (highest wins):**
-1. `runs action=step` (step_id, input_preset?, inputs?, tier="...") — a one-off tier for a single trial run; changes nothing persistent.
-2. `execution_llm` — if set, it pins the model and **`execution_tier` is ignored** until the exact-model override is cleared.
-3. `execution_tier` — persistent tier for the step.
-4. Maturity-based default tier selection — what tiered mode does on its own.
-
-**Clearing an override:** `update_step_config(step_id, clear=["execution_llm"])` (or `["execution_tier"]`) removes the override so the step inherits tiered/default behavior again.
+A step's model is chosen in the script: `agent(name, task, model=...)` pins an exact model, `tier="high|medium|low"` picks a tier (high for subjective or ambiguous judgment, medium for normal checks, low for deterministic or file-shape checks). Older plan workflows keep their saved per-step settings and are not edited. A one-run override is `runs action=step` with `tier="..."`; it changes nothing saved.
 
 ### Model freshness and upgrades
 

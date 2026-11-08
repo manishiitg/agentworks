@@ -5,7 +5,7 @@ description: "Use when you notice work that should exist or the person asks for 
 
 # Suggesting and building new Crews and Relays
 
-Skills to read before building: `product-guide` (which product fits), `crew-authoring`, `relay-builder`, `plan-design`.
+Skills to read before building: `product-guide` (which product fits), `crew-authoring`, `python-workflows`, `relay-builder`.
 
 ## Look for work that should exist and does not
 - The person repeats the same request in chat.
