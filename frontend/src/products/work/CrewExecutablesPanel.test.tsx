@@ -64,18 +64,15 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
     expect(useWorkflowStore.getState().selectedRunFolder).toBe('unrelated-run')
     expect(useWorkflowStore.getState().runFolders.map(folder => folder.name)).toEqual(['unrelated-run'])
     await click('Runs')
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="Workflow run"]')!
-    await act(async () => { select.value = 'run-2'; select.dispatchEvent(new Event('change', { bubbles: true })) })
-    await flush()
+    await click('run-2')
+    await click('Full log')
     expect(host.querySelector('[data-view="logs"]')?.getAttribute('data-workspace')).toBe('Workflow/child')
     expect(host.querySelector('[data-view="logs"]')?.getAttribute('data-run')).toBe('run-2')
-    await click('Costs')
+    await click('Cost details')
     expect(host.querySelector('[data-view="costs"]')?.getAttribute('data-run')).toBe('run-2')
     expect(host.querySelector('[data-view="costs"]')?.getAttribute('data-run-only')).toBe('true')
-    await click('Inspect')
-    const step = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Research'))!
-    await act(async () => step.click())
-    await flush()
+    // Only this run's receipts are listed; opening the step shows the exact execution.
+    await click('Research')
     expect(host.querySelector('[data-view="inspect"]')?.getAttribute('data-execution')).toBe('second-execution')
     expect(useChatStore.getState().activeTabId).toBe('crew-chat')
     expect(useWorkflowStore.getState().selectedRunFolder).toBe('unrelated-run')

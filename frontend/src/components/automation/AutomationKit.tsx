@@ -110,7 +110,7 @@ export function PageCard({ title, hint, onAsk, action, children, testId }: {
       {action}
       {onAsk && <button type="button" onClick={() => void onAsk()} className="shrink-0 rounded-full border border-border px-3 py-0.5 text-xs hover:bg-muted">Ask</button>}
     </div>
-    <div className="divide-y divide-border border-t border-border">{children}</div>
+    {children != null && children !== false && <div className="divide-y divide-border border-t border-border">{children}</div>}
   </section>
 }
 
