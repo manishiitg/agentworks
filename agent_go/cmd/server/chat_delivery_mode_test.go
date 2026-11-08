@@ -12,6 +12,8 @@ import (
 	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/llm"
 )
@@ -100,13 +102,18 @@ func TestQueuedSteerPolicyMismatchDoesNotCancelCurrentTurn(t *testing.T) {
 	const sid = "queued-steer-policy"
 	f, _ := newExternalCrewCommandFixture(t)
 	api := f.api
+	store, err := chathistory.NewFilesystemStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.chatStore = store
 	canceled := false
 	api.runningAgents = map[string]*mcpagent.Agent{sid: testCodingAgent(llm.ProviderClaudeCode, "claude-sonnet-4-6")}
 	api.agentCancelFuncs = map[string]context.CancelFunc{sid: func() { canceled = true }}
 	api.activeSessions = map[string]*ActiveSessionInfo{sid: {UserID: "owner", WorkspacePath: externalCommandCrewRoot}}
 	api.internalSteerTransportReady = func(_, _ string) bool { return true }
 	api.lastChatPolicyBySession = map[string]string{sid: "previous-policy"}
-	req := QueryRequest{Query: "Use the connected app", AgentMode: "multi-agent", AgentProfileID: crewProfileID, AgentProfileConversationKey: "team", SelectedFolder: externalCommandCrewRoot, Provider: "claude-code", ModelID: "claude-sonnet-4-6", DeliveryMode: "steer"}
+	req := QueryRequest{Query: "Use the connected app", AgentMode: "multi-agent", AgentProfileID: crewProfileID, AgentProfileConversationKey: "team", SelectedFolder: externalCommandCrewRoot, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Fixture Crew"}, Provider: "claude-code", ModelID: "claude-sonnet-4-6", DeliveryMode: "steer"}
 	r := sharedSecretsRequest(http.MethodPost, "/api/query", "owner", req)
 	r.Header.Set("X-Session-ID", sid)
 	ctx := context.WithValue(r.Context(), queuedMessageSteerKey{}, true)

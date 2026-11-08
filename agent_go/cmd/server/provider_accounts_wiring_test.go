@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
@@ -50,7 +51,7 @@ func (e *providerAccountsEnv) queryToolsMode(t *testing.T, user, sessionID, root
 		return true
 	}
 	req := QueryRequest{
-		Query: "Continue", AgentMode: "multi-agent", AgentProfileID: crewProfileID, AgentProfileConversationKey: projectID, SelectedFolder: root, ConnectionID: accountID,
+		Query: "Continue", AgentMode: "multi-agent", AgentProfileID: crewProfileID, AgentProfileConversationKey: projectID, SelectedFolder: root, ConnectionID: accountID, Provider: "claude-code", ModelID: "sonnet", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Fixture Crew"},
 		// A current Crew turn selects the account explicitly.
 		LLMConfig: &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "claude-code", ModelID: "sonnet"}},
 	}
@@ -58,6 +59,9 @@ func (e *providerAccountsEnv) queryToolsMode(t *testing.T, user, sessionID, root
 	httpReq := sharedSecretsRequest(http.MethodPost, "/api/query", user, req)
 	httpReq.Header.Set("X-Session-ID", sessionID)
 	e.api.handleQuery(w, httpReq)
+	if w.Code != http.StatusNoContent && w.Code != http.StatusForbidden {
+		t.Logf("current Crew query HTTP%d: %s", w.Code, w.Body.String())
+	}
 	return decided, w.Code
 }
 
