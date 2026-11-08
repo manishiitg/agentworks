@@ -17,45 +17,23 @@ import (
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// externalRunToolHints documents the heavily used proxied run tools for the
-// catalog. Display-only: membership comes from product.yaml run.tools, and a
-// tool without a hint here still proxies with the generic description.
-var externalRunToolHints = map[string]string{
-	"execute_step":      "Start one workflow step in the background. Arguments: step_id (required; plan step ID or positional like '1'), group_name, human_input, script_parameters (object), tier (high|medium|low). Uses normal permissions, live database updates and real tool actions.",
-	"run_full_workflow": "Start a saved Python workflow directly with optional input_preset and typed inputs. Poll runs status with the returned session_id and read runs get for its saved record.",
-	"send_step_message": "Steer a live execution. Arguments: execution_id (required), message (required).",
-	"query_step":        "One-off live status check for a tracked execution. Arguments: step_id or execution_id.",
-}
-
-// externalRunProxyTool builds the catalog entry for a run.tools name with no
-// native implementation. The schema carries only the external routing keys;
-// every other argument passes through to the run-mode tool call verbatim,
-// flat, so a future native implementation keeps the same call shape.
-func externalRunProxyTool(name string) externalTool {
-	description := "Workflow operation `" + name + "` (requires runs:execute). Start a saved Python workflow directly; poll runs action=status for completion. No assistant turn is started."
-	if hint, ok := externalRunToolHints[name]; ok {
-		description += " " + hint
-	}
-	properties := map[string]any{
-		"workflow_id": externalString("Workflow ID returned by workflow action=list. Never a filesystem path."),
-		"session_id":  map[string]any{"type": "string", "description": "Existing run session ID to continue. Omit to start a new run session."},
-	}
-	if name == "run_full_workflow" {
-		properties["inputs"] = map[string]any{"type": "object", "description": "Typed values for this workflow's declared inputs. Omitted values use the saved preset and defaults."}
-		properties["input_preset"] = externalString("Optional saved input preset from workflow get.")
-	}
-	if name == "execute_step" {
-		properties["run_folder"] = externalString("Existing run identity for continuing its steps. The runtime rechecks Builder access, path and saved inputs; omit for a new run.")
-	}
+// externalSavedPythonStartTool is the typed direct entry to a saved script.
+// Conversation and individual Python step labels are not workflow run targets.
+func externalSavedPythonStartTool() externalTool {
 	return externalTool{
-		Name:        name,
-		Description: description,
+		Name:        "run_full_workflow",
+		Description: "Start a saved Python workflow directly with its declared inputs and optional saved input preset. Read runs status with the returned session_id, then inspect the saved run and its logs. No assistant turn is started.",
 		executes:    true,
 		InputSchema: map[string]any{
-			"type":                 "object",
-			"properties":           properties,
+			"type": "object",
+			"properties": map[string]any{
+				"workflow_id":  externalString("Workflow ID returned by workflow action=list. Never a filesystem path."),
+				"session_id":   externalString("Optional existing run session owned by this connection."),
+				"inputs":       map[string]any{"type": "object", "description": "Typed values for this script's declared inputs. Omitted values use its saved preset and defaults."},
+				"input_preset": externalString("Optional saved input preset from workflow get."),
+			},
 			"required":             []any{"workflow_id"},
-			"additionalProperties": true,
+			"additionalProperties": false,
 		},
 	}
 }

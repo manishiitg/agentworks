@@ -44,12 +44,10 @@ func TestAllGuidanceTemplatesRender(t *testing.T) {
 // public browser arguments are unconfirmed.
 var guidancePendingPublicNames = map[string]bool{
 	"browser-usage":         true,
-	"code-authoring":        true,
 	"llm-provider-config":   true,
 	"mcp-bridge":            true,
 	"playwright-scripted":   true,
 	"secure-share-links":    true,
-	"workflow-tools":        true,
 	"workspace-media-tools": true,
 }
 

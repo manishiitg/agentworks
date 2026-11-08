@@ -6,10 +6,7 @@ metadata:
   version: 2.0.0
   panel-tools:
     agentworks:
-    - execute_step
-    - debug_step
     - run_full_workflow
-    - query_step
     - list_executions
     - stop_step
     - stop_all_executions
