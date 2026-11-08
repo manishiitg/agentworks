@@ -59,7 +59,7 @@ class SameIdentityConversion(unittest.TestCase):
             binding_file.write_bytes(m.encode(binding))
             (runtime/'runs/old/full.log').write_text('historical full log\n')
             (runtime/'schedules.json').write_text('{"schedules":[]}')
-            (definitions/'planning/plan.json').write_text('{"steps":[{"id":"old","write_access":{"knowledgebase":true}}]}')
+            (definitions/'planning/plan.json').write_text('{"steps":[{"id":"old","write_access":{"knowledgebase":true},"validation_schema":{"required_files":["result.json"]}}]}')
             capabilities={'browser_mode':'cdp','browser_cdp_port':9222,'selected_global_secret_names':['EXAMPLE_TEST_SECRET'],'llm_config':{'mode':'provider','provider':'codex-cli'},'selected_servers':['example-app'],'selected_tools':['example-app:*']}
             # A retired tool in carried selections is dropped (PLAT-746).
             (definitions/'workflow.json').write_bytes(m.encode({'id':'task','capabilities':dict(capabilities,selected_tools=['example-app:*','human_tools:record_summary'])}))
@@ -103,6 +103,7 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertEqual(report['conversion']['database_rows'],{'historical':1})
             self.assertEqual(report['conversion']['removed_tools'],['human_tools:record_summary'])
             self.assertEqual(report['conversion']['knowledge_write_steps'],['old'])
+            self.assertEqual(report['conversion']['output_check_steps'],['old'])
             backup = Path(m.apply(changes,documents,state,identity="task"))
             self.assertEqual(hashes(runtime),before)
             self.assertEqual(hashes(backup/'runtime'),before)
@@ -151,6 +152,54 @@ class SameIdentityConversion(unittest.TestCase):
             binding['crew_root']='Crew/example';binding['runtime_root']='../another';binding_file.write_bytes(m.encode(binding))
             with self.assertRaisesRegex(ValueError,'Invalid private automation runtime root'):
                 m.plan(docs,state,False,'task',source)
+
+
+class SingleDatabase(unittest.TestCase):
+    def test_points_at_the_only_database_with_rows_merges_or_refuses_on_clash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve(); docs, state = base/'docs', base/'state'
+            (state/'ownership/crew-executables').mkdir(parents=True)
+            def make_db(path, table, rows, extra=''):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                db = sqlite3.connect(path); db.execute(f'CREATE TABLE {table} (id INTEGER PRIMARY KEY, v TEXT{extra})')
+                db.executemany(f'INSERT INTO {table} (v) VALUES (?)', [(str(i),) for i in range(rows)]); db.commit(); db.close()
+            projects = {'projects': {}}
+            for crew, flows in (('one', ['a']), ('merge', ['b']), ('clash', ['c']), ('logs', ['d']), ('drift', ['e'])):
+                projects['projects']['work/'+crew] = {'product': 'work', 'project_id': crew, 'owner_id': 'owner', 'folder': crew}
+                for flow in flows:
+                    binding = {'id': flow, 'crew_id': crew, 'kind': 'workflow', 'runtime_root': 'workflows/'+flow}
+                    (state/'ownership/crew-executables'/(flow+'.json')).write_bytes(m.encode(binding))
+            (state/'ownership/projects.json').write_bytes(m.encode(projects))
+            private = docs/'_system/crew-data'
+            make_db(private/'one/db/db.sqlite', 'empty', 0)
+            make_db(private/'one/workflows/a/db/db.sqlite', 'leads', 3)
+            make_db(private/'merge/db/db.sqlite', 'notes', 1)
+            make_db(private/'merge/workflows/b/db/db.sqlite', 'leads', 5)
+            make_db(private/'clash/db/db.sqlite', 'leads', 1)
+            make_db(private/'clash/workflows/c/db/db.sqlite', 'leads', 2)
+            # Platform tables with identical columns are appended, with new row ids.
+            make_db(private/'logs/db/db.sqlite', 'background_agent_log', 2)
+            make_db(private/'logs/workflows/d/db/db.sqlite', 'background_agent_log', 3)
+            # ...but a platform table whose columns differ still refuses.
+            make_db(private/'drift/db/db.sqlite', 'background_agent_log', 1)
+            make_db(private/'drift/workflows/e/db/db.sqlite', 'background_agent_log', 2, ', extra TEXT')
+            merges, crews = m.single_db_plan(docs, state)
+            actions = {c['crew']: c['action'] for c in crews}
+            self.assertEqual(actions['work/one'], 'use a')
+            self.assertTrue(actions['work/merge'].startswith('copy 1 table(s) into b'))
+            self.assertEqual(actions['work/clash'], 'refused: tables with rows exist in more than one database: leads')
+            self.assertEqual(actions['work/drift'], 'refused: tables with rows exist in more than one database: background_agent_log (platform table columns differ)')
+            self.assertEqual({c['crew']: c.get('append_platform_rows') for c in crews}['work/logs'], {'background_agent_log': 2})
+            backup = Path(m.apply_single_db(merges, docs, state, None))
+            saved = json.loads((state/'ownership/projects.json').read_text())['projects']
+            self.assertEqual(saved['work/one']['database_root'], 'workflows/a/db')
+            self.assertEqual(saved['work/merge']['database_root'], 'workflows/b/db')
+            self.assertNotIn('database_root', saved['work/clash'])
+            self.assertEqual(m.database_rows(private/'merge/workflows/b/db/db.sqlite'), {'leads': 5, 'notes': 1})
+            # Nothing deleted: the source database keeps its rows as history.
+            self.assertEqual(m.database_rows(private/'merge/db/db.sqlite'), {'notes': 1})
+            self.assertTrue((backup/'merge/db.sqlite').exists() and (backup/'projects.json').exists())
+            self.assertEqual(m.database_rows(private/'logs/workflows/d/db/db.sqlite'), {'background_agent_log': 5})
 
 
 if __name__ == '__main__':

@@ -18,11 +18,10 @@ func nativeSettingsMember(source mcpagent.ToolDefinition) mcpagent.ToolDefinitio
 		}
 	}
 	groups := map[string]map[string]string{
-		"mcp_servers":   {"add": "add_servers", "remove": "remove_servers"},
-		"tools":         {"add": "add_tools", "remove": "remove_tools"},
-		"skills":        {"add": "add_skills", "remove": "remove_skills"},
-		"secrets":       {"select": "add_secrets", "unselect": "remove_secrets"},
-		"notifications": {"run_instructions": "run_notification_instructions", "run_channels": "run_notification_channels", "run_recipients": "run_notification_recipients", "gmail_connection_id": "notification_gmail_connection_id", "break_alerts": "break_alerts"},
+		"mcp_servers": {"add": "add_servers", "remove": "remove_servers"},
+		"tools":       {"add": "add_tools", "remove": "remove_tools"},
+		"skills":      {"add": "add_skills", "remove": "remove_skills"},
+		"secrets":     {"select": "add_secrets", "unselect": "remove_secrets"},
 	}
 	for group, fields := range groups {
 		nested := map[string]any{}

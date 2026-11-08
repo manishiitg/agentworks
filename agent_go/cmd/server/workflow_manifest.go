@@ -249,15 +249,7 @@ type WorkflowWakeTab struct {
 }
 
 type WorkflowNotificationConfig struct {
-	// Sender selected from the accounts already added to this product.
-	GmailConnectionID string           `json:"gmail_connection_id,omitempty"`
-	ExcludeChannels   []string         `json:"exclude_channels,omitempty"`
-	BreakAlerts       *bool            `json:"break_alerts,omitempty"`
-	WakeTab           *WorkflowWakeTab `json:"wake_tab,omitempty"`
-}
-
-func (c *WorkflowNotificationConfig) BreakAlertsEnabled() bool {
-	return c == nil || c.BreakAlerts == nil || *c.BreakAlerts
+	WakeTab *WorkflowWakeTab `json:"wake_tab,omitempty"`
 }
 
 // WorkflowSchedule represents a clock or webhook trigger stored in the manifest.

@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -216,20 +214,6 @@ func (api *StreamingAPI) refreshBoundWorkflowSettings(ctx context.Context, user,
 		primary, tiered := workshopResolveLLMConfigFor(modelCtx, locked)
 		live.UpdatePresetLLMConfigs(primary, workshopResolveBackgroundLLMConfigFor(modelCtx, locked))
 		live.UpdateTieredConfig(tiered)
-	}
-	if notifications, ok := args["notifications"].(map[string]any); ok {
-		if sender, changed := notifications["gmail_connection_id"].(string); changed {
-			virtualtools.UpdateSessionGmailSender(session, root, sender)
-			if dest, ok := ctx.Value(virtualtools.BotNotificationDestinationKey).(*services.NotificationDestination); ok && dest != nil && dest.WorkspacePath == root {
-				if dest.Gmail == nil {
-					dest.Gmail = &services.GmailDest{}
-				}
-				dest.Gmail.Workspace, dest.Gmail.ConnectionIDs = root, nil
-				if sender = strings.TrimSpace(sender); sender != "" {
-					dest.Gmail.ConnectionIDs = []string{sender}
-				}
-			}
-		}
 	}
 	log.Printf("[PANEL_SETTINGS] live_refresh session=%s success=true", session)
 	return nil

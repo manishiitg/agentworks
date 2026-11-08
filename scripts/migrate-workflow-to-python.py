@@ -7,7 +7,8 @@ DB table merge, timer activation or startup compatibility path is performed.
 Original model, browser, MCP and selected secret names are copied from the
 workflow manifest. Secret values and account logins are never copied.
 
-The new --source folder holds flat Python files and script.json. Its
+The new --source folder holds flat Python files, script.json and an optional
+agent_mocks.json (agent test fixtures). Its
 script.json must NOT carry capabilities or input_presets: both are copied from
 the saved workflow. The owning Crew database must be empty (no rows) before
 converting. --adopt-into-crew needs the helper scripts that ship beside this
@@ -157,12 +158,29 @@ def knowledge_write_steps(definitions):
             'knowledge_write_note': "These old steps could write the knowledge base. Agents now read it by default; add knowledge='write' only to the agent() calls that replace these steps."}
 
 
+def output_check_steps(definitions):
+    """Old agent steps whose output was validated and repaired automatically. The
+    hand-written source must check the output itself and give the agent one
+    repair turn; the converter only lists these steps."""
+    steps = set()
+    for name in ('planning/plan.json', 'planning/step_config.json'):
+        file = definitions / name
+        if file.is_file():
+            for step in json.loads(file.read_text()).get('steps', []):
+                if isinstance(step, dict) and step.get('validation_schema'):
+                    steps.add(step.get('id'))
+    if not steps:
+        return {}
+    return {'output_check_steps': sorted(s for s in steps if s),
+            'output_check_note': 'These old steps had their output checked and repaired automatically. In the Python source, check each matching agent reply; on a failed check send the error once to the same agent (conversation_id=reply.conversation_id), check again, and fail plainly if it still fails.'}
+
+
 def python_payload(source, workflow_id, original_capabilities, original_inputs):
     source = source.resolve()
     payload, removed_tools = {}, []
     for file in source.iterdir():
-        if not file.is_file() or file.is_symlink() or (file.suffix != '.py' and file.name != 'script.json'):
-            raise ValueError('The new source must contain only flat Python files and script.json.')
+        if not file.is_file() or file.is_symlink() or (file.suffix != '.py' and file.name not in ('script.json', 'agent_mocks.json')):
+            raise ValueError('The new source must contain only flat Python files, script.json and an optional agent_mocks.json.')
         raw = file.read_bytes()
         if file.suffix == '.py':
             raw, removed = clean_agent_selections(raw)
@@ -257,7 +275,7 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     binding['kind'] = 'script'
     changes[binding_file] = encode(binding)
     documents = {'definitions': definitions, 'code': code, 'runtime': runtime, 'crew-db': private / 'db', 'crew-db-source': files / 'db'}
-    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, **knowledge_write_steps(definitions), 'carried_input_presets': len(definition['input_presets'])}}
+    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, **knowledge_write_steps(definitions), **output_check_steps(definitions), 'carried_input_presets': len(definition['input_presets'])}}
     return changes, documents, report
 
 
@@ -333,7 +351,7 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
     binding = json.loads(conversion.writes[conversion.binding_file])
     binding.update(kind='script', runtime_root='workflows/' + workflow_id)
     conversion.writes[conversion.binding_file] = encode(binding)
-    conversion.counts.update(carried_input_presets=len(definition['input_presets']), python_scripts=1, **removed, **knowledge_write_steps(conversion.definitions))
+    conversion.counts.update(carried_input_presets=len(definition['input_presets']), python_scripts=1, **removed, **knowledge_write_steps(conversion.definitions), **output_check_steps(conversion.definitions))
     conversion.python_source = True
     return conversion
 
@@ -417,6 +435,161 @@ def apply_retirement(removals, documents, state, backup, workflow_id):
     return str(backup)
 
 
+def table_rows(path):
+    """Row counts per table, read from a private copy (see database_rows)."""
+    return database_rows(path) if path.exists() else {}
+
+
+# Tables the server creates itself. When the same one has rows in several
+# databases with exactly the same columns, its rows are appended (new row ids)
+# instead of refusing; a business table clash always refuses.
+PLATFORM_TABLES = {'background_agent_log', 'run_concerns', 'org_dashboard_notifications', 'report_human_inputs',
+                   'report_human_input_events', 'eval_results', 'schema_migration_log'}
+
+
+def table_columns(path):
+    if not path.exists():
+        return {}
+    with tempfile.TemporaryDirectory() as directory:
+        copy = Path(directory) / 'db.sqlite'
+        shutil.copy2(path, copy)
+        wal = path.with_name(path.name + '-wal')
+        if wal.exists():
+            shutil.copy2(wal, copy.with_name(copy.name + '-wal'))
+        connection = sqlite3.connect(copy.as_uri() + '?mode=ro', uri=True)
+        try:
+            names = [r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+            return {n: [tuple(c[1:]) for c in connection.execute('PRAGMA table_info("' + n.replace('"', '""') + '")')] for n in names}
+        finally:
+            connection.close()
+
+
+def single_db_plan(docs, state):
+    """Plan one database per Crew (owner decision, 2026-11-08).
+
+    Per Crew: when only one of the Crew database and its workflow databases has
+    rows, point database_root at it (empty means the Crew's own database). When
+    several have rows, copy the other tables into the largest one; refuse that
+    Crew, naming the tables, when a table with rows exists in both. Nothing is
+    deleted; the old files stay as history."""
+    projects = json.loads((state / 'ownership/projects.json').read_text())['projects']
+    bindings = {}
+    for file in sorted((state / 'ownership/crew-executables').glob('*.json')):
+        binding = json.loads(file.read_text())
+        if binding.get('kind') not in ('workflow', 'script'):
+            continue
+        root = binding.get('runtime_root') or (('workflows' if binding['kind'] == 'workflow' else 'scripts') + '/' + safe_id(binding['id']))
+        runtime_root(root, binding['id'])
+        bindings.setdefault(binding.get('crew_id'), []).append((binding['id'], root + '/db'))
+    crews, merges = [], []
+    for key, crew in sorted(projects.items()):
+        if crew.get('product') != 'work' or not crew.get('project_id'):
+            continue
+        private = docs / '_system/crew-data' / safe_id(crew['project_id'])
+        if not private.is_dir():
+            continue
+        dbs = [{'name': 'crew', 'database_root': '', 'path': private / 'db/db.sqlite'}]
+        for workflow_id, root in sorted(bindings.get(crew['project_id'], [])):
+            dbs.append({'name': workflow_id, 'database_root': root, 'path': contained(private, root + '/db.sqlite')})
+        for db in dbs:
+            db['tables'] = table_rows(db['path'])
+            db['columns'] = table_columns(db['path'])
+            db['rows'] = sum(db['tables'].values())
+        with_data = [db for db in dbs if db['rows']]
+        current = crew.get('database_root') or ''
+        entry = {'crew': key, 'crew_id': crew['project_id'], 'current_database_root': current,
+                 'databases': [{'name': d['name'], 'database_root': d['database_root'], 'exists': d['path'].exists(), 'rows': d['rows'], 'tables': d['tables']} for d in dbs]}
+        if not with_data:
+            entry['action'] = 'nothing: no database has rows'
+        else:
+            target = max(with_data, key=lambda d: (d['rows'], d['database_root'] == current, d['name'] == 'crew'))
+            sources = [d for d in with_data if d is not target]
+            clashes, appended, seen = set(), {}, {t: target for t in target['tables']}
+            for d in sources:
+                for t, n in d['tables'].items():
+                    if not n:
+                        continue
+                    if t in seen:
+                        if t in PLATFORM_TABLES and d['columns'].get(t) == seen[t]['columns'].get(t):
+                            appended[t] = appended.get(t, 0) + n
+                        else:
+                            clashes.add(t + (' (platform table columns differ)' if t in PLATFORM_TABLES else ''))
+                    else:
+                        seen[t] = d
+            clashes = sorted(clashes)
+            if appended:
+                entry['append_platform_rows'] = appended
+            if clashes:
+                entry['action'] = 'refused: tables with rows exist in more than one database: ' + ', '.join(clashes)
+            else:
+                entry['target'] = target['name']
+                entry['target_database_root'] = target['database_root']
+                entry['copy_tables'] = {d['name']: sorted(t for t, n in d['tables'].items() if n) for d in sources}
+                if sources:
+                    entry['action'] = f"copy {sum(len(v) for v in entry['copy_tables'].values())} table(s) into {target['name']} and use it"
+                elif target['database_root'] == current:
+                    entry['action'] = 'nothing: already uses the only database with rows'
+                else:
+                    entry['action'] = 'use ' + target['name']
+                if sources or target['database_root'] != current:
+                    merges.append((key, crew, target, sources))
+        crews.append(entry)
+    return merges, crews
+
+
+def apply_single_db(merges, docs, state, backup):
+    if not merges:
+        return None
+    backup = (backup or state / 'migrations' / ('single-db-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')))
+    if backup.exists() and (not backup.is_dir() or any(backup.iterdir())):
+        raise ValueError('This backup folder already contains a snapshot. Keep it and choose a new backup folder.')
+    backup.mkdir(parents=True, exist_ok=True, mode=0o700)
+    projects_file = state / 'ownership/projects.json'
+    shutil.copy2(projects_file, backup / 'projects.json')
+    projects = json.loads(projects_file.read_text())
+    for key, crew, target, sources in merges:
+        if sources:
+            # One plain copy of the target database (and its WAL) before writing to it.
+            target_backup = backup / safe_id(crew['project_id'])
+            target_backup.mkdir(mode=0o700)
+            for suffix in ('', '-wal', '-shm'):
+                file = target['path'].with_name(target['path'].name + suffix)
+                if file.exists():
+                    shutil.copy2(file, target_backup / file.name)
+            connection = sqlite3.connect(target['path'])
+            try:
+                for index, source in enumerate(sources):
+                    alias = f'src{index}'
+                    connection.execute(f"ATTACH DATABASE ? AS {alias}", (str(source['path']),))
+                    for table in sorted(t for t, n in source['tables'].items() if n):
+                        quoted = '"' + table.replace('"', '""') + '"'
+                        exists = connection.execute("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+                        if exists:
+                            # A platform table with identical columns (checked at plan time):
+                            # append its rows, letting the target assign new row ids.
+                            columns = source['columns'][table]
+                            keep = [c[0] for c in columns if not (c[4] == 1 and c[1].upper() == 'INTEGER')]
+                            names = ', '.join('"' + c.replace('"', '""') + '"' for c in keep)
+                            connection.execute(f'INSERT INTO main.{quoted} ({names}) SELECT {names} FROM {alias}.{quoted}')
+                            continue
+                        create = connection.execute(f"SELECT sql FROM {alias}.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()[0]
+                        connection.execute(create)
+                        connection.execute(f'INSERT INTO main.{quoted} SELECT * FROM {alias}.{quoted}')
+                        for (sql,) in connection.execute(f"SELECT sql FROM {alias}.sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL", (table,)).fetchall():
+                            connection.execute(sql)
+                    connection.commit()
+                    connection.execute(f'DETACH DATABASE {alias}')
+            finally:
+                connection.close()
+        record = projects['projects'][key]
+        if target['database_root']:
+            record['database_root'] = target['database_root']
+        else:
+            record.pop('database_root', None)
+    projects_file.write_bytes(encode(projects))
+    return str(backup)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--docs', type=Path, required=True)
@@ -428,9 +601,17 @@ def main():
     parser.add_argument('--agent-binary', type=Path, help='Current server binary for importing older chat archives and validating inputs.')
     parser.add_argument('--deployment-mode', choices=('local', 'server'), help='Required for standalone adoption: this installation runs locally or on a server.')
     parser.add_argument('--retire-old-plan', action='store_true', help='After at least one completed converted run, remove the old plan-engine files (planning/, its changelog and unused plan revisions). Never workflow.json, variables, code/, runs, the database or timers.')
+    parser.add_argument('--single-db', action='store_true', help='One database per Crew: point each Crew at its only database with rows, or copy the other tables into the largest one (refusing on a table-name clash). Inspect by default; nothing is deleted.')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--backup', type=Path, help='Backup parent folder; each workflow gets its own new snapshot, never overwriting an earlier one.')
     args = parser.parse_args()
+    if args.single_db:
+        if args.workflow_id or args.source or args.adopt_into_crew or args.initialize_runtime_roots or args.retire_old_plan:
+            parser.error('--single-db takes no other step (only --backup and --apply)')
+        merges, crews = single_db_plan(args.docs.resolve(), args.state.resolve())
+        report = {'crews': crews, 'backup': apply_single_db(merges, args.docs.resolve(), args.state.resolve(), args.backup) if args.apply else None}
+        print(json.dumps(report, indent=2, default=str))
+        return
     if args.retire_old_plan:
         if not args.workflow_id or args.source or args.adopt_into_crew or args.initialize_runtime_roots:
             parser.error('--retire-old-plan takes only --workflow-id (with --backup and --apply)')

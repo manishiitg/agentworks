@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -252,18 +251,9 @@ type UpdateWorkflowManifestRequest struct {
 	FolderAccess         *[]workflowtypes.WorkflowFolderGrant         `json:"folder_access,omitempty"`
 	FolderAccessRequests *[]workflowtypes.WorkflowFolderAccessRequest `json:"folder_access_requests,omitempty"`
 	WorkflowContextPaths *[]string                                    `json:"workflow_context_paths,omitempty"`
-	// Notification instruction fields are standalone patches so the Notify
-	// popup can update content guidance without replacing workflow capabilities.
-	// BreakAlerts controls informational run statuses in Needs you.
-	BreakAlerts *bool `json:"break_alerts,omitempty"`
 	// WakeTab names the Crew tab to message when a run fails or never ran; an
 	// empty crew_id clears it.
 	WakeTab *WorkflowWakeTab `json:"wake_tab,omitempty"`
-	// Recipient lists are pointers so an explicitly sent empty array clears them
-	// (stopping summary email) while omission leaves them untouched.
-	// One sender for this workflow's Gmail notifications. Empty inherits the
-	// account default.
-	NotificationGmailConnectionID *string `json:"notification_gmail_connection_id,omitempty"`
 }
 
 func mergeWorkflowCapabilitiesUpdate(existing WorkflowCapabilities, incoming *WorkflowCapabilities) WorkflowCapabilities {
@@ -276,9 +266,7 @@ func mergeWorkflowCapabilitiesUpdate(existing WorkflowCapabilities, incoming *Wo
 	// reference unless the caller explicitly sends that newer field.
 	if updated.Notifications == nil {
 		updated.Notifications = existing.Notifications
-	} else if len(updated.Notifications.ExcludeChannels) == 0 &&
-		strings.TrimSpace(updated.Notifications.GmailConnectionID) == "" &&
-		updated.Notifications.BreakAlerts == nil && updated.Notifications.WakeTab == nil {
+	} else if updated.Notifications.WakeTab == nil {
 		// An explicitly supplied empty object clears workflow notification preferences.
 		updated.Notifications = nil
 	}
@@ -322,27 +310,6 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		writeWorkflowPermissionDenied(w, "owner")
 		return
 	}
-	senderIDs := []string{}
-	if req.NotificationGmailConnectionID != nil {
-		senderIDs = append(senderIDs, *req.NotificationGmailConnectionID)
-	}
-
-	if len(normalizeGmailConnectionIDs(senderIDs)) > 0 {
-		gmail, gmailErr := ensureGmailService()
-		if gmailErr != nil {
-			http.Error(w, gmailErr.Error(), http.StatusBadRequest)
-			return
-		}
-		item := personalConnectionItemRoot(GetUserIDFromContext(r.Context()), req.WorkspacePath)
-		for _, id := range normalizeGmailConnectionIDs(senderIDs) {
-			conn, found := gmail.GetConnection(id)
-			if !found || !conn.Enabled || !conn.UsableFrom(services.GmailUseScope{Workspace: item}) {
-				http.Error(w, "Choose an enabled Google account added to this item in Google apps", http.StatusBadRequest)
-				return
-			}
-		}
-	}
-
 	if req.KnowledgebaseSources != nil {
 		if err := workflowkb.Validate(stepworkflow.GetPromptDocsRoot(), req.WorkspacePath, *req.KnowledgebaseSources); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -448,13 +415,6 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		manifest.WorkflowContextPaths = normalized
 	}
 
-	if req.BreakAlerts != nil {
-		if manifest.Capabilities.Notifications == nil {
-			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
-		}
-		value := *req.BreakAlerts
-		manifest.Capabilities.Notifications.BreakAlerts = &value
-	}
 	if req.WakeTab != nil {
 		if manifest.Capabilities.Notifications == nil {
 			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
@@ -464,13 +424,6 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		} else {
 			manifest.Capabilities.Notifications.WakeTab = &WorkflowWakeTab{CrewID: crew, ChatID: tab}
 		}
-	}
-
-	if req.NotificationGmailConnectionID != nil {
-		if manifest.Capabilities.Notifications == nil {
-			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
-		}
-		setWorkflowNotificationSender(manifest.Capabilities.Notifications, *req.NotificationGmailConnectionID)
 	}
 
 	// Write updated manifest
@@ -511,52 +464,8 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 	})
 }
 
-func setWorkflowNotificationSender(config *WorkflowNotificationConfig, connectionID string) {
-	config.GmailConnectionID = strings.TrimSpace(connectionID)
-}
-
 func normalizeWorkflowFolderGrants(requested, previous []workflowtypes.WorkflowFolderGrant) ([]workflowtypes.WorkflowFolderGrant, error) {
 	return workflowtypes.NormalizeFolderGrants(requested, previous, "folder_access", time.Now().UTC().Format(time.RFC3339))
-}
-
-func normalizeNotificationChannels(channels []string) []string {
-	allowed := map[string]bool{"gmail": true, "slack": true, "whatsapp": true}
-	seen := map[string]bool{}
-	normalized := make([]string, 0, len(channels))
-	for _, raw := range channels {
-		channel := strings.ToLower(strings.TrimSpace(raw))
-		if !allowed[channel] || seen[channel] {
-			continue
-		}
-		seen[channel] = true
-		normalized = append(normalized, channel)
-	}
-	return normalized
-}
-
-// normalizeNotificationRecipients cleans a saved recipient list: one address
-// per entry, lowercased and de-duplicated. Callers may paste "a@x.com, b@x.com"
-// into a single entry, so separators are split the same way the Gmail connector
-// splits them at send time — otherwise a pasted list would be stored as one
-// malformed address and silently fail to deliver.
-func normalizeNotificationRecipients(recipients []string) []string {
-	seen := map[string]bool{}
-	normalized := make([]string, 0, len(recipients))
-	for _, raw := range recipients {
-		for _, part := range strings.FieldsFunc(raw, func(r rune) bool {
-			return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
-		}) {
-			email := strings.ToLower(strings.TrimSpace(part))
-			// A bare token with no "@" is not an address. Dropping it keeps a
-			// typo from becoming a recipient that never receives anything.
-			if email == "" || seen[email] || !strings.Contains(email, "@") {
-				continue
-			}
-			seen[email] = true
-			normalized = append(normalized, email)
-		}
-	}
-	return normalized
 }
 
 // --- Delete manifest ---

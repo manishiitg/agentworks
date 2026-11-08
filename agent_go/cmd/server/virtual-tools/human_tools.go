@@ -134,39 +134,6 @@ func emailListFromArg(raw interface{}) []string {
 	}
 }
 
-// stringListFromArg reads an array-or-string tool argument into a trimmed,
-// lowercased, de-duplicated slice. Used for simple token lists such as
-// exclude_channels ("gmail", "slack", "whatsapp") where email-style splitting
-// isn't needed.
-func stringListFromArg(raw interface{}) []string {
-	var values []string
-	switch v := raw.(type) {
-	case []interface{}:
-		for _, item := range v {
-			if s, ok := item.(string); ok {
-				values = append(values, s)
-			}
-		}
-	case []string:
-		values = v
-	case string:
-		values = []string{v}
-	default:
-		return nil
-	}
-	seen := map[string]bool{}
-	out := make([]string, 0, len(values))
-	for _, raw := range values {
-		token := strings.ToLower(strings.TrimSpace(raw))
-		if token == "" || seen[token] {
-			continue
-		}
-		seen[token] = true
-		out = append(out, token)
-	}
-	return out
-}
-
 func normalizeNotifyEmailList(values []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(values))
@@ -376,25 +343,16 @@ func cloneNotificationDestination(dest *services.NotificationDestination) *servi
 		return nil
 	}
 	clone := &services.NotificationDestination{
-		UserID:               dest.UserID,
-		WorkflowName:         dest.WorkflowName,
-		WorkspacePath:        dest.WorkspacePath,
-		RouteSelections:      maps.Clone(dest.RouteSelections),
-		ExcludeChannels:      append([]string(nil), dest.ExcludeChannels...),
-		RunSummaryChannels:   append([]string(nil), dest.RunSummaryChannels...),
-		RunSummaryRecipients: append([]string(nil), dest.RunSummaryRecipients...),
+		UserID:          dest.UserID,
+		WorkflowName:    dest.WorkflowName,
+		WorkspacePath:   dest.WorkspacePath,
+		RouteSelections: maps.Clone(dest.RouteSelections),
 	}
 	if dest.Slack != nil {
 		clone.Slack = &services.SlackDest{
 			ChannelID:    dest.Slack.ChannelID,
 			ThreadTS:     dest.Slack.ThreadTS,
 			ConnectionID: dest.Slack.ConnectionID,
-		}
-	}
-	if dest.SlackWebhook != nil {
-		clone.SlackWebhook = &services.SlackWebhookDest{
-			SecretName: dest.SlackWebhook.SecretName,
-			URL:        dest.SlackWebhook.URL,
 		}
 	}
 	if dest.WhatsApp != nil {
@@ -450,10 +408,6 @@ func notificationDestinationEmpty(dest *services.NotificationDestination) bool {
 		(dest.UserID == "" &&
 			dest.WorkspacePath == "" &&
 			(dest.Slack == nil || dest.Slack.ChannelID == "") &&
-			(dest.SlackWebhook == nil || (dest.SlackWebhook.SecretName == "" && dest.SlackWebhook.URL == "")) &&
 			(dest.WhatsApp == nil || (dest.WhatsApp.ChannelID == "" && dest.WhatsApp.PhoneE164 == "")) &&
-			(dest.Gmail == nil || dest.Gmail.Email == "") &&
-			len(dest.ExcludeChannels) == 0 &&
-			len(dest.RunSummaryChannels) == 0 &&
-			len(dest.RunSummaryRecipients) == 0)
+			(dest.Gmail == nil || dest.Gmail.Email == ""))
 }
