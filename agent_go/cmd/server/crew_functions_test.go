@@ -77,6 +77,8 @@ func newCrewFunctionEnv(t *testing.T) crewFunctionEnv {
 	crewFunctionCalls.m = map[string]*crewFunctionCall{}
 	crewFunctionCalls.Unlock()
 	env := crewFunctionEnv{triggerLinkEnv: newTriggerLinkEnv(t)}
+	// Crews of one person talk only when linked (requireLinkedOwnCrew): Alpha links Beta.
+	env.mock.files[linkAlphaPath+"/workflow.json"] = `{"schema_version":1,"product":"work","id":"alpha","workflow_context_paths":["` + linkBetaPath + `"]}`
 	env.alpha = env.functionTools(t, linkAlphaPath, "sess-caller", nil)
 	env.beta = env.functionTools(t, linkBetaPath, "sess-beta-chat", nil)
 	return env

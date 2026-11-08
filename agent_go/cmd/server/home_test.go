@@ -256,15 +256,15 @@ func TestWorkspaceAccessUsesCurrentProjectRole(t *testing.T) {
 
 func TestWorkspaceStateResolvesConversationKeyFromRegistry(t *testing.T) {
 	env, _, root := conditionCodeFixture(t)
-	t.Setenv("AGENT_PRODUCTS", "agentworks,work,code")
+	t.Setenv("AGENT_PRODUCTS", "agentworks,work")
 	env.api.activeSessions = map[string]*ActiveSessionInfo{"own-code": {SessionID: "own-code", UserID: "owner", WorkspacePath: root}}
-	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{"code/checks:chat:side": {ProfileID: "code", ConversationKey: "checks:chat:side", SessionID: "own-code", WorkspacePath: root}}}
+	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{"work/checks:chat:side": {ProfileID: "work", ConversationKey: "checks:chat:side", SessionID: "own-code", WorkspacePath: root}}}
 	raw, _ := json.Marshal(document)
 	env.mock.mu.Lock()
 	env.mock.files[productConversationRegistryPath("owner")] = string(raw)
 	env.mock.mu.Unlock()
 	request := adminRequest("GET", "/api/workspace-state", "", &UserClaims{UserID: "owner"}, nil)
-	got, ok := env.api.validateWorkspaceReturn(request, &workspaceDestination{Surface: "code", ID: "checks", SessionID: "own-code", Chat: &workspaceChat{ConversationKey: "checks:chat:forged", WorkshopMode: "run"}}, []homeWork{{Surface: "code", ID: "checks", WorkspacePath: root}})
+	got, ok := env.api.validateWorkspaceReturn(request, &workspaceDestination{Surface: "work", ID: "checks", SessionID: "own-code", Chat: &workspaceChat{ConversationKey: "checks:chat:forged", WorkshopMode: "run"}}, []homeWork{{Surface: "work", ID: "checks", WorkspacePath: root}})
 	if !ok || got.Chat == nil || got.Chat.ConversationKey != "checks:chat:side" || got.Chat.WorkshopMode == "run" {
 		t.Fatalf("browser slot or mode used: %+v", got)
 	}
@@ -272,15 +272,15 @@ func TestWorkspaceStateResolvesConversationKeyFromRegistry(t *testing.T) {
 
 func TestWorkspaceStateRestoresEmptyRegisteredSideChat(t *testing.T) {
 	env, _, root := conditionCodeFixture(t)
-	t.Setenv("AGENT_PRODUCTS", "agentworks,work,code")
-	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{"code/checks:chat:side": {ProfileID: "code", ConversationKey: "checks:chat:side", SessionID: "empty-side", WorkspacePath: root}}}
+	t.Setenv("AGENT_PRODUCTS", "agentworks,work")
+	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{"work/checks:chat:side": {ProfileID: "work", ConversationKey: "checks:chat:side", SessionID: "empty-side", WorkspacePath: root}}}
 	raw, _ := json.Marshal(document)
 	env.mock.mu.Lock()
 	env.mock.files[productConversationRegistryPath("owner")] = string(raw)
 	env.mock.mu.Unlock()
 	request := adminRequest("GET", "/api/workspace-state", "", &UserClaims{UserID: "owner"}, nil)
-	destination := &workspaceDestination{Surface: "code", ID: "checks", SessionID: "empty-side", Chat: &workspaceChat{Name: "Chat 2", ConversationKey: "checks:chat:forged"}}
-	work := []homeWork{{Surface: "code", ID: "checks", WorkspacePath: root}}
+	destination := &workspaceDestination{Surface: "work", ID: "checks", SessionID: "empty-side", Chat: &workspaceChat{Name: "Chat 2", ConversationKey: "checks:chat:forged"}}
+	work := []homeWork{{Surface: "work", ID: "checks", WorkspacePath: root}}
 	got, ok := env.api.validateWorkspaceReturn(request, destination, work)
 	if !ok || got.SessionID != "empty-side" || got.Chat == nil || got.Chat.ConversationKey != "checks:chat:side" || got.Chat.ReadOnly || got.Chat.Name != "Chat 2" {
 		t.Fatalf("empty registered side chat lost: %+v", got)
@@ -294,13 +294,10 @@ func TestWorkspaceStateRestoresEmptyRegisteredSideChat(t *testing.T) {
 
 func TestHomeInventoryIncludesOnlyAdmittedSharedCode(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
-	t.Setenv("AGENT_PRODUCTS", "code")
-	registry := withProjectOwnerRegistry(t)
+	// Code is a Crew now: the fixture registered it private under the Crew product; only its Run people see it.
+	registry := defaultProjectOwners()
 	withProjectSharing(t, true)
 	const folder = "app-c0de0001"
-	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: folder, OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
-		t.Fatal(err)
-	}
 	claims := &UserClaims{UserID: "other"}
 	request := adminRequest("GET", "/api/home", "", claims, nil)
 	contains := func() bool {
@@ -322,13 +319,13 @@ func TestHomeInventoryIncludesOnlyAdmittedSharedCode(t *testing.T) {
 	if contains() {
 		t.Fatal("private Code leaked into return inventory")
 	}
-	if err := registry.SetRunPeople("code", folder, []string{"other"}); err != nil {
+	if err := registry.SetRunPeople("work", folder, []string{"other"}); err != nil {
 		t.Fatal(err)
 	}
 	if !contains() {
 		t.Fatal("shared Code missing from return inventory")
 	}
-	if err := registry.SetRunPeople("code", folder, nil); err != nil {
+	if err := registry.SetRunPeople("work", folder, nil); err != nil {
 		t.Fatal(err)
 	}
 	if contains() {

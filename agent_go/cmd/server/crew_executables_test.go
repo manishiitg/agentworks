@@ -471,7 +471,7 @@ func TestCrewAutomationNativeCommitUsesMovedSource(t *testing.T) {
 			target = filepath.Join(docs, root, ".agentworks/code", b.ID, strings.TrimPrefix(rel, "code/"))
 		}
 		if strings.Contains(rel, "changelog") {
-			target = filepath.Join(docs, "_system/crew-data", b.CrewID, "workflows", b.ID, rel)
+			target = filepath.Join(docs, "_system/crew-data", b.CrewID, "automations", b.ID, rel)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 			t.Fatal(err)
