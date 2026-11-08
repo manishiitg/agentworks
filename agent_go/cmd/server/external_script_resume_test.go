@@ -34,7 +34,7 @@ func checkSavedScriptMCPResume(t *testing.T, api *StreamingAPI, binding crewExec
 	write := func(source string) {
 		call("workspace", map[string]any{"action": "automation_write", "crew_id": binding.CrewID, "workspace_path": binding.Root, "file": "main.py", "content": source})
 	}
-	source := "import json, os, time\nfrom pathlib import Path\nfrom agentworks import inputs, run_folder\np=run_folder/'resume-counter.txt'\nn=int(p.read_text())+1 if p.exists() else 1\np.write_text(str(n))\nif n==1: raise RuntimeError('resume-fixture failed once')\ntime.sleep(1)\ndata=json.dumps({'count':inputs['count'],'attempts':n})\nfor name in ['resumed.json','result.json']: (Path(os.environ['STEP_OUTPUT_DIR'])/name).write_text(data)\n"
+	source := "import json, os, time\nfrom pathlib import Path\nfrom agentworks import inputs, run_folder\np=run_folder/'resume-counter.txt'\nn=int(p.read_text())+1 if p.exists() else 1\np.write_text(str(n))\nif n==1: raise RuntimeError('resume-fixture failed once')\nwhile not (run_folder/'resume-release.txt').exists(): time.sleep(0.02)\ndata=json.dumps({'count':inputs['count'],'attempts':n})\nfor name in ['resumed.json','result.json']: (Path(os.environ['STEP_OUTPUT_DIR'])/name).write_text(data)\n"
 	write(source)
 	layout, found, err := crewroot.LookupExecutable(docs, binding.Root)
 	if err != nil || !found {
@@ -77,6 +77,8 @@ func checkSavedScriptMCPResume(t *testing.T, api *StreamingAPI, binding crewExec
 	}
 	started := call("runs", map[string]any{"action": "start", "workflow_id": binding.ID, "inputs": map[string]any{"count": 9}})
 	folder := wait(started["session_id"].(string), "", "failed", "")
+	releasePath := filepath.Join(layout.Runtime, "runs", folder, "resume-release.txt")
+	defer func() { _ = os.WriteFile(releasePath, []byte("finish"), 0600) }()
 	metaPath := filepath.Join(layout.Runtime, "runs", folder, "run_metadata.json")
 	inputPath := filepath.Join(layout.Runtime, "runs", folder, "inputs.json")
 	metadata := readMeta(folder)
@@ -122,6 +124,9 @@ func checkSavedScriptMCPResume(t *testing.T, api *StreamingAPI, binding crewExec
 	}
 	busy := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "runs", "arguments": map[string]any{"action": "resume", "workflow_id": binding.ID, "run_folder": folder}})
 	requireRemoteError(t, busy, "active resume attempt", "run_already_running")
+	if err := os.WriteFile(releasePath, []byte("finish"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	wait(resumed["session_id"].(string), folder, "completed", previous)
 	current := readMeta(folder)
 	var original map[string]any
