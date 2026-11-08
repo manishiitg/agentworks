@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"slices"
@@ -80,12 +81,12 @@ func externalTools() ([]externalTool, error) {
 		}
 		p := page()
 		p["query"] = externalString("Filter workflow labels and IDs.")
-		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, owners, schedule counts and schedule counts only. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
+		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, label, kind, owners, schedule counts, and script typed inputs and presets. Pass false for every workflow's full manifest (tens of thousands of characters); workflow action=get returns one manifest."}
 		externalAgentMessageDefinition(add)
 		add("chat_preferences", "Read your personal chat display, or set show_context_indicator to show or hide context and plan use in the chat box of all your chats (Show in chat box; off by default). Changes only your display; never changes a project or provider account.", true, false, map[string]any{"show_context_indicator": map[string]any{"type": "boolean"}})
 		externalServerProductDefinitions(add)
 		add("list_workflows", "List workflows visible to the signed-in user (compact by default; compact: false adds every manifest).", false, false, p)
-		add("get_workflow", "Read one workflow manifest and the caller's access level.", false, true, nil)
+		add("get_workflow", "Read one workflow manifest and your access, including saved Python script typed inputs and input presets.", false, true, nil)
 		for _, name := range []string{"list_files", "search_files"} {
 			p = page()
 			p["path"] = map[string]any{"type": "string", "description": "Workflow-relative directory. Omit, or pass \"\" or \".\", for the workflow root."}
@@ -112,7 +113,7 @@ func externalTools() ([]externalTool, error) {
 		// Catalog membership is admitted by product.yaml (chat.run
 		// external_tools plus the run.tools proxy surface); these definitions
 		// are implementations only.
-		add("get_plan", "Read the plan and configuration. A large plan can be several hundred thousand characters: pass view=outline first (each step's id, type, title and a short description, plus the size of every top-level plan section), then step_id to read one step's plan entry and its configuration. Without either you get everything (plan and step configuration).", false, true, map[string]any{
+		add("get_plan", "For a saved Python script, read its source outline without executing it; requires the same Builder access as its source editor. For an older workflow, read the plan and configuration. A large plan can be several hundred thousand characters: pass view=outline first (each step's id, type, title and a short description, plus the size of every top-level plan section), then step_id to read one step's plan entry and its configuration. Without either you get everything (plan and step configuration).", false, true, map[string]any{
 			"view":    map[string]any{"type": "string", "enum": []any{"full", "outline"}, "description": "outline: step list and section sizes only. Default full."},
 			"step_id": externalString("Read only this step: its plan entry and its configuration."),
 		})
@@ -987,14 +988,24 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		if externalCompact(args) {
 			rows := make([]map[string]any, 0, end-start)
 			for _, item := range matches[start:end] {
-				rows = append(rows, externalCompactWorkflow(item))
+				view, err := externalWorkflowReadView(r.Context(), item, true)
+				if err != nil {
+					externalFailure(w, err)
+					return
+				}
+				rows = append(rows, view)
 			}
 			externalJSON(w, map[string]any{"workflows": rows, "total": len(matches), "next_offset": end, "has_more": end < len(matches), "note": "Compact list: use workflow action=get for one workflow's full manifest."})
 			return
 		}
-		page := make([]DiscoveredWorkflow, 0, end-start)
+		page := make([]map[string]any, 0, end-start)
 		for _, item := range matches[start:end] {
-			page = append(page, externalWorkflowView(item))
+			view, err := externalWorkflowReadView(r.Context(), item, false)
+			if err != nil {
+				externalFailure(w, err)
+				return
+			}
+			page = append(page, view)
 		}
 		externalJSON(w, map[string]any{"workflows": page, "total": len(matches), "next_offset": end, "has_more": end < len(matches)})
 		return
@@ -1110,7 +1121,12 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if tool.Name == "get_workflow" {
-		externalJSON(w, externalWorkflowView(*selected))
+		view, err := externalWorkflowReadView(r.Context(), *selected, false)
+		if err != nil {
+			externalFailure(w, err)
+			return
+		}
+		externalJSON(w, view)
 		return
 	}
 	if tool.Name == "list_step_code" {
@@ -1259,6 +1275,12 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 			linked["preview_url"] = sharedAssetURL(r, path.Join(workflow.WorkspacePath, result.Path))
 		}
 		if name == "get_run" {
+			if externalWorkflowIsScript(workflow) {
+				if err := externalScriptRunRecord(r.Context(), req.Root, externalArg(args, "run_folder"), linked); err != nil {
+					externalFailure(w, err)
+					return
+				}
+			}
 			folder := strings.Split(externalArg(args, "run_folder"), "/")[0]
 			if permanentRunFolderPattern.MatchString(folder) {
 				runs, err := ReadScheduleRuns(r.Context(), req.Root)
@@ -1284,6 +1306,18 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 var externalPlanPaths = []string{"planning/plan.json", "planning/step_config.json"}
 
 func (api *StreamingAPI) externalPlanCall(w http.ResponseWriter, r *http.Request, workflow DiscoveredWorkflow, args map[string]any) {
+	if externalWorkflowIsScript(workflow) {
+		if externalArg(args, "step_id") != "" {
+			externalError(w, 400, "invalid_arguments", "Python steps are labels in the saved source. Read the outline without step_id, or read the script file.")
+			return
+		}
+		forward := r.Clone(r.Context())
+		forward.Method = http.MethodGet
+		forward.URL.Path = "/api/crew-script-graph"
+		forward.URL.RawQuery = "workspace_path=" + url.QueryEscape(workflow.WorkspacePath)
+		externalBuilderForward(w, forward, api.handleCrewScriptGraph)
+		return
+	}
 	artifacts := map[string]any{}
 	var revisions strings.Builder
 	for _, p := range externalPlanPaths {
