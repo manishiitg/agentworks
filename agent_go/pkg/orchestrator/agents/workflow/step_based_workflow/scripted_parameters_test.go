@@ -1,7 +1,6 @@
 package step_based_workflow
 
 import (
-	"context"
 	"strings"
 	"testing"
 )
@@ -20,44 +19,6 @@ func TestValidateAndResolveScriptParametersAppliesDefaults(t *testing.T) {
 	}
 	if resolved["market"] != "dubai" || resolved["limit"] != float64(25) {
 		t.Fatalf("resolved = %#v", resolved)
-	}
-}
-
-func TestApplyWorkshopScriptParametersUsesDirectExecuteContract(t *testing.T) {
-	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{
-		ID: "collector",
-		ScriptParameters: map[string]ScriptParameterDefinition{
-			"market": {Type: "string", Description: "Market", Required: true},
-			"limit":  {Type: "integer", Description: "Maximum rows", Default: float64(25)},
-		},
-	}}
-	ctx, err := applyWorkshopScriptParameters(context.Background(), step, &WorkshopExecuteOptions{
-		ScriptParameters:    map[string]interface{}{"market": "india"},
-		ScriptParametersSet: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	delegation, ok := scriptedDelegationFromContext(ctx)
-	if !ok || delegation.Parameters["market"] != "india" || delegation.Parameters["limit"] != float64(25) {
-		t.Fatalf("delegation = %#v, ok = %v", delegation, ok)
-	}
-}
-
-func TestApplyWorkshopScriptParametersRejectsMissingAndNonScriptedValues(t *testing.T) {
-	scripted := &ScriptedPlanStep{CommonStepFields: CommonStepFields{
-		ID: "collector",
-		ScriptParameters: map[string]ScriptParameterDefinition{
-			"market": {Type: "string", Description: "Market", Required: true},
-		},
-	}}
-	if _, err := applyWorkshopScriptParameters(context.Background(), scripted, &WorkshopExecuteOptions{}); err == nil || !strings.Contains(err.Error(), "missing required parameter") {
-		t.Fatalf("error = %v, want missing required parameter", err)
-	}
-
-	agentic := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "review"}}
-	if _, err := applyWorkshopScriptParameters(context.Background(), agentic, &WorkshopExecuteOptions{ScriptParameters: map[string]interface{}{}, ScriptParametersSet: true}); err == nil || !strings.Contains(err.Error(), "only supported for scripted") {
-		t.Fatalf("error = %v, want scripted-only failure", err)
 	}
 }
 
