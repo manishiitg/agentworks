@@ -7169,17 +7169,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to register custom command tools: %v", err), true)
 					return
 				}
-				// Generic AgentWorks chat can create workflows and inspect live
+				// Generic AgentWorks chat can create projects and inspect live
 				// workflow activity. Product-owned agents opt into their own tools.
 				if userAccessForClaims(GetUserFromContext(r.Context())).CanCreateIn("agentworks") {
 					if err := api.registerProjectTools(llmAgent, toolGate, currentUserID, GetUserFromContext(r.Context())); err != nil {
-						logfWithContext(queryLogCtx, "[WORKFLOW CREATOR] Failed to register create_workflow tool: %v", err)
-						sendError(fmt.Sprintf("Failed to register create_workflow tool: %v", err), true)
+						logfWithContext(queryLogCtx, "[PROJECT CREATOR] Failed to register create_project tool: %v", err)
+						sendError(fmt.Sprintf("Failed to register create_project tool: %v", err), true)
 						return
 					}
-					logfWithContext(queryLogCtx, "[WORKFLOW CREATOR] Registered create_workflow tool")
+					logfWithContext(queryLogCtx, "[PROJECT CREATOR] Registered create_project tool")
 				} else {
-					logfWithContext(queryLogCtx, "[WORKFLOW CREATOR] create_workflow omitted: account cannot create workflows")
+					logfWithContext(queryLogCtx, "[PROJECT CREATOR] create_project omitted: account cannot create projects")
 				}
 
 				if err := api.registerActivityStatusTool(llmAgent, currentUserID); err != nil {

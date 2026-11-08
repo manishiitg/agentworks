@@ -71,7 +71,7 @@ func GetWorkspaceMap(docsRoot, chatsFolder string) string {
 | ` + "`" + p.Config + "/`" + ` | tool-only | Session config — use dedicated LLM/provider config tools, not raw file reads/writes |
 | ` + "`" + p.ChatHistory + "/`" + ` | read/write | Past conversation histories |
 | ` + "`" + p.Skills + "/`" + ` | read-only | Skill definitions (SKILL.md + supporting files) |
-| ` + "`" + p.Workflow + "/`" + ` | read-only via shell | Workflow definitions — create with ` + "`workspace action=create kind=goal`" + `; edit cron schedules with the workflow_schedule tools (see "Modifying Existing Workflows") |
+| ` + "`" + p.Workflow + "/`" + ` | read-only via shell | Workflow definitions — new workflows are Python scripts in a Crew; edit cron schedules with the workflow_schedule tools (see "Modifying Existing Workflows") |
 
 ### Chats Folder Organization
 
@@ -314,144 +314,7 @@ Default mode rule: workflow schedules use ` + "`mode=\"workshop\"`" + `. Do not 
 
 ## Creating New Workflows
 
-Create a Goal with workspace(action="create", kind="goal", spec={name, purpose}, idempotency_key="one-new-key"). Only name is required; purpose is optional. The server supplies a stable ID, safe folder, current settings and an empty plan. Creating does not run it.
-
-Reuse the key for an unchanged retry. If creation failed, correct the request and reuse the same key. Once creation succeeds, that key identifies that project; use its returned workflow_id with the existing plan, settings and file tools to finish building it.
-
-Optional folder_name, workflow_json and plan_json under spec can provide initial authoring details. Explicit values still pass the existing validation and access checks. Do not ask a person to supply IDs or JSON. The following file shapes are reference material for agents authoring these optional inputs, not prerequisites for creating a Goal.
-
-### File 1: ` + "`Workflow/<kebab-name>/workflow.json`" + `
-
-Workflow-level manifest. **Required fields**: ` + "`schema_version`" + ` (int, 1), ` + "`version`" + ` (` + "`" + WorkflowContractCurrentVersion + "`" + `), ` + "`id`" + ` (string, e.g. ` + "`wf_<kebab-name>`" + `), ` + "`label`" + ` (string, human-readable name).
-
-**Sensible starter shape** — include the fields below; pick capabilities smartly from the current chat context (only the MCP servers, skills, and LLM tiers actually relevant to the workflow, not every enabled server):
-
-` + "```json" + `
-{
-  "schema_version": 1,
-  "version": "` + WorkflowContractCurrentVersion + `",
-  "id": "wf_<kebab-name>",
-  "label": "Human Readable Name",
-  "capabilities": {
-    "selected_servers": ["mcp-server-name"],
-    "selected_tools": [],
-    "selected_skills": ["skill-folder-name"],
-    "browser_mode": "none",
-    "use_code_execution_mode": false,
-    "llm_config": null
-  },
-  "schedules": []
-}
-` + "```" + `
-
-**` + "`capabilities`" + ` fields**:
-- ` + "`selected_servers`" + ` — MCP server names the workflow uses (array of strings)
-- ` + "`selected_tools`" + ` — specific tool names to allow-list from those servers (optional)
-- ` + "`selected_skills`" + ` — skill folder names to auto-activate
-- ` + "`selected_global_secret_names`" + ` — Vault secret names the workflow uses, lent by its owner; scripts read each as $SECRET_<the name after the Vault prefix>. Save a new one with the settings tool (secrets.set) rather than editing this list.
-- ` + "`browser_mode`" + ` — ` + "`extension`" + ` or this installation’s direct browser (` + "`cdp`" + ` locally, ` + "`headless`" + ` on servers); ` + "`none`" + ` turns access off. Read ` + "`allowed_browser_modes`" + ` from settings for the available choices.
-- ` + "`browser_cdp_port`" + ` — local Chrome debugging port (local installations only).
-- ` + "`use_code_execution_mode`" + ` — ` + "`true`" + ` if steps should run scripted Python; ` + "`false`" + ` for direct tool calls
-- ` + "`llm_config`" + ` — set to ` + "`null`" + ` unless the user asked for a specific provider/model
-
-
-**` + "`schedules`" + `** is an array; leave empty ` + "`[]`" + ` unless the user asked for cron scheduling. Each schedule (if any) needs: ` + "`id`" + `, ` + "`name`" + `, ` + "`cron_expression`" + `, ` + "`timezone`" + `, ` + "`enabled`" + ` (bool). Optional ` + "`input_preset`" + ` and ` + "`inputs`" + ` fill values for one run.
-
-### File 2: ` + "`Workflow/<kebab-name>/planning/plan.json`" + `
-
-Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step). Each step needs ` + "`type`" + `, ` + "`id`" + ` (kebab-case, unique), and ` + "`title`" + ` at minimum. Do NOT add root ` + "`objective`" + `/` + "`success_criteria`" + ` here — plan.json no longer owns them.
-
-**Sensible starter shape**:
-
-` + "```json" + `
-{
-  "steps": [
-    {
-      "type": "scripted",
-      "id": "fetch-authoritative-data",
-      "title": "Fetch authoritative data",
-      "description": "Deterministically call the configured API/SDK/CLI source, follow known pagination and retry rules, normalize the stable response shape, record provenance and freshness, fail closed on source errors, and write the authoritative result.",
-      "context_dependencies": [],
-      "context_output": "fetched_data.json",
-      "validation_schema": {
-        "files": [{
-          "file_name": "fetched_data.json",
-          "must_exist": true,
-          "json_checks": [
-            {"path": "$.status", "must_exist": true},
-            {"path": "$.fetched_at", "must_exist": true},
-            {"path": "$.source", "must_exist": true}
-          ]
-        }]
-      }
-    },
-    {
-      "type": "agent",
-      "id": "analyze-and-verify",
-      "title": "Analyze and verify the result",
-      "description": "Read fetched_data.json and complete the full judgment-heavy analysis. Write final_analysis.md plus analysis_proof.json containing run-specific source references, a check for every criterion, and any repaired gaps.",
-      "items": [
-        {
-          "id": "verify-evidence",
-          "type": "user_message",
-          "message": "Re-open the authoritative source evidence and final output. Verify every success criterion, identify unsupported or incomplete claims, and record run-specific evidence for each conclusion in analysis_proof.json."
-        },
-        {
-          "id": "repair-gaps",
-          "type": "user_message",
-          "message": "Repair every verified gap, then recheck the complete output before finishing."
-        }
-      ],
-      "context_dependencies": ["fetched_data.json"],
-      "context_output": ["final_analysis.md", "analysis_proof.json"],
-      "validation_schema": {
-        "files": [
-          {"file_name": "final_analysis.md", "must_exist": true},
-          {
-            "file_name": "analysis_proof.json",
-            "must_exist": true,
-            "json_checks": [
-              {"path": "$.status", "must_exist": true},
-              {"path": "$.source_references", "must_exist": true},
-              {"path": "$.criterion_checks", "must_exist": true},
-              {"path": "$.double_checked_at", "must_exist": true}
-            ]
-          }
-        ]
-      }
-    }
-  ]
-}
-` + "```" + `
-
-**Plan-shape rule — use this for every new workflow:**
-- Start with one large ` + "`agent`" + ` per coherent shared-context span. It should complete that span, re-open the evidence, prove every criterion, repair gaps, and double-check the final result.
-- Improve its description, proof/provenance output, top-level ` + "`validation_schema`" + `, and verify/repair turns before adding more steps. Do not create one step per tool call, source, screen action, checklist item, endpoint, command, proof check, or tiny transform.
-- Fixed API/SDK calls, CLI commands, known pagination, deterministic fetching, stable parsing/normalization, and mechanical persistence belong in one or a few coherent ` + "`scripted`" + ` fetcher steps, batched by source/auth/retry/output contract.
-- Feed those fetchers' validated DB rows or artifacts into one large ` + "`agent`" + ` for reasoning, synthesis, evidence-based verification, and repair. Do not have the sequence reissue known calls or parse stable response shapes.
-- If call selection requires judgment, use an agentic request-specification step, then a deterministic executor, then an agentic interpretation sequence.
-- Use multiple large sequences when their contexts should not be shared: different credentials/security exposure, independent durable outputs or retries, clean-room independence, human/routing boundaries, or unrelated context that would distract or contaminate the next agent. Split only when the builder can name that boundary; a desire to validate the same output is not enough.
-
-**Execution-mode handoff:** ` + "`plan.json`" + ` stores structure, not per-step execution mode. After ` + "`workspace action=create kind=goal`" + ` returns, tell the user to open the workflow in Workshop. Before the first production run, Workshop must declare deterministic fetch/parse/persist steps ` + "`scripted`" + ` with ` + "`update_step_config`" + `, author and test ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + `, and keep judgment/agent/browser work ` + "`agentic`" + `. Scripts run saved code only; author and fix source in chat.
-
-**Step types**:
-- ` + "`agent`" + ` — the default for substantial same-context reasoning: complete the outcome, verify it against evidence, then repair gaps in focused follow-up messages.
-- ` + "`scripted`" + ` — scripted deterministic API/CLI/data work only. New conversational or judgment-heavy work always uses ` + "`agent`" + `, even for one turn.
-- ` + "`routing`" + ` — N-way branching. Needs ` + "`routing_question`" + ` and a ` + "`routes`" + ` array (each with ` + "`route_id`" + `, ` + "`route_name`" + `, ` + "`condition`" + `, ` + "`next_step_id`" + `).
-
-**Step field reference**:
-- ` + "`context_dependencies`" + ` — array of file names this step reads (produced by earlier steps)
-- ` + "`context_output`" + ` — file name (string) or array of file names this step writes
-- ` + "`validation_schema`" + ` — required for every output-producing step; validate the authoritative DB rows or artifact, including freshness/provenance/error state for fetchers
-- Steps chain via ` + "`context_dependencies`" + ` / ` + "`context_output`" + `, or via explicit ` + "`next_step_id`" + ` on branching types.
-
-### Rules When Creating a Workflow
-- **Use ` + "`workspace action=create kind=goal`" + `, not shell commands.** Sub-agents cannot write under ` + "`Workflow/`" + ` via ` + "`execute_shell_command`" + ` — they'll hit a folder-guard error. Build the two JSON objects in your reasoning, then call the tool directly from your own turn. No delegation needed for this step.
-- **Both JSON objects must be well-formed** — the tool will re-marshal them on write. If you produce invalid structures (missing required fields, wrong types, duplicate step ids, non-kebab-case step ids) the tool returns an error describing the problem and nothing gets written.
-- **Pick capabilities smartly** from the current chat's context: include only the servers, skills, and LLM tiers actually needed for the workflow's steps. Don't blindly copy every currently-enabled server.
-- **Apply the plan-shape rule before calling the tool.** The atomic creator validates graph integrity, but it cannot infer that an LLM-heavy plan should have used a scripted fetcher or that several micro-steps should have been merged. Build the correct scripted-fetcher → large-agent structure up front, include validation on every producing step, and explicitly report the Workshop execution-mode/script handoff.
-- **Don't overwrite existing workflows.** ` + "`workspace action=create kind=goal`" + ` is for *new* workflows only — it refuses if the target folder already exists. To modify an existing workflow's **cron schedules**, use the workflow_schedule tools (see "Modifying Existing Workflows" above). For LLM config, MCP servers, skills, or plan steps, direct the user to the workflow builder / canvas.
-- After creation, report the folder path (returned by the tool) to the user and tell them they can activate it from the workflow picker.
+New workflows are Python scripts inside a Crew, not plan files. Open or create the Crew that owns the work (` + "`workspace action=create kind=crew`" + `), then create the workflow there with ` + "`crew_workflow_files action=create`" + ` and follow the Crew's ` + "`python-workflows`" + ` skill. Existing plan workflows keep working and are edited as before until they are converted.
 
 `
 	return instructions

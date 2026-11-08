@@ -17,7 +17,7 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's single workflow and reusable Python scripts. Use routes in the existing workflow for different tasks; list before creating. list returns workflow ID, workspace_path and agents. upgrade takes workflow_id: omit version to see status, the next update instructions and current check failures; supply version and reason after completing them to check and stamp. A failed check never stamps. read takes workspace_path and file. edit changes named steps or inputs, or manages schedules/webhooks; describe lists the operations, and describe with operation returns that operation's schema (add_step takes step_type for one step type). A large planning/plan.json read comes back in pages; pass step_id/step_ids for named steps. Functions use functions with project=workspace_path. Omitted steps stay unchanged; deletion is explicit. write is for code/script.json, never whole plans/config/inputs. Run with functions action=run_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's workflows. A new workflow is a Python script (script.json and main.py); read the python-workflows skill first. Older plan-based workflows are edited with the operations below until they are converted. list returns workflow ID, workspace_path and agents. upgrade takes workflow_id: omit version to see status, the next update instructions and current check failures; supply version and reason after completing them to check and stamp. A failed check never stamps. read takes workspace_path and file. edit changes named steps or inputs, or manages schedules/webhooks; describe lists the operations, and describe with operation returns that operation's schema (add_step takes step_type for one step type). A large planning/plan.json read comes back in pages; pass step_id/step_ids for named steps. Functions use functions with project=workspace_path. Omitted steps stay unchanged; deletion is explicit. write is for code/script.json, never whole plans/config/inputs. Run with functions action=run_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":              map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "upgrade"}},
 			"workflow_id":         map[string]interface{}{"type": "string"},
@@ -36,7 +36,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			"offset":              map[string]interface{}{"type": "integer", "description": "read planning/plan.json only: continue a large reply from next_offset."},
 			"content":             map[string]interface{}{"type": "string"},
 			"name":                map[string]interface{}{"type": "string"},
-			"kind":                map[string]interface{}{"type": "string", "enum": []string{"workflow", "script"}},
+			"kind":                map[string]interface{}{"type": "string", "enum": []string{"script"}, "description": "create only: always script."},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = internalBotRequestContext(ctx, userID)

@@ -62,25 +62,3 @@ func TestWritePlanHTTPErrorUsesConflictForRepairableValidation(t *testing.T) {
 		t.Fatalf("response body does not expose repairable graph error: %q", body)
 	}
 }
-
-func TestWorkflowCreatorRejectsDanglingPlanGraph(t *testing.T) {
-	plan := map[string]interface{}{
-		"steps": []interface{}{
-			map[string]interface{}{
-				"type":             "routing",
-				"id":               "router",
-				"title":            "Router",
-				"routing_question": "Where next?",
-				"default_route_id": "a",
-				"routes": []interface{}{
-					map[string]interface{}{"route_id": "a", "route_name": "A", "condition": "a", "next_step_id": "missing-step"},
-					map[string]interface{}{"route_id": "b", "route_name": "B", "condition": "b", "next_step_id": "end"},
-				},
-			},
-		},
-	}
-	err := validatePlanJSONStructure(plan)
-	if err == nil || !strings.Contains(err.Error(), "PLAN_GRAPH_INVALID") || !strings.Contains(err.Error(), "missing-step") {
-		t.Fatalf("workflow creator graph validation error = %v", err)
-	}
-}

@@ -449,14 +449,24 @@ func TestExternalCrewAutomationAuthoringOverMCP(t *testing.T) {
 		t.Fatal(got)
 	}
 	call("describe", map[string]any{"operation": "update_step"})
-	call("create", map[string]any{"kind": "workflow", "name": "MCP workflow"})
-	bindings, _ = readCrewExecutables()
-	var workflowRoot string
+	// Existing plan workflows stay editable until they are converted.
+	var script crewExecutableBinding
 	for _, binding := range bindings {
-		if binding.Kind == "workflow" {
-			workflowRoot = binding.Root
-		}
+		script = binding
 	}
+	planWorkflow := crewExecutableBinding{ID: "plan-workflow", CrewID: script.CrewID, CrewRoot: script.CrewRoot, Root: "Workflow/plan-workflow", Kind: "workflow"}
+	if err := registerCrewExecutable(planWorkflow); err != nil {
+		t.Fatal(err)
+	}
+	registerWorkflowOwner(planWorkflow.Root, "owner")
+	manifest := NewWorkflowManifest("MCP workflow")
+	manifest.ID = planWorkflow.ID
+	manifest.CreatedBy = "owner"
+	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{}}
+	if err := WriteWorkflowManifest(ctx, planWorkflow.Root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	workflowRoot := planWorkflow.Root
 	call("edit", map[string]any{"workspace_path": workflowRoot, "operation": "update_variable", "arguments": map[string]any{"action": "add", "name": "count", "type": "integer", "value": "2"}})
 	if got := call("read", map[string]any{"workspace_path": workflowRoot, "file": "variables/variables.json"}); !strings.Contains(got, "count") {
 		t.Fatal(got)

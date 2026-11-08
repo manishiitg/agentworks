@@ -511,9 +511,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == brainAdminTool {
 		return brainAdminToolAllowed(c)
 	}
-	if tool.Name == "create_workflow" {
-		return externalWorkflowCreationAllowed(c)
-	}
 	if tool.Name == "copy_project_files" {
 		return projectCopyAvailable(c)
 	}
