@@ -129,7 +129,7 @@ func (api *StreamingAPI) externalScriptLogs(w http.ResponseWriter, r *http.Reque
 		externalFailure(w, err)
 		return
 	}
-	if err := externalScriptRunRecord(r.Context(), item.WorkspacePath, folder, result); err != nil {
+	if err := externalScriptRunRecord(r.Context(), item, folder, result); err != nil {
 		externalFailure(w, err)
 		return
 	}

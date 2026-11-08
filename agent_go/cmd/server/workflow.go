@@ -433,6 +433,7 @@ func readRunMetadata(ctx context.Context, metadataFilePath string) (*RunMetadata
 	if err := json.Unmarshal([]byte(content), &metadata); err != nil {
 		return nil, nil
 	}
+	metadata.CanResume = nil // Never trust a capability stored in run files.
 	// All server-side consumers, including scheduler reconciliation and the UI,
 	// see the same workflow outcome. Legacy aliases remain readable without
 	// allowing each consumer to interpret them independently.
@@ -491,7 +492,9 @@ func inferRunMetadata(ctx context.Context, workspacePath, folderName string, pro
 }
 
 func writeRunMetadata(ctx context.Context, metadataFilePath string, metadata *RunMetadata) error {
-	data, err := json.MarshalIndent(metadata, "", "  ")
+	stored := *metadata
+	stored.CanResume = nil
+	data, err := json.MarshalIndent(&stored, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal run metadata: %w", err)
 	}
@@ -657,6 +660,7 @@ type RunMetadataModels struct {
 
 // RunMetadata stores lifecycle information for a run folder
 type RunMetadata struct {
+	CanResume          *bool                    `json:"can_resume,omitempty"` // Response-only current eligibility; never persisted.
 	SourceSnapshotHash string                   `json:"source_snapshot_hash,omitempty"`
 	InputsSnapshotHash string                   `json:"inputs_snapshot_hash,omitempty"`
 	ResumeOf           string                   `json:"resume_of,omitempty"`
@@ -1070,7 +1074,8 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if _, _, err := ReadWorkflowManifest(r.Context(), workspacePath); err != nil {
+	manifest, _, err := ReadWorkflowManifest(r.Context(), workspacePath)
+	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read workflow manifest: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -1127,6 +1132,7 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 		}
 
 		if metadata != nil {
+			setRunResumeCapability(r.Context(), manifest, workspacePath, folderName, metadata)
 			folderInfo.Metadata = metadata
 		}
 
