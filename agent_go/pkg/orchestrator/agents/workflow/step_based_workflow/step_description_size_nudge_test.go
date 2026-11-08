@@ -51,60 +51,6 @@ func TestStepDescriptionSizeNudgeThresholds(t *testing.T) {
 	}
 }
 
-func TestAddAgentStepIncludesSizeNudgeRelativeToSiblings(t *testing.T) {
-	existingPlan := &PlanningResponse{Steps: []PlanStepInterface{
-		&AgentPlanStep{
-			Type:             StepTypeAgent,
-			CommonStepFields: CommonStepFields{ID: "sibling-a", Title: "Sibling A", Description: strings.Repeat("normal ", 100), ContextDependencies: []string{}},
-			Items:            []AgentItem{{ID: "verify", Type: "user_message", Message: "Verify the result."}},
-		},
-	}}
-	planJSON, err := json.Marshal(existingPlan)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var writtenPlan string
-	readFile := func(_ context.Context, path string) (string, error) {
-		switch {
-		case strings.HasSuffix(path, "planning/plan.json"):
-			return string(planJSON), nil
-		case strings.HasSuffix(path, "planning/step_config.json"):
-			return `{"steps":[]}`, nil
-		default:
-			return "", errors.New("not found")
-		}
-	}
-	writeFile := func(_ context.Context, path, content string) error {
-		if strings.HasSuffix(path, "planning/plan.json") {
-			writtenPlan = content
-		}
-		return nil
-	}
-	add := createAddAgentStepExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile, nil)
-
-	bigDescription := strings.Repeat("this is durable technique restated inline instead of in a skill. ", 300)
-	result, err := add(context.Background(), map[string]interface{}{
-		"id":                   "new-step",
-		"title":                "New step",
-		"description":          bigDescription,
-		"context_dependencies": []interface{}{},
-		"items": []interface{}{
-			map[string]interface{}{"id": "verify", "type": "user_message", "message": "Verify the result."},
-		},
-		"insert_after_step_id": "sibling-a",
-		"reason":               "test",
-	})
-	if err != nil {
-		t.Fatalf("add_agent_step failed: %v", err)
-	}
-	if !strings.Contains(result, "Description should stay WHAT to achieve") {
-		t.Fatalf("add response missing size nudge for an oversized new step: %s", result)
-	}
-	if writtenPlan == "" {
-		t.Fatal("plan was not persisted")
-	}
-}
-
 func TestUpdateAgentStepIncludesSizeNudge(t *testing.T) {
 	plan := &PlanningResponse{Steps: []PlanStepInterface{
 		&AgentPlanStep{

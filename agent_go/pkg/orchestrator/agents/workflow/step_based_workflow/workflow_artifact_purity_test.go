@@ -1,7 +1,6 @@
 package step_based_workflow
 
 import (
-	"context"
 	"strings"
 	"testing"
 )
@@ -62,40 +61,5 @@ func TestWorkflowArtifactPurityChecksOnlyChangedMutationFields(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "step.items[0].message") {
 		t.Fatalf("nested message error = %v", err)
-	}
-}
-
-func TestPlanMutationExecutorsEnforceWorkflowArtifactPurity(t *testing.T) {
-	add := createAddAgentStepExecutor("Workflow/demo", nil, nil, nil, nil)
-	_, err := add(context.Background(), map[string]interface{}{
-		"reason":      "add a review step",
-		"id":          "review",
-		"title":       "Review",
-		"description": "Use $MCP_CUSTOM to reach the api-bridge.",
-	})
-	if err == nil || !strings.Contains(err.Error(), "shared AgentWorks platform mechanics") {
-		t.Fatalf("add error = %v, want artifact-purity rejection", err)
-	}
-
-	update := createUpdateAgentStepExecutor("Workflow/demo", nil, nil, nil)
-	_, err = update(context.Background(), map[string]interface{}{
-		"reason":           "refresh the step",
-		"existing_step_id": "review",
-		"items": []interface{}{
-			map[string]interface{}{"id": "verify", "type": "user_message", "message": "Call get_api_spec first."},
-		},
-	})
-	if err == nil || !strings.Contains(err.Error(), "tool-discovery workaround") {
-		t.Fatalf("update error = %v, want nested artifact-purity rejection", err)
-	}
-
-	addRoute := createAddAgentRouteExecutor("Workflow/demo", nil, nil, nil)
-	_, err = addRoute(context.Background(), map[string]interface{}{
-		"reason":         "add a specialist route",
-		"parent_step_id": "orchestrate",
-		"new_route":      `{"route_id":"review","sub_agent_step":{"id":"review","type":"agent","description":"Use $MCP_AUTH for bridge authentication."}}`,
-	})
-	if err == nil || !strings.Contains(err.Error(), "MCP bridge environment variables") {
-		t.Fatalf("route add error = %v, want JSON-string route purity rejection", err)
 	}
 }

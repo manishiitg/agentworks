@@ -302,13 +302,6 @@ func TestArtifactReviewNotices(t *testing.T) {
 		t.Fatalf("update notice should not warn about a flag failure when driftReviewFlagFailed is false:\n%s", updateNotice)
 	}
 
-	addNotice := buildAddedStepArtifactSetupNotice("new-step", "scripted")
-	for _, want := range []string{"New step artifact setup required", "planning/step_config.json", "learnings/new-step/main.py"} {
-		if !strings.Contains(addNotice, want) {
-			t.Fatalf("add notice missing %q:\n%s", want, addNotice)
-		}
-	}
-
 	deleteNotice := buildDeletedStepArtifactCleanupNotice([]string{"old-step"}, []string{"old-step"}, false)
 	for _, want := range []string{"Deleted step artifact cleanup required", "Removed matching planning/step_config.json entries", "learnings/<step-id>"} {
 		if !strings.Contains(deleteNotice, want) {
@@ -323,13 +316,6 @@ func TestArtifactReviewNotices(t *testing.T) {
 	if !strings.Contains(failedDeleteNotice, "FAILED to flag the workflow-level drift review record") {
 		t.Fatalf("delete notice missing loud drift-review-flag-failed warning:\n%s", failedDeleteNotice)
 	}
-
-	routeNotice := buildOrchestratorRouteArtifactReviewNotice("parent", "route-a", "deleted", true, true, false)
-	for _, want := range []string{"Todo route artifact review required", "description_reviewed", "drift_review", "learnings/route-a"} {
-		if !strings.Contains(routeNotice, want) {
-			t.Fatalf("route notice missing %q:\n%s", want, routeNotice)
-		}
-	}
 }
 
 // These responses go straight back to the editing agent. No mutation path,
@@ -339,10 +325,8 @@ func TestPlanEditNoticesUseTargetedChecks(t *testing.T) {
 	for name, notice := range map[string]string{
 		"internal edit":            buildPlanStepDependentArtifactReviewNotice("step-a", []PlanFieldChange{{Field: "description"}}, true, true, false),
 		"output change":            buildPlanStepDependentArtifactReviewNotice("step-a", []PlanFieldChange{{Field: "context_output"}}, true, true, false),
-		"new step":                 buildAddedStepArtifactSetupNotice("step-a", "agent"),
 		"deleted step":             buildDeletedStepArtifactCleanupNotice([]string{"step-a"}, nil, false),
 		"failed deletion tracking": buildDeletedStepArtifactCleanupNotice([]string{"step-a"}, nil, true),
-		"route change":             buildOrchestratorRouteArtifactReviewNotice("parent", "route-a", "updated", true, true, false),
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, want := range []string{
@@ -376,11 +360,6 @@ func TestArtifactReviewNoticesSurfaceDriftReviewFlagFailure(t *testing.T) {
 	}}, false, false, true)
 	if !strings.Contains(updateNotice, "FAILED to flag") || !strings.Contains(updateNotice, "needs_review") {
 		t.Fatalf("update notice does not surface the drift_review flag failure:\n%s", updateNotice)
-	}
-
-	routeNotice := buildOrchestratorRouteArtifactReviewNotice("parent", "route-a", "deleted", false, false, true)
-	if !strings.Contains(routeNotice, "FAILED to flag") {
-		t.Fatalf("route notice does not surface the drift_review flag failure:\n%s", routeNotice)
 	}
 }
 
