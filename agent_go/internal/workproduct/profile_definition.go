@@ -196,7 +196,6 @@ func RegisterProductSkills() error {
 				{Name: "software-work", Path: "skills/software-work/SKILL.md"},
 				// The person's own AgentWorks Crew (role "agentworks", PLAT-825-99): how it inspects and helps with their other agents.
 				{Name: "agentworks-inspect-crew", Path: "skills/agentworks-inspect-crew/SKILL.md"},
-				{Name: "agentworks-inspect-relay", Path: "skills/agentworks-inspect-relay/SKILL.md"},
 				{Name: "agentworks-review-architecture", Path: "skills/agentworks-review-architecture/SKILL.md"},
 				{Name: "agentworks-review-qa", Path: "skills/agentworks-review-qa/SKILL.md"},
 				{Name: "agentworks-schedules-watchers", Path: "skills/agentworks-schedules-watchers/SKILL.md"},
