@@ -107,12 +107,14 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			return
 		}
 		if rel != "Crew/dashboard-team/product.json" && rel != "Crew/dashboard-team/workflow.json" && rel != "_users/owner/Chats/Code/projects/dashboard-code/product.json" && rel != "_users/owner/Chats/Code/projects/dashboard-code/workflow.json" && rel != "Workflow/invoices/workflow.json" && rel != "Workflow/secret/workflow.json" && rel != "Workflow/invoices/schedule-runs.json" && rel != userProductAccessFilePath() {
-			c.Status(404)
+			// The workspace answers a missing file in words; callers that treat an optional file as absent (a
+			// workflow's variables.json) match on that text, not on the bare status.
+			c.JSON(404, gin.H{"success": false, "error": "file not found"})
 			return
 		}
 		data, err := os.ReadFile(filepath.Join(f.docs, filepath.FromSlash(rel)))
 		if err != nil {
-			c.Status(404)
+			c.JSON(404, gin.H{"success": false, "error": "file not found"})
 			return
 		}
 		c.JSON(200, gin.H{"success": true, "data": gin.H{"content": string(data)}})
@@ -397,10 +399,10 @@ func TestExternalToolsHTTPRejectsUnknownArguments(t *testing.T) {
 	externalTestBody(t, f.call(t, "owner", "read_file", map[string]any{"workflow_id": "invoices", "path": "docs/process.md", "managed": true}), 400)
 	// Reads reach plan files; there is no write path to protect in v1.
 	externalTestBody(t, f.call(t, "owner", "read_file", map[string]any{"workflow_id": "invoices", "path": "planning/plan.json"}), 200)
-	// Denylisted run tools answer unknown_tool: the name never enters the
-	// catalog, so dispatch cannot reach the proxy.
+	// A denied run tool is not reachable by its own name or by a Run token: it sits behind integrations action=google
+	// as an internal member, refused here for lack of Crew authoring consent (341de28774), so dispatch never reaches the proxy.
 	denied := f.call(t, "owner", "google_workspace_cli", map[string]any{"workflow_id": "invoices"})
-	if denied.Code != http.StatusNotFound || !strings.Contains(denied.Body.String(), "unknown_tool") {
+	if denied.Code != http.StatusForbidden || !strings.Contains(denied.Body.String(), "insufficient_scope") {
 		t.Fatalf("denylisted call status %d: %s", denied.Code, denied.Body.String())
 	}
 	if f.read(t, "Workflow/invoices/planning/plan.json") != before {

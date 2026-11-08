@@ -6,16 +6,23 @@ import (
 	"github.com/gorilla/websocket"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 func TestChromeExtensionProjectSelectsSavedAccountBrowser(t *testing.T) {
 	f := newMultiUserFixture(t, sharedIdentityLayout())
+	// Real creation also makes the Crew's private-record folder; saving the project's browser choice needs it.
+	private, _ := crewroot.PrivateRoot(f.Docs, fixtureCrewID)
+	if err := os.MkdirAll(private, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	previous := browserrelay.Default
 	browserrelay.Default = browserrelay.New()
 	defer func() { browserrelay.Default.Close(); browserrelay.Default = previous }()

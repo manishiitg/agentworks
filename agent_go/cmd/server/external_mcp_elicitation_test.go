@@ -162,7 +162,7 @@ func TestExternalMCPFunctionQuestionUsesCapabilityGatedElicitation(t *testing.T)
 func TestExternalMCPWorkflowQuestionArrivesAfterFirstPoll(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	call := &crewFunctionCall{ID: "fn-mcp-elicit-workflow", UserID: "owner", CallerKind: triggerCallerUser,
-		TargetKind: triggerCallerWorkflow, TargetID: "invoices", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
+		TargetKind: triggerCallerWorkflow, TargetID: "invoices", TargetPath: "Workflow/invoices", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
 	crewFunctionCalls.Lock()
 	crewFunctionCalls.m[call.ID] = call
 	crewFunctionCalls.Unlock()
@@ -175,7 +175,7 @@ func TestExternalMCPWorkflowQuestionArrivesAfterFirstPoll(t *testing.T) {
 	})
 	srv := serveExternalMCP(t, f.api, &UserClaims{UserID: "owner", Username: "owner"})
 	url := srv.URL + externalMCPPath
-	args := map[string]any{"action": "status", "workflow_id": "invoices", "call_id": call.ID}
+	args := map[string]any{"action": "status", "call_id": call.ID}
 	first := postModernExternalTool(t, url, "functions", args, true, "", nil)
 	if first["resultType"] == "input_required" {
 		t.Fatalf("question appeared before it existed: %v", first)

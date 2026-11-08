@@ -64,7 +64,8 @@ func TestGlobalRevealIsAdminOnly(t *testing.T) {
 	if rec := reveal("admin", "MANAGED_TOKEN"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "managed-value") {
 		t.Fatalf("managed reveal: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := reveal("admin", "ENV_TOKEN"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "env-value") {
+	// Environment secrets are imported into Vault at startup (dcad6859bb); an environment-only name is not a shared secret to reveal.
+	if rec := reveal("admin", "ENV_TOKEN"); rec.Code != http.StatusNotFound || strings.Contains(rec.Body.String(), "env-value") {
 		t.Fatalf("env reveal: %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := reveal("a1", "MANAGED_TOKEN"); rec.Code != http.StatusForbidden {

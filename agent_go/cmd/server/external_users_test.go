@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -68,7 +70,7 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	initializeExternalMCP(t, ctx, cli)
 	call := func(args map[string]any, wantError bool) string {
 		t.Helper()
-		result := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "users", "arguments": args})
+		result := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "account", "arguments": usersAction(args)})
 		if result.IsError != wantError {
 			t.Fatalf("users result error=%v want%v: %s", result.IsError, wantError, marshalContent(t, result))
 		}
@@ -111,7 +113,7 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 			if action == "update" {
 				args["role"], args["request_id"] = "creator", "refused"
 			}
-			w := codeReviewCall(api, claims, "users", args)
+			w := codeReviewCall(api, claims, "account", usersAction(args))
 			if w.Code != http.StatusForbidden {
 				t.Fatalf("unauthorized %s: %d %s", action, w.Code, w.Body)
 			}
@@ -125,7 +127,10 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, tool := range data.Tools {
-			if tool.Name == "users" {
+			if tool.Name != "account" {
+				continue
+			}
+			if enum, _ := tool.InputSchema["properties"].(map[string]any)["action"].(map[string]any)["enum"].([]any); slices.ContainsFunc(enum, func(name any) bool { return strings.HasPrefix(fmt.Sprint(name), "users_") }) {
 				t.Fatal("unauthorized connection discovers users")
 			}
 		}
@@ -159,7 +164,7 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	newSrv := serveExternalMCP(t, &StreamingAPI{}, admin)
 	newCLI := dialExternalMCP(t, ctx, newSrv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, newCLI)
-	retry := callRemoteTool(t, ctx, newCLI, externalMCPToolCall, map[string]any{"name": "users", "arguments": grant})
+	retry := callRemoteTool(t, ctx, newCLI, externalMCPToolCall, map[string]any{"name": "account", "arguments": usersAction(grant)})
 	requireRemoteSuccess(t, retry, "users retry")
 	if marshalStructured(t, retry) != first {
 		t.Fatal("durable retry changed its recorded result")
@@ -261,4 +266,14 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	if rec := directoryUserFor("member", "", ""); rec == nil || rec.Disabled {
 		t.Fatal("failed audit changed account")
 	}
+}
+
+// People management is the users_* actions of the account tool (PLAT-738 merge): the test names them as list|get|update|delete.
+func usersAction(args map[string]any) map[string]any {
+	out := map[string]any{}
+	for key, value := range args {
+		out[key] = value
+	}
+	out["action"] = "users_" + fmt.Sprint(args["action"])
+	return out
 }

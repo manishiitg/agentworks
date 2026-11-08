@@ -198,20 +198,20 @@ func TestExternalWebhookRunExposesAcceptedDeployMetadata(t *testing.T) {
 		},
 	}
 	runs, err := json.Marshal([]ScheduleRunEntry{{
-		ID: "run-1", ScheduleID: "deploy-hook", TriggerSource: "webhook", RunFolder: "iteration-6-hook",
+		ID: "run-1", ScheduleID: "deploy-hook", TriggerSource: "webhook", RunFolder: "run-6-hook",
 		Status: "success", StartedAt: time.Now().UTC(), Webhook: webhookRunMetadata(sctx),
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.write(t, "Workflow/invoices/schedule-runs.json", string(runs))
-	f.write(t, "Workflow/invoices/runs/iteration-6-hook/default/result.txt", "passed")
+	f.write(t, "Workflow/invoices/runs/run-6-hook/default/result.txt", "passed")
 	for _, call := range []struct {
 		name string
 		args map[string]any
 	}{
 		{"automations", map[string]any{"scope": "schedule", "action": "runs", "project": "invoices", "schedule_id": "deploy-hook"}},
-		{"runs", map[string]any{"action": "get", "workflow_id": "invoices", "run_folder": "iteration-6-hook/default"}},
+		{"runs", map[string]any{"action": "get", "workflow_id": "invoices", "run_folder": "run-6-hook/default"}},
 	} {
 		body := externalTestBody(t, f.call(t, "owner", call.name, call.args), 200)
 		var webhook map[string]any

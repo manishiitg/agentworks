@@ -16,6 +16,8 @@ import (
 func TestBrainSecretsAreBrainsOwn(t *testing.T) {
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	knowledgebaseServerTest(t)
+	// Brain's secrets live in its keystore Vault (PLAT-856, cdfbd1dccd): fake the Vault service as the other secret tests do.
+	newOwnerVaultFake(t)
 	store, err := chathistory.NewFilesystemStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
