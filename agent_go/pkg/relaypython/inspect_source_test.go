@@ -9,6 +9,46 @@ import (
 	"testing"
 )
 
+// PLAT-746: saved-result keys are authored work identities, never inserted by
+// inspection. Aliases, explicit None and helper functions need an honest note.
+func TestAutomationOutlineNotesMissingSavedResultKeysWithoutExecuting(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 unavailable")
+	}
+	files := map[string]string{"main.py": `raise RuntimeError("Never execute authored source")
+from agentworks import agent as work, run_script as script
+import agentworks as aw
+def helper(record):
+    work("Writer", "Draft", key=f"draft:{record}")
+    aw.agent("Research", "Read", key=None)
+    script("report", {})
+    aw.run_script("report", {}, key="saved-report")
+    work("Dynamic", "Read", **options)
+`, "other.py": `def agent(): pass
+agent()
+`}
+	raw, _ := json.Marshal(files)
+	cmd := exec.Command("python3", "-I", "-c", SourceInspector)
+	cmd.Env = append(os.Environ(), "VAR_AUTOMATION_CHECK_FILES="+base64.StdEncoding.EncodeToString(raw))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("inspector: %s %v", out, err)
+	}
+	var graph struct {
+		Errors, Notes []string
+		Calls         []struct {
+			File, Helper string
+			Line         int
+		} `json:"unkeyed_calls"`
+	}
+	if err := json.Unmarshal(out, &graph); err != nil || len(graph.Errors) != 0 || len(graph.Notes) == 0 {
+		t.Fatalf("unkeyed calls must be a note, never an error: %s %v", out, err)
+	}
+	if len(graph.Calls) != 3 || graph.Calls[0].File != "main.py" || graph.Calls[0].Line != 6 || graph.Calls[0].Helper != "agent" || graph.Calls[1].Line != 7 || graph.Calls[1].Helper != "run_script" || graph.Calls[2].Line != 9 || graph.Calls[2].Helper != "agent" {
+		t.Fatalf("incorrect imported-call inventory: %+v", graph.Calls)
+	}
+}
+
 func TestNativeSourceOverviewUsesASTWithoutExecutingSource(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 unavailable")
