@@ -18,6 +18,7 @@ func TestNativeAskRechecksTokenAndSharingAtToolsAndFinalSave(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			tokenTestSetup(t)
 			f, _ := newExternalCrewCommandFixture(t)
+			withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"other","username":"other","can_create":true,"products":["work"]}]}`)
 			ctx := context.Background()
 			var tokenID string
 			var revoke func()
