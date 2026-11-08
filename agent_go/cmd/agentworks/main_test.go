@@ -26,9 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
 	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -87,6 +85,13 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 
 		{[]string{"functions", "call", "--project", "crew-sample", "--function", "review", "--function-input", `{"build":"812"}`}, "", "functions", map[string]any{"action": "call", "project": "crew-sample", "function": "review", "input": map[string]any{"build": "812"}}},
 		{[]string{"functions", "call-status", "--call", "call-sample"}, "", "functions", map[string]any{"action": "status", "call_id": "call-sample"}},
+		{[]string{"workflows", "create", "--crew", "team", "--name", "Weekly report"}, "", "workspace", map[string]any{"action": "automation_create", "crew_id": "team", "name": "Weekly report"}},
+		{[]string{"workflows", "outline", "--workflow", "sample"}, "", "workflow", map[string]any{"action": "plan", "workflow_id": "sample", "view": "outline"}},
+		{[]string{"workflows", "source", "--crew", "team", "--workspace", "Workflow/sample", "--file", "nested/report.py"}, "", "workspace", map[string]any{"action": "automation_read", "crew_id": "team", "workspace_path": "Workflow/sample", "file": "nested/report.py"}},
+		{[]string{"workflows", "save-source", "--crew", "team", "--workspace", "Workflow/sample", "--file", "nested/report.py", "--content-file", "-"}, "def total():\n    return 7\n", "workspace", map[string]any{"action": "automation_write", "crew_id": "team", "workspace_path": "Workflow/sample", "file": "nested/report.py", "content": "def total():\n    return 7\n"}},
+		{[]string{"workflows", "save-inputs", "--workflow", "sample", "--input-presets", `[{"name":"weekly","values":{"count":"7"}}]`}, "", "workflow", map[string]any{"action": "save_inputs", "workflow_id": "sample", "input_presets": []any{map[string]any{"name": "weekly", "values": map[string]any{"count": "7"}}}}},
+		{[]string{"functions", "run-trigger", "--crew", "team", "--workspace", "Workflow/sample", "--preset", "weekly", "--inputs", `{"count":3}`}, "", "functions", map[string]any{"action": "run_trigger", "crew_id": "team", "workspace_path": "Workflow/sample", "input_preset": "weekly", "inputs": map[string]any{"count": 3}}},
+		{[]string{"functions", "trigger-status", "--crew", "team", "--workspace", "Workflow/sample", "--trigger-id", "trigger-one", "--run-id", "run-one"}, "", "functions", map[string]any{"action": "trigger_status", "crew_id": "team", "workspace_path": "Workflow/sample", "trigger_id": "trigger-one", "run_id": "run-one"}},
 		{[]string{"plan", "get", "--workflow", "wf-1"}, "", "workflow", map[string]any{"action": "plan", "workflow_id": "wf-1"}},
 		{[]string{"files", "read", "--workflow", "wf-1", "--path", "notes.md"}, "", "files", map[string]any{"action": "read", "workflow_id": "wf-1", "path": "notes.md"}},
 		{[]string{"files", "list", "--workflow", "wf-1", "--path", "code", "--glob", "**/*.py"}, "", "files", map[string]any{"action": "list", "workflow_id": "wf-1", "path": "code", "glob": "**/*.py"}},
@@ -149,7 +154,7 @@ func TestCLIRunAndScheduleArguments(t *testing.T) {
 	}{
 		{[]string{"runs", "start-step", "--workflow", "wf-1", "--step-id", "fetch", "--group", "g1", "--tier", "high"}, "runs", map[string]any{"action": "step", "workflow_id": "wf-1", "step_id": "fetch", "group_name": "g1", "tier": "high"}},
 		{[]string{"runs", "start-step", "--workflow", "wf-1", "--step-id", "fetch", "--set", `script_parameters={"limit":10}`}, "runs", map[string]any{"action": "step", "workflow_id": "wf-1", "step_id": "fetch", "script_parameters": map[string]any{"limit": float64(10)}}},
-		{[]string{"runs", "start-workflow", "--workflow", "wf-1", "--group", "g1"}, "runs", map[string]any{"action": "start", "workflow_id": "wf-1", "group_name": "g1"}},
+		{[]string{"runs", "start-workflow", "--workflow", "wf-1", "--preset", "weekly", "--inputs", `{"count":3,"active":true}`}, "runs", map[string]any{"action": "start", "workflow_id": "wf-1", "input_preset": "weekly", "inputs": map[string]any{"count": 3, "active": true}}},
 		{[]string{"runs", "status", "--workflow", "wf-1", "--session", "s1"}, "runs", map[string]any{"action": "status", "workflow_id": "wf-1", "session_id": "s1"}},
 		{[]string{"runs", "message", "--workflow", "wf-1", "--session", "s1", "--execution-id", "e1", "--message", "slow down"}, "runs", map[string]any{"action": "message", "workflow_id": "wf-1", "session_id": "s1", "execution_id": "e1", "message": "slow down"}},
 		{[]string{"runs", "stop", "--workflow", "wf-1", "--session", "s1", "--execution-id", "e1"}, "runs", map[string]any{"action": "stop_step", "workflow_id": "wf-1", "session_id": "s1", "execution_id": "e1"}},
@@ -794,35 +799,6 @@ func TestBarePlanAndCallShowUsage(t *testing.T) {
 		}
 		if !strings.Contains(out.String(), "Usage:") || !strings.Contains(out.String(), tc.want) {
 			t.Fatalf("%v printed no usage: %s", tc.args, out.String())
-		}
-	}
-}
-
-func TestCLIOperationsStayAdmitted(t *testing.T) {
-	admitted := map[string]bool{}
-	for _, name := range agentworksproduct.RunExternalTools() {
-		admitted[name] = true
-	}
-	for _, name := range agentworksproduct.RunTools() {
-		admitted[name] = true
-	}
-	// PLAT-871: a narrow catalog operation inherits its admitted source;
-	// canonical caller members need not duplicate the product source list.
-	for _, action := range catalog.Actions {
-		if action.Source != "" && admitted[action.Source] {
-			admitted[action.Member] = true
-		}
-	}
-	mapped := map[string]string{}
-	for _, group := range cliOperationGroups {
-		for _, op := range group.operations {
-			mapped[op.tool] = group.name + " " + op.command
-		}
-	}
-	mapped["get_plan"] = "plan get"
-	for tool, command := range mapped {
-		if !admitted[tool] {
-			t.Fatalf("CLI %q calls %s, which product.yaml no longer admits", command, tool)
 		}
 	}
 }

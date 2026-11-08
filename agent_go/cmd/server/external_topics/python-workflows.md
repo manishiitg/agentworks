@@ -1,0 +1,90 @@
+---
+name: python-workflows
+description: Create, edit and run a saved Python workflow over MCP or the laptop CLI; read its inputs, presets, outline and recorded results.
+external: true
+external_tools: [workflow, workspace, runs, functions]
+---
+# Saved Python workflows
+
+A workflow belongs to a Crew. Its saved source is `script.json` (typed inputs,
+optional presets and expected outputs), `main.py`, and any nested Python files.
+The server runs it in that Crew with its current permissions and connected apps.
+You can ask the Crew's Builder chat to create or change it; no terminal is needed.
+
+## Find and edit
+
+1. Use `workflow action=list`. Each saved script has `kind=script`, typed `inputs`
+   and `input_presets`. Keep its `id` and `workspace_path`; `workflow action=get`
+   returns the same contract and full manifest for one workflow.
+2. To create one, use `workspace action=automation_create` with `crew_id` and
+   `name`. New workflows are Python scripts. Keep the returned identity.
+3. Use `workspace action=automation_read` or `automation_write` with `crew_id`,
+   `workspace_path` and `file`, such as `main.py`, `nested/report.py`, or root
+   `script.json`. Writes take UTF-8 `content` and use the existing script editor's
+   validation and source access. They require the Crew's Builder and source
+   editing consent; being able to run a workflow does not grant source editing.
+4. To change presets without replacing the rest of the definition, use
+   `workflow action=save_inputs` with `workflow_id` and the complete
+   `input_presets` list. Each preset has `name` and `values`, for example
+   `[{"name":"weekly","values":{"LIMIT":"7"}}]`. Pass `[]` to remove them.
+   Optionally supply the complete typed `inputs` list; omitting it preserves
+   current inputs. Values in saved definitions/presets use the script contract's
+   string encoding; invocation values below are typed JSON.
+5. Use `workflow action=plan` with `view=outline` for the saved Python outline.
+   This inspects the syntax without executing or importing authored code and
+   requires source-editor access. Python `@step` labels are normal function
+   calls, not separate runnable or resumable plan steps.
+
+Never put secret values into source or presets. Use the project's existing
+secret selection. Sharing and connected-account authority do not change here.
+
+## Run and inspect
+
+Use `runs action=start` with `workflow_id`, optional `input_preset`, and optional
+`inputs` as a JSON object, for example `{"LIMIT":3}`. Explicit values override
+the selected preset; omitted values use saved defaults. Unknown inputs, wrong
+types and missing required values fail before launch. A saved script starts
+directly; it does not ask a chat agent to launch it.
+
+Keep the returned `session_id` and poll `runs action=status` with the same
+workflow. Use `runs action=list` to find saved run folders and `runs action=get`
+with `run_folder` for files, `metadata` (including `execution_id` and
+`python_steps`) and `evidence` (checks and notices). Folder grants still apply;
+the summary contains public checks/notices; full run files remain available under the same grants. `runs action=logs` lists that
+run's log files. A successful start is acceptance, not proof of completion.
+
+A Crew can also use `functions action=run_trigger` with `crew_id`, the saved
+`workspace_path`, optional `input_preset` and typed `inputs`. Omit `trigger_id`
+for a direct run without a published function. Keep the returned `trigger_id`
+and `run_id`; poll `functions action=trigger_status` with those and the same
+Crew/workflow. Choose one start path per intended run. Inspect uncertain
+receipts before starting again; reuse `delivery_id` only for an identical retry
+of `run_trigger`.
+
+Runs do real work, including database writes, app calls and sends. No new
+mid-run question or individual Python step execution is introduced.
+
+## Laptop CLI
+
+The CLI calls these same server operations; it is not a local workflow engine.
+Use the identities returned by your server in place of these sample values:
+
+```sh
+agentworks workflows list
+agentworks workflows get --workflow sample
+agentworks workflows create --crew team --name 'Weekly report'
+agentworks workflows source --crew team --workspace Workflow/sample --file nested/report.py
+agentworks workflows save-source --crew team --workspace Workflow/sample --file nested/report.py --content-file report.py
+agentworks workflows save-inputs --workflow sample --input-presets '[{"name":"weekly","values":{"LIMIT":"7"}}]'
+agentworks workflows outline --workflow sample
+agentworks runs start-workflow --workflow sample --preset weekly --inputs '{"LIMIT":3}'
+agentworks runs status --workflow sample --session returned-session
+agentworks runs get --workflow sample --run-folder returned-run
+agentworks functions run-trigger --crew team --workspace Workflow/sample --preset weekly --inputs '{"LIMIT":3}'
+agentworks functions trigger-status --crew team --workspace Workflow/sample --trigger-id returned-trigger --run-id returned-run
+```
+
+`--content-file -` reads source from stdin. `workflows save-inputs --inputs`
+accepts the complete typed input-definition array when you mean to replace it.
+`tools spec workflow workspace runs functions` reads the server's current
+schemas; `tools call` and `mcp serve` use the same catalog and access checks.

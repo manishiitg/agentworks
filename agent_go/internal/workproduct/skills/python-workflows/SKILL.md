@@ -9,6 +9,25 @@ A new workflow is a Python script: a `script.json` that declares its inputs and 
 
 Create it with `crew_workflow_files action=create kind=script`, then write `script.json` and `main.py` with the same tool's `write` action. Run it with `functions action=run_trigger`, then read the result with `functions action=trigger_status`.
 
+## External MCP and CLI
+
+An external MCP agent uses `workspace action=automation_create/read/write` with
+`crew_id`; `read` and `write` also take the returned `workspace_path` and `file`
+(root `script.json`, `main.py` or a nested Python path). Use `workflow action=list/get`
+for script kind, typed inputs and presets; `workflow action=save_inputs` replaces
+`input_presets` and optionally `inputs` through the same validated editor.
+`workflow action=plan view=outline` inspects saved source without running it and
+keeps Builder source-editor authority. `@step` labels are not independently runnable.
+
+Start with `runs action=start` (`workflow_id`, optional `input_preset`, typed
+`inputs`) and poll `runs action=status` with its `session_id`, or use the existing
+`functions action=run_trigger/trigger_status` receipt. Do not start both for one
+intended run. Read `runs action=get` for `metadata.python_steps` and canonical
+`evidence` checks/notices; full run files keep the same read grants. External
+agents can read `help action=topic topic=python-workflows` for the complete MCP
+and named laptop CLI instructions. These operations keep current project,
+source-editing, account and file grants.
+
 ## script.json
 
 ```json
