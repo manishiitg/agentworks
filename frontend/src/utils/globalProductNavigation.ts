@@ -77,7 +77,7 @@ export async function openGlobalActivitySession(
     // their own recovery. A failed open must toast, never reject unhandled
     // after half-switching the surface.
     console.error('[GlobalActivity] failed to open session', session.session_id, error)
-    useChatStore.getState().addToast('Could not open this activity.', 'error')
+    useChatStore.getState().addToast(session.crew_project_id && (session.agent_mode || '').toLowerCase().includes('workflow') ? 'Run view unavailable.' : 'Could not open this activity.', 'error')
   }
 }
 
@@ -88,8 +88,8 @@ async function openGlobalActivitySessionInner(
   const scheduled = isScheduledSession({ sessionId: session.session_id, triggeredBy: session.triggered_by })
   const workflowLane = (session.agent_mode || '').toLowerCase().includes('workflow')
   if (session.crew_project_id && workflowLane) {
-    const { openWorkAutomationRunChat } = await import('../products/work/workAutomationRunRestore')
-    await openWorkAutomationRunChat(session, { title: options.title })
+    const { openCrewWorkflowRun } = await import('../products/work/openCrewWorkflowRun')
+    await openCrewWorkflowRun(session)
     return
   }
   // Crew trigger/schedule runs are work-product sessions on an isolated

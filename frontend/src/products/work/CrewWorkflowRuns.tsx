@@ -184,6 +184,7 @@ export function CrewWorkflowRuns({ workspacePath, script = false, folders, loadi
   const totals = useRunTotals(workspacePath, folders.length)
   const costOf = (name: string) => totals?.[name]
   const opened = open ? folders.find(folder => folder.name === open) : undefined
+  if (open && !opened && !loading) return <p role="alert" className="p-3 text-sm text-destructive">Run view unavailable.</p>
   if (showCosts) return <div className="space-y-3">
     <button type="button" onClick={() => setShowCosts(false)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-3.5 w-3.5" /> Back to runs</button>
     <div className="h-[70vh] min-h-96 overflow-hidden rounded-xl border border-border"><Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
