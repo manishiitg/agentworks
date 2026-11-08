@@ -339,12 +339,16 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				call.Reply.OK, call.Reply.ConversationID = true, id
 			} else if phase == "finish" {
 				execution, _ := arguments["execution_id"].(string)
+				ok, valid := arguments["ok"].(bool)
+				if !valid {
+					call.Reply.Error = "A step completion needs its success or failure result."
+					break
+				}
 				activityLifecycle.Lock()
 				done, found := activities[execution]
 				delete(activities, execution)
 				activityLifecycle.Unlock()
-				ok, valid := arguments["ok"].(bool)
-				if !found || !valid {
+				if !found {
 					call.Reply.Error = "This script has no matching active step."
 					break
 				}
