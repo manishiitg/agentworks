@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('migration', Path(__file__).with_name('migrate-workflow-to-python.py'))
 m = importlib.util.module_from_spec(spec)
@@ -182,7 +183,7 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertFalse((Path(backup)/'hashes.json').exists())
             self.assertEqual(m.plan(docs,state,True)[0],{})
             (source/'script.json').write_text('{"id":"task","name":"Task","outputs":["result.json"]}')
-            (source/'main.py').write_text('import json, httpx, helper\nfrom requests.sessions import Session\nfrom agentworks import agent\nfrom agentworks_db import db\nfrom . import sibling\nTOKEN = "not_a_dependency"\n')
+            (source/'main.py').write_text('import json, httpx, helper\nfrom requests.sessions import Session\nfrom agentworks import agent\nfrom agentworks_db import db\nfrom . import sibling\nTOKEN = "not_a_dependency"\nunused = __import__("string_import_marker")\npath = "/private/source_path_marker"\n')
             (source/'helper.py').write_text('value = 1\n')
             requirements = b'# authored declaration\r\nhttpx==0.28.1\r\nrequests==2.32.3\r\n'
             (source/'requirements.txt').write_bytes(requirements)
@@ -223,13 +224,16 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertEqual(dependencies['authored_import_roots'], ['httpx','requests'])
             self.assertEqual(dependencies['existing_import_roots'], ['legacy_client'])
             self.assertEqual(dependencies['unparsed_python_files'], 0)
-            for value in ('not_a_dependency', 'linked_external_marker', 'outside-package', 'authored declaration', 'retained declaration contents'):
+            for value in ('not_a_dependency', 'string_import_marker', 'source_path_marker', 'linked_external_marker', 'outside-package', 'authored declaration', 'retained declaration contents'):
                 self.assertNotIn(value, json.dumps(dependencies))
             self.assertEqual(changes[code/'requirements.txt'], requirements)
             self.assertFalse((code/'requirements.txt').exists())  # inspect never writes
             without_requirements = dict(m.python_payload(source, 'task', {}, {})[0])
             without_requirements.pop('requirements.txt')
             self.assertEqual(m.dependency_inventory(code, without_requirements)['authored_requirements'], {'present':False})
+            with patch.object(m.sys, 'stdlib_module_names', None, create=True):
+                with self.assertRaisesRegex(ValueError, 'Python 3.10 or newer'):
+                    m.dependency_inventory(code, without_requirements)
             self.assertEqual(report['conversion']['carried_crew_links'], ['Crew/linked'])
             self.assertEqual(report['conversion']['database_rows'],{'historical':1,'background_agent_log':1})
             self.assertEqual(report['conversion']['removed_tools'],['human_tools:record_summary'])

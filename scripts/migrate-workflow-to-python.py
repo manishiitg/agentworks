@@ -18,7 +18,7 @@ start calling as that Crew; inspect lists the exact targets and refuses missing 
 
 The new --source folder holds flat Python files, script.json and optional
 agent_mocks.json (agent test fixtures) and requirements.txt. Requirements are
-carried unchanged. Inspect reports their hashes and Python import names for
+carried unchanged. This converter needs Python 3.10 or newer. Inspect reports their hashes and Python import names for
 the author to check; it never guesses package names/versions or installs them. Its
 script.json must NOT carry capabilities or input_presets: both are copied from
 the saved workflow. The owning Crew database must have no business rows before converting; platform
@@ -254,6 +254,9 @@ def reasoning_steps(definitions):
 
 def dependency_inventory(code, payload):
     """Names and hashes only; never execute source or read linked files."""
+    stdlib = getattr(sys, 'stdlib_module_names', None)
+    if stdlib is None:
+        raise ValueError('This conversion needs Python 3.10 or newer. Run it with an updated Python; nothing was changed.')
     existing, requirements = {}, []
     for directory, folders, names in os.walk(code, followlinks=False):
         if Path(directory).is_symlink():
@@ -285,7 +288,7 @@ def dependency_inventory(code, payload):
                         if isinstance(node, ast.Import) for alias in node.names}
             imported.update(node.module.split('.')[0] for node in ast.walk(tree)
                             if isinstance(node, ast.ImportFrom) and not node.level and node.module)
-            roots.update(imported - local - sys.stdlib_module_names - {'agentworks', 'agentworks_db'})
+            roots.update(imported - local - stdlib - {'agentworks', 'agentworks_db'})
         return sorted(roots), unparsed
 
     authored, authored_unparsed = imports({name: raw for name, raw in payload.items() if name.endswith('.py')})

@@ -94,10 +94,14 @@ class Migration(unittest.TestCase):
         source = self.base/'python-source'
         write(source/'script.json', {'id':'old-goal','name':'Converted report'})
         (source/'main.py').write_text('print("new engine")\n')
+        requirements = b'# explicit authored dependencies\r\nhttpx==0.28.1\r\n'
+        (source/'requirements.txt').write_bytes(requirements)
         before = hashes(self.base)
         conversion = python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source,deployment_mode='server')
         self.assertEqual(hashes(self.base),before)
         self.assertEqual(conversion.report()['counts']['python_scripts'],1)
+        self.assertEqual(conversion.report()['counts']['dependencies']['authored_requirements'],
+                         {'present':True, 'sha256':hashlib.sha256(requirements).hexdigest()})
         self.assertEqual(conversion.report()['carried_crew_links'], ['Crew/linked'])
         backup = self.state/'migrations/one-operator-backup'
         with self.assertRaisesRegex(ValueError,'outside the active workflow'):
@@ -132,6 +136,7 @@ class Migration(unittest.TestCase):
         registry = m.read(self.docs/'_users/owner/chat_history/product-conversations.json')
         self.assertTrue(any(item['session_id']=='session-original' and item['profile_id']=='work' for item in registry['entries'].values()))
         self.assertEqual((conversion.code/'main.py').read_text(),'print("new engine")\n')
+        self.assertEqual((conversion.code/'requirements.txt').read_bytes(), requirements)
         self.assertTrue((conversion.code/'one/main.py').is_file())
         self.assertTrue((self.runtime/'runs/iteration-1/run_metadata.json').is_file())
         with self.assertRaisesRegex(ValueError,'standalone workflow ID'):
