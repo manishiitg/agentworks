@@ -145,6 +145,53 @@ api_key = secret("API_KEY")  # Pass to the service's client; never print or save
 
 Existing plan-based workflows keep working until they are converted; edit them with the guide in `references/crew-plan/SKILL.md`.
 
+## Converting an old workflow
+
+Read the current source, inputs, callers, selected resources and an actual failed
+run before converting. Keep the workflow identity and business database. Write
+one `main.py` with ordinary Python branches and `@step` labels, retaining business
+rules, required files, SQL checks and real notifications. A retired run-summary
+tool may also have delivered a business email or Slack message: preserve that
+send explicitly through the current helpers. Do not keep a plan runner or read
+`planning/plan.json`; record unreachable old nodes rather than inventing routes.
+
+- **Frozen code, durable data.** In parent Python, resolve packaged helpers from
+  `Path(__file__).resolve().parent`. Native agent shells receive the backend's
+  frozen `WORKFLOW_CODE_ROOT`. Never point either at mutable author files or
+  broaden shell access to repair a path. Durable records use
+  `WORKFLOW_DATA_ROOT`; current outputs use `run_folder` / `STEP_OUTPUT_DIR`.
+  Replace old `runs/<iteration>/<group>/execution/<step>` parsing and historical
+  output scans with explicit typed inputs and current-run files.
+- **Run identity.** When a native helper needs the producing run's identity,
+  write a small nonsecret context file into `run_folder` before calling it.
+  Read it through `STEP_OUTPUT_DIR` and validate against the current
+  `run_metadata.json`. Do not assume parent-only environment variables are
+  exported to native agents, recreate old step-session IDs, or call a provenance
+  revision a full source hash.
+- **Resources.** Keep existing app/account choices and installed task skills.
+  Remove retired `builder-reference`; it is Builder guidance, not an execution
+  skill. Agent knowledge choices are `"read"` and `"write"`, never `"read-write"`.
+  Preserve an explicit provider/model with `model="provider/model-id"` when
+  needed; do not pass `tier` with `model`. Use `timeout_seconds` for an intended
+  agent deadline, not `timeout`; omit it to use the parent deadline.
+- **Inputs and callers.** Put choices under `schema.enum`. Saved defaults and
+  preset values are strings; calls and raw payload mappings use typed JSON.
+  Map old routes to declared inputs using each caller's actual ID. Give optional
+  mapped fields a deliberate typed default when absence should be accepted;
+  check both a missing field and an invalid supplied value. Save input/caller
+  changes together through the canonical writer as described below. Preserve
+  caller authentication, enabled state and schedule timing.
+- **Managed database.** Replace retired `query_workflow_db` and
+  `mutate_workflow_db` calls with `database` and `action="query"` / `"mutate"`,
+  or use `agentworks_db`. Keep SQL, parameters and paging intact, check mutation
+  receipts and read back the affected records. Never open the database file.
+- **Real acceptance.** Check `reply.ok`, the full final answer and the required
+  artifacts; completed transport alone is not task success. Repair invalid agent
+  output once in the same conversation without repeating completed external
+  actions. Verify one authorized entry through the actual runtime, then its next
+  turn and dependent script. Keep account/browser refusals, partial collection
+  and unavailable measurements honest; do not weaken guards to get a green run.
+
 ### Calling from timers, webhooks and Slack
 
 Use one static saved input preset plus fixed inputs for each caller. For a raw
