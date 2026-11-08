@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -98,7 +99,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 	var fingerprintError error
 	var locks sync.Map
 	var activityLifecycle sync.Mutex
-	activities := map[string]func(string, error){} // Only this invocation finishes its activities.
+	type activePythonStep struct {
+		finish func(string, error)
+		name   string
+	}
+	activities := map[string]activePythonStep{} // Only this invocation owns these steps.
 	invocationEnded, invocationSucceeded := false, false
 	settleActivity := func(finish func(string, error), success bool) {
 		if success {
@@ -118,11 +123,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		}
 		outcome := invocationSucceeded
 		pending := activities
-		activities = map[string]func(string, error){}
+		activities = map[string]activePythonStep{}
 		activityLifecycle.Unlock()
 		// Persistence and notifier calls run outside the lifecycle lock.
-		for _, finish := range pending {
-			settleActivity(finish, outcome)
+		for _, activity := range pending {
+			settleActivity(activity.finish, outcome)
 		}
 	}
 	stopParent := context.AfterFunc(parent, func() { finishPending(false) })
@@ -160,6 +165,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		reusable := explicit && (action == "agent" || action == "run_script")
 		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script" && action != "agent" && action != "step" && action != "call_function" && action != "function_status" && action != "send_email" && action != "send_slack" && action != "google" && action != "github" && action != "slack_read") {
 			return encode(pythonHelperReply{Error: "Invalid Python helper request; use the installed agentworks package."})
+		}
+		if action == "check" || action == "notify" {
+			// Source locations can be shared by many labelled calls. Only a
+			// currently active receipt in this invocation proves attribution.
+			arguments = maps.Clone(arguments)
+			execution, _ := arguments["step_execution_id"].(string)
+			delete(arguments, "step_execution_id")
+			delete(arguments, "step_name")
+			activityLifecycle.Lock()
+			activity, found := activities[execution]
+			activityLifecycle.Unlock()
+			if found {
+				arguments["step_execution_id"], arguments["step_name"] = execution, activity.name
+			}
 		}
 		identity := fmt.Sprintf("implicit\x00%s\x00%d", label, int64(order))
 		if reusable {
@@ -376,7 +395,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				activityLifecycle.Lock()
 				ended, succeeded := invocationEnded, invocationSucceeded
 				if !ended {
-					activities[id] = finish
+					activities[id] = activePythonStep{finish: finish, name: title}
 				}
 				activityLifecycle.Unlock()
 				if ended {
@@ -404,7 +423,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				if !ok {
 					failure = errors.New(detail)
 				}
-				done(detail, failure)
+				done.finish(detail, failure)
 				call.Reply.OK = true
 			} else {
 				call.Reply.Error = "Choose a step start or completion."

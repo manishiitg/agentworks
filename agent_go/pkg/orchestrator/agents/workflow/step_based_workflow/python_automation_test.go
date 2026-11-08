@@ -153,8 +153,17 @@ if os.environ['VAR_PHASE'] == 'evidence':
         assert check('Evidence inside', True, 'MCP_API_TOKEN=fixture-credential ' + 'λ' * 700).ok
         assert not check('Evidence expected failure', False, 'expected').ok
         notify('MCP_API_TOKEN=fixture-credential progress')
+        @step('Nested evidence')
+        def nested(): check('Nested check', True)
+        nested()
+        check('Restored outer check', True)
     evidence()
+    def shared_check(label): check('Shared ' + label, True)
+    for label in ['first', 'second']:
+        step('Shared ' + label)(shared_check)(label)
     check('Evidence outside', True)
+    from agentworks import _call
+    assert _call('check', {'name':'Unknown step check', 'ok':True, 'step_execution_id':'python-unknown', 'step_name':'Forged name'}, None, False).ok
     raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'functions':
     first = call_function('Beta', 'check_build', {'build': '7'})
@@ -481,6 +490,22 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		t.Fatal("evidence notification did not reach the real chat target adapter")
 	}
 
+	// A valid ID from another invocation still proves no relationship to this
+	// handler. Keep the check, without accepting its supplied step name.
+	ownerHandler, finishOwner := c.pythonAutomationHandler(ctx, step, code, root+"/runs/run-one/execution/task")
+	otherHandler, finishOther := c.pythonAutomationHandler(ctx, step, code, root+"/runs/run-one/execution/task")
+	startRaw, err := ownerHandler(ctx, map[string]interface{}{"action": "step", "key": "foreign-start", "order": float64(1), "arguments": map[string]interface{}{"phase": "start", "title": "Other invocation", "source_call": "main.py:shared@main.py:1"}})
+	var foreignStart pythonHelperReply
+	if err != nil || json.Unmarshal([]byte(startRaw), &foreignStart) != nil || !foreignStart.OK {
+		t.Fatalf("other invocation setup failed: %s %v", startRaw, err)
+	}
+	checkRaw, err := otherHandler(ctx, map[string]interface{}{"action": "check", "key": "foreign-check", "order": float64(1), "arguments": map[string]interface{}{"name": "Other invocation check", "ok": true, "step_execution_id": foreignStart.ConversationID, "step_name": "Forged name"}})
+	var foreignCheck pythonHelperReply
+	if err != nil || json.Unmarshal([]byte(checkRaw), &foreignCheck) != nil || !foreignCheck.OK {
+		t.Fatalf("unassigned check did not run: %s %v", checkRaw, err)
+	}
+	finishOwner(true)
+	finishOther(true)
 	run(false, false, "slow-step")
 	run(false, false, "missing-finish")
 	// A successful script must not acquire a failed/running step simply
@@ -556,21 +581,46 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		if strings.Contains(string(encoded), "fixture-credential") || len([]rune(item.Detail)) > 500 {
 			t.Fatalf("run evidence missed existing credential redaction or bounded detail: %s", encoded)
 		}
+		if item.StepExecutionID != "" {
+			step, found := recorded.Steps[item.StepExecutionID]
+			if !found || step.Name != item.StepName {
+				t.Fatalf("check did not identify the actual recorded step: %+v", item)
+			}
+		} else if item.StepName != "" {
+			t.Fatalf("unassigned check accepted an authored step name: %+v", item)
+		}
 		switch item.Name {
 		case "Evidence inside":
-			foundInside = item.OK != nil && *item.OK && strings.HasPrefix(item.SourceCall, "main.py:evidence@")
+			foundInside = item.OK != nil && *item.OK && strings.HasPrefix(item.SourceCall, "main.py:evidence@") && item.StepName == "Evidence"
 		case "Evidence expected failure":
 			foundFailed = item.OK != nil && !*item.OK && item.SourceCall != ""
 		case "Evidence outside":
-			foundOutside = item.SourceCall == ""
+			foundOutside = item.SourceCall == "" && item.StepExecutionID == "" && item.StepName == ""
 		}
 		if item.Kind == "notify" && strings.Contains(item.Detail, "progress") {
-			foundNotify = item.OK == nil && item.SourceCall != ""
+			foundNotify = item.OK == nil && item.SourceCall != "" && item.StepName == "Evidence"
 		}
 	}
 	if !foundInside || !foundFailed || !foundOutside || !foundNotify {
 		t.Fatalf("real Python run evidence missing: inside=%t failed=%t outside=%t notify=%t", foundInside, foundFailed, foundOutside, foundNotify)
 	}
+	byName := map[string]PythonRunEvidence{}
+	for _, item := range items {
+		byName[item.Name] = item
+	}
+	first, second := byName["Shared first"], byName["Shared second"]
+	if first.StepExecutionID == "" || second.StepExecutionID == "" || first.StepExecutionID == second.StepExecutionID || first.SourceCall != second.SourceCall || first.StepName != "Shared first" || second.StepName != "Shared second" {
+		t.Fatalf("shared Python helper attribution is ambiguous: first=%+v second=%+v", first, second)
+	}
+	if byName["Nested check"].StepName != "Nested evidence" || byName["Restored outer check"].StepName != "Evidence" || byName["Restored outer check"].StepExecutionID != byName["Evidence inside"].StepExecutionID {
+		t.Fatal("nested step context did not restore its outer execution")
+	}
+	for _, name := range []string{"Unknown step check", "Other invocation check"} {
+		if unassigned, found := byName[name]; !found || unassigned.StepExecutionID != "" || unassigned.StepName != "" {
+			t.Fatalf("unproven execution ID gained step attribution: %+v", unassigned)
+		}
+	}
+	t.Logf("shared helper source=%s attributed distinct executions=%s,%s; nested/outer/outside/unknown cases passed", first.SourceCall, first.StepExecutionID, second.StepExecutionID)
 	// PR1642: Stop may finalize the invocation while OnExecutionStart is
 	// blocked after the initial durable record but before activity registration.
 	for _, succeeded := range []bool{false, true} {
