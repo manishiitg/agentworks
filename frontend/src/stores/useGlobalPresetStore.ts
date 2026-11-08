@@ -437,28 +437,6 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
             originalPreset.icon
           )
           
-          // If original preset had a workflow, create a new workflow for the duplicated preset
-          if (originalPreset.agentMode === 'workflow' && newPreset) {
-            try {
-              const workflowStatus = await agentApi.getWorkflowStatus(presetId)
-              if (workflowStatus.success && workflowStatus.workflow) {
-                // Create new workflow with same status and selected options
-                await agentApi.createWorkflow(newPreset.id, false) // humanVerificationRequired = false
-                
-                // Update workflow with same status and selected options if they exist
-                if (workflowStatus.workflow.workflow_status || workflowStatus.workflow.selected_options) {
-                  await agentApi.updateWorkflow(
-                    newPreset.id,
-                    workflowStatus.workflow.workflow_status,
-                    workflowStatus.workflow.selected_options || null
-                  )
-                }
-              }
-            } catch {
-              // Continue even if workflow duplication fails
-            }
-          }
-          
           return newPreset
         } catch (error) {
           console.error('[PRESET] Error duplicating preset:', error)
