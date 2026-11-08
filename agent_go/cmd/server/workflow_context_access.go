@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -18,23 +17,28 @@ var errLinkedCrewUnavailable = errors.New("This linked project is unavailable or
 // Recheck the registered Crew and its current audience for every workspace file operation.
 // A session's saved folder grant never supplies permission by itself.
 func requireCurrentCrewPathAccess(ctx context.Context, raw string) error {
-	claims := GetUserFromContext(ctx)
-	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+	docs := fsutil.WorkspaceDocsRoot()
+	logical := workspaceProxyCleanPath(raw)
+	// Classify the path before requiring a person: non-Crew system work keeps
+	// its existing policy; a Crew path never falls back to anonymous authority.
+	if logical != crewSharedRootName && !strings.HasPrefix(logical, crewSharedRootName+"/") {
 		return nil
 	}
-	docs := fsutil.WorkspaceDocsRoot()
-	logical := raw
-	if filepath.IsAbs(logical) {
-		rel, err := filepath.Rel(docs, logical)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return nil
-		}
-		logical = filepath.ToSlash(rel)
+	claims := GetUserFromContext(ctx)
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+		return errLinkedCrewUnavailable
 	}
 	ref, ok := resolveCrewPath(ctx, claims.UserID, logical)
 	if !ok {
-		return nil
+		return errLinkedCrewUnavailable
 	}
+	// The owner-name cache has a TTL; authority must use the live registry's
+	// mtime-aware cache so transfer/revocation never inherits that old owner.
+	record, found := defaultProjectOwners().Lookup(crewProfileID, strings.TrimPrefix(ref.Root, crewSharedRootName+"/"))
+	if !found || record.OwnerID == "" {
+		return errLinkedCrewUnavailable
+	}
+	ref.OwnerID = record.OwnerID
 	if crewAccessFor(claims, ref) == crewAccessNone {
 		return errLinkedCrewUnavailable
 	}
