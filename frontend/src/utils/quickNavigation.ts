@@ -28,13 +28,12 @@ export type QuickNavigationItem = {
 }
 
 const CREATION_LABELS: Record<ProductCreateSurface, string> = {
-  agentworks: 'Create new Goal', relays: 'Create new Flow', work: 'Create new Crew',
+  relays: 'Create new Flow', work: 'Create new Crew',
 }
 
 // Keep this beside the shared creation commands so a product consolidation has
 // one inventory to update; the sidebar does not maintain separate destinations.
 const PROJECT_CREATION_DESCRIPTIONS: Partial<Record<ProductCreateSurface, string>> = {
-  agentworks: 'Work toward a measurable goal.',
   work: 'A specialist for repeat work.',
   relays: 'Run repeatable steps automatically.',
 }

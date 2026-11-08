@@ -217,7 +217,9 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   // intentionally rendered for accounts without create access too, but the
   // account-level create permission keeps the action disabled rather than
   // opening a form that the server can never save.
+  // New automations are Python scripts made in a Crew's chat (PLAT-746); only Flows are still created here.
   const handleAddWorkflow = useCallback(() => {
+    if (!isRelaySurface) return
     if (!canCreateWorkflows) {
       useChatStore.getState().addToast(
         'Your account can use existing automations but cannot create new ones. Ask an administrator to enable automation creation.',
@@ -229,10 +231,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     setShowPresetDropdown(false)
     setShowPresetModal(true)
     setWorkspaceMinimized(true)
-  }, [canCreateWorkflows, setWorkspaceMinimized])
+  }, [canCreateWorkflows, isRelaySurface, setWorkspaceMinimized])
 
   useProductCreateRequest(
-    !reduced && presetModeCategory === 'workflow' && (productSurface === 'agentworks' || productSurface === 'relays') ? productSurface : null,
+    !reduced && presetModeCategory === 'workflow' && productSurface === 'relays' ? productSurface : null,
     handleAddWorkflow,
   )
 
@@ -527,9 +529,9 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                       open={showPresetDropdown}
                       onToggle={handlePresetDropdownToggle}
                       onClose={() => setShowPresetDropdown(false)}
-                      onAdd={handleAddWorkflow}
-                      addLabel={isRelaySurface ? 'Add Flow' : 'Add automation'}
-                      addTitle={!canCreateWorkflows ? 'Your account cannot create workflows. Ask an administrator to enable creation.' : isRelaySurface ? 'Add Flow' : 'Add automation'}
+                      onAdd={isRelaySurface ? handleAddWorkflow : undefined}
+                      addLabel={isRelaySurface ? 'Add Flow' : undefined}
+                      addTitle={!canCreateWorkflows ? 'Your account cannot create workflows. Ask an administrator to enable creation.' : 'Add Flow'}
                       addDisabled={!canCreateWorkflows}
                       addTestId="add-workflow-button"
                       dataTour="workflow-add-edit"
@@ -537,7 +539,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                       badge={currentTriggerLabel && <span className="rounded border border-border px-1 text-[10px] text-muted-foreground">{currentTriggerLabel}</span>}
                     >
                           <div className="p-2 space-y-1 max-h-96 overflow-y-auto">
-                            {/* Add New Workflow Option */}
+                            {isRelaySurface && <>
+                            {/* Add a Flow */}
                             <button
                               onClick={handleAddWorkflow}
                               disabled={!canCreateWorkflows}
@@ -546,7 +549,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                             >
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                <span className="font-medium">+ Add {isRelaySurface ? 'Flow' : 'Automation'}</span>
+                                <span className="font-medium">+ Add Flow</span>
                               </div>
                             </button>
 
@@ -555,6 +558,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                                 Your account can use existing automations, but it cannot create new ones. Ask an administrator to enable automation creation.
                               </div>
                             )}
+
+                            </>}
 
                             {/* Loading state */}
                             {presetsLoading && (
