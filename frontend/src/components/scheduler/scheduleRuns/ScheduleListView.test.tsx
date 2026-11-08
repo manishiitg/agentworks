@@ -64,6 +64,7 @@ describe('ScheduleListView run destination', () => {
       }),
     ])
     try {
+      await act(async () => { (host.querySelector('button[aria-label="Open details"]') as HTMLButtonElement).click() })
       const select = host.querySelector('select[aria-label="Run destination for Upwork check"]') as HTMLSelectElement
       expect(Array.from(select.options).map(option => option.textContent)).toEqual(['Main chat', 'Upwork', 'Own conversation'])
       expect(select.value).toBe('abc12345')
