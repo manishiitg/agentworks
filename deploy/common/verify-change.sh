@@ -150,6 +150,9 @@ if [[ "$go_needed" == true ]]; then
   done < <(grep -E '^Verify-Deploy:' "$WORK/message.txt" | sed 's/^Verify-Deploy:[[:space:]]*//' || true)
   (cd "$WORK/repo/workspace" && go build -o "$WORK/landlock-runner" ./cmd/landlock-runner) >/dev/null 2>&1 || true
   [[ ! -x "$WORK/landlock-runner" ]] || export AGENTWORKS_LANDLOCK_RUNNER="$WORK/landlock-runner"
+  # Exercise hosted-folder access outside the launcher's private /tmp grant.
+  mkdir -p "$WORK/linux-test-root"
+  export AGENTWORKS_LINUX_TEST_ROOT="$WORK/linux-test-root"
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     case "$line" in
