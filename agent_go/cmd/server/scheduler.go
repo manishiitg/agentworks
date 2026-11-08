@@ -38,12 +38,9 @@ type ScheduleContext struct {
 	WorkflowID    string
 	WorkflowLabel string
 	WorkflowKind  string
-	RelayRuntime  string
-	// RelayLegacyGroupName reads old release configuration without group execution.
-	RelayLegacyGroupName string
-	Schedule             WorkflowSchedule
-	WebhookInput         *WorkflowWebhookDelivery
-	Capabilities         WorkflowCapabilities
+	Schedule      WorkflowSchedule
+	WebhookInput  *WorkflowWebhookDelivery
+	Capabilities  WorkflowCapabilities
 	// OwnerUserID is the workflow's authenticated execution identity. It is
 	// normally WorkflowManifest.CreatedBy (or the first recorded owner), and
 	// is the explicit local owner for an ownerless legacy workflow only in
@@ -84,8 +81,6 @@ type ScheduleContext struct {
 	CapacityResumeRunID     string
 	CapacityResumeRunFolder string
 	CapacityResumeFromStep  int
-	DBOSResumeRunID         string
-	DBOSResumeRunFolder     string
 	ScheduledRunFolder      string
 }
 
@@ -347,7 +342,6 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 		loaded, time.Now().Format(time.RFC3339), time.Now().Location().String())
 
 	// Wall-clock tick loop: every 60s, evaluate all registered schedules against current time.
-	s.recoverInterruptedDBOSRelays(ctx)
 	go s.tickLoop(ctx)
 
 	// Wait for context cancellation
@@ -565,7 +559,6 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		WorkflowID:     manifest.ID,
 		WorkflowLabel:  manifest.Label,
 		WorkflowKind:   manifest.Kind,
-		RelayRuntime:   manifest.RelayRuntime,
 		Schedule:       sched,
 		Capabilities:   lockedScheduleCapabilities(manifest.Capabilities),
 		OwnerUserID:    workflowExecutionOwnerUserID(manifest),
@@ -579,13 +572,6 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 				sctx.OrderedScheduleIDs = append(sctx.OrderedScheduleIDs, candidate.ID)
 			}
 		}
-	}
-	if manifest.Kind == "relay" {
-		if groups := normalizeScheduleGroupNames(sched.GroupNames); len(groups) == 1 {
-			sctx.RelayLegacyGroupName = groups[0]
-		}
-		sctx.Schedule.GroupNames = nil
-		sctx.Capabilities.SlackConnectionID = ""
 	}
 
 	return sctx
@@ -614,13 +600,7 @@ func workflowExecutionOwnerUserID(manifest *WorkflowManifest) string {
 		// A Crew's work never switches to a co-owner's machine or logins.
 		return ""
 	}
-	if manifest.Kind == "relay" {
-		// Only a Flow's one Builder runs it unattended: if that account is inactive the run fails closed, and it never falls to
-		// another listed owner (now Run mode), whose slot would write journals into the Flow.
-		if builder := strings.TrimSpace(manifest.relayBuilder()); builder != "" {
-			return builder
-		}
-	}
+
 	owners := manifest.effectiveOwners()
 	createdBy := strings.TrimSpace(manifest.CreatedBy)
 	if createdBy != "" && containsID(owners, createdBy) && workflowExecutionAccountActive(createdBy) {
@@ -698,10 +678,6 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 		}
 	}
 	// Flows retain the shared function-delivery ledger, but register no timers.
-	if sctx.WorkflowKind == "relay" && !sched.IsFunctionTrigger() {
-		s.scheduleFingerprints[runtimeKey] = scheduleConfigFingerprint(sctx)
-		return nil
-	}
 
 	// Update workspace index
 	s.workspaceIndexMu.Lock()
@@ -1539,16 +1515,7 @@ func (s *SchedulerService) cancelScheduledSessionWork(sessionID, closeReason str
 
 // triggerSchedule is called by the tick loop when a schedule is due.
 func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor time.Time) {
-	if sctx.WorkflowKind == "relay" {
-		if !productEnabled("relays") {
-			sctx.ScheduledFor = scheduledFor
-			_ = s.recordScheduleFireDecision(context.Background(), sctx, "failed_to_start", errFlowsDisabled.Error(), "", time.Now().UTC())
-			s.logf(sctx, "[SCHEDULER] %s", errFlowsDisabled.Error())
-			return
-		}
-		s.logf(sctx, "[SCHEDULER] Flow timers are not supported; use an authenticated API function trigger")
-		return
-	}
+
 	triggerCtx := *sctx
 	triggerCtx.ScheduledFor = scheduledFor.UTC()
 	sctx = &triggerCtx
@@ -1672,7 +1639,6 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 	if sctx.WebhookInput != nil {
 		freshCtx.Schedule.InputPreset = sctx.Schedule.InputPreset
 		freshCtx.Schedule.Inputs = sctx.Schedule.Inputs
-		freshCtx.RelayLegacyGroupName = sctx.RelayLegacyGroupName
 		freshCtx.Schedule.RouteSelections = sctx.Schedule.RouteSelections
 		freshCtx.Schedule.Webhook = sctx.Schedule.Webhook
 	}
@@ -2245,11 +2211,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 			return "", err
 		}
 	}
-	if sctx.WorkflowKind == "relay" && (!sctx.Schedule.IsFunctionTrigger() || sctx.WebhookInput == nil) {
-		err := errors.New("Flows require an authenticated API function delivery; schedules are not supported")
-		failBeforeHistory(err, "")
-		return "", err
-	}
+
 	// A run whose identity is over its shared-account token limit fails here
 	// with the reason, like a refused manual turn (PLAT-683).
 	if err := s.api.scheduledRunTokenLimitRefusal(ctx, sctx); err != nil {
@@ -2312,11 +2274,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	if sctx.WebhookInput != nil {
 		run.Webhook = webhookRunMetadata(sctx)
 	}
-	if sctx.DBOSResumeRunID != "" {
-		if err := UpdateScheduleRun(ctx, sctx.WorkspacePath, sctx.DBOSResumeRunID, "running", "", nil, sctx.DBOSResumeRunFolder, ""); err != nil {
-			s.logf(sctx, "[RELAY] Failed to reopen DBOS run history: %v", err)
-		}
-	} else if sctx.CapacityResumeRunID != "" {
+	if sctx.CapacityResumeRunID != "" {
 		// A resumed run continues its own history row rather than opening a
 		// second one. Two rows would read as two runs, when what happened is one
 		// run that waited — and it would leave the first row reporting
@@ -2585,11 +2543,7 @@ func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext
 			}
 			if runFolder != "" {
 				detail += fmt.Sprintf("\nRun files: `%s/runs/%s`", sctx.WorkspacePath, runFolder)
-				if sctx.WorkflowKind == "relay" && runErr == nil {
-					if result, found, e := readFileFromWorkspace(context.Background(), sctx.WorkspacePath+"/runs/"+runFolder+"/relay_result.json"); e == nil && found && len(result) <= 16000 {
-						detail += "\n\n" + result
-					}
-				}
+
 			}
 			if e := s.appendCrewAutomationMessage(context.Background(), sctx, target, runID, status, detail); e != nil {
 				s.logf(sctx, "[AUTOMATION_CHAT] result delivery failed run=%s: %v", runID, e)
@@ -3369,10 +3323,9 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 		execOpts["capacity_account_key"] = accountKey
 		execOpts["pace_threshold_percent"] = threshold
 	}
-	if sctx.WorkflowKind != "relay" {
-		execOpts["input_preset"] = sctx.Schedule.InputPreset
-		execOpts["inputs"] = sctx.Schedule.Inputs
-	}
+
+	execOpts["input_preset"] = sctx.Schedule.InputPreset
+	execOpts["inputs"] = sctx.Schedule.Inputs
 
 	if mode := strings.TrimSpace(sctx.Schedule.ExecutionMode); mode != "" {
 		execOpts["execution_mode"] = mode
@@ -3569,9 +3522,7 @@ func (s *SchedulerService) claimScheduleRun(ctx context.Context, sctx *ScheduleC
 		}
 		return nil
 	}
-	if sctx.DBOSResumeRunID != "" {
-		return s.stateStore.ResumeInterruptedDBOSRun(ctx, sctx.DBOSResumeRunID, startedAt)
-	}
+
 	if sctx.CapacityResumeRunID != "" {
 		return s.stateStore.ResumeCapacityRun(ctx, sctx.CapacityResumeRunID, startedAt)
 	}

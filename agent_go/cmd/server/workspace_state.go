@@ -226,14 +226,9 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 		return []RunFolderInfo{}, nil // Empty list, not error
 	}
 
-	// A Relay's run folder holds its own subfolders (.relay_dbos, .relay_ipc, .tmp, ...): they are not groups, so the
-	// list is flat for a Relay, exactly as in handleGetRunFolders. Without this the run itself was replaced by those
-	// subfolders and the Execution Logs run selector said "No runs yet" for a completed Relay run.
-	workflow, found, manifestErr := ReadWorkflowManifest(ctx, workspacePath)
-	if manifestErr != nil {
-		return nil, fmt.Errorf("failed to read workflow manifest: %w", manifestErr)
+	if _, _, err := ReadWorkflowManifest(ctx, workspacePath); err != nil {
+		return nil, fmt.Errorf("failed to read workflow manifest: %w", err)
 	}
-	flatRuns := found && workflow.Kind == "relay"
 	// Extract folder names from response data
 	existingFolders := []string{} // Initialize as empty slice, not nil
 
@@ -244,15 +239,15 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 		if err := json.Unmarshal(dataBytes, &folderListing); err == nil && len(folderListing) > 0 {
 			// Extract iteration folders from the first item's children (the runs folder)
 			if len(folderListing) > 0 && len(folderListing[0].Children) > 0 {
-				existingFolders = extractIterationFoldersFromTypedChildren(folderListing[0].Children, existingFolders, flatRuns)
+				existingFolders = extractIterationFoldersFromTypedChildren(folderListing[0].Children, existingFolders)
 			}
 		} else {
 			// Fallback: try to parse as array of interface{} (backward compatibility)
 			if dataArray, ok := apiResp.Data.([]interface{}); ok {
-				existingFolders = extractIterationFoldersFromInterfaceArray(dataArray, existingFolders, flatRuns)
+				existingFolders = extractIterationFoldersFromInterfaceArray(dataArray, existingFolders)
 			} else if dataMap, ok := apiResp.Data.(map[string]interface{}); ok {
 				if children, ok := dataMap["children"].([]interface{}); ok {
-					existingFolders = extractIterationFoldersFromChildren(children, existingFolders, flatRuns)
+					existingFolders = extractIterationFoldersFromChildren(children, existingFolders)
 				}
 			}
 		}
@@ -271,7 +266,7 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 		}
 		existingFolders = filtered
 	}
-	logRunFoldersWhenChanged(workspacePath, flatRuns, existingFolders)
+	logRunFoldersWhenChanged(workspacePath, existingFolders)
 	// Build folder info list
 	folderInfos := make([]RunFolderInfo, 0, len(existingFolders))
 	for _, folderName := range existingFolders {
@@ -815,13 +810,13 @@ var (
 	lastRunFolderListing   = map[string]string{}
 )
 
-func logRunFoldersWhenChanged(workspacePath string, relay bool, folders []string) {
+func logRunFoldersWhenChanged(workspacePath string, folders []string) {
 	listing := strings.Join(folders, ",")
 	lastRunFolderListingMu.Lock()
 	changed := lastRunFolderListing[workspacePath] != listing
 	lastRunFolderListing[workspacePath] = listing
 	lastRunFolderListingMu.Unlock()
 	if changed {
-		log.Printf("[RUN_FOLDERS] workspace=%s relay=%t listed=%d folders=%s", workspacePath, relay, len(folders), listing)
+		log.Printf("[RUN_FOLDERS] workspace=%s listed=%d folders=%s", workspacePath, len(folders), listing)
 	}
 }

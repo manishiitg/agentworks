@@ -12,7 +12,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 )
 
 type workflowChatPolicy struct {
@@ -156,15 +155,9 @@ func (p workflowChatPolicy) sessionKey() string {
 func (api *StreamingAPI) chatPolicySessionKey(p workflowChatPolicy, workflowKind ...string) string {
 	h := sha256.New()
 	h.Write([]byte(p.sessionKey()))
-	if len(workflowKind) > 0 && workflowKind[0] == "relay" {
-		key, err := relayproduct.BuilderDefinitionKey()
-		if err != nil {
-			key = "invalid-relay-builder:" + err.Error()
-		}
-		h.Write([]byte(key))
-	} else {
-		h.Write([]byte(agentworksproduct.ChatDefinitionKey(p.Mode)))
-	}
+
+	h.Write([]byte(agentworksproduct.ChatDefinitionKey(p.Mode)))
+
 	// Never log config contents or secret values. A changed install/auth/config
 	// causes the existing durable-history reconnect path on the next user turn.
 	for _, path := range []string{api.mcpConfigPath, api.getUserConfigPath()} {

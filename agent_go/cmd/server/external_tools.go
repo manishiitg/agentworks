@@ -1237,22 +1237,7 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 	}
 	// A Flow's published version keeps its production runs in its own
 	// release folder, the one the app's version picker reads.
-	if version := externalArg(args, "version"); version != "" {
-		if workflow.Manifest.Kind != "relay" {
-			externalError(w, 400, "invalid_arguments", "version applies to Flows only.")
-			return
-		}
-		if access := workflowAccessForManifest(GetUserFromContext(r.Context()), workflow.Manifest); access != WorkflowAccessOwner && access != WorkflowAccessWrite {
-			externalError(w, 403, "forbidden", "Production runs of a Flow need owner or editor access.")
-			return
-		}
-		root := relayReleaseWorkspace(workflow.WorkspacePath, version)
-		if draft, err := relayDraftWorkspaceForRelease(r.Context(), root); err != nil || draft != workflow.WorkspacePath {
-			externalError(w, 404, "version_not_found", "No published version "+version+"; see relay action=releases.")
-			return
-		}
-		req.Root = root
-	}
+
 	result, err := externalFileRequest(r.Context(), req)
 	if err != nil {
 		externalFailure(w, err)

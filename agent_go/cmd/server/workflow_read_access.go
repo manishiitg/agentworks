@@ -52,6 +52,10 @@ func workspaceReadAllowed(ctx context.Context, claims *UserClaims, raw string, l
 	if !ok {
 		return false
 	}
+	// Saved internal release archives stay unreadable after product retirement.
+	if clean == "Workflow/.relay_releases" || strings.HasPrefix(clean, "Workflow/.relay_releases/") {
+		return false
+	}
 	if claims == nil {
 		return true
 	}
@@ -62,9 +66,7 @@ func workspaceReadAllowed(ctx context.Context, claims *UserClaims, raw string, l
 		if len(segments) < 2 {
 			return admin
 		}
-		if segments[1] == relayReleasesFolder && len(segments) >= 4 {
-			return relayReleaseReadAllowed(ctx, claims, clean)
-		}
+
 		if strings.HasPrefix(segments[1], ".") {
 			return admin
 		}
@@ -212,8 +214,6 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	apiRouter.HandleFunc("/workflows/overview", api.handleGetWorkflowsOverview).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/report-preview/file", api.handleReportPreviewFile).Methods("GET")
 	apiRouter.HandleFunc("/workflow/report-preview/costs", api.handleReportPreviewMetrics).Methods("GET")
-	apiRouter.HandleFunc("/workflow/report-preview/relay-runs", api.handleReportRelayRuns).Methods("GET")
-	apiRouter.HandleFunc("/workflow/report-preview/relay-run", api.handleReportRelayRun).Methods("GET")
 }
 
 // activeExecutionsReadableBy keeps the running executions on workflows

@@ -547,14 +547,14 @@ func hasRunArtifacts(children []virtualtools.WorkspaceFolderItem) bool {
 	return false
 }
 
-func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceFolderItem, existingFolders []string, flatRuns ...bool) []string {
+func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceFolderItem, existingFolders []string) []string {
 	for _, child := range children {
 		name := workflowRunName(child.FilePath)
 		if child.Type != "folder" || name == "" {
 			continue
 		}
 		nested := []string{}
-		if !(len(flatRuns) > 0 && flatRuns[0]) && !hasRunArtifacts(child.Children) {
+		if !hasRunArtifacts(child.Children) {
 			for _, archive := range child.Children {
 				label := filepath.Base(archive.FilePath)
 				if archive.Type == "folder" && filepath.Dir(archive.FilePath) == child.FilePath &&
@@ -572,18 +572,18 @@ func extractIterationFoldersFromTypedChildren(children []virtualtools.WorkspaceF
 	return existingFolders
 }
 
-func extractIterationFoldersFromInterfaceArray(dataArray []interface{}, existingFolders []string, flatRuns ...bool) []string {
+func extractIterationFoldersFromInterfaceArray(dataArray []interface{}, existingFolders []string) []string {
 	for _, elem := range dataArray {
 		if item, ok := elem.(map[string]interface{}); ok {
 			if children, ok := item["children"].([]interface{}); ok {
-				existingFolders = extractIterationFoldersFromChildren(children, existingFolders, flatRuns...)
+				existingFolders = extractIterationFoldersFromChildren(children, existingFolders)
 			}
 		}
 	}
 	return existingFolders
 }
 
-func extractIterationFoldersFromChildren(children []interface{}, existingFolders []string, flatRuns ...bool) []string {
+func extractIterationFoldersFromChildren(children []interface{}, existingFolders []string) []string {
 	encoded, err := json.Marshal(children)
 	if err != nil {
 		return existingFolders
@@ -599,7 +599,7 @@ func extractIterationFoldersFromChildren(children []interface{}, existingFolders
 			}
 		}
 	}
-	return extractIterationFoldersFromTypedChildren(typed, existingFolders, flatRuns...)
+	return extractIterationFoldersFromTypedChildren(typed, existingFolders)
 }
 
 // ActiveWorkflowExecution is the backend half of the workflow/chat decoupling:
@@ -995,9 +995,6 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "workspace_path parameter is required", http.StatusBadRequest)
 		return
 	}
-	if !requireRelayReleaseVisible(w, r, workspacePath) {
-		return
-	}
 
 	// Build path to runs folder
 	runsPath := workspacePath + "/runs"
@@ -1067,12 +1064,10 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	workflow, found, err := ReadWorkflowManifest(r.Context(), workspacePath)
-	if err != nil {
+	if _, _, err := ReadWorkflowManifest(r.Context(), workspacePath); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read workflow manifest: %v", err), http.StatusInternalServerError)
 		return
 	}
-	flatRuns := found && workflow.Kind == "relay"
 	// Extract folder names from response data
 	existingFolders := []string{} // Initialize as empty slice, not nil
 
@@ -1083,15 +1078,15 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 		if err := json.Unmarshal(dataBytes, &folderListing); err == nil && len(folderListing) > 0 {
 			// Extract iteration folders from the first item's children (the runs folder)
 			if len(folderListing) > 0 && len(folderListing[0].Children) > 0 {
-				existingFolders = extractIterationFoldersFromTypedChildren(folderListing[0].Children, existingFolders, flatRuns)
+				existingFolders = extractIterationFoldersFromTypedChildren(folderListing[0].Children, existingFolders)
 			}
 		} else {
 			// Fallback: try to parse as array of interface{} (backward compatibility)
 			if dataArray, ok := apiResp.Data.([]interface{}); ok {
-				existingFolders = extractIterationFoldersFromInterfaceArray(dataArray, existingFolders, flatRuns)
+				existingFolders = extractIterationFoldersFromInterfaceArray(dataArray, existingFolders)
 			} else if dataMap, ok := apiResp.Data.(map[string]interface{}); ok {
 				if children, ok := dataMap["children"].([]interface{}); ok {
-					existingFolders = extractIterationFoldersFromChildren(children, existingFolders, flatRuns)
+					existingFolders = extractIterationFoldersFromChildren(children, existingFolders)
 				}
 			}
 		}
@@ -1284,17 +1279,11 @@ func (api *StreamingAPI) handleGetVariableGroups(w http.ResponseWriter, r *http.
 		}
 	}
 
-	workflow, found, err := ReadWorkflowManifest(r.Context(), workspacePath)
-	if err != nil {
+	if _, _, err := ReadWorkflowManifest(r.Context(), workspacePath); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read workflow manifest: %v", err), http.StatusInternalServerError)
 		return
 	}
-	if found && workflow.Kind == "relay" {
-		if err := relayConfigurationView(&manifest, workflow); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
+
 	response := VariableGroupsResponse{
 		Success:  true,
 		Manifest: &manifest,
@@ -1365,21 +1354,11 @@ func (api *StreamingAPI) handleUpdateVariableGroups(w http.ResponseWriter, r *ht
 		}
 	}
 
-	workflow, found, err := ReadWorkflowManifest(r.Context(), workspacePath)
-	if err != nil {
+	if _, _, err := ReadWorkflowManifest(r.Context(), workspacePath); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read workflow manifest: %v", err), http.StatusInternalServerError)
 		return
 	}
-	if found && workflow.Kind == "relay" {
-		if workflowtypes.RelayReleaseWorkspace(workspacePath) != "" {
-			http.Error(w, "Published Flow configuration is immutable", http.StatusBadRequest)
-			return
-		}
-		if len(manifest.Groups) > 0 {
-			http.Error(w, "Flows do not accept variable groups; save configuration values directly", http.StatusBadRequest)
-			return
-		}
-	}
+
 	// Write updated manifest to variables.json
 	variablesPath := workspacePath + "/variables/variables.json"
 
@@ -1435,12 +1414,6 @@ func (api *StreamingAPI) handleUpdateVariableGroups(w http.ResponseWriter, r *ht
 		return
 	}
 
-	if found && workflow.Kind == "relay" {
-		if err := clearRelayConfigurationBindings(r.Context(), workspacePath); err != nil {
-			http.Error(w, fmt.Sprintf("Configuration saved but legacy trigger metadata could not be cleared: %v", err), http.StatusInternalServerError)
-			return
-		}
-	}
 	response := map[string]interface{}{
 		"success": true,
 		"message": "Variable groups updated successfully",
@@ -1892,9 +1865,6 @@ func (api *StreamingAPI) handleGetExecutionLogs(w http.ResponseWriter, r *http.R
 	workspacePath := r.URL.Query().Get("workspace_path")
 	if workspacePath == "" {
 		http.Error(w, "workspace_path parameter is required", http.StatusBadRequest)
-		return
-	}
-	if !requireRelayReleaseVisible(w, r, workspacePath) {
 		return
 	}
 
@@ -2983,9 +2953,6 @@ func (api *StreamingAPI) handleGetCosts(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "workspace_path parameter is required", http.StatusBadRequest)
 		return
 	}
-	if !requireRelayReleaseVisible(w, r, workspacePath) {
-		return
-	}
 
 	// Validate workspace path to prevent path traversal attacks
 	cleanedWorkspacePath := filepath.Clean(workspacePath)
@@ -3053,9 +3020,6 @@ func (api *StreamingAPI) handleGetLogFile(w http.ResponseWriter, r *http.Request
 	filePath := r.URL.Query().Get("file_path")
 	if filePath == "" {
 		http.Error(w, "file_path parameter is required", http.StatusBadRequest)
-		return
-	}
-	if !requireRelayReleaseVisible(w, r, filePath) {
 		return
 	}
 

@@ -10,7 +10,7 @@ import (
 )
 
 // Flow co-owners (owner, 2026-10-16). A Flow's owners are the manifest's access.owners list: all of them build it (edit,
-// test, publish; workflowAccessForManifest), the main owner (relayBuilder: the creator while still listed, else the first
+// test, publish; workflowAccessForManifest), the main owner (executionOwner: the creator while still listed, else the first
 // listed) is who it runs as, and owners manage the shared owner list. A Flow has one shared draft in version 1 and no
 // Builder lock; a publish says whose version it replaced.
 
@@ -21,12 +21,12 @@ type flowOwnersState struct {
 	Note      string           `json:"note,omitempty"`
 }
 
-// projectMainOwner is who a Goal or Flow runs as and who cannot be removed: a Goal team's leader, else relayBuilder.
+// projectMainOwner is who a Goal or Flow runs as and who cannot be removed: a Goal team's leader, else executionOwner.
 func projectMainOwner(manifest *WorkflowManifest) string {
 	if manifest.Team != nil && manifest.Team.LeaderID != "" {
 		return manifest.Team.LeaderID
 	}
-	return manifest.relayBuilder()
+	return manifest.executionOwner()
 }
 
 // flowOwnersStateFor lists a Goal's or Flow's owners for callerID (one sharing model, 2026-10-27).
@@ -139,7 +139,7 @@ func flowOwnerTurnOwner(ctx context.Context, callerID, workspacePath string) str
 	if err != nil || !found || manifest == nil || manifest.Kind != "relay" {
 		return ""
 	}
-	main := manifest.relayBuilder()
+	main := manifest.executionOwner()
 	person := sanitizeUserIDForPath(callerID)
 	if main == "" || sanitizeUserIDForPath(main) == person || !containsID(manifest.effectiveOwners(), callerID) {
 		return ""

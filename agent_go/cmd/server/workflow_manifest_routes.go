@@ -85,7 +85,7 @@ func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *htt
 	currentVersion := workflowContractVersionForUpgrade(manifest)
 	pendingUpgrades := workflowVersionUpgradePlan(manifest)
 	pendingUpgradeItems, appliedUpgradeItems := workflowContractUpgradeLists(manifest)
-	upgradeRequired := !isPythonRelay(manifest) && (!manifestContractIsExecutionCompatible(manifest) || manifest.CodeLayoutVersion != 1)
+	upgradeRequired := !manifestContractIsExecutionCompatible(manifest) || manifest.CodeLayoutVersion != 1
 	upgradeStatus := map[string]interface{}{
 		"required":         upgradeRequired,
 		"current_version":  currentVersion,
@@ -181,10 +181,7 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 	// Build manifest
 	manifest := NewWorkflowManifest(req.Label)
 	manifest.Kind = strings.TrimSpace(req.Kind)
-	if manifest.Kind == "relay" {
-		manifest.RelayRuntime = "python"
-		manifest.RelayDurability = "dbos"
-	}
+
 	manifest.Icon = strings.TrimSpace(req.Icon)
 	manifest.CreatedBy = GetUserIDFromContext(r.Context())
 	if manifest.CreatedBy != "" {
@@ -201,13 +198,6 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 	if err := validateWorkflowSlackConnectionID(manifest.Capabilities.SlackConnectionID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
-	}
-
-	if isPythonRelay(manifest) {
-		if err := initializePythonRelayWorkspaceWithSource(r.Context(), req.WorkspacePath, defaultNativeDBOSRelaySource); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to initialize Flow: %v", err), http.StatusInternalServerError)
-			return
-		}
 	}
 
 	// Write manifest
@@ -243,8 +233,6 @@ type UpdateWorkflowManifestRequest struct {
 	Label                *string                                      `json:"label,omitempty"`
 	ChatInstructions     *string                                      `json:"chat_instructions,omitempty"`
 	Description          *string                                      `json:"description,omitempty"`
-	RelayOutputStepID    *string                                      `json:"relay_output_step_id,omitempty"`
-	RelayDurability      *string                                      `json:"relay_durability,omitempty"`
 	Icon                 *string                                      `json:"icon,omitempty"`
 	Capabilities         *WorkflowCapabilities                        `json:"capabilities,omitempty"`
 	Schedules            *[]WorkflowSchedule                          `json:"schedules,omitempty"`
@@ -355,16 +343,7 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		}
 		manifest.Description = description
 	}
-	if req.RelayOutputStepID != nil {
-		if isPythonRelay(manifest) && strings.TrimSpace(*req.RelayOutputStepID) != "" {
-			http.Error(w, "Python Flows return run(INPUT, ctx); no output step can be selected", http.StatusBadRequest)
-			return
-		}
-		manifest.RelayOutputStepID = strings.TrimSpace(*req.RelayOutputStepID)
-	}
-	if req.RelayDurability != nil {
-		manifest.RelayDurability = strings.TrimSpace(*req.RelayDurability)
-	}
+
 	if req.Icon != nil {
 		manifest.Icon = strings.TrimSpace(*req.Icon)
 	}

@@ -110,7 +110,7 @@ func capacityWaitOutlastsNextRun(wait *stepworkflow.WorkflowCapacityWait, nextRu
 // reused — iteration-0 is the live slot — so a record left by an earlier run in
 // the same folder would otherwise suspend a run that never hit a wall at all.
 func (s *SchedulerService) classifyCapacityWait(ctx context.Context, sctx *ScheduleContext, execErr error, runFolder string, runStartedAt time.Time) (*stepworkflow.WorkflowCapacityWait, bool) {
-	if execErr == nil || sctx == nil || sctx.RelayRuntime == "python" {
+	if execErr == nil || sctx == nil {
 		return nil, false
 	}
 	if !errors.Is(execErr, stepworkflow.ErrWorkflowWaitingForCapacity) {
@@ -259,44 +259,7 @@ func (s *SchedulerService) capacityResumeContext(ctx context.Context, run schedu
 	} else if run.TriggerSource == "webhook" {
 		return nil, fmt.Errorf("capacity resume delivery is unavailable")
 	}
-	if manifest.Kind == "relay" && resume.WebhookInput != nil && sched.IsFunctionTrigger() {
-		draft, err := relayDraftWorkspaceForRelease(ctx, run.ScopeID)
-		if err != nil {
-			return nil, err
-		}
-		if version := strings.Split(run.ScopeID, "/"); workflowtypes.RelayReleaseWorkspace(run.ScopeID) != "" {
-			release, releaseWorkspace, err := readRelayRelease(ctx, draft, version[3])
-			if err != nil {
-				return nil, err
-			}
-			if err := verifyRelayRelease(ctx, release, releaseWorkspace); err != nil {
-				return nil, err
-			}
-		}
-		live, found, err := ReadWorkflowManifest(ctx, draft)
-		if err != nil || !found {
-			return nil, fmt.Errorf("capacity resume Flow is unavailable")
-		}
-		var payload struct {
-			Function string        `json:"function"`
-			Caller   triggerCaller `json:"relay_trigger_caller"`
-			User     string        `json:"relay_caller"`
-		}
-		if json.Unmarshal(resume.WebhookInput.Payload, &payload) != nil {
-			return nil, fmt.Errorf("capacity resume caller is unavailable")
-		}
-		if payload.Caller.ID == "" && payload.User != "" {
-			payload.Caller = triggerCaller{Type: triggerCallerUser, ID: payload.User}
-		}
-		liveSchedule, err := findWorkflowFunctionTrigger(live, payload.Function)
-		if payload.Caller.ID == "" || err != nil || !relayFunctionCallerAllowed(live, liveSchedule.Function, payload.Caller) {
-			return nil, fmt.Errorf("capacity resume caller is no longer allowed")
-		}
-		access := workflowAccessForManifest(principalClaims(payload.Caller.ID), live)
-		if payload.Caller.Type == triggerCallerUser && (access == WorkflowAccessNone || !userAllowedWorkflowID(principalClaims(payload.Caller.ID), live.ID)) {
-			return nil, fmt.Errorf("capacity resume caller no longer has Flow access")
-		}
-	}
+
 	resume.CapacityResumeRunID = run.RunID
 	resume.CapacityResumeRunFolder = run.RunFolder
 	resume.CapacityResumeFromStep = wait.StepNumber
@@ -450,7 +413,7 @@ const quotaExhaustedMarker = "[quota_exhausted]"
 // cache has nothing fresh the wait is recorded with no reset — honest, and it
 // waits for a person rather than waking on a guess.
 func (s *SchedulerService) turnLevelCapacityWait(ctx context.Context, sctx *ScheduleContext, execErr error, runFolder string, now time.Time) (*stepworkflow.WorkflowCapacityWait, bool) {
-	if execErr == nil || sctx == nil || sctx.RelayRuntime == "python" {
+	if execErr == nil || sctx == nil {
 		return nil, false
 	}
 	if !strings.Contains(execErr.Error(), quotaExhaustedMarker) {

@@ -2,16 +2,15 @@ package step_based_workflow
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -33,11 +32,7 @@ func platformStoresForProduct(kind string) (bool, error) {
 	if strings.TrimSpace(kind) != "relay" {
 		return true, nil
 	}
-	enabled, err := relayproduct.PlatformStoresEnabled()
-	if err != nil {
-		return false, fmt.Errorf("load Flow execution policy: %w", err)
-	}
-	return enabled, nil
+	return workflowtypes.LegacyRelayPlatformStoresEnabled, nil
 }
 
 // Managed Builder sessions are set up outside the controller. Use the same

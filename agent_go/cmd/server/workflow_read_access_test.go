@@ -30,6 +30,7 @@ func readAccessRouterWithAPI(t *testing.T) (http.Handler, *StreamingAPI) {
 	  {"id":"root","username":"root","admin":true,"products":[]}
 	]}`)
 	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
+		"Workflow/unsupported/workflow.json":             `{"id":"unsupported","kind":"retired","created_by":"bob"}`,
 		"Workflow/w/workflow.json":                       `{"id":"w","name":"W","access":{"owners":["alice"]}}`,
 		"Workflow/w/planning/plan.json":                  `{"steps":[]}`,
 		"Workflow/shared/planning/plan.json":             `{"steps":[]}`,
@@ -107,6 +108,13 @@ func TestWorkflowReadRoutesRequireWorkflowAccess(t *testing.T) {
 			if rec := readAs(t, h, "root", workflowReadTarget(route, "Workflow/w")); rec.Code != http.StatusOK {
 				t.Fatalf("admin: got %d, want 200: %s", rec.Code, rec.Body.String())
 			}
+			// PLAT-847-23: saved archives and unsupported kinds stay unavailable;
+			// neither may inherit the new-folder account fallback.
+			for _, archived := range []string{"Workflow/.relay_releases/saved/v1", "Workflow/unsupported"} {
+				if rec := readAs(t, h, "bob", workflowReadTarget(route, archived)); rec.Code != http.StatusForbidden {
+					t.Fatalf("stored archive/kind %s: got %d, want 403", archived, rec.Code)
+				}
+			}
 			// Leading/trailing slashes address the same workflow.
 			if rec := readAs(t, h, "bob", workflowReadTarget(route, "/Workflow/w/")); rec.Code != http.StatusForbidden {
 				t.Fatalf("slash-wrapped path: got %d, want 403", rec.Code)
@@ -152,6 +160,12 @@ func TestLogFileReadAccess(t *testing.T) {
 	} {
 		if rec := readAs(t, h, "bob", file(trick)); rec.Code != http.StatusForbidden {
 			t.Fatalf("%q: got %d, want 403: %s", trick, rec.Code, rec.Body.String())
+		}
+	}
+	// Retirement must not reveal retained archives through admin/internal fallback.
+	for _, claims := range []*UserClaims{nil, {UserID: "root"}, {UserID: "alice"}} {
+		if workspaceReadAllowed(context.Background(), claims, "Workflow/.relay_releases/saved/v1", logicalPathIsDefaultUser, false) {
+			t.Fatal("saved internal release archive became readable")
 		}
 	}
 	// Admins may read dot-folders and other users' trees.

@@ -28,19 +28,7 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 	switch name {
 	case "project_functions_list":
 		live := manifest
-		if manifest.Kind == "relay" {
-			release, root, err := resolveRelayRelease(ctx, selected.WorkspacePath, "")
-			if err != nil || verifyRelayRelease(ctx, release, root) != nil {
-				externalError(w, 409, "not_published", "Publish this Flow before using its functions.")
-				return
-			}
-			published, _, err := ReadWorkflowManifest(ctx, root)
-			if err != nil || published == nil || published.ID != manifest.ID {
-				externalError(w, 409, "published_version_unavailable", "Published functions are unavailable.")
-				return
-			}
-			manifest = published
-		}
+
 		functions := workflowFunctions(manifest)
 		listed := make([]map[string]any, 0, len(functions))
 		for _, fn := range functions {

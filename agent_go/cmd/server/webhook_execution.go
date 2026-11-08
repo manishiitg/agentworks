@@ -39,9 +39,7 @@ func directWebhookPreflight(manifest *WorkflowManifest) error {
 	if workflowContractNeedsRecreation(manifest) {
 		return fmt.Errorf("%s: %w", oldWorkflowContractMessage, errWorkflowContractMigrationRequired)
 	}
-	if isPythonRelay(manifest) {
-		return nil
-	}
+
 	if manifest == nil || !directWebhookContractCompatible(manifest) || manifest.CodeLayoutVersion != 1 {
 		return fmt.Errorf("this workflow's contract is not supported for unattended runs; converting it to a Python script is done by the platform operator for now: %w", errWorkflowContractMigrationRequired)
 	}
@@ -67,13 +65,10 @@ func configureDirectWebhookRequest(req map[string]interface{}, sctx *ScheduleCon
 	if sctx.Schedule.Webhook != nil {
 		opts.WebhookStepID = sctx.Schedule.Webhook.StepID
 	}
-	if sctx.WorkflowKind == "relay" {
-		opts.EnabledGroupNames = nil
-		opts.RelayLegacyGroupName = sctx.RelayLegacyGroupName
-	} else {
-		opts.InputPreset = sctx.Schedule.InputPreset
-		opts.Inputs = sctx.Schedule.Inputs
-	}
+
+	opts.InputPreset = sctx.Schedule.InputPreset
+	opts.Inputs = sctx.Schedule.Inputs
+
 	if sctx.WebhookInput != nil {
 		if sctx.WebhookInput.DirectRun {
 			opts.InputPreset = sctx.WebhookInput.DirectInputPreset
@@ -103,21 +98,7 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 	if err := directWebhookPreflight(manifest); err != nil {
 		return "", "", err
 	}
-	if isPythonRelay(manifest) {
-		if sctx.CapacityResumeRunID != "" {
-			return "", "", fmt.Errorf("Python Flows do not support execution recovery")
-		}
-		if sctx.DBOSResumeRunID != "" && !isDBOSRelay(manifest) {
-			return "", "", fmt.Errorf("Flow does not enable DBOS recovery")
-		}
-		if err := validatePythonRelaySource(ctx, sctx.WorkspacePath); err != nil {
-			return "", "", err
-		}
-	} else if manifest.Kind == "relay" {
-		if err := validateRelayOutputStep(ctx, sctx.WorkspacePath, manifest.RelayOutputStepID); err != nil {
-			return "", "", err
-		}
-	}
+
 	runFolder, err := webhookExecutionRunFolder(sctx, runID)
 	if err != nil {
 		return "", "", err
@@ -138,13 +119,7 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 	if err := UpdateScheduleRun(ctx, sctx.WorkspacePath, runID, "running", "", nil, runFolder, sessionID); err != nil {
 		return sessionID, runFolder, err
 	}
-	if isPythonRelay(manifest) {
-		sctx.RelayRuntime = "python"
-		s.sessionLogf(sctx, sessionID, "[RELAY] Python execution (run=%s folder=%s)", runID, runFolder)
-		err := s.executePythonRelay(ctx, sctx, runID, runFolder, sessionID)
-		sctx.ProducedRunEvidence = true
-		return sessionID, runFolder, err
-	}
+
 	req := s.buildWorkshopRequest(ctx, sctx, runID)
 	opts, err := configureDirectWebhookRequest(req, sctx, runFolder)
 	if err != nil {
@@ -160,17 +135,7 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 // Resume must reuse the recorded folder. If its binding disappeared, fail
 // instead of allocating an empty folder and replaying completed side effects.
 func webhookExecutionRunFolder(sctx *ScheduleContext, runID string) (string, error) {
-	if sctx.DBOSResumeRunID != "" {
-		if sctx.DBOSResumeRunID != runID {
-			return "", fmt.Errorf("DBOS recovery run identity changed")
-		}
-		root, err := openWebhookRunRoot(sctx.WorkspacePath, schedulerstate.Run{RunID: runID, RunFolder: sctx.DBOSResumeRunFolder})
-		if err != nil {
-			return "", fmt.Errorf("DBOS recovery run folder unavailable: %w", err)
-		}
-		root.Close()
-		return sctx.DBOSResumeRunFolder, nil
-	}
+
 	if sctx.CapacityResumeRunID == "" {
 		return allocateWebhookRunFolder(sctx.WorkspacePath, runID)
 	}
