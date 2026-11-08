@@ -42,7 +42,17 @@ def entry_lock(path):
 def prepare():
     requirements = Path(os.environ["SCRIPT_SOURCE_DIR"]) / "requirements.txt"
     target = Path(os.environ["WORKFLOW_CODE_DEPS"])
-    digest = hashlib.sha256(requirements.read_bytes()).hexdigest()
+    raw = requirements.read_bytes()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise RuntimeError("requirements.txt must be UTF-8 text listing the needed packages.") from None
+    # One saved file is the complete cache contract. Do this before reuse:
+    # old entries created from -r/-c files must not silently keep old pins.
+    for line in text.replace("\\\r\n", "").replace("\\\n", "").splitlines():
+        if line.lstrip().startswith("-"):
+            raise RuntimeError("Put the package pins directly in requirements.txt; included files, constraints and installer option lines are not supported.")
+    digest = hashlib.sha256(raw).hexdigest()
     if target.name != digest:
         raise RuntimeError("The saved package requirements changed after launch. Start a new run from the Crew chat.")
     target.parent.mkdir(parents=True, exist_ok=True)

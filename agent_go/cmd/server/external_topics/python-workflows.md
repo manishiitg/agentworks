@@ -14,6 +14,8 @@ its helper calls: default 3600 seconds, allowed integers 1 through 21600 (six
 hours). Stop can end it sooner.
 
 Declare third-party Python packages in `requirements.txt` beside `main.py`.
+Use one plain package list; included files, constraints and installer option
+lines are refused before cache reuse. Put each package pin directly in the file.
 The runner uses bundled uv (pip if uv is unavailable), caches the installation
 per script and requirements hash, and gives its agents the same package path.
 Changed requirements create a new entry; normal runs cannot overwrite installed

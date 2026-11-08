@@ -210,4 +210,19 @@ print('package-import-and-write-refusal-ok')
 	if err := missing.Wait(); err == nil || !strings.Contains(missingLog.String(), "uv and pip are missing") {
 		t.Fatalf("missing installer did not give a plain setup error: %v\n%s", err, missingLog)
 	}
+	// PR1594: an included pin could change while the top-level hash stayed
+	// unchanged. Refuse indirection even if an older cached entry exists.
+	for _, option := range []string{"-r pins.txt", "--constraint=pins.txt", "--find-links=packages"} {
+		setRequirements(option + "\n")
+		command = quote(python) + " -B -c " + quote("import os; from pathlib import Path; Path(os.environ['WORKFLOW_CODE_DEPS']).mkdir(parents=True, exist_ok=True)")
+		cached, cachedLog := run()
+		if err := cached.Wait(); err != nil {
+			t.Fatalf("prepare existing cache entry: %v\n%s", err, cachedLog)
+		}
+		command = quote(python) + " -B -m agentworks._dependencies"
+		refused, refusedLog := run()
+		if err := refused.Wait(); err == nil || !strings.Contains(refusedLog.String(), "Put the package pins directly in requirements.txt") || strings.Contains(refusedLog.String(), "[packages] Reusing") {
+			t.Fatalf("included package inputs silently reused a stale entry: %v\n%s", err, refusedLog)
+		}
+	}
 }
