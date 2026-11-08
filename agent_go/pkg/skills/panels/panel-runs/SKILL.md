@@ -17,20 +17,12 @@ metadata:
     - execute_shell_command
     - get_ui_state
     - perform_ui_action
-    relays:
-    - list_relay_runs
-    - get_relay_run
-    - get_relay_releases
-    - execute_shell_command
-    - get_ui_state
-    - perform_ui_action
     work:
     - execute_shell_command
     - get_ui_state
     - perform_ui_action
   external-tools:
   - runs
-  - relay
   - sessions
 ---
 
@@ -42,7 +34,6 @@ Start with the person's request and the current product. Read only the relevant 
 
 - Goal execution: read `references/goal-execution/SKILL.md` when needed.
 - Run logs: read `references/run-logs/SKILL.md` when needed.
-- Relay runs: read `references/relay-runs/SKILL.md` when needed.
 - Chat history: read `references/chat-history/SKILL.md` when needed.
 
 Verify the saved result or returned run result, then give the person one clear next step. Keep their existing notes and omitted settings.

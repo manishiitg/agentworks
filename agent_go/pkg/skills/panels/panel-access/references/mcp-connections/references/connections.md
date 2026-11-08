@@ -35,7 +35,7 @@ setup the tools support; do not send users back to the button that opened chat.
 ## Use and selection
 
 Use the product's advertised selection tool (`mcp action=select`
-for Crew, the settings/config tool for Goals and Flows). Select exact Vault IDs.
+for Crew, the settings/config tool for workflows). Select exact Vault IDs.
 The setting "Use all my apps automatically" (settings `use_all_vault_apps`)
 decides the rest: on means every currently permitted Vault account, off means
 only the Vault apps the project lists. Removing a connection from a project only

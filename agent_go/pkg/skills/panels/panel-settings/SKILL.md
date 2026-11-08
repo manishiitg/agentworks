@@ -28,15 +28,6 @@ metadata:
     - agent_browser
     - get_contract_upgrades
     - set_workflow_contract_version
-    relays:
-    - manage_custom_commands
-    - execute_shell_command
-    - manage_project
-    - settings
-    - models
-    - costs
-    - browser_connections
-    - agent_browser
   external-tools:
   - settings
   - workspace

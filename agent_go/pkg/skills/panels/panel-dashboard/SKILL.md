@@ -15,9 +15,6 @@ metadata:
     - settings
     - execute_shell_command
     - database
-    relays:
-    - functions
-    - dashboard
   external-tools:
   - dashboard
   - functions

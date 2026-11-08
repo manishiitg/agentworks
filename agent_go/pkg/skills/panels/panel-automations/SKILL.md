@@ -7,7 +7,6 @@ metadata:
   panel-tools:
     work: [automations]
     agentworks: [automations]
-    relays: [automations]
   external-tools: [automations]
 
 ---

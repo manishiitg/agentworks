@@ -15,7 +15,6 @@ import (
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -41,17 +40,11 @@ func newDelegatedWorkflowToolGate(ctx context.Context, sessionID string, req Que
 	if strings.TrimSpace(workspace) == "" {
 		return nil, fmt.Errorf("delegated workflow tool surface requires a workspace")
 	}
-	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
+	_, _, err := ReadWorkflowManifest(ctx, workspace)
 	if err != nil {
 		return nil, fmt.Errorf("resolve delegated workflow tool surface: %w", err)
 	}
-	if found && manifest.Kind == "relay" {
-		names, err := relayproduct.BuilderTools()
-		if err != nil {
-			return nil, err
-		}
-		return newProductToolGateForAllowlist("relays", names), nil
-	}
+
 	gate := newWorkflowConversationToolGate(sessionID, req, readOnly)
 	gate.AllowWorkflowNotifications(workflowNotificationsForPath(workspace))
 	return gate, nil

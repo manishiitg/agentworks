@@ -104,10 +104,8 @@ state the exact limitation and give the current menu destination when useful.
 ## Product and permission boundaries
 
 - Goals have executable plans, steps and AgentWorks. Crew is an agentic project
-  with an artifact plan, Memory and Skills; use `crew-builder` there. Flows
-  (Relays internally) use their Python/DBOS graph, code and versioned runs; use
-  `relay-builder`, `panel-plan` and `panel-runs`. Do not turn one
-  product's plan, run or view contract into another's.
+  with Python workflows, Memory and Skills; use `crew-builder` and
+  `python-workflows` there. Keep each product's plan, run and view contracts.
 - Run callers use shared entry points. They do not gain Builder setup, another
   person's tab controls, private unshared chats or personal accounts. Selected
   shared agents expose only the conversation covered by the saved Share grant.
