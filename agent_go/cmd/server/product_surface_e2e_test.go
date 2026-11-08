@@ -2,19 +2,13 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
-	"text/template"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
-	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -40,127 +34,6 @@ func (d *productSurfaceDraft) AttachSkill(s *llmtypes.Skill) error {
 	return nil
 }
 func (d *productSurfaceDraft) AttachedSkills() []*llmtypes.Skill { return d.skills }
-
-func TestAgentWorksProductSurfaceE2E(t *testing.T) {
-	server, _ := newFakeWorkspaceServer(t)
-	defer server.Close()
-	t.Setenv("WORKSPACE_API_URL", server.URL)
-
-	for _, readOnly := range []bool{false, true} {
-		mode := "builder"
-		workshopMode := "workshop"
-		if readOnly {
-			mode = "run"
-			workshopMode = "run"
-		}
-
-		logger := loggerv2.NewNoop()
-		session, err := workflow.NewWorkshopChatSession(context.Background(), &workflow.WorkshopConfig{Logger: logger, WorkspacePath: "Workflow/surface-e2e"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer session.Close()
-		env := newCrewFunctionEnv(t)
-		api := env.api
-		// A workflow Builder has a saved manifest. Seed the actual fixture
-		// server (newCrewFunctionEnv installs it) so conditional Watcher
-		// registration participates in the full declared surface check.
-		fixtureManifest := NewWorkflowManifest("Surface fixture")
-		fixtureManifest.CreatedBy = "test-user"
-		fixtureRaw, err := json.Marshal(fixtureManifest)
-		if err != nil {
-			t.Fatal(err)
-		}
-		env.mock.mu.Lock()
-		env.mock.files[manifestPath("Workflow/surface-e2e")] = string(fixtureRaw)
-		env.mock.mu.Unlock()
-		api.logger = logger
-		api.workshopChatSessions.Store("surface-e2e", session)
-		api.workshopChatSessions.Store("eval-surface-e2e", session)
-		gate := newAgentWorksChatToolGate(mode)
-		gate.AllowWorkflowNotifications(true)
-		draft := &productSurfaceDraft{gate: gate}
-		if err := api.installWorkflowPhaseTools(context.Background(), draft, "surface-e2e", "test-user", "workflow-builder", "Workflow/surface-e2e", "", map[string]string{"WorkshopMode": workshopMode}, nil, nil, nil, nil, nil, QueryRequest{}, readOnly); err != nil {
-			t.Fatal(err)
-		}
-		if err := api.registerMultiAgentLLMTools(draft, nil); err != nil {
-			t.Fatal(err)
-		}
-		if !readOnly {
-			if err := api.registerCodingAgentClarificationTool(draft, "surface-e2e", "muse-cli", 0); err != nil {
-				t.Fatal(err)
-			}
-		}
-		names := []string{}
-		for name := range draft.tools {
-			names = append(names, name)
-		}
-		// Include the real platform pools as well as phase/function registrations.
-		// Runtime capabilities can narrow a declaration, never expand it.
-		customTools, customExecutors, _ := createCustomTools(true, "test-user", "surface-e2e")
-		for _, tool := range customTools {
-			if tool.Function == nil || !agentworksproduct.ChatAllowsTool(mode, tool.Function.Name) {
-				continue
-			}
-			if _, ok := customExecutors[tool.Function.Name]; !ok {
-				t.Fatalf("declared human tool %q has no executor", tool.Function.Name)
-			}
-			names = append(names, tool.Function.Name)
-		}
-		names = uniqueSortedToolNames(names)
-		manifest, err := agentworksproduct.AgentWorksManifest()
-		if err != nil {
-			t.Fatal(err)
-		}
-		def := manifest.Chat[mode]
-		// This fixture has no Brain bindings, Vault admin or workflow model
-		// write grant, and does not install the separate workflow-reference
-		// reader. Those conditional implementations have their own integration
-		// tests; all other declarations, including Watchers with the saved
-		// fixture manifest, must match the real registration pools.
-		expectedTools := []string{}
-		for _, name := range def.Tools {
-			if !knowledgebase.IsMCPTool(name) && name != "manage_vault_access" && name != "set_workflow_llm_config" && name != "list_accessible_workflows" {
-				expectedTools = append(expectedTools, name)
-			}
-		}
-		if err := compareProductSurface(names, expectedTools); err != nil {
-			t.Fatal(err)
-		}
-		logConfigurationCatalog(t, "goal-"+mode+"-phase", draft.tools)
-		logDataCatalog(t, "goal-"+mode+"-phase", draft.tools)
-		skillNames := []string{}
-		for _, skill := range draft.skills {
-			skillNames = append(skillNames, skill.Name)
-		}
-		if err := compareProductSurface(skillNames, def.Skills); err != nil {
-			t.Fatal(err)
-		}
-		source, err := agentprofiles.LoadChatPrompt(os.DirFS("../../internal/agentworksproduct"), def.Prompt)
-		if err != nil {
-			t.Fatal(err)
-		}
-		templateName := "interactiveWorkshopSystem"
-		if readOnly {
-			templateName = "interactiveRunSystem"
-		}
-		expected, err := template.New(templateName).Parse(source)
-		if err != nil {
-			t.Fatal(err)
-		}
-		actual := workflow.GetTemplate(templateName)
-		if actual == nil || len(actual.Templates()) != len(expected.Templates()) {
-			t.Fatal("registered prompt templates differ from product.yaml")
-		}
-		for _, part := range expected.Templates() {
-			got := actual.Lookup(part.Name())
-			if got == nil || got.Tree.Root.String() != part.Tree.Root.String() {
-				t.Fatalf("registered prompt %s is not its product.yaml source", part.Name())
-			}
-		}
-		assertInstructionSectionsDeclared(t, manifest.InstructionSections)
-	}
-}
 
 // Compare declarations independently of productToolGate.Declare: a new Go
 // registration cannot silently widen its own expected surface.

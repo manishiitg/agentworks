@@ -638,7 +638,7 @@ type StreamingAPI struct {
 	// Last query request per session — used to construct synthetic turns
 	lastQueryRequests       map[string]QueryRequest
 	lastQueryMu             sync.RWMutex
-	sessionWorkspaceFolders map[string]string // sessionID → resolved "" (for builder log persistence in synthetic turns)
+	sessionWorkspaceFolders map[string]string // sessionID → conversation workspace
 	sessionWorkspaceMu      sync.RWMutex
 
 	// Stored agent instances for synthetic turns (plan mode only)
@@ -793,22 +793,17 @@ type QueryRequest struct {
 	// secretsWorkspacePath is the workflow/project whose selected secrets this turn loaded (PLAT-658): a retained CLI
 	// launched with them is not steered once they change.
 	secretsWorkspacePath string
-	// admittedWorkflowPhase records, once and server-side, that this request was admitted as a Workflow phase chat.
-	// handleQuery later rewrites AgentMode from workflow_phase to multi-agent, so checks that run after that point
-	// read this instead of AgentMode (PLAT-608; PLAT-600 was a check that read the rewritten mode). A client cannot set
-	// it: an ordinary multi-agent chat that sends phase_id=workflow-builder is not the Builder.
-	admittedWorkflowPhase bool
-	ConnectionID          string   `json:"connection_id,omitempty"`
-	Query                 string   `json:"query"`
-	Message               string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
-	SessionTitle          string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
-	ParentSessionID       string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
-	SessionKind           string   `json:"session_kind,omitempty"`      // Stable runtime kind such as generic_agent; never infer this from titles.
-	Servers               []string `json:"servers,omitempty"`
-	EnabledServers        []string `json:"enabled_servers,omitempty"`
-	SelectedTools         []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
-	Provider              string   `json:"provider,omitempty"`
-	ModelID               string   `json:"model_id,omitempty"`
+	ConnectionID         string   `json:"connection_id,omitempty"`
+	Query                string   `json:"query"`
+	Message              string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
+	SessionTitle         string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
+	ParentSessionID      string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
+	SessionKind          string   `json:"session_kind,omitempty"`      // Stable runtime kind such as generic_agent; never infer this from titles.
+	Servers              []string `json:"servers,omitempty"`
+	EnabledServers       []string `json:"enabled_servers,omitempty"`
+	SelectedTools        []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
+	Provider             string   `json:"provider,omitempty"`
+	ModelID              string   `json:"model_id,omitempty"`
 	// ReasoningEffort overrides the "reasoning_effort" key of an agent
 	// profile's provider_options[].Options for this turn only; every other
 	// key stays as declared. Ignored outside the profile query path.
@@ -1301,7 +1296,7 @@ func requestLLMConfigOverridesManifest(req QueryRequest) bool {
 
 func shouldSerializeInteractiveQueryInput(req QueryRequest) bool {
 	mode := normalizeAgentMode(req.AgentMode)
-	return mode == "workflow_phase" || isToolBackedChatMode(mode)
+	return isToolBackedChatMode(mode)
 }
 
 func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest, sessionID string) bool {
@@ -1383,7 +1378,7 @@ type sessionInputLane struct {
 //
 // PLAT-113: callers needing "is a turn running" previously read sessionBusy,
 // which is a user-facing display flag deliberately NOT set for workflow turns
-// (see the !isWorkflowPhase guard where it is assigned). Auto-notifications
+// during headless execution. Auto-notifications
 // therefore skipped their queue during a workflow run and blocked on this lane
 // instead, piling 25 never-started synthetic turns behind one 5-hour turn until
 // the idle-wait watchdog killed a healthy run. Read the authority, not the
@@ -3670,23 +3665,7 @@ func requestLogPath(r *http.Request) string {
 	return path + "?" + query.Encode()
 }
 
-// Query endpoint - handles POST requests to start agent streaming.
-//
-// TWO PRODUCT MODES share this one handler (see the isWorkflowPhase block
-// below for the full explanation):
-//
-//  1. Multiagent chat  — agent_mode="multi-agent": the normal conversational
-//     agent with delegation/sub-agents.
-//  2. Workflow builder — agent_mode="workflow_phase" + phase_id: a chat whose
-//     job is to construct/edit a workflow.json. It is NOT a separate engine —
-//     it loads phase-specific config (prompt/tools/folder/LLM) from
-//     workflow.json and then sets req.AgentMode="multi-agent", falling through
-//     this same path. The two modes therefore diverge only via the ~30
-//     `isWorkflowPhase` / workflowPhase* checks scattered below, not via
-//     separate code paths.
-//
-// (The direct plan-execution agent_mode="workflow" path is handled
-// separately right after the workflow_phase block.)
+// handleQuery runs current Crew/product chats and direct saved-Python executions.
 func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	requestReceivedAt := time.Now()
 	if r.Method == "OPTIONS" {
@@ -3798,6 +3777,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Normalize legacy "simple" → "multi-agent" at the request boundary so
 	// every downstream branch sees the canonical name.
 	req.AgentMode = normalizeAgentMode(req.AgentMode)
+	if req.AgentMode != "workflow" && !isToolBackedChatMode(req.AgentMode) {
+		http.Error(w, "Choose a Crew chat, or run a saved Python workflow.", http.StatusBadRequest)
+		return
+	}
 
 	// Extract sessionID from header/cookie or fallback to queryID
 	sessionID := r.Header.Get("X-Session-ID")
@@ -3861,7 +3844,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Provider accounts: every turn re-checks that this principal may use the
 	// account the turn names here, before any retained CLI gets the message.
 	// A denied account fails the turn; it never falls back to another one.
-	accountScope := queryProviderAccountScope(req, currentUserID, resolvedProfile, false, "")
+	accountScope := queryProviderAccountScope(req, currentUserID, resolvedProfile)
 	// A Slack channel turn runs as the bot identity; its shared-account
 	// tokens count toward, and are limited by, the target's owner.
 	botTokenOwner := botRouteTokenOwner(r.Context(), currentUserID, accountScope.WorkspacePath)
@@ -3976,16 +3959,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			selected = strings.Trim(strings.TrimSpace(resolved), "/")
 		}
 	}
-	// Workflow phase payloads identify the workspace through their preset.
-	// Resolve it before both journal acceptance and retained-policy admission.
-
 	bindConversationBrowserIsolation(sessionID, currentUserID, selected, resolvedProfile)
 	common.SetSessionBrowserMode(sessionID, getBrowserMode(req))
 	// Keep configured browser intent on the request. In auto mode,
 	// agent_browser queries current CDP reachability at tool-call time.
 
 	// Default maxTurns only when omitted (0). Negative values are preserved to mean "no turn cap".
-	// Multi-agent chat and the workflow builder run uncapped by default.
+	// Chat runs uncapped by default.
 	if req.MaxTurns == 0 {
 		if isToolBackedChatMode(req.AgentMode) {
 			req.MaxTurns = -1
@@ -4401,10 +4381,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Session config isn't persisted anymore — follow-up messages rely on the
 	// frontend to pass the provider/model on every request.
 
-	// Handle workflow mode - use workflow orchestrator.
-	// agent_mode "workflow" is the headless direct plan-execution path.
-	// Direct plan execution is used by webhooks and workflow-run tools.
-	// Interactive authoring uses the separate workflow_phase Builder path.
+	// Run saved Python workflows directly for webhooks, timers and run tools.
 	if req.AgentMode == "workflow" {
 		directWebhookOptions, _ := r.Context().Value(directWebhookExecutionKey{}).(*todo_creation_human.ExecutionOptions)
 
@@ -5277,7 +5254,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		mergedAPIKeys = resolvedProfile.APIKeys
 	}
 
-	resolverScope := queryProviderAccountScope(req, currentUserID, resolvedProfile, false, "")
+	resolverScope := queryProviderAccountScope(req, currentUserID, resolvedProfile)
 	resolverScope.TokenOwner = botTokenOwner
 	if accountScope.Principal != resolverScope.Principal && botTokenOwner != "" && accountScope.Principal == botTokenOwner {
 		resolverScope.Principal = botTokenOwner
@@ -6946,7 +6923,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Secret values stay in the tool environment; only their names belong in
 		// the immutable identity. Assemble that section before finalization.
 		identitySecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
-		if len(identitySecrets) > 0 && req.PhaseID == "" {
+		if len(identitySecrets) > 0 {
 			if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
 				_ = llmAgent.AddInstructions(buildSecretNamesPrompt(identitySecrets))
 			}
@@ -7268,14 +7245,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Merge global secrets with user-supplied secrets, then inject into system prompt (not user message)
 		chatQuery := req.Query
 
-		// Skip secret prompt injection for workflow phases — they inject secrets in the phase setup above.
-		// Only inject here for non-workflow chat agents (multi-agent, plain chat, etc.)
-		//
-		// NOTE: this SHADOWS the outer isWorkflowPhase and derives it from a
-		// DIFFERENT basis — req.PhaseID != "" here, vs req.AgentMode ==
-		// "workflow_phase" at the top of handleQuery. They usually agree but can
-		// diverge (e.g. a request with PhaseID set but a non-workflow_phase mode).
-		// Keep that in mind before relying on either one in this block.
 		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 		{
 			allChatSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, allChatSecrets, req.SelectedGlobalSecrets)
@@ -7302,7 +7271,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			restoredNativeCodingResume := false
 			restoredConversationPath := strings.TrimSpace(req.RestoredConversationPath)
 			restoredConversationSessionID := strings.TrimSpace(req.RestoredConversationSessionID)
-			restoredConversationWorkspace := strings.TrimSpace("")
+			restoredConversationWorkspace := normalizeConversationWorkspace(req.SelectedFolder)
 			if restoredConversationWorkspace == "" {
 				// Product-owned chats resolve SelectedFolder server-side. Work keeps
 				// its transcripts inside that project, so use the trusted project
@@ -13282,15 +13251,12 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 			}
 		}
 	}
-	if req.AgentMode == "workflow_phase" || req.admittedWorkflowPhase || resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+	if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 		log.Printf("[LAPTOP_ACCESS] session=%s actor=%s project=%q local_tools=%t %s", sessionID, currentUserID, req.SelectedFolder, req.LaptopConnection != nil, laptopWhy)
 	}
 	if err := applyCrewChatMode(resolvedProfile, req, crewReadOnly); err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
 	}
-	// Retained delivery runs before phase setup rewrites AgentMode. Preserve
-	// the admitted phase here so launch and follow-ups use the same policy.
-	req.admittedWorkflowPhase = req.admittedWorkflowPhase || req.AgentMode == "workflow_phase"
 	return resolvedProfile, access, nil
 }
 
