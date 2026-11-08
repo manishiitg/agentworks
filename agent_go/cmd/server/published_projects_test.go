@@ -120,8 +120,9 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 		runCtx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		defer cancel()
 		seconds := 15
+		quotedSource := "'" + strings.ReplaceAll(sourceFile, "'", "'\"'\"'") + "'"
 		out, err := client.ExecuteShellCommand(runCtx, workspaceclient.ExecuteShellCommandParams{
-			Command:          `if printf changed > "$PUBLICATION_SOURCE_TEST"; then exit 41; fi && cat "$PUBLICATION_SOURCE_TEST" && printf allowed > outputs/publication-guard-proof.txt`,
+			Command:          "if printf changed > " + quotedSource + "; then exit 41; fi && cat " + quotedSource + " && printf allowed > outputs/publication-guard-proof.txt",
 			WorkingDirectory: record.Root, Timeout: &seconds, FolderGuard: terminal,
 			ExtraEnv: map[string]string{"PUBLICATION_SOURCE_TEST": sourceFile},
 		})
