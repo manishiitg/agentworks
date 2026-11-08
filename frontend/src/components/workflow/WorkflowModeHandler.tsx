@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
-import { agentApi } from '../../services/api'
 import { type WorkflowPhase } from '../../constants/workflow'
-import { useAppStore, useChatStore } from '../../stores'
+import { useAppStore } from '../../stores'
 import { usePresetApplication, useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 
@@ -19,7 +18,6 @@ interface WorkflowModeHandlerProps {
 }
 
 export interface WorkflowModeHandlerRef {
-  handleWorkflowQuery: (query: string) => Promise<{ objective: string; workflowId: string } | void>
   refreshPresets: () => Promise<void>
 }
 
@@ -31,8 +29,6 @@ export const WorkflowModeHandler = forwardRef<WorkflowModeHandlerRef, WorkflowMo
 
   // Store subscriptions
   const agentMode = useAppStore(state => state.agentMode)
-  // Narrow selector: bare useChatStore() re-renders on every store update (10x/sec with 2 parallel sessions)
-  const currentWorkflowPhase = useChatStore(state => state.currentWorkflowPhase)
   
   const { getActivePreset } = usePresetApplication()
   
@@ -42,9 +38,6 @@ export const WorkflowModeHandler = forwardRef<WorkflowModeHandlerRef, WorkflowMo
   
   const [availablePresets, setAvailablePresets] = useState<Preset[]>([])
   const [hasAttemptedLoad, setHasAttemptedLoad] = useState<boolean>(false)
-
-  // Use external state from ChatArea
-  const currentPhase = currentWorkflowPhase
 
   // Load presets function - reads from manifest store
   const loadPresets = useCallback(async () => {
@@ -132,59 +125,10 @@ export const WorkflowModeHandler = forwardRef<WorkflowModeHandlerRef, WorkflowMo
     return () => { cancelled = true }
   }, [agentMode, selectedWorkflowPreset, availablePresets, hasAttemptedLoad, onPresetSelected, onWorkflowPhaseChange])
 
-  // Step 1: Create workflow with objective (generates todo list)
-  const handleObjectiveSubmit = useCallback(async (objective: string) => {
-    if (!selectedWorkflowPreset) return
-
-    try {
-      // Create workflow - this generates the todo list
-      const createResponse = await agentApi.createWorkflow(selectedWorkflowPreset, true)
-      // Workflow created
-
-      if (createResponse.workflow?.id) {
-        // For workflow mode, we need to use the normal agent execution flow
-        // The backend will handle the workflow Deep Search execution
-        // We'll return the objective so ChatArea can submit it as a normal query
-        // Workflow created, transitioning to planning phase (second phase)
-        const phases = useWorkflowStore.getState().phases
-        const planningPhase = phases.length > 1 ? phases[1].id : (phases.length > 0 ? phases[0].id : 'execution')
-        onWorkflowPhaseChange?.(planningPhase)
-
-        // Return the objective so ChatArea can submit it as a normal agent query
-        return { objective, workflowId: createResponse.workflow.id }
-      }
-    } catch (error) {
-      console.error('[WORKFLOW] Error creating workflow:', error)
-      // Reset to default phase on error
-      const defaultPhase = useWorkflowStore.getState().getDefaultPhase()
-      onWorkflowPhaseChange?.(defaultPhase)
-    }
-  }, [selectedWorkflowPreset, onWorkflowPhaseChange])
-
-
-  // Handle chat input submission based on current phase
-  const handleChatSubmit = useCallback(async (query: string) => {
-    // handleChatSubmit called
-
-    // Get phases to determine planning phase (second phase)
-    const phases = useWorkflowStore.getState().phases
-    const planningPhase = phases.length > 1 ? phases[1].id : (phases.length > 0 ? phases[0].id : 'execution')
-    
-    if (currentPhase === planningPhase) {
-      // Calling handleObjectiveSubmit
-      const result = await handleObjectiveSubmit(query)
-      // handleObjectiveSubmit result
-      return result // Return the result so ChatArea can access observer info
-    } else {
-      // No handler for phase
-    }
-  }, [currentPhase, handleObjectiveSubmit])
-
   // Expose workflow handler through ref
   useImperativeHandle(ref, () => ({
-    handleWorkflowQuery: handleChatSubmit,
     refreshPresets: refreshPresets
-  }), [handleChatSubmit, refreshPresets])
+  }), [refreshPresets])
 
 
   // Show workflow components when in workflow mode
