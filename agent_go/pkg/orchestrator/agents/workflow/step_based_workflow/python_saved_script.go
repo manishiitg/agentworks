@@ -43,6 +43,44 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonScriptCall(ctx context.C
 	if child.Definition.ID == "" || strings.TrimSpace(child.Files["main.py"]) == "" {
 		return nil, nil, fmt.Errorf("Save this script's main.py in its Crew before running it.")
 	}
+	// A top may pass its complete input object. Forward only this child's
+	// declared names; extra parent names are harmless, while a typo declared
+	// nowhere must not silently select a child's default instead.
+	parentNames := map[string]bool{}
+	if script, ok := parent.(*ScriptedPlanStep); ok && script.crewScript != nil {
+		for _, input := range script.crewScript.Definition.Inputs {
+			parentNames[input.Name] = true
+		}
+	} else if hcpo.variablesManifest != nil {
+		for _, input := range hcpo.variablesManifest.Variables {
+			parentNames[input.Name] = true
+		}
+	}
+	if script, ok := parent.(*ScriptedPlanStep); ok {
+		for name := range script.ScriptParameters {
+			parentNames[name] = true
+		}
+		if properties, ok := script.ScriptParametersSchema["properties"].(map[string]interface{}); ok {
+			for name := range properties {
+				parentNames[name] = true
+			}
+		}
+	}
+	childNames := map[string]bool{}
+	for _, input := range child.Definition.Inputs {
+		childNames[input.Name] = true
+	}
+	inputs := map[string]interface{}{}
+	for name, value := range args["inputs"].(map[string]interface{}) {
+		if childNames[name] {
+			inputs[name] = value
+		} else if !parentNames[name] {
+			return nil, nil, fmt.Errorf("Input %q is not declared by this script or its caller. Fix its name or declare the input in the Crew chat.", name)
+		}
+	}
+	// Normalize this invocation's private envelope, not the caller's map.
+	// The existing runner still applies child defaults, types and required fields.
+	args["inputs"] = inputs
 	stack := pythonScriptStack(ctx, parent)
 	if slices.Contains(stack, child.Definition.ID) {
 		return nil, nil, fmt.Errorf("Saved script loop: %s. Remove the recursive call.", strings.Join(append(stack, child.Definition.ID), " → "))
