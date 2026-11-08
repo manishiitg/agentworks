@@ -76,6 +76,7 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(host.textContent).toContain('MCPs1 connected · 1 need attention')
   expect(host.textContent).not.toContain('Notes account'); expect(host.textContent).not.toContain('Other account')
   expect(host.textContent).toContain('Googleperson@example.com · Connected')
+  await act(async () => [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Schedules')!.click())
   expect(mocks.open).toHaveBeenLastCalledWith('schedules')
   expect(host.textContent).not.toContain('Morning summary')
   expect(host.textContent).toContain('Slack botProject helper · Identity verified')
@@ -237,13 +238,18 @@ it('keeps footer sharing server-admitted and scoped to the current account', asy
 })
 
 
-it('opens automation setup before any jobs exist and keeps native destination guards', async () => {
+it('keeps the workflow and every start inside one Automations row and keeps native destination guards', async () => {
  await render(async host => {
+  const row = (label: string) => [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === label) ?? null
+  expect(row('Schedules')).toBeNull()
   await act(async () => automationRow(host)!.click())
+  expect(['Workflow', 'Schedules', 'Webhooks', 'Watchers'].map(label => !!row(label))).toEqual([true, true, true, true])
+  await act(async () => row('Workflow')!.click())
+  expect(mocks.open).toHaveBeenLastCalledWith('workflow')
+  await act(async () => row('Webhooks')!.click())
   expect(mocks.open).toHaveBeenLastCalledWith('schedules')
-  expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Workflows')).toBe(false)
-  expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Goals')).toBe(false)
-  const staleRow = automationRow(host)!
+  expect(row('Goals')).toBeNull()
+  const staleRow = row('Schedules')!
   mocks.open.mockClear(); mocks.server = 'another-server'
   await act(async () => staleRow.click())
   expect(mocks.open).not.toHaveBeenCalled()
