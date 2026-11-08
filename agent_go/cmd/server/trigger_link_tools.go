@@ -17,15 +17,9 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
-// Crews, workflows and external connections call a Crew or workflow through
-// one mechanism: its functions (crew_functions.go; `ask` is always there).
-// Underneath, each caller has one internal trigger binding on the target,
-// created on the first call. Project calls use the receiving main chat when
-// the projects share an owner, otherwise a separate continuing conversation.
-//
-// Targets are any Crew on the server (Crews are shared read-write) and
-// workflows the requester owns or can edit; workflow readers and Crew
-// Run-mode readers cannot call.
+// Target resolution and run polling for declared functions. A function runs
+// in its configured tab or a fresh execution; caller ownership does not change
+// that destination. Access and explicit Crew links are checked at call time.
 
 const (
 	triggerTargetDefaultTimeout = 60 * time.Minute
@@ -243,46 +237,6 @@ func crewCallMessage(stored string, sameOwner bool) string {
 		note = "This call runs in your main chat, so the people here see it too."
 	}
 	return strings.Replace(stored, crewCallPrivateConversationNote, note, 1)
-}
-
-// connectTriggerTarget reuses the internal binding on target that names this
-// caller or creates the standard one. It returns the binding's trigger ID and
-// whether it was created. Project ownership selects the conversation at delivery.
-func (api *StreamingAPI) connectTriggerTarget(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget) (string, bool, error) {
-	if caller.isTarget(target) {
-		return "", false, fmt.Errorf("a %s cannot connect to itself", target.Kind)
-	}
-	switch target.Kind {
-	case triggerCallerCrew:
-		if api.projectActions == nil {
-			return "", false, fmt.Errorf("Crew calls are unavailable")
-		}
-
-		triggers, err := api.projectActions.projectWebhookConfigs(ctx, target.ownerOr(userID), target.CrewProfile, target.CrewID)
-		if err != nil {
-			return "", false, err
-		}
-		for _, trigger := range triggers {
-			if trigger.IsInternal() && trigger.Enabled && trigger.Caller.matchesAnyPresented(caller.Stamp) {
-				return trigger.ID, false, nil
-			}
-		}
-		stamp := caller.Stamp
-		response, _, err := api.projectActions.saveProductWebhookConfig(ctx, target.ownerOr(userID), productWebhookRequest{
-			WorkspaceFunction: true,
-			ProfileID:         target.CrewProfile, ProjectID: target.CrewID,
-			Name: "Called by " + caller.Label, Message: crewTargetMessage(caller),
-			Enabled: true, RunDestination: runDestinationIsolated, Kind: triggerKindInternal, Caller: &stamp,
-		}, "")
-		if err != nil {
-			return "", false, err
-		}
-		return response.ID, true, nil
-	case triggerCallerWorkflow:
-		return workflowTriggerBinding(ctx, api, target.Path, target.Manifest, caller.Stamp, "Called by "+caller.Label)
-	default:
-		return "", false, fmt.Errorf("unknown target kind %q", target.Kind)
-	}
 }
 
 // triggerTargetRunState is one poll of a target run.
