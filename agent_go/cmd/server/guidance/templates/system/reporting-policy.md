@@ -250,11 +250,8 @@ either function, and no declaration step is needed first:
 
 Dashboard-owned approval buttons are supported: update an existing business row
 (an email's `status`, an audit finding's approval), then optionally offer a
-scoped agent request using `sendChatMessage` below. This does not replace the
-platform's human-decision lifecycle. Platform decisions created through
-`needs_you action=create` retain their options, answers, consumption, and
-audit trail in AgentWorks panel/chat; do not edit `report_human_inputs` through
-the business-field write API or invent a duplicate platform decision store.
+scoped agent request using `sendChatMessage` below. Do not edit `report_human_inputs` through the business-field write API or
+invent a duplicate platform decision store.
 
 ### Live data from a script: `window.report.run`
 
