@@ -25,7 +25,7 @@ it('refreshes cached workspace data and keeps the run screen loading until the f
   api.loadWorkspaceState.mockImplementationOnce(() => new Promise<WorkspaceStateResponse>(done => { resolve = done }))
   const item: CrewExecutable = { id: 'report', kind: 'script', workspace_path: 'Crew/example/automation/cache-check', manifest: { label: 'Report' } }
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
-  const props = { item, chatTabId: 'chat', file: null, onFile: vi.fn(), onRuns: vi.fn() }
+  const props = { item, chatTabId: 'chat', file: null, onFile: vi.fn(), onRuns: vi.fn(), onStarted: vi.fn() }
   try {
     await act(async () => root.render(<CrewExecutableEditor key="report" {...props} section="steps" runs={{ run: null, costs: false, detail: null }} />))
     expect(api.loadWorkspaceState).toHaveBeenCalledTimes(1)

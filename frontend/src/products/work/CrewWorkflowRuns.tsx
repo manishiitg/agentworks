@@ -1,3 +1,4 @@
+import { uniqueStepChecks } from './workflowStepChecks'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { agentApi } from '../../services/api'
@@ -114,15 +115,6 @@ function useRunEvidence(workspacePath: string, runFolder: string, status?: strin
   return items
 }
 
-/** A step's own checks (they name the step's source call), as one plain line: "2 checks passed" or "1 of 2 checks failed". */
-export function stepChecksLine(items: RunEvidenceItem[], sourceCall?: string) {
-  if (!sourceCall) return ''
-  const checks = items.filter(item => item.kind === 'check' && item.source_call === sourceCall)
-  if (!checks.length) return ''
-  const failed = checks.filter(item => item.ok === false).length
-  return failed ? `${failed} of ${checks.length} ${checks.length === 1 ? 'check' : 'checks'} failed` : `${checks.length} ${checks.length === 1 ? 'check' : 'checks'} passed`
-}
-
 /** A Python workflow's source outline, so an opened run can list its steps in order, including those it never reached. */
 function useScriptOutline(workspacePath: string, enabled: boolean) {
   const [outline, setOutline] = useState<RelaySourceGraph | null>(null)
@@ -230,6 +222,8 @@ function OpenedRun({ workspacePath, script, folder, cost, detail, onDetail: setD
   // The run's own metadata keeps the latest checks and messages too: used when the read returns none.
   const evidence: RunEvidenceItem[] = fetchedEvidence.length ? fetchedEvidence : (folder.metadata?.python_evidence ?? []).map(item => ({ kind: item.kind, at: item.at, name: item.name, ok: item.ok, detail: item.detail, source_call: item.source_call }))
   const persistedSteps = Object.values(folder.metadata?.python_steps ?? {})
+  const lines = runStepLines(records, outline, persistedSteps)
+  const checkLines = uniqueStepChecks(evidence, lines.map(line => line.record?.inspection.source_call ?? line.persisted?.source_call))
   const checks = evidence.filter(item => item.kind === 'check')
   const messages = evidence.filter(item => item.kind === 'notify')
   // The one opened run's step costs, read for that run only.
@@ -243,16 +237,16 @@ function OpenedRun({ workspacePath, script, folder, cost, detail, onDetail: setD
     action={<button type="button" onClick={onBack} aria-label={detail ? "Back to run" : "Back to runs"} className="shrink-0 text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /></button>}>
     {meta?.status === 'failed' && <p role="alert" className="px-4 py-3 text-xs text-red-600 dark:text-red-400">{failed ? `Stopped at ${failed.inspection.name || failed.inspection.step_id}.` : 'This run stopped.'}</p>}
     {error && <p role="alert" className="px-4 py-3 text-xs text-destructive">{error}</p>}
-    {runStepLines(records, outline, persistedSteps).map(line => {
+    {lines.map(line => {
       const record = line.record
       const step = line.persisted
       if (step) return <PageRow key={line.key} lead={<RunDot state={stepDot(step.status)} />} title={line.title}
-        lines={[[whenLabel(step.started_at), step.duration_ms !== undefined ? formatDuration(step.duration_ms) : ''].filter(Boolean).join(' · '), stepChecksLine(evidence, step.source_call), step.detail ?? '']} />
+        lines={[[whenLabel(step.started_at), step.duration_ms !== undefined ? formatDuration(step.duration_ms) : ''].filter(Boolean).join(' · '), checkLines.get(step.source_call ?? ''), step.detail ?? '']} />
       if (!record) return <PageRow key={line.key} lead={<RunDot state="idle" />} title={line.title} lines={[meta?.status === 'running' ? 'Not started yet' : 'Not reached']} />
       const spent = stepCost(record)
       const isOpen = target?.execution_id === record.inspection.execution_id && target.session_id === record.inspection.session_id
       return <PageRow key={line.key} lead={<RunDot state={stepDot(record.status)} />} title={line.title}
-        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), stepChecksLine(evidence, record.inspection.source_call)]} aside={spent !== undefined ? formatCost(spent) : undefined}
+        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(record.inspection.source_call ?? '')]} aside={spent !== undefined ? formatCost(spent) : undefined}
         open={isOpen} onToggle={() => setTarget(isOpen ? null : record.inspection)}>
         <div className="h-[60vh] min-h-72 overflow-hidden rounded-lg border border-border bg-background"><Suspense fallback={<p className="p-3 text-xs text-muted-foreground">Loading…</p>}><Inspect target={record.inspection} /></Suspense></div>
       </PageRow>
