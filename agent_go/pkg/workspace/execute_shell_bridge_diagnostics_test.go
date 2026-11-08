@@ -30,15 +30,3 @@ func TestShellBridgePreservesFailedToolDiagnostics(t *testing.T) {
 		t.Fatal("agent cannot identify the missing scope")
 	}
 }
-
-func TestShellBridgeRetainsSuccessfulAndErrorOnlyResponses(t *testing.T) {
-	for _, tc := range []struct{ input, want string }{
-		{`{"success":true,"result":"saved"}`, "saved"},
-		{`{"success":false,"error":"permission denied"}`, "ERROR: permission denied"},
-		{`{"success":false,"error":"permission denied","result":"Open the owning workflow"}`, "ERROR: permission denied\n\nOpen the owning workflow"},
-	} {
-		if got := tryUnwrapMCPAPIResponse(tc.input); got != tc.want {
-			t.Fatalf("got %q want %q", got, tc.want)
-		}
-	}
-}

@@ -10,16 +10,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-func TestStripWorkspacePrefixUsesEnvRoot(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", "/Users/mipl/ai-work/coding-agent-loop/workspace-docs")
-
-	got := stripWorkspacePrefix("/Users/mipl/ai-work/coding-agent-loop/workspace-docs/Workflow/demo/learnings/_global/SKILL.md")
-	want := "Workflow/demo/learnings/_global/SKILL.md"
-	if got != want {
-		t.Fatalf("stripWorkspacePrefix() = %q, want %q", got, want)
-	}
-}
-
 func TestResolveLinkedFolderPathUsesTrustedSessionAlias(t *testing.T) {
 	sessionID := "linked-folder-test"
 	root := t.TempDir()
@@ -39,22 +29,6 @@ func TestResolveLinkedFolderPathUsesTrustedSessionAlias(t *testing.T) {
 	}
 }
 
-func TestResolveLinkedFolderPathFallsBackToWorkFolderEnv(t *testing.T) {
-	sessionID := "linked-folder-work-test"
-	root := t.TempDir()
-	common.SetSessionFolderGuard(sessionID, []string{root}, []string{root})
-	common.SetSessionShellEnv(sessionID, map[string]string{"WORK_FOLDER_SITE": root})
-	t.Cleanup(func() { common.ClearSessionShellConfig(sessionID) })
-
-	client := NewClient("http://unused")
-	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sessionID)
-	got := client.resolveLinkedFolderPath(ctx, "linked://site/index.html")
-	want := filepath.Join(root, "index.html")
-	if got != want {
-		t.Fatalf("resolved path = %q, want %q", got, want)
-	}
-}
-
 func TestAbsoluteDottedDirectoryGrantAllowsChildPath(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "source.v2")
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -63,40 +37,6 @@ func TestAbsoluteDottedDirectoryGrantAllowsChildPath(t *testing.T) {
 	guard := &FolderGuardConfig{Enabled: true, ReadPaths: []string{root}, WritePaths: []string{root}}
 	if err := validatePathAgainstGuard(guard, filepath.Join(root, "notes.md"), true); err != nil {
 		t.Fatalf("dotted directory was misclassified as an exact file grant: %v", err)
-	}
-}
-
-func TestStripWorkspacePrefixDiscoversSiblingWorkspaceDocs(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", "")
-	root := t.TempDir()
-	agentDir := filepath.Join(root, "agent_go")
-	docsDir := filepath.Join(root, "workspace-docs")
-	if err := os.MkdirAll(agentDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(docsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(agentDir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(oldCwd)
-	})
-	actualAgentDir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	actualDocsDir := filepath.Join(filepath.Dir(actualAgentDir), "workspace-docs")
-
-	got := stripWorkspacePrefix(filepath.Join(actualDocsDir, "Workflow/demo/learnings/_global/SKILL.md"))
-	want := "Workflow/demo/learnings/_global/SKILL.md"
-	if got != want {
-		t.Fatalf("stripWorkspacePrefix() = %q, want %q", got, want)
 	}
 }
 

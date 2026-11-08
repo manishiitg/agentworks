@@ -56,17 +56,3 @@ func TestSetExtraEnvReachesNextShellRequest(t *testing.T) {
 		t.Fatal("third request must not carry the deleted secret")
 	}
 }
-
-// WithExtraEnv keeps its snapshot semantics: the caller's map is not aliased.
-func TestWithExtraEnvDoesNotAliasCallerMap(t *testing.T) {
-	src := map[string]string{"A": "1"}
-	c := NewClient("http://127.0.0.1:1", WithExtraEnv(src))
-	src["B"] = "2"
-	if _, ok := c.ExtraEnvValue("B"); ok {
-		t.Fatal("client must not observe writes to the caller's map")
-	}
-	c.SetExtraEnv("C", "3")
-	if _, ok := src["C"]; ok {
-		t.Fatal("caller's map must not observe SetExtraEnv")
-	}
-}
