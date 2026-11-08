@@ -16,8 +16,10 @@ unmapped old routes/steps are listed. Message reminders stay unchanged. Omitting
 Existing outbound Crew links are carried to the owning Crew before its scripts
 start calling as that Crew; inspect lists the exact targets and refuses missing ones.
 
-The new --source folder holds flat Python files, script.json and an optional
-agent_mocks.json (agent test fixtures). Its
+The new --source folder holds flat Python files, script.json and optional
+agent_mocks.json (agent test fixtures) and requirements.txt. Requirements are
+carried unchanged. Inspect reports their hashes and Python import names for
+the author to check; it never guesses package names/versions or installs them. Its
 script.json must NOT carry capabilities or input_presets: both are copied from
 the saved workflow. The owning Crew database must have no business rows before converting; platform
 run-log rows are appended to the adopted database after the plain backup. --adopt-into-crew needs the helper scripts that ship beside this
@@ -29,10 +31,12 @@ import ast
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 
 
@@ -248,12 +252,59 @@ def reasoning_steps(definitions):
             'reasoning_note': 'Keep each listed effort on its matching agent() call with reasoning="low", "medium" or "high" and the same model. Unsupported levels/models refuse by name; choose an offered level explicitly instead of dropping the old choice.'}
 
 
+def dependency_inventory(code, payload):
+    """Names and hashes only; never execute source or read linked files."""
+    existing, requirements = {}, []
+    for directory, folders, names in os.walk(code, followlinks=False):
+        if Path(directory).is_symlink():
+            folders.clear()
+            continue
+        folders[:] = sorted(name for name in folders if not (Path(directory) / name).is_symlink())
+        for name in sorted(names):
+            file = Path(directory) / name
+            if file.is_symlink() or not file.is_file():
+                continue
+            relative = file.relative_to(code).as_posix()
+            if file.suffix == '.py':
+                existing[relative] = file.read_bytes()
+            elif name == 'requirements.txt':
+                requirements.append({'path': relative, 'sha256': hashlib.sha256(file.read_bytes()).hexdigest()})
+
+    def imports(files):
+        roots, unparsed = set(), 0
+        paths = [Path(name) for name in files]
+        top_modules = {p.parts[0].removesuffix('.py') for p in paths}
+        for name, raw in files.items():
+            local = top_modules | {p.stem for p in paths if p.parent == Path(name).parent}
+            try:
+                tree = ast.parse(raw)
+            except (SyntaxError, ValueError):
+                unparsed += 1
+                continue
+            imported = {alias.name.split('.')[0] for node in ast.walk(tree)
+                        if isinstance(node, ast.Import) for alias in node.names}
+            imported.update(node.module.split('.')[0] for node in ast.walk(tree)
+                            if isinstance(node, ast.ImportFrom) and not node.level and node.module)
+            roots.update(imported - local - sys.stdlib_module_names - {'agentworks', 'agentworks_db'})
+        return sorted(roots), unparsed
+
+    authored, authored_unparsed = imports({name: raw for name, raw in payload.items() if name.endswith('.py')})
+    old, existing_unparsed = imports(existing)
+    authored_requirements = {'present': 'requirements.txt' in payload}
+    if authored_requirements['present']:
+        authored_requirements['sha256'] = hashlib.sha256(payload['requirements.txt']).hexdigest()
+    return {'authored_requirements': authored_requirements, 'existing_requirements': sorted(requirements, key=lambda item: item['path']),
+            'authored_import_roots': authored, 'existing_import_roots': old,
+            'unparsed_python_files': authored_unparsed + existing_unparsed,
+            'note': 'Import names are an inventory, not package names. Confirm the packages and versions in the authored requirements.txt. Existing requirements are not copied automatically; the runtime validates and installs the declaration.'}
+
+
 def python_payload(source, workflow_id, original_capabilities, original_inputs):
     source = source.resolve()
     payload, removed_tools = {}, []
     for file in source.iterdir():
-        if not file.is_file() or file.is_symlink() or (file.suffix != '.py' and file.name not in ('script.json', 'agent_mocks.json')):
-            raise ValueError('The new source must contain only flat Python files, script.json and an optional agent_mocks.json.')
+        if not file.is_file() or file.is_symlink() or (file.suffix != '.py' and file.name not in ('script.json', 'agent_mocks.json', 'requirements.txt')):
+            raise ValueError('The new source must contain only flat Python files, script.json and optional agent_mocks.json and requirements.txt.')
         raw = file.read_bytes()
         if file.suffix == '.py':
             raw, removed = clean_agent_selections(raw)
@@ -477,6 +528,7 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None, entry_inp
         documents['crew-links'] = links_file
     report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'appended_crew_platform_rows': sum(rows.values()), 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, **knowledge_write_steps(definitions), **output_check_steps(definitions), **reasoning_steps(definitions), 'carried_input_presets': len(definition['input_presets'])}}
     report['conversion'].update(entry_report)
+    report['conversion']['dependencies'] = dependency_inventory(code, payload)
     report['conversion']['carried_crew_links'] = links
     return changes, documents, report
 
@@ -576,6 +628,7 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
     conversion.carried_crew_links = links
     conversion.counts['carried_crew_links'] = len(links)
     conversion.counts.update(entry_report)
+    conversion.counts['dependencies'] = dependency_inventory(conversion.source/'code', payload)
     conversion.python_source = True
     return conversion
 
