@@ -1,959 +1,121 @@
-# Connect an AI agent to AgentWorks with MCP
+# AgentWorks from your AI app or terminal
 
-Connect Claude Code, Codex, Cursor, Muse, ChatGPT, Claude Cowork, or another MCP client to
-`https://your-server/api/external/v1/mcp`. The client signs in through AgentWorks
-OAuth in your browser. Terminal AI agents use this HTTP connection directly;
-you do not need to install the AgentWorks CLI for a terminal AI agent.
+Use AgentWorks from its app, an authorized MCP connection, or the `agentworks` CLI. They use the same Crew access and connected accounts. Start with a Crew: its agents hold the conversations, and its workflows hold repeatable work.
 
-```sh
-claude mcp add --transport http agentworks 'https://your-server/api/external/v1/mcp'
-codex mcp add agentworks --url 'https://your-server/api/external/v1/mcp'
-codex mcp login agentworks
-```
+A workflow is Python source (`script.json` and `main.py`) with typed inputs, presets and run records. Ask the Crew agent to explain or change it; inspect Steps and Runs for the saved work and its executions.
 
-Open **Setup → Integrations → Connect** for commands using your installation's
-URL. A local AI agent can connect to a local AgentWorks server using a loopback
-URL; a hosted AI app needs a public HTTPS URL. AgentWorks must have `PUBLIC_URL`
-configured to that same origin. Remote MCP OAuth accepts HTTP only for a
-configured loopback address.
+## Connect
 
-Run-mode MCP tools inspect data and execute workflows or Crew functions. A
-connection with the explicit Builder grant can also author Crews and their
-workflows it owns or may edit through the Crew tools. Function calls that pause for a question
-expose it through `functions action=status` or `functions action=status` and
-accept an answer through the matching `reply_*_function_call` tool.
-Pass a unique `submission_id` for each new function call or message; reuse it
-when retrying an uncertain delivery. A function returns `call_id`; a conversational
-send returns an inbox acknowledgement, with optional explicit replies.
+In the app, open Connect and follow the instructions for your AI client. A browser approval belongs to the person signing in. Reuse the existing connection instead of copying credentials between clients or asking for tokens in chat.
 
-## Saved Python workflows
+For the CLI, use `agentworks login --help` for the current server and browser options. A saved login is one revocable connection. The connection's granted scopes and the person's current Crew access decide every call; an administrator is not automatically the owner of another person's private Crew.
 
-New workflows are saved Python scripts in a Crew. Over MCP, read
-`help action=topic topic=python-workflows` for creation, nested source, typed
-inputs/presets and run records. The laptop CLI uses the same operations:
+The CLI renews its existing access and supports separate saved configurations with `--config`. Keep those credential files private. `agentworks logout` signs out of the selected connection. Use the app's connection controls when revoking access; do not assume a copied link grants it.
 
-```sh
-agentworks workflows list
-agentworks workflows outline --workflow <id>
-agentworks runs start-workflow --workflow <id> --preset weekly --inputs '{"LIMIT":3}'
-agentworks runs status --workflow <id> --session <returned-session>
-agentworks runs get --workflow <id> --run-folder <returned-run>
-agentworks runs logs --workflow <id> --run-folder <returned-run>
-agentworks runs rerun --workflow <id> --run-folder <returned-run>
-```
+## Discover before calling
 
-`workflows create`, `source`, `save-source` and `save-inputs` use the Crew's existing
-source editor and input validator. Shared run access does not grant source edits.
-The server runs the workflow; installing the CLI does not move it to your laptop.
-`runs logs` includes the failure, inputs and log tails in one reply, with paths
-for full files. After a source fix, `runs rerun` reuses the saved input values
-and reports changed source files; it is a new real run and repeats its effects.
-
-## Use your laptop from MCP
-
-Your Crew keeps running on the server. Its normal shell and files stay there.
-To work with your computer too, open **Crew → Connections → Local laptop** for
-the download and sign-in steps. Install AgentWorks once on that computer and
-keep it running. The same connection serves AgentBridge and laptop access;
-starting it grants no folder automatically.
-
-Then tell your own MCP agent, for example: “Connect my Reports folder to this
-Crew with Read access” or “Allow commands in my project folder.” It can list
-your connected computer, browse folder names, and save the same permissions as
-the website with `terminal` (`laptop_get`, `laptop_set` and the other `laptop_` actions). Connect once in your project's Vault panel or in chat. For a Goal, pass its `workflow_id` from `workflow action=list`; for a Crew, its `workspace_id` comes from
-`workspace action=list`. Read allows listing and copying files; Read & write also permits
-writing files. Commands are a separate switch (`commands`). Removing access takes effect on subsequent calls, including while
-the computer is offline.
-
-- `terminal action=local_files` lists one folder of a granted folder; `terminal action=local_write`
-  creates or replaces a text file in a granted Read & write folder.
-- `terminal action=local_execute` runs on your computer in a granted Read & write
-  folder, when the commands switch is on. Commands use your computer’s existing operating-system permissions;
-  the folder is their starting location. Server environment and secrets are
-  never forwarded. If a connection or timeout leaves the outcome uncertain,
-  inspect the result before retrying a command with effects.
-- `terminal action=local_copy` copies a local file into the Crew’s normal writable
-  areas, including binary files up to 11 MiB. It replaces the destination
-  through the normal guarded writer. Bytes do not pass through the model.
-
-Both the Crew and laptop must be yours. Sharing a Crew does not share your
-laptop. These are explicit tools for your own MCP connection; Run callers,
-schedules do not inherit access. There is no automatic sync or
-server-to-laptop copy. When the computer disconnects, normal server work
-continues.
-
-## Messages and function calls
-
-Use `messages` action=send to talk to an agent, and action=read to read explicit
-replies from the returned inbox. Replies are optional. Keep `inbox_id` for this
-external agent's continuing conversation; create a different inbox for a different
-external agent using the same account. Reads use `after` / `next_cursor`, are
-non-destructive, and optionally wait up to 25 seconds. The platform never captures
-an agent's ordinary final chat answer as a conversational reply.
-
-```sh
-agentworks messages send --crew <crew-id> --message 'Please review the report' --submission-id <message-id>
-agentworks messages read --inbox <inbox-id> --after 0 --limit 20 --wait 25
-agentworks messages send --crew <crew-id> --inbox <inbox-id> --message 'Use the latest version' --submission-id <new-message-id>
-```
-
-`agentworks crews ask` and `agentworks chat ask` are conversational send aliases.
-They return `inbox_id`, `conversation_id` and `message_id`, without `call_id`.
-A Crew can disable incoming **Agent messaging**, including replies; its declared
-functions remain accessible under their own permissions.
-
-Use `functions` action=call for a defined task with checked inputs. Each invocation
-runs as an isolated internal trigger and returns `call_id`. Poll action=status for
-execution messages, final answer/result and output file metadata. Page conversation
-text separately with `after_event` (initial -1) and `next_after_event`; raw tool
-arguments/results are excluded. Calls run in
-parallel by default; a full running-call limit returns a busy error, without a queue.
-Read files with action=read and `call_id`, `file`, byte `offset` and `limit`.
-The response’s `file` page uses `content_base64` for binary data or `content` for text.
-
-```sh
-agentworks crews call --crew <crew-id> --function review_report --args '{"report":"shared/report.md"}'
-agentworks crews call-status --call <call-id> --after -1 --message-limit 20
-agentworks crews call-file --call <call-id> --file report.pdf --offset 0 --limit 262144
-```
-
-Functions with declared output schemas write their result file; other functions
-return their final text and any produced files. See [agent messaging and function
-contracts](../design/agent_messaging.md) for lifecycle and output rules.
-
-## CLI for existing installations
-
-Existing scripts and stdio-only MCP clients can continue using the CLI. New
-AI agent connections should use HTTP MCP as shown above. The installer downloads the
-CLI build matching that server, verifies its checksum, installs it to
-`~/.local/bin`, and opens a browser approval link. macOS and Linux on arm64/amd64 are
-supported.
-Local installs can drive the CLI and local MCP bridges, but ChatGPT and
-Cowork need a public server URL — deploy first, then open that server's
-Connect tab for the remote URL.
-
-The binaries and installer are served by the server itself at
-`/api/downloads/cli/` (public, like the existing launcher downloads), so
-the CLI always matches the API it talks to. `agentworks version` prints the
-build; `agentworks update` (or `update --check`) self-updates from the
-connected server. Server C and other rootless deployments build and package
-all supported CLI binaries with each release, then verify the public installer
-URL before marking the deploy successful. The local `run_server_with_logging.sh`
-script packages the native CLI for its machine before starting the server, so
-the same installer command works against a loopback URL. Developers can still
-build from source as below.
-
-## Build and server setup
-
-Requires the repository's Go toolchain (Go 1.26) and its normal local module
-replacements. From the repository:
-
-```sh
-cd agent_go
-go build -o bin/agentworks ./cmd/agentworks
-```
-
-Put the binary on your PATH. Rebuild and deploy **both the agent server and the
-workspace service** from this revision. Existing deployments do not acquire
-these endpoints just by installing the client. No server deployment is performed
-by building this binary.
-
-Configure the same nonempty `WORKSPACE_API_TOKEN` in the agent and workspace
-services. This is a **server-to-server credential**, never a user's CLI token.
-The internal `/api/shared-assets` endpoint fails closed when this token is
-missing and is blocked by the generic workspace proxy. The former
-`/api/workflow-files` revision/write endpoint has been removed; external file
-tools read the shared filesystem or use the read-only shared-assets endpoint
-when the agent and workspace run on separate volumes. Keep the workspace
-service on the internal network; expose only the authenticated AgentWorks server.
-
-## Verify sign-in and access
-
-The current HTTP checks use isolated fixtures:
-
-- CLI browser login, refresh, logout and named-account isolation: `agent_go/cmd/agentworks/main_test.go`.
-- Browser-approved combined CLI sign-in with laptop MCP access: `agent_go/cmd/server/external_laptop_access_test.go`.
-- Website and MCP account-management permission checks: `agent_go/cmd/server/external_users_test.go`.
-
-Run these focused packages in CI. The former standalone probe used retired CLI token-pasting and tool contracts and has been removed.
-
-## Sign in with the CLI
-
-Run the installer from `/api/downloads/cli/install-agentworks.sh`, or sign in
-with an installed binary:
-
-```sh
-agentworks login --server https://agentworks.example.com
-```
-
-The CLI opens the AgentWorks sign-in page. Confirm its eight-character code
-matches the terminal, approve access, then return to the terminal. On a remote terminal, use `agentworks login --no-browser`
-and open the printed link yourself. Each login creates a separate connection
-that you can revoke under **Connect → Connected apps**. The CLI renews its
-short-lived access automatically. `agentworks logout` revokes that connection
-and clears the local credentials.
-
-CLI grants run in full run mode —
-`workflows:read`, `files:read`, and `runs:execute` — over all currently and
-future accessible workflows. Existing authoring consent is optional: `builder:chat` covers workflow
-authoring, and `relays:write` covers Relay authoring. Source and documentation
-edits reuse that consent and the same live owner/editor roles as the website; no
-separate file-write permission is needed. Typed `plan` edits use existing Builder consent; `plan:write` is retired. Every
-call checks the grant scopes and the user's current workflow
-access. CLI grants cannot call account management, the general query endpoint,
-or the workspace proxy; only the external tool, asset-content, skill, and
-remote MCP endpoints accept them. A token still cannot exceed the user's
-normal account permissions.
-
-Precisely, a token authorizes: reading the account's workflows, files,
-plans, runs, guidance, and knowledge; starting, steering, observing, and
-stopping executions; triggering the workflow's saved schedules (which run
-with their owner-configured definition); and the workflow's own outbound
-actions (Slack routes, user notifications). The default grant never authorizes authoring
-(plans, configs, files, workflows), account management, or account-wide
-service shells — `google_workspace_cli` stays out of the external catalog
-and token-backed chat sessions for exactly this reason. Slack and WhatsApp
-Run-mode bot channels retain it under their own route grants.
-
-Every CLI/MCP HTTP request checks the persisted grant. Revocation rejects
-subsequent calls, including calls from an MCP bridge already running.
-
-Configuration is stored in the OS user-config directory under
-`agentworks/config.json`, with private permissions. `--config` selects another
-file. `AGENTWORKS_SERVER` selects the server for automation. Sign in through your browser to save a renewable connection.
-HTTPS is required except on loopback development addresses.
-Redirects are refused to avoid forwarding credentials to another location.
-
-For a machine without a browser, use `agentworks login --no-browser` and approve the displayed link in any browser.
-
-## Connect a local AI app
-
-Choose **AI agent on this computer** in Connect. Claude Code uses HTTP MCP:
-
-```sh
-claude mcp add --transport http agentworks 'https://your-server/api/external/v1/mcp'
-```
-
-Codex uses its own registration command:
-
-```sh
-codex mcp add agentworks --url 'https://your-server/api/external/v1/mcp'
-codex mcp login agentworks
-```
-
-Cursor and Muse read the server from a config file, then sign in:
-
-```sh
-# Cursor: add to ~/.cursor/mcp.json
-#   {"mcpServers": {"agentworks": {"url": "https://your-server/api/external/v1/mcp"}}}
-cursor-agent mcp login agentworks
-
-# Muse: add to ~/.config/muse/settings.json
-#   {"schema_version": 1, "mcpServers": {"agentworks": {"url": "https://your-server/api/external/v1/mcp"}}}
-muse mcp login agentworks
-```
-
-Add AgentWorks to the client you are actually using: `claude mcp add` run from
-another agent configures Claude Code, not that agent. Every client approves
-access through the browser. Existing stdio registrations
-using `agentworks mcp serve` continue to work, but new setups do not need them.
-
-Example request:
-
-> Find the invoice workflow, read its process documents, and summarize what its
-> fetch step does.
-
-The agent discovers the workflow ID, then reads the plan, files, and runs. If
-the task needs a change, it says so instead of attempting one.
-
-## Connect hosted assistants
-
-All supported AI apps connect to the server over MCP Streamable HTTP at
-`POST/GET/DELETE /api/external/v1/mcp`. Unlike the legacy CLI and stdio bridge,
-which list every tool, the remote surface is exactly two self-describing
-tools: `get_api_spec` (no arguments lists every available tool, names return
-JSON schemas) and `call_tool` (executes by name). The full catalog —
-product.yaml's external tools plus run tools — resolves internally, so the
-surface stays tiny no matter how run mode grows. Choose **Hosted AI app**
-in Connect to see the ready-to-paste URL for the active
-installation:
-
-```text
-https://your-server/api/external/v1/mcp
-```
-
-- ChatGPT: Settings → Apps & Connectors → Developer Mode → add a custom MCP
-  connector with that URL and choose OAuth authentication.
-- Claude Cowork: in AgentWorks Connect → Hosted AI app → Claude Cowork,
-  download `agentworks.plugin`. In Cowork, open Customize → Plugins, upload
-  the plugin, then connect AgentWorks and approve OAuth in your browser. The
-  plugin contains the remote MCP connector and the AgentWorks skill. It
-  contains no credential. The manual alternative is Customize → Connectors
-  → Add custom connector with the URL above and OAuth authentication.
-- Grok: open Connectors → New Connector → Custom on grok.com and enter
-  the hosted URL. See [Grok’s connector guide](https://docs.x.ai/grok/connectors).
-- Grok Bot: use its own Connect apps setup, or ask the Bot to add the
-  hosted MCP URL. After sign-in, attach the connection with `@` in chat.
-  This app’s account setup has not been tested here. See
-  [Grok Bot’s app guide](https://docs.x.ai/grok-bot/computer-and-apps).
-- Muse personal agent: look in Settings → Connectors. Meta reviews
-  connectors before listing them; AgentWorks acceptance in this app remains
-  unverified. Muse Code has a separate terminal setup. See
-  [Meta’s connector process](https://platform.muse.ai/docs).
-
-The assistant discovers AgentWorks OAuth metadata from the server. Sign in to
-AgentWorks when prompted, review the requested permissions, and allow access.
-The connection uses short-lived MCP-only access tokens and a refresh credential
-that stays the same until its 30-day expiry or sign-out. Reconnects do not extend
-that expiry. Revoke it under **Connect → Connected apps**. The CLI and local stdio
-MCP bridge use their own browser-approved OAuth connections.
-
-For ChatGPT, the optional **Give the assistant workflow guidance** section downloads the
-same guidance as an
-uploadable skill zip (`GET /api/external/v1/skill.zip`, a SKILL.md following
-the Agent Skills layout ChatGPT, Claude, and Cowork accept) or copies its
-text (`GET /api/external/v1/skill.md`). Upload it via ChatGPT's Plugins →
-Skills → Create → Upload from your computer (eligible plans), or paste the
-text into Custom Instructions / the connector's Instructions field. The skill
-names the installation but carries no credential. Both endpoints accept the
-app session or a PAT.
-
-Schemas, scopes, and per-request authorization are identical to the REST
-external API: `get_api_spec` only lists and describes tools the grant may
-use, and every `call_tool` runs through the same dispatcher. Existing PAT
-connections remain supported for older integrations; direct PAT integrations send it in the
-`Authorization: Bearer` header. The legacy `?token=` form is supported for
-older clients, but credentials in URLs can leak into proxy logs and history.
-
-## CLI examples
-
-All output is JSON: pretty by default, compact with `--json`. IDs below are
-examples; discover actual IDs first.
-
-```sh
-agentworks workflows list --json
-agentworks workflows get --workflow WORKFLOW_ID
-agentworks files list --workflow WORKFLOW_ID --path docs
-agentworks files search --workflow WORKFLOW_ID --query invoices
-agentworks files read --workflow WORKFLOW_ID --path docs/process.md
-agentworks plan get --workflow WORKFLOW_ID
-```
-
-Find workflow-owned Python test code without paging through installed
-packages or caches:
-
-```sh
-agentworks files list --workflow WORKFLOW_ID --path code --glob '**/*.py' --depth 8
-agentworks files search --workflow WORKFLOW_ID --path code --glob '**/*.py' --query 'test_login' --depth 8
-agentworks files code --workflow WORKFLOW_ID
-agentworks files code --workflow WORKFLOW_ID --step-id run-basic-smoke
-agentworks files read --workflow WORKFLOW_ID --path code/run-basic-smoke/modules/auth.py
-```
-
-MCP `files action=list` and `files action=search` accept the same optional `path` and
-`glob` arguments. The glob is relative to `path`; `**` matches any number
-of directories, including zero. Filtering happens before pagination and,
-for `files action=search`, before file content is scanned. Hidden workspace paths,
-runtime caches, and installed packages (including `.cache`, `.local`,
-`__pycache__`, `.venv`, `node_modules`, and `site-packages`) are unavailable
-to file listing, search, direct reading, and preview links. To identify
-a workflow step for a test script, use MCP `files action=code` or CLI
-`files code`. The inventory defaults to Python files and annotates each
-entry with its step ID, plan title, and whether that step is still in the
-plan. Current workflows read `code/<step-id>/`; legacy workflows read
-`learnings/<step-id>/`.
-
-Load guidance and knowledge for the task:
-
-```sh
-agentworks guidance context --workflow WORKFLOW_ID
-agentworks guidance topics
-agentworks guidance topic --topic plan-change-impact
-agentworks knowledge list --workflow WORKFLOW_ID
-agentworks knowledge read --workflow WORKFLOW_ID --path learnings/_global/SKILL.md
-```
-
-`--input -` reads JSON arguments from stdin. `--set key=JSON` supplies
-additional native fields. `tools list` is authoritative for the current
-server's schemas:
+The current server's schema is authoritative:
 
 ```sh
 agentworks tools list
-agentworks tools call help --input ./topic.json   # {"action":"topic","topic":"..."}
+agentworks tools spec workflow runs workspace database messages
+agentworks tools call help --set 'action="topic"' --set 'topic="python-workflows"'
 ```
+
+An MCP client requests the same `help` topic. Read only the guidance needed for the task. A loaded guide or a tool in the catalog does not grant access to every project.
+
+Tool arguments can come from a JSON file with `--input`, from stdin with `--input -`, or from `--set name=JSON`. The examples below use placeholder IDs; discover the actual Crew and workflow first.
+
+## Find a Crew and its workflows
 
 ```sh
-agentworks runs list --workflow WORKFLOW_ID
-agentworks runs get --workflow WORKFLOW_ID --run-folder iteration-0/group-name
-agentworks runs logs --workflow WORKFLOW_ID --run-folder iteration-0/group-name
+agentworks tools call workspace --set 'action="list"'
+agentworks tools call workflow --set 'action="list"'
+agentworks tools call workflow --set 'action="get"' --workflow WORKFLOW_ID
+agentworks workflows outline --workflow WORKFLOW_ID
 ```
 
-Saved run/log artifacts are browsed with `runs list|get|logs`; retrieve
-selected paths with `files read`. Workflow creation/deletion stays outside
-this surface.
+The workflow reply identifies its Crew, saved inputs and presets. Its outline comes from the Python source: functions, conditions, loops and `@step` labels. A label is not a separate run target.
 
-## Running steps, workflows, and schedules
+Use the Crew's scoped file and database tools for evidence. Query data through `database`; never open or modify SQLite, WAL or SHM files directly. Read only the exact project and file scope returned by the current tools, and quote bounded evidence without secret values or another person's private chats.
 
-Run-mode chat tools from `product.yaml` are callable here under the
-`runs:execute` scope, except names in `external_denylist`. A tool added to
-run mode appears in `tools list` and `mcp serve` unless it is denylisted.
-Each proxied call starts a new pinned Run-mode session (or continues
-`--session`), and its reply carries `session_id`; poll `runs status` for
-completion. Structured arguments travel via `--set key=JSON`.
+## Change a workflow when authorized
 
-```sh
-agentworks runs start-step --workflow WORKFLOW_ID --step-id fetch-invoices --set 'script_parameters={"limit":10}'
-agentworks runs start-workflow --workflow WORKFLOW_ID --group group-1
-agentworks runs status --workflow WORKFLOW_ID --session SESSION_ID
-agentworks runs executions --workflow WORKFLOW_ID
-agentworks runs message --workflow WORKFLOW_ID --session SESSION_ID --execution-id EXEC_ID --message "slow down"
-agentworks runs stop --workflow WORKFLOW_ID --session SESSION_ID --execution-id EXEC_ID
-agentworks runs stop-all --workflow WORKFLOW_ID --session SESSION_ID
-agentworks schedules list --workflow WORKFLOW_ID
-agentworks schedules runs --workflow WORKFLOW_ID --schedule-id daily
-agentworks schedules trigger --workflow WORKFLOW_ID --schedule-id daily
-```
+External MCP uses `workspace action=automation_create/read/write` with the returned `crew_id` and `workspace_path`. Read or write one file by its `file` name, including nested helper files. Create a Python workflow and keep the identity the server returns; do not replace managed ownership or runtime records.
 
-`runs:execute` implies workflow visibility (`workflow action=list`, `workflow action=plan`,
-run evidence, status). Direct file content (`files action=list`, `files action=search`,
-`files action=code`, `files action=read`, `files action=link`, knowledge reads) stays behind
-`files:read` —
-but a run or chat session necessarily reads its own workflow's files to
-execute, so `runs:execute` includes those in-session reads and the results
-derived from them. Sessions are scoped to the single workflow they run:
-even a token allowed many workflows cannot reach another workflow's files
-through an assistant turn.
-A read-only token sees neither the run tools in `tools list` nor their MCP
-entries, and calling one returns `insufficient_scope`. Sessions are owned by
-the token that started them: revoking the token cancels its runs, and one
-token can never status, message, or stop another token's session. New tools
-added to run mode later work immediately through `tools call` unless
-denylisted; typed
-subcommands cover the core operations above.
-
-`runs:execute` authority, stated precisely: a token may invoke the run
-operations of the workflows it can see, converse with those workflows'
-Run-mode assistant, and trigger those workflows' own saved schedules.
-"Never authors" means no plan, configuration, schedule, secret, or file
-change outside the run's own execution outputs — but executing a run
-still performs the workflow's configured steps, including its configured
-notifications. Only account-scoped tools are withheld from direct calls:
-`google_workspace_cli` (arbitrary commands against the account's Google
-connection) is unavailable to token-backed sessions, including `chat`.
-Deliberately kept: `send_slack_message`
-(configured workflow routes only), `record_summary` (the workflow's saved
-channels), and `trigger_schedule` (this workflow's own schedules).
-
-## Chatting with the workflow assistant
-
-`chat` asks the assistant anything — explanations, analysis, follow-ups — as
-a free-form turn on a pinned Run-mode session, the CLI/MCP equivalent of the
-Slack and WhatsApp bot channels. Pass `--session` to continue the
-conversation; sessions are shared with the run tools, so one conversation can
-ask, run, and ask about the run. Replies arrive through `runs status`; when
-it reports waiting human input, answer with `runs reply`.
-
-```sh
-agentworks chat ask --workflow WORKFLOW_ID --message "why did step 1 fail?"
-agentworks chat ask --workflow WORKFLOW_ID --session SESSION_ID --message "retry it with tier high"
-agentworks runs status --workflow WORKFLOW_ID --session SESSION_ID
-agentworks runs reply --workflow WORKFLOW_ID --session SESSION_ID --request-id REQUEST_ID --response "yes"
-```
-
-Chat turns run with the same `runs:execute` scope and the same ownership
-rules as run tools. The assistant can call run-mode tools to answer, so a
-chat turn may start work; watch `runs status` and `runs executions` to see
-what it started.
-
-## Asset links and downloads
-
-Use the existing Share file viewer for a clickable output link:
-
-```sh
-agentworks files link --workflow WORKFLOW_ID --path db/assets/report.pdf
-agentworks files download --workflow WORKFLOW_ID --path db/assets/report.pdf \
-  --output ./report.pdf
-```
-
-MCP exposes the same `files action=link` tool with `workflow_id` and `path` arguments.
-It returns the file size, content type, `preview_url`, and `download_url` without
-loading the asset into model context. An external agent can call `files action=link`
-and give the user its `preview_url` for any existing output.
-
-The preview opens `/file?path=…` in AgentWorks. Local installations initialize
-the local app session before fetching; hosted installations preserve the file
-or folder URL through password or OAuth sign-in. Images, audio, video, PDF,
-Markdown, and text have previews. HTML renders in a sandbox without scripts;
-other binary formats offer a download. Markdown workspace images use authenticated
-requests, and linked workspace documents open their own shared viewer.
-
-**A share link identifies a file; it does not grant permission.** Workflow owners
-and readers can view/download it. Every file, folder listing, and ZIP request
-checks the recipient's current workflow access. Removing access also blocks old
-links. Personal Chats/Downloads remain private to their owner; an old `uid` link
-cannot grant another user access. Private files and symlinks are excluded.
-
-Preview URLs contain no credentials. The `download_url` requires a PAT or app
-session in the `Authorization: Bearer …` header; clicking that API URL alone does
-not supply a header. Use `preview_url` for people and `files download` for a local
-agent. Downloads require `files:read` and access to the selected workflow, stream
-without the tool's 2 MiB read limit, and refuse to overwrite existing local files.
-Folder listings are bounded at 10,000 scanned entries; ZIP downloads are bounded
-at 512 MiB of uncompressed files. Choose a smaller folder when needed.
-
-Set `PUBLIC_URL` to the externally reachable AgentWorks origin when running
-behind a proxy. The normal hosted/local app serves the viewer and API on that
-origin. A separate frontend development server needs the appropriate `PUBLIC_URL`
-and API runtime configuration. A localhost link works on the machine running
-that installation; sharing it with someone on another machine requires a reachable
-hosted address.
-
-## Workflow Builder chat
-
-Not exposed. Builder chat runs the existing builder runtime with authoring
-tools, so it stays out of the catalog alongside file writes and plan
-mutations; external execution runs in pinned Run-mode sessions instead. The
-server keeps its session binding, ownership checks, and revocation-driven
-cancellation for a future write-enabled API version.
-
-## External agent guidance
-
-The local implementation now gives MCP clients short initialization
-instructions and exposes five guidance and knowledge operations. Builder chat
-is not exposed, so the external agent relies on these operations plus the
-read tools; runtime steps separately receive their explicitly enabled step
-skills.
-
-The external surface is intended to add the decision context that bare tool
-schemas do not provide: which guidance applies, what other files and
-configuration are worth checking, and how to answer from reading. AgentWorks
-builds the canonical `builder-reference`, `workflow-commands`, and
-`system-tools` bundles in
-`agent_go/cmd/server/guidance/materialize.go`; the external implementation
-reuses those renderers rather than maintaining another complete body of
-guidance.
-
-Two constraints define the intended boundary:
-
-- Builder guidance cannot be exposed unchanged. Some documents instruct the
-  Builder to call internal tools the external catalog does not provide, so the
-  external surface needs a guidance profile filtered by actual tools and
-  permissions.
-- Permissions must be split per tool. Canonical server-owned guidance can use
-  `workflows:read`, but workflow-authored skills and learnings must require
-  `files:read`. Workflow `skills/` projection paths (`.pi/skills`,
-  `.agents/skills`, `.claude/skills`) are generated provider artifacts and must
-  not become a public API; `learnings/_global/` is a real workflow path but
-  requires file-read permission.
-
-The five implemented operations are:
-
-- `help action=context`: role, token capabilities, available tools, and guidance
-  version, plus the preparation checklist (with a run section when the token
-  allows `runs:execute`). This is a global tool;
-  pass `workflow_id` to include the caller's role on a workflow. CLI:
-  `agentworks guidance context [--workflow ID]`.
-- `help action=topics` / `help action=topic`: server-owned guidance for
-  `plan-change-impact`, `plan-design`, `planning-steps`, `step-description`,
-  `step-config`, `skill-management`, `file-layout`, and `secure-share-links`.
-  Each topic is rendered live from the canonical Builder reference, and every
-  internal-only operation named by served content is disclosed in that topic's
-  external mapping note (enforced by test). Topics documenting internal-only
-  tool names are excluded from the profile.
-- `files action=knowledge_list` / `files action=knowledge_read`: workflow learnings,
-  knowledgebase notes, workspace skill folders, and skill wiring
-  (workflow-selected skills plus per-step `enabled_skills`). Reads are confined
-  to `learnings/`, `knowledgebase/`, and `skills/<folder>/<file>` content, and
-  skill folders are further restricted to the workflow's selected and
-  step-enabled skills — a workflow ticket never grants the whole shared skill
-  catalog. An unavailable skill catalog returns a `warnings` entry rather than
-  an empty list. CLI: `agentworks knowledge list|read --workflow ID
-  [--path PATH]`.
-
-MCP initialization delivers short instructions that tell the client whether
-the bridge reads only or also runs (chosen from the scope-filtered catalog),
-to call `help action=context` first, and to load
-relevant topics. The companion
-skill source lives at
-`agent_go/pkg/agentworksclient/skills/agentworks/SKILL.md`, embedded in the
-CLI; `agentworks skills install --dir <skill-dir> [--force]` writes it to
-`<dir>/agentworks/` (default `.agents/skills`, refusing to clobber without
-`--force`). The guidance version is computed from the allowlist, mapping
-notes, and rendered content, so cached clients detect canonical changes
-without a manual bump. `help action=context` with `workflow_id` also returns
-`effective_tools`, filtered by the caller's role on top of token scopes.
-
-Canonical guidance tools require `workflows:read`; knowledge tools require
-`files:read`. Nothing authors, so the follow-up contract is small: the agent
-answers from what it reads (and what its runs report) and says so when a task
-needs a change.
-
-### Local implementation review (2026-09-20, second pass)
-
-The implementation is committed and pushed as `ba5f282ae` on `main`, which
-matches `origin/main`. The working tree is clean apart from the unrelated
-untracked `tmp/` directory.
-
-The second review confirmed these completed fixes:
-
-- Workspace skill discovery decodes the shared-assets `filepath` field and has
-  a non-empty discovery test.
-- Skill listing and reads are restricted to the workflow's selected and
-  step-enabled skills; unrelated global skill folders return `forbidden`.
-- The skill catalog reports a warning when it is unavailable instead of looking
-  empty.
-- The guidance version is derived from the allowlist, mapping notes, and
-  rendered canonical content.
-- `help action=context` returns role-filtered `effective_tools` in addition to
-  token-level availability.
-- Global topic commands do not expose the inapplicable `--workflow` flag.
-- `agentworks skills install --dir <skill-dir> [--force]` installs the embedded
-  AgentWorks skill and refuses to overwrite it unless requested.
-- `required_followups` are documented consistently as advisory receipts rather
-  than server-enforced completion state.
-
-Two functional blockers remain:
-
-1. **Per-step skills are parsed from the wrong file shape.** Production
-   `planning/step_config.json` uses
-   `{ "steps": [{ "id": "...", "agent_configs": { "enabled_skills": [...] } }] }`,
-   while `externalStepSkills` currently expects a top-level array with
-   `step_id` and `enabled_skills`. A skill enabled only on a step is therefore
-   absent from `step_skills`, omitted from `workspace_skills`, and rejected by
-   `read_workflow_knowledge`. Parse the canonical `StepConfigFile` structure and
-   make the external guidance test fixture use the production format.
-2. **External guidance still contains undisclosed internal instructions.** The
-   mapping test checks a fixed denylist rather than comparing rendered guidance
-   with the actual external catalog. Current served documents still mention
-   unsupported operations omitted from that denylist, including `add_step`,
-   `update_step`, `run_workflow`, `create_human_input_request`,
-   `update_validation_schema`, `query_workflow_costs`, and
-   `get_workflow_config`, as well as reference topics unavailable to external
-   clients. Render an external-specific form or validate every operation and
-   reference against the actual external catalog and topic allowlist.
-
-The external plan schemas need the same compatibility treatment. For example,
-the `update_step_config` description tells callers about `execute_step` and
-`run_full_workflow`, and its `enabled_skills` field recommends `list_skills` and
-`get_workflow_config`; none of those operations are in the external catalog.
-External schema descriptions should map these instructions to supported tools
-or remove them.
-
-Current validation status:
-
-- `go build ./cmd/server` passes.
-- The AgentWorks CLI and client tests pass, including skill installation and
-  MCP coverage.
-- `git diff --check` passes.
-- `go test ./cmd/server ...` cannot compile because the pre-existing Crew test
-  calls an undefined `mock.hasFolder`. This is unrelated to the external-agent
-  change, but it prevents the focused server tests from being rerun against the
-  current tree. The previously reported `registerWorkCrewProfile` error is no
-  longer present.
-
-Review acceptance now requires fixing the canonical step-config parsing,
-eliminating unsupported instructions from returned guidance and external tool
-schemas, adding production-shaped step-skill coverage, and restoring the server
-test build.
-
-## Architecture and limits
-
-- `agent_go/pkg/agentworksclient`: hosted HTTP client, credential config, and MCP bridge.
-- `agent_go/cmd/agentworks`: CLI argument handling.
-- `agent_go/cmd/server/external_tools.go`: authenticated discovery, permissions,
-  schema validation, workflow resolution, and operation dispatch.
-- `step_based_workflow/external_plan_tools.go`: native plan schemas, kept for
-  a future write-enabled API; unexposed.
-- `external_builder.go`: existing query, event, human-input, and cancellation
-  adapters; unexposed.
-- `external_run.go`: run-mode tool proxy (pinned Run-mode sessions),
-  `run_status` poller, `chat` turns, human-input replies, and JSON-direct
-  execution, schedule, and trigger reads.
-- `workspace/handlers/workflow_files.go`: workflow-confined file access.
-
-The exposed tool set has one source of truth:
-`agent_go/internal/agentworksproduct/product.yaml`, `chat.run`. The server
-exposes `external_tools` first, in yaml order, then every non-denylisted `tools` name without
-a native implementation, proxied to a pinned Run-mode session in yaml order;
-names with a native implementation (`get_file_link`, `list_executions`,
-`list_schedules`, `get_schedule_runs`, `trigger_schedule`, `stop_step`,
-`stop_all_executions`) keep it. Go defines
-the implementations (schemas, dispatch) while the yaml admits them. A yaml
-name without an implementation — or an implementation missing from both
-lists — fails server startup, and the CLI subcommand mappings are test-pinned
-to the union. Changing the surface means editing the yaml and the golden test
-together, deliberately; adding a tool to run mode exposes it externally unless
-it appears in `external_denylist`.
-
-For webhook runs, `get_schedule_runs` returns the accepted delivery's
-`commit_sha`, `component`, `env`, and `deployed_at` under `webhook` when those
-fields were present in the delivery body. `runs action=get` returns the same `webhook`
-metadata for that run folder. These fields identify the deploy ping that
-started the run; overlapping pings skipped by the trigger do not create runs.
-`get_schedule_runs` can read retained history for a deleted schedule ID and
-marks that case with `schedule_deleted: true`. `files action=knowledge_list` pages
-the learnings and knowledgebase inventories together with `limit` and `offset`;
-follow `next_offset` while `has_more` is true. Directory listing tools return
-`exists: true` when the requested path exists, even if the result page is empty.
-Workflow schedule history uses the same `limit` and `offset` paging and keeps
-terminal run records for at least 90 days. Older records are pruned when a new
-run is recorded; run artifacts have a separate retention policy.
-
-Public tool endpoints are `GET /api/external/v1/tools`,
-`POST /api/external/v1/call`, and the MCP Streamable HTTP endpoint
-`POST/GET/DELETE /api/external/v1/mcp` (get_api_spec + call_tool over the same catalog). The CLI
-uses a browser-approved OAuth access token in the Bearer header; app sessions
-can also use these endpoints with their normal JWT. Account token management is
-`GET/POST /api/auth/access-tokens` and `DELETE /api/auth/access-tokens/{id}`, using
-an app session only. Call bodies
-are `{ "name": "TOOL_NAME", "arguments": { ... } }`.
-
-Tool file reads are capped at 2 MiB; asset streaming uses
-`GET/HEAD /api/external/v1/files/content?workflow_id=…&path=…`. Text is UTF-8; binary files return base64. Search
-is literal and case-insensitive, with bounded depth, entry counts, and scanned
-bytes. Pagination uses `next_offset` only when another result was found;
-`truncated` can also mean the depth/scan budget was reached. Narrow the directory
-or increase depth in that case. Symlinks, private credential directories, and
-builder transcripts are excluded, as is coding-agent infrastructure:
-AGENTS.md-style prompt files and the .claude, .agents, .codex, .cursor,
-.gemini, and .pi tool directories, including the skills beneath them. Skills
-stay readable through the knowledge tools, which serve the skill catalog;
-learnings and ordinary documents are readable in their workflow's workspace.
-Default read/run connections cannot author plans, files, or
-configuration.
-
-Errors use `{ "error": { "code": "...", "message": "..." } }`. CLI exit
-codes are 3 for authentication/permission failure, 4 for conflicts, and 1 for
-other failures (including `unknown_tool` for removed mutation paths).
-
-## Token persistence and deployment
-
-The server stores SHA-256 token hashes and metadata in SQLite under its private
-`AGENTWORKS_STATE_ROOT/auth/` directory (with the normal durable runtime root as
-a fallback). The directory is 0700 and database is 0600, outside workspace files.
-The database is bound to `AUTH_SECRET`; rotating that secret invalidates previous
-PATs, CLI and MCP OAuth grants, and app sessions. OAuth access and refresh tokens are
-hashed in a separate SQLite database in the same directory. Tokens are not
-stored in workflow documents or returned by listing endpoints. Creation
-responses use `Cache-Control: no-store`.
-
-Persist this state directory across agent-server restarts/redeployments. This
-version supports a single hosted agent instance with persistent local storage;
-it does not introduce a distributed token store for independent replicas.
-Do not deploy independent token databases behind a load balancer. Multi-host
-replication requires a shared transactional authentication store.
-
-## Manage Vault through platform MCP
-
-The main AgentWorks endpoint (`/api/external/v1/mcp`) also supports Vault administration. Discover the following tools through `get_api_spec`, then invoke them with `call_tool`: the `vault` tool's `access_*`, `groups_*`, secret (`shared_secrets`, `grant_secret`, `set_value`, `share_secret`), `governance_*`, `connections` and `call` actions. They need no workflow ID and reuse the existing Vault connection, live permission, membership and service transport handlers. Vault owns the shared builder/platform-MCP tool list in `agent_go/internal/caplayerproduct/product.yaml`; the same schemas and handlers serve both transports. Manifest/catalog and schema-parity tests reject drift. Provider-native shell/file tools are not part of this management API. Regex conditions require a plain-language description.
-
-The connection needs `vault:manage` and its current user must be an active Vault administrator. Local single-user mode uses its administrator account. SSO accounts follow the live directory role and Vault entitlement. OAuth consent filters this scope for non-administrators, and discovery and every invocation recheck the role. Older approved connections/PATs without the new scope must reconnect or receive a new token; existing grants are not expanded silently. Restart a legacy stdio bridge to refresh its cached catalog.
-
-Example read-only check:
-
-```json
-{"name":"manage_vault_access","arguments":{"operation":"inspect_environment","arguments":{}}}
-```
-
-Group operations: `list`, `create` (group_id/name/optional description), `update`, `list_members`, `add_member`, `remove_member`. Member IDs come from `vault action=access_list_users`; adding a member binds only an active platform identity and does not provision product slots. Secret operations: `list` (optional group_id) and `set` (group_id/name/allowed). Secret values stay in the encrypted store and never appear in responses. Add/rotate values through the secure UI.
-
-The separate `/api/vault/mcp` endpoint executes permitted connected MCP tools using `vault:mcp` OAuth and current user/group restrictions. Those runtime restrictions remain unchanged. The explicitly authorized `vault action=call` management operation instead uses the same administrator setup authority as the Vault builder, independently of group/regex grants, to resolve real resource IDs before configuring restrictions. It is limited to active Vault connections and approved tools, rechecks the current administrator on every request, and the gateway validates schemas and audits calls as the actual user. Upstream mutations require an explicit user request. Private connections belonging to other people and secret values are excluded.
-
-
-## Guarded public file writes
-
-Use existing project authoring consent; every edit also checks your current account
-and project roles. Read-only connections stay read-only. Legacy file-only writers
-must reconnect with authoring consent; their retired permission is ignored:
-
-```sh
-agentworks login --server https://your-agentworks.example \
-  --scopes workflows:read,files:read,runs:execute,builder:chat
-agentworks files read --workflow invoices --path docs/readme.md
-```
-
-Call `files action=write` through MCP `call_tool`, or `agentworks files write --input edit.json`:
+Example argument file for a source read:
 
 ```json
 {
-  "workflow_id": "invoices",
-  "path": "docs/readme.md",
-  "content": "Updated documentation\n",
-  "expected_revision": "revision-from-files-read-or-missing",
-  "request_id": "unique-id-for-this-write"
+  "action": "automation_read",
+  "crew_id": "CREW_ID",
+  "workspace_path": "WORKFLOW_PATH",
+  "file": "main.py"
 }
 ```
 
-For a Relay-only connection, use `relays:write` in place of `builder:chat`.
-The caller needs current account/project edit rights and the project's product access;
-a Relay-only connection cannot edit workflow files. CLI and MCP authoring need no
-deployment switch; existing connection consent and current roles apply. Plans, `workflow.json`,
-runtime run records, databases, private files and shared Brain content cannot be
-edited this way. This includes `costs/`, `schedule-runs.json`, the knowledge lock,
-`product.json` and `functions.json`. Use their typed tools. Authorized authors can
-edit `code/<step>/` sources, including scheduled code; these source edits do not
-apply Builder expected-hash checks. Use Builder for checked plan-linked edits.
-Writes accept UTF-8 text up to 2 MiB.
-Reusing the same request ID and arguments returns its durable receipt; different
-arguments fail. A stale revision fails; read and reconcile before submitting a
-new write. The workspace service retains private audit records outside documents.
-
-When issuing a personal access token through `POST /api/auth/access-tokens`, optionally
-include a persisted `file_guard` (paths relative to each selected workflow):
-
-```json
-{
-  "read_paths": ["."],
-  "write_paths": ["code", "docs"],
-  "read_only_paths": ["docs/reference"],
-  "blocked_write_paths": ["code/generated"],
-  "blocked_paths": ["docs/confidential"]
-}
+```sh
+agentworks tools call workspace --input ./read-source.json
 ```
 
-A present guard with empty write paths denies all writes. An absent guard uses
-workflow access and the unconditional protected-path policy. A tool call cannot
-change these grants. Narrow read grants also apply to raw file reads/downloads;
-execution and typed tools retain their separately authorized scopes.
+`automation_write` takes the same fields plus `content`. Native Crew chat uses its current workflow file tools. Both paths retain the backend's existing ownership, account and source-validation checks.
 
-## Server agents using local files and commands
+Define inputs in `script.json`. Defaults and preset values are strings; runtime calls and raw-event mappings carry typed JSON. Put an enum inside the input's `schema`. Required values, selected apps and Vault names must be available before work that depends on them can run.
 
-### Connect once, choose folders in Crew settings
+For an input change, inspect existing callers and include required `entry_mappings` in the same canonical source/input update. Use their actual IDs. Keep authentication, execution owner, enabled state and schedule timing intact. Read `python-workflows` for that schema and the Python helpers; do not hand-edit caller storage or resurrect a plan file.
 
-Install the CLI and run this from any folder:
+## Start and inspect a real run
 
 ```sh
-agentworks start --server https://your-agentworks.example
+agentworks tools call runs --set 'action="start"' --workflow WORKFLOW_ID --set 'input_preset="PRESET_NAME"'
 ```
 
-The CLI uses the same saved login as AgentBridge. The first run opens browser sign-in. It can stay in the background;
-`--foreground` keeps the terminal open, and `--background` skips that choice. The current folder is not shared automatically.
-AgentBridge keeps its existing chat attachments; `start` does not attach a chat for you.
-
-Open **Crew → Connections → Local laptop** (the same page as **Settings → Laptop access**) and choose your connected computer, browse its folders and add the ones this Crew needs.
-Each folder has **Read** or **Read & write** access. Read lets the agent list and copy files into Crew. Read & write also lets it write files there. Local commands are a separate switch ("Run terminal commands") and also need a Read & write folder. Changes apply to the next operation without restarting the CLI.
-Permissions belong to this Crew and this computer; another Crew does not inherit them. Sharing a Crew does not share your laptop.
-
-`agentworks status` shows the computer connection, `agentworks watch` shows local activity and `agentworks debug` produces a
-support file. `agentworks stop` stops laptop access and pauses AgentBridge messaging. `agentworks logout` signs out of both.
-Detaching a coding chat detaches only that chat. A lost network connection reconnects with backoff.
-
-**Windows:** install the CLI with the PowerShell command shown in settings. Local commands use Git Bash (Git for Windows).
-Commands run with your account permissions, without an OS sandbox. Folder permissions bind file tools, not everything a shell
-command can do. macOS keeps its existing light Seatbelt sandbox and Linux uses Landlock. Read access never enables shell
-commands on any platform. The CLI's existing private-file, credential-state and guarded-path rules still apply.
-
-Crew continues running on the server when your laptop disconnects. Ordinary shell, Files, memory, functions and background work
-stay on the server. Only your own interactive Builder chat receives laptop tools; schedules, Run callers and Team members do not.
-Server environment variables and secrets are never forwarded to local commands. Local output and copied files reach the server
-and model and may be saved in chat history. There is no automatic sync.
-
-After updating from the old folder-based CLI, run `agentworks stop`, then `agentworks start`. Choose folders and permissions in
-Crew settings. The old `--workspace`, `--block`, `--downloads`, `--folder` and `--write-folder` setup is removed.
-
-The owner's interactive Builder chat gets these extra tools:
-
-- `terminal action=local_files` and `terminal action=local_write`: list a folder, and write a text file in
-  a Read & write folder.
-- `terminal action=local_execute`: run a command in the connected folder on the
-  laptop (needs the commands switch). Normal `terminal action=execute` continues to run on the server.
-- `terminal action=local_copy`: copy a relative local file into an editable relative
-  Crew path. Text and binary files up to 11 MiB are copied as bytes through the
-  normal guarded Crew writer. The model receives a receipt, not the file bytes.
-
-Sharing the Crew does not share the laptop. Run callers, other owners, remote
-asks, schedules and background turns do not inherit its tools. Current
-account access and the laptop's live device/folder grants are checked on every
-call. Server secrets and environment variables are never forwarded into laptop
-commands. Existing macOS light sandbox, Linux folder confinement and Windows
-account permissions remain in effect.
-
-If the CLI is not connected, laptop actions say so and normal server work stays
-available. Disconnecting in Settings removes the extra tools; it does not move
-files, erase chat or stop server work. To stop sharing the folder itself, stop
-AgentWorks on the laptop. There is no automatic sync or server-to-laptop copy.
-
-A hosted Crew does not publish a second hosted copy. To start a new Crew or add
-a named agent from a laptop-native coding chat, use the explicit initial import
-flow. Imported raw chat remains private to Builders; server continuation uses a
-summary while the laptop is offline. Native chat resume comes later.
-
-### Attribution and plan changelogs
-
-Direct MCP file writes cannot edit `planning/*`, including its changelog. Their
-receipts record `identity.user_id`, `identity.username`, `identity.connection_id`
-and `identity.source=public_mcp`, together with the request ID and revisions.
-Local executor receipts record the same identity plus the device ID and source
-`server_local_executor`. Identity comes from server authentication, never tool
-arguments. Private records also retain the timestamp and capped before-content.
-
-Older plan changelog entries in
-`planning/changelog/*.json` preserve `origin.type=external_builder`,
-user ID/name, session ID, operation ID and `via_token=token:<connection ID>`, plus
-change reason, timestamp and before/after hashes. A separate Builder audit also
-links the typed mutation to its authenticated operation and connection. Token
-IDs in these records are identifiers, never secret token values.
-
-
-For container deployments with a read-only parent of the documents mount, set
-`WORKSPACE_FILE_STATE_DIR` to a writable private directory outside documents.
-Mount that state directory into both the workspace service and any agent service
-using the mounted Builder writer, and configure the same path and OS service
-identity on each. Locks and receipts use a subdirectory keyed by the canonical
-workspace path; both services must see the same document paths. The supplied
-Docker and rootless service configurations share this state.
-Otherwise configured `AGENTWORKS_STATE_ROOT/file-edits/<root-hash>/` is used when
-available; the fallback is the private sibling `.<folder>-file-edits/`. Normal
-managed document editing shares this lock and therefore also requires the state
-location to be writable. Local executors honor the same state override for locks;
-`--state-dir` selects their separate durable receipt directory.
-Managed edits, version restores and MCP/Builder writes share a workflow/project
-lock, so a long operation on one workflow does not block another. Atomic replacements
-preserve Unix ownership, permissions and Linux access ACLs when permitted.
-When a rootless Linux service cannot assign the original UID, replacements remain
-service-owned while retaining the original group and effective ACL permissions,
-including the former owner’s access. Masked entries do not gain new access.
-Replacement fails before rename if the group or required ACL cannot be retained. Receipt storage has no automatic pruning;
-operators must include it in their retention and storage policy.
-
-
-### Refreshing server guidance
-
-Server tool commands check `guidance_version` at startup. When it changes, the
-CLI prints a refresh notice on stderr; JSON and stdio MCP output remain clean.
-The private sidecar `<config>.guidance.json` stores only the server and observed
-version. An unavailable guidance check does not prevent the requested command.
-
-Use `agentworks guidance topics` to list access-filtered descriptions and topic
-versions. Fetch a relevant topic with `agentworks guidance topic --topic agent
---known-version <saved-version>`; unchanged replies omit the body. The legacy
-`message-sequence` topic resolves to canonical `agent` guidance.
-
-`agentworks guidance skills` (or MCP `help action=skills`) returns a small catalog
-of installable reference files. To fetch selected changed files, pass
-`--set 'topics=["agent","scripted"]'` and
-`--set 'known_versions={"agent":"<saved-version>"}'`. Preserve each topic's
-mapping note: internal runtime tools, bridge variables and reference paths do
-not confer external access. Only explicitly marked sources are served. Adding
-an external topic requires metadata in its canonical source, not a second
-external Go registration. Existing account roles and consent still gate calls.
-
-Direct plan authoring uses `agentworks plan list --workflow ID` for native operation schemas and `agentworks plan edit --workflow ID --input change.json` for an edit. The JSON contains the returned native `action` and `arguments`, the combined `expected_revision` from `plan get`, and a unique `request_id`. Reuse the same request ID and arguments after an uncertain response to inspect its receipt. Existing Builder consent, current owner/editor/team rules and the plan changelog apply. Relay edits use the guarded source file tools followed by `relay action=test` and run inspection.
-
-### Attached coding-agent messaging
-
-After signing in, the person uses only three messaging commands:
+Optional `inputs` supply this run's typed values. Omit the preset when the workflow has none. A start receipt means accepted work, not a completed result. Keep the returned session and query identity.
 
 ```sh
-agentworks attach [NAME]
-agentworks detach
-agentworks agents
+agentworks tools call runs --set 'action="status"' --set 'session_id="SESSION_ID"'
+agentworks tools call runs --set 'action="get"' --workflow WORKFLOW_ID --set 'run_folder="RUN_FOLDER"'
+agentworks tools call runs --set 'action="logs"' --workflow WORKFLOW_ID --set 'run_folder="RUN_FOLDER"'
 ```
 
-In the exact chat use `/agentworks attach [NAME]`, `/agentworks detach` or `/agentworks agents`. Attach installs a missing Codex/Claude plugin, discovers verified live sessions in a terminal, connects or reconnects the selected chat and preserves its identity. NAME is optional; the agent sets its own purpose. Hook trust is still reviewed in the provider. No separate resume or cleanup command is needed.
+A workflow can also start through `functions action=run_trigger`; inspect that call using its `trigger_status` receipt. Use one start path for one intended execution.
 
-CLI update and stop/start preserve and reconnect still-live approved attachments. If the coding-agent process itself restarted, type attach again. These messaging commands use the same CLI and saved login as laptop access. Run `agentworks start` once, then choose folders and permissions in Crew settings.
+Read the actual checks, outputs and full agent answer. `reply.ok` means the agent turn finished, not that its work is correct. The run's Python checks decide whether to continue. Native provider logs contain only the events the platform captured; do not invent a missing terminal log or treat an inline preview as the full answer.
 
-Terminal attach/detach refuse coding-agent process ancestry even through a PTY; the person uses the in-chat hook instead. A missing plugin install names its provider and current project folder and asks for yes. Explicit NAME cannot take over another live chat: detach that name there first. Offline identities can move through person attach.
+To repeat the recorded inputs against corrected source:
 
-Your connected computers can also be listed over MCP with `terminal` and `action: "laptop_devices"`, without a project selector. Then choose the computer and its grants in a Goal or Crew. Goal steps and schedules stay on the server; their Gmail and Slack settings remain independent.
+```sh
+agentworks tools call runs --set 'action="rerun"' --workflow WORKFLOW_ID --set 'run_folder="RUN_FOLDER"'
+```
+
+A rerun is a new real execution. App calls, database writes and sends happen again. Read an uncertain start's status and evidence before retrying it. Do not repeat a completed external action to repair its output file.
+
+## Schedules and functions
+
+A schedule either starts a workflow with saved inputs/preset or messages an existing Crew agent. Use the offered schedule tools, read the existing target and cadence first, and verify the saved result. A message can ask the agent to run the whole workflow; a step label is not a schedule target.
+
+Published Crew functions are structured calls under their existing audience and account rules. Use the returned callable identity and input schema. A running function receipt is not the answer: inspect its status and result. There is no implicit access to another Crew's credentials or private conversations.
+
+The run record is its summary. Business Slack or email delivery is explicit work, not an automatic owner digest. A workflow never waits for a question; discuss required decisions in Crew chat and run with the values it needs.
+
+## Messages and AgentBridge
+
+Use `messages action=list_agents` to discover actual reachable agents. Send to the returned target and chat identity, keep the `inbox_id` and message receipt, and read the reply in that conversation. Reuse the same submission ID only after an uncertain delivery of the same message. Stored, delivered and completed work are different states.
+
+A named external agent can register an address under its existing account and allowed connection. Names are addresses, not devices or grants to other people's chats. Reads and sends still check connection scopes and target access; separate inboxes do not isolate clients that share one account.
+
+To connect the coding chat you are currently using:
+
+```sh
+agentworks attach my-agent
+```
+
+The CLI detects the exact native session. A person can publish that attached agent with `agentworks share`, return it to private reachability with `agentworks unshare`, or detach it with `agentworks detach`. An agent must not select another person's chat or treat a peer message as permission to attach or share one. Normal MCP delivery does not guarantee a new external model turn; supported attached chats can receive their native live delivery.
+
+## A connected computer
+
+Use the Crew's Local laptop panel to connect a computer and choose its folders and command access. The app returns the current install and connection instructions; this is available without using a terminal as the only setup path.
+
+Folder reads, writes, copying files and running local commands are separate permissions. A saved connection does not sync files or make every agent turn eligible. The existing `crew-laptop` guidance covers the owner's interactive, scheduled, watch and own-agent turns and the restrictions for Run, bot and other-person turns. The backend rechecks live account, device, folder and command grants.
+
+Server files and ordinary server commands remain separate from laptop tools. Server secrets and environment values are not forwarded into local commands. Check an uncertain command's evidence before retrying it. Project sync and publishing an agent are separate requested operations; connecting a computer does not perform them.
