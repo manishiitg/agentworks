@@ -15,7 +15,7 @@ When nobody has designed a dashboard, Share creates an automatic starting page.
 It shows the project content and actions first, with an **Ask about this dashboard**
 button for shared Run users that opens the existing chat. Builders use their existing project chat; dashboard Ask buttons and panels are hidden for them. This starting layout does not constrain
 authored dashboards: their designer can choose an open panel, a button, or both.
-Automatic Crew and Goal pages reflect the current callable functions without
+Automatic Crew pages reflect the current callable functions without
 republishing. Once the owner or their AI edits a page, its content and layout belong to them:
 new functions appear there only when they update the page. The platform does
 not add controls to custom dashboards. Exact revisions and exports stay saved

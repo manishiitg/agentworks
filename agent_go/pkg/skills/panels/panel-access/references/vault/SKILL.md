@@ -2,13 +2,13 @@
 
 Use familiar product menu entries: MCPs, Secrets, Google apps, Slack account,
 Slack bot and Local laptop. Each opens its native panel directly in the current
-Crew or Goal workspace. Vault remains
+Crew. Vault remains
 the backend account/secret store, not a destination people need to learn.
 There is no separate personal Vault page, tab or menu entry.
 
 Use admitted ui with view=mcp, action=open and target=connected,
 available, secrets, gmail, slack-account or laptop. Slack bot uses the existing
-slack-bot target for Crew and slack for Goal. Opening changes presentation only.
+slack-bot target. Opening changes presentation only.
 
 MCPs includes its tool lists, catalog and account setup in chat. Secrets shows one list of project and shared names with their source,
 plus project add/replace/remove controls; shared values stay hidden and project_select owns the ticks.
@@ -50,8 +50,7 @@ other accounts. Existing grants and the caller's own account still decide access
 Store a secret value supplied in chat using the secret tool; never repeat, log,
 commit or send it. Confirm success using its name only. For a computer, use
 terminal devices/get, browse and set to choose allowed folders and
-command access. Normal shell/files remain on the server; computers are for
-interactive Builder work only, never Goal steps, schedules or AgentWorks.
+command access. Normal server shell/files remain separate. Read crew-laptop for which Crew turns may use a saved computer; the backend checks the caller, selected folders and command access on each use. Connecting a computer does not grant laptop access to a workflow script.
 
 After changing something, read the saved state and explain the result plainly.
 The panel refreshes after the turn finishes. A panel click drafts a request into

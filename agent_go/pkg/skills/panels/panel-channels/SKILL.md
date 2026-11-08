@@ -55,4 +55,4 @@ Start with the person's request and the current product. Read only the relevant 
 
 Verify the saved result or returned run result, then give the person one clear next step. Keep their existing notes and omitted settings.
 
-Configured team messages and explicitly selected recipients still receive messages. Goals no longer send automatic owner summaries or daily digests. Notify → “Tell me when something breaks” controls informational run failures in Needs you; questions needing an answer remain.
+Configured team messages and explicitly selected recipients still receive messages. Workflow runs do not send automatic owner summaries or daily digests; their run records show the outcome. Notify → “Tell me when something breaks” controls informational run failures in Needs you; questions needing an answer remain.
