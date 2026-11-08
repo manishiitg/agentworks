@@ -411,9 +411,9 @@ exists at its `db/` path, not only at the path the step wrote.
 `href="db/..."`) and reports the missing ones. A path assembled at runtime from
 variables is invisible to it — prefer literal paths, or verify those yourself.
 
-### Workshop and Run boundaries
+### Builder and Run boundaries
 
-Workshop owns Dashboard authoring and may create or edit `db/reports/index.html`.
+The Crew's Builder owns Dashboard authoring and may create or edit `db/reports/index.html`.
 Keep Dashboard-only changes presentational unless the user also asked to change
 workflow behavior or evaluation. Run mode never authors Dashboard pages; it only
 produces the durable data those pages read.
