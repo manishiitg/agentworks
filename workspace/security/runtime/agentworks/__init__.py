@@ -18,11 +18,12 @@ import json
 import os
 from pathlib import Path
 import threading
+from types import MappingProxyType
 from typing import Any, Mapping, Sequence, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "agent", "check", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue"]
+__all__ = ["AutomationError", "Reply", "agent", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue"]
 
 
 
@@ -58,6 +59,16 @@ _run_dir = os.environ.get("WORKFLOW_RUN_DIR", "")
 if not _run_dir:
     raise AutomationError("Run this Python from a Crew automation to use AgentWorks helpers.")
 run_folder: Path = Path(_run_dir)
+
+# Decode a fresh object: nested JSON values cannot alias the parent's inputs.
+try:
+    _inputs = json.loads(os.environ.get("STEP_PARAMS_JSON", "").strip() or "{}")
+except ValueError as error:
+    raise AutomationError("Script inputs must be a JSON object.") from error
+if not isinstance(_inputs, dict):
+    raise AutomationError("Script inputs must be a JSON object.")
+inputs: Mapping[str, JSONValue] = MappingProxyType(_inputs)
+del _inputs
 
 
 def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -> Reply:

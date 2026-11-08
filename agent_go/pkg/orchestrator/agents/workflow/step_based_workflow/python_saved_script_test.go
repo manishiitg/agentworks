@@ -61,8 +61,7 @@ func TestPythonSavedScriptsKeepRunOutputsAndRejectRecursiveCalls(t *testing.T) {
 		}
 		source := `import json, os
 from pathlib import Path
-from agentworks import run_script, ScriptResult
-inputs = json.loads(os.environ['STEP_PARAMS_JSON'])
+from agentworks import inputs, run_script, ScriptResult
 value = {'count': inputs.get('count'), 'input_names': sorted(inputs)}
 if inputs.get('next'):
     next_id = inputs['next']
