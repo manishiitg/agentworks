@@ -70,7 +70,7 @@ func TestScriptMailKeepsScopedSenderAndConvertedRecipientRules(t *testing.T) {
 		{name: "converted block retained", connections: []services.GmailConnection{shared}, capabilities: map[string]any{"gmail_connection_id": "shared", "gmail_blocked_recipients": []string{"recipient@example.com"}}, refused: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			config, _ := json.Marshal(services.GmailConfig{Enabled: true, GogPath: binary, UseGogBackend: true, DefaultConnectionID: "shared", Connections: tc.connections, HostAccountDismissed: true})
+			config, _ := json.Marshal(services.GmailConfig{Enabled: len(tc.connections) > 0, GogPath: binary, UseGogBackend: true, DefaultConnectionID: "shared", Connections: tc.connections, HostAccountDismissed: true})
 			f.write(t, "config/gmail-config.json", string(config))
 			g, err := services.InitGmailService()
 			if err != nil {
