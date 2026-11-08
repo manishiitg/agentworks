@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime"
 	"net/http"
@@ -158,6 +159,7 @@ func (g *GmailService) computeAuthStatusGog(ctx context.Context, gogPath string,
 	account, err := checkedGogAccount(ctx, gogPath, cfg.home(), cfg.gogAccountEmail, cfg.gogClientName)
 	if err != nil {
 		st.Detail = err.Error()
+		st.probeUnavailable = errors.Is(err, errGogProbeUnavailable)
 		return st
 	}
 	st.Authenticated = true

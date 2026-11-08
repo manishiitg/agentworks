@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -52,6 +53,26 @@ type gogStoredAccount struct {
 	Client string   `json:"client"`
 	Scopes []string `json:"scopes"`
 	Valid  bool     `json:"valid"`
+	Error  string   `json:"error,omitempty"`
+}
+
+var errGogProbeUnavailable = errors.New("Google account check temporarily unavailable")
+
+// gog reports valid=false for both revoked credentials and a refresh timeout.
+// Only known transport failures may retain an already verified account status.
+func transientGogProbeError(message string) bool {
+	message = strings.ToLower(message)
+	for _, definitive := range []string{"invalid_grant", "invalid_client", "unauthorized_client", "access_denied", "revoked"} {
+		if strings.Contains(message, definitive) {
+			return false
+		}
+	}
+	for _, transient := range []string{"context deadline exceeded", "context canceled", "timeout", "timed out", "connection reset", "connection refused", "network is unreachable", "no such host", "temporary failure", "server_error", "temporarily_unavailable"} {
+		if strings.Contains(message, transient) {
+			return true
+		}
+	}
+	return false
 }
 
 func checkedGogAccount(ctx context.Context, binary, home, email, client string) (gogStoredAccount, error) {
@@ -62,19 +83,33 @@ func checkedGogAccount(ctx context.Context, binary, home, email, client string) 
 	defer cancel()
 	args := gogBaseArgs(home, nil)
 	args = append(args, "--client", client, "auth", "list", "--check", "--timeout=15s", "--json", "--no-input")
-	out, err := exec.CommandContext(ctx, binary, args...).Output()
-	if err != nil {
-		return gogStoredAccount{}, fmt.Errorf("verify gog account: %w", err)
-	}
+	out, commandErr := exec.CommandContext(ctx, binary, args...).Output()
 	var result struct {
 		Accounts []gogStoredAccount `json:"accounts"`
 	}
 	if err := json.Unmarshal(out, &result); err != nil {
-		return gogStoredAccount{}, fmt.Errorf("decode gog account status: %w", err)
+		if commandErr != nil {
+			var exit *exec.ExitError
+			if errors.As(commandErr, &exit) {
+				// Inspect only for classification; never expose CLI stderr,
+				// which can contain credential request details.
+				message := strings.ToLower(string(exit.Stderr))
+				for _, definitive := range []string{"invalid_grant", "invalid_client", "unauthorized_client", "access_denied", "revoked"} {
+					if strings.Contains(message, definitive) {
+						return gogStoredAccount{}, fmt.Errorf("gog authorization needs reconnecting")
+					}
+				}
+			}
+			return gogStoredAccount{}, fmt.Errorf("%w: verify gog account: %w", errGogProbeUnavailable, commandErr)
+		}
+		return gogStoredAccount{}, fmt.Errorf("%w: decode gog account status: %w", errGogProbeUnavailable, err)
 	}
 	for _, account := range result.Accounts {
 		if strings.EqualFold(account.Email, email) && account.Client == client {
 			if !account.Valid {
+				if transientGogProbeError(account.Error) {
+					return gogStoredAccount{}, errGogProbeUnavailable
+				}
 				return gogStoredAccount{}, fmt.Errorf("gog authorization for %s needs reconnecting", email)
 			}
 			return account, nil
