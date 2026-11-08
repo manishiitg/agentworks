@@ -416,6 +416,7 @@ chat:
       - get_run
       - get_logs
       - rerun_workflow
+      - resume_workflow
       - run_status
       # Normal MCP OAuth: inbox messaging; CLI-issued connections keep the live CLI path.
       - messages

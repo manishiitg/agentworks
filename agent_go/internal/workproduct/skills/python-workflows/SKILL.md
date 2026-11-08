@@ -34,6 +34,17 @@ agents can read `help action=topic topic=python-workflows` for the complete MCP
 and named laptop CLI instructions. These operations keep current project,
 source-editing, account and file grants.
 
+For a failed run, `runs action=resume` with its `workflow_id` and `run_folder`
+keeps the frozen source, input proof and folder, preserves logs and starts a new
+attempt from the top of Python. Builder/edit authority is required. Successful
+explicitly keyed `agent()` or `run_script()` results may be reused and expose
+`reply.reused`; keys name logical calls, so use a unique key per loop iteration.
+The same key twice in one attempt is refused. Changed arguments execute fresh.
+Other Python code, database/app calls, checks and notices execute again;
+uncertain completed effects are not silently retried. If frozen source/hash or
+input proof is missing or changed, start a new run. `rerun` uses current source
+in a new folder instead. Inspect the failed receipt before choosing either.
+
 ## script.json
 
 ```json

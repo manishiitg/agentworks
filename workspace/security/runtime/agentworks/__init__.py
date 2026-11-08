@@ -46,6 +46,7 @@ class Reply:
     log_error: str = ""
     log_kind: str = "activity"
     answer_file: Path | None = None
+    reused: bool = False
 
 
 JSONValue: TypeAlias = Union[None, bool, int, float, str, list["JSONValue"], dict[str, "JSONValue"]]
@@ -122,7 +123,7 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
     request = urllib.request.Request(
         base + "/python_automation",
         data=json.dumps({"action": action, "arguments": arguments, "key": label,
-                         "order": order, "redo": redo}, allow_nan=False).encode(),
+                         "order": order, "redo": redo, "explicit_key": key is not None}, allow_nan=False).encode(),
         headers={"Content-Type": "application/json", header.strip(): credential.strip()},
         method="POST",
     )
@@ -153,7 +154,8 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
                  log_complete=bool(result.get("log_complete")),
                  log_error=result.get("log_error", ""),
                  log_kind=result.get("log_kind", "activity"),
-                 answer_file=Path(result["answer_file"]) if result.get("answer_file") else None)
+                 answer_file=Path(result["answer_file"]) if result.get("answer_file") else None,
+                 reused=bool(result.get("reused")))
     if action in ("call_function", "function_status"):
         receipt = result.get("value") or {}
         return FunctionResult(**vars(reply), call_id=receipt.get("call_id", ""),
@@ -165,7 +167,7 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
         return ScriptResult(ok=reply.ok, error=reply.error, text=reply.text,
                             conversation_id=reply.conversation_id, log_file=reply.log_file,
                             log_complete=reply.log_complete, log_error=reply.log_error,
-                            log_kind=reply.log_kind,
+                            log_kind=reply.log_kind, reused=reply.reused,
                             output_dir=Path(directory) if directory else None,
                             outputs=[Path(path) for path in value.get("outputs", [])])
     return reply

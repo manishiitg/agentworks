@@ -36,6 +36,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 			if err != nil {
 				return err
 			}
+			if resume := options.PythonResume; resume != nil {
+				verified, err := ReadPythonRunResume(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), options.SelectedRunFolder, resolved.Definition.ID)
+				if err != nil || verified.SourceHash != resume.SourceHash || verified.InputsHash != resume.InputsHash || verified.PreviousExecutionID != resume.PreviousExecutionID {
+					return fmt.Errorf("%s", pythonResumeNewRun)
+				}
+				resolved.Definition, resolved.Files = verified.Script.Definition, verified.Script.Files
+			}
 			if resolved.Definition.ID != "" {
 				hcpo.directCrewScript = &resolved.Definition
 				hcpo.directCrewScriptConfig = &resolved
