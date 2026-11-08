@@ -97,13 +97,18 @@ func TestCrewQueryStartsWithZeroOneAndMultipleSavedScripts(t *testing.T) {
 		interruptedTurns:                    make(map[string]bool),
 	}
 	api.projectActions = NewProjectActionDispatcher(api, api.agentProfiles)
+	api.scheduler = NewSchedulerService(api)
 	t.Cleanup(api.eventStore.Stop)
-	captured := make(chan bool, 3)
+	type surface struct{ bound, named bool }
+	captured := make(chan surface, 3)
 	api.internalPreparedAgent = func(_ context.Context, prepared *mcpagent.Agent) bool {
-		offered := false
+		offered := surface{}
 		for _, tool := range prepared.Definition().Tools {
 			if tool.Name == "run_full_workflow" {
-				offered = true
+				offered.bound = true
+			}
+			if tool.Name == "crew_execution" {
+				offered.named = true
 			}
 		}
 		captured <- offered
@@ -132,8 +137,8 @@ func TestCrewQueryStartsWithZeroOneAndMultipleSavedScripts(t *testing.T) {
 		}
 		select {
 		case offered := <-captured:
-			if offered != (count == 1) {
-				t.Fatalf("%d scripts: bound start offered=%t", count, offered)
+			if offered.bound != (count == 1) || !offered.named {
+				t.Fatalf("%d scripts: start surface=%+v", count, offered)
 			}
 		case <-time.After(12 * time.Second):
 			history := api.eventStore.GetEvents(sid, events.GetEventsOptions{})
