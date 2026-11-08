@@ -247,7 +247,7 @@ def inspect_automation_source(files):
                     graph['unkeyed_calls'].append({'file': filenames[module], 'line': call.lineno, 'helper': helper})
         graph['unkeyed_calls'].sort(key=lambda item: (item['file'], item['line'], item['helper']))
         if graph['unkeyed_calls']:
-            graph['notes'].append('Some agent or saved-script calls have no saved-result key. Add a stable key to costly work you want to reuse after a failure, such as one key per record. Scripts still run without keys.')
+            graph['notes'].append('Some agent or saved-script calls have no visible saved-result key. Add a stable key to costly work you want to reuse after a failure, such as one key per record. Scripts still run without keys.')
 
         def literal(module, value):
             seen = set()
