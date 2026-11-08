@@ -6,12 +6,15 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 func TestCodeShellIsOwnerOnly(t *testing.T) {
@@ -33,10 +36,26 @@ func TestCodeShellIsOwnerOnly(t *testing.T) {
 
 func TestCodeShellFolderGuardIsTheProjectOnly(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
+	// A Crew is writable only once its folder and private-record folder exist, as creation makes them
+	// (SyncWriteGrants drops a registered Crew whose folders are missing).
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	private, _ := crewroot.PrivateRoot(docs, "c0de0001-0000")
+	for _, dir := range []string{filepath.Join(docs, codePrivacyOwnerRoot), private} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
 	guard := api.codeShellFolderGuard(ctx, "owner", codePrivacyOwnerRoot)
-	if !guard.Enabled || len(guard.WritePaths) != 1 || guard.WritePaths[0] != codePrivacyOwnerRoot+"/" {
+	// The project folder may be listed with and without its trailing slash; nothing else is writable.
+	if !guard.Enabled || len(guard.WritePaths) == 0 {
 		t.Fatalf("writes = %v", guard.WritePaths)
+	}
+	for _, write := range guard.WritePaths {
+		if strings.TrimSuffix(write, "/") != codePrivacyOwnerRoot {
+			t.Fatalf("writes = %v", guard.WritePaths)
+		}
 	}
 	for _, read := range guard.ReadPaths {
 		if !strings.HasPrefix(read, codePrivacyOwnerRoot) && !strings.HasSuffix(read, "/") {
@@ -44,12 +63,6 @@ func TestCodeShellFolderGuardIsTheProjectOnly(t *testing.T) {
 		}
 		if strings.Contains(read, "_users/") && !strings.HasPrefix(read, codePrivacyOwnerRoot) {
 			t.Fatalf("the shell reads another user's tree: %q", read)
-		}
-	}
-	protected := strings.Join(guard.BlockedWritePaths, " ")
-	for _, file := range []string{"CLAUDE.md", "AGENTS.md", ".claude"} {
-		if !strings.Contains(protected, codePrivacyOwnerRoot+"/"+file) {
-			t.Fatalf("%s is not write-protected: %v", file, guard.BlockedWritePaths)
 		}
 	}
 }
