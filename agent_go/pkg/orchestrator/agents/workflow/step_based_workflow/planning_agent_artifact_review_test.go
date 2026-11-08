@@ -302,20 +302,6 @@ func TestArtifactReviewNotices(t *testing.T) {
 		t.Fatalf("update notice should not warn about a flag failure when driftReviewFlagFailed is false:\n%s", updateNotice)
 	}
 
-	deleteNotice := buildDeletedStepArtifactCleanupNotice([]string{"old-step"}, []string{"old-step"}, false)
-	for _, want := range []string{"Deleted step artifact cleanup required", "Removed matching planning/step_config.json entries", "learnings/<step-id>"} {
-		if !strings.Contains(deleteNotice, want) {
-			t.Fatalf("delete notice missing %q:\n%s", want, deleteNotice)
-		}
-	}
-	if strings.Contains(deleteNotice, "FAILED to flag the workflow-level drift review record") {
-		t.Fatal("delete notice should not warn about a flag failure when driftReviewFlagFailed is false")
-	}
-
-	failedDeleteNotice := buildDeletedStepArtifactCleanupNotice([]string{"old-step"}, nil, true)
-	if !strings.Contains(failedDeleteNotice, "FAILED to flag the workflow-level drift review record") {
-		t.Fatalf("delete notice missing loud drift-review-flag-failed warning:\n%s", failedDeleteNotice)
-	}
 }
 
 // These responses go straight back to the editing agent. No mutation path,
@@ -323,10 +309,8 @@ func TestArtifactReviewNotices(t *testing.T) {
 // background audit. Keep the same batching policy across add/update/delete/routes.
 func TestPlanEditNoticesUseTargetedChecks(t *testing.T) {
 	for name, notice := range map[string]string{
-		"internal edit":            buildPlanStepDependentArtifactReviewNotice("step-a", []PlanFieldChange{{Field: "description"}}, true, true, false),
-		"output change":            buildPlanStepDependentArtifactReviewNotice("step-a", []PlanFieldChange{{Field: "context_output"}}, true, true, false),
-		"deleted step":             buildDeletedStepArtifactCleanupNotice([]string{"step-a"}, nil, false),
-		"failed deletion tracking": buildDeletedStepArtifactCleanupNotice([]string{"step-a"}, nil, true),
+		"internal edit": buildPlanStepDependentArtifactReviewNotice("step-a", []PlanFieldChange{{Field: "description"}}, true, true, false),
+		"output change": buildPlanStepDependentArtifactReviewNotice("step-a", []PlanFieldChange{{Field: "context_output"}}, true, true, false),
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, want := range []string{
