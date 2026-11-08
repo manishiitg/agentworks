@@ -26,7 +26,13 @@ func (api *StreamingAPI) handleWorkflowRun(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	args := map[string]any{}
-	if raw, readErr := io.ReadAll(io.LimitReader(r.Body, 1<<20)); readErr == nil && len(strings.TrimSpace(string(raw))) > 0 {
+	// A body that cannot be read must not become an empty run request: refuse before anything starts.
+	raw, readErr := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if readErr != nil {
+		http.Error(w, "the request body could not be read", http.StatusBadRequest)
+		return
+	}
+	if len(strings.TrimSpace(string(raw))) > 0 {
 		if json.Unmarshal(raw, &args) != nil {
 			http.Error(w, "the body must be a JSON object with optional input_preset and inputs", http.StatusBadRequest)
 			return

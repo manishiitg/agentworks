@@ -63,10 +63,10 @@ func scheduleMessagesNeedExplicitReason(messages []string) (bool, string) {
 }
 
 // Workflows run without a chat (owner, 8 Nov): a workflow schedule starts its run directly and carries no
-// messages. An agent is involved only through a Crew agent's own schedule, which can run the workflow or a step.
+// messages. An agent is involved only through a Crew agent's own schedule, which can run the workflow.
 func validateScheduleMessages(messages []string, _ string) error {
 	if len(compactScheduleMessages(messages)) > 0 {
-		return fmt.Errorf("a workflow schedule runs the workflow directly and takes no messages; to have an agent do something on a timer, schedule a message on a Crew agent, which can run this workflow or one of its steps")
+		return fmt.Errorf("a workflow schedule runs the workflow directly and takes no messages; to have an agent do something on a timer, schedule a message on a Crew agent, which can run this workflow")
 	}
 	return nil
 }
