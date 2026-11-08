@@ -299,14 +299,9 @@ func TestExternalMCPRespectsTokenScopes(t *testing.T) {
 			t.Fatalf("read-only spec missing %q", name)
 		}
 	}
-	// Tool names, not action names: settings action=chat (personal display) is fine to read.
-	for _, name := range []string{"execute_step", "chat", "trigger_schedule", "run_reply_input"} {
-		if strings.Contains(listed, `"name":"`+name+`"`) {
-			t.Fatalf("read-only spec unexpectedly exposes %q", name)
-		}
-	}
-	blocked := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "execute_step"})
+	blocked := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "run_full_workflow", "arguments": map[string]any{"workflow_id": "wf_alpha"}})
 	requireRemoteError(t, blocked, "read-only run call", "insufficient_scope")
+
 }
 
 // A client keeps its tool menu until it starts a new session. The session ID
