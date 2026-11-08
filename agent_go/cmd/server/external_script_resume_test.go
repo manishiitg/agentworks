@@ -16,7 +16,16 @@ import (
 // with the old inputs, preserve output, and refuse Run users or changed proof.
 func checkSavedScriptMCPResume(t *testing.T, api *StreamingAPI, binding crewExecutableBinding, docs string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	for _, edit := range []string{"empty", "missing"} {
+		t.Run("resume_with_"+edit+"_editable_main", func(t *testing.T) {
+			checkSavedScriptMCPResumeAfterEdit(t, api, binding, docs, edit)
+		})
+	}
+}
+
+func checkSavedScriptMCPResumeAfterEdit(t *testing.T, api *StreamingAPI, binding crewExecutableBinding, docs, edit string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	endpoint := serveExternalMCP(t, api, &UserClaims{UserID: "owner", Username: "owner"})
 	cli := dialExternalMCP(t, ctx, endpoint.URL+externalMCPPath)
@@ -62,6 +71,9 @@ func checkSavedScriptMCPResume(t *testing.T, api *StreamingAPI, binding crewExec
 					continue
 				}
 				metadata := readMeta(entry.Name())
+				if status == "completed" && metadata["status"] == "failed" && metadata["execution_id"] != previous {
+					t.Fatalf("resume failed instead of running frozen source: %v", metadata)
+				}
 				if metadata["status"] == status && metadata["execution_id"] != previous {
 					if _, err := os.Stat(filepath.Join(layout.Runtime, "runs", entry.Name(), "resume-counter.txt")); err == nil {
 						return entry.Name()
@@ -117,7 +129,15 @@ func checkSavedScriptMCPResume(t *testing.T, api *StreamingAPI, binding crewExec
 	initializeExternalMCP(t, ctx, runner)
 	denied := callRemoteTool(t, ctx, runner, "call_tool", map[string]any{"name": "runs", "arguments": map[string]any{"action": "resume", "workflow_id": binding.ID, "run_folder": folder}})
 	requireRemoteError(t, denied, "Run access cannot continue an owned run", "forbidden")
-	write("raise RuntimeError('current authored source must not run during resume')\n")
+	mainPath := filepath.Join(layout.Code, "main.py")
+	defer func() { _ = os.WriteFile(mainPath, []byte(source), 0600) }()
+	if edit == "missing" {
+		if err := os.Remove(mainPath); err != nil {
+			t.Fatal(err)
+		}
+	} else if err := os.WriteFile(mainPath, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
 	resumed := call("runs", map[string]any{"action": "resume", "workflow_id": binding.ID, "run_folder": folder})
 	if resumed["run_folder"] != folder || resumed["resume_of"] != previous || resumed["source_snapshot_hash"] != expectedSource {
 		t.Fatalf("resume lost its trusted run binding: %v", resumed)

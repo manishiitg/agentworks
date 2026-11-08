@@ -20,6 +20,10 @@ import (
 
 type pythonSavedScripts map[string]CrewScriptConfiguration
 
+func (scripts pythonSavedScripts) ResolveCrewScriptScope(ctx context.Context, workspace, id string) (CrewScriptConfiguration, error) {
+	return scripts.ResolveCrewScript(ctx, workspace, id)
+}
+
 func (scripts pythonSavedScripts) ResolveCrewScript(_ context.Context, _, id string) (CrewScriptConfiguration, error) {
 	return scripts[id], nil
 }
