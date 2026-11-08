@@ -78,6 +78,12 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   // An outline row has no execution identity. Match a single recorded label only; repeated labels stay in Runs.
   const nameOf = (name: string) => name.trim().toLowerCase()
   const byName = new Map(latestSteps.filter(step => latestSteps.filter(other => nameOf(other.name) === nameOf(step.name)).length === 1 && nodes.filter(node => !node.role && nameOf(node.label) === nameOf(step.name)).length === 1).map(step => [nameOf(step.name), step]))
+  const typeNotes = state.graph?.type_notes ?? []
+  // Saved-key guidance already has its own line, and detailed type notes have one expandable summary.
+  const advisoryNotes = (state.graph?.notes ?? []).filter(note =>
+    !(state.graph?.unkeyed_calls?.length && note.includes('saved-result key')) &&
+    !(typeNotes.length && note.startsWith('Type hints show ')),
+  )
   const note = state.graph?.errors[0]
   const count = nodes.length ? nodes.filter(node => !node.role && node.label !== 'Other code').length : latestSteps.length
   const lastAt = latestSteps.map(step => step.completed_at || step.started_at).sort().pop()
@@ -97,6 +103,13 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
       : !latestSteps.length ? <div className="flex items-center gap-3 px-4 py-3"><p className="min-w-0 flex-1 text-xs text-muted-foreground">No steps to show yet. They appear once the workflow has run, or you can read its code.</p><RowButton onClick={onCode}>View code</RowButton></div>
       : latestSteps.map((step, index) => <PageRow key={step.id} lead={<StepNumber n={index + 1} status={step.status} />} title={step.name} lines={[step.detail, checkLines.get(step.id)]} />)}
     {!!state.graph?.unkeyed_calls?.length && <p className="px-4 py-3 text-xs text-muted-foreground">{state.graph.unkeyed_calls.length} calls have no saved-result key; add one so a failed run can continue.</p>}
+    {advisoryNotes.map((message, index) => <p key={`note:${index}`} className="px-4 py-3 text-xs text-muted-foreground">{message}</p>)}
+    {typeNotes.length > 0 && <details className="px-4 py-3 text-xs text-muted-foreground">
+      <summary className="cursor-pointer">{typeNotes.length} possible type {typeNotes.length === 1 ? 'problem' : 'problems'} (the workflow still saved and runs)</summary>
+      <ul className="mt-2 space-y-2">
+        {typeNotes.map((item, index) => <li key={`${item.file}:${item.line}:${index}`}><span className="font-mono">{item.file}:{item.line}</span> · {item.message}</li>)}
+      </ul>
+    </details>}
     {note && <p className="px-4 py-3 text-xs text-muted-foreground">{nodes.length ? note : `${note} The steps above are from the latest run.`}</p>}
   </PageCard>
 }
