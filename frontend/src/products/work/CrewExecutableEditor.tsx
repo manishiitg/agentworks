@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import api, { agentApi } from '../../services/api'
 import { CrewWorkflowRuns } from './CrewWorkflowRuns'
+import { CrewScriptPlan } from './CrewScriptPlan'
 import { PageCard, RowButton } from '../../components/automation/AutomationKit'
 import type { WorkspaceViewId } from '../../components/workflow/workspaceViews'
 import type { EmbeddedWorkflowScope } from '../../components/workflow/canvas/workspaceViewData'
@@ -106,7 +107,8 @@ export function CrewExecutableEditor({
               />
             </div>
           ) : section === 'plan' && item.kind === 'script' ? (
-            <ExecutableFile workspacePath={item.workspace_path} file="main.py" crewScript onClose={() => onBack?.()} />
+            <CrewScriptPlan workspacePath={item.workspace_path} onCode={() => setFile('main.py')} onAsk={ask}
+              code={<ExecutableFile workspacePath={item.workspace_path} file="main.py" crewScript onClose={() => onBack?.()} />} />
           ) : section === 'plan' ? (
             <PageCard
               title={item.manifest.label}
