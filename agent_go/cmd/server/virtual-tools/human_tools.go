@@ -62,7 +62,7 @@ func CreateHumanTools() []llmtypes.Tool {
 
 	humanTools = append(humanTools, createSendEmailTool())
 
-	humanTools = append(humanTools, createGoogleCLITool(), createSlackMessageTool(), createSlackCLITool())
+	humanTools = append(humanTools, createGoogleCLITool(), createSlackMessageTool(), createSlackCLITool(), createGitHubTool())
 
 	return humanTools
 }
@@ -167,7 +167,7 @@ func IsHumanToolCategory(category string) bool {
 // assembled into the human_tools category. It is not a chat admission list;
 // AgentWorks product.yaml owns Builder/Run admission.
 func HumanToolImplementationNames() []string {
-	return []string{"human_feedback", "send_email", "send_slack_message", "slack", "google_workspace_cli"}
+	return []string{"human_feedback", "send_email", "send_slack_message", "slack", "google_workspace_cli", "github"}
 }
 
 // CreateHumanToolExecutors creates the execution functions for human tools
@@ -179,6 +179,7 @@ func CreateHumanToolExecutors() map[string]func(ctx context.Context, args map[st
 	executors["send_slack_message"] = handleSlackMessage
 	executors["slack"] = handleSlackCLI
 	executors["google_workspace_cli"] = handleGoogleWorkspaceCLI
+	executors["github"] = handleGitHubTool
 
 	return executors
 }

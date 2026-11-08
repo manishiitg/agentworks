@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -21,6 +22,9 @@ type botExecutionSession struct {
 	Claims  *UserClaims
 	Request QueryRequest
 }
+
+var slackMessageTSPattern = regexp.MustCompile(`^[0-9]{9,11}\.[0-9]{6}$`)
+
 type slackThreadReference struct {
 	RouteID string       `json:"route_id"`
 	Target  ChannelRoute `json:"target"`
@@ -87,6 +91,11 @@ func (api *StreamingAPI) sendSlackMessageFromTool(ctx context.Context, args map[
 	message := stringFromRequestMap(args, "message")
 	key := stringFromRequestMap(args, "idempotency_key")
 	ref := stringFromRequestMap(args, "thread_ref")
+	// PLAT-746: reply to a message read from this route's own channel history.
+	threadTS := stringFromRequestMap(args, "thread_ts")
+	if threadTS != "" && (ref != "" || !slackMessageTSPattern.MatchString(threadTS)) {
+		return "", fmt.Errorf("pass thread_ts (a message ts from this route's channel, like 1712345678.123456) or thread_ref, not both")
+	}
 	if !slackChannelIDPattern.MatchString(channel) || message == "" || utf8.RuneCountInString(message) > 3000 || key == "" || len(key) > 200 {
 		return "", fmt.Errorf("exact route_id, message (1–3000 characters), and idempotency_key (1–200 bytes) required")
 	}
@@ -117,6 +126,9 @@ func (api *StreamingAPI) sendSlackMessageFromTool(ctx context.Context, args map[
 			return "", fmt.Errorf("thread_ref belongs to another route")
 		}
 		root = record.RootTS
+	}
+	if threadTS != "" {
+		root = threadTS
 	}
 	targetID := servicesBotTargetID(route)
 	digest := sha256.Sum256([]byte(targetID + "|" + channel + "|" + key))

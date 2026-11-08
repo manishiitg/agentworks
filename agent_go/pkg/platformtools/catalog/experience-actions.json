@@ -261,6 +261,12 @@
     "external_members": "slack"
   },
   {
+    "family": "integrations",
+    "name": "github",
+    "member": "github",
+    "description": "Read and change GitHub repositories with the GitHub login this workflow or Crew already uses."
+  },
+  {
     "family": "needs_you",
     "name": "suggest",
     "member": "submit_workflow_suggestion",
