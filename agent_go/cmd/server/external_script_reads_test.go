@@ -48,7 +48,7 @@ func TestExternalScriptMCPReadsKeepSourceAndRunBoundaries(t *testing.T) {
 	for _, binding := range bindings {
 		script = binding
 	}
-	definition := map[string]any{"id": script.ID, "name": "Weekly report", "inputs": []any{map[string]any{"name": "limit", "value": "3", "type": "integer"}}, "input_presets": []any{map[string]any{"name": "weekly", "values": map[string]string{"limit": "7"}}}}
+	definition := map[string]any{"secrets": []string{"EXAMPLE_SERVICE_TOKEN"}, "id": script.ID, "name": "Weekly report", "inputs": []any{map[string]any{"name": "limit", "value": "3", "type": "integer"}}, "input_presets": []any{map[string]any{"name": "weekly", "values": map[string]string{"limit": "7"}}}}
 	raw, _ := json.Marshal(definition)
 	call("workspace", map[string]any{"action": "automation_write", "crew_id": "team", "workspace_path": script.Root, "file": "script.json", "content": string(raw)})
 	call("workspace", map[string]any{"action": "automation_write", "crew_id": "team", "workspace_path": script.Root, "file": "main.py", "content": "from agentworks import step\nraise RuntimeError('source must never execute')\n@step('Prepare report')\ndef prepare():\n    return 3\nprepare()\n"})
@@ -56,6 +56,10 @@ func TestExternalScriptMCPReadsKeepSourceAndRunBoundaries(t *testing.T) {
 		t.Helper()
 		inputs, _ := row["inputs"].([]any)
 		presets, _ := row["input_presets"].([]any)
+		names, _ := row["secrets"].([]any)
+		if len(names) != 1 || names[0] != "EXAMPLE_SERVICE_TOKEN" {
+			t.Fatalf("required secret names missing: %v", row)
+		}
 		if row["kind"] != "script" || len(inputs) != 1 || inputs[0].(map[string]any)["type"] != "integer" || len(presets) != 1 || presets[0].(map[string]any)["name"] != "weekly" {
 			t.Fatalf("missing typed script discovery: %v", row)
 		}
