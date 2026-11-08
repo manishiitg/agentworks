@@ -17,6 +17,23 @@ def hashes(path):
 
 
 class SameIdentityConversion(unittest.TestCase):
+    def test_conversion_keeps_explicit_mail_binding_but_drops_summary_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'script.json').write_text('{"id":"task","name":"Report"}')
+            (root/'main.py').write_text('print("ready")\n')
+            capabilities = {'notifications': {'gmail_connection_id':'selected-account',
+                'block_recipients':['blocked@example.com'], 'run_summary_recipients':['old@example.com'],
+                'run_summary_channels':['gmail']}}
+            payload, definition, report = m.python_payload(root, 'task', capabilities, {})
+            self.assertEqual(definition['capabilities'], {'gmail_connection_id':'selected-account',
+                'gmail_blocked_recipients':['blocked@example.com']})
+            self.assertEqual(report['carried_mail_binding'], definition['capabilities'])
+            self.assertEqual(report['removed_notification_fields'], ['run_summary_channels','run_summary_recipients'])
+            self.assertIn(b'selected-account', payload['script.json'])
+            # Inspect/conversion must not mutate the original manifest snapshot.
+            self.assertIn('gmail_connection_id', capabilities['notifications'])
+
     def test_explicit_entry_mapping_preserves_auth_timing_callers_and_unmapped_reminders(self):
         # PLAT-746-450: converting routing choices must not recreate webhooks,
         # activate held timers or rewrite their auth/caller/dependency records.

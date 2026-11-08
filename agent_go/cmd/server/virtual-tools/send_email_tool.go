@@ -110,6 +110,21 @@ func handleSendEmail(ctx context.Context, args map[string]interface{}) (string, 
 			dest.Gmail.BlockedRecipients = append([]string(nil), base.Gmail.BlockedRecipients...)
 		}
 	}
+	if dest.Gmail.Workspace != "" {
+		google := services.GetGmailService()
+		if google == nil || len(dest.Gmail.ConnectionIDs) > 1 {
+			return "", fmt.Errorf("Choose one available mail account for this workflow in Google apps.")
+		}
+		id := ""
+		if len(dest.Gmail.ConnectionIDs) == 1 {
+			id = dest.Gmail.ConnectionIDs[0]
+		}
+		connection, err := google.ConnectionForScope(id, services.GmailUseScope{Workspace: dest.Gmail.Workspace, UserID: dest.UserID})
+		if err != nil || !connection.Enabled {
+			return "", fmt.Errorf("Choose an available mail account for this workflow in Google apps; if several accounts are added, choose one sender.")
+		}
+		dest.Gmail.ConnectionIDs = []string{connection.ID}
+	}
 	addWorkflowIdentityToGmailContent(content, workflowNameFromNotificationDestination(dest))
 
 	// Gmail only: every other registered connector is excluded for this send.
