@@ -77,8 +77,8 @@ it('folds clean repositories, preserves explicit choices, and scopes them to the
 })
 
 it('keeps folding usable when browser preference storage is unavailable', async () => {
-  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Storage unavailable') })
-  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage unavailable') })
+  vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => { throw new Error('Storage unavailable') })
+  vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new Error('Storage unavailable') })
   const { header } = await mount()
   expect(header('docs').getAttribute('aria-expanded')).toBe('false')
   await act(async () => header('docs').click())
