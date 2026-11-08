@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import type { RelaySourceGraph as SourceGraph, RelaySourceNode } from '../../components/workflow/relayGraphAnnotations'
 import { PageCard, PageRow, RowButton, RunDot, relativeTime } from '../../components/automation/AutomationKit'
@@ -46,16 +46,16 @@ function OutlineRows({ nodes, byName, parent, numbered = false, open, toggle }: 
 /**
  * What a workflow does, in order: the server's outline of its steps (labelled with @step, agents and "Other code"),
  * each with how it went in the latest run. With no outline (too large, or unreadable) the steps of the latest run
- * are listed instead; with neither, `empty` is shown.
+ * are listed instead; with neither, the card still shows Run and a way to the code.
  */
-export function CrewWorkflowSteps({ workspacePath, title, latestSteps, onRun, onAsk, empty }: {
+export function CrewWorkflowSteps({ workspacePath, title, latestSteps, onRun, onCode, onAsk }: {
   workspacePath: string
   title: string
   /** The python steps of the latest run, in the order they started. */
   latestSteps: RunPythonStep[]
   onRun: () => void
+  onCode: () => void
   onAsk: (task: string) => void | Promise<void>
-  empty: ReactNode
 }) {
   const [state, setState] = useState<{ workspacePath: string; graph?: SourceGraph } | null>(null)
   const [open, setOpen] = useState<Set<string>>(new Set())
@@ -70,7 +70,6 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, onRun, on
   if (state?.workspacePath !== workspacePath) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>
   const nodes = state.graph?.nodes ?? []
   const byName = new Map(latestSteps.map(step => [step.name.trim().toLowerCase(), step]))
-  if (!nodes.length && !latestSteps.length) return <>{empty}</>
   const note = state.graph?.errors[0]
   const count = nodes.length ? nodes.filter(node => !node.role && node.label !== 'Other code').length : latestSteps.length
   const lastAt = latestSteps.map(step => step.completed_at || step.started_at).sort().pop()
@@ -79,6 +78,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, onRun, on
     action={<RowButton primary onClick={onRun}>Run</RowButton>} testId="crew-workflow-steps">
     {nodes.length
       ? <OutlineRows nodes={nodes} byName={byName} numbered open={open} toggle={toggle} />
+      : !latestSteps.length ? <div className="flex items-center gap-3 px-4 py-3"><p className="min-w-0 flex-1 text-xs text-muted-foreground">No steps to show yet. They appear once the workflow has run, or you can read its code.</p><RowButton onClick={onCode}>View code</RowButton></div>
       : latestSteps.map((step, index) => <PageRow key={step.id} lead={<StepNumber n={index + 1} status={step.status} />} title={step.name} lines={[step.detail]} />)}
     {note && <p className="px-4 py-3 text-xs text-muted-foreground">{nodes.length ? note : `${note} The steps above are from the latest run.`}</p>}
   </PageCard>

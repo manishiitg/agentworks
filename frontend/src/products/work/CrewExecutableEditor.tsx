@@ -89,8 +89,7 @@ export function CrewExecutableEditor({
           ) : (
             <div className="space-y-4">
               <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps}
-                onRun={() => void ask('Run this workflow and report the result in this chat.')} onAsk={ask}
-                empty={<CrewFileView workspacePath={item.workspace_path} file="main.py" onClose={() => onBack?.()} onAsk={ask} />} />
+                onRun={() => void ask('Run this workflow and report the result in this chat.')} onCode={() => onFile('main.py')} onAsk={ask} />
               {!!(item.inputs?.length || item.input_presets?.length) && <PageCard title="Inputs" hint="What you can change before a run." onAsk={() => ask('Help me change the inputs of this workflow.')}>
                 {item.inputs?.map(input => <PageRow key={input.name} title={input.name}
                   lines={[`${inputKind(input.type)}${input.required ? ' · required' : ''}${input.value ? ` · default “${input.value}”` : ''}`, input.description]} />)}
