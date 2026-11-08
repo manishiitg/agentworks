@@ -51,7 +51,18 @@ func webhookTestRequest(s WorkflowSchedule, body string) *http.Request {
 	return r
 }
 
+func serveWebhookReceiverInputs(t *testing.T) {
+	t.Helper()
+	// PLAT-746: delivery validates the saved input contract before calling
+	// the injected launcher, even for an otherwise opaque JSON payload.
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/test/variables/variables.json": `{}`}})
+	t.Cleanup(workspace.Close)
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+}
+
 func TestWebhookReceiverAuthenticationInputAndErrors(t *testing.T) {
+	serveWebhookReceiverInputs(t)
 	tests := []struct {
 		name, mode, body string
 		mutate           func(*http.Request, *WorkflowSchedule)
@@ -127,11 +138,15 @@ func TestWebhookReceiverAuthenticationInputAndErrors(t *testing.T) {
 			if tt.name == "busy" && w.Header().Get("Retry-After") == "" {
 				t.Fatal("missing retry guidance")
 			}
+			if tt.name == "disabled" && !strings.Contains(w.Body.String(), "disabled") {
+				t.Fatal("disabled hook did not explain why no run started")
+			}
 		})
 	}
 }
 
 func TestWebhookWithoutIdempotencyKeyStartsDistinctRuns(t *testing.T) {
+	serveWebhookReceiverInputs(t)
 	sched := webhookTestSchedule(t, "bearer")
 	runs := make(map[string]schedulerstate.Run)
 	receiver := webhookReceiver{
@@ -177,6 +192,7 @@ func TestWebhookWithoutIdempotencyKeyStartsDistinctRuns(t *testing.T) {
 }
 
 func TestWebhookDuplicateDeliverySurvivesRestartAndConcurrentRetries(t *testing.T) {
+	serveWebhookReceiverInputs(t)
 	path := filepath.Join(t.TempDir(), "state.sqlite")
 	store, err := schedulerstate.Open(path)
 	if err != nil {
