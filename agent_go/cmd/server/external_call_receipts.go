@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
@@ -71,7 +72,8 @@ func (api *StreamingAPI) externalRetryReceipt(w http.ResponseWriter, r *http.Req
 		defer lock.Unlock()
 		defer store.Close()
 		if rec.status >= 200 && rec.status < 300 {
-			_, _ = store.db.ExecContext(r.Context(), `INSERT OR IGNORE INTO external_call_receipts(identity,fingerprint,status,body) VALUES (?,?,?,?)`, identity, fingerprint, rec.status, rec.body.Bytes())
+			// The change already happened: a client that hung up must not lose its receipt, or its retry repeats the change.
+			_, _ = store.db.ExecContext(context.WithoutCancel(r.Context()), `INSERT OR IGNORE INTO external_call_receipts(identity,fingerprint,status,body) VALUES (?,?,?,?)`, identity, fingerprint, rec.status, rec.body.Bytes())
 		}
 		for k, values := range rec.header {
 			w.Header()[k] = values

@@ -508,7 +508,17 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 		if key == "action" {
 			continue
 		}
-		if _, declared := memberProps[key]; !declared && key != "request_id" {
+		if key == "request_id" {
+			// The retry key of a changing action (external_call_receipts.go). A reading action does not
+			// declare it, so it is dropped here instead of failing validation, whichever way the merged
+			// schema was built.
+			if _, declared := memberProps[key]; !declared && !member.mutates {
+				continue
+			}
+			rest[key] = value
+			continue
+		}
+		if _, declared := memberProps[key]; !declared {
 			if _, merged := mergedProps[key]; merged {
 				continue
 			}
