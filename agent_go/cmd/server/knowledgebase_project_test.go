@@ -216,6 +216,12 @@ func TestKnowledgebaseProjectBuilderAuthorityMatchesVaultIsolation(t *testing.T)
 	if !knowledgeProjectBuilderQuery(req, claims, "root", "root", false) {
 		t.Fatal("Crew owner root setup missing")
 	}
+	// PLAT-746-477: /live-input queues ordinary owner follow-ups as interactive.
+	interactive := req
+	interactive.TriggeredBy = "interactive"
+	if !knowledgeProjectBuilderQuery(interactive, claims, "root", "root", false) {
+		t.Fatal("queued interactive owner setup refused")
+	}
 	if knowledgeProjectBuilderQuery(req, claims, "root", "child", false) || knowledgeProjectBuilderQuery(req, claims, "root", "root", true) {
 		t.Fatal("child or Run setup admitted")
 	}

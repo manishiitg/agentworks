@@ -26,7 +26,7 @@ func knowledgeProjectBuilderQuery(req QueryRequest, claims *UserClaims, authorit
 	}
 	return crewProjectOwnedByCallerStrict(claims.UserID, agentProfileRuntimeWorkspace(claims.UserID, req.SelectedFolder)) &&
 		!readOnly && !req.PinRunMode && !req.AgentMessageFromOtherPerson && authoritySession == toolSession && req.BotPlatform == "" &&
-		(req.TriggeredBy == "" || req.TriggeredBy == "external") && claims.ExecutionPrincipal == nil &&
+		(req.TriggeredBy == "" || req.TriggeredBy == "external" || req.TriggeredBy == "interactive") && claims.ExecutionPrincipal == nil &&
 		knowledgebaseConnectionAllowsAction(claims, knowledgebase.ToolAccess, map[string]any{"action": "set_project_access"})
 }
 
