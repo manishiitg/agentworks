@@ -1,6 +1,7 @@
 package step_based_workflow
 
 import (
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"strings"
 	"testing"
 )
@@ -50,9 +51,6 @@ func TestSavedInputPrecedenceAndNoAutomaticSelection(t *testing.T) {
 	if _, err := ResolveWorkflowInputs(manifest, "", map[string]string{"typo": "x"}); err == nil {
 		t.Fatal("unknown input accepted")
 	}
-	if err := ValidatePlainWorkflowInput("API_KEY", "credential"); err == nil {
-		t.Fatal("credential accepted as a plain saved input")
-	}
 	if _, err := ResolveSelectedInputPreset(manifest, []string{"Saved", "Other"}); err == nil {
 		t.Fatal("preset selection became a batch")
 	}
@@ -94,6 +92,43 @@ func TestWorkflowTypedInputsAndRequiredAdmission(t *testing.T) {
 		field := Variable{Name: "private", Type: "object", Schema: map[string]interface{}{"$ref": ref}}
 		if _, err := WorkflowInputProperty(field); err == nil {
 			t.Fatal("external schema reference admitted")
+		}
+	}
+}
+
+// PLAT-746: descriptive names are data; selected Vault names remain reserved.
+func TestRunInputsCannotImpersonateSelectedVaultBindings(t *testing.T) {
+	c := newAgentFactoryTestOrchestrator(t)
+	c.SetSecrets([]orchestrator.SecretEntry{{Name: "DB_URL", Value: "synthetic-secret"}})
+	if err := c.validateInputSecretBindings(map[string]string{"RDS_SECRET_ID_DEV": "example/dev/app", "PASSWORD_POLICY": "strong"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.validateInputSecretBindings(map[string]string{"innocent_name": "synthetic-secret"}); err == nil || strings.Contains(err.Error(), "synthetic-secret") {
+		t.Fatalf("selected Vault value reached an input or error: %v", err)
+	}
+	for _, name := range []string{"DB_URL", "SECRET_DB_URL"} {
+		err := c.validateInputSecretBindings(map[string]string{name: "ordinary text"})
+		if err == nil || !strings.Contains(err.Error(), name) || strings.Contains(err.Error(), "synthetic-secret") {
+			t.Fatalf("Vault binding rule missing for %s: %v", name, err)
+		}
+	}
+}
+
+// The run snapshot is the same typed argument object Python receives.
+func TestScriptRunInputRecordKeepsTypesAndRefusesUndeclaredNames(t *testing.T) {
+	c := newAgentFactoryTestOrchestrator(t)
+	c.directCrewScript = &CrewScriptDefinition{Inputs: []Variable{{Name: "enabled", Type: "boolean"}, {Name: "rate", Type: "number"}, {Name: "identifier", Type: "string"}}}
+	values, err := c.decodeRunInputSnapshot(`{"enabled":false,"rate":5,"identifier":"example/dev/app"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	typed, err := typedWorkflowInputs(c.directCrewScript.InputDefinitions(), values)
+	if err != nil || typed["enabled"] != false || values["rate"] != "5" {
+		t.Fatalf("typed script record changed: %v %v", typed, err)
+	}
+	for _, raw := range []string{`{"enabled":"false","rate":5}`, `{"enabled":false,"rate":"five"}`, `{"enabled":false,"unknown":5}`, `{"identifier":null}`} {
+		if _, err := c.decodeRunInputSnapshot(raw); err == nil {
+			t.Fatalf("invalid script record accepted: %s", raw)
 		}
 	}
 }

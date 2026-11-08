@@ -174,17 +174,15 @@ func validateWebhookVariableNames(ctx context.Context, workspace string, names [
 	if selected := manifest.Capabilities.SelectedGlobalSecretNames; selected != nil {
 		for _, v := range *selected {
 			blocked[vaultSecretShortName(v)] = true
+			blocked["SECRET_"+vaultSecretShortName(v)] = true
 		}
-	}
-	for _, v := range getGlobalSecrets() {
-		blocked[v.Name] = true
 	}
 	for _, name := range names {
-		if !regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`).MatchString(name) || !declared[name] || blocked[name] {
-			return fmt.Errorf("input %q is undeclared or protected", name)
+		if blocked[name] {
+			return fmt.Errorf("input %q clashes with a selected Vault secret; rename the input or use its Vault binding", name)
 		}
-		if err := validateWorkflowExposedInput(name); err != nil {
-			return err
+		if !regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`).MatchString(name) || !declared[name] {
+			return fmt.Errorf("input %q is undeclared or protected", name)
 		}
 	}
 

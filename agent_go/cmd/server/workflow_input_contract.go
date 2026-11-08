@@ -48,9 +48,6 @@ func workflowCallerInputSchema(definitions *VariablesManifest, names []string, p
 		if !ok {
 			return nil, fmt.Errorf("input %q no longer exists; update the selected input names", name)
 		}
-		if err := validateWorkflowExposedInput(name); err != nil {
-			return nil, err
-		}
 		if _, fixedValue := fixed[name]; fixedValue {
 			continue
 		}
@@ -88,24 +85,6 @@ func workflowCallerInputSchema(definitions *VariablesManifest, names []string, p
 		return nil, err
 	}
 	return schema, nil
-}
-
-func validateWorkflowExposedInput(name string) error {
-	upper := strings.ToUpper(name)
-	if slices.Contains([]string{"PATH", "HOME", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "NODE_OPTIONS", "BASH_ENV", "ENV", "SHELL"}, upper) {
-		return fmt.Errorf("input %q is protected", name)
-	}
-	for _, part := range []string{"SECRET", "TOKEN", "PASSWORD", "API_KEY", "CREDENTIAL", "AUTH_", "AGENTWORKS_", "WORKFLOW_", "GOG_"} {
-		if strings.Contains(upper, part) {
-			return fmt.Errorf("input %q is protected; use Vault", name)
-		}
-	}
-	for _, secret := range getGlobalSecrets() {
-		if secret.Name == name {
-			return fmt.Errorf("input %q is a Vault binding and cannot be exposed", name)
-		}
-	}
-	return nil
 }
 
 func init() { workflow.ValidateWorkflowInputReferences = validateWorkflowInputReferences }

@@ -477,22 +477,27 @@ func (s *SchedulerService) listWorkflowWebhooks(w http.ResponseWriter, r *http.R
 	steps, _ := workflowWebhookSteps(r.Context(), path)
 	presets := []string{}
 	variableNames := []string{}
-	content, exists, err := readFileFromWorkspace(r.Context(), path+"/variables/variables.json")
-	if err == nil && exists {
-		var vars VariablesManifest
-		if json.Unmarshal([]byte(content), &vars) == nil {
-			for _, v := range vars.Variables {
-				variableNames = append(variableNames, v.Name)
-			}
-			if manifest.Kind != "relay" {
-				for _, g := range vars.Groups {
-					presets = append(presets, g.Name)
-				}
+	definitions, err := readWorkflowInputDefinitions(r.Context(), path)
+	inputs := []map[string]interface{}{}
+	if err == nil && definitions != nil {
+		for _, v := range definitions.Variables {
+			variableNames = append(variableNames, v.Name)
+			inputs = append(inputs, map[string]interface{}{"name": v.Name, "type": stepworkflow.WorkflowInputType(v), "description": v.Description, "required": v.Required})
+		}
+		if manifest.Kind != "relay" {
+			for _, preset := range definitions.Groups {
+				presets = append(presets, preset.Name)
 			}
 		}
 	}
+	if manifest.crewExecutable != nil && manifest.crewExecutable.Kind == "script" {
+		routes = []webhookRouteOption{}
+		steps = []webhookStepOption{}
+		routeError = ""
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{"triggers": hooks, "routes": routes, "input_presets": presets, "declared_variables": variableNames, "route_error": routeError, "steps": steps}
+	response := map[string]interface{}{"triggers": hooks, "routes": routes, "input_presets": presets, "declared_variables": variableNames, "inputs": inputs, "route_error": routeError, "steps": steps}
 	level := workflowAccessForManifest(GetUserFromContext(r.Context()), manifest)
 	if level == WorkflowAccessOwner || level == WorkflowAccessWrite {
 		response["chat_choices"] = crewExecutableChatChoices(manifest)
@@ -963,9 +968,6 @@ func (receiver webhookReceiver) dispatchInternal(ctx context.Context, workspaceP
 		}
 		config := WorkflowWebhookConfig{InputMode: "envelope"}
 		for _, input := range definitions.Variables {
-			if err := validateWorkflowExposedInput(input.Name); err != nil {
-				return internalTriggerDeliveryResult{}, err
-			}
 			config.AllowedVariables = append(config.AllowedVariables, input.Name)
 		}
 		deliverySchedule.Webhook = &config

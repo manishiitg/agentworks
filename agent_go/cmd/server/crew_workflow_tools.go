@@ -48,11 +48,15 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 	caller := func(ctx context.Context) (triggerCaller, error) {
 		return crewWorkflowRunCaller(ctx, workspacePath)
 	}
-	attached := func(ctx context.Context, target string) (*WorkflowManifest, error) {
-		if isExternalCrewDirectCall(ctx) && !api.externalCrewReferenceAllowed(ctx, GetUserFromContext(ctx), target, false) {
-			return nil, fmt.Errorf("attached workflow is outside current access or connection consent")
+	attached := func(ctx context.Context, target string) (string, *WorkflowManifest, error) {
+		root, manifest, err := crewAttachedWorkflowManifest(ctx, workspacePath, target)
+		if err != nil {
+			return "", nil, err
 		}
-		return crewAttachedWorkflowManifest(ctx, workspacePath, target)
+		if isExternalCrewDirectCall(ctx) && !api.externalCrewReferenceAllowed(ctx, GetUserFromContext(ctx), root, false) {
+			return "", nil, fmt.Errorf("attached workflow is outside current access or connection consent")
+		}
+		return root, manifest, nil
 	}
 
 	if err := register("list_workflow_triggers", "List the triggers of one workflow you own or edit, with their IDs, names, enabled state, and kind. Pass its id from list_agents (workflow:<id>) or its workspace_path; Never reveals trigger secrets.", map[string]interface{}{
@@ -62,7 +66,8 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
 		target, _ := args["workspace_path"].(string)
-		if _, err := attached(ctx, target); err != nil {
+		target, _, err := attached(ctx, target)
+		if err != nil {
 			return "", err
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/workflow-webhooks?workspace_path="+url.QueryEscape(strings.TrimSuffix(strings.TrimSpace(target), "/")), nil)
@@ -95,7 +100,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 			return "", err
 		}
 		target, _ := args["workspace_path"].(string)
-		manifest, err := attached(ctx, target)
+		target, manifest, err := attached(ctx, target)
 		if err != nil {
 			return "", err
 		}
@@ -106,7 +111,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 			if err != nil {
 				return "", err
 			}
-			manifest, err = attached(ctx, target)
+			target, manifest, err = attached(ctx, target)
 			if err != nil {
 				return "", err
 			}
@@ -186,7 +191,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 			return "", err
 		}
 		target, _ := args["workspace_path"].(string)
-		manifest, err := attached(ctx, target)
+		target, manifest, err := attached(ctx, target)
 		if err != nil {
 			return "", err
 		}
@@ -226,9 +231,10 @@ func crewWorkflowRunCaller(ctx context.Context, crewWorkspacePath string) (trigg
 // by workspace_path or by its list_agents id (workflow:<id>). No attachment is needed (PLAT-861-297); running the
 // whole workflow through an internal trigger is the workflow's own plumbing, so it stays with its owner and editors,
 // while anyone it is shared with calls its functions with project_functions_call. The manifest must still exist.
-func crewAttachedWorkflowManifest(ctx context.Context, _ string, target string) (*WorkflowManifest, error) {
+func crewAttachedWorkflowManifest(ctx context.Context, _ string, target string) (string, *WorkflowManifest, error) {
 	path := strings.TrimSuffix(strings.TrimSpace(target), "/")
-	if id, ok := strings.CutPrefix(path, "workflow:"); ok {
+	if !strings.Contains(path, "/") {
+		id := strings.TrimPrefix(path, "workflow:")
 		path = ""
 		if discovered, err := DiscoverWorkflowManifests(ctx); err == nil {
 			for _, workflow := range discovered {
@@ -240,16 +246,16 @@ func crewAttachedWorkflowManifest(ctx context.Context, _ string, target string) 
 		}
 	}
 	if path == "" {
-		return nil, fmt.Errorf("workspace_path is required: pass the workflow's id from list_agents")
+		return "", nil, fmt.Errorf("workspace_path is required: pass the workflow's id from list_agents")
 	}
 	if level, _ := workflowAccessForWorkspacePath(ctx, GetUserFromContext(ctx), path); level != WorkflowAccessOwner && level != WorkflowAccessWrite {
-		return nil, fmt.Errorf("workflow %q runs as a whole only for its owner and editors; call one of its functions instead (list_agents)", path)
+		return "", nil, fmt.Errorf("workflow %q runs as a whole only for its owner and editors; call one of its functions instead (list_agents)", path)
 	}
 	manifest, exists, err := ReadWorkflowManifest(ctx, path)
 	if err != nil || !exists || manifest == nil {
-		return nil, fmt.Errorf("workflow %q is unavailable", path)
+		return "", nil, fmt.Errorf("workflow %q is unavailable", path)
 	}
-	return manifest, nil
+	return path, manifest, nil
 }
 
 // crewWorkflowTriggerBinding reuses this Crew's internal binding on the
@@ -336,9 +342,6 @@ func workflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspacePat
 		}
 		sched.Webhook.InputMode = "envelope"
 		for _, input := range definitions.Variables {
-			if err := validateWorkflowExposedInput(input.Name); err != nil {
-				return "", false, err
-			}
 			sched.Webhook.AllowedVariables = append(sched.Webhook.AllowedVariables, input.Name)
 		}
 	}

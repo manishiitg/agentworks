@@ -92,6 +92,7 @@ type pythonAgentArguments struct {
 	Skills         []string `json:"skills"`
 	Tools          []string `json:"tools"`
 	Browser        bool     `json:"browser"`
+	Knowledge      string   `json:"knowledge"`
 	CanAskPerson   bool     `json:"can_ask_person"`
 	TimeoutSeconds *float64 `json:"timeout_seconds"`
 	ConversationID string   `json:"conversation_id"`
@@ -148,7 +149,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		if saved.WorkspacePath != hcpo.GetWorkspacePath() || saved.RunFolder != hcpo.selectedRunFolder || saved.ParentStepID != parent.GetID() || saved.StepID != args.ConversationID {
 			return nil, nil, fmt.Errorf("This conversation does not belong to this script and run.")
 		}
-		if args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || len(args.Tools) > 0 && !reflect.DeepEqual(args.Tools, saved.Settings.Tools) || args.Browser && !saved.Settings.Browser || args.CanAskPerson && !saved.Settings.CanAskPerson {
+		if args.Knowledge != "" && args.Knowledge != saved.Settings.Knowledge || args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || len(args.Tools) > 0 && !reflect.DeepEqual(args.Tools, saved.Settings.Tools) || args.Browser && !saved.Settings.Browser || args.CanAskPerson && !saved.Settings.CanAskPerson {
 			return nil, nil, fmt.Errorf("A continued conversation keeps its original model, tier and resource selections. Start a fresh agent to change them.")
 		}
 	} else {
@@ -191,6 +192,18 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		}
 		saved.Config.ExecutionLLM = &AgentLLMConfig{Provider: resolved.Primary.Provider, ModelID: resolved.Primary.ModelID, ConnectionID: resolved.Primary.ConnectionID, Options: resolved.Primary.Options}
 	}
+	if saved.Settings.Knowledge == "" {
+		saved.Settings.Knowledge = "read"
+	}
+	switch saved.Settings.Knowledge {
+	case "read":
+		saved.Config.KnowledgebaseAccess = KBAccessRead
+	case "write":
+		saved.Config.KnowledgebaseAccess = KBAccessReadWrite
+	default:
+		return nil, nil, fmt.Errorf("Choose knowledge=read or knowledge=write for this agent.")
+	}
+
 	selection := &pythonAgentSelection{Servers: append([]string{}, saved.Settings.MCP...), Browser: saved.Settings.Browser}
 	saved.Config.EnabledCustomTools = []string{"workspace_advanced:*"}
 	if saved.Settings.CanAskPerson {
@@ -372,7 +385,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	defer func() { log.Close(); reply.LogComplete, reply.LogError = log.Error() == "", log.Error() }()
 	step := &AgentPlanStep{Type: StepTypeAgent, CommonStepFields: CommonStepFields{ID: saved.StepID, Title: saved.Name, Description: saved.FirstMessage}, AgentConfigs: &saved.Config}
 	runRoot := filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder))
-	read, write := hcpo.setupAgentFolderGuard(saved.StepID, saved.StepID, &saved.Config, AgentWriteAccess{DB: true})
+	read, write := hcpo.setupAgentFolderGuard(saved.StepID, saved.StepID, &saved.Config, AgentWriteAccess{DB: true, Knowledgebase: saved.Settings.Knowledge == "write"})
 	write = append(write, hcpo.GetWorkspacePath()+"/.sandbox-cache")
 	// A native continuation retains its original private cwd and owner session.
 	// Derive the runtime identity only from this validated, server-owned
@@ -411,7 +424,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		}
 		return made, nil
 	}, TurnVars: func(item AgentItem, message string, opening bool) map[string]string {
-		vars := hcpo.buildAgentTemplateVars(agentCtx, step, item, 0, saved.StepID, message, read, write, AgentWriteAccess{DB: true})
+		vars := hcpo.buildAgentTemplateVars(agentCtx, step, item, 0, saved.StepID, message, read, write, AgentWriteAccess{DB: true, Knowledgebase: saved.Settings.Knowledge == "write"})
 		vars["WorkspacePath"], vars["StepExecutionPath"] = workflowAbsPath(runRoot), workflowAbsPath(runRoot)
 		vars["BaseDescription"] = message
 		return vars

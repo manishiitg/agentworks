@@ -228,9 +228,6 @@ func workflowFunctionArgs(sched WorkflowSchedule, args map[string]interface{}) (
 		if len(value) > 16384 {
 			return nil, "", fmt.Errorf("input %q exceeds 16 KiB", name)
 		}
-		if err := stepworkflow.ValidatePlainWorkflowInput(name, value); err != nil {
-			return nil, "", err
-		}
 		values[name] = value
 	}
 	return values, "", nil

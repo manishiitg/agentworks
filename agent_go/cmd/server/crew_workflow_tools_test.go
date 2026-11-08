@@ -18,6 +18,7 @@ func newCrewWorkflowRunTestEnv(t *testing.T) (map[string]recordedTool, *mockWork
 	t.Helper()
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"reader","username":"reader","can_create":false}]}`)
 	// Keep the manifest and caller ID equal to the server registry identity.
 	registerTestCrew(t, "project-a", "owner", true)
@@ -156,7 +157,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	tools, mock, api := newCrewWorkflowRunTestEnv(t)
 	_ = tools
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	manifest, err := crewAttachedWorkflowManifest(ctx, crewWorkflowTestCrewPath, "Workflow/test")
+	_, manifest, err := crewAttachedWorkflowManifest(ctx, crewWorkflowTestCrewPath, "Workflow/test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	mock.files["Workflow/plain/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"work","title":"Work","description":"Work"}]}`
 	mock.files["Workflow/plain/variables/variables.json"] = `{"variables":[],"presets":[]}`
 	mock.files[crewWorkflowTestCrewPath+"/workflow.json"] = `{"schema_version":1,"product":"work","id":"crew-project-a","workflow_context_paths":["Workflow/test","Workflow/plain"]}`
-	createdManifest, err := crewAttachedWorkflowManifest(ctx, crewWorkflowTestCrewPath, "Workflow/plain")
+	_, createdManifest, err := crewAttachedWorkflowManifest(ctx, crewWorkflowTestCrewPath, "Workflow/plain")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +301,7 @@ func TestGetWorkflowTriggerRunPollsStore(t *testing.T) {
 	defer store.Close()
 	api.scheduler.stateStore = store
 	ctx := context.Background()
-	manifest, err := crewAttachedWorkflowManifest(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner"}), crewWorkflowTestCrewPath, "Workflow/test")
+	_, manifest, err := crewAttachedWorkflowManifest(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner"}), crewWorkflowTestCrewPath, "Workflow/test")
 	if err != nil {
 		t.Fatal(err)
 	}

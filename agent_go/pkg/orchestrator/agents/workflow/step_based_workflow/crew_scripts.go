@@ -157,6 +157,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) crewScriptParameters(ctx context.Cont
 	if err := ValidateWorkflowLaunchInputs(definitions, values); err != nil {
 		return nil, err
 	}
+	if err := hcpo.validateInputSecretBindings(values); err != nil {
+		return nil, err
+	}
+	return typedWorkflowInputs(definitions, values)
+}
+
+// The same declared contract produces Python values and the run's input evidence.
+func typedWorkflowInputs(definitions *VariablesManifest, values map[string]string) (map[string]interface{}, error) {
 	typed := map[string]interface{}{}
 	for _, input := range definitions.Variables {
 		value := values[input.Name]
@@ -336,10 +344,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveStepInputValues(ctx context.Co
 				}
 			}
 		}
-		encoded, _ := json.Marshal(value)
-		if err := ValidatePlainWorkflowInput(name, string(encoded)); err != nil {
-			return nil, err
-		}
 		resolved[name] = value
 	}
 	return resolved, nil
@@ -368,9 +372,6 @@ func validateStepInputBindings(bindings map[string]ScriptInputBinding, dependenc
 		}
 		if sources != 1 || binding.Field != "" && binding.Output == "" {
 			return fmt.Errorf("input %q needs exactly one fixed value, workflow input or earlier output", name)
-		}
-		if err := ValidatePlainWorkflowInput(name, string(binding.Value)); err != nil {
-			return err
 		}
 	}
 	return nil
