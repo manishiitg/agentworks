@@ -656,4 +656,7 @@ func seedArchivedPlanWithMissingDependency(t *testing.T, docs, root string) {
 	if err := os.WriteFile(path, []byte(`{"steps":[{"type":"scripted","id":"archived-step","title":"Archived step","description":"Archived plan","context_dependencies":["retired-source.csv"]}]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(path), "step_config.json"), []byte(`{"steps":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 }
