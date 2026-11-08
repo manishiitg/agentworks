@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
@@ -84,6 +85,41 @@ func TestPythonHelpersRepeatCallsAndReuseOnlyResumedOccurrences(t *testing.T) {
 	source := `import json, os
 from pathlib import Path
 from agentworks import check, notify, run_folder, step, call_function, function_status, FunctionResult
+if os.environ['VAR_PHASE'] == 'apps':
+    from agentworks import google, slack, github, AutomationError
+    assert google.sheets.read('sheet', 'A1:B2') == ['fixture', {'value': 3}]
+    assert google.sheets.write('sheet', 'A1:B2', [['company', 3]])['args'][1] == 'update'
+    assert google.sheets.append('sheet', 'A1:B2', [['company', 3]])['args'][1] == 'append'
+    assert google.gmail.search('newer_than:1d', max=4)['args'][3:5] == ['--max', '4']
+    assert google.calendar.list('2026-01-01', '2026-01-02')['args'][1] == 'events'
+    created = google.calendar.create('Review', '2026-01-01', '2026-01-02', attendees=('member@example.com',))
+    assert created['args'][-4:] == ['--attendees', 'member@example.com', '--json', '--results-only']
+    document = google.drive.read('document')
+    assert document.parent == run_folder and document.read_text() == 'Document text'
+    assert google.sheets.read('empty', 'A1') is None
+    assert google.sheets.read('large', 'A1') == 'λ' * 6000
+    for sheet, reason in [('huge', 'smaller'), ('invalid', 'unreadable'), ('denied', 'fixture app refused')]:
+        try: google.sheets.read(sheet, 'A1')
+        except AutomationError as error: assert reason in str(error), str(error)
+        else: raise AssertionError('unusable app result was accepted')
+    assert github.files('example/project')['action'] == 'files'
+    assert github.read('example/project', 'README.md') == 'Repository text'
+    assert github.issues('example/project')['state'] == 'open'
+    assert github.create_issue('example/project', 'Review')['action'] == 'issue_create'
+    assert github.comment('example/project', 2, 'Done')['number'] == 2
+    assert github.prs('example/project', state='closed')['state'] == 'closed'
+    assert github.create_pr('example/project', 'topic', 'main', 'Change')['action'] == 'pr_create'
+    assert github.diff('example/project', 2) == 'diff text'
+    assert slack.read('route', since_ts='1.000001', limit=3)['parameters'] == {'oldest':'1.000001','limit':3}
+    assert slack.send('route', 'Progress')['message'] == 'Progress'
+    assert slack.reply('route', '1.000001', 'Reply')['thread_ts'] == '1.000001'
+    raise SystemExit(0)
+if os.environ['VAR_PHASE'] == 'unavailable-app':
+    from agentworks import google, AutomationError
+    try: google.sheets.read('sheet', 'A1')
+    except AutomationError as error: assert 'unavailable' in str(error), str(error)
+    else: raise AssertionError('unavailable app borrowed an executor outside its tool pool')
+    raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'evidence':
     @step('Evidence')
     def evidence():
@@ -157,6 +193,58 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	c.SetWorkspacePath(root)
 	c.selectedRunFolder = "run-one"
 	c.WorkspaceClient = workspace.NewClient(files.URL)
+	c.WorkspaceTools = virtualtools.CreateHumanTools()
+	appCalls := 0
+	c.WorkspaceToolExecutors = map[string]interface{}{}
+	for _, name := range []string{"google_workspace_cli", "github", "slack", "send_slack_message"} {
+		c.WorkspaceToolExecutors[name] = func(ctx context.Context, args map[string]interface{}) (string, error) {
+			appCalls++
+			// PLAT-746-466: the HTTP caller cannot choose a different app scope.
+			if name != "send_slack_message" { // existing standalone sender path is unchanged
+				session, _ := ctx.Value(common.ChatSessionIDKey).(string)
+				owningRoot, err := common.GoogleWorkspaceFromContext(ctx)
+				if err != nil || owningRoot != root || !strings.HasPrefix(session, "script-step-task-") {
+					return "", fmt.Errorf("app lost server-bound owning scope: %q %v", owningRoot, err)
+				}
+			}
+			if name == "google_workspace_cli" {
+				var command []string
+				raw, _ := json.Marshal(args["args"])
+				if err := json.Unmarshal(raw, &command); err != nil || len(command) < 3 {
+					return "", fmt.Errorf("invalid Google command")
+				}
+				switch command[2] {
+				case "denied":
+					return "", fmt.Errorf("fixture app refused")
+				case "huge":
+					return "{}\n...[truncated]", nil
+				case "invalid":
+					return "not JSON", nil
+				case "empty":
+					return "(no output)", nil
+				case "large":
+					raw, _ := json.Marshal(strings.Repeat("λ", 6000))
+					return string(raw), nil
+				case "document":
+					return "Document text", nil
+				}
+				if command[1] == "get" {
+					return `["fixture",{"value":3}]`, nil
+				}
+			}
+			if name == "github" && args["action"] == "read" {
+				return "Repository text", nil
+			}
+			if name == "github" && args["action"] == "pr_diff" {
+				return "diff text", nil
+			}
+			if name == "send_slack_message" && args["idempotency_key"] == nil {
+				return "", fmt.Errorf("missing existing tracked-send key")
+			}
+			raw, err := json.Marshal(args)
+			return string(raw), err
+		}
+	}
 	recorder := &helperCheckRecorder{}
 	c.SetWorkshopExecutionNotifier(recorder)
 	notifications := &helperNotificationRecorder{}
@@ -320,6 +408,15 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	run(true, false, "functions")
 	if functionCalls != 2 || statusReads != 2 {
 		t.Fatalf("function work repeated or status read cached: calls=%d reads=%d", functionCalls, statusReads)
+	}
+	run(false, false, "apps")
+	beforeAppCalls := appCalls
+	// An executor present in a different/global registry is not admission.
+	// Keep its function in the map but remove the owning tool definitions.
+	c.WorkspaceTools = nil
+	run(false, false, "unavailable-app")
+	if appCalls != beforeAppCalls {
+		t.Fatal("unavailable app executed despite the owning pool's refusal")
 	}
 	if err := os.Remove(filepath.Join(docs, root, "runs/run-one/helpers/presentation.json")); err != nil {
 		t.Fatal(err)
