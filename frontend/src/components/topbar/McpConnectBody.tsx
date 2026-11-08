@@ -36,10 +36,9 @@ export default function McpConnectBody({ codeReview, onNavigate }: { codeReview:
           if you no longer want it to have that access.</p>
       </div>
       <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">Builder authoring access</p>
-        <p className="mt-1">Existing connections approved for Builder chat can also edit workflow plans directly,
-          without a model turn. Current owner, editor and team rules, connection limits, native validation, revisions
-          and the plan changelog apply. Revoke a connection here if you no longer want it to have that access.</p>
+        <p className="font-medium text-foreground">Workflow authoring access</p>
+        <p className="mt-1">Connections with workflow authoring permission can change saved source, inputs and settings
+          without a model turn. Current Crew ownership, connection limits and source validation apply. Revoke a connection here if you no longer want it to have that access.</p>
       </div>
       </div></details></div>
     </div>
