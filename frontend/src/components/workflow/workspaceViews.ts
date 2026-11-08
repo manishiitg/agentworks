@@ -10,7 +10,6 @@ import {
   Target,
   LayoutDashboard,
   Monitor,
-  Route,
   Server,
   ShieldCheck,
   Webhook,
@@ -29,23 +28,20 @@ import {
  * fails to compile.
  *
  * `kind` is what the host and layout switch on:
- *   - `canvas`     the Python Relay source view (`flow`).
  *   - `preview`    the report preview (`report`) -- no React Flow tree.
  *   - `files`      the file browser.
  *   - `inspector`  a full-pane inspector (costs, logs, ...).
  *   - `capability` a section of `WorkflowCapabilitiesPanel`.
  *
- * `flow` and `report` are the two "canvas views": the store's
- * `workflowWorkspaceView` being null means "show the last canvas view the
- * user was on" (`lastCanvasView`), which is how the default builder
- * workspace works. Old persisted ids (`builder`, `log`, `soul`, `plan`) are
+ * The report is the preview canvas. A null `workflowWorkspaceView` uses
+ * `lastCanvasView` as the ordinary workspace fallback. Old persisted ids (`builder`, `log`, `soul`, `plan`) are
  * remapped by `normalizeWorkspaceViewId` and never exist as views.
  *
  * `pane` says whether opening the view means the workspace pane is showing
  * content (every kind except `files`, which the layout treats as the default
  * workspace rather than an open pane).
  */
-export type WorkspaceViewKind = 'canvas' | 'preview' | 'files' | 'inspector' | 'capability'
+export type WorkspaceViewKind = 'preview' | 'files' | 'inspector' | 'capability'
 
 export type WorkspaceViewDef = {
   id: string
@@ -66,7 +62,6 @@ const VIEWS = [
   { id: 'context', kind: 'inspector', label: 'Project menu', icon: Settings2, pane: true },
   // -- canvas / preview (dispatched by WorkspaceViewHost) ------------------
   { id: 'report', kind: 'preview', label: 'Dashboard', icon: LayoutDashboard, toolbarGroup: 'views', pane: true },
-  { id: 'flow', kind: 'canvas', label: 'Flow', icon: Route, toolbarGroup: 'views', pane: true },
   // -- inspectors (toolbar "views" cluster, in button order) ---------------
   { id: 'costs', kind: 'inspector', label: 'Costs and usage', icon: DollarSign, toolbarGroup: 'views', pane: true },
   { id: 'execution-logs', kind: 'inspector', label: 'Run logs', icon: FileText, toolbarGroup: 'views', pane: true },
@@ -103,15 +98,8 @@ export type WorkspaceView = WorkspaceViewDef & { id: WorkspaceViewId }
 
 export const WORKSPACE_VIEWS: readonly WorkspaceView[] = VIEWS
 
-/** Flow panels preserve the existing Relay inventory; Context only summarizes it. */
-export const RELAY_WORKSPACE_VIEWS = new Set<WorkspaceViewId>([
-  'context', 'flow', 'report', 'workshop', 'costs', 'execution-logs', 'files', 'identity', 'mcp', 'access',
-])
-
-export function workflowContextViews(relayMode: boolean, isMultiUser: boolean) {
-  return WORKSPACE_VIEWS.filter(view => view.id !== 'context'
-    && (view.id !== 'access' || isMultiUser)
-    && (relayMode ? RELAY_WORKSPACE_VIEWS.has(view.id) : view.id !== 'flow'))
+export function workflowContextViews(isMultiUser: boolean) {
+  return WORKSPACE_VIEWS.filter(view => view.id !== 'context' && (view.id !== 'access' || isMultiUser))
 }
 
 type ViewOfKind<K extends WorkspaceViewKind> = Extract<typeof VIEWS[number], { kind: K }>['id']
@@ -119,18 +107,12 @@ type ViewOfKind<K extends WorkspaceViewKind> = Extract<typeof VIEWS[number], { k
 export type InspectorViewId = ViewOfKind<'inspector'> | ViewOfKind<'capability'>
 export type CapabilityViewId = ViewOfKind<'capability'>
 export type PreviewViewId = ViewOfKind<'preview'>
-/** The two views that render in the canvas slot (Flow and Dashboard); the store
- * remembers the last one opened as the fallback for "no explicit view". */
-export type CanvasViewId = ViewOfKind<'canvas'> | ViewOfKind<'preview'>
+/** The preview remembered as the fallback for no explicit workspace view. */
+export type CanvasViewId = ViewOfKind<'preview'>
 
 const VIEW_BY_ID: ReadonlyMap<string, WorkspaceView> = new Map(
   WORKSPACE_VIEWS.map(view => [view.id, view] as const),
 )
-
-/** Parent layout and pane content must resolve the same published destination. */
-export function resolveWorkspaceView(view: WorkspaceViewId, pythonRelay: boolean): WorkspaceViewId {
-  return view === 'flow' && !pythonRelay ? 'report' : view
-}
 
 export function getWorkspaceView(id: WorkspaceViewId): WorkspaceView {
   return VIEW_BY_ID.get(id)!
@@ -155,7 +137,7 @@ export function isPreviewView(id: WorkspaceViewId | null | undefined): id is Pre
 export function isCanvasView(id: unknown): id is CanvasViewId {
   if (typeof id !== 'string') return false
   const kind = VIEW_BY_ID.get(id)?.kind
-  return kind === 'canvas' || kind === 'preview'
+  return kind === 'preview'
 }
 
 /** True when the view means the workspace pane is showing something other

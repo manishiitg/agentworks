@@ -25,7 +25,7 @@ export type ReportFrameOptions = {
 // Keep the encoded document below Chromium's practical navigation URL limit.
 const MAX_DOCUMENT_BYTES = 1_500_000
 const DOCUMENT_TOO_LARGE = 'This page is too large to open (1.5 MB limit). Ask its designer to load large data separately, then publish it again.'
-const methods = ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'openFile', 'updateField', 'updateFields', 'run', 'sendChatMessage', 'uploadFile', 'getCosts', 'getRelayRuns'] as const
+const methods = ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'openFile', 'updateField', 'updateFields', 'run', 'sendChatMessage', 'uploadFile', 'getCosts'] as const
 
 /** Authenticated services stay here; the authored document receives values and named operations only. */
 export class OpaqueReportFrame {

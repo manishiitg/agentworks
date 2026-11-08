@@ -1,4 +1,3 @@
-import type { RelaySourceGraph } from '../components/workflow/relayGraphAnnotations'
 import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 
@@ -51,23 +50,6 @@ export interface APITriggerOptions {
   route_error?: string
 }
 
-export interface RelayRelease {
-  error?: string
-  version: string
-  workspace_path: string
-  hash: string
-  published_at: string
-  functions: string[]
-  output_step_id: string
-  file_count: number
-}
-
-export interface RelayReleasesResponse {
-  active_error?: string
-  active_version: string
-  releases: RelayRelease[]
-}
-
 export type APITriggerRequest = Pick<WorkflowAPITrigger, 'name' | 'enabled' | 'auth_mode' | 'route_selections' | 'input_preset' | 'inputs'> & {
   workspace_path: string
   chat_id?: string
@@ -82,8 +64,6 @@ function config() {
 }
 
 export const workflowWebhooksApi = {
-  relayGraph: (relayID: string, source: string) => axios.post<RelaySourceGraph>(`/api/relays/${encodeURIComponent(relayID)}/graph`, { source }, config()).then(r => r.data),
-  relayReleases: (relayID: string) => axios.get<RelayReleasesResponse>(`/api/relays/${encodeURIComponent(relayID)}/releases`, config()).then(r => r.data),
   list: (workspacePath: string) => axios.get<APITriggerOptions>('/api/workflow-webhooks', {
     ...config(), params: { workspace_path: workspacePath },
   }).then(r => r.data),

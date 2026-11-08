@@ -17,7 +17,6 @@ export interface WorkflowCanvasProps {
   scope?: EmbeddedWorkflowScope
   workspacePath: string | null
   presetQueryId: string | null
-  relayMode?: boolean
   currentPhase?: string
   onStartPhase?: (phaseId: string, executionOptions?: ExecutionOptions) => void
   onCreatePlan?: () => void
