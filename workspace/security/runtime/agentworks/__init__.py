@@ -12,7 +12,9 @@ Typed saved-script example::
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import wraps
 import inspect
 import json
 import os
@@ -23,7 +25,7 @@ from typing import Any, Mapping, Sequence, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "agent", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue"]
+__all__ = ["AutomationError", "Reply", "agent", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step"]
 
 
 
@@ -93,7 +95,7 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request) as response:
+        with urllib.request.urlopen(request, timeout=3 if action == "step" else None) as response:
             envelope = json.load(response)
     except (urllib.error.URLError, OSError, ValueError) as error:
         raise AutomationError("Helper delivery is uncertain. Check this run before trying again.") from error
@@ -166,6 +168,62 @@ def run_script(script_id: str, inputs: Mapping[str, JSONValue], *,
         return ScriptResult(ok=False, error=str(error))
 
 
+def _source_site(frame) -> str:
+    return f"{Path(frame.f_code.co_filename).name}:{frame.f_lineno}" if frame else "unknown:0"
+
+
+@contextmanager
+def _step_activity(title: str, function, site: str):
+    identity = f"{Path(function.__code__.co_filename).name}:{function.__name__}@{site}"
+    try:
+        started = _call("step", {"phase": "start", "title": title, "source_call": identity}, None, True)
+    except Exception:
+        started = Reply(ok=False)
+    failure = ""
+    try:
+        yield
+    except BaseException as error:
+        failure = f"{type(error).__name__}: {error}"
+        raise
+    finally:
+        if started.ok:
+            try:
+                _call("step", {"phase": "finish", "execution_id": started.conversation_id,
+                               "ok": not failure, "error": failure}, None, True)
+            except Exception:
+                pass  # Activity delivery never changes the function's result.
+
+
+def step(title: str):
+    """Label an ordinary Python function in Plan and Runs; never cache or retry it.
+
+    Every call runs normally, including repeated calls. Arguments and returned
+    values are not recorded. Existing run activity receives completion/errors;
+    an exception still reaches the calling Python unchanged.
+    """
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError("step needs a non-empty label")
+    def decorate(function):
+        if inspect.iscoroutinefunction(function):
+            @wraps(function)
+            async def asynchronous(*args, **kwargs):
+                frame = inspect.currentframe()
+                site = _source_site(frame.f_back if frame else None)
+                del frame
+                with _step_activity(title, function, site):
+                    return await function(*args, **kwargs)
+            return asynchronous
+        @wraps(function)
+        def synchronous(*args, **kwargs):
+            frame = inspect.currentframe()
+            site = _source_site(frame.f_back if frame else None)
+            del frame
+            with _step_activity(title, function, site):
+                return function(*args, **kwargs)
+        return synchronous
+    return decorate
+
+
 def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
           tier: str | None = None, scripts: Sequence[str] = (),
           mcp: Sequence[str] = (), skills: Sequence[str] = (),
@@ -192,6 +250,9 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     platform received, including available streamed text and tool records;
     log_complete does not claim uncaptured operating-system output.
     """
+    frame = inspect.currentframe()
+    source_call = "agent@" + _source_site(frame.f_back if frame else None)
+    del frame
     messages = [message] if isinstance(message, str) else list(message)
     if not name.strip() or not messages or any(not isinstance(item, str) or not item.strip() for item in messages):
         raise ValueError("agent needs a name and at least one non-empty message")
@@ -200,6 +261,6 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
                      "tier": tier, "scripts": list(scripts), "mcp": list(mcp),
                      "skills": list(skills), "browser": browser,
                      "can_ask_person": can_ask_person, "timeout_seconds": timeout_seconds,
-                     "conversation_id": conversation_id}, key, redo)
+                     "conversation_id": conversation_id, "source_call": source_call}, key, redo)
     except AutomationError as error:
         return Reply(ok=False, error=str(error))

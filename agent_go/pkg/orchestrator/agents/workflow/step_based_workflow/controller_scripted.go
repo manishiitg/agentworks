@@ -517,6 +517,7 @@ print('[preflight] Python bundle syntax, top-level imports and configuration OK'
 // its group session. Give each invocation its own registry so parallel helpers
 // cannot replace one another's access or leave broader tools on a cached group.
 func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx context.Context, step PlanStepInterface, guard *workspace.FolderGuardConfig, dbAccess string, env map[string]string, codeDir, outputDir string) func() {
+	ctx, finishActivities := context.WithCancel(ctx)
 	sessionID := fmt.Sprintf("script-step-%s-%d", step.GetID(), time.Now().UnixNano())
 	if hcpo.httpSessionID != "" {
 		mcpagent.RegisterHTTPSession(hcpo.httpSessionID, sessionID)
@@ -558,6 +559,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 	configureWorkshopToolAgentBridgeSession(sessionID)
 	hcpo.GetLogger().Info(fmt.Sprintf("[SCRIPT_BRIDGE] Registered step tools session=%s step=%s db_access=%s tools=%d", sessionID, step.GetID(), dbAccess, len(bridgeTools)))
 	return func() {
+		finishActivities()
 		codeexec.CleanupSession(sessionID)
 		common.ClearSessionShellConfig(sessionID)
 		mcpagent.CloseSession(sessionID)

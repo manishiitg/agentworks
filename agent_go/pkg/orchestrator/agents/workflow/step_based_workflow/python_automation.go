@@ -14,9 +14,12 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/coding-agent-loop/workspace/runlog"
 	"github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
+
+type pythonSourceCallKey struct{}
 
 type pythonHelperReply struct {
 	OK             bool        `json:"ok"`
@@ -61,6 +64,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 	var sourceHash string
 	var fingerprintError error
 	var locks sync.Map
+	var activities sync.Map // Only this script invocation may finish its started activities.
 	resume := hcpo.executionOptions != nil && hcpo.executionOptions.AllowRunContinuation && hcpo.executionOptions.ResumeFromStep > 0
 
 	return func(request context.Context, args map[string]interface{}) (string, error) {
@@ -88,7 +92,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		order, _ := args["order"].(float64)
 		arguments, _ := args["arguments"].(map[string]interface{})
 		redo, _ := args["redo"].(bool)
-		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script" && action != "agent") {
+		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script" && action != "agent" && action != "step") {
 			return encode(pythonHelperReply{Error: "Invalid Python helper request; use the installed agentworks package."})
 		}
 		slot := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d", label, int64(order))))
@@ -191,10 +195,60 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				mutex.(*sync.Mutex).Lock()
 				defer mutex.(*sync.Mutex).Unlock()
 			}
+			if source, _ := arguments["source_call"].(string); source != "" {
+				ctx = context.WithValue(ctx, pythonSourceCallKey{}, pythonHelperPreview(source))
+			}
 			call.Reply = hcpo.runPythonAgent(ctx, step, arguments, id)
 		case "run_script":
 			childCtx := context.WithValue(ctx, pythonScriptStackKey{}, stack)
 			call.Reply = hcpo.runPythonSavedScript(childCtx, step, child, arguments, id)
+		case "step":
+			phase, _ := arguments["phase"].(string)
+			if phase == "start" {
+				title, _ := arguments["title"].(string)
+				source, _ := arguments["source_call"].(string)
+				if strings.TrimSpace(title) == "" || source == "" {
+					call.Reply.Error = "A step needs its label and source call."
+					break
+				}
+				title = pythonHelperPreview(redaction.Text(title))
+				metadata := map[string]string{"source_call": pythonHelperPreview(source), "inspection_kind": "python_step", "run_folder": hcpo.selectedRunFolder, "log_file": log.Path()}
+				notifier := hcpo.workshopExecutionNotifier
+				var once sync.Once
+				finish := func(detail string, failure error) {
+					once.Do(func() {
+						activities.Delete(id)
+						if notifier != nil {
+							notifier.OnExecutionComplete(id, title, detail, metadata, failure)
+						}
+					})
+				}
+				if notifier != nil {
+					notifier.OnExecutionStart(WorkshopExecutionStart{ID: id, ParentExecutionID: currentWorkshopParentExecutionID(ctx), Name: title, Kind: "workflow_step", Metadata: metadata})
+				}
+				activities.Store(id, finish)
+				context.AfterFunc(parent, func() { finish("Python execution ended before this step completed.", parent.Err()) })
+				call.Reply.OK, call.Reply.ConversationID = true, id
+			} else if phase == "finish" {
+				execution, _ := arguments["execution_id"].(string)
+				done, found := activities.LoadAndDelete(execution)
+				ok, valid := arguments["ok"].(bool)
+				if !found || !valid {
+					call.Reply.Error = "This script has no matching active step."
+					break
+				}
+				detail, _ := arguments["error"].(string)
+				detail = pythonHelperPreview(redaction.Text(detail))
+				var failure error
+				if !ok {
+					failure = errors.New(detail)
+				}
+				done.(func(string, error))(detail, failure)
+				call.Reply.OK = true
+			} else {
+				call.Reply.Error = "Choose a step start or completion."
+			}
+
 		case "check":
 			name, _ := arguments["name"].(string)
 			ok, valid := arguments["ok"].(bool)
