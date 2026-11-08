@@ -1812,7 +1812,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if err != nil {
 			return "", err
 		}
-		if !isCaller(call, caller) {
+		if !isCaller(call, caller) || call.UserID != userID {
 			return "", fmt.Errorf("only the caller of function call %s can ask for an update", call.ID)
 		}
 		if call.TargetKind != triggerCallerCrew {
