@@ -70,6 +70,9 @@ type agentSequenceRuntime struct {
 	Agent     agents.OrchestratorAgent
 	SessionID string
 	Provider  string
+	// Python conversations resume across calls. Closing their processes must
+	// not delete the private CLI home containing the native transcript.
+	PreserveWorkspace bool
 }
 
 type agentSequenceEntry struct {
@@ -1261,6 +1264,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) getAgentRuntime(ctx context.Context, 
 			// The helper owns its dedicated runtime. Per-turn shell metadata
 			// must follow that identity, never the empty parent-delegate key.
 			session.runtime.SessionID = agent.GetConfig().MCPSessionID
+			session.runtime.PreserveWorkspace = true
 		}
 		return session.runtime, ctx, nil
 	}
@@ -1379,7 +1383,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) closeAgentRuntime(session *agentSeque
 	virtualtools.DeleteSessionNotificationDestination(runtime.SessionID)
 	// Agent.Close preserves MCP connections between turns. At true sequence
 	// termination, retire that registry and its isolated workspace as well.
-	mcpagent.CloseSession(runtime.SessionID)
+	if runtime.PreserveWorkspace {
+		mcpagent.GetSessionRegistry().CloseSession(runtime.SessionID)
+	} else {
+		mcpagent.CloseSession(runtime.SessionID)
+	}
 	// Give back this sequence's tab in the workflow's shared browser. When it
 	// was the browser's only user, the page is handed to the next step.
 	browser.ReleaseSessionTabOwner(runtime.SessionID, browser.NewClient(getWorkspaceAPIURL()))

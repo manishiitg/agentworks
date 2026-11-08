@@ -162,6 +162,11 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     pass reply.conversation_id; omitted settings retain its original selections.
     browser uses this automation's connected browser. can_ask_person allows
     questions that wait for a person's answer; both are off by default.
+    Browser calls share the workflow's existing browser session and profile,
+    including its configured operator Chrome connection. timeout_seconds=None
+    adds no helper timer beyond the parent deadline. Each person question uses
+    the existing five-minute default, at most thirty minutes. Its timeout is
+    returned to the agent; Python can decide on another call after the reply.
     text is a bounded preview. log_file contains the provider transcript the
     platform received, including available streamed text and tool records;
     log_complete does not claim uncaptured operating-system output.

@@ -314,7 +314,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	// call closes its live runtime before returning; restore current guards and
 	// resource selection when rebuilding the same conversation's next call.
 	toolsSession := "python-runtime-" + saved.StepID
-	hcpo.closeAgentRuntime(&agentSequenceSession{runtime: &agentSequenceRuntime{SessionID: toolsSession, Provider: saved.Config.ExecutionLLM.Provider}}, "rebuilding the saved Python agent conversation")
+	hcpo.pythonHelperLimitsMu.Lock()
+	if hcpo.pythonAgentSessions == nil {
+		hcpo.pythonAgentSessions = map[string]struct{}{}
+	}
+	hcpo.pythonAgentSessions[toolsSession] = struct{}{}
+	hcpo.pythonHelperLimitsMu.Unlock()
+	hcpo.closeAgentRuntime(&agentSequenceSession{runtime: &agentSequenceRuntime{SessionID: toolsSession, Provider: saved.Config.ExecutionLLM.Provider, PreserveWorkspace: true}}, "rebuilding the saved Python agent conversation")
 	mcpagent.ClearSessionsStopped([]string{toolsSession})
 	agentCtx := context.WithValue(ctx, pythonAgentSelectionKey{}, selection)
 	agentCtx = context.WithValue(agentCtx, agentSequenceFolderGuardOverrideKey{}, &agentSequenceFolderGuardOverride{ReadPaths: read, WritePaths: write, OutputPath: runRoot})
@@ -324,7 +330,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	defer func() { finish(reply.Text, failure) }()
 	var runtime agents.OrchestratorAgent
 	// Own cleanup before factory setup can allocate a tool session.
-	cleanup := &agentSequenceSession{runtime: &agentSequenceRuntime{SessionID: toolsSession}}
+	cleanup := &agentSequenceSession{runtime: &agentSequenceRuntime{SessionID: toolsSession, PreserveWorkspace: true}}
 	defer func() { hcpo.closeAgentRuntime(cleanup, "Python agent call finished") }()
 	saved.Session.delegation = &agentSequenceDelegation{ReadPaths: read, WritePaths: write, CreateAgent: func(turnCtx context.Context) (agents.OrchestratorAgent, error) {
 		made, err := hcpo.createExecutionOnlyAgent(turnCtx, "execution_only", saved.StepID, saved.Name, &saved.Config, step, saved.StepID, "")
@@ -386,4 +392,19 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	}
 	reply.OK = true
 	return reply
+}
+
+// Called by the existing run finalizer, never between helper calls or while
+// waiting for capacity. Only these server-generated, run-owned sessions retire.
+func (hcpo *StepBasedWorkflowOrchestrator) finishPythonAgentSessions(status string) {
+	if status != "completed" && status != "failed" {
+		return
+	}
+	hcpo.pythonHelperLimitsMu.Lock()
+	sessions := hcpo.pythonAgentSessions
+	hcpo.pythonAgentSessions = nil
+	hcpo.pythonHelperLimitsMu.Unlock()
+	for session := range sessions {
+		mcpagent.CloseSession(session)
+	}
 }

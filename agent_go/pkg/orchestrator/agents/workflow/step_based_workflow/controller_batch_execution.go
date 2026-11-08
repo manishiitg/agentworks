@@ -49,6 +49,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runResolvedExecution(ctx context.Cont
 		}
 	} else {
 		hcpo.finalizeRunMetadata(ctx, folder, status, started, time.Now())
+		hcpo.finishPythonAgentSessions(status)
 	}
 	if flushErr := hcpo.waitForTokenPersistence(); flushErr != nil {
 		hcpo.GetLogger().Warn(fmt.Sprintf("Run finished, but cost persistence did not: %v", flushErr))
