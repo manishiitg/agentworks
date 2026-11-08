@@ -125,6 +125,12 @@ if os.environ['VAR_PHASE'] == 'unavailable-app':
     except AutomationError as error: assert 'unavailable' in str(error), str(error)
     else: raise AssertionError('unavailable app borrowed an executor outside its tool pool')
     raise SystemExit(0)
+if os.environ['VAR_PHASE'] == 'slow-step':
+    @step('Delayed receipt')
+    def normal():
+        return 42
+    assert normal() == 42
+    raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'evidence':
     @step('Evidence')
     def evidence():
@@ -288,6 +294,19 @@ assert first.log_complete and second.log_complete and passed.log_complete
 			// A missing session-scoped executor is an actual handler failure.
 			tool = "unregistered_fixture_handler"
 		}
+		if args["action"] == "step" && arguments["phase"] == "start" && arguments["title"] == "Delayed receipt" {
+			// PLAT-746: the step has been durably started, but a slow response
+			// exceeds the old SDK-only 3s timer. The Python work still succeeds.
+			reply := httptest.NewRecorder()
+			executorHandlers.HandlePerToolCustomRequest(reply, r, tool)
+			time.Sleep(3500 * time.Millisecond)
+			for key, values := range reply.Header() {
+				w.Header()[key] = values
+			}
+			w.WriteHeader(reply.Code)
+			_, _ = w.Write(reply.Body.Bytes())
+			return
+		}
 		executorHandlers.HandlePerToolCustomRequest(w, r, tool)
 	}))
 	defer bridge.Close()
@@ -329,6 +348,8 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	}
 	run := func(resume, redo bool, phase string) {
 		t.Helper()
+		ctx, endInvocation := context.WithCancel(ctx)
+		defer endInvocation()
 		c.SetExecutionOptions(&ExecutionOptions{AllowRunContinuation: resume, AgentFunctionTools: factory, CrewResources: &CrewResources{Scripts: notifications}})
 		if resume {
 			c.executionOptions.ResumeFromStep = 1
@@ -434,6 +455,35 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	run(false, false, "evidence")
 	if len(notifications.texts) != beforeEvidenceNotices+1 {
 		t.Fatal("evidence notification did not reach the real chat target adapter")
+	}
+
+	run(false, false, "slow-step")
+	// A successful script must not acquire a failed/running step simply
+	// because the already-accepted start response took more than three seconds.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		data, _ := os.ReadFile(filepath.Join(docs, root, "runs/run-one/run_metadata.json"))
+		var record struct {
+			Steps map[string]PythonStepEvidence `json:"python_steps"`
+		}
+		_ = json.Unmarshal(data, &record)
+		settled := false
+		for _, item := range record.Steps {
+			if item.Name == "Delayed receipt" {
+				if item.Status == "completed" {
+					settled = true
+				} else if item.Status == "failed" || time.Now().After(deadline) {
+					t.Fatalf("successful Python acquired a false failed/incomplete step after delayed start receipt: %+v", item)
+				}
+			}
+		}
+		if settled {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("successful delayed step has no completed record")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	metadata, err := os.ReadFile(filepath.Join(docs, root, "runs/run-one/run_metadata.json"))
