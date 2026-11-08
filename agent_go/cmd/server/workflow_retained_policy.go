@@ -69,8 +69,7 @@ func (api *StreamingAPI) workflowRetainedCompatibility(ctx context.Context, sess
 	if found && manifest.Kind == "relay" {
 		workflowKind = "relay"
 	}
-	key := api.chatPolicySessionKey(resolveWorkflowChatPolicy(session, req, active, readOnlyForRequest(access, req)), workflowKind) +
-		api.workflowChatLaptopPolicyKey(validated, req, readOnlyForRequest(access, req))
+	key := api.chatPolicySessionKey(resolveWorkflowChatPolicy(session, req, active, readOnlyForRequest(access, req)), workflowKind)
 	api.conversationMux.RLock()
 	previous, known := api.lastChatPolicyBySession[session]
 	api.conversationMux.RUnlock()
