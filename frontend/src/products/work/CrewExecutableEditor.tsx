@@ -55,10 +55,11 @@ export function CrewExecutableEditor({
   useEffect(() => { if (runs.run) void workspace.refresh() }, [runs.run, workspace.refresh])
   const folders = workspace.state?.run_folders ?? []
   // The steps of the latest run, in the order they started: the dots on the Steps page.
-  const latestSteps = useMemo<RunPythonStep[]>(() => {
+  const latestRun = useMemo(() => {
     const latest = [...folders].filter(folder => folder.metadata?.python_steps).sort((a, b) => (b.metadata?.created_at ?? '').localeCompare(a.metadata?.created_at ?? ''))[0]
-    return Object.values(latest?.metadata?.python_steps ?? {}).sort((a, b) => a.started_at.localeCompare(b.started_at))
+    return latest
   }, [folders])
+  const latestSteps: RunPythonStep[] = Object.values(latestRun?.metadata?.python_steps ?? {}).sort((a, b) => a.started_at.localeCompare(b.started_at))
   useLiveRefetch(
     () => {
       void workspace.refresh()
@@ -107,7 +108,7 @@ export function CrewExecutableEditor({
             </PageCard>
           ) : (
             <div className="space-y-4">
-              <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps}
+              <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []}
                 onRun={() => void run()} runBusy={starting} onCode={() => onFile('main.py')} onAsk={ask} />
               {!!(item.inputs?.length || item.input_presets?.length) && <PageCard title="Inputs" hint="What you can change before a run." onAsk={() => ask('Help me change the inputs of this workflow.')}>
                 {item.inputs?.map(input => <PageRow key={input.name} title={input.name}
