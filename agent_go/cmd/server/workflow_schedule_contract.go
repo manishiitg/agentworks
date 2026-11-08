@@ -62,9 +62,12 @@ func scheduleMessagesNeedExplicitReason(messages []string) (bool, string) {
 	return false, ""
 }
 
-// Scheduled messages are the person's own instructions, just like a chat turn.
-// PLAT-871-15 removes the extra reason/approval requirement for that action.
-func validateScheduleMessages(messages []string, directMessagesReason string) error {
+// Workflows run without a chat (owner, 8 Nov): a workflow schedule starts its run directly and carries no
+// messages. An agent is involved only through a Crew agent's own schedule, which can run the workflow or a step.
+func validateScheduleMessages(messages []string, _ string) error {
+	if len(compactScheduleMessages(messages)) > 0 {
+		return fmt.Errorf("a workflow schedule runs the workflow directly and takes no messages; to have an agent do something on a timer, schedule a message on a Crew agent, which can run this workflow or one of its steps")
+	}
 	return nil
 }
 
