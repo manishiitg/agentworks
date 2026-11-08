@@ -528,7 +528,16 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 	if parent := common.GetSessionShellConfig(hcpo.GetMCPSessionID()); parent != nil {
 		hcpo.bindWorkshopBrowserSession(sessionID, parent.BrowserSessionID)
 	}
-	_, executors := hcpo.prepareOrchestratorCustomTools(stepConfigWithDescribedHumanTools(getAgentConfigs(step), step), dbAccess)
+	bridgeConfig := stepConfigWithDescribedHumanTools(getAgentConfigs(step), step)
+	if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil && len(saved.crewScript.ToolSelections) > 0 {
+		var copy AgentConfigs
+		if bridgeConfig != nil {
+			copy = *bridgeConfig
+		}
+		copy.EnabledCustomTools = append(append([]string{}, copy.EnabledCustomTools...), saved.crewScript.ToolSelections...)
+		bridgeConfig = &copy
+	}
+	_, executors := hcpo.prepareOrchestratorCustomTools(bridgeConfig, dbAccess)
 	bridgeTools := make(map[string]func(context.Context, map[string]interface{}) (string, error), len(executors))
 	allow := make(map[string]bool, len(executors))
 	for name, executor := range executors {

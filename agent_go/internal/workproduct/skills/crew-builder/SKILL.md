@@ -81,11 +81,10 @@ create one. Existing published dashboards can be shared directly.
 
 Read `panel-dashboard` before building or changing a dashboard.
 
-Automations contains one workflow with optional routes and reusable scripts;
-Goals tracks desired outcomes. Configure them in chat; use their screens to
-inspect steps, runs and progress. Use the offered editing and run tools. Optional examples are in
-`panel-plan` at `references/crew-plan/SKILL.md`; no prerequisite guide is needed
-for a validated edit. Keep purpose and instructions separate from executable work.
+Automations holds the Crew's workflows. A new workflow is a Python script: read
+the `python-workflows` skill before creating or changing one. Older plan-based
+workflows are edited with `panel-plan` at `references/crew-plan/SKILL.md` until
+they are converted. Use their screens to inspect steps, runs and progress. Keep purpose and instructions separate from executable work.
 Platform upgrades are not extra Crew panels. Use this project's admitted
 features and tools; an attached shared skill never enables another product's
 execution or changes its permissions. Brain access is Off, Read or Read & write

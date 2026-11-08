@@ -1,8 +1,10 @@
-# Crew automation examples
+# Editing an existing plan-based workflow
+
+New workflows are Python scripts: use the `python-workflows` skill. This guide only covers workflows created before that, until they are converted.
 
 The tool schemas are authoritative; these examples are optional. Use `crew_workflow_files action=list` for exact workspace identities and this Crew's available agents.
 
-Each Crew has one workflow. Use routes for different tasks within that plan, not another workflow. Configure steps, inputs, step settings and goals in Crew chat; the screens show the plan, progress and run evidence.
+Configure steps, inputs, step settings and goals in Crew chat; the screens show the plan, progress and run evidence.
 
 ## Change a step without replacing the plan
 
@@ -22,26 +24,13 @@ Agent steps have one initial task (`description`), optional ordered follow-ups o
 
 Use `crew_workflow_files action=describe` with `operation=manage_schedules` or `operation=manage_webhooks`, then `action=edit` with the same operation, child `workspace_path` and its arguments. List first and preserve existing IDs and paused state. These operate on the workflow shown under Automations, not another Crew. For functions, use `functions` with `project` set to the child's exact workspace path; define its saved run action and named inputs. All entries deliver to their saved Crew chat.
 
-## Reuse Python
+## Python
 
-Create with `kind=script`; read/write its `script.json` and `main.py`. It runs Python directly, without an AI turn or a second plan. Code edits apply next run; previous runs retain their executed source and resolved inputs. Chat calls and workflow steps use this same runner. Read bundled files from `SCRIPT_SOURCE_DIR`; write results to `STEP_OUTPUT_DIR`. `STEP_EXECUTION_DIR` identifies the current execution. Each invocation has its own permanent run folder; explicit shared destinations are still shared.
+Scripts and Python workflows are covered by the `python-workflows` skill: `script.json`, `main.py`, the `agentworks` helpers, the database and checks.
 
-Read saved-script arguments from `agentworks.inputs` (the typed `STEP_PARAMS_JSON` object); `VAR_*` holds workflow environment values, not per-child argument exports.
+A plan step can still call a saved script with `script: "<id>"` and `script_inputs`. Each input selects one source: `{"value":7}`, `{"input":"count"}`, or `{"output":"prior.json","field":"nested.count"}`. Prior outputs must be declared dependencies from this run.
 
-Scripts inherit the Crew's model, browser and app selections. To choose a different connected browser for a script, read its `script.json` and use the existing write action to set `capabilities.browser_mode` (`headless`, `extension`, `none`, or local `cdp` when offered by this installation), preserving its other fields. Same-ID conversion copies settings from the original workflow, including selected secret names and provider references; it never copies secret values.
-
-Python scripts use the Crew's one managed database through `agentworks_db`. Use `execute` or `transaction` for rows and additive setup (`CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`). Chat uses `database action=mutate`. ALTER and DROP are refused. Existing `db/migrations/` files remain history and are not executed.
-
-Replacing an existing workflow needs the approved same-ID conversion so its code, data and complete database stay attached. A separate copy is a trial, not a migration. Agent replies have bounded `text`; check task/status text with `reply.answer_file.read_text()` after `reply.ok`, and use `log_file` for the received provider transcript. When an agent's output fails your check, send that check error once to the same agent with `agent(name, error_text, conversation_id=reply.conversation_id)` and check again; if it still fails, fail the run plainly with the reason. There is no automatic repair loop.
-
-
-Script receipts include `log_file`, `log_error` and `log_complete`. Read bounded parts of that file for full output beyond the inline reply limit. Native Claude/Codex shell commands use their own tool history and do not return this platform log receipt.
-
-A workflow scripted step can reference `script: "<id>"` and `script_inputs`. Each input selects one source: `{"value":7}`, `{"input":"count"}`, or `{"output":"prior.json","field":"nested.count"}`. Prior outputs must be declared dependencies from this run. Do not copy the script's schema or code into the workflow. Cross-Crew reuse uses a shared function.
-
-For Python workflows, use ordinary functions and modules in the code bundle rather than a saved child script for each step. Label a function with `from agentworks import step` and `@step("Prepare report")`; it runs normally on every call, with no caching or retry. Copy the old scripted step's title as its label, without a separate description. Call `agent("Research", TASK)` for agent work: its name and existing task text supply the Plan label and description. Prefer a string literal or module-level task constant so the Plan can show it; dynamic text is shown as built at run time. Normal Python branches and loops stay normal code. `run_script` is for genuinely reusable saved scripts. Labels record run activity, never arguments or return values.
-
-Carry an old step's named app tools into `agent(..., tools=["human_tools:integrations.google"])`; only tools available to this automation can be selected. Workflow agents never wait for a person. Use `notify()` for progress in Crew chat; use the agentworks email and Slack send helpers (they go through `messages action=email_send` and `messages action=slack_send` checks) only for explicit external delivery. The existing account and recipient/route rules apply. For another Crew's published action use `call_function(crew, name, inputs)`: it returns a typed receipt with `call_id`, `status`, `value` and `log_file`. A running receipt is not a final answer; refresh it with `function_status(call_id)`. The Crew must be linked and the function must admit the calling Crew. The existing service checks input and result types.
+Replacing an existing workflow needs the approved same-ID conversion so its code, data and complete database stay attached. A separate copy is a trial, not a migration.
 
 ## Run and verify
 

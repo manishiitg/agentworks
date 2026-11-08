@@ -2375,8 +2375,37 @@ export interface RunMetadataModels {
   temp_override_2?: RunMetadataLLM;
 }
 
+/** One @step or agent call a Python run recorded in its own metadata (so a run still lists its steps when no inspection rows exist). */
+export interface RunPythonStep {
+  execution_id: string;
+  id: string;
+  name: string;
+  source_call?: string;
+  started_at: string;
+  completed_at?: string;
+  duration_ms?: number;
+  status: string; // "running", "completed", "failed"
+  detail?: string;
+  log_note?: string;
+}
+
+/** A check() or notify() a Python run recorded in its own metadata (the latest 200). */
+export interface RunPythonEvidence {
+  id: string;
+  kind: 'check' | 'notify';
+  at: string;
+  name?: string;
+  ok?: boolean;
+  detail: string;
+  source_call?: string;
+}
+
 export interface RunMetadata {
   created_at: string;
+  /** The attempt that produced this run folder. */
+  execution_id?: string;
+  python_steps?: Record<string, RunPythonStep>;
+  python_evidence?: RunPythonEvidence[];
   started_at?: string;
   completed_at?: string;
   duration_ms?: number;

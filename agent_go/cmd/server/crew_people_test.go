@@ -25,6 +25,7 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 		`{"id":"anita","username":"anita","email":"anita@example.com","role":"editor","products":["work"]}`,
 		`{"id":"newbie","username":"newbie","email":"newbie@example.com","role":"editor","products":["work"]}`,
 		`{"id":"outsider","username":"outsider","email":"outsider@example.com","role":"editor","products":["work"]}`,
+		`{"id":"joiner","username":"joiner","email":"joiner@example.com","role":"editor","products":["work"]}`,
 	}, ",")+`]}`)
 	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}); err != nil {
 		t.Fatal(err)
@@ -87,6 +88,25 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 	change("member", "newbie", "works", func() bool { return teamHas("newbie") })
 	if p := listed("owner", "newbie"); p == nil || p["invited"] != true || p["line"] != "Will get files, agents and dashboards when they accept." || p["level_label"] != "Works with me" {
 		t.Fatalf("the invited person's line: %v", p)
+	}
+	// PLAT-746-463: the invited person sees and accepts the invite over MCP, with no dashboard involved.
+	change("owner", "joiner", "works", func() bool { return teamHas("joiner") })
+	own := func(args map[string]any) map[string]any {
+		t.Helper()
+		w := httptest.NewRecorder()
+		f.api.externalCrewTeamSyncCall(w, adminRequest(http.MethodPost, "/api/external/v1/call", "", &UserClaims{UserID: "joiner", Username: "joiner"}, nil), args)
+		var out map[string]any
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
+			t.Fatalf("%v: %d %s", args, w.Code, w.Body)
+		}
+		return out
+	}
+	if invites := fmt.Sprint(own(map[string]any{"action": "invites"})["invites"]); !strings.Contains(invites, "team") {
+		t.Fatalf("the open invite is not listed: %s", invites)
+	}
+	own(map[string]any{"action": "accept", "crew_id": "team"})
+	if team, err := readCrewTeam("team"); err != nil || !team.member("joiner") {
+		t.Fatalf("accepting over MCP did not make a member: %v", err)
 	}
 	// Open to everyone (how the fixture's Crew starts): nobody needs dashboards only, and nothing is saved.
 	if code, out := level("owner", "anita", "dashboards", true); code != 200 || out["changed"] != false || !strings.Contains(out["note"].(string), "open to everyone") || shareHas("anita") {

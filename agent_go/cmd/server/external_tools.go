@@ -327,20 +327,6 @@ func externalTools() ([]externalTool, error) {
 		}
 		externalDatabaseDefinitions(add)
 		externalMessagingDefinitions(add)
-		creatorSchema := workflowCreatorToolSchema()
-		// Normalize Go slices to JSON values for the schema compiler.
-		creatorJSON, err := json.Marshal(creatorSchema)
-		if err != nil {
-			externalCatalogErr = err
-			return
-		}
-		var creatorInput map[string]any
-		if err := json.Unmarshal(creatorJSON, &creatorInput); err != nil {
-			externalCatalogErr = err
-			return
-		}
-		creatorInput["additionalProperties"] = false
-		defined = append(defined, externalTool{Name: "create_workflow", Description: externalWorkflowCreatorDescription, InputSchema: creatorInput, mutates: true})
 		externalRelayDefinitions(add)
 		// Dispatch validates against the full external surface; discovery narrows
 		// it per connection and live action/Owner/admin checks still authorize it.
@@ -645,6 +631,12 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		externalError(w, 403, "insufficient_scope", "This access token does not allow this operation."+externalMissingScopeHint(GetUserFromContext(r.Context()), *tool))
 		return
 	}
+	retryWriter, retryArgs, retryFinish, answered := api.externalRetryReceipt(w, r, *tool, call.Arguments)
+	if answered {
+		return
+	}
+	w, call.Arguments = retryWriter, retryArgs
+	defer retryFinish()
 	guidanceTool, guidanceArgs := agentSourceCall(*tool, call.Arguments)
 	if isExternalKnowledgebaseTool(guidanceTool.Name) && !knowledgebaseConnectionAllowsAction(GetUserFromContext(r.Context()), guidanceTool.Name, guidanceArgs) {
 		externalError(w, 403, "insufficient_scope", "This connection does not allow the requested Brain action.")
@@ -928,10 +920,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if tool.Name == "copy_project_files" {
 		api.externalCopyProjectFiles(w, r, call.Arguments)
-		return
-	}
-	if tool.Name == "create_workflow" {
-		api.externalCreateWorkflow(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "create_relay" {

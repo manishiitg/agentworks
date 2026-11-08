@@ -4,7 +4,7 @@ import { agentApi } from '../../services/api'
 import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import { runEvidenceApi, type RunEvidenceItem } from '../../api/runEvidence'
 import type { RelaySourceGraph } from '../../components/workflow/relayGraphAnnotations'
-import type { ExecutionInspectionTarget, RunFolderInfo, WorkspaceStepInspection } from '../../services/api-types'
+import type { ExecutionInspectionTarget, RunFolderInfo, RunPythonStep, WorkspaceStepInspection } from '../../services/api-types'
 import { PageCard, PageRow, RowButton, RunDot } from '../../components/automation/AutomationKit'
 import { useCostsData } from '../../components/workflow/costs/useCostsData'
 import { formatCost, formatDuration } from '../../components/workflow/costs/helpers'
@@ -124,21 +124,29 @@ function useScriptOutline(workspacePath: string, enabled: boolean) {
   return outline
 }
 
-type StepLine = { key: string; title: string; record?: WorkspaceStepInspection }
+type StepLine = { key: string; title: string; record?: WorkspaceStepInspection; persisted?: RunPythonStep }
 
-/** A run's step lines: the source outline in order (each with its records, or "not reached"), then any record the outline does not name. */
-export function runStepLines(records: WorkspaceStepInspection[], outline: RelaySourceGraph | null): StepLine[] {
-  if (!outline) return records.map(record => ({ key: `${record.inspection.session_id}:${record.inspection.execution_id}`, title: record.inspection.name || record.inspection.step_id || '', record }))
+/**
+ * A run's step lines: the source outline in order (each with its records, or "not reached"), then any step the outline
+ * does not name. A step the run recorded in its own metadata (python_steps) fills in when no inspection row exists for
+ * its attempt; an inspection row, when present, is the richer one and wins.
+ */
+export function runStepLines(records: WorkspaceStepInspection[], outline: RelaySourceGraph | null, persistedSteps: RunPythonStep[] = []): StepLine[] {
+  const recordLine = (record: WorkspaceStepInspection, title?: string): StepLine => ({ key: `${record.inspection.session_id}:${record.inspection.execution_id}`, title: title || record.inspection.name || record.inspection.step_id || '', record })
+  const persistedLine = (step: RunPythonStep, title?: string): StepLine => ({ key: `persisted:${step.id}`, title: title || step.name, persisted: step })
+  const extra = [...persistedSteps].filter(step => !records.some(record => record.inspection.execution_id === step.execution_id)).sort((a, b) => a.started_at.localeCompare(b.started_at))
+  if (!outline) return [...records.map(record => recordLine(record)), ...extra.map(step => persistedLine(step))]
   const named = outline.nodes.filter(node => !node.id.startsWith('other-') && (node.type === 'script' || node.type === 'agent'))
-  const used = new Set<WorkspaceStepInspection>()
+  const used = new Set<WorkspaceStepInspection | RunPythonStep>()
   const lines = named.flatMap((node): StepLine[] => {
-    const matches = records.filter(record => record.inspection.source_call && record.inspection.source_call === node.call)
-    matches.forEach(record => used.add(record))
-    return matches.length ? matches.map(record => ({ key: `${record.inspection.session_id}:${record.inspection.execution_id}`, title: node.label || record.inspection.name, record }))
-      : [{ key: `outline:${node.id}`, title: node.label, record: undefined }]
+    const fromRecords = records.filter(record => record.inspection.source_call && record.inspection.source_call === node.call)
+    const fromMetadata = extra.filter(step => step.source_call && step.source_call === node.call)
+    fromRecords.forEach(record => used.add(record))
+    fromMetadata.forEach(step => used.add(step))
+    const found = [...fromRecords.map(record => recordLine(record, node.label || record.inspection.name)), ...fromMetadata.map(step => persistedLine(step, node.label))]
+    return found.length ? found : [{ key: `outline:${node.id}`, title: node.label }]
   })
-  const rest = records.filter(record => !used.has(record)).map(record => ({ key: `${record.inspection.session_id}:${record.inspection.execution_id}`, title: record.inspection.name || record.inspection.step_id || '', record }))
-  return [...lines, ...rest]
+  return [...lines, ...records.filter(record => !used.has(record)).map(record => recordLine(record)), ...extra.filter(step => !used.has(step)).map(step => persistedLine(step))]
 }
 
 /** The Runs tab: a card of runs, a Costs card, and one opened run with its steps, logs and cost. */
@@ -195,7 +203,10 @@ function OpenedRun({ workspacePath, script, folder, cost, onBack, onRefresh, onA
 }) {
   const { records, cursor, error, loading, loadMore } = useRunInspections(workspacePath, folder.name)
   const outline = useScriptOutline(workspacePath, script)
-  const evidence = useRunEvidence(workspacePath, folder.name, folder.metadata?.status)
+  const fetchedEvidence = useRunEvidence(workspacePath, folder.name, folder.metadata?.status)
+  // The run's own metadata keeps the latest checks and messages too: used when the read returns none.
+  const evidence: RunEvidenceItem[] = fetchedEvidence.length ? fetchedEvidence : (folder.metadata?.python_evidence ?? []).map(item => ({ kind: item.kind, at: item.at, name: item.name, ok: item.ok, detail: item.detail, source_call: item.source_call }))
+  const persistedSteps = Object.values(folder.metadata?.python_steps ?? {})
   const checks = evidence.filter(item => item.kind === 'check')
   const messages = evidence.filter(item => item.kind === 'notify')
   // The one opened run's step costs, read for that run only.
@@ -210,8 +221,11 @@ function OpenedRun({ workspacePath, script, folder, cost, onBack, onRefresh, onA
     action={<button type="button" onClick={onBack} aria-label="Back to runs" className="shrink-0 text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /></button>}>
     {meta?.status === 'failed' && <p role="alert" className="px-4 py-3 text-xs text-red-600 dark:text-red-400">{failed ? `Stopped at ${failed.inspection.name || failed.inspection.step_id}.` : 'This run stopped.'}</p>}
     {error && <p role="alert" className="px-4 py-3 text-xs text-destructive">{error}</p>}
-    {runStepLines(records, outline).map(line => {
+    {runStepLines(records, outline, persistedSteps).map(line => {
       const record = line.record
+      const step = line.persisted
+      if (step) return <PageRow key={line.key} lead={<RunDot state={stepDot(step.status)} />} title={line.title}
+        lines={[[whenLabel(step.started_at), step.duration_ms !== undefined ? formatDuration(step.duration_ms) : ''].filter(Boolean).join(' · '), stepChecksLine(evidence, step.source_call), step.detail ?? '']} />
       if (!record) return <PageRow key={line.key} lead={<RunDot state="idle" />} title={line.title} lines={[meta?.status === 'running' ? 'Not started yet' : 'Not reached']} />
       const spent = stepCost(record)
       const isOpen = target?.execution_id === record.inspection.execution_id && target.session_id === record.inspection.session_id
@@ -229,7 +243,7 @@ function OpenedRun({ workspacePath, script, folder, cost, onBack, onRefresh, onA
       <p className="px-4 pt-3 text-xs font-semibold">Messages</p>
       {messages.map((item, index) => <PageRow key={`notify:${index}`} title={item.detail} aside={whenLabel(item.at)} />)}
     </>}
-    {!loading && records.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">No step records were saved for this run. The full log may still be available.</p>}
+    {!loading && records.length === 0 && persistedSteps.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">No step records were saved for this run. The full log may still be available.</p>}
     <div className="flex flex-wrap items-center gap-2 px-4 py-3">
       {cursor && <RowButton disabled={loading} onClick={loadMore}>{loading ? 'Loading…' : 'Load more steps'}</RowButton>}
       <RowButton onClick={() => setDetail(detail === 'log' ? null : 'log')}>Full log</RowButton>

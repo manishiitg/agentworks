@@ -265,6 +265,7 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 	membersOf := map[string][]externalTool{}
 	props := map[string]any{}
 	passThrough := false
+	changes := false
 	allowedNames := []string{}
 	for _, action := range tool.actionOrder {
 		var members []externalTool
@@ -319,6 +320,9 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 			if member.InputSchema["additionalProperties"] == true {
 				passThrough = true
 			}
+			if member.mutates {
+				changes = true
+			}
 			for key, value := range member.InputSchema["properties"].(map[string]any) {
 				externalMergeProperty(props, key, value)
 			}
@@ -341,6 +345,9 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 		props["scope"] = externalScopeProperty(scopes)
 	}
 	props["action"] = externalActionProperty(allowed, membersOf)
+	if _, own := props["request_id"]; changes && !own {
+		props["request_id"] = externalString("Optional, for changing actions: a stable ID for this change. Resending the same call with the same request_id after a dropped connection returns the first result instead of changing twice.")
+	}
 	out := tool
 	if len(allowed) > 1 {
 		out.Description = tool.Description + "\n" + strings.Join(lines, "\n")
@@ -482,18 +489,42 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 			}
 		}
 	}
+	// One Crew, one name (PLAT-746-464): a Crew's ID sent as workflow_id reaches a
+	// member that only takes crew_id.
+	_, takesCrew := memberProps["crew_id"]
+	_, takesWorkflow := memberProps["workflow_id"]
+	if takesCrew && !takesWorkflow && externalArg(args, "crew_id") == "" && externalArg(args, "workflow_id") != "" {
+		copyArgs := map[string]any{"crew_id": args["workflow_id"]}
+		for k, v := range args {
+			if k != "workflow_id" {
+				copyArgs[k] = v
+			}
+		}
+		args = copyArgs
+	}
 	mergedProps, _ := tool.InputSchema["properties"].(map[string]any)
 	rest := make(map[string]any, len(args))
 	for key, value := range args {
 		if key == "action" {
 			continue
 		}
-		if _, declared := memberProps[key]; !declared {
+		if _, declared := memberProps[key]; !declared && key != "request_id" {
 			if _, merged := mergedProps[key]; merged {
 				continue
 			}
 		}
 		rest[key] = value
+	}
+	// Name every missing required field in one reply, not one per retry.
+	var missing []string
+	for _, field := range externalSchemaRequired(member.InputSchema, action) {
+		if value, ok := rest[field]; !ok || value == nil {
+			missing = append(missing, field)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return tool, args, fmt.Errorf("%s action=%s is missing: %s", tool.Name, action, strings.Join(missing, ", "))
 	}
 	return member, rest, nil
 }
@@ -529,7 +560,7 @@ func externalMergeProperty(props map[string]any, key string, value any) {
 // but only canonical action families are public entry points.
 func projectServiceTool(name string) bool {
 	switch name {
-	case "manage_schedules", "manage_triggers", "manage_condition_triggers", "create_workflow", "create_relay", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
+	case "manage_schedules", "manage_triggers", "manage_condition_triggers", "create_relay", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
 		"ask_crew", "list_crews", "get_crew", "get_crew_costs", "create_crew", "update_crew", "export_crew", "import_crew",
 		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply",
 		"crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff",

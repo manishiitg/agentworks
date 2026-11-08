@@ -79,10 +79,6 @@ func testWorkspaceCreate(kind string, spec map[string]any) map[string]any {
 	}
 	return map[string]any{"action": "create", "kind": kind, "spec": input, "idempotency_key": key}
 }
-func (f *externalRelayFixture) createGoal(t *testing.T, raw string, spec map[string]any, want int) map[string]any {
-	t.Helper()
-	return f.relayCall(t, raw, "workspace", testWorkspaceCreate("goal", spec), want)
-}
 func (f *externalRelayFixture) createRelay(t *testing.T, raw string, spec map[string]any, want int) map[string]any {
 	t.Helper()
 	return f.relayCall(t, raw, "workspace", testWorkspaceCreate("relay", spec), want)
@@ -121,8 +117,6 @@ func projectTestToken(t *testing.T) *UserClaims {
 func projectCreateTestArgs(kind, key string) map[string]any {
 	var spec map[string]any
 	switch kind {
-	case "goal":
-		spec = map[string]any{"name": "Research " + key, "purpose": "Research sample work"}
 	case "crew":
 		spec = map[string]any{"name": "Research " + key, "purpose": "Research sample work"}
 	case "relay":
@@ -174,7 +168,7 @@ func TestProjectCreationNativeAndMCPUseTheSameAction(t *testing.T) {
 			if !reflect.DeepEqual(tool.params, projectCreateDefinition().InputSchema) {
 				t.Fatal("native create schema differs from the common action")
 			}
-			for _, kind := range []string{"goal", "crew", "relay"} {
+			for _, kind := range []string{"crew"} { // Relay creation is parked (PLAT-746-265).
 				args := projectCreateTestArgs(kind, surface+"-new-"+kind)
 				first, err := tool.exec(t.Context(), args)
 				if err != nil {
@@ -203,11 +197,16 @@ func TestProjectCreationNativeAndMCPUseTheSameAction(t *testing.T) {
 	srv := serveExternalMCP(t, f.api, claims)
 	cli := dialExternalMCP(t, t.Context(), srv.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), cli)
-	for _, kind := range []string{"goal", "crew", "relay"} {
+	for _, kind := range []string{"crew"} { // Relay creation is parked (PLAT-746-265).
 		args := projectCreateTestArgs(kind, "mcp-new-"+kind)
 		args["action"] = "create"
 		got := callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": "workspace", "arguments": args})
 		requireRemoteSuccess(t, got, "MCP create "+kind)
+	}
+	// PLAT-746: new workflows are Python scripts inside a Crew; creating a plan Goal is refused.
+	goal := map[string]any{"action": "create", "kind": "goal", "spec": map[string]any{"name": "Research"}, "idempotency_key": "mcp-new-goal"}
+	if got := callRemoteTool(t, t.Context(), cli, "call_tool", map[string]any{"name": "workspace", "arguments": goal}); !got.IsError {
+		t.Fatalf("plan Goal creation was not refused: %+v", got)
 	}
 	// The conditional create schema in MCP is the same action definition the
 	// native projection validates, with only its public action selector added.

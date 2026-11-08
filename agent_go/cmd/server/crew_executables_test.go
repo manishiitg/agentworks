@@ -377,13 +377,12 @@ func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
 			t.Fatalf("editable owner: HTTP%d %s", w.Code, w.Body)
 		}
 	}
-	// One workflow per Crew; additional tasks use routes. Scripts stay independent.
-	for _, status := range []int{http.StatusCreated, http.StatusConflict} {
-		w := httptest.NewRecorder()
-		api.handleCrewExecutables(w, httptest.NewRequest(http.MethodPost, "/api/crew-executables?crew_id="+crew.CrewID, strings.NewReader(`{"name":"Daily work","kind":"workflow"}`)).WithContext(ctx))
-		if w.Code != status {
-			t.Fatalf("workflow creation: HTTP%d %s, want %d", w.Code, w.Body, status)
-		}
+	// PLAT-746: a new workflow is always a Python script, even when an older caller asks for kind "workflow".
+	w := httptest.NewRecorder()
+	api.handleCrewExecutables(w, httptest.NewRequest(http.MethodPost, "/api/crew-executables?crew_id="+crew.CrewID, strings.NewReader(`{"name":"Daily work","kind":"workflow"}`)).WithContext(ctx))
+	var created crewExecutableBinding
+	if w.Code != http.StatusCreated || json.Unmarshal(w.Body.Bytes(), &created) != nil || created.Kind != "script" {
+		t.Fatalf("workflow creation: HTTP%d %s, want a script", w.Code, w.Body)
 	}
 
 }

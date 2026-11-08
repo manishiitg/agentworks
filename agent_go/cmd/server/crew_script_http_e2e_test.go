@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -141,6 +142,42 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 			t.Fatal(err)
 		}
 	}
+	// Account selection is separate from script capabilities and tool names.
+	connections := []services.GmailConnection{{ID: "fixture-google", Personal: true, OwnerID: "owner", Enabled: true, Email: "owner@example.com", AuthBackend: "gog"}}
+	if !local {
+		connections[0].Workspaces = []string{binding.Root}
+	}
+	gmailConfig, _ := json.Marshal(services.GmailConfig{Connections: connections})
+	write("config/gmail-config.json", string(gmailConfig))
+	t.Setenv("GMAIL_CONNECTIONS_DIR", t.TempDir())
+	t.Setenv("GMAIL_OAUTH_TOKEN_DIR", t.TempDir())
+	t.Setenv("GOG_HOME", t.TempDir())
+	previousGoogle := services.GetGmailService()
+	t.Cleanup(func() { services.SetGmailService(previousGoogle) })
+	if _, err := services.InitGmailService(); err != nil {
+		t.Fatal(err)
+	}
+	expectedGoogle, _ := json.Marshal(map[string]bool{"selected": !local})
+	write(filepath.Join(sourceRoot, "bridge_expected.json"), string(expectedGoogle))
+	write(filepath.Join(sourceRoot, "bridge_probe.py"), `import json, os, urllib.request
+from pathlib import Path
+def call(name, arguments):
+    request = urllib.request.Request(os.environ['MCP_API_URL']+'/tools/custom/'+name, data=json.dumps(arguments).encode(), headers={'Content-Type':'application/json','Authorization':'Bearer '+os.environ['MCP_API_TOKEN']})
+    with urllib.request.urlopen(request) as response: return json.load(response)
+def verify():
+    google_selected = json.loads(Path(__file__).with_name('bridge_expected.json').read_text())['selected']
+    # Intentional argument refusal proves the actual Google handler was
+    # admitted, without contacting Google or inventing credentials.
+    google = call('google_workspace_cli', {'args': []})
+    text = json.dumps(google)
+    if google_selected: assert 'args is required' in text, text
+    else: assert 'args is required' not in text and not google.get('success') and ('tools_unavailable' in text or 'tool_not_found' in text), text
+    assert call('mutate_workflow_db', {'sql':'CREATE TABLE IF NOT EXISTS bridge_probe (id INTEGER PRIMARY KEY, value TEXT)'}).get('success')
+    assert call('mutate_workflow_db', {'sql':'INSERT INTO bridge_probe(id,value) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value','params':[1,'bridge-probe']}).get('success')
+    result = call('query_workflow_db', {'sql':'SELECT value FROM bridge_probe WHERE id=?','params':[1]})
+    assert result.get('success') and 'bridge-probe' in json.dumps(result), str(result)
+    assert not call('send_email', {}).get('success')
+`)
 	write(filepath.Join(sourceRoot, "script.json"), `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true},{"name":"extended","type":"boolean","value":"false"},{"name":"rate","type":"number","value":"5"},{"name":"RDS_SECRET_ID_DEV","type":"string","value":"example/dev/app"}],"input_presets":[{"name":"Saved","values":{"extended":"false","rate":"5"}}],"outputs":["result.json"]}`)
 	write(filepath.Join(sourceRoot, "helper.py"), "from agentworks import step, check\n@step('Prepare report')\ndef prepare():\n    assert check('Prepared', True, 'Fixture ready').ok\n    return True\n")
 	kbPath, err := fsutil.WorkspacePath(docs, binding.Root+"/knowledgebase/context/rules.md")
@@ -157,6 +194,8 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 	write(legacyConfig, "retired settings: not a JSON definition")
 	kbJSON, _ := json.Marshal(kbPath)
 	write(filepath.Join(sourceRoot, "main.py"), "from pathlib import Path\nassert Path("+string(kbJSON)+").read_text() == 'fixture knowledge'\n"+`import json, os, sys
+from bridge_probe import verify
+verify()
 from helper import prepare
 prepare()
 from pathlib import Path
@@ -188,7 +227,7 @@ execute('INSERT INTO fixture_rows(id,value) VALUES (?,?) ON CONFLICT(id) DO UPDA
 assert scalar('SELECT value FROM fixture_rows WHERE id=?', [values['count']]) == 'through script bridge'
 # Ordinary subprocess steps retain the same managed bridge.
 import subprocess
-subprocess.run([sys.executable,'-c',"import os; from pathlib import Path; from agentworks_db import scalar; assert scalar('SELECT COUNT(*) FROM fixture_rows') >= 1; assert (Path(os.environ['WORKFLOW_DATA_ROOT'])/'reports/runtime-fixture.json').is_file()"],check=True)
+subprocess.run([sys.executable,'-c',"import os; from pathlib import Path; from agentworks_db import scalar; assert scalar('SELECT COUNT(*) FROM fixture_rows') >= 1; assert (Path(os.environ['WORKFLOW_DATA_ROOT'])/'reports/runtime-fixture.json').is_file(); from bridge_probe import verify; verify()"],check=True)
 
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'preset':os.environ.get('VAR_GROUP_NAME'), 'python_ran':True, 'run_folder':str(__import__('agentworks').run_folder)}))
 `)
@@ -265,6 +304,14 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	for name, executor := range dbTools.Executors {
 		dbExecutors[name] = executor
 	}
+	for _, tool := range virtualtools.CreateHumanTools() {
+		dbTools.Tools = append(dbTools.Tools, tool)
+	}
+	for name, execute := range virtualtools.CreateHumanToolExecutors() {
+		dbExecutors[name] = execute
+		dbTools.Categories[name] = "human_tools"
+	}
+
 	session, err := workflow.NewWorkshopChatSession(executionCtx, &workflow.WorkshopConfig{UserID: runAs, WorkspacePath: binding.Root, Logger: loggerv2.NewNoop(), CustomTools: dbTools.Tools, CustomToolExecutors: dbExecutors, ToolCategories: dbTools.Categories, CrewResources: &workflow.CrewResources{Scripts: &crewWorkflowResources{userID: runAs}}})
 	if err != nil {
 		t.Fatal(err)
@@ -342,6 +389,19 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 				t.Fatalf("direct script lost selected preset environment: %s", result)
 			}
 			runRoot := filepath.Join(runtimeRoot, "runs", folder.Name())
+			metadata, readErr := os.ReadFile(filepath.Join(runRoot, "run_metadata.json"))
+			var runRecord RunMetadata
+			if readErr != nil || json.Unmarshal(metadata, &runRecord) != nil || runRecord.ExecutionID == "" || len(runRecord.PythonSteps) != 1 || len(runRecord.PythonEvidence) != 1 {
+				t.Fatalf("actual script run lost durable attempt/step/check record: %s %v", metadata, readErr)
+			}
+			for _, recorded := range runRecord.PythonSteps {
+				start, startErr := time.Parse(time.RFC3339Nano, recorded.StartedAt)
+				end, endErr := time.Parse(time.RFC3339Nano, recorded.CompletedAt)
+				if recorded.ExecutionID != runRecord.ExecutionID || recorded.Name != "Prepare report" || recorded.SourceCall == "" || recorded.Status != "completed" || startErr != nil || endErr != nil || end.Before(start) || recorded.DurationMs < 0 || recorded.LogNote == "" {
+					t.Fatalf("Python step timing/attempt was not persisted: %+v", recorded)
+				}
+			}
+
 			snapshot, readErr := os.ReadFile(filepath.Join(runRoot, "inputs.json"))
 			var inputRecord map[string]interface{}
 			if readErr != nil || json.Unmarshal(snapshot, &inputRecord) != nil || inputRecord["extended"] != false || inputRecord["rate"] != float64(5) {

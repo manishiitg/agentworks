@@ -193,7 +193,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if tool.Name == "workspace" {
-			instructions += " Project creation: use workspace action=create with kind=goal|crew|relay, spec matching that kind and a stable idempotency_key. Goal spec needs name and optional purpose; the server supplies its ID, current defaults and an empty plan. Optional folder_name, workflow_json and plan_json provide initial authoring details. Crew spec contains name and purpose. Flow spec contains label. Account creation rights and unrestricted Builder consent are required. The new workflow belongs to this user; use its returned workflow_id for direct plan edits, guarded files and authorized KB project bindings. Creation does not run it."
+			instructions += " Project creation: use workspace action=create with kind=crew|relay, spec matching that kind and a stable idempotency_key. Crew spec contains name and purpose. Flow spec contains label. New workflows are Python scripts inside a Crew: create them with the Crew's workflow files tool and its python-workflows skill. Account creation rights and unrestricted Builder consent are required. Creation does not run anything."
 		}
 		if tool.Name == "run_relay" {
 			instructions += externalMCPRelayInstructions
@@ -468,9 +468,16 @@ func externalMCPAPISpec(args map[string]any, listed []externalTool, prepare ...f
 	}
 	raw, hasNames := args["names"]
 	if !hasNames || raw == nil {
-		entries := make([]map[string]string, 0, len(listed))
+		// The plain list stays small (PLAT-746-464): one sentence and the action
+		// names per tool; get_api_spec with names returns the full schemas.
+		entries := make([]map[string]any, 0, len(listed))
 		for _, tool := range listed {
-			entries = append(entries, map[string]string{"name": tool.Name, "description": tool.Description})
+			entry := map[string]any{"name": tool.Name, "description": firstSentence(strings.SplitN(tool.Description, "\n", 2)[0])}
+			props, _ := tool.InputSchema["properties"].(map[string]any)
+			if action, _ := props["action"].(map[string]any); action != nil && action["enum"] != nil {
+				entry["actions"] = action["enum"]
+			}
+			entries = append(entries, entry)
 		}
 		result, err := mcp.NewToolResultJSON(map[string]any{"tools": entries, "count": len(entries)})
 		if err != nil {

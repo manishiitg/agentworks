@@ -34,9 +34,10 @@ type ScriptInputBinding struct {
 }
 
 type CrewScriptConfiguration struct {
-	Definition CrewScriptDefinition
-	Root       string
-	Files      map[string]string
+	ToolSelections []string // Server-resolved connected apps; never authored input.
+	Definition     CrewScriptDefinition
+	Root           string
+	Files          map[string]string
 }
 type CrewScriptResolver interface {
 	ResolveCrewScript(context.Context, string, string) (CrewScriptConfiguration, error)
