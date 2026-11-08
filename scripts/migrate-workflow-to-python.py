@@ -291,12 +291,19 @@ def apply(changes, documents, state, backup=None, identity='runtime-roots', appe
     backup.mkdir(parents=True, exist_ok=True, mode=0o700)
     # One plain snapshot for this conversion, including the existing registry.
     # --backup can reuse the operator's already prepared snapshot folder.
+    skipped = []
     for label, path in copies.items():
         if path.exists():
             if path.is_dir():
-                shutil.copytree(path, backup / label, symlinks=True)
+                def ignore_cache(directory, names):
+                    # Same disposable paths as the standalone Goal converter.
+                    ignored = [name for name in names if name in ('.tmp', '.cache', '.sandbox-cache') or name.startswith('.scratch-')]
+                    skipped.extend(label + '/' + str((Path(directory) / name).relative_to(path)) for name in ignored)
+                    return ignored
+                shutil.copytree(path, backup / label, symlinks=True, ignore=ignore_cache)
             else:
                 shutil.copy2(path, backup / label)
+    (backup / 'skipped.json').write_bytes(encode(sorted(skipped)))
     if append_platform_rows:
         target = {'path': documents['runtime'] / 'db/db.sqlite'}
         source = crew_platform_rows(documents['crew-db'] / 'db.sqlite', target['path'])

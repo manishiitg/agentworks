@@ -207,21 +207,40 @@ class Migration(unittest.TestCase):
             self.conversion()
         self.assertEqual(hashes(self.base), before)
 
-    def test_generated_cache_is_backed_up_with_links_then_excluded_from_runtime(self):
-        # The old cache carried package symlinks/hardlinks. Preserve the backup
-        # without following its symlink or treating cache as executable source.
-        cache = self.source/'.cache'
-        cache.mkdir(); (cache/'compiled').write_bytes(b'generated')
-        os.link(cache/'compiled', cache/'same-bytes')
-        (cache/'package-link').symlink_to('compiled')
+    def test_slot_cache_is_skipped_in_backup_and_never_read_or_deleted(self):
+        # PLAT-746-435: real conversion failed on a dangling sandbox link and
+        # slot-owned 0600 cache files. Mode 000 reproduces the read refusal
+        # without requiring a second OS account in the fixture.
+        caches = ['.cache', '.tmp', '.sandbox-cache', '.scratch-generated']
+        for name in caches:
+            cache = self.source/name
+            cache.mkdir()
+            (cache/'unreadable').write_bytes(b'generated')
+            (cache/'unreadable').chmod(0)
+            (cache/'dangling').symlink_to('absent-target')
         conversion = self.conversion()
-        self.assertEqual(conversion.report()['generated_caches_backup_only'], ['.cache'])
-        result = conversion.apply()
-        self.assertFalse((self.runtime/'.cache').exists())
-        with m.tarfile.open(Path(result['backup'])/'files.tar.gz') as archive:
-            self.assertEqual(archive.extractfile('source/.cache/same-bytes').read(), b'generated')
-            self.assertEqual(archive.getmember('source/.cache/package-link').linkname, 'compiled')
+        self.assertEqual(sorted(conversion.report()['backup_skipped']), sorted(caches))
+        result = conversion.apply(plain_backup=True)
+        backup = Path(result['backup'])
+        self.assertEqual(json.loads((backup/'skipped.json').read_text()), sorted('source/'+name for name in caches))
+        self.assertFalse(any((backup/'source'/name).exists() for name in caches))
+        for name in caches:
+            cache = self.runtime/name
+            self.assertTrue((cache/'dangling').is_symlink())
+            self.assertEqual((cache/'unreadable').stat().st_mode & 0o777, 0)
         self.assertTrue((self.runtime/'db/db.sqlite').is_file())
+        # The optional archive backup follows exactly the same exclusion.
+        archive_backup = self.base/'archive-backup'
+        m.verified_backup(archive_backup, [('runtime', self.runtime)])
+        self.assertEqual(json.loads((archive_backup/'skipped.json').read_text()), sorted('runtime/'+name for name in caches))
+        with m.tarfile.open(archive_backup/'files.tar.gz') as archive:
+            self.assertFalse(any('/'+name+'/' in p for p in archive.getnames() for name in caches))
+
+        (self.runtime/'code').mkdir(exist_ok=True)
+        bad = self.runtime/'code/broken-link'
+        bad.symlink_to('absent-target')
+        with self.assertRaisesRegex(ValueError, str(bad)):
+            m.no_links(self.runtime)
 
     def test_unsupported_source_layout_is_left_unchanged(self):
         file = self.source/'workflow.json'

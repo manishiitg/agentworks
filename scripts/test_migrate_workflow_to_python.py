@@ -26,6 +26,11 @@ class SameIdentityConversion(unittest.TestCase):
             original = source/'db.sqlite'
             original.write_bytes(b'first database')
             original.chmod(0o444)
+            cache = source/'.tmp'
+            cache.mkdir()
+            (cache/'git-askpass.sh').write_bytes(b'temporary')
+            (cache/'git-askpass.sh').chmod(0)
+            (cache/'dangling').symlink_to('missing')
             changed = state/'selected.json'
             first = Path(m.apply({changed:b'first'}, {'runtime':source}, state, backup, 'first'))
             source2 = root/'second-source'
@@ -33,6 +38,10 @@ class SameIdentityConversion(unittest.TestCase):
             (source2/'db.sqlite').write_bytes(b'second database')
             second = Path(m.apply({changed:b'second'}, {'runtime':source2}, state, backup, 'second'))
             self.assertEqual((first/'runtime/db.sqlite').read_bytes(),b'first database')
+            self.assertEqual(json.loads((first/'skipped.json').read_text()), ['runtime/.tmp'])
+            self.assertFalse((first/'runtime/.tmp').exists())
+            self.assertEqual((cache/'git-askpass.sh').stat().st_mode & 0o777, 0)
+            self.assertTrue((cache/'dangling').is_symlink())
             self.assertEqual((second/'runtime/db.sqlite').read_bytes(),b'second database')
             with self.assertRaisesRegex(ValueError,'already contains a snapshot'):
                 m.apply({changed:b'overwritten'}, {'runtime':source2}, state, backup, 'first')
