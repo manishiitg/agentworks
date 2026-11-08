@@ -70,8 +70,16 @@ func TestExternalRunProxyRejectsReadOnlyToken(t *testing.T) {
 	if body["error"].(map[string]any)["code"] != "workflow_unavailable" {
 		t.Fatalf("wrong retirement refusal: %v", body)
 	}
+	// PLAT-746: inspection used to create an assistant turn through the run
+	// proxy. An authorized owner must still get a refusal, not a start receipt.
+	for _, action := range []string{"step_runtime", "step_prompts"} {
+		inspection := externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": action, "workflow_id": "invoices", "step_id": "fetch-invoices"}), 400)
+		if inspection["error"].(map[string]any)["code"] != "invalid_arguments" || inspection["session_id"] != nil {
+			t.Fatalf("inspection action %s reached run startup: %v", action, inspection)
+		}
+	}
 	if len(f.api.activeSessions) != 0 {
-		t.Fatal("retired plan started an assistant")
+		t.Fatal("a refused read or retired plan started an assistant")
 	}
 }
 

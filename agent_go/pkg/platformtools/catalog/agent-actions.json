@@ -1277,18 +1277,6 @@
     "description": "Send instructions to a live execution."
   },
   {
-    "family": "runs",
-    "name": "step_prompts",
-    "member": "get_step_prompts",
-    "description": "Read the saved prompt information for a step."
-  },
-  {
-    "family": "runs",
-    "name": "step_runtime",
-    "member": "preview_step_runtime",
-    "description": "Inspect a step\u2019s current runtime configuration."
-  },
-  {
     "family": "sessions",
     "name": "list",
     "member": "list_project_chats",
