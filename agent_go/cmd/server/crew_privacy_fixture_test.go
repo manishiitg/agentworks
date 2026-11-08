@@ -9,15 +9,14 @@ import (
 
 const codePrivacyOwnerRoot = "Crew/app-c0de0001"
 
-// newCodePrivacyFixture is one owner's Code workspace on a multi-user server
-// with the code profile registered.
+// newCodePrivacyFixture keeps the historical test helper name; it creates
+// a current private Crew with the work profile on a multi-user server.
 func newCodePrivacyFixture(t *testing.T) (*StreamingAPI, agentprofiles.Profile) {
 	t.Helper()
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "app-c0de0001", ProjectID: "c0de0001-0000", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
-		t.Fatal(err)
-	}
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	registerTestCrew(t, "app-c0de0001", "owner", false, "c0de0001-0000")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true}]}`)
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		codePrivacyOwnerRoot + "/product.json":  `{"schema_version":1,"product":"work","id":"c0de0001-0000","title":"App","session_id":"code:project:c0de0001-0000"}`,
