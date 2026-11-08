@@ -95,8 +95,8 @@ it('assigns check counts by server step ID and shows per-call saved-result reuse
   const metadata: Partial<RunMetadata> = {
     can_resume: false,
     python_steps: {
-      first: { id: 'first', execution_id: 'execution-one', name: 'Gather', status: 'completed', started_at: '', source_call: 'main.py:shared@10' },
-      second: { id: 'second', execution_id: 'execution-two', name: 'Review', status: 'failed', started_at: '', source_call: 'main.py:shared@10' },
+      first: { id: 'first', execution_id: 'attempt-1', name: 'Gather', status: 'completed', started_at: '', source_call: 'main.py:shared@10' },
+      second: { id: 'second', execution_id: 'attempt-1', name: 'Review', status: 'failed', started_at: '', source_call: 'main.py:shared@10' },
     },
     python_evidence: [
       { id: 'a', kind: 'check', at: '', detail: 'First check', ok: true, step_execution_id: 'first', source_call: 'main.py:shared@10' },
@@ -108,10 +108,11 @@ it('assigns check counts by server step ID and shows per-call saved-result reuse
       { key: 'review-record', action: 'agent', reused: false, reason: 'missing_result', execution_id: 'attempt-2', at: '' },
     ],
   }
-  http.inspections.mockResolvedValueOnce({ items: [{ status: 'completed', inspection: { workspace_path: 'Workflow/report', run_folder: 'run-failed', name: 'Gather', execution_id: 'execution-one', session_id: 'session', started_at: '' } }] })
+  http.inspections.mockResolvedValueOnce({ items: [{ status: 'completed', inspection: { workspace_path: 'Workflow/report', run_folder: 'run-failed', name: 'Gather', execution_id: 'first', session_id: 'session', started_at: '' } }] })
   const page = await screen({ metadata })
   try {
     const rows = [...page.host.querySelectorAll('button')]
+    expect(rows.filter(button => button.textContent?.includes('Gather'))).toHaveLength(1)
     expect(rows.find(button => button.textContent?.includes('Gather'))?.textContent).toContain('1 check passed')
     expect(rows.find(button => button.textContent?.includes('Review'))?.textContent).toContain('1 of 1 check failed')
     expect(page.host.textContent).toContain('Old unassigned check')
