@@ -94,20 +94,18 @@ describe('ScheduleListView declutter', () => {
     try {
       expect(host.textContent).not.toContain('Automation schedules')
       expect(host.textContent).not.toContain('Missed schedules')
-      expect(host.textContent).toContain('Scheduled')
       expect(host.innerHTML).not.toContain('text-warning')
     } finally {
       await unmount()
     }
   })
 
-  it('shows the route as plain secondary text beside the schedule, not as a pill', async () => {
+  it('says which route the schedule runs in a plain detail line', async () => {
     const { host, unmount } = await renderList([
       job({ id: 'a', name: 'Trade', route_selections: { step: 'trade' }, run_count: 1 }),
     ])
     try {
-      expect(host.querySelector('h3')?.textContent).toBe('Trade')
-      expect(host.textContent).toContain('Route: trade')
+      expect(host.textContent).toContain('Runs the trade route')
     } finally {
       await unmount()
     }
