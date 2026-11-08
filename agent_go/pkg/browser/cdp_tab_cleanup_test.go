@@ -135,6 +135,7 @@ func TestNewCDPTabLeaseCancelsPendingCleanup(t *testing.T) {
 }
 
 func TestAgentBrowserTabNewRegistersCleanupOwnership(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	resetCDPRegistryForTest(t)
 	t.Setenv("CDP_HOST", "localhost")
 
@@ -168,6 +169,19 @@ func TestAgentBrowserTabNewRegistersCleanupOwnership(t *testing.T) {
 	tabs := ownedCDPTabsForOwner(29225, "workflow-tab-owner")
 	if len(tabs) != 1 || tabs[0].Alias != "report" || tabs[0].TabID != "t42" {
 		t.Fatalf("registered owned tabs = %#v, want report/t42", tabs)
+	}
+	// PLAT-746-444: a successful close returned only "No selected CDP tab",
+	// which made a real Python browser agent report its task as failed.
+	closed, err := executor.HandleAgentBrowser(ctx, map[string]interface{}{
+		"command": "tab",
+		"args":    []string{"--cdp", "http://localhost:29225", "close", "t42"},
+		"session": "agent-session",
+	})
+	if err != nil || !strings.Contains(strings.ToLower(closed), "closed") || !strings.Contains(closed, "t42") || strings.Contains(closed, "No selected CDP tab") {
+		t.Fatalf("successful close looked like missing browser state: %q %v", closed, err)
+	}
+	if tabs := ownedCDPTabsForOwner(29225, "workflow-tab-owner"); len(tabs) != 0 {
+		t.Fatalf("closed tab retained cleanup ownership: %#v", tabs)
 	}
 }
 
