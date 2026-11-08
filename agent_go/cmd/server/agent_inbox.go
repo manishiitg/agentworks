@@ -12,7 +12,7 @@ const hostedInboxInstructions = "This agent uses an inbox. Nothing is pushed int
 // OAuthClientID is populated from the authenticated server grant, not the
 // application's name, user agent, request arguments or token display name.
 func hostedAgentMailbox(claims *UserClaims) bool {
-	if claims == nil || claims.AccessToken == nil || claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "" || claims.Provider == "bot_route" || claims.Provider == "bot_owner" {
+	if claims == nil || claims.AccessToken == nil || claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" || claims.Provider == "bot_route" || claims.Provider == "bot_owner" {
 		return false
 	}
 	t := claims.AccessToken

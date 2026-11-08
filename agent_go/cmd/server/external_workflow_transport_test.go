@@ -49,14 +49,6 @@ func TestExternalWorkflowTransportKeepsRunBoundary(t *testing.T) {
 			t.Fatal("changed app or non-workflow transport")
 		}
 	}
-	claims.ExternalBuilderOperationID = "operation"
-	if code, _ = externalWorkflowTransport(claims, true, gate, false); code {
-		t.Fatal("managed Builder without the bridge lost its direct tools")
-	}
-	// A coding CLI on the MCP bridge takes the website route (call_tool + search).
-	if code, bridge := externalWorkflowTransport(claims, true, gate, true); !code || len(bridge) != 0 {
-		t.Fatalf("bridge model kept the direct tool list: code=%v bridge=%v", code, bridge)
-	}
 }
 
 // A token Run chat on a coding CLI reaches tools only through call_tool, over

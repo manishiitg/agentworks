@@ -364,7 +364,7 @@ func (api *StreamingAPI) handleWorkspaces(w http.ResponseWriter, r *http.Request
 	if externalArg(args, "action") == "list" && externalArg(args, "detail") == "navigation" {
 		claims := GetUserFromContext(r.Context())
 		if claims == nil || strings.TrimSpace(claims.UserID) == "" || claims.AccessToken != nil || claims.Scope != "" ||
-			claims.ExecutionPrincipal != nil || claims.ExternalBuilderOperationID != "" || claims.BotRouteGrant != "" ||
+			claims.ExecutionPrincipal != nil || claims.BotRouteGrant != "" ||
 			claims.Provider == "bot_owner" || claims.Provider == "bot_route" || claims.Provider == slackDMProvider || !externalWorkspaceAllowed(claims) {
 			externalError(w, http.StatusForbidden, "forbidden", "Sign in to browse projects.")
 			return

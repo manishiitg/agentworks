@@ -102,7 +102,7 @@ func usageSourceOK(s string) bool {
 
 func (api *StreamingAPI) handleAgentUsageReport(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || claims.AccessToken == nil || claims.ExecutionPrincipal != nil || claims.Scope != "" || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+cliOAuthAccessPrefix) || !namedAgentOperationAllowed(claims, true) || !productpolicy.Enabled("bullpen") || !userAllowedProduct(claims, "bullpen") {
+	if claims == nil || claims.AccessToken == nil || claims.ExecutionPrincipal != nil || claims.Scope != "" || claims.BotRouteGrant != "" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+cliOAuthAccessPrefix) || !namedAgentOperationAllowed(claims, true) || !productpolicy.Enabled("bullpen") || !userAllowedProduct(claims, "bullpen") {
 		externalError(w, 403, "access_denied", "Usage reporting is unavailable.")
 		return
 	}
@@ -438,7 +438,7 @@ func withAgentUsageTimezone(ctx context.Context, zone string) context.Context {
 
 func hydrateOwnerUsage(ctx context.Context, owner string, items []map[string]interface{}, agents []namedMessageAgent) {
 	claims := GetUserFromContext(ctx)
-	if claims == nil || claims.UserID != owner || claims.ExecutionPrincipal != nil || claims.Scope != "" || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "" || claims.Provider == "bot_owner" || claims.Provider == "bot_route" || !productpolicy.Enabled("bullpen") {
+	if claims == nil || claims.UserID != owner || claims.ExecutionPrincipal != nil || claims.Scope != "" || claims.BotRouteGrant != "" || claims.Provider == "bot_owner" || claims.Provider == "bot_route" || !productpolicy.Enabled("bullpen") {
 		return
 	}
 	zone, _ := ctx.Value(agentUsageTimezoneKey{}).(string)

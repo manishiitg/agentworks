@@ -619,10 +619,6 @@ func accessTokenRunToolDenied(claims *UserClaims, name string) bool {
 	if claims == nil || claims.AccessToken == nil {
 		return false
 	}
-	// An owner's or editor's Builder operation is Builder, not Run.
-	if claims.ExternalBuilderOperationID != "" {
-		return externalBuilderToolDenied(claims, name)
-	}
 	for _, denied := range agentworksproduct.RunExternalDenylist() {
 		if denied == name {
 			return true

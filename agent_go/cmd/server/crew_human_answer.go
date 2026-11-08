@@ -47,7 +47,7 @@ func (api *StreamingAPI) crewHumanAnswerScope(ctx context.Context, session, requ
 	if claims == nil {
 		claims = &UserClaims{UserID: actor}
 	}
-	if claims.UserID != actor || !websiteDeviceClaims(claims) || claims.ExternalBuilderOperationID != "" {
+	if claims.UserID != actor || !websiteDeviceClaims(claims) {
 		return refuse()
 	}
 	access := userAccessForClaims(claims)
