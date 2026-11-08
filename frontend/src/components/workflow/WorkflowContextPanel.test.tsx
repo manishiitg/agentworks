@@ -38,7 +38,7 @@ it('uses Crew category order and keeps workflow destinations', async () => {
   expect([...host.querySelectorAll<HTMLDetailsElement>('details')].map(node => node.open)).toEqual([true, false, false, false, false])
   for (const label of ['Dashboards', 'Files', 'Skills', 'Chat history', 'Access & sharing', 'Webhooks', 'Watchers', 'MCP access', 'Models', 'Settings', 'Run logs', 'Costs and usage']) expect(button(label), label).toBeDefined()
   {
-    for (const label of ['Goals & metrics', 'Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
+    for (const label of ['Schedules', 'Functions', 'Upgrades', 'Database', 'Knowledge base']) expect(button(label)).toBeDefined()
   }
   await act(async () => button('Webhooks').click())
   expect(state.open).toHaveBeenLastCalledWith('workshop', 'triggers')

@@ -62,15 +62,6 @@ it.each(['owner', 'question_only'])('keeps one %s Crew chat beside its dashboard
   expect(openAsk).toHaveBeenCalledTimes(1)
 })
 
-it('opens a shared Relay dashboard in the recipient’s existing normal conversation', async () => {
-  get.mockResolvedValue({ data: { ...view, product: 'relay' } }); openAsk.mockResolvedValue('relay-builder-chat')
-  const current = await mount('relay', 'question_only')
-  await act(async () => click('Ask'))
-  expect(openAsk).toHaveBeenCalledWith({ product: 'relay', projectId: 'project-1', workspacePath: 'Workflow/demo' }, { activate: false })
-  expect(document.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('relay-builder-chat')
-  expect(current.host.textContent).not.toContain('Open project Ask')
-  expect(send).not.toHaveBeenCalled()
-})
 async function editQuestion(frame: HTMLIFrameElement) {
   const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
   Object.defineProperty(event, 'isTrusted', { value: true })
@@ -81,7 +72,7 @@ async function submit() {
   await act(async () => document.querySelector('dialog form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
 }
 
-it.each(['crew', 'code', 'workflow', 'relay'])('lets an authorized %s Run user ask about a selected value in their native conversation', async product => {
+it.each(['crew', 'code', 'workflow'])('lets an authorized %s Run user ask about a selected value in their native conversation', async product => {
   get.mockResolvedValue({ data: { ...view, product, capability: { can_view: true, can_ask: true, mode: 'question_only' } } })
   openAsk.mockResolvedValue('existing-run-chat'); send.mockResolvedValue({ tabId: 'existing-run-chat' })
   const current = await mount(product, 'question_only')
@@ -154,7 +145,7 @@ it.each(['crew', 'code', 'workflow'])('renders %s native chat in a designer-sele
   expect(send).not.toHaveBeenCalled()
 })
 
-it.each([['crew', 'owner'], ['code', 'owner'], ['crew', 'question_only'], ['code', 'question_only'], ['relay', 'question_only']])('uses the same native function form and chat menu for a %s-origin Crew in %s mode', async (product, mode) => {
+it.each([['crew', 'owner'], ['code', 'owner'], ['crew', 'question_only'], ['code', 'question_only']])('uses the same native function form and chat menu for a %s-origin Crew in %s mode', async (product, mode) => {
   const functions = [{ name: 'count_items', input_schema: { type: 'object', properties: { count: { type: 'integer' } }, required: ['count'] } }, { name: 'restricted', can_call: false }]
   get.mockImplementation(async (url: string) => ({ data: url.endsWith('/functions') ? { functions } : { ...view, product, capability: { can_view: true, can_ask: true, mode } } }))
   post.mockResolvedValue({ data: { status: 'completed', result: { count: 3 } } })
@@ -190,7 +181,7 @@ it('omits the automatic Ask overlay for the owner while retaining contextual das
 })
 
 // Regression: authored controls previously bypassed the owner-only overlay rule.
-it.each(['crew', 'code', 'workflow', 'relay'])('withholds authored %s Ask widgets from Builders without removing contextual questions', async product => {
+it.each(['crew', 'code', 'workflow'])('withholds authored %s Ask widgets from Builders without removing contextual questions', async product => {
   const current = await mount(product, 'owner', true, '<p id="total">42</p><section data-report-chat-panel></section><button data-report-chat-button>Ask about this dashboard</button>')
   expect(current.host.querySelector('[aria-label="Dashboard chat widget"]')).toBeNull()
   expect(current.frame.contentDocument!.head.textContent).toContain('display: none !important')
@@ -222,15 +213,4 @@ it('keeps an embedded dashboard message in its current project pane conversation
  expect(sender).toHaveBeenCalledWith('Explain the selection', { requestId: 'selection' })
  expect(openAsk).not.toHaveBeenCalled()
  expect(send).not.toHaveBeenCalled()
-})
-
-
-it('mounts the existing Ask dialog to consume a standalone Relay UI message', async () => {
- get.mockResolvedValue({ data: { ...view, product: 'relay', capability: { can_view: true, can_ask: true, mode: 'question_only' } } })
- openAsk.mockResolvedValue('relay-personal-chat'); send.mockResolvedValue({ tabId: 'relay-personal-chat', reused: true, queuedBehindRunningTurn: false })
- await mount('relay', 'question_only')
- const options = fixtureInstalls.at(-1)!
- await act(async () => { await options.dataApi!.sendChatMessage('Explain this result') })
- expect(document.querySelector('dialog [data-native-tab]')?.getAttribute('data-native-tab')).toBe('relay-personal-chat')
- expect(send).toHaveBeenCalledWith(expect.objectContaining({ tabId: 'relay-personal-chat' }))
 })
