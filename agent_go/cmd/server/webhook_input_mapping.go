@@ -52,6 +52,13 @@ func validateWebhookInputMappings(ctx context.Context, root string, cfg *Workflo
 // Shared by live configuration and the one-off migration's server validator.
 // Neither caller may substitute exposed names for the actual mapping contract.
 func validateWebhookInputMappingContract(definitions *VariablesManifest, cfg *WorkflowWebhookConfig, fixed map[string]string) error {
+	// Selected names must remain valid even when raw payloads do not map
+	// them. Only mapped names count as supplied values at launch.
+	for _, name := range cfg.AllowedVariables {
+		if _, err := webhookInputDefinition(definitions, name); err != nil {
+			return err
+		}
+	}
 	if cfg.PayloadMappings == nil || len(cfg.PayloadMappings.Inputs) == 0 {
 		return nil
 	}
