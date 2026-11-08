@@ -36,7 +36,7 @@ var externalToolMerges = []externalToolMerge{
 	{"account", "Manage company accounts and installed services with the existing administrator permissions.", platformMergeActions("account")},
 	{"help", "Read versioned product and connection guidance.", platformMergeActions("help")},
 	{"workflow", "Find workflows and Flows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
-		{"list", "list_workflows"}, {"get", "get_workflow"}, {"plan", "get_plan"},
+		{"list", "list_workflows"}, {"get", "get_workflow"}, {"plan", "get_plan"}, {"save_inputs", "save_script_inputs"},
 	}},
 	{"files", "Read and change allowed project files, links and attachments. Current Builder, sharing, private-path, file-root and revision checks still decide access.", platformMergeActions("files")},
 	{"database", "Read managed project data and schemas. Offered write, migration and snapshot actions retain the current owner, connection, step and file-grant checks.", platformMergeActions("database")},

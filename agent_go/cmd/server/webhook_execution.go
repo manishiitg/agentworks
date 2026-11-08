@@ -80,6 +80,9 @@ func configureDirectWebhookRequest(req map[string]interface{}, sctx *ScheduleCon
 		opts.Inputs = sctx.Schedule.Inputs
 	}
 	if sctx.WebhookInput != nil {
+		if sctx.WebhookInput.DirectRun {
+			opts.InputPreset = sctx.WebhookInput.DirectInputPreset
+		}
 		opts.WebhookInputFile = webhookInputPath(sctx.WorkspacePath, sctx.WebhookInput.RunID)
 		opts.WebhookVariables = sctx.WebhookInput.Variables
 	}

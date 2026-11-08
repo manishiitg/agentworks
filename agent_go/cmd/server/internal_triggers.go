@@ -197,7 +197,8 @@ type internalWorkflowTriggerCall struct {
 	Payload    []byte
 	// DirectInputs is supplied only by the authenticated direct-run tool. A nil
 	// value keeps the saved entry contract; an empty map is a direct default run.
-	DirectInputs map[string]interface{}
+	DirectInputs      map[string]interface{}
+	DirectInputPreset string
 }
 
 // matchesPresented reports whether the binding stamp authorizes the presented

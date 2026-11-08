@@ -28,15 +28,6 @@ func separateWorkflowConversation(sessionID string) bool {
 	return strings.HasPrefix(sessionID, "wfask-") || strings.HasPrefix(sessionID, "schedule-") || externalRunSessionID(sessionID)
 }
 
-// MCP run-tool sessions (externalRunSessionSetup) are Run-mode conversations,
-// so a Builder message without a session_id never continues one of them.
-func externalRunSessionID(sessionID string) bool {
-	return strings.HasPrefix(sessionID, externalRunSessionMarker) ||
-		(strings.HasPrefix(sessionID, "pat-") && strings.Contains(sessionID, "-"+externalRunSessionMarker))
-}
-
-const externalRunSessionMarker = "run-"
-
 type workflowBuilderSessionResponse struct {
 	Tabs               []goalOwnerTab                    `json:"tabs,omitempty"`
 	IsBuilder          bool                              `json:"is_builder"`

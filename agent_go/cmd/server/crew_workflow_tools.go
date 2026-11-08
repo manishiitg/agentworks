@@ -89,6 +89,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 			"workspace_path": map[string]interface{}{"type": "string", "description": "The workflow's id from list_agents (workflow:<id>) or its workspace_path."},
 			"trigger_id":     map[string]interface{}{"type": "string", "description": "Internal trigger ID bound to this Crew; omit to reuse or create it."},
 			"inputs":         map[string]interface{}{"type": "object", "description": "Typed values for declared workflow or script inputs. Omitted values use saved defaults; unknown, protected or invalid values are rejected."},
+			"input_preset":   map[string]interface{}{"type": "string", "description": "Direct run only: saved input preset from workflow get; explicit inputs override its values."},
 			"payload":        map[string]interface{}{"type": "object", "description": "JSON delivery payload within 1 MiB."},
 			"delivery_id":    map[string]interface{}{"type": "string", "description": "Stable idempotency key; omit for a new delivery."},
 			"event":          map[string]interface{}{"type": "string", "description": "Event type; defaults to crew.trigger."},
@@ -131,6 +132,10 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 				envelope = schedule.Webhook.InputMode == "envelope"
 			}
 		}
+		preset, _ := args["input_preset"].(string)
+		if _, present := args["input_preset"]; present && !direct {
+			return "", fmt.Errorf("input_preset is for a direct run; omit trigger_id to choose a preset")
+		}
 		var directInputs map[string]interface{}
 		if direct || envelope {
 			inputs := map[string]interface{}{}
@@ -163,7 +168,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		}
 		delivery, err := api.scheduler.dispatchInternalWorkflowTrigger(ctx, internalWorkflowTriggerCall{
 			WorkflowID: manifest.ID, TriggerID: strings.TrimSpace(triggerID),
-			Caller: crew, DeliveryID: deliveryID, Event: event, Payload: data, DirectInputs: directInputs,
+			Caller: crew, DeliveryID: deliveryID, Event: event, Payload: data, DirectInputs: directInputs, DirectInputPreset: preset,
 		})
 		if err != nil {
 			return "", crewWorkflowRunError(err)

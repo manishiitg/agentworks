@@ -23,7 +23,7 @@ import (
 // tool without a hint here still proxies with the generic description.
 var externalRunToolHints = map[string]string{
 	"execute_step":      "Start one workflow step in the background. Arguments: step_id (required; plan step ID or positional like '1'), group_name, human_input, script_parameters (object), tier (high|medium|low). Uses normal permissions, live database updates and real tool actions.",
-	"run_full_workflow": "Run all steps end-to-end for one variable group. Arguments: group_name (required), human_inputs (object keyed by step ID), route_selections (object keyed by routing step ID).",
+	"run_full_workflow": "Start a saved Python workflow directly with optional input_preset and typed inputs. Poll runs status with the returned session_id and read runs get for its saved record. Older plans also accept human_inputs and route_selections.",
 	"send_step_message": "Steer a live execution. Arguments: execution_id (required), message (required).",
 	"query_step":        "One-off live status check for a tracked execution. Arguments: step_id or execution_id.",
 }
@@ -40,6 +40,10 @@ func externalRunProxyTool(name string) externalTool {
 	properties := map[string]any{
 		"workflow_id": externalString("Workflow ID returned by workflow action=list. Never a filesystem path."),
 		"session_id":  map[string]any{"type": "string", "description": "Existing run session ID to continue. Omit to start a new run session."},
+	}
+	if name == "run_full_workflow" {
+		properties["inputs"] = map[string]any{"type": "object", "description": "Typed values for this workflow's declared inputs. Omitted values use the saved preset and defaults."}
+		properties["input_preset"] = externalString("Optional saved input preset from workflow get.")
 	}
 	if name == "execute_step" {
 		properties["run_folder"] = externalString("Existing run identity for continuing its steps. The runtime rechecks Builder access, path and saved inputs; omit for a new run.")
@@ -78,7 +82,7 @@ func (api *StreamingAPI) externalRunSessionSetup(w http.ResponseWriter, r *http.
 		return "", false, false
 	}
 	if sessionID != "" {
-		if _, persisted, err = api.externalBuilderSession(r, workflow.WorkspacePath, sessionID); err != nil {
+		if _, persisted, err = api.externalRunSession(r, workflow.WorkspacePath, sessionID); err != nil {
 			externalError(w, http.StatusNotFound, "session_not_found", "Run session not found")
 			return "", false, false
 		}
@@ -101,6 +105,10 @@ func (api *StreamingAPI) externalRunSessionSetup(w http.ResponseWriter, r *http.
 // instruction turn invoking the tool. The turn has the caller's role: Run only
 // for someone who cannot edit the workflow.
 func (api *StreamingAPI) externalRunProxy(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow) {
+	if externalWorkflowIsScript(workflow) && (name == "execute_step" || name == "debug_step") {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Python step labels are not separate runnable steps. Use runs start for the workflow, or runs logs to inspect a saved run.")
+		return
+	}
 	sessionID, persisted, ok := api.externalRunSessionSetup(w, r, args, workflow)
 	if !ok {
 		return
@@ -115,6 +123,19 @@ func (api *StreamingAPI) externalRunProxy(w http.ResponseWriter, r *http.Request
 	}
 	if persisted {
 		query.RestoredConversationSessionID = sessionID
+	}
+	if name == "run_full_workflow" && externalWorkflowIsScript(workflow) {
+		options, err := directScriptRunOptions(r.Context(), args, workflow)
+		if err != nil {
+			externalError(w, http.StatusBadRequest, "invalid_arguments", err.Error())
+			return
+		}
+		query.AgentMode, query.PhaseID, query.Query = "workflow", "", "Run: "+workflow.Manifest.Label
+		query.ExecutionOptions = &ExecutionOptions{InputPreset: options.InputPreset, Inputs: options.Inputs, ExecutionStrategy: options.ExecutionStrategy, SelectedRunFolder: options.SelectedRunFolder}
+		// An external HTTP request ends after the start receipt. Keep values,
+		// while the existing workflow cancel function and token watcher own
+		// this background run's lifetime (as for other external starts).
+		r = r.WithContext(context.WithValue(context.WithoutCancel(r.Context()), directWebhookExecutionKey{}, options))
 	}
 	api.forwardRunTurn(w, r, query, sessionID, workflow)
 }
@@ -293,7 +314,7 @@ func (api *StreamingAPI) externalStopAllExecutions(w http.ResponseWriter, r *htt
 			externalError(w, http.StatusNotFound, "session_not_found", "You did not start that run session.")
 			return
 		}
-		if _, _, err := api.externalBuilderSession(r, workflow.WorkspacePath, sessionID); err != nil {
+		if _, _, err := api.externalRunSession(r, workflow.WorkspacePath, sessionID); err != nil {
 			externalError(w, http.StatusNotFound, "session_not_found", "Run session not found in this workflow")
 			return
 		}
@@ -320,10 +341,9 @@ func (api *StreamingAPI) externalStopAllExecutions(w http.ResponseWriter, r *htt
 	externalJSON(w, map[string]any{"stopped_sessions": stopped})
 }
 
-// externalRunStatus mirrors the builder status poller for run sessions: one
-// bounded event page plus session state and this session's executions. Run
-// and Builder share the workflow-builder phase, so the same ownership and
-// workflow-binding lookup applies.
+// externalRunStatus returns a bounded event page and this caller's run state.
+// Headless scripts and existing Run conversations resolve independently of
+// Builder tabs, with the same current person/project/token fences.
 func (api *StreamingAPI) externalRunStatus(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
 	sessionID, err := externalBuilderString(args, "session_id")
 	if err != nil || sessionID == "" || sanitizeChatHistorySessionID(sessionID) != sessionID {
@@ -335,7 +355,7 @@ func (api *StreamingAPI) externalRunStatus(w http.ResponseWriter, r *http.Reques
 		externalError(w, http.StatusNotFound, "session_not_found", "This access token does not own that run session.")
 		return
 	}
-	active, persisted, err := api.externalBuilderSession(r, workflow.WorkspacePath, sessionID)
+	active, persisted, err := api.externalRunSession(r, workflow.WorkspacePath, sessionID)
 	if err != nil {
 		externalError(w, http.StatusNotFound, "session_not_found", "Run session not found")
 		return
@@ -427,7 +447,7 @@ func (api *StreamingAPI) externalRunReplyInput(w http.ResponseWriter, r *http.Re
 		externalError(w, http.StatusNotFound, "session_not_found", "This access token does not own that run session.")
 		return
 	}
-	if _, _, err = api.externalBuilderSession(r, workflow.WorkspacePath, sessionID); err != nil {
+	if _, _, err = api.externalRunSession(r, workflow.WorkspacePath, sessionID); err != nil {
 		externalError(w, http.StatusNotFound, "session_not_found", "Run session not found")
 		return
 	}

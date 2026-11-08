@@ -97,6 +97,43 @@ func TestExternalRunStatusRejectsUnknownSession(t *testing.T) {
 	externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": "status", "workflow_id": "invoices", "session_id": "../escape"}), 400)
 }
 
+// PLAT-746-468: direct script runs use workflow mode, rather than a Builder
+// phase. Status must admit them without crossing person, project or token.
+func TestExternalRunStatusKeepsDirectRunOwnershipAndBinding(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	owner := patClaims("owner", []string{"workflows:read"})
+	owner.AccessToken.ID = "run-owner"
+	sessionID := accessTokenSessionPrefix(owner) + externalRunSessionMarker + "direct"
+	active := &ActiveSessionInfo{SessionID: sessionID, UserID: "owner", WorkspacePath: "Workflow/invoices", AgentMode: "workflow", Status: "running", TriggeredBy: "external"}
+	f.api.activeSessions = map[string]*ActiveSessionInfo{sessionID: active}
+	status := func(claims *UserClaims, expected int) {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"name": "runs", "arguments": map[string]any{"action": "status", "workflow_id": "invoices", "session_id": sessionID}})
+		w := httptest.NewRecorder()
+		f.api.dispatchExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(body), claims, nil), false)
+		externalTestBody(t, w, expected)
+	}
+	status(owner, 200)
+	otherToken := patClaims("owner", []string{"workflows:read"})
+	otherToken.AccessToken.ID = "another-token"
+	status(otherToken, 404)
+	reader := patClaims("reader", []string{"workflows:read"})
+	reader.AccessToken.ID = owner.AccessToken.ID // Isolate person ownership from prefix checks.
+	status(reader, 404)
+	active.WorkspacePath = "Workflow/another"
+	status(owner, 404)
+	active.WorkspacePath = "Workflow/invoices"
+	active.AgentMode = "multi-agent"
+	status(owner, 404)
+	active.AgentMode = "workflow"
+	delete(f.api.activeSessions, sessionID)
+	// The same exact-workflow history reader handles a completed/reaped run.
+	persisted := `{"session_id":"` + sessionID + `","user_id":"owner","agent_mode":"workflow","runtime":{"workspace_path":"Workflow/invoices"},"conversation_history":[]}`
+	f.write(t, "Workflow/invoices/builder/conversation/2026-11-08/session-"+sessionID+"-conversation.json", persisted)
+	status(owner, 200)
+	status(reader, 404)
+}
+
 func TestExternalListSchedulesEmptyAndUnknownRuns(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	f.api.scheduler = NewSchedulerService(f.api) // the schedules tool reads through the scheduler

@@ -417,6 +417,7 @@ chat:
       - read_file
       - write_file
       - get_plan
+      - save_script_inputs
       - get_agent_context
       - list_guidance_topics
       - get_guidance_topic
