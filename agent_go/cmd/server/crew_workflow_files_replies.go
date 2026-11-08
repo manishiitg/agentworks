@@ -19,12 +19,19 @@ const crewPlanReadLimit = 20000
 // operation names with one line each; the full schema of an operation is sent
 // only when that operation is asked for (all of them together were about 73k
 // characters, and a client that cut the reply left the model guessing names).
-func crewDescribeOperations(operation string) (string, error) {
+func crewDescribeOperations(operation, stepType string) (string, error) {
 	definitions := crewPlanDefinitions()
 	if operation != "" {
 		definitions = slices.DeleteFunc(definitions, func(d workflow.ExternalPlanToolDefinition) bool { return d.Name != operation })
 		if len(definitions) == 0 {
 			return "", fmt.Errorf("choose a supported editing operation: %s", strings.Join(crewPlanOperations, ", "))
+		}
+		if operation == "add_step" {
+			narrowed, err := crewAddStepByType(definitions[0], stepType)
+			if err != nil {
+				return "", err
+			}
+			definitions[0] = narrowed
 		}
 		encoded, err := json.Marshal(definitions)
 		return string(encoded), err
@@ -42,6 +49,50 @@ func crewDescribeOperations(operation string) (string, error) {
 		"next":       "Call describe again with operation=<name> to get that operation's exact schema before editing.",
 	})
 	return string(encoded), err
+}
+
+// crewAddStepByType narrows add_step, whose schema is one branch per step type
+// (about 29k characters together), to the type asked for. Without a type it
+// lists the types, so the model chooses before it reads any fields.
+func crewAddStepByType(definition workflow.ExternalPlanToolDefinition, stepType string) (workflow.ExternalPlanToolDefinition, error) {
+	var schema map[string]interface{}
+	if err := json.Unmarshal(definition.InputSchema, &schema); err != nil {
+		return definition, nil
+	}
+	branches, _ := schema["oneOf"].([]interface{})
+	types := make([]string, 0, len(branches))
+	chosen := interface{}(nil)
+	for _, branch := range branches {
+		object, _ := branch.(map[string]interface{})
+		properties, _ := object["properties"].(map[string]interface{})
+		kind, _ := properties["type"].(map[string]interface{})
+		name, _ := kind["const"].(string)
+		if name == "" {
+			continue
+		}
+		types = append(types, name)
+		if name == stepType {
+			chosen = branch
+		}
+	}
+	if len(types) == 0 {
+		return definition, nil
+	}
+	if stepType == "" {
+		raw, _ := json.Marshal(map[string]interface{}{
+			"type": "object", "required": []string{"type", "step"},
+			"properties": map[string]interface{}{"type": map[string]interface{}{"type": "string", "enum": types}, "step": map[string]interface{}{"type": "object"}},
+			"note":       "Call describe with operation=add_step and step_type=<type> for that type's step fields: " + strings.Join(types, ", ") + ".",
+		})
+		definition.InputSchema = raw
+		return definition, nil
+	}
+	if chosen == nil {
+		return definition, fmt.Errorf("choose a step_type: %s", strings.Join(types, ", "))
+	}
+	raw, _ := json.Marshal(chosen)
+	definition.InputSchema = raw
+	return definition, nil
 }
 
 func crewFirstSentence(text string) string {
