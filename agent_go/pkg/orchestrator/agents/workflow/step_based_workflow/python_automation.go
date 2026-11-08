@@ -252,6 +252,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				reply := previous.Reply
 				reply.OK = false
 				reply.Error = "The previous script attempt has no completed receipt. Inspect its run before explicitly trying redo=True; it may already have done work."
+				if action == "ask_agent" {
+					reply.Error = "The previous ask has no completed receipt. Inspect its inbox and run before sending another message; it may already have been sent."
+				}
 				return encode(reply)
 			}
 			if resume && reusable {

@@ -13,7 +13,8 @@ import (
 // reuse the captured run actor and the same Crew ask/inbox authorization.
 func (api *StreamingAPI) bindPythonAskExecutors(executors map[string]interface{}, actor UserClaims, source func(context.Context) (triggerLinkCaller, error), checkTarget func(context.Context, triggerTarget, bool) error) {
 	executors["ask_crew"] = func(ctx context.Context, args map[string]interface{}) (string, error) {
-		if _, err := source(ctx); err != nil {
+		caller, err := source(ctx)
+		if err != nil {
 			return "", err
 		}
 		ctx = context.WithValue(ctx, UserContextKey, &actor)
@@ -38,6 +39,12 @@ func (api *StreamingAPI) bindPythonAskExecutors(executors map[string]interface{}
 			return "", err
 		}
 		if err = checkTarget(ctx, target, true); err != nil {
+			return "", err
+		}
+		if caller.isTarget(target) {
+			return "", fmt.Errorf("This script cannot ask its own Crew. Use agent() for work inside this run.")
+		}
+		if err := requireLinkedOwnCrew(ctx, actor.UserID, caller, target); err != nil {
 			return "", err
 		}
 		request, _ := http.NewRequestWithContext(ctx, http.MethodPost, "/api/external/call", nil)
