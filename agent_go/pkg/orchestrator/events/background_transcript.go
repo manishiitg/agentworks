@@ -12,16 +12,18 @@ import (
 )
 
 type ExecutionInspectionTarget struct {
-	WorkflowKind  string    `json:"workflow_kind,omitempty"`
-	ExecutionKind string    `json:"execution_kind,omitempty"`
-	SessionID     string    `json:"session_id"`
-	ExecutionID   string    `json:"execution_id"`
-	WorkspacePath string    `json:"workspace_path"`
-	Name          string    `json:"name"`
-	StepID        string    `json:"step_id,omitempty"`
-	RunFolder     string    `json:"run_folder,omitempty"`
-	ItemID        string    `json:"item_id,omitempty"`
-	StartedAt     time.Time `json:"started_at"`
+	WorkflowKind  string `json:"workflow_kind,omitempty"`
+	ExecutionKind string `json:"execution_kind,omitempty"`
+	SessionID     string `json:"session_id"`
+	ExecutionID   string `json:"execution_id"`
+	WorkspacePath string `json:"workspace_path"`
+	Name          string `json:"name"`
+	StepID        string `json:"step_id,omitempty"`
+	RunFolder     string `json:"run_folder,omitempty"`
+	ItemID        string `json:"item_id,omitempty"`
+	// SourceCall joins a Python step or agent call to the node of the workflow's source outline (crew-script-graph).
+	SourceCall string    `json:"source_call,omitempty"`
+	StartedAt  time.Time `json:"started_at"`
 }
 
 type BackgroundAgentTranscript struct {
