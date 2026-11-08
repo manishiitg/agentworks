@@ -62,7 +62,7 @@ func validatePythonRelaySource(ctx context.Context, workspacePath string) error 
 		return err
 	}
 	if result.ValidationError != "" {
-		return fmt.Errorf("invalid relay.py: %s", result.ValidationError)
+		return fmt.Errorf("invalid Python source: %s", result.ValidationError)
 	}
 	if result.Native {
 		manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
@@ -77,12 +77,28 @@ func inspectPythonRelaySource(ctx context.Context, workspacePath, source string)
 	if strings.TrimSpace(source) == "" || len(source) > 64*1024 {
 		return nil, fmt.Errorf("relay.py must contain 1–65536 bytes")
 	}
+	return inspectPythonSourceEnvironment(ctx, workspacePath, workspacePath, map[string]string{"VAR_RELAY_CHECK_SOURCE": base64.StdEncoding.EncodeToString([]byte(source))})
+}
+
+func inspectPythonAutomationSource(ctx context.Context, workspacePath string, files map[string]string) (json.RawMessage, error) {
+	raw, err := json.Marshal(files)
+	if err != nil || len(raw) > 64*1024 {
+		return nil, fmt.Errorf("automation source overview supports up to 65536 bytes")
+	}
+	return inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), map[string]string{"VAR_AUTOMATION_CHECK_FILES": base64.StdEncoding.EncodeToString(raw)})
+}
+
+func inspectPythonSourceEnvironment(ctx context.Context, workspacePath, workingDirectory string, environment map[string]string) (json.RawMessage, error) {
 	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
 	if err != nil || !found {
-		return nil, fmt.Errorf("Flow manifest unavailable during source validation")
+		return nil, fmt.Errorf("Automation manifest unavailable during source inspection")
 	}
-	sessionID := "relay-syntax-" + uuid.NewString()
-	common.SetSessionFolderGuard(sessionID, []string{workspacePath}, nil)
+	sessionID := "source-inspection-" + uuid.NewString()
+	readPaths := []string{workspacePath}
+	if workingDirectory != workspacePath {
+		readPaths = append(readPaths, workingDirectory)
+	}
+	common.SetSessionFolderGuard(sessionID, readPaths, nil)
 	common.SetSessionSandbox(sessionID, true, true)
 	defer workspace.ClearSessionShellConfig(sessionID)
 	validationCtx := context.WithValue(ctx, common.ChatSessionIDKey, sessionID)
@@ -93,15 +109,16 @@ func inspectPythonRelaySource(ctx context.Context, workspacePath, source string)
 	}
 	const check = `import base64,os; exec(compile(base64.b64decode(os.environ["VAR_RELAY_INSPECTOR"]),"<platform-inspector>","exec"))`
 	timeout := 15
+	environment["VAR_RELAY_INSPECTOR"] = base64.StdEncoding.EncodeToString([]byte(relaypython.SourceInspector))
 	result, err := client.ExecuteShellCommand(validationCtx, workspace.ExecuteShellCommandParams{
-		Command: "python3 -I -c '" + check + "'", WorkingDirectory: workspacePath, Timeout: &timeout,
-		ExtraEnv: map[string]string{"VAR_RELAY_CHECK_SOURCE": base64.StdEncoding.EncodeToString([]byte(source)), "VAR_RELAY_INSPECTOR": base64.StdEncoding.EncodeToString([]byte(relaypython.SourceInspector))},
+		Command: "python3 -I -c '" + check + "'", WorkingDirectory: workingDirectory, Timeout: &timeout,
+		ExtraEnv: environment,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("inspect relay.py: %w", err)
+		return nil, fmt.Errorf("inspect Python source: %w", err)
 	}
 	if result.CommandFailed() {
-		return nil, fmt.Errorf("invalid relay.py: %s", strings.TrimSpace(result.Stderr+" "+result.Error))
+		return nil, fmt.Errorf("invalid Python source: %s", strings.TrimSpace(result.Stderr+" "+result.Error))
 	}
 	lines := strings.Split(strings.TrimSpace(result.Stdout), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {

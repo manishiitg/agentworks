@@ -220,10 +220,18 @@ def inspect_automation_source(files):
 
         def literal(module, value):
             seen = set()
-            while isinstance(value, ast.Name) and value.id in constants[module] and value.id not in seen:
-                seen.add(value.id)
-                value = constants[module][value.id]
-            return value.value if isinstance(value, ast.Constant) and isinstance(value.value, str) else 'built at run time'
+            while True:
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    return value.value
+                if isinstance(value, ast.Name) and value.id in constants[module]:
+                    origin = module, value.id
+                else:
+                    origin = target(module, value)
+                if origin in seen or origin[0] not in constants or origin[1] not in constants[origin[0]]:
+                    return 'built at run time'
+                seen.add(origin)
+                module = origin[0]
+                value = constants[module][origin[1]]
 
         def argument(call, index, name):
             return call.args[index] if len(call.args) > index else next((item.value for item in call.keywords if item.arg == name), None)
@@ -234,6 +242,10 @@ def inspect_automation_source(files):
                         label=label, call=identity, line=call.lineno)
             if description is not None:
                 node['description'] = description
+            if any(existing['id'] == node['id'] for existing in graph['nodes']):
+                return
+            if len(graph['nodes']) >= 200:
+                raise ValueError('Source overview exceeds 200 items')
             if graph['nodes']:
                 graph['edges'].append({'from': graph['nodes'][-1]['id'], 'to': node['id'], 'line': call.lineno})
             graph['nodes'].append(node)
