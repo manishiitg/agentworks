@@ -67,7 +67,7 @@ func TestCrewContextAccessRequiresCurrentAudience(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","products":[]},{"id":"bob","username":"bob","products":[]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","products":["work"]},{"id":"bob","username":"bob","products":["work"]}]}`)
 	own := registerTestCrew(t, "research", "alice", false)
 	shared := registerTestCrew(t, "shared", "bob", true)
 	private := registerTestCrew(t, "private", "bob", false)
