@@ -70,6 +70,9 @@ func checkSavedScriptRawWebhook(t *testing.T, api *StreamingAPI, binding crewExe
 			t.Fatal("changed saved inputs/preset escaped launch revalidation")
 		}
 	}
+	if status, raw := post("missing-without-default", `{}`); status != 400 || !strings.Contains(string(raw), "count") {
+		t.Fatalf("missing mapped input without default: HTTP%d %s", status, raw)
+	}
 	status, raw := post("valid-input", `{"event":{"count":7},"input_preset":"not-selectable"}`)
 	var accepted struct {
 		RunID string `json:"run_id"`
@@ -78,4 +81,26 @@ func checkSavedScriptRawWebhook(t *testing.T, api *StreamingAPI, binding crewExe
 		t.Fatalf("raw webhook HTTP%d %s", status, raw)
 	}
 	verify(accepted.RunID, id, "7", "Saved")
+	// PLAT-746-450: an absent source uses the declared script default; a
+	// present value of the wrong type must still fail instead of using it.
+	definition, err := readCrewScript(ctx, binding.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range definition.Inputs {
+		if definition.Inputs[i].Name == "count" {
+			definition.Inputs[i].Value = "7"
+		}
+	}
+	if err := saveCrewScriptInputs(ctx, binding.Root, definition.InputDefinitions()); err != nil {
+		t.Fatal(err)
+	}
+	status, raw = post("declared-default", `{}`)
+	if status != 202 || json.Unmarshal(raw, &accepted) != nil || accepted.RunID == "" {
+		t.Fatalf("declared default webhook HTTP%d %s", status, raw)
+	}
+	verify(accepted.RunID, id, "7", "Saved")
+	if status, raw := post("bad-supplied-with-default", `{"event":{"count":"invalid"}}`); status != 400 || !strings.Contains(string(raw), "count") {
+		t.Fatalf("bad supplied value used default: HTTP%d %s", status, raw)
+	}
 }

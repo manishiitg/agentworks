@@ -1317,11 +1317,17 @@ func (api *StreamingAPI) handleUpdateVariableGroups(w http.ResponseWriter, r *ht
 	}
 
 	// Parse request body
-	var manifest VariablesManifest
-	if err := json.NewDecoder(r.Body).Decode(&manifest); err != nil {
+	var request struct {
+		VariablesManifest
+		EntryMappings *scriptEntryInputEdits `json:"entry_mappings,omitempty"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
+	manifest := request.VariablesManifest
 	rawInputs, _ := json.Marshal(manifest)
 	var inputDefinitions todo_creation_human.VariablesManifest
 	if err := json.Unmarshal(rawInputs, &inputDefinitions); err != nil {
@@ -1332,19 +1338,19 @@ func (api *StreamingAPI) handleUpdateVariableGroups(w http.ResponseWriter, r *ht
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	if err := todo_creation_human.ValidateWorkflowInputReferences(r.Context(), workspacePath, &inputDefinitions); err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
 	if binding, err := findCrewExecutable(workspacePath); err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	} else if binding != nil && binding.Kind == "script" {
-		if err := saveCrewScriptInputs(r.Context(), workspacePath, &manifest); err != nil {
+		if err := saveCrewScriptInputs(r.Context(), workspacePath, &manifest, request.EntryMappings); err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Inputs saved"})
+		return
+	}
+	if err := todo_creation_human.ValidateWorkflowInputReferences(r.Context(), workspacePath, &inputDefinitions); err != nil {
+		http.Error(w, err.Error(), 400)
 		return
 	}
 	for _, group := range manifest.Groups {

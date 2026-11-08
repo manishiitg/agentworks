@@ -23,36 +23,50 @@ func validateWorkflowInputMigration(reader io.Reader) error {
 		return fmt.Errorf("workflow Inputs: %w", err)
 	}
 	for _, fn := range candidate.Functions {
-		if fn.Action.Type != "run" {
-			continue
+		if err := validateWorkflowFunctionInputContract(&candidate.Definitions, fn); err != nil {
+			return err
 		}
-		var input scheduleExecutionInput
-		if len(fn.Input) != 0 {
-			if err := json.Unmarshal(fn.Input, &input); err != nil {
-				return fmt.Errorf("function %q: invalid saved inputs", fn.Name)
-			}
+	}
+	return nil
+}
+
+func validateWorkflowFunctionInputContract(definitions *VariablesManifest, fn projectFunctionDefinition) error {
+	if fn.Action.Type != "run" {
+		return nil
+	}
+	var input scheduleExecutionInput
+	if len(fn.Input) != 0 {
+		if err := json.Unmarshal(fn.Input, &input); err != nil {
+			return fmt.Errorf("function %q: invalid saved inputs", fn.Name)
 		}
-		if input.Groups != nil {
-			return fmt.Errorf("function %q: convert retired groups before input contracts", fn.Name)
-		}
-		exposed := fn.Inputs
-		if fn.InputMapping != nil {
-			exposed = nil
-			if fn.InputMapping.Mode == "envelope" {
-				exposed = fn.InputMapping.Variables
-			} else if fn.InputMapping.Mode == "raw" || fn.InputMapping.Mode == "" {
-				config := &WorkflowWebhookConfig{InputMode: "raw", AllowedVariables: fn.InputMapping.Variables, PayloadMappings: fn.InputMapping.Payload}
-				if err := validateWebhookInputMappingContract(&candidate.Definitions, config, input.Inputs); err != nil {
-					return fmt.Errorf("function %q: %w", fn.Name, err)
-				}
-				exposed = webhookMappedInputNames(fn.InputMapping.Payload)
-			}
-		} else if fn.InputSchema != nil {
-			return fmt.Errorf("function %q: copied schema remains", fn.Name)
-		}
-		if _, err := workflowCallerInputSchema(&candidate.Definitions, exposed, input.InputPreset, input.Inputs); err != nil {
+	}
+	if input.Groups != nil {
+		return fmt.Errorf("function %q: convert retired groups before input contracts", fn.Name)
+	}
+	for _, name := range fn.Inputs {
+		if _, err := webhookInputDefinition(definitions, name); err != nil {
 			return fmt.Errorf("function %q: %w", fn.Name, err)
 		}
+	}
+	exposed := fn.Inputs
+	if fn.InputMapping != nil {
+		config := &WorkflowWebhookConfig{InputMode: fn.InputMapping.Mode, AllowedVariables: fn.InputMapping.Variables, PayloadMappings: fn.InputMapping.Payload}
+		if config.InputMode != "" && config.InputMode != "raw" && config.InputMode != "envelope" {
+			return fmt.Errorf("function %q: choose raw or envelope input mode", fn.Name)
+		}
+		if err := validateWebhookInputMappingContract(definitions, config, input.Inputs); err != nil {
+			return fmt.Errorf("function %q: %w", fn.Name, err)
+		}
+		if fn.InputMapping.Mode == "envelope" {
+			exposed = fn.InputMapping.Variables
+		} else {
+			exposed = webhookMappedInputNames(fn.InputMapping.Payload)
+		}
+	} else if fn.InputSchema != nil {
+		return fmt.Errorf("function %q: copied schema remains", fn.Name)
+	}
+	if _, err := workflowCallerInputSchema(definitions, exposed, input.InputPreset, input.Inputs); err != nil {
+		return fmt.Errorf("function %q: %w", fn.Name, err)
 	}
 	return nil
 }

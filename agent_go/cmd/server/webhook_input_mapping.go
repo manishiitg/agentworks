@@ -144,6 +144,10 @@ func resolveWebhookMappedInputs(s WorkflowSchedule, delivery *WorkflowWebhookDel
 			value, err = decodeWebhookInput(raw)
 		} else if err != nil && len(mapping.Default) > 0 {
 			value, err = decodeWebhookInput(mapping.Default)
+		} else if err != nil && json.Valid(delivery.Payload) && field.Value != "" {
+			// A missing source may use the script's declared default. A supplied
+			// value still goes through type/schema validation and never falls back.
+			value, err = field.Value, nil
 		}
 		if err != nil {
 			return fmt.Errorf("input %q: %w", name, err)

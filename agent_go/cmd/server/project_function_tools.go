@@ -30,6 +30,7 @@ func projectFunctionAuthoringSchema() map[string]interface{} {
 		}},
 		"input":           map[string]interface{}{"type": "object", "description": "Fixed values: inputs, input_preset, routes and payload for a workflow; messages for a Crew chat. Fixed input names cannot be supplied by callers."},
 		"inputs":          map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Workflow input names callers may supply. Define types, defaults and required fields once in workflow Inputs. Empty exposes none."},
+		"input_mapping":   scriptEntryInputMappingSchema(),
 		"input_schema":    map[string]interface{}{"type": "object", "description": "Only for Crew message functions. Workflow functions use inputs names instead."},
 		"result_schema":   map[string]interface{}{"type": "object", "description": "Crew result JSON Schema; Goals return their run outcome."},
 		"allowed_callers": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
@@ -84,7 +85,44 @@ func manageProjectFunction(ctx context.Context, claims *UserClaims, target trigg
 		}
 	}
 	if index >= 0 && records[index].InputMapping != nil {
-		return nil, fmt.Errorf("this function is bound to a saved step; edit that binding in its Builder")
+		if remove {
+			return nil, fmt.Errorf("remove this function at its saved step binding")
+		}
+		binding, err := findCrewExecutable(root)
+		if err != nil || binding == nil || binding.Kind != "script" {
+			return nil, fmt.Errorf("convert this workflow to Python before changing its bound input mapping")
+		}
+		patch := map[string]interface{}{}
+		for key, value := range args {
+			switch key {
+			case "name":
+			case "action":
+				action := records[index].Action
+				raw, err := json.Marshal(value)
+				if err != nil || json.Unmarshal(raw, &action) != nil || action != records[index].Action {
+					return nil, fmt.Errorf("keep this function's saved action and caller binding")
+				}
+			case "input", "inputs", "input_mapping":
+				patch[key] = value
+			default:
+				return nil, fmt.Errorf("a bound function accepts input changes only; keep its saved caller and settings")
+			}
+		}
+		edits, err := decodeScriptEntryInputEdits(map[string]interface{}{"functions": map[string]interface{}{records[index].ID: patch}})
+		if err != nil {
+			return nil, err
+		}
+		definition, err := readCrewScript(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+		if err := saveCrewScriptDefinition(ctx, binding, definition, edits); err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"project": target.describe(), "function": name, "removed": false}, nil
+	}
+	if _, present := args["input_mapping"]; present {
+		return nil, fmt.Errorf("this function has no saved input mapping; choose caller input names with inputs")
 	}
 	if remove {
 		if index < 0 {

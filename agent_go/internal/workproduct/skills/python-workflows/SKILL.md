@@ -156,3 +156,54 @@ the same input validator. Timers supply their saved typed values directly.
 When editing `script.json`, defaults in input `value` and saved preset `values`
 are strings (including `"2"`, `"false"` and JSON text for objects). Calls use
 actual JSON types. Use canonical source/input tools so the server checks them.
+
+
+### Change inputs and their callers together
+
+If an input rename, type or schema change affects a saved function or webhook,
+include `entry_mappings` in the same `workflow action=save_inputs` call, or in
+`workspace action=automation_write` / `crew_workflow_files action=write` when
+writing `script.json`. Do not temporarily clear a binding or edit storage files.
+Read the current entries first; use their existing IDs. The server validates
+the complete result before saving it through the shared managed writer.
+
+```json
+{
+  "entry_mappings": {
+    "functions": {
+      "saved-function-id": {
+        "inputs": ["scenario", "probe_count"],
+        "input_mapping": {
+          "mode": "raw",
+          "variables": ["scenario", "probe_count"],
+          "payload": {"inputs": {
+            "scenario": {"source": "$.scenario", "default": "full"},
+            "probe_count": {"source": "$.probe.count"}
+          }}
+        }
+      }
+    },
+    "webhooks": {
+      "saved-webhook-id": {
+        "input": {"input_preset": "Saved", "inputs": {"region": "USA"}}
+      }
+    }
+  }
+}
+```
+
+Only include fields being changed: `inputs` selects function caller names;
+`input.input_preset` and `input.inputs` set the preset and fixed values;
+`input_mapping` replaces an existing bound function or webhook mapping. Ordinary
+functions use `inputs` and do not acquire a bound mapping. Webhook selections
+live in `input_mapping.variables`. Omitted entries/fields stay unchanged. This
+cannot change identity, callers, authentication, ownership, enabled state or
+timers. `functions action=define` can also update an existing bound function's
+input fields while keeping its saved action and caller.
+
+Put constraints such as `enum` inside each input's `schema`. Defaults in `value`
+and fixed input values remain strings; mapped choices/defaults use typed JSON.
+A missing raw payload source uses the mapping's default first, then the script
+input's declared `value`; a supplied invalid value still refuses. An input with
+neither default is named in the refusal. A mapped payload cannot choose a preset
+or replace fixed inputs.
