@@ -204,7 +204,7 @@ func newCommand(o *options) *cobra.Command {
 	plan := &cobra.Command{
 		Use: "plan get", Args: cobra.MaximumNArgs(1),
 		Short: "Read an older plan-based workflow's plan",
-		Long:  "Read with plan get. Older plan-based workflows keep running but are no longer edited; to change one, ask to have it converted to a Python script workflow.",
+		Long:  "Read with plan get. Older plan-based workflows keep running but are no longer edited; the platform operator converts them to Python script workflows.",
 	}
 	addOperationFlags(plan, "get_plan")
 	plan.RunE = func(cmd *cobra.Command, args []string) error {
@@ -215,7 +215,7 @@ func newCommand(o *options) *cobra.Command {
 		case "get":
 			return o.call(cmd, "get_plan")
 		case "list", "edit":
-			return fmt.Errorf("older plan-based workflows are no longer edited; to change one, ask to have it converted to a Python script workflow")
+			return fmt.Errorf("older plan-based workflows are no longer edited; converting one to a Python script workflow is done by the platform operator for now")
 		default:
 			return fmt.Errorf("unknown plan operation %q: use get", args[0])
 		}

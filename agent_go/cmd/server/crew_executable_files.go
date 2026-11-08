@@ -197,7 +197,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 
 // PLAT-746 (owner, 8 Nov: "the old plan tools would be removed"): an older
 // plan-based workflow keeps running but is no longer edited; it is converted.
-const oldPlanWorkflowNotEditable = "This workflow uses the older plan format. It keeps running, but it can no longer be edited. To change it, ask to have it converted to a Python script workflow; it keeps its name, data and schedules. Schedules and webhooks can still be managed with edit."
+const oldPlanWorkflowNotEditable = "This workflow uses the older plan format. It keeps running, but it can no longer be edited. Converting an existing workflow to a Python script is done by the platform operator for now; new workflows are Python scripts. Schedules and webhooks can still be managed with edit."
 
 // The edit operations that remain: a workflow's schedules and webhooks.
 var crewPlanOperations = []string{"manage_schedules", "manage_webhooks"}

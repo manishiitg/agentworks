@@ -36,6 +36,6 @@ Use the tools offered in this chat:
 
 Define inputs once, with types and optional defaults. A workflow with no inputs needs no input file or preset. Secrets belong in Vault. Reuse this Crew's saved agents when their role fits; do not copy another person's account or chat history.
 
-Older plan-based workflows keep running but are no longer edited; to change one, it is converted to a Python script workflow. `references/crew-plan/SKILL.md` covers reading one and managing its schedules and webhooks.
+Older plan-based workflows keep running but are no longer edited; the platform operator converts them to Python script workflows. `references/crew-plan/SKILL.md` covers reading one and managing its schedules and webhooks.
 
 To run work on a schedule or in response to an event, use `panel-automations`. For logs, Inspect and costs, open the workflow's Runs view under Automations. Keep the conversation in its Crew chat.

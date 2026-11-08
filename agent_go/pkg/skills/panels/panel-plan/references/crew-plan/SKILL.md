@@ -1,6 +1,6 @@
 # Older plan-based workflows
 
-New workflows are Python scripts: use the `python-workflows` skill. A workflow created before that keeps running, but its plan is no longer edited. When someone asks to change its steps, inputs or step settings, say so plainly and offer to have it converted to a Python script workflow; it keeps its name, data and schedules.
+New workflows are Python scripts: use the `python-workflows` skill. A workflow created before that keeps running, but its plan is no longer edited. When someone asks to change its steps, inputs or step settings, say plainly that it can't be edited: converting an existing workflow to a Python script is done by the platform operator for now (it keeps its name, data and schedules), and new workflows are scripts.
 
 Use `crew_workflow_files action=list` for exact workspace identities. To inspect one, `read` its `planning/plan.json` (pass `step_id` or `step_ids` for named steps); the screens show the plan, progress and run evidence.
 
