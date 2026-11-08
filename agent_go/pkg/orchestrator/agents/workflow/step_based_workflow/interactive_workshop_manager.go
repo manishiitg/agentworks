@@ -1332,7 +1332,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 	projected := []string{}
 	for _, name := range tools {
 		if name != "review_plan" {
-			projected = append(projected, ConsolidatedPlanToolName(name))
+			projected = append(projected, name)
 		}
 	}
 	return uniqueStringsPreserveOrder(projected)
@@ -1842,13 +1842,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 	if iwm.controller.isRelayExecution() {
 		mcpAgent = relayDefinitionRegistrar{DefinitionRegistrar: mcpAgent}
 	}
-	capture := newConsolidatedPlanRegistrar(mcpAgent, iwm.controller.GetWorkspacePath(), func(ctx context.Context, p string) (string, error) { return iwm.controller.ReadWorkspaceFile(ctx, p) })
-	mcpAgent = consolidatedWorkshopRegistrar{mcpAgent, capture}
-	defer func() {
-		if err := capture.flush(); err != nil {
-			logger.Warn(fmt.Sprintf("Failed to register consolidated workshop tools: %v", err))
-		}
-	}()
 
 	// Tool 1: execute_step — start step in background
 	if err := mcpAgent.RegisterCustomTool(
@@ -2850,14 +2843,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 	}
 
 	// === Builder tools: config, optimization, learning ===
-
-	// Tool 4: update_step_config shares its schema and executor with external clients.
-	if iwm.isRunModeRestricted() {
-		// PLAT-262: skip update_step_config registration for read-only access.
-	} else if err := mcpAgent.RegisterCustomTool("update_step_config", updateStepConfigToolDescription,
-		getUpdateStepConfigParameters(), createUpdateStepConfigExecutor(iwm.controller, logger), "workflow"); err != nil {
-		logger.Warn(fmt.Sprintf("⚠️ Failed to register update_step_config tool: %v", err))
-	}
 
 	if iwm.currentWorkshopModeFromConfigs(nil) != "run" {
 		// Tool 5: get_plan_prompt_health — compact, deterministic size/duplication

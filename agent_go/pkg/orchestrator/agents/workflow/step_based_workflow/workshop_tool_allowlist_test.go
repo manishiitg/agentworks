@@ -55,7 +55,7 @@ func TestEveryRegisteredWorkshopToolIsAllowedInSomeMode(t *testing.T) {
 			return true
 		}
 		if name, err := strconv.Unquote(literal.Value); err == nil {
-			registered[ConsolidatedPlanToolName(name)] = true
+			registered[name] = true
 		}
 		return true
 	})
@@ -70,10 +70,10 @@ func TestEveryRegisteredWorkshopToolIsAllowedInSomeMode(t *testing.T) {
 	// canonical name lists instead of trying to widen the AST scan to a
 	// registration path it was never written to see.
 	for name := range virtualtools.WorkflowDBToolNames() {
-		registered[ConsolidatedPlanToolName(name)] = true
+		registered[name] = true
 	}
 	for name := range virtualtools.WorkflowCostsToolNames() {
-		registered[ConsolidatedPlanToolName(name)] = true
+		registered[name] = true
 	}
 
 	allowed := map[string]bool{}
