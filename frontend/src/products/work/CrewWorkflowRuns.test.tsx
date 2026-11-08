@@ -5,10 +5,10 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import type { RunFolderInfo } from '../../services/api-types'
 
 const state = vi.hoisted(() => ({ canEdit: true, access: 'owner' as string | undefined }))
-const http = vi.hoisted(() => ({ post: vi.fn() }))
+const http = vi.hoisted(() => ({ post: vi.fn(), inspections: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: http, agentApi: {
   getRunCostTotals: async () => ({ runs: [] }),
-  getWorkspaceStepInspections: async () => ({ items: [] }),
+  getWorkspaceStepInspections: http.inspections,
 } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (value: unknown) => unknown) => select({ user: { can_write_workflows: state.canEdit } }) }))
 vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: (select: (value: unknown) => unknown) => select({ workflows: [{ manifest: { id: 'report' }, workspace_path: 'Workflow/report', my_access: state.access }] }) }))
@@ -17,14 +17,18 @@ vi.mock('../../api/crewScriptGraph', () => ({ crewScriptGraphApi: { get: async (
 vi.mock('../../components/workflow/costs/useCostsData', () => ({ useCostsData: () => ({ runCosts: [] }) }))
 import { CrewWorkflowRuns } from './CrewWorkflowRuns'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-beforeEach(() => { state.canEdit = true; state.access = 'owner'; http.post.mockReset() })
+beforeEach(() => { state.canEdit = true; state.access = 'owner'; http.post.mockReset(); http.inspections.mockReset().mockResolvedValue({ items: [] }) })
 
 async function screen(options: { status?: string; script?: boolean; refresh?: () => Promise<void> } = {}) {
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   const onView = vi.fn(); const refresh = options.refresh ?? vi.fn(async () => {})
   const folder: RunFolderInfo = { name: 'run-failed', metadata: { created_at: '2026-11-09T00:00:00Z', execution_id: 'attempt-1', status: options.status ?? 'failed' } }
-  await act(async () => root.render(<CrewWorkflowRuns workflowId="report" workspacePath="Workflow/report" script={options.script ?? true} folders={[folder]} loading={false} onRefresh={refresh} onAsk={vi.fn()} view={{ run: folder.name, costs: false, detail: null }} onView={onView} />))
-  return { host, onView, refresh, resume: () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Resume'), close: async () => { await act(async () => root.unmount()); host.remove() } }
+  const update = async (status = folder.metadata!.status, execution = folder.metadata!.execution_id) => {
+    folder.metadata = { ...folder.metadata!, status, execution_id: execution }
+    await act(async () => root.render(<CrewWorkflowRuns workflowId="report" workspacePath="Workflow/report" script={options.script ?? true} folders={[{ ...folder }]} loading={false} onRefresh={refresh} onAsk={vi.fn()} view={{ run: folder.name, costs: false, detail: null }} onView={onView} />))
+  }
+  await update()
+  return { host, onView, refresh, update, resume: () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Resume'), close: async () => { await act(async () => root.unmount()); host.remove() } }
 }
 
 // PLAT-746: Resume requires a failed Python run AND the server's account/per-workflow editing projections.
@@ -72,5 +76,25 @@ it('shows the server refusal verbatim and leaves the selected run available', as
     expect(page.onView).not.toHaveBeenCalled()
     expect(page.refresh).not.toHaveBeenCalled()
     expect(page.resume()?.disabled).toBe(false)
+  } finally { await page.close() }
+})
+
+// PR1651 P2: same-folder Resume must replace the failed attempt's stale inspection rows in place.
+it('refreshes expandable step records when the same selected run changes attempt or status', async () => {
+  const record = (name: string, execution: string) => ({ status: 'completed', inspection: { workspace_path: 'Workflow/report', run_folder: 'run-failed', name, execution_id: execution, session_id: 'session', started_at: '2026-11-09T00:00:00Z' } })
+  http.inspections.mockResolvedValueOnce({ items: [record('Failed attempt step', 'old-step')] })
+  const page = await screen()
+  try {
+    expect(page.host.textContent).toContain('Failed attempt step')
+    http.inspections.mockResolvedValueOnce({ items: [record('Resumed attempt step', 'new-step')] })
+    await page.update('running', 'attempt-2')
+    expect(page.host.textContent).toContain('Resumed attempt step')
+    expect(page.host.textContent).not.toContain('Failed attempt step')
+    expect([...page.host.querySelectorAll('button')].some(button => button.textContent?.includes('Resumed attempt step'))).toBe(true)
+    http.inspections.mockResolvedValueOnce({ items: [record('Final resumed step', 'final-step')] })
+    await page.update('completed', 'attempt-2')
+    expect(page.host.textContent).toContain('Final resumed step')
+    expect(page.host.textContent).not.toContain('Resumed attempt step')
+    expect(page.onView).not.toHaveBeenCalled()
   } finally { await page.close() }
 })
