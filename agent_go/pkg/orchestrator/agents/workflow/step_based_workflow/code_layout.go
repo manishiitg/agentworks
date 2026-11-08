@@ -142,6 +142,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string)
 		env["WORKFLOW_KB_ACCESS"] = KBAccessNone
 		env[workflowDBAccessEnv] = DBAccessNone
 	}
+	if hcpo.directCrewScript != nil {
+		// A preset labels this invocation, never its run-folder identity. Set
+		// even the empty value so a previous launch cannot leak its label.
+		env["VAR_GROUP_NAME"] = ""
+		if opts := hcpo.GetExecutionOptions(); opts != nil {
+			env["VAR_GROUP_NAME"] = opts.InputPreset
+		}
+	}
 	if hcpo.isRelayExecution() {
 		delete(env, "VAR_GROUP_NAME")
 	}

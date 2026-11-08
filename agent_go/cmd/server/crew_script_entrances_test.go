@@ -94,7 +94,7 @@ func checkSavedScriptTriggerAndSchedule(t *testing.T, docs string, binding crewE
 	if err != nil || !found {
 		t.Fatal(err)
 	}
-	manifest.Schedules = []WorkflowSchedule{{ID: "fixture-timer", Name: "Script fixture", ScheduleType: "cron", CronExpression: "0 0 1 1 *", Timezone: "UTC", Enabled: true, ChatID: "main", Inputs: map[string]string{"count": "6"}}}
+	manifest.Schedules = []WorkflowSchedule{{ID: "fixture-timer", Name: "Script fixture", ScheduleType: "cron", CronExpression: "0 0 1 1 *", Timezone: "UTC", Enabled: true, ChatID: "main", InputPreset: "Saved", Inputs: map[string]string{"count": "6"}}}
 	if err := WriteWorkflowManifest(ctx, binding.Root, manifest); err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func checkSavedScriptTriggerAndSchedule(t *testing.T, docs string, binding crewE
 	if err := json.Unmarshal(call("/functions", string(triggerArgs)), &accepted); err != nil || accepted.RunID == "" {
 		t.Fatalf("trigger acceptance: %+v %v", accepted, err)
 	}
-	verify := func(id, schedule string, count string) {
+	verify := func(id, schedule string, count string, preset string) {
 		t.Helper()
 		for {
 			runs, err := ReadScheduleRuns(ctx, binding.Root)
@@ -216,8 +216,9 @@ func checkSavedScriptTriggerAndSchedule(t *testing.T, docs string, binding crewE
 				}
 				var artifact struct {
 					RunFolder string `json:"run_folder"`
+					Preset    string `json:"preset"`
 				}
-				if err := json.Unmarshal(raw, &artifact); err != nil || artifact.RunFolder != filepath.Join(layout.Runtime, "runs", run.RunFolder) {
+				if err := json.Unmarshal(raw, &artifact); err != nil || artifact.RunFolder != filepath.Join(layout.Runtime, "runs", run.RunFolder) || artifact.Preset != preset {
 					t.Fatalf("script got wrong permanent WORKFLOW_RUN_DIR: %s %v", raw, err)
 				}
 				// Runs UI and step inspection use these persisted events. A full
@@ -248,9 +249,9 @@ func checkSavedScriptTriggerAndSchedule(t *testing.T, docs string, binding crewE
 			}
 		}
 	}
-	verify(accepted.RunID, "", "5")
+	verify(accepted.RunID, "", "5", "")
 	call("/timer", `{}`)
-	verify("", "fixture-timer", "6")
+	verify("", "fixture-timer", "6", "Saved")
 	if _, err := os.Stat(filepath.Join(docs, binding.Root)); !os.IsNotExist(err) {
 		t.Fatalf("script recreated retired runtime: %v", err)
 	}
