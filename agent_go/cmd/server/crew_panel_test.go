@@ -160,3 +160,26 @@ func TestCrewPanelAutomationSummaryKeepsNextRun(t *testing.T) {
 		t.Fatalf("lost next run: %v", got)
 	}
 }
+
+// The menu's Automations rows each say what is inside in plain words, and an empty list says so.
+func TestCrewPanelAutomationKindSummaries(t *testing.T) {
+	now := time.Now()
+	sections := []crewPanelSection{
+		{ID: "schedules", Rows: []crewPanelRow{
+			{Destination: "schedules:schedules", Detail: "Next · 9 Nov 09:00 IST", nextRun: now.Add(time.Hour)},
+			{Destination: "schedules:schedules", Detail: "Paused"},
+		}},
+		{ID: "watchers"},
+		{ID: "webhooks", Error: "unavailable"},
+	}
+	got := crewPanelDetails(sections)
+	if got["schedules:schedules"] != "1 on · 1 paused · next 9 Nov 09:00 IST" {
+		t.Fatalf("schedules line: %q", got["schedules:schedules"])
+	}
+	if got["schedules:conditions"] != "None yet" {
+		t.Fatalf("an empty loaded list should say so: %q", got["schedules:conditions"])
+	}
+	if _, has := got["schedules:triggers"]; has {
+		t.Fatalf("a list that failed to load must not claim it is empty: %v", got)
+	}
+}

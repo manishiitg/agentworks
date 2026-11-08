@@ -277,13 +277,15 @@ def function_status(call_id: str) -> FunctionResult:
 def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
           tier: str | None = None, scripts: Sequence[str] = (),
           mcp: Sequence[str] = (), skills: Sequence[str] = (), tools: Sequence[str] = (),
-          browser: bool = False, can_ask_person: bool = False,
+          browser: bool = False, knowledge: str | None = None, can_ask_person: bool = False,
           timeout_seconds: float | None = None, conversation_id: str | None = None,
           key: str | None = None, redo: bool = False) -> Reply:
     """Run ordinary agent turns in this run folder, with no external MCPs by default.
 
     A list sends follow-ups to the same agent. To continue later in this run,
     pass reply.conversation_id; omitted settings retain its original selections.
+    knowledge defaults to "read" for the owning workflow; "write" also allows
+    its normal knowledge-note writes. Continued conversations keep their setting.
     browser uses this automation's connected browser. can_ask_person allows
     questions that wait for a person's answer; both are off by default.
     tools names existing category:tool selections, for example
@@ -314,7 +316,7 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
         return _call("agent", {"name": name, "messages": messages, "model": model,
                      "tier": tier, "scripts": list(scripts), "mcp": list(mcp),
                      "skills": list(skills), "tools": list(tools), "browser": browser,
-                     "can_ask_person": can_ask_person, "timeout_seconds": timeout_seconds,
+                     "knowledge": knowledge, "can_ask_person": can_ask_person, "timeout_seconds": timeout_seconds,
                      "conversation_id": conversation_id, "source_call": source_call}, key, redo)
     except AutomationError as error:
         return Reply(ok=False, error=str(error))

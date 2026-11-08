@@ -30,7 +30,7 @@ Read saved-script arguments from `agentworks.inputs` (the typed `STEP_PARAMS_JSO
 
 Scripts inherit the Crew's model, browser and app selections. To choose a different connected browser for a script, read its `script.json` and use the existing write action to set `capabilities.browser_mode` (`headless`, `extension`, `none`, or local `cdp` when offered by this installation), preserving its other fields. Same-ID conversion copies settings from the original workflow, including selected secret names and provider references; it never copies secret values.
 
-Python scripts use the Crew's one managed database through `agentworks_db`. Save schema migrations in the Crew's `db/migrations` using its normal file tools, then use `database action=migrate` with `crew_id`. Do not put SQL migrations inside a saved script's Python bundle.
+Python scripts use the Crew's one managed database through `agentworks_db`. Use `execute` or `transaction` for rows and additive setup (`CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`). Chat uses `database action=mutate`. ALTER and DROP are refused. Existing `db/migrations/` files remain history and are not executed.
 
 Replacing an existing workflow needs the approved same-ID conversion so its code, data and complete database stay attached. A separate copy is a trial, not a migration. Agent replies have bounded `text`; check task/status text with `reply.answer_file.read_text()` after `reply.ok`, and use `log_file` for the received provider transcript.
 

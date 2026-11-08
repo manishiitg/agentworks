@@ -26,7 +26,15 @@ import (
 func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	f, upstream := newExternalCrewCommandFixture(t)
 	t.Setenv("AUTH_SECRET", "crew-execution-test-signing-secret")
-	f.write(t, externalCommandCrewRoot+"/db/migrations/2026-10-11-example.sql", "CREATE TABLE IF NOT EXISTS example (id INTEGER PRIMARY KEY, value TEXT);")
+	// PLAT-746-448: conversion points the Crew at its existing workflow DB.
+	if err := defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		record := projects["work/test-team"]
+		record.DatabaseRoot = "workflows/saved/db"
+		projects["work/test-team"] = record
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	router := gin.New()
 	router.POST("/api/query", workspacehandlers.QueryWorkflowDB)
 	router.POST("/api/mutate", workspacehandlers.MutateWorkflowDB)
@@ -63,10 +71,19 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "database", "arguments": args})
 		requireRemoteSuccess(t, result, action)
 	}
-	call("migrate", map[string]any{"migration_file": "2026-10-11-example.sql"})
+	// Normal Crew creation initializes an empty database; SQL setup is a mutation.
+	_, err := workspace.NewClient(server.URL, workspace.WithUserID("owner")).InitializeWorkflowDB(ctx, workspace.InitializeWorkflowDBParams{DBPath: externalCommandCrewRoot + "/db/db.sqlite"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call("mutate", map[string]any{"statements": []any{
+		map[string]any{"sql": "CREATE TABLE IF NOT EXISTS example (id INTEGER PRIMARY KEY, value TEXT)"},
+		map[string]any{"sql": "CREATE INDEX IF NOT EXISTS example_value ON example(value)"},
+	}})
+	call("mutate", map[string]any{"sql": "CREATE TABLE IF NOT EXISTS example (id INTEGER PRIMARY KEY, value TEXT)"})
 	call("mutate", map[string]any{"sql": "INSERT INTO example (id,value) VALUES (?,?)", "params": []any{1, "saved via MCP"}})
 	call("snapshot", map[string]any{})
-	live, err := sql.Open("sqlite", filepath.Join(f.docs, externalCommandCrewState, "db", "db.sqlite"))
+	live, err := sql.Open("sqlite", filepath.Join(f.docs, externalCommandCrewState, "workflows", "saved", "db", "db.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +175,7 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	}
 	crewCapabilityHTTP(t, f, guarded, "database", map[string]any{"action": "mutate", "sql": "DELETE FROM example"}, 403)
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "terminal", map[string]any{"action": "execute", "command": "pwd", "working_directory": "Workflow/other"}, 400)
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "database", map[string]any{"action": "migrate", "migration_file": "../other.sql"}, 400)
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "database", map[string]any{"action": "mutate", "sql": "DROP TABLE IF EXISTS example"}, 400)
 	bounded := crewWriter("owner")
 	bounded.AccessToken.AllCrews, bounded.AccessToken.CrewIDs = false, []string{"other"}
 	crewCapabilityHTTP(t, f, bounded, "terminal", map[string]any{"action": "history"}, 403)

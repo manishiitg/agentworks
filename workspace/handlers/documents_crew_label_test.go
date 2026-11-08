@@ -296,3 +296,35 @@ func TestCrewWorkflowListingCombinesAuthoredFilesAndPrivateRecords(t *testing.T)
 		t.Fatal("old workflow folder recreated")
 	}
 }
+
+// A Crew's own .agentworks folder (its workflows and code) is listed at the top of the Files tree even with other dot
+// entries hidden (owner, 8 Nov: ".agentworks/ folder should be visible by default").
+func TestFilesTreeListsTheCrewAgentworksFolder(t *testing.T) {
+	docs, _ := setupLocalCrewDocuments(t)
+	plain := filepath.Join(docs, "Crew", "plain")
+	for _, dir := range []string{".agentworks", ".hidden", "code"} {
+		if err := os.MkdirAll(filepath.Join(plain, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	router := setupRouter(docs)
+	recorder := httptest.NewRecorder()
+	params := url.Values{"folder": {"Crew/plain"}, "max_depth": {"0"}, "view_root": {"Crew/plain"}, "hide_dotfiles": {"true"}}
+	router.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/documents?"+params.Encode(), nil))
+	var response models.APIResponse[[]models.Document]
+	if recorder.Code != 200 || json.Unmarshal(recorder.Body.Bytes(), &response) != nil || !response.Success {
+		t.Fatal(recorder.Body.String())
+	}
+	listed := map[string]bool{}
+	var collect func([]models.Document)
+	collect = func(items []models.Document) {
+		for _, item := range items {
+			listed[item.FilePath] = true
+			collect(item.Children)
+		}
+	}
+	collect(response.Data)
+	if !listed["Crew/plain/.agentworks"] || !listed["Crew/plain/code"] || listed["Crew/plain/.hidden"] {
+		t.Fatalf("listed %v, want .agentworks and code but not .hidden", listed)
+	}
+}

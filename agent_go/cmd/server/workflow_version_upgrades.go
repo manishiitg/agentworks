@@ -164,7 +164,7 @@ const upgradeManagedDBScripts = `WORKFLOW CONTRACT UPGRADE: SCRIPTS USE THE MANA
 
 Do only this migration. Scripted steps used to open db/db.sqlite themselves (import sqlite3, $DB_PATH). They now reach the database through the built-in Python module agentworks_db, which calls the same managed query_workflow_db / mutate_workflow_db tools agents use: SQL is validated, every write is one transaction, and bulk writes and paged reads are built in. $DB_PATH stays set for old scripts until every workflow is on this contract; do not use it in anything you write.
 
-1. Call scan_workflow_script_db_usage. It lists every script under code/ that still opens the database directly (raw_db) and every schema statement found in a script (ddl). If it reports nothing, go to step 5.
+1. Call scan_workflow_script_db_usage. It lists every script under code/ that still opens the database directly (raw_db). If it reports nothing, go to step 5.
 2. Convert each listed script. The helper is imported with: from agentworks_db import query, query_one, scalar, iter_query, execute, insert, execute_many, transaction, DBError. Mapping:
    - conn = sqlite3.connect(os.environ["DB_PATH"]) / conn.close(): delete both; there is no connection.
    - cur.execute("SELECT ...", p).fetchall(): query with the SQL and a params list. Rows are dicts (row["col"], not row[0]); give the SELECT an ORDER BY when order matters. fetchone(): query_one with the same arguments; a single value: scalar; a very large result: iter_query.
@@ -174,9 +174,9 @@ Do only this migration. Scripted steps used to open db/db.sqlite themselves (imp
    - conn.row_factory = sqlite3.Row: not needed. Dates and datetimes are sent as ISO text.
    - PRAGMA foreign_keys = ON: delete it. Managed writes always enforce the foreign keys the schema declares, so the protection stays.
    - Any other PRAGMA, ATTACH, VACUUM, executescript and creating triggers at run time are not available through the helper. Do not invent a workaround: leave that script unconverted and report it (see below).
-3. Schema statements (ddl): CREATE, ALTER and DROP are refused by the managed tools, so they cannot stay in a script. Read db/README.md first and keep each table's documented contract. Move every statement into a migration file db/migrations/<date>-<name>.sql (idempotent, for example CREATE TABLE IF NOT EXISTS), write it with ordinary file tools, call apply_workflow_db_migration(migration_file=...) once, then remove the statement from the script.
-4. Verify each converted script without running the whole workflow: check it parses (python3 -c "import ast; ast.parse(open('code/<step-id>/main.py').read())") and run the step's own test_*.py when it has one. Test files may keep using sqlite3 to check results; they are not scanned. Then call scan_workflow_script_db_usage again until it reports no raw_db and no ddl.
-5. Do not hand-edit workflow.json. When the scan is clean call set_workflow_contract_version(version="1.0.45"). The stamp tool runs the same scan and refuses, naming what is left, while any script still opens the database or carries a schema statement.
+3. Read db/README.md and preserve each table's documented contract. Additive setup uses execute("CREATE TABLE IF NOT EXISTS ...") or execute("CREATE INDEX IF NOT EXISTS ..."), including inside transaction with row changes. ALTER, DROP and other schema changes are refused. Do not create or apply migration files; existing db/migrations files are history only.
+4. Verify each converted script without running the whole workflow: check it parses (python3 -c "import ast; ast.parse(open('code/<step-id>/main.py').read())") and run the step's own test_*.py when it has one. Test files may keep using sqlite3 to check results; they are not scanned. Then call scan_workflow_script_db_usage again until it reports no raw_db.
+5. Do not hand-edit workflow.json. When the scan is clean call set_workflow_contract_version(version="1.0.45"). The stamp tool runs the same scan and refuses, naming what is left, while any script still opens the database directly.
 
 If a script cannot be converted without a product decision (it needs a PRAGMA, ATTACH, a trigger created at run time, or its behaviour is unclear), do not guess and do not stamp: leave it as it is and report exactly what blocked it so the operator can decide.`
 

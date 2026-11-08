@@ -245,18 +245,18 @@ func TestWebhookConcurrentOutcomeIsolation(t *testing.T) {
 	}
 }
 
-func TestWebhookRejectsProtectedAndUndeclaredVariables(t *testing.T) {
+func TestWebhookInputsAllowIdentifiersAndRefuseSelectedVaultClashes(t *testing.T) {
 	manifest := NewWorkflowManifest("test")
 	manifest.Capabilities.SelectedGlobalSecretNames = &[]string{"VLT_A00001__DB_URL"}
 	raw, _ := json.Marshal(manifest)
-	mock := &mockWorkspaceAPI{files: map[string]string{manifestPath("Workflow/test"): string(raw), "Workflow/test/variables/variables.json": `{"variables":[{"name":"base_url"},{"name":"DB_URL"},{"name":"PATH"},{"name":"access_token"}]}`}}
+	mock := &mockWorkspaceAPI{files: map[string]string{manifestPath("Workflow/test"): string(raw), "Workflow/test/variables/variables.json": `{"variables":[{"name":"base_url"},{"name":"DB_URL"},{"name":"PATH"},{"name":"access_token"},{"name":"SECRET_DB_URL"},{"name":"RDS_SECRET_ID_DEV"}]}`}}
 	ws := httptest.NewServer(mock)
 	defer ws.Close()
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
-	if err := validateWebhookVariableNames(context.Background(), "Workflow/test", []string{"base_url"}); err != nil {
+	if err := validateWebhookVariableNames(context.Background(), "Workflow/test", []string{"base_url", "PATH", "access_token", "RDS_SECRET_ID_DEV"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"DB_URL", "PATH", "access_token", "unknown"} {
+	for _, name := range []string{"DB_URL", "SECRET_DB_URL", "unknown"} {
 		if err := validateWebhookVariableNames(context.Background(), "Workflow/test", []string{name}); err == nil {
 			t.Fatalf("unsafe variable %s accepted", name)
 		}

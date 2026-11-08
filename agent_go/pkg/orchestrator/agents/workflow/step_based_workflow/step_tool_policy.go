@@ -9,7 +9,7 @@ import (
 // This leaves the general step baseline and the owning pool's access ceiling intact.
 func (hcpo *StepBasedWorkflowOrchestrator) filterOrdinaryStepTools(tools []llmtypes.Tool, executors map[string]interface{}) ([]llmtypes.Tool, map[string]interface{}) {
 	blocked := map[string]bool{
-		"query_workflow_costs": true, "apply_workflow_db_migration": true,
+		"query_workflow_costs":   true,
 		"project_functions_list": true, "project_functions_call": true, "project_functions_get_call": true, "project_functions_reply": true,
 	}
 	result := make([]llmtypes.Tool, 0, len(tools))

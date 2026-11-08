@@ -26,7 +26,7 @@ import (
 
 var crewExecutionMembers = map[string]bool{
 	"execute_shell_command": true, "agent_browser": true,
-	"mutate_workflow_db": true, "apply_workflow_db_migration": true, "create_workflow_database_snapshot": true,
+	"mutate_workflow_db": true, "create_workflow_database_snapshot": true,
 	"call_selected_mcp_tool": true,
 }
 

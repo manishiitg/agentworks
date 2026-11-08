@@ -16,7 +16,7 @@ Reads
     describe(table=None)                 -> schema rows
 Give a big SELECT an ORDER BY so pages stay stable.
 
-Writes (INSERT, UPDATE, DELETE only; schema changes are migrations)
+Writes (INSERT, UPDATE, DELETE, CREATE TABLE/INDEX IF NOT EXISTS; ALTER/DROP refused)
     execute(sql, params=None)            -> rows affected
     insert(sql, params=None)             -> last insert id
     execute_many(sql, rows, chunk=2000)  -> rows affected over every row

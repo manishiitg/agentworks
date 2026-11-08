@@ -120,9 +120,6 @@ func WorkflowInputValue(input Variable, raw interface{}) (string, error) {
 	if len(text) > 16384 {
 		return "", fmt.Errorf("input %q exceeds 16 KiB", input.Name)
 	}
-	if err := ValidatePlainWorkflowInput(input.Name, text); err != nil {
-		return "", err
-	}
 	value := interface{}(text)
 	if WorkflowInputType(input) != "string" {
 		decoder := json.NewDecoder(strings.NewReader(text))

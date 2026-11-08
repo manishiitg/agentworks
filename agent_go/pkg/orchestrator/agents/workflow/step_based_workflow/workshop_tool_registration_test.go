@@ -48,7 +48,7 @@ func (workshopToolTestLogger) Fatal(string, error, ...loggerv2.Field)   {}
 func (l workshopToolTestLogger) With(...loggerv2.Field) loggerv2.Logger { return l }
 func (workshopToolTestLogger) Close() error                             { return nil }
 
-func TestRegisterWorkshopChatToolsIncludesArtifactReviewMarker(t *testing.T) {
+func TestRegisterWorkshopChatToolsIncludesPromptHealth(t *testing.T) {
 	agent := newWorkshopDefinitionDraft()
 	workspacePath := t.TempDir()
 	base := &orchestrator.BaseOrchestrator{}
@@ -61,16 +61,6 @@ func TestRegisterWorkshopChatToolsIncludesArtifactReviewMarker(t *testing.T) {
 
 	RegisterWorkshopChatTools(agent, session, workshopToolTestLogger{})
 
-	tool, ok := agent.tools["mark_changelog_artifact_reviewed"]
-	if !ok {
-		t.Fatal("actual workshop agent registry is missing mark_changelog_artifact_reviewed")
-	}
-	if tool.DisplayGroup != "workflow" {
-		t.Fatalf("mark_changelog_artifact_reviewed category = %q, want workflow", tool.DisplayGroup)
-	}
-	if tool.Execute == nil {
-		t.Fatal("mark_changelog_artifact_reviewed has no registered executor")
-	}
 	promptHealth, ok := agent.tools["get_plan_prompt_health"]
 	if !ok {
 		t.Fatal("actual workshop agent registry is missing get_plan_prompt_health")

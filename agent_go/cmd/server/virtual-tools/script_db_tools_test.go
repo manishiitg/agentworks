@@ -24,7 +24,7 @@ func TestScanWorkflowScriptDBUsageTool(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("code/step-a/main.py", "import sqlite3\nconn = sqlite3.connect('x')\nconn.execute('CREATE TABLE t (a)')\n")
+	write("code/step-a/main.py", "import sqlite3\nconn = sqlite3.connect('db.sqlite')\nconn.execute('CREATE TABLE t (a)')\n")
 	write("code/step-b/main.py", "from agentworks_db import query\nquery('SELECT 1')\n")
 	write("code/step-a/test_main.py", "import sqlite3\n")
 
@@ -42,13 +42,12 @@ func TestScanWorkflowScriptDBUsageTool(t *testing.T) {
 		Needs   []struct {
 			File string   `json:"file"`
 			Raw  []string `json:"raw_db"`
-			DDL  []string `json:"ddl"`
 		} `json:"needs_conversion"`
 	}
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Clean || result.Scanned != 2 || len(result.Needs) != 1 || result.Needs[0].File != "step-a/main.py" || len(result.Needs[0].DDL) != 1 {
+	if result.Clean || result.Scanned != 2 || len(result.Needs) != 1 || result.Needs[0].File != "step-a/main.py" || len(result.Needs[0].Raw) != 1 {
 		t.Fatalf("scan = %s", out)
 	}
 	// Converted: clean, with an empty (not null) list.
