@@ -63,7 +63,7 @@ it('does not open an Inbox without the backend capability',async()=>{
 })
 it('shows a Crew\'s automations as tabs: Schedules, Webhooks, Watchers, and Inbox only when it has one, no Functions',async()=>{
  const host=document.createElement('div');const root=createRoot(host)
- const tabs=()=>[...host.querySelectorAll('nav[aria-label="Automations"] button')].map(node=>node.textContent).filter(label=>label!=='Ask')
+ const tabs=()=>[...host.querySelectorAll('nav[aria-label="Automations"] button')].map(node=>node.querySelector('span')?.textContent)
  inboxCapability.enabled=true
  try{
   await act(async()=>root.render(<AutomationHubPanel entityType="product" workspacePath="Crew/example" productTriggerScope={{profileId:'work',projectId:'example'}}/>))

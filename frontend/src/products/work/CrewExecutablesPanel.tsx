@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, FileCode2, Route, Zap } from 'lucide-react'
+import { FileCode2, Route, Zap } from 'lucide-react'
 import { isAxiosError } from 'axios'
 import api from '../../services/api'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
@@ -108,8 +108,7 @@ function StandaloneExecutable({ item, onBack, editor }: { item: CrewExecutable; 
   const [section, setSection] = useState<PlanRunsSection>('plan')
   const script = item.kind === 'script'
   return <div className="space-y-4">
-    <button type="button" onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-3.5 w-3.5" /> Back to {script ? 'scripts' : 'workflows'}</button>
-    <PlanRunsSwitch section={section} onChange={setSection} planLabel={script ? 'Code' : 'Plan'} planHint={script ? 'what it runs' : 'what it does'} />
+    <PlanRunsSwitch section={section} onChange={setSection} onBack={onBack} planLabel={script ? 'Code' : 'Plan'} planHint={script ? 'what it runs' : 'what it does'} />
     {editor(section)}
   </div>
 }
