@@ -306,12 +306,18 @@ def function_status(call_id: str) -> FunctionResult:
 
 
 def send_email(to: str | Sequence[str], subject: str, body: str,
-               attachments: Sequence[str | Path] = ()) -> Reply:
+               attachments: Sequence[str | Path] = (), *,
+               cc: str | Sequence[str] = (), html: str | None = None) -> Reply:
     """Send explicitly through the existing mail account and recipient checks."""
     recipients = [to] if isinstance(to, str) else list(to)
+    arguments = {"to": recipients, "subject": subject, "body": body,
+                 "attachments": [str(p) for p in attachments]}
+    if cc:
+        arguments["cc"] = [cc] if isinstance(cc, str) else list(cc)
+    if html is not None:
+        arguments["html"] = html
     try:
-        return _call("send_email", {"to": recipients, "subject": subject, "body": body,
-                                    "attachments": [str(p) for p in attachments]}, None, False)
+        return _call("send_email", arguments, None, False)
     except AutomationError as error:
         return Reply(ok=False, error=str(error))
 
