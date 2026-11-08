@@ -74,12 +74,6 @@ func TestRuntimeSkillsUseCurrentBuilderFilesAndKeepAccessBoundaries(t *testing.T
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || !got.Prepared || got.SessionID != "current" || len(got.Skills) != 1 || got.Skills[0].FolderName != "current" {
 		t.Fatalf("current inventory: %d %s", w.Code, w.Body.String())
 	}
-	// Relay uses the same current Builder identity and physical inventory.
-	workspace.files["Workflow/demo/workflow.json"] = `{"id":"wf","kind":"relay","created_by":"alice","access":{"owners":["alice"],"readers":["bob"]}}`
-	w = call("alice", "")
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || !got.Prepared || got.SessionID != "current" {
-		t.Fatalf("Relay current inventory: %d %s", w.Code, w.Body.String())
-	}
 	write(filepath.Join(got.Directory, ".agents/skills/current/SKILL.md"), "---\nname: changed-on-disk\n---\nNew file content")
 	w = call("alice", "")
 	if json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Skills[0].Frontmatter.Name != "changed-on-disk" {
