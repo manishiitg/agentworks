@@ -65,10 +65,6 @@ metadata:
     - read_agent_messages
     - list_accessible_workflows
     - files
-    - get_human_input_request
-    - answer_human_input_request
-    - create_human_input_request
-    - withdraw_human_input_request
     relays:
     - share
     - manage_project

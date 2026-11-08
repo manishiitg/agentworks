@@ -7,33 +7,6 @@ import (
 	"testing"
 )
 
-// describe without an operation must stay small: all schemas together were
-// about 73k characters and left the model guessing operation names.
-func TestCrewDescribeListsNamesAndSendsSchemaPerOperation(t *testing.T) {
-	all, err := crewDescribeOperations("", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(all) > 4000 {
-		t.Fatalf("describe without an operation is %d characters, want a few KB", len(all))
-	}
-	for _, name := range crewPlanOperations {
-		if !strings.Contains(all, `"`+name+`"`) {
-			t.Fatalf("describe does not list %s", name)
-		}
-	}
-	if strings.Contains(all, "input_schema") {
-		t.Fatal("the operation list must not carry schemas")
-	}
-	one, err := crewDescribeOperations("update_step", "")
-	if err != nil || !strings.Contains(one, "input_schema") {
-		t.Fatalf("an operation must return its own schema: %v", err)
-	}
-	if _, err := crewDescribeOperations("add_stp", ""); err == nil || !strings.Contains(err.Error(), "add_step") {
-		t.Fatalf("an unknown operation must name the valid ones: %v", err)
-	}
-}
-
 func TestCrewReadPlanReturnsNamedStepsAndPagesTheRest(t *testing.T) {
 	steps := []map[string]interface{}{}
 	for i := 0; i < 40; i++ {
@@ -92,45 +65,5 @@ func TestCrewReadPlanReturnsNamedStepsAndPagesTheRest(t *testing.T) {
 	other, _ := crewReadReply("planning/config.json", content, true, map[string]interface{}{"step_id": "step-1"})
 	if !strings.Contains(other, `"content":`) || strings.Contains(other, "truncated") || len(other) < len(content) {
 		t.Fatal("other files must come back whole and unchanged")
-	}
-}
-
-// add_step is one schema branch per step type (about 29k characters together);
-// describe returns the type list first and one type's fields on request.
-func TestCrewDescribeAddStepByType(t *testing.T) {
-	list, err := crewDescribeOperations("add_step", "")
-	if err != nil || len(list) > 2500 || strings.Contains(list, "oneOf") {
-		t.Fatalf("add_step without a type must list the types only: %v, %d chars", err, len(list))
-	}
-	var parsed []struct {
-		Schema struct {
-			Note string `json:"note"`
-		} `json:"input_schema"`
-	}
-	if json.Unmarshal([]byte(list), &parsed) != nil || len(parsed) != 1 {
-		t.Fatalf("unexpected reply: %.200s", list)
-	}
-	whole := 0
-	for _, d := range crewPlanDefinitions() {
-		if d.Name == "add_step" {
-			whole = len(d.InputSchema)
-		}
-	}
-	covered := 0
-	for _, kind := range []string{"agent", "scripted", "routing", "branch"} {
-		if !strings.Contains(parsed[0].Schema.Note, kind) {
-			continue
-		}
-		covered++
-		one, err := crewDescribeOperations("add_step", kind)
-		if err != nil || !strings.Contains(one, `"const":"`+kind+`"`) || len(one) >= whole {
-			t.Fatalf("%s: %v, %d chars against %d for all types", kind, err, len(one), whole)
-		}
-	}
-	if covered < 2 {
-		t.Fatalf("the type list names too few step types: %s", parsed[0].Schema.Note)
-	}
-	if _, err := crewDescribeOperations("add_step", "nope"); err == nil || !strings.Contains(err.Error(), "step_type") {
-		t.Fatalf("an unknown type must say how to choose: %v", err)
 	}
 }

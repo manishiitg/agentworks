@@ -525,7 +525,7 @@ func externalPreparation(claims *UserClaims) []string {
 		steps = append(steps, "To chat: send questions with the chat tool and read replies with runs action=status; pass session_id to continue a conversation, and answer pending questions with runs action=reply_input.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "builder_chat"}) {
-		steps = append(steps, "For direct workflow edits, plan action=list returns native operation schemas. Read workflow action=plan for expected_revision, then call plan with that revision, a unique request_id and the exact arguments. Existing Builder consent and current owner/editor/team roles apply; native validation and plan changelog remain. Builder action=chat can delegate an editing request to the configured model when requested; poll action=status and answer action=reply_input by operation_id.")
+		steps = append(steps, "Older plan-based workflows keep running but are no longer edited; to change one, it is converted to a Python script workflow in its Crew. New workflows are Python scripts: create and edit them with workspace action=automation_create and automation_write.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "workflow_google_account"}) {
 		steps = append(steps, "For personal Google or Slack accounts, use integrations with workflow_id or crew_id. Start with action=google_list_saved or slack_list_saved. The corresponding attach/detach action changes only this item; connect/reconnect returns a browser sign-in link; disconnect removes the saved connection everywhere. Existing Builder access, account ownership and current item access apply.")

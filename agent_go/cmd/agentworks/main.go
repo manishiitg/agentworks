@@ -202,9 +202,9 @@ func newCommand(o *options) *cobra.Command {
 		root.AddCommand(groupCmd)
 	}
 	plan := &cobra.Command{
-		Use: "plan get|list|edit", Args: cobra.MaximumNArgs(1),
-		Short: "Read or edit a workflow plan with existing authoring consent",
-		Long:  "Read with plan get. Discover native edit schemas with plan list. Use plan edit --input FILE with action, arguments, expected_revision from get_plan and a unique request_id. Identical retries return the saved receipt; current owner/editor/team roles and existing Builder consent apply.",
+		Use: "plan get", Args: cobra.MaximumNArgs(1),
+		Short: "Read an older plan-based workflow's plan",
+		Long:  "Read with plan get. Older plan-based workflows keep running but are no longer edited; to change one, ask to have it converted to a Python script workflow.",
 	}
 	addOperationFlags(plan, "get_plan")
 	plan.RunE = func(cmd *cobra.Command, args []string) error {
@@ -214,12 +214,10 @@ func newCommand(o *options) *cobra.Command {
 		switch args[0] {
 		case "get":
 			return o.call(cmd, "get_plan")
-		case "list":
-			return o.callWithArguments(cmd, "plan", map[string]any{"action": "list"})
-		case "edit":
-			return o.call(cmd, "plan")
+		case "list", "edit":
+			return fmt.Errorf("older plan-based workflows are no longer edited; to change one, ask to have it converted to a Python script workflow")
 		default:
-			return fmt.Errorf("unknown plan operation %q: use get, list or edit", args[0])
+			return fmt.Errorf("unknown plan operation %q: use get", args[0])
 		}
 	}
 	root.AddCommand(plan)

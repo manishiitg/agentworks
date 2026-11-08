@@ -172,33 +172,8 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 				return err
 			}
 		}
-		// Plan modification tools + workshop execution tools (execute_step, query_step, stop_step, etc.)
-		// Returns an error on failure: the workflow-builder system prompt advertises these tools,
-		// so a half-registered builder silently hallucinates missing tools to the LLM.
-		// Schemas are covered by TestAllSchemaFunctionsReturnValidJSON — this should
-		// never fire in a healthy build. The /api/query caller wraps this with log.Fatalf
-		// to preserve the original Fatal semantics; the restore caller logs and skips.
-		//
-		// PLAT-262: every one of these tools mutates plan structure, so a
-		// read-only identity gets none of them registered at all rather than
-		// a per-tool gate — matches the doc-approved "authority, decided once
-		// per distinct-caller registration" pattern (prepareReadOnlyBackgroundAgentTools),
-		// not the deleted per-turn workshop-mode catalog filter.
-		if !policy.allows("plan_authoring") {
-			log.Printf("[WORKFLOW_PHASE] Run mode — skipping plan modification tool registration for %s", workflowPhaseID)
-		} else if err := todo_creation_human.RegisterPlanModificationTools(
-			definitionAgent,
-			phaseWorkspacePath,
-			api.logger,
-			phaseReadFile,
-			phaseWriteFile,
-			phaseMoveFile,
-			fmt.Sprintf("%s chat agent", workflowPhaseID),
-		); err != nil {
-			return fmt.Errorf("register plan modification tools for workflow-builder: %w", err)
-		} else {
-			log.Printf("[WORKFLOW_PHASE] Registered plan modification tools for %s", workflowPhaseID)
-		}
+		// Older plan-based workflows are no longer edited (PLAT-746, owner 8 Nov): no plan
+		// modification tools are registered; changing one means converting it to a script.
 		// STOP-RACE GUARD: Check if the session was stopped while this goroutine
 		// was in flight. Without this check, the goroutine would create a new
 		// WorkshopChatSession with a fresh context.Background() that is never
@@ -502,25 +477,6 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			}); err != nil {
 				return fmt.Errorf("attach reference surface in %s (mode=%s): %w", workflowPhaseID, workshopMode, err)
 			}
-		}
-	default:
-		// planning: plan modification tools
-		// Returns an error on failure — see workflow-builder case above for rationale.
-		// PLAT-262: same run-mode gate as the workflow-builder case above.
-		if !policy.allows("plan_authoring") {
-			log.Printf("[WORKFLOW_PHASE] Run mode — skipping plan modification tool registration for phase=%s", workflowPhaseID)
-		} else if err := todo_creation_human.RegisterPlanModificationTools(
-			definitionAgent,
-			phaseWorkspacePath,
-			api.logger,
-			phaseReadFile,
-			phaseWriteFile,
-			phaseMoveFile,
-			fmt.Sprintf("%s chat agent", workflowPhaseID),
-		); err != nil {
-			return fmt.Errorf("register plan modification tools for phase=%s: %w", workflowPhaseID, err)
-		} else {
-			log.Printf("[WORKFLOW_PHASE] Registered plan modification tools for phase=%s", workflowPhaseID)
 		}
 	}
 
