@@ -52,6 +52,7 @@ func (api *StreamingAPI) initGmailInbound(router *mux.Router) func() {
 		Stored: func(ctx context.Context, i gmailinbound.Inbox) error { return api.wakeAgentInboxWatchers(ctx, i) }}
 	api.gmailInbound = service
 	router.HandleFunc("/api/agent-email/inbox", api.agentEmailInboxHTTP).Methods("GET")
+	router.HandleFunc("/api/agent-email/inbox", api.agentEmailInboxEnabledHTTP).Methods("POST")
 	ctx, cancel := context.WithCancel(context.Background())
 	// Reconcile Crew receiving settings before workers can use persisted inbox rows.
 	if err := api.syncAgentEmailInboxes(ctx); err != nil {
