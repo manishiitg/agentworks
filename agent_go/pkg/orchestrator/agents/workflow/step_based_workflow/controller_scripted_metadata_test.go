@@ -3,6 +3,7 @@ package step_based_workflow
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -37,5 +38,16 @@ func TestNormalizeScriptedSuccessCountsDoesNotDoubleCountMirroredLegacyKeys(t *t
 	normalizeScriptedSuccessCounts(&metadata)
 	if got := metadata.SuccessfulRuns["scripted"]; got != 9 {
 		t.Fatalf("scripted successes = %d, want 9", got)
+	}
+}
+
+// The local 2 MiB receipt could not be read by the native agent. A truncated
+// preview must preserve the actual last traceback rather than only its tail.
+func TestScriptOutputPreviewKeepsCompleteFinalTraceback(t *testing.T) {
+	traceback := "Traceback (most recent call last):\n" + strings.Repeat("  diagnostic frame\n", 600) + "RuntimeError: final failure\n"
+	output := "first-line\n" + strings.Repeat("noise\n", 350000) + traceback
+	preview := scriptOutputPreview(output, "/run/script.log")
+	if len(preview) > scriptOutputHeadBytes+scriptTracebackBytes+512 || !strings.HasPrefix(preview, "first-line") || !strings.HasSuffix(preview, traceback) || !strings.Contains(preview, "/run/script.log") {
+		t.Fatalf("lost traceback or unbounded preview: %d bytes", len(preview))
 	}
 }

@@ -191,6 +191,12 @@ func checkSavedScriptTriggerAndSchedule(t *testing.T, docs string, binding crewE
 				if err != nil || !strings.Contains(string(raw), `"count": `+count) || !strings.Contains(string(raw), `"python_ran": true`) {
 					t.Fatalf("real Python result missing: %s %v", raw, err)
 				}
+				// Runs UI and step inspection use these persisted events. A full
+				// stdout copy here would recreate the native receipt token failure.
+				payload, err := json.Marshal(api.eventStore.GetAllEventsRaw(run.SessionID))
+				if err != nil || bytes.Contains(payload, bytes.Repeat([]byte("Q"), 32768)) {
+					t.Fatal("run events retained unbounded script stdout")
+				}
 				t.Logf("script entrance schedule=%s run=%s real_python=true private_run_folder=%s", run.ScheduleID, run.ID, run.RunFolder)
 				return
 			}

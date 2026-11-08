@@ -5,17 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 type scriptLogKey struct{}
 type scriptLogReceipt struct {
-	LogFile     string `json:"log_file"`
-	LogError    string `json:"log_error,omitempty"`
-	LogComplete bool   `json:"log_complete"`
-	apiPath     string
-	value       string
-	dispatched  bool
+	LogFile         string `json:"log_file"`
+	LogError        string `json:"log_error,omitempty"`
+	LogComplete     bool   `json:"log_complete"`
+	OutputBytes     int    `json:"output_bytes"`
+	OutputTruncated bool   `json:"output_truncated"`
+	apiPath         string
+	value           string
+	dispatched      bool
 }
 
 func (r *scriptLogReceipt) result(value string, err error) string {
@@ -46,6 +49,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareScriptLog(ctx context.Context,
 	r.LogError = ""
 	r.LogComplete = false
 	r.dispatched = false
+	r.OutputBytes = 0
+	r.OutputTruncated = false
 	r.apiPath = filepath.ToSlash(filepath.Join(outputDir, fmt.Sprintf("script-output-%d.log", time.Now().UnixNano())))
 	r.LogFile = workflowAbsPath(r.apiPath)
 	return context.WithValue(ctx, scriptLogKey{}, r), r
@@ -70,7 +75,30 @@ func (hcpo *StepBasedWorkflowOrchestrator) finishScriptLog(ctx context.Context, 
 			receipt.LogComplete = true
 		}
 	}
+	result.OutputBytes = receipt.OutputBytes
+	result.OutputTruncated = receipt.OutputTruncated
 	result.LogFile = receipt.LogFile
 	result.LogError = receipt.LogError
 	result.LogComplete = receipt.LogComplete
+}
+
+// PLAT-746: full stdout/stderr lives in the streamed log. Metadata, UI events,
+// inspection text and subsequent agent turns receive only a head/tail preview.
+const scriptOutputHeadBytes = 2 * 1024
+const scriptOutputTailBytes = 8 * 1024
+const scriptTracebackBytes = 16 * 1024
+
+func scriptOutputPreview(output, logFile string) string {
+	if len(output) <= scriptOutputHeadBytes+scriptOutputTailBytes {
+		return output
+	}
+	tail := len(output) - scriptOutputTailBytes
+	if traceback := strings.LastIndex(output, "Traceback (most recent call last):"); traceback >= 0 && len(output)-traceback <= scriptTracebackBytes && traceback < tail {
+		tail = traceback
+	}
+	if tail <= scriptOutputHeadBytes {
+		return output
+	}
+	marker := fmt.Sprintf("\n... [output truncated; %d bytes total. Full output: %s. Read the log in bounded chunks; do not rerun.] ...\n", len(output), logFile)
+	return strings.ToValidUTF8(output[:scriptOutputHeadBytes], "�") + marker + strings.ToValidUTF8(output[tail:], "�")
 }

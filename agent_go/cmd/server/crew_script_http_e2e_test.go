@@ -99,7 +99,7 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 	write(filepath.Join(sourceRoot, "main.py"), `import json, os, sys
 from pathlib import Path
 print('start-marker')
-sys.stdout.write('Q' * 1100000)
+sys.stdout.write('Q' * 2097152)
 sys.stderr.write('stderr-last-line')
 values = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(values['count'], int)
@@ -204,15 +204,23 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 				t.Fatal("script log receipt missing", readErr)
 			}
 			var logReceipt struct {
-				LogFile     string `json:"log_file"`
-				LogError    string `json:"log_error"`
-				LogComplete bool   `json:"log_complete"`
+				LogFile         string `json:"log_file"`
+				LogError        string `json:"log_error"`
+				LogComplete     bool   `json:"log_complete"`
+				OutputBytes     int    `json:"output_bytes"`
+				OutputTruncated bool   `json:"output_truncated"`
+				Output          string `json:"output"`
 			}
 			if err := json.Unmarshal(rawLog, &logReceipt); err != nil || logReceipt.LogFile == "" || logReceipt.LogError != "" || !logReceipt.LogComplete {
 				t.Fatalf("bad script log receipt: %s %v", rawLog, err)
 			}
+			// A native Read of this receipt rejected the previous 2 MiB JSON.
+			// Keep the metadata small and both diagnostic ends, with real size.
+			if len(rawLog) > 32768 || !logReceipt.OutputTruncated || logReceipt.OutputBytes < 2097152 || !strings.Contains(logReceipt.Output, "start-marker") || !strings.Contains(logReceipt.Output, "stderr-last-line") || !strings.Contains(logReceipt.Output, logReceipt.LogFile) {
+				t.Fatalf("unbounded/incomplete output receipt: bytes=%d total=%d truncated=%t", len(rawLog), logReceipt.OutputBytes, logReceipt.OutputTruncated)
+			}
 			full, readErr := os.ReadFile(logReceipt.LogFile)
-			if readErr != nil || strings.Count(string(full), "Q") != 1100000 || !strings.Contains(string(full), "start-marker") || !strings.Contains(string(full), "stderr-last-line") {
+			if readErr != nil || strings.Count(string(full), "Q") != 2097152 || !strings.Contains(string(full), "start-marker") || !strings.Contains(string(full), "stderr-last-line") {
 				t.Fatalf("full stdout/stderr missing: size=%d %v", len(full), readErr)
 			}
 			rel, relErr := filepath.Rel(runRoot, logReceipt.LogFile)
