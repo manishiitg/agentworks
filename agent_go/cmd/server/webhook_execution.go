@@ -26,22 +26,11 @@ func turnInactivityLimit(ctx context.Context) time.Duration {
 	return schedulerWorkshopMaxInactivity
 }
 
-// Unattended starts use the same required contract as manual execution.
-func directWebhookContractCompatible(manifest *WorkflowManifest) bool {
-	if manifestContractIsExecutionCompatible(manifest) {
-		return true
-	}
-	// The previous contract still starts unattended, in a Crew too: the update to the next one needed plan edits that are gone.
-	return manifest != nil && !manifestIsRelay(manifest) && workflowContractVersionForUpgrade(manifest) == workflowContractStepDescriptionLayoutVersion
-}
-
+// Unattended runs use the Crew's registered saved Python source, just as
+// manual starts do. Archived workflow versions are not executable identities.
 func directWebhookPreflight(manifest *WorkflowManifest) error {
-	if workflowContractNeedsRecreation(manifest) {
-		return fmt.Errorf("%s: %w", oldWorkflowContractMessage, errWorkflowContractMigrationRequired)
-	}
-
-	if manifest == nil || !directWebhookContractCompatible(manifest) || manifest.CodeLayoutVersion != 1 {
-		return fmt.Errorf("this workflow's contract is not supported for unattended runs; converting it to a Python script is done by the platform operator for now: %w", errWorkflowContractMigrationRequired)
+	if manifest == nil || manifest.crewExecutable == nil || manifest.crewExecutable.Kind != "script" {
+		return errWorkflowScriptRequired
 	}
 	return nil
 }
