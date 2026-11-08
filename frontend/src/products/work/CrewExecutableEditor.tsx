@@ -1,5 +1,5 @@
 import { isAxiosError } from 'axios'
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import api from '../../services/api'
 import { CrewWorkflowRuns, type RunsView } from './CrewWorkflowRuns'
 import { CrewFileView } from './CrewFileView'
@@ -51,6 +51,8 @@ export function CrewExecutableEditor({
   const [error, setError] = useState('')
   const [starting, setStarting] = useState(false)
   const workspace = useWorkspaceState(item.workspace_path, null, false)
+  // A run may have started while this workflow page was closed. Do not rely on its mount cache.
+  useEffect(() => { if (runs.run) void workspace.refresh() }, [runs.run, workspace.refresh])
   const folders = workspace.state?.run_folders ?? []
   // The steps of the latest run, in the order they started: the dots on the Steps page.
   const latestSteps = useMemo<RunPythonStep[]>(() => {
@@ -119,7 +121,7 @@ export function CrewExecutableEditor({
             </div>
           )
         ) : (
-          <CrewWorkflowRuns workspacePath={item.workspace_path} script={script} view={runs} onView={onRuns} folders={folders} loading={workspace.loading} onRefresh={workspace.refresh} onAsk={ask} />
+          <CrewWorkflowRuns workspacePath={item.workspace_path} script={script} view={runs} onView={onRuns} folders={folders} loading={workspace.loading || !workspace.state} onRefresh={workspace.refresh} onAsk={ask} />
         )}
       </Suspense>
     </div>
