@@ -25,30 +25,6 @@ export interface AgentConfigs {
   db_access?: 'read' | 'write' | 'read-write' | 'none';
 }
 
-// Extended TodoStep with agent_configs
-export interface TodoStepWithConfigs {
-  id?: string;                        // Stable step ID (from backend, always present for new steps)
-  title?: string;
-  description?: string;
-  success_criteria?: string;
-  context_dependencies?: string[];
-  context_output?: string;
-  success_patterns?: string[];
-  failure_patterns?: string[];
-  next_step_id?: string;
-  // Human input step fields (asks question to human and blocks for input)
-  has_human_input?: boolean;
-  question?: string;
-  variable_name?: string;
-  response_type?: string; // "text" (default), "yesno", "multiple_choice"
-  options?: string[];
-  if_yes_next_step_id?: string; // For yesno type when response is "yes"
-  if_no_next_step_id?: string; // For yesno type when response is "no"
-  option_routes?: Record<string, string>; // For multiple_choice type - maps option index or value to next_step_id
-  agent_configs?: AgentConfigs;
-  validation_schema?: ValidationSchema; // Optional structured validation schema for step outputs
-}
-
 // StepConfig represents a single step's configuration in step_config.json
 export interface StepConfig {
   id: string;                 // Stable step ID (generated from title) - required identifier
@@ -207,60 +183,7 @@ export interface PlanningResponse {
 }
 
 // Type guard functions for discriminated union
-export function isScriptedStep(step: PlanStep): step is ScriptedPlanStep {
-  return step.type === 'scripted' || step.type === 'regular';
-}
-
-
+/** Narrow the saved read contract when merging recorded agent configuration. */
 export function isAgentStep(step: PlanStep): step is AgentPlanStep {
   return step.type === 'agent';
-}
-
-
-export type EffectiveExecutionMode = 'scripted' | 'agentic';
-
-// Anything the canvas can hand us: a plan step.
-export interface ExecutionModeStepLike {
-  type?: string;
-  agent_configs?: AgentConfigs;
-  execution_mode?: string;
-}
-
-// The execution model a step actually runs with (PLAT-287): decided by the plan
-// type. `scripted` is scripted — its work is the checked-in
-// learnings/<id>/main.py — and `agent` is agentic.
-// Routing/branch/orchestrator/human-input/crew steps have no execution mode.
-export function effectiveExecutionMode(
-  step: ExecutionModeStepLike | null | undefined,
-): EffectiveExecutionMode | undefined {
-  if (!step) return undefined;
-  const type = step.type || 'scripted';
-  if (type === 'scripted' || type === 'regular') return 'scripted';
-  if (type === 'agent') return 'agentic';
-  return undefined;
-}
-
-// Card rows are presentation only; execution keeps the complete item queue.
-export function agentCardItems(step: PlanStep, items: AgentItem[]): AgentItem[] {
-  return isAgentStep(step) && step.prompt_contract === 'description-first-v1' && !step.authored_prompt && items[0]?.id === '__step_description__'
-    ? items.slice(1) : items;
-}
-
-// The item list the runtime actually executes: an authored agent supplies its
-// own. Display only — never written back to plan.json.
-export function configuredAgentItems(step: PlanStep): AgentItem[] {
-  if (!isAgentStep(step)) return [];
-  const items = step.items ?? [];
-  if (step.prompt_contract === 'description-first-v1' && !step.authored_prompt) {
-    return [{id: '__step_description__', type: 'user_message', title: 'Step task', kind: 'execution', message: step.description}, ...items];
-  }
-  return items;
-}
-
-export function isRoutingStep(step: PlanStep): step is RoutingPlanStep {
-  return step.type === 'routing';
-}
-
-export function isBranchStep(step: PlanStep): step is BranchPlanStep {
-  return step.type === 'branch';
 }

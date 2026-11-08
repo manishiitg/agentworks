@@ -88,9 +88,7 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
       const view = configured?.getView() ?? store.workflowWorkspaceView ?? store.lastCanvasView
       const host = binding ? workspaceHost(binding.workspace) : undefined
       const visible = !!host && host.getClientRects().length > 0 && !!host.querySelector('[data-ui-view-mounted]') && document.visibilityState === 'visible'
-      const panel = host?.querySelector<HTMLElement>('[data-ui-plan-step]')
       const target = configured?.getTarget?.(view, host)
-        ?? (view === 'flow' && panel?.getClientRects().length ? panel.dataset.uiPlanStep : undefined)
       if (lastView !== view || lastVisible !== visible || lastTarget !== target) {
         revision++; lastView = view; lastVisible = visible; lastTarget = target
       }

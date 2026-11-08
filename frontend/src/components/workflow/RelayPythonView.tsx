@@ -65,7 +65,7 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild, scope
   workspacePath: string | null
   relayID?: string | null
   onBuild: () => void
-  scope?: import('./canvas/workspaceViewData').EmbeddedWorkflowScope
+  scope?: import('./canvas/workspaceViewTypes').EmbeddedWorkflowScope
 }) {
   const [tab, setTab] = useState<'graph' | 'calls' | 'source'>('graph')
   const panelTopic = tab === 'graph' ? 'Flow' : tab === 'calls' ? 'Flow runs' : 'Flow code'

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { agentApi } from '../../../services/api'
-import type { PlanStep, PlanningResponse, StepConfig, AgentConfigs } from '../../../utils/stepConfigMatching'
-import { isAgentStep } from '../../../utils/stepConfigMatching'
+import type { PlanStep, PlanningResponse, StepConfig, AgentConfigs } from '../../../utils/workflowPlan'
+import { isAgentStep } from '../../../utils/workflowPlan'
 
 // Module-level cache to dedupe loadPlan calls across multiple hook instances
 // and to preserve per-workspace data across workflow switches.
