@@ -33,7 +33,9 @@ You can ask the Crew's Builder chat to create or change it; no terminal is neede
 5. Use `workflow action=plan` with `view=outline` for the saved Python outline.
    This inspects the syntax without executing or importing authored code and
    requires source-editor access. Python `@step` labels are normal function
-   calls, not separate runnable or resumable plan steps.
+   calls, not separate runnable or resumable plan steps. Branches and loops
+   appear as “Other code”; large scripts can return an outline-limit message.
+   Read the saved source for the complete logic.
 
 Never put secret values into source or presets. Use the project's existing
 secret selection. Sharing and connected-account authority do not change here.
@@ -50,8 +52,22 @@ Keep the returned `session_id` and poll `runs action=status` with the same
 workflow. Use `runs action=list` to find saved run folders and `runs action=get`
 with `run_folder` for files, `metadata` (including `execution_id` and
 `python_steps`) and `evidence` (checks and notices). Folder grants still apply;
-the summary contains public checks/notices; full run files remain available under the same grants. `runs action=logs` lists that
-run's log files. A successful start is acceptance, not proof of completion.
+the summary contains public checks/notices; full run files remain available under the same grants. `runs action=logs` diagnoses that run in one bounded reply: script stdout/stderr
+tails with full paths, per-label status/durations, checks/notices, saved typed
+inputs/preset, failing labels and traceback, and agent answer/provider-log paths.
+Python labels share their program log; they do not each run a separate program.
+Read the returned paths for full content under the same file grants. A
+successful start is acceptance, not proof of completion.
+
+To fix a failure, read its saved code and edit the current nested source through
+`workspace action=automation_read/automation_write`. Then use `runs action=rerun`
+with `workflow_id` and the previous `run_folder`. It starts the current saved
+source with the recorded values/preset and reports changed source files and
+revisions versus the previous execution snapshot. This is a new real run:
+database writes, app calls and sends happen again. The current input contract
+is revalidated; a removed or changed input can require a new explicit start.
+A bounded or unavailable source comparison is stated in the receipt rather than
+silently claiming nothing changed.
 
 A Crew can also use `functions action=run_trigger` with `crew_id`, the saved
 `workspace_path`, optional `input_preset` and typed `inputs`. Omit `trigger_id`
@@ -80,6 +96,8 @@ agentworks workflows outline --workflow sample
 agentworks runs start-workflow --workflow sample --preset weekly --inputs '{"LIMIT":3}'
 agentworks runs status --workflow sample --session returned-session
 agentworks runs get --workflow sample --run-folder returned-run
+agentworks runs logs --workflow sample --run-folder returned-run
+agentworks runs rerun --workflow sample --run-folder returned-run
 agentworks functions run-trigger --crew team --workspace Workflow/sample --preset weekly --inputs '{"LIMIT":3}'
 agentworks functions trigger-status --crew team --workspace Workflow/sample --trigger-id returned-trigger --run-id returned-run
 ```

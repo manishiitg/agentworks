@@ -23,7 +23,13 @@ Start with `runs action=start` (`workflow_id`, optional `input_preset`, typed
 `inputs`) and poll `runs action=status` with its `session_id`, or use the existing
 `functions action=run_trigger/trigger_status` receipt. Do not start both for one
 intended run. Read `runs action=get` for `metadata.python_steps` and canonical
-`evidence` checks/notices; full run files keep the same read grants. External
+`evidence` checks/notices; full run files keep the same read grants. Use
+`runs action=logs` for bounded stdout/stderr tails, failure traceback, saved
+inputs, step timings and agent answer/provider-log paths. After editing nested
+source, `runs action=rerun` with the old `run_folder` starts current source with
+the recorded values/preset and reports changed source files. It repeats real
+effects (including database writes and sends), so do not rerun merely to inspect
+an uncertain start. External
 agents can read `help action=topic topic=python-workflows` for the complete MCP
 and named laptop CLI instructions. These operations keep current project,
 source-editing, account and file grants.
@@ -126,6 +132,6 @@ else:
 - **Durable files** that later runs need go under `WORKFLOW_DATA_ROOT`; everything else stays in `run_folder`.
 - **Nobody is asked mid-run.** A run never waits for a person. A missing value fails the run with a clear reason.
 - **The run record is the summary.** Do not write a separate run summary; Activity records every outcome. Use `notify` for the owner and the send helpers only for people the workflow exists to reach.
-- **Mocked test runs.** Put canned agent replies in `code/agent_mocks.json` as `{"Agent name": {"text": "...", "files": {"leads.json": "..."}}}` and start a run with mocked agents. Only the agents are mocked: scripts, databases, sends and app calls are real, and an agent missing from the file fails the run.
+- **Mocked test runs.** Use this only when the installation's current start schema offers `mock_agents`; otherwise do not claim a mocked run. Put canned agent replies in `code/agent_mocks.json` as `{"Agent name": {"text": "...", "files": {"leads.json": "..."}}}` and start a run with mocked agents. Only the agents are mocked: scripts, databases, sends and app calls are real, and an agent missing from the file fails the run.
 
 Existing plan-based workflows keep working until they are converted; edit them with the guide in `references/crew-plan/SKILL.md`.

@@ -39,11 +39,16 @@ agentworks workflows outline --workflow <id>
 agentworks runs start-workflow --workflow <id> --preset weekly --inputs '{"LIMIT":3}'
 agentworks runs status --workflow <id> --session <returned-session>
 agentworks runs get --workflow <id> --run-folder <returned-run>
+agentworks runs logs --workflow <id> --run-folder <returned-run>
+agentworks runs rerun --workflow <id> --run-folder <returned-run>
 ```
 
 `workflows create`, `source`, `save-source` and `save-inputs` use the Crew's existing
 source editor and input validator. Shared run access does not grant source edits.
 The server runs the workflow; installing the CLI does not move it to your laptop.
+`runs logs` includes the failure, inputs and log tails in one reply, with paths
+for full files. After a source fix, `runs rerun` reuses the saved input values
+and reports changed source files; it is a new real run and repeats its effects.
 
 ## Use your laptop from MCP
 
