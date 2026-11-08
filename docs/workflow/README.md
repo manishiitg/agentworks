@@ -1,37 +1,25 @@
-# Workflow Docs
+# Workflows
 
-These docs cover workflow design, execution, and workflow-scoped runtime behavior.
+A workflow is repeatable work inside a Crew. Its conversation stays with a Crew agent. Its page has **Steps** for the saved work and **Runs** for each execution.
 
-## Includes
+## Write and run
 
-- Canvas and workflow UX
-- Running workflows and workflow manifests
-- Step configuration and execution modes
-- Learning, evaluation, and monitoring
-- Workflow-only interaction patterns such as human feedback and `todo_task`
+- [First workflow](../getting-started/first-workflow.md): describe the job, review inputs and evidence, run it, then add a schedule when wanted.
+- [Workflow definition](workflow_manifest_architecture.md): `script.json`, typed inputs, presets and selected secret names.
+- [CLI and MCP](../getting-started/agentworks-cli-mcp.md): inspect or change authorized workflow source and start a real run.
+- [Schedules](workflow_scheduling.md): start a workflow or message a Crew agent.
+- [Monitoring](workflow_monitoring.md): results, checks, logs and available usage.
+- [Questions and inputs](human_feedback_system.md): Crew conversations can ask a person; workflow runs use their saved inputs without waiting.
+- [Communication](../communication-protocols.md): attributed agent messages and calls to published functions.
 
-## Files
+## Python model
 
-- `self_improvement_and_reporting.md` — Goal metrics, ordinary agent reviews, decisions, notifications and after-run housekeeping
-- `auto_improvement_framework.md` — metric-backed workflow improvement: metrics as evidence, harden/replan decisions, schedules, and audit logs
-- [Browser workflow authoring](../core/browser.md#workflow-authoring) — durable selectors, browser discovery, live control and the proposed teaching flow
-- `cost_and_log_measurement.md` — token usage, cost files, phase/run aggregation, and log storage
-- `deterministic_routing.md` — route-by-file routing: deterministic switch, route file producers, and `run_workflow` `route_selections`
-- `human_feedback_system.md` — human-in-the-loop requests, UI responses, and Slack notification fallback
-- `iteration_run_folder_architecture.md` — run folder layout and iteration/run isolation
-- `learn_code_flow.md` — learn-code and code-execution modes
-- `learning_architecture.md` — global workflow skill, step-level learning metadata, and saved scripts
-- `persistent_stores_design.md` — workflow `db/`, report views, knowledgebase updates, and structured persistent outputs
-- `pre_validation_guide.md` — deterministic pre-validation schemas and consistency checks
-- `step_config_format_specification.md` — `step_config.json` schema and step-level runtime configuration
-- `tiered_llm_allocation.md` — tiered model selection and phase LLM allocation
-- `agent-step-type.md` — orchestrator (formerly todo_task) step behavior
-- `tool_filtering_system.md` — workflow tool filtering and runtime tool availability
-- `workflow_builder_commands_and_tools.md` — builder slash commands, privileged tools, and audit flows
-- `workflow_builder_interactive.md` — workflow phase chat and interactive builder internals
-- `workflow_manifest_architecture.md` — manifest format, cleaning rules, and workspace state
-- `workflow_monitoring.md` — run history, costs, reports, and monitoring surfaces
-- `workflow_scheduling.md` — scheduled workflow execution, routing, and history
-- `workflow_shell_working_directory.md` — shell working directories and FolderGuard scope during workflow runs
+The source is `script.json` plus `main.py`, with ordinary Python deciding order through functions, conditions and loops. `@step` labels show that work in Steps and Runs; they are not separately runnable. `agent()` performs an AI turn, and Python checks its answer and output files before continuing.
 
-- [Retiring fixed human-input steps](human-input-step-retirement.md): required launch inputs and migration.
+Read the bundled `python-workflows` skill before creating or changing source. In an MCP client, request `help action=topic topic=python-workflows`. Use the canonical workflow tools so the backend validates source, inputs and caller mappings. There is no plan file or separate workflow chat to edit.
+
+Saved data belongs to the Crew. Use managed database tools, keep durable files separate from a run's own outputs, and leave secrets in the existing selected account. Workflow execution, app calls and sends do real work.
+
+## Earlier design records
+
+This folder also contains earlier implementation notes. Terms such as plan graphs, routing files, learn-code phases and separate Builder conversations in those records describe the retired engine. Use the guides above and the current tool catalog for authoring and execution.
