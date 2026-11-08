@@ -97,7 +97,7 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 	}
 	guarded := workflowContractExecutionGuardRegistrar{definitionRegistrar: registrar, workspacePath: root}
 	if workflowID != "" {
-		guarded.boundWorkflow = &crewExecutableBinding{ID: workflowID, Root: root, Kind: "workflow"}
+		guarded.boundWorkflow = &crewExecutableBinding{ID: workflowID, Root: root, Kind: "script"}
 	}
 	filtered := &agentProfileWorkflowRegistrar{target: guarded}
 	filtered.prepare = func(callCtx context.Context, _ string, _ map[string]interface{}) error {
@@ -141,7 +141,7 @@ func (api *StreamingAPI) crewChatWorkflowTarget(ctx context.Context, resolved *r
 	}
 	var found *crewExecutableBinding
 	for _, binding := range bindings {
-		if binding.Kind != "workflow" || canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(root) {
+		if binding.Kind != "script" || canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(root) {
 			continue
 		}
 		if found != nil {
