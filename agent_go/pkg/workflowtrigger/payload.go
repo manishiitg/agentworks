@@ -18,40 +18,23 @@ type PayloadMappings struct {
 	Group  *ValueMapping           `json:"group,omitempty"`
 	Routes map[string]ValueMapping `json:"routes,omitempty"`
 	Step   *ValueMapping           `json:"step,omitempty"`
+	Inputs map[string]InputMapping `json:"inputs,omitempty"`
+}
+
+// InputMapping selects data, never execution authority or a preset. Without
+// values, the JSON value at source is passed through with its original type.
+type InputMapping struct {
+	Source  string                     `json:"source"`
+	Values  map[string]json.RawMessage `json:"values,omitempty"`
+	Default json.RawMessage            `json:"default,omitempty"`
 }
 
 // Scalar reads a fixed dotted path, including numeric array segments. It never
 // evaluates expressions or accepts a target chosen directly by event content.
 func Scalar(payload json.RawMessage, path string) (string, error) {
-	var root interface{}
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.UseNumber()
-	if err := decoder.Decode(&root); err != nil {
-		return "", fmt.Errorf("cannot read payload source %q", path)
-	}
-	original := path
-	path = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(path), "$."), ".")
-	if path == "" {
-		return "", fmt.Errorf("payload source is required")
-	}
-	current := root
-	for _, segment := range strings.Split(path, ".") {
-		switch value := current.(type) {
-		case map[string]interface{}:
-			next, ok := value[segment]
-			if !ok {
-				return "", fmt.Errorf("payload source %q was not found", original)
-			}
-			current = next
-		case []interface{}:
-			index, err := strconv.Atoi(segment)
-			if err != nil || index < 0 || index >= len(value) {
-				return "", fmt.Errorf("payload source %q was not found", original)
-			}
-			current = value[index]
-		default:
-			return "", fmt.Errorf("payload source %q was not found", original)
-		}
+	current, err := Value(payload, path)
+	if err != nil {
+		return "", err
 	}
 	switch value := current.(type) {
 	case string:
@@ -61,8 +44,44 @@ func Scalar(payload json.RawMessage, path string) (string, error) {
 	case bool:
 		return strconv.FormatBool(value), nil
 	default:
-		return "", fmt.Errorf("payload source %q must be a string, number, or boolean", original)
+		return "", fmt.Errorf("payload source %q must be a string, number, or boolean", path)
 	}
+}
+
+// Value reads the same fixed path as Scalar, retaining objects, arrays and
+// exact JSON numbers for the script's declared input validator.
+func Value(payload json.RawMessage, path string) (interface{}, error) {
+	var root interface{}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(&root); err != nil {
+		return nil, fmt.Errorf("cannot read payload source %q", path)
+	}
+	original := path
+	path = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(path), "$."), ".")
+	if path == "" {
+		return nil, fmt.Errorf("payload source is required")
+	}
+	current := root
+	for _, segment := range strings.Split(path, ".") {
+		switch value := current.(type) {
+		case map[string]interface{}:
+			next, ok := value[segment]
+			if !ok {
+				return nil, fmt.Errorf("payload source %q was not found", original)
+			}
+			current = next
+		case []interface{}:
+			index, err := strconv.Atoi(segment)
+			if err != nil || index < 0 || index >= len(value) {
+				return nil, fmt.Errorf("payload source %q was not found", original)
+			}
+			current = value[index]
+		default:
+			return nil, fmt.Errorf("payload source %q was not found", original)
+		}
+	}
+	return current, nil
 }
 
 type Condition struct {

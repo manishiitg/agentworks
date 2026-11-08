@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtrigger"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -52,6 +53,43 @@ func TestWebhookEnvelopeOptions(t *testing.T) {
 	delivery := &WorkflowWebhookDelivery{Payload: json.RawMessage(`{"variables":{"count":9007199254740993,"details":{"id":9007199254740993}}}`)}
 	if err := resolveWebhookDeliveryOptions(typed, delivery, definitions); err != nil || delivery.Variables["count"] != "9007199254740993" || delivery.Variables["details"] != `{"id":9007199254740993}` {
 		t.Fatalf("webhook rounded the caller's integer: %+v %v", delivery, err)
+	}
+}
+
+// PLAT-746-450: typed raw inputs retain exact numbers and objects; explicit
+// selection and fixed-value rules apply before any script is started.
+func TestWebhookRawInputsKeepTypesAndFixedValueRules(t *testing.T) {
+	definitions := &VariablesManifest{Variables: []Variable{{Name: "count", Type: "integer"}, {Name: "details", Type: "object"}}}
+	schedule := WorkflowSchedule{InputPreset: "Saved", Webhook: &WorkflowWebhookConfig{InputMode: "raw", AllowedVariables: []string{"count", "details"}, PayloadMappings: &WorkflowWebhookPayloadMappings{Inputs: map[string]workflowtrigger.InputMapping{"count": {Source: "event.count"}, "details": {Source: "event.details"}}}}}
+	delivery := &WorkflowWebhookDelivery{Payload: json.RawMessage(`{"event":{"count":9007199254740993,"details":{"id":9007199254740993}}}`)}
+	if err := resolveWebhookDeliveryOptions(schedule, delivery, definitions); err != nil || delivery.Variables["count"] != "9007199254740993" || delivery.Variables["details"] != `{"id":9007199254740993}` {
+		t.Fatalf("typed raw mapping: %+v %v", delivery, err)
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*WorkflowSchedule)
+		body   string
+	}{
+		{"type", func(*WorkflowSchedule) {}, `{"event":{"count":1.5,"details":{}}}`},
+		{"selection", func(s *WorkflowSchedule) { s.Webhook.AllowedVariables = []string{"details"} }, `{"event":{"count":1,"details":{}}}`},
+		{"fixed", func(s *WorkflowSchedule) { s.Inputs = map[string]string{"count": "4"} }, `{"event":{"count":1,"details":{}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			copySchedule := schedule
+			config := *schedule.Webhook
+			copySchedule.Webhook = &config
+			tc.mutate(&copySchedule)
+			if err := resolveWebhookDeliveryOptions(copySchedule, &WorkflowWebhookDelivery{Payload: json.RawMessage(tc.body)}, definitions); err == nil {
+				t.Fatal("invalid mapped input accepted")
+			}
+		})
+	}
+	schedule.Webhook.PayloadMappings.Inputs["count"] = workflowtrigger.InputMapping{Source: "kind", Values: map[string]json.RawMessage{"review": json.RawMessage(`8`)}, Default: json.RawMessage(`3`)}
+	for _, tc := range []struct{ body, want string }{{`{"kind":"review","event":{"details":{}}}`, "8"}, {`{"kind":"other","event":{"details":{}}}`, "3"}} {
+		delivery := &WorkflowWebhookDelivery{Payload: json.RawMessage(tc.body)}
+		if err := resolveWebhookDeliveryOptions(schedule, delivery, definitions); err != nil || delivery.Variables["count"] != tc.want {
+			t.Fatalf("typed choices/default: %+v %v", delivery, err)
+		}
 	}
 }
 

@@ -143,3 +143,16 @@ api_key = secret("API_KEY")  # Pass to the service's client; never print or save
 - **Mocked test runs.** Use this only when the installation's current start schema offers `mock_agents`; otherwise do not claim a mocked run. Put canned agent replies in `code/agent_mocks.json` as `{"Agent name": {"text": "...", "files": {"leads.json": "..."}}}` and start a run with mocked agents. Only the agents are mocked: scripts, databases, sends and app calls are real, and an agent missing from the file fails the run.
 
 Existing plan-based workflows keep working until they are converted; edit them with the guide in `references/crew-plan/SKILL.md`.
+
+### Calling from timers, webhooks and Slack
+
+Use one static saved input preset plus fixed inputs for each caller. For a raw
+webhook body use `payload_mappings.inputs` with declared names selected in
+`allowed_variables`, and a fixed dotted `source` path per name. JSON types are
+preserved; optional `values`/`default` map body choices to typed values. Do not
+let a payload select a preset or replace fixed inputs. Slack event mappings use
+the same input validator. Timers supply their saved typed values directly.
+
+When editing `script.json`, defaults in input `value` and saved preset `values`
+are strings (including `"2"`, `"false"` and JSON text for objects). Calls use
+actual JSON types. Use canonical source/input tools so the server checks them.

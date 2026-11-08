@@ -106,3 +106,25 @@ agentworks functions trigger-status --crew team --workspace Workflow/sample --tr
 accepts the complete typed input-definition array when you mean to replace it.
 `tools spec workflow workspace runs functions` reads the server's current
 schemas; `tools call` and `mcp serve` use the same catalog and access checks.
+
+## Webhook and timer inputs
+
+Each webhook or timer chooses one saved `input_preset` plus optional fixed
+`inputs`. The sender cannot choose another preset. For raw webhook JSON, map
+allowed input names with `payload_mappings.inputs`, for example:
+
+```json
+{"input_preset":"weekly","input_mode":"raw","allowed_variables":["LIMIT"],
+ "payload_mappings":{"inputs":{"LIMIT":{"source":"event.limit"}}}}
+```
+
+The JSON value keeps its type. An optional `values` object translates source
+choices to typed input values; `default` supplies a fallback. Types and schema
+come from `script.json`. Missing, disallowed or invalid fields are refused by
+name before starting; fixed inputs cannot be overridden. Timers use their saved
+values through the same direct script execution. Slack raw events use this same
+mapper and input validation.
+
+Saved definition defaults (`value`) and preset values are text containing the
+value (`"2"`, `"false"`, or JSON for objects). Invocation bodies and raw mapped
+fields use actual JSON types (`2`, `false`, objects), as declared by the input.

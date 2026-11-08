@@ -6,6 +6,13 @@ runtime references before starting a binary that requires them. No history moves
 DB table merge, timer activation or startup compatibility path is performed.
 Original model, browser, MCP and selected secret names are copied from the
 workflow manifest. Secret values and account logins are never copied.
+--entry-inputs FILE supplies explicit maps keyed by existing schedules/webhooks/
+functions IDs. Entries specify input_preset and inputs; raw hooks may specify
+allowed_variables and payload_mappings.inputs. Optional input_presets add named
+presets without replacing the carried ones. Use --agent-binary to validate the
+candidate with the same server contract. No route-to-input choice is inferred;
+unmapped old routes/steps are listed. Message reminders stay unchanged. Omitting
+--source applies only that mapping to an already converted workflow.
 Existing outbound Crew links are carried to the owning Crew before its scripts
 start calling as that Crew; inspect lists the exact targets and refuses missing ones.
 
@@ -25,6 +32,7 @@ import json
 from pathlib import Path
 import shutil
 import sqlite3
+import subprocess
 import tempfile
 
 
@@ -246,7 +254,106 @@ def python_payload(source, workflow_id, original_capabilities, original_inputs):
     return payload, definition, {'removed_tools': sorted(set(removed_tools) | set(removed_selections)), 'removed_notification_fields': sorted(retired_notifications)}
 
 
-def plan(docs, state, initialize=False, workflow_id=None, source=None):
+def remap_entry_inputs(definition, changes, runtime, document, mapping=None, agent_binary=None):
+    """One-off explicit data conversion; never infer a route or enable an entry."""
+    mapping = mapping or {}
+    if not isinstance(mapping, dict) or set(mapping) - {'input_presets', 'schedules', 'webhooks', 'functions'}:
+        raise ValueError('Entry inputs need input_presets and maps keyed by existing schedules, webhooks or functions IDs.')
+    presets = definition.setdefault('input_presets', [])
+    for preset in mapping.get('input_presets', []):
+        if not isinstance(preset, dict) or not isinstance(preset.get('name'), str) or not isinstance(preset.get('values'), dict):
+            raise ValueError('Each additional input preset needs a name and saved values.')
+        previous = [p for p in presets if p['name'] == preset['name']]
+        if previous and previous != [preset]:
+            raise ValueError('An input preset already exists with different values: ' + preset['name'])
+        if not previous:
+            presets.append(preset)
+    report, callers = {'mapped_entry_inputs': [], 'unmapped_entry_inputs': []}, []
+    for kind in ('schedules', 'webhooks', 'functions'):
+        file = runtime / (kind + '.json')
+        doc = document(file, {kind: []})
+        selected = mapping.get(kind, {})
+        if not isinstance(selected, dict):
+            raise ValueError(kind + ' mappings must be keyed by existing entry IDs.')
+        ids = [entry.get('id') for entry in doc.get(kind, [])]
+        if set(selected) - set(ids) or any(ids.count(identity) != 1 for identity in selected):
+            raise ValueError(kind + ' mapping does not match one existing entry ID.')
+        changed = False
+        for entry in doc.get(kind, []):
+            identity = entry.get('id')
+            if identity in selected:
+                update = selected[identity]
+                if entry.get('action', {}).get('type') != 'run':
+                    raise ValueError('Only run entries can map script inputs; keep message reminders unchanged.')
+                if not isinstance(update, dict) or set(update) - {'input_preset', 'inputs', 'allowed_variables', 'payload_mappings'}:
+                    raise ValueError('Entry mappings may change only input_preset, inputs and payload input configuration.')
+                saved = dict(entry.get('input') or {})
+                saved.pop('routes', None)
+                saved.pop('groups', None)
+                saved['input_preset'] = update.get('input_preset', saved.get('input_preset', ''))
+                saved['inputs'] = update.get('inputs', saved.get('inputs', {}))
+                entry['input'] = saved
+                entry['action'].pop('step', None)
+                config = dict(entry.get('input_mapping') or {})
+                config.pop('payload', None)
+                if 'payload_mappings' in update:
+                    payload = update['payload_mappings']
+                    if not isinstance(payload, dict) or set(payload) - {'inputs'}:
+                        raise ValueError('Converted payload mappings may fill declared inputs only; never choose routes, steps or presets.')
+                    config.update(mode='raw', payload=payload)
+                if 'allowed_variables' in update:
+                    config['variables'] = update['allowed_variables']
+                if config:
+                    entry['input_mapping'] = config
+                exposed = list(config.get('variables') or [])
+                mapped = (config.get('payload') or {}).get('inputs') or {}
+                if set(mapped) - set(exposed):
+                    raise ValueError('Mapped raw inputs must be listed in allowed_variables.')
+                callers.append({'name': kind + ':' + str(identity), 'action': {'type': 'run'}, 'input': saved,
+                                'inputs': exposed if config.get('mode') in ('raw', 'envelope') else entry.get('inputs', [])})
+                report['mapped_entry_inputs'].append({'kind': kind, 'id': identity})
+                changed = True
+            else:
+                payload = (entry.get('input_mapping') or {}).get('payload') or {}
+                if (entry.get('input') or {}).get('routes') or entry.get('action', {}).get('step') or any(payload.get(k) for k in ('routes', 'step', 'group')):
+                    report['unmapped_entry_inputs'].append({'kind': kind, 'id': identity, 'enabled': entry.get('enabled', False)})
+        if changed:
+            changes[file] = encode(doc)
+    if mapping:
+        if not agent_binary:
+            raise ValueError('Pass --agent-binary with the current build to validate mapped inputs before any write.')
+        candidate = {'definitions': {'variables': definition.get('inputs', []), 'groups': presets}, 'functions': callers}
+        checked = subprocess.run([str(agent_binary), 'server', 'validate-workflow-input-migration'],
+                                 input=json.dumps(candidate), text=True, capture_output=True, timeout=30)
+        if checked.returncode:
+            diagnostic = next((line for line in checked.stderr.splitlines() if line.startswith('Error:')), 'Input validation failed; use the current server build.')
+            raise ValueError(diagnostic)
+    return report
+
+
+def map_saved_entry_inputs(docs, state, workflow_id, mapping, agent_binary):
+    matches = [json.loads(file.read_text()) for file in (state/'ownership/crew-executables').glob('*.json')]
+    bindings = [b for b in matches if b.get('id') == workflow_id and b.get('kind') == 'script']
+    if len(bindings) != 1:
+        raise ValueError('Choose one already converted Python workflow for --entry-inputs without --source.')
+    binding = bindings[0]
+    projects = json.loads((state/'ownership/projects.json').read_text())['projects']
+    crews = [p for p in projects.values() if p.get('project_id') == binding['crew_id'] and p.get('product') == 'work']
+    if len(crews) != 1:
+        raise ValueError('The owning Crew is unavailable.')
+    crew = crews[0]
+    files = Path(crew['local_root']).resolve() if crew.get('local_root') else contained(docs, binding['crew_root'])
+    runtime_root(binding.get('runtime_root'), workflow_id)
+    runtime = contained(docs, '_system/crew-data/' + safe_id(binding['crew_id']) + '/' + binding['runtime_root'])
+    code = contained(files, '.agentworks/code/' + safe_id(workflow_id))
+    definition = json.loads((code/'script.json').read_text())
+    changes = {}
+    report = remap_entry_inputs(definition, changes, runtime, lambda f, default: json.loads(f.read_text()) if f.exists() else default, mapping, agent_binary)
+    changes[code/'script.json'] = encode(definition)
+    return changes, {'code': code, 'runtime': runtime}, report
+
+
+def plan(docs, state, initialize=False, workflow_id=None, source=None, entry_inputs=None, agent_binary=None):
     documents, changes, roots = {}, {}, []
     projects_file = state / 'ownership/projects.json'
     projects = json.loads(projects_file.read_text()) if projects_file.exists() else {'projects': {}}
@@ -305,6 +412,8 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     variables_file = definitions / 'variables/variables.json'
     original_inputs = json.loads(variables_file.read_text()) if variables_file.exists() else {}
     payload, definition, removed = python_payload(source, workflow_id, original_capabilities, original_inputs)
+    entry_report = remap_entry_inputs(definition, changes, runtime, lambda f, default: json.loads(f.read_text()) if f.exists() else default, entry_inputs, agent_binary)
+    payload['script.json'] = encode(definition)
     links, links_file, links_data = carried_crew_links(original_manifest, projects['projects'], private,
                                                     lambda file: json.loads(file.read_text()) if file.exists() else None)
     if links_file is not None:
@@ -322,6 +431,7 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     if links_file is not None:
         documents['crew-links'] = links_file
     report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'appended_crew_platform_rows': sum(rows.values()), 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, **knowledge_write_steps(definitions), **output_check_steps(definitions), 'carried_input_presets': len(definition['input_presets'])}}
+    report['conversion'].update(entry_report)
     report['conversion']['carried_crew_links'] = links
     return changes, documents, report
 
@@ -376,7 +486,7 @@ def missing_adoption_helpers():
     return [name + '.py' for name in ADOPTION_HELPERS if not (here / (name + '.py')).is_file()]
 
 
-def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None, deployment_mode=None):
+def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None, deployment_mode=None, entry_inputs=None):
     if deployment_mode not in ("local", "server"):
         raise ValueError("Choose --deployment-mode local or server for this installation.")
     import importlib.util
@@ -393,6 +503,9 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
     manifest = conversion.document(conversion.definitions/'workflow.json', conversion.manifest)
     original_inputs = conversion.document(conversion.definitions/'variables/variables.json', migration.read(conversion.source/'variables/variables.json', {}))
     payload, definition, removed = python_payload(source, workflow_id, manifest.get('capabilities', {}), original_inputs)
+    entry_report = remap_entry_inputs(definition, conversion.writes, conversion.runtime,
+        lambda f, default: conversion.document(f, migration.read(conversion.source/f.relative_to(conversion.runtime), default)), entry_inputs, agent_binary)
+    payload['script.json'] = encode(definition)
     for name, raw in payload.items():
         target = conversion.source/'code'/name
         if target.exists() and target.read_bytes() != raw:
@@ -417,6 +530,7 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
         conversion.writes[links_file] = links_data
     conversion.carried_crew_links = links
     conversion.counts['carried_crew_links'] = len(links)
+    conversion.counts.update(entry_report)
     conversion.python_source = True
     return conversion
 
@@ -696,6 +810,7 @@ def main():
     parser.add_argument('--initialize-runtime-roots', action='store_true')
     parser.add_argument('--workflow-id')
     parser.add_argument('--source', type=Path)
+    parser.add_argument('--entry-inputs', type=Path, help='Explicit JSON maps keyed by existing entry IDs; optional additional presets. Preserves entry identity, state, timing, auth and caller. Without --source, maps one already converted workflow.')
     parser.add_argument('--adopt-into-crew', help='Adopt one standalone workflow into an existing same-owner Crew, reusing the Goal-to-Crew converter.')
     parser.add_argument('--agent-binary', type=Path, help='Current server binary for importing older chat archives and validating inputs.')
     parser.add_argument('--deployment-mode', choices=('local', 'server'), help='Required for standalone adoption: this installation runs locally or on a server.')
@@ -704,6 +819,8 @@ def main():
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--backup', type=Path, help='Backup parent folder; each workflow gets its own new snapshot, never overwriting an earlier one.')
     args = parser.parse_args()
+    if args.entry_inputs and (args.single_db or args.retire_old_plan or not args.workflow_id):
+        parser.error('--entry-inputs needs --workflow-id, separately from database or plan retirement')
     if args.single_db:
         if args.workflow_id or args.source or args.adopt_into_crew or args.initialize_runtime_roots or args.retire_old_plan:
             parser.error('--single-db takes no other step (only --backup and --apply)')
@@ -718,6 +835,12 @@ def main():
         report['backup'] = apply_retirement(removals, documents, args.state.resolve(), args.backup, args.workflow_id) if args.apply else None
         print(json.dumps(report, indent=2))
         return
+    entry_inputs = json.loads(args.entry_inputs.read_text()) if args.entry_inputs else None
+    if entry_inputs is not None and args.workflow_id and not args.source and not args.adopt_into_crew:
+        changes, documents, report = map_saved_entry_inputs(args.docs.resolve(), args.state.resolve(), args.workflow_id, entry_inputs, args.agent_binary)
+        report['backup'] = apply(changes, documents, args.state.resolve(), args.backup, args.workflow_id + '-entry-inputs') if args.apply else None
+        print(json.dumps(report, indent=2))
+        return
     if bool(args.workflow_id) != bool(args.source):
         parser.error('--workflow-id and --source are required together')
     if args.adopt_into_crew:
@@ -726,11 +849,11 @@ def main():
             parser.error('copy these helper scripts beside this one first: ' + ', '.join(missing))
         if not args.workflow_id or args.initialize_runtime_roots or not args.deployment_mode:
             parser.error('--adopt-into-crew needs --workflow-id, --source and --deployment-mode local|server; initialize existing bindings separately')
-        conversion = adopt_into_crew(args.docs.resolve(), args.state.resolve(), args.workflow_id, args.adopt_into_crew, args.source, args.agent_binary, args.deployment_mode)
+        conversion = adopt_into_crew(args.docs.resolve(), args.state.resolve(), args.workflow_id, args.adopt_into_crew, args.source, args.agent_binary, args.deployment_mode, entry_inputs)
         report = conversion.apply(backup=args.backup, plain_backup=True) if args.apply else conversion.report()
         print(json.dumps(report, indent=2))
         return
-    changes, documents, report = plan(args.docs.resolve(), args.state.resolve(), args.initialize_runtime_roots, args.workflow_id, args.source)
+    changes, documents, report = plan(args.docs.resolve(), args.state.resolve(), args.initialize_runtime_roots, args.workflow_id, args.source, entry_inputs, args.agent_binary)
     report['changed_files'] = len(changes)
     report['backup'] = apply(changes, documents, args.state.resolve(), args.backup, args.workflow_id or 'runtime-roots', append_platform_rows=bool((report.get('conversion') or {}).get('appended_crew_platform_rows'))) if args.apply else None
     print(json.dumps(report, indent=2))

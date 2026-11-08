@@ -1284,7 +1284,7 @@ func webhookDeliveryStartError(ctx context.Context, workspace string, sched Work
 			return fmt.Errorf("variable %q is no longer allowed by this trigger", name)
 		}
 	}
-	return nil
+	return resolveWorkflowWebhookInputs(ctx, workspace, sched, input)
 }
 
 func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, originSessionID string, input *WorkflowWebhookDelivery) (string, error) {
