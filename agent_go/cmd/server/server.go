@@ -6740,7 +6740,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// this, the notification implementation was not registered on the serving agent, so it never landed
 			// in a.customTools and was invisible to CLI agents via get_api_spec.
 			allTools, allExecutors, toolCategories := createCustomTools(isWorkflowPhase, currentUserID, sessionID, req.SelectedFolder) // session-aware
-			if isWorkflowBuilderPhase && !currentUserIsReadOnly {
+			if knowledgeProjectBuilderQuery(req, GetUserFromContext(r.Context()), sessionID, sessionID, currentUserIsReadOnly) {
 				projectTools, projectExecs, projectCategories := createKnowledgeProjectBuilderTools()
 				// Replace content-only browse/access schemas for this root Builder.
 				for _, tool := range projectTools {
@@ -12410,9 +12410,6 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		}(),
 	}
 
-	if productEnabled("knowledgebase") && req.PhaseID == "workflow-builder" {
-		cfg.KnowledgebaseProjectTool = knowledgeProjectBuilderExecute
-	}
 	// Build base tools with session-aware workspace executors from the start.
 	// This ensures MCP_API_URL in shell commands includes the session path prefix
 	// (/s/{session_id}/...) so per-tool HTTP calls from inside Docker hit the
