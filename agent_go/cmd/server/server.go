@@ -4273,17 +4273,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if idleRun == nil && req.AgentMode == "workflow_phase" && req.PhaseID == "workflow-builder" && resolvedProfile == nil && !currentUserIsReadOnly {
-		active, _ := api.getActiveSession(sessionID)
-		policy := resolveWorkflowChatPolicy(sessionID, req, active, currentUserIsReadOnly)
-		if policy.Mode == "builder" && policy.Origin == "interactive" {
-			if err := recordWorkflowBuilderSend(r.Context(), workflowBuilderScope{PresetID: req.PresetQueryID, Workspace: req.SelectedFolder}, sessionID); err != nil {
-				http.Error(w, "could not record Builder chat", http.StatusServiceUnavailable)
-				return
-			}
-		}
-	}
-
 	// Chat sessions are in-memory only — tracked via activeSessions map
 	// below. No persistent session metadata.
 

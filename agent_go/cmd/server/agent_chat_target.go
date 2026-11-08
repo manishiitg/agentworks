@@ -83,25 +83,6 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 		target.Chat = &codeChat{OwnerID: owner, ID: record.ConversationKey, Key: record.ConversationKey, Name: "Builder", SessionID: record.SessionID, IsMain: true}
 		return target, nil
 	}
-	if target.Kind == triggerCallerWorkflow && chatID != "" {
-		m, found, err := ReadWorkflowManifest(ctx, target.Path)
-		if err != nil || !found || m == nil {
-			return target, fmt.Errorf("Project unavailable")
-		}
-		tabs, err := api.goalOwnerTabs(ctx, workflowBuilderScope{PresetID: m.ID, Workspace: target.Path})
-		if err != nil {
-			return target, err
-		}
-		for _, tab := range tabs {
-			if tab.ID != chatID && tab.SessionID != chatID {
-				continue
-			}
-			target.Chat = &codeChat{OwnerID: tab.OwnerID, ID: tab.ID, Key: tab.ID, Name: tab.Name, SessionID: tab.SessionID, IsMain: tab.IsMain}
-			target.Label += " · " + tab.Name
-			return target, nil
-		}
-		return target, fmt.Errorf("Choose a chat_id from list_agents for this project")
-	}
 	if chatID != "" {
 		return target, fmt.Errorf("This agent has no project chat tabs")
 	}
