@@ -82,8 +82,11 @@ func inspectPythonRelaySource(ctx context.Context, workspacePath, source string)
 
 func inspectPythonAutomationSource(ctx context.Context, workspacePath string, files map[string]string) (json.RawMessage, error) {
 	raw, err := json.Marshal(files)
-	if err != nil || len(raw) > 64*1024 {
-		return nil, fmt.Errorf("automation source overview supports up to 65536 bytes")
+	if err != nil {
+		return nil, fmt.Errorf("read automation source: %w", err)
+	}
+	if len(raw) > 64*1024 {
+		return json.RawMessage(`{"native":true,"nodes":[],"edges":[],"errors":["This code is too large to outline (64 KiB limit). You can still open and run it."]}`), nil
 	}
 	return inspectPythonSourceEnvironment(ctx, workspacePath, path.Join(workspacePath, "code"), map[string]string{"VAR_AUTOMATION_CHECK_FILES": base64.StdEncoding.EncodeToString(raw)})
 }
