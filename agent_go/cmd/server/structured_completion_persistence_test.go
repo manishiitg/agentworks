@@ -199,15 +199,18 @@ func TestStructuredCompletionDoesNotAdoptIdenticalUncheckpointedForegroundAnswer
 	}
 }
 
-// A Code or Work project chat keeps its transcript inside the project and the server does not know its workspace
-// folder (a restart empties every in-memory map); the reply to a live input must still be saved, found through the
-// chat's active session.
+// A registered private Crew keeps its transcript in the project. An active
+// session supplies its workspace after restart; the owner boundary still holds.
 func TestStructuredCompletionFindsProjectTranscriptWithoutWorkspace(t *testing.T) {
 	const (
 		userID    = "alice"
-		sessionID = "code:project:abc"
-		project   = "_users/alice/Chats/Code/projects/demo-abc"
+		sessionID = "crew-project-abc"
+		project   = "Crew/history"
 	)
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	registerTestCrew(t, "history", userID, false, "history")
 	conversation := project + "/builder/conversation/2026-10-14/" + chatHistoryConversationFileName(sessionID)
 	raw, _ := json.Marshal(map[string]interface{}{
 		"session_id": sessionID, "user_id": userID,
@@ -226,6 +229,13 @@ func TestStructuredCompletionFindsProjectTranscriptWithoutWorkspace(t *testing.T
 	api.activeSessions[sessionID] = &ActiveSessionInfo{SessionID: sessionID, UserID: userID, WorkspacePath: project}
 	if !api.appendStructuredAssistantReply(userID, sessionID, "", "turn-1", "the reply", event) {
 		t.Fatal("reply not saved into the project transcript")
+	}
+	before := workspace.files[conversation]
+	if api.appendStructuredAssistantReply("bob", sessionID, "", "foreign-turn", "private reply", event) {
+		t.Fatal("another person appended through the owner's active workspace")
+	}
+	if workspace.files[conversation] != before {
+		t.Fatal("refused append changed private Crew history")
 	}
 }
 
