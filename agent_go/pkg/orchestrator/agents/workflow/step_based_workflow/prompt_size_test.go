@@ -352,7 +352,6 @@ func TestWorkshopModeIsMergedSuperset(t *testing.T) {
 	// so do not duplicate individual catalog entries in the system prompt.
 	mustContain := []string{
 		"references/human-in-the-loop.md",
-		`builder-reference/references/optimize-playbook.md`, // shorthand for read_skill(skills=[{name:builder-reference,path:references/optimize-playbook.md}])
 	}
 	for _, s := range mustContain {
 		if !strings.Contains(operations, s) {
@@ -364,8 +363,9 @@ func TestWorkshopModeIsMergedSuperset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render workflow-tools reference: %v", err)
 	}
-	if !strings.Contains(workflowTools, "pulse-review-fixer") || strings.Contains(workflowTools, "goal-advisor") {
-		t.Error("projected workflow-tools reference must describe the current Autopilot review lifecycle")
+	// PLAT-825 (18 Oct): the separate reviewer and fixer agents are retired; the reference names none of them.
+	if strings.Contains(workflowTools, "pulse-review-fixer") || strings.Contains(workflowTools, "goal-advisor") {
+		t.Error("projected workflow-tools reference must not name the retired reviewer and fixer agents")
 	}
 }
 
@@ -431,8 +431,6 @@ func TestWorkshopPromptMovedSectionsAreReferencedNotInlined(t *testing.T) {
 	migrations := []migration{
 		{kind: "code-authoring", oldBodyMarker: "## main.py authoring rules"},
 		{kind: "stores", oldBodyMarker: "Three persistent stores — skill vs knowledgebase vs db"},
-		{kind: "agent", oldBodyMarker: "## AGENT ROUTE PATTERNS"},
-		{kind: "optimize-playbook", oldBodyMarker: "## OPTIMIZATION GUIDELINES"},
 		{kind: "file-layout", oldBodyMarker: "## FILE LAYOUT"},
 	}
 

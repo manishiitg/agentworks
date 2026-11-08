@@ -255,18 +255,14 @@ Never infer goal progress from a successful run alone or invent targets.
 
 Returns the canonical guided-flow text for any workflow slash command. Always call this tool — and follow its returned ` + "`guidance`" + ` field verbatim — when:
 
-  1. The user invokes a slash command (` + "`/design-plan`" + `, ` + "`/design-dashboard`" + `, etc.). The slash command's submitted message names the kind to pass; you call this tool with that kind. Do NOT improvise the flow yourself.
+  1. The user invokes a slash command (` + "`/design-dashboard`" + `, etc.). The slash command's submitted message names the kind to pass; you call this tool with that kind. Do NOT improvise the flow yourself.
   2. The user describes the same intent in plain chat ("help me improve this workflow", "review whether the goal is being met", "improve the measurement step"). Recognize the intent, pick the matching kind, and call the tool. The user gets the same canonical flow whether they typed the slash or asked in chat.
   3. You're running on a schedule (e.g. a scheduled review request). The schedule message names the kind to call.
 
 **Kinds — match to intent:**
 
-  Builder-mode audits:
-    - design-plan            → design review: is the plan following best practices (step types, stores, validation, flow)
+  Builder-mode flows:
     - design-dashboard       → dashboard authoring flow, submitted by /design-dashboard
-
-  Reviews (recommend, don't apply; record owner decisions):
-    - run-plan-drift         → Plan Drift: plan-changelog-to-artifact drift audit, submitted by /run-plan-drift
 
 
 **Optional parameters:**

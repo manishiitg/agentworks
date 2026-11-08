@@ -3,8 +3,6 @@ package step_based_workflow
 import (
 	"strings"
 	"testing"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 )
 
 func executeInteractiveWorkshopPromptForMode(t *testing.T, mode string) string {
@@ -66,41 +64,6 @@ func TestInteractiveWorkshopPromptDoesNotBanAuthorizedSourceReview(t *testing.T)
 // templates/system/agent.md (loaded via read_skill). The
 // inline workshop prompt now carries only the reference pointer; the detailed pattern descriptions are
 // asserted against the rendered .md content.
-
-func TestInteractiveWorkshopPromptDocumentsAgentRouteReuse(t *testing.T) {
-	prompt := executeInteractiveWorkshopPromptForMode(t, "workshop")
-
-	// The dedicated "Agent routes" inline section was folded
-	// into the consolidated "Planning steps" section that lists
-	// agent as one of several per-step-type deep-dive skills.
-	// The agent reaches the full pattern catalog by loading the skill.
-	inlineMustContain := []string{
-		"references/workflow-chat.md",
-	}
-	for _, snippet := range inlineMustContain {
-		if !strings.Contains(prompt, snippet) {
-			t.Errorf("expected workshop prompt (builder) to contain inline snippet %q", snippet)
-		}
-	}
-
-	operations, err := guidance.RenderReferenceKindForTest("workflow-chat", "workshop")
-	if err != nil || !strings.Contains(operations, "references/plan-design.md") || !strings.Contains(operations, "agent") {
-		t.Fatal("workflow operations must route to plan design and agents")
-	}
-
-	// Detailed pattern content lives in the .md doc.
-	doc := guidance.RenderSystemDoc("agent")
-	docMustContain := []string{
-		"## SCRIPTED HELPERS",
-		"typed inputs and outputs",
-		"saved Crew configuration",
-	}
-	for _, snippet := range docMustContain {
-		if !strings.Contains(doc, snippet) {
-			t.Errorf("expected agent.md to contain snippet %q", snippet)
-		}
-	}
-}
 
 // TestPulseReviewResultPathAcceptsEveryCanonicalModule reproduces a real
 // launch blocker introduced by the stores_health merge: validatePulseReviewIdentity's

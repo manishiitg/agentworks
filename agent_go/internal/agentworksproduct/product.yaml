@@ -28,15 +28,6 @@ profile:
   scope: global
   built_in: true
   commands:
-    - name: design-plan
-      description: Would you build this again today? Review the plan and suggest a simpler one
-      icon: git-branch
-      file: commands/design-plan.md
-    - name: run-plan-drift
-      description: Check the plan still fits its steps, reports and schedules; fix small breaks
-      icon: refresh-cw
-      menu_hidden: true
-      file: commands/run-plan-drift.md
     - name: design-dashboard
       description: Design this workflow's dashboard from its real data
       icon: check-circle

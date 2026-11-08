@@ -10,7 +10,7 @@ This is the old Autopilot 'architecture review', now yours. Use it when results 
 ## Method
 1. Start from the goal (the Crew's instructions), current company facts and the person's recorded decisions. Then real outputs, comparable results, cost and earlier lessons. Read only as much plan, config or logs as it takes to settle the question. Missing measurements limit your conclusion; they do not forbid considering a clearly better approach.
 2. Ask: **what would I build today if this plan did not exist?** Then compare: keep it, remove unproductive work, combine steps, change the approach, or retire it.
-3. Use the design skills when needed: `plan-design`, `routing`, `schedules`, `step-config`, `step-description`, and `measurement-plan` guidance. For a model change, keep the person's explicit choices and compare real quality, cost and latency; run counts alone never justify a downgrade.
+3. Use the design skills when needed: `python-workflows`, `schedules` and `measurement-plan` guidance. An older plan workflow is not edited; the answer to "what would I build today" for one is a Python script workflow. For a model change, keep the person's explicit choices and compare real quality, cost and latency; run counts alone never justify a downgrade.
 
 ## Find the bottleneck (when the goal is measured but not moving)
 1. Draw the chain from the work to the goal in a few links (for example: notes and comments, profile visits, subscribes; or: leads found, connected, replied, meeting). Use the workflow's own records (database, run outputs) for each link.

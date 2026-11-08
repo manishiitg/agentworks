@@ -30,7 +30,7 @@ Read existing goal work, pending owner decisions and relevant saved history befo
 1. Run the requested workflow, step or group through its normal execution tool. Runs do real work under existing permissions.
 2. Read the producer's measurement rows and history from the database. Use the actual run identity when tracing outputs; measurement is not tied to a fixed iteration folder.
 3. Distinguish a local reliability/contract failure from a strategy gap or missing measurement. Builder investigates and applies an authorized correction in this conversation. AgentWorks may request it with evidence; no separate reviewer/fixer is involved.
-4. Reconcile changed dependencies using `references/plan-change-impact.md`. Test only the affected scope when useful, then verify the real result. A passing local check alone does not prove goal improvement.
+4. Reconcile changed dependencies. Test only the affected scope when useful, then verify the real result. A passing local check alone does not prove goal improvement.
 5. For a goal improvement, agree a hypothesis, comparable baseline, outcome window and rollback condition with AgentWorks. Keep work and future outcome evidence in the existing goal records.
 
 When the user asks to repair all groups, inspect enabled groups in `variables/variables.json` and work through them one at a time so each verified fix helps the next run. Reuse evidence, stop when the requested scope is complete, and report unresolved blockers without an endless retry loop.

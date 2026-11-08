@@ -95,7 +95,7 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 		{[]string{"files", "search", "--workflow", "wf-1", "--query", "invoice"}, "", "files", map[string]any{"action": "search", "workflow_id": "wf-1", "query": "invoice"}},
 		{[]string{"knowledge", "list", "--workflow", "wf-1"}, "", "files", map[string]any{"action": "knowledge_list", "workflow_id": "wf-1"}},
 		{[]string{"crews", "read", "--crew", "crew-1", "--path", "notes.md"}, "", "files", map[string]any{"action": "read", "crew_id": "crew-1", "path": "notes.md"}},
-		{[]string{"guidance", "topic", "--topic", "plan-change-impact"}, "", "help", map[string]any{"action": "topic", "topic": "plan-change-impact"}},
+		{[]string{"guidance", "topic", "--topic", "schedules"}, "", "help", map[string]any{"action": "topic", "topic": "schedules"}},
 		{[]string{"knowledge", "read", "--workflow", "wf-1", "--path", "learnings/_global/SKILL.md"}, "", "files", map[string]any{"action": "knowledge_read", "workflow_id": "wf-1", "path": "learnings/_global/SKILL.md"}},
 		{[]string{"tools", "call", "native_future_tool", "--set", `nested={"enabled":true}`, "--set", `count=9007199254740993`}, "", "native_future_tool", map[string]any{"nested": map[string]any{"enabled": true}}},
 	} {
