@@ -127,6 +127,11 @@ const VIEW_BY_ID: ReadonlyMap<string, WorkspaceView> = new Map(
   WORKSPACE_VIEWS.map(view => [view.id, view] as const),
 )
 
+/** Parent layout and pane content must resolve the same published destination. */
+export function resolveWorkspaceView(view: WorkspaceViewId, pythonRelay: boolean): WorkspaceViewId {
+  return view === 'flow' && !pythonRelay ? 'report' : view
+}
+
 export function getWorkspaceView(id: WorkspaceViewId): WorkspaceView {
   return VIEW_BY_ID.get(id)!
 }
