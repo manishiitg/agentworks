@@ -235,6 +235,10 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 			releaseScratch()
 			return nil, nil, fmt.Errorf("prepare slot database helper: %w", err)
 		}
+		if err := stagePythonAutomationRuntime(helperDir, 0640); err != nil {
+			releaseScratch()
+			return nil, nil, fmt.Errorf("prepare slot automation helpers: %w", err)
+		}
 		local.ReadPaths = append(append([]string{}, iso.ReadPaths...), helperDir)
 		local.ExtraEnv = make(map[string]string, len(iso.ExtraEnv)+1)
 		for key, value := range iso.ExtraEnv {
@@ -257,6 +261,10 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 	if err := os.WriteFile(filepath.Join(tmp, "agentworks_db.py"), dbRuntime, 0600); err != nil {
 		releaseScratch()
 		return nil, nil, fmt.Errorf("prepare database helper: %w", err)
+	}
+	if err := stagePythonAutomationRuntime(tmp, 0600); err != nil {
+		releaseScratch()
+		return nil, nil, fmt.Errorf("prepare automation helpers: %w", err)
 	}
 	local.WritePaths = append(append([]string{}, iso.WritePaths...), canonicalPath(tmp))
 	var crewBlocked []string

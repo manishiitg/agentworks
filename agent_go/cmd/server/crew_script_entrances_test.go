@@ -191,11 +191,29 @@ func checkSavedScriptTriggerAndSchedule(t *testing.T, docs string, binding crewE
 				if err != nil || !strings.Contains(string(raw), `"count": `+count) || !strings.Contains(string(raw), `"python_ran": true`) {
 					t.Fatalf("real Python result missing: %s %v", raw, err)
 				}
+				var artifact struct {
+					RunFolder string `json:"run_folder"`
+				}
+				if err := json.Unmarshal(raw, &artifact); err != nil || artifact.RunFolder != filepath.Join(layout.Runtime, "runs", run.RunFolder) {
+					t.Fatalf("script got wrong permanent WORKFLOW_RUN_DIR: %s %v", raw, err)
+				}
 				// Runs UI and step inspection use these persisted events. A full
 				// stdout copy here would recreate the native receipt token failure.
 				payload, err := json.Marshal(api.eventStore.GetAllEventsRaw(run.SessionID))
 				if err != nil || bytes.Contains(payload, bytes.Repeat([]byte("Q"), 32768)) {
 					t.Fatal("run events retained unbounded script stdout")
+				}
+				// The Python helper uses this existing chat append service. Its
+				// progress must appear without starting an AI turn or using an
+				// external notification destination.
+				resources := newCrewWorkflowResources(api.projectActions, "owner")
+				destination, err := resources.NotifyScript(ctx, binding.Root, run.SessionID, "notify-"+run.ID, "Python helper fixture progress")
+				if err != nil || destination == "" {
+					t.Fatalf("script progress destination: %q %v", destination, err)
+				}
+				progress, _ := json.Marshal(api.eventStore.GetAllEventsRaw(destination))
+				if !bytes.Contains(progress, []byte("Python helper fixture progress")) {
+					t.Fatal("script notification missing from the real chat journal")
 				}
 				t.Logf("script entrance schedule=%s run=%s real_python=true private_run_folder=%s", run.ScheduleID, run.ID, run.RunFolder)
 				return

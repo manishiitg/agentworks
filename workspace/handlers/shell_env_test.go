@@ -20,6 +20,8 @@ func TestIsAllowedShellExtraEnvKey(t *testing.T) {
 		"WORKFLOW_TRIGGER_INPUT_FILE",
 		"WORKFLOW_KB_LATENCY",
 		"WORKFLOW_DB_ACCESS",
+		// PLAT-746: Python helpers need the server-chosen permanent run folder.
+		"WORKFLOW_RUN_DIR",
 		// PLAT-756: where a Run-mode Crew turn saves its output.
 		"CREW_RUN_DIR",
 		"CREW_OUTPUT_DIR",

@@ -32,11 +32,19 @@ func TestSavedScriptUsesStepToolsWithoutBorrowingRunChatTools(t *testing.T) {
 	for _, access := range []string{DBAccessRead, DBAccessReadWrite, DBAccessNone} {
 		t.Run(access, func(t *testing.T) {
 			env := map[string]string{"STEP_OUTPUT_DIR": "/workspace/output", "STEP_EXECUTION_DIR": "/workspace", "RUN_FOLDER": "iteration-1/default"}
-			release := hcpo.configureScriptBridgeSession(step, guard, access, env)
+			release := hcpo.configureScriptBridgeSession(t.Context(), step, guard, access, env, "/workspace/code", "Workflow/example/runs/current/execution/measure")
 			defer release()
 			session := env["MCP_SESSION_ID"]
 			if session == hcpo.httpSessionID || !strings.HasSuffix(env["MCP_API_URL"], "/s/"+session) {
 				t.Fatal("script must use its own registered bridge session")
+			}
+			other := session + "-unrelated"
+			codeexec.InitRegistryForSession(other, map[string]func(context.Context, map[string]interface{}) (string, error){}, loggerv2.NewNoop())
+			defer codeexec.CleanupSession(other)
+			for _, denied := range []string{hcpo.httpSessionID, other} {
+				if _, err := codeexec.CallCustomToolWithSession(t.Context(), denied, "python_automation", nil); err == nil {
+					t.Fatal("another session borrowed this step's Python helper")
+				}
 			}
 			for _, name := range []string{"query_workflow_db", "mutate_workflow_db"} {
 				got, callErr := codeexec.CallCustomToolWithSession(context.Background(), session, name, nil)
