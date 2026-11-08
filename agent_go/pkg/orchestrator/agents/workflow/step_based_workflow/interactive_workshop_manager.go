@@ -3758,22 +3758,16 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 
 			// --- One-way notifications (secret references only) ---
 			sb.WriteString("\n### Notifications\n")
-			var runNotificationInstructions string
 			breakAlerts := true
-			var runNotificationChannels []string
 			var notificationExcludeChannels []string
 			var notificationGmailConnectionID string
-			var runNotificationRecipients []string
 			if content, readErr := ctrl.ReadWorkspaceFile(ctx, "workflow.json"); readErr == nil {
 				var manifest struct {
 					Capabilities struct {
 						Notifications struct {
-							BreakAlerts            *bool    `json:"break_alerts"`
-							RunSummaryInstructions string   `json:"run_summary_instructions"`
-							RunSummaryChannels     []string `json:"run_summary_channels"`
-							ExcludeChannels        []string `json:"exclude_channels"`
-							GmailConnectionID      string   `json:"gmail_connection_id"`
-							RunSummaryRecipients   []string `json:"run_summary_recipients"`
+							BreakAlerts       *bool    `json:"break_alerts"`
+							ExcludeChannels   []string `json:"exclude_channels"`
+							GmailConnectionID string   `json:"gmail_connection_id"`
 						} `json:"notifications"`
 					} `json:"capabilities"`
 				}
@@ -3781,25 +3775,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					if enabled := manifest.Capabilities.Notifications.BreakAlerts; enabled != nil {
 						breakAlerts = *enabled
 					}
-					runNotificationInstructions = strings.TrimSpace(manifest.Capabilities.Notifications.RunSummaryInstructions)
 
 					notificationExcludeChannels = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.ExcludeChannels)
 					notificationGmailConnectionID = strings.TrimSpace(manifest.Capabilities.Notifications.GmailConnectionID)
-					runNotificationRecipients = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.RunSummaryRecipients)
-					runNotificationChannels = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.RunSummaryChannels)
 				}
 			}
 			sb.WriteString(fmt.Sprintf("- Tell me when something breaks: %v\n", breakAlerts))
-			if runNotificationInstructions == "" {
-				sb.WriteString("- Workflow run summary instructions: not configured\n")
-			} else {
-				sb.WriteString("- Workflow run summary instructions:\n  " + strings.ReplaceAll(runNotificationInstructions, "\n", "\n  ") + "\n")
-			}
-
-			if len(runNotificationChannels) > 0 {
-				sb.WriteString(fmt.Sprintf("- Workflow run summary channels: %s\n", strings.Join(runNotificationChannels, ", ")))
-			}
-
 			if len(notificationExcludeChannels) > 0 {
 				sb.WriteString(fmt.Sprintf("- Excluded channels: %s\n", strings.Join(notificationExcludeChannels, ", ")))
 			}
@@ -3844,8 +3825,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			} else {
 				sb.WriteString(fmt.Sprintf("- Gmail sender connection ID: %s (connection status unavailable)\n", notificationGmailConnectionID))
 			}
-			// Summaries email only explicitly configured recipients.
-			sb.WriteString(fmt.Sprintf("- Workflow run summary recipients: %s\n", notificationRecipientSummary(runNotificationRecipients)))
 
 			// Show available secrets that can be added
 			if iwm.listAvailableSecrets != nil {
@@ -4064,24 +4043,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				},
 				"break_alerts": map[string]interface{}{
 					"type": "boolean", "description": "Tell me when something breaks: show run failures in Needs you. Enabled by default. Does not change configured team messages or decisions that need an answer.",
-				},
-				"run_notification_instructions": map[string]interface{}{
-					"type":        "string",
-					"maxLength":   2000,
-					"description": "Owner-approved guidance for the workflow execution section of notifications: what happened, outputs, failures, goal movement, metrics, detail, tone, and emphasis. Stored in workflow.json capabilities.notifications.run_summary_instructions. Pass an empty string to clear it. It cannot change recipients, channels, permissions, schedules, plan behavior, or delivery configuration.",
-				},
-
-				"run_notification_channels": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string", "enum": []string{"gmail", "slack", "whatsapp"}},
-					"minItems":    1,
-					"description": "Channels for the workflow run summary only. The backend enforces this allowlist. Omit to retain the current/default routing.",
-				},
-
-				"run_notification_recipients": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Email addresses the workflow run summary is sent TO, stored in workflow.json capabilities.notifications.run_summary_recipients and applied automatically to every run_summary send. This is the positive 'send here' list — set it when the user names who should receive this workflow's run emails. Omit to leave unchanged; pass an empty array to stop summary emails. Never blocks anything: the account-wide denylist are still applied on top, so a blocked address listed here is skipped rather than unblocked.",
 				},
 
 				"notification_gmail_connection_id": map[string]interface{}{
@@ -4472,35 +4433,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				anyChanged = true
 				sb.WriteString(fmt.Sprintf("\nTell me when something breaks: %v\n", enabled))
 			}
-			// --- Workflow-scoped notification content instructions ---
-			runRaw, runProvided := args["run_notification_instructions"]
-			runChannelsRaw, runChannelsProvided := args["run_notification_channels"]
-			runRecipientsRaw, runRecipientsProvided := args["run_notification_recipients"]
 			senderRaw, senderProvided := args["notification_gmail_connection_id"]
-			if (runProvided && runRaw != nil) ||
-				(runChannelsProvided && runChannelsRaw != nil) ||
-				(runRecipientsProvided && runRecipientsRaw != nil) ||
-				(senderProvided && senderRaw != nil) {
+			if senderProvided && senderRaw != nil {
 				workspacePath := iwm.controller.GetWorkspacePath()
-				parseInstructions := func(name string, raw interface{}, provided bool) (string, error) {
-					if !provided || raw == nil {
-						return "", nil
-					}
-					value, ok := raw.(string)
-					if !ok {
-						return "", fmt.Errorf("%s must be a string", name)
-					}
-					value = strings.TrimSpace(value)
-					if len([]rune(value)) > 2000 {
-						return "", fmt.Errorf("%s must be at most 2000 characters", name)
-					}
-					return value, nil
-				}
-				runInstructions, parseErr := parseInstructions("run_notification_instructions", runRaw, runProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
-
 				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
 				if readErr != nil {
 					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
@@ -4517,85 +4452,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if notifications == nil {
 					notifications = make(map[string]interface{})
 				}
-				legacyInstructions, _ := notifications["instructions"].(string)
-				if !runProvided {
-					runInstructions, _ = notifications["run_summary_instructions"].(string)
-					if strings.TrimSpace(runInstructions) == "" {
-						runInstructions = legacyInstructions
-					}
-				}
-
-				parseChannels := func(name string, raw interface{}, provided bool) ([]string, error) {
-					if !provided || raw == nil {
-						return nil, nil
-					}
-					values, ok := raw.([]interface{})
-					if !ok {
-						return nil, fmt.Errorf("%s must be an array", name)
-					}
-					allowed := map[string]bool{"gmail": true, "slack": true, "whatsapp": true}
-					channels := make([]string, 0, len(values))
-					seen := map[string]bool{}
-					for _, rawValue := range values {
-						value, ok := rawValue.(string)
-						if !ok || !allowed[strings.ToLower(strings.TrimSpace(value))] {
-							return nil, fmt.Errorf("%s contains an unsupported channel", name)
-						}
-						value = strings.ToLower(strings.TrimSpace(value))
-						if !seen[value] {
-							channels = append(channels, value)
-							seen[value] = true
-						}
-					}
-					if len(channels) == 0 {
-						return nil, fmt.Errorf("%s must contain at least one channel", name)
-					}
-					return channels, nil
-				}
-				runChannels, parseErr := parseChannels("run_notification_channels", runChannelsRaw, runChannelsProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
-
-				// Recipient lists are stored as-given minus obvious junk. An empty
-				// array is a legitimate value here — it clears the list back to the
-				// disabled email delivery — so unlike channels it is not an error.
-				parseRecipients := func(name string, raw interface{}, provided bool) ([]string, error) {
-					if !provided || raw == nil {
-						return nil, nil
-					}
-					values, ok := raw.([]interface{})
-					if !ok {
-						return nil, fmt.Errorf("%s must be an array of email addresses", name)
-					}
-					recipients := make([]string, 0, len(values))
-					seen := map[string]bool{}
-					for _, rawValue := range values {
-						value, ok := rawValue.(string)
-						if !ok {
-							return nil, fmt.Errorf("%s must contain only email addresses", name)
-						}
-						for _, part := range strings.FieldsFunc(value, func(r rune) bool {
-							return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
-						}) {
-							email := strings.ToLower(strings.TrimSpace(part))
-							if email == "" || seen[email] {
-								continue
-							}
-							if !strings.Contains(email, "@") {
-								return nil, fmt.Errorf("%s contains %q, which is not an email address", name, part)
-							}
-							seen[email] = true
-							recipients = append(recipients, email)
-						}
-					}
-					return recipients, nil
-				}
-				runRecipients, parseErr := parseRecipients("run_notification_recipients", runRecipientsRaw, runRecipientsProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
-
 				var senderID string
 				if senderProvided && senderRaw != nil {
 					var ok bool
@@ -4616,29 +4472,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 						}
 					}
 				}
-				for key, value := range map[string]string{
-					"run_summary_instructions": strings.TrimSpace(runInstructions),
-				} {
-					if value == "" {
-						delete(notifications, key)
-					} else {
-						notifications[key] = value
-					}
-				}
-				if runChannelsProvided {
-					notifications["run_summary_channels"] = runChannels
-				}
-
-				// An explicitly emptied list is stored as "no override" by removing
-				// the key, which disables summary email delivery.
-				if runRecipientsProvided {
-					if len(runRecipients) == 0 {
-						delete(notifications, "run_summary_recipients")
-					} else {
-						notifications["run_summary_recipients"] = runRecipients
-					}
-				}
-
 				if senderProvided && senderRaw != nil {
 					if senderID == "" {
 						delete(notifications, "gmail_connection_id")
@@ -4670,19 +4503,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 
 				anyChanged = true
-				sb.WriteString("\n### Notification Instructions (updated)\nSaved team run notification preferences in workflow.json.\n")
-				if runRecipientsProvided {
-					sb.WriteString(fmt.Sprintf("- Run summary recipients: %s\n", notificationRecipientSummary(runRecipients)))
-				}
-
-				if senderProvided && senderRaw != nil {
-					if senderID == "" {
-						sb.WriteString("- Gmail notification sender: account default\n")
-					} else {
-						sb.WriteString(fmt.Sprintf("- Gmail notification sender connection ID: %s\n", senderID))
-					}
-				}
-				logger.Info(fmt.Sprintf("Updated workflow notification instructions: run_configured=%v run_recipients=%d", strings.TrimSpace(runInstructions) != "", len(runRecipients)))
+				sb.WriteString("\nGmail sending account updated.\n")
 			}
 
 			// --- Browser mode ---
@@ -4792,7 +4613,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			if !anyChanged {
-				return "No changes applied. Provide at least one of: knowledgebase_sources, kb_write_grants, add_servers, remove_servers, add_tools, remove_tools, add_skills, remove_skills, add_secrets, remove_secrets, run_notification_instructions, run_notification_channels, browser_mode.", nil
+				return "No changes applied. Provide at least one of: knowledgebase_sources, kb_write_grants, add_servers, remove_servers, add_tools, remove_tools, add_skills, remove_skills, add_secrets, remove_secrets, browser_mode.", nil
 			}
 
 			// Persist config changes to workflow.json manifest (file-backed)

@@ -118,7 +118,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		order, _ := args["order"].(float64)
 		arguments, _ := args["arguments"].(map[string]interface{})
 		redo, _ := args["redo"].(bool)
-		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script" && action != "agent" && action != "step" && action != "call_function" && action != "function_status") {
+		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script" && action != "agent" && action != "step" && action != "call_function" && action != "function_status" && action != "send_email" && action != "send_slack") {
 			return encode(pythonHelperReply{Error: "Invalid Python helper request; use the installed agentworks package."})
 		}
 		slot := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d", label, int64(order))))
@@ -175,7 +175,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				}
 				return encode(previous.Reply)
 			}
-			if (action == "run_script" || action == "agent" || action == "call_function") && !previous.Complete && !redo {
+			if (action == "run_script" || action == "agent" || action == "call_function" || action == "send_email" || action == "send_slack") && !previous.Complete && !redo {
 				reply := previous.Reply
 				reply.OK = false
 				reply.Error = "The previous script attempt has no completed receipt. Inspect its run before explicitly trying redo=True; it may already have done work."
@@ -217,6 +217,21 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			return encode(call.Reply)
 		}
 		switch action {
+		case "send_email", "send_slack":
+			name := "send_email"
+			if action == "send_slack" {
+				name = "send_slack_message"
+				stable := sha256.Sum256([]byte(hcpo.GetWorkspacePath() + "/" + hcpo.selectedRunFolder + "/" + stateRelative))
+				arguments["idempotency_key"] = hex.EncodeToString(stable[:])
+			}
+			execute, ok := hcpo.WorkspaceToolExecutors[name].(func(context.Context, map[string]interface{}) (string, error))
+			if !ok || execute == nil {
+				call.Reply = pythonHelperReply{Error: "This send tool is unavailable; check the automation's connected account in Crew chat."}
+			} else if result, err := execute(ctx, arguments); err != nil {
+				call.Reply = pythonHelperReply{Error: err.Error()}
+			} else {
+				call.Reply = pythonHelperReply{OK: true, Text: result}
+			}
 		case "call_function", "function_status":
 			call.Reply = hcpo.runPythonFunction(ctx, step, action, arguments, id)
 		case "agent":

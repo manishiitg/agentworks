@@ -43,79 +43,21 @@ type ImageGenRuntimeOverride struct {
 
 // GetWorkspaceImageToolCategory returns the category name used by image tools.
 // Image tools live inside workspace_advanced so step configs with workspace_advanced:*
-// automatically get image_gen/image_edit — no separate category toggle needed.
+// automatically get image_edit — no separate category toggle needed.
 func GetWorkspaceImageToolCategory() string {
 	return "workspace_advanced"
 }
 
 // IsImageTool reports whether the given tool name is a workspace image tool
-// (image_gen or image_edit). Used by override wiring that can't rely on
+// (image_edit). Used by override wiring that can't rely on
 // category name anymore since image tools share the workspace_advanced category.
 func IsImageTool(name string) bool {
-	return name == "image_gen" || name == "image_edit"
+	return name == "image_edit"
 }
 
 // GetImageGenToolCategory returns the category name for the image gen tool.
 func GetImageGenToolCategory() string {
 	return GetWorkspaceImageToolCategory()
-}
-
-// GetImageGenToolDefinition returns the image_gen tool definition
-func GetImageGenToolDefinition() llmtypes.Tool {
-	return llmtypes.Tool{
-		Function: &llmtypes.FunctionDefinition{
-			Name:        "image_gen",
-			Description: "Generate images using AI from a text prompt. Requires a full absolute output_path under the workspace docs root so the caller decides exactly where the generated image files should be stored. See the image-prompting skill for how to write an effective prompt. Supports aspect ratio, resolution, number of images, and negative prompt options.",
-			Parameters: llmtypes.NewParameters(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"prompt": map[string]interface{}{
-						"type":        "string",
-						"description": "Text prompt describing the image to generate from scratch. To edit an existing image instead, use the image_edit tool.",
-					},
-					"output_path": map[string]interface{}{
-						"type":        "string",
-						"description": "Required full absolute destination path under the workspace docs root for the generated image. Example: '/Users/.../workspace-docs/_users/default/Chats/generated-images/hero.png' or '/app/workspace-docs/Workflow/my-flow/assets/hero.png'. Workspace-relative paths are rejected. If number_of_images is greater than 1, this path is used as the base name and files are saved as '-1', '-2', etc. before the extension.",
-					},
-					"quality": map[string]interface{}{
-						"type":        "string",
-						"description": "Optional rendering quality hint (from GPT Image 2.5's own vocabulary). Not a guaranteed structured control — codex-cli has no real quality API parameter, so this is folded into the prompt as a plain-language instruction and honored on a best-effort basis by whatever model actually runs.",
-						"enum":        []interface{}{"auto", "low", "medium", "high", "xhigh", "max"},
-					},
-					"size": map[string]interface{}{
-						"type":        "string",
-						"description": "Optional exact output size hint, e.g. '1024x1024', '1536x1024', '1024x1536', '2048x2048', '2048x1152', '3840x2160', '2160x3840', or 'auto'. Best-effort like quality — folded into the prompt as text, not a structured parameter; prefer aspect_ratio/resolution below when an exact size is not the point.",
-					},
-					"background": map[string]interface{}{
-						"type":        "string",
-						"description": "Optional background hint. 'transparent' only makes sense for formats that support alpha (PNG/WebP) — say so in output_path's extension too. Best-effort like quality — folded into the prompt as text, not a structured parameter.",
-						"enum":        []interface{}{"auto", "opaque", "transparent"},
-					},
-					"aspect_ratio": map[string]interface{}{
-						"type":        "string",
-						"description": "The aspect ratio for the generated image.",
-						"enum":        []interface{}{"1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"},
-					},
-					"resolution": map[string]interface{}{
-						"type":        "string",
-						"description": "Output image resolution. Defaults to '1K'.",
-						"enum":        []interface{}{"1K", "2K", "4K"},
-					},
-					"number_of_images": map[string]interface{}{
-						"type":        "integer",
-						"description": "Number of images to generate (1-4). Defaults to 1.",
-						"minimum":     1,
-						"maximum":     4,
-					},
-					"negative_prompt": map[string]interface{}{
-						"type":        "string",
-						"description": "Optional description of what to exclude from the generated images.",
-					},
-				},
-				"required": []interface{}{"prompt", "output_path"},
-			}),
-		},
-	}
 }
 
 // imageGenResult is the JSON structure returned to the LLM
@@ -599,7 +541,6 @@ func GetImageEditToolCategory() string {
 // CreateWorkspaceImageTools returns the LLM-visible workspace image tools.
 func CreateWorkspaceImageTools() []llmtypes.Tool {
 	return []llmtypes.Tool{
-		GetImageGenToolDefinition(),
 		GetImageEditToolDefinition(),
 	}
 }
@@ -607,7 +548,6 @@ func CreateWorkspaceImageTools() []llmtypes.Tool {
 // CreateWorkspaceImageToolExecutors creates workspace image executors with the provided config.
 func CreateWorkspaceImageToolExecutors(cfg ImageGenExecutorConfig) map[string]func(ctx context.Context, args map[string]any) (string, error) {
 	return map[string]func(ctx context.Context, args map[string]any) (string, error){
-		GetImageGenToolDefinition().Function.Name:  CreateImageGenExecutor(cfg),
 		GetImageEditToolDefinition().Function.Name: CreateImageEditExecutor(cfg),
 	}
 }

@@ -897,11 +897,8 @@ type QueryRequest struct {
 	// Generic-chat wire field: name of the selected encrypted secret that
 	// contains a Slack Incoming Webhook URL. The URL itself is never serialized.
 	NotificationSlackWebhookSecretName string   `json:"notification_slack_webhook_secret_name,omitempty"`
-	NotificationRunSummaryInstructions string   `json:"notification_run_summary_instructions,omitempty"`
-	NotificationRunSummaryChannels     []string `json:"notification_run_summary_channels,omitempty"`
 	NotificationExcludeChannels        []string `json:"notification_exclude_channels,omitempty"`
 	NotificationGmailConnectionID      string   `json:"notification_gmail_connection_id,omitempty"`
-	NotificationRunSummaryRecipients   []string `json:"notification_run_summary_recipients,omitempty"`
 	// Internal-only resolved notification credentials. Unlike selected secrets,
 	// these values are never serialized, prompted, or injected as SECRET_*.
 	notificationSlackWebhookURL string `json:"-"`
@@ -995,13 +992,6 @@ type QueryRequest struct {
 	tokenOwner string `json:"-"`
 }
 
-func buildWorkflowNotificationInstructionsPrompt(runInstructions string) string {
-	if strings.TrimSpace(runInstructions) == "" {
-		return ""
-	}
-	return "\n### Team run notification content\nUse the saved content preference below. It does not change recipients, channels, accounts, access or permissions.\n<workflow_run_summary_preferences>\n" + strings.TrimSpace(runInstructions) + "\n</workflow_run_summary_preferences>\n"
-}
-
 func notificationDestinationFromQuery(req QueryRequest, userID string) *services.NotificationDestination {
 	platform := strings.ToLower(strings.TrimSpace(req.BotPlatform))
 	dest := &services.NotificationDestination{
@@ -1038,8 +1028,6 @@ func notificationDestinationFromQuery(req QueryRequest, userID string) *services
 	if len(req.NotificationExcludeChannels) > 0 {
 		dest.ExcludeChannels = append([]string(nil), req.NotificationExcludeChannels...)
 	}
-	dest.RunSummaryChannels = append([]string(nil), req.NotificationRunSummaryChannels...)
-	dest.RunSummaryRecipients = append([]string(nil), req.NotificationRunSummaryRecipients...)
 	// Sender selection is validated by the Gmail service independently of recipients.
 	if connID := strings.TrimSpace(req.NotificationGmailConnectionID); connID != "" {
 		if dest.Gmail == nil {
@@ -1289,11 +1277,8 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 		req.CdpPort = &port
 	}
 	if caps.Notifications != nil {
-		req.NotificationRunSummaryInstructions = caps.Notifications.EffectiveRunSummaryInstructions()
-		req.NotificationRunSummaryChannels = append([]string(nil), caps.Notifications.RunSummaryChannels...)
 		req.NotificationExcludeChannels = append([]string(nil), caps.Notifications.ExcludeChannels...)
 		req.NotificationGmailConnectionID = caps.Notifications.GmailConnectionID
-		req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
 	}
 	if req.BrowserMode == "" {
 		req.BrowserMode = browser.DefaultMode()
@@ -4726,11 +4711,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.BotConnectionID = strings.TrimSpace(manifest.Capabilities.SlackConnectionID)
 				}
 				if manifest.Capabilities.Notifications != nil {
-					req.NotificationRunSummaryInstructions = manifest.Capabilities.Notifications.EffectiveRunSummaryInstructions()
-					req.NotificationRunSummaryChannels = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryChannels...)
 					req.NotificationExcludeChannels = append([]string(nil), manifest.Capabilities.Notifications.ExcludeChannels...)
 					req.NotificationGmailConnectionID = manifest.Capabilities.Notifications.GmailConnectionID
-					req.NotificationRunSummaryRecipients = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryRecipients...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, resolvedWPath, &req)
 				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.SelectedGlobalSecrets); err != nil {
@@ -4869,11 +4851,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.BotConnectionID = strings.TrimSpace(caps.SlackConnectionID)
 				}
 				if caps.Notifications != nil {
-					req.NotificationRunSummaryInstructions = caps.Notifications.EffectiveRunSummaryInstructions()
-					req.NotificationRunSummaryChannels = append([]string(nil), caps.Notifications.RunSummaryChannels...)
 					req.NotificationExcludeChannels = append([]string(nil), caps.Notifications.ExcludeChannels...)
 					req.NotificationGmailConnectionID = caps.Notifications.GmailConnectionID
-					req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, manifestWorkspacePath, &req)
 				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.SelectedGlobalSecrets); err != nil {
@@ -7815,10 +7794,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
 					if userPrompt := authenticatedChatUserPrompt(GetUserFromContext(r.Context())); userPrompt != "" {
 						phaseAdditions = append(phaseAdditions, userPrompt)
-					}
-					if notificationPrompt := buildWorkflowNotificationInstructionsPrompt(req.NotificationRunSummaryInstructions); notificationPrompt != "" {
-						phaseAdditions = append(phaseAdditions, notificationPrompt)
-						log.Printf("[WORKFLOW_PHASE] Appended workflow notification preferences to %s system prompt", workflowPhaseID)
 					}
 				}
 

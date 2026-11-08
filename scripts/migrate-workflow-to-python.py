@@ -62,23 +62,82 @@ def database_rows(path):
             connection.close()
 
 
+# One-off source cleanup for removed optional platform tools. Native tool
+# selections are already supplied by the coding agent, not copied as app tools.
+RETIRED_TOOLS = {
+    'notify_user', 'record_summary', 'get_notification_history', 'search_web_llm',
+    'image_gen', 'media.generate', 'read_image', 'files.image', 'human_feedback',
+    'needs_you.ask', 'needs_you.create', 'needs_you.get', 'needs_you.answer',
+    'needs_you.withdraw', 'needs_you.dismiss_duplicate', 'needs_you.mark_consumed',
+    'create_human_input_request', 'get_human_input_request', 'answer_human_input_request',
+    'withdraw_human_input_request', 'dismiss_duplicate_human_input_request',
+    'mark_human_input_consumed', 'messages.record_summary', 'messages.notification_history',
+}
+
+
+def clean_agent_selections(raw):
+    tree = ast.parse(raw)
+    agents = {a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)
+              and n.module == 'agentworks' for a in n.names if a.name == 'agent'}
+    modules = {a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.Import)
+               for a in n.names if a.name == 'agentworks'}
+    lines = raw.splitlines(keepends=True)
+    offsets = [0]
+    for line in lines: offsets.append(offsets[-1] + len(line))
+    def span(node):
+        return offsets[node.lineno-1]+node.col_offset, offsets[node.end_lineno-1]+node.end_col_offset
+    edits, removed = [], []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call): continue
+        function = node.func
+        helper = isinstance(function, ast.Name) and function.id in agents or (
+            isinstance(function, ast.Attribute) and function.attr == 'agent' and
+            isinstance(function.value, ast.Name) and function.value.id in modules)
+        if not helper: continue
+        for keyword in node.keywords:
+            if keyword.arg == 'can_ask_person':
+                a,b = span(keyword)
+                _,call_end = span(node)
+                comma = raw.find(b',', b, call_end)
+                if comma >= 0: b = comma+1
+                else: a = raw.rfind(b',', span(node)[0], a)
+                if a < 0: raise ValueError('Cannot remove the retired question option from this agent call.')
+                edits.append((a,b,b'')); removed.append('can_ask_person')
+            elif keyword.arg == 'tools' and isinstance(keyword.value, (ast.List, ast.Tuple)):
+                values = keyword.value.elts
+                kept = [v for v in values if not (isinstance(v, ast.Constant) and isinstance(v.value,str)
+                        and v.value.split(':',1)[-1] in RETIRED_TOOLS)]
+                if len(kept) != len(values):
+                    removed += [v.value for v in values if v not in kept]
+                    a,b = span(keyword.value)
+                    replacement = '['+', '.join(ast.get_source_segment(raw.decode(),v) for v in kept)+']'
+                    edits.append((a,b,replacement.encode()))
+    for a,b,replacement in sorted(edits,reverse=True): raw = raw[:a]+replacement+raw[b:]
+    ast.parse(raw)
+    return raw, removed
+
+
 def python_payload(source, workflow_id, original_capabilities, original_inputs):
     source = source.resolve()
-    payload = {}
+    payload, removed_tools = {}, []
     for file in source.iterdir():
         if not file.is_file() or file.is_symlink() or (file.suffix != '.py' and file.name != 'script.json'):
             raise ValueError('The new source must contain only flat Python files and script.json.')
         raw = file.read_bytes()
         if file.suffix == '.py':
-            ast.parse(raw, filename=file.name)
+            raw, removed = clean_agent_selections(raw)
+            removed_tools.extend(removed)
         payload[file.name] = raw
     definition = json.loads(payload['script.json'])
     if not isinstance(original_capabilities, dict):
         raise ValueError('The saved workflow settings must be an object.')
+    original_capabilities = dict(original_capabilities)
+    retired_notifications = original_capabilities.pop('notifications', {})
     proposed = definition.get('capabilities', {})
     if not isinstance(proposed, dict):
         raise ValueError('The Python source settings must be an object.')
     for name, value in proposed.items():
+        if name == 'notifications': continue
         if value != original_capabilities.get(name):
             raise ValueError(f'The Python source changes the saved {name} selection. Keep the original settings during conversion.')
     definition['capabilities'] = original_capabilities
@@ -91,7 +150,7 @@ def python_payload(source, workflow_id, original_capabilities, original_inputs):
     payload['script.json'] = encode(definition)
     if definition.get('id') != workflow_id or 'main.py' not in payload:
         raise ValueError('The Python definition must retain the existing workflow ID and include main.py.')
-    return payload, definition
+    return payload, definition, {'removed_tools': sorted(set(removed_tools)), 'removed_notification_fields': sorted(retired_notifications)}
 
 
 def plan(docs, state, initialize=False, workflow_id=None, source=None):
@@ -153,7 +212,7 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     original_capabilities = json.loads((definitions / 'workflow.json').read_text()).get('capabilities', {})
     variables_file = definitions / 'variables/variables.json'
     original_inputs = json.loads(variables_file.read_text()) if variables_file.exists() else {}
-    payload, definition = python_payload(source, workflow_id, original_capabilities, original_inputs)
+    payload, definition, removed = python_payload(source, workflow_id, original_capabilities, original_inputs)
     for name, raw in payload.items():
         target = code / name
         if target.exists() and target.read_bytes() != raw:
@@ -164,7 +223,7 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     binding['kind'] = 'script'
     changes[binding_file] = encode(binding)
     documents = {'definitions': definitions, 'code': code, 'runtime': runtime, 'crew-db': private / 'db', 'crew-db-source': files / 'db'}
-    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'carried_capability_fields': sorted(original_capabilities), 'carried_input_presets': len(definition['input_presets'])}}
+    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, 'carried_input_presets': len(definition['input_presets'])}}
     return changes, documents, report
 
 
@@ -210,7 +269,7 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
         raise ValueError('This standalone workflow has already moved. Inspect its current binding before converting it again.')
     manifest = conversion.document(conversion.definitions/'workflow.json', conversion.manifest)
     original_inputs = conversion.document(conversion.definitions/'variables/variables.json', migration.read(conversion.source/'variables/variables.json', {}))
-    payload, definition = python_payload(source, workflow_id, manifest.get('capabilities', {}), original_inputs)
+    payload, definition, removed = python_payload(source, workflow_id, manifest.get('capabilities', {}), original_inputs)
     for name, raw in payload.items():
         target = conversion.source/'code'/name
         if target.exists() and target.read_bytes() != raw:
@@ -229,7 +288,7 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
     binding = json.loads(conversion.writes[conversion.binding_file])
     binding.update(kind='script', runtime_root='workflows/' + workflow_id)
     conversion.writes[conversion.binding_file] = encode(binding)
-    conversion.counts.update(carried_input_presets=len(definition['input_presets']), python_scripts=1)
+    conversion.counts.update(carried_input_presets=len(definition['input_presets']), python_scripts=1, **removed)
     conversion.python_source = True
     return conversion
 

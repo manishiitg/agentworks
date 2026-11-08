@@ -249,10 +249,6 @@ type WorkflowWakeTab struct {
 }
 
 type WorkflowNotificationConfig struct {
-	RunSummaryInstructions string   `json:"run_summary_instructions,omitempty"`
-	RunSummaryChannels     []string `json:"run_summary_channels,omitempty"`
-	// Explicit team recipients. Empty disables summary email delivery.
-	RunSummaryRecipients []string `json:"run_summary_recipients,omitempty"`
 	// Sender selected from the accounts already added to this product.
 	GmailConnectionID string           `json:"gmail_connection_id,omitempty"`
 	ExcludeChannels   []string         `json:"exclude_channels,omitempty"`
@@ -262,25 +258,6 @@ type WorkflowNotificationConfig struct {
 
 func (c *WorkflowNotificationConfig) BreakAlertsEnabled() bool {
 	return c == nil || c.BreakAlerts == nil || *c.BreakAlerts
-}
-
-const defaultRunSummaryInstructions = "Before external delivery, read prior run summaries with get_notification_history. Always record the current run summary in Activity. Send Slack, Gmail, or WhatsApp only when the current run contains a new materially important outcome, failure, recovery, blocker, decision, or threshold crossing compared with prior summaries. Ignore timestamps, routine counts, and wording-only differences. If nothing important changed, call record_summary with delivery=record_only."
-
-func (c *WorkflowNotificationConfig) EffectiveRunSummaryInstructions() string {
-	if c == nil {
-		return ""
-	}
-	if value := strings.TrimSpace(c.RunSummaryInstructions); value != "" {
-		return value
-	}
-	return ""
-}
-
-func runSummaryInstructionsOrDefault(c *WorkflowNotificationConfig) string {
-	if value := c.EffectiveRunSummaryInstructions(); value != "" {
-		return value
-	}
-	return defaultRunSummaryInstructions
 }
 
 // WorkflowSchedule represents a clock or webhook trigger stored in the manifest.
@@ -523,17 +500,6 @@ func ValidateManifest(m *WorkflowManifest) error {
 
 	if m.Kind == "relay" && strings.TrimSpace(m.Capabilities.SlackConnectionID) != "" {
 		return fmt.Errorf("Flows do not support Slack connections")
-	}
-	if m.Kind == "relay" && m.Capabilities.Notifications != nil {
-		notifications := m.Capabilities.Notifications
-		unsupportedChannel := func(channels []string) bool {
-			return slices.ContainsFunc(channels, func(channel string) bool {
-				return strings.EqualFold(strings.TrimSpace(channel), "whatsapp") || strings.EqualFold(strings.TrimSpace(channel), "slack")
-			})
-		}
-		if unsupportedChannel(notifications.RunSummaryChannels) {
-			return fmt.Errorf("Flows do not support Slack or WhatsApp notifications")
-		}
 	}
 	if m.Label == "" {
 		return fmt.Errorf("label is required")

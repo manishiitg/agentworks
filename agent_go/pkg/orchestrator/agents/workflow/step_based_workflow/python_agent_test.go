@@ -329,28 +329,24 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	if _, admitted := executors["agent_browser"]; admitted {
 		t.Fatal("helper retained browser executor")
 	}
-	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Ask", Messages: []string{"task"}, CanAskPerson: true}); err == nil {
-		t.Fatal("missing question tool was silently admitted")
-	}
 	c.WorkspaceTools = append(c.WorkspaceTools, virtualtools.CreateHumanTools()...)
 	c.WorkspaceToolExecutors["human_feedback"] = func(context.Context, map[string]interface{}) (string, error) { return "unused", nil }
-	// PLAT-746-441: a timer has no incoming person message, but must retain
-	// an explicitly authored bounded OTP question and named app tools.
+	// PLAT-746-451: timers retain selected apps, but never person questions.
 	c.SetExecutionOptions(&ExecutionOptions{ExecutionStrategy: ExecutionStrategyStartFromBeginningNoHuman})
 	c.WorkspaceToolExecutors["google_workspace_cli"] = func(context.Context, map[string]interface{}) (string, error) { return "unused", nil }
-	withHelp, explicit, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Ask", Messages: []string{"task"}, Browser: true, CanAskPerson: true})
+	withHelp, explicit, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Ask", Messages: []string{"task"}, Browser: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	tools, executors = c.prepareExecutionTools(&withHelp.Config, parent, nil, DBAccessReadWrite)
 	tools, executors = explicit.filterTools(tools, executors)
-	for _, name := range []string{"agent_browser", "human_feedback"} {
+	for _, name := range []string{"agent_browser"} {
 		if executors[name] == nil {
 			t.Fatalf("explicit existing capability %s was dropped", name)
 		}
 	}
 	for _, tool := range tools {
-		if tool.Function != nil && (tool.Function.Name == "send_email" || tool.Function.Name == "send_slack_message" || tool.Function.Name == "create_human_input_request") {
+		if tool.Function != nil && (tool.Function.Name == "human_feedback" || tool.Function.Name == "send_email" || tool.Function.Name == "send_slack_message" || tool.Function.Name == "create_human_input_request") {
 			t.Fatalf("asking the person broadened human tools: %s", tool.Function.Name)
 		}
 	}

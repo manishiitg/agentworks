@@ -27,16 +27,6 @@ func TestChatDefinitions(t *testing.T) {
 	if ChatAllowsTool("builder", "human_feedback") || !ChatAllowsTool("run", "human_feedback") {
 		t.Fatal("human_feedback must be run-only")
 	}
-	if !ChatAllowsTool("builder", "answer_human_input_request") || ChatAllowsTool("run", "answer_human_input_request") {
-		t.Fatal("answer_human_input_request must be builder-only")
-	}
-	for _, mode := range []string{"builder", "run"} {
-		for _, name := range []string{"record_summary", "get_notification_history"} {
-			if !ChatAllowsTool(mode, name) {
-				t.Fatalf("%s chat is missing %s", mode, name)
-			}
-		}
-	}
 	if ChatDefinitionKey("builder") == ChatDefinitionKey("run") {
 		t.Fatal("mode definitions must differ")
 	}

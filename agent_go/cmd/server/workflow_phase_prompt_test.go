@@ -43,10 +43,9 @@ func TestAssembledWorkflowPrompt(t *testing.T) {
 					if !ui {
 						ctx.ChannelFormatting = "## Channel formatting\nKeep replies suitable for WhatsApp."
 					}
-					notifications := buildWorkflowNotificationInstructionsPrompt("Report approved work only.")
 					secrets := workflow.BuildWorkflowSecretPrompt([]orchestrator.SecretEntry{{Name: "TEST_TOKEN", Value: "never-render-this-value"}})
 					browser := "## Browser\nConfigured mode=auto. Call agent_browser status first; read builder-reference/references/browser-usage.md."
-					got, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", vars, ctx, notifications, secrets, browser)
+					got, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", vars, ctx, secrets, browser)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -54,7 +53,7 @@ func TestAssembledWorkflowPrompt(t *testing.T) {
 					if len(got) > 15000 {
 						t.Fatalf("assembled prompt is %d bytes; move static detail into scoped skills (ceiling 15000)", len(got))
 					}
-					for _, section := range []string{"## CURRENT MODE:", "## CURRENT STATE", "## Workspace\n", "## Referenced workflow evidence", "## Granted runtime access", "## Capability inventory", "## Browser\n", notifications, secrets} {
+					for _, section := range []string{"## CURRENT MODE:", "## CURRENT STATE", "## Workspace\n", "## Referenced workflow evidence", "## Granted runtime access", "## Capability inventory", "## Browser\n", secrets} {
 						if strings.Count(got, section) != 1 {
 							t.Errorf("section must occur once: %q", section)
 						}
