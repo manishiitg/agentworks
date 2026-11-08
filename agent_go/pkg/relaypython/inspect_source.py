@@ -185,7 +185,7 @@ def inspect_source(source):
 
 def inspect_automation_source(files):
     """A source outline, not a Python execution plan. Authored modules never run."""
-    graph = {"native": True, "nodes": [], "edges": [], "errors": []}
+    graph = {"native": True, "nodes": [], "edges": [], "errors": [], "unkeyed_calls": [], "notes": []}
     try:
         if not isinstance(files, dict) or 'main.py' not in files:
             raise ValueError('Save main.py before viewing this automation.')
@@ -232,6 +232,22 @@ def inspect_automation_source(files):
                 if imported and imported[1] is None:
                     return imported[0], expression.attr
             return None, None
+
+        # Inventory only calls whose imported target is known. No source is
+        # rewritten: a loop/helper needs the author's logical work identity.
+        for module, tree in trees.items():
+            for call in ast.walk(tree):
+                if not isinstance(call, ast.Call):
+                    continue
+                origin, helper = target(module, call.func)
+                if origin != 'agentworks' or helper not in ('agent', 'run_script'):
+                    continue
+                key = next((item.value for item in call.keywords if item.arg == 'key'), None)
+                if key is None or isinstance(key, ast.Constant) and key.value is None:
+                    graph['unkeyed_calls'].append({'file': filenames[module], 'line': call.lineno, 'helper': helper})
+        graph['unkeyed_calls'].sort(key=lambda item: (item['file'], item['line'], item['helper']))
+        if graph['unkeyed_calls']:
+            graph['notes'].append('Some agent or saved-script calls have no saved-result key. Add a stable key to costly work you want to reuse after a failure, such as one key per record. Scripts still run without keys.')
 
         def literal(module, value):
             seen = set()

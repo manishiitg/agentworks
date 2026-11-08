@@ -45,6 +45,9 @@ uncertain completed effects are not silently retried. If frozen source/hash or
 input proof is missing or changed, start a new run. `rerun` uses current source
 in a new folder instead. Inspect the failed receipt before choosing either.
 
+During an upgrade, inspect the source outline's notes for calls without keys.
+Give expensive or effectful work a semantic key, such as one per record ID;
+never insert a fixed key per source line or rewrite loops automatically.
 To make long phases resumable, give each `agent()` or `run_script()` a stable
 explicit `key`, such as `key="research"` or `key=f"research:{customer_id}"` in
 a loop. Keys identify work, so do not reuse one for different calls. Keep sends

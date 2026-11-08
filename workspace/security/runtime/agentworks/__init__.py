@@ -201,6 +201,11 @@ def run_script(script_id: str, inputs: Mapping[str, JSONValue], *,
     are forwarded; unused caller inputs are dropped. Names declared by neither
     script are refused, and the child's types/defaults/required fields still apply.
     Output contents stay ordinary files. This helper never parses them.
+
+    Pass a stable key when this result should survive a failed run. On Resume,
+    the same key and arguments reuse a successful result (reply.reused=True);
+    changed arguments run fresh. Repeating a key in one attempt is refused;
+    use a distinct key per record. redo=True deliberately runs the call fresh.
     """
     try:
         reply = _call("run_script", {"id": script_id, "inputs": dict(inputs)}, key, redo)
@@ -343,6 +348,11 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
           timeout_seconds: float | None = None, conversation_id: str | None = None,
           key: str | None = None, redo: bool = False) -> Reply:
     """Run ordinary agent turns in this run folder, with no external MCPs by default.
+
+    Pass a stable key when this result should survive a failed run. On Resume,
+    the same key and arguments reuse a successful result (reply.reused=True);
+    changed arguments run fresh. Repeating a key in one attempt is refused;
+    use a distinct key per record. redo=True deliberately runs the call fresh.
 
     A list sends follow-ups to the same agent. To continue later in this run,
     pass reply.conversation_id; omitted settings retain its original selections.
