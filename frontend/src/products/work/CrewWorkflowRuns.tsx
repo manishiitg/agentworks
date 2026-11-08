@@ -1,10 +1,8 @@
-import { uniqueStepChecks } from './workflowStepChecks'
+import { stepChecks } from './workflowStepChecks'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import api, { agentApi } from '../../services/api'
 import { isAxiosError } from 'axios'
-import { useAuthStore } from '../../stores/useAuthStore'
-import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import { runEvidenceApi, type RunEvidenceItem } from '../../api/runEvidence'
 import type { RelaySourceGraph } from '../../components/workflow/relayGraphAnnotations'
@@ -150,7 +148,8 @@ export function runStepLines(records: WorkspaceStepInspection[], outline: RelayS
     const fromMetadata = extra.filter(step => !used.has(step) && step.source_call && step.source_call === node.call)
     fromRecords.forEach(record => used.add(record))
     fromMetadata.forEach(step => used.add(step))
-    const found = [...fromRecords.map(record => recordLine(record, node.label || record.inspection.name)), ...fromMetadata.map(step => persistedLine(step, node.label))]
+    const one = fromRecords.length + fromMetadata.length === 1 && named.filter(other => other.call === node.call).length === 1
+    const found = [...fromRecords.map(record => recordLine(record, one ? node.label : undefined)), ...fromMetadata.map(step => persistedLine(step, one ? node.label : undefined))]
     return found.length ? found : [{ key: `outline:${node.id}`, title: node.label }]
   })
   return [...lines, ...records.filter(record => !used.has(record)).map(record => recordLine(record)), ...extra.filter(step => !used.has(step)).map(step => persistedLine(step))]
@@ -173,9 +172,6 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, fo
   onRefresh: () => Promise<void>
   onAsk: (task: string) => void | Promise<void>
 }) {
-  const accountCanEdit = useAuthStore(state => state.user?.can_write_workflows === true)
-  const access = useWorkflowManifestStore(state => state.workflows.find(item => item.manifest.id === workflowId && item.workspace_path === workspacePath)?.my_access)
-  const canResume = script && accountCanEdit && (access === 'owner' || access === 'write')
   const open = view.run
   const showCosts = view.costs
   const setOpen = (run: string | null) => onView({ run, costs: false, detail: null })
@@ -190,7 +186,7 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, fo
       <Costs workspacePath={workspacePath} runFolders={folders.map(folder => folder.name)} selectedRunFolder={null} />
     </Suspense></div>
   </div>
-  if (opened) return <OpenedRun key={`${workflowId}:${opened.name}`} workflowId={workflowId} canResume={canResume} workspacePath={workspacePath} script={script} folder={opened} cost={costOf(opened.name)} detail={view.detail} onDetail={detail => onView({ ...view, detail })} onBack={() => view.detail ? onView({ ...view, detail: null }) : setOpen(null)} onRefresh={onRefresh} onAsk={onAsk} />
+  if (opened) return <OpenedRun key={`${workflowId}:${opened.name}`} workflowId={workflowId} canResume={opened.metadata?.can_resume === true} workspacePath={workspacePath} script={script} folder={opened} cost={costOf(opened.name)} detail={view.detail} onDetail={detail => onView({ ...view, detail })} onBack={() => view.detail ? onView({ ...view, detail: null }) : setOpen(null)} onRefresh={onRefresh} onAsk={onAsk} />
   const weekAgo = Date.now() - 7 * 86_400_000
   const finishedCount = folders.filter(folder => folder.metadata?.status === 'completed').length
   const failedCount = folders.filter(folder => folder.metadata?.status === 'failed').length
@@ -229,10 +225,10 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
   const outline = useScriptOutline(workspacePath, script)
   const fetchedEvidence = useRunEvidence(workspacePath, folder.name, folder.metadata?.status)
   // The run's own metadata keeps the latest checks and messages too: used when the read returns none.
-  const evidence: RunEvidenceItem[] = fetchedEvidence.length ? fetchedEvidence : (folder.metadata?.python_evidence ?? []).map(item => ({ kind: item.kind, at: item.at, name: item.name, ok: item.ok, detail: item.detail, source_call: item.source_call }))
+  const evidence: RunEvidenceItem[] = fetchedEvidence.length ? fetchedEvidence : (folder.metadata?.python_evidence ?? []).map(item => ({ kind: item.kind, at: item.at, name: item.name, ok: item.ok, detail: item.detail, source_call: item.source_call, step_execution_id: item.step_execution_id, step_name: item.step_name }))
   const persistedSteps = Object.values(folder.metadata?.python_steps ?? {})
   const lines = runStepLines(records, outline, persistedSteps)
-  const checkLines = uniqueStepChecks(evidence, lines.map(line => line.record?.inspection.source_call ?? line.persisted?.source_call))
+  const checkLines = stepChecks(evidence)
   const checks = evidence.filter(item => item.kind === 'check')
   const messages = evidence.filter(item => item.kind === 'notify')
   // The one opened run's step costs, read for that run only.
@@ -270,16 +266,20 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
       const record = line.record
       const step = line.persisted
       if (step) return <PageRow key={line.key} lead={<RunDot state={stepDot(step.status)} />} title={line.title}
-        lines={[[whenLabel(step.started_at), step.duration_ms !== undefined ? formatDuration(step.duration_ms) : ''].filter(Boolean).join(' · '), checkLines.get(step.source_call ?? ''), step.detail ?? '']} />
+        lines={[[whenLabel(step.started_at), step.duration_ms !== undefined ? formatDuration(step.duration_ms) : ''].filter(Boolean).join(' · '), checkLines.get(step.id), step.detail ?? '']} />
       if (!record) return <PageRow key={line.key} lead={<RunDot state="idle" />} title={line.title} lines={[meta?.status === 'running' ? 'Not started yet' : 'Not reached']} />
       const spent = stepCost(record)
       const isOpen = target?.execution_id === record.inspection.execution_id && target.session_id === record.inspection.session_id
       return <PageRow key={line.key} lead={<RunDot state={stepDot(record.status)} />} title={line.title}
-        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(record.inspection.source_call ?? '')]} aside={spent !== undefined ? formatCost(spent) : undefined}
+        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(persistedSteps.find(step => step.execution_id === record.inspection.execution_id)?.id ?? '')]} aside={spent !== undefined ? formatCost(spent) : undefined}
         open={isOpen} onToggle={() => setTarget(isOpen ? null : record.inspection)}>
         <div className="h-[60vh] min-h-72 overflow-hidden rounded-lg border border-border bg-background"><Suspense fallback={<p className="p-3 text-xs text-muted-foreground">Loading…</p>}><Inspect target={record.inspection} /></Suspense></div>
       </PageRow>
     })}
+    {!!meta?.python_resume_calls?.length && <>
+      <p className="px-4 pt-3 text-xs font-semibold">Calls during Resume</p>
+      {meta.python_resume_calls.map((call, index) => <PageRow key={`resume:${index}`} title={call.key} lines={[call.reused ? 'Reused saved result' : 'Ran again']} aside={whenLabel(call.at)} />)}
+    </>}
     {checks.length > 0 && <>
       <p className="px-4 pt-3 text-xs font-semibold">Checks</p>
       {checks.map((item, index) => <PageRow key={`check:${index}`} lead={<RunDot state={item.ok === false ? 'stopped' : 'finished'} />} title={item.name || 'Check'} lines={[item.detail]} aside={whenLabel(item.at)} />)}

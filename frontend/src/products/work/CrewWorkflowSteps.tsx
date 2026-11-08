@@ -1,4 +1,4 @@
-import { uniqueStepChecks } from './workflowStepChecks'
+import { stepChecks } from './workflowStepChecks'
 import { useEffect, useState } from 'react'
 import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import type { RelaySourceGraph as SourceGraph, RelaySourceNode } from '../../components/workflow/relayGraphAnnotations'
@@ -31,7 +31,7 @@ function OutlineRows({ nodes, byName, checkLines, parent, numbered = false, open
       if (!node.role) {
         const step = stepOf(node)
         return <PageRow key={node.id} lead={numbered ? <StepNumber n={index + 1} status={step?.status} /> : <RunDot state={dotState(step?.status)} />} title={node.label}
-          lines={[node.type === 'agent' ? 'Agent' : node.label === 'Other code' ? 'Code with no step or agent inside' : '', step?.detail, checkLines.get(node.call ?? '')]} />
+          lines={[node.type === 'agent' ? 'Agent' : node.label === 'Other code' ? 'Code with no step or agent inside' : '', step?.detail, checkLines.get(step?.id ?? '')]} />
       }
       const inside = stepsIn(node.id)
       const count = node.role === 'branch' ? `${nodes.filter(child => child.parent === node.id).length} cases` : `${inside.length} step${inside.length === 1 ? '' : 's'}`
@@ -74,10 +74,10 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   }, [workspacePath])
   if (state?.workspacePath !== workspacePath) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>
   const nodes = state.graph?.nodes ?? []
-  const checkLines = uniqueStepChecks(latestEvidence, latestSteps.map(step => step.source_call))
-  // A shared call can also appear in two branches of the outline; do not repeat one run's checks on both.
-  for (const node of nodes) if (node.call && nodes.filter(other => other.call === node.call).length > 1) checkLines.delete(node.call)
-  const byName = new Map(latestSteps.map(step => [step.name.trim().toLowerCase(), step]))
+  const checkLines = stepChecks(latestEvidence)
+  // An outline row has no execution identity. Match a single recorded label only; repeated labels stay in Runs.
+  const nameOf = (name: string) => name.trim().toLowerCase()
+  const byName = new Map(latestSteps.filter(step => latestSteps.filter(other => nameOf(other.name) === nameOf(step.name)).length === 1 && nodes.filter(node => !node.role && nameOf(node.label) === nameOf(step.name)).length === 1).map(step => [nameOf(step.name), step]))
   const note = state.graph?.errors[0]
   const count = nodes.length ? nodes.filter(node => !node.role && node.label !== 'Other code').length : latestSteps.length
   const lastAt = latestSteps.map(step => step.completed_at || step.started_at).sort().pop()
@@ -95,7 +95,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
     {nodes.length
       ? <OutlineRows nodes={nodes} byName={byName} checkLines={checkLines} numbered open={open} toggle={toggle} />
       : !latestSteps.length ? <div className="flex items-center gap-3 px-4 py-3"><p className="min-w-0 flex-1 text-xs text-muted-foreground">No steps to show yet. They appear once the workflow has run, or you can read its code.</p><RowButton onClick={onCode}>View code</RowButton></div>
-      : latestSteps.map((step, index) => <PageRow key={step.id} lead={<StepNumber n={index + 1} status={step.status} />} title={step.name} lines={[step.detail, checkLines.get(step.source_call ?? '')]} />)}
+      : latestSteps.map((step, index) => <PageRow key={step.id} lead={<StepNumber n={index + 1} status={step.status} />} title={step.name} lines={[step.detail, checkLines.get(step.id)]} />)}
     {note && <p className="px-4 py-3 text-xs text-muted-foreground">{nodes.length ? note : `${note} The steps above are from the latest run.`}</p>}
   </PageCard>
 }

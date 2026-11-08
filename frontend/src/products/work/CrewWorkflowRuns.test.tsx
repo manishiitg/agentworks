@@ -2,27 +2,24 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, expect, it, vi } from 'vitest'
-import type { RunFolderInfo } from '../../services/api-types'
+import type { RunFolderInfo, RunMetadata } from '../../services/api-types'
 
-const state = vi.hoisted(() => ({ canEdit: true, access: 'owner' as string | undefined }))
 const http = vi.hoisted(() => ({ post: vi.fn(), inspections: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: http, agentApi: {
   getRunCostTotals: async () => ({ runs: [] }),
   getWorkspaceStepInspections: http.inspections,
 } }))
-vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (value: unknown) => unknown) => select({ user: { can_write_workflows: state.canEdit } }) }))
-vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: (select: (value: unknown) => unknown) => select({ workflows: [{ manifest: { id: 'report' }, workspace_path: 'Workflow/report', my_access: state.access }] }) }))
 vi.mock('../../api/runEvidence', () => ({ runEvidenceApi: { get: async () => [] } }))
 vi.mock('../../api/crewScriptGraph', () => ({ crewScriptGraphApi: { get: async () => ({ nodes: [], edges: [], errors: [] }) } }))
 vi.mock('../../components/workflow/costs/useCostsData', () => ({ useCostsData: () => ({ runCosts: [] }) }))
 import { CrewWorkflowRuns } from './CrewWorkflowRuns'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-beforeEach(() => { state.canEdit = true; state.access = 'owner'; http.post.mockReset(); http.inspections.mockReset().mockResolvedValue({ items: [] }) })
+beforeEach(() => { http.post.mockReset(); http.inspections.mockReset().mockResolvedValue({ items: [] }) })
 
-async function screen(options: { status?: string; script?: boolean; refresh?: () => Promise<void> } = {}) {
+async function screen(options: { status?: string; script?: boolean; refresh?: () => Promise<void>; metadata?: Partial<RunMetadata> } = {}) {
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   const onView = vi.fn(); const refresh = options.refresh ?? vi.fn(async () => {})
-  const folder: RunFolderInfo = { name: 'run-failed', metadata: { created_at: '2026-11-09T00:00:00Z', execution_id: 'attempt-1', status: options.status ?? 'failed' } }
+  const folder: RunFolderInfo = { name: 'run-failed', metadata: { created_at: '2026-11-09T00:00:00Z', execution_id: 'attempt-1', status: options.status ?? 'failed', can_resume: true, ...options.metadata } }
   const update = async (status = folder.metadata!.status, execution = folder.metadata!.execution_id) => {
     folder.metadata = { ...folder.metadata!, status, execution_id: execution }
     await act(async () => root.render(<CrewWorkflowRuns workflowId="report" workspacePath="Workflow/report" script={options.script ?? true} folders={[{ ...folder }]} loading={false} onRefresh={refresh} onAsk={vi.fn()} view={{ run: folder.name, costs: false, detail: null }} onView={onView} />))
@@ -31,20 +28,14 @@ async function screen(options: { status?: string; script?: boolean; refresh?: ()
   return { host, onView, refresh, update, resume: () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Resume'), close: async () => { await act(async () => root.unmount()); host.remove() } }
 }
 
-// PLAT-746: Resume requires a failed Python run AND the server's account/per-workflow editing projections.
-it.each([
-  { access: 'owner', canEdit: true, status: 'failed', script: true, visible: true },
-  { access: 'write', canEdit: true, status: 'failed', script: true, visible: true },
-  { access: 'read', canEdit: true, status: 'failed', script: true, visible: false },
-  { access: undefined, canEdit: true, status: 'failed', script: true, visible: false },
-  { access: 'owner', canEdit: false, status: 'failed', script: true, visible: false },
-  { access: 'owner', canEdit: true, status: 'completed', script: true, visible: false },
-  { access: 'owner', canEdit: true, status: 'running', script: true, visible: false },
-  { access: 'owner', canEdit: true, status: 'failed', script: false, visible: false },
-])('Resume visibility for $access/$canEdit/$status/Python=$script', async row => {
-  state.access = row.access; state.canEdit = row.canEdit
-  const page = await screen(row)
-  try { expect(Boolean(page.resume())).toBe(row.visible); expect(http.post).not.toHaveBeenCalled() } finally { await page.close() }
+// PLAT-746: Resume visibility consumes server eligibility; missing or denied eligibility shows no control or explanation.
+it.each([true, false, undefined])('uses metadata.can_resume=%s without inferring permission', async canResume => {
+  const page = await screen({ metadata: { can_resume: canResume } })
+  try {
+    expect(Boolean(page.resume())).toBe(canResume === true)
+    if (!canResume) expect(page.host.textContent).not.toContain('Uses saved source and inputs')
+    expect(http.post).not.toHaveBeenCalled()
+  } finally { await page.close() }
 })
 
 it.each([false, true])('resumes the same selected folder without overrides, even if refresh fails=%s', async refreshFails => {
@@ -96,5 +87,35 @@ it('refreshes expandable step records when the same selected run changes attempt
     expect(page.host.textContent).toContain('Final resumed step')
     expect(page.host.textContent).not.toContain('Resumed attempt step')
     expect(page.onView).not.toHaveBeenCalled()
+  } finally { await page.close() }
+})
+
+// Same helper source, distinct durable step IDs: checks must stay on their own execution.
+it('assigns check counts by server step ID and shows per-call saved-result reuse', async () => {
+  const metadata: Partial<RunMetadata> = {
+    can_resume: false,
+    python_steps: {
+      first: { id: 'first', execution_id: 'execution-one', name: 'Gather', status: 'completed', started_at: '', source_call: 'main.py:shared@10' },
+      second: { id: 'second', execution_id: 'execution-two', name: 'Review', status: 'failed', started_at: '', source_call: 'main.py:shared@10' },
+    },
+    python_evidence: [
+      { id: 'a', kind: 'check', at: '', detail: 'First check', ok: true, step_execution_id: 'first', source_call: 'main.py:shared@10' },
+      { id: 'b', kind: 'check', at: '', detail: 'Second check', ok: false, step_execution_id: 'second', source_call: 'main.py:shared@10' },
+      { id: 'c', kind: 'check', at: '', detail: 'Old unassigned check', ok: true, source_call: 'main.py:shared@10' },
+    ],
+    python_resume_calls: [
+      { key: 'gather-record', action: 'agent', reused: true, reason: 'completed_result', execution_id: 'attempt-2', at: '' },
+      { key: 'review-record', action: 'agent', reused: false, reason: 'missing_result', execution_id: 'attempt-2', at: '' },
+    ],
+  }
+  http.inspections.mockResolvedValueOnce({ items: [{ status: 'completed', inspection: { workspace_path: 'Workflow/report', run_folder: 'run-failed', name: 'Gather', execution_id: 'execution-one', session_id: 'session', started_at: '' } }] })
+  const page = await screen({ metadata })
+  try {
+    const rows = [...page.host.querySelectorAll('button')]
+    expect(rows.find(button => button.textContent?.includes('Gather'))?.textContent).toContain('1 check passed')
+    expect(rows.find(button => button.textContent?.includes('Review'))?.textContent).toContain('1 of 1 check failed')
+    expect(page.host.textContent).toContain('Old unassigned check')
+    expect(rows.find(button => button.textContent?.includes('gather-record'))?.textContent).toContain('Reused saved result')
+    expect(rows.find(button => button.textContent?.includes('review-record'))?.textContent).toContain('Ran again')
   } finally { await page.close() }
 })
