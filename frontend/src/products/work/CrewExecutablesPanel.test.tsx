@@ -25,6 +25,8 @@ vi.mock('../../services/api', async importOriginal => {
 })
 vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: { getState: () => ({ refreshWorkflows: async () => {} }) } }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
+// A script with no @step outline shows its code, as before.
+vi.mock('../../api/crewScriptGraph', () => ({ crewScriptGraphApi: { get: async () => ({ native: true, nodes: [], edges: [], errors: [] }) } }))
 // View boundaries are lazy-loaded; assert the identity delivered to each one,
 // while using the actual Crew navigation and workspace-state hook.
 vi.mock('../../components/workflow/canvas/WorkspaceViewHost', () => ({ default: ({ workspacePath }: { workspacePath: string }) => <div data-view="steps" data-workspace={workspacePath} /> }))
