@@ -264,6 +264,34 @@ func (api *StreamingAPI) agentEmailInboxHTTP(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(out)
 }
+// The Inbox page's on/off switch: the same setter as the chat tool (configureAgentInbox). Only the Crew's owner may use it.
+func (api *StreamingAPI) agentEmailInboxEnabledHTTP(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WorkspacePath string `json:"workspace_path"`
+		Enabled       *bool  `json:"enabled"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil || body.Enabled == nil {
+		http.Error(w, "Choose whether incoming email is on or off for this Crew.", http.StatusBadRequest)
+		return
+	}
+	target, _, err := api.agentEmailCrew(r.Context(), body.WorkspacePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if personalConnectionActor(r.Context()) != target.OwnerID {
+		http.Error(w, "Only this Crew's owner can turn incoming email on or off.", http.StatusForbidden)
+		return
+	}
+	out, err := api.configureAgentInbox(r.Context(), body.WorkspacePath, *body.Enabled)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(out)
+}
 func (api *StreamingAPI) registerAgentInboxTools(reg definitionToolRegistrar, workspace string, canConfigure bool) error {
 	if IsLocalMode() {
 		return nil
