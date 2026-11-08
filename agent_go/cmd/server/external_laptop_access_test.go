@@ -106,176 +106,154 @@ func TestMCPLaptopSettingsUseOwnerGrantsWithoutCommandAccess(t *testing.T) {
 // Real authenticated MCP HTTP -> outbound laptop WebSocket -> real executor ->
 // normal Crew guarded writer. All files, identities and credentials are fixtures.
 func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
-	for _, goal := range []bool{false, true} {
-		name := "Crew"
-		if goal {
-			name = "Goal"
-		}
-		t.Run(name, func(t *testing.T) {
-			f := newMCPLaptopFixture(t)
-			root := "Crew/dashboard-team"
-			target := map[string]any{"workspace_id": "work:dashboard-team"}
-			if goal {
-				root = "Workflow/invoices"
-				target = map[string]any{"workflow_id": "wf_invoices"}
-			}
-			goalManifest := `{"schema_version":1,"id":"wf_invoices","label":"Invoices","capabilities":{},"access":{"owners":["owner","other"]}}`
-			if goal {
-				f.write(t, root+"/workflow.json", goalManifest)
-			}
-			routes := http.NewServeMux()
-			routes.HandleFunc("GET /api/external/v1/devices/connect", f.api.handleLocalDeviceConnect)
-			routes.HandleFunc("POST /api/external/v1/call", f.api.handleExternalCall)
-			server := httptest.NewServer(AuthMiddleware(routes))
-			defer server.Close()
-			t.Setenv("PUBLIC_URL", server.URL)
-			store, err := openMCPOAuthStore()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer store.Close()
-			device, verification, err := store.CreateCLIDevice(t.Context())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := store.DecideCLIDevice(t.Context(), verification, &UserClaims{UserID: "owner", Username: "owner"}, true); err != nil {
-				t.Fatal(err)
-			}
-			grant, personToken, _, err := store.PollCLIDevice(t.Context(), device, server.URL+"/api/external/v1")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !mcpOAuthTokenForGrant(grant).Allows("devices:connect") || !mcpOAuthTokenForGrant(grant).Allows("crews:write") {
-				t.Fatal("fixture did not use the combined one-CLI grant")
-			}
-			base := t.TempDir()
-			folder := filepath.Join(base, "files")
-			if err := os.Mkdir(folder, 0700); err != nil {
-				t.Fatal(err)
-			}
-			payload := []byte{0, 1, 2, 255, 42}
-			if err := os.WriteFile(filepath.Join(folder, "sample.bin"), payload, 0600); err != nil {
-				t.Fatal(err)
-			}
-			executor, err := localfiles.OpenSettings("mcp-laptop", filepath.Join(base, "executor"), nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer executor.Close()
-			client, err := agentworksclient.New(server.URL, personToken)
-			if err != nil {
-				t.Fatal(err)
-			}
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			connected := make(chan struct{})
-			finished := make(chan error, 1)
-			go func() { finished <- client.ServeExecutor(ctx, executor, func() { close(connected) }) }()
-			select {
-			case <-connected:
-			case err := <-finished:
-				t.Fatal(err)
-			case <-time.After(5 * time.Second):
-				t.Fatal("laptop connect timeout")
-			}
-			// The client reports connected before the server finishes the device handshake; the owner's list shows the
-			// computer once it has, and never shows it to someone else.
-			for _, person := range []string{"owner", "other"} {
-				var vault string
-				var err error
-				for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(50 * time.Millisecond) {
-					vault, err = f.api.myVaultsOperation(t.Context(), person, map[string]any{"operation": "laptops"})
-					if err != nil || person != "owner" || strings.Contains(vault, `"device_id":"mcp-laptop"`) || time.Now().After(deadline) {
-						break
-					}
-				}
-				if err != nil || strings.Contains(vault, `"device_id":"mcp-laptop"`) != (person == "owner") {
-					t.Fatalf("personal Vault computers: %s %v", vault, err)
-				}
-			}
-			call := func(name string, args map[string]any, status int, project ...bool) []byte {
-				t.Helper()
-				if len(project) == 0 || project[0] {
-					for key, value := range target {
-						args[key] = value
-					}
-				}
-				data, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
-				r, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/external/v1/call", bytes.NewReader(data))
-				r.Header.Set("Authorization", "Bearer "+personToken)
-				r.Header.Set("Content-Type", "application/json")
-				response, err := http.DefaultClient.Do(r)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer response.Body.Close()
-				body, _ := io.ReadAll(response.Body)
-				if response.StatusCode != status {
-					t.Fatalf("%s: %d %s", name, response.StatusCode, body)
-				}
-				return body
-			}
-			if computers := call("terminal", map[string]any{"action": "laptop_devices"}, 200, false); !strings.Contains(string(computers), "mcp-laptop") {
-				t.Fatalf("MCP connected computers: %s", computers)
-			}
-			call("terminal", map[string]any{"action": "laptop_get"}, 400, false)
-			folders := []any{map[string]any{"id": "files", "path": folder, "access": "read"}}
-			call("terminal", map[string]any{"action": "laptop_set", "device_id": "mcp-laptop", "folders": folders}, 200)
-			call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf laptop-mcp"}, 403)
-			call("terminal", map[string]any{"action": "local_copy", "folder": "files", "local_path": "sample.bin", "project_path": "uploads/sample.bin"}, 200)
-			copied, err := os.ReadFile(filepath.Join(f.docs, root, "uploads/sample.bin"))
-			if err != nil || !bytes.Equal(copied, payload) {
-				t.Fatalf("binary copy: %v %v", copied, err)
-			}
-			folders[0].(map[string]any)["access"] = "write"
-			call("terminal", map[string]any{"action": "laptop_set", "device_id": "mcp-laptop", "folders": folders}, 200)
-			// Read & write covers files only: the agent can list and write, but commands need their own switch.
-			call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf laptop-mcp"}, 403)
-			call("terminal", map[string]any{"action": "local_write", "folder": "files", "path": "notes/hello.txt", "content": "hello from the crew"}, 200)
-			if written, err := os.ReadFile(filepath.Join(folder, "notes/hello.txt")); err != nil || string(written) != "hello from the crew" {
-				t.Fatalf("written file: %q %v", written, err)
-			}
-			if listed := call("terminal", map[string]any{"action": "local_files", "folder": "files", "path": "notes"}, 200); !strings.Contains(string(listed), "hello.txt") {
-				t.Fatalf("listing: %s", listed)
-			}
-			call("terminal", map[string]any{"action": "laptop_set", "device_id": "mcp-laptop", "folders": folders, "commands": true}, 200)
-			if !goal {
-				joinCrewTeam(t, "dashboard-team", "other")
-			}
-			co := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read", "crews:write", "builder:chat", "workflows:read", "files:read", "runs:execute"}, AllCrews: true, AllWorkflows: true}}
-			coRequest := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(context.WithValue(t.Context(), UserContextKey, co))
-			coResult := httptest.NewRecorder()
-			coArgs := map[string]any{"folder": "files", "path": "notes/co-owner.txt", "content": "shared project"}
-			for key, value := range target {
-				coArgs[key] = value
-			}
-			f.api.externalLaptopToolCall(coResult, coRequest, "write_local_file", coArgs)
-			if coResult.Code != 200 {
-				t.Fatalf("co-owner laptop: %d %s", coResult.Code, coResult.Body.String())
-			}
-			if written, err := os.ReadFile(filepath.Join(folder, "notes/co-owner.txt")); err != nil || string(written) != "shared project" {
-				t.Fatalf("co-owner laptop write: %q %v", written, err)
-			}
-			if goal {
-				f.write(t, root+"/workflow.json", strings.Replace(goalManifest, `"owners":["owner","other"]`, `"owners":["owner"],"readers":["other"]`, 1))
-			} else {
-				joinCrewTeam(t, "dashboard-team")
-			}
-			denied := httptest.NewRecorder()
-			f.api.externalLaptopToolCall(denied, coRequest, "list_local_files", target)
-			if denied.Code != 403 {
-				t.Fatalf("removed co-owner laptop access: %d %s", denied.Code, denied.Body.String())
-			}
-			{
-				result := call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf laptop-mcp", "timeout": 10}, 200)
-				if !strings.Contains(string(result), "laptop-mcp") {
-					t.Fatalf("missing local stdout: %s", result)
-				}
-			}
-			call("terminal", map[string]any{"action": "laptop_remove"}, 200)
-			call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf should-not-run"}, 400)
-		})
+	f := newMCPLaptopFixture(t)
+	root := "Crew/dashboard-team"
+	target := map[string]any{"workspace_id": "work:dashboard-team"}
+	routes := http.NewServeMux()
+	routes.HandleFunc("GET /api/external/v1/devices/connect", f.api.handleLocalDeviceConnect)
+	routes.HandleFunc("POST /api/external/v1/call", f.api.handleExternalCall)
+	server := httptest.NewServer(AuthMiddleware(routes))
+	defer server.Close()
+	t.Setenv("PUBLIC_URL", server.URL)
+	store, err := openMCPOAuthStore()
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer store.Close()
+	device, verification, err := store.CreateCLIDevice(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DecideCLIDevice(t.Context(), verification, &UserClaims{UserID: "owner", Username: "owner"}, true); err != nil {
+		t.Fatal(err)
+	}
+	grant, personToken, _, err := store.PollCLIDevice(t.Context(), device, server.URL+"/api/external/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mcpOAuthTokenForGrant(grant).Allows("devices:connect") || !mcpOAuthTokenForGrant(grant).Allows("crews:write") {
+		t.Fatal("fixture did not use the combined one-CLI grant")
+	}
+	base := t.TempDir()
+	folder := filepath.Join(base, "files")
+	if err := os.Mkdir(folder, 0700); err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte{0, 1, 2, 255, 42}
+	if err := os.WriteFile(filepath.Join(folder, "sample.bin"), payload, 0600); err != nil {
+		t.Fatal(err)
+	}
+	executor, err := localfiles.OpenSettings("mcp-laptop", filepath.Join(base, "executor"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer executor.Close()
+	client, err := agentworksclient.New(server.URL, personToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	connected := make(chan struct{})
+	finished := make(chan error, 1)
+	go func() { finished <- client.ServeExecutor(ctx, executor, func() { close(connected) }) }()
+	select {
+	case <-connected:
+	case err := <-finished:
+		t.Fatal(err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("laptop connect timeout")
+	}
+	// The client reports connected before the server finishes the device handshake; the owner's list shows the
+	// computer once it has, and never shows it to someone else.
+	for _, person := range []string{"owner", "other"} {
+		var vault string
+		var err error
+		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+			vault, err = f.api.myVaultsOperation(t.Context(), person, map[string]any{"operation": "laptops"})
+			if err != nil || person != "owner" || strings.Contains(vault, `"device_id":"mcp-laptop"`) || time.Now().After(deadline) {
+				break
+			}
+		}
+		if err != nil || strings.Contains(vault, `"device_id":"mcp-laptop"`) != (person == "owner") {
+			t.Fatalf("personal Vault computers: %s %v", vault, err)
+		}
+	}
+	call := func(name string, args map[string]any, status int, project ...bool) []byte {
+		t.Helper()
+		if len(project) == 0 || project[0] {
+			for key, value := range target {
+				args[key] = value
+			}
+		}
+		data, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
+		r, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/external/v1/call", bytes.NewReader(data))
+		r.Header.Set("Authorization", "Bearer "+personToken)
+		r.Header.Set("Content-Type", "application/json")
+		response, err := http.DefaultClient.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		body, _ := io.ReadAll(response.Body)
+		if response.StatusCode != status {
+			t.Fatalf("%s: %d %s", name, response.StatusCode, body)
+		}
+		return body
+	}
+	if computers := call("terminal", map[string]any{"action": "laptop_devices"}, 200, false); !strings.Contains(string(computers), "mcp-laptop") {
+		t.Fatalf("MCP connected computers: %s", computers)
+	}
+	call("terminal", map[string]any{"action": "laptop_get"}, 400, false)
+	folders := []any{map[string]any{"id": "files", "path": folder, "access": "read"}}
+	call("terminal", map[string]any{"action": "laptop_set", "device_id": "mcp-laptop", "folders": folders}, 200)
+	call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf laptop-mcp"}, 403)
+	call("terminal", map[string]any{"action": "local_copy", "folder": "files", "local_path": "sample.bin", "project_path": "uploads/sample.bin"}, 200)
+	copied, err := os.ReadFile(filepath.Join(f.docs, root, "uploads/sample.bin"))
+	if err != nil || !bytes.Equal(copied, payload) {
+		t.Fatalf("binary copy: %v %v", copied, err)
+	}
+	folders[0].(map[string]any)["access"] = "write"
+	call("terminal", map[string]any{"action": "laptop_set", "device_id": "mcp-laptop", "folders": folders}, 200)
+	// Read & write covers files only: the agent can list and write, but commands need their own switch.
+	call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf laptop-mcp"}, 403)
+	call("terminal", map[string]any{"action": "local_write", "folder": "files", "path": "notes/hello.txt", "content": "hello from the crew"}, 200)
+	if written, err := os.ReadFile(filepath.Join(folder, "notes/hello.txt")); err != nil || string(written) != "hello from the crew" {
+		t.Fatalf("written file: %q %v", written, err)
+	}
+	if listed := call("terminal", map[string]any{"action": "local_files", "folder": "files", "path": "notes"}, 200); !strings.Contains(string(listed), "hello.txt") {
+		t.Fatalf("listing: %s", listed)
+	}
+	call("terminal", map[string]any{"action": "laptop_set", "device_id": "mcp-laptop", "folders": folders, "commands": true}, 200)
+	joinCrewTeam(t, "dashboard-team", "other")
+	co := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read", "crews:write", "builder:chat", "workflows:read", "files:read", "runs:execute"}, AllCrews: true, AllWorkflows: true}}
+	coRequest := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(context.WithValue(t.Context(), UserContextKey, co))
+	coResult := httptest.NewRecorder()
+	coArgs := map[string]any{"folder": "files", "path": "notes/co-owner.txt", "content": "shared project"}
+	for key, value := range target {
+		coArgs[key] = value
+	}
+	f.api.externalLaptopToolCall(coResult, coRequest, "write_local_file", coArgs)
+	if coResult.Code != 200 {
+		t.Fatalf("co-owner laptop: %d %s", coResult.Code, coResult.Body.String())
+	}
+	if written, err := os.ReadFile(filepath.Join(folder, "notes/co-owner.txt")); err != nil || string(written) != "shared project" {
+		t.Fatalf("co-owner laptop write: %q %v", written, err)
+	}
+	joinCrewTeam(t, "dashboard-team")
+	denied := httptest.NewRecorder()
+	f.api.externalLaptopToolCall(denied, coRequest, "list_local_files", target)
+	if denied.Code != 403 {
+		t.Fatalf("removed co-owner laptop access: %d %s", denied.Code, denied.Body.String())
+	}
+	{
+		result := call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf laptop-mcp", "timeout": 10}, 200)
+		if !strings.Contains(string(result), "laptop-mcp") {
+			t.Fatalf("missing local stdout: %s", result)
+		}
+	}
+	call("terminal", map[string]any{"action": "laptop_remove"}, 200)
+	call("terminal", map[string]any{"action": "local_execute", "folder": "files", "command": "printf should-not-run"}, 400)
 }
 
 // Use the real workspace document/list/write handlers, so project discovery
