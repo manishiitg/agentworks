@@ -2426,40 +2426,6 @@ export interface WorkflowPhase {
   options?: WorkflowPhaseOption[];
 }
 
-// Workflow plan changelog (History view "Plan edits" feed)
-export interface PlanChangelogFieldChange {
-  step_id: string
-  field: string
-  old_value: unknown
-  new_value: unknown
-}
-
-export interface PlanChangelogEntry {
-  timestamp: string
-  tool: string
-  reason: string
-  step_ids?: string[]
-  changes?: PlanChangelogFieldChange[]
-  actor?: string
-  origin?: {
-    type?: string
-    agent_name?: string
-    session_id?: string
-    user_id?: string
-    username?: string
-    operation_id?: string
-    via_token?: string
-  }
-  file?: string
-}
-
-export interface PlanChangelogResponse {
-  success: boolean
-  entries: PlanChangelogEntry[]
-  count: number
-  error?: string
-}
-
 /** One additional Google Workspace service (beyond Gmail) a connection is
  *  authorized for, and at what access level. */
 export interface GoogleServiceGrant {

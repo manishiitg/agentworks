@@ -264,6 +264,3 @@ export function isRoutingStep(step: PlanStep): step is RoutingPlanStep {
 export function isBranchStep(step: PlanStep): step is BranchPlanStep {
   return step.type === 'branch';
 }
-
-/** Preserve each step type's fields when editing through the plan API. */
-export type PlanStepPatch<T = PlanStep> = T extends PlanStep ? Partial<Omit<T, 'agent_configs'>> : never

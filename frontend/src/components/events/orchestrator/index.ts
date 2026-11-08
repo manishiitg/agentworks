@@ -1,6 +1,5 @@
 // Orchestrator event components (only End is emitted; Start/Error never were)
 export { OrchestratorEndEventDisplay } from './OrchestratorEndEvent'
-export { StepEditPanel } from './StepEditPanel'
 export { RoutingEvaluatedEventDisplay } from './RoutingEvaluatedEvent'
 export { PreValidationCompletedEventDisplay } from './PreValidationCompletedEvent'
 export * from './TodoTaskEvents'
