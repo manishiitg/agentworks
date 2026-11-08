@@ -473,6 +473,8 @@ def single_db_plan(docs, state):
     Crew, naming the tables, when a table with rows exists in both. Nothing is
     deleted; the old files stay as history."""
     projects = json.loads((state / 'ownership/projects.json').read_text())['projects']
+    receipt_file = state / 'migrations/single-db-receipt.json'
+    receipts = json.loads(receipt_file.read_text()) if receipt_file.exists() else {}
     bindings = {}
     for file in sorted((state / 'ownership/crew-executables').glob('*.json')):
         binding = json.loads(file.read_text())
@@ -499,6 +501,18 @@ def single_db_plan(docs, state):
         current = crew.get('database_root') or ''
         entry = {'crew': key, 'crew_id': crew['project_id'], 'current_database_root': current,
                  'databases': [{'name': d['name'], 'database_root': d['database_root'], 'exists': d['path'].exists(), 'rows': d['rows'], 'tables': d['tables']} for d in dbs]}
+        selected = next((d for d in dbs if d['database_root'] == current), None)
+        # All readers and writers now use this choice. Other DBs are frozen
+        # history, never fresh input to another append. An unset Crew default
+        # needs the apply receipt to distinguish it from a first merge.
+        completed = bool(current) or key in receipts and receipts[key]['database_root'] == current
+        if completed:
+            if selected is None:
+                entry["action"] = "refused: selected database is not one of this Crew's databases"
+            else:
+                entry['action'] = 'nothing: already uses ' + selected['name']
+            crews.append(entry)
+            continue
         if not with_data:
             entry['action'] = 'nothing: no database has rows'
         else:
@@ -547,6 +561,8 @@ def apply_single_db(merges, docs, state, backup):
     projects_file = state / 'ownership/projects.json'
     shutil.copy2(projects_file, backup / 'projects.json')
     projects = json.loads(projects_file.read_text())
+    receipt_file = state / 'migrations/single-db-receipt.json'
+    receipts = json.loads(receipt_file.read_text()) if receipt_file.exists() else {}
     for key, crew, target, sources in merges:
         if sources:
             # One plain copy of the target database (and its WAL) before writing to it.
@@ -586,7 +602,10 @@ def apply_single_db(merges, docs, state, backup):
             record['database_root'] = target['database_root']
         else:
             record.pop('database_root', None)
+        receipts[key] = {'database_root': target['database_root'], 'backup': str(backup)}
     projects_file.write_bytes(encode(projects))
+    receipt_file.parent.mkdir(parents=True, exist_ok=True)
+    receipt_file.write_bytes(encode(receipts))
     return str(backup)
 
 

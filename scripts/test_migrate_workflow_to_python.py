@@ -164,7 +164,7 @@ class SingleDatabase(unittest.TestCase):
                 db = sqlite3.connect(path); db.execute(f'CREATE TABLE {table} (id INTEGER PRIMARY KEY, v TEXT{extra})')
                 db.executemany(f'INSERT INTO {table} (v) VALUES (?)', [(str(i),) for i in range(rows)]); db.commit(); db.close()
             projects = {'projects': {}}
-            for crew, flows in (('one', ['a']), ('merge', ['b']), ('clash', ['c']), ('logs', ['d']), ('drift', ['e'])):
+            for crew, flows in (('one', ['a']), ('merge', ['b']), ('clash', ['c']), ('logs', ['d']), ('drift', ['e']), ('crew-target', ['f'])):
                 projects['projects']['work/'+crew] = {'product': 'work', 'project_id': crew, 'owner_id': 'owner', 'folder': crew}
                 for flow in flows:
                     binding = {'id': flow, 'crew_id': crew, 'kind': 'workflow', 'runtime_root': 'workflows/'+flow}
@@ -177,6 +177,8 @@ class SingleDatabase(unittest.TestCase):
             make_db(private/'merge/workflows/b/db/db.sqlite', 'leads', 5)
             make_db(private/'clash/db/db.sqlite', 'leads', 1)
             make_db(private/'clash/workflows/c/db/db.sqlite', 'leads', 2)
+            make_db(private/'crew-target/db/db.sqlite', 'notes', 5)
+            make_db(private/'crew-target/workflows/f/db/db.sqlite', 'leads', 1)
             # Platform tables with identical columns are appended, with new row ids.
             make_db(private/'logs/db/db.sqlite', 'background_agent_log', 2)
             make_db(private/'logs/workflows/d/db/db.sqlite', 'background_agent_log', 3)
@@ -200,6 +202,25 @@ class SingleDatabase(unittest.TestCase):
             self.assertEqual(m.database_rows(private/'merge/db/db.sqlite'), {'notes': 1})
             self.assertTrue((backup/'merge/db.sqlite').exists() and (backup/'projects.json').exists())
             self.assertEqual(m.database_rows(private/'logs/workflows/d/db/db.sqlite'), {'background_agent_log': 5})
+            self.assertEqual(m.database_rows(private/'crew-target/db/db.sqlite'), {'notes': 5, 'leads': 1})
+            # PLAT-746-456: retained source rows are frozen history. A repeat
+            # inspect/apply must not append their platform events a second time.
+            before = {str(p): m.database_rows(p) for p in private.rglob('db.sqlite')}
+            again, crews = m.single_db_plan(docs, state)
+            actions = {c['crew']: c['action'] for c in crews}
+            self.assertEqual(actions['work/logs'], 'nothing: already uses d')
+            self.assertEqual(actions['work/merge'], 'nothing: already uses b')
+            self.assertEqual(actions['work/crew-target'], 'nothing: already uses crew')
+            self.assertEqual(again, [])
+            self.assertIsNone(m.apply_single_db(again, docs, state, None))
+            self.assertEqual({str(p): m.database_rows(p) for p in private.rglob('db.sqlite')}, before)
+            # A large historical source never takes precedence over a saved choice.
+            db = sqlite3.connect(private/'logs/db/db.sqlite')
+            db.executemany('INSERT INTO background_agent_log(v) VALUES (?)', [('old',)] * 20)
+            db.commit(); db.close()
+            again, crews = m.single_db_plan(docs, state)
+            self.assertEqual(again, [])
+            self.assertEqual(next(c['action'] for c in crews if c['crew'] == 'work/logs'), 'nothing: already uses d')
 
 
 if __name__ == '__main__':
