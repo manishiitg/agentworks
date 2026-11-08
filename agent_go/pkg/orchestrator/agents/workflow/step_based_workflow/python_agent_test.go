@@ -2,6 +2,7 @@ package step_based_workflow
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/executor"
 	mcpllm "github.com/manishiitg/mcpagent/llm"
@@ -37,7 +39,10 @@ func TestPythonAgentContinuesTurnsBoundsReplyAndPreservesTranscript(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("AGENTWORKS_SLOTS", "off")
+	slotProof := os.Getenv("AGENTWORKS_PYTHON_AGENT_SLOT_E2E") == "1"
+	if !slotProof {
+		t.Setenv("AGENTWORKS_SLOTS", "off")
+	}
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("CODEX_CLI_TRANSPORT", "app-server")
@@ -52,8 +57,22 @@ func TestPythonAgentContinuesTurnsBoundsReplyAndPreservesTranscript(t *testing.T
 			t.Fatal(err)
 		}
 	}
+	// A managed Crew already has its database before an agent starts. Keep
+	// only that baseline here; the native child creates and verifies its table.
+	if err := os.MkdirAll(filepath.Join(docs, root, "db"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(docs, root, "db/db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, setupErr := db.Exec("CREATE TABLE fixture_setup (id INTEGER)")
+	closeErr := db.Close()
+	if setupErr != nil || closeErr != nil {
+		t.Fatalf("managed database fixture: %v %v", setupErr, closeErr)
+	}
 	bin := t.TempDir()
-	fixture := "#!" + python + "\n" + fmt.Sprintf(`import json,os,sys,uuid,urllib.request
+	fixture := "#!" + python + "\n" + fmt.Sprintf(`import json,os,pwd,sys,uuid,urllib.request
 from pathlib import Path
 root=Path(%q)
 rollouts=Path.cwd()/'.codex/sessions/2026/01/01'
@@ -90,25 +109,32 @@ for line in sys.stdin:
     if method=='turn/start':
         prompt=json.dumps(params.get('input'))
         if 'cancel-this-call' in prompt:continue
-        if 'first task' in prompt:
-            base=os.environ['MCP_CUSTOM']
-            header,credential=os.environ['MCP_AUTH'].split(':',1)
-            def database(action,sql):
-                req=urllib.request.Request(base+'/database',data=json.dumps({'action':action,'sql':sql}).encode(),headers={'Content-Type':'application/json',header:credential.strip()})
-                with urllib.request.urlopen(req) as response: envelope=json.load(response)
-                assert envelope['success'], envelope
-                return json.loads(envelope['result'])
-            database('mutate','CREATE TABLE IF NOT EXISTS agent_evidence (id INTEGER PRIMARY KEY)')
-            database('mutate','INSERT INTO agent_evidence VALUES (1)')
-            assert database('query','SELECT id FROM agent_evidence')['rows'][0]['id']==1
-            (root/'database-readback.json').write_text(json.dumps({'session':os.environ['MCP_SESSION_ID'],'row':1}))
+        try:
+            if 'first task' in prompt:
+                if %s: assert pwd.getpwuid(os.geteuid()).pw_name=='slot01', 'native provider did not run as slot01'
+                base=os.environ['MCP_CUSTOM']
+                header,credential=os.environ['MCP_AUTH'].split(':',1)
+                def database(action,sql):
+                    req=urllib.request.Request(base+'/database',data=json.dumps({'action':action,'sql':sql}).encode(),headers={'Content-Type':'application/json',header:credential.strip()})
+                    with urllib.request.urlopen(req) as response: envelope=json.load(response)
+                    assert envelope['success'], envelope
+                    return json.loads(envelope['result'])
+                database('mutate','CREATE TABLE IF NOT EXISTS agent_evidence (id INTEGER PRIMARY KEY)')
+                database('mutate','INSERT INTO agent_evidence VALUES (1)')
+                assert database('query','SELECT id FROM agent_evidence')['rows'][0]['id']==1
+                (root/'database-readback.json').write_text(json.dumps({'session':os.environ['MCP_SESSION_ID'],'row':1}))
+        except Exception as error:
+            message=type(error).__name__+': '+str(error)
+            (root/'fixture-error.txt').write_text(message)
+            send({'method':'turn/completed','params':{'threadId':thread,'turn':{'id':turn,'status':'failed','error':{'message':message}}}})
+            continue
         history=json.loads(state.read_text())
         answer='continued' if 'follow-up' in prompt and history else 'answer-start:'+'evidence'*3000+':answer-end'
         history.append(prompt);state.write_text(json.dumps(history))
         send({'method':'item/agentMessage/delta','params':{'threadId':thread,'turnId':turn,'itemId':'answer','delta':answer}})
         send({'method':'item/completed','params':{'threadId':thread,'turnId':turn,'item':{'id':'answer','type':'agentMessage','text':answer,'phase':'final_answer'}}})
         send({'method':'turn/completed','params':{'threadId':thread,'turn':{'id':turn,'status':'completed'}}})
-`, runRoot)
+`, runRoot, map[bool]string{true: "True", false: "False"}[slotProof])
 	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(fixture), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +156,10 @@ for line in sys.stdin:
 			return
 		}
 		r.Header.Set("X-Session-ID", session)
-		handlers.HandlePerToolCustomRequest(w, r, parts[4])
+		// Match the serving host's authenticated /s/{id}/tools/custom route:
+		// both the registry and DB resolver receive the verified child identity.
+		ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, session)
+		handlers.HandlePerToolCustomRequest(w, r.WithContext(ctx), parts[4])
 	}))
 	defer bridgeAPI.Close()
 	t.Setenv("MCP_API_URL", bridgeAPI.URL)
@@ -164,6 +193,23 @@ for line in sys.stdin:
 	clisecurity.ResolveWorkflowPolicy = func(context.Context, string, string, string) (*llmtypes.CLISecurityPolicy, error) {
 		return &llmtypes.CLISecurityPolicy{Mode: llmtypes.CLISecurityModeCompatibility}, nil
 	}
+	if slotProof {
+		clisecurity.ResolveWorkflowPolicy = func(_ context.Context, session, provider, cwd string) (*llmtypes.CLISecurityPolicy, error) {
+			host := clisecurity.Host{WorkflowExecution: true, DocsRoot: docs,
+				ResolvePath:    func(path string) string { return workflowAbsPath(path) },
+				LookupRoots:    func(string) (crewroot.Roots, bool, error) { return crewroot.Roots{}, false, nil },
+				LandlockRunner: func() (string, bool) { runner := os.Getenv("AGENTWORKS_LANDLOCK_RUNNER"); return runner, runner != "" },
+			}
+			base := &llmtypes.CLISecurityPolicy{RunAs: llmtypes.RunAs{Declared: true, User: "u1", Slot: "slot01", Root: cwd}, HostReadPaths: []string{bin, python}}
+			runtimeDir := filepath.Join(os.Getenv("AGENTWORKS_STATE_ROOT"), "cli-runtimes", "v1", session)
+			policy, decision, why := host.Policy(session, provider, cwd, base, runtimeDir)
+			if decision != clisecurity.Confined {
+				return nil, fmt.Errorf("slot proof needs confinement: %s", why)
+			}
+			policy.DeclareRunAs()
+			return policy, nil
+		}
+	}
 	t.Cleanup(func() { clisecurity.ResolveWorkflowPolicy = previousResolver })
 	parent := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "parent"}, AgentConfigs: &AgentConfigs{ExecutionLLM: &AgentLLMConfig{Provider: "codex-cli", ModelID: "fixture"}, KnowledgebaseAccess: "none"}}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -180,11 +226,16 @@ for line in sys.stdin:
 	first := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Research", "messages": []string{"first task"}}, "first")
 	large := "answer-start:" + strings.Repeat("evidence", 3000) + ":answer-end"
 	if !first.OK || !first.LogComplete || first.LogKind != "provider_transcript" || len(first.Text) >= len(large) {
-		t.Fatalf("first result is not a bounded completed transcript receipt: %+v", first)
+		errorText, _ := os.ReadFile(filepath.Join(runRoot, "fixture-error.txt"))
+		t.Fatalf("first result is not a bounded completed transcript receipt: %+v fixture=%s", first, errorText)
 	}
 	readback, readErr := os.ReadFile(filepath.Join(runRoot, "database-readback.json"))
 	if readErr != nil || !strings.Contains(string(readback), `"row": 1`) || !strings.Contains(string(readback), `python-runtime-`+first.ConversationID) {
 		t.Fatalf("native agent did not write/read a row through its own bridge: %s %v", readback, readErr)
+	}
+	if slotProof {
+		t.Log("native provider fixture ran as slot01 under Landlock; its signed child bridge created, inserted and read a managed database row")
+		return
 	}
 	log, err := os.ReadFile(first.LogFile)
 	if err != nil || !strings.Contains(string(log), large) {
