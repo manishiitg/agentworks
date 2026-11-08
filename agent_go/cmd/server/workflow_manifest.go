@@ -140,6 +140,7 @@ type WorkflowManifest struct {
 	// Description is one short line about what the workflow is for. Shown next to the name in Slack's "who should answer"
 	// picker, MCP lists and the Slack target list. Optional.
 	Description      string               `json:"description,omitempty"`
+	DeclaredSecrets  []string             `json:"secrets,omitempty"` // Names from script.json; never Vault values or selections.
 	ChatInstructions string               `json:"chat_instructions,omitempty"`
 	Icon             string               `json:"icon,omitempty"`
 	Capabilities     WorkflowCapabilities `json:"capabilities"`

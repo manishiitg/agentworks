@@ -27,6 +27,7 @@ import urllib.error
 import urllib.request
 
 __all__ = ["AutomationError", "Reply", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack", "google", "slack", "github"]
+__all__.append("secret")
 
 
 
@@ -88,6 +89,19 @@ if not isinstance(_inputs, dict):
     raise AutomationError("Script inputs must be a JSON object.")
 inputs: Mapping[str, JSONValue] = MappingProxyType(_inputs)
 del _inputs
+
+_declared_secrets = frozenset(json.loads(os.environ.get("SCRIPT_REQUIRED_SECRETS_JSON", "[]") or "[]") or [])
+
+
+def secret(name: str) -> str:
+    """Read a declared Vault value from the existing environment, without caching it."""
+    if name not in _declared_secrets:
+        raise AutomationError(f"Declare {name} in script.json secrets and select it in Vault for this workflow.")
+    key = name.split("__", 1)[1] if name.startswith("VLT_") and "__" in name else name
+    value = os.environ.get("SECRET_" + key, "")
+    if not value:
+        raise AutomationError(f"Select or add {name} in Vault for this workflow. Ask this Crew's chat to help.")
+    return value
 
 
 def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -> Reply:

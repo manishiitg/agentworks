@@ -63,6 +63,7 @@ func crewScriptManifest(ctx context.Context, binding *crewExecutableBinding) (*W
 	manifest := NewWorkflowManifest(definition.Name)
 	manifest.ID = binding.ID
 	manifest.Description = definition.Description
+	manifest.DeclaredSecrets = append([]string{}, definition.Secrets...)
 	manifest.CreatedBy = owner
 	manifest.Access = &WorkflowAccess{Owners: []string{owner}}
 	manifest.crewExecutable = binding

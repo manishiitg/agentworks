@@ -53,7 +53,7 @@ source-editing, account and file grants.
 - `inputs` are typed (`string`, `integer`, `number`, `boolean`) with an optional default in `value`; add `"required": true` when there is no sensible default.
 - `input_presets` are optional named sets of values, for example one per market. A run picks one preset or passes its own values.
 - `outputs` names the files the run must leave in its run folder.
-- Secrets live in Vault and arrive as `SECRET_<NAME>` environment variables; never put a value in a file.
+- Declare needed Vault names in `"secrets": ["API_KEY"]`. The existing selected/lent Vault account supplies them; a missing name stops the run before any step. `from agentworks import secret`, then `secret("API_KEY")`, reads its existing `SECRET_API_KEY` environment value. An undeclared name is refused. Never put values in inputs, files, helper arguments or logs.
 
 ## main.py
 
@@ -123,6 +123,13 @@ else:
 - `notify(text)`: a progress line to the owner in the Crew chat.
 - `send_email(to, subject, body)` and `send_slack(route, text)`: explicit sends through the connected account or Slack route. Only send when the workflow's job is to reach people.
 - `from agentworks import google, slack, github`: call connected apps directly from Python, with the same accounts and permissions. `google.sheets.read(id, range)`, `.write(id, range, rows)` and `.append(...)`; `google.gmail.search(query)`; `google.calendar.list(start, end)` and `.create(title, start, end)`; `google.drive.read(doc_id)` saves Google Doc text in this run. `slack.read(route)` reads channel messages; `.send(route, text)` and `.reply(route, thread_ts, text)` use the tracked sender. `github.files(repo)`, `.read(repo, path)`, `.issues(repo)`, `.prs(repo)`, `.create_issue(repo, title, body)`, `.comment(repo, number, body)`, `.create_pr(repo, head, base, title)` and `.diff(repo, number)` use the Crew's GitHub connection. JSON results keep the service's shape; failures raise `AutomationError`. Sends and app calls do real work, including in mocked-agent runs.
+
+For a script that needs a service key, add `"secrets": ["API_KEY"]` to its `script.json`, then read it in `main.py`:
+
+```python
+from agentworks import secret
+api_key = secret("API_KEY")  # Pass to the service's client; never print or save it.
+```
 
 ## Rules
 

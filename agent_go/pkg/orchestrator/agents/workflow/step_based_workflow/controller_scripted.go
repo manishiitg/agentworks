@@ -643,6 +643,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		}
 		hcpo.UnlockWorkspaceEnv()
 	}
+	declared := []string{}
+	if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
+		declared = saved.crewScript.Definition.Secrets
+	}
+	names, _ := json.Marshal(declared)
+	extraEnv["SCRIPT_REQUIRED_SECRETS_JSON"] = string(names)
 
 	// DB_PATH: the scripted fast path execs python3 directly — it does NOT go
 	// through the agent's execute_shell_command wrapper (injectStepEnvIntoShellExecutor)
@@ -845,6 +851,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 
 	shared, hasShared := step.(*ScriptedPlanStep)
 	hasShared = hasShared && shared.crewScript != nil
+	if hasShared {
+		if err := hcpo.validateScriptSecrets(&shared.crewScript.Definition); err != nil {
+			return &ScriptedFastPathResult{RanScript: true, ExitCode: -1, Error: err.Error()}
+		}
+	}
 	if !hasShared && !hcpo.hasValidLearnedScriptAPI(ctx, stepID) {
 		scriptRelPath := hcpo.scriptedSourceDir(stepID) + "/main.py"
 		existingScript, _ := hcpo.ReadWorkspaceFile(ctx, scriptRelPath)

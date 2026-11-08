@@ -54,6 +54,8 @@ func TestCrewSavedScriptRunsDirectlyAndAcrossWorkflowReferences(t *testing.T) {
 	const root = "Crew/lab/code/qualify"
 	const directWorkspace = "Workflow/direct-script"
 	definition := CrewScriptDefinition{ID: "qualify", Name: "Qualify lead", Inputs: []Variable{{Name: "count", Type: "integer", Required: true, Value: "2"}}, Outputs: []string{"result.json"}, InputPresets: []VariableGroup{{Name: "first", Values: map[string]string{"count": "5"}}, {Name: "second", Values: map[string]string{"count": "9"}}}}
+	definition.Secrets = []string{"DECLARED"}
+	const secretValue = "fixture-environment-value-never-saved"
 	// PLAT-746-338 / PR498: omitted optional non-string inputs must remain
 	// absent when direct invocation reuses its resolved launch snapshot.
 	for _, kind := range []string{"integer", "number", "boolean", "object", "array"} {
@@ -63,6 +65,16 @@ func TestCrewSavedScriptRunsDirectlyAndAcrossWorkflowReferences(t *testing.T) {
 	write(root+"/script.json", string(raw))
 	source := `import json, os
 from pathlib import Path
+from agentworks import secret, AutomationError
+Path(os.environ['STEP_OUTPUT_DIR'], 'script-started').write_text('started')
+assert secret('DECLARED') == os.environ['SECRET_DECLARED']
+original_secret = os.environ['SECRET_DECLARED']
+os.environ['SECRET_DECLARED'] = original_secret + '-changed'
+assert secret('DECLARED') == original_secret + '-changed', 'secret values must not be cached'
+os.environ['SECRET_DECLARED'] = original_secret
+try: secret('UNDECLARED')
+except AutomationError as error: assert 'Declare' in str(error) and os.environ['SECRET_UNDECLARED'] not in str(error)
+else: raise AssertionError('undeclared selected secret was admitted')
 from helper.values import revision
 params = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(params['count'], int)
@@ -79,6 +91,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	resolver := &savedCrewScriptFixture{directWorkspace: directWorkspace, configuration: CrewScriptConfiguration{Definition: definition, Root: root, Files: map[string][]byte{"main.py": []byte(source), "helper/values.py": []byte("def revision(): return 'first'\n"), "template.txt": []byte("template data")}}}
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
+	expectMissingSecret := false
 	run := func(workspace string, args map[string]interface{}) string {
 		t.Helper()
 		previous := map[string]bool{}
@@ -87,6 +100,10 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			previous[folder.Name()] = true
 		}
 		cfg := &WorkshopConfig{WorkspacePath: workspace, Logger: loggerv2.NewNoop(), CrewResources: &CrewResources{Scripts: resolver}}
+		cfg.WorkspaceEnvRef = map[string]string{"SECRET_DECLARED": secretValue, "SECRET_UNDECLARED": "other-selected-fixture-value"}
+		if expectMissingSecret {
+			delete(cfg.WorkspaceEnvRef, "SECRET_DECLARED")
+		}
 		if workspace == "Workflow/second" {
 			// PLAT-746: scheduler options must retain the saved-script resolver.
 			cfg.ScheduleInvocation = &ScheduleInvocation{ScheduleID: "timer", RunID: "scheduled-script", RunFolder: "run-scheduled-script"}
@@ -100,13 +117,22 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		RegisterRunFullWorkflowTool(draft, session, loggerv2.NewNoop())
 		out, err := draft.tools["run_full_workflow"].Execute(ctx, args)
 		if err != nil || !strings.Contains(out, "execution_id:") {
+			if expectMissingSecret && err != nil && strings.Contains(err.Error(), "Select or add DECLARED in Vault") {
+				return ""
+			}
 			t.Fatalf("admission %s %v", out, err)
 		}
 		for {
 			snapshot, found, _ := session.StepRegistry.LatestSnapshotForStep("full-workflow")
 			if found && snapshot.Status != WorkshopStepRunning {
 				if snapshot.Status != WorkshopStepDone {
+					if expectMissingSecret && snapshot.Err != nil && strings.Contains(snapshot.Err.Error(), "Select or add DECLARED in Vault") {
+						return ""
+					}
 					t.Fatalf("script execution: %+v", snapshot)
+				}
+				if expectMissingSecret {
+					t.Fatal("missing declared secret did not refuse before Python")
 				}
 				break
 			}
@@ -161,6 +187,30 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		if err != nil || json.Unmarshal(raw, &metadata) != nil || metadata["input_preset"] != expected {
 			t.Fatalf("run lost selected preset: want=%q metadata=%s err=%v", expected, raw, err)
 		}
+		filepath.WalkDir(folder, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !entry.IsDir() {
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(raw), secretValue) {
+					t.Fatalf("environment secret persisted in run file %s", path)
+				}
+			}
+			return nil
+		})
+	}
+	// The backend must refuse before launching even the first source statement.
+	startedBefore, _ := filepath.Glob(filepath.Join(docs, directWorkspace, "runs/*/execution/qualify/script-started"))
+	expectMissingSecret = true
+	run(directWorkspace, nil)
+	expectMissingSecret = false
+	startedAfter, _ := filepath.Glob(filepath.Join(docs, directWorkspace, "runs/*/execution/qualify/script-started"))
+	if len(startedAfter) != len(startedBefore) {
+		t.Fatal("missing secret still executed Python before refusing")
 	}
 	if _, err := os.Stat(filepath.Join(docs, root, "workflow.json")); !os.IsNotExist(err) {
 		t.Fatal("script saved a duplicate workflow definition")
@@ -200,7 +250,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	const requiredRoot = "Workflow/required"
 	write(requiredRoot+"/workflow.json", `{"code_layout_version":1}`)
 	write(requiredRoot+"/planning/plan.json", `{"steps":[{"id":"agent","type":"agent","title":"Agent","description":"Read inputs","items":[{"id":"batch","type":"scripted","scripted_steps":[{"id":"one","step_id":"saved","parameters":{"count":9}}]}]}],"orphan_steps":[{"id":"saved","type":"scripted","title":"Saved","description":"Use saved source","script":"qualify","script_only":true}]}`)
-	session, err := NewWorkshopChatSession(ctx, &WorkshopConfig{WorkspacePath: requiredRoot, Logger: loggerv2.NewNoop(), CrewResources: &CrewResources{Scripts: resolver}})
+	session, err := NewWorkshopChatSession(ctx, &WorkshopConfig{WorkspacePath: requiredRoot, Logger: loggerv2.NewNoop(), CrewResources: &CrewResources{Scripts: resolver}, WorkspaceEnvRef: map[string]string{"SECRET_DECLARED": secretValue, "SECRET_UNDECLARED": "other-selected-fixture-value"}})
 	if err != nil {
 		t.Fatal(err)
 	}

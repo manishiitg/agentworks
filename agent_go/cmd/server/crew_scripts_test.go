@@ -119,7 +119,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if manifest.Capabilities.BrowserMode != "headless" || manifest.Capabilities.LLMConfig == nil || manifest.Capabilities.LLMConfig.Provider != "codex-cli" || len(manifest.Capabilities.SelectedServers) != 1 || manifest.Capabilities.SelectedGlobalSecretNames == nil || len(*manifest.Capabilities.SelectedGlobalSecretNames) != 1 {
 		t.Fatal("saved script lost the Crew's model/browser/MCP/secret-name selections")
 	}
-	changed := `{"id":"qualify","name":"Qualify","inputs":[{"name":"count","type":"integer","value":"2"}],"capabilities":{"browser_mode":"extension"}}`
+	changed := `{"id":"qualify","name":"Qualify","secrets":["FIXTURE_KEY"],"inputs":[{"name":"count","type":"integer","value":"2"}],"capabilities":{"browser_mode":"extension"}}`
 	if code := request("runner", changed, "script.json"); code != 403 {
 		t.Fatalf("Run person changed script settings HTTP%d", code)
 	}
@@ -127,6 +127,9 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 		t.Fatalf("Builder setting HTTP%d", code)
 	}
 	manifest, _, err = ReadWorkflowManifest(context.Background(), script.Root)
+	if err != nil || len(manifest.DeclaredSecrets) != 1 || manifest.DeclaredSecrets[0] != "FIXTURE_KEY" {
+		t.Fatalf("saved script declaration names missing from public manifest: %v", err)
+	}
 	if err != nil || manifest.Capabilities.BrowserMode != "extension" || manifest.Capabilities.LLMConfig == nil || manifest.Capabilities.LLMConfig.Provider != "codex-cli" || manifest.Capabilities.SelectedGlobalSecretNames == nil || len(*manifest.Capabilities.SelectedGlobalSecretNames) != 1 {
 		t.Fatalf("browser override erased other settings: %v", err)
 	}
