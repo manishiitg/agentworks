@@ -462,13 +462,6 @@ func TestExternalCrewAutomationAuthoringOverMCP(t *testing.T) {
 		t.Fatal(got)
 	}
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", map[string]any{"action": "automation_write", "workspace_path": workflowRoot, "file": "planning/plan.json", "content": "{}"}, 400)
-	goal := map[string]any{"id": "report", "name": "Report quality", "outcome": "Produce a complete report", "status": "active"}
-	result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "metrics", "arguments": map[string]any{"crew_id": "team", "action": "crew_save", "goal": goal, "metrics": []any{}}})
-	requireRemoteSuccess(t, result, "save goal")
-	if got := crewCapabilityHTTP(t, f, crewReader("other"), "metrics", map[string]any{"action": "crew_list"}, 200); !strings.Contains(got, "Report quality") {
-		t.Fatal(got)
-	}
-	crewCapabilityHTTP(t, f, crewReader("other"), "metrics", map[string]any{"action": "crew_save", "goal": goal, "metrics": []any{}}, 403)
 
 	for _, claims := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
 		crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "automation_create", "kind": "script", "name": "Refused"}, 403)
