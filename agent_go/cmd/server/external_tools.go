@@ -139,7 +139,7 @@ func externalTools() ([]externalTool, error) {
 			p = page()
 			p["version"] = relayVersion
 			p["run_folder"] = externalString("Run directory relative to runs/, e.g. iteration-0/group-name.")
-			description := "Inspect a saved run's files or log files; use files action=read to retrieve selected content."
+			description := "For a saved Python workflow, diagnose a run in one reply: stdout/stderr log tails and full paths, recorded step status/durations, checks/notices, typed inputs, failing steps/traceback, and agent answer/provider-log paths. Uses current run and folder access; bounded previews keep paths to full files. For older workflows, list log files."
 			if name == "get_run" {
 				description = "Inspect a saved run's files and webhook deploy metadata (commit_sha, component, env, deployed_at) when present. Use files action=read to retrieve selected content."
 			}
@@ -165,6 +165,7 @@ func externalTools() ([]externalTool, error) {
 		p["since_index"] = externalInteger(-1, 1000000000)
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: turn_status (running, waiting_for_input, idle), any pending question, final_answer once idle and executions, without events. Pass false for a size-bounded page of events."}
 		addRun("run_status", "Poll a run session started externally: turn_status, final_answer once the turn is done, pending inputs and its active executions, without events by default (compact: false adds a size-bounded event page).", false, p, "session_id")
+		addRun("rerun_workflow", "Start a new real run of a saved Python workflow using a previous run's typed input values/preset and the current saved source. This repeats real effects, including database writes, app calls and sends. Returns the normal session receipt plus changed source files/revisions versus the prior execution snapshot. Poll runs status, then read runs logs.", true, map[string]any{"run_folder": externalString("Previous run folder from runs list/get; must belong to this workflow.")}, "run_folder")
 		workflowPublishedFunctionDefinitions(func(name, description string, write bool, props map[string]any, required ...string) {
 			if props == nil {
 				props = map[string]any{}
@@ -1164,6 +1165,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalRunCall(w, r, tool.Name, args, *selected)
 		return
 	}
+	if tool.Name == "rerun_workflow" {
+		api.externalScriptRerun(w, r, *selected, args)
+		return
+	}
 	if tool.executes {
 		if selected.Manifest.Kind == "relay" {
 			externalError(w, 400, "relay_builder_only", "Use relay action=test or relay action=run; Flow does not expose Run chat tools.")
@@ -1220,6 +1225,10 @@ func externalFailure(w http.ResponseWriter, err error) {
 	externalError(w, status, code, err.Error())
 }
 func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow) {
+	if name == "get_logs" && externalWorkflowIsScript(workflow) {
+		api.externalScriptLogs(w, r, workflow, externalArg(args, "run_folder"))
+		return
+	}
 	req := wf.Request{Root: workflow.WorkspacePath, Path: externalArg(args, "path"), Query: externalArg(args, "query"), Glob: externalArg(args, "glob"), Offset: externalInt(args, "offset", 0), Limit: externalInt(args, "limit", 100), Depth: externalInt(args, "depth", 0)}
 	switch name {
 	case "write_file":

@@ -73,6 +73,7 @@ func checkSavedScriptMCPStart(t *testing.T, api *StreamingAPI, binding crewExecu
 			if metadata["python_steps"] == nil {
 				t.Fatal("completed MCP run has no recorded Python steps")
 			}
+			checkSavedScriptMCPDebugLoop(t, api, binding, docs)
 			t.Logf("MCP direct script session=%s run=%s real_python=true preset=Saved count=8", session, folder.Name())
 			return
 		}

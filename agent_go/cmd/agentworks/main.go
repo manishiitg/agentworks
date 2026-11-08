@@ -69,7 +69,7 @@ var cliOperationGroups = []struct {
 }{
 	{"workflows", "Find, create and edit saved Python workflows", []struct{ command, tool string }{{"list", "list_workflows"}, {"get", "get_workflow"}, {"outline", "get_plan"}, {"create", "crew_workflows__create"}, {"source", "crew_workflows__read"}, {"save-source", "crew_workflows__write"}, {"save-inputs", "save_script_inputs"}}},
 	{"files", "Read and edit guarded workspace files", []struct{ command, tool string }{{"code", "list_step_code"}, {"link", "get_file_link"}, {"list", "list_files"}, {"read", "read_file"}, {"write", "write_file"}, {"search", "search_files"}}},
-	{"runs", "Start, steer, stop, and inspect runs", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"start-step", "execute_step"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"message", "send_step_message"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
+	{"runs", "Start, steer, stop, and inspect runs", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"rerun", "rerun_workflow"}, {"start-step", "execute_step"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"message", "send_step_message"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
 	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "project_schedules_list"}, {"runs", "project_schedules_runs"}, {"trigger", "project_schedules_run_now"}}},
 	{"chat", "Send messages to the workflow assistant", []struct{ command, tool string }{{"ask", "chat"}}},
 	{"messages", "Register named agents, discover addresses and manage your inbox", []struct{ command, tool string }{{"register", "messages"}, {"unregister", "messages"}, {"list", "messages"}, {"send", "messages"}, {"read", "messages"}, {"count", "messages"}, {"delete", "messages"}, {"clear", "messages"}}},
@@ -616,7 +616,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	if tool == "search_files" || tool == "list_workflows" || tool == "list_crews" || tool == "search_crew_files" {
 		f.String("query", "", "Search query")
 	}
-	if tool == "get_run" || tool == "get_logs" {
+	if tool == "get_run" || tool == "get_logs" || tool == "rerun_workflow" {
 		f.String("run-folder", "", "Run folder from list_runs")
 	}
 	if tool == "execute_step" {
