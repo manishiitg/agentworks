@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ChevronRight, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, ChevronRight, RefreshCw, type LucideIcon } from 'lucide-react'
 
 /** One colour per kind of automation, so a person can tell them apart at a glance (owner, 2026-10-20). */
 export type AutomationTone = 'violet' | 'amber' | 'emerald' | 'sky' | 'rose'
@@ -98,8 +98,9 @@ export function relativeTime(value?: string): string {
  */
 
 /** A page card: title, one hint line and Ask (which posts the request into the Crew chat). */
-export function PageCard({ title, hint, onAsk, action, children, testId }: {
-  title: string; hint?: ReactNode; onAsk?: () => void | Promise<void>; action?: ReactNode; children: ReactNode; testId?: string
+export function PageCard({ title, hint, onAsk, onRefresh, refreshLabel = 'Refresh', refreshing, action, children, testId }: {
+  title: string; hint?: ReactNode; onAsk?: () => void | Promise<void>; onRefresh?: () => void; refreshLabel?: string; refreshing?: boolean
+  action?: ReactNode; children: ReactNode; testId?: string
 }) {
   return <section aria-label={title} data-testid={testId} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
     <div className="flex items-start gap-2 px-4 pt-3 pb-2">
@@ -108,6 +109,9 @@ export function PageCard({ title, hint, onAsk, action, children, testId }: {
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
       {action}
+      {onRefresh && <button type="button" aria-label={refreshLabel} title={refreshLabel} onClick={onRefresh} className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-border text-muted-foreground hover:bg-muted hover:text-foreground">
+        <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
+      </button>}
       {onAsk && <button type="button" onClick={() => void onAsk()} className="shrink-0 rounded-full border border-border px-3 py-0.5 text-xs hover:bg-muted">Ask</button>}
     </div>
     {children != null && children !== false && <div className="divide-y divide-border border-t border-border">{children}</div>}
@@ -155,4 +159,25 @@ export function RowButton({ children, onClick, disabled, primary, title }: { chi
 export function RunDot({ state }: { state: 'running' | 'finished' | 'stopped' | 'idle' }) {
   const colour = { running: 'bg-amber-400', finished: 'bg-emerald-500', stopped: 'bg-red-500', idle: 'bg-muted-foreground/40' }[state]
   return <span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${colour}`} />
+}
+
+/**
+ * The top of a Crew page, in Share's shape (owner, 8 Nov): no title row, a back arrow at the left and one big switch
+ * whose buttons carry a name and a short hint. The pane's own header is hidden for pages that use it.
+ */
+export function PageTabs<Id extends string>({ tabs, value, onChange, onBack, label }: {
+  tabs: ReadonlyArray<{ id: Id; label: string; hint: string }>; value: Id; onChange: (next: Id) => void; onBack?: () => void; label: string
+}) {
+  return <div className="flex items-stretch gap-2">
+    {onBack && <button type="button" aria-label="Back to the project menu" title="Back" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
+      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+    </button>}
+    <nav aria-label={label} className="grid min-w-0 flex-1 gap-1 rounded-xl border border-border bg-muted/30 p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+      {tabs.map(tab => <button key={tab.id} type="button" aria-current={value === tab.id ? 'page' : undefined} onClick={() => onChange(tab.id)}
+        className={`min-w-0 rounded-lg border px-2 py-2 text-center ${value === tab.id ? 'border-border bg-card text-foreground' : 'border-transparent text-muted-foreground hover:bg-muted'}`}>
+        <span className="block truncate text-sm font-semibold">{tab.label}</span>
+        <span className="mt-0.5 block truncate text-[11px]">{tab.hint}</span>
+      </button>)}
+    </nav>
+  </div>
 }

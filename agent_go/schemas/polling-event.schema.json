@@ -3626,6 +3626,15 @@
         },
         "description": {
           "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": "object"
         }
       },
       "additionalProperties": false,

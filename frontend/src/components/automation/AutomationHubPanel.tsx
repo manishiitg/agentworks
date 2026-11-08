@@ -10,7 +10,7 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { AgentInboxPanel, useAgentInboxEnabled } from '../integrations/AgentInboxPanel'
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
-import { PageCard } from './AutomationKit'
+import { PageCard, PageTabs } from './AutomationKit'
 
 const WorkflowScheduleRunsPanel = lazy(() => import('../scheduler/WorkflowScheduleRunsPanel'))
 const ProductAPITriggersView = lazy(() => import('../workflow/ProductAPITriggersView'))
@@ -35,6 +35,8 @@ type AutomationHubPanelProps = {
   initialSection?: AutomationHubSection
   /** Chat routing override for section actions (Crew panes route to the project chat). */
   onAskAI?: (message: string) => void | Promise<void>
+  /** A Crew page draws its own back arrow beside its tabs (the pane's title row is hidden). */
+  onBack?: () => void
 }
 
 export function AutomationHubPanel({
@@ -50,6 +52,7 @@ export function AutomationHubPanel({
   scopeNoun = entityType === 'product' ? 'project' : 'automation',
   initialSection = 'schedules',
   onAskAI,
+  onBack,
 }: AutomationHubPanelProps) {
   const [children, setChildren] = useState<Array<{ id: string; workspace_path: string; manifest: { label: string } }>>([])
   const [childrenError, setChildrenError] = useState('')
@@ -158,14 +161,14 @@ export function AutomationHubPanel({
   const askMessage = section === 'triggers' ? 'Help me set up a webhook for this Crew.' : section === 'conditions' ? 'Help me set up a watcher for this Crew.' : section === 'email' ? 'Help me with this Crew’s inbox.' : 'Help me set up a schedule for this Crew.'
   const cardTitle = ({ schedules: ['Schedules', undefined], triggers: ['Webhooks', 'Another app starts this by calling a web address.'], conditions: ['Watchers', 'Keeps checking something, and acts when it finds a match.'], email: ['Inbox', 'Only for a Crew that has an email address or a bot.'] } as Record<string, [string, string | undefined]>)[section]
   // On a Crew page each tab's content sits in one card with its own Ask (owner-approved mock, 8 Nov).
-  const inCard = (content: ReactNode) => crewPage && cardTitle ? <div className="h-full overflow-y-auto p-4"><PageCard title={cardTitle[0]} hint={cardTitle[1]} onAsk={canManage === false ? undefined : () => ask(askMessage)}>{content}</PageCard></div> : content
+  const inCard = (content: ReactNode) => crewPage && cardTitle ? <div className="h-full overflow-y-auto p-4"><PageCard title={cardTitle[0]} hint={cardTitle[1]} onAsk={canManage === false ? undefined : () => ask(askMessage)} onRefresh={refreshAction?.run} refreshLabel={refreshAction?.label} refreshing={refreshAction?.spinning} action={section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} /> : undefined}>{content}</PageCard></div> : content
 
   return (
     <div
       data-testid="automation-hub-panel"
       className="flex h-full min-h-0 min-w-0 w-full max-w-none flex-1 flex-col bg-background"
     >
-      <WorkspaceViewHeader
+      {!crewPage && <WorkspaceViewHeader
         icon={Zap}
         title="Automations"
         actions={headerActions}
@@ -180,13 +183,11 @@ export function AutomationHubPanel({
           ) : undefined
         }
 
-      />
+      />}
 
-      {crewPage && <nav aria-label="Automations" className="flex shrink-0 items-center gap-1 border-b px-3 py-2">
-        {([['schedules', 'Schedules', 'Help me set up a schedule for this Crew.'], ['triggers', 'Webhooks', 'Help me set up a webhook for this Crew.'], ['conditions', 'Watchers', 'Help me set up a watcher for this Crew.'], ['email', 'Inbox', 'Help me with this Crew’s inbox.']] as const)
-          .filter(([id]) => availableSections.has(id)).map(([id, label]) => <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}
-            className={`rounded-md px-3 py-1.5 text-sm ${section === id ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>{label}</button>)}
-      </nav>}
+      {crewPage && <div className="shrink-0 px-3 pt-3"><PageTabs label="Automations" value={section} onChange={setSection} onBack={onBack}
+        tabs={([['schedules', 'Schedules', 'when it runs'], ['triggers', 'Webhooks', 'when an app calls'], ['conditions', 'Watchers', 'when something changes'], ['email', 'Inbox', 'mail it gets']] as const)
+          .filter(([id]) => availableSections.has(id)).map(([id, label, hint]) => ({ id, label, hint }))} /></div>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>
         <>

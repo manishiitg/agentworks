@@ -12,6 +12,7 @@ import (
 	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/clisecurity"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -301,6 +302,21 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	if len(config.ServerNames) != 1 || config.ServerNames[0] != mcpclient.NoServers || len(config.RuntimeOverrides) != 0 || len(config.SelectedTools) != 0 || len(original) != 1 {
 		t.Fatal("empty selection inherited or changed owned Place connections")
 	}
+	// PLAT-746-446: requesting a selected MCP must retain its existing
+	// read-tool restriction, while an unrestricted selected server still works.
+	for _, selected := range [][]string{{"notes:read"}, nil} {
+		parent.AgentConfigs.SelectedTools = selected
+		inherited, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Read notes", Messages: []string{"Read selected notes"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := &agents.OrchestratorAgentConfig{SelectedTools: inherited.Config.SelectedTools}
+		(&pythonAgentSelection{Servers: []string{"notes"}}).apply(cfg)
+		filter := mcpagent.NewToolFilter(cfg.SelectedTools, cfg.ServerNames, map[string]mcpclient.ClientInterface{"notes": nil}, nil, nil)
+		if !filter.ShouldIncludeTool("notes", "read", false, false) || filter.ShouldIncludeTool("notes", "write", false, false) != (len(selected) == 0) {
+			t.Fatal("Python helper widened or lost the workflow's MCP tool selection", cfg.SelectedTools)
+		}
+	}
 	c.WorkspaceTools = virtualtools.CreateWorkspaceBrowserTools()
 	c.WorkspaceToolExecutors = map[string]interface{}{"agent_browser": func(context.Context, map[string]interface{}) (string, error) { return "unused", nil }}
 	tools, executors := c.prepareExecutionTools(&saved.Config, parent, nil, DBAccessReadWrite)
@@ -318,6 +334,10 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	}
 	c.WorkspaceTools = append(c.WorkspaceTools, virtualtools.CreateHumanTools()...)
 	c.WorkspaceToolExecutors["human_feedback"] = func(context.Context, map[string]interface{}) (string, error) { return "unused", nil }
+	// PLAT-746-441: a timer has no incoming person message, but must retain
+	// an explicitly authored bounded OTP question and named app tools.
+	c.SetExecutionOptions(&ExecutionOptions{ExecutionStrategy: ExecutionStrategyStartFromBeginningNoHuman})
+	c.WorkspaceToolExecutors["google_workspace_cli"] = func(context.Context, map[string]interface{}) (string, error) { return "unused", nil }
 	withHelp, explicit, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Ask", Messages: []string{"task"}, Browser: true, CanAskPerson: true})
 	if err != nil {
 		t.Fatal(err)
@@ -333,6 +353,35 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 		if tool.Function != nil && (tool.Function.Name == "send_email" || tool.Function.Name == "send_slack_message" || tool.Function.Name == "create_human_input_request") {
 			t.Fatalf("asking the person broadened human tools: %s", tool.Function.Name)
 		}
+	}
+	withGoogle, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Google", Messages: []string{"Use the selected app"}, Tools: []string{"human_tools:integrations.google"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, googleExecutors := c.prepareExecutionTools(&withGoogle.Config, parent, nil, DBAccessReadWrite)
+	if googleExecutors["google_workspace_cli"] == nil || googleExecutors["human_feedback"] != nil || googleExecutors["send_email"] != nil {
+		t.Fatal("named Google selection was lost or broadened")
+	}
+	delete(c.WorkspaceToolExecutors, "google_workspace_cli")
+	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Native files", Messages: []string{"task"}, Tools: []string{"workspace_advanced:*", "workspace_advanced:terminal.execute", "workspace_advanced:files.patch", "workspace_advanced:browser.execute"}}); err != nil {
+		t.Fatalf("old native tool entries blocked conversion: %v", err)
+	}
+	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Google", Messages: []string{"task"}, Tools: []string{"human_tools:integrations.google"}}); err == nil {
+		t.Fatal("unavailable app selection was admitted")
+	}
+	c.executionOptions.AgentFunctionTools = func(context.Context, AgentFunctionScope) ([]llmtypes.Tool, map[string]interface{}, error) {
+		return []llmtypes.Tool{{Type: "function", Function: &llmtypes.FunctionDefinition{Name: "project_functions_call", Parameters: llmtypes.NewParameters(map[string]interface{}{"type": "object"})}}}, map[string]interface{}{
+			"project_functions_call": func(context.Context, map[string]interface{}) (string, error) { return `{}`, nil },
+		}, nil
+	}
+	_, functions, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Call", Messages: []string{"Use the published function"}, Tools: []string{agentworksproduct.ExecutionFunctionTools().Category + ":project_functions_call"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &agents.OrchestratorAgentConfig{}
+	functions.apply(cfg)
+	if len(cfg.DirectTools) != 1 || cfg.DirectTools[0].Name != "project_functions_call" || cfg.DirectTools[0].Execute == nil || cfg.DirectTools[0].InputSchema["type"] != "object" {
+		t.Fatal("explicit function selection lost its scoped executor/schema")
 	}
 	c.WorkspaceTools = nil
 	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Browser", Messages: []string{"task"}, Browser: true}); err == nil {

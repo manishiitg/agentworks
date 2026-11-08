@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -20,6 +22,28 @@ import (
 	"github.com/manishiitg/mcpagent/observability"
 )
 
+// The older dispatcher fixture names its manifests alpha/beta/gamma. Registry
+// IDs must match those manifests; the real resolver refuses mismatched IDs.
+func newWorkflowFunctionEnv(t *testing.T) crewFunctionEnv {
+	t.Helper()
+	env := newCrewFunctionEnv(t)
+	if err := defaultProjectOwners().modify(func(records map[string]projectOwnerRecord) (bool, error) {
+		for key, record := range records {
+			record.ProjectID = record.Folder
+			records[key] = record
+		}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"alpha", "beta", "gamma"} {
+		if err := os.MkdirAll(filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), "_system/crew-data", id), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return env
+}
+
 type functionToolsInitializationProbe struct {
 	agents.OrchestratorAgent
 	stop error
@@ -29,8 +53,8 @@ func (a *functionToolsInitializationProbe) Initialize(context.Context) error { r
 func (a *functionToolsInitializationProbe) Close() error                     { return nil }
 
 func TestWorkflowAgentFunctionToolsReachAgentInitialization(t *testing.T) {
-	env := newCrewFunctionEnv(t)
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newWorkflowFunctionEnv(t)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	scope := stepworkflow.AgentFunctionScope{WorkspacePath: "Workflow/reports", ExecutionID: "run-one", StepID: "orchestrate-icici-bank-login", Group: "default", SessionID: "agent-login"}
 	tools, executors, err := env.api.workflowAgentFunctionToolsForRun(ctx)(ctx, scope)
@@ -66,7 +90,7 @@ func TestWorkflowAgentFunctionToolsReachAgentInitialization(t *testing.T) {
 }
 
 func TestWorkflowAgentFunctionAdmissionReadsProductYAML(t *testing.T) {
-	env := newCrewFunctionEnv(t)
+	env := newWorkflowFunctionEnv(t)
 	for _, toolList := range []string{"[project_functions_list, project_functions_get_call]", "[]"} {
 		t.Run(toolList, func(t *testing.T) {
 			// A narrowed/disabled declaration must change the actual registered
@@ -97,8 +121,8 @@ func TestWorkflowAgentFunctionAdmissionReadsProductYAML(t *testing.T) {
 }
 
 func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
-	env := newCrewFunctionEnv(t)
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newWorkflowFunctionEnv(t)
 	env.svc.heldConversation = nil
 	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
 		return internalSessionTurnResult{FinalResponse: "Checked build."}, nil
@@ -131,6 +155,7 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 	}
 	first, err := invoke(executors, "project_functions_call", args)
 	if err != nil || first["status"] != "completed" || first["answer"] != "Checked build." || first["auto_notification"] != nil {
+
 		t.Fatalf("function outcome = %v %v", first, err)
 	}
 	id := first["call_id"].(string)
@@ -176,13 +201,15 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 	targetManifest.Schedules = []WorkflowSchedule{trigger}
 	targetJSON, _ := json.Marshal(targetManifest)
 	env.mock.files[manifestPath("Workflow/pipeline")] = string(targetJSON)
+	definitionsJSON, _ := json.Marshal(reviewPRInputDefinitions())
+	env.mock.files["Workflow/pipeline/variables/variables.json"] = string(definitionsJSON)
 	env.mock.mu.Unlock()
 	if err := saveWorkflowEntryActions(ctx, "Workflow/pipeline", &targetManifest); err != nil {
 		t.Fatal(err)
 	}
 	refused, err := invoke(executors, "project_functions_call", map[string]interface{}{
 		"project": "Pipeline", "function": "review_pr",
-		"input": map[string]interface{}{"GITHUB_OWNER": "example", "GITHUB_REPO": "app", "PR_NUMBER": 7, "group": "staging"},
+		"input": map[string]interface{}{"GITHUB_OWNER": "example", "GITHUB_REPO": "app", "PR_NUMBER": 7},
 	})
 	if err != nil || refused["status"] != "failed" || !strings.Contains(refused["error"].(string), "no longer names this caller") || refused["run_id"] != "" {
 		t.Fatalf("workflow function admitted the wrong caller kind: %v %v", refused, err)
@@ -199,9 +226,110 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 	}
 }
 
-func TestWorkflowAgentFunctionCallsPreserveMCPConsentAndBounds(t *testing.T) {
-	env := newCrewFunctionEnv(t)
+// PLAT-746-441: converted Python scripts must act as their Crew and retain the
+// same-owner link rule; the old workflow exemption must not grant new access.
+func TestPythonScriptFunctionCallerRequiresCrewLinkAndKeepsRunScope(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newWorkflowFunctionEnv(t)
+	t.Setenv("AUTH_SECRET", "python-function-test-signing-secret")
+	env.svc.heldConversation = nil
+	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
+		return internalSessionTurnResult{FinalResponse: "Checked build."}, nil
+	}
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	binding := crewExecutableBinding{ID: "python-source", CrewID: "alpha", CrewRoot: linkAlphaPath, Root: "Workflow/python-source", Kind: "script"}
+	if err := registerCrewExecutable(binding); err != nil {
+		t.Fatal(err)
+	}
+	env.mock.mu.Lock()
+	env.mock.files[binding.Root+"/code/script.json"] = `{"id":"python-source","name":"Python source","capabilities":{"browser_mode":"headless"}}`
+	env.mock.mu.Unlock()
+	if _, err := env.alpha["project_functions_define"].exec(ctx, map[string]interface{}{
+		"project": "Beta", "definition": map[string]interface{}{"name": "check_build", "description": "Check a build.", "action": map[string]interface{}{"type": "message"}, "input": map[string]interface{}{"messages": []string{"Check this build."}},
+			"input_schema": map[string]interface{}{"type": "object", "required": []interface{}{"build"}, "properties": map[string]interface{}{"build": map[string]interface{}{"type": "string"}}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	factory := env.api.workflowAgentFunctionToolsForRun(ctx)
+	scope := stepworkflow.AgentFunctionScope{WorkspacePath: binding.Root, ExecutionID: "saved-run-one", StepID: "main", SessionID: "python-function-session"}
+	_, executors, err := factory(ctx, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoke := func(name string, args map[string]interface{}) (map[string]interface{}, error) {
+		raw, err := executors[name].(func(context.Context, map[string]interface{}) (string, error))(ctx, args)
+		var value map[string]interface{}
+		if err == nil {
+			err = json.Unmarshal([]byte(raw), &value)
+		}
+		return value, err
+	}
+	args := map[string]interface{}{"project": "Beta", "function": "check_build", "input": map[string]interface{}{"build": "7"}, "wait_seconds": 3}
+	if _, err := invoke("project_functions_call", args); err == nil || !strings.Contains(err.Error(), "not linked") {
+		t.Fatalf("unlinked Crew admitted: %v", err)
+	}
+	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func(refs []string) ([]string, error) { return append(refs, linkBetaPath), nil }); err != nil {
+		t.Fatal(err)
+	}
+	value, err := invoke("project_functions_call", args)
+	if err != nil || value["status"] != "completed" {
+
+		t.Fatalf("linked Crew call = %v %v", value, err)
+	}
+	id := value["call_id"].(string)
+	call := lookupCrewFunctionCall(id)
+	if call.CallerKind != triggerCallerCrew || call.CallerID != "alpha" {
+		t.Fatalf("script kept workflow exemption: %+v", call.snapshot())
+	}
+	status, err := invoke("project_functions_get_call", map[string]interface{}{"call_id": id})
+	if err != nil || status["status"] != "completed" {
+		t.Fatalf("authorized status failed: %v %v", status, err)
+	}
+	store, err := openAccessTokens()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, tc := range []struct {
+		name              string
+		workflows, scopes []string
+		allowed           bool
+	}{
+		{"script-id", []string{binding.ID}, []string{"runs:execute", "workflows:read", "crews:read", "crews:run"}, true},
+		{"crew-id-is-not-script-id", []string{binding.CrewID}, []string{"runs:execute", "workflows:read", "crews:read", "crews:run"}, false},
+		{"crew-only", nil, []string{"crews:read", "crews:run"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			token, _, err := store.Issue(ctx, accesstokens.Token{Name: tc.name, UserID: "owner", Scopes: tc.scopes, WorkflowIDs: tc.workflows, CrewIDs: []string{"alpha", "beta"}, ExpiresAt: now.Add(time.Hour)}, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			launch := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner", AccessToken: &token})
+			_, tools, err := env.api.workflowAgentFunctionToolsForRun(launch)(launch, scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = tools["project_functions_get_call"].(func(context.Context, map[string]interface{}) (string, error))(ctx, map[string]interface{}{"call_id": id})
+			if (err == nil) != tc.allowed {
+				t.Fatalf("source scope allowed=%v err=%v", tc.allowed, err)
+			}
+		})
+	}
+	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := invoke("project_functions_get_call", map[string]interface{}{"call_id": id}); err != nil {
+		t.Fatalf("unlinking lost an existing authorized receipt: %v", err)
+	}
+	if _, err := invoke("project_functions_call", args); err == nil || !strings.Contains(err.Error(), "not linked") {
+		t.Fatalf("unlinked Crew still started function work: %v", err)
+	}
+}
+
+func TestWorkflowAgentFunctionCallsPreserveMCPConsentAndBounds(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newWorkflowFunctionEnv(t)
 	// Keep the isolated state root that contains this fixture's Crew owner registry.
 	t.Setenv("AUTH_SECRET", "workflow-function-test-signing-secret")
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})

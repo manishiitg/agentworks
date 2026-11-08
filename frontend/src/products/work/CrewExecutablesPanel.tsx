@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { FileCode2, Route, Zap } from 'lucide-react'
 import { isAxiosError } from 'axios'
 import api from '../../services/api'
@@ -6,6 +6,7 @@ import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { PageCard, PageRow, RowButton } from '../../components/automation/AutomationKit'
 import { CrewExecutableEditor, type CrewExecutable } from './CrewExecutableEditor'
+import { PlanRunsSwitch, type PlanRunsSection } from './PlanRunsSwitch'
 
 type StepScript = { workflow_id: string; workflow: string; step_id: string; step: string }
 
@@ -20,6 +21,8 @@ function failureMessage(error: unknown, fallback: string) {
  */
 export function CrewExecutablesPanel({ projectId, chatTabId, kind, section, onScriptsOnly }: { projectId: string; chatTabId: string; kind: 'workflow' | 'script'; section?: 'plan' | 'runs'; onScriptsOnly?: (scriptsOnly: boolean) => void }) {
   const [selected, setSelected] = useState<CrewExecutable | null>(null)
+  // A step's own script, opened from the Scripts card: a new object per click so the same row can open it again.
+  const [stepFile, setStepFile] = useState<{ file: string } | null>(null)
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([])
   const [items, setItems] = useState<CrewExecutable[]>([])
   const [stepScripts, setStepScripts] = useState<StepScript[]>([])
@@ -52,7 +55,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, kind, section, onSc
     scripts={scripts}
     stepScripts={stepScripts}
     onOpen={setSelected}
-    onOpenWorkflow={id => setSelected(items.find(entry => entry.id === id) ?? null)}
+    onOpenStep={script => { setSelected(items.find(entry => entry.id === script.workflow_id) ?? null); setStepFile({ file: `code/${script.step_id}/main.py` }) }}
     onAsk={() => ask('Help me create a saved script for this Crew.')}
     onRun={script => ask(`Run the saved script "${script.manifest.label}" and report the result in this chat.`)}
   />
@@ -60,9 +63,9 @@ export function CrewExecutablesPanel({ projectId, chatTabId, kind, section, onSc
   const item = selected ?? single
   if (item) {
     const standalone = item !== single
-    const editor = <CrewExecutableEditor key={item.id} item={item} crewAgents={agents} crewScripts={scripts.map(script => ({ id: script.id, name: script.manifest.label }))} chatTabId={chatTabId} section={standalone ? undefined : section} onBack={standalone ? () => setSelected(null) : undefined} />
-    if (standalone) return <div className="h-[75vh] min-h-96 overflow-hidden rounded-xl border border-border">{editor}</div>
-    return <div className="space-y-4">{editor}{section !== 'runs' && scriptsCard}</div>
+    const editor = (own?: PlanRunsSection) => <CrewExecutableEditor key={item.id} item={item} crewAgents={agents} crewScripts={scripts.map(script => ({ id: script.id, name: script.manifest.label }))} chatTabId={chatTabId} section={standalone ? (own ?? 'plan') : (section ?? 'plan')} openFile={stepFile} onBack={standalone ? () => setSelected(null) : undefined} />
+    if (standalone) return <StandaloneExecutable key={item.id} item={item} onBack={() => setSelected(null)} editor={editor} />
+    return <div className="space-y-4">{editor()}{section !== 'runs' && scriptsCard}</div>
   }
   const nothing = loaded && workflows.length === 0 && scripts.length === 0 && stepScripts.length === 0
   return <div className="space-y-4">
@@ -84,11 +87,11 @@ export function CrewExecutablesPanel({ projectId, chatTabId, kind, section, onSc
 }
 
 /** The Scripts card: every saved script and every script a workflow step runs. */
-function ScriptsCard({ scripts, stepScripts, onOpen, onOpenWorkflow, onAsk, onRun }: {
+function ScriptsCard({ scripts, stepScripts, onOpen, onOpenStep, onAsk, onRun }: {
   scripts: CrewExecutable[]
   stepScripts: StepScript[]
   onOpen: (item: CrewExecutable) => void
-  onOpenWorkflow: (workflowId: string) => void
+  onOpenStep: (script: StepScript) => void
   onAsk: () => void | Promise<void>
   onRun: (item: CrewExecutable) => void | Promise<void>
 }) {
@@ -97,7 +100,16 @@ function ScriptsCard({ scripts, stepScripts, onOpen, onOpenWorkflow, onAsk, onRu
   return <PageCard title="Scripts" hint="All the runnable code in this Crew." onAsk={onAsk}>
     {scripts.map(script => <PageRow key={script.id} lead={lead} title={script.manifest.label} lines={['Saved script · runs on its own']}
       action={<RowButton onClick={() => void onRun(script)}>Run</RowButton>} open={false} onToggle={() => onOpen(script)}>{null}</PageRow>)}
-    {stepScripts.map(script => <PageRow key={script.workflow_id + script.step_id} lead={lead} title={script.step} lines={[`Step: ${script.step}`]}
-      open={false} onToggle={() => onOpenWorkflow(script.workflow_id)}>{null}</PageRow>)}
+    {stepScripts.map(script => <PageRow key={script.workflow_id + script.step_id} lead={lead} title={script.step} lines={[`Step script · in ${script.workflow}`]}
+      open={false} onToggle={() => onOpenStep(script)}>{null}</PageRow>)}
   </PageCard>
+}
+
+/** A script, or a workflow other than the Crew's main one, opened from the Scripts card or the list: the same page, with its own switch. */
+function StandaloneExecutable({ item, onBack, editor }: { item: CrewExecutable; onBack: () => void; editor: (section: PlanRunsSection) => ReactNode }) {
+  const [section, setSection] = useState<PlanRunsSection>('plan')
+  return <div className="space-y-4">
+    <PlanRunsSwitch section={section} onChange={setSection} onBack={onBack} />
+    {editor(section)}
+  </div>
 }

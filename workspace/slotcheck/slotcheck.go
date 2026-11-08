@@ -54,14 +54,15 @@ type Account struct {
 
 // Probe is one slotted `pwd`: the folder and the grants the shell tool would send for it.
 type Probe struct {
-	Slot           string
-	Kind           string
-	Dir            string
-	ReadPaths      []string
-	WritePaths     []string
-	BrowserSession string
-	UserHome       string
-	DocsRoot       string
+	Slot              string
+	Kind              string
+	Dir               string
+	ReadPaths         []string
+	WritePaths        []string
+	BlockedWritePaths []string
+	BrowserSession    string
+	UserHome          string
+	DocsRoot          string
 }
 
 // Options configure a check. Run, Lookup and the expected table owner are injectable for tests.

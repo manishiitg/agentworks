@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	transcriptevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
@@ -53,9 +55,22 @@ func (s *pythonAgentSelection) filterTools(tools []llmtypes.Tool, executors map[
 // including its owned Place connections, keeps its existing behaviour.
 func (s *pythonAgentSelection) apply(config *agents.OrchestratorAgentConfig) {
 	config.ServerNames = normalizeServerNames(append([]string{}, s.Servers...))
+	// Keep the normal factory's per-tool restrictions. Selecting a connection
+	// must not turn a read-only tool selection into server:*.
+	previousTools := config.SelectedTools
 	config.SelectedTools = nil
-	for _, server := range s.Servers {
-		config.SelectedTools = append(config.SelectedTools, server+":*")
+	normalizer := mcpagent.NewToolFilter(nil, nil, nil, nil, nil)
+	for _, selected := range previousTools {
+		server, _, qualified := strings.Cut(selected, ":")
+		if !qualified {
+			continue
+		}
+		for _, requested := range s.Servers {
+			if normalizer.NormalizeServerName(server) == normalizer.NormalizeServerName(requested) {
+				config.SelectedTools = append(config.SelectedTools, selected)
+				break
+			}
+		}
 	}
 	filtered := mcpclient.RuntimeOverrides{}
 	for name, override := range config.RuntimeOverrides {
@@ -75,6 +90,7 @@ type pythonAgentArguments struct {
 	Scripts        []string `json:"scripts"`
 	MCP            []string `json:"mcp"`
 	Skills         []string `json:"skills"`
+	Tools          []string `json:"tools"`
 	Browser        bool     `json:"browser"`
 	CanAskPerson   bool     `json:"can_ask_person"`
 	TimeoutSeconds *float64 `json:"timeout_seconds"`
@@ -132,7 +148,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		if saved.WorkspacePath != hcpo.GetWorkspacePath() || saved.RunFolder != hcpo.selectedRunFolder || saved.ParentStepID != parent.GetID() || saved.StepID != args.ConversationID {
 			return nil, nil, fmt.Errorf("This conversation does not belong to this script and run.")
 		}
-		if args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || args.Browser && !saved.Settings.Browser || args.CanAskPerson && !saved.Settings.CanAskPerson {
+		if args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || len(args.Tools) > 0 && !reflect.DeepEqual(args.Tools, saved.Settings.Tools) || args.Browser && !saved.Settings.Browser || args.CanAskPerson && !saved.Settings.CanAskPerson {
 			return nil, nil, fmt.Errorf("A continued conversation keeps its original model, tier and resource selections. Start a fresh agent to change them.")
 		}
 	} else {
@@ -147,12 +163,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		saved.Settings.ConversationID = ""
 		saved.Settings.TimeoutSeconds = nil
 		saved.Config.SelectedServers = normalizeServerNames(args.MCP)
-		saved.Config.SelectedTools = nil
 		saved.Config.EnabledSkills = append([]string{}, args.Skills...)
-		saved.Config.EnabledCustomTools = []string{"workspace_advanced:*"}
-		if args.CanAskPerson {
-			saved.Config.EnabledCustomTools = append(saved.Config.EnabledCustomTools, "human_tools:needs_you.ask")
-		}
 		if args.Model != "" {
 			provider, model, valid := strings.Cut(args.Model, "/")
 			if !valid || provider == "" || model == "" {
@@ -181,6 +192,59 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		saved.Config.ExecutionLLM = &AgentLLMConfig{Provider: resolved.Primary.Provider, ModelID: resolved.Primary.ModelID, ConnectionID: resolved.Primary.ConnectionID, Options: resolved.Primary.Options}
 	}
 	selection := &pythonAgentSelection{Servers: append([]string{}, saved.Settings.MCP...), Browser: saved.Settings.Browser}
+	saved.Config.EnabledCustomTools = []string{"workspace_advanced:*"}
+	if saved.Settings.CanAskPerson {
+		saved.Config.EnabledCustomTools = append(saved.Config.EnabledCustomTools, "human_tools:needs_you.ask")
+	}
+	for _, requested := range saved.Settings.Tools {
+		// Files, terminal and browser use the coding agent's native tools.
+		// Old step lists may carry this category; it adds no optional app.
+		if strings.HasPrefix(requested, "workspace_advanced:") {
+			continue
+		}
+		if err := orchestrator.ValidateCustomToolSelection(requested); err != nil {
+			return nil, nil, err
+		}
+		pool, executors := hcpo.filterOrdinaryStepTools(hcpo.WorkspaceTools, hcpo.WorkspaceToolExecutors)
+		functionSelection := strings.HasPrefix(requested, agentworksproduct.ExecutionFunctionTools().Category+":")
+		if functionSelection {
+			var err error
+			pool, executors, err = hcpo.pythonFunctionTools(ctx, saved.StepID)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+		matched, enabled := orchestrator.FilterCustomToolsByCategory(pool, executors, []string{requested})
+		if len(matched) == 0 {
+			return nil, nil, fmt.Errorf("Tool %q is unavailable to this automation; select an available tool in its Crew.", requested)
+		}
+		for _, tool := range matched {
+			name := tool.Function.Name
+			if name == "human_feedback" && !saved.Settings.CanAskPerson || name == "agent_browser" && !saved.Settings.Browser {
+				return nil, nil, fmt.Errorf("Use can_ask_person or browser to enable that capability explicitly.")
+			}
+			if enabled[name] == nil {
+				return nil, nil, fmt.Errorf("Tool %q is unavailable to this automation.", requested)
+			}
+			if functionSelection {
+				execute, ok := enabled[name].(func(context.Context, map[string]interface{}) (string, error))
+				if !ok {
+					return nil, nil, fmt.Errorf("Tool %q has no execution binding.", requested)
+				}
+				raw, err := json.Marshal(tool.Function.Parameters)
+				if err != nil {
+					return nil, nil, err
+				}
+				var schema map[string]interface{}
+				if err := json.Unmarshal(raw, &schema); err != nil {
+					return nil, nil, err
+				}
+				selection.Scripts = append(selection.Scripts, mcpagent.ToolDefinition{Name: name, Description: tool.Function.Description, InputSchema: schema, DisplayGroup: agentworksproduct.ExecutionFunctionTools().Category, Execute: execute})
+			} else {
+				saved.Config.EnabledCustomTools = append(saved.Config.EnabledCustomTools, requested)
+			}
+		}
+	}
 	for toolName, requested := range map[string]bool{"agent_browser": saved.Settings.Browser, "human_feedback": saved.Settings.CanAskPerson} {
 		if !requested {
 			continue
@@ -199,11 +263,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 			return nil, nil, fmt.Errorf("The requested %s tool is unavailable to this automation; connect it in the Crew or turn off that selection.", toolName)
 		}
 	}
-	if saved.Settings.CanAskPerson {
-		if opts := hcpo.GetExecutionOptions(); opts != nil && (opts.ExecutionStrategy == ExecutionStrategyStartFromBeginningNoHuman || opts.ExecutionStrategy == ExecutionStrategyResumeFromStepNoHuman) {
-			return nil, nil, fmt.Errorf("This run has questions turned off; allow questions in the Crew before using can_ask_person.")
-		}
-	}
+	// A timer starts without a person message; an explicitly authored question
+	// still uses the existing bounded human-feedback service, like a Crew turn.
 	available := append([]string{}, hcpo.GetSelectedServers()...)
 	if PlaceMCPServers != nil {
 		names, _ := PlaceMCPServers(ctx, hcpo.GetWorkspacePath())
@@ -364,7 +425,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		}
 		writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		return hcpo.WriteWorkspaceFile(writeCtx, path, string(body))
+		return hcpo.writePythonHelperState(writeCtx, path, string(body))
 	}
 	if err = persist(); err != nil {
 		failure = err
@@ -394,7 +455,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	answerPath := filepath.ToSlash(filepath.Join("runs", hcpo.selectedRunFolder, "helpers", "answers", attempt+".txt"))
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if err := hcpo.WriteWorkspaceFile(writeCtx, answerPath, finalAnswer); err != nil {
+	if err := hcpo.writePythonHelperState(writeCtx, answerPath, finalAnswer); err != nil {
 		failure = err
 		reply.Error = "The agent answered, but its full final answer could not be saved: " + redaction.Text(err.Error())
 		return reply

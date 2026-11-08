@@ -2846,6 +2846,15 @@
         "name": {
           "type": "string"
         },
+        "required": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": "object"
+        },
+        "type": {
+          "type": "string"
+        },
         "value": {
           "type": "string"
         }

@@ -35,14 +35,15 @@ func RunCommandThroughShellTool(ctx context.Context, probe Probe, command string
 // tests also run negative reads through the same chain).
 func runThroughShellTool(ctx context.Context, probe Probe, command string) (string, string, error) {
 	iso := &security.Isolator{
-		Slot:           probe.Slot,
-		UserHome:       probe.UserHome,
-		ReadPaths:      probe.ReadPaths,
-		WritePaths:     probe.WritePaths,
-		WorkDir:        probe.Dir,
-		BaseDir:        probe.DocsRoot,
-		AllowNetwork:   true,
-		BrowserSession: probe.BrowserSession,
+		Slot:              probe.Slot,
+		UserHome:          probe.UserHome,
+		ReadPaths:         probe.ReadPaths,
+		WritePaths:        probe.WritePaths,
+		BlockedWritePaths: probe.BlockedWritePaths,
+		WorkDir:           probe.Dir,
+		BaseDir:           probe.DocsRoot,
+		AllowNetwork:      true,
+		BrowserSession:    probe.BrowserSession,
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

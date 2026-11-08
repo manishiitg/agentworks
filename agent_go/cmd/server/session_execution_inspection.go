@@ -66,12 +66,14 @@ func (api *StreamingAPI) executionInspectionTarget(sessionID, executionID string
 		return nil
 	}
 	snap := agent.GetSnapshot()
-	if !workflowStepInspectionKind(snap.Kind) || strings.TrimSpace(snap.Metadata["step_id"]) == "" || !workflowStepInspectionWorkspace(context.Background(), workspace) {
+	// A plan step names its step_id; a Python @step or agent call names the call in its source (source_call).
+	if !workflowStepInspectionKind(snap.Kind) || (strings.TrimSpace(snap.Metadata["step_id"]) == "" && strings.TrimSpace(snap.Metadata["source_call"]) == "") || !workflowStepInspectionWorkspace(context.Background(), workspace) {
 		return nil
 	}
 	target := &orchEvents.ExecutionInspectionTarget{SessionID: sessionID, ExecutionID: executionID, WorkspacePath: workspace, Name: snap.Name, StartedAt: snap.CreatedAt, WorkflowKind: "workflow", ExecutionKind: snap.Kind}
 	target.StepID = snap.Metadata["step_id"]
 	target.ItemID = snap.Metadata["item_id"]
+	target.SourceCall = strings.TrimSpace(snap.Metadata["source_call"])
 	target.RunFolder = strings.TrimSpace(snap.Metadata["run_folder"])
 	return target
 }

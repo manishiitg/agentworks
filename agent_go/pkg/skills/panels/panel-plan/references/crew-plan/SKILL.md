@@ -28,7 +28,7 @@ Create with `kind=script`; read/write its `script.json` and `main.py`. It runs P
 
 Read saved-script arguments from `agentworks.inputs` (the typed `STEP_PARAMS_JSON` object); `VAR_*` holds workflow environment values, not per-child argument exports.
 
-Scripts inherit the Crew's model, browser and app selections. To choose a different connected browser for a script, read its `script.json` and use the existing write action to set `capabilities.browser_mode` (`headless`, `extension`, or `none`), preserving its other fields. Same-ID conversion copies settings from the original workflow, including selected secret names and provider references; it never copies secret values.
+Scripts inherit the Crew's model, browser and app selections. To choose a different connected browser for a script, read its `script.json` and use the existing write action to set `capabilities.browser_mode` (`headless`, `extension`, `none`, or local `cdp` when offered by this installation), preserving its other fields. Same-ID conversion copies settings from the original workflow, including selected secret names and provider references; it never copies secret values.
 
 Python scripts use the Crew's one managed database through `agentworks_db`. Save schema migrations in the Crew's `db/migrations` using its normal file tools, then use `database action=migrate` with `crew_id`. Do not put SQL migrations inside a saved script's Python bundle.
 
@@ -38,6 +38,10 @@ Replacing an existing workflow needs the approved same-ID conversion so its code
 Script receipts include `log_file`, `log_error` and `log_complete`. Read bounded parts of that file for full output beyond the inline reply limit. Native Claude/Codex shell commands use their own tool history and do not return this platform log receipt.
 
 A workflow scripted step can reference `script: "<id>"` and `script_inputs`. Each input selects one source: `{"value":7}`, `{"input":"count"}`, or `{"output":"prior.json","field":"nested.count"}`. Prior outputs must be declared dependencies from this run. Do not copy the script's schema or code into the workflow. Cross-Crew reuse uses a shared function.
+
+For Python workflows, use ordinary functions and modules in the code bundle rather than a saved child script for each step. Label a function with `from agentworks import step` and `@step("Prepare report")`; it runs normally on every call, with no caching or retry. Copy the old scripted step's title as its label, without a separate description. Call `agent("Research", TASK)` for agent work: its name and existing task text supply the Plan label and description. Prefer a string literal or module-level task constant so the Plan can show it; dynamic text is shown as built at run time. Normal Python branches and loops stay normal code. `run_script` is for genuinely reusable saved scripts. Labels record run activity, never arguments or return values.
+
+Carry an old step's named app tools into `agent(..., tools=["human_tools:integrations.google"])`; only tools available to this automation can be selected. `can_ask_person=True` explicitly allows bounded questions, including during a scheduled run. It stays off by default. For another Crew's published action use `call_function(crew, name, inputs)`: it returns a typed receipt with `call_id`, `status`, `value` and `log_file`. A running receipt is not a final answer; refresh it with `function_status(call_id)`. The Crew must be linked and the function must admit the calling Crew. The existing service checks input and result types.
 
 ## Run and verify
 

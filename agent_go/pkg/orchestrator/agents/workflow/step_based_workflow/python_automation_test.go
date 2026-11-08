@@ -22,6 +22,7 @@ import (
 	"github.com/manishiitg/mcpagent/agent/codeexec"
 	"github.com/manishiitg/mcpagent/executor"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 type helperCheckRecorder struct {
@@ -82,7 +83,26 @@ func TestPythonHelpersRepeatCallsAndReuseOnlyResumedOccurrences(t *testing.T) {
 	}
 	source := `import json, os
 from pathlib import Path
-from agentworks import check, notify, run_folder
+from agentworks import check, notify, run_folder, step, call_function, function_status, FunctionResult
+if os.environ['VAR_PHASE'] == 'functions':
+    first = call_function('Beta', 'check_build', {'build': '7'})
+    second = call_function('Beta', 'check_build', {'build': '7'})
+    assert isinstance(first, FunctionResult) and first.ok and first.status == 'running'
+    assert second.ok and second.call_id != first.call_id
+    status = function_status(first.call_id)
+    assert status.ok and status.status == 'completed' and status.value == {'build': '7'}
+    assert status.log_file and status.log_file.is_file()
+    raise SystemExit(0)
+if os.environ['VAR_PHASE'] == 'labels':
+    @step('Ordinary code')
+    def increment(value):
+        if value < 0: raise ValueError('original failure')
+        return value + 1
+    for i in range(3): assert increment(i) == i + 1
+    try: increment(-1)
+    except ValueError as error: assert str(error) == 'original failure'
+    else: raise AssertionError('decorator swallowed the function error')
+    raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'limits':
     big = 'large detail ' * 1000
     for i in range(3):
@@ -187,9 +207,25 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		}
 		return result
 	}
+	functionCalls, statusReads := 0, 0
+	factory := func(_ context.Context, scope AgentFunctionScope) ([]llmtypes.Tool, map[string]interface{}, error) {
+		if scope.ExecutionID != "run-one" || scope.StepID != step.GetID() {
+			t.Fatal("untrusted function scope", scope)
+		}
+		return nil, map[string]interface{}{
+			"project_functions_call": func(_ context.Context, args map[string]interface{}) (string, error) {
+				functionCalls++
+				return fmt.Sprintf(`{"call_id":%q,"status":"running"}`, args["submission_id"]), nil
+			},
+			"project_functions_get_call": func(_ context.Context, args map[string]interface{}) (string, error) {
+				statusReads++
+				return fmt.Sprintf(`{"call_id":%q,"status":"completed","result":{"build":"7"}}`, args["call_id"]), nil
+			},
+		}, nil
+	}
 	run := func(resume, redo bool, phase string) {
 		t.Helper()
-		c.SetExecutionOptions(&ExecutionOptions{AllowRunContinuation: resume, CrewResources: &CrewResources{Scripts: notifications}})
+		c.SetExecutionOptions(&ExecutionOptions{AllowRunContinuation: resume, AgentFunctionTools: factory, CrewResources: &CrewResources{Scripts: notifications}})
 		if resume {
 			c.executionOptions.ResumeFromStep = 1
 		}
@@ -264,6 +300,17 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	})
 	if !full {
 		t.Fatal("bounded presentation lost its original full log")
+	}
+	beforeFailures, beforePasses = recorder.counts()
+	run(false, false, "labels")
+	failures, passes = recorder.counts()
+	if failures != beforeFailures+1 || passes != beforePasses+3 {
+		t.Fatalf("ordinary decorated calls were skipped or changed outcome: failures=%d passes=%d", failures, passes)
+	}
+	run(false, false, "functions")
+	run(true, false, "functions")
+	if functionCalls != 2 || statusReads != 2 {
+		t.Fatalf("function work repeated or status read cached: calls=%d reads=%d", functionCalls, statusReads)
 	}
 	t.Log(fmt.Sprintf("real_python=true resumed_first=true repeated_key_runs=true failed_checks_retained=%d", failures))
 	common.ClearSessionShellConfig(c.GetMCPSessionID())
