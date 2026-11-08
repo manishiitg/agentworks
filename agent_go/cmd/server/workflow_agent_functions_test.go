@@ -237,6 +237,11 @@ func TestPythonScriptFunctionCallerRequiresCrewLinkAndKeepsRunScope(t *testing.T
 		return internalSessionTurnResult{FinalResponse: "Checked build."}, nil
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	// The common function fixture links Alpha to Beta. This regression starts
+	// unlinked so its first refusal must come from the real link rule.
+	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
 	binding := crewExecutableBinding{ID: "python-source", CrewID: "alpha", CrewRoot: linkAlphaPath, Root: "Workflow/python-source", Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
