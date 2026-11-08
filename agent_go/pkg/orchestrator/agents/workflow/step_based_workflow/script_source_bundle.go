@@ -29,6 +29,23 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptSnapshotReadOnlyPaths() []strin
 	return paths
 }
 
+// Only the main script owns the run's source identity. Nested run_script calls
+// keep their own bundle hashes in helper receipts and must not replace it.
+func (hcpo *StepBasedWorkflowOrchestrator) recordScriptSourceSnapshot(ctx context.Context, id, directory string) error {
+	if hcpo.directCrewScript == nil || id != hcpo.directCrewScript.ID {
+		return nil
+	}
+	view := workflowfiles.WorkflowFS{Docs: GetPromptDocsRoot(), Root: hcpo.GetWorkspacePath()}
+	relative := strings.TrimPrefix(directory, hcpo.GetWorkspacePath()+"/")
+	hash, err := pythonBundleFingerprint(view, relative)
+	if err != nil {
+		return fmt.Errorf("read executed script snapshot: %w", err)
+	}
+	return hcpo.upsertRunMetadata(ctx, hcpo.selectedRunFolder, func(metadata map[string]interface{}) {
+		metadata["source_snapshot_hash"] = hash
+	})
+}
+
 // Source bytes are immutable per content hash. Runs link the private snapshot,
 // never the editable source, so unchanged vendored libraries are stored once.
 func (hcpo *StepBasedWorkflowOrchestrator) materializeScriptBundle(ctx context.Context, destination string, files map[string][]byte) error {

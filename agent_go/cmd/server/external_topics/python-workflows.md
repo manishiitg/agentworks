@@ -54,8 +54,14 @@ directly; it does not ask a chat agent to launch it.
 Keep the returned `session_id` and poll `runs action=status` with the same
 workflow. Use `runs action=list` to find saved run folders and `runs action=get`
 with `run_folder` for files, `metadata` (including `execution_id` and
-`python_steps`) and `evidence` (checks and notices). Folder grants still apply;
-the summary contains public checks/notices; full run files remain available under the same grants. `runs action=logs` diagnoses that run in one bounded reply: script stdout/stderr
+`python_steps`) and `evidence` (checks and notices). The summary contains public
+checks/notices; full run files remain available under the same file grants.
+
+For Python runs, `metadata.source_snapshot_hash` identifies the main script's
+executed frozen bundle, including `script.json`, nested source and binary files.
+It is a SHA-256 of sorted relative file names and raw bytes, each followed by a
+NUL byte; `__pycache__` is excluded. Child script calls do not replace it.
+`runs action=logs` diagnoses that run in one bounded reply: script stdout/stderr
 tails with full paths, per-label status/durations, checks/notices, saved typed
 inputs/preset, failing labels and traceback, and agent answer/provider-log paths.
 Python labels share their program log; they do not each run a separate program.

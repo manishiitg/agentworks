@@ -101,6 +101,11 @@ print('saved-script-finished')
 	}
 	// The caller is A. Its extra launch value must not leak into B's defaults.
 	c.directCrewScript = &CrewScriptDefinition{ID: "A", Name: "A", Inputs: []Variable{{Name: "parent_only", Type: "string"}}}
+	if err := c.upsertRunMetadata(t.Context(), c.selectedRunFolder, func(metadata map[string]interface{}) {
+		metadata["source_snapshot_hash"] = "main-script-snapshot"
+	}); err != nil {
+		t.Fatal(err)
+	}
 	parent := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "A", Title: "A"}, Script: "A", crewScript: &CrewScriptConfiguration{Definition: *c.directCrewScript}}
 	handlers := executor.NewExecutorHandlers("", loggerv2.NewNoop())
 	bridge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -164,6 +169,9 @@ print('saved-script-finished')
 	}
 	if !strings.Contains(read(call("default-b", "B", map[string]interface{}{}, false)), `"count": 3`) {
 		t.Fatal("child defaults lost")
+	}
+	if metadata, err := c.ReadWorkspaceFile(t.Context(), "runs/"+c.selectedRunFolder+"/run_metadata.json"); err != nil || !strings.Contains(metadata, `"source_snapshot_hash": "main-script-snapshot"`) {
+		t.Fatalf("child call replaced its main script's source hash: %s %v", metadata, err)
 	}
 	for _, invalid := range []struct {
 		id     string

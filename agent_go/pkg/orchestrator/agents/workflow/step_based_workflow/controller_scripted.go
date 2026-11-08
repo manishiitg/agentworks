@@ -939,6 +939,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
 			}
 		}
+		// Hash the actual frozen bytes, including the resolved script.json,
+		// before the program or any of its agents can read the run metadata.
+		if err := hcpo.recordScriptSourceSnapshot(ctx, shared.crewScript.Definition.ID, codeDirRelPath); err != nil {
+			return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+		}
 	}
 
 	// Always copy saved script from learnings/ to execution/code/.
