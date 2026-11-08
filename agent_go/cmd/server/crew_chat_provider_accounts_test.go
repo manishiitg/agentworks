@@ -95,7 +95,7 @@ func TestCrewChatProviderAccountsFollowTabOwner(t *testing.T) {
 		if err != nil || !own {
 			t.Fatalf("explicit account scope: %t %v", own, err)
 		}
-		if _, err := f.api.admitProviderAccount(ctx, queryProviderAccountScope(query, "other", resolved, false, ""), query.Provider, query.ConnectionID); err != nil {
+		if _, err := f.api.admitProviderAccount(ctx, queryProviderAccountScope(query, "other", resolved), query.Provider, query.ConnectionID); err != nil {
 			t.Fatal(err)
 		}
 		stale := query
