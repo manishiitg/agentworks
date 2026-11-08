@@ -235,8 +235,8 @@ print('saved-script-finished')
 	if cached := call("saved-b", "B", map[string]interface{}{"count": 3}, true); !cached.Reused || cached.LogFile != first.LogFile || read(cached) != read(first) {
 		t.Fatal("resume lost completed child files")
 	}
-	changed := call("saved-b", "B", map[string]interface{}{"count": 4}, true)
-	if changed.Reused || changed.LogFile == first.LogFile || !strings.Contains(read(changed), `"count": 4`) {
+	changedReply := call("saved-b", "B", map[string]interface{}{"count": 4}, true)
+	if changedReply.Reused || changedReply.LogFile == first.LogFile || !strings.Contains(read(changedReply), `"count": 4`) {
 		t.Fatal("changed explicit-key arguments reused the old result")
 	}
 	implicit := dispatch("implicit-b", "B", map[string]interface{}{"count": 3}, false, false, false)
