@@ -61,7 +61,8 @@ it('shows actual workspace status without promoting occasional tools, and keeps 
   expect(mocks.target).toHaveBeenLastCalledWith('files', 'review-uncommitted:tools%2Fweb')
   expect(host.textContent).not.toContain('person@example.com')
   expect(host.textContent).not.toContain('Morning summary')
-  expect(automationRow(host)?.textContent).toContain(mocks.status.details.automations)
+  // The collapsed Automations row stacks one icon per kind that has something, with the server's line as its hint.
+  expect(host.querySelector('[aria-label="Schedules · 2"]')).not.toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Slack bot · Project helper · Identity verified"]')!.click())
   expect(mocks.target).toHaveBeenLastCalledWith('mcp', 'slack-bot')
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="WhatsApp · Connected"]')!.click())

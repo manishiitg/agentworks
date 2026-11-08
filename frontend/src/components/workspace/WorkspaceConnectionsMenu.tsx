@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/
 import { WorkspaceCompactGroup } from './WorkspaceCompactGroup'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
 
-function ConnectionIcon({ icon: Icon, hint, count, onClick }: {
+export function ConnectionIcon({ icon: Icon, hint, count, onClick }: {
   icon: LucideIcon; hint: string; count?: number; onClick: () => void
 }) {
   return <Tooltip><TooltipTrigger asChild>

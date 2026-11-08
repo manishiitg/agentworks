@@ -5,7 +5,8 @@ import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
-import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
+import { WorkspaceConnectionsMenu, ConnectionIcon } from '../../components/workspace/WorkspaceConnectionsMenu'
+import { TooltipProvider } from '../../components/ui/tooltip'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { cloudStateIcon, type CrewAsk, openCrewAskThread, type CrewAccessLine } from './YourComputerPanel'
@@ -73,6 +74,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   }
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
   // One page, opened at the tab the row names (the Automations page listens for the target).
+  const automationKinds = [{ target: 'schedules', label: 'Schedules', icon: CalendarClock }, { target: 'triggers', label: 'Webhooks', icon: Webhook }, { target: 'conditions', label: 'Watchers', icon: Eye }] as const
+  const automationRows = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('schedules:'))
+  // The collapsed row's stacked icons: one per kind that has something, with how many (Connections look).
+  const automationChips = automationKinds.map(kind => ({ ...kind, count: automationRows.filter(row => row.destination === `schedules:${kind.target}`).length })).filter(chip => chip.count > 0)
   const openAutomation = (target: string) => { const item = byId.get('schedules'); if (item) open({ ...item, target }) }
   // Access is one full-panel page in the Mac app and on the website (owner, 5 Nov: the same Team screens everywhere),
   // with Who can use it where the server lists it; it is never a smaller copy inside this menu.
@@ -156,15 +161,19 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {/* With a Share row the dashboard is a line in its tree (owner, 5 Nov: one place); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
-    {(byId.has('workflow') || byId.has('schedules')) && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap} detail={data?.details.automations}>
-      {/* Everything that sets work off, inside one row like Connections (owner, 8 Nov): the workflow, then its starts. */}
+    {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
+      detail={automationChips.length ? undefined : data?.details.automations}
+      preview={automationChips.length ? <div className="isolate flex -space-x-1.5">{automationChips.map(chip =>
+        <ConnectionIcon key={chip.target} icon={chip.icon} hint={`${chip.label} · ${data?.details[`schedules:${chip.target}`] ?? chip.count}`} count={chip.count} onClick={() => openAutomation(chip.target)} />)}</div> : undefined}>
+      {/* Everything that sets work off, inside one row like Connections (owner, 8 Nov): the workflow, then its starts,
+          each with the server's one-line summary. */}
       {byId.has('workflow') && <Row icon={Route} onClick={() => openID('workflow')}>Workflow</Row>}
       {byId.has('schedules') && <>
-        {([['schedules', 'Schedules', CalendarClock], ['triggers', 'Webhooks', Webhook], ['conditions', 'Watchers', Eye]] as const).map(([target, label, Icon]) =>
-          <Row key={target} icon={Icon} onClick={() => openAutomation(target)}>{label}</Row>)}
+        {automationKinds.map(({ target, label, icon: Icon }) =>
+          <Row key={target} icon={Icon} detail={data?.details[`schedules:${target}`]} onClick={() => openAutomation(target)}>{label}</Row>)}
         {incomingEmail && <Row icon={Mail} onClick={() => openAutomation('email')}>Inbox</Row>}
       </>}
-    </WorkspaceCompactGroup>}
+    </WorkspaceCompactGroup></TooltipProvider>}
     </>}
     {error || data?.sections.some(item => item.error || item.stale) ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>{error || (data?.sections.some(item => item.stale) ? 'Showing the last update for some sections.' : 'Some workspace status is unavailable.')}</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>
