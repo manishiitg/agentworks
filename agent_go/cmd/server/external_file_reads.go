@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -129,6 +130,16 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		}
 	} else if localBound {
 		physical := localRoots.ResourcePathRoot(p)
+		if localRoots.DatabaseRoot != "" && (p == "db" || strings.HasPrefix(p, "db/")) {
+			target, _, resolveErr := crewroot.Resolve(getWorkspaceDocsAbsPath(), rootPath+"/"+p)
+			if resolveErr != nil {
+				return wf.Result{}, resolveErr
+			}
+			p, err = filepath.Rel(physical, target)
+			if err != nil {
+				return wf.Result{}, err
+			}
+		}
 		if localFiles {
 			physical = localRoots.Files
 		}

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -46,7 +47,10 @@ func materializeWorkspaceFixtureFile(t *testing.T, workspace *mockWorkspaceAPI, 
 	if !found {
 		t.Fatal("workspace writer did not save fixture", logical)
 	}
-	file := filepath.Join(docs, filepath.FromSlash(logical))
+	file, err := fsutil.WorkspacePath(docs, logical)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
 		t.Fatal(err)
 	}

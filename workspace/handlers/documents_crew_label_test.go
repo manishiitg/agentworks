@@ -260,7 +260,7 @@ func TestTeamCopiesShowOnlyInTheirMembersFiles(t *testing.T) {
 func TestCrewWorkflowListingCombinesAuthoredFilesAndPrivateRecords(t *testing.T) {
 	docs, _ := setupLocalCrewDocuments(t)
 	state := os.Getenv("AGENTWORKS_STATE_ROOT")
-	binding := crewroot.ExecutableBinding{ID: "workflow", Root: "Workflow/example", CrewID: "example", CrewRoot: "Crew/example", Kind: "workflow"}
+	binding := crewroot.ExecutableBinding{ID: "workflow", Root: "Workflow/example", CrewID: "example", CrewRoot: "Crew/example", Kind: "workflow", RuntimeRoot: "workflows/workflow"}
 	raw, _ := json.Marshal(binding)
 	os.MkdirAll(filepath.Join(state, "ownership/crew-executables"), 0700)
 	key := fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))

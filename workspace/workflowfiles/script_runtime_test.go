@@ -44,7 +44,7 @@ func TestSavedScriptPrivateRuntimeMigrationPreservesDataAndStorageGuard(t *testi
 			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 			raw, _ := json.Marshal(map[string]any{"projects": map[string]crewroot.Record{"work/example": record}})
 			write(filepath.Join(state, "ownership/projects.json"), string(raw))
-			binding := crewroot.ExecutableBinding{ID: "saved", CrewID: "crew", CrewRoot: "Crew/example", Root: "Workflow/saved", Kind: "script"}
+			binding := crewroot.ExecutableBinding{ID: "saved", CrewID: "crew", CrewRoot: "Crew/example", Root: "Workflow/saved", Kind: "script", RuntimeRoot: "scripts/saved"}
 			raw, _ = json.Marshal(binding)
 			write(filepath.Join(state, "ownership/crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))), string(raw))
 			write(filepath.Join(code, "main.py"), "print('source unchanged')\n")

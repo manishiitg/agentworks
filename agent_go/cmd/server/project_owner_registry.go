@@ -54,6 +54,8 @@ type projectOwnerRecord struct {
 	// LocalRoot is an immutable create-time binding for a local Crew. It is
 	// never read from product.json or accepted by settings updates.
 	LocalRoot string `json:"local_root,omitempty"`
+	// DatabaseRoot is set only by the explicit automation conversion.
+	DatabaseRoot string `json:"database_root,omitempty"`
 	// ProjectID is the manifest's id when the entry was written: informational (the manifest is user-writable).
 	ProjectID string `json:"project_id,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`

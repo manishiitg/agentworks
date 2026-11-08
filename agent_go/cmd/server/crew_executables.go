@@ -158,6 +158,9 @@ func registerCrewExecutable(binding crewExecutableBinding) error {
 	crewExecutablesMu.Lock()
 	defer crewExecutablesMu.Unlock()
 	binding.Root = crewExecutableKey(binding.Root)
+	if binding.Kind != "relay" && binding.RuntimeRoot == "" {
+		binding.RuntimeRoot = "automations/" + binding.ID
+	}
 	if binding.Root == "" {
 		return fmt.Errorf("invalid executable root")
 	}
