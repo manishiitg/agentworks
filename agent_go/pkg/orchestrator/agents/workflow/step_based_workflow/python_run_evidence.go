@@ -39,6 +39,9 @@ func boundedRunEvidenceText(value string) string {
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) savePythonRunEvidence(ctx context.Context, id, action string, arguments map[string]interface{}, reply pythonHelperReply) error {
+	if action == "ask_agent" {
+		return hcpo.savePythonAskEvidence(ctx, id, arguments, reply)
+	}
 	if action != "check" && action != "notify" {
 		return nil
 	}

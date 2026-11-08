@@ -660,12 +660,13 @@ type RunMetadataModels struct {
 
 // RunMetadata stores lifecycle information for a run folder
 type RunMetadata struct {
-	CanResume          *bool                    `json:"can_resume,omitempty"` // Response-only current eligibility; never persisted.
-	SourceSnapshotHash string                   `json:"source_snapshot_hash,omitempty"`
-	InputsSnapshotHash string                   `json:"inputs_snapshot_hash,omitempty"`
-	ResumeOf           string                   `json:"resume_of,omitempty"`
-	Attempts           []map[string]interface{} `json:"attempts,omitempty"`
-	PythonResumeCalls  []map[string]interface{} `json:"python_resume_calls,omitempty"`
+	PythonAsks         map[string]todo_creation_human.PythonAskEvidence `json:"python_asks,omitempty"`
+	CanResume          *bool                                            `json:"can_resume,omitempty"` // Response-only current eligibility; never persisted.
+	SourceSnapshotHash string                                           `json:"source_snapshot_hash,omitempty"`
+	InputsSnapshotHash string                                           `json:"inputs_snapshot_hash,omitempty"`
+	ResumeOf           string                                           `json:"resume_of,omitempty"`
+	Attempts           []map[string]interface{}                         `json:"attempts,omitempty"`
+	PythonResumeCalls  []map[string]interface{}                         `json:"python_resume_calls,omitempty"`
 
 	InputPreset     string                                            `json:"input_preset,omitempty"`
 	ExecutionID     string                                            `json:"execution_id,omitempty"`

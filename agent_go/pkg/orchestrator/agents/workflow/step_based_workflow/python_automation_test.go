@@ -165,6 +165,24 @@ if os.environ['VAR_PHASE'] == 'evidence':
     from agentworks import _call
     assert _call('check', {'name':'Unknown step check', 'ok':True, 'step_execution_id':'python-unknown', 'step_name':'Forged name'}, None, False).ok
     raise SystemExit(0)
+if os.environ['VAR_PHASE'] == 'asks':
+    from agentworks import ask_agent, AskResult
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        questions = ['first question', 'second question']
+        answers = list(pool.map(lambda q: ask_agent('Beta', q, wait_seconds=1), questions))
+    assert len({reply.inbox_id for reply in answers}) == 2
+    for question, reply in zip(questions, answers):
+        assert isinstance(reply, AskResult) and reply.ok and reply.status == 'replied'
+        assert reply.text == 'Answer to ' + question
+        assert reply.answer_file.read_text() == reply.text
+        assert reply.log_file.is_file() and reply.receipt['reply_message_id']
+    pending = ask_agent('Beta', 'pending question', wait_seconds=0)
+    assert pending.ok and pending.status == 'pending' and pending.inbox_id and pending.message_id
+    assert not pending.text and not pending.error and 'do not resend' in pending.receipt['note']
+    refused = ask_agent('unavailable', 'private question', wait_seconds=0)
+    assert not refused.ok and refused.status == 'refused' and not refused.inbox_id and not refused.text
+    raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'functions':
     first = call_function('Beta', 'check_build', {'build': '7'})
     second = call_function('Beta', 'check_build', {'build': '7'})
@@ -362,11 +380,55 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		return result
 	}
 	functionCalls, statusReads := 0, 0
+	var askMu sync.Mutex
+	askQuestions := map[string]string{}
 	factory := func(_ context.Context, scope AgentFunctionScope) ([]llmtypes.Tool, map[string]interface{}, error) {
 		if scope.ExecutionID != "run-one" || scope.StepID != step.GetID() {
 			t.Fatal("untrusted function scope", scope)
 		}
 		return nil, map[string]interface{}{
+			// Existing Crew send/read is the external boundary here. The server
+			// fixture separately exercises its real access checks and inboxes.
+			"ask_crew": func(_ context.Context, args map[string]interface{}) (string, error) {
+				if args["crew"] == "unavailable" {
+					return "", fmt.Errorf("Choose a Crew you can access by its exact name or ID.")
+				}
+				inbox := "inbox-" + args["submission_id"].(string)
+				askMu.Lock()
+				askQuestions[inbox] = args["message"].(string)
+				askMu.Unlock()
+				return fmt.Sprintf(`{"inbox_id":%q,"message_id":%q,"sequence":1}`, inbox, "sent-"+inbox), nil
+			},
+			"read_agent_messages": func(_ context.Context, args map[string]interface{}) (string, error) {
+				inbox := args["inbox_id"].(string)
+				// An accepted send must be on disk before a possibly blocking read.
+				saved := false
+				filepath.WalkDir(filepath.Join(docs, root, "runs/run-one/helpers"), func(path string, entry os.DirEntry, err error) error {
+					if err == nil && !entry.IsDir() && strings.HasSuffix(path, ".json") {
+						data, _ := os.ReadFile(path)
+						var receipt pythonHelperCall
+						if json.Unmarshal(data, &receipt) == nil {
+							value, _ := receipt.Reply.Value.(map[string]interface{})
+							saved = saved || value["inbox_id"] == inbox && value["status"] == "pending"
+						}
+					}
+					return err
+				})
+				if !saved {
+					return "", fmt.Errorf("send receipt missing before read")
+				}
+				askMu.Lock()
+				question := askQuestions[inbox]
+				askMu.Unlock()
+				if question == "pending question" {
+					return `{"messages":[]}`, nil
+				}
+				data, err := json.Marshal(map[string]interface{}{"messages": []map[string]interface{}{
+					{"inbox_id": "another-inbox", "message_id": "foreign-answer", "message": "must never consume another question's reply"},
+					{"inbox_id": inbox, "message_id": "reply-" + inbox, "message": "Answer to " + question},
+				}})
+				return string(data), err
+			},
 			"project_functions_call": func(_ context.Context, args map[string]interface{}) (string, error) {
 				functionCalls++
 				return fmt.Sprintf(`{"call_id":%q,"status":"running"}`, args["submission_id"]), nil
@@ -469,6 +531,24 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	run(true, false, "functions")
 	if functionCalls != 4 || statusReads != 2 {
 		t.Fatalf("ordinary function work or status read incorrectly reused: calls=%d reads=%d", functionCalls, statusReads)
+	}
+	run(false, false, "asks")
+	askMetadata, err := os.ReadFile(filepath.Join(docs, root, "runs/run-one/run_metadata.json"))
+	var askRecord struct {
+		Asks map[string]PythonAskEvidence `json:"python_asks"`
+	}
+	if err != nil || json.Unmarshal(askMetadata, &askRecord) != nil {
+		t.Fatalf("ask evidence unavailable: %v", err)
+	}
+	askStatuses := map[string]int{}
+	for _, item := range askRecord.Asks {
+		askStatuses[item.Status]++
+		if item.LogFile == "" {
+			t.Fatal("ask lacks log evidence", item)
+		}
+	}
+	if askStatuses["replied"] != 2 || askStatuses["pending"] != 1 || askStatuses["refused"] != 1 {
+		t.Fatalf("ask outcomes missing: %v", askStatuses)
 	}
 	run(false, false, "apps")
 	beforeAppCalls := appCalls

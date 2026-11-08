@@ -26,7 +26,7 @@ from typing import Any, Mapping, Sequence, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack", "google", "slack", "github"]
+__all__ = ["AutomationError", "Reply", "AskResult", "ask_agent", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack", "google", "slack", "github"]
 __all__.append("secret")
 
 
@@ -70,6 +70,18 @@ class FunctionResult(Reply):
     call_id: str = ""
     status: str = ""
     value: JSONValue = None
+    receipt: Mapping[str, JSONValue] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AskResult(Reply):
+    """ok means accepted; use text only when status is replied.
+
+    A pending receipt means sent, no reply yet. Inspect it; do not resend.
+    """
+    inbox_id: str = ""
+    message_id: str = ""
+    status: str = ""
     receipt: Mapping[str, JSONValue] = field(default_factory=dict)
 
 
@@ -157,6 +169,11 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
                  log_kind=result.get("log_kind", "activity"),
                  answer_file=Path(result["answer_file"]) if result.get("answer_file") else None,
                  reused=bool(result.get("reused")))
+    if action == "ask_agent":
+        receipt = result.get("value") or {}
+        return AskResult(**vars(reply), inbox_id=receipt.get("inbox_id", ""),
+                         message_id=receipt.get("message_id", ""),
+                         status=receipt.get("status", ""), receipt=receipt)
     if action in ("call_function", "function_status"):
         receipt = result.get("value") or {}
         return FunctionResult(**vars(reply), call_id=receipt.get("call_id", ""),
@@ -283,6 +300,31 @@ def step(title: str):
                 return function(*args, **kwargs)
         return synchronous
     return decorate
+
+
+def ask_agent(crew: str, message: str, *, chat_id: str | None = None,
+              wait_seconds: float = 25) -> AskResult:
+    """Ask an accessible Crew, using this run's existing person and access.
+
+    Crew is its ID or exact name; chat_id optionally selects an offered chat.
+    Wait at most 25 seconds, bounded by the parent deadline. ok means accepted,
+    not answered: use text only when status == "replied". A pending receipt
+    retains inbox_id/message_id and says sent, no reply yet, do not resend.
+    There is no automatic resend, saved-result key or new messaging authority.
+    """
+    import math
+    if not isinstance(crew, str) or not crew.strip() or not isinstance(message, str) or not message.strip():
+        raise ValueError("ask_agent needs a Crew and a non-empty message")
+    if isinstance(wait_seconds, bool) or not isinstance(wait_seconds, (int, float)) or not math.isfinite(wait_seconds) or wait_seconds < 0:
+        raise ValueError("wait_seconds must be a finite non-negative number")
+    try:
+        reply = _call("ask_agent", {"crew": crew, "message": message, "chat_id": chat_id or "",
+                                    "wait_seconds": min(25, wait_seconds)}, None, False)
+        if isinstance(reply, AskResult):
+            return reply
+        return AskResult(ok=False, error="The ask returned an unreadable receipt. Inspect this run.")
+    except AutomationError as error:
+        return AskResult(ok=False, error=str(error))
 
 
 def call_function(crew: str, name: str, inputs: Mapping[str, JSONValue], *,
