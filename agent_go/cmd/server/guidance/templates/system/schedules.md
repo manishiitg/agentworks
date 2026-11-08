@@ -113,7 +113,7 @@ The incoming JSON is external data, never session configuration or authorization
 
 A new delivery returns 202 with run_id. Duplicate Idempotency-Key values (X-GitHub-Delivery for GitHub) return the existing run; a busy workflow returns 503 with Retry-After. The sender must arrange retries/redelivery. GitHub ping validates the connection without running the workflow. JSON payload limit is 1 MiB; signature-only services other than GitHub need an adapter to the generic endpoint. Localhost works for callers on the same computer; external services need a reachable HTTPS server/tunnel. Duplicated workflows must attach their own API triggers.
 
-### Create inbound webhooks in this Builder chat
+### Create inbound webhooks in this chat
 
 Use `manage_workflow_webhook(action="list")` for the active workflow's valid
 routing step/route IDs and inputs, then `action="create"` with name, enabled,
