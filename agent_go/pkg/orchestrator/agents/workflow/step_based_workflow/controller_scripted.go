@@ -871,6 +871,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	docsRoot := GetPromptDocsRoot()
 	stepID := step.GetID()
 
+	reuseCaptured := false
 	shared, hasShared := step.(*ScriptedPlanStep)
 	hasShared = hasShared && shared.crewScript != nil
 	if hasShared {
@@ -908,6 +909,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		codeDirRelPath = stepExecutionRelPath + "/code"
 		codeDirAbsPath = workflowAbsPath(codeDirRelPath)
 		mainPyAbsPath = filepath.Join(codeDirAbsPath, "main.py")
+		if hcpo.resumingPython() {
+			_, err := hcpo.ReadWorkspaceFile(ctx, codeDirRelPath+"/script.json")
+			reuseCaptured = err == nil
+		}
 		if err := createFolderViaAPI(ctx, codeDirRelPath); err != nil {
 			return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
 		}
@@ -915,8 +920,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		if files == nil {
 			return &ScriptedFastPathResult{RanScript: true, Error: "saved script source was not resolved", ExitCode: -1}
 		}
-		if err := hcpo.materializeScriptBundle(ctx, codeDirRelPath, files); err != nil {
-			return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+		if !reuseCaptured {
+			if err := hcpo.materializeScriptBundle(ctx, codeDirRelPath, files); err != nil {
+				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+			}
 		}
 		existingScript = string(files["main.py"])
 		if existingScript == "" {
@@ -934,7 +941,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 
 	// Clean previous output files before running saved script — fresh slate for this execution.
 	// Preserve code/ containing the saved-source bundle.
-	hcpo.cleanStepOutputDir(ctx, stepExecutionRelPath, "code")
+	if !hcpo.resumingPython() {
+		hcpo.cleanStepOutputDir(ctx, stepExecutionRelPath, "code")
+	}
 	if hasShared {
 		// Direct chat and workflow invocations record the same resolved inputs and
 		// executed definition beside their own copied source bundle.
@@ -945,9 +954,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		if hcpo.directCrewScript == nil {
 			files["inputs.json"] = inputs
 		}
-		for file, content := range files {
-			if err := hcpo.WriteWorkspaceFile(ctx, stepExecutionRelPath+"/"+file, string(content)); err != nil {
-				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+		if !reuseCaptured {
+			for file, content := range files {
+				if err := hcpo.WriteWorkspaceFile(ctx, stepExecutionRelPath+"/"+file, string(content)); err != nil {
+					return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
+				}
 			}
 		}
 		// Hash the actual frozen bytes, including the resolved script.json,

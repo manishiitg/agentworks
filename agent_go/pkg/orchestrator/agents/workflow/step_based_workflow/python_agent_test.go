@@ -375,7 +375,7 @@ for line in sys.stdin:
 	}
 	handler, finishSteps := c.pythonAutomationHandler(ctx, parent, sourceDir, runRoot)
 	defer finishSteps(false)
-	rawFirst, firstErr := handler(ctx, map[string]interface{}{"action": "agent", "key": "first", "order": float64(1), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}, "reasoning": "high"}})
+	rawFirst, firstErr := handler(ctx, map[string]interface{}{"action": "agent", "key": "first", "explicit_key": true, "order": float64(1), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}, "reasoning": "high"}})
 	var first pythonHelperReply
 	if firstErr != nil || json.Unmarshal([]byte(rawFirst), &first) != nil {
 		t.Fatalf("Python helper dispatch failed: %v %s", firstErr, rawFirst)
@@ -468,6 +468,27 @@ for line in sys.stdin:
 	if !strings.Contains(string(requests), `"method": "thread/resume"`) {
 		t.Fatal("follow-up did not restore the native thread")
 	}
+	// Resume uses the logical key rather than the old global order, and must
+	// return the actual saved result without another native provider request.
+	previousOptions := c.executionOptions
+	c.executionOptions = &ExecutionOptions{PythonResume: &PythonRunResume{}}
+	resumedHandler, finishResumedSteps := c.pythonAutomationHandler(ctx, parent, sourceDir, runRoot)
+	defer finishResumedSteps(false)
+	resumedRaw, err := resumedHandler(ctx, map[string]interface{}{"action": "agent", "key": "first", "explicit_key": true, "order": float64(99), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}, "reasoning": "high"}})
+	var reused pythonHelperReply
+	if err != nil || json.Unmarshal([]byte(resumedRaw), &reused) != nil || !reused.OK || !reused.Reused || reused.ConversationID != first.ConversationID || reused.AnswerFile != first.AnswerFile {
+		t.Fatalf("explicit-key resume lost the completed native result: %s %v", resumedRaw, err)
+	}
+	afterReuse, err := os.ReadFile(filepath.Join(runRoot, "fixture-requests.jsonl"))
+	if err != nil || string(afterReuse) != string(requests) {
+		t.Fatal("reusing a completed agent result launched another provider turn")
+	}
+	duplicateRaw, err := resumedHandler(ctx, map[string]interface{}{"action": "agent", "key": "first", "explicit_key": true, "order": float64(100), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}, "reasoning": "high"}})
+	var duplicate pythonHelperReply
+	if err != nil || json.Unmarshal([]byte(duplicateRaw), &duplicate) != nil || duplicate.OK || !strings.Contains(duplicate.Error, `Key "first"`) {
+		t.Fatalf("duplicate explicit key did not refuse by name: %s %v", duplicateRaw, err)
+	}
+	c.executionOptions = previousOptions
 	changed := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Research", "messages": []string{"change"}, "conversation_id": first.ConversationID, "model": "codex-cli/another"}, "changed")
 	if changed.OK || !strings.Contains(changed.Error, "original model") {
 		t.Fatalf("changed settings resumed silently: %+v", changed)

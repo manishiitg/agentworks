@@ -67,6 +67,7 @@ type ExecutionOptions struct {
 	Inputs               map[string]string `json:"inputs,omitempty"`
 	AllowRunContinuation bool              `json:"-"`
 	RunFolderAllocated   bool              `json:"-"`
+	PythonResume         *PythonRunResume  `json:"-"`
 	ResolvedInputs       map[string]string `json:"-"` // Admission snapshot; never supplied by public JSON.
 	// Retained only to reject the retired batch selector with an actionable error.
 	EnabledGroupNames []string `json:"enabled_group_names,omitempty"`

@@ -64,6 +64,15 @@ func (em *ExecutionManager) PrepareExecution(
 		return setup, nil
 	}
 
+	if opts.PythonResume != nil {
+		// Python starts at the top; helper receipts decide reuse. Reset only
+		// the single runner's progress, preserving source, outputs and logs.
+		setup.Mode = ExecutionModeFresh
+		setup.Cleanup = CleanupScope{DeleteProgress: true, InitFreshProgress: true, NewTotalSteps: totalSteps}
+		setup.Context.SkipHumanInput = true
+		return setup, nil
+	}
+
 	// Map strategy to mode and cleanup
 	// All strategies use learning enabled, no human feedback.
 	switch opts.ExecutionStrategy {

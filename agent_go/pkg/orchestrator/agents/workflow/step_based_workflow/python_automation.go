@@ -26,6 +26,7 @@ type pythonScriptRuntimeKey struct{}
 
 type pythonHelperReply struct {
 	OK             bool        `json:"ok"`
+	Reused         bool        `json:"reused,omitempty"`
 	Value          interface{} `json:"value,omitempty"`
 	Text           string      `json:"text"`
 	AnswerFile     string      `json:"answer_file,omitempty"`
@@ -38,12 +39,15 @@ type pythonHelperReply struct {
 }
 
 type pythonHelperCall struct {
-	ExecutionID   string            `json:"execution_id"`
-	SourceHash    string            `json:"source_hash"`
-	ArgumentsHash string            `json:"arguments_hash"`
-	Complete      bool              `json:"complete"`
-	ScriptStack   []string          `json:"script_stack,omitempty"`
-	Reply         pythonHelperReply `json:"reply"`
+	ExecutionID        string            `json:"execution_id"`
+	Order              int64             `json:"order"`
+	ExplicitKey        bool              `json:"explicit_key,omitempty"`
+	ScriptInvocationID string            `json:"script_invocation_id,omitempty"`
+	SourceHash         string            `json:"source_hash"`
+	ArgumentsHash      string            `json:"arguments_hash"`
+	Complete           bool              `json:"complete"`
+	ScriptStack        []string          `json:"script_stack,omitempty"`
+	Reply              pythonHelperReply `json:"reply"`
 }
 
 // Helper receipts and continuation configuration are server-owned evidence.
@@ -123,7 +127,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 	}
 	stopParent := context.AfterFunc(parent, func() { finishPending(false) })
 	finishInvocation := func(success bool) { stopParent(); finishPending(success) }
-	resume := hcpo.executionOptions != nil && hcpo.executionOptions.AllowRunContinuation && hcpo.executionOptions.ResumeFromStep > 0
+	resume := hcpo.resumingPython()
+	var explicitOrders sync.Map
 
 	return func(request context.Context, args map[string]interface{}) (string, error) {
 		// Keep the original execution identity/inspection context, while a caller
@@ -151,14 +156,26 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		order, _ := args["order"].(float64)
 		arguments, _ := args["arguments"].(map[string]interface{})
 		redo, _ := args["redo"].(bool)
+		explicit, _ := args["explicit_key"].(bool)
+		reusable := explicit && (action == "agent" || action == "run_script")
 		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script" && action != "agent" && action != "step" && action != "call_function" && action != "function_status" && action != "send_email" && action != "send_slack" && action != "google" && action != "github" && action != "slack_read") {
 			return encode(pythonHelperReply{Error: "Invalid Python helper request; use the installed agentworks package."})
 		}
-		slot := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d", label, int64(order))))
+		identity := fmt.Sprintf("implicit\x00%s\x00%d", label, int64(order))
+		if reusable {
+			identity = "explicit\x00" + label
+		}
+		slot := sha256.Sum256([]byte(identity))
 		stateRelative := filepath.ToSlash(filepath.Join(callRoot, hex.EncodeToString(slot[:])+".json"))
 		mutex, _ := locks.LoadOrStore(stateRelative, &sync.Mutex{})
 		mutex.(*sync.Mutex).Lock()
 		defer mutex.(*sync.Mutex).Unlock()
+		if reusable {
+			first, loaded := explicitOrders.LoadOrStore(stateRelative, order)
+			if loaded && first.(float64) != order && !redo {
+				return encode(pythonHelperReply{Error: fmt.Sprintf("Key %q was already used in this script invocation. Use a different key for each logical call or loop item.", label)})
+			}
+		}
 		fingerprintOnce.Do(func() {
 			relative := strings.TrimPrefix(workflowAPIPath(hcpo.GetWorkspacePath(), codeDir), hcpo.GetWorkspacePath()+"/")
 			sourceHash, fingerprintError = pythonBundleFingerprint(view, relative)
@@ -197,16 +214,16 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		}
 		requestHash := sha256.Sum256(requestJSON)
 		argumentsHash := hex.EncodeToString(requestHash[:])
+		scriptInvocation := ""
+		resumeReason := "new_call"
 		if data, err := fs.ReadFile(view, stateRelative); action == "function_status" {
-			// Status is a fresh authorized read, including after a resumed script.
+			// Status remains a fresh authorized read.
 		} else if err == nil {
 			var previous pythonHelperCall
-			if err := json.Unmarshal(data, &previous); err != nil {
+			if json.Unmarshal(data, &previous) != nil {
 				return encode(pythonHelperReply{Error: "This helper's saved receipt cannot be read; inspect the run before trying again."})
 			}
-			if previous.Complete && previous.ExecutionID == executionID {
-				// The same HTTP request may be delivered twice. Python assigns a
-				// new order to each actual call, so this never skips a loop call.
+			if previous.Complete && previous.ExecutionID == executionID && previous.Order == int64(order) {
 				if previous.ArgumentsHash != argumentsHash {
 					return encode(pythonHelperReply{Error: "This helper request ID was already used with different inputs."})
 				}
@@ -218,17 +235,41 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				reply.Error = "The previous script attempt has no completed receipt. Inspect its run before explicitly trying redo=True; it may already have done work."
 				return encode(reply)
 			}
-			if resume {
-				if previous.SourceHash != callSourceHash || previous.ArgumentsHash != argumentsHash {
-					return encode(pythonHelperReply{Error: "This resumed call has changed code or inputs. Start a new run."})
+			if resume && reusable {
+				if previous.SourceHash != callSourceHash {
+					return encode(pythonHelperReply{Error: "This call's captured source has changed. Start a new run."})
 				}
-				if previous.Complete && !redo {
-					return encode(previous.Reply)
+				if previous.ArgumentsHash != argumentsHash {
+					resumeReason = "arguments_changed"
+				} else {
+					scriptInvocation = previous.ScriptInvocationID
+					resumeReason = "retry_failed_call"
+					if previous.ExplicitKey && previous.Complete && previous.Reply.OK && !redo {
+						previous.Reply.Reused = true
+						previous.ExecutionID, previous.Order = executionID, int64(order)
+						data, err := json.Marshal(previous)
+						if err == nil {
+							err = hcpo.writePythonHelperState(ctx, filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), stateRelative)), string(data))
+						}
+						if err == nil {
+							err = hcpo.recordPythonResumeCall(ctx, label, action, arguments, true, "completed_result")
+						}
+						if err != nil {
+							return encode(pythonHelperReply{Error: "Cannot record the reused call: " + err.Error()})
+						}
+						return encode(previous.Reply)
+					}
 				}
 			}
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return encode(pythonHelperReply{Error: "Cannot read this helper's saved receipt: " + err.Error()})
 		}
+		if resume && reusable {
+			if err := hcpo.recordPythonResumeCall(ctx, label, action, arguments, false, resumeReason); err != nil {
+				return encode(pythonHelperReply{Error: "Cannot record this resumed call: " + err.Error()})
+			}
+		}
+
 		id := "python-" + uuid.NewString()
 		log, err := hcpo.openPythonHelperLog(id)
 		if err != nil {
@@ -237,7 +278,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		defer log.Close()
 		log.Note(action + " starting")
 		_, _ = log.Stream("request").Write(append(requestJSON, '\n'))
-		call := pythonHelperCall{ExecutionID: executionID, SourceHash: callSourceHash, ArgumentsHash: argumentsHash, ScriptStack: stack,
+		if scriptInvocation == "" {
+			scriptInvocation = id
+		}
+		call := pythonHelperCall{ExecutionID: executionID, Order: int64(order), ExplicitKey: reusable, ScriptInvocationID: scriptInvocation, SourceHash: callSourceHash, ArgumentsHash: argumentsHash, ScriptStack: stack,
 			Reply: pythonHelperReply{LogFile: log.Path()}}
 		persist := func() error {
 			data, err := json.Marshal(call)
@@ -285,7 +329,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			call.Reply = hcpo.runPythonAgent(ctx, step, arguments, id)
 		case "run_script":
 			childCtx := context.WithValue(ctx, pythonScriptStackKey{}, stack)
-			call.Reply = hcpo.runPythonSavedScript(childCtx, step, child, arguments, id)
+			call.Reply = hcpo.runPythonSavedScript(childCtx, step, child, arguments, scriptInvocation)
 		case "step":
 			phase, _ := arguments["phase"].(string)
 			if phase == "start" {

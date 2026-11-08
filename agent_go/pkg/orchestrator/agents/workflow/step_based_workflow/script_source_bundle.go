@@ -2,6 +2,7 @@ package step_based_workflow
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io/fs"
 	"strings"
@@ -41,8 +42,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) recordScriptSourceSnapshot(ctx contex
 	if err != nil {
 		return fmt.Errorf("read executed script snapshot: %w", err)
 	}
+	inputs, err := fs.ReadFile(view, "runs/"+hcpo.selectedRunFolder+"/inputs.json")
+	if err != nil {
+		return fmt.Errorf("read executed input snapshot: %w", err)
+	}
+	inputsHash := fmt.Sprintf("%x", sha256.Sum256(inputs))
+	if hcpo.resumingPython() {
+		resume := hcpo.executionOptions.PythonResume
+		if hash != resume.SourceHash || inputsHash != resume.InputsHash {
+			return fmt.Errorf("%s", pythonResumeNewRun)
+		}
+	}
 	return hcpo.upsertRunMetadata(ctx, hcpo.selectedRunFolder, func(metadata map[string]interface{}) {
 		metadata["source_snapshot_hash"] = hash
+		metadata["inputs_snapshot_hash"] = inputsHash
 	})
 }
 

@@ -77,7 +77,7 @@ func (r *helperNotificationRecorder) NotifyScript(_ context.Context, _, _, _, te
 
 // Real Python imports the staged package inside the existing sandbox, crosses
 // HTTP and the real script-session registry, and reads back durable receipts.
-// Repeating a key inside one execution must never skip a call in a loop.
+// Checks/notices remain ordinary calls, including during a resumed script.
 func TestPythonHelpersRepeatCallsAndReuseOnlyResumedOccurrences(t *testing.T) {
 	docs, files := workflowHTTPTestWorkspace(t)
 	t.Setenv("AGENTWORKS_SLOTS", "off")
@@ -372,9 +372,9 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		t.Helper()
 		ctx, endInvocation := context.WithCancel(ctx)
 		defer endInvocation()
-		c.SetExecutionOptions(&ExecutionOptions{AllowRunContinuation: resume, AgentFunctionTools: factory, CrewResources: &CrewResources{Scripts: notifications}})
+		c.SetExecutionOptions(&ExecutionOptions{AgentFunctionTools: factory, CrewResources: &CrewResources{Scripts: notifications}})
 		if resume {
-			c.executionOptions.ResumeFromStep = 1
+			c.executionOptions.PythonResume = &PythonRunResume{}
 		}
 		env := map[string]string{"MCP_API_TOKEN": "helper-test-token", "VAR_PHASE": phase, "VAR_REDO": map[bool]string{true: "yes", false: "no"}[redo]}
 		processSucceeded := false
@@ -406,19 +406,19 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	run(true, false, "complete")
 	resumed := read("reply.json")
 	failures, passes := recorder.counts()
-	if resumed["first"] != first || resumed["second"] == first || failures != 2 || passes != 1 {
+	if resumed["first"] == first || resumed["second"] == first || failures != 3 || passes != 1 {
 		t.Fatalf("resume skipped/repeated wrong calls: %v failures=%d passes=%d", resumed, failures, passes)
 	}
 	run(false, false, "complete")
 	fresh := read("reply.json")
 	failures, passes = recorder.counts()
-	if fresh["first"] == first || fresh["first"] == fresh["second"] || failures != 4 || passes != 2 {
+	if fresh["first"] == first || fresh["first"] == fresh["second"] || failures != 5 || passes != 2 {
 		t.Fatalf("ordinary calls were cached: %v", fresh)
 	}
 	run(true, true, "complete")
 	redone := read("reply.json")
 	failures, passes = recorder.counts()
-	if redone["first"] == fresh["first"] || redone["second"] != fresh["second"] || failures != 5 || passes != 2 {
+	if redone["first"] == fresh["first"] || redone["second"] == fresh["second"] || failures != 7 || passes != 3 {
 		t.Fatalf("redo lost its attempt or repeated other calls: %v", redone)
 	}
 	for _, path := range redone {
@@ -458,8 +458,8 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	}
 	run(false, false, "functions")
 	run(true, false, "functions")
-	if functionCalls != 2 || statusReads != 2 {
-		t.Fatalf("function work repeated or status read cached: calls=%d reads=%d", functionCalls, statusReads)
+	if functionCalls != 4 || statusReads != 2 {
+		t.Fatalf("ordinary function work or status read incorrectly reused: calls=%d reads=%d", functionCalls, statusReads)
 	}
 	run(false, false, "apps")
 	beforeAppCalls := appCalls

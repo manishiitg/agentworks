@@ -154,6 +154,7 @@ func TestCLIRunAndScheduleArguments(t *testing.T) {
 	}{
 		{[]string{"runs", "start-workflow", "--workflow", "wf-1", "--preset", "weekly", "--inputs", `{"count":3,"active":true}`}, "runs", map[string]any{"action": "start", "workflow_id": "wf-1", "input_preset": "weekly", "inputs": map[string]any{"count": 3, "active": true}}},
 		{[]string{"runs", "rerun", "--workflow", "sample", "--run-folder", "run-one"}, "runs", map[string]any{"action": "rerun", "workflow_id": "sample", "run_folder": "run-one"}},
+		{[]string{"runs", "resume", "--workflow", "sample", "--run-folder", "run-one"}, "runs", map[string]any{"action": "resume", "workflow_id": "sample", "run_folder": "run-one"}},
 		{[]string{"runs", "status", "--workflow", "wf-1", "--session", "s1"}, "runs", map[string]any{"action": "status", "workflow_id": "wf-1", "session_id": "s1"}},
 		{[]string{"runs", "stop", "--workflow", "wf-1", "--session", "s1", "--execution-id", "e1"}, "runs", map[string]any{"action": "stop_step", "workflow_id": "wf-1", "session_id": "s1", "execution_id": "e1"}},
 		{[]string{"runs", "stop-all", "--workflow", "wf-1", "--session", "s1"}, "runs", map[string]any{"action": "stop_all", "workflow_id": "wf-1", "session_id": "s1"}},

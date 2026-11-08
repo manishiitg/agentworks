@@ -657,6 +657,12 @@ type RunMetadataModels struct {
 
 // RunMetadata stores lifecycle information for a run folder
 type RunMetadata struct {
+	SourceSnapshotHash string                   `json:"source_snapshot_hash,omitempty"`
+	InputsSnapshotHash string                   `json:"inputs_snapshot_hash,omitempty"`
+	ResumeOf           string                   `json:"resume_of,omitempty"`
+	Attempts           []map[string]interface{} `json:"attempts,omitempty"`
+	PythonResumeCalls  []map[string]interface{} `json:"python_resume_calls,omitempty"`
+
 	InputPreset     string                                            `json:"input_preset,omitempty"`
 	ExecutionID     string                                            `json:"execution_id,omitempty"`
 	PythonSteps     map[string]todo_creation_human.PythonStepEvidence `json:"python_steps,omitempty"`

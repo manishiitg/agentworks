@@ -102,6 +102,27 @@ of `run_trigger`.
 Runs do real work, including database writes, app calls and sends. No new
 mid-run question or individual Python step execution is introduced.
 
+## Resume a failed run
+
+Use `runs action=resume` with `workflow_id` and the failed `run_folder`.
+Only the Crew's Builder or an admitted workflow editor can resume. It keeps
+that folder and the captured source and typed inputs, starts a new execution
+attempt, and preserves the old logs. Python starts at the top again.
+
+Only successful `agent()` and `run_script()` calls with an explicit `key=`
+can reuse their recorded results. Use a distinct logical key for each call,
+including each loop iteration; reusing a key within one attempt is refused.
+The same key and arguments can reuse a successful result even if unrelated
+calls move. Changed arguments execute fresh and are recorded as such.
+Returned replies expose `reused=true` when reused.
+
+Ordinary Python, database writes, app calls, checks and notices execute again.
+An interrupted call whose completion is uncertain keeps its existing refusal;
+resume never silently repeats an uncertain send. Missing or changed frozen
+source, source hash or input proof says to start a new run. Older runs without
+that proof cannot resume. Use `rerun` when you want current source and a new
+run folder instead.
+
 ## Laptop CLI
 
 The CLI calls these same server operations; it is not a local workflow engine.
@@ -120,6 +141,7 @@ agentworks runs status --workflow sample --session returned-session
 agentworks runs get --workflow sample --run-folder returned-run
 agentworks runs logs --workflow sample --run-folder returned-run
 agentworks runs rerun --workflow sample --run-folder returned-run
+agentworks runs resume --workflow sample --run-folder failed-run
 agentworks functions run-trigger --crew team --workspace Workflow/sample --preset weekly --inputs '{"LIMIT":3}'
 agentworks functions trigger-status --crew team --workspace Workflow/sample --trigger-id returned-trigger --run-id returned-run
 ```

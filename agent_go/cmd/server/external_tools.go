@@ -165,6 +165,7 @@ func externalTools() ([]externalTool, error) {
 		p["since_index"] = externalInteger(-1, 1000000000)
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: turn_status (running, waiting_for_input, idle), any pending question, final_answer once idle and executions, without events. Pass false for a size-bounded page of events."}
 		addRun("run_status", "Poll a run session started externally: turn_status, final_answer once the turn is done, pending inputs and its active executions, without events by default (compact: false adds a size-bounded event page).", false, p, "session_id")
+		addRun("resume_workflow", "Resume a failed saved Python run in its existing folder using its verified captured source and inputs. Only the owner/editor can resume. Successful explicit-key agent/script calls can return reused=true; ordinary code and app calls execute normally. Start a new run to change source or inputs.", true, map[string]any{"run_folder": externalString("Failed run folder from runs list/get, belonging to this workflow.")}, "run_folder")
 		addRun("rerun_workflow", "Start a new real run of a saved Python workflow using a previous run's typed input values/preset and the current saved source. This repeats real effects, including database writes, app calls and sends. Returns the normal session receipt plus changed source files/revisions versus the prior execution snapshot. Poll runs status, then read runs logs.", true, map[string]any{"run_folder": externalString("Previous run folder from runs list/get; must belong to this workflow.")}, "run_folder")
 		workflowPublishedFunctionDefinitions(func(name, description string, write bool, props map[string]any, required ...string) {
 			if props == nil {
@@ -1121,6 +1122,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	switch tool.Name {
 	case "run_status", "list_executions", "list_schedules", "get_schedule_runs", "trigger_schedule", "run_reply_input", "stop_step", "stop_all_executions":
 		api.externalRunCall(w, r, tool.Name, args, *selected)
+		return
+	}
+	if tool.Name == "resume_workflow" {
+		api.externalScriptResume(w, r, *selected, args)
 		return
 	}
 	if tool.Name == "rerun_workflow" {
