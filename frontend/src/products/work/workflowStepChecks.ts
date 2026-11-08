@@ -1,19 +1,17 @@
 import type { RunPythonEvidence } from '../../services/api-types'
 
-type CheckEvidence = Pick<RunPythonEvidence, 'kind' | 'source_call' | 'ok'>
+type CheckEvidence = Pick<RunPythonEvidence, 'kind' | 'step_execution_id' | 'ok'>
 
-/** A shared helper may represent several steps. Count only unambiguous step-to-check joins. */
-export function uniqueStepChecks(items: CheckEvidence[], sources: Array<string | undefined>): Map<string, string> {
-  const occurrences = new Map<string, number>()
-  for (const source of sources) if (source) occurrences.set(source, (occurrences.get(source) ?? 0) + 1)
-  const lines = new Map<string, string>()
-  for (const [source, count] of occurrences) {
-    if (count !== 1) continue
-    const checks = items.filter(item => item.kind === 'check' && item.source_call === source)
-    if (!checks.length) continue
+/** Only the server's actual step identity assigns checks. Old or unbound evidence stays in the full Checks list. */
+export function stepChecks(items: CheckEvidence[]): Map<string, string> {
+  const grouped = new Map<string, CheckEvidence[]>()
+  for (const item of items) {
+    if (item.kind !== 'check' || !item.step_execution_id) continue
+    grouped.set(item.step_execution_id, [...(grouped.get(item.step_execution_id) ?? []), item])
+  }
+  return new Map([...grouped].map(([id, checks]) => {
     const failed = checks.filter(item => item.ok === false).length
     const noun = checks.length === 1 ? 'check' : 'checks'
-    lines.set(source, failed ? `${failed} of ${checks.length} ${noun} failed` : `${checks.length} ${noun} passed`)
-  }
-  return lines
+    return [id, failed ? `${failed} of ${checks.length} ${noun} failed` : `${checks.length} ${noun} passed`]
+  }))
 }

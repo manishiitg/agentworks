@@ -2365,6 +2365,8 @@ export interface RunPythonStep {
 
 /** A check() or notify() a Python run recorded in its own metadata (the latest 200). */
 export interface RunPythonEvidence {
+  step_execution_id?: string;
+  step_name?: string;
   id: string;
   kind: 'check' | 'notify';
   at: string;
@@ -2375,6 +2377,9 @@ export interface RunPythonEvidence {
 }
 
 export interface RunMetadata {
+  /** Current server-computed eligibility; full Resume admission may still refuse. */
+  can_resume?: boolean;
+  python_resume_calls?: Array<{ key: string; action: string; reused: boolean; reason: string; execution_id: string; at: string; source_call?: string }>;
   created_at: string;
   /** The attempt that produced this run folder. */
   execution_id?: string;
