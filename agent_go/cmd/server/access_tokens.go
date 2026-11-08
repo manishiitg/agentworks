@@ -424,7 +424,10 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return personalLaptopSettingsClaims(c) && (externalWorkspaceAllowed(c) || externalFileAuthoringAllowed(c, nil))
 	}
 	if tool.Name == "workspace" {
-		return externalWorkspaceAllowed(c) || projectCreationAvailable(c)
+		// A workflow-scoped Builder token has no Crew scope but is allowed the workflow_team and workflow_crews
+		// members; the tool shows to a token with Builder consent when at least one member is allowed. Each member
+		// still enforces its own rule. A read-only token keeps its smaller tool list.
+		return externalWorkspaceAllowed(c) || projectCreationAvailable(c) || c != nil && c.AccessToken != nil && c.AccessToken.BuilderAccess() && tool.actions != nil && externalMergedAllows(c, tool)
 	}
 	if tool.Name == "open_dashboard" {
 		return userAllowedProduct(c, crewProfileID) && dashboardScopeAllowed(c, "get")
