@@ -112,6 +112,8 @@ func TestExternalMCPRequiresIdentity(t *testing.T) {
 
 func TestExternalMCPLocalProductSelection(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	// A local install's person can use Crews; the shared fixture limits its users to workflows.
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","work"]}]}`)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "0")
 	t.Setenv("AGENT_PRODUCTS", "")
@@ -129,7 +131,7 @@ func TestExternalMCPLocalProductSelection(t *testing.T) {
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "local catalog")
 	text := marshalStructured(t, spec)
-	for _, name := range []string{"brain_read", "manage_vault_access", "run_relay"} {
+	for _, name := range []string{"brain_read", "manage_vault_access", "run_relay", "relay_owners", "get_contract_upgrades", "read_team_source", "human_feedback"} {
 		if strings.Contains(text, name) {
 			t.Fatalf("local MCP catalog advertised %s", name)
 		}

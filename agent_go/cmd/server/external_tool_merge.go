@@ -515,18 +515,20 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 		}
 		rest[key] = value
 	}
-	// Name every missing required field in one reply, not one per retry.
+	return member, rest, nil
+}
+
+// externalMissingFields names every missing required field in one reply, not one
+// per retry. Dispatch asks only after the access check, so a refusal comes first.
+func externalMissingFields(tool externalTool, action string, args map[string]any) []string {
 	var missing []string
-	for _, field := range externalSchemaRequired(member.InputSchema, action) {
-		if value, ok := rest[field]; !ok || value == nil {
+	for _, field := range externalSchemaRequired(tool.InputSchema, action) {
+		if value, ok := args[field]; !ok || value == nil {
 			missing = append(missing, field)
 		}
 	}
-	if len(missing) > 0 {
-		sort.Strings(missing)
-		return tool, args, fmt.Errorf("%s action=%s is missing: %s", tool.Name, action, strings.Join(missing, ", "))
-	}
-	return member, rest, nil
+	sort.Strings(missing)
+	return missing
 }
 
 // externalMergeProperty adds a member's argument to a merged tool. When two

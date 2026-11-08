@@ -208,19 +208,20 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	if crewResponse.Code != 200 || !strings.Contains(crewResponse.Body.String(), "Shared Crew") {
 		t.Fatalf("Crew reader: %d %s", crewResponse.Code, crewResponse.Body.String())
 	}
-	// Relay authoring reuses relays:write and requires its current Builder owner.
+	// A Flow-only token on a Flow (relay-kind) workflow.
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["agentworks","work","relays"]},{"id":"reader","username":"reader","role":"editor","products":["agentworks","work","relays"]}]}`)
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"readers":["reader","owner"]}}`)
 	owner.AccessToken.Scopes = []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}
 	// Changed consent changes the catalog and requires a fresh MCP session.
 	cli = dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
-	// Old editor grants confer Run access, never Relay Builder ownership.
-	requireRemoteError(t, callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "create", "workflow_id": "invoices", "dashboard_id": "editor-denied", "title": "Denied", "files": map[string]any{"index.html": "<html><body>Denied</body></html>"}}}), "legacy Relay editor cannot build", "forbidden")
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["owner"],"readers":["reader"]}}`)
-	relayDraft := call("dashboard", map[string]any{"action": "create", "workflow_id": "invoices", "dashboard_id": "relay-view", "title": "Relay view", "files": map[string]any{"index.html": "<html><title>Relay</title><body>Relay</body></html>"}})
-	relayRev := relayDraft["dashboard"].(map[string]any)["revision"].(string)
-	call("dashboard", map[string]any{"action": "publish", "workflow_id": "invoices", "dashboard_id": "relay-view", "expected_revision": relayRev})
+	// Flows are off in every installation (PLAT-746-265), so relays:write authors
+	// nothing: the old editor and the Flow's owner get the same access refusal.
+	for _, owners := range []string{`["other"]`, `["owner"]`} {
+		f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":`+owners+`,"readers":["reader","owner"]}}`)
+		requireRemoteError(t, callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "create", "workflow_id": "invoices", "dashboard_id": "relay-view", "title": "Relay view", "files": map[string]any{"index.html": "<html><body>Relay</body></html>"}}}), "Flow dashboard while Flows are off ("+owners+")", "insufficient_scope")
+	}
+	relayRev := "unpublished"
 	// Relay consent cannot mutate a Crew, even when the caller owns that Crew.
 	noCrew := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": map[string]any{"action": "update", "workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision}})
 	if !noCrew.IsError {
