@@ -29,7 +29,7 @@ const agentWorksName = "AgentWorks"
 
 // agentWorksBuiltinSkills are the platform's AgentWorks skills (internal/workproduct/skills/agentworks-*).
 var agentWorksBuiltinSkills = []string{
-	"agentworks-inspect-crew", "agentworks-inspect-relay", "agentworks-review-architecture",
+	"agentworks-inspect-crew", "agentworks-review-architecture",
 	"agentworks-review-qa", "agentworks-schedules-watchers", "agentworks-suggest-and-build",
 }
 
