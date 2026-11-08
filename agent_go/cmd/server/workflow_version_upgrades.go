@@ -218,14 +218,15 @@ func bindWorkflowUpgradeWorkspacePath(query, workspacePath string) string {
 const oldWorkflowContractMessage = "This workflow is on an old version and cannot run; converting it to a Python script is done by the platform operator for now."
 
 func workflowContractNeedsRecreation(manifest *WorkflowManifest) bool {
-
 	rank, known := workflowContractVersionRank(workflowContractVersionForUpgrade(manifest))
 	return known && rank < 43
 }
 
 // workflowVersionUpgradePlan lists supported upgrades for this product.
 func workflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersionUpgrade {
-
+	if workflowContractNeedsRecreation(manifest) {
+		return nil
+	}
 	return eligibleWorkflowVersionUpgrades(manifest, fullWorkflowVersionUpgradePlan(manifest))
 }
 
