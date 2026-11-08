@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
@@ -12,6 +13,9 @@ import (
 	"path"
 	"strconv"
 )
+
+// agentInboxNoGmailError: the Crew owner has no Gmail account to receive on (its message is the underlying one).
+type agentInboxNoGmailError struct{ error }
 
 // Stable identity is the agent's manifest ID. Names, owners and folders do not define an email address.
 func agentEmailID(profile, project string) string {
@@ -26,7 +30,7 @@ func (api *StreamingAPI) ensureAgentEmailInbox(ctx context.Context, profile, pro
 		if saved, e := api.gmailInbound.Store.SavedInbox(ctx, profile, project, owner); e == nil {
 			return saved, nil
 		}
-		return gmailinbound.Inbox{}, err
+		return gmailinbound.Inbox{}, agentInboxNoGmailError{err}
 	}
 	aliasID := agentEmailID(profile, project)
 	id := uuid.NewSHA1(uuid.NameSpaceURL, []byte(aliasID+":"+owner+":"+client.ConnectionID)).String()
@@ -179,8 +183,11 @@ func (api *StreamingAPI) agentEmailInboxResult(ctx context.Context, args map[str
 		inbox, err = api.ensureAgentEmailInbox(ctx, target.ProfileID, target.ProjectID, target.WorkspacePath, target.OwnerID)
 		if err != nil {
 			// On, but the owner's Gmail is not ready: still answer, so the page can say so and the owner can turn email off.
-			return map[string]any{"inbox": target, "mail": gmailinbound.Page{Messages: []gmailinbound.Item{}}, "enabled": true, "can_configure": personalConnectionActor(ctx) == target.OwnerID, "receiving": false,
-				"error": "Incoming email is on, but this Crew's owner has no Gmail account connected. Connect one in the Vault panel or in chat, or turn incoming email off."}, nil
+			line, missing := "Incoming email is on, but its inbox could not be set up: "+err.Error()+" Try again, or turn incoming email off.", false
+			if errors.As(err, new(agentInboxNoGmailError)) {
+				line, missing = "Incoming email is on, but this Crew's owner has no Gmail account connected. Connect one in the Vault panel or in chat, or turn incoming email off.", true
+			}
+			return map[string]any{"inbox": target, "mail": gmailinbound.Page{Messages: []gmailinbound.Item{}}, "enabled": true, "can_configure": personalConnectionActor(ctx) == target.OwnerID, "receiving": false, "gmail_missing": missing, "error": line}, nil
 		}
 	} else if saved, savedErr := api.gmailInbound.Store.SavedInbox(ctx, target.ProfileID, target.ProjectID, target.OwnerID); savedErr == nil {
 		inbox = saved
