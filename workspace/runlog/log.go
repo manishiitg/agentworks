@@ -28,6 +28,24 @@ type Log struct {
 	written   int64
 }
 
+// CreateServerOwned keeps helper logs readable by the slot but writable only
+// by the service. The caller anchors and protects the helper log directory.
+func CreateServerOwned(root *os.Root, relative string) (*Log, error) {
+	log, err := Create(root, relative)
+	if err != nil {
+		return nil, err
+	}
+	_, mode, err := wf.ServerFileModes(root)
+	if err == nil {
+		err = log.file.Chmod(mode)
+	}
+	if err != nil {
+		log.Close()
+		return nil, err
+	}
+	return log, nil
+}
+
 // Create is called only after the caller's existing write guard has authorized
 // relative. Anchored, symlink-free parents and O_EXCL prevent a log from
 // overwriting another file. Redo uses a new attempt name.
