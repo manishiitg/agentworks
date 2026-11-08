@@ -2882,6 +2882,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	BotRoutes(router, api)
 	virtualtools.SetSlackMessageHandler(api.sendSlackMessageFromTool)
 	virtualtools.SetSlackCLIHandler(api.slackCLIFromTool)
+	virtualtools.SetGitHubToolHandler(api.githubFromTool)
 	if slackSvc != nil {
 		slackSvc.SetTriggerHandler(api.dispatchSlackTrigger)
 	}
