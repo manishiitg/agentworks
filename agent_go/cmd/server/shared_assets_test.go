@@ -129,7 +129,8 @@ func TestSharedAssetLinksLargeDownloadsAndRevocation(t *testing.T) {
 	if w.Code != 200 || w.Body.Len() != 0 {
 		t.Fatal("HEAD failed", w.Code, w.Body)
 	}
-	// The download route must enforce both PAT scope and selected workflows.
+	// Personal MCP credentials follow the person's live role (PLAT-856,
+	// owner 20 Oct), rather than the older saved scope/workflow selections.
 	for _, restriction := range []accesstokens.Token{
 		{Name: "no file scope", UserID: "reader", Username: "reader", Scopes: []string{"workflows:read"}, AllWorkflows: true, ExpiresAt: now.Add(time.Hour)},
 		{Name: "other workflow", UserID: "reader", Username: "reader", Scopes: []string{"files:read"}, WorkflowIDs: []string{"secret"}, ExpiresAt: now.Add(time.Hour)},
@@ -143,8 +144,39 @@ func TestSharedAssetLinksLargeDownloadsAndRevocation(t *testing.T) {
 		limited.Header.Set("Authorization", "Bearer "+restricted)
 		denied := httptest.NewRecorder()
 		handler.ServeHTTP(denied, limited)
-		if denied.Code != 403 && denied.Code != 404 {
-			t.Fatal("restricted download accepted", restriction.Name, denied.Code)
+		if denied.Code != http.StatusPartialContent || denied.Body.String() != payload[:16] {
+			t.Fatal("personal role access changed", restriction.Name, denied.Code)
+		}
+	}
+	// Project connections keep saved consent. Exercise the real grant-to-claims
+	// mapping and asset handler, with the permitted case as its control.
+	t.Setenv("PUBLIC_URL", "https://app.example.com")
+	for _, allowed := range []bool{false, true} {
+		scopes := []string{"workflows:read"}
+		if allowed {
+			scopes = append(scopes, "files:read")
+		}
+		connection := mcpOAuthTokenForGrant(mcpOAuthGrant{
+			UserID: "reader", Username: "reader", Scopes: scopes,
+			Resource: "https://app.example.com" + projectMCPPrefix + "workflow/invoices/view",
+		})
+		claims, err := accessTokenClaims(connection)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if claims.AccessToken == nil || claims.AccessToken.ProjectKind != "workflow" {
+			t.Fatal("project connection lost its binding")
+		}
+		scoped := adminRequest(http.MethodGet, request.URL.String(), "", claims, nil)
+		scoped.Header.Set("Range", "bytes=0-15")
+		result := httptest.NewRecorder()
+		f.api.handleExternalAssetContent(result, scoped)
+		if allowed {
+			if result.Code != http.StatusPartialContent || result.Body.String() != payload[:16] {
+				t.Fatalf("permitted project download: HTTP%d", result.Code)
+			}
+		} else if result.Code != http.StatusForbidden || !strings.Contains(result.Body.String(), "insufficient_scope") {
+			t.Fatalf("project without file consent: HTTP%d %s", result.Code, result.Body.String())
 		}
 	}
 	// One token per account: each Issue above revoked the reader's previous
