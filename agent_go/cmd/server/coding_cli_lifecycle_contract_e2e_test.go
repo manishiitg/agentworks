@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -151,6 +152,8 @@ func TestCodingCLILifecycleMatrixHermeticTmux(t *testing.T) {
 // receipt survives a server restart, reconciliation proves it was not
 // delivered, and the same submission starts exactly one resumed turn.
 func TestRetainedSubmissionRecoveryAfterIdleReaperP0(t *testing.T) {
+	// Retained tmux delivery is the opt-in terminal mode; the SDK default reports another transport.
+	t.Setenv("CLAUDE_CODE_TRANSPORT", "tmux")
 	const (
 		sessionID    = "p0-reaper-restart-recovery"
 		tmuxSession  = "mlp-claude-code-p0-reaped"
@@ -354,24 +357,27 @@ func TestTerminalSnapshotExpiryMatrix(t *testing.T) {
 	}
 }
 
+// The server reaches tmux with a minimal environment (no inherited TMUX), so the test creates and kills its
+// panes through the same runner; a plain exec could land on an enclosing tmux server the watchdog never sees.
 func startLifecycleContractTmux(t *testing.T, prefix string) string {
 	t.Helper()
 	name := fmt.Sprintf("%s-e2e-%d", prefix, time.Now().UnixNano())
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", name, "sleep 60")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("start tmux %s: %v: %s", name, err, strings.TrimSpace(string(output)))
+	if err := runTerminalTmuxCommand(context.Background(), "", "new-session", "-d", "-s", name, "sleep", "60"); err != nil {
+		t.Fatalf("start tmux %s: %v", name, err)
 	}
-	t.Cleanup(func() { _ = exec.Command("tmux", "kill-session", "-t", name).Run() })
+	t.Cleanup(func() { _ = runTerminalTmuxCommand(context.Background(), "", "kill-session", "-t", name) })
 	if got := inspectCodingTmuxPaneState(name); got != codingTmuxPaneAlive {
-		t.Fatalf("tmux %s state = %v, want alive", name, got)
+		list, listErr := runTerminalTmuxOutputCommand(context.Background(), "list-sessions")
+		shown, showErr := runTerminalTmuxOutputCommand(context.Background(), "display-message", "-p", "-t", name, "#{pane_dead}")
+		t.Fatalf("tmux %s state = %v, want alive; list=%q err=%v display=%q err=%v TMUX_TMPDIR=%q TMPDIR=%q", name, got, list, listErr, shown, showErr, os.Getenv("TMUX_TMPDIR"), os.Getenv("TMPDIR"))
 	}
 	return name
 }
 
 func killLifecycleContractTmux(t *testing.T, name string) {
 	t.Helper()
-	if output, err := exec.Command("tmux", "kill-session", "-t", name).CombinedOutput(); err != nil {
-		t.Fatalf("kill tmux %s: %v: %s", name, err, strings.TrimSpace(string(output)))
+	if err := runTerminalTmuxCommand(context.Background(), "", "kill-session", "-t", name); err != nil {
+		t.Fatalf("kill tmux %s: %v", name, err)
 	}
 	if got := inspectCodingTmuxPaneState(name); got != codingTmuxPaneMissing {
 		t.Fatalf("tmux %s state after kill = %v, want missing", name, got)
