@@ -487,26 +487,26 @@ func TestSlackConversationCannotChangeReplyThreadDuringExecution(t *testing.T) {
 }
 
 func TestSlackProfileTurnUsesWebConversationWithoutWhatsApp(t *testing.T) {
-	server, _ := newFakeWorkspaceServer(t)
-	t.Setenv("WORKSPACE_API_URL", server.URL)
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	t.Setenv("MULTI_USER_MODE", "true")
+	// PLAT-746: conversation discovery lists folders; exercise the real
+	// workspace handlers instead of a document-only mock's object response.
+	f, _ := newExternalCrewCommandFixture(t)
 	profile := singletonConversationProfile()
 	registry := agentprofiles.NewRegistry()
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	api := &StreamingAPI{agentProfiles: registry}
-	webRequest := profileRouteRequest("POST", "/", nil, "alice")
+	api := f.api
+	api.agentProfiles = registry
+	webRequest := profileRouteRequest("POST", "/", nil, "owner")
 	conversation, err := api.resolveAgentProfileConversation(webRequest, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	web, err := prepareProductConversationTurn(webRequest.Context(), "alice", profile, AgentProfileChatRequest{Message: "hello"}, conversation)
+	web, err := prepareProductConversationTurn(webRequest.Context(), "owner", profile, AgentProfileChatRequest{Message: "hello"}, conversation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bot, sid, handled, err := api.botProfileTurn(context.Background(), "bot-route", services.BotIncomingMessage{Platform: "slack", UserID: "external-sender", Text: "hello", PresetProfile: &services.ProfileRoute{ProfileID: profile.ID, ConversationKey: "main", WorkspaceUserID: "alice"}}, services.ThreadID{Platform: "slack", ChannelID: "C123", ThreadTS: "1.2", ConnectionID: "slack_own"})
+	bot, sid, handled, err := api.botProfileTurn(context.Background(), "bot-route", services.BotIncomingMessage{Platform: "slack", UserID: "external-sender", Text: "hello", PresetProfile: &services.ProfileRoute{ProfileID: profile.ID, ConversationKey: "main", WorkspaceUserID: "owner"}}, services.ThreadID{Platform: "slack", ChannelID: "C123", ThreadTS: "1.2", ConnectionID: "slack_own"})
 	if err != nil || !handled || sid != conversation.SessionID {
 		t.Fatalf("Slack binding: %s %v %v", sid, handled, err)
 	}
