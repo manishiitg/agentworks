@@ -56,6 +56,7 @@ func TestWorkspaceRejectsRetiredConversationProfile(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	allowed := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", AgentProfileConversationKey: "c0de0001-0000", SelectedFolder: codePrivacyOwnerRoot}
+	allowed.AgentProfileContext.ProjectTitle = "App"
 	if _, access, err := api.admitQueryTarget(ctx, &allowed, "owner", "test"); err != nil || access != WorkflowAccessOwner {
 		t.Fatalf("current Crew profile refused: %v %v", access, err)
 	}
