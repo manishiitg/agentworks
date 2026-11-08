@@ -62,41 +62,49 @@ func TestWorkflowContextAccess(t *testing.T) {
 	}
 }
 
-// Crews are shared server-wide: another owner's Crew is reachable by its
-// physical path; missing Crews and sub-folders are still rejected.
-func TestCrewContextAccessIsServerWide(t *testing.T) {
+// PLAT-746-502: a registered Crew is usable only by its owner or current audience.
+func TestCrewContextAccessRequiresCurrentAudience(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","products":[]},{"id":"bob","username":"bob","products":[]}]}`)
+	own := registerTestCrew(t, "research", "alice", false)
+	shared := registerTestCrew(t, "shared", "bob", true)
+	private := registerTestCrew(t, "private", "bob", false)
 	workspace := &mockWorkspaceAPI{files: map[string]string{
-		"_users/alice/Chats/Work/projects/research/product.json": `{"schema_version":1,"product":"work","id":"research","title":"Research"}`,
-		"_users/bob/Chats/Work/projects/private/product.json":    `{"schema_version":1,"product":"work","id":"private","title":"Private"}`,
+		own + "/product.json":     `{"schema_version":1,"product":"work","id":"crew-research","title":"Research"}`,
+		shared + "/product.json":  `{"schema_version":1,"product":"work","id":"crew-shared","title":"Shared"}`,
+		private + "/product.json": `{"schema_version":1,"product":"work","id":"crew-private","title":"Private"}`,
 	}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice", Username: "alice"})
-	logical, roots, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{"Chats/Work/projects/research", "Chats/Work/projects/research/"})
-	if err != nil || !reflect.DeepEqual(logical, []string{"Chats/Work/projects/research"}) || !reflect.DeepEqual(roots, []string{"_users/alice/Chats/Work/projects/research"}) {
-		t.Fatalf("Crew context logical=%v roots=%v err=%v", logical, roots, err)
+	ctxFor := func(user string) context.Context {
+		return context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user})
 	}
-	writes, reads := collectSplitFolderGuardFolders("", roots)
-	if len(writes) != 0 || !reflect.DeepEqual(reads, roots) {
-		t.Fatalf("reference roots arrive as the read set (Crew roots are split into writes at guard setup): writes=%v reads=%v", writes, reads)
+	for _, allowed := range []struct{ user, root string }{{"alice", own}, {"alice", shared}, {"bob", private}} {
+		logical, roots, err := authorizeWorkflowContextPathsWithReadRoots(ctxFor(allowed.user), []string{allowed.root, allowed.root + "/"})
+		if err != nil || !reflect.DeepEqual(logical, []string{allowed.root}) || !reflect.DeepEqual(roots, []string{allowed.root}) {
+			t.Fatalf("admitted Crew %s/%s: logical=%v roots=%v err=%v", allowed.user, allowed.root, logical, roots, err)
+		}
+		writes, reads := splitCrewReferenceFolders(append(roots, "Workflow/reports"))
+		if !reflect.DeepEqual(writes, []string{allowed.root + "/"}) || !reflect.DeepEqual(reads, []string{"Workflow/reports"}) {
+			t.Fatalf("admitted Crew files writable, workflow read-only: writes=%v reads=%v", writes, reads)
+		}
 	}
-	if got, err := authorizeWorkflowContextPaths(ctx, []string{"Chats/Work/projects/research"}); err == nil || got != nil {
+	if got, err := authorizeWorkflowContextPaths(ctxFor("alice"), []string{own}); err == nil || got != nil {
 		t.Fatalf("workflow-only authorizer accepted Crew path: %v %v", got, err)
 	}
-	if got, readRoots, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{"_users/bob/Chats/Work/projects/private"}); err != nil || !reflect.DeepEqual(readRoots, []string{"_users/bob/Chats/Work/projects/private"}) {
-		t.Fatalf("another owner's Crew must be reachable: %v %v %v", got, readRoots, err)
-	}
-	crewWrite, readOnly := splitCrewReferenceFolders([]string{"_users/bob/Chats/Work/projects/private", "Workflow/reports"})
-	if !reflect.DeepEqual(crewWrite, []string{"_users/bob/Chats/Work/projects/private/"}) || !reflect.DeepEqual(readOnly, []string{"Workflow/reports"}) {
-		t.Fatalf("crew roots must be writable and workflows read-only: write=%v read=%v", crewWrite, readOnly)
-	}
-	for _, path := range []string{"Chats/Work/projects/private", "_users/bob/Chats/Work/projects/missing", "Chats/Work/projects/research/code"} {
-		if got, readRoots, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{path}); err == nil || got != nil || readRoots != nil {
-			t.Fatalf("unauthorized Crew reference accepted: %q => %v %v %v", path, got, readRoots, err)
+	for _, denied := range []struct{ user, root string }{{"alice", private}, {"", own}, {"alice", "Crew/missing"}, {"alice", own + "/code"}, {"alice", "Chats/Work/projects/research"}} {
+		if got, roots, err := authorizeWorkflowContextPathsWithReadRoots(ctxFor(denied.user), []string{denied.root}); err == nil || got != nil || roots != nil {
+			t.Fatalf("unauthorized reference accepted: %s/%s => %v %v %v", denied.user, denied.root, got, roots, err)
 		}
+	}
+	if err := defaultProjectOwners().SetAudience("work", "shared", true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, roots, err := authorizeWorkflowContextPathsWithReadRoots(ctxFor("alice"), []string{shared}); err == nil || got != nil || roots != nil {
+		t.Fatalf("revoked Crew reference remained usable: %v %v %v", got, roots, err)
 	}
 }
 
@@ -129,35 +137,22 @@ func TestMergeDurableWorkflowContextPaths(t *testing.T) {
 	}
 }
 
-// A person's own Code project can be attached, read-only, to another of their Code projects, and nowhere else: not to a Crew turn,
-// not by another owner's spelling, and not when product.json says it is not a Code project.
-func TestCodeProjectContextIsOwnReadOnlyAndCodeTurnsOnly(t *testing.T) {
+// Code routing retired in8106ccb9de; old private paths never become Crew context.
+func TestContextReferencesRejectRetiredCodePaths(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","products":[]},{"id":"bob","username":"bob","products":[]}]}`)
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","products":[]}]}`)
 	workspace := &mockWorkspaceAPI{files: map[string]string{
-		"_users/alice/Chats/Code/projects/api/product.json":     `{"schema_version":1,"product":"code","id":"api","title":"API"}`,
-		"_users/alice/Chats/Code/projects/notcode/product.json": `{"schema_version":1,"product":"work","id":"x","title":"X"}`,
-		"_users/bob/Chats/Code/projects/private/product.json":   `{"schema_version":1,"product":"code","id":"p","title":"Private"}`,
+		"_users/alice/Chats/Code/projects/api/product.json": `{"schema_version":1,"product":"code","id":"api","title":"API"}`,
 	}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
-	alice := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice", Username: "alice"})
-	codeTurn := alice
-
-	if got, _, err := authorizeWorkflowContextPathsWithReadRoots(alice, []string{"Chats/Code/projects/api"}); err == nil || got != nil {
-		t.Fatalf("a Code project must not be attached outside a Code turn: %v %v", got, err)
-	}
-	logical, roots, err := authorizeWorkflowContextPathsWithReadRoots(codeTurn, []string{"Chats/Code/projects/api", "Chats/Code/projects/api/"})
-	if err != nil || !reflect.DeepEqual(logical, []string{"Chats/Code/projects/api"}) || !reflect.DeepEqual(roots, []string{"_users/alice/Chats/Code/projects/api"}) {
-		t.Fatalf("own Code project: logical=%v roots=%v err=%v", logical, roots, err)
-	}
-	if writes, reads := splitCrewReferenceFolders(roots); len(writes) != 0 || !reflect.DeepEqual(reads, roots) {
-		t.Fatalf("an attached Code project is read-only: writes=%v reads=%v", writes, reads)
-	}
-	for _, path := range []string{"_users/bob/Chats/Code/projects/private", "Chats/Code/projects/private", "Chats/Code/projects/notcode", "Chats/Code/projects/api/code", "Chats/Code/projects/../projects/api"} {
-		if got, readRoots, err := authorizeWorkflowContextPathsWithReadRoots(codeTurn, []string{path}); err == nil || got != nil || readRoots != nil {
-			t.Fatalf("unauthorized Code reference accepted: %q => %v %v %v", path, got, readRoots, err)
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice"})
+	for _, path := range []string{"Chats/Code/projects/api", "_users/alice/Chats/Code/projects/api", "_users/bob/Chats/Code/projects/private", "Chats/Code/projects/api/code", "Chats/Code/projects/../projects/api"} {
+		if got, roots, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{path}); err == nil || got != nil || roots != nil {
+			t.Fatalf("retired private path accepted: %q => %v %v %v", path, got, roots, err)
 		}
 	}
 }
