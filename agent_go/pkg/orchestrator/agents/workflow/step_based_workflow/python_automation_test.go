@@ -632,6 +632,6 @@ assert first.log_complete and second.log_complete and passed.log_complete
 			t.Fatal("late step record missing")
 		}
 	}
-	t.Log(fmt.Sprintf("real_python=true resumed_first=true repeated_key_runs=true failed_checks_retained=%d", failures))
+	t.Log(fmt.Sprintf("real_python=true checks_reexecuted_on_resume=true repeated_labels_run=true failed_checks_retained=%d", failures))
 	common.ClearSessionShellConfig(c.GetMCPSessionID())
 }
