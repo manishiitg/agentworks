@@ -1,13 +1,12 @@
 // @vitest-environment happy-dom
-import React, { act, useState } from 'react'
+// @vitest-environment happy-dom
+import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterAll, afterEach, expect, it, vi } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
 const auth = vi.hoisted(() => ({ user: { id: 'alice', is_admin: false, can_create: true, allowed_products: null } as any }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => select(auth) }))
 import { ProductSettingsMenu } from './ProductSettingsMenu'
-import { ProductBreadcrumb } from './ProductBreadcrumb'
-import { WorkspaceToolsMenu } from './WorkspaceToolsMenu'
 import { WorkspaceTopToolbar } from './WorkspaceTopToolbar'
 import { ProductTopBar } from './ProductTopBar'
 import { TopBarEntitySelector } from '../topbar/TopBarEntitySelector'
@@ -26,7 +25,7 @@ afterAll(() => vi.unstubAllGlobals())
 afterEach(() => { delete window.__APP_RUNTIME_CONFIG__; auth.user = { id: 'alice', is_admin: false, can_create: true, allowed_products: null }; useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: null }) })
 it.each([false, true])('keeps existing permission gates inside the labeled menu (admin=%s)', async admin => {
   auth.user.is_admin = admin
-  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'work', 'code', 'relays', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
+  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'work', 'code', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   try {
     await act(async () => root.render(<TooltipProvider><ProductSettingsMenu><ProvidersControl /><McpControl /><UsersControl /></ProductSettingsMenu></TooltipProvider>))
@@ -45,7 +44,7 @@ it.each([false, true])('keeps existing permission gates inside the labeled menu 
 })
 it('supports keyboard dismissal without adding a separate personal Vault entry', async () => {
   auth.user.allowed_products = ['work']
-  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'work', 'code', 'relays', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
+  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'work', 'code', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   try {
     await act(async () => root.render(<TooltipProvider><ProductSettingsMenu><UsersControl /></ProductSettingsMenu></TooltipProvider>))
@@ -88,10 +87,10 @@ it('closes lifted picker state before Setup navigation reparents controls into a
   } finally { await act(async () => root.unmount()); host.remove() }
 })
 
-it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(surface => [false, true].map(admin => ({ surface, admin }))))('keeps bottom Setup permission-filtered in $surface (admin=$admin)', async ({ surface, admin }) => {
+it.each((['agentworks', 'work', 'code'] as ProductSurface[]).flatMap(surface => [false, true].map(admin => ({ surface, admin }))))('keeps bottom Setup permission-filtered in $surface (admin=$admin)', async ({ surface, admin }) => {
   auth.user.is_admin = admin
   useProductSurfaceStore.setState({ productSurface: surface })
-  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'work', 'code', 'relays', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
+  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'work', 'code', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
   const destination = document.createElement('div'); document.body.append(destination)
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: destination })

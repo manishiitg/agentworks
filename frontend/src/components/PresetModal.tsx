@@ -29,14 +29,13 @@ import { useChatStore } from '../stores/useChatStore';
 interface PresetModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (label: string, query: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'headless' | 'cdp', icon?: string, workflowKind?: 'relay' | 'workflow') => boolean | void | Promise<boolean | void>;
+  onSave: (label: string, query: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'extension' | 'headless' | 'cdp', icon?: string) => boolean | void | Promise<boolean | void>;
   editingPreset?: CustomPreset | null;
   availableServers?: string[];
   hideAgentModeSelection?: boolean;
   fixedAgentMode?: 'multi-agent' | 'workflow';
   agentMode: string;
   onDeleteWorkflow?: (preset: CustomPreset) => Promise<void>;
-  fixedWorkflowKind?: 'relay' | 'workflow';
 }
 
 const PresetModal: React.FC<PresetModalProps> = React.memo(({
@@ -49,7 +48,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
   fixedAgentMode,
   agentMode: propAgentMode,
   onDeleteWorkflow,
-  fixedWorkflowKind,
 }) => {
   const [label, setLabel] = useState('');
   const [icon, setIcon] = useState('');
@@ -60,7 +58,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
   // Per-preset global secret selection (null = all selected, [] = none, [...] = specific)
   const [selectedGlobalSecrets, setSelectedGlobalSecrets] = useState<string[] | null>([]);
   const [internalAgentMode, setInternalAgentMode] = useState<'multi-agent' | 'workflow'>('multi-agent');
-  const [workflowKind, setWorkflowKind] = useState<'relay' | 'workflow'>('workflow');
   const [selectedFolder, setSelectedFolder] = useState<PlannerFile | null>(null);
   const [workflowFolderEdited, setWorkflowFolderEdited] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
@@ -237,7 +234,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       setSelectedSkills(editingPreset.selectedSkills || []);
       setSelectedGlobalSecrets(editingPreset.selectedGlobalSecretNames ?? null);
       setInternalAgentMode(editingPreset.agentMode || 'workflow'); // Default to workflow
-      setWorkflowKind(editingPreset.workflowKind || 'workflow');
       setSelectedFolder(editingPreset.selectedFolder || null);
       setWorkflowFolderEdited(true);
       const presetLLM: PresetLLMConfig = editingPreset.llmConfig || {
@@ -267,7 +263,6 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       // Default to workflow mode as chat presets are disabled
       const defaultMode = 'workflow';
       setInternalAgentMode(defaultMode);
-      setWorkflowKind(fixedWorkflowKind || 'workflow');
       setSelectedFolder(makeWorkflowFolder(sanitizeWorkflowFolderName('')));
       setWorkflowFolderEdited(false);
       // Initialize LLM config from current primary config
@@ -288,7 +283,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       setTier3LLM(null);
       setShowWorkflowLLMAdvanced(false);
     }
-  }, [editingPreset, fixedAgentMode, fixedWorkflowKind, primaryConfig, selectedModeCategory, getAgentModeFromCategory, makeWorkflowFolder, sanitizeWorkflowFolderName, hasAdvancedWorkflowLLMConfig]);
+  }, [editingPreset, fixedAgentMode, primaryConfig, selectedModeCategory, getAgentModeFromCategory, makeWorkflowFolder, sanitizeWorkflowFolderName, hasAdvancedWorkflowLLMConfig]);
 
   useEffect(() => {
     if (editingPreset || effectiveAgentMode !== 'workflow' || workflowFolderEdited) {
@@ -434,8 +429,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         false, // useCodeExecutionMode — backend determines mode from browser selection
         selectedGlobalSecrets, // Per-preset global secret selection (null=all)
         browserMode,
-        icon.trim(),
-        workflowKind
+        icon.trim()
       );
       if (saved === false) return;
       manifestSaved = true;
@@ -454,7 +448,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
     } finally {
       setIsSavingPreset(false);
     }
-  }, [label, icon, query, effectiveAgentMode, selectedFolder, selectedServers, selectedTools, selectedSkills, selectedGlobalSecrets, llmConfig, builderLLM, effectiveBuilderLLM, maintenanceLLM, effectiveMaintenanceLLM, backgroundLLM, effectiveBackgroundLLM, browserMode, editingPreset, onSave, onClose, defaultAgentLLM, effectiveTier1LLM, effectiveTier2LLM, effectiveTier3LLM, showWorkflowLLMAdvanced, unsavedCredentialProvider, showRunsOn, runsOn, workflowKind]);
+  }, [label, icon, query, effectiveAgentMode, selectedFolder, selectedServers, selectedTools, selectedSkills, selectedGlobalSecrets, llmConfig, builderLLM, effectiveBuilderLLM, maintenanceLLM, effectiveMaintenanceLLM, backgroundLLM, effectiveBackgroundLLM, browserMode, editingPreset, onSave, onClose, defaultAgentLLM, effectiveTier1LLM, effectiveTier2LLM, effectiveTier3LLM, showWorkflowLLMAdvanced, unsavedCredentialProvider, showRunsOn, runsOn]);
 
   // Close modal on escape key
   useEffect(() => {
@@ -505,7 +499,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         <div className="flex flex-shrink-0 flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
           <h2 className="min-w-0 text-lg font-semibold text-foreground sm:text-2xl">
             {effectiveAgentMode === 'workflow'
-              ? `${editingPreset ? 'Edit' : 'Add'} ${workflowKind === 'relay' ? 'Flow' : 'Automation'}`
+              ? `${editingPreset ? 'Edit' : 'Add'} ${'Automation'}`
               : (editingPreset ? 'Edit Preset' : 'Add New Preset')}
           </h2>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -529,7 +523,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
               disabled={isSavingPreset || !label.trim() || (effectiveAgentMode !== 'workflow' && !query.trim()) || (effectiveAgentMode === 'workflow' && !selectedFolder)}
             >
               {isSavingPreset && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-              {editingPreset ? 'Update' : 'Save'} {effectiveAgentMode === 'workflow' ? (workflowKind === 'relay' ? 'Flow' : 'Automation') : 'Preset'}
+              {editingPreset ? 'Update' : 'Save'} {effectiveAgentMode === 'workflow' ? ('Automation') : 'Preset'}
             </Button>
             <Button
               type="button"
@@ -571,13 +565,13 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
                 </div>
                 <div>
                   <label htmlFor="preset-label" className="block text-sm font-medium mb-2">
-                    {workflowKind === 'relay' ? 'Flow Name' : 'Automation Name'}
+                    {'Automation Name'}
                   </label>
                   <Input
                     id="preset-label"
                     value={label}
                     onChange={(e) => setLabel(e.target.value)}
-                    placeholder={workflowKind === 'relay' ? 'Enter Flow name...' : 'Enter automation name...'}
+                    placeholder={'Enter automation name...'}
                     autoFocus
                     required
                   />
@@ -585,30 +579,18 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
               </div>
               <div>
                 <p id="preset-icon-help" className="text-xs text-gray-500 dark:text-gray-400">
-                  Optional. Use an emoji or short symbol; otherwise the {workflowKind === 'relay' ? 'relay' : 'automation'}’s initial is used.
+                  Optional. Use an emoji or short symbol; otherwise the {'automation'}’s initial is used.
                 </p>
                 {showRunsOn && (
                   <RunsOnPicker profileId="workflow" accountsProduct="" saveAccount="when-needed" options={runsOnOptions} onChange={setRunsOn} />
                 )}
                 {!editingPreset && (
                   <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    Saved under <span className="font-mono">{selectedFolder?.filepath || 'Workflow/workflow'}</span>. Models, secrets and connectors are set up inside the {workflowKind === 'relay' ? 'relay' : 'workflow'}.
+                    Saved under <span className="font-mono">{selectedFolder?.filepath || 'Workflow/workflow'}</span>. Models, secrets and connectors are set up inside the {'workflow'}.
                   </p>
                 )}
               </div>
-              {!editingPreset && !fixedWorkflowKind && <div>
-                <label htmlFor="workflow-kind" className="mb-2 block text-sm font-medium">Product</label>
-                <select
-                  id="workflow-kind"
-                  value={workflowKind}
-                  onChange={event => setWorkflowKind(event.target.value as 'workflow' | 'relay')}
-                  className="w-full rounded-md border border-gray-300 bg-white p-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-                >
-                  <option value="workflow">Automation</option>
-                  <option value="relay">Flow</option>
-                </select>
-                {workflowKind === 'relay' && <p className="mt-1 text-xs text-gray-500">Build an API callable graph of authored agents, scripts, and decisions.</p>}
-              </div>}
+
             </div>
           ) : (
             /* Simple/Chat Mode: Two Column Layout */

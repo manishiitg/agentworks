@@ -79,7 +79,7 @@ export function sidebarScope(
     ? presets.find(item => normalizedWorkspace(item.selectedFolder?.filepath) === normalizedWorkspace(path))
     : undefined)
   if (workflowPreset) return {
-    surface: workflowPreset.workflowKind === 'relay' ? 'relays' : 'agentworks',
+    surface: 'agentworks',
     workflowId: workflowPreset.id,
   }
   const project =
@@ -138,7 +138,7 @@ export function sidebarChats({
   const accepts = (row: SidebarChat) =>
     allowed.includes(row.surface) &&
     (!allowedWorkflowIds ||
-      !['agentworks', 'relays'].includes(row.surface) ||
+      !['agentworks'].includes(row.surface) ||
       (!!row.workflowId && allowedWorkflowIds.includes(row.workflowId)))
   const collect = (row: SidebarChat) => accepts(row) ||
     (projectInventoryKnown && (row.surface === 'work') && !!row.projectId)

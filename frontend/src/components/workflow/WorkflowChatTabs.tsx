@@ -5,7 +5,6 @@ import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
-import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import {
   convertObservedWorkflowTabToInteractive,
   isMisclassifiedRestoredWorkflowChat,
@@ -46,7 +45,6 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
   const setFocusedPane = useWorkflowStore(state => state.setFocusedPane)
   const activePresetId = useGlobalPresetStore(state => state.activePresetIds.workflow)
   const workflowPresets = useGlobalPresetStore(state => state.workflowPresets)
-  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
 
   // Repair tabs already corrupted by the old Restore path. The durable
   // restoredConversationPath marker proves this is an interactive restore,
@@ -181,8 +179,8 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
   const tabs = [main, ...activeWorkflowTabs.filter(tab => tab.tabId !== main.tabId)]
   return <div className={embedded ? 'flex min-w-0 flex-1' : 'shrink-0 border-b border-border bg-background px-2 py-1'}>
     <ProjectAgentTabs tabs={tabs} listed={[]} canonicalTabId={main.tabId}
-      projectName={workflowPresets.find(preset => preset.id === activePresetId)?.label?.trim() || (isRelaySurface ? 'Relay' : 'Goal')}
-      surface={isRelaySurface ? 'relays' : 'agentworks'} allowSideChats={false} opening={false}
+      projectName={workflowPresets.find(preset => preset.id === activePresetId)?.label?.trim() || ('Goal')}
+      surface="agentworks" allowSideChats={false} opening={false}
       onOpen={async () => {}} onRename={async () => {}} onOrder={async () => {}} onPin={async () => {}}
       onSelectTab={handleTabClick} onCloseTab={handleCloseTab} onMakeInteractive={handleMakeInteractive}
       isTabActive={tab => tab.tabId === activeTabId && !stepInspectionState(tab).selected}

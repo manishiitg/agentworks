@@ -9,7 +9,7 @@ import { activateTab } from './activateTab'
 export async function restoreWorkspaceChat(destination: WorkspaceDestination, signal: AbortSignal) {
   if (!destination.session_id || !destination.id || !destination.workspace_path || signal.aborted) return
   const chat = useChatStore.getState()
-  const workflow = destination.surface === 'agentworks' || destination.surface === 'relays'
+  const workflow = destination.surface === 'agentworks'
   const builder = destination.chat?.workshop_mode === 'workshop' && !destination.chat.execution_run
   const common = { isViewOnly: destination.chat?.read_only, isExecutionRun: destination.chat?.execution_run,
     isScheduledRun: destination.chat?.scheduled_run, scheduledJobName: destination.chat?.scheduled_job_name,

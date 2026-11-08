@@ -5,7 +5,7 @@ import { currentProductRoute } from '../utils/productRoutes'
 export type DashboardDirectoryEntry = {
   dashboard_id: string
   project_id?: string
-  product: 'crew' | 'workflow' | 'relay'
+  product: 'crew' | 'workflow'
   title?: string
   workspace: string
   project_title?: string

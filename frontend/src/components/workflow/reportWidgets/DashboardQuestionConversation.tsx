@@ -47,7 +47,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const opening = useRef<Promise<string> | null>(null)
   // Native project chat enforces Builder/Run permissions on every request.
   // Merged Crew projects retain their work/code origin for native conversation routing.
-  const canAsk = Boolean(viewer && capability.can_ask && ['crew', 'code', 'workflow', 'relay'].includes(product))
+  const canAsk = Boolean(viewer && capability.can_ask && ['crew', 'code', 'workflow'].includes(product))
   // A dashboard link is the shared person's view, for its owner too: the chat and the function buttons run in Run mode.
   const asUser = conversationPane === true && product === 'crew' && capability.mode === 'owner'
   // Widgets belong to the shared Run view. Owner/context-menu questions retain
@@ -55,7 +55,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const showChatWidgets = canAsk && capability.mode === 'question_only' && !conversationPane
   // Function buttons run the project's published functions as this person; the
   // server resolves the project from the dashboard record, including either Crew origin.
-  const canUseFunctions = Boolean(viewer && capability.can_view && !capability.functions_off && ['crew', 'code', 'workflow', 'relay'].includes(product))
+  const canUseFunctions = Boolean(viewer && capability.can_view && !capability.functions_off && ['crew', 'code', 'workflow'].includes(product))
   // "/" in this chat lists the project's published functions (not the person's own
   // commands); choosing one opens the same form as a function button.
   const [functionList, setFunctionList] = useState<{ name: string; description?: string }[]>([])

@@ -26,7 +26,6 @@ export default function SchedulesPage() {
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const [activeTab, setActiveTab] = useState<OverviewTab>('schedules')
   const isCrew = productSurface === 'work'
-  const workflowKind = 'workflow'
 
   const openTriggerOwner = (owner: TriggerOwner) => {
     setShowSchedulesOverview(false)
@@ -68,9 +67,9 @@ export default function SchedulesPage() {
         <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading overview…</div>}>
           {activeTab === 'schedules' && <Schedules key={productSurface} embedded active={showSchedules && !showProviders}
             onClose={() => setShowSchedulesOverview(false)} entityType={isCrew ? 'product' : 'workflow'}
-            productProfileId={isCrew ? 'work' : undefined} workflowKind={isCrew ? undefined : workflowKind} />}
+            productProfileId={isCrew ? 'work' : undefined} />}
           {activeTab === 'triggers' && <Triggers key={productSurface} kind={isCrew ? 'crew' : 'workflow'}
-            workflowKind={isCrew ? undefined : workflowKind} onOpen={openTriggerOwner} />}
+            onOpen={openTriggerOwner} />}
         </Suspense>
       </div>
     </section>

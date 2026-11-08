@@ -161,11 +161,10 @@ it('keeps named panel commands ahead of recently visited incidental matches, wit
   expect(ids).toContain('crew:recent')
 })
 
-it('browses workflows without offering disabled Flows from footer icons without requiring typed scopes', async () => {
+it('browses workflows from footer icons without requiring typed scopes', async () => {
   const { host, onClose } = await renderNavigation('', undefined, true, () => {
     useGlobalPresetStore.setState({ workflowPresets: [
       { id: 'workflow', label: 'Daily report', selectedFolder: { filepath: 'Workflow/report' } },
-      { id: 'relay', label: 'Invoice Relay', workflowKind: 'relay', selectedFolder: { filepath: 'Workflow/invoice' } },
     ] as never })
   })
   const shortcuts = host.querySelector('[aria-label="Quick navigation shortcuts"]')!
@@ -173,7 +172,6 @@ it('browses workflows without offering disabled Flows from footer icons without 
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:workflow'])
   expect(host.querySelector('input')!.value).toBe('')
   expect(host.querySelector('[aria-label="Show all work and navigation"]')?.textContent).toContain('All Goals')
-  expect(shortcuts.querySelector('[aria-label="All Flows"]')).toBeNull()
   expect(onClose).not.toHaveBeenCalled()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Show all work and navigation"]')!.click())
   expect(host.querySelector('[data-navigation-id="browse:crew"]')).not.toBeNull()
@@ -294,7 +292,7 @@ it('opens a parent panel with @panels and refuses stale panel selections after a
   open.mockClear(); onClose.mockClear()
   const row = host.querySelector('[data-navigation-id="panel:files"]')!
   await act(async () => {
-    useAuthStore.setState({ user: { allowed_products: ['relays'] } as never })
+    useAuthStore.setState({ user: { allowed_products: [] } as never })
     row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
   })
   expect(open).not.toHaveBeenCalled()
@@ -341,12 +339,12 @@ it('retains a Crew creation request through lazy mounting, opens the real form o
   expect(opened).toHaveBeenCalledOnce()
   await act(async () => {
     useCommandDialogStore.getState().requestProductCreate('work')
-    useProductSurfaceStore.getState().setProductSurface('relays')
+    useProductSurfaceStore.getState().setProductSurface('agentworks')
   })
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
   await act(async () => {
-    useCommandDialogStore.getState().requestProductCreate('relays')
-    openProductWorkspace('relays')
+    useCommandDialogStore.getState().requestProductCreate('work')
+    openProductWorkspace('work')
   })
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
 })
