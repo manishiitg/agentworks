@@ -49,8 +49,12 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	}
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	if err := os.MkdirAll(filepath.Join(docs, binding.Root), 0755); err != nil {
-		t.Fatal(err)
+	// Manifest saves validate the real registered storage, not a retired
+	// docs/Workflow directory supplied only by this HTTP fixture.
+	for _, dir := range []string{binding.CrewRoot, "_system/crew-data/" + binding.CrewID} {
+		if err := os.MkdirAll(filepath.Join(docs, dir), 0755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if resolved, err := findCrewExecutable(filepath.Join(docs, binding.Root)); err != nil || resolved == nil {
 		t.Fatalf("absolute binding: %v", err)

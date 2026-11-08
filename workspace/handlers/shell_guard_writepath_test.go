@@ -85,7 +85,7 @@ func TestResolveGuardWritePath(t *testing.T) {
 		}
 	}
 	writeJSON(filepath.Join(state, "ownership/projects.json"), map[string]any{"projects": map[string]crewroot.Record{"work/example": {Product: "work", Folder: "example", ID: "crew", Owner: "owner"}}})
-	binding := crewroot.ExecutableBinding{ID: "sequence", Root: "Workflow/sequence", CrewID: "crew", CrewRoot: "Crew/example", Kind: "workflow"}
+	binding := crewroot.ExecutableBinding{ID: "sequence", Root: "Workflow/sequence", CrewID: "crew", CrewRoot: "Crew/example", Kind: "workflow", RuntimeRoot: "workflows/sequence"}
 	writeJSON(filepath.Join(state, "ownership/crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))), binding)
 	logical := binding.Root + "/runs/run-one/execution/step-output"
 	physical, err := resolveGuardWritePath(logical, docsDir)

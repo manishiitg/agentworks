@@ -4,19 +4,23 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
+const runtimeRootInitialization = "automation storage is not initialized; run python3 scripts/migrate-workflow-to-python.py --docs <workspace> --state <state> --initialize-runtime-roots --apply"
+
 // ExecutableBinding is private routing state, never read from project files.
 // Workflow/<id> is the execution identity; its authored files live with its Crew.
 type ExecutableBinding struct {
-	ID       string `json:"id"`
-	CrewID   string `json:"crew_id"`
-	CrewRoot string `json:"crew_root"`
-	Root     string `json:"workspace_path"`
-	Kind     string `json:"kind"`
+	ID          string `json:"id"`
+	CrewID      string `json:"crew_id"`
+	CrewRoot    string `json:"crew_root"`
+	Root        string `json:"workspace_path"`
+	Kind        string `json:"kind"`
+	RuntimeRoot string `json:"runtime_root"`
 }
 
 type ExecutableLayout struct {
@@ -61,12 +65,13 @@ func (q *Resolver) executable(virtual string) (ExecutableLayout, bool, error) {
 		return ExecutableLayout{}, true, fmt.Errorf("executable's owning Crew is unavailable")
 	}
 	automation := filepath.Join(r.Files, ".agentworks")
-	runtime := filepath.Join(q.docs, filepath.FromSlash(root))
-	if b.Kind == "workflow" {
-		runtime = filepath.Join(r.Private, "workflows", b.ID)
-	} else if b.Kind == "script" {
-		runtime = filepath.Join(r.Private, "scripts", b.ID)
+	if b.RuntimeRoot == "" {
+		return ExecutableLayout{}, true, fmt.Errorf("%s", runtimeRootInitialization)
 	}
+	if !validRuntimeRoot(b.RuntimeRoot, b.ID) {
+		return ExecutableLayout{}, true, fmt.Errorf("invalid automation runtime root")
+	}
+	runtime := filepath.Join(r.Private, filepath.FromSlash(b.RuntimeRoot))
 	return ExecutableLayout{b, r, filepath.Join(automation, "workflows", b.ID), filepath.Join(automation, "code", b.ID), runtime}, true, nil
 }
 
@@ -81,6 +86,8 @@ func LookupExecutable(docs, virtual string) (ExecutableLayout, bool, error) {
 
 func (l ExecutableLayout) source(rel string) (root, suffix string, mapped bool) {
 	switch {
+	case l.Crew.DatabaseRoot != "" && (rel == "db" || strings.HasPrefix(rel, "db/")):
+		return l.Crew.Private, filepath.Join(l.Crew.DatabaseRoot, strings.TrimPrefix(strings.TrimPrefix(rel, "db"), "/")), true
 	case rel == "planning/changelog" || strings.HasPrefix(rel, "planning/changelog/") || rel == "planning/revisions" || strings.HasPrefix(rel, "planning/revisions/"):
 		return l.Runtime, rel, l.Binding.Kind == "workflow" || l.Binding.Kind == "script"
 	case rel == "code" || strings.HasPrefix(rel, "code/"):
@@ -166,6 +173,10 @@ func ExecutableLayouts(docs string) ([]ExecutableLayout, error) {
 		if entry.Name() != fmt.Sprintf("%x.json", sha256.Sum256([]byte(b.Root))) {
 			return nil, fmt.Errorf("invalid executable registry filename")
 		}
+		if b.RuntimeRoot == "" && b.Kind != "relay" {
+			log.Printf("[CREW_EXECUTABLE] unavailable id=%s reason=%s", b.ID, runtimeRootInitialization)
+			continue
+		}
 		l, found, err := q.executable(b.Root)
 		if err != nil {
 			return nil, err
@@ -175,4 +186,10 @@ func ExecutableLayouts(docs string) ([]ExecutableLayout, error) {
 		}
 	}
 	return out, nil
+}
+
+// Private registry references may retain historical folder names across a kind change.
+func validRuntimeRoot(value, id string) bool {
+	parts := strings.Split(value, "/")
+	return id != "" && id != "." && id != ".." && !strings.ContainsAny(id, "/\\") && len(parts) == 2 && parts[1] == id && (parts[0] == "workflows" || parts[0] == "scripts" || parts[0] == "automations")
 }
