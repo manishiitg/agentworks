@@ -153,6 +153,15 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	if err != nil || !strings.Contains(string(data), `"count": 9`) || preset == direct {
 		t.Fatalf("preset result %s %v", data, err)
 	}
+	// PLAT-746-468: equal resolved values cannot identify which preset a
+	// person selected; diagnostics and rerun need the saved label as well.
+	for folder, expected := range map[string]string{direct: "", preset: "second"} {
+		raw, err := os.ReadFile(filepath.Join(folder, "run_metadata.json"))
+		var metadata map[string]interface{}
+		if err != nil || json.Unmarshal(raw, &metadata) != nil || metadata["input_preset"] != expected {
+			t.Fatalf("run lost selected preset: want=%q metadata=%s err=%v", expected, raw, err)
+		}
+	}
 	if _, err := os.Stat(filepath.Join(docs, root, "workflow.json")); !os.IsNotExist(err) {
 		t.Fatal("script saved a duplicate workflow definition")
 	}
