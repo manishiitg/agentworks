@@ -4784,6 +4784,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Execute workflow asynchronously
 		go func() {
+			if directWebhookOptions != nil && directWebhookOptions.PythonResume != nil && directWebhookOptions.PythonResume.Release != nil {
+				defer directWebhookOptions.PythonResume.Release()
+			}
 			defer func() {
 				// Clean up the cancel function when done (keyed by queryID)
 				api.workflowOrchestratorContextMux.Lock()

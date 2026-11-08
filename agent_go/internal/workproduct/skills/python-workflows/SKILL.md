@@ -45,6 +45,13 @@ uncertain completed effects are not silently retried. If frozen source/hash or
 input proof is missing or changed, start a new run. `rerun` uses current source
 in a new folder instead. Inspect the failed receipt before choosing either.
 
+To make long phases resumable, give each `agent()` or `run_script()` a stable
+explicit `key`, such as `key="research"` or `key=f"research:{customer_id}"` in
+a loop. Keys identify work, so do not reuse one for different calls. Keep sends
+and orders as ordinary calls; keys are not permission to resend them. Inspect
+an uncertain delivery receipt before deciding what to do next. A second resume
+is refused while the same run is active.
+
 ## script.json
 
 ```json
