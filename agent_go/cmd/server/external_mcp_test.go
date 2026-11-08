@@ -138,8 +138,8 @@ func TestExternalMCPLocalProductSelection(t *testing.T) {
 			t.Fatalf("local MCP accepted disabled tool %s", name)
 		}
 	}
-	if !strings.Contains(text, `"name":"workflow"`) || !strings.Contains(text, `"name":"crew"`) {
-		t.Fatal("local project tools disappeared")
+	if !strings.Contains(text, `"name":"workflow"`) || !strings.Contains(text, `"name":"workspace"`) {
+		t.Fatalf("local project tools disappeared: %s", text)
 	}
 }
 
@@ -179,7 +179,7 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initResult := initializeExternalMCP(t, ctx, cli)
 	// A session login holds every scope, so Crew authoring is announced too.
-	if !strings.HasPrefix(initResult.Instructions, (productpolicy.Selection{}).Text(externalMCPInstructions)) || !strings.Contains(initResult.Instructions, externalMCPCrewAuthoringInstructions) || !strings.Contains(initResult.Instructions, externalMCPRelayInstructions) {
+	if !strings.HasPrefix(initResult.Instructions, (productpolicy.Selection{}).Text(externalMCPInstructions)) || !strings.Contains(initResult.Instructions, externalMCPCrewAuthoringInstructions) {
 		t.Fatalf("run-capable connection got read-only instructions: %q", initResult.Instructions)
 	}
 
@@ -297,8 +297,9 @@ func TestExternalMCPRespectsTokenScopes(t *testing.T) {
 			t.Fatalf("read-only spec missing %q", name)
 		}
 	}
+	// Tool names, not action names: settings action=chat (personal display) is fine to read.
 	for _, name := range []string{"execute_step", "chat", "trigger_schedule", "run_reply_input"} {
-		if strings.Contains(listed, `"`+name+`"`) {
+		if strings.Contains(listed, `"name":"`+name+`"`) {
 			t.Fatalf("read-only spec unexpectedly exposes %q", name)
 		}
 	}

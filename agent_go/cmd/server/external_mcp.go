@@ -146,13 +146,13 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	for _, tool := range allowed {
-		if tool.Name == "brain" && tool.actions["create"] != "" {
+		if tool.Name == "brain" && externalAllowsAction(claims, tool, "create") {
 			instructions += " This connection also authorizes Brain saves. Saves affect only folders where its identity currently has Editor access, intersected with its folder caps; workflow authoring permissions are separate."
 			break
 		}
 	}
 	for _, tool := range allowed {
-		if tool.Name == "vault" && tool.actions["access_save_permissions"] != "" {
+		if tool.Name == "vault" && externalAllowsAction(claims, tool, "access_save_permissions") {
 			instructions += " Vault actions use current account, project and administrator access. Use the offered access_*, groups_* and tools_* actions for administration, governance_query/governance_mutate for guarded SQL, and connections/call for approved setup calls. set_value stores a secret the person supplies and returns names only; never repeat values. Project secrets also use settings action=update secrets.set with existing owner access. Vault administration needs no workflow_id; ordinary runtime calls retain group and selection checks."
 		}
 	}
@@ -637,3 +637,14 @@ func (m externalMCPCatalogSession) Validate(sessionID string) (bool, error) {
 }
 
 func (m externalMCPCatalogSession) Terminate(string) (bool, error) { return false, nil }
+
+// externalAllowsAction: this connection may call that action of a merged tool. The
+// tool's action map lists every action; a note about one must follow its own grant.
+func externalAllowsAction(claims *UserClaims, tool externalTool, action string) bool {
+	for _, name := range externalMemberNames(tool.actions[action]) {
+		if member, ok := externalCatalogTool(name); ok && externalTokenAllows(claims, member) {
+			return true
+		}
+	}
+	return false
+}
