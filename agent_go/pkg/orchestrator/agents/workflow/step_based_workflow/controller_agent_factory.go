@@ -964,6 +964,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureSubAgentSessionGuard(session
 	}
 	kbRead = kbRead && hcpo.platformStoresEnabled()
 	readPaths, writePaths, readOnlyPaths, folderEnv := appendWorkflowFolderAccess(hcpo.GetWorkspacePath(), readPaths, writePaths, kbRead)
+	readOnlyPaths = append(readOnlyPaths, hcpo.scriptSnapshotReadOnlyPaths()...)
 	if stateRoot := hcpo.pythonHelperStateRoot(); stateRoot != "" {
 		readOnlyPaths = append(readOnlyPaths, stateRoot)
 	}

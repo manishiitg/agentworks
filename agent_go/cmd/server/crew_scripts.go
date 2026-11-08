@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"path"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // A typed create writes the initial definition before the derived manifest can
@@ -146,7 +148,7 @@ func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace
 			return result, fmt.Errorf("saved script identity is invalid")
 		}
 		sourceRoot := path.Join(binding.Root, "code")
-		result = workflow.CrewScriptConfiguration{Definition: *definition, Root: sourceRoot, Files: map[string]string{}}
+		result = workflow.CrewScriptConfiguration{Definition: *definition, Root: sourceRoot, Files: map[string][]byte{}}
 		// Match the existing account executor's scope, including its established
 		// shared default. Tool admission must neither narrow nor widen its grants.
 		if google := services.GetGmailService(); google != nil {
@@ -165,15 +167,13 @@ func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace
 			if !workflow.CrewScriptBundleFile(relative) {
 				continue
 			}
-			content, found, err := readFileFromWorkspace(ctx, path.Join(sourceRoot, relative))
+			content, err := fs.ReadFile(workflowfiles.WorkflowFS{Docs: workflow.GetPromptDocsRoot(), Root: binding.Root}, path.Join("code", relative))
 			if err != nil {
 				return result, err
 			}
-			if found {
-				result.Files[relative] = content
-			}
+			result.Files[relative] = content
 		}
-		if result.Files["main.py"] == "" {
+		if len(result.Files["main.py"]) == 0 {
 			return result, fmt.Errorf("save main.py before running this script")
 		}
 		return result, nil

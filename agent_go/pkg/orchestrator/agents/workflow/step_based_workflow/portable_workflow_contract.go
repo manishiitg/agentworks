@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -142,7 +143,10 @@ func ValidatePortableWorkflowRuntime(ctx context.Context, workspace string, reso
 					return nil, fmt.Errorf("step %s: saved script has no main.py", s.GetID())
 				}
 				for name, text := range s.crewScript.Files {
-					if err := portableReferences(text, "script:"+s.Script+"/"+name, s.crewScript.Root); err != nil {
+					if !utf8.Valid(text) {
+						continue
+					}
+					if err := portableReferences(string(text), "script:"+s.Script+"/"+name, s.crewScript.Root); err != nil {
 						return nil, err
 					}
 				}

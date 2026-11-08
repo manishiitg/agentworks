@@ -92,7 +92,7 @@ print('saved-script-finished')
 		write("code/"+id+"/main.py", source)
 		raw, _ := json.Marshal(definition)
 		write("code/"+id+"/script.json", string(raw))
-		scripts[id] = CrewScriptConfiguration{Definition: definition, Root: root + "/code/" + id, Files: map[string]string{"main.py": source, "script.json": string(raw)}}
+		scripts[id] = CrewScriptConfiguration{Definition: definition, Root: root + "/code/" + id, Files: map[string][]byte{"main.py": []byte(source), "script.json": raw}}
 	}
 	// The caller is A. Its extra launch value must not leak into B's defaults.
 	c.directCrewScript = &CrewScriptDefinition{ID: "A", Name: "A", Inputs: []Variable{{Name: "parent_only", Type: "string"}}}

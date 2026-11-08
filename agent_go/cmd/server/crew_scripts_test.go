@@ -117,7 +117,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	}
 	resolver := &crewWorkflowResources{userID: "owner"}
 	resolved, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "script:qualify")
-	if err != nil || resolved.Files["main.py"] != "print('owner update')\n" {
+	if err != nil || string(resolved.Files["main.py"]) != "print('owner update')\n" {
 		t.Fatalf("same-Crew script: %+v %v", resolved, err)
 	}
 	if _, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "other-script"); err == nil || !strings.Contains(err.Error(), "shared function") {
