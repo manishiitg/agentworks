@@ -59,9 +59,10 @@ class SameIdentityConversion(unittest.TestCase):
             binding_file.write_bytes(m.encode(binding))
             (runtime/'runs/old/full.log').write_text('historical full log\n')
             (runtime/'schedules.json').write_text('{"schedules":[]}')
-            (definitions/'planning/plan.json').write_text('{"steps":[{"id":"old"}]}')
+            (definitions/'planning/plan.json').write_text('{"steps":[{"id":"old","write_access":{"knowledgebase":true}}]}')
             capabilities={'browser_mode':'cdp','browser_cdp_port':9222,'selected_global_secret_names':['EXAMPLE_TEST_SECRET'],'llm_config':{'mode':'provider','provider':'codex-cli'},'selected_servers':['example-app'],'selected_tools':['example-app:*']}
-            (definitions/'workflow.json').write_bytes(m.encode({'id':'task','capabilities':capabilities}))
+            # A retired tool in carried selections is dropped (PLAT-746).
+            (definitions/'workflow.json').write_bytes(m.encode({'id':'task','capabilities':dict(capabilities,selected_tools=['example-app:*','human_tools:record_summary'])}))
             (definitions/'variables').mkdir()
             presets=[{'name':'Account A','values':{'account':'first'}},{'name':'Account B','values':{'account':'second'}}]
             (definitions/'variables/variables.json').write_bytes(m.encode({'variables':[{'name':'account','type':'string','value':'first'}],'groups':presets}))
@@ -92,14 +93,16 @@ class SameIdentityConversion(unittest.TestCase):
                 m.plan(docs,state,False,'task',source)
             db = sqlite3.connect(private/'db/db.sqlite');db.execute('DELETE FROM notes');db.commit();db.close()
             source_definition=json.loads((source/'script.json').read_text())
-            source_definition['capabilities']={'browser_mode':'extension'}
-            (source/'script.json').write_bytes(m.encode(source_definition))
-            with self.assertRaisesRegex(ValueError,'changes the saved browser_mode selection'):
-                m.plan(docs,state,False,'task',source)
-            source_definition['capabilities']={'browser_mode':'cdp'}
+            # Settings and presets come from the saved workflow, never the source.
+            for name in ('capabilities','input_presets'):
+                (source/'script.json').write_bytes(m.encode(dict(source_definition,**{name:{}})))
+                with self.assertRaisesRegex(ValueError,'Remove '+name):
+                    m.plan(docs,state,False,'task',source)
             (source/'script.json').write_bytes(m.encode(source_definition))
             changes,documents,report = m.plan(docs,state,False,'task',source)
             self.assertEqual(report['conversion']['database_rows'],{'historical':1})
+            self.assertEqual(report['conversion']['removed_tools'],['human_tools:record_summary'])
+            self.assertEqual(report['conversion']['knowledge_write_steps'],['old'])
             backup = Path(m.apply(changes,documents,state,identity="task"))
             self.assertEqual(hashes(runtime),before)
             self.assertEqual(hashes(backup/'runtime'),before)
