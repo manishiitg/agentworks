@@ -186,7 +186,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Authenticated webhook triggers are enabled. Read the attached `panel-automations` skill before managing triggers. A trigger stores one instruction in product.json and sends it to the project chat with the authenticated delivery payload; it does not run workflow routes.",
 	},
 	"bots": {
-		Tools:           []string{"google_workspace_cli", "list_gmail_connections", "manage_google_account", "manage_slack_account", "manage_slack_bot", "update_gmail_connection_grants", "get_agent_inbox", "configure_agent_inbox", "send_slack_message", "slack", "get_slack_bot_settings", "get_slack_bot_credentials", "configure_slack_bot", "test_slack_bot_connection", "create_slack_bot_route", "update_slack_bot_route_permission", "remove_slack_bot_route"},
+		Tools:           []string{"google_workspace_cli", "list_gmail_connections", "manage_google_account", "manage_slack_account", "manage_slack_bot", "update_gmail_connection_grants", "get_agent_inbox", "configure_agent_inbox", "send_slack_message", "slack", "github", "get_slack_bot_settings", "get_slack_bot_credentials", "configure_slack_bot", "test_slack_bot_connection", "create_slack_bot_route", "update_slack_bot_route_permission", "remove_slack_bot_route"},
 		Skills:          []string{"panel-channels"},
 		UIPanels:        []string{"bots"},
 		Capabilities:    map[string]CapabilityRequirement{"whatsapp": CapabilityPreferred},
@@ -382,7 +382,7 @@ var workflowReferenceCalleeTools = map[string]bool{
 // Google Workspace, and Slack channel routes and channel API reads.
 var botsNonDirectMessageTools = map[string]bool{
 	"google_workspace_cli": true, "list_gmail_connections": true, "manage_google_account": true, "manage_slack_account": true, "update_gmail_connection_grants": true,
-	"slack": true, "send_slack_message": true,
+	"slack": true, "send_slack_message": true, "github": true,
 	"create_slack_bot_route": true, "update_slack_bot_route_permission": true, "remove_slack_bot_route": true,
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"path"
 	"reflect"
@@ -146,16 +147,14 @@ func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace
 		}
 		sourceRoot := path.Join(binding.Root, "code")
 		result = workflow.CrewScriptConfiguration{Definition: *definition, Root: sourceRoot, Files: map[string]string{}}
-		// Account selection already belongs to this exact saved item. Listing
-		// its enabled scoped connections does not change accounts or grants.
+		// Match the existing account executor's scope, including its established
+		// shared default. Tool admission must neither narrow nor widen its grants.
 		if google := services.GetGmailService(); google != nil {
-			for _, connection := range google.ConnectionsUsableFrom(services.GmailUseScope{Workspace: binding.Root, UserID: r.userID}) {
-				if connection.Enabled && connection.IsPrivate() {
-					result.ToolSelections = []string{"human_tools:integrations.google"}
-					break
-				}
+			if connection, err := google.ConnectionForScope("", services.GmailUseScope{Workspace: binding.Root, UserID: r.userID}); err == nil && connection.Enabled {
+				result.ToolSelections = []string{"human_tools:integrations.google"}
 			}
 		}
+		log.Printf("[SCRIPT_APP_SCOPE] script=%s workspace=%s owner=%s google_available=%t", binding.ID, binding.Root, r.userID, len(result.ToolSelections) > 0)
 
 		files, err := listWorkspaceFilesRecursive(ctx, sourceRoot)
 		if err != nil {
