@@ -499,7 +499,7 @@ func (api *StreamingAPI) externalAgentContext(w http.ResponseWriter, r *http.Req
 func externalPreparation(claims *UserClaims) []string {
 	steps := []string{
 		"Choose a product with help action=topic topic=product-guide. For an installable MCP usage skill, request help action=skills topics=[agentworks-mcp]. These are versioned server guidance, independent of Brain access.",
-		"Use only tools and actions present in this connection’s catalog. Each call rechecks existing consent, current account/project roles and connection bounds. Workflow Run-session tools start model turns; direct Crew and project handlers execute without a model turn.",
+		"Use only tools and actions present in this connection’s catalog. Each call rechecks existing consent, current account/project roles and connection bounds. Saved Python workflows run directly; Crew conversations use the Crew's chat. Each entry keeps its existing permissions.",
 		"Call workflow action=list to discover workflow IDs; IDs are never filesystem paths.",
 		"Load only the guidance topics relevant to the task; topic list via help action=topics.",
 		"Use files action=link for preview/download URLs; links identify a file and never grant permission.",
@@ -513,11 +513,10 @@ func externalPreparation(claims *UserClaims) []string {
 	}
 	canRun := claims == nil || claims.AccessToken == nil || claims.AccessToken.Allows("runs:execute")
 	if canRun {
-		steps = append(steps, "To run: call a run-mode tool such as runs action=step (its reply carries session_id), then poll runs action=status for completion. Read run evidence with runs action=list, runs action=get, and runs action=logs.")
-		steps = append(steps, "To chat: send questions with the chat tool and read replies with runs action=status; pass session_id to continue a conversation, and answer pending questions with runs action=reply_input.")
+		steps = append(steps, "To run a saved Python workflow, use runs action=start with its declared inputs. Read the returned run record and its outputs/logs using the evidence operations named in the reply.")
 	}
-	if claims != nil && externalTokenAllows(claims, externalTool{Name: "workflow_upgrade"}) {
-		steps = append(steps, "Older plan-based workflows keep running but are no longer edited; the platform operator converts them to Python script workflows. New workflows are Python scripts: create and edit them with workspace action=automation_create and automation_write.")
+	if claims == nil || externalTokenAllows(claims, externalTool{Name: "ask_crew"}) {
+		steps = append(steps, "To talk to a Crew, use workspace action=ask with crew_id and message. Read messages action=read using the returned inbox_id; reuse that inbox for the same conversation. This is separate from a workflow run.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "workflow_google_account"}) {
 		steps = append(steps, "For personal Google or Slack accounts, use integrations with workflow_id or crew_id. Start with action=google_list_saved or slack_list_saved. The corresponding attach/detach action changes only this item; connect/reconnect returns a browser sign-in link; disconnect removes the saved connection everywhere. Existing Builder access, account ownership and current item access apply.")

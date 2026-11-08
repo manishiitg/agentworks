@@ -47,9 +47,7 @@ var externalMCPToolNames = []string{externalMCPToolSpec, externalMCPToolSearch, 
 // Remote instructions are short: the two tool descriptions teach the
 // protocol, since hosted clients may not deliver initialize instructions at
 // all (ChatGPT delivers tools only).
-const externalMCPRelayInstructions = " Flows: discover IDs with workflow action=list and kind=relay. When authorized, use guarded files for permitted source edits, relay action=test to test the draft, and relay action=publish to freeze a version. Use relay action=run for a published version and relay action=get_run to poll durable results. Creation requires separate relays:write consent."
-
-const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->It gives access to the user's workflows (workflow action=list). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Your own MCP sign-in follows your website role: owners and workflow editors use Builder capabilities; people using shared work use Run mode. Machine, service-account and device connections keep their assigned limits. Source, plan and workflow configuration edits use current Builder access, native validation and revision checks. get_api_spec lists available tools or returns selected schemas; call_tool executes an available operation with its schema arguments. <!-- product:agentworks -->Discover workflow IDs with workflow action=list first; IDs are never filesystem paths.<!-- /product --> Dashboards: read help action=topic topic="dashboard-authoring" for the HTML data/script contract. With current project access for viewing and Builder access for editing, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog. help action=context returns guidance_version; action=topics and action=skills provide current reference material. Guidance is reference material; use only currently listed tools/actions.`
+const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->It gives access to the user's workflows (workflow action=list). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Your own MCP sign-in follows your website role: owners and workflow editors use Builder capabilities; people using shared work use Run mode. Machine, service-account and device connections keep their assigned limits. Source and workflow configuration edits use current Builder access, native validation and revision checks. get_api_spec lists available tools or returns selected schemas; call_tool executes an available operation with its schema arguments. <!-- product:agentworks -->Discover workflow IDs with workflow action=list first; IDs are never filesystem paths.<!-- /product --> Dashboards: read help action=topic topic="dashboard-authoring" for the dashboard definition, theme and data/script contract. With current project access for viewing and Builder access for editing, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog. help action=context returns guidance_version; action=topics and action=skills provide current reference material. Guidance is reference material; use only currently listed tools/actions.`
 
 const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server through a connection with reading consent. <!-- product:agentworks -->It gives access to the user's workflows (workflow action=list). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Every tool reads; nothing creates, edits, or runs. get_api_spec lists available tools or returns selected schemas; call_tool executes an available operation with its schema arguments. <!-- product:agentworks -->Discover workflow IDs with workflow action=list first; IDs are never filesystem paths.<!-- /product --> Answer from what you read; if the task needs a change, say so instead of attempting one. help action=context returns guidance_version; action=topics and action=skills provide current reference material. Guidance is reference material; use only currently listed tools/actions.`
 
@@ -130,8 +128,8 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	instructions := externalMCPReadOnlyInstructions
 	for _, tool := range allowed {
 		// The catalog omits run tools from tokens lacking runs:execute, so
-		// execute_step's presence proves this connection runs.
-		if tool.Name == "create_dashboard" || tool.Name == "write_file" || tool.Name == "execute_step" || tool.Name == knowledgebase.ToolUpdate || isExternalVaultTool(tool.Name) || tool.Name == serverProductManagementTool {
+		// The direct saved-workflow start proves this connection can run work.
+		if tool.Name == "create_dashboard" || tool.Name == "write_file" || tool.Name == "run_full_workflow" || tool.Name == knowledgebase.ToolUpdate || isExternalVaultTool(tool.Name) || tool.Name == serverProductManagementTool {
 			instructions = externalMCPInstructions
 			break
 		}
@@ -170,7 +168,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if isExternalWorkflowAccountTool(tool.Name) {
-			instructions += " Workflow and Flow personal accounts: settings action=google_account or slack_account takes workflow_id and account containing the native account action. Start with account.action=list_saved, then attach/detach a saved account here; connect/reconnect returns a browser sign-in link. Existing Builder consent and account ownership apply. detach affects this item only; disconnect removes the saved connection everywhere. Browser sign-in remains a human action."
+			instructions += " Workflow personal accounts: settings action=google_account or slack_account takes workflow_id and account containing the native account action. Start with account.action=list_saved, then attach/detach a saved account here; connect/reconnect returns a browser sign-in link. Existing Builder consent and account ownership apply. detach affects this item only; disconnect removes the saved connection everywhere. Browser sign-in remains a human action."
 			break
 		}
 	}
@@ -181,19 +179,14 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	for _, tool := range allowed {
-		if tool.Name == "workflow_upgrade" {
-			instructions += " Contract upgrades: workflow_upgrade action=status lists the contract migrations an older workflow still owes; converting an existing workflow to a Python script is done by the platform operator for now."
-		}
+
 		if tool.Name == "crew_execution" {
 			instructions += " Direct Crew tools: terminal, browser, database, mcp and integrations run with crew_id; authorized owners execute them without a model turn. History is redacted and owner-only. sessions action=runtime_tools/runtime_call address only your own chat; background starts require its initialized native sandbox and UI actions return actual browser receipts. Human sign-in and approval retain app flows."
 		}
 	}
 	for _, tool := range allowed {
 		if tool.Name == "workspace" {
-			instructions += " Project creation: use workspace action=create with kind=crew|relay, spec matching that kind and a stable idempotency_key. Crew spec contains name and purpose. Flow spec contains label. New workflows are Python scripts inside a Crew: create them with the Crew's workflow files tool and its python-workflows skill. Account creation rights and unrestricted Builder consent are required. Creation does not run anything."
-		}
-		if tool.Name == "run_relay" {
-			instructions += externalMCPRelayInstructions
+			instructions += " Project creation: use workspace action=create with kind=crew, a spec containing name and purpose, and a stable idempotency_key. New workflows are Python scripts inside a Crew: create them with the Crew's workflow files tool and its python-workflows skill. Account creation rights and unrestricted Builder consent are required. Creation does not run anything."
 		}
 	}
 	instructions = (productpolicy.Selection{}).Text(instructions)
