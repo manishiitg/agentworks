@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +21,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/mcpagent/executor"
 	mcpllm "github.com/manishiitg/mcpagent/llm"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpclient"
@@ -50,7 +53,7 @@ func TestPythonAgentContinuesTurnsBoundsReplyAndPreservesTranscript(t *testing.T
 		}
 	}
 	bin := t.TempDir()
-	fixture := "#!" + python + "\n" + fmt.Sprintf(`import json,sys,uuid
+	fixture := "#!" + python + "\n" + fmt.Sprintf(`import json,os,sys,uuid,urllib.request
 from pathlib import Path
 root=Path(%q)
 rollouts=Path.cwd()/'.codex/sessions/2026/01/01'
@@ -87,6 +90,18 @@ for line in sys.stdin:
     if method=='turn/start':
         prompt=json.dumps(params.get('input'))
         if 'cancel-this-call' in prompt:continue
+        if 'first task' in prompt:
+            base=os.environ['MCP_CUSTOM']
+            header,credential=os.environ['MCP_AUTH'].split(':',1)
+            def database(action,sql):
+                req=urllib.request.Request(base+'/database',data=json.dumps({'action':action,'sql':sql}).encode(),headers={'Content-Type':'application/json',header:credential.strip()})
+                with urllib.request.urlopen(req) as response: envelope=json.load(response)
+                assert envelope['success'], envelope
+                return json.loads(envelope['result'])
+            database('mutate','CREATE TABLE IF NOT EXISTS agent_evidence (id INTEGER PRIMARY KEY)')
+            database('mutate','INSERT INTO agent_evidence VALUES (1)')
+            assert database('query','SELECT id FROM agent_evidence')['rows'][0]['id']==1
+            (root/'database-readback.json').write_text(json.dumps({'session':os.environ['MCP_SESSION_ID'],'row':1}))
         history=json.loads(state.read_text())
         answer='continued' if 'follow-up' in prompt and history else 'answer-start:'+'evidence'*3000+':answer-end'
         history.append(prompt);state.write_text(json.dumps(history))
@@ -104,7 +119,21 @@ for line in sys.stdin:
 		t.Fatal(err)
 	}
 	t.Setenv("MCP_BRIDGE_BINARY", bridge)
-	t.Setenv("MCP_API_URL", files.URL)
+	common.SetBridgeTokenSecret("fixture-only-signing-key")
+	t.Cleanup(func() { common.SetBridgeTokenSecret("") })
+	handlers := executor.NewExecutorHandlers("", loggerv2.NewNoop())
+	bridgeAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		session, valid := common.VerifyBridgeToken(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		if !valid || len(parts) != 5 || parts[0] != "s" || parts[1] != session || !strings.HasPrefix(session, "python-runtime-python-agent-") {
+			http.Error(w, "own agent session required", http.StatusForbidden)
+			return
+		}
+		r.Header.Set("X-Session-ID", session)
+		handlers.HandlePerToolCustomRequest(w, r, parts[4])
+	}))
+	defer bridgeAPI.Close()
+	t.Setenv("MCP_API_URL", bridgeAPI.URL)
 	t.Setenv("MCP_API_TOKEN", "fixture-bridge-token")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	key := "fixture-only"
@@ -119,6 +148,12 @@ for line in sys.stdin:
 		c.SetWorkspacePath(root)
 		c.selectedRunFolder = "run-one"
 		c.WorkspaceClient = workspace.NewClient(files.URL)
+		database := virtualtools.CreateWorkflowDBToolRegistry(files.URL, "", "unusable-parent-session")
+		c.WorkspaceTools, c.ToolCategories = database.Tools, database.Categories
+		c.WorkspaceToolExecutors = map[string]interface{}{}
+		for name, execute := range database.Executors {
+			c.WorkspaceToolExecutors[name] = execute
+		}
 		return c
 	}
 	c := newController()
@@ -133,10 +168,23 @@ for line in sys.stdin:
 	parent := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "parent"}, AgentConfigs: &AgentConfigs{ExecutionLLM: &AgentLLMConfig{Provider: "codex-cli", ModelID: "fixture"}, KnowledgebaseAccess: "none"}}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	missingDB := newController()
+	delete(missingDB.WorkspaceToolExecutors, "mutate_workflow_db")
+	missingBinding := missingDB.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Missing database", "messages": []string{"first task"}}, "missing-database")
+	if missingBinding.OK || !strings.Contains(missingBinding.Error, "database tools are unavailable") {
+		t.Fatalf("missing binding did not refuse before launch: %+v", missingBinding)
+	}
+	if _, err := os.Stat(filepath.Join(runRoot, "fixture-requests.jsonl")); !os.IsNotExist(err) {
+		t.Fatal("provider launched before database preflight")
+	}
 	first := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Research", "messages": []string{"first task"}}, "first")
 	large := "answer-start:" + strings.Repeat("evidence", 3000) + ":answer-end"
 	if !first.OK || !first.LogComplete || first.LogKind != "provider_transcript" || len(first.Text) >= len(large) {
 		t.Fatalf("first result is not a bounded completed transcript receipt: %+v", first)
+	}
+	readback, readErr := os.ReadFile(filepath.Join(runRoot, "database-readback.json"))
+	if readErr != nil || !strings.Contains(string(readback), `"row": 1`) || !strings.Contains(string(readback), `python-runtime-`+first.ConversationID) {
+		t.Fatalf("native agent did not write/read a row through its own bridge: %s %v", readback, readErr)
 	}
 	log, err := os.ReadFile(first.LogFile)
 	if err != nil || !strings.Contains(string(log), large) {

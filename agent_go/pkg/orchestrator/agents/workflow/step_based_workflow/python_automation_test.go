@@ -123,6 +123,8 @@ if os.environ['VAR_PHASE'] == 'unavailable-app':
 if os.environ['VAR_PHASE'] == 'evidence':
     @step('Evidence')
     def evidence():
+        import time
+        time.sleep(0.03)
         assert check('Evidence inside', True, 'MCP_API_TOKEN=fixture-credential ' + 'λ' * 700).ok
         assert not check('Evidence expected failure', False, 'expected').ok
         notify('MCP_API_TOKEN=fixture-credential progress')
@@ -444,7 +446,13 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		}
 		foundCompleted = foundCompleted || item.Status == "completed"
 		foundFailure = foundFailure || item.Status == "failed"
-		foundWithoutNotifier = foundWithoutNotifier || item.Name == "Evidence" && item.Status == "completed"
+		if item.Name == "Evidence" && item.Status == "completed" {
+			// A check is instantaneous; the real decorator must time the function.
+			if item.DurationMs < 30 {
+				t.Fatalf("decorated work lost elapsed time: %+v", item)
+			}
+			foundWithoutNotifier = true
+		}
 	}
 	if !foundCompleted || !foundFailure || !foundWithoutNotifier {
 		t.Fatalf("notifier-independent step evidence missing: completed=%t failed=%t no_notifier=%t", foundCompleted, foundFailure, foundWithoutNotifier)
