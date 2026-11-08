@@ -1,119 +1,27 @@
-# Workflow Monitoring
+# Workflow results and logs
 
-This doc covers the workflow observability surfaces that still exist in the product today.
+Open a workflow inside its Crew, then choose Runs. Select the execution you want to inspect. Each run retains its inputs, activity, named steps, checks, files, logs and available usage.
 
-It is worth keeping. The workflow UI still exposes execution logs, cost analysis, evaluation reports, learnings, and run history. What changed is the architecture behind them: older validation-heavy and per-step-learning explanations are no longer the right model.
+## Judge the saved result
 
-## Monitoring Surfaces
+Queued or started means the server accepted work. A completed process or agent turn is not proof of a useful result. Read the workflow's checks and required outputs, including partial or unavailable evidence. A failed check remains visible; Python decides whether to stop.
 
-There are three practical scopes:
+Steps are labels for Python functions, conditions and loops. They help locate what happened in that run. They are not independently runnable plan nodes. To fix work, change the workflow through its Crew and start a new run when appropriate; keep the earlier evidence.
 
-### 1. Workflow-level views
-- **Goals & metrics**: purpose, success criteria and saved source-backed readings
-- **Costs**: aggregated token and USD usage across run folders
-- **Evaluation reports**: benchmark-style scoring across runs, with single-run drill-down
-- **Learnings**: current persisted learning state, including the global workflow skill
+## Inspect without running again
 
-### 2. Run-folder views
-- **Execution logs**: detailed logs for one selected run folder such as `iteration-12` or `iteration-12/group-a`
-- **Final outputs**: generated final reports for a run folder
+External MCP and the CLI expose `runs action=get`, `logs` and `status`. Use the exact workflow/run or session returned by the start receipt. A workflow started through `functions action=run_trigger` can also be checked with its `trigger_status` receipt. Read the current catalog for the precise fields.
 
-### 3. Cross-workflow operational views
-- **Workflow overview**: recent run folders, status, timestamps, costs, and measurement presence across workflows
-- **Scheduled runs panel**: cron job history, latest runs, live sessions, and drill-down into logs/costs/measurement for scheduled executions
+`runs action=logs` supplies bounded stdout/stderr, failure tracebacks, saved inputs, step timings and agent answer/provider-log locations. For an agent turn, read its full answer file instead of assuming the bounded text preview is complete. Provider logs contain only the tool and text events the platform actually captured.
 
-## Goals and metrics
+Use the returned file locations. Parent workflow outputs and native agent files may have different granted locations inside one run; do not assume an old iteration/group/step path or substitute another run's output. Quote only the relevant lines and keep secret values and private conversations out of the report.
 
-Goals & metrics shows the Goal's purpose, success criteria and saved measurement
-history. The dashboard, run logs and Costs provide execution evidence. Decisions
-hold questions for the owner. AgentWorks can review a linked Goal using its
-existing access, shared skills and ordinary schedules; no built-in engine runs
-after a workflow.
+## Repeating work
 
-## Execution Logs
+A rerun uses the current source with the earlier run's saved inputs and preset, and reports source changes. It starts a real new execution. Database writes, app calls and sends can happen again; do not rerun an uncertain start or an external action merely to read its logs.
 
-Execution logs are still the main debugging surface for a single run folder.
+A native agent output can receive one correction turn in the same conversation when the workflow checks it. Preserve completed effects and original observation times during that correction. A missing connection or declined action remains a clear limitation.
 
-Current behavior:
-- The popup is opened from the workflow toolbar and is scoped to the currently selected run folder when possible.
-- Backend data comes from `/api/workflow/logs`.
-- The server scans `runs/{runFolder}/logs/` and `runs/{runFolder}/execution/`, then maps folder names back to plan step metadata from `planning/plan.json`.
+## Summary and usage
 
-The log viewer still supports these file families:
-- `execution/execution-attempt-{A}-iteration-{I}.json`
-- `execution/execution-attempt-{A}-iteration-{I}-conversation.json`
-- `validation.json` and `validation-{N}.json`
-- `learning-execution.json`
-- `orchestration-execution.json`
-- `todo-task-execution.json`
-
-Important current nuance:
-- validation logs still exist in the execution log viewer, but validation is no longer the main architecture story for workflow docs
-- pre-validation remains relevant runtime signal, but the canonical validation doc is [pre_validation_guide.md](pre_validation_guide.md)
-- execution logs are best thought of as per-run forensic data, not as the source of workflow architecture truth
-
-## Costs
-
-Cost analysis is still current and useful.
-
-Current behavior:
-- The popup is opened from the workflow toolbar, overview page, and scheduled runs panel.
-- Backend data comes from `/api/workflow/costs`.
-- It aggregates token usage across run folders and supports drill-down into individual runs.
-- The UI highlights the currently selected run folder when applicable.
-
-The cost UI is still workflow-level, not step-config architecture.
-
-## Evaluation Reports
-
-Retired with the eval subsystem. The `/api/workflow/evaluation-reports`
-endpoint and its All Iterations / Single Iteration UI are gone; old
-`evaluation_report.json` files on disk are read-only history. Outcome
-visibility now comes from producer outputs, goal observations
-(saved rows in `goal_observations`), and the dashboard.
-
-## Learnings
-
-The learnings popup is still relevant, but the old explanation was stale.
-
-Current behavior:
-- Backend data comes from `/api/workflow/learnings/all`.
-- The popup shows both step metadata and the global workflow learning entry `_global`.
-- `_global` is rendered as **Workflow Knowledge (Global)** in the UI.
-- Locking and unlocking still exist via step config updates.
-- Deleting learnings for a step still exists.
-
-What changed:
-- learning is no longer best described as per-step prose memory with complexity caps and exploitation phases
-- the main persistent learning surface is now the shared skill at `learnings/_global/SKILL.md`
-- scripted steps can still have step-specific saved code such as `learnings/{step-id}/main.py`
-
-The canonical architecture doc for this is [learning_architecture.md](learning_architecture.md).
-
-## Run Overview And Scheduled Runs
-
-There are now two additional monitoring surfaces worth acknowledging:
-
-### Workflow overview
-- lists run folders from consolidated workspace state
-- reconciles run metadata with active in-memory executions
-- shows status, timestamps, cost summary, and evaluation presence across workflows
-
-### Scheduled runs panel
-- shows cron jobs and run history
-- opens the same logs, costs, evaluation, and final-output popups for scheduled executions
-- helps operational users inspect automation outcomes without opening each workflow canvas first
-
-## Keep Or Remove?
-
-Keep it.
-
-This doc is still relevant because the product clearly has workflow monitoring and observability features. It just needed to stop documenting the older validation-era and complexity-cap model.
-
-## Related Docs
-
-- [cost_and_log_measurement.md](cost_and_log_measurement.md)
-- [pre_validation_guide.md](pre_validation_guide.md)
-- [learning_architecture.md](learning_architecture.md)
-- [evaluation_system.md](./evaluation_system.md)
-- [workflow_manifest_architecture.md](workflow_manifest_architecture.md)
+The run record is the summary. Business email or Slack delivery is an explicit workflow action, not an automatic owner digest. Available token and cost records are evidence for reviewing that execution; absence of captured usage is not proof that no work happened.

@@ -1,8 +1,8 @@
 # AgentWorks
 
-**Give an AI agent a goal and a metric. It keeps working until it hits the target.**
+**Work with your AI agents in a Crew. Save repeatable work as workflows.**
 
-AgentWorks is a source-available platform for goal-driven AI agents. You describe an outcome, pick the number that proves it, and set a target. Agents plan the work, run it on a schedule, measure every run, and change their own plan until the metric moves. It runs on the coding-agent CLIs you already use: Claude Code, Codex, Cursor, Pi, and Muse.
+AgentWorks is a source-available workspace for coding-agent CLIs: Claude Code, Codex, Cursor, Pi and Muse. A Crew brings its agents, files, knowledge and connected tools together. Use its chat for work that needs a conversation, and a workflow for repeatable work with saved inputs, steps and run records. Start a workflow from the Crew, on a schedule or through an authorized app connection.
 
 [![Latest Release](https://img.shields.io/github/v/release/manishiitg/coding-agent-loop?label=release)](https://github.com/manishiitg/coding-agent-loop/releases/latest)
 ![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple)
@@ -10,17 +10,13 @@ AgentWorks is a source-available platform for goal-driven AI agents. You describ
 
 [Website](https://agentworkshq.com) · [Docs](docs/README.md) · [User guides](https://agentworkshq.com/docs/) · [First workflow](docs/getting-started/first-workflow.md) · [Releases](https://github.com/manishiitg/coding-agent-loop/releases/latest) · [Book a call](https://calendly.com/manishiitg/15min)
 
-![An agent is asked to book 5 sales demos a week. Week by week it changes its approach, drops what doesn't work, and goes from 1 to 6 demos a week.](docs/assets/github/goal-loop.gif)
-
-<sub>Illustrative example.</sub>
-
 ## How it works
 
 | | |
 |---|---|
-| **Goals** | A workflow can save measurements (a number with a date) in its own database. The Goals view and dashboards show them as a dated trend; missing or stale numbers are flagged, never guessed. A step measures with ordinary database tools. [Goal measurements](docs/goal-measurements.md) |
-| **Autonomy** | You choose how far it goes, per workflow: *Ask first*, *Run steps*, *Edit workflow*, or *Full*. Anything outward-facing can always require your approval. |
-| **Crew** | Always-on teammates, each with its own files, tools, memory, browser, and schedule. Talk to them in the app, Slack, or WhatsApp. [Bot connectors](docs/core/bot_connector_system.md) |
+| **Crew** | Work with agents in the same project, with its files, memory, tools and browser connections. Use the app or the Crew's connected channels. [Bot connectors](docs/core/bot_connector_system.md) |
+| **Workflow** | Save repeatable work as Python, with typed inputs, presets and named steps. Run it directly or schedule it; a schedule can also message a Crew agent. [First workflow](docs/getting-started/first-workflow.md) |
+| **Runs** | Inspect the result, checks, step activity, files, logs and available usage for each execution. Record measurements with their source and date in the Crew's database. [Workflow guide](docs/workflow/README.md) |
 
 ## Install (macOS, Apple Silicon)
 
@@ -59,17 +55,17 @@ If macOS still complains, also run `xattr -cr ~/Downloads/AgentWorks-*.dmg`. No 
 - **Coding-agent CLIs:** Claude Code, OpenAI Codex CLI, Cursor CLI, Pi CLI (Gemini, OpenRouter, and other Pi providers), and Muse. Use the subscription you already pay for.
 - **Channels:** Slack and WhatsApp for two-way conversations; Gmail for outbound updates.
 - **Tools:** any MCP server, workspace files, and a persistent, isolated browser per workflow ([browser docs](docs/core/browser.md)).
-- **Your AI app:** AgentWorks is also an MCP server. Connect ChatGPT, Claude (Desktop, Code, Cowork), or any MCP client to check goals, read reports, and start runs from that chat. It can read and run, but not edit workflows ([CLI and MCP](docs/getting-started/agentworks-cli-mcp.md)).
+- **Your AI app:** AgentWorks is also an MCP server. Connect ChatGPT, Claude (Desktop, Code, Cowork), or any MCP client to read reports and start workflows. Connections with the required Crew editing permission can also change workflow source and inputs ([CLI and MCP](docs/getting-started/agentworks-cli-mcp.md)).
 
 AgentWorks runs each vendor's own agent (model plus harness), not a bare model API, so you get everything the agent can do. Route each step to the agent and model that fit it: your strongest for judgment, a cheaper one for routine steps.
 
 ## Control and security
 
-- **Approvals:** agents prepare changes and wait for approve, reject, or defer ([human feedback](docs/workflow/human_feedback_system.md)).
+- **Decisions:** discuss work that needs a person in Crew chat. Workflows use their saved inputs and return a clear outcome; they do not wait for questions mid-run ([questions and inputs](docs/workflow/human_feedback_system.md)).
 - **Secrets vault:** credentials are encrypted and injected only at run time, never shown in chat or logs ([secrets](docs/core/secrets.md)).
 - **Sandboxing:** OS-enforced per agent, Landlock on Linux and sandbox-exec on macOS, limited to the folders and tools each workflow is granted ([FolderGuard](docs/core/folder_guard_system.md)).
 - **Run logs and cost:** every step, tool call, and model cost is recorded per run and per workflow ([cost and logs](docs/workflow/cost_and_log_measurement.md)).
-- **Accounts:** admin, member, contributor, and read-only roles, with owner or reader access per workflow ([multi-user](docs/core/multi_user_authentication.md)).
+- **Access:** each Crew controls who can manage or use its shared work. Existing account, connection and tool permissions apply to every request ([multi-user](docs/core/multi_user_authentication.md)).
 
 ## Run from source
 
