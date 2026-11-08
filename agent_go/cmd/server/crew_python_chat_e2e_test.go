@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -60,6 +61,11 @@ func TestCrewChatSavedPythonStartAndHTTPStop(t *testing.T) {
 	t.Setenv("MCP_API_URL", bridge.URL)
 	const sessionID = "crew-python-chat"
 	api := f.api
+	var err error
+	api.chatStore, err = chathistory.NewFilesystemStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	api.logger = loggerv2.NewNoop()
 	api.bgAgentRegistry = NewBackgroundAgentRegistry()
 	api.eventStore = events.NewEventStore(100)
@@ -71,6 +77,12 @@ func TestCrewChatSavedPythonStartAndHTTPStop(t *testing.T) {
 	api.completionLoopStarted = map[string]bool{sessionID: true}
 	api.pendingCompletions = map[string][]string{}
 	api.pendingStartNotifications = map[string][]string{}
+	api.stoppedSessions = map[string]bool{}
+	api.startNotificationRetryScheduled = map[string]bool{}
+	api.completionRetryScheduled = map[string]bool{}
+	api.sessionBusy = map[string]bool{}
+	api.sessionBusySince = map[string]time.Time{}
+	api.trackedWorkflowExecutions = map[string]*TrackedWorkflowExecution{}
 	t.Cleanup(func() {
 		api.markSessionStopped(sessionID)
 		api.cancelBackgroundAgents(sessionID)
