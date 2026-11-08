@@ -91,3 +91,11 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 	}
 	return target, nil
 }
+
+func (api *StreamingAPI) authorizeGoalMessageTab(ctx context.Context, peer agentMessageEndpoint) bool {
+	if peer.Kind != triggerCallerWorkflow || !strings.Contains(peer.ChatKey, codeChatSideMarker) {
+		return false
+	}
+	tab, root, ok := api.goalTabForSession(ctx, peer.Session)
+	return ok && root == peer.Path && tab.ID == peer.ChatKey && tab.OwnerID == peer.UserID
+}
