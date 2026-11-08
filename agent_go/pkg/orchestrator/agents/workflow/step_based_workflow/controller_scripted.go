@@ -133,6 +133,8 @@ var ErrScriptedHarnessTimeout = errors.New("script exceeded the workspace harnes
 type ScriptedFastPathResult struct {
 	LogFile         string
 	LogError        string
+	OutputBytes     int
+	OutputTruncated bool
 	LogComplete     bool
 	RanScript       bool   // true if a saved script was found and attempted
 	Success         bool   // true if script ran and validation passed
@@ -769,7 +771,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		return "", -1, fmt.Errorf("%w: %w", ErrScriptedHarnessRejection, err)
 	}
 
-	stdout, stderr = result.Stdout, result.Stderr
+	stdout = scriptOutputPreview(result.Stdout, result.LogFile)
+	stderr = scriptOutputPreview(result.Stderr, result.LogFile)
 	combined := result.Stdout
 	if result.Stderr != "" {
 		if combined != "" {
@@ -777,6 +780,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		}
 		combined += result.Stderr
 	}
+	preview := scriptOutputPreview(combined, result.LogFile)
+	if logReceipt != nil {
+		logReceipt.OutputBytes = len(combined)
+		logReceipt.OutputTruncated = preview != combined
+	}
+	combined = preview
 	exitCode = result.ExitCode
 	if result.TimedOut {
 		return combined, exitCode, fmt.Errorf("%w: %s", ErrScriptedHarnessTimeout, result.Error)
@@ -1233,6 +1242,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveScriptedFastPathLog(
 		"log_file":         result.LogFile,
 		"log_error":        result.LogError,
 		"log_complete":     result.LogComplete,
+		"output_bytes":     result.OutputBytes,
+		"output_truncated": result.OutputTruncated,
 		"step_index":       stepIndex + 1,
 		"step_path":        stepPath,
 		"mode":             "scripted_fast_path",
