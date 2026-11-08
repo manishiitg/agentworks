@@ -325,7 +325,7 @@ def send_slack(channel: str, text: str) -> Reply:
 
 
 def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
-          tier: str | None = None, scripts: Sequence[str] = (),
+          tier: str | None = None, reasoning: str | None = None, scripts: Sequence[str] = (),
           mcp: Sequence[str] = (), skills: Sequence[str] = (), tools: Sequence[str] = (), apps: Sequence[str] = (),
           browser: bool = False, knowledge: str | None = None,
           timeout_seconds: float | None = None, conversation_id: str | None = None,
@@ -334,6 +334,8 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
 
     A list sends follow-ups to the same agent. To continue later in this run,
     pass reply.conversation_id; omitted settings retain its original selections.
+    reasoning optionally selects "low", "medium" or "high" where the selected
+    model supports it; unsupported choices are refused, never silently ignored.
     knowledge defaults to "read" for the owning workflow; "write" also allows
     its normal knowledge-note writes. Continued conversations keep their setting.
     browser uses this automation's connected browser and defaults to False.
@@ -361,7 +363,7 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
         raise ValueError("agent needs a name and at least one non-empty message")
     try:
         return _call("agent", {"name": name, "messages": messages, "model": model,
-                     "tier": tier, "scripts": list(scripts), "mcp": list(mcp),
+                     "tier": tier, "reasoning": reasoning, "scripts": list(scripts), "mcp": list(mcp),
                      "skills": list(skills), "tools": list(tools), "apps": list(apps), "browser": browser,
                      "knowledge": knowledge, "timeout_seconds": timeout_seconds,
                      "conversation_id": conversation_id, "source_call": source_call}, key, redo)

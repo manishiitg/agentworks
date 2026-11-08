@@ -173,7 +173,10 @@ send explicitly through the current helpers. Do not keep a plan runner or read
   Remove retired `builder-reference`; it is Builder guidance, not an execution
   skill. Agent knowledge choices are `"read"` and `"write"`, never `"read-write"`.
   Preserve an explicit provider/model with `model="provider/model-id"` when
-  needed; do not pass `tier` with `model`. Use `timeout_seconds` for an intended
+  needed; do not pass `tier` with `model`. Optional `reasoning="low"`,
+  `"medium"` or `"high"` overrides that call’s effort only when its model offers
+  the level; unsupported choices refuse by name. Follow-ups retain it. Carry old
+  explicit effort choices onto their matching calls. Use `timeout_seconds` for an intended
   agent deadline, not `timeout`; omit it to use the parent deadline.
 - **Inputs and callers.** Put choices under `schema.enum`. Saved defaults and
   preset values are strings; calls and raw payload mappings use typed JSON.

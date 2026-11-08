@@ -130,6 +130,7 @@ class SameIdentityConversion(unittest.TestCase):
             (runtime/'runs/old/full.log').write_text('historical full log\n')
             (runtime/'schedules.json').write_text('{"schedules":[]}')
             (definitions/'planning/plan.json').write_text('{"steps":[{"id":"old","write_access":{"knowledgebase":true},"validation_schema":{"required_files":["result.json"]}}]}')
+            (definitions/'planning/step_config.json').write_bytes(m.encode({'steps':[{'id':'old','agent_configs':{'execution_llm':{'provider':'codex-cli','model_id':'example-model','options':{'reasoning_effort':'high'}}}}]}))
             capabilities={'browser_mode':'cdp','browser_cdp_port':9222,'selected_global_secret_names':['EXAMPLE_TEST_SECRET'],'llm_config':{'mode':'provider','provider':'codex-cli'},'selected_servers':['example-app'],'selected_tools':['example-app:*']}
             # A retired tool in carried selections is dropped (PLAT-746).
             (definitions/'workflow.json').write_bytes(m.encode({'id':'task','workflow_context_paths':['Crew/linked'], 'capabilities':dict(capabilities,selected_tools=['example-app:*','human_tools:record_summary'])}))
@@ -191,6 +192,7 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertEqual(report['conversion']['removed_tools'],['human_tools:record_summary'])
             self.assertEqual(report['conversion']['knowledge_write_steps'],['old'])
             self.assertEqual(report['conversion']['output_check_steps'],['old'])
+            self.assertEqual(report['conversion']['reasoning_steps'],[{'step':'old','reasoning':'high','model':'codex-cli/example-model','source':'planning/step_config.json'}])
             backup = Path(m.apply(changes,documents,state,identity="task", append_platform_rows=bool(report["conversion"]["appended_crew_platform_rows"])))
             self.assertEqual(json.loads((backup/'crew-links').read_text()), crew_manifest)
             self.assertEqual(json.loads((private/'workflow.json').read_text()), dict(crew_manifest, workflow_context_paths=['Crew/already','Crew/linked']))
@@ -229,7 +231,7 @@ class SameIdentityConversion(unittest.TestCase):
             (runtime/'planning/revisions/plan-failed.json').write_text('{}')
             removals,docs_map,retired=m.retire_old_plan(docs,state,'task')
             self.assertEqual(retired['completed_converted_runs'],['run-1'])
-            self.assertEqual(sorted(retired['removed']),['planning/changelog/changelog-1.json','planning/plan.json','planning/revisions/plan-old.json'])
+            self.assertEqual(sorted(retired['removed']),['planning/changelog/changelog-1.json','planning/plan.json','planning/revisions/plan-old.json','planning/step_config.json'])
             retire_backup=Path(m.apply_retirement(removals,docs_map,state,None,'task'))
             self.assertTrue((retire_backup/'definitions-planning/plan.json').exists())
             self.assertFalse((definitions/'planning').exists())
