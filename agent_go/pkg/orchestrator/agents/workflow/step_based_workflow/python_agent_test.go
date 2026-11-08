@@ -301,6 +301,21 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	if len(config.ServerNames) != 1 || config.ServerNames[0] != mcpclient.NoServers || len(config.RuntimeOverrides) != 0 || len(config.SelectedTools) != 0 || len(original) != 1 {
 		t.Fatal("empty selection inherited or changed owned Place connections")
 	}
+	// PLAT-746-446: requesting a selected MCP must retain its existing
+	// read-tool restriction, while an unrestricted selected server still works.
+	for _, selected := range [][]string{{"notes:read"}, nil} {
+		parent.AgentConfigs.SelectedTools = selected
+		inherited, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Read notes", Messages: []string{"Read selected notes"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := &agents.OrchestratorAgentConfig{SelectedTools: inherited.Config.SelectedTools}
+		(&pythonAgentSelection{Servers: []string{"notes"}}).apply(cfg)
+		filter := mcpagent.NewToolFilter(cfg.SelectedTools, cfg.ServerNames, map[string]mcpclient.ClientInterface{"notes": nil}, nil, nil)
+		if !filter.ShouldIncludeTool("notes", "read", false, false) || filter.ShouldIncludeTool("notes", "write", false, false) != (len(selected) == 0) {
+			t.Fatal("Python helper widened or lost the workflow's MCP tool selection", cfg.SelectedTools)
+		}
+	}
 	c.WorkspaceTools = virtualtools.CreateWorkspaceBrowserTools()
 	c.WorkspaceToolExecutors = map[string]interface{}{"agent_browser": func(context.Context, map[string]interface{}) (string, error) { return "unused", nil }}
 	tools, executors := c.prepareExecutionTools(&saved.Config, parent, nil, DBAccessReadWrite)

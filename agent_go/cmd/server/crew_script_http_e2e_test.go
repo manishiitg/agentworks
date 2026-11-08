@@ -145,6 +145,26 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		} else if response.StatusCode != 200 || !strings.Contains(string(body), "Prepare report") || !strings.Contains(string(body), `"errors": []`) || strings.Contains(string(body), "start-marker") {
 			t.Fatalf("saved source graph did not inspect safely: HTTP%d %s", response.StatusCode, body)
 		}
+		if user == "owner" {
+			// Large code remains runnable: outline returns its normal graph
+			// envelope with a readable limit message, not a failed page request.
+			padding := filepath.Join(sourceRoot, "padding.py")
+			write(padding, "#"+strings.Repeat("x", 65536))
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, req.URL.String(), nil)
+			request.Header.Set("Authorization", "Bearer "+token)
+			oversized, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			large, _ := io.ReadAll(oversized.Body)
+			oversized.Body.Close()
+			if err := os.Remove(padding); err != nil {
+				t.Fatal(err)
+			}
+			if oversized.StatusCode != 200 || !strings.Contains(string(large), "too large to outline") || !strings.Contains(string(large), "64 KiB") {
+				t.Fatalf("large outline broke the page request: HTTP%d %s", oversized.StatusCode, large)
+			}
+		}
 	}
 	if _, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner", Username: "owner"}, "workflow:"+binding.ID); err != nil {
 		t.Fatalf("saved script discovery by stable id: %v", err)

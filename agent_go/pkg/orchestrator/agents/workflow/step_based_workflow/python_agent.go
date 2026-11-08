@@ -53,9 +53,22 @@ func (s *pythonAgentSelection) filterTools(tools []llmtypes.Tool, executors map[
 // including its owned Place connections, keeps its existing behaviour.
 func (s *pythonAgentSelection) apply(config *agents.OrchestratorAgentConfig) {
 	config.ServerNames = normalizeServerNames(append([]string{}, s.Servers...))
+	// Keep the normal factory's per-tool restrictions. Selecting a connection
+	// must not turn a read-only tool selection into server:*.
+	previousTools := config.SelectedTools
 	config.SelectedTools = nil
-	for _, server := range s.Servers {
-		config.SelectedTools = append(config.SelectedTools, server+":*")
+	normalizer := mcpagent.NewToolFilter(nil, nil, nil, nil, nil)
+	for _, selected := range previousTools {
+		server, _, qualified := strings.Cut(selected, ":")
+		if !qualified {
+			continue
+		}
+		for _, requested := range s.Servers {
+			if normalizer.NormalizeServerName(server) == normalizer.NormalizeServerName(requested) {
+				config.SelectedTools = append(config.SelectedTools, selected)
+				break
+			}
+		}
 	}
 	filtered := mcpclient.RuntimeOverrides{}
 	for name, override := range config.RuntimeOverrides {
@@ -147,7 +160,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		saved.Settings.ConversationID = ""
 		saved.Settings.TimeoutSeconds = nil
 		saved.Config.SelectedServers = normalizeServerNames(args.MCP)
-		saved.Config.SelectedTools = nil
 		saved.Config.EnabledSkills = append([]string{}, args.Skills...)
 		saved.Config.EnabledCustomTools = []string{"workspace_advanced:*"}
 		if args.CanAskPerson {
