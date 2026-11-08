@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tarfile
 import urllib.request
 import zipfile
@@ -13,6 +14,7 @@ import zipfile
 root = Path(__file__).resolve().parents[1]
 out = Path(sys.argv[1])
 out.mkdir(parents=True, exist_ok=True)
+subprocess.run([sys.executable, str(root / 'scripts/build-python-installer.py'), str(out)], check=True)
 node = root / 'packages/playwright'
 with tarfile.open(out / 'agentworks-playwright.tgz', 'w:gz') as archive:
     for name in ['package.json', 'index.cjs', 'index.mjs', 'index.d.ts', 'README.md']:

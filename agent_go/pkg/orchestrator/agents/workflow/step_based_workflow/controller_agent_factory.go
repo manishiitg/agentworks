@@ -1324,7 +1324,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		}
 		workspaceEnv := hcpo.codeRuntimeEnv(hcpo.snapshotWorkspaceEnv())
 		if selection, ok := ctx.Value(pythonAgentSelectionKey{}).(*pythonAgentSelection); ok && selection != nil {
-			useExecutedScriptSource(workspaceEnv, selection.SourceDir)
+			selection.Runtime.apply(workspaceEnv)
 		}
 		workspaceEnv["SHARED_KB_STEP_ACCESS"] = resolveKnowledgebaseAccess(stepConfig, hcpo.UseKnowledgebase())
 		workspaceEnv = appendScriptedDelegationEnv(ctx, workspaceEnv)

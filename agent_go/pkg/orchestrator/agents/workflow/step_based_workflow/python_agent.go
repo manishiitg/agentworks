@@ -29,10 +29,10 @@ import (
 
 type pythonAgentSelectionKey struct{}
 type pythonAgentSelection struct {
-	Servers   []string
-	Scripts   []mcpagent.ToolDefinition
-	Browser   bool
-	SourceDir string // Executed snapshot, bound by the server's Python handler.
+	Servers []string
+	Scripts []mcpagent.ToolDefinition
+	Browser bool
+	Runtime pythonScriptRuntime // Executed source and dependencies, bound by the server.
 }
 
 // The helper omits implicit browser tools; the ordinary factory keeps its own
@@ -240,7 +240,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 	}
 
 	selection := &pythonAgentSelection{Servers: append([]string{}, saved.Settings.MCP...), Browser: saved.Settings.Browser}
-	selection.SourceDir, _ = ctx.Value(pythonScriptSourceDirKey{}).(string)
+	selection.Runtime, _ = ctx.Value(pythonScriptRuntimeKey{}).(pythonScriptRuntime)
 	saved.Config.EnabledCustomTools = []string{"workspace_advanced:*"}
 	appTools, err := pythonAppSelections(saved.Settings.Apps)
 	if err != nil {
