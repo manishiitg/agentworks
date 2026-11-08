@@ -2363,9 +2363,8 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		}
 	}
 
-	migrationRequired := errors.Is(execErr, errWorkflowContractMigrationRequired)
-	if migrationRequired {
-		s.sessionLogf(sctx, sessionID, "[SCHEDULER] %s did not run: this workflow requires a manual contract migration", schedID)
+	if errors.Is(execErr, errWorkflowScriptRequired) {
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] %s did not run: this workflow needs saved Python source", schedID)
 	}
 	// Now the whole scheduled job, including post-run side effects, is done.
 	terminalState := schedulerstate.StateCompleted
@@ -2766,10 +2765,9 @@ var errWorkshopIdleWaitTimeout = errors.New("workshop idle wait timed out")
 var errWorkshopSequenceInterrupted = errors.New("workshop sequence interrupted by user")
 var errWorkshopSessionFailed = errors.New("workshop session failed")
 
-// errWorkflowContractMigrationRequired marks an automated invocation whose
-// lane still requires a current contract (currently direct webhooks). Normal
-// schedules are allowed to keep running their saved contract.
-var errWorkflowContractMigrationRequired = errors.New("workflow contract migration required")
+// errWorkflowScriptRequired marks a retired or unbound workflow that has no
+// registered saved Python source for an automated run.
+var errWorkflowScriptRequired = errors.New("This workflow has not been converted to a saved Python workflow yet, so it cannot start. Ask its owner to convert it.")
 
 func (s *SchedulerService) refreshSessionTmuxSnapshotsForIdleCheck(ctx context.Context, sessionID string) error {
 	if s == nil || s.api == nil {
