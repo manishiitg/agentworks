@@ -14,6 +14,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/clisecurity"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
@@ -31,8 +32,7 @@ func TestCrewQueryStartsWithZeroOneAndMultipleSavedScripts(t *testing.T) {
 	t.Setenv("LOCAL_MODE", "true")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("AGENTWORKS_SLOTS", "off")
-	t.Setenv("SUPPORTED_LLM_PROVIDERS", "openai")
-	t.Setenv("OPENAI_API_KEY", "fixture-not-a-real-key")
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "claude-code")
 	t.Setenv("AGENT_PRODUCTS", "work,agentworks")
 	t.Setenv("NATIVE_WORKSPACE", "true")
 	logger := loggerv2.NewNoop()
@@ -50,8 +50,8 @@ func TestCrewQueryStartsWithZeroOneAndMultipleSavedScripts(t *testing.T) {
 	}
 	api := &StreamingAPI{
 		agentProfiles: f.api.agentProfiles, chatStore: store, logger: logger,
-		config:   ServerConfig{Host: "127.0.0.1", Provider: "openai", ModelID: "gpt-4o-mini", MaxTurns: 1, MCPConfigPath: cfg},
-		provider: "openai", model: "gpt-4o-mini", mcpConfigPath: cfg, mcpConfig: mcpConfig,
+		config:   ServerConfig{Host: "127.0.0.1", Provider: "claude-code", ModelID: "claude-sonnet-4-6", MaxTurns: 1, MCPConfigPath: cfg},
+		provider: "claude-code", model: "claude-sonnet-4-6", mcpConfigPath: cfg, mcpConfig: mcpConfig,
 		eventStore: events.NewEventStore(100), runtimeCoordinator: NewRuntimeCoordinator(),
 		bgAgentRegistry:                     NewBackgroundAgentRegistry(),
 		agentCancelFuncs:                    make(map[string]context.CancelFunc),
@@ -96,6 +96,10 @@ func TestCrewQueryStartsWithZeroOneAndMultipleSavedScripts(t *testing.T) {
 		stoppedSessions:                     make(map[string]bool),
 		interruptedTurns:                    make(map[string]bool),
 	}
+	api.cliSecurityStore, err = clisecurity.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	api.projectActions = NewProjectActionDispatcher(api, api.agentProfiles)
 	api.scheduler = NewSchedulerService(api)
 	t.Cleanup(api.eventStore.Stop)
@@ -127,7 +131,7 @@ func TestCrewQueryStartsWithZeroOneAndMultipleSavedScripts(t *testing.T) {
 			}
 		}
 		sid := fmt.Sprintf("crew-script-count-%d", count)
-		req := QueryRequest{Query: "Hello", AgentMode: "multi-agent", AgentProfileID: crewProfileID, AgentProfileConversationKey: "team", SelectedFolder: externalCommandCrewRoot, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Fixture Crew"}, Provider: "openai", ModelID: "gpt-4o-mini"}
+		req := QueryRequest{Query: "Hello", AgentMode: "multi-agent", AgentProfileID: crewProfileID, AgentProfileConversationKey: "team", SelectedFolder: externalCommandCrewRoot, AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Fixture Crew"}, Provider: "claude-code", ModelID: "claude-sonnet-4-6"}
 		request := sharedSecretsRequest(http.MethodPost, "/api/query", "owner", req)
 		request.Header.Set("X-Session-ID", sid)
 		reply := httptest.NewRecorder()
