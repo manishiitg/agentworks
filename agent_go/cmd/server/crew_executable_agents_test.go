@@ -49,6 +49,10 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	}
 	crew, chat := create("Reports")
 	foreignCrew, foreign := create("Other")
+	_, chatID, found := strings.Cut(chat.ConversationKey, codeChatSideMarker)
+	if !found || chatID == "" {
+		t.Fatal("fixture did not create a named project tab")
+	}
 	for _, root := range []string{crew.WorkspacePath, foreignCrew.WorkspacePath, filepath.Join(crewroot.PrivateDirectory, crew.CrewID), filepath.Join(crewroot.PrivateDirectory, foreignCrew.CrewID)} {
 		if err := os.MkdirAll(filepath.Join(docs, root), 0700); err != nil {
 			t.Fatal(err)
@@ -142,7 +146,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		}
 		return out
 	}
-	out := configure("manage_schedules", map[string]interface{}{"action": "create", "schedule": map[string]interface{}{"name": "Daily report", "schedule_type": "cron", "cron_expression": "0 9 * * *", "timezone": "UTC", "enabled": false, "chat_id": chat.ConversationKey}})
+	out := configure("manage_schedules", map[string]interface{}{"action": "create", "schedule": map[string]interface{}{"name": "Daily report", "schedule_type": "cron", "cron_expression": "0 9 * * *", "timezone": "UTC", "enabled": false, "chat_id": chatID}})
 	var timer struct {
 		ID string `json:"id"`
 	}
@@ -154,7 +158,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		t.Fatal("chat edit was not saved", got)
 	}
 	configure("manage_schedules", map[string]interface{}{"action": "delete", "schedule_id": timer.ID})
-	out = configure("manage_webhooks", map[string]interface{}{"action": "create", "trigger": map[string]interface{}{"name": "Inbound report", "enabled": false, "chat_id": chat.ConversationKey, "auth_mode": "bearer", "route_selections": map[string]interface{}{}}})
+	out = configure("manage_webhooks", map[string]interface{}{"action": "create", "trigger": map[string]interface{}{"name": "Inbound report", "enabled": false, "chat_id": chatID, "auth_mode": "bearer", "route_selections": map[string]interface{}{}}})
 	var hook struct {
 		ID string `json:"id"`
 	}
@@ -162,8 +166,11 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		t.Fatal("webhook did not return an identity", err)
 	}
 	savedManifest, found, err := ReadWorkflowManifest(ctx, child.Root)
-	if err != nil || !found || len(savedManifest.Schedules) != 1 || savedManifest.Schedules[0].ChatID != chat.ConversationKey {
+	if err != nil || !found || len(savedManifest.Schedules) != 1 || savedManifest.Schedules[0].ChatID != chatID {
 		t.Fatal("webhook lost its requested chat destination", err)
+	}
+	if key, err := projectScheduleChatKey(ctx, "owner", "work", crew.CrewID, savedManifest.Schedules[0].ChatID); err != nil || key != chat.ConversationKey {
+		t.Fatalf("saved destination resolves to another chat: %s %v", key, err)
 	}
 	configure("manage_webhooks", map[string]interface{}{"action": "delete", "id": hook.ID})
 	originalDirectory := *directory
