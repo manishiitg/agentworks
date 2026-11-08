@@ -659,4 +659,10 @@ func seedArchivedPlanWithMissingDependency(t *testing.T, docs, root string) {
 	if err := os.WriteFile(filepath.Join(filepath.Dir(path), "step_config.json"), []byte(`{"steps":[]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
+	// Current identity, owner and layout are derived from the Crew/script,
+	// never from an archived descriptor's version or claimed owner.
+	archived := filepath.Join(filepath.Dir(filepath.Dir(path)), "workflow.json")
+	if err := os.WriteFile(archived, []byte(`{"id":"archived","version":"1.0.0","code_layout_version":0,"created_by":"other","access":{"owners":["other"]}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 }

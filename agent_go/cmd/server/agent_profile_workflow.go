@@ -80,31 +80,21 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 	req QueryRequest,
 	readOnly bool,
 ) error {
-	if readOnly || !profileRequiresWorkflowRuntime(resolved) {
+	// Only a Crew's registered saved Python script has this shortcut. A
+	// profile capability alone cannot expose a legacy workflow runtime.
+	if readOnly || !profileRequiresWorkflowRuntime(resolved) || !isCrewProjectPath(publicWorkspacePath) {
 		return nil
 	}
-
-	root := agentProfileRuntimeWorkspace(userID, publicWorkspacePath)
-	workflowID := ""
-	if isCrewProjectPath(publicWorkspacePath) {
-		binding, err := api.crewChatWorkflowTarget(ctx, resolved, userID, publicWorkspacePath, req)
-		if err != nil {
-			return err
-		}
-		if binding == nil {
-			return nil
-		}
-		root, workflowID = binding.Root, binding.ID
+	binding, err := api.crewChatWorkflowTarget(ctx, resolved, userID, publicWorkspacePath, req)
+	if err != nil {
+		return err
 	}
-	guarded := workflowContractExecutionGuardRegistrar{definitionRegistrar: registrar, workspacePath: root}
-	if workflowID != "" {
-		guarded.boundWorkflow = &crewExecutableBinding{ID: workflowID, Root: root, Kind: "script"}
+	if binding == nil {
+		return nil
 	}
-	filtered := &agentProfileWorkflowRegistrar{target: guarded}
+	root, workflowID := binding.Root, binding.ID
+	filtered := &agentProfileWorkflowRegistrar{target: registrar}
 	filtered.prepare = func(callCtx context.Context, _ string, _ map[string]interface{}) error {
-		if !isCrewProjectPath(publicWorkspacePath) {
-			return nil
-		}
 		binding, err := api.crewChatWorkflowTarget(callCtx, resolved, userID, publicWorkspacePath, req)
 		if err != nil {
 			return err
