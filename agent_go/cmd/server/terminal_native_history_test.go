@@ -79,14 +79,18 @@ func TestNativeTerminalObserverReadsPrivateClaudeHome(t *testing.T) {
 func TestTerminalToChatPageRecoversPrivateClaudeTurnsOnce(t *testing.T) {
 	workingDir, path := privateClaudeHistoryFixture(t)
 	writeClaudeChatTurns(t, path, "initial", "initial reply", "repeat", "reply one", "repeat", "reply two")
-	const owner, session, workspacePath = "alice", "terminal-chat", "_users/alice/Chats/Work/projects/terminal"
+	const owner, session, workspacePath = "alice", "terminal-chat", "Crew/terminal"
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	registerTestCrew(t, "terminal", owner, false, "terminal")
 	conversationPath := workspacePath + "/builder/conversation/2026-09-30/session-" + session + "-conversation.json"
 	initial := []builderConversationMessage{
 		{Role: "human", Parts: []builderConversationPart{{Text: "initial"}}},
 		{Role: "ai", Parts: []builderConversationPart{{Text: "initial reply"}}},
 	}
 	raw, err := json.Marshal(map[string]interface{}{
-		"session_id": session, "user_id": owner, "agent_mode": "workflow_phase", "conversation_history": initial,
+		"session_id": session, "user_id": owner, "agent_mode": "multi-agent", "conversation_history": initial,
 		"runtime": map[string]interface{}{"provider": "claude-code", "external_session_id": "native-private", "agent_session_handle": map[string]interface{}{"provider": map[string]string{"provider": "claude-code", "working_dir": workingDir}}},
 	})
 	if err != nil {
