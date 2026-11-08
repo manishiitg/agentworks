@@ -121,45 +121,24 @@ func TestConditionProductCallerOwnsDetectorAndCallsOwnCrew(t *testing.T) {
 	}
 }
 
-func TestConditionBuilderToolsInCrewWorkflowAndRelay(t *testing.T) {
+func TestConditionBuilderToolsInCrew(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
-	policy := workflowChatPolicy{Mode: "builder", Origin: "interactive", Capabilities: map[string]bool{"plan_authoring": true}}
-	for _, relay := range []bool{false, true} {
-		manifest, _, err := ReadWorkflowManifest(context.Background(), "Workflow/reports")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if relay {
-			manifest.Kind = "relay"
-		} else {
-			manifest.Kind = ""
-		}
-		raw, _ := json.Marshal(manifest)
-		env.mock.mu.Lock()
-		env.mock.files[manifestPath("Workflow/reports")] = string(raw)
-		env.mock.mu.Unlock()
-		reg := &recordingRegistrar{}
-		if err := env.api.registerWebhookTools(reg, "owner", "Workflow/reports", policy); err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := reg.tools["manage_condition_triggers"]; !ok {
-			t.Fatalf("Builder missing watcher tool relay=%v", relay)
-		}
-		run := &recordingRegistrar{}
-		if err := env.api.registerWebhookTools(run, "owner", "Workflow/reports", workflowChatPolicy{Mode: "run", Origin: "interactive"}); err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := run.tools["manage_condition_triggers"]; ok {
-			t.Fatal("Run chat can configure watcher")
-		}
-	}
+	// PLAT-746: workflow Builder chats and Relays are retired; the owning Crew
+	// keeps both the allowed Builder path and the Run-mode refusal.
 	reg := &recordingRegistrar{}
 	if err := env.api.registerWorkScheduleTools(reg, "work", "owner", "", linkAlphaPath, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := reg.tools["manage_condition_triggers"]; !ok {
 		t.Fatal("Crew Builder missing watcher tool")
+	}
+	run := &recordingRegistrar{}
+	if err := env.api.registerWorkScheduleTools(run, "work", "owner", "", linkAlphaPath, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := run.tools["manage_condition_triggers"]; ok {
+		t.Fatal("Run chat can configure watcher")
 	}
 }
 
