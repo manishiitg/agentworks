@@ -177,6 +177,8 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if first["dashboard"].(map[string]any)["revision"] != again["dashboard"].(map[string]any)["revision"] {
 		t.Fatalf("retry did not return the first result: %+v / %+v", first, again)
 	}
+	// request_id belongs to changing actions; a reading action of the same family ignores it instead of failing validation.
+	call("dashboard", map[string]any{"action": "list", "request_id": "read-ignores-it"}, handle) // fails the test on an error reply
 	retry["title"] = "Different"
 	requireRemoteError(t, callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "dashboard", "arguments": retry, "guidance_session_id": handle}), "reused request_id", "request_id_conflict")
 	beforeCalls, err := f.api.guidanceStore.Stats(ctx)
