@@ -102,6 +102,17 @@ class ChosenBuildTest(unittest.TestCase):
         result = self.run_deploy_lib('DEPLOY_BRANCH=dev DEPLOY_BUILD=11111111 ensure_prebuilt_build')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "11111111-20261001000000")
+        # Review of PR 1552: a `--single-branch --branch main` clone maps only main, so `git fetch origin dev` made no origin/dev.
+        origin = git(app, "remote", "get-url", "origin")
+        shutil.move(app / "deploy", self.root / "deploy-kept")
+        shutil.rmtree(app)
+        git(self.root, "clone", "-q", "--single-branch", "--branch", "main", origin, str(app))
+        shutil.move(self.root / "deploy-kept", app / "deploy")
+        result = self.run_deploy_lib(f'DEPLOY_BRANCH=dev; {pin}; commit_on_branch "{app}" "${{DEPLOY_SHA_MCP_AGENT_BUILDER_GO}}"')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        git(app, "update-ref", "-d", "refs/remotes/origin/dev")
+        result = self.run_deploy_lib('DEPLOY_BRANCH=dev DEPLOY_BUILD=11111111 ensure_prebuilt_build')
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_older_commit_plus_a_change_already_on_main_may_ship_but_nothing_unlanded(self):
         # 7 Nov: a server could not take main's newest work, and finished fixes had no route to it.
