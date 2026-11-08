@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -31,9 +30,7 @@ type crewLaptopSettings struct {
 var laptopSettingsMu sync.Mutex
 
 func laptopSettingsPath(owner, root string) (string, error) {
-	if strings.HasPrefix(root, "Workflow/") {
-		owner = "" // All Builders of this Goal share the saved selection.
-	} else if projectOwner, ok := crewProjectOwnerID(root); ok && crewProjectOwnedByCaller(owner, root) {
+	if projectOwner, ok := crewProjectOwnerID(root); ok && crewProjectOwnedByCaller(owner, root) {
 		owner = projectOwner
 	}
 	state, err := workflowCLIStateRoot()

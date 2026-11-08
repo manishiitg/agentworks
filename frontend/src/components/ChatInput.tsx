@@ -3573,7 +3573,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     : label
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
-                {(agentProfileId === 'work' || isGoalBuilderChat) && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} workflowPath={isGoalBuilderChat ? workflowPhaseWorkspacePath : undefined} />}
+                {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} sessionId={activeTab?.metadata?.agentProfileCanOpenModels ? tabSessionId || undefined : undefined} />

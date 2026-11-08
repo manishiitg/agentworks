@@ -1,5 +1,4 @@
-export function laptopSettingsEndpoint(workflowPath?: string, profile?: string, project?: string): string {
-  if (workflowPath) return `/api/workflow/laptop?workspace_path=${encodeURIComponent(workflowPath)}`
+export function laptopSettingsEndpoint(profile?: string, project?: string): string {
   return profile && project ? `/api/agent-profiles/${encodeURIComponent(profile)}/projects/${encodeURIComponent(project)}/laptop` : ''
 }
 

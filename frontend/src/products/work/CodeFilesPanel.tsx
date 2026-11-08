@@ -68,7 +68,7 @@ export function LaptopConnectionSetup({ connected }: { connected: boolean }) {
         <p className="text-xs leading-5 text-muted-foreground">Run from any folder. Sign in with the same account you use here. AgentBridge and laptop access use the same CLI and saved login. No folder is shared automatically. It can stay connected in the background.</p>
       </SetupStep>
       <SetupStep number={3} title="Choose where to use it">
-        <p className="text-xs leading-5 text-muted-foreground">Open Your computer, choose this computer for a Goal or Crew, then set its folders to Read or Read &amp; write. Terminal commands have a separate switch. You can use the same computer in several projects. <code>agentworks status</code> checks the connection; <code>agentworks stop</code> stops laptop access and pauses AgentBridge messaging. Detaching one chat leaves the laptop connection available.</p>
+        <p className="text-xs leading-5 text-muted-foreground">Open Your computer, choose this computer for a Crew, then set its folders to Read or Read &amp; write. Terminal commands have a separate switch. You can use the same computer in several projects. <code>agentworks status</code> checks the connection; <code>agentworks stop</code> stops laptop access and pauses AgentBridge messaging. Detaching one chat leaves the laptop connection available.</p>
       </SetupStep>
     </div>
   </details>
@@ -85,11 +85,11 @@ interface LaptopSettings { device_id: string; folders: LaptopFolder[]; commands:
 interface LaptopDirectory { path: string; parent: string; folders: string[] }
 
 /** The backend owns grants. No project manifest or browser preference grants laptop access. */
-export function CodeLocalFilesSettings({ sessionId, workflowPath }: { sessionId?: string; workspaceName?: string; workflowPath?: string }) {
+export function CodeLocalFilesSettings({ sessionId }: { sessionId?: string; workspaceName?: string }) {
   const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
   const project = tab?.metadata?.agentProfileProjectId
   const profile = tab?.metadata?.agentProfileId
-  const endpoint = laptopSettingsEndpoint(workflowPath, profile, project)
+  const endpoint = laptopSettingsEndpoint(profile, project)
   const [computerSetupOpen, setComputerSetupOpen] = useState(false)
   const [settings, setSettings] = useState<LaptopSettings>({ device_id: '', folders: [], commands: false })
   const [directory, setDirectory] = useState<LaptopDirectory>()
@@ -100,7 +100,7 @@ export function CodeLocalFilesSettings({ sessionId, workflowPath }: { sessionId?
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [checkNote, setCheckNote] = useState<string>()
-  const { devices, error: deviceError, refreshing, refresh } = useLocalFileDevices(Boolean(endpoint), workflowPath || tab?.metadata?.agentProfileWorkspace)
+  const { devices, error: deviceError, refreshing, refresh } = useLocalFileDevices(Boolean(endpoint), tab?.metadata?.agentProfileWorkspace)
   const latest = useLatestCliVersion(Boolean(endpoint))
   useEffect(() => {
     let active = true
