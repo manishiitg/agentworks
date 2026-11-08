@@ -8,6 +8,24 @@ import (
 	"syscall"
 )
 
+// InheritGroup keeps service-owned snapshots in their trusted runtime's group
+// without temporarily copying writable modes or changing the service owner.
+func InheritGroup(dst, src *os.File) error {
+	info, err := src.Stat()
+	if err != nil {
+		return err
+	}
+	current, err := dst.Stat()
+	if err != nil {
+		return err
+	}
+	group := info.Sys().(*syscall.Stat_t).Gid
+	if current.Sys().(*syscall.Stat_t).Gid == group {
+		return nil
+	}
+	return dst.Chown(-1, int(group))
+}
+
 // Preserve keeps an atomic replacement accessible to the original owner.
 // Rootless Linux services retain the group and use an ACL for the former owner
 // when they cannot assign its UID. Fail before rename if access cannot be kept.
