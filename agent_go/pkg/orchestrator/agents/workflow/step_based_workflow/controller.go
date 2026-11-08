@@ -702,6 +702,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 	if err := hcpo.hydrateCrewScripts(ctx, existingPlan); err != nil {
 		return "", err
 	}
+	if err := hcpo.validatePlanScriptSecrets(existingPlan); err != nil {
+		return "", err
+	}
 
 	// Plan exists - use it
 

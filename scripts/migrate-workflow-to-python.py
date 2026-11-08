@@ -232,6 +232,11 @@ def python_payload(source, workflow_id, original_capabilities, original_inputs):
             raise ValueError(f'Remove {name} from the source script.json: the converter copies it from the saved workflow.')
     removed_selections = drop_retired_selections(original_capabilities)
     definition['capabilities'] = original_capabilities
+    selected_secrets = original_capabilities.get('selected_global_secret_names') or []
+    declared = definition.get('secrets', [])
+    if not isinstance(selected_secrets, list) or not isinstance(declared, list) or any(not isinstance(name, str) for name in [*selected_secrets, *declared]):
+        raise ValueError('Script secrets and saved Vault selections must be lists of names, without values.')
+    definition['secrets'] = sorted(set(declared + [name.split('__', 1)[1] if name.startswith('VLT_') and '__' in name else name for name in selected_secrets]))
     names = {item['name'] for item in definition.get('inputs', [])}
     definition.setdefault('inputs', []).extend(item for item in original_inputs.get('variables', []) if item['name'] not in names)
     definition['input_presets'] = original_inputs.get('groups', [])

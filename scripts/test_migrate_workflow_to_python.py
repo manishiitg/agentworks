@@ -147,6 +147,7 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertTrue((definitions/'planning/plan.json').exists())
             self.assertEqual((code/'main.py').read_bytes(),(source/'main.py').read_bytes())
             self.assertEqual(json.loads((code/'script.json').read_text())['capabilities'],capabilities)
+            self.assertEqual(json.loads((code/'script.json').read_text())['secrets'], ['EXAMPLE_TEST_SECRET'])
             self.assertEqual(json.loads((code/'script.json').read_text())['input_presets'],presets)
             self.assertIn('account',[v['name'] for v in json.loads((code/'script.json').read_text())['inputs']])
             self.assertEqual(json.loads(binding_file.read_text()),dict(binding,kind='script',runtime_root='workflows/task'))

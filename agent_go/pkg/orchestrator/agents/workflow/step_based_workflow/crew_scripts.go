@@ -18,6 +18,7 @@ type CrewScriptDefinition struct {
 	Inputs           []Variable        `json:"inputs,omitempty"`
 	InputPresets     []VariableGroup   `json:"input_presets,omitempty"`
 	Outputs          []string          `json:"outputs,omitempty"`
+	Secrets          []string          `json:"secrets,omitempty"`
 	ValidationSchema *ValidationSchema `json:"validation_schema,omitempty"`
 	Capabilities     json.RawMessage   `json:"capabilities,omitempty"`
 }
@@ -58,12 +59,47 @@ func ReadCrewScriptDefinition(ctx context.Context, root string, read func(contex
 	if err := ValidateWorkflowInputDefinitions(definition.InputDefinitions()); err != nil {
 		return nil, err
 	}
+	seen := map[string]bool{}
+	for _, name := range definition.Secrets {
+		if strings.TrimSpace(name) == "" || name != strings.TrimSpace(name) || strings.ContainsAny(name, "=\x00") || seen[name] {
+			return nil, fmt.Errorf("script secrets must be unique Vault names, without values")
+		}
+		seen[name] = true
+	}
 	for _, output := range definition.Outputs {
 		if output == "" || filepath.IsAbs(output) || filepath.Clean(output) != output || strings.HasPrefix(output, "..") {
 			return nil, fmt.Errorf("script output must be a relative output file")
 		}
 	}
 	return &definition, nil
+}
+
+// Values were resolved by the existing selected/lent Vault path. Declarations
+// require those values; they do not select or grant another secret.
+func (hcpo *StepBasedWorkflowOrchestrator) validateScriptSecrets(definition *CrewScriptDefinition) error {
+	if definition == nil {
+		return nil
+	}
+	hcpo.LockWorkspaceEnv()
+	defer hcpo.UnlockWorkspaceEnv()
+	env := hcpo.GetWorkspaceEnvRef()
+	for _, name := range definition.Secrets {
+		if env["SECRET_"+vaultSecretEnvName(name)] == "" {
+			return fmt.Errorf("Select or add %s in Vault for this workflow. Ask this Crew's chat to help.", name)
+		}
+	}
+	return nil
+}
+
+func (hcpo *StepBasedWorkflowOrchestrator) validatePlanScriptSecrets(plan *PlanningResponse) error {
+	for _, info := range collectAllSteps(plan.Steps) {
+		if step, ok := info.Step.(*ScriptedPlanStep); ok && step.crewScript != nil {
+			if err := hcpo.validateScriptSecrets(&step.crewScript.Definition); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func CrewScriptPlan(definition *CrewScriptDefinition, root string) *PlanningResponse {

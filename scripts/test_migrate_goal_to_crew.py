@@ -116,6 +116,8 @@ class Migration(unittest.TestCase):
         self.assertEqual(project['database_root'],'workflows/old-goal/db')
         definition = m.read(conversion.code/'script.json')
         self.assertEqual(definition['capabilities'],{'selected_secrets':['api-name'],'workflow_context_paths':['Crew/linked']})
+        # The retired selected_secrets field grants nothing in the current server.
+        self.assertEqual(definition['secrets'], [])
         self.assertEqual(m.read(self.private/'product.json')['workflow_context_paths'], ['Crew/linked'])
         self.assertEqual(definition['input_presets'],[{'name':'default','values':{}}])
         with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
