@@ -18,9 +18,8 @@ configured to that same origin. Remote MCP OAuth accepts HTTP only for a
 configured loopback address.
 
 Run-mode MCP tools inspect data and execute workflows or Crew functions. A
-connection with the explicit Builder grant can also use the Builder tools to
-author workflows it owns or may edit; see [Workflow Builder MCP](../mcp/workflow-builder.md)
-for the grant and operation flow. Function calls that pause for a question
+connection with the explicit Builder grant can also author Crews and their
+workflows it owns or may edit through the Crew tools. Function calls that pause for a question
 expose it through `functions action=status` or `functions action=status` and
 accept an answer through the matching `reply_*_function_call` tool.
 Pass a unique `submission_id` for each new function call or message; reuse it
@@ -888,8 +887,8 @@ Local executor receipts record the same identity plus the device ID and source
 `server_local_executor`. Identity comes from server authentication, never tool
 arguments. Private records also retain the timestamp and capped before-content.
 
-MCP `sessions action=builder_chat` requests use the normal typed plan tools. The existing
-`planning/changelog/*.json` entries preserve `origin.type=external_builder`,
+Older plan changelog entries in
+`planning/changelog/*.json` preserve `origin.type=external_builder`,
 user ID/name, session ID, operation ID and `via_token=token:<connection ID>`, plus
 change reason, timestamp and before/after hashes. A separate Builder audit also
 links the typed mutation to its authenticated operation and connection. Token

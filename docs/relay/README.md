@@ -105,8 +105,6 @@ Relay tools are admitted by `agent_go/internal/relayproduct/product.yaml` under
 | Tool | Purpose |
 | --- | --- |
 | `workspace action=create kind=relay` | Create an owned draft, an object `INPUT`, a default variable group, and an enabled function trigger |
-| `sessions action=builder_chat` | Edit the graph, exact prompts, message sequences, per-step models, and custom Python tool source through the existing Builder |
-| `sessions action=builder_status`, `sessions action=builder_reply_input`, `sessions action=builder_cancel` | Poll, answer, or cancel that Builder operation |
 | `relay action=update` | Rename the draft or change its designated output agent |
 | `relay action=test` | Execute the draft with sample JSON input |
 | `relay action=releases`, `relay action=publish` | Inspect or freeze immutable versions using the existing publisher |
@@ -134,9 +132,7 @@ arguments:
 ```
 
 Creation returns `workflow_id`, an owned manifest, default output agent ID
-`answer`, and function `process`. Send `sessions action=builder_chat` a request to build that
-agent with authored system/user prompts and JSON output; use a unique
-`submission_id` and poll its `operation_id` with `sessions action=builder_status`. Source-file
+`answer`, and function `process`. Source-file
 editing uses the shared managed file tools with revision checks and audit.
 External Builder retains its existing restrictions on shell, account tools,
 and connected-account access; execution uses the existing step sandbox.

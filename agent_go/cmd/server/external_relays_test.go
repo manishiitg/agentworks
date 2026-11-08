@@ -136,15 +136,6 @@ func TestExternalRelayBuilderAndPublishingRespectRoles(t *testing.T) {
 	f.mock.mu.Lock()
 	f.mock.files["Workflow/invoices/workflow.json"] = saved
 	f.mock.mu.Unlock()
-	op := f.submit(t, writer, "relay-edit", "Change the authored system prompt")
-	_, ctx, _ := f.claim(t, "owner")
-	if GetUserFromContext(ctx).ExternalBuilderOperationID != op.ID {
-		t.Fatal("lost operation provenance")
-	}
-	p := resolveWorkflowChatPolicy(op.SessionID, QueryRequest{ExternalBuilderOperationID: op.ID}, nil, false)
-	if p.Mode != "builder" || p.Origin != "external_builder" {
-		t.Fatalf("wrong mode %+v", p)
-	}
 	f.relayCall(t, writer, "publish_relay", map[string]any{"workflow_id": "invoices"}, 200)
 	versions := f.relayCall(t, writer, "get_relay_releases", map[string]any{"workflow_id": "invoices"}, 200)
 	if versions["active_version"] != "v1" {
@@ -154,7 +145,6 @@ func TestExternalRelayBuilderAndPublishingRespectRoles(t *testing.T) {
 	for _, name := range []string{"publish_relay", "update_relay"} {
 		f.relayCall(t, reader, name, map[string]any{"workflow_id": "invoices"}, 403)
 	}
-	f.call(t, reader, "sessions", map[string]any{"action": "builder_chat", "message": "Edit", "submission_id": "read-edit"}, 403)
 	_, editor := f.token(t, "outsider", relayConsentScopes, false)
 	// A former editor runs published versions; only owners can publish.
 	f.relayCall(t, editor, "publish_relay", map[string]any{"workflow_id": "invoices"}, 403)
@@ -178,7 +168,7 @@ func TestExternalRelayMCPTransportAndSchema(t *testing.T) {
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
 	relaySpec := marshalStructured(t, callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": []any{"workspace", "relay", "sessions"}}))
-	for _, want := range []string{`"create"`, `"publish"`, `"test"`, `"run"`, `"get_run"`, `"builder_chat"`} {
+	for _, want := range []string{`"create"`, `"publish"`, `"test"`, `"run"`, `"get_run"`} {
 		if !strings.Contains(relaySpec, want) {
 			t.Fatalf("relay/builder spec missing action %s: %s", want, relaySpec)
 		}

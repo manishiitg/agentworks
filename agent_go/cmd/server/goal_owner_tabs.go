@@ -1,12 +1,10 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"sort"
 	"strings"
 	"time"
@@ -478,25 +476,6 @@ func (api *StreamingAPI) handleGoalOwnerTabs(w http.ResponseWriter, r *http.Requ
 	externalJSON(w, map[string]any{"success": true})
 }
 
-// One native Builder tool and the MCP builder tabs action call the website
-// handler, so no second tab roster or permission policy exists.
-func (api *StreamingAPI) registerGoalOwnerTabTools(reg definitionToolRegistrar, user, root string) error {
-	return reg.RegisterCustomTool("manage_builder_chats", "Manage this Goal or Relay's named Builder tabs. list/read: see the project tabs. open: create your own named tab. rename/pin/order/close: only your own tabs; keep your main Builder. To talk in your tab over MCP use builder action=chat with its session_id. Agent messages use messages action=send with target and chat_id from messages action=list_agents. Plans and runs remain shared.", goalOwnerTabSchema(false), func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx = internalBotRequestContext(ctx, user)
-		clean := map[string]interface{}{"workspace_path": root, "action": args["action"], "chat_id": args["chat_id"], "session_id": args["session_id"], "name": args["name"], "pinned": args["pinned"], "chat_ids": args["chat_ids"]}
-		body, err := json.Marshal(clean)
-		if err != nil {
-			return "", err
-		}
-		req := httptest.NewRequest(http.MethodPost, "/api/workflow/chats", bytes.NewReader(body)).WithContext(ctx)
-		w := httptest.NewRecorder()
-		api.handleGoalOwnerTabs(w, req)
-		if w.Code >= 400 {
-			return "", fmt.Errorf("%s", w.Body.String())
-		}
-		return w.Body.String(), nil
-	}, "workspace_advanced")
-}
 func goalOwnerTabSchema(external bool) map[string]interface{} {
 	action := "action"
 	if external {

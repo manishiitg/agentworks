@@ -523,7 +523,7 @@ func externalPreparation(claims *UserClaims) []string {
 		steps = append(steps, "To run: call a run-mode tool such as runs action=step (its reply carries session_id), then poll runs action=status for completion. Read run evidence with runs action=list, runs action=get, and runs action=logs.")
 		steps = append(steps, "To chat: send questions with the chat tool and read replies with runs action=status; pass session_id to continue a conversation, and answer pending questions with runs action=reply_input.")
 	}
-	if claims != nil && externalTokenAllows(claims, externalTool{Name: "builder_chat"}) {
+	if claims != nil && externalTokenAllows(claims, externalTool{Name: "workflow_upgrade"}) {
 		steps = append(steps, "Older plan-based workflows keep running but are no longer edited; the platform operator converts them to Python script workflows. New workflows are Python scripts: create and edit them with workspace action=automation_create and automation_write.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "workflow_google_account"}) {
@@ -534,7 +534,7 @@ func externalPreparation(claims *UserClaims) []string {
 	}
 	if claims != nil && claims.AccessToken != nil {
 		if productEnabled("relays") {
-			steps = append(steps, "For Flows (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it, or sessions action=builder_chat to delegate changes. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. Everyone else with access chats with a Flow in Run mode in the app: it reads the published source, shows every run and runs a published version, but changes nothing. Creation requires relays:write consent covering all accessible workflows.")
+			steps = append(steps, "For Flows (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. Everyone else with access chats with a Flow in Run mode in the app: it reads the published source, shows every run and runs a published version, but changes nothing. Creation requires relays:write consent covering all accessible workflows.")
 		}
 		steps = append(steps, "This token is restricted: unavailable tools are omitted from the tools list.")
 	}

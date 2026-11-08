@@ -15,14 +15,12 @@ metadata:
     - stop_all_executions
     - get_schedule_runs
     - execute_shell_command
-    - manage_builder_chats
     - get_ui_state
     - perform_ui_action
     relays:
     - list_relay_runs
     - get_relay_run
     - get_relay_releases
-    - manage_builder_chats
     - execute_shell_command
     - get_ui_state
     - perform_ui_action

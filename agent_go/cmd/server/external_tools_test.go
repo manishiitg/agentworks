@@ -344,14 +344,10 @@ func TestExternalToolsHTTPMutationsAreNotExposed(t *testing.T) {
 		"update_step_config":   {"workflow_id": "invoices", "expected_revision": revision, "step_id": "fetch-invoices", "reason": "Attempt change"},
 		"write_file":           {"workflow_id": "invoices", "path": "docs/new.md", "expected_revision": "missing", "content": "Denied"},
 		"patch_file":           {"workflow_id": "invoices", "path": "docs/process.md", "expected_revision": "anything", "diff": "@@ -1 +1 @@\n-old\n+new\n"},
-		"builder_chat":         {"workflow_id": "invoices", "message": "Denied"},
-		"builder_status":       {"workflow_id": "invoices", "session_id": "anything"},
-		"builder_cancel":       {"workflow_id": "invoices", "session_id": "anything"},
 	}
 	for name, args := range calls {
 		wantStatus, wantCode := 404, "unknown_tool"
-		// Builder actions live under the sessions tool: a read-only connection is refused by scope.
-		if name == "write_file" || strings.HasPrefix(name, "builder_") {
+		if name == "write_file" {
 			wantStatus, wantCode = 403, "insufficient_scope"
 		}
 		w := f.call(t, "readonly-owner", name, args)
