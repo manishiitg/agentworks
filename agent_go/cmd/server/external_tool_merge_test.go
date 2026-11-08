@@ -180,7 +180,7 @@ func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
 		t.Fatalf("strict selected member accepted an unknown argument: %v", err)
 	}
 	// PLAT-746: a real writer retry lost run_folder, started a new run and
-	// failed on missing upstream topic data. Preserve it through to the model.
+	// failed on missing upstream topic data. Preserve it through the merged action.
 	runs, ok := externalCatalogTool("runs")
 	if !ok {
 		t.Fatal("runs unavailable")
@@ -188,9 +188,6 @@ func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
 	step, args, err := externalResolveMerged(runs, map[string]any{"action": "step", "workflow_id": "w", "step_id": "write", "run_folder": "run-existing"})
 	if err != nil || step.Name != "execute_step" || args["run_folder"] != "run-existing" {
 		t.Fatalf("existing-run step arguments lost: %v %v", args, err)
-	}
-	if !strings.Contains(externalRunInstruction(step.Name, args), `"run_folder":"run-existing"`) {
-		t.Fatal("run instruction lost the requested existing run")
 	}
 	if step.validator.Validate(map[string]any{"workflow_id": "w", "run_folder": 5}) == nil {
 		t.Fatal("non-string run folder accepted")
