@@ -93,20 +93,33 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 	var sourceHash string
 	var fingerprintError error
 	var locks sync.Map
-	var activities sync.Map // Only this script invocation may finish its started activities.
+	var activityLifecycle sync.Mutex
+	activities := map[string]func(string, error){} // Only this invocation finishes its activities.
+	invocationEnded, invocationSucceeded := false, false
+	settleActivity := func(finish func(string, error), success bool) {
+		if success {
+			finish("finish receipt not received", nil)
+			return
+		}
+		failure := parent.Err()
+		if failure == nil {
+			failure = errors.New("Python execution ended before this step completed.")
+		}
+		finish("Python execution ended before this step completed.", failure)
+	}
 	finishPending := func(success bool) {
-		activities.Range(func(_, pending interface{}) bool {
-			if success {
-				pending.(func(string, error))("finish receipt not received", nil)
-			} else {
-				failure := parent.Err()
-				if failure == nil {
-					failure = errors.New("Python execution ended before this step completed.")
-				}
-				pending.(func(string, error))("Python execution ended before this step completed.", failure)
-			}
-			return true
-		})
+		activityLifecycle.Lock()
+		if !invocationEnded {
+			invocationEnded, invocationSucceeded = true, success
+		}
+		outcome := invocationSucceeded
+		pending := activities
+		activities = map[string]func(string, error){}
+		activityLifecycle.Unlock()
+		// Persistence and notifier calls run outside the lifecycle lock.
+		for _, finish := range pending {
+			settleActivity(finish, outcome)
+		}
 	}
 	stopParent := context.AfterFunc(parent, func() { finishPending(false) })
 	finishInvocation := func(success bool) { stopParent(); finishPending(success) }
@@ -294,7 +307,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				var once sync.Once
 				finish := func(detail string, failure error) {
 					once.Do(func() {
-						activities.Delete(id)
+						activityLifecycle.Lock()
+						delete(activities, id)
+						activityLifecycle.Unlock()
 						evidence.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
 						evidence.DurationMs = time.Since(started).Milliseconds()
 						evidence.Status, evidence.Detail = "completed", detail
@@ -312,11 +327,22 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				if notifier != nil {
 					notifier.OnExecutionStart(WorkshopExecutionStart{ID: id, ParentExecutionID: currentWorkshopParentExecutionID(ctx), Name: title, Kind: "workflow_step", Metadata: metadata})
 				}
-				activities.Store(id, finish)
+				activityLifecycle.Lock()
+				ended, succeeded := invocationEnded, invocationSucceeded
+				if !ended {
+					activities[id] = finish
+				}
+				activityLifecycle.Unlock()
+				if ended {
+					settleActivity(finish, succeeded)
+				}
 				call.Reply.OK, call.Reply.ConversationID = true, id
 			} else if phase == "finish" {
 				execution, _ := arguments["execution_id"].(string)
-				done, found := activities.LoadAndDelete(execution)
+				activityLifecycle.Lock()
+				done, found := activities[execution]
+				delete(activities, execution)
+				activityLifecycle.Unlock()
 				ok, valid := arguments["ok"].(bool)
 				if !found || !valid {
 					call.Reply.Error = "This script has no matching active step."
@@ -328,7 +354,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				if !ok {
 					failure = errors.New(detail)
 				}
-				done.(func(string, error))(detail, failure)
+				done(detail, failure)
 				call.Reply.OK = true
 			} else {
 				call.Reply.Error = "Choose a step start or completion."
