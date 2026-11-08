@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import api, { agentApi } from '../../services/api'
 import { CrewWorkflowRuns } from './CrewWorkflowRuns'
 import { CrewScriptPlan } from './CrewScriptPlan'
@@ -28,6 +28,7 @@ export function CrewExecutableEditor({
   crewScripts = [],
   chatTabId,
   section,
+  openFile,
   onBack,
 }: {
   item: CrewExecutable
@@ -36,12 +37,22 @@ export function CrewExecutableEditor({
   chatTabId: string
   /** The page owns the Plan | Runs switch (PlanRunsSwitch). */
   section: 'plan' | 'runs'
+  /** A file to open now (a step's script chosen from the Scripts card); a new object opens it again. */
+  openFile?: { file: string } | null
   onBack?: () => void
 }) {
   const [view, setView] = useState<WorkspaceViewId>('flow')
   const [file, setFile] = useState<string | null>(null)
   // Switching Plan | Runs leaves any opened file.
   useEffect(() => { setFile(null) }, [section])
+  const fileView = useRef<HTMLDivElement>(null)
+  // The Scripts card sits below this page, so bring the opened file into view.
+  useEffect(() => {
+    if (!openFile) return
+    setFile(openFile.file)
+    const frame = requestAnimationFrame(() => fileView.current?.scrollIntoView?.({ block: 'start' }))
+    return () => cancelAnimationFrame(frame)
+  }, [openFile])
   const [runFolder, setRunFolder] = useState<string | null>(null)
   const [error, setError] = useState('')
   const workspace = useWorkspaceState(item.workspace_path, runFolder, false)
@@ -98,7 +109,7 @@ export function CrewExecutableEditor({
       <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
         <div>
           {file ? (
-            <div className="h-[75vh] min-h-96">
+            <div ref={fileView} className="h-[75vh] min-h-96">
               <ExecutableFile
                 key={file}
                 workspacePath={item.workspace_path}

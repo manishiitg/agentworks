@@ -105,7 +105,8 @@ it('lists workflow step scripts in the Scripts tab with where each is used', asy
   try {
     await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" kind="script" />))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-    expect(host.textContent).toContain('Step: Normalize statement')
+    expect(host.textContent).toContain('Normalize statement')
+    expect(host.textContent).toContain('Step script · in Reports')
     expect(host.textContent).not.toContain('No scripts yet')
   } finally {
     spy.mockRestore()
