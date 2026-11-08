@@ -3,11 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 func memoryProductConversationStore() (productConversationRegistryStore, map[string]string) {
@@ -316,13 +319,36 @@ func TestProductConversationP0ProjectKeyResolvesAndResumesOneDurableConversation
 	}
 }
 
+// PLAT-746: current project lookup uses a registered Crew folder and identity.
+func workProjectBindingPaths(t *testing.T, id string) (string, string) {
+	t.Helper()
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	resetCrewOwnerCache()
+	t.Cleanup(resetCrewOwnerCache)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "site", OwnerID: "user-1", ProjectID: id, Shared: true, Private: true}); err != nil {
+		t.Fatal(err)
+	}
+	private, err := crewroot.PrivateRoot(docs, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, directory := range []string{filepath.Join(docs, "Crew", "site"), private} {
+		if err := os.MkdirAll(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return "Crew/site/product.json", "Crew/site/workflow.json"
+}
+
 func TestWorkProjectBindingUsesCreatedProjectFolder(t *testing.T) {
 	profile := routeTestProfile("work", true, "")
-	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Work/projects"}
+	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Crew"}
 	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
 
-	manifestPath := "_users/user-1/Chats/Work/projects/site/product.json"
-	runtimePath := "_users/user-1/Chats/Work/projects/site/workflow.json"
+	manifestPath, runtimePath := workProjectBindingPaths(t, "task-1")
 	store := productProjectStore{
 		listPaths: func(context.Context, string) ([]string, bool, error) {
 			return []string{manifestPath}, true, nil
@@ -338,7 +364,7 @@ func TestWorkProjectBindingUsesCreatedProjectFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if binding.WorkspacePath != "_users/user-1/Chats/Work/projects/site" {
+	if binding.WorkspacePath != "Crew/site" {
 		t.Fatalf("unexpected durable binding: %+v", binding)
 	}
 	if binding.ProjectLLMConfig == nil || binding.ProjectLLMConfig.BuilderLLM == nil || binding.ProjectLLMConfig.BuilderLLM.Provider != "muse-cli" {
@@ -351,9 +377,9 @@ func TestWorkProjectBindingUsesCreatedProjectFolder(t *testing.T) {
 
 func TestWorkProjectChatKeySharesProjectButNotManifestSession(t *testing.T) {
 	profile := routeTestProfile("work", true, "")
-	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Work/projects"}
+	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Crew"}
 	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
-	manifestPath := "_users/user-1/Chats/Work/projects/site/product.json"
+	manifestPath, _ := workProjectBindingPaths(t, "task-1")
 	store := productProjectStore{
 		listPaths: func(context.Context, string) ([]string, bool, error) { return []string{manifestPath}, true, nil },
 		read: func(context.Context, string) (string, bool, error) {
@@ -367,7 +393,7 @@ func TestWorkProjectChatKeySharesProjectButNotManifestSession(t *testing.T) {
 	if binding.ConversationKey != "task-1:chat-2" {
 		t.Fatalf("conversation key = %q", binding.ConversationKey)
 	}
-	if binding.ResourceID != "task-1" || binding.WorkspacePath != "_users/user-1/Chats/Work/projects/site" {
+	if binding.ResourceID != "task-1" || binding.WorkspacePath != "Crew/site" {
 		t.Fatalf("sub-chat escaped its project binding: %+v", binding)
 	}
 	if binding.ManifestPath != "" || binding.AuthoritativeSessionID != "" {
@@ -377,10 +403,10 @@ func TestWorkProjectChatKeySharesProjectButNotManifestSession(t *testing.T) {
 
 func TestWorkProjectChatKeyUsesSameFolderWithIndependentSession(t *testing.T) {
 	profile := routeTestProfile("work", true, "")
-	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Work/projects"}
+	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Crew"}
 	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
 
-	manifestPath := "_users/user-1/Chats/Work/projects/site/product.json"
+	manifestPath, _ := workProjectBindingPaths(t, "project-1")
 	store := productProjectStore{
 		listPaths: func(context.Context, string) ([]string, bool, error) { return []string{manifestPath}, true, nil },
 		read: func(context.Context, string) (string, bool, error) {
@@ -391,7 +417,7 @@ func TestWorkProjectChatKeyUsesSameFolderWithIndependentSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if binding.ConversationKey != "project-1:chat-2" || binding.ResourceID != "project-1" || binding.WorkspacePath != "_users/user-1/Chats/Work/projects/site" {
+	if binding.ConversationKey != "project-1:chat-2" || binding.ResourceID != "project-1" || binding.WorkspacePath != "Crew/site" {
 		t.Fatalf("unexpected project chat binding: %+v", binding)
 	}
 	if binding.AuthoritativeSessionID != "" || binding.ManifestPath != "" {
@@ -557,10 +583,9 @@ func TestTriggerRunsShareTheTriggersOwnConversation(t *testing.T) {
 // resolveAgentProfileForQuery reads.
 func TestWorkProjectBindingLoadsNativeAgentTools(t *testing.T) {
 	profile := routeTestProfile("work", true, "")
-	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Work/projects"}
+	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Crew"}
 	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
-	manifestPath := "_users/user-1/Chats/Work/projects/site/product.json"
-	runtimePath := "_users/user-1/Chats/Work/projects/site/workflow.json"
+	manifestPath, runtimePath := workProjectBindingPaths(t, "task-1")
 	for _, tc := range []struct {
 		capabilities string
 		want         bool
