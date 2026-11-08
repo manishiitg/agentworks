@@ -139,6 +139,31 @@ func TestPythonHelperStateIsReadableButNotWritableByItsSlotGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	log.Close()
+	// PLAT-746-474: agent execution records need the same slot traversal;
+	// the run root must retain its ordinary output write permissions.
+	id := "python-agent-00000000-0000-4000-8000-000000000001"
+	artifacts := filepath.Join(filepath.Dir(helper), "execution", id)
+	if err := os.MkdirAll(artifacts, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(artifacts, os.ModeSetgid|0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(artifacts, "transcript.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.protectPythonAgentArtifacts(id); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(artifacts); err != nil || info.Mode().Perm() != 0750 {
+		t.Fatalf("agent directory remains unreadable: %v %v", info, err)
+	}
+	if info, err := os.Stat(filepath.Join(artifacts, "transcript.json")); err != nil || info.Mode().Perm() != 0640 {
+		t.Fatalf("agent record remains unreadable: %v %v", info, err)
+	}
+	if info, err := os.Stat(filepath.Dir(helper)); err != nil || info.Mode().Perm() != 0770 {
+		t.Fatalf("run output permissions changed: %v %v", info, err)
+	}
 	for _, path := range []string{helper, filepath.Dir(old), filepath.Join(helper, "receipts"), filepath.Join(helper, "receipts/nested"), filepath.Dir(log.Path())} {
 		info, err := os.Stat(path)
 		if err != nil || info.Mode().Perm() != 0750 || info.Mode()&os.ModeSetgid == 0 {
@@ -151,6 +176,17 @@ func TestPythonHelperStateIsReadableButNotWritableByItsSlotGroup(t *testing.T) {
 			t.Fatalf("server helper file mode %s: %v %v", path, info, err)
 		}
 	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(helper, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.writePythonHelperState(context.Background(), c.pythonHelperStateRoot()+"/linked/forged.json", "{}"); err == nil || !strings.Contains(err.Error(), "symbolic links") {
+		t.Fatalf("symlink parent was not refused by its path rule: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "forged.json")); !os.IsNotExist(err) {
+		t.Fatalf("record escaped its anchored parent: %v", err)
+	}
+
 }
 
 func TestWorkflowGuardMaterializationLeavesAbsoluteHostGrantUnmanaged(t *testing.T) {

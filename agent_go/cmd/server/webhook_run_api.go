@@ -341,17 +341,7 @@ func readWebhookRunResult(workspacePath string, run schedulerstate.Run) (webhook
 			}
 			if result.Terminal {
 				b, _ := json.Marshal(result)
-				f, err := root.OpenFile(".webhook-result.tmp", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-				if err == nil {
-					_, err = f.Write(b)
-					closeErr := f.Close()
-					if err == nil {
-						err = closeErr
-					}
-					if err == nil {
-						err = root.Rename(".webhook-result.tmp", ".webhook-result.json")
-					}
-				}
+				err := wf.WriteServerRecord(root, ".webhook-result.json", b)
 				if err != nil && !os.IsExist(err) {
 					return webhookRunResult{}, fmt.Errorf("%w: %w", errWebhookPersistResult, err)
 				}

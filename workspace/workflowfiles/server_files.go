@@ -51,7 +51,7 @@ func WriteServerFile(root *os.Root, relative string, data []byte) error {
 	if err != nil || clean == "." {
 		return fileError(400, "invalid helper filename")
 	}
-	dirMode, fileMode, err := ServerFileModes(root)
+	dirMode, _, err := ServerFileModes(root)
 	if err != nil {
 		return err
 	}
@@ -78,13 +78,26 @@ func WriteServerFile(root *os.Root, relative string, data []byte) error {
 		}
 	}
 	name := filepath.Base(clean)
-	if info, err := current.Lstat(name); err == nil && (!info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0) {
+	return WriteServerRecord(current, name, data)
+}
+
+// WriteServerRecord writes one service-owned record without changing its
+// containing directory, which may also hold ordinary writable run outputs.
+func WriteServerRecord(root *os.Root, name string, data []byte) error {
+	if clean, err := CleanRelative(name); err != nil || clean == "." || clean != filepath.Base(clean) {
+		return fileError(400, "invalid record filename")
+	}
+	_, fileMode, err := ServerFileModes(root)
+	if err != nil {
+		return err
+	}
+	if info, err := root.Lstat(name); err == nil && (!info.Mode().IsRegular() || info.Mode()&fs.ModeSymlink != 0) {
 		return fileError(403, "helper state must be a regular file")
 	}
-	if err := atomicRootWrite(current, name, data, fileMode); err != nil {
+	if err := atomicRootWrite(root, name, data, fileMode); err != nil {
 		return err
 	}
 	// The common writer preserves old metadata; helper state instead requires
 	// its server-owned mode even when replacing an older group-writable file.
-	return current.Chmod(name, fileMode)
+	return root.Chmod(name, fileMode)
 }
