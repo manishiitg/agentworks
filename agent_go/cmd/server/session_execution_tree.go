@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -232,6 +234,15 @@ func eventDerivedExecutionStatus(event internalevents.Event, payload map[string]
 	default:
 		return trackedExecutionStatusRunning, false, false
 	}
+}
+
+// PLAT-746-447: authored diagnostics can mention cancellation or deadlines.
+// Only a typed cancellation denotes interruption; timeouts are failed runs.
+func workflowQueryFailureStatus(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return trackedExecutionStatusCanceled
+	}
+	return trackedExecutionStatusFailed
 }
 
 func eventDerivedMainFallbackStatus(sessionStatus string) (string, bool) {
