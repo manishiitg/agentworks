@@ -1,3 +1,4 @@
+import { useWorkflowRunNavigation } from './workflowRunNavigation'
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeft, FileCode2, Zap } from 'lucide-react'
 import { isAxiosError } from 'axios'
@@ -21,6 +22,7 @@ function failureMessage(error: unknown, fallback: string) {
  */
 export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { projectId: string; chatTabId: string; onBack?: () => void }) {
   // The opened workflow is looked up in the refreshed list, so what the page shows follows edits made in the Crew chat.
+  const target = useWorkflowRunNavigation(state => state.target)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [section, setSection] = useState<StepsRunsSection>('steps')
   const [file, setFile] = useState<string | null>(null)
@@ -41,6 +43,14 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     void refresh(controller.signal).catch(e => { if (!controller.signal.aborted) setError(failureMessage(e, 'Could not load. Try again.')) })
     return () => controller.abort()
   }, [refresh])
+  useEffect(() => {
+    if (!loaded || target?.crewId !== projectId) return
+    const item = items.find(entry => entry.id === target.executableId && entry.workspace_path === target.workspacePath)
+    if (item) {
+      setSelectedId(item.id); setSection('runs'); setFile(null); setRuns({ run: target.runFolder, costs: false })
+    } else setError('Run view unavailable.')
+    useWorkflowRunNavigation.setState({ target: null })
+  }, [target, loaded, items, projectId])
   // Inputs, saved settings and run steps change when the Crew's agent edits the workflow: read them again then.
   useLiveRefetch(() => { void refresh(new AbortController().signal).catch(() => undefined) }, { kinds: ['sessions', 'plan'], refreshOnFocus: true, fallbackMs: 15_000, safetyMs: 60_000, minIntervalMs: 3_000 })
   async function ask(message: string) {

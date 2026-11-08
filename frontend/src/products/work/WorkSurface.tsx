@@ -1,3 +1,4 @@
+import { useWorkflowRunNavigation } from './workflowRunNavigation'
 import { LocalChatPicker, type ImportedLocalChat, type LocalChat } from './LocalChatPicker'
 import { listenForProjectIntegrationNavigation } from '../../utils/projectIntegrationNavigation'
 import { chatFilesNavigationEvent } from '../../components/workspace/chatFileNavigation'
@@ -978,6 +979,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
   const [viewNavigationRevision, setViewNavigationRevision] = useState(0)
   useProductUrlView(product.profileId, { id: selected?.id, view: selected ? workspaceView : undefined }, viewNavigationRevision)
+  const pendingWorkflowRun = useWorkflowRunNavigation(state => state.target)
   const pendingWorkView = useProductSurfaceStore(state => state.pendingWorkView)
   const setPendingWorkView = useProductSurfaceStore(state => state.setPendingWorkView)
   const [workspaceViewRefresh, setWorkspaceViewRefresh] = useState(0)
@@ -1055,6 +1057,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setPanelOpen(true)
     selectWorkspaceView(panel)
   }, [selected?.shared, selectWorkspaceView, sharedPanels, showShell, workspacePanels])
+  useEffect(() => {
+    if (product.profileId === 'work' && pendingWorkflowRun?.crewId === selected?.id) openWorkPresentationView('workflow')
+  }, [pendingWorkflowRun, selected?.id, product.profileId, openWorkPresentationView])
   useEffect(() => listenForProjectIntegrationNavigation(() => {
     setPanelOpen(true)
     selectWorkspaceView('mcp')
