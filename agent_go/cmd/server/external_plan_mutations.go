@@ -19,18 +19,18 @@ import (
 )
 
 func externalPlanMutationDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	actions, schemas := []any{"list"}, []any{}
+	// The tool schema stays small: the operations' own schemas (about 110k
+	// characters together) come from action=list, one operation at a time with
+	// operation=<name>. Every call is still validated against its operation's
+	// closed schema before anything is staged or written.
+	actions := []any{"list"}
 	for _, tool := range stepworkflow.ExternalBuilderPlanToolDefinitions() {
-		var schema map[string]any
-		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
-			panic(err)
-		}
 		actions = append(actions, tool.Name)
-		schemas = append(schemas, schema)
 	}
-	add("plan", "Edit a workflow plan directly with the existing native Builder validators and plan changelog. action=list returns exact operation schemas; otherwise action is a listed native name and arguments matches that schema. Read workflow action=plan for expected_revision covering plan and configuration. Every mutation needs a unique request_id: identical retries return its durable receipt. Existing Builder authoring consent and current editable owner/editor/team roles apply; readers cannot edit. Flow source uses files action=write and relay tools. No model turn or chat is adopted.", true, true, map[string]any{
+	add("plan", "Edit a workflow plan directly with the existing native Builder validators and plan changelog. action=list returns the operation schemas (operation=<name> returns one); otherwise action is a listed native name and arguments matches that operation's schema. Read workflow action=plan for expected_revision covering plan and configuration. Every mutation needs a unique request_id: identical retries return its durable receipt. Existing Builder authoring consent and current editable owner/editor/team roles apply; readers cannot edit. Flow source uses files action=write and relay tools. No model turn or chat is adopted.", true, true, map[string]any{
 		"action":            map[string]any{"type": "string", "enum": actions},
-		"arguments":         map[string]any{"anyOf": schemas},
+		"operation":         externalString("action=list only: return just this operation's schema."),
+		"arguments":         map[string]any{"type": "object", "description": "The chosen operation's fields; get them with action=list operation=<name>. Unknown or mistyped fields are refused before any change."},
 		"expected_revision": externalString("Combined revision returned by workflow action=plan."),
 		"request_id":        map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
 	}, "action")
@@ -70,7 +70,23 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 			externalError(w, 400, "invalid_arguments", "list takes no mutation arguments.")
 			return
 		}
-		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "tools": stepworkflow.ExternalBuilderPlanToolDefinitions()})
+		tools := stepworkflow.ExternalBuilderPlanToolDefinitions()
+		if operation := externalArg(args, "operation"); operation != "" {
+			names := make([]string, 0, len(tools))
+			var chosen []stepworkflow.ExternalPlanToolDefinition
+			for _, tool := range tools {
+				names = append(names, tool.Name)
+				if tool.Name == operation {
+					chosen = append(chosen, tool)
+				}
+			}
+			if len(chosen) == 0 {
+				externalError(w, 400, "invalid_arguments", "operation must be one of: "+strings.Join(names, ", "))
+				return
+			}
+			tools = chosen
+		}
+		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "tools": tools})
 		return
 	}
 	expected, requestID := externalArg(args, "expected_revision"), externalArg(args, "request_id")
