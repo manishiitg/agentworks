@@ -83,7 +83,7 @@ import {
 const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
-  history: 'history', context: 'context', report: 'dashboard', goals: 'goals', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
+  history: 'history', context: 'context', report: 'dashboard', goals: 'goals', workflow: 'workflow', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
   suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
   // ?view=share and ?view=slack open the Access page on that section (links from the Mac app's Where it lives).
   share: 'mcp', slack: 'mcp',
@@ -92,7 +92,7 @@ const WORK_UI_PRESENTATION_VIEWS = {
 } as const satisfies Record<string, WorkWorkspaceView>
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
-  history: 'Chat history', context: 'Context', report: 'Dashboard', goals: 'Goals', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
+  history: 'Chat history', context: 'Context', report: 'Dashboard', goals: 'Goals', workflow: 'Workflow', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
   suggestions: 'Suggestions', identity: 'Settings', mcp: 'Connections', shell: 'Terminal',
   llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders', share: 'Share', slack: 'Slack',
 }
@@ -1042,11 +1042,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [activeSessionId, isShared, workspacePanels, selectWorkspaceView])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
-    const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
+    const named = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
+    // The workflow and its scripts have their own page; older callers still say schedules + workflows.
+    const panel = named === 'schedules' && (target === 'workflows' || target === 'scripts') ? 'workflow' : named
     if (!isWorkWorkspaceViewEnabled(panel, workspacePanels)) return
     if (isWorkSessionRun(selected) && !sharedPanels.has(panel)) return
     if (panel === 'schedules') {
-      const automationTarget = target === 'webhooks' ? 'triggers' : target || 'workflows'
+      const automationTarget = target === 'webhooks' ? 'triggers' : target || 'schedules'
       useWorkflowStore.getState().openWorkspaceView('workshop', automationTarget)
     }
     if (panel === 'memory' && target) setWorkspaceViewTarget('memory', target)
