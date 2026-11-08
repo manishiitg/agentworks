@@ -5,7 +5,8 @@ import { workflowWebhooksApi, apiTriggerURL, type APITriggerOptions, type Workfl
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
-import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations } from '../automation/AutomationKit'
+import { AutomationIntro, AutomationListBox, AutomationRow, DetailLine, EmptyAutomations, PageRow, RowButton } from '../automation/AutomationKit'
+import { Switch } from '../ui/Switch'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 
@@ -17,7 +18,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update API triggers'
 }
 
-export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false }: { embedded?: boolean; workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
+export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false, pageRows = false, title }: { pageRows?: boolean; title?: string; embedded?: boolean; workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const canWrite = useCanWriteWorkflow(workspacePath)
   const [options, setOptions] = useState<APITriggerOptions>(emptyOptions)
   const [issued, setIssued] = useState<WorkflowAPITrigger | null>(null)
@@ -28,8 +29,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
   const requestGeneration = useRef(0)
 
   const refresh = useCallback(async () => {
-    if (embedded && !error && webhooks.length === 0) return null
-  if (!workspacePath) return
+    if (!workspacePath) return
     const generation = ++requestGeneration.current
     try {
       const result = await workflowWebhooksApi.list(workspacePath)
@@ -58,8 +58,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
   }, [onCounts, activeTriggers, webhooks.length])
 
   const afterSave = async () => {
-    if (embedded && !error && webhooks.length === 0) return null
-  if (!workspacePath) return
+    if (!workspacePath) return
     await refresh()
     await useWorkflowManifestStore.getState().refreshWorkflows()
   }
@@ -93,6 +92,34 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
 
   if (embedded && !error && webhooks.length === 0) return null
   if (!workspacePath) return <p className="p-4 text-sm text-muted-foreground">Select a workflow to configure API triggers.</p>
+  if (pageRows) {
+    const startsOf = (trigger: WorkflowAPITrigger) => {
+      const names = Object.entries(trigger.route_selections || {}).map(([stepId, routeId]) => (options.routes || []).find(option => option.step_id === stepId && option.route_id === routeId)?.route_name || routeId).join(', ')
+      return names ? `Starts ${names}` : trigger.step_id ? `Starts the step ${options.steps?.find(step => step.step_id === trigger.step_id)?.title || trigger.step_id}` : 'Starts the whole workflow'
+    }
+    return <div>
+      {error && <p role="alert" className="m-4 rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
+      {issued?.secret && <section className="m-4 space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+        <h3 className="text-sm font-medium">Secret for {issued.name}</h3>
+        <p className="text-xs text-muted-foreground">Copy this secret now. It is only shown when created or rotated. A new secret replaces the old one.</p>
+        <code className="block break-all rounded bg-background p-2 text-xs select-all">{issued.secret}</code>
+        <div className="flex gap-2"><RowButton onClick={() => void copy(issued.secret!, 'Secret copied')}>Copy secret</RowButton><RowButton onClick={() => setIssued(null)}>Dismiss</RowButton></div>
+      </section>}
+      {webhooks.map(trigger => <PageRow key={trigger.id} testId={`webhook-${trigger.id}`}
+        lead={<Switch aria-label={`${trigger.enabled ? 'Turn off' : 'Turn on'} ${trigger.name}`} checked={trigger.enabled} disabled={busy || !canWrite} onCheckedChange={enabled => void save({ ...trigger, enabled })} />}
+        title={trigger.name}
+        lines={[`${startsOf(trigger)}${title ? ` · ${title}` : ''}`, trigger.enabled ? undefined : 'Off']}
+        action={<RowButton onClick={() => void copy(apiTriggerURL(trigger.path), 'Address copied')}>Copy address</RowButton>}
+        open={openId === trigger.id} onToggle={() => setOpenId(openId === trigger.id ? null : trigger.id)}>
+        <DetailLine label="When">{trigger.auth_mode === 'github' ? 'GitHub sends a signed request to' : 'A request with the secret key to'} <code className="break-all select-all">{apiTriggerURL(trigger.path)}</code> · <button type="button" className="text-primary hover:underline" onClick={() => void copy(apiTriggerURL(trigger.path), 'Address copied')}>Copy</button>{canWrite && <> · <button type="button" disabled={busy} className="text-primary hover:underline disabled:opacity-50" onClick={() => void save(trigger, true)}>New secret</button></>}</DetailLine>
+        <DetailLine label="What runs">{startsOf(trigger).replace(/^Starts /, '')}{onAsk && canWrite && <> · <button type="button" className="text-primary hover:underline" onClick={() => void onAsk(`Change what the webhook “${trigger.name}” starts (id ${trigger.id}).`)}>Change</button></>}</DetailLine>
+        <DetailLine label="Where">Takes up to {trigger.max_concurrency || 4} deliveries at once</DetailLine>
+        <p className="pt-1 text-[11px] text-muted-foreground">Send JSON up to 1 MiB. Reuse an Idempotency-Key when retrying. When all delivery slots are busy the address answers 503 with Retry-After.</p>
+        {canWrite && <button type="button" disabled={busy} className="text-destructive hover:underline disabled:opacity-50" onClick={() => void remove(trigger.id)}>Remove</button>}
+      </PageRow>)}
+      {copied && <p role="status" className="px-4 py-2 text-xs text-muted-foreground">{copied}</p>}
+    </div>
+  }
   return (
     <div className={`flex ${embedded ? '' : 'h-full'} min-h-0 w-full max-w-none flex-col bg-background`}>
       {!hideHeader && <WorkspaceViewHeader
