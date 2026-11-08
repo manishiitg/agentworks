@@ -327,8 +327,14 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			if response.StatusCode != 403 {
 				t.Fatalf("Run person read source overview HTTP%d", response.StatusCode)
 			}
-		} else if response.StatusCode != 200 || !strings.Contains(string(body), "Prepare report") || !strings.Contains(string(body), `"errors": []`) || strings.Contains(string(body), "start-marker") {
-			t.Fatalf("saved source graph did not inspect safely: HTTP%d %s", response.StatusCode, body)
+		} else {
+			var inspection struct {
+				Errors []string `json:"errors"`
+			}
+			decodeErr := json.Unmarshal(body, &inspection)
+			if response.StatusCode != 200 || decodeErr != nil || inspection.Errors == nil || len(inspection.Errors) != 0 || !strings.Contains(string(body), "Prepare report") || strings.Contains(string(body), "start-marker") {
+				t.Fatalf("saved source graph did not inspect safely: HTTP%d %s (%v)", response.StatusCode, body, decodeErr)
+			}
 		}
 		// The new MCP action adds no graph renderer: it must preserve the
 		// route's exact output and current source-owner rule. Other variants
