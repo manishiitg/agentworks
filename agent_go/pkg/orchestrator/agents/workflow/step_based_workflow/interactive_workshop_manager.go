@@ -3592,36 +3592,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		logger.Warn(fmt.Sprintf("⚠️ Failed to register get_llm_config tool: %v", err))
 	}
 
-	// Tool: update_variable — add, update, or delete variables
-	updateVariableSchema := getUpdateVariableSchema()
-	updateVariableParams, parseErr := parseSchemaForToolParameters(updateVariableSchema)
-	if parseErr != nil {
-		logger.Warn(fmt.Sprintf("⚠️ Failed to parse update_variable schema: %v", parseErr))
-	} else if iwm.isRunModeRestricted() {
-		// PLAT-262: skip update_variable registration for read-only access
-	} else if err := mcpAgent.RegisterCustomTool(
-		"update_variable",
-		"Update, add, or delete variables in variables/variables.json. Provide action (required: 'update', 'add', or 'delete'), existing_variable_name (required for update/delete), and fields to update (name, value, description). The variables/variables.json file is updated immediately.",
-		updateVariableParams,
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			executor := createUpdateVariableExecutor(iwm.controller.GetWorkspacePath(), logger,
-				func(ctx context.Context, path string) (string, error) {
-					return iwm.controller.ReadWorkspaceFile(ctx, path)
-				},
-				func(ctx context.Context, path string, content string) error {
-					return iwm.controller.WriteWorkspaceFile(ctx, path, content)
-				}, iwm.controller.isRelayExecution())
-			result, execErr := executor(ctx, args)
-			if execErr == nil {
-				iwm.refreshVariablesManifest(ctx)
-			}
-			return result, execErr
-		},
-		"workflow",
-	); err != nil {
-		logger.Warn(fmt.Sprintf("⚠️ Failed to register update_variable tool: %v", err))
-	}
-
 	// Tool: get_workflow_config — read-only view of workflow-level settings (MCP servers, skills, secrets, LLM config)
 	if err := mcpAgent.RegisterCustomTool(
 		"get_workflow_config",
