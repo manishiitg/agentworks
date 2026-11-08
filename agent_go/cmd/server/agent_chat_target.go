@@ -9,6 +9,9 @@ import (
 // Conversation messages address registered project tabs. Function execution
 // never passes through here and keeps its own declared run conversation.
 func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target triggerTarget, chatID string) (triggerTarget, error) {
+	if target.Kind == triggerCallerWorkflow {
+		return target, fmt.Errorf("Workflows run directly. Send your message to a Crew agent instead.")
+	}
 	if target.Chat != nil || target.NamedAgentID != "" {
 		return target, nil
 	}
@@ -87,12 +90,4 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 		return target, fmt.Errorf("This agent has no project chat tabs")
 	}
 	return target, nil
-}
-
-func (api *StreamingAPI) authorizeGoalMessageTab(ctx context.Context, peer agentMessageEndpoint) bool {
-	if peer.Kind != triggerCallerWorkflow || !strings.Contains(peer.ChatKey, codeChatSideMarker) {
-		return false
-	}
-	tab, root, ok := api.goalTabForSession(ctx, peer.Session)
-	return ok && root == peer.Path && tab.ID == peer.ChatKey && tab.OwnerID == peer.UserID
 }
