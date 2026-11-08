@@ -193,7 +193,7 @@ func knowledgeCrewSetupFixture(t *testing.T) string {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"workflow.json", "product.json"} {
-		if err := os.WriteFile(filepath.Join(private, name), []byte(`{"id":"brain-setup","created_by":"admin","owner_id":"admin","product":"work"}`), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(private, name), []byte(`{"schema_version":1,"id":"brain-setup","title":"Brain setup","session_id":"brain-setup","created_by":"admin","owner_id":"admin","product":"work"}`), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
