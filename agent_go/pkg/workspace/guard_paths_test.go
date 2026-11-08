@@ -2,12 +2,10 @@ package workspace
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // PLAT-746: a returned absolute shell log must match its existing private
@@ -136,28 +134,4 @@ func TestFolderGuardCanonicalPathsKeepPrivateAndDeniedFilesBlocked(t *testing.T)
 	if err := client.ValidatePathWithContext(managed, "chat_history/blocked-alias/private.log", true); err == nil || !strings.Contains(err.Error(), "is blocked") {
 		t.Fatalf("hard deny bypassed: %v", err)
 	}
-}
-
-// Measure the filesystem work on the remote build host. This reports latency;
-// it does not make machine speed a correctness assertion.
-func TestFolderGuardCanonicalComparisonCost(t *testing.T) {
-	docs := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	guard := &FolderGuardConfig{Enabled: true}
-	for i := 0; i < 50; i++ {
-		rel := fmt.Sprintf("_users/person/chat_history/area-%d", i)
-		if err := os.MkdirAll(filepath.Join(docs, rel), 0755); err != nil {
-			t.Fatal(err)
-		}
-		guard.ReadPaths = append(guard.ReadPaths, rel)
-	}
-	client := NewClient("http://unused", WithFolderGuard(guard))
-	start := time.Now()
-	const samples = 100
-	for i := 0; i < samples; i++ {
-		if err := client.ValidatePathWithContext(context.Background(), "_users/person/chat_history/area-49/result.log", false); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Logf("canonical guard 50 grants: %s per file operation (%d samples)", time.Since(start)/samples, samples)
 }

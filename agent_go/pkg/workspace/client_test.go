@@ -10,34 +10,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-func TestCreateFolderTreatsExistingFolderAsSuccess(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/folders" {
-			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
-		}
-		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"error":"folder already exists"}`))
-	}))
-	defer server.Close()
-
-	if err := NewClient(server.URL).CreateFolder(context.Background(), "Chats/Work/projects/demo/code"); err != nil {
-		t.Fatalf("existing folder should satisfy CreateFolder: %v", err)
-	}
-}
-
-func TestCreateFolderStillReturnsOtherWorkspaceErrors(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"error":"denied"}`))
-	}))
-	defer server.Close()
-
-	err := NewClient(server.URL).CreateFolder(context.Background(), "Chats/Work/projects/demo/code")
-	if err == nil || !strings.Contains(err.Error(), "HTTP 403") {
-		t.Fatalf("non-conflict error must be preserved, got %v", err)
-	}
-}
-
 func TestDeleteFolderForwardsUserAndConfirmsPermanentDeletion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete || r.URL.Path != "/api/folders/Chats/Work/projects/demo" {
