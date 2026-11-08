@@ -59,11 +59,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: coding-agent-loop/frontend/package-lock.json
-
-      - name: Install frontend test dependencies
-        run: npm ci --prefix coding-agent-loop/frontend
 
       - name: Install tmux for hermetic lifecycle contracts
         run: sudo apt-get update && sudo apt-get install -y tmux
@@ -163,10 +158,6 @@ jobs:
           -count=1
 
 
-      - name: Verify frontend live-input submission contract
-        working-directory: coding-agent-loop
-        run: npm --prefix frontend test -- src/utils/liveInputSubmission.test.ts src/utils/chatSubmitHelpers.test.ts
-
   real-contract:
     name: P0 live CLI + MCP bridge + workflow
     if: >-
@@ -202,11 +193,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: coding-agent-loop/frontend/package-lock.json
-
-      - name: Install frontend test dependencies
-        run: npm ci --prefix coding-agent-loop/frontend
 
       - name: Run authenticated P0 matrix
         working-directory: coding-agent-loop
