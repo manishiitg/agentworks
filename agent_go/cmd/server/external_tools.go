@@ -298,7 +298,6 @@ func externalTools() ([]externalTool, error) {
 			externalCatalogErr = err
 			return
 		}
-		externalContractUpgradeDefinition(add)
 		externalSettingsDefinitions(add)
 		if err := externalWorkflowAccountDefinitions(add); err != nil {
 			externalCatalogErr = err
@@ -1072,10 +1071,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if tool.Name == "workflow_crews" {
 		api.externalWorkflowCrewCall(w, r, args, *selected)
-		return
-	}
-	if tool.Name == "workflow_upgrade" {
-		api.externalContractUpgradeCall(w, r, args, *selected)
 		return
 	}
 	if tool.Name == "get_file_link" {

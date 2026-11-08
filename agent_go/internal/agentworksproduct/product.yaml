@@ -116,7 +116,7 @@ chat_policy:
 # the entry file chooses which definitions to render. Runtime values stay in Go.
 chat:
   builder:
-    external_tools: [workflow_upgrade, workflow_crews, workflow_google_account, workflow_slack_account, workflow_slack_bot]
+    external_tools: [workflow_crews, workflow_google_account, workflow_slack_account, workflow_slack_bot]
     # Default workflow phase tools; integration tests compare real registration.
     tools:
       - brain_browse

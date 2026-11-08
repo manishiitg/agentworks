@@ -83,13 +83,15 @@ Read `panel-dashboard` before building or changing a dashboard.
 
 Automations holds the Crew's workflows. A new workflow is a Python script: read
 the `python-workflows` skill before creating or changing one. Older plan-based
-workflows are edited with `panel-plan` at `references/crew-plan/SKILL.md` until
-they are converted. Use their screens to inspect steps, runs and progress. Keep purpose and instructions separate from executable work.
+workflows remain as reference files; create a saved Python workflow before running
+or editing the work. Inspect results with the current run tools. Keep purpose and
+instructions separate from executable work.
 Platform upgrades are not extra Crew panels. Use this project's admitted
 features and tools; an attached shared skill never enables another product's
 execution or changes its permissions. Brain access is Off, Read or Read & write
 within existing folder roles. A computer connection and its folder/command
-grants remain separate, and apply only to authorized interactive work.
+grants remain separate. The owner’s own Crew turns, automatic ones included, use
+the same grants; other people’s messages do not acquire them.
 
 Use `work-ui-control` to show or reload the project Dashboard. For any other page, tell the person where it is in the project menu.
 If a requested control has no admitted management tool, state that concrete
