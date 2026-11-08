@@ -76,10 +76,11 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	fixture := "#!" + python + "\n" + `import json,os,sys
 from pathlib import Path
 assert not any(k.startswith(('SECRET_', 'VLT_', 'MCP_')) for k in os.environ)
-config=json.loads(Path(sys.argv[sys.argv.index('--project')+1]).read_text())
+config_file=Path(sys.argv[sys.argv.index('--project')+1])
+config=json.loads(config_file.read_text())
 assert len(config['extraPaths'])==2 and str(Path.cwd()) in config['extraPaths']
 assert sum((Path(p)/'agentworks/__init__.py').is_file() for p in config['extraPaths'])==1
-assert all(not Path(p).is_symlink() and Path(p).resolve().is_relative_to(Path.cwd()) for p in config['include'])
+assert all(not Path(p).is_absolute() and not (config_file.parent/p).is_symlink() and (config_file.parent/p).resolve().is_relative_to(Path.cwd()) for p in config['include'])
 source=Path.cwd()/'main.py'
 print(json.dumps({'generalDiagnostics':[{'file':str(source),'message':'Use an integer; MCP_API_TOKEN=fixture-credential','range':{'start':{'line':2}}}]}))
 sys.exit(1)

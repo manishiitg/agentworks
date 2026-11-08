@@ -203,7 +203,7 @@ def python_type_notes(files):
     try:
         with tempfile.TemporaryDirectory(prefix='python-hints-') as directory:
             config = pathlib.Path(directory) / 'pyrightconfig.json'
-            config.write_text(json.dumps({'include': [str(file) for file in saved],
+            config.write_text(json.dumps({'include': [os.path.relpath(file, directory) for file in saved],
                 'extraPaths': [sdk, str(root)], 'typeCheckingMode': 'basic',
                 'useLibraryCodeForTypes': True}), encoding='utf-8')
             environment = {'PATH': os.environ.get('PATH', ''), 'HOME': directory,
