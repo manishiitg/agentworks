@@ -5528,10 +5528,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				)
 				agentEvent := unifiedevents.NewAgentEvent(errorEventData)
 				agentEvent.SessionID = sessionID
-				status := trackedExecutionStatusFailed
-				if strings.Contains(fullError, "context canceled") || strings.Contains(fullError, "context deadline exceeded") {
-					status = trackedExecutionStatusCanceled
-				}
+				status := workflowQueryFailureStatus(err)
 				api.completeTrackedExecution(queryID, status, rootCauseError, nil)
 				api.removeSessionQueryID(sessionID, queryID)
 				completionEvent := events.Event{

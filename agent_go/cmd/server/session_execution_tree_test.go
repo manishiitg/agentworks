@@ -1,6 +1,9 @@
 package server
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -344,6 +347,28 @@ func TestEventDerivedExecutionStatusTreatsWorkflowLifecycleAsTerminal(t *testing
 			}
 			if failed != tt.failed {
 				t.Fatalf("expected failed=%v, got %v", tt.failed, failed)
+			}
+		})
+	}
+}
+
+// PLAT-746-447: real run_trigger marked exit 1 as stopped when its diagnostic
+// mentioned context canceled. Script text must not become a user Stop signal.
+func TestWorkflowFailureDoesNotTreatDiagnosticCancellationTextAsAStop(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"script mentions cancellation", errors.New("script exit 1: context canceled"), trackedExecutionStatusFailed},
+		{"script mentions deadline", errors.New("script exit 1: context deadline exceeded"), trackedExecutionStatusFailed},
+		{"ordinary script failure", errors.New("script exit 1: failed validation"), trackedExecutionStatusFailed},
+		{"actual deadline", fmt.Errorf("execution: %w", context.DeadlineExceeded), trackedExecutionStatusFailed},
+		{"actual cancellation", fmt.Errorf("execution: %w", context.Canceled), trackedExecutionStatusCanceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := workflowQueryFailureStatus(test.err); got != test.want {
+				t.Fatalf("failure classified as %s, want %s", got, test.want)
 			}
 		})
 	}
