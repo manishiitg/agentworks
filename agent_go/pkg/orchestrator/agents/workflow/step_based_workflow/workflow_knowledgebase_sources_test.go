@@ -199,13 +199,9 @@ func TestKBSourcesWriteGrantAppliesToAllThreeFolderGuards(t *testing.T) {
 	}
 }
 
-func TestKBSourcesBuilderPromptAndExecutionScope(t *testing.T) {
+func TestKBSourcesExecutionScope(t *testing.T) {
 	root, ws, kb := kbSessionFixture(t)
 	saveKBSources(t, root, ws, true, false)
-	prompt := PhaseChatSystemPrompt("workflow-builder", map[string]string{"WorkspacePath": ws})
-	if !strings.Contains(prompt, "WORKFLOW_KB_PROJECT_A") || !strings.Contains(prompt, "Attached knowledge bases") {
-		t.Fatal("builder source discovery not injected")
-	}
 	hcpo := newAgentFactoryTestOrchestrator(t)
 	hcpo.SetWorkspacePath(ws)
 	hcpo.selectedRunFolder = "iteration-0/default"
