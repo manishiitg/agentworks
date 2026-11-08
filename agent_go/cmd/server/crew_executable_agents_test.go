@@ -82,25 +82,14 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		}
 	}
 	files.files["chat_history/"+chat.SessionID+".json"] = `{"messages":[{"text":"PERSONAL_HISTORY_MUST_NOT_BE_IMPORTED"}]}`
-	// Exercise the editor's actual write API for a reusable specialist as well
-	// as the runtime resolver. Neither path may accept another Crew as authority.
+	// Keep an old plan readable while its editors are retired (PLAT-746-471).
 	if err := writeFileToWorkspace(ctx, child.Root+"/planning/plan.json", `{"steps":[],"orphan_steps":[{"type":"agent","id":"report","title":"Report","description":"Write a report","prompt_contract":"description-first-v1"},{"type":"scripted","id":"untouched","title":"Untouched","description":"Keep this step"}]}`); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{projectActions: svc}
-	request := httptest.NewRequest(http.MethodPost, "/api/workflow/plan/update-step", strings.NewReader(`{"workspace_path":"Workflow/child","step_id":"report","updates":{"crew_agent":"`+chat.ConversationKey+`"}}`)).WithContext(ctx)
-	response := httptest.NewRecorder()
-	requireWorkflowWriteAccess(api.handleUpdatePlanStep)(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("specialist selection: %d %s", response.Code, response.Body)
-	}
 	plan, err := readPlanFromWorkspace(ctx, child.Root)
 	if err != nil || len(plan.OrphanSteps) != 2 {
 		t.Fatal("specialist plan unavailable", err)
-	}
-	rawPlan, _ := json.Marshal(plan.OrphanSteps[0])
-	if !strings.Contains(string(rawPlan), `"crew_agent":"`+chat.ConversationKey+`"`) {
-		t.Fatal("saved specialist lost the selected agent")
 	}
 	// PLAT-746-265: the chat authoring tool uses the same validated workspace
 	// writers, scoped to this Crew's children rather than shell folder grants.

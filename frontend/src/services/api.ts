@@ -42,7 +42,6 @@ import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
 import { retryTurnRunningSubmission } from './turnRunningRetry'
 import { configureChatDeliveryTelemetryTransport } from '../utils/chatDeliveryTelemetry'
 import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
-import type { PlanStep, AgentConfigs } from '../utils/stepConfigMatching'
 
 // Re-export types for other components to use
 export type {
@@ -2441,15 +2440,6 @@ export const agentApi = {
     })
     return response.data
   },
-  getPlanChangelog: async (workspacePath: string, limit?: number): Promise<import('./api-types').PlanChangelogResponse> => {
-    const response = await api.get('/api/workflow/plan-changelog', { params: { workspace_path: workspacePath, limit } })
-    return { success: !!response.data?.success, entries: Array.isArray(response.data?.entries) ? response.data.entries : [], count: response.data?.count ?? 0, error: response.data?.error }
-  },
-  prunePlanChangelog: async (workspacePath: string, olderThanDays: number): Promise<{ success: boolean; deleted: number; error?: string }> => {
-    const response = await api.post('/api/workflow/plan-changelog/prune', { workspace_path: workspacePath, older_than_days: olderThanDays })
-    return { success: !!response.data?.success, deleted: response.data?.deleted ?? 0, error: response.data?.error }
-  },
-
   // *** NEW CONSOLIDATED API ***
   // Load all workspace state in a single API call (run folders, variables, phases, progress)
   // This replaces multiple individual API calls (getRunFolders, getVariableGroups, constants, progress)
@@ -2494,126 +2484,6 @@ export const agentApi = {
   getWorkflowsOverview: async (workspacePaths: string[]): Promise<WorkflowOverviewBatchResponse> => {
     const response = await api.get('/api/workflows/overview', {
       params: { workspace_paths: workspacePaths.join(',') }
-    })
-    return response.data
-  },
-
-  // Plan and Step Config API
-  // Update a plan step (plan.json fields only, no agent_configs)
-  updatePlanStep: async (
-    workspacePath: string,
-    stepId: string,
-    updates: import('../utils/stepConfigMatching').PlanStepPatch
-  ): Promise<{ success: boolean; message: string; data?: { step: PlanStep } }> => {
-    const response = await api.post('/api/workflow/plan/update-step', {
-      workspace_path: workspacePath,
-      step_id: stepId,
-      updates: updates
-    })
-    return response.data
-  },
-
-  // Update step config (agent_configs in step_config.json)
-  updateStepConfig: async (
-    workspacePath: string,
-    stepId: string,
-    agentConfigs: AgentConfigs | undefined
-  ): Promise<{ success: boolean; message: string; data?: { step_id: string; agent_configs?: AgentConfigs } }> => {
-    const response = await api.post('/api/workflow/plan/update-step-config', {
-      workspace_path: workspacePath,
-      step_id: stepId,
-      agent_configs: agentConfigs
-    })
-    return response.data
-  },
-
-  // Batch update multiple steps
-  batchUpdateSteps: async (
-    workspacePath: string,
-    updates: Array<{
-      stepId: string
-      planUpdates?: Partial<Omit<PlanStep, 'agent_configs'>>
-      configUpdates?: Partial<AgentConfigs>
-    }>
-  ): Promise<{
-    success: boolean
-    message: string
-    data?: {
-      updated_steps: number
-      updated_configs: number
-      errors?: Array<{ step_id: string; error: string }>
-    }
-  }> => {
-    const response = await api.post('/api/workflow/plan/batch-update-steps', {
-      workspace_path: workspacePath,
-      updates: updates.map(u => ({
-        step_id: u.stepId,
-        plan_updates: u.planUpdates,
-        config_updates: u.configUpdates
-      }))
-    })
-    return response.data
-  },
-
-  // Get step override (global config that overrides all steps)
-  getStepOverride: async (
-    workspacePath: string
-  ): Promise<{ success: boolean; data: { agent_configs: AgentConfigs | null } }> => {
-    const response = await api.get('/api/workflow/plan/step-override', {
-      params: { workspace_path: workspacePath }
-    })
-    return response.data
-  },
-
-  // Update step override (global config that overrides all steps)
-  // Pass null to clear all overrides
-  updateStepOverride: async (
-    workspacePath: string,
-    agentConfigs: AgentConfigs | null
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await api.post('/api/workflow/plan/step-override', {
-      workspace_path: workspacePath,
-      agent_configs: agentConfigs
-    })
-    return response.data
-  },
-
-  // Delete a step from plan and config
-  deleteStep: async (
-    workspacePath: string,
-    stepId: string
-  ): Promise<{ success: boolean; message: string; data?: { deleted_step_id: string; deleted_config: boolean } }> => {
-    try {
-      const response = await api.post('/api/workflow/plan/delete-step', {
-        workspace_path: workspacePath,
-        step_id: stepId
-      })
-      return response.data
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const detail = typeof error.response?.data === 'string'
-          ? error.response.data.trim()
-          : error.response?.data?.message || error.response?.data?.error
-        if (detail) {
-          throw new Error(detail)
-        }
-      }
-      throw error
-    }
-  },
-
-  // Add a new step to the plan
-  addStep: async (
-    workspacePath: string,
-    step: Omit<PlanStep, 'agent_configs'>,
-    options?: {
-      insertAfterStepId?: string
-    }
-  ): Promise<{ success: boolean; message: string; data?: { step: PlanStep } }> => {
-    const response = await api.post('/api/workflow/plan/add-step', {
-      workspace_path: workspacePath,
-      step: step,
-      insert_after_step_id: options?.insertAfterStepId
     })
     return response.data
   },

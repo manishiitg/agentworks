@@ -3009,10 +3009,7 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Auto-improvement framework — see docs/workflow/auto_improvement_framework.md
 	apiRouter.HandleFunc("/org-dashboard/notifications", api.handleGetOrgDashboardNotifications).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan-changelog", api.handleGetPlanChangelog).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan-changelog/prune", requireWorkflowWriteAccess(api.handlePrunePlanChangelog)).Methods("POST", "OPTIONS")
 
-	// Plan and Step Config API routes
 	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/events", api.handleAgentEvents).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/attachment", api.handleAgentAttachment).Methods("POST")
@@ -3044,11 +3041,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/skill.md", api.handleExternalSkillMD).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/skill.zip", api.handleExternalSkillZIP).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agentworks.plugin", api.handleExternalPlugin).Methods("GET")
-	apiRouter.HandleFunc("/workflow/plan/update-step", requireWorkflowWriteAccess(api.handleUpdatePlanStep)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan/update-step-config", requireWorkflowWriteAccess(api.handleUpdateStepConfig)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan/batch-update-steps", requireWorkflowWriteAccess(api.handleBatchUpdateSteps)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan/delete-step", requireWorkflowWriteAccess(api.handleDeleteStep)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan/add-step", requireWorkflowWriteAccess(api.handleAddStep)).Methods("POST", "OPTIONS")
 	// Dynamic report system. The frontend ReportViewer loads db/reports/index.html
 	// directly; HTML pages read durable data through window.report.
 
