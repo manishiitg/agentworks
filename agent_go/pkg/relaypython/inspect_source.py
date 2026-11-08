@@ -181,5 +181,119 @@ def inspect_source(source):
     return graph
 
 
+def inspect_automation_source(files):
+    """A source outline, not a Python execution plan. Authored modules never run."""
+    graph = {"native": True, "nodes": [], "edges": [], "errors": []}
+    try:
+        if not isinstance(files, dict) or 'main.py' not in files:
+            raise ValueError('Save main.py before viewing this automation.')
+        trees = {}
+        for file, source in files.items():
+            if not file.endswith('.py') or '/' in file or '\\' in file:
+                raise ValueError('Choose flat Python files from this automation.')
+            trees[file[:-3]] = ast.parse(source, filename=file)
+        imports, constants, functions = {}, {}, {}
+        for module, tree in trees.items():
+            imports[module], constants[module] = {}, {}
+            for item in tree.body:
+                if isinstance(item, ast.ImportFrom):
+                    for alias in item.names:
+                        imports[module][alias.asname or alias.name] = (item.module, alias.name)
+                elif isinstance(item, ast.Import):
+                    for alias in item.names:
+                        imports[module][alias.asname or alias.name] = (alias.name, None)
+                elif isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    functions[module, item.name] = item
+                elif isinstance(item, ast.Assign) and len(item.targets) == 1 and isinstance(item.targets[0], ast.Name):
+                    constants[module][item.targets[0].id] = item.value
+                elif isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name) and item.value:
+                    constants[module][item.target.id] = item.value
+
+        def target(module, expression):
+            if isinstance(expression, ast.Name):
+                return imports[module].get(expression.id, (module, expression.id))
+            if isinstance(expression, ast.Attribute) and isinstance(expression.value, ast.Name):
+                imported = imports[module].get(expression.value.id)
+                if imported and imported[1] is None:
+                    return imported[0], expression.attr
+            return None, None
+
+        def literal(module, value):
+            seen = set()
+            while isinstance(value, ast.Name) and value.id in constants[module] and value.id not in seen:
+                seen.add(value.id)
+                value = constants[module][value.id]
+            return value.value if isinstance(value, ast.Constant) and isinstance(value.value, str) else 'built at run time'
+
+        def argument(call, index, name):
+            return call.args[index] if len(call.args) > index else next((item.value for item in call.keywords if item.arg == name), None)
+
+        def add(call, module, kind, label, identity, description=None):
+            import hashlib
+            node = dict(id='step-' + hashlib.sha256(identity.encode()).hexdigest()[:20], type=kind,
+                        label=label, call=identity, line=call.lineno)
+            if description is not None:
+                node['description'] = description
+            if graph['nodes']:
+                graph['edges'].append({'from': graph['nodes'][-1]['id'], 'to': node['id'], 'line': call.lineno})
+            graph['nodes'].append(node)
+
+        def decorated(module, name):
+            fn = functions.get((module, name))
+            if fn:
+                for decoration in fn.decorator_list:
+                    if isinstance(decoration, ast.Call) and target(module, decoration.func) == ('agentworks', 'step'):
+                        return fn, literal(module, argument(decoration, 0, 'title'))
+            return None, None
+
+        def walk_call(module, expression, expand=True):
+            found = False
+            # Visit arguments before their surrounding call, as Python does.
+            for child in ast.iter_child_nodes(expression):
+                if isinstance(child, (ast.Lambda, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if walk_call(module, child, expand):
+                    found = True
+            if not isinstance(expression, ast.Call):
+                return found
+            name_module, name = target(module, expression.func)
+            if (name_module, name) == ('agentworks', 'agent'):
+                add(expression, module, 'agent', literal(module, argument(expression, 0, 'name')),
+                    f'agent@{module}.py:{expression.lineno}', literal(module, argument(expression, 1, 'message')))
+                return True
+            fn, label = decorated(name_module, name) if name_module in trees else (None, None)
+            if fn is not None:
+                add(expression, module, 'script', label,
+                    f'{name_module}.py:{name}@{module}.py:{expression.lineno}')
+                if expand:
+                    block(name_module, fn.body, False)
+                return True
+            return found
+
+        def block(module, statements, expand=True):
+            for statement in statements:
+                if len(graph['nodes']) >= 200:
+                    raise ValueError('Source overview exceeds 200 items')
+                if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom, ast.Pass)):
+                    continue
+                if isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.With, ast.AsyncWith, ast.Match)):
+                    add(statement, module, 'script', 'Other code', f'other@{module}.py:{statement.lineno}')
+                elif not walk_call(module, statement, expand) and any(isinstance(item, ast.Call) for item in ast.walk(statement)):
+                    add(statement, module, 'script', 'Other code', f'other@{module}.py:{statement.lineno}')
+
+        entry = functions.get(('main', 'main'))
+        if entry:
+            block('main', entry.body)
+        else:
+            block('main', trees['main'].body)
+    except (SyntaxError, ValueError, RecursionError, TypeError) as error:
+        graph['nodes'], graph['edges'] = [], []
+        graph['errors'] = [str(error)]
+    return graph
+
+
 if __name__ == "__main__":
-    print(json.dumps(inspect_source(base64.b64decode(os.environ["VAR_RELAY_CHECK_SOURCE"]).decode())))
+    if "VAR_AUTOMATION_CHECK_FILES" in os.environ:
+        print(json.dumps(inspect_automation_source(json.loads(base64.b64decode(os.environ["VAR_AUTOMATION_CHECK_FILES"])))))
+    else:
+        print(json.dumps(inspect_source(base64.b64decode(os.environ["VAR_RELAY_CHECK_SOURCE"]).decode())))

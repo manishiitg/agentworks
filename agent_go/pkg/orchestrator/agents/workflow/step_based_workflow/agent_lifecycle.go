@@ -24,6 +24,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) beginAgentExecution(ctx context.Conte
 		hcpo.workshopStepRegistry.Register(exec)
 	}
 	meta := map[string]string{"execution_type": "workflow-step", "step_id": step.GetID(), "run_folder": hcpo.selectedRunFolder, "group_name": hcpo.currentGroupName}
+	if source, _ := ctx.Value(pythonSourceCallKey{}).(string); source != "" {
+		meta["source_call"] = source
+	}
 	if hcpo.workshopExecutionNotifier != nil {
 		hcpo.workshopExecutionNotifier.OnExecutionStart(WorkshopExecutionStart{ID: id, ParentExecutionID: parentID, Name: step.GetTitle(), Kind: "workflow_step", Metadata: meta, Cancel: cancel})
 	}
