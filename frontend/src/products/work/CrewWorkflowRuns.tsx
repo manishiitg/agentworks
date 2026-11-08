@@ -45,6 +45,17 @@ function whenLabel(iso: string) {
     : at.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
+/** A run's name for people: "Today 09:00", "Yesterday 18:30", "Mon 2 Nov 09:00" (the folder name when it has no start time). */
+function runTitle(folder: RunFolderInfo) {
+  const at = new Date(startedAt(folder))
+  if (Number.isNaN(at.getTime())) return folder.name
+  const time = at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const day = at.toDateString()
+  if (day === new Date().toDateString()) return `Today ${time}`
+  if (day === new Date(Date.now() - 86_400_000).toDateString()) return `Yesterday ${time}`
+  return `${at.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} ${time}`
+}
+
 function statusLine(folder: RunFolderInfo) {
   const meta = folder.metadata
   const by = meta?.triggered_by ? STARTED_BY[meta.triggered_by] : undefined
@@ -181,19 +192,19 @@ export function CrewWorkflowRuns({ workspacePath, script = false, folders, loadi
   </div>
   if (opened) return <OpenedRun workspacePath={workspacePath} script={script} folder={opened} cost={costOf(opened.name)} onBack={() => setOpen(null)} onRefresh={onRefresh} onAsk={onAsk} />
   const weekAgo = Date.now() - 7 * 86_400_000
-  const thisWeek = folders.filter(folder => new Date(startedAt(folder)).getTime() >= weekAgo)
-  const needLook = thisWeek.filter(folder => folder.metadata?.status === 'failed').length
+  const finishedCount = folders.filter(folder => folder.metadata?.status === 'completed').length
+  const failedCount = folders.filter(folder => folder.metadata?.status === 'failed').length
   const costsLoaded = totals !== null && Object.keys(totals).length > 0
   const spend = (since: number) => folders.filter(folder => new Date(startedAt(folder)).getTime() >= since).reduce((sum, folder) => sum + (costOf(folder.name) ?? 0), 0)
   const startOfToday = new Date(new Date().toDateString()).getTime()
-  const hint = [needLook ? `${needLook} this week ${needLook === 1 ? 'needs' : 'need'} a look.` : thisWeek.length ? 'Nothing this week needs a look.' : '', costsLoaded ? `Spent ${formatCost(spend(weekAgo))}.` : ''].filter(Boolean).join(' ')
+  const hint = folders.length ? [`${folders.length} run${folders.length === 1 ? '' : 's'}`, finishedCount ? `${finishedCount} finished` : '', failedCount ? `${failedCount} failed` : '', costsLoaded ? `${formatCost(spend(weekAgo))} this week` : ''].filter(Boolean).join(' · ') : undefined
   return <div className="space-y-4">
     <PageCard title="Runs" hint={hint || undefined} onAsk={() => onAsk('Tell me what happened in this workflow’s recent runs.')}>
       {folders.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">{loading ? 'Loading runs…' : 'No runs yet. Run the workflow from your Crew chat.'}</p>}
       {folders.map(folder => {
         const cost = costOf(folder.name)
-        return <PageRow key={folder.name} lead={<RunDot state={runDot(folder.metadata?.status)} />} title={folder.name} lines={[statusLine(folder)]}
-          aside={<><span className="block">{whenLabel(startedAt(folder))}</span>{cost !== undefined && <span className="block">{formatCost(cost)}</span>}</>}
+        return <PageRow key={folder.name} lead={<RunDot state={runDot(folder.metadata?.status)} />} title={runTitle(folder)} lines={[statusLine(folder)]}
+          aside={cost !== undefined ? formatCost(cost) : undefined}
           open={false} onToggle={() => setOpen(folder.name)}>{null}</PageRow>
       })}
     </PageCard>
@@ -225,8 +236,8 @@ function OpenedRun({ workspacePath, script, folder, cost, onBack, onRefresh, onA
   const stepCost = (record: WorkspaceStepInspection) => stepCosts.find(step => (record.inspection.step_id && step.stepID === record.inspection.step_id) || step.stepTitle === record.inspection.name)?.totalCost
   const failed = records.find(record => stepDot(record.status) === 'stopped')
   const meta = folder.metadata
-  const summary = [whenLabel(startedAt(folder)), statusLine(folder).toLowerCase(), cost !== undefined ? formatCost(cost) : ''].filter(Boolean).join(' · ')
-  return <PageCard title={folder.name} hint={summary} onAsk={() => onAsk(`Tell me what happened in the run "${folder.name}".`)}
+  const summary = [statusLine(folder).toLowerCase(), cost !== undefined ? formatCost(cost) : ''].filter(Boolean).join(' · ')
+  return <PageCard title={runTitle(folder)} hint={summary} onAsk={() => onAsk(`Tell me what happened in the run "${folder.name}".`)}
     action={<button type="button" onClick={onBack} aria-label="Back to runs" className="shrink-0 text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /></button>}>
     {meta?.status === 'failed' && <p role="alert" className="px-4 py-3 text-xs text-red-600 dark:text-red-400">{failed ? `Stopped at ${failed.inspection.name || failed.inspection.step_id}.` : 'This run stopped.'}</p>}
     {error && <p role="alert" className="px-4 py-3 text-xs text-destructive">{error}</p>}
