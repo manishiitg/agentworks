@@ -139,6 +139,9 @@ def run_script(script_id: str, inputs: Mapping[str, JSONValue], *,
                key: str | None = None, redo: bool = False) -> ScriptResult:
     """Run this Crew's saved script; return typed output folder and file paths.
 
+    You may pass the caller's full input object. Only the child's declared names
+    are forwarded; unused caller inputs are dropped. Names declared by neither
+    script are refused, and the child's types/defaults/required fields still apply.
     Output contents stay ordinary files. This helper never parses them.
     """
     try:

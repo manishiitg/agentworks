@@ -63,7 +63,7 @@ func TestPythonSavedScriptsKeepRunOutputsAndRejectRecursiveCalls(t *testing.T) {
 from pathlib import Path
 from agentworks import run_script, ScriptResult
 inputs = json.loads(os.environ['STEP_PARAMS_JSON'])
-value = {'count': inputs.get('count')}
+value = {'count': inputs.get('count'), 'input_names': sorted(inputs)}
 if inputs.get('next'):
     next_id = inputs['next']
     follow = {'C':'D','D':'E','E':'F'}.get(next_id, '')
@@ -83,7 +83,7 @@ print('saved-script-finished')
 		scripts[id] = CrewScriptConfiguration{Definition: definition, Root: root + "/code/" + id, Files: map[string]string{"main.py": source, "script.json": string(raw)}}
 	}
 	// The caller is A. Its extra launch value must not leak into B's defaults.
-	c.directCrewScript = &CrewScriptDefinition{ID: "A", Name: "A"}
+	c.directCrewScript = &CrewScriptDefinition{ID: "A", Name: "A", Inputs: []Variable{{Name: "parent_only", Type: "string"}}}
 	parent := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "A", Title: "A"}, Script: "A", crewScript: &CrewScriptConfiguration{Definition: *c.directCrewScript}}
 	handlers := executor.NewExecutorHandlers("", loggerv2.NewNoop())
 	bridge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,6 +137,14 @@ print('saved-script-finished')
 	if !strings.Contains(read(first), `"count": 3`) {
 		t.Fatal("typed input not passed")
 	}
+	sharedInputs := map[string]interface{}{"count": 7, "parent_only": "unused by B"}
+	filtered := read(call("shared-parent-inputs", "B", sharedInputs, false))
+	if !strings.Contains(filtered, `"count": 7`) || strings.Contains(filtered, "parent_only") || sharedInputs["parent_only"] != "unused by B" {
+		t.Fatalf("parent inputs leaked into the child or the caller map was changed: %s", filtered)
+	}
+	if reply := call("unknown-input", "B", map[string]interface{}{"count": 7, "parnet_only": "typo"}, false); reply.OK || !strings.Contains(reply.Error, "not declared") || reply.LogFile == "" {
+		t.Fatalf("a name declared nowhere silently fell through to defaults: %+v", reply)
+	}
 	if !strings.Contains(read(call("default-b", "B", map[string]interface{}{}, false)), `"count": 3`) {
 		t.Fatal("child defaults lost")
 	}
@@ -144,10 +152,14 @@ print('saved-script-finished')
 		id     string
 		inputs map[string]interface{}
 	}{
-		{"B", map[string]interface{}{"count": "bad"}}, {"required", map[string]interface{}{}},
+		{"B", map[string]interface{}{"count": "bad", "parent_only": "ignored"}}, {"required", map[string]interface{}{}},
 	} {
-		if reply := call("invalid-"+invalid.id, invalid.id, invalid.inputs, false); reply.OK || reply.Error == "" || reply.LogFile == "" || reply.Value != nil || !strings.Contains(reply.Text, "did not start") {
+		reply := call("invalid-"+invalid.id, invalid.id, invalid.inputs, false)
+		if reply.OK || reply.Error == "" || reply.LogFile == "" || reply.Value != nil || !strings.Contains(reply.Text, "did not start") {
 			t.Fatalf("invalid inputs admitted: %+v", reply)
+		}
+		if invalid.id == "B" && !strings.Contains(reply.Error, "integer") {
+			t.Fatalf("wrong type was refused at the wrong boundary: %+v", reply)
 		}
 	}
 	if reply := call("started-failure", "failing", map[string]interface{}{}, false); reply.OK || !strings.Contains(reply.Error, "fixture child failure") || reply.Value == nil || !strings.Contains(reply.Text, "did not complete") {
