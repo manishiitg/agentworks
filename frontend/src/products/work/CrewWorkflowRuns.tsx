@@ -84,7 +84,7 @@ function useRunTotals(workspacePath: string, refreshKey: number) {
   return totals
 }
 
-function useRunInspections(workspacePath: string, runFolder: string) {
+function useRunInspections(workspacePath: string, runFolder: string, attempt?: string, status?: string) {
   const [records, setRecords] = useState<WorkspaceStepInspection[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -102,7 +102,7 @@ function useRunInspections(workspacePath: string, runFolder: string) {
     } finally {
       setLoading(false)
     }
-  }, [workspacePath, runFolder])
+  }, [workspacePath, runFolder, attempt, status])
   useEffect(() => { void load() }, [load])
   return { records, cursor, error, loading, loadMore: () => void load(cursor ?? undefined) }
 }
@@ -225,7 +225,7 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
   onRefresh: () => Promise<void>
   onAsk: (task: string) => void | Promise<void>
 }) {
-  const { records, cursor, error, loading, loadMore } = useRunInspections(workspacePath, folder.name)
+  const { records, cursor, error, loading, loadMore } = useRunInspections(workspacePath, folder.name, folder.metadata?.execution_id, folder.metadata?.status)
   const outline = useScriptOutline(workspacePath, script)
   const fetchedEvidence = useRunEvidence(workspacePath, folder.name, folder.metadata?.status)
   // The run's own metadata keeps the latest checks and messages too: used when the read returns none.
