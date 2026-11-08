@@ -2306,8 +2306,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/oauth/cli/token", api.handleCLIOAuthToken).Methods("POST")
 	apiRouter.HandleFunc("/oauth/cli/revoke", api.handleCLIOAuthRevoke).Methods("POST")
 	// Per-workflow ownership and sharing (workflow_access.go).
-	apiRouter.HandleFunc("/workflow/laptop", api.handleGoalLaptopSettings).Methods("GET", "PUT")
-	apiRouter.HandleFunc("/workflow/laptop/folders", api.handleGoalLaptopBrowse).Methods("GET")
 	apiRouter.HandleFunc("/users/directory", api.handleUserDirectory).Methods("GET", "OPTIONS")
 	api.registerCrewTeamRoutes(apiRouter)
 	apiRouter.HandleFunc("/me/token-usage", api.handleMyTokenUsage).Methods("GET", "OPTIONS")
@@ -7803,9 +7801,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			policyWorkflowKind := ""
 
 			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind)
-			laptopPolicy := api.workflowChatLaptopPolicyKey(r.Context(), req, currentUserIsReadOnly)
-			policyKey += laptopPolicy
-			policyRoleKey := currentPolicy.sessionKey() + laptopPolicy
+			policyRoleKey := currentPolicy.sessionKey()
 			codingProvider := common.IsCLIProvider(finalProvider)
 			api.conversationMux.RLock()
 			_, knownInMemory := api.lastChatPolicyBySession[sessionID]

@@ -214,33 +214,3 @@ func TestWorkflowEffortChangeRefreshesRetainedLiveInput(t *testing.T) {
 		t.Fatalf("unchanged High effort should retain its CLI: compatible=%v err=%v", compatible, err)
 	}
 }
-
-// PLAT-872: retained follow-ups use the same laptop authority as the launch.
-func TestWorkflowBuilderFollowUpKeepsLaptopPolicy(t *testing.T) {
-	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_edit":true}]}`)
-	ws, docs := newFakeWorkspaceServer(t)
-	t.Setenv("WORKSPACE_API_URL", ws.URL)
-	docs.files["Workflow/test/workflow.json"] = `{"id":"wf_test","access":{"owners":["owner"]}}`
-	docs.files["Workflow/test/soul/soul.md"] = "Grow subscribers to 100 by December."
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	req := QueryRequest{SelectedFolder: "Workflow/test", AgentMode: "workflow_phase", PhaseID: "workflow-builder"}
-	api := &StreamingAPI{lastChatPolicyBySession: map[string]string{}}
-	if _, _, err := api.admitQueryTarget(ctx, &req, "owner", "chat"); err != nil {
-		t.Fatal(err)
-	}
-	if !req.admittedWorkflowPhase {
-		t.Fatal("phase admission was not recorded before the retained gate")
-	}
-	// PLAT-872: the actual launch key includes :laptop: even with no laptop
-	// selected. The retained gate omitted it and cancelled every follow-up.
-	laptop := api.goalLaptopPolicyKey(GetUserFromContext(ctx), req.SelectedFolder, false)
-	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false)) + laptop
-	if compatible, err := api.workflowRetainedPolicyCompatible(ctx, "chat", req); err != nil || !compatible {
-		t.Fatal("an unchanged workflow's follow-up was treated as a policy change", compatible, err)
-	}
-	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false)) + api.goalLaptopPolicyKey(GetUserFromContext(ctx), req.SelectedFolder, true)
-	if compatible, err := api.workflowRetainedPolicyCompatible(ctx, "chat", req); err != nil || compatible {
-		t.Fatal("changed laptop authority retained its old admission", compatible, err)
-	}
-}

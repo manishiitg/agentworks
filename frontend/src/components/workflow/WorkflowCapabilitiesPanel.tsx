@@ -16,7 +16,6 @@ import { ShareDashboardButton } from './ShareDashboardButton'
 import { integrationProductAvailable, projectIntegrationSections } from '../integrations/integrationSections'
 import { ProjectPluginsPanel, projectPluginTabs, type PluginTab } from '../integrations/ProjectPluginsPanel'
 import { ProjectIntegrationPanel, INTEGRATION_LABELS, type IntegrationSection } from '../integrations/ProjectIntegrationPanel'
-import { CodeLocalFilesSettings } from '../../products/work/CodeFilesPanel'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { agentApi, workflowManifestApi } from '../../services/api'
 import type { WorkflowCapabilities } from '../../services/api-types'
@@ -46,7 +45,7 @@ export type WorkflowCapabilitySection = CapabilityViewId
 
 type McpTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
-type IdentityTab = 'general' | 'secrets' | 'llm' | 'laptop' | 'upgrades'
+type IdentityTab = 'general' | 'secrets' | 'llm' | 'upgrades'
 
 const IDENTITY_TABS: Array<{ value: IdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
@@ -125,7 +124,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
   const navigationOptions = integrationNavigationOptions(mcpTabs, pluginTabs)
   const selectConnection = (target: string) => {
-    if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'laptop'].includes(target)) { setSharing(false); setTab('apps'); setPluginTab('connected'); setIntegrationSection(target as IntegrationSection); return }
+    if (['connected', 'available', 'secrets', 'gmail', 'slack-account'].includes(target)) { setSharing(false); setTab('apps'); setPluginTab('connected'); setIntegrationSection(target as IntegrationSection); return }
     if (target === 'share' || target === 'agentbridge' && integrationProductAvailable('bullpen', allowedProducts) || target === 'cli' || (target === 'slack' && mcpTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel | 'agentbridge'); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setTab('apps'); setPluginTab(pluginTabs.some(option => option.value === 'connected') ? 'connected' : pluginTabs[0].value); return }
     if (!mcpTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
@@ -339,8 +338,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 </> : <>
                 {activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <ProjectIntegrationPanel workspacePath={workspacePath} tabId={vaultTabId} placeNoun={'Goal'} section={integrationSection} canEdit={canWriteWorkflow} onAsk={askInCurrentChat}
                   onAppsSaved={selected_servers => syncVaultSelections({ selected_servers })}
-                  onSecretSelectionSaved={inventory => syncVaultSelections({ selected_global_secret_names: inventory.selected_global_secret_names })}
-                  laptop={<CodeLocalFilesSettings workflowPath={workspacePath} />} />}
+                  onSecretSelectionSaved={inventory => syncVaultSelections({ selected_global_secret_names: inventory.selected_global_secret_names })} />}
                 {activeMcpTab === 'apps' && workspacePath && pluginTab === 'skills' && <ProjectPluginsPanel tab="skills" skills={<SkillsManagerPanel
                       compact
                       manageOwnScroll={false}
