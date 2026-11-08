@@ -9,8 +9,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,12 +51,48 @@ func TestPythonAgentContinuesTurnsBoundsReplyAndPreservesTranscript(t *testing.T
 	t.Setenv("CODEX_CLI_TRANSPORT", "app-server")
 	const root = "Workflow/python-agent"
 	runRoot := filepath.Join(docs, root, "runs/run-one")
+	fixtureRoot := runRoot
 	for name, content := range map[string]string{"workflow.json": `{"code_layout_version":1}`, "soul/soul.md": "# Task\nDo the requested work.", "planning/plan.json": `{"steps":[]}`, "runs/run-one/marker": "run"} {
 		file := filepath.Join(docs, root, name)
 		if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(file, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if slotProof {
+		// Match the prepared host's Crew ownership. Declaring run_as for an
+		// owner-only service temp directory does not make it the slot's folder.
+		group, err := user.LookupGroup("slot01")
+		if err != nil {
+			t.Fatal(err)
+		}
+		gid, err := strconv.Atoi(group.Gid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for directory := runRoot; strings.HasPrefix(directory, os.TempDir()+string(filepath.Separator)); directory = filepath.Dir(directory) {
+			info, err := os.Stat(directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chown(directory, -1, gid); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(directory, info.Mode()|0050); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.Chmod(runRoot, os.ModeSetgid|0770); err != nil {
+			t.Fatal(err)
+		}
+		// Use an ordinary output directory, separate from protected run records.
+		fixtureRoot = filepath.Join(runRoot, "fixture-output")
+		if err := os.Mkdir(fixtureRoot, os.ModeSetgid|0770); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(fixtureRoot, os.ModeSetgid|0770); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -72,12 +111,25 @@ func TestPythonAgentContinuesTurnsBoundsReplyAndPreservesTranscript(t *testing.T
 		t.Fatalf("managed database fixture: %v %v", setupErr, closeErr)
 	}
 	bin := t.TempDir()
+	// Match an installed shared CLI; owner-only fixture programs cannot run as a slot.
+	if err := os.Chmod(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
 	fixture := "#!" + python + "\n" + fmt.Sprintf(`import json,os,pwd,sys,uuid,urllib.request
 from pathlib import Path
 root=Path(%q)
-rollouts=Path.cwd()/'.codex/sessions/2026/01/01'
+rollouts=(root if %s else Path.cwd())/'.codex/sessions/2026/01/01'
 if '--version' in sys.argv:
     print('codex-cli 1.0.0');raise SystemExit(0)
+def trace(stage, reason=''):
+    try:
+        header,credential=os.environ['MCP_AUTH'].split(':',1)
+        request=urllib.request.Request(os.environ['MCP_CUSTOM']+'/_fixture_trace',data=json.dumps({'stage':stage,'reason':reason}).encode(),headers={'Content-Type':'application/json',header:credential.strip()})
+        with urllib.request.urlopen(request,timeout=3) as response: response.read()
+    except Exception:
+        pass
+sys.excepthook=lambda kind,error,tb: trace('python-error',type(error).__name__+': '+str(error))
+trace('started')
 thread=''
 state=None
 def send(value):
@@ -85,6 +137,7 @@ def send(value):
 for line in sys.stdin:
     request=json.loads(line)
     method=request.get('method','')
+    trace(method)
     params=request.get('params',{})
     with (root/'fixture-requests.jsonl').open('a') as out:
         out.write(json.dumps({'method':method,'thread':params.get('threadId'),'input':params.get('input'),'cwd':str(Path.cwd())})+'\n')
@@ -134,25 +187,42 @@ for line in sys.stdin:
         send({'method':'item/agentMessage/delta','params':{'threadId':thread,'turnId':turn,'itemId':'answer','delta':answer}})
         send({'method':'item/completed','params':{'threadId':thread,'turnId':turn,'item':{'id':'answer','type':'agentMessage','text':answer,'phase':'final_answer'}}})
         send({'method':'turn/completed','params':{'threadId':thread,'turn':{'id':turn,'status':'completed'}}})
-`, runRoot, map[bool]string{true: "True", false: "False"}[slotProof])
-	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(fixture), 0700); err != nil {
+`, fixtureRoot, map[bool]string{true: "True", false: "False"}[slotProof], map[bool]string{true: "True", false: "False"}[slotProof])
+	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(fixture), 0755); err != nil {
 		t.Fatal(err)
 	}
 	// This Codex protocol fixture does not launch MCP subprocesses. Keep the
 	// required executable lookup local, and fail visibly if that changes.
 	bridge := filepath.Join(bin, "mcpbridge")
-	if err := os.WriteFile(bridge, []byte("#!/bin/sh\nexit 1\n"), 0700); err != nil {
+	if err := os.WriteFile(bridge, []byte("#!/bin/sh\nexit 1\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("MCP_BRIDGE_BINARY", bridge)
 	common.SetBridgeTokenSecret("fixture-only-signing-key")
 	t.Cleanup(func() { common.SetBridgeTokenSecret("") })
+	var traceMu sync.Mutex
+	var traceEntries []string
 	handlers := executor.NewExecutorHandlers("", loggerv2.NewNoop())
 	bridgeAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		session, valid := common.VerifyBridgeToken(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 		if !valid || len(parts) != 5 || parts[0] != "s" || parts[1] != session || !strings.HasPrefix(session, "python-runtime-python-agent-") {
 			http.Error(w, "own agent session required", http.StatusForbidden)
+			return
+		}
+		if parts[4] == "_fixture_trace" {
+			var event struct {
+				Stage  string `json:"stage"`
+				Reason string `json:"reason"`
+			}
+			if json.NewDecoder(r.Body).Decode(&event) != nil {
+				http.Error(w, "invalid fixture trace", 400)
+				return
+			}
+			traceMu.Lock()
+			traceEntries = append(traceEntries, event.Stage+": "+event.Reason)
+			traceMu.Unlock()
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": "{}"})
 			return
 		}
 		r.Header.Set("X-Session-ID", session)
@@ -220,16 +290,19 @@ for line in sys.stdin:
 	if missingBinding.OK || !strings.Contains(missingBinding.Error, "database tools are unavailable") {
 		t.Fatalf("missing binding did not refuse before launch: %+v", missingBinding)
 	}
-	if _, err := os.Stat(filepath.Join(runRoot, "fixture-requests.jsonl")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(fixtureRoot, "fixture-requests.jsonl")); !os.IsNotExist(err) {
 		t.Fatal("provider launched before database preflight")
 	}
 	first := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Research", "messages": []string{"first task"}}, "first")
 	large := "answer-start:" + strings.Repeat("evidence", 3000) + ":answer-end"
 	if !first.OK || !first.LogComplete || first.LogKind != "provider_transcript" || len(first.Text) >= len(large) {
-		errorText, _ := os.ReadFile(filepath.Join(runRoot, "fixture-error.txt"))
-		t.Fatalf("first result is not a bounded completed transcript receipt: %+v fixture=%s", first, errorText)
+		errorText, _ := os.ReadFile(filepath.Join(fixtureRoot, "fixture-error.txt"))
+		traceMu.Lock()
+		entries := append([]string{}, traceEntries...)
+		traceMu.Unlock()
+		t.Fatalf("first result is not a bounded completed transcript receipt: %+v fixture=%s trace=%v", first, errorText, entries)
 	}
-	readback, readErr := os.ReadFile(filepath.Join(runRoot, "database-readback.json"))
+	readback, readErr := os.ReadFile(filepath.Join(fixtureRoot, "database-readback.json"))
 	if readErr != nil || !strings.Contains(string(readback), `"row": 1`) || !strings.Contains(string(readback), `python-runtime-`+first.ConversationID) {
 		t.Fatalf("native agent did not write/read a row through its own bridge: %s %v", readback, readErr)
 	}
