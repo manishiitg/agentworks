@@ -159,7 +159,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		if knowledgeProjectBuilderQuery(req, &copy, authoritySession, toolSession, readOnly) &&
 			(callerSession == "" || callerSession == toolSession) {
 			ctx = context.WithValue(ctx, knowledgeProjectBuilderKey{}, knowledgeProjectBuilderAuthority{copy.UserID, req.SelectedFolder, toolSession})
-		} else if req.PhaseID == "workflow-builder" && isKnowledgeProjectTool(tool) {
+		} else if isProjectProfileID(req.AgentProfileID) && isKnowledgeProjectTool(tool) {
 			log.Printf("[KB_PROJECT] no Builder authority for %s: phase=%s mode=%s triggered_by=%q bot=%q caller=%q tool_session=%q authority=%q owned=%v read_only=%v",
 				tool, req.PhaseID, req.AgentMode, req.TriggeredBy, req.BotPlatform, callerSession, toolSession, authoritySession, callerOwnedBySession, readOnly)
 		}
