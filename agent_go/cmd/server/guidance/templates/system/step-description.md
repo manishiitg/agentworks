@@ -128,7 +128,7 @@ procedures in skills, domain facts and decisions in the
 knowledgebase, platform mechanics nowhere (the runtime supplies them).
 
 Naming a path in Inputs, Resources or Guides makes it readable: a workflow path under
-`skills/`, `knowledgebase/`, `code/shared/`, `soul/` or `db/README.md`
+`skills/`, `knowledgebase/`, `code/shared/` or `db/README.md`
 becomes readable for that step (never writable) whatever its
 knowledgebase access, and the runtime lists where to read it. Its contents are not pasted into the
 system prompt.<!-- product:knowledgebase --> Name Brain notes as `brain:<folder>/<note>`.<!-- /product --> A named
@@ -229,10 +229,10 @@ runtime supplies short workflow-database, workflow-knowledgebase, agent-browser
 and workflow-execution skill listings when applicable. The agent opens a relevant
 skill on demand; do not paste these procedures into descriptions, system_rules
 or verification messages. Keep enabled_skills for useful task/domain skills.
-Ordinary steps do not have the costs query action or function-service tools. Report results through the
-run summary and workflow notifications. The baseline includes `messages action=email_send` and
+Ordinary steps do not have the costs query action or function-service tools. The run record is the
+summary. The baseline includes `messages action=email_send` and
 `messages action=slack_send` for task-required sends, subject to actual connection/access
-gates; use `needs_you action=ask` for a needed answer.
+gates. A step never waits for a person: a missing value fails the step with a clear reason.
 Schema changes belong to Builder; external function-service work belongs to Crew.
-Goal metrics require a real soul objective. The runtime supplies bounded goal/position/parent context separately; do not
+The runtime supplies bounded goal/position/parent context separately; do not
 repeat it in each sequence instruction.

@@ -7733,19 +7733,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
-				// Extract workflow objective and success_criteria from soul/soul.md —
-				// the single canonical source (plan.json and workflow.json no longer
-				// hold these fields). See ResolveWorkflowObjective in soul_helpers.go.
-				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-					objective, successCriteria, _ := todo_creation_human.ReadWorkflowObjectiveFromSoul(setupCtx, phaseWorkspacePath, phaseReadFile)
-					if objective != "" {
-						phaseTemplateVars["WorkflowObjective"] = objective
-					}
-					if successCriteria != "" {
-						phaseTemplateVars["WorkflowSuccessCriteria"] = successCriteria
-					}
-				}
-
 				// Default workshop mode if not provided by frontend. Run/Reporting
 				// are explicit user/frontend choices; everything else defaults
 				// to the merged Workshop mode (was previously builder/optimizer).

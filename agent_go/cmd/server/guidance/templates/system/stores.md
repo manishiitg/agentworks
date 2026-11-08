@@ -65,7 +65,7 @@ Keep reusable instructions separate from business knowledge and recorded results
 
 **Business/runtime context placement:**
 When the user gives context that future step agents will need at run time, do not leave it only in chat. Put it in the narrowest durable surface:
-- **Workflow-wide objective, success criterion, or explicit user-approved durable constraint** -> `soul/soul.md`. Do not put architecture, implementation choices, agent-inferred assumptions, preferences/examples, or ordinary operating rules there; those belong in plan/config, KB context, skills, or variables as appropriate.
+- **Workflow-wide goal or explicit user-approved durable rule** -> the Crew's instructions. Do not put architecture, implementation choices, agent-inferred assumptions or ordinary operating rules there.
 - **Step-specific behavior rule** -> the relevant step description via plan modification tools. Example: "never send outreach before human approval" belongs in the send/approval step boundary, not KB.
 - **User-provided business/runtime context needed across runs** -> `knowledgebase/context/context.md` plus `knowledgebase_access="read"` on steps that must use it, and an explicit sentence in each affected step description naming the relevant context section/path. Example: customer preferences, market context, account history, domain heuristics, examples, style constraints, approval rules.
 - **Workflow-discovered business/domain facts** -> `knowledgebase/notes/` plus an explicit notes contribution in producer tasks. Example: patterns discovered from account history, cross-run observations, hypotheses.

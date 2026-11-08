@@ -99,8 +99,8 @@ runtime; a dashboard edit does not authorize plan or execution changes.
   under `db/reports/preview/` — open them with your own file or image viewer. Prefer it over
   asking the user to open the Dashboard tab for you.
 - To display recent runs and actions, use the existing summaries in
-  `org_dashboard_notifications`. `record_summary(kind="run_summary")` writes
-  title, status, message, structured fields and timestamp to this database.
+  `org_dashboard_notifications`. Every run's outcome is recorded there with
+  title, status, message, structured fields and timestamp.
   `window.report.renderActivity(target)` is an optional renderer; custom
   rendering can query `notification_kind = 'run_summary'` and render markdown
   messages with `window.report.renderMarkdown`. No additional step, table or

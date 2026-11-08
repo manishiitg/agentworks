@@ -10,13 +10,13 @@ prevents the workflow from reaching its goal.
 For each consequential restriction, classify it as exactly one of:
 
 1. **Explicit user constraint** — the user stated or approved it as durable.
-   Preserve it. `soul/soul.md ## Constraints`, a User rule card, or direct user
+   Preserve it. The Crew's instructions, a User rule card, or direct user
    evidence should support this classification.
 2. **Verified external constraint** — a current platform/API/legal/business fact
    supported by evidence. Preserve it with source/freshness; schedule a re-check
    when it can change.
 3. **Current design choice** — an evidence-backed tactic or architecture that is
-   useful now but remains replaceable. Keep it out of `soul.md`; describe it as
+   useful now but remains replaceable. Keep it out of the Crew's instructions; describe it as
    the current approach, not a permanent truth.
 4. **Agent-inferred assumption** — hardcoded or inherited without user approval or
    current evidence. Challenge, remove, generalize, parameterize, or propose a
@@ -28,7 +28,7 @@ For each consequential restriction, classify it as exactly one of:
   geography/time windows, audience/channel/source restrictions, and
   architecture/provider/tool/model choices with no provenance;
 - step descriptions, eval rubrics, reports, DB schemas, KB notes, learnings, or
-  code that optimize for the current plan's method instead of `soul.md` success;
+  code that optimize for the current plan's method instead of the workflow's actual goal;
 - targets or thresholds intended as minimum acceptable outcomes that have
   silently become ceilings preventing exploration of materially better results;
 - literals that should be variables/config, schemas that assume one source/type,
@@ -50,8 +50,8 @@ a Goal concern. Do not confuse the two.
 
 ### Bounded action
 
-1. Read `soul/soul.md` for stable intent, but do not trust architecture or an
-   unproven assumption merely because older soul text contains it.
+1. Read the Crew's instructions for stable intent, but do not trust architecture
+   or an unproven assumption merely because older text contains it.
 2. Inspect only assumptions relevant to this command's artifact and direct
    consumers/producers. Do not turn targeted maintenance into a full audit.
 3. Apply a bounded correction without asking when it preserves business meaning:

@@ -87,7 +87,7 @@ func BuildKBContributionReviewMessageWithTarget(kbAccess, contribution, notesTar
 
 	b.WriteString("**Important:** this is your final turn for KB work on this step. After this response, the step will be accepted regardless of any further gaps — there is no second review. Do not invent facts the step did not actually establish; partial coverage is better than fabricated coverage.\n\n")
 
-	b.WriteString("**Raising a concern.** If, while reconciling your contribution, you find that a KB note contradicts what this run actually observed, that the same fact is recorded differently in the KB versus `db/`, or that a durable note restates an owner constraint value (those live in `soul/soul.md` and must never be copied into the KB), report it with a line in this exact form before your summary:\n")
+	b.WriteString("**Raising a concern.** If, while reconciling your contribution, you find that a KB note contradicts what this run actually observed, that the same fact is recorded differently in the KB versus `db/`, or that a durable note restates an owner constraint value (those live in the Crew's instructions and must never be copied into the KB), report it with a line in this exact form before your summary:\n")
 	b.WriteString("`CONCERNS: <what contradicts what, naming both sources and the evidence path>`\n")
 	b.WriteString("Fix what you own (the notes you write) and report the rest rather than leaving a \"this is stale\" caveat next to the stale content.\n")
 

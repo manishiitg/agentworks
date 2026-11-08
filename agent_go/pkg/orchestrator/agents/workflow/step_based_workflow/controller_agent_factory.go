@@ -474,7 +474,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupExecutionFolderGuard(stepPath st
 	}
 	executionWorkspacePath := fmt.Sprintf("%s/execution", runWorkspacePath)
 	// Set folder guard paths:
-	// READ: execution folder (to read previous step results) + soul north-star file
+	// READ: execution folder (to read previous step results)
 	// + global and step-specific learnings (if mode grants read) + knowledgebase folder (if mode grants read)
 	// WRITE: only the specific step folder (including nested sub-agent folders) plus execution/Downloads.
 	// NOTE: under kbWriteMethod=direct we add knowledgebase/notes/ to writePaths so the

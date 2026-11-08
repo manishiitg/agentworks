@@ -210,8 +210,6 @@ func PhaseChatSystemPrompt(phaseId string, templateVars map[string]string) strin
 		templateData["CustomInstructions"] = templateVars["CustomInstructions"]
 		templateData["StepSummary"] = templateVars["StepSummary"]
 		templateData["WorkshopMode"] = templateVars["WorkshopMode"]
-		templateData["WorkflowObjective"] = templateVars["WorkflowObjective"]
-		templateData["WorkflowSuccessCriteria"] = templateVars["WorkflowSuccessCriteria"]
 		templateData["ExecutionMode"] = templateVars["ExecutionMode"]
 		templateData["AvailableGroups"] = templateVars["AvailableGroups"]
 		// Both native API and CLI sessions attach the same mode-filtered reference skill.
