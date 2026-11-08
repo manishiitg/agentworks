@@ -7,15 +7,16 @@ import (
 	"sync"
 	"time"
 
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 )
 
-// Run outcomes: a code-only summary goes to the configured channels and wakes
-// the linked Crew chat. No agent turn runs after a run.
+// Run outcomes: the run record is the summary (PLAT-746, decision "no
+// run-summary concept"). An outcome is written to the workflow's Activity and
+// wakes the linked Crew chat; nothing is sent to Slack, Gmail or WhatsApp. A
+// workflow that must alert people calls send_email or send_slack itself.
 
-// afterRunNotificationArgs builds the code-only run summary.
-func afterRunNotificationArgs(workflowName, scheduleName, status, errMsg string, duration time.Duration, external bool) map[string]interface{} {
+// runOutcomeSummary builds the code-only Activity record for one run.
+func runOutcomeSummary(workflowName, scheduleName, status, errMsg string, duration time.Duration) (string, *services.NotificationSummary) {
 	summaryStatus := "completed"
 	verb := "finished"
 	switch status {
@@ -46,33 +47,14 @@ func afterRunNotificationArgs(workflowName, scheduleName, status, errMsg string,
 		}
 		message += " " + errMsg
 	}
-	fields := []interface{}{map[string]interface{}{"label": "Status", "value": verb}}
+	fields := []services.NotificationSummaryField{{Label: "Status", Value: verb}}
 	if strings.TrimSpace(scheduleName) != "" {
-		fields = append(fields, map[string]interface{}{"label": "Schedule", "value": scheduleName})
+		fields = append(fields, services.NotificationSummaryField{Label: "Schedule", Value: scheduleName})
 	}
 	if duration > 0 {
-		fields = append(fields, map[string]interface{}{"label": "Duration", "value": duration.Round(time.Second).String()})
+		fields = append(fields, services.NotificationSummaryField{Label: "Duration", Value: duration.Round(time.Second).String()})
 	}
-	htmlFields := [][2]string{{"Status", verb}}
-	if strings.TrimSpace(scheduleName) != "" {
-		htmlFields = append(htmlFields, [2]string{"Schedule", scheduleName})
-	}
-	if duration > 0 {
-		htmlFields = append(htmlFields, [2]string{"Duration", duration.Round(time.Second).String()})
-	}
-	args := map[string]interface{}{
-		"email_html":        ownerEmailHTML(title, message, htmlFields, nil, ""),
-		"message_for_user":  message,
-		"notification_kind": "run_summary",
-		"summary_title":     title,
-		"summary_status":    summaryStatus,
-		"summary_fields":    fields,
-		"email_subject":     title,
-	}
-	if !external {
-		args["delivery_mode"] = "dashboard_only"
-	}
-	return args
+	return message, &services.NotificationSummary{Kind: "run_summary", Title: title, Status: summaryStatus, Fields: fields}
 }
 
 // reportScheduledRunOutcome records the same outcome used to wake the linked
@@ -80,61 +62,28 @@ func afterRunNotificationArgs(workflowName, scheduleName, status, errMsg string,
 func (s *SchedulerService) reportScheduledRunOutcome(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, runID, status, errMsg string, duration time.Duration) {
 	reason := wakeReasonForRun(status, sctx.ProducedRunEvidence)
 	s.wakeAgentTab(ctx, sctx, manifest, reason, errMsg, runID)
-	notificationStatus := status
+	outcomeStatus := status
 	if status == "success" && reason != "" {
-		notificationStatus = "no_run"
+		outcomeStatus = "no_run"
 	}
-	if err := s.sendAfterRunNotification(ctx, sctx, manifest, runID, notificationStatus, errMsg, duration); err != nil {
+	if err := s.recordRunOutcome(ctx, sctx, manifest, runID, outcomeStatus, errMsg, duration); err != nil {
 		s.logf(sctx, "[RUN STATUS] run=%s outcome could not be recorded: %v", runID, err)
 	}
 }
 
-// shouldDeliverRunOutcome keeps routine repeated successes in Activity.
-// The saved team channels receive failures and changes in scheduled status.
-func shouldDeliverRunOutcome(ctx context.Context, workspacePath, scheduleID, runID, status string) bool {
-	if wakeReasonForRun(status, true) != "" {
-		return true
-	}
-	runs, err := ReadScheduleRuns(ctx, workspacePath)
-	if err != nil {
-		return true
-	}
-	var previous *ScheduleRunEntry
-	for i := range runs {
-		run := &runs[i]
-		if run.ID == runID || run.ScheduleID != scheduleID || run.Status == "running" {
-			continue
-		}
-		if previous == nil || run.StartedAt.After(previous.StartedAt) {
-			previous = run
-		}
-	}
-	return previous == nil || previous.Status != status
-}
-
-// sendAfterRunNotification uses the internal summary delivery path without an agent.
-func (s *SchedulerService) sendAfterRunNotification(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, runID, status, errMsg string, duration time.Duration) error {
-	if s == nil || s.api == nil || sctx == nil || manifest == nil {
+// recordRunOutcome writes one run outcome to the workflow's Activity.
+func (s *SchedulerService) recordRunOutcome(ctx context.Context, sctx *ScheduleContext, manifest *WorkflowManifest, runID, status, errMsg string, duration time.Duration) error {
+	if s == nil || sctx == nil || manifest == nil {
 		return fmt.Errorf("scheduler not available")
 	}
-	owner := strings.TrimSpace(sctx.OwnerUserID)
-	req := QueryRequest{SelectedFolder: sctx.WorkspacePath, notificationItemWorkspace: personalConnectionItemRoot(owner, sctx.WorkspacePath)}
-	applyMultiAgentCapabilitiesToRequest(&req, manifest.Capabilities)
-	s.api.resolveNotificationSecretForRequest(ctx, owner, sctx.WorkspacePath, &req)
-	dest := notificationDestinationFromQuery(req, owner)
-	if dest != nil && len(sctx.Schedule.RouteSelections) > 0 {
-		dest.RouteSelections = sctx.Schedule.RouteSelections
+	message, summary := runOutcomeSummary(firstNonEmptyString(manifest.Label, sctx.WorkflowLabel), sctx.Schedule.Name, status, errMsg, duration)
+	dest := &services.NotificationDestination{
+		UserID:        strings.TrimSpace(sctx.OwnerUserID),
+		WorkspacePath: sctx.WorkspacePath,
+		Content:       &services.NotificationContent{Text: message, Summary: summary},
 	}
-	nctx := context.WithValue(ctx, common.UserIDKey, owner)
-	if dest != nil {
-		nctx = context.WithValue(nctx, virtualtools.BotNotificationDestinationKey, dest)
-	}
-	// Manual outcomes are recorded only; explicit workflow/team messages remain independent.
-	external := sctx.TriggerSource != "manual" && shouldDeliverRunOutcome(ctx, sctx.WorkspacePath, sctx.Schedule.ID, runID, status)
-	_, err := virtualtools.DeliverWorkflowNotification(nctx, afterRunNotificationArgs(firstNonEmptyString(manifest.Label, sctx.WorkflowLabel), sctx.Schedule.Name, status, errMsg, duration, external))
-	// Correlate the delivery decision with the durable Activity entry without
-	// logging message content, addresses, webhook values or provider errors.
-	s.logf(sctx, "[RUN STATUS] run=%s schedule=%s outcome=%s external_delivery=%t finished=%t", runID, sctx.Schedule.ID, status, external, err == nil)
+	_, err := services.NewOrgDashboardConnector().SendUserNotification(ctx, message, "", dest)
+	s.logf(sctx, "[RUN STATUS] run=%s schedule=%s outcome=%s recorded=%t", runID, sctx.Schedule.ID, status, err == nil)
 	return err
 }
 
@@ -154,7 +103,7 @@ const manualAfterRunScheduleID = "manual-after-run"
 
 var manualAfterRunInflight sync.Map // workspace path -> true
 
-// reportManualRunOutcome sends the outcome summary for a full run started from
+// reportManualRunOutcome records the outcome of a full run started from
 // a chat. Scheduled runs are reported by the scheduler.
 func (s *SchedulerService) reportManualRunOutcome(workspacePath, runFolder, status, sessionID string) {
 	if s == nil || s.api == nil || strings.TrimSpace(workspacePath) == "" {
@@ -191,5 +140,5 @@ func (s *SchedulerService) reportManualRunOutcome(workspacePath, runFolder, stat
 	default:
 		scheduleStatus = "error"
 	}
-	_ = s.sendAfterRunNotification(ctx, sctx, manifest, runFolder, scheduleStatus, "", 0)
+	_ = s.recordRunOutcome(ctx, sctx, manifest, runFolder, scheduleStatus, "", 0)
 }

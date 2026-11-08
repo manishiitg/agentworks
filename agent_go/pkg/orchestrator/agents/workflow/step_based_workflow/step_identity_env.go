@@ -91,9 +91,6 @@ func stepConfigWithDescribedHumanTools(cfg *AgentConfigs, step PlanStepInterface
 	if strings.Contains(text, "slack") {
 		add = append(add, "human_tools:send_slack_message")
 	}
-	if strings.Contains(text, "create_human_input_request") || strings.Contains(text, "decision request") || strings.Contains(text, "approval") {
-		add = append(add, "human_tools:create_human_input_request")
-	}
 	if len(add) == 0 {
 		return cfg
 	}

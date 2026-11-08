@@ -348,15 +348,24 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 		}
 	}
 
-	tools, _ := hcpo.prepareCustomTools(&AgentConfigs{EnabledCustomTools: []string{"human_tools:get_notification_history"}})
+	tools, _ := hcpo.prepareCustomTools(&AgentConfigs{EnabledCustomTools: []string{"human_tools:send_slack_message"}})
 	names := make([]string, 0, len(tools))
 	for _, definition := range tools {
 		if definition.Function != nil {
 			names = append(names, definition.Function.Name)
 		}
 	}
-	if !slices.Contains(names, "get_notification_history") {
+	if !slices.Contains(names, "send_slack_message") {
 		t.Fatalf("explicitly named extra human tool was not enabled: tools=%v", names)
+	}
+	// PLAT-746: a workflow run never asks a person, even when an old step
+	// configuration names the question tools explicitly.
+	asking := &AgentConfigs{EnabledCustomTools: []string{"human_tools:human_feedback", "human_tools:create_human_input_request"}}
+	tools, executors := hcpo.prepareExecutionTools(asking, step, nil, DBAccessReadWrite)
+	for _, name := range []string{"human_feedback", "create_human_input_request"} {
+		if slices.Contains(registeredToolNames(tools), name) || executors[name] != nil {
+			t.Fatalf("an unattended step can ask a person through %s: tools=%v", name, registeredToolNames(tools))
+		}
 	}
 }
 

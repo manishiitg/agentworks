@@ -2013,8 +2013,8 @@ func (s *SchedulerService) finishBlockedScheduleOccurrence(ctx context.Context, 
 	})
 	s.logf(sctx, "[SCHEDULER] Schedule %s did not run scheduled_for=%s: %s", sctx.Schedule.ID, sctx.ScheduledFor.Format(time.RFC3339Nano), reason)
 	if manifest != nil {
-		if err := s.sendAfterRunNotification(ctx, sctx, manifest, "", "blocked", "This scheduled run did not start because "+reason+". Fix the earlier schedule in Builder, then run again.", 0); err != nil {
-			s.logf(sctx, "[SCHEDULER] Blocked occurrence notification failed: %v", err)
+		if err := s.recordRunOutcome(ctx, sctx, manifest, "", "blocked", "This scheduled run did not start because "+reason+". Fix the earlier schedule in Builder, then run again.", 0); err != nil {
+			s.logf(sctx, "[SCHEDULER] Blocked occurrence outcome could not be recorded: %v", err)
 		}
 	}
 }

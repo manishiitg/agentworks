@@ -88,7 +88,6 @@ chat:
       - manage_slack_account
       - update_gmail_connection_grants
       - google_workspace_cli
-      - get_notification_history
       - get_cost_summary
       - get_ui_state
       - list_ui_capabilities

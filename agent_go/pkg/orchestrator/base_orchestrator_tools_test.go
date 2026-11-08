@@ -17,12 +17,12 @@ func TestSavedCustomToolSelectionsUseStaticDefinitions(t *testing.T) {
 	if err != nil || len(base.WorkspaceTools) != 0 {
 		t.Fatalf("fixture must have no admitted runtime tools: %v", err)
 	}
-	for _, selection := range []string{"workspace_browser:browser.execute", "workspace_browser:agent_browser", "human_tools:needs_you.ask", "human_tools:needs_you.consume", "human_tools:needs_you.create", "human_tools:needs_you.get", "workspace_advanced:terminal.execute", "workspace_advanced:files.patch", "agent_messaging:send_message", "workspace_advanced:*"} {
+	for _, selection := range []string{"workspace_browser:browser.execute", "workspace_browser:agent_browser", "human_tools:messages.email_send", "human_tools:messages.slack_send", "workspace_advanced:terminal.execute", "workspace_advanced:files.patch", "agent_messaging:send_message", "workspace_advanced:*"} {
 		if err := ValidateCustomToolSelection(selection); err != nil {
 			t.Fatalf("current definition %s was mistaken for a retired resource: %v", selection, err)
 		}
 	}
-	for selection, guidance := range map[string]string{"human_tools:notify_user": "record_summary", "workspace_advanced:files.image": "native image reader", "human_tools:missing_tool": "absent from the current catalog"} {
+	for selection, guidance := range map[string]string{"human_tools:notify_user": "send_email", "workspace_advanced:files.image": "native image reader", "human_tools:missing_tool": "absent from the current catalog"} {
 		if err := ValidateCustomToolSelection(selection); err == nil || !strings.Contains(err.Error(), guidance) {
 			t.Fatalf("stale selection %s lacks its repair: %v", selection, err)
 		}
@@ -46,23 +46,20 @@ func TestBuilderHumanToolSelectionsComeFromProductYAMLWithoutWildcard(t *testing
 	if slices.Contains(selections, "human_tools:*") {
 		t.Fatal("Builder human-tool selection must not use a category wildcard")
 	}
-	if !slices.Contains(selections, "human_tools:record_summary") || !slices.Contains(selections, "human_tools:get_notification_history") {
-		t.Fatalf("Builder selections are missing product-declared notification tools: %v", selections)
+	if !slices.Contains(selections, "human_tools:send_slack_message") {
+		t.Fatalf("Builder selections are missing product-declared send tools: %v", selections)
 	}
 	if slices.Contains(selections, "human_tools:human_feedback") {
 		t.Fatalf("Builder selections include run-only human_feedback: %v", selections)
 	}
 }
 
-func TestHumanToolsCategoryIncludesDurableWorkflowDecisionTools(t *testing.T) {
+func TestHumanToolsCategoryIncludesQuestionAndSendTools(t *testing.T) {
 	names := getToolNamesByCategory("human_tools")
 	for _, name := range []string{
 		"human_feedback",
-		"record_summary",
-		"get_human_input_request",
-		"create_human_input_request",
-		"answer_human_input_request",
-		"mark_human_input_consumed",
+		"send_email",
+		"send_slack_message",
 	} {
 		if !names[name] {
 			t.Fatalf("human_tools category missing %q", name)

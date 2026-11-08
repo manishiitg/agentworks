@@ -6,27 +6,27 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-func TestSummaryRequiresWorkflowAuthority(t *testing.T) {
+func TestWorkflowEmailRequiresWorkflowAuthority(t *testing.T) {
 	for _, profile := range []string{"work", "code", "relays", "example-app", "example-app-child", "example-product"} {
 		t.Run(profile, func(t *testing.T) {
-			gate := newProductToolGate(profileWithPolicy(profile, agentprofiles.ToolPolicy{Mode: agentprofiles.ToolPolicyModeAllowlist, Enabled: []string{"record_summary", "read_skill"}}))
+			gate := newProductToolGate(profileWithPolicy(profile, agentprofiles.ToolPolicy{Mode: agentprofiles.ToolPolicyModeAllowlist, Enabled: []string{"send_email", "read_skill"}}))
 			gate.AllowWorkflowNotifications(true) // A shared runner cannot grant a product this tool.
-			gate.Declare("record_summary")        // A factory declaration cannot bypass the boundary either.
-			if gate.Allows("record_summary") || gate.Admit("record_summary") || !gate.Admit("read_skill") {
+			gate.Declare("send_email")            // A factory declaration cannot bypass the boundary either.
+			if gate.Allows("send_email") || gate.Admit("send_email") || !gate.Admit("read_skill") {
 				t.Fatal("workflow-only tool admitted or unrelated tool removed")
 			}
 		})
 	}
 	gate := newProductToolGate(nil)
-	if gate.Admit("record_summary") {
-		t.Fatal("ordinary chat admitted record_summary")
+	if gate.Admit("send_email") {
+		t.Fatal("ordinary chat admitted send_email")
 	}
 	gate.AllowWorkflowNotifications(true)
-	if !gate.Admit("record_summary") {
+	if !gate.Admit("send_email") {
 		t.Fatal("workflow cannot notify its configured recipients")
 	}
-	gate.DenyWhere(func(name string) bool { return name == "record_summary" })
-	if gate.Admit("record_summary") {
+	gate.DenyWhere(func(name string) bool { return name == "send_email" })
+	if gate.Admit("send_email") {
 		t.Fatal("workflow notification capability bypassed an existing authority boundary")
 	}
 }
@@ -37,12 +37,12 @@ func TestRelayRunnerHasNoNotificationDefinitionOrExecutor(t *testing.T) {
 		tools = restrictWorkflowNotificationTools(tools, executors, categories, enabled)
 		found := false
 		for _, tool := range tools {
-			if tool.Function != nil && tool.Function.Name == "record_summary" {
+			if tool.Function != nil && tool.Function.Name == "send_email" {
 				found = true
 			}
 		}
-		_, executable := executors["record_summary"]
-		_, categorized := categories["record_summary"]
+		_, executable := executors["send_email"]
+		_, categorized := categories["send_email"]
 		if found != enabled || executable != enabled || categorized != enabled {
 			t.Fatalf("workflow=%v: definition=%v executor=%v category=%v", enabled, found, executable, categorized)
 		}
