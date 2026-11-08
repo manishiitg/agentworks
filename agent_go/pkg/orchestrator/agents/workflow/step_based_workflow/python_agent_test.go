@@ -298,7 +298,7 @@ for line in sys.stdin:
 		t.Fatal(err)
 	}
 	helperRoot.Close()
-	t.Cleanup(func() { c.finishPythonAgentSessions("failed") })
+	t.Cleanup(func() { c.finishPythonAgentSessions("completed") })
 	// The executable fixture has no real model or tools. Actual enforcing shell
 	// guards are tested independently below and through the real Python runner.
 	previousResolver := clisecurity.ResolveWorkflowPolicy
@@ -398,6 +398,41 @@ for line in sys.stdin:
 	if source, err := os.ReadFile(filepath.Join(runRoot, "execution/frozen/code/main.py")); err != nil || string(source) != "frozen-source" {
 		t.Fatalf("native launch changed frozen source: %q %v", source, err)
 	}
+	// Resume uses the logical key rather than the old global order, and must
+	// return the actual saved result without another native provider request.
+	// PR1648: finalization must retain the native history that a resumed
+	// follow-up needs, including after reconstructing the controller.
+	c.finishPythonAgentSessions("failed")
+	c = newController()
+	requestsBeforeResume, err := os.ReadFile(filepath.Join(runRoot, "fixture-requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousOptions := c.executionOptions
+	c.executionOptions = &ExecutionOptions{PythonResume: &PythonRunResume{}}
+	resumedHandler, finishResumedSteps := c.pythonAutomationHandler(ctx, parent, sourceDir, runRoot)
+	defer finishResumedSteps(false)
+	resumedRaw, err := resumedHandler(ctx, map[string]interface{}{"action": "agent", "key": "first", "explicit_key": true, "order": float64(99), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}, "reasoning": "high"}})
+	var reused pythonHelperReply
+	if err != nil || json.Unmarshal([]byte(resumedRaw), &reused) != nil || !reused.OK || !reused.Reused || reused.ConversationID != first.ConversationID || reused.AnswerFile != first.AnswerFile {
+		t.Fatalf("explicit-key resume lost the completed native result: %s %v", resumedRaw, err)
+	}
+	afterReuse, err := os.ReadFile(filepath.Join(runRoot, "fixture-requests.jsonl"))
+	if err != nil || string(afterReuse) != string(requestsBeforeResume) {
+		t.Fatal("reusing a completed agent result launched another provider turn")
+	}
+	duplicateRaw, err := resumedHandler(ctx, map[string]interface{}{"action": "agent", "key": "first", "explicit_key": true, "order": float64(100), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}, "reasoning": "high"}})
+	var duplicate pythonHelperReply
+	if err != nil || json.Unmarshal([]byte(duplicateRaw), &duplicate) != nil || duplicate.OK || !strings.Contains(duplicate.Error, `Key "first"`) {
+		t.Fatalf("duplicate explicit key did not refuse by name: %s %v", duplicateRaw, err)
+	}
+	continuedRaw, err := resumedHandler(ctx, map[string]interface{}{"action": "agent", "key": "followup-after-failure", "explicit_key": true, "order": float64(101), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"follow-up"}, "conversation_id": reused.ConversationID}})
+	var continued pythonHelperReply
+	if err != nil || json.Unmarshal([]byte(continuedRaw), &continued) != nil || !continued.OK || continued.Reused || continued.Text != "continued" || continued.ConversationID != first.ConversationID {
+		t.Fatalf("native follow-up after failed finalization did not continue: %s %v", continuedRaw, err)
+	}
+	t.Log("failed finalization -> reconstructed handler -> cached first call -> native thread/resume follow-up passed")
+	c.executionOptions = previousOptions
 	if slotProof {
 		t.Log("native slot01 executed shared/x.py from the frozen code root, created run-root outputs, refused source/record writes and used its signed child DB bridge")
 		return
@@ -468,27 +503,7 @@ for line in sys.stdin:
 	if !strings.Contains(string(requests), `"method": "thread/resume"`) {
 		t.Fatal("follow-up did not restore the native thread")
 	}
-	// Resume uses the logical key rather than the old global order, and must
-	// return the actual saved result without another native provider request.
-	previousOptions := c.executionOptions
-	c.executionOptions = &ExecutionOptions{PythonResume: &PythonRunResume{}}
-	resumedHandler, finishResumedSteps := c.pythonAutomationHandler(ctx, parent, sourceDir, runRoot)
-	defer finishResumedSteps(false)
-	resumedRaw, err := resumedHandler(ctx, map[string]interface{}{"action": "agent", "key": "first", "explicit_key": true, "order": float64(99), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}, "reasoning": "high"}})
-	var reused pythonHelperReply
-	if err != nil || json.Unmarshal([]byte(resumedRaw), &reused) != nil || !reused.OK || !reused.Reused || reused.ConversationID != first.ConversationID || reused.AnswerFile != first.AnswerFile {
-		t.Fatalf("explicit-key resume lost the completed native result: %s %v", resumedRaw, err)
-	}
-	afterReuse, err := os.ReadFile(filepath.Join(runRoot, "fixture-requests.jsonl"))
-	if err != nil || string(afterReuse) != string(requests) {
-		t.Fatal("reusing a completed agent result launched another provider turn")
-	}
-	duplicateRaw, err := resumedHandler(ctx, map[string]interface{}{"action": "agent", "key": "first", "explicit_key": true, "order": float64(100), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}, "reasoning": "high"}})
-	var duplicate pythonHelperReply
-	if err != nil || json.Unmarshal([]byte(duplicateRaw), &duplicate) != nil || duplicate.OK || !strings.Contains(duplicate.Error, `Key "first"`) {
-		t.Fatalf("duplicate explicit key did not refuse by name: %s %v", duplicateRaw, err)
-	}
-	c.executionOptions = previousOptions
+
 	changed := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Research", "messages": []string{"change"}, "conversation_id": first.ConversationID, "model": "codex-cli/another"}, "changed")
 	if changed.OK || !strings.Contains(changed.Error, "original model") {
 		t.Fatalf("changed settings resumed silently: %+v", changed)
@@ -529,6 +544,33 @@ for line in sys.stdin:
 			t.Fatalf("an unfinished run lost its native home: %v", err)
 		}
 	}
+	// Retention uses stored failed-run completion time, not an in-memory
+	// timer. An expired conversation discloses its fresh native restart.
+	now := time.Now().UTC()
+	if err := c.upsertRunMetadata(ctx, "run-one", func(meta map[string]interface{}) {
+		meta["status"], meta["completed_at"] = "failed", now.Format(time.RFC3339Nano)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := ExpireFailedPythonAgentSessions(docs, root, "run-one", now.Add(71*time.Hour)); err != nil || n != 0 {
+		t.Fatalf("unexpired native conversations were removed: n=%d err=%v", n, err)
+	}
+	if n, err := ExpireFailedPythonAgentSessions(docs, root, "run-one", now.Add(73*time.Hour)); err != nil || n < 2 {
+		t.Fatalf("expired native conversations were retained: n=%d err=%v", n, err)
+	}
+	for _, home := range nativeHomes {
+		if _, err := os.Stat(home); !os.IsNotExist(err) {
+			t.Fatalf("expired home survived: %s %v", home, err)
+		}
+	}
+	expired := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Research", "messages": []string{"follow-up"}, "conversation_id": first.ConversationID}, "after-expiry")
+	if !expired.OK || expired.Text == "continued" {
+		t.Fatalf("expired conversation did not restart fresh: %+v", expired)
+	}
+	expiryRecord, err := os.ReadFile(filepath.Join(runRoot, "run_metadata.json"))
+	if err != nil || !strings.Contains(string(expiryRecord), "conversation expired: this call restarts fresh") {
+		t.Fatalf("expired restart not disclosed in run record: %s %v", expiryRecord, err)
+	}
 	// No in-memory runtime list survives a process restart. The finalizer uses
 	// only the protected conversation files written before each launch.
 	c = newController()
@@ -538,7 +580,7 @@ for line in sys.stdin:
 			t.Fatalf("a finished run retained its native home: %s %v", home, err)
 		}
 	}
-	for _, status := range []string{"failed", "stopped", "cancelled"} {
+	for _, status := range []string{"stopped", "cancelled"} {
 		if err := os.MkdirAll(nativeHomes[0], 0700); err != nil {
 			t.Fatal(err)
 		}

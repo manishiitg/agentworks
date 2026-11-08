@@ -277,3 +277,5 @@ A missing raw payload source uses the mapping's default first, then the script
 input's declared `value`; a supplied invalid value still refuses. An input with
 neither default is named in the refusal. A mapped payload cannot choose a preset
 or replace fixed inputs.
+
+Failed runs keep native agent conversation history for 72 hours. After that, a continued agent call starts fresh and the run records “conversation expired: this call restarts fresh”. Completed or stopped runs release that history immediately.
