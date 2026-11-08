@@ -99,7 +99,11 @@ func TestExternalScriptInputAndMappingSaveKeepsEntryAuthority(t *testing.T) {
 	}
 	save := func(inputs []any, edits any, status int) {
 		t.Helper()
-		call(owner, "workflow", map[string]any{"action": "save_inputs", "workflow_id": script.ID, "inputs": inputs, "input_presets": []any{}, "entry_mappings": edits}, status)
+		args := map[string]any{"action": "save_inputs", "workflow_id": script.ID, "inputs": inputs, "input_presets": []any{}}
+		if edits != nil {
+			args["entry_mappings"] = edits
+		}
+		call(owner, "workflow", args, status)
 	}
 	inputs := func(value string, constrained bool) []any {
 		field := map[string]any{"name": "scenario", "type": "string", "value": value}
