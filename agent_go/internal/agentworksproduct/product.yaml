@@ -156,8 +156,6 @@ chat:
       - get_slack_bot_credentials
       - get_slack_bot_settings
       - slack
-      - get_step_prompts
-      - preview_step_runtime
       - submit_workflow_suggestion
       - get_ui_state
       - get_workflow_command_guidance
@@ -295,8 +293,6 @@ chat:
       - get_schedule_runs
       - get_slack_bot_settings
       - slack
-      - get_step_prompts
-      - preview_step_runtime
       - send_message
       - read_agent_messages
       - list_agents
