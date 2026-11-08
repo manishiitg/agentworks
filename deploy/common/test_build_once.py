@@ -95,11 +95,11 @@ class ChosenBuildTest(unittest.TestCase):
         version.write_text("bumped by the commit hook")
         git(local, "add", "-A"); git(local, "commit", "-qm", "the same change as main's")
         patched = git(local, "rev-parse", "HEAD")
-        self.assertEqual(self.run_deploy_lib(f'commit_on_main "{local}" {patched}').returncode, 0)
+        self.assertEqual(self.run_deploy_lib(f'commit_on_branch "{local}" {patched}').returncode, 0)
         (local / "f").write_text("unlanded")
         git(local, "commit", "-qam", "not on main")
         unlanded = git(local, "rev-parse", "HEAD")
-        self.assertNotEqual(self.run_deploy_lib(f'commit_on_main "{local}" {unlanded}').returncode, 0)
+        self.assertNotEqual(self.run_deploy_lib(f'commit_on_branch "{local}" {unlanded}').returncode, 0)
 
     def test_pin_ignores_go_test_files_but_not_production_code(self):
         # 7 Nov: a test file often cannot cherry-pick cleanly (main's earlier test edits are in its context). Production code must still be on main.
@@ -108,15 +108,15 @@ class ChosenBuildTest(unittest.TestCase):
         (local / "f").write_text("2")
         (local / "x_test.go").write_text("package x // differs from main's copy")
         git(local, "add", "-A"); git(local, "commit", "-qm", "main's change plus a different test file")
-        self.assertEqual(self.run_deploy_lib(f'commit_on_main "{local}" {git(local, "rev-parse", "HEAD")}').returncode, 0)
+        self.assertEqual(self.run_deploy_lib(f'commit_on_branch "{local}" {git(local, "rev-parse", "HEAD")}').returncode, 0)
         (local / "y_test.go").write_text("package y")
         git(local, "add", "-A"); git(local, "commit", "-qm", "test only")
-        result = self.run_deploy_lib(f'commit_on_main "{local}" {git(local, "rev-parse", "HEAD")}')
+        result = self.run_deploy_lib(f'commit_on_branch "{local}" {git(local, "rev-parse", "HEAD")}')
         self.assertEqual(result.returncode, 0)
         self.assertIn("changes no production code", result.stderr)
         (local / "f").write_text("unlanded")
         git(local, "commit", "-qam", "production code not on main")
-        self.assertNotEqual(self.run_deploy_lib(f'commit_on_main "{local}" {git(local, "rev-parse", "HEAD")}').returncode, 0)
+        self.assertNotEqual(self.run_deploy_lib(f'commit_on_branch "{local}" {git(local, "rev-parse", "HEAD")}').returncode, 0)
 
     def test_unknown_or_ambiguous_selector_is_refused(self):
         result = self.run_deploy_lib('DEPLOY_BUILD=99999999 ensure_prebuilt_build')
