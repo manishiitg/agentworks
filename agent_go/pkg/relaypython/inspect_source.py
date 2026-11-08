@@ -195,7 +195,7 @@ def python_type_notes(files):
         return [], ['The checker is not installed here. The script can still run.']
     root = pathlib.Path.cwd().resolve()
     saved = [file.resolve() for name in files for file in [root / name]
-             if file.is_file() and file.resolve().is_relative_to(root)]
+             if not file.is_symlink() and file.is_file() and file.resolve().is_relative_to(root)]
     sdk = next((entry for entry in os.environ.get('PYTHONPATH', '').split(os.pathsep)
                 if entry and (pathlib.Path(entry) / 'agentworks' / '__init__.py').is_file()), None)
     if not saved or not sdk:
