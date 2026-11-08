@@ -136,6 +136,9 @@ while True:
 	if err != nil {
 		t.Fatal(err)
 	}
+	if out, err := start.exec(bound, map[string]any{"extra": "fixture-value-not-for-errors"}); err == nil || !strings.Contains(err.Error(), "extra") || !strings.Contains(err.Error(), "inputs") || strings.Contains(err.Error(), "fixture-value-not-for-errors") || strings.Contains(out, "execution_id") {
+		t.Fatalf("unknown start argument was accepted or not explained plainly: %s %v", out, err)
+	}
 	// PLAT-746-500: the Crew tool used a string-only parser despite the
 	// saved script's typed contract. Reject a wrong type before work starts.
 	if out, err := start.exec(bound, map[string]any{"input_preset": "Saved", "inputs": map[string]any{"count": false}}); err == nil || !strings.Contains(err.Error(), "count") || strings.Contains(out, "execution_id") {
