@@ -20,9 +20,9 @@ import (
 const externalCrewTeamSyncTool = "crew_team_sync"
 
 func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewTeamSyncTool, "A Crew Team: agents lists its agents as the Team tab shows them (what each uses, its person's \"When others ask\" rule, Answer only / Make changes, what teammates see of its chat); agent_rule (agent_key, when_others_ask, can_make_changes and/or chat_share) sets them for one of your own agents only. directory lists the people who can be added; people lists the Crew's people as the People card shows them (Works with me, Dashboards only, with what each gets); with person and level (works, dashboards or none) it adds, moves or removes one person and first returns what they gain or lose: show it and call again with confirm=true. Any builder adds or removes Works with me (they are invited and join when they accept); Dashboards only, and moving someone between the levels, is the owner's, and needs the Crew on the server. dashboards (kind) lists what this Crew publishes, the same list and lines as the Share page's Dashboards tab: dashboards, artifacts and motion, who can open each, and the owner's public link on a server Crew. settings (on, share=whole or folders, folders, confirm) turns the Team on or off and chooses what it shares, the same as the Team tab: on, whole/folders and removing a folder are the Crew's main owner's; a joined member may add folders. Switching between Folders and the Whole Crew first returns what changes; show it to the person and call again with confirm=true. Open clashes in a Crew Team's shared folder (two people changed the same lines of a file) and how to resolve them. clashes lists each with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id) keeps current, puts the other back (keep=other), or saves merged text (content) as a new revision every copy downloads, and closes the clash.", true, false, map[string]any{
-		"crew_id":          externalString("Crew ID from workspace action=list."),
-		"action":           map[string]any{"type": "string", "enum": []any{"clashes", "resolve", "agents", "agent_rule", "directory", "people", "settings", "dashboards"}},
+	add(externalCrewTeamSyncTool, "A Crew Team: agents lists its agents as the Team tab shows them (what each uses, its person's \"When others ask\" rule, Answer only / Make changes, what teammates see of its chat); agent_rule (agent_key, when_others_ask, can_make_changes and/or chat_share) sets them for one of your own agents only. directory lists the people who can be added; people lists the Crew's people as the People card shows them (Works with me, Dashboards only, with what each gets); with person and level (works, dashboards or none) it adds, moves or removes one person and first returns what they gain or lose: show it and call again with confirm=true. Any builder adds or removes Works with me (they are invited and join when they accept); Dashboards only, and moving someone between the levels, is the owner's, and needs the Crew on the server. dashboards (kind) lists what this Crew publishes, the same list and lines as the Share page's Dashboards tab: dashboards, artifacts and motion, who can open each, and the owner's public link on a server Crew. settings (on, share=whole or folders, folders, confirm) turns the Team on or off and chooses what it shares, the same as the Team tab: on, whole/folders and removing a folder are the Crew's main owner's; a joined member may add folders. Switching between Folders and the Whole Crew first returns what changes; show it to the person and call again with confirm=true. Open clashes in a Crew Team's shared folder (two people changed the same lines of a file) and how to resolve them. clashes lists each with both versions: current (the file now) and other (the other person's, kept in history), as text for text files up to 2 MiB. resolve (path, clash_id) keeps current, puts the other back (keep=other), or saves merged text (content) as a new revision every copy downloads, and closes the clash. invites lists the Teams you are in and your open invites; accept or decline (crew_id) answers your own invite, the same as the website: accepting makes you a member.", true, false, map[string]any{
+		"crew_id":          externalString("Crew ID from workspace action=list, or from team_invites for accept and decline. Not needed for invites."),
+		"action":           map[string]any{"type": "string", "enum": []any{"clashes", "resolve", "agents", "agent_rule", "directory", "people", "settings", "dashboards", "invites", "accept", "decline"}},
 		"kind":             map[string]any{"type": "string", "enum": []any{"all", "dashboard", "artifact", "motion"}, "description": "dashboards: which kind to list (default all)."},
 		"on":               map[string]any{"type": "boolean", "description": "settings: turn the Team on or off (the Crew's main owner only)."},
 		"share":            map[string]any{"type": "string", "enum": []any{"whole", "folders"}, "description": "settings: share the Whole Crew, or only the folders named in folders (the main owner only)."},
@@ -39,13 +39,28 @@ func externalCrewTeamSyncDefinition(add func(string, string, bool, bool, map[str
 		"clash_id":         externalString("resolve: the clash's id from clashes."),
 		"keep":             map[string]any{"type": "string", "enum": []any{"current", "other"}, "description": "resolve: keep the file as it is now, or put the other person's version back."},
 		"content":          map[string]any{"type": "string", "maxLength": crewTeamMergeMaxBytes, "description": "resolve: merged text to save instead of keep."},
-	}, "crew_id", "action")
+	}, "action")
 }
 
 func (api *StreamingAPI) externalCrewTeamSyncCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	project, action := externalArg(args, "crew_id"), externalArg(args, "action")
+	// PLAT-746-463: an invited person lists and answers their own invites over MCP,
+	// through the website's own routes and checks; no dashboard is involved.
+	if action == "invites" {
+		api.listCrewTeams(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)))
+		return
+	}
+	if project == "" {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "crew_id is required for "+action+".")
+		return
+	}
 	switch action {
+	case "accept", "decline":
+		body, _ := json.Marshal(map[string]bool{"accept": action == "accept"})
+		req := httptest.NewRequest(http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/invite", bytes.NewReader(body))
+		api.handleCrewTeam(w, mux.SetURLVars(req.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), map[string]string{"project": project, "op": "invite"}))
+		return
 	case "agents":
 		req := httptest.NewRequest(http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/tab", nil)
 		api.handleCrewTeamTab(w, mux.SetURLVars(req.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), map[string]string{"project": project}))

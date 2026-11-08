@@ -408,6 +408,30 @@
   },
   {
     "family": "workspace",
+    "name": "team_invites",
+    "member": "crew_team_sync__invites",
+    "description": "List the Crew Teams you are in and your open Team invites.",
+    "source": "crew_team_sync",
+    "source_action": "invites"
+  },
+  {
+    "family": "workspace",
+    "name": "team_accept",
+    "member": "crew_team_sync__accept",
+    "description": "Accept your open invite to a Crew Team (crew_id from team_invites).",
+    "source": "crew_team_sync",
+    "source_action": "accept"
+  },
+  {
+    "family": "workspace",
+    "name": "team_decline",
+    "member": "crew_team_sync__decline",
+    "description": "Decline your open invite to a Crew Team (crew_id from team_invites).",
+    "source": "crew_team_sync",
+    "source_action": "decline"
+  },
+  {
+    "family": "workspace",
     "name": "rename",
     "member": "manage_project__rename",
     "description": "Use the current workspace rename operation.",

@@ -631,6 +631,12 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		externalError(w, 403, "insufficient_scope", "This access token does not allow this operation."+externalMissingScopeHint(GetUserFromContext(r.Context()), *tool))
 		return
 	}
+	retryWriter, retryArgs, retryFinish, answered := api.externalRetryReceipt(w, r, *tool, call.Arguments)
+	if answered {
+		return
+	}
+	w, call.Arguments = retryWriter, retryArgs
+	defer retryFinish()
 	guidanceTool, guidanceArgs := agentSourceCall(*tool, call.Arguments)
 	if isExternalKnowledgebaseTool(guidanceTool.Name) && !knowledgebaseConnectionAllowsAction(GetUserFromContext(r.Context()), guidanceTool.Name, guidanceArgs) {
 		externalError(w, 403, "insufficient_scope", "This connection does not allow the requested Brain action.")
