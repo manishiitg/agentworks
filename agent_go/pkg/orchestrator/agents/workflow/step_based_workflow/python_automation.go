@@ -143,10 +143,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			if err != nil {
 				return encode(pythonHelperReply{Error: err.Error()})
 			}
+			fileHashes := map[string]string{}
+			for name, data := range child.Files {
+				fileHashes[name] = fmt.Sprintf("%x", sha256.Sum256(data))
+			}
 			bundle, err := json.Marshal(struct {
 				Definition CrewScriptDefinition
 				Files      map[string]string
-			}{child.Definition, child.Files})
+			}{child.Definition, fileHashes})
 			if err != nil {
 				return encode(pythonHelperReply{Error: err.Error()})
 			}

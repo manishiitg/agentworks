@@ -56,7 +56,7 @@ assert not any(key.startswith('optional_') for key in params)
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':params['count'], 'revision':revision()}))
 `
 	write(root+"/main.py", source)
-	resolver := &savedCrewScriptFixture{configuration: CrewScriptConfiguration{Definition: definition, Root: root, Files: map[string]string{"main.py": source, "helper/values.py": "def revision(): return 'first'\n", "template.txt": "template data"}}}
+	resolver := &savedCrewScriptFixture{configuration: CrewScriptConfiguration{Definition: definition, Root: root, Files: map[string][]byte{"main.py": []byte(source), "helper/values.py": []byte("def revision(): return 'first'\n"), "template.txt": []byte("template data")}}}
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 	run := func(workspace string, args map[string]interface{}) string {
@@ -143,7 +143,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		write(workspace+"/planning/plan.json", `{"steps":[{"id":"use-script","type":"scripted","title":"Qualify","description":"Run the saved script","script":"qualify","script_inputs":{"count":{"input":"COUNT"}},"context_output":"result.json"}]}`)
 		expectedCount := `"count": 7`
 		if workspace == "Workflow/second" {
-			resolver.configuration.Files["helper/values.py"] = "def revision(): return 'second'\n"
+			resolver.configuration.Files["helper/values.py"] = []byte("def revision(): return 'second'\n")
 			write(workspace+"/planning/plan.json", `{"steps":[{"id":"produce","type":"scripted","script_only":true,"title":"Prior output","description":"Write the prior count","context_output":"prior.json"},{"id":"use-script","type":"scripted","title":"Qualify","description":"Run the saved script","script":"qualify","context_dependencies":["prior.json"],"script_inputs":{"count":{"output":"prior.json","field":"count"}},"context_output":"result.json"}]}`)
 			write(workspace+"/code/produce/main.py", "import json, os\nfrom pathlib import Path\nPath(os.environ['STEP_OUTPUT_DIR'],'prior.json').write_text(json.dumps({'count':11}))\n")
 			expectedCount = `"count": 11`

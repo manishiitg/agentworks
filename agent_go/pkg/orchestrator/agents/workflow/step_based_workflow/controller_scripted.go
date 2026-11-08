@@ -463,6 +463,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveScriptedShellGuard(
 		// Source is authored through the Crew editor, never by a running copy.
 		// Protect the directory as well as existing files, including new names.
 		readOnlyPaths = append(readOnlyPaths, saved.crewScript.Root)
+		readOnlyPaths = append(readOnlyPaths, stepExecutionRelPath+"/code", hcpo.GetWorkspacePath()+"/runs/source-blobs")
 	}
 	readPaths = common.DeduplicateStrings(append(readPaths, writePaths...))
 	if stateRoot := hcpo.pythonHelperStateRoot(); stateRoot != "" {
@@ -878,36 +879,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		}
 		files := shared.crewScript.Files
 		if files == nil {
-			files = map[string]string{}
-			entries, err := hcpo.BaseOrchestrator.ListWorkspaceFiles(ctx, ".")
-			if err != nil {
-				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
-			}
-			for _, entry := range entries {
-				file := filepath.Base(entry)
-				if strings.HasSuffix(file, ".py") {
-					content, err := hcpo.ReadWorkspaceFile(ctx, file)
-					if err != nil {
-						return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
-					}
-					files[file] = content
-				}
-			}
+			return &ScriptedFastPathResult{RanScript: true, Error: "saved script source was not resolved", ExitCode: -1}
 		}
-		for file, content := range files {
-			if !CrewScriptBundleFile(file) {
-				return &ScriptedFastPathResult{RanScript: true, Error: "invalid saved script bundle", ExitCode: -1}
-			}
-			if directory := filepath.Dir(file); directory != "." {
-				if err := createFolderViaAPI(ctx, codeDirRelPath+"/"+directory); err != nil {
-					return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
-				}
-			}
-			if err := hcpo.WriteWorkspaceFile(ctx, codeDirRelPath+"/"+file, content); err != nil {
-				return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
-			}
+		if err := hcpo.materializeScriptBundle(ctx, codeDirRelPath, files); err != nil {
+			return &ScriptedFastPathResult{RanScript: true, Error: err.Error(), ExitCode: -1}
 		}
-		existingScript = files["main.py"]
+		existingScript = string(files["main.py"])
 		if existingScript == "" {
 			return &ScriptedFastPathResult{RanScript: true, Error: "saved script main.py is unavailable", ExitCode: -1}
 		}
