@@ -23,7 +23,7 @@ func TestTypeNotesAnalyzeSavedSourceWithInstalledChecker(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "main.py"), []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
-	sdk, err := filepath.Abs("../../../../workspace/security/runtime")
+	sdk, err := filepath.Abs("../../../workspace/security/runtime")
 	if err != nil {
 		t.Fatal(err)
 	}
