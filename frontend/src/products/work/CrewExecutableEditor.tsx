@@ -15,7 +15,12 @@ export type CrewExecutable = {
   workspace_path: string
   manifest: { label: string }
   used_by?: Array<{ workflow: string; step: string }>
+  /** What a person can change before a run, and the saved settings that fill it in. */
+  inputs?: Array<{ name: string; value: string; description?: string; type?: string; required?: boolean }>
+  input_presets?: Array<{ name: string; values: Record<string, string> }>
 }
+
+const inputKind = (type?: string) => ({ number: 'Number', integer: 'Number', boolean: 'Yes or no', array: 'List', object: 'Details' } as Record<string, string>)[type ?? ''] ?? 'Text'
 
 /** The Crew keeps its chat. Only the selected definition/run changes in this pane. */
 export function CrewExecutableEditor({
@@ -86,6 +91,11 @@ export function CrewExecutableEditor({
               <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps}
                 onRun={() => void ask('Run this workflow and report the result in this chat.')} onAsk={ask}
                 empty={<CrewFileView workspacePath={item.workspace_path} file="main.py" onClose={() => onBack?.()} onAsk={ask} />} />
+              {!!(item.inputs?.length || item.input_presets?.length) && <PageCard title="Inputs" hint="What you can change before a run." onAsk={() => ask('Help me change the inputs of this workflow.')}>
+                {item.inputs?.map(input => <PageRow key={input.name} title={input.name}
+                  lines={[`${inputKind(input.type)}${input.required ? ' · required' : ''}${input.value ? ` · default “${input.value}”` : ''}`, input.description]} />)}
+                {!!item.input_presets?.length && <PageRow title="Saved settings" lines={[item.input_presets.map(preset => preset.name).join(' · ')]} />}
+              </PageCard>}
               <PageCard title="Files" hint="The workflow's code and what it uses." onAsk={() => ask('Help me understand the files of this workflow.')}>
                 <PageRow lead={<span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted"><FileCode2 className="h-4 w-4" aria-hidden="true" /></span>} title="main.py" lines={['The workflow']} action={<RowButton onClick={() => onFile('main.py')}>View</RowButton>} />
                 <PageRow lead={<span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted"><FileJson className="h-4 w-4" aria-hidden="true" /></span>} title="script.json" lines={['Name, inputs and saved settings']} action={<RowButton onClick={() => onFile('script.json')}>View</RowButton>} />

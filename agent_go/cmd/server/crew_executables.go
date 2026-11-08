@@ -246,6 +246,9 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			crewExecutableBinding
 			Manifest *WorkflowManifest `json:"manifest"`
 			UsedBy   []crewScriptUsage `json:"used_by,omitempty"`
+			// What a person can change before a run, and the saved settings that fill it in (a Python workflow's script.json).
+			Inputs       []workflow.Variable      `json:"inputs,omitempty"`
+			InputPresets []workflow.VariableGroup `json:"input_presets,omitempty"`
 		}
 		entries := []entry{}
 		// Python that a workflow's own steps run: listed beside the saved Crew scripts, each labelled by where it is used.
@@ -267,14 +270,19 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			}
 			if found {
 				var consumers []crewScriptUsage
+				var inputs []workflow.Variable
+				var presets []workflow.VariableGroup
 				if binding.Kind == "script" {
 					consumers, err = crewScriptConsumers(r.Context(), &binding, nil)
 					if err != nil {
 						http.Error(w, err.Error(), 500)
 						return
 					}
+					if definition, readErr := readCrewScript(r.Context(), binding.Root); readErr == nil {
+						inputs, presets = definition.Inputs, definition.InputPresets
+					}
 				}
-				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers})
+				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers, Inputs: inputs, InputPresets: presets})
 				if binding.Kind == "workflow" {
 					if plan, planErr := readPlanFromWorkspace(r.Context(), binding.Root); planErr == nil {
 						for _, step := range workflow.CrewWorkflowOwnScriptSteps(plan) {
