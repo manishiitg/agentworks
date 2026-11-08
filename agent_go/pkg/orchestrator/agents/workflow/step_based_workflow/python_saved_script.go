@@ -95,6 +95,16 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonSavedScript(ctx context.Cont
 		Value: map[string]interface{}{"output_dir": workflowAbsPath(output), "outputs": paths}}
 	if failure != nil {
 		reply.Error = scriptOutputPreview(failure.Error(), result.LogFile)
+		summary = fmt.Sprintf("Saved script %s did not complete. Inspect its log.", saved.Definition.Name)
+		if result.ExitCode < 0 && !result.HarnessTimeout {
+			// No launch evidence means no output claim. An uncertain harness
+			// failure may have done work, so it must not claim "did not start".
+			reply.Value = nil
+			if !result.HarnessFailure {
+				summary = fmt.Sprintf("Saved script %s did not start. Inspect its log.", saved.Definition.Name)
+			}
+		}
+		reply.Text = summary
 	}
 	return reply
 }
