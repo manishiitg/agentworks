@@ -1,7 +1,10 @@
 import { uniqueStepChecks } from './workflowStepChecks'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import { agentApi } from '../../services/api'
+import api, { agentApi } from '../../services/api'
+import { isAxiosError } from 'axios'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import { runEvidenceApi, type RunEvidenceItem } from '../../api/runEvidence'
 import type { RelaySourceGraph } from '../../components/workflow/relayGraphAnnotations'
@@ -157,7 +160,8 @@ export type RunsView = { run: string | null; costs: boolean; detail: 'log' | 'co
 export const noRunsView: RunsView = { run: null, costs: false, detail: null }
 
 /** The Runs tab: a card of runs, a Costs card, and one opened run with its steps, logs and cost. */
-export function CrewWorkflowRuns({ workspacePath, script = false, folders, loading, onRefresh, onAsk, view, onView }: {
+export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, folders, loading, onRefresh, onAsk, view, onView }: {
+  workflowId: string
   workspacePath: string
   /** Which run (or the Costs card) is open. The page owns it so its back arrow can close it first. */
   view: RunsView
@@ -169,6 +173,9 @@ export function CrewWorkflowRuns({ workspacePath, script = false, folders, loadi
   onRefresh: () => Promise<void>
   onAsk: (task: string) => void | Promise<void>
 }) {
+  const accountCanEdit = useAuthStore(state => state.user?.can_write_workflows === true)
+  const access = useWorkflowManifestStore(state => state.workflows.find(item => item.manifest.id === workflowId && item.workspace_path === workspacePath)?.my_access)
+  const canResume = script && accountCanEdit && (access === 'owner' || access === 'write')
   const open = view.run
   const showCosts = view.costs
   const setOpen = (run: string | null) => onView({ run, costs: false, detail: null })
@@ -183,7 +190,7 @@ export function CrewWorkflowRuns({ workspacePath, script = false, folders, loadi
       <Costs workspacePath={workspacePath} runFolders={folders.map(folder => folder.name)} selectedRunFolder={null} />
     </Suspense></div>
   </div>
-  if (opened) return <OpenedRun workspacePath={workspacePath} script={script} folder={opened} cost={costOf(opened.name)} detail={view.detail} onDetail={detail => onView({ ...view, detail })} onBack={() => view.detail ? onView({ ...view, detail: null }) : setOpen(null)} onRefresh={onRefresh} onAsk={onAsk} />
+  if (opened) return <OpenedRun key={`${workflowId}:${opened.name}`} workflowId={workflowId} canResume={canResume} workspacePath={workspacePath} script={script} folder={opened} cost={costOf(opened.name)} detail={view.detail} onDetail={detail => onView({ ...view, detail })} onBack={() => view.detail ? onView({ ...view, detail: null }) : setOpen(null)} onRefresh={onRefresh} onAsk={onAsk} />
   const weekAgo = Date.now() - 7 * 86_400_000
   const finishedCount = folders.filter(folder => folder.metadata?.status === 'completed').length
   const failedCount = folders.filter(folder => folder.metadata?.status === 'failed').length
@@ -205,7 +212,9 @@ export function CrewWorkflowRuns({ workspacePath, script = false, folders, loadi
   </div>
 }
 
-function OpenedRun({ workspacePath, script, folder, cost, detail, onDetail: setDetail, onBack, onRefresh, onAsk }: {
+function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost, detail, onDetail: setDetail, onBack, onRefresh, onAsk }: {
+  workflowId: string
+  canResume: boolean
   workspacePath: string
   script: boolean
   folder: RunFolderInfo
@@ -228,6 +237,24 @@ function OpenedRun({ workspacePath, script, folder, cost, detail, onDetail: setD
   const messages = evidence.filter(item => item.kind === 'notify')
   // The one opened run's step costs, read for that run only.
   const stepCosts = useCostsData({ workspacePath, selectedRunFolder: folder.name, runOnly: true }).runCosts.find(run => run.runFolder === folder.name)?.costSummary?.stepCosts ?? []
+  const [resuming, setResuming] = useState(false)
+  const [resumeError, setResumeError] = useState('')
+  const [resumed, setResumed] = useState(false)
+  useEffect(() => { setResumed(false); setResumeError('') }, [folder.metadata?.execution_id, folder.metadata?.status])
+  async function resume() {
+    setResuming(true); setResumeError('')
+    try {
+      await api.post('/api/external/call', { name: 'runs', arguments: { action: 'resume', workflow_id: workflowId, run_folder: folder.name } })
+      setResumed(true)
+    } catch (cause) {
+      const data: unknown = isAxiosError(cause) ? cause.response?.data : undefined
+      const message = typeof data === 'string' ? data : (data as { error?: { message?: string } } | undefined)?.error?.message
+      setResumeError(message || 'Could not resume this run. Try again.')
+      return
+    } finally { setResuming(false) }
+    // Keep this folder selected. A refresh failure must not offer to submit an already accepted Resume again.
+    try { await onRefresh() } catch { setResumeError('Resume started. Could not refresh progress; reopen this run to check it.') }
+  }
   const [target, setTarget] = useState<ExecutionInspectionTarget | null>(null)
   const stepCost = (record: WorkspaceStepInspection) => stepCosts.find(step => (record.inspection.step_id && step.stepID === record.inspection.step_id) || step.stepTitle === record.inspection.name)?.totalCost
   const failed = records.find(record => stepDot(record.status) === 'stopped')
@@ -236,6 +263,8 @@ function OpenedRun({ workspacePath, script, folder, cost, detail, onDetail: setD
   return <PageCard title={runTitle(folder)} hint={summary} onAsk={() => onAsk(`Tell me what happened in the run "${folder.name}".`)}
     action={<button type="button" onClick={onBack} aria-label={detail ? "Back to run" : "Back to runs"} className="shrink-0 text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /></button>}>
     {meta?.status === 'failed' && <p role="alert" className="px-4 py-3 text-xs text-red-600 dark:text-red-400">{failed ? `Stopped at ${failed.inspection.name || failed.inspection.step_id}.` : 'This run stopped.'}</p>}
+    {resumeError && <p role="alert" className="px-4 py-3 text-xs text-destructive">{resumeError}</p>}
+    {resumed && <p role="status" className="px-4 py-3 text-xs text-muted-foreground">Resume started in this run.</p>}
     {error && <p role="alert" className="px-4 py-3 text-xs text-destructive">{error}</p>}
     {lines.map(line => {
       const record = line.record
@@ -261,6 +290,10 @@ function OpenedRun({ workspacePath, script, folder, cost, detail, onDetail: setD
     </>}
     {!loading && records.length === 0 && persistedSteps.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">No step records were saved for this run. The full log may still be available.</p>}
     <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+      {canResume && meta?.status === 'failed' && <>
+        <RowButton disabled={resuming || resumed} onClick={() => void resume()}>{resuming ? 'Resuming…' : 'Resume'}</RowButton>
+        <span className="text-xs text-muted-foreground">Uses saved source and inputs. Other Python code and app calls run again.</span>
+      </>}
       {cursor && <RowButton disabled={loading} onClick={loadMore}>{loading ? 'Loading…' : 'Load more steps'}</RowButton>}
       <RowButton onClick={() => setDetail(detail === 'log' ? null : 'log')}>Full log</RowButton>
       <RowButton onClick={() => setDetail(detail === 'costs' ? null : 'costs')}>Cost details</RowButton>
