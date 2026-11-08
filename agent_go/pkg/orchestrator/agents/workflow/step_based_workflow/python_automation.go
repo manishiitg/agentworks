@@ -92,7 +92,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		order, _ := args["order"].(float64)
 		arguments, _ := args["arguments"].(map[string]interface{})
 		redo, _ := args["redo"].(bool)
-		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script" && action != "agent" && action != "step") {
+		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script" && action != "agent" && action != "step" && action != "call_function" && action != "function_status") {
 			return encode(pythonHelperReply{Error: "Invalid Python helper request; use the installed agentworks package."})
 		}
 		slot := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d", label, int64(order))))
@@ -134,7 +134,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		}
 		requestHash := sha256.Sum256(requestJSON)
 		argumentsHash := hex.EncodeToString(requestHash[:])
-		if data, err := fs.ReadFile(view, stateRelative); err == nil {
+		if data, err := fs.ReadFile(view, stateRelative); action == "function_status" {
+			// Status is a fresh authorized read, including after a resumed script.
+		} else if err == nil {
 			var previous pythonHelperCall
 			if err := json.Unmarshal(data, &previous); err != nil {
 				return encode(pythonHelperReply{Error: "This helper's saved receipt cannot be read; inspect the run before trying again."})
@@ -147,7 +149,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				}
 				return encode(previous.Reply)
 			}
-			if (action == "run_script" || action == "agent") && !previous.Complete && !redo {
+			if (action == "run_script" || action == "agent" || action == "call_function") && !previous.Complete && !redo {
 				reply := previous.Reply
 				reply.OK = false
 				reply.Error = "The previous script attempt has no completed receipt. Inspect its run before explicitly trying redo=True; it may already have done work."
@@ -189,6 +191,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			return encode(call.Reply)
 		}
 		switch action {
+		case "call_function", "function_status":
+			call.Reply = hcpo.runPythonFunction(ctx, step, action, arguments, id)
 		case "agent":
 			if conversation, _ := arguments["conversation_id"].(string); conversation != "" {
 				mutex, _ := locks.LoadOrStore("conversation:"+conversation, &sync.Mutex{})
