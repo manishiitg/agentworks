@@ -72,7 +72,9 @@ func manifestContractIsExecutionCompatible(manifest *WorkflowManifest) bool {
 	}
 	version := workflowContractVersionForUpgrade(manifest)
 	if workflowHasCrewBinding(manifest) {
-		return version == workflowContractPortableVersion
+		// Older plan workflows keep running (PLAT-746): they are converted to scripts, not updated, so a
+		// Crew-bound one may run on the same contracts an unmoved one does, not only on the newest.
+		return version == workflowContractPortableVersion || workflowContractVersionIsExecutionCompatible(version)
 	}
 	if workflowContractVersionIsExecutionCompatible(version) {
 		return true
@@ -215,7 +217,7 @@ func bindWorkflowUpgradeWorkspacePath(query, workspacePath string) string {
 	return strings.ReplaceAll(query, workflowUpgradeWorkspacePathPlaceholder, strconv.Quote(workspacePath))
 }
 
-const oldWorkflowContractMessage = "This workflow is on an old version; ask its Builder to recreate or re-stamp it."
+const oldWorkflowContractMessage = "This workflow is on an old version and cannot run; converting it to a Python script is done by the platform operator for now."
 
 func workflowContractNeedsRecreation(manifest *WorkflowManifest) bool {
 	if isPythonRelay(manifest) {

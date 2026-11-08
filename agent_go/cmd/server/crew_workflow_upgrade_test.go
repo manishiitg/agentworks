@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -70,4 +73,56 @@ func TestUnmovedWorkflowKeepsStartsWhenBindingMetadataIsUnreadable(t *testing.T)
 	if _, err := draft.tools["run_full_workflow"].exec(ctx, nil); err != nil || !started {
 		t.Fatalf("binding lookup failure added a new schedule refusal: %v", err)
 	}
+}
+
+// PLAT-746 review: plan edits are gone, so an older workflow that sits in a Crew must keep
+// running on the contracts an unmoved one may, not wait for an update nobody can do.
+// One too old to run is refused with the operator pointer, not "ask the chat".
+func TestCrewBoundOlderWorkflowKeepsRunning(t *testing.T) {
+	bound := func(t *testing.T, version string) (context.Context, string, *WorkflowManifest, crewExecutableBinding) {
+		t.Helper()
+		svc, files, ctx := newCrewCreationTestEnv(t)
+		crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Old workflow", Purpose: "Reports", IdempotencyKey: "old-" + version})
+		if err != nil {
+			t.Fatal(err)
+		}
+		manifest := NewWorkflowManifest("Old workflow")
+		manifest.ID, manifest.Version, manifest.CodeLayoutVersion = "old-workflow", version, 1
+		raw, err := json.Marshal(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		const root = "Workflow/old-workflow"
+		files.files[root+"/workflow.json"] = string(raw)
+		binding := crewExecutableBinding{ID: manifest.ID, CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: root, Kind: "workflow"}
+		if err := registerCrewExecutable(binding); err != nil {
+			t.Fatal(err)
+		}
+		read, found, err := ReadWorkflowManifest(ctx, root)
+		if err != nil || !found {
+			t.Fatalf("manifest of the bound workflow: %v %v", found, err)
+		}
+		return ctx, root, read, binding
+	}
+	t.Run("runs on the previous contract", func(t *testing.T) {
+		ctx, root, manifest, binding := bound(t, workflowContractSkillsVersion)
+		if err := requireCurrentWorkflowContractForManualRun(ctx, root, &binding); err != nil {
+			t.Fatalf("a Crew workflow was refused for an update that cannot be done: %v", err)
+		}
+		if err := directWebhookPreflight(manifest); err != nil {
+			t.Fatalf("its unattended start was refused: %v", err)
+		}
+	})
+	t.Run("starts unattended on the contract before that", func(t *testing.T) {
+		_, _, manifest, _ := bound(t, workflowContractStepDescriptionLayoutVersion)
+		if err := directWebhookPreflight(manifest); err != nil {
+			t.Fatalf("a Crew workflow got less than an unmoved one: %v", err)
+		}
+	})
+	t.Run("two contracts behind is refused with the operator pointer", func(t *testing.T) {
+		_, _, manifest, _ := bound(t, workflowContractManagedDBScriptsVersion)
+		if err := directWebhookPreflight(manifest); !errors.Is(err, errWorkflowContractMigrationRequired) || !strings.Contains(err.Error(), "platform operator") {
+			t.Fatalf("a workflow too old to run needs the operator pointer: %v", err)
+		}
+	})
 }
