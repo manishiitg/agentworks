@@ -113,7 +113,7 @@ Start with the person's request and the current product. Read only the relevant 
 - Vault: read `references/vault/SKILL.md` when needed.
 - Secrets: read `references/secrets/SKILL.md` when needed.
 - MCP connections: read `references/mcp-connections/SKILL.md` when needed.
-- Bullpen: read `references/agentbridge/SKILL.md` when needed.
+- AgentBridge: read `references/agentbridge/SKILL.md` when needed.
 - Linked folders: read `references/linked-folders/SKILL.md` when needed.
 - Suggestions: read `references/suggestions/SKILL.md` when needed.
 - Decisions: read `references/decisions/SKILL.md` when needed.
