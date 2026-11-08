@@ -106,9 +106,8 @@ function ScriptsCard({ scripts, stepScripts, onOpen, onOpenWorkflow, onAsk, onRu
 /** A script, or a workflow other than the Crew's main one, opened from the Scripts card or the list: the same page, with its own switch. */
 function StandaloneExecutable({ item, onBack, editor }: { item: CrewExecutable; onBack: () => void; editor: (section: PlanRunsSection) => ReactNode }) {
   const [section, setSection] = useState<PlanRunsSection>('plan')
-  const script = item.kind === 'script'
   return <div className="space-y-4">
-    <PlanRunsSwitch section={section} onChange={setSection} onBack={onBack} planLabel={script ? 'Code' : 'Plan'} planHint={script ? 'what it runs' : 'what it does'} />
+    <PlanRunsSwitch section={section} onChange={setSection} onBack={onBack} />
     {editor(section)}
   </div>
 }
