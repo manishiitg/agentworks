@@ -216,9 +216,11 @@ func TestExecutionTreeInspectionReceiptsRequireCurrentAccess(t *testing.T) {
 	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "step", Kind: "workflow_step", Metadata: map[string]string{"step_id": "research"}})
 	setOwner := func(owner string) {
 		t.Helper()
-		if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"id":"goal","created_by":"`+owner+`"}`); err != nil {
-			t.Fatal(err)
-		}
+		// Replace the authoritative saved fixture to model access changing.
+		// Ordinary file authoring correctly preserves the original created_by.
+		workspace.mu.Lock()
+		workspace.files["Workflow/example/workflow.json"] = `{"id":"goal","created_by":"` + owner + `"}`
+		workspace.mu.Unlock()
 	}
 	request := func(user string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, "/sessions/chat/execution-tree", nil)
