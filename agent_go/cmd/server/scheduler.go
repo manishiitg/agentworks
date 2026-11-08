@@ -2483,41 +2483,6 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	return sessionID, execErr
 }
 
-type workflowNotificationContentInstructions struct {
-	runSummary           string
-	runSummaryChannels   []string
-	runSummaryRecipients []string
-}
-
-func notificationInstructionsFromCapabilities(capabilities WorkflowCapabilities) workflowNotificationContentInstructions {
-	notifications := capabilities.Notifications
-	return workflowNotificationContentInstructions{
-		runSummary:           runSummaryInstructionsOrDefault(notifications),
-		runSummaryChannels:   notificationChannels(notifications, true),
-		runSummaryRecipients: notificationRecipients(notifications, true),
-	}
-}
-
-func notificationChannels(config *WorkflowNotificationConfig, run bool) []string {
-	if config == nil {
-		return nil
-	}
-	if run {
-		return append([]string(nil), config.RunSummaryChannels...)
-	}
-	return nil
-}
-
-func notificationRecipients(config *WorkflowNotificationConfig, run bool) []string {
-	if config == nil {
-		return nil
-	}
-	if run {
-		return append([]string(nil), config.RunSummaryRecipients...)
-	}
-	return nil
-}
-
 func compactScheduleMessages(messages []string) []string {
 	out := make([]string, 0, len(messages))
 	for _, msg := range messages {

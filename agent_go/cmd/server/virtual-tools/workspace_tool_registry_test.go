@@ -22,7 +22,6 @@ func TestCreateWorkspaceToolRegistryIncludesActiveTools(t *testing.T) {
 		"execute_shell_command",
 		"diff_patch_workspace_file",
 		"generate_text_llm",
-		"image_gen",
 		"image_edit",
 	} {
 		if !toolDefs[name] {
@@ -44,7 +43,7 @@ func TestCreateWorkspaceToolRegistryIncludesActiveTools(t *testing.T) {
 		}
 	}
 	if mediaCategory := WorkspaceToolNamesByCategory("workspace_image"); len(mediaCategory) == 0 {
-		t.Fatalf("workspace_image category should resolve image_gen/image_edit, got none")
+		t.Fatalf("workspace_image category should resolve image_edit, got none")
 	}
 
 	if got := registry.Env["MCP_SESSION_ID"]; got != "registry-test-session" {

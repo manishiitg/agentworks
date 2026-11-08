@@ -119,18 +119,6 @@ func TestRelayManifestKindValidation(t *testing.T) {
 		t.Fatal("Relay accepted a Slack connection")
 	}
 	manifest.Capabilities.SlackConnectionID = ""
-	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"slack"}}
-	if err := ValidateManifest(manifest); err == nil {
-		t.Fatal("Relay accepted Slack notifications")
-	}
-	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"whatsapp"}}
-	if err := ValidateManifest(manifest); err == nil {
-		t.Fatal("Relay accepted WhatsApp notifications")
-	}
-	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"gmail"}}
-	if err := ValidateManifest(manifest); err != nil {
-		t.Fatalf("Relay rejected Gmail notifications: %v", err)
-	}
 	for _, timer := range []WorkflowSchedule{
 		{ID: "timer", ScheduleType: "cron", CronExpression: "0 * * * *", GroupNames: []string{"prod"}},
 		{ID: "calendar", ScheduleType: "calendar", CalendarItems: []CalendarScheduleItem{{Date: "2030-01-01", Time: "12:00"}}, GroupNames: []string{"prod"}},
@@ -169,8 +157,7 @@ func TestRelayFunctionContextSuppressesLegacyChannels(t *testing.T) {
 	// Existing Relays may still have the previous Slack configuration on disk.
 	manifest.Capabilities.SlackConnectionID = "legacy-slack"
 	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{
-		GmailConnectionID:  "google-account",
-		RunSummaryChannels: []string{"gmail", "slack"},
+		GmailConnectionID: "google-account",
 	}
 	sctx := buildScheduleContext("Workflow/relay", manifest, WorkflowSchedule{GroupNames: []string{"prod"}, TriggerPayload: json.RawMessage(`{"question":"status"}`)})
 	if sctx.WorkflowKind != "relay" || sctx.Capabilities.Notifications == nil ||

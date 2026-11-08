@@ -61,161 +61,8 @@ func CreateHumanTools() []llmtypes.Tool {
 	}
 	humanTools = append(humanTools, humanFeedbackTool)
 
-	// The email_* fields are exposed only when Gmail is an enabled channel, so
-	// the agent doesn't see email-specific knobs it can't use.
-	summaryContentProps := map[string]interface{}{
-		"message_for_user": map[string]interface{}{
-			"type":        "string",
-			"description": "Concise plain-text summary sent to every channel and used as the automatic email fallback. When supplying rich Slack or email fields, make this the lead verdict rather than duplicating every detail.",
-		},
-		"slack_title": map[string]interface{}{
-			"type":        "string",
-			"maxLength":   150,
-			"description": "Optional Block Kit header. Use by default for workflow and other structured summaries. The backend owns the webhook URL and renders this safely; never post to a webhook directly.",
-		},
-		"slack_color": map[string]interface{}{
-			"type":        "string",
-			"enum":        []string{"neutral", "success", "warning", "danger"},
-			"description": "Block Kit accent color chosen from the factual outcome: success only when healthy, warning for incomplete/blocked, danger for confirmed failure, otherwise neutral.",
-		},
-		"slack_fields": map[string]interface{}{
-			"type":     "array",
-			"maxItems": 10,
-			"items": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"label": map[string]interface{}{"type": "string"},
-					"value": map[string]interface{}{"type": "string"},
-				},
-				"required":             []string{"label", "value"},
-				"additionalProperties": false,
-			},
-			"description": "Optional compact Block Kit metric fields. Use for counts/statuses. Other channels ignore these fields.",
-		},
-		"slack_sections": map[string]interface{}{
-			"type":     "array",
-			"maxItems": 12,
-			"items": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"heading": map[string]interface{}{"type": "string"},
-					"body":    map[string]interface{}{"type": "string"},
-				},
-				"required":             []string{"heading", "body"},
-				"additionalProperties": false,
-			},
-			"description": "Optional ordered Block Kit sections for changed areas, findings, issues, blockers, or next actions. Slack mrkdwn and <url|label> links are supported. Other channels ignore these fields.",
-		},
-		"slack_footer": map[string]interface{}{
-			"type":        "string",
-			"maxLength":   2000,
-			"description": "Optional short Block Kit context/footer such as scope and date. Other channels ignore this field.",
-		},
-		"exclude_channels": map[string]interface{}{
-			"type":        "array",
-			"items":       map[string]interface{}{"type": "string", "enum": []string{"gmail", "slack", "whatsapp"}},
-			"description": "Optional one-off override to SKIP delivery channels for THIS notification only, by name (\"gmail\", \"slack\", \"whatsapp\"). The DURABLE per-workflow preference belongs in workflow.json notifications.exclude_channels and is applied automatically on every send — use this arg only for a one-time skip beyond that. Suppresses the channel for this send only; never changes the account-wide configuration. Omit to deliver to every enabled channel not already excluded by workflow.json. Excluding slack suppresses BOTH account Slack and every workflow Slack webhook. A workflow Slack webhook replaces the global Slack destination; it does not send an extra copy. The always-on web UI is unaffected.",
-		},
-		"delivery_mode": map[string]interface{}{
-			"type":        "string",
-			"enum":        []string{"all", "dashboard_only", "external_only"},
-			"description": "Delivery scope for classified summaries. Use dashboard_only to record an unchanged run summary in Activity without Slack/Gmail/WhatsApp or an in-app alert. Use external_only for a run outcome already recorded in Activity. Omit or use all when both Activity and configured external channels should receive the summary. Custom notification instructions may explicitly choose a different mode.",
-		},
-		"notification_kind": map[string]interface{}{
-			"type":        "string",
-			"enum":        []string{"general", "run_summary"},
-			"description": "Classifies this notification so the backend can enforce its workflow-configured channel routing. Use run_summary for the execution outcome for progress updates. Use general for ordinary notifications.",
-		},
-		"summary_title": map[string]interface{}{
-			"type":        "string",
-			"maxLength":   150,
-			"description": "Channel-neutral title used by the Org Dashboard and as the default title for rich channel renderings. For run_summary, set this instead of relying on a channel-specific title.",
-		},
-		"summary_status": map[string]interface{}{
-			"type":        "string",
-			"enum":        []string{"completed", "failed", "partial", "blocked", "waiting_for_user", "waiting_for_platform", "monitoring", "informational", "no_run"},
-			"description": "Channel-neutral description of what the workflow is doing now. Use completed when done, failed for a confirmed run failure, blocked when work cannot continue, waiting_for_user or waiting_for_platform when that is the specific blocker, monitoring when awaiting natural evidence, informational for an update, and no_run when a scheduled run did not start.",
-		},
-		"summary_route": map[string]interface{}{
-			"type":        "string",
-			"maxLength":   200,
-			"description": "Legacy single route label; prefer summary_routes with exact routing_step_id/route_id identities. Omit for shared workflow work. Run summaries may inherit a scheduled selection. Do not combine with summary_routes.",
-		},
-		"summary_fields": map[string]interface{}{
-			"type":     "array",
-			"maxItems": 10,
-			"items": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"label": map[string]interface{}{"type": "string"},
-					"value": map[string]interface{}{"type": "string"},
-				},
-				"required":             []string{"label", "value"},
-				"additionalProperties": false,
-			},
-			"description": "Channel-neutral compact facts persisted for the Org Dashboard. Rich external renderers may reuse them.",
-		},
-		"summary_sections": map[string]interface{}{
-			"type":     "array",
-			"maxItems": 12,
-			"items": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"heading": map[string]interface{}{"type": "string"},
-					"body":    map[string]interface{}{"type": "string"},
-				},
-				"required":             []string{"heading", "body"},
-				"additionalProperties": false,
-			},
-			"description": "Channel-neutral ordered details persisted for the Org Dashboard. Use for fixes, blockers, decisions, evidence, and next actions.",
-		},
-	}
-	summaryContentProps["summary_routes"] = notificationRoutesSchema(summaryContentProps["summary_fields"], summaryContentProps["summary_sections"])
-	summaryContentProps["email_subject"] = map[string]interface{}{
-		"type":        "string",
-		"description": "Required non-empty plain-text subject whenever this notification sends Gmail, including general notifications. summary_title is not a substitute. Omit only when Gmail is excluded or not used. Do not supply MIME-encoded text or line breaks.",
-	}
-	summaryContentProps["email_attachments"] = map[string]interface{}{
-		"type":        "array",
-		"items":       map[string]interface{}{"type": "string"},
-		"description": "Optional. Absolute file paths on the server host to attach to the email (Gmail only).",
-	}
-	summaryContentProps["block_recipients"] = map[string]interface{}{
-		"type":        "array",
-		"items":       map[string]interface{}{"type": "string"},
-		"description": "Optional one-off email denylist for THIS notification (Gmail only). Addresses listed here are rejected as To or CC recipients, on top of BOTH the account-wide disallowed-recipients list AND the durable per-workflow denylist in workflow.json notifications.block_recipients — it can only block MORE, never unblock a globally-blocked address. Put addresses the workflow must never email in workflow.json notifications.block_recipients (applied automatically); use this arg only for a one-time block beyond that. A blocked address is removed from the To/CC list and the message still goes to the remaining recipients; only when EVERY recipient is blocked is the email skipped entirely. Does not change any account-wide configuration; other channels ignore this.",
-	}
-	summaryContentProps["email_html"] = map[string]interface{}{
-		"type":        "string",
-		"description": "The single rich email body (Gmail only). For workflow notifications, supply this by default unless the user explicitly asked not to email. MUST be EMAIL-SAFE: use INLINE styles only (a style attribute on each element). Gmail strips <style> blocks, <head>, <script>, and class-based CSS, so a full browser HTML document or a generated *.html report (e.g. reports/index.html) arrives UNSTYLED — build a compact inline-styled summary and link to the full report instead of pasting it. Do not create a separate plain email version; message_for_user is the automatic fallback. Other channels ignore this.",
-	}
-	summaryContentProps["email_html_file"] = map[string]interface{}{
-		"type":        "string",
-		"description": "Optional. Absolute path to an .html file on the server host to use as the HTML email body (alternative to email_html). The file MUST be email-safe — INLINE styles only; Gmail strips <style>/<head>/class CSS, so a browser-oriented report file (e.g. reports/index.html) renders UNSTYLED. Point this at an email-specific inline-styled file, not the full browser report. If the file can't be read, the tool returns an error so you can fix the path.",
-	}
 	humanTools = append(humanTools, createSendEmailTool())
-	humanTools = append(humanTools, createRecordSummaryTool(summaryContentProps))
-	humanTools = append(humanTools, llmtypes.Tool{
-		Type: "function",
-		Function: &llmtypes.FunctionDefinition{
-			Name:        "get_notification_history",
-			Description: "Read prior channel-neutral run outcomes for the current workflow before deciding whether an external notification is new and important. This is read-only and uses the same durable Activity history shown in the Org Dashboard. Records prove that a summary was created; they are not per-provider Slack/Gmail delivery receipts.",
-			Parameters: llmtypes.NewParameters(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"notification_kind": map[string]interface{}{
-						"type": "string", "enum": []string{"run_summary"},
-						"description": "Summary stream to compare against.",
-					},
-					"limit": map[string]interface{}{
-						"type": "integer", "minimum": 1, "maximum": 20, "default": 5,
-						"description": "Maximum prior summaries to return.",
-					},
-				},
-				"required": []string{"notification_kind"},
-			}),
-		},
-	})
+
 	humanTools = append(humanTools, createGoogleCLITool(), createSlackMessageTool(), createSlackCLITool())
 
 	return humanTools
@@ -364,7 +211,7 @@ func IsHumanToolCategory(category string) bool {
 // assembled into the human_tools category. It is not a chat admission list;
 // AgentWorks product.yaml owns Builder/Run admission.
 func HumanToolImplementationNames() []string {
-	return []string{"human_feedback", "send_email", "record_summary", "get_notification_history", "send_slack_message", "slack", "google_workspace_cli", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "withdraw_human_input_request"}
+	return []string{"human_feedback", "send_email", "send_slack_message", "slack", "google_workspace_cli"}
 }
 
 // CreateHumanToolExecutors creates the execution functions for human tools
@@ -373,8 +220,6 @@ func CreateHumanToolExecutors() map[string]func(ctx context.Context, args map[st
 
 	executors["human_feedback"] = handleHumanFeedback
 	executors["send_email"] = handleSendEmail
-	executors["record_summary"] = handleRecordSummary
-	executors["get_notification_history"] = handleGetNotificationHistory
 	executors["send_slack_message"] = handleSlackMessage
 	executors["slack"] = handleSlackCLI
 	executors["google_workspace_cli"] = handleGoogleWorkspaceCLI
@@ -382,51 +227,6 @@ func CreateHumanToolExecutors() map[string]func(ctx context.Context, args map[st
 	return executors
 }
 
-func handleGetNotificationHistory(ctx context.Context, args map[string]interface{}) (string, error) {
-	dest := NotificationDestinationFromContext(ctx)
-	if dest == nil || strings.TrimSpace(dest.WorkspacePath) == "" {
-		return "", fmt.Errorf("notification history requires a workflow workspace")
-	}
-	kind, _ := args["notification_kind"].(string)
-	kind = strings.ToLower(strings.TrimSpace(kind))
-	if kind != "run_summary" {
-		return "", fmt.Errorf("notification_kind must be run_summary")
-	}
-	limit := 5
-	if raw, ok := args["limit"].(float64); ok {
-		limit = int(raw)
-	} else if raw, ok := args["limit"].(int); ok {
-		limit = raw
-	}
-	if limit < 1 || limit > 20 {
-		return "", fmt.Errorf("limit must be between 1 and 20")
-	}
-	history, err := services.ListOrgDashboardNotifications(ctx, dest.WorkspacePath, 50)
-	if err != nil {
-		return "", err
-	}
-	items := make([]services.OrgDashboardNotification, 0, limit)
-	for _, item := range history.Recent {
-		if item.Kind != kind {
-			continue
-		}
-		items = append(items, item)
-		if len(items) == limit {
-			break
-		}
-	}
-	payload := map[string]interface{}{
-		"workspace_path":    dest.WorkspacePath,
-		"notification_kind": kind,
-		"summaries":         items,
-		"note":              "These are durable summaries, not per-provider delivery receipts. Compare semantic status, routes, blockers, decisions, findings, and outcomes; ignore timestamps and wording-only differences.",
-	}
-	b, _ := json.Marshal(payload)
-	return string(b), nil
-}
-
-// DeliverWorkflowNotification is the internal delivery path for server run notifications
-// and recorded summaries. It is not registered as an agent tool.
 func DeliverWorkflowNotification(ctx context.Context, args map[string]interface{}) (string, error) {
 	messageForUser, _ := args["message_for_user"].(string)
 	messageForUser = strings.TrimSpace(messageForUser)

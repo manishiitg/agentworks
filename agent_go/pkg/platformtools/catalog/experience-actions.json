@@ -10,13 +10,6 @@
     ]
   },
   {
-    "family": "needs_you",
-    "name": "answer",
-    "member": "answer_human_input_request",
-    "description": "Use the current needs_you answer operation.",
-    "external_members": "answer_needs_you"
-  },
-  {
     "family": "workspace",
     "name": "reference_attach",
     "member": "attach_workflow_reference",
@@ -37,12 +30,6 @@
     "external_members": "configure_slack_bot"
   },
   {
-    "family": "needs_you",
-    "name": "create",
-    "member": "create_human_input_request",
-    "description": "Use the current needs_you create operation."
-  },
-  {
     "family": "integrations",
     "name": "slack_route_create",
     "member": "create_slack_bot_route",
@@ -54,12 +41,6 @@
     "name": "reference_detach",
     "member": "detach_workflow_reference",
     "description": "Use the current workspace reference detach operation."
-  },
-  {
-    "family": "needs_you",
-    "name": "dismiss_duplicate",
-    "member": "dismiss_duplicate_human_input_request",
-    "description": "Use the current needs_you dismiss duplicate operation."
   },
   {
     "family": "terminal",
@@ -77,18 +58,6 @@
     "member": "get_agent_inbox",
     "description": "Use the current messages mail inbox operation.",
     "external_members": "get_agent_inbox"
-  },
-  {
-    "family": "needs_you",
-    "name": "get",
-    "member": "get_human_input_request",
-    "description": "Use the current needs_you get operation."
-  },
-  {
-    "family": "messages",
-    "name": "history",
-    "member": "get_notification_history",
-    "description": "Use the current messages history operation."
   },
   {
     "family": "relay",
@@ -167,12 +136,6 @@
     "description": "Use the current media edit operation."
   },
   {
-    "family": "media",
-    "name": "generate",
-    "member": "image_gen",
-    "description": "Use the current media generate operation."
-  },
-  {
     "family": "workspace",
     "name": "references_list",
     "member": "list_accessible_workflows",
@@ -205,12 +168,6 @@
     "description": "Use the current ui capabilities operation."
   },
   {
-    "family": "needs_you",
-    "name": "consume",
-    "member": "mark_human_input_consumed",
-    "description": "Use the current needs_you consume operation."
-  },
-  {
     "family": "relay",
     "name": "publish",
     "member": "publish_relay",
@@ -238,12 +195,6 @@
     "description": "List the active and previous published versions with their functions.",
     "source": "read_relay",
     "source_action": "releases"
-  },
-  {
-    "family": "messages",
-    "name": "record_summary",
-    "member": "record_summary",
-    "description": "Use the current messages record summary operation."
   },
   {
     "family": "integrations",
@@ -348,12 +299,6 @@
     "member": "update_slack_bot_route_permission",
     "description": "Use the current integrations slack route update operation.",
     "external_members": "update_slack_bot_route_permission"
-  },
-  {
-    "family": "needs_you",
-    "name": "withdraw",
-    "member": "withdraw_human_input_request",
-    "description": "Use the current needs_you withdraw operation."
   },
   {
     "family": "browser",

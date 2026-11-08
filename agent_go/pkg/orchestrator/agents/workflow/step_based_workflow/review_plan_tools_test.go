@@ -47,7 +47,7 @@ func TestEveryReadOnlyBackgroundReviewerGetsQueryButNotMutation(t *testing.T) {
 	if slices.Contains(names, "human_feedback") || executors["human_feedback"] != nil {
 		t.Fatalf("Builder reviewer received run-only human_feedback: tools=%v executors=%v", names, executors)
 	}
-	if !slices.Contains(names, "record_summary") || executors["record_summary"] == nil {
-		t.Fatalf("Builder reviewer missing product-declared record_summary: tools=%v executors=%v", names, executors)
+	if slices.Contains(names, "record_summary") || executors["record_summary"] != nil {
+		t.Fatal("reviewer exposed a retired summary tool")
 	}
 }

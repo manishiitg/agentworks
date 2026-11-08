@@ -61,19 +61,16 @@ type WorkflowNotificationSenderChoice struct {
 }
 
 type WorkflowNotificationInfoResponse struct {
-	BreakAlerts            bool                                     `json:"break_alerts"`
-	Success                bool                                     `json:"success"`
-	Agentic                bool                                     `json:"agentic"`
-	ScopeLabel             string                                   `json:"scope_label"`
-	WorkflowLabel          string                                   `json:"workflow_label,omitempty"`
-	EffectiveState         string                                   `json:"effective_state"`
-	Destinations           []WorkflowNotificationDestinationInfo    `json:"destinations"`
-	AccountChannels        []WorkflowNotificationAccountChannelInfo `json:"account_channels"`
-	RunSummaryInstructions string                                   `json:"run_summary_instructions,omitempty"`
-	RunSummaryChannels     []string                                 `json:"run_summary_channels,omitempty"`
-	RunSummaryRecipients   []string                                 `json:"run_summary_recipients,omitempty"`
-	ExcludeChannels        []string                                 `json:"exclude_channels,omitempty"`
-	GmailConnectionID      string                                   `json:"gmail_connection_id,omitempty"`
+	BreakAlerts       bool                                     `json:"break_alerts"`
+	Success           bool                                     `json:"success"`
+	Agentic           bool                                     `json:"agentic"`
+	ScopeLabel        string                                   `json:"scope_label"`
+	WorkflowLabel     string                                   `json:"workflow_label,omitempty"`
+	EffectiveState    string                                   `json:"effective_state"`
+	Destinations      []WorkflowNotificationDestinationInfo    `json:"destinations"`
+	AccountChannels   []WorkflowNotificationAccountChannelInfo `json:"account_channels"`
+	ExcludeChannels   []string                                 `json:"exclude_channels,omitempty"`
+	GmailConnectionID string                                   `json:"gmail_connection_id,omitempty"`
 }
 
 func notificationAccountChannels(ctx context.Context, selectedSenderID, itemWorkspace string) []WorkflowNotificationAccountChannelInfo {
@@ -205,19 +202,16 @@ func (api *StreamingAPI) handleGetWorkflowNotifications(w http.ResponseWriter, r
 	accountChannels := notificationAccountChannels(r.Context(), selectedSenderID, personalConnectionItemRoot(GetUserIDFromContext(r.Context()), workspacePath))
 
 	response := WorkflowNotificationInfoResponse{
-		BreakAlerts:            manifest.Capabilities.Notifications.BreakAlertsEnabled(),
-		Success:                true,
-		Agentic:                true,
-		ScopeLabel:             manifest.Label,
-		WorkflowLabel:          manifest.Label,
-		EffectiveState:         effectiveNotificationState(accountChannels),
-		Destinations:           []WorkflowNotificationDestinationInfo{},
-		AccountChannels:        accountChannels,
-		RunSummaryInstructions: runSummaryInstructionsOrDefault(manifest.Capabilities.Notifications),
+		BreakAlerts:     manifest.Capabilities.Notifications.BreakAlertsEnabled(),
+		Success:         true,
+		Agentic:         true,
+		ScopeLabel:      manifest.Label,
+		WorkflowLabel:   manifest.Label,
+		EffectiveState:  effectiveNotificationState(accountChannels),
+		Destinations:    []WorkflowNotificationDestinationInfo{},
+		AccountChannels: accountChannels,
 	}
 	if manifest.Capabilities.Notifications != nil {
-		response.RunSummaryChannels = manifest.Capabilities.Notifications.RunSummaryChannels
-		response.RunSummaryRecipients = manifest.Capabilities.Notifications.RunSummaryRecipients
 		response.ExcludeChannels = manifest.Capabilities.Notifications.ExcludeChannels
 		response.GmailConnectionID = manifest.Capabilities.Notifications.GmailConnectionID
 	}

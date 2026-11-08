@@ -855,8 +855,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareCustomTools(stepConfig *AgentC
 		}
 	}
 	// Human tools are not part of the baseline (owner, 2026-10-15): a step is
-	// unattended work, so it gets no blocking human_feedback, and email, Slack and
-	// decision requests only when the step's tool list names them.
+	// unattended work: question tools are always excluded. Email, Slack and
+	// connected apps require the step's named selection.
 
 	// DB and cost access come from capabilities, not from whether an explicit
 	// tool list was supplied. Filtering against the actual workspace pool below
@@ -1271,33 +1271,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		toolsToRegister, executorsToUse = selection.filterTools(toolsToRegister, executorsToUse)
 	}
 	if subAgentExecCtx != nil {
-		// Filter out human tools if "no human" execution mode is active
-		execOpts := hcpo.GetExecutionOptions()
-		if execOpts != nil && (execOpts.ExecutionStrategy == ExecutionStrategyStartFromBeginningNoHuman || execOpts.ExecutionStrategy == ExecutionStrategyResumeFromStepNoHuman) {
-			var filteredTools []llmtypes.Tool
-			filteredExecutors := make(map[string]interface{})
-
-			for _, tool := range toolsToRegister {
-				// Check if this tool is a human tool by looking at its category
-				if hcpo.ToolCategories != nil {
-					if category, exists := hcpo.ToolCategories[tool.Function.Name]; exists && virtualtools.IsHumanToolCategory(category) {
-						// Skip human tools in "no human" mode
-						hcpo.GetLogger().Info(fmt.Sprintf("🔧 Excluding human tool '%s' from todo task orchestrator agent (no human mode)", tool.Function.Name))
-						continue
-					}
-				}
-				filteredTools = append(filteredTools, tool)
-				// Also filter executors
-				if executor, exists := executorsToUse[tool.Function.Name]; exists {
-					filteredExecutors[tool.Function.Name] = executor
-				}
-			}
-
-			toolsToRegister = filteredTools
-			executorsToUse = filteredExecutors
-			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Filtered out human tools for todo task orchestrator agent (no human mode): %d tools remaining", len(toolsToRegister)))
-		}
-
 		var helperErr error
 		toolsToRegister, executorsToUse, helperErr = hcpo.appendScriptHelperTools(config, subAgentExecCtx, toolsToRegister, executorsToUse)
 		if helperErr != nil {
