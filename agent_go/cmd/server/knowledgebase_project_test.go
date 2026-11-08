@@ -16,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/mark3labs/mcp-go/client"
@@ -184,8 +185,15 @@ func knowledgeCrewSetupFixture(t *testing.T) string {
 	if err := os.MkdirAll(physical, 0700); err != nil {
 		t.Fatal(err)
 	}
+	private, err := crewroot.PrivateRoot(os.Getenv("WORKSPACE_DOCS_PATH"), "brain-setup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(private, 0700); err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"workflow.json", "product.json"} {
-		if err := os.WriteFile(filepath.Join(physical, name), []byte(`{"id":"brain-setup","created_by":"admin","owner_id":"admin","product":"work"}`), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(private, name), []byte(`{"id":"brain-setup","created_by":"admin","owner_id":"admin","product":"work"}`), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -394,8 +402,15 @@ func TestBrainCrewProjectUsesBrainAsItsOwner(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, code), 0700); err != nil {
 		t.Fatal(err)
 	}
+	private, err := crewroot.PrivateRoot(root, "code-payments")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(private, 0700); err != nil {
+		t.Fatal(err)
+	}
 	for _, file := range []string{"workflow.json", "product.json"} {
-		if err := os.WriteFile(filepath.Join(root, code, file), []byte(`{"id":"code-payments","created_by":"admin","owner_id":"admin","product":"work"}`), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(private, file), []byte(`{"id":"code-payments","created_by":"admin","owner_id":"admin","product":"work"}`), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
