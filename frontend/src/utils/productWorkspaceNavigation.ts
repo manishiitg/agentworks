@@ -1,6 +1,5 @@
 import { workspaceSettingsPage } from './workspaceSettingsRoutes'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
-import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useAppStore } from '../stores/useAppStore'
 import { useLLMStore } from '../stores/useLLMStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
@@ -19,13 +18,7 @@ export function openProductWorkspace(surface: ProductSurface, options?: { keepHo
   app.setAdminPage(null)
   app.setShowWorkflowsOverview(false)
   app.setActivityWorkflowPath(null)
-  if (surface === 'agentworks' || surface === 'relays') {
-    const presets = useGlobalPresetStore.getState()
-    const activePreset = presets.getActivePreset('workflow')
-    if (activePreset && (activePreset.workflowKind === 'relay') !== (surface === 'relays')) {
-      presets.clearActivePreset('workflow')
-      presets.setSelectedPresetFolder(null)
-    }
+  if (surface === 'agentworks') {
     app.setModeCategory('workflow')
     app.setAgentMode('workflow')
   } else if (surface === 'work' || surface === 'knowledgebase') {

@@ -1,7 +1,7 @@
 // These are controls for optional product assignments. Core account services
 // have no enable/disable control; actual access and availability stay server-owned.
 // Personal products are offered only on their dedicated deployments.
-const MAIN_PRODUCTS = ['agentworks', 'relays', 'work', 'code']
+const MAIN_PRODUCTS = ['agentworks', 'work', 'code']
 const ACCOUNT_SERVICES = new Set(['bullpen', 'knowledgebase', 'mcp-gateway'])
 
 export function selectableProducts(serverProducts: string[], enabledSurfaces: string[]): string[] {

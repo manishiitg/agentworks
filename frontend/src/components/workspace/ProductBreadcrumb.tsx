@@ -8,7 +8,7 @@ import { PRODUCT_SURFACE_LABELS, type ProductSurface } from '../../products/prod
 
 /** One product-home link and the current location in the existing toolbar. */
 export function ProductBreadcrumb({ surface, section, onHome, menuItems, projectPickerActive = true, standalone = false }: { surface: ProductSurface; section?: string; onHome: () => void; menuItems?: readonly ProductMenuItem[]; projectPickerActive?: boolean; standalone?: boolean }) {
-  const projectPicker = surface === 'agentworks' || surface === 'relays'
+  const projectPicker = surface === 'agentworks'
   const ownTrigger = useRef<HTMLButtonElement | null>(null)
   const register = useCallback((node: HTMLButtonElement | null) => {
     const previous = ownTrigger.current

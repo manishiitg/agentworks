@@ -68,7 +68,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
   const rawTooltip = titleOverride || tab.name || displayName
   const nameTooltip = readableGeneratedChatTitle(rawTooltip, tab.metadata?.isScheduledRun) || rawTooltip
   const tooltip = ownerName ? `${nameTooltip} · ${yourTab ? 'Your tab' : 'Owned by'} · ${ownerName}` : nameTooltip
-  const workspacePickable = !!productSurface && ['agentworks', 'relays', 'work', 'code'].includes(productSurface)
+  const workspacePickable = !!productSurface && ['agentworks', 'work', 'code'].includes(productSurface)
   const workspaceTrigger = useRef<HTMLButtonElement | null>(null)
   const pickerOpen = useProductNavigationToolbarStore(state => state.pickerOpen)
   const registerWorkspaceTrigger = useCallback((node: HTMLButtonElement | null) => {

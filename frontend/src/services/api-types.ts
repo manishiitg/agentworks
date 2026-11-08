@@ -2725,7 +2725,7 @@ export interface SkippedWhilePaused {
 export interface SchedulerConfig {
   /** Holds the timed runs of every product. */
   globally_paused: boolean
-  /** Products paused on their own: 'agentworks' (Goals), 'relays', 'work' (Crews), 'code'. */
+  /** Products paused on their own: 'agentworks' (Goals), 'work' (Crews), 'code'. */
   paused_products?: string[]
   paused_at?: string
   paused_by?: string
@@ -2741,7 +2741,7 @@ export interface SchedulerConfig {
 export interface WorkflowManifest {
   schema_version: number
   id: string
-  kind?: 'relay' | string
+  kind?: string
   relay_runtime?: 'python' | string
   relay_durability?: 'dbos' | ''
   relay_output_step_id?: string
@@ -2869,7 +2869,7 @@ export interface WorkflowContractUpgradeItem {
 
 export interface CreateWorkflowManifestRequest {
   label: string
-  kind?: 'relay' | string
+  kind?: string
   icon?: string
   workspace_path: string
   capabilities?: Partial<WorkflowCapabilities>

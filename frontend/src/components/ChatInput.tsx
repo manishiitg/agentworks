@@ -28,7 +28,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 import FileSelectionDialog from './FileSelectionDialog'
 import CommandSelectionDialog from './CommandSelectionDialog'
 import { CommandEditorDialog } from './commands/CommandEditorDialog'
-import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { findCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegisterUserCommands, type CommandContext, type CommandDefinition } from '../commands'
 import { getCommandRevision, subscribeCommands } from '../commands/registry'
 import { commandsApi } from '../api/commands'
@@ -436,7 +435,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   onNewChat,
 }) => {
   const isProductSurface = surfaceVariant === 'product'
-  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
   // Store subscriptions
   const {
     agentMode,
@@ -1093,7 +1091,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return isWorkflowMode && presetId ? state.getWorkflowById(presetId)?.workspace_path : undefined
   }) || activeWorkflowWorkspacePath || workflowPhaseWorkspacePath || workspaceActiveFolder
   const canWriteCommandWorkflow = useCanWriteWorkflow(commandWorkflowPath?.replace(/\/+$/, ''))
-  const useProductCommandCatalog = isProductProfile || (isRelaySurface && isWorkflowMode)
+  const useProductCommandCatalog = isProductProfile
   const customCommandWorkspacePath = agentProfileWorkspace || (isWorkflowMode ? commandWorkflowPath : undefined) || undefined
 
   // Get queued messages from tab config
@@ -1423,7 +1421,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     llmConfigSource,
   ])
   const mainAgentRuntimeLabel = mainAgentRuntimeLLM?.model_id || mainAgentRuntimeLLM?.provider || null
-  const isGoalBuilderChat = isWorkflowPhaseChat && !isRelaySurface
+  const isGoalBuilderChat = isWorkflowPhaseChat
   const goalModelLabel = mainAgentRuntimeLLM
     ? composerModelLabel(getModelDisplayName({ provider: mainAgentRuntimeLLM.provider, modelId: mainAgentRuntimeLLM.model_id, savedLLMs: publishedLLMs, availableLLMs }), mainAgentRuntimeLLM.provider)
     : null
@@ -2850,15 +2848,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (placeholderOverride) return placeholderOverride
     if (agentProfileWorkspace) return 'Describe the video you want to make… (@ files, / commands)'
     if (isWorkflowPhaseChat) {
-      return isRelaySurface
-        ? 'Describe your Flow graph... (@ files, / commands, # references)'
-        : 'Chat with the automation builder... (@ files, / commands, # references)'
+      return 'Chat with the automation builder... (@ files, / commands, # references)'
     }
     const baseHints = "@ files, / commands, # references, ! skills, $ servers"
     if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
     if (isMultiAgentMode) return `Ask anything... (${baseHints})`
     return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, isProductSurface, isRelaySurface, isStreaming, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
+  }, [agentProfileWorkspace, isProductSurface, isStreaming, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -3649,7 +3645,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         modeCategory={commandModeCategory}
         workshopMode={commandModeCategory === 'workflow' ? getEffectiveWorkflowModes().workshopMode : undefined}
         canWriteWorkflow={canWriteCommandWorkflow}
-        agentProfileId={isRelaySurface && isWorkflowMode ? 'relays' : activeTab?.metadata?.agentProfileId}
+        agentProfileId={activeTab?.metadata?.agentProfileId}
         workspacePath={customCommandWorkspacePath}
         commands={slashCommands}
         {...(slashCommands || (isWorkflowMode && !canWriteCommandWorkflow) ? {} : {

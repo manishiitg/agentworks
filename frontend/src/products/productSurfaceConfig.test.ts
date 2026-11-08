@@ -1,18 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  PRODUCT_SURFACE_LABELS,
-  navigationProductSurfaceIDs,
-  visibleProductSurfaceIDs,
-  deploymentDefaultProductSurface,
-  enabledProductSurfaces,
-  gatewayAdminUrl,
-  gatewayBaseUrl,
-  intersectAllowedProductSurfaces,
-  isProductSurface,
-  isEnabledProductSurface,
-  hasGatewaySSO,
-  isSingleProductDeployment,
-} from './productSurfaceConfig'
+import { navigationProductSurfaceIDs, visibleProductSurfaceIDs, deploymentDefaultProductSurface, enabledProductSurfaces, gatewayAdminUrl, gatewayBaseUrl, intersectAllowedProductSurfaces, isProductSurface, isEnabledProductSurface, hasGatewaySSO, isSingleProductDeployment } from './productSurfaceConfig'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -30,7 +17,7 @@ describe('product surface deployment configuration', () => {
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(gatewayBaseUrl()).toBeNull()
     expect(hasGatewaySSO()).toBe(false)
-    for (const product of ['relays', 'knowledgebase', 'mcp-gateway', 'llm-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
+    for (const product of ['knowledgebase', 'mcp-gateway', 'llm-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
   })
 
   it('uses local defaults and cannot opt into server products in a local build', () => {
@@ -75,7 +62,6 @@ describe('product surface deployment configuration', () => {
 
   it('defaults to AgentWorks, Crew, and Brain while Flow is disabled when no deployment allowlist is configured', () => {
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'knowledgebase'])
-    expect(PRODUCT_SURFACE_LABELS.relays).toBe('Flows')
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isSingleProductDeployment()).toBe(false)
     expect(enabledProductSurfaces()).not.toContain('bullpen')
@@ -189,16 +175,16 @@ describe('intersectAllowedProductSurfaces', () => {
     expect(intersectAllowedProductSurfaces(['knowledgebase'], [])).toEqual([])
   })
   it('passes the deployment list through unchanged when the user is unrestricted', () => {
-    expect(intersectAllowedProductSurfaces(['relays', 'agentworks'], null)).toEqual(['relays', 'agentworks'])
-    expect(intersectAllowedProductSurfaces(['relays', 'agentworks'], undefined)).toEqual(['relays', 'agentworks'])
+    expect(intersectAllowedProductSurfaces(['work', 'agentworks'], null)).toEqual(['work', 'agentworks'])
+    expect(intersectAllowedProductSurfaces(['work', 'agentworks'], undefined)).toEqual(['work', 'agentworks'])
     // An empty list is a read-only account with nothing enabled: no products.
-    expect(intersectAllowedProductSurfaces(['relays', 'agentworks'], [])).toEqual([])
+    expect(intersectAllowedProductSurfaces(['work', 'agentworks'], [])).toEqual([])
   })
 
   it('narrows to the explicit per-user allowlist, case-insensitively', () => {
-    expect(intersectAllowedProductSurfaces(['relays', 'agentworks'], ['Relays'])).toEqual(['relays'])
-    expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['agentworks'])).toEqual(['agentworks'])
-    expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['relays'])).toEqual(['relays'])
+    expect(intersectAllowedProductSurfaces(['work', 'agentworks'], ['Work'])).toEqual(['work'])
+    expect(intersectAllowedProductSurfaces(['agentworks', 'work'], ['agentworks'])).toEqual(['agentworks'])
+    expect(intersectAllowedProductSurfaces(['agentworks', 'work'], ['work'])).toEqual(['work'])
   })
 })
 
