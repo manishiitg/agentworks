@@ -1,4 +1,4 @@
-import { ArrowUpCircle, BookOpen, Cable, Code2, Cpu, Database, DollarSign, Laptop, Files, FileText, Hand, History, LayoutDashboard, MessageSquareText, Monitor, Route, Settings, BellRing, ShieldCheck, Target, Sparkles, type LucideIcon } from 'lucide-react'
+import { ArrowUpCircle, BookOpen, Cable, Code2, Cpu, Database, DollarSign, Laptop, Files, FileText, Hand, History, LayoutDashboard, MessageSquareText, Monitor, Route, Settings, ShieldCheck, Target, Sparkles, type LucideIcon } from 'lucide-react'
 import { projectAutomationSections, projectConnectionSections } from '../workspace/WorkspaceProjectNavigation'
 import { PROJECT_MENU_GROUPS, type ProjectMenuGroup } from '../workspace/projectMenuGroups'
 import type { WorkspaceViewId } from './workspaceViews'
@@ -45,7 +45,6 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   add('mcp', 'Use', 'MCP access', Cable, 'cli', 'Use from other apps')
   if (canShare) add('mcp', 'Share', 'Access & sharing', ShieldCheck, 'share')
   if (isMultiUser && !relayMode) add('access', 'Share', 'Team', ShieldCheck, 'workflow')
-  if (!relayMode) add('notify', 'Setup', 'Notify', BellRing)
   for (const item of projectConnectionSections({ allowedProducts, relayMode, onOpen: () => {} })) {
     add('mcp', 'Integrations', item.label, item.icon, item.id.slice(4), item.subgroup)
   }

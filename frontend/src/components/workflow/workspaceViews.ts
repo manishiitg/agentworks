@@ -1,5 +1,4 @@
 import {
-  BellRing,
   Settings2,
   BookOpen,
   CalendarClock,
@@ -84,7 +83,6 @@ const VIEWS = [
   // `capabilities` are filtered into their auto-rendered clusters below.
   { id: 'goals', kind: 'inspector', label: 'Goals & metrics', icon: Target, toolbarGroup: 'setup', pane: true },
   { id: 'human-actions', kind: 'inspector', label: 'Decisions', icon: Hand, toolbarGroup: 'setup', pane: true },
-  { id: 'notify', kind: 'inspector', label: 'Notify', icon: BellRing, toolbarGroup: 'setup', pane: true },
   // Access (share this workflow / manage users) opens in the pane like the
   // rest of Setup, not a modal (user request 2026-09-03). Button is hand-built
   // in the toolbar because its visibility is permission-gated.

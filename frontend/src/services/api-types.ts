@@ -2431,17 +2431,6 @@ export interface PlanChangelogResponse {
   error?: string
 }
 
-export type WorkflowNotificationState = 'not_configured' | 'missing_secret' | 'invalid_secret' | 'ready'
-
-export interface WorkflowNotificationDestinationInfo {
-  id: string
-  type: string
-  label: string
-  state: WorkflowNotificationState
-  secret_name?: string
-  summary?: string
-}
-
 /** One additional Google Workspace service (beyond Gmail) a connection is
  *  authorized for, and at what access level. */
 export interface GoogleServiceGrant {
@@ -2541,51 +2530,6 @@ export interface GmailOAuthClient {
 
 export interface GmailOAuthClientsResponse {
   clients: GmailOAuthClient[]
-}
-
-export interface WorkflowNotificationAccountChannelInfo {
-  id: string
-  label: string
-  state: 'ready' | 'not_ready' | 'checking' | string
-  default_recipient?: string
-  summary?: string
-  blocked_recipients?: string[]
-  /** Gmail authorization is still resolving in the background. */
-  checking?: boolean
-  /**
-   * The address mail goes OUT from — the counterpart to default_recipient,
-   * which is where it goes TO. Empty while auth is still resolving.
-   */
-  default_sender?: string
-  /** Which configured connection default_sender belongs to. */
-  default_sender_connection_id?: string
-  /** Connections available to the Notify sender picker. */
-  sender_choices?: WorkflowNotificationSenderChoice[]
-}
-
-/** One selectable Gmail sending account. Identifiers and labels only. */
-export interface WorkflowNotificationSenderChoice {
-  id: string
-  display_name: string
-  email?: string
-  ready: boolean
-  is_default?: boolean
-}
-
-export interface WorkflowNotificationInfoResponse {
-  break_alerts: boolean
-  success: boolean
-  agentic: boolean
-  scope_label: string
-  workflow_label?: string
-  effective_state: WorkflowNotificationState
-  destinations: WorkflowNotificationDestinationInfo[]
-  account_channels: WorkflowNotificationAccountChannelInfo[]
-  /** One sender selected for this workflow's Notify emails; empty inherits the account default. */
-  gmail_connection_id?: string
-  /** Legacy per-summary sender overrides; Notify now selects one sender. */
-  // Slack channels per summary, as webhook secret names (one webhook = one channel).
-  exclude_channels?: string[]
 }
 
 // Scheduled Jobs
@@ -2876,21 +2820,12 @@ export interface WorkflowCapabilities {
   browser_mode?: 'none' | 'extension' | 'headless' | 'cdp'
   use_code_execution_mode: boolean
   llm_config?: PresetLLMConfig
-  notifications?: WorkflowNotificationConfig
   // Named Slack app this workflow talks through; empty inherits the default.
   slack_connection_id?: string
   // Builder and Run-mode chats use the coding CLI's own read/search, skills,
   // todos and subagents (agent_tools hybrid). Steps and automations never do.
   // On unless explicitly false (see utils/nativeAgentTools).
   native_agent_tools?: boolean
-}
-
-export interface WorkflowNotificationConfig {
-  break_alerts?: boolean
-  // Name of an encrypted workflow/user/global secret; never the webhook URL.
-  slack_webhook_secret_name?: string
-  // Legacy shared guidance; new saves use the scoped fields below.
-  instructions?: string
 }
 
 export interface WorkflowOwnership {
@@ -2981,12 +2916,6 @@ export interface UpdateWorkflowManifestRequest {
   capabilities?: WorkflowCapabilities
   ownership?: WorkflowOwnership
   schedules?: WorkflowScheduleEntry[]
-  /** One sender for this workflow's Notify emails. Empty inherits the account default. */
-  break_alerts?: boolean
-  notification_gmail_connection_id?: string
-  // Legacy per-summary sender overrides. New Notify settings use
-  // notification_gmail_connection_id and clear these lists.
-  run_notification_gmail_connection_ids?: string[]
   notification_instructions?: string
   knowledgebase_sources?: KnowledgebaseSource[]
   /** Replaces the complete list of other workflow IDs allowed to write into
