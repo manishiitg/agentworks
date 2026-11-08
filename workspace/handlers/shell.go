@@ -714,7 +714,7 @@ func isAllowedShellExtraEnvKey(key string) bool {
 		// looked like it had no input (PLAT-514), and knowledge-base and database access flags never arrived either.
 		strings.HasPrefix(key, "WORKFLOW_TRIGGER_") ||
 		strings.HasPrefix(key, "WORKFLOW_KB_") ||
-		key == "WORKFLOW_DB_ACCESS" || key == "RUN_FOLDER" ||
+		key == "WORKFLOW_DB_ACCESS" || key == "RUN_FOLDER" || key == "WORKFLOW_RUN_DIR" ||
 		// A Run-mode Crew turn's run folder, the one place it may write (PLAT-756). Dropped here, a Crew's scripts never
 		// learned where to save their output and the agent had to find the folder from its notice each time.
 		key == "CREW_RUN_DIR" ||

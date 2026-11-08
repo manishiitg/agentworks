@@ -103,7 +103,7 @@ sys.stdout.write('Q' * 2097152)
 sys.stderr.write('stderr-last-line')
 values = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(values['count'], int)
-Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'python_ran':True}))
+Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'python_ran':True, 'run_folder':str(__import__('agentworks').run_folder)}))
 `)
 	if err := writeFileToWorkspace(t.Context(), binding.CrewRoot+"/product.json", `{"schema_version":1,"product":"work","id":"crew-script-http","title":"Script HTTP","session_id":"work:project:crew-script-http"}`); err != nil {
 		t.Fatal(err)

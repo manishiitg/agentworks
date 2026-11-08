@@ -512,7 +512,7 @@ print('[preflight] Python bundle syntax, top-level imports and configuration OK'
 // chat tools. In particular a pinned Run chat has no database tools to lend
 // its group session. Give each invocation its own registry so parallel helpers
 // cannot replace one another's access or leave broader tools on a cached group.
-func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(step PlanStepInterface, guard *workspace.FolderGuardConfig, dbAccess string, env map[string]string) func() {
+func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx context.Context, step PlanStepInterface, guard *workspace.FolderGuardConfig, dbAccess string, env map[string]string, codeDir, outputDir string) func() {
 	sessionID := fmt.Sprintf("script-step-%s-%d", step.GetID(), time.Now().UnixNano())
 	if hcpo.httpSessionID != "" {
 		mcpagent.RegisterHTTPSession(hcpo.httpSessionID, sessionID)
@@ -540,6 +540,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(step Pla
 			allow[family] = true
 		}
 	}
+	bridgeTools["python_automation"] = hcpo.pythonAutomationHandler(ctx, step, codeDir, outputDir)
+	allow["python_automation"] = true
+	env["WORKFLOW_RUN_DIR"] = workflowAbsPath(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder)
 	codeexec.InitRegistryForSession(sessionID, bridgeTools, hcpo.GetLogger())
 	codeexec.SetSessionToolAllowList(sessionID, allow)
 	env["MCP_SESSION_ID"] = sessionID
@@ -654,7 +657,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// contract explicitly in this child process. This is context-local and cannot
 	// leak between concurrently running todo routes.
 	extraEnv = appendScriptedDelegationEnv(ctx, extraEnv)
-	releaseBridge := hcpo.configureScriptBridgeSession(step, guard, dbAccess, extraEnv)
+	releaseBridge := hcpo.configureScriptBridgeSession(ctx, step, guard, dbAccess, extraEnv, workDirAbsPath, stepExecutionRelPath)
 	defer releaseBridge()
 	if len(scriptedParameterDefinitions(step)) > 0 {
 		if _, present := extraEnv[ScriptedParametersEnv]; !present {
