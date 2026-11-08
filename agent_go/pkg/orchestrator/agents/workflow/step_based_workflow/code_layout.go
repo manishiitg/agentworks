@@ -129,6 +129,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string)
 	// PLAT-746-396: direct scripts and agent turns need the same server-owned
 	// records root. User inputs must never replace it with an old laptop path.
 	env["VAR_WORKSPACE_PATH"] = workflowAbsPath(hcpo.GetWorkspacePath())
+	// Durable data is separate from authored code after a Crew move. A path
+	// identifies the store; existing folder guards still decide write access.
+	env["WORKFLOW_DATA_ROOT"] = workflowAbsPath(hcpo.GetWorkspacePath())
 	if !hcpo.platformStoresEnabled() {
 		delete(env, "DB_PATH")
 		for key := range env {

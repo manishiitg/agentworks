@@ -460,10 +460,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveScriptedShellGuard(
 		writePaths = append(writePaths, writePaths[0]+"/code")
 	}
 	if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
-		readOnlyPaths = append(readOnlyPaths, saved.crewScript.Root+"/script.json", saved.crewScript.Root+"/main.py")
-		for file := range saved.crewScript.Files {
-			readOnlyPaths = append(readOnlyPaths, saved.crewScript.Root+"/"+file)
-		}
+		// Source is authored through the Crew editor, never by a running copy.
+		// Protect the directory as well as existing files, including new names.
+		readOnlyPaths = append(readOnlyPaths, saved.crewScript.Root)
 	}
 	readPaths = common.DeduplicateStrings(append(readPaths, writePaths...))
 	if stateRoot := hcpo.pythonHelperStateRoot(); stateRoot != "" {
