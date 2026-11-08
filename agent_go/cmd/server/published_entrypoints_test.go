@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
@@ -34,10 +35,18 @@ func TestInteractiveBuilderCallsOwnDeclaredFunction(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := &recordingRegistrar{}
 			req := QueryRequest{SelectedFolder: linkAlphaPath, AgentProfileID: "work", TriggeredBy: tc.trigger, PinRunMode: tc.pinRun}
-			if err := env.api.registerCrewFunctionToolSet(reg, "owner", "sess-builder", req, crewTriggerLinkCaller(linkAlphaPath), nil, crewFunctionToolOptions{InteractiveOwnCalls: publishedBuilderHandoff(&req, false), ExecutionScope: tc.scope}); err != nil {
+			options := crewFunctionToolOptions{InteractiveOwnCalls: publishedBuilderHandoff(&req, false), ExecutionScope: tc.scope}
+			if tc.scope != "" {
+				options.FunctionTools = agentworksproduct.ExecutionFunctionTools()
+			}
+			if err := env.api.registerCrewFunctionToolSet(reg, "owner", "sess-builder", req, crewTriggerLinkCaller(linkAlphaPath), nil, options); err != nil {
 				t.Fatal(err)
 			}
-			out, err := reg.tools["project_functions_call"].exec(ctx, map[string]any{"project": "Alpha", "function": "own_fn", "notify": false})
+			callTool, admitted := reg.tools["project_functions_call"]
+			if !admitted || callTool.exec == nil {
+				t.Fatal("fixture did not admit the declared function tool")
+			}
+			out, err := callTool.exec(ctx, map[string]any{"project": "Alpha", "function": "own_fn", "notify": false})
 			if tc.scope != "" || tc.pinRun {
 				if err == nil || !strings.Contains(err.Error(), "own function") {
 					t.Fatalf("execution self-call guard changed: %s %v", out, err)
