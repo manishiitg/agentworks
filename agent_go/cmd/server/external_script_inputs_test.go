@@ -174,6 +174,24 @@ func TestExternalScriptInputAndMappingSaveKeepsEntryAuthority(t *testing.T) {
 			t.Fatal("native write did not commit dependent mapping", file)
 		}
 	}
+	// PLAT-746-450 / PR1567: omitted mode is raw too, and raw bound
+	// functions supply mapped required inputs on later, unrelated saves.
+	requiredInputs := inputs("diagnostic", true)
+	for _, value := range requiredInputs {
+		field := value.(map[string]any)
+		delete(field, "value")
+		field["required"] = true
+	}
+	implicitRaw := mapping("diagnostic")
+	delete(implicitRaw, "mode")
+	save(requiredInputs, map[string]any{
+		"functions": map[string]any{"bound": map[string]any{"input_mapping": mapping("diagnostic")}},
+		"webhooks":  map[string]any{"hook": map[string]any{"input_mapping": implicitRaw}},
+	}, 200)
+	definition, _ = readCrewScript(t.Context(), script.Root)
+	definition.Description = "Updated description without changing input contracts"
+	content, _ = json.Marshal(definition)
+	crewCapabilityHTTP(t, f, owner, "workspace", map[string]any{"action": "automation_write", "workspace_path": script.Root, "file": "script.json", "content": string(content)}, 200)
 	if _, found, err := readFileFromWorkspace(t.Context(), script.Root+"/workflow.json"); err != nil || found {
 		t.Fatal("input edit wrote a second script manifest")
 	}
