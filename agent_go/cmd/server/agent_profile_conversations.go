@@ -419,6 +419,13 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete project folder: "+err.Error())
 		return
 	}
+	if profile.Product == "work" {
+		if err := removeCrewExecutableBindings(projectID); err != nil {
+			log.Printf("[CREW_DELETE] project=%s executable cleanup failed: %v", projectID, err)
+			writeAgentProfileError(w, http.StatusInternalServerError, "The Crew folder was removed, but its workflow and script cleanup failed.")
+			return
+		}
+	}
 	if err := deletePublicationState(r.Context(), publicationRoot, profile.ID, projectID); err != nil {
 		log.Printf("[CREW_PUBLISH] workspace=%s cleanup=incomplete", projectID)
 		writeAgentProfileError(w, 500, "The Crew folder was removed, but imported publication history cleanup needs a retry.")
