@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import api, { agentApi } from '../../services/api'
+import { PageCard, RowButton } from '../../components/automation/AutomationKit'
 import type { ExecutionInspectionTarget, WorkspaceStepInspection } from '../../services/api-types'
 import type { WorkspaceViewId } from '../../components/workflow/workspaceViews'
 import type { EmbeddedWorkflowScope } from '../../components/workflow/canvas/workspaceViewData'
@@ -29,15 +30,20 @@ export function CrewExecutableEditor({
   crewAgents,
   crewScripts = [],
   chatTabId,
+  section: controlledSection,
   onBack,
 }: {
   item: CrewExecutable
   crewAgents: Array<{ id: string; name: string }>
   crewScripts?: Array<{ id: string; name: string }>
   chatTabId: string
+  /** Set by the Workflow page, which owns the Plan | Runs switch. Without it the editor shows its own header and tabs. */
+  section?: 'plan' | 'runs'
   onBack?: () => void
 }) {
-  const [section, setSection] = useState<'steps' | 'runs'>('steps')
+  const [ownSection, setSection] = useState<'plan' | 'runs'>('plan')
+  const embedded = controlledSection !== undefined
+  const section = controlledSection ?? ownSection
   const [view, setView] = useState<WorkspaceViewId>('flow')
   const [file, setFile] = useState<string | null>(null)
   const [runFolder, setRunFolder] = useState<string | null>(null)
@@ -87,8 +93,8 @@ export function CrewExecutableEditor({
     }
   }
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
+    <div className={embedded ? 'space-y-4' : 'flex h-full min-h-0 flex-col'}>
+      {!embedded && <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
         {onBack && <button className={button} onClick={onBack} aria-label={item.kind === 'script' ? 'Back to scripts' : 'Back to workflows'}>
           <ArrowLeft className="h-4 w-4" />
         </button>}
@@ -105,10 +111,10 @@ export function CrewExecutableEditor({
         >
           {section === 'runs' ? 'Run in chat' : 'Edit in chat'}
         </button>
-      </div>
+      </div>}
       {item.kind === 'script' && !!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes apply to the next run.</p>}
-      <nav aria-label="Workflow" className="flex shrink-0 gap-2 border-b p-2">
-        {(['steps', 'runs'] as const).map((value) => (
+      {!embedded && <nav aria-label="Workflow" className="flex shrink-0 gap-2 border-b p-2">
+        {(['plan', 'runs'] as const).map((value) => (
           <button
             key={value}
             aria-current={section === value ? 'page' : undefined}
@@ -118,27 +124,36 @@ export function CrewExecutableEditor({
               setFile(null)
             }}
           >
-            {value === 'steps' ? (item.kind === 'script' ? 'Code' : 'Plan') : 'Runs'}
+            {value === 'plan' ? (item.kind === 'script' ? 'Code' : 'Plan') : 'Runs'}
           </button>
         ))}
-      </nav>
+      </nav>}
       {(error || workspace.error) && (
         <p role="alert" className="p-3 text-sm text-destructive">
           {error || workspace.error}
         </p>
       )}
       <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
-        <div className="min-h-0 flex-1">
+        <div className={embedded ? '' : 'min-h-0 flex-1'}>
           {file ? (
-            <ExecutableFile
-              key={file}
-              workspacePath={item.workspace_path}
-              file={file}
-              onClose={() => setFile(null)}
-            />
-          ) : section === 'steps' && item.kind === 'script' ? (
+            <div className={embedded ? 'h-[75vh] min-h-96' : 'h-full'}>
+              <ExecutableFile
+                key={file}
+                workspacePath={item.workspace_path}
+                file={file}
+                onClose={() => setFile(null)}
+              />
+            </div>
+          ) : section === 'plan' && item.kind === 'script' ? (
             <ExecutableFile workspacePath={item.workspace_path} file="main.py" crewScript onClose={() => onBack?.()} />
-          ) : section === 'steps' ? (
+          ) : section === 'plan' ? (
+            <PageCard
+              title={item.manifest.label}
+              onAsk={() => ask('Help me edit this workflow.')}
+              action={<RowButton primary onClick={() => void ask('Run this workflow and report the result in this chat.')}>Run (in chat)</RowButton>}
+              testId="crew-plan-card"
+            >
+            <div className="h-[600px]">
             <Canvas
               key={item.id}
               workspacePath={item.workspace_path}
@@ -149,9 +164,12 @@ export function CrewExecutableEditor({
               scope={scope}
               onCreatePlan={() => void ask('Create the steps for this workflow.')}
             />
+            </div>
+            </PageCard>
           ) : section === 'runs' ? (
-            <div className="flex h-full min-h-0 flex-col">
+            <div className="flex h-[70vh] min-h-96 flex-col overflow-hidden rounded-xl border border-border">
               <div className="flex flex-wrap items-center gap-2 border-b p-2">
+                {embedded && <RowButton primary onClick={() => void ask('Run this workflow and report the result in this chat.')}>Run (in chat)</RowButton>}
                   <label className="text-sm">
                     Run{' '}
                     <select
