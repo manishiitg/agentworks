@@ -49,6 +49,9 @@ func TestStepSessionEnforcesOwnWritesAndNamedKBRead(t *testing.T) {
 }
 
 func TestRegisterStepSessionShellEnvProvidesBridgeParity(t *testing.T) {
+	t.Setenv("MCP_API_URL", "http://example.com/s/parent")
+	common.SetBridgeTokenSecret("fixture-only-signing-key")
+	t.Cleanup(func() { common.SetBridgeTokenSecret("") })
 	sessionID := "eval-shell-env-test"
 	defer common.ClearSessionShellConfig(sessionID)
 
@@ -73,8 +76,12 @@ func TestRegisterStepSessionShellEnvProvidesBridgeParity(t *testing.T) {
 			t.Fatalf("%s: expected %q, got %q", key, want, got)
 		}
 	}
-	if _, exists := env["MCP_SESSION_ID"]; exists {
-		t.Fatal("step session env must not inherit stale MCP_SESSION_ID")
+	if env["MCP_SESSION_ID"] != sessionID || env["MCP_CUSTOM"] != "http://example.com/s/"+sessionID+"/tools/custom" {
+		t.Fatal("native step environment did not replace the parent bridge routing")
+	}
+	token := strings.TrimPrefix(env["MCP_AUTH"], "Authorization: Bearer ")
+	if session, ok := common.VerifyBridgeToken(token); !ok || session != sessionID {
+		t.Fatal("native step bridge does not authenticate as its own session")
 	}
 }
 

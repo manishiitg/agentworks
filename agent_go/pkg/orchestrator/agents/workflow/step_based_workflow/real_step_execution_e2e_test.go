@@ -168,6 +168,7 @@ func workflowHTTPTestWorkspace(t *testing.T) (string, *httptest.Server) {
 	router.DELETE("/api/folders/*folderpath", workspacehandlers.DeleteFolder)
 	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
 	router.POST("/api/mutate", workspacehandlers.MutateWorkflowDB)
+	router.POST("/api/query", workspacehandlers.QueryWorkflowDB)
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	t.Setenv("WORKSPACE_API_URL", server.URL)
