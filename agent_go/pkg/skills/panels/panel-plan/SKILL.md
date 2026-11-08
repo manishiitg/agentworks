@@ -33,7 +33,7 @@ metadata:
 
 # Workflows and scripts
 
-In a Crew, **Automations** contains repeatable work. Each Crew has one workflow connecting steps; routes select different tasks. A saved script runs reusable Python. **Goals** track the outcomes that work should achieve. A normal chat needs neither.
+In a Crew, **Automations** contains repeatable work. Each Crew has one workflow connecting steps; routes select different tasks. A saved script runs reusable Python. To measure an outcome, use one dedicated agent and one workflow route that records the number; add a schedule only if asked, and ask before creating a dashboard. A normal chat needs none of this.
 
 Use the tools offered in this chat:
 - `crew_workflow_files`: list existing work, create a workflow/script, read it, or edit it. `describe` returns the exact schema for an editing operation. `edit` reuses the Builder's named-step and input operations; omitted steps stay unchanged. Use `write` for code or a saved script's definition, never to replace workflow plan/config/input files.

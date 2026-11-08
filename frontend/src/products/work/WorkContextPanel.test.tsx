@@ -242,9 +242,7 @@ it('opens automation setup before any jobs exist and keeps native destination gu
   await act(async () => automationRow(host)!.click())
   expect(mocks.open).toHaveBeenLastCalledWith('schedules')
   expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Workflows')).toBe(false)
-  const goals = [...host.querySelectorAll('button')].find(node => node.querySelector('span')?.textContent === 'Goals')!
-  await act(async () => goals.click())
-  expect(mocks.open).toHaveBeenLastCalledWith('goals')
+  expect([...host.querySelectorAll('button')].some(node => node.querySelector('span')?.textContent === 'Goals')).toBe(false)
   const staleRow = automationRow(host)!
   mocks.open.mockClear(); mocks.server = 'another-server'
   await act(async () => staleRow.click())
