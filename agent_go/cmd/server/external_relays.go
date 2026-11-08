@@ -83,7 +83,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 	lock := productConversationRegistryMutex("external-relay-create:" + identity)
 	lock.Lock()
 	defer lock.Unlock()
-	store, err := openExternalBuilderStore()
+	store, err := openMCPOAuthStore()
 	if err != nil {
 		externalError(w, 503, "storage_unavailable", err.Error())
 		return

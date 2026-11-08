@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/gorilla/mux"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/mux"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 )
@@ -146,16 +147,6 @@ func TestWorkflowRetainedProviderAndAccountChangesRequireReconnect(t *testing.T)
 				t.Fatalf("compatible=%v err=%v want=%v", got, err, tc.want)
 			}
 		})
-	}
-}
-
-func TestWorkflowBrowserFollowupCannotInterruptActiveExternalBuilder(t *testing.T) {
-	canceled := false
-	api := &StreamingAPI{agentCancelFuncs: map[string]context.CancelFunc{"chat": func() { canceled = true }}}
-	api.externalBuilderRuntime.sessions = map[string]*externalBuilderActive{"chat": {id: "external-operation"}}
-	compatible, _, err := api.prepareWorkflowRetainedDelivery(context.Background(), "chat", QueryRequest{SelectedFolder: "Workflow/test"}, true)
-	if err != nil || compatible || canceled {
-		t.Fatal("browser request could reconfigure MCP operation", compatible, err, canceled)
 	}
 }
 

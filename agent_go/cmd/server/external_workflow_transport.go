@@ -17,9 +17,6 @@ import (
 // execution mode it reaches tools only through execute_shell_command, which a
 // Run token is denied. Those chats keep the gate's tools as direct tools.
 func externalWorkflowTransport(claims *UserClaims, workflowRun bool, gate *productToolGate, bridgeProvider bool) (codeExecution bool, directBridge []string) {
-	if claims != nil && claims.ExternalBuilderOperationID != "" {
-		return externalProjectTransport(claims, gate, bridgeProvider)
-	}
 	if claims == nil || claims.AccessToken == nil || !workflowRun || bridgeProvider {
 		return true, nil
 	}

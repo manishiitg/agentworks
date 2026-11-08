@@ -123,7 +123,7 @@ func (api *StreamingAPI) externalCreateProject(w http.ResponseWriter, r *http.Re
 	lock := productConversationRegistryMutex("project-create:" + identity)
 	lock.Lock()
 	defer lock.Unlock()
-	store, err := openExternalBuilderStore()
+	store, err := openMCPOAuthStore()
 	if err != nil {
 		externalFailure(w, err)
 		return

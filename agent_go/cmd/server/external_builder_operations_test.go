@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -69,23 +68,6 @@ func (f *builderOperationFixture) call(t *testing.T, raw, name string, args map[
 	}
 	return w
 }
-func (f *builderOperationFixture) claim(t *testing.T, user string) (queuedConversationTurn, context.Context, map[string]interface{}) {
-	t.Helper()
-	turn, ok := f.api.claimNextConversationTurn(context.Background(), user, f.sessions[user])
-	if !ok {
-		t.Fatal("missing queued turn")
-	}
-	request, err := queryRequestToMap(turn.Request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, err := f.api.queuedConversationTurnContext(turn, request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return turn, ctx, request
-}
-
 func TestExternalBuilderLiveGrantHonorsWorkflowAllowlist(t *testing.T) {
 	f := newBuilderOperationFixture(t)
 	token, _ := f.issue(t, "owner")
@@ -99,49 +81,5 @@ func TestExternalBuilderLiveGrantHonorsWorkflowAllowlist(t *testing.T) {
 	f.write(t, userProductAccessFilePath(), `{"owner":{"workflow_ids":["secret"]}}`)
 	if _, err := validateBuilderGrant(t.Context(), claims, "invoices", "Workflow/invoices"); err == nil {
 		t.Fatal("removed allow-list entry still authorized Builder")
-	}
-}
-
-func TestExternalBuilderOperationsBrowserRetryQueuesOnce(t *testing.T) {
-	f := newBuilderOperationFixture(t)
-	session := f.sessions["owner"]
-	f.api.internalChatSubmissionStore = newTestChatSubmissionStore()
-	canceled := atomic.Bool{}
-	f.api.externalBuilderRuntime.sessions = map[string]*externalBuilderActive{
-		session: {id: "active-builder", cancel: func() { canceled.Store(true) }},
-	}
-	body, err := json.Marshal(QueryRequest{Query: "Browser follow-up", AgentMode: "workflow_phase", PhaseID: "workflow-builder", PresetQueryID: "invoices", SelectedFolder: "Workflow/invoices"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var firstID string
-	for range 2 {
-		r := httptest.NewRequest(http.MethodPost, "/api/query", strings.NewReader(string(body)))
-		r.Header.Set("X-Session-ID", session)
-		r.Header.Set("Idempotency-Key", "browser-retry")
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}))
-		w := httptest.NewRecorder()
-		f.api.handleQuery(w, r)
-		if w.Code != http.StatusOK {
-			t.Fatalf("browser admission: %d %s", w.Code, w.Body)
-		}
-		var response QueryResponse
-		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-			t.Fatal(err)
-		}
-		if response.QueryID == "" || response.DeliveryStatus != "queued_for_turn" {
-			t.Fatalf("missing queue receipt: %+v", response)
-		}
-		if firstID != "" && firstID != response.QueryID {
-			t.Fatal("browser retry created a second turn")
-		}
-		firstID = response.QueryID
-	}
-	rows := f.api.mustReadTurnQueueForTest(t, "owner")
-	if len(rows) != 1 || rows[0].SubmissionID != "browser-retry" || rows[0].Principal.AccessTokenID != "" || rows[0].Principal.ExternalBuilderOperationID != "" {
-		t.Fatalf("browser retry lost its submission or authority: %+v", rows)
-	}
-	if canceled.Load() || !f.api.externalBuilderOwnsSession(session) {
-		t.Fatal("browser follow-up interrupted the Builder operation")
 	}
 }

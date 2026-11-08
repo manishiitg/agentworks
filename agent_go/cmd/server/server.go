@@ -380,7 +380,6 @@ type StreamingAPI struct {
 	codingAgentClarificationsMu sync.Mutex
 	codingAgentClarifications   map[string]*pendingCodingAgentClarification
 
-	externalBuilderRuntime      externalBuilderRuntime
 	internalExternalBuilderTurn func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)
 	postSlackMessage            func(context.Context, string, string, string) (string, error) // test seam; production uses SlackService
 
@@ -791,8 +790,7 @@ func spaStaticFileHandler(root string) http.Handler {
 // QueryRequest represents an agent query request
 type QueryRequest struct {
 	// DeliveryMode is a person’s choice for this message; empty preserves steering.
-	DeliveryMode               string `json:"delivery_mode,omitempty"`
-	ExternalBuilderOperationID string `json:"-"` // Set from authenticated execution claims.
+	DeliveryMode string `json:"delivery_mode,omitempty"`
 	// secretsWorkspacePath is the workflow/project whose selected secrets this turn loaded (PLAT-658): a retained CLI
 	// launched with them is not steered once they change.
 	secretsWorkspacePath string
@@ -1334,7 +1332,7 @@ func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest,
 
 func (api *StreamingAPI) queueOccupiedConversationTurn(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
 	if !shouldUseDurableConversationTurnQueue(req) || conversationTurnQueueExecution(r.Context()) ||
-		!(api.conversationTurnOccupied(sessionID) || api.externalBuilderOwnsSession(sessionID) || api.conversationTurnHasBacklog(userID, sessionID)) {
+		!(api.conversationTurnOccupied(sessionID) || api.conversationTurnHasBacklog(userID, sessionID)) {
 		return false
 	}
 	return api.queueConversationTurnResponse(w, r, userID, sessionID, req)
@@ -1360,8 +1358,8 @@ func (api *StreamingAPI) queueConversationTurnResponse(w http.ResponseWriter, r 
 	api.pendingMu.RLock()
 	pendingResults := len(api.pendingCompletions[sessionID])
 	api.pendingMu.RUnlock()
-	log.Printf("[TURN_QUEUE] message queued session=%s position=%d occupant=%q backlog=%t external_builder=%t pending_results=%d busy_by=%q",
-		sessionID, position, occupant, backlog, api.externalBuilderOwnsSession(sessionID), pendingResults, api.autoNotificationBusyReason(sessionID))
+	log.Printf("[TURN_QUEUE] message queued session=%s position=%d occupant=%q backlog=%t pending_results=%d busy_by=%q",
+		sessionID, position, occupant, backlog, pendingResults, api.autoNotificationBusyReason(sessionID))
 	api.recordQueuedConversationUserMessage(sessionID, turn)
 	api.kickConversationTurnQueue(sessionID)
 	_ = json.NewEncoder(w).Encode(QueryResponse{
@@ -3728,19 +3726,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "delivery_mode must be steer or queue", http.StatusBadRequest)
 		return
 	}
-	// External Builder authority is carried only by authenticated dispatch/queue
-	// context. JSON cannot supply it, including when reusing a browser chat.
-	if claims := GetUserFromContext(r.Context()); claims != nil {
-		req.ExternalBuilderOperationID = claims.ExternalBuilderOperationID
-	}
-	if req.ExternalBuilderOperationID != "" {
-		claims, err := api.externalBuilderRunClaims(r.Context(), req.ExternalBuilderOperationID, r.Header.Get("X-Session-ID"), req.SelectedFolder)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusForbidden)
-			return
-		}
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
-	}
 	principalContext, principalErr := api.revalidateExecutionPrincipal(r.Context(), req)
 	if principalErr != nil {
 		http.Error(w, principalErr.Error(), http.StatusForbidden)
@@ -3973,23 +3958,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Do not let a browser follow-up reconfigure or steer an MCP operation.
-	// Its own claims are persisted by the queue and restored on its next turn.
-	if api.externalBuilderOwnsSession(sessionID) && !conversationTurnQueueExecution(r.Context()) {
-		// Preserve browser retry idempotency before the early queue return.
-		// Enqueue even if the MCP turn finishes during journal admission;
-		// kickConversationTurnQueue will then execute the idle chat's turn.
-		var finish func()
-		var accepted bool
-		w, r, finish, accepted = api.beginChatSubmission(w, r, sessionID, req.SelectedFolder, req.Query)
-		if !accepted {
-			return
-		}
-		defer finish()
-		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
-		return
-	}
-
 	api.conversationMux.Lock()
 	if api.lastAgentProfileKeyBySession == nil {
 		api.lastAgentProfileKeyBySession = make(map[string]string)
@@ -4118,7 +4086,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
 		return
 	}
-	preferRetainedDelivery := !api.externalBuilderOwnsSession(sessionID) && shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
+	preferRetainedDelivery := shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
 	if !preferRetainedDelivery && api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
 		return
 	}
@@ -6009,10 +5977,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// bridge as well as execution, so an unusable shell is not advertised.
 			toolGate.DenyWhere(func(name string) bool { return accessTokenRunToolDenied(claims, name) })
 		}
-		if req.ExternalBuilderOperationID != "" {
-			claims := GetUserFromContext(r.Context())
-			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
-		}
 		if currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
 			if crewAskOnly {
@@ -6672,11 +6636,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[WORKFLOW PHASE FOLDER GUARD] Applied workflow folder restriction (workflow writes: %v, chats read-only: %s, read-only: %v, blocked-write: %v)", writePaths, perUserChatsWrite, workflowReadOnlyFolders, fileContextBlockedWriteFolders)
 			}
 
-			if err := api.registerExternalBuilderWorkspaceTools(llmAgent, workflowPhaseFolder, GetUserFromContext(r.Context())); err != nil {
-				sendError(fmt.Sprintf("Failed to register external Builder file tools: %v", err), true)
-				return
-			}
-
 			// Coding-agent adapters project system instructions, selected skills,
 			// MCP config and provider metadata into the working directory. Keep
 			// those readable for the CLI but outside the agent's write authority.
@@ -6725,9 +6684,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				toolName := tool.Function.Name
-				if externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName) {
-					continue
-				}
 				if profileDisablesVirtualTool(resolvedProfile, toolName) {
 					log.Printf("[AGENT_PROFILE] Skipping disabled virtual tool %s for profile %s", toolName, resolvedProfile.Definition.ID)
 					continue
@@ -6891,7 +6847,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because the product chat surface does not admit it in %s mode", toolName, chatMode)
 						continue
 					}
-					if isWorkflowPhase && (currentUserIsReadOnly && accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) || externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName)) {
+					if isWorkflowPhase && currentUserIsReadOnly && accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) {
 						log.Printf("[CUSTOM TOOLS] Skipping external-token-denied tool %s in session %s", toolName, sessionID)
 						continue
 					}
@@ -7760,7 +7716,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// surface — there is no per-turn narrowing for one path to
 				// apply and the other to miss.
 				syntheticReq := QueryRequest{
-					ExternalBuilderOperationID:  req.ExternalBuilderOperationID,
 					TriggeredBy:                 req.TriggeredBy,
 					ParentSessionID:             req.ParentSessionID,
 					SessionKind:                 req.SessionKind,
@@ -7774,7 +7729,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					PresetQueryID:               req.PresetQueryID,
 				}
 				if err := api.installWorkflowPhaseTools(
-					setupCtx, externalBuilderRegistrar(llmAgent, GetUserFromContext(r.Context())), sessionID, currentUserID,
+					setupCtx, llmAgent, sessionID, currentUserID,
 					workflowPhaseID, phaseWorkspacePath, phaseRunFolder,
 					phaseTemplateVars, selectedServers, mergedAPIKeys,
 					phaseReadFile, phaseWriteFile, phaseMoveFile,
@@ -11779,17 +11734,6 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	if !policyKnown && strings.HasPrefix(submissionProject, "Workflow/") {
 		http.Error(w, "Workflow session configuration is unavailable; reopen the workflow chat", http.StatusConflict)
 		return
-	}
-	policyRequest.ExternalBuilderOperationID = ""
-	if policyKnown && api.externalBuilderOwnsSession(sessionID) {
-		policyRequest.Query = req.Message
-		policyRequest.Message = ""
-		policyRequest.TriggeredBy = "interactive"
-		policyRequest.IsAutoNotification = false
-		policyRequest.DisableLiveInputDelivery = true
-		if api.queueOccupiedConversationTurn(w, r, GetUserIDFromContext(r.Context()), sessionID, policyRequest) {
-			return
-		}
 	}
 	if policyKnown {
 		compatible, runtimeChanged, policyErr := api.workflowRetainedCompatibility(r.Context(), sessionID, policyRequest)

@@ -316,20 +316,6 @@ func TestToolExecutionContextOwnersDMContinuesWebBoundTools(t *testing.T) {
 	}
 }
 
-func TestExternalBuilderToolBindingRejectsUnboundOperation(t *testing.T) {
-	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("AGENTWORKS_STATE_DIR", t.TempDir())
-	claims := &UserClaims{UserID: "alice", ExternalBuilderOperationID: "missing-operation"}
-	ctx := context.WithValue(context.Background(), UserContextKey, claims)
-	api := &StreamingAPI{}
-	for _, child := range []string{"main-chat", "delegated-child"} {
-		bind := api.bindToolExecutionContextForSession(ctx, "main-chat", child, QueryRequest{SelectedFolder: "Workflow/test", ExternalBuilderOperationID: "missing-operation"}, false)
-		if _, err := bind(context.Background(), "read_file"); err == nil {
-			t.Fatal("missing operation executed tool", child)
-		}
-	}
-}
-
 // Exercise the real KB executor without the shared context wrapper as well as
 // through it: a mixed-up tool table must never invent its registration identity.
 func TestKnowledgebaseToolExecutionRejectsForeignIdentity(t *testing.T) {

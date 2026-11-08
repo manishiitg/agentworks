@@ -27,7 +27,7 @@ type knowledgeAccessProposal struct {
 }
 
 func knowledgeInteractiveAccess(claims *UserClaims) bool {
-	return claims != nil && claims.AccessToken == nil && claims.ExecutionPrincipal == nil && claims.ExternalBuilderOperationID == "" && claims.Scope == "" && claims.BotRouteGrant == "" && claims.Provider != "bot_owner" && claims.Provider != "bot_route" && claims.Provider != slackDMProvider
+	return claims != nil && claims.AccessToken == nil && claims.ExecutionPrincipal == nil && claims.Scope == "" && claims.BotRouteGrant == "" && claims.Provider != "bot_owner" && claims.Provider != "bot_route" && claims.Provider != slackDMProvider
 }
 
 func knowledgeProposeAccess(ctx context.Context, userID string, args map[string]any) (string, error) {

@@ -399,19 +399,6 @@ func TestAccessTokenIdentityFailsClosed(t *testing.T) {
 		t.Fatal("directory failure accepted")
 	}
 }
-func TestAccessTokenCannotInheritOtherBuilderSession(t *testing.T) {
-	api := tokenTestSetup(t)
-	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{ID: "one", AllWorkflows: true, Scopes: accesstokens.Scopes}}
-	for _, sid := range []string{"browser-session", "pat-two-session"} {
-		r := httptest.NewRequest("POST", "/", nil)
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
-		w := httptest.NewRecorder()
-		api.externalBuilderCall(w, r, "builder_status", map[string]interface{}{"session_id": sid}, DiscoveredWorkflow{WorkspacePath: "Workflow/test"})
-		if w.Code != 404 {
-			t.Fatal("PAT inherited a session", w.Code)
-		}
-	}
-}
 func TestAccessTokenStateOutsideWorkspace(t *testing.T) {
 	tokenTestSetup(t)
 	root := t.TempDir()
