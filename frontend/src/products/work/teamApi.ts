@@ -82,8 +82,6 @@ export type TeamTabSetup = { reach: 'agentbridge' | 'team' | ''; starts_on_own: 
 export type TeamTabSync = { line: string; problem?: boolean; last?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamTabView = {
   team: Team; intro: string; people: TeamTabPerson[]; agents: TeamTabAgent[]
-  // What the Team can call in a Crew that lives on the server; absent for a Mac Crew (functions work only online).
-  functions?: { name: string; description?: string }[]
   sync?: TeamTabSync; can_switch: boolean; agents_line?: string; can_leave: boolean
   can_choose: boolean; can_add_folder: boolean; can_remove_folder: boolean
   // The cards' Ask messages, written by the server and sent as given (crew_team_tab.go crewTeamAskPrompts).

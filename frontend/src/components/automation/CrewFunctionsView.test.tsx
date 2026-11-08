@@ -40,6 +40,7 @@ describe('CrewFunctionsView', () => {
     ] })
     removeTrigger.mockResolvedValue({})
     list.mockResolvedValue({
+      can_manage: true,
       functions: [
         {
           name: 'run_login_flow', description: 'Run the login flow', created_by: 'crew:alpha (Alpha Bot)', updated_at: '2026-09-24T05:00:00Z',
@@ -87,5 +88,12 @@ describe('CrewFunctionsView', () => {
     const disconnect = Array.from(callers.querySelectorAll('button')).find(button => button.textContent === 'Disconnect')!
     await act(async () => { disconnect.click(); await Promise.resolve() })
     expect(removeTrigger).toHaveBeenCalledWith(scope, 'bind-1')
+  })
+  it('shows the functions without actions or callers when the server says the viewer cannot manage them', async () => {
+    list.mockResolvedValue({ can_manage: false, functions: [{ name: 'run_login_flow', description: 'Run the login flow' }], calls: [] })
+    await renderView({ onEdit: vi.fn() })
+    expect(container.textContent).toContain('run_login_flow')
+    expect(Array.from(container.querySelectorAll('button')).some(button => ['Remove', 'Edit in chat', 'Add in chat', 'Disconnect'].includes(button.textContent || ''))).toBe(false)
+    expect(byTestId('crew-function-callers')).toBeNull()
   })
 })
