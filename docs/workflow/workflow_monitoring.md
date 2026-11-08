@@ -10,7 +10,7 @@ Steps are labels for Python functions, conditions and loops. They help locate wh
 
 ## Inspect without running again
 
-External MCP and the CLI expose `runs action=get`, `logs` and `status`. Use the exact workflow/run or session returned by the start receipt. A workflow started through `functions action=run_trigger` can also be checked with its `trigger_status` receipt. Read the current catalog for the precise fields.
+External MCP and the CLI expose `runs action=get`, `logs` and `status`. Keep the workflow ID for every call. Status also needs the session ID returned by the start receipt; get and logs use that workflow's saved run folder. A workflow started through `functions action=run_trigger` can also be checked with its `trigger_status` receipt. Read the current catalog for the precise fields.
 
 `runs action=logs` supplies bounded stdout/stderr, failure tracebacks, saved inputs, step timings and agent answer/provider-log locations. For an agent turn, read its full answer file instead of assuming the bounded text preview is complete. Provider logs contain only the tool and text events the platform actually captured.
 
