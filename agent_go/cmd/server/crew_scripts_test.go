@@ -82,7 +82,7 @@ assert len(config['extraPaths'])==2 and str(Path.cwd()) in config['extraPaths']
 assert sum((Path(p)/'agentworks/__init__.py').is_file() for p in config['extraPaths'])==1
 assert all(not Path(p).is_absolute() and not (config_file.parent/p).is_symlink() and (config_file.parent/p).resolve().is_relative_to(Path.cwd()) for p in config['include'])
 source=Path.cwd()/'main.py'
-print(json.dumps({'generalDiagnostics':[{'file':str(source),'message':'Use an integer; MCP_API_TOKEN=fixture-credential','range':{'start':{'line':2}}}]}))
+print(json.dumps({'summary':{'filesAnalyzed':len(config['include'])},'generalDiagnostics':[{'file':str(source),'message':'Use an integer; MCP_API_TOKEN=fixture-credential','range':{'start':{'line':2}}}]}))
 sys.exit(1)
 `
 	if err := os.WriteFile(checker, []byte(fixture), 0755); err != nil {
@@ -201,6 +201,13 @@ sys.exit(1)
 	}
 	if err := os.Remove(link); err != nil {
 		t.Fatal(err)
+	}
+	zeroFiles := strings.Replace(fixture, "len(config['include'])", "0", 1)
+	if err := os.WriteFile(checker, []byte(zeroFiles), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if code := request("owner", "print('owner update')\n"); code != 200 || !strings.Contains(lastReply, "did not analyze any files") {
+		t.Fatalf("zero analyzed files silently reported clean or blocked save: HTTP%d %s", code, lastReply)
 	}
 	if err := os.Remove(checker); err != nil {
 		t.Fatal(err)

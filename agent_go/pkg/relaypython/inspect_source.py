@@ -213,7 +213,10 @@ def python_type_notes(files):
                                     env=environment, capture_output=True, text=True, timeout=10)
             if result.returncode not in (0, 1):
                 raise ValueError('checker unavailable')
-            diagnostics = json.loads(result.stdout)['generalDiagnostics']
+            report = json.loads(result.stdout)
+            if report.get('summary', {}).get('filesAnalyzed', 0) <= 0:
+                return [], ['The type check did not analyze any files. The script can still run.']
+            diagnostics = report['generalDiagnostics']
             notes = []
             for item in diagnostics:
                 file = pathlib.Path(item['file']).resolve()
