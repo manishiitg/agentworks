@@ -63,19 +63,7 @@ func (api *StreamingAPI) slackDestinationRoute(ctx context.Context, workspacePat
 	if profileID != "" {
 		return api.dedicatedSlackProfileRoute(ctx, profileID, workspacePath)
 	}
-	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil {
-		return nil, err
-	}
-	if !found || manifest == nil || strings.TrimSpace(manifest.ID) == "" {
-		return nil, fmt.Errorf("workflow %s has no manifest", workspacePath)
-	}
-	return &services.ChannelRoute{
-		WorkflowID:    strings.TrimSpace(manifest.ID),
-		WorkspacePath: workspacePath,
-		BotGrant:      "run",
-		WorkshopMode:  "run",
-	}, nil
+	return nil, fmt.Errorf("Workflows run directly. Connect this Slack app to a Crew agent instead.")
 }
 
 // dedicatedSlackProfileRoute builds a crew project's route: the owner comes

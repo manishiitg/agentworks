@@ -8,8 +8,7 @@ import (
 )
 
 // wireBotManager installs every server hook on a bot manager: session start
-// and follow-up, resume, workflow access, running workflows, the workflow and
-// crew-conversation turn builders, progressive text and the Slack dedicated
+// and follow-up, resume, workflow access, running workflows, the Crew-conversation turn builder, progressive text and the Slack dedicated
 // route. Startup and the bot dry-run tests share it, so a test exercises the
 // production wiring rather than a copy.
 func (api *StreamingAPI) wireBotManager(m *services.BotConversationManager) {
@@ -22,8 +21,6 @@ func (api *StreamingAPI) wireBotManager(m *services.BotConversationManager) {
 	// Product/profile routes are shared by Slack and WhatsApp; Slack profile
 	// routes need the handler even when WhatsApp is disabled.
 	m.SetProfileTurnFunc(api.botProfileTurn)
-	m.SetWorkflowTurnFunc(api.botWorkflowTurn)
-	m.SetUserWorkflowChatFunc(api.userWorkflowChat)
 	// Progressive text: while a bot turn runs, forward each completed
 	// assistant reply as its own message rather than waiting for the whole
 	// turn to finish — reads the same durable conversation_history the UI's

@@ -577,15 +577,9 @@ type BotConversationManager struct {
 	eventSubscriber BotEventSubscriber
 
 	// Function references set by server layer (to avoid import cycles)
-	startSession    SessionStartFunc
-	followUpSession SessionFollowUpFunc
-	profileTurn     ProfileTurnFunc
-	// workflowTurn builds a Slack workflow turn; dmUserID is the account a
-	// 1:1 DM runs as ("" for channels, which run as the route).
-	workflowTurn func(ctx context.Context, query string, route ChannelRoute, thread ThreadID, dmUserID string) (map[string]interface{}, error)
-	// userWorkflowChat names a user's own chat of a workflow — the one their
-	// web Builder restores — so a DM continues it ("" when they have none).
-	userWorkflowChat func(ctx context.Context, userID string, route ChannelRoute) string
+	startSession     SessionStartFunc
+	followUpSession  SessionFollowUpFunc
+	profileTurn      ProfileTurnFunc
 	chatHistory      ChatHistoryReaderFunc
 	runningWorkflows RunningWorkflowsFunc
 	workflowAccess   BotWorkflowAccessFunc
@@ -2579,19 +2573,6 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 		}
 		return
 	}
-	if queryReq == nil && msg.runsAsSender() && msg.PresetWorkflow != nil && strings.TrimSpace(msg.PresetWorkflow.WorkflowID) != "" && m.userWorkflowChat != nil {
-		// One user, one chat: a DM or WhatsApp message continues the
-		// sender's own chat of the workflow, the one their web Builder
-		// restores — even over a chat this thread used before, since the
-		// web's current chat is the one that counts.
-		own := strings.TrimSpace(m.userWorkflowChat(context.Background(), workspaceUserID, *msg.PresetWorkflow))
-		botStep("workflow chat looked up")
-		if own != "" && own != sessionID {
-			sessionID = own
-			restoredConversationSessionID = ""
-			log.Printf("[BOT_MANAGER] %s thread %s continues user %s's workflow chat %s", msg.Platform, threadID.Key(), workspaceUserID, sessionID)
-		}
-	}
 	if queryReq == nil {
 		// Load thread history for context continuity (e.g., user replies after hours)
 		queryWithHistory := msg.Text
@@ -3335,23 +3316,6 @@ func (m *BotConversationManager) resolveThreadRoute(thread ThreadID) *ChannelRou
 // Pass "" for non-bot callers. For follow-ups, keep passing the platform and
 // threadID so human tools can notify the same bot conversation.
 func (m *BotConversationManager) buildQueryRequest(query string, userID string, channelID string, presetRoute *ChannelRoute, platform string, dmUserID string, threadIDs ...ThreadID) map[string]interface{} {
-	if platform == "slack" && m.workflowTurn != nil {
-		thread := ThreadID{Platform: platform, ChannelID: channelID}
-		if len(threadIDs) > 0 {
-			thread = threadIDs[0]
-		}
-		route := presetRoute
-		if route == nil {
-			route = m.resolveThreadRoute(thread)
-		}
-		if route != nil && route.WorkflowID != "" {
-			req, err := m.workflowTurn(context.Background(), query, *route, thread, dmUserID)
-			if err != nil {
-				return map[string]interface{}{"_bot_prepare_error": err.Error()}
-			}
-			return req
-		}
-	}
 
 	req := map[string]interface{}{
 		"query": query,
@@ -3379,48 +3343,8 @@ func (m *BotConversationManager) buildQueryRequest(query string, userID string, 
 		}
 		route = m.resolveThreadRoute(thread)
 	}
-	if route != nil {
-		req["preset_query_id"] = route.WorkflowID
-		grant := NormalizeBotRouteGrant(route.BotGrant, route.WorkshopMode)
-		req["bot_route_grant"] = grant
-		if strings.TrimSpace(route.WorkspacePath) != "" {
-			req["selected_folder"] = strings.TrimSpace(route.WorkspacePath)
-		}
-		if route.SendFullDetails || strings.EqualFold(platform, "slack") {
-			req["bot_send_full_details"] = true
-		}
-
-		// Prefer a per-channel override on the route. Deployed bot workflow
-		// traffic defaults to Run mode; do not inherit a manifest authoring
-		// default unless there is no bot platform involved. The server access
-		// check still pins read-only users to Run even if a route asks for Build.
-		workshopMode := WorkshopModeForBotGrant(grant)
-		if workshopMode == "" && platform != "" {
-			workshopMode = "run"
-		}
-		via := "channel " + channelID
-		if presetRoute != nil {
-			via = "preset (workflow " + route.WorkflowID + ")"
-		}
-		if workshopMode != "" {
-			// Workshop mode — use the conversational Workflow Builder agent.
-			// workshop_mode must live inside execution_options so the workshop
-			// session picks it up via SetWorkshopModeOverride (server.go:4409);
-			// a top-level req["workshop_mode"] is ignored and the agent falls
-			// back to auto-detection from step-optimization state.
-			req["agent_mode"] = "workflow_phase"
-			req["phase_id"] = "workflow-builder"
-			req["workshop_mode"] = workshopMode
-			req["execution_options"] = map[string]interface{}{
-				"workshop_mode": workshopMode,
-			}
-			log.Printf("[BOT_MANAGER] Routed via %s → workflow %s (workshop_mode=%s)", via, route.WorkflowID, workshopMode)
-		} else {
-			// No workshop mode — use the full step-based orchestrator (Execution mode)
-			req["agent_mode"] = "workflow"
-			log.Printf("[BOT_MANAGER] Routed via %s → workflow %s (execution mode)", via, route.WorkflowID)
-		}
-	} else if channelID != "" {
+	if route != nil && strings.TrimSpace(route.WorkflowID) != "" {
+		return map[string]interface{}{"_bot_prepare_error": "Workflows run directly. Connect this channel to a Crew agent instead."}
 	}
 
 	// Capabilities: prefer the user's saved multi-agent chat config
@@ -3496,65 +3420,20 @@ func (m *BotConversationManager) buildQueryRequest(query string, userID string, 
 	return req
 }
 
+// buildQueryRequestForActive continues a generic chat. Crew profile turns use
+// their own server-bound request builder in turnRequestForActive.
 func (m *BotConversationManager) buildQueryRequestForActive(active *activeBotSession, query, userID, platform string, threadID ThreadID) map[string]interface{} {
-	if platform == "slack" && m.workflowTurn != nil {
-		route := m.resolveThreadRoute(threadID)
-		if route != nil && route.WorkflowID != "" {
-			var meta *chathistory.BotMetadata
-			if active != nil {
-				active.mu.Lock()
-				meta = active.Metadata
-				active.mu.Unlock()
-			}
-			dmUserID := ""
-			if meta != nil && meta.DirectMessage {
-				dmUserID = userID
-			}
-			req := m.buildQueryRequest(query, userID, threadID.ChannelID, route, platform, dmUserID, threadID)
-			applyBotQueryRequestMetadata(req, meta)
-			return req
-		}
-		return map[string]interface{}{"_bot_prepare_error": "Slack route was removed or changed"}
-	}
-
 	req := m.buildQueryRequest(query, userID, "", nil, platform, "", threadID)
 	if active == nil {
 		return req
 	}
 	active.mu.Lock()
-	agentMode := strings.TrimSpace(active.AgentMode)
-	presetQueryID := strings.TrimSpace(active.PresetQueryID)
-	workspacePath := strings.TrimSpace(active.WorkspacePath)
-	phaseID := strings.TrimSpace(active.PhaseID)
-	workshopMode := strings.TrimSpace(active.WorkshopMode)
-	botMeta := active.Metadata
-	routeGrant := ""
-	if agentMode == "workflow_phase" && workspacePath != "" {
-		if strings.EqualFold(strings.TrimSpace(platform), "slack") {
-			// Slack route grants are authoritative and re-read below. A blank
-			// mode must not escalate: buildQueryRequest starts Slack bot traffic
-			// in Run, so defaulting a follow-up to Workshop would hand the
-			// thread authoring authority on its second message.
-			workshopMode = NormalizeBotWorkshopMode(workshopMode)
-			if workshopMode == "" {
-				workshopMode = "run"
-			}
-		} else {
-			// WhatsApp has not been moved to the route-grant model. Preserve its
-			// existing workflow-phase follow-up behavior until that migration is
-			// explicit and covered separately.
-			workshopMode = "workshop"
-		}
-	}
-	if strings.EqualFold(strings.TrimSpace(platform), "slack") {
-		if route := m.resolveThreadRoute(threadID); route != nil {
-			routeGrant = NormalizeBotRouteGrant(route.BotGrant, route.WorkshopMode)
-			workshopMode = WorkshopModeForBotGrant(routeGrant)
-		}
-	}
+	agentMode, presetQueryID, workspacePath, botMeta := strings.TrimSpace(active.AgentMode), strings.TrimSpace(active.PresetQueryID), strings.TrimSpace(active.WorkspacePath), active.Metadata
 	active.mu.Unlock()
+	if agentMode == "workflow" || agentMode == "workflow_phase" {
+		return map[string]interface{}{"_bot_prepare_error": "Workflow conversations are retired. Connect this channel to a Crew agent instead."}
+	}
 	applyBotQueryRequestMetadata(req, botMeta)
-
 	if agentMode != "" {
 		req["agent_mode"] = agentMode
 	}
@@ -3563,21 +3442,6 @@ func (m *BotConversationManager) buildQueryRequestForActive(active *activeBotSes
 	}
 	if workspacePath != "" {
 		req["selected_folder"] = workspacePath
-	}
-	if phaseID != "" {
-		req["phase_id"] = phaseID
-	}
-	if workshopMode != "" {
-		req["workshop_mode"] = workshopMode
-		execOpts, _ := req["execution_options"].(map[string]interface{})
-		if execOpts == nil {
-			execOpts = map[string]interface{}{}
-		}
-		execOpts["workshop_mode"] = workshopMode
-		req["execution_options"] = execOpts
-	}
-	if routeGrant != "" {
-		req["bot_route_grant"] = routeGrant
 	}
 	return req
 }
@@ -3887,13 +3751,4 @@ func isPlanRejectionResponse(text string) bool {
 // at 0.
 func (m *BotConversationManager) getThreadOffset(_ ThreadID) int {
 	return 0
-}
-
-func (m *BotConversationManager) SetWorkflowTurnFunc(fn func(ctx context.Context, query string, route ChannelRoute, thread ThreadID, dmUserID string) (map[string]interface{}, error)) {
-	m.workflowTurn = fn
-}
-
-// SetUserWorkflowChatFunc installs the lookup of a user's own workflow chat.
-func (m *BotConversationManager) SetUserWorkflowChatFunc(fn func(ctx context.Context, userID string, route ChannelRoute) string) {
-	m.userWorkflowChat = fn
 }

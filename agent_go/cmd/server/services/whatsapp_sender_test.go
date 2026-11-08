@@ -57,24 +57,18 @@ func TestWhatsAppOtherOwnersCrewRunsAsThePairedUser(t *testing.T) {
 	}
 }
 
-// One user, one chat: a WhatsApp message to a workflow continues the user's
-// own chat of it — the one their web Builder restores.
-func TestWhatsAppWorkflowContinuesTheUsersBuilderChat(t *testing.T) {
-	manager, started := whatsappManagerForTest(t)
-	manager.SetWorkflowAccessFunc(func(_ context.Context, userID, _ string, _ ChannelRoute) (string, bool, error) {
-		return userID, true, nil
-	})
-	manager.SetUserWorkflowChatFunc(func(_ context.Context, userID string, route ChannelRoute) string {
-		if userID == "owner" && route.WorkflowID == "wf-report" {
-			return "owner-web-builder"
+// PLAT-746-477: channel adapters cannot recreate the removed workflow assistant.
+func TestWorkflowBotMessagesRequireACrewAgent(t *testing.T) {
+	manager := NewBotConversationManager(nil, "", "")
+	for _, platform := range []string{"whatsapp", "slack"} {
+		route := &ChannelRoute{WorkflowID: "example", WorkspacePath: "Workflow/example", WorkshopMode: "run"}
+		req := manager.buildQueryRequest("hello", "owner", "channel", route, platform, "owner")
+		if req["_bot_prepare_error"] == nil || req["agent_mode"] != nil {
+			t.Fatalf("%s workflow message constructed a turn: %v", platform, req)
 		}
-		return ""
-	})
-	manager.HandleIncomingMessage(BotIncomingMessage{
-		Platform: "whatsapp", UserID: "phone", WorkspaceUserID: "owner", ChannelID: "dm", Text: "run it", IsMention: true,
-		PresetWorkflow: &ChannelRoute{WorkflowID: "wf-report", WorkspacePath: "Workflow/report", WorkshopMode: "run"},
-	})
-	if got := waitStarted(t, started); got.sessionID != "owner-web-builder" || got.userID != "owner" {
-		t.Fatalf("WhatsApp workflow turn ran in %q as %q, want the owner's web Builder chat", got.sessionID, got.userID)
+		req = manager.buildQueryRequestForActive(&activeBotSession{AgentMode: "workflow_phase", WorkspacePath: route.WorkspacePath}, "continue", "owner", platform, ThreadID{Platform: platform})
+		if req["_bot_prepare_error"] == nil || req["agent_mode"] != nil {
+			t.Fatalf("%s resumed a workflow assistant: %v", platform, req)
+		}
 	}
 }
