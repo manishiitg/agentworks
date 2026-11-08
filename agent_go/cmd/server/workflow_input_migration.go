@@ -40,6 +40,12 @@ func validateWorkflowInputMigration(reader io.Reader) error {
 			exposed = nil
 			if fn.InputMapping.Mode == "envelope" {
 				exposed = fn.InputMapping.Variables
+			} else if fn.InputMapping.Mode == "raw" || fn.InputMapping.Mode == "" {
+				config := &WorkflowWebhookConfig{InputMode: "raw", AllowedVariables: fn.InputMapping.Variables, PayloadMappings: fn.InputMapping.Payload}
+				if err := validateWebhookInputMappingContract(&candidate.Definitions, config, input.Inputs); err != nil {
+					return fmt.Errorf("function %q: %w", fn.Name, err)
+				}
+				exposed = webhookMappedInputNames(fn.InputMapping.Payload)
 			}
 		} else if fn.InputSchema != nil {
 			return fmt.Errorf("function %q: copied schema remains", fn.Name)

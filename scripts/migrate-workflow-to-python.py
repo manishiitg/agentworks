@@ -295,7 +295,13 @@ def remap_entry_inputs(definition, changes, runtime, document, mapping=None, age
                 entry['input'] = saved
                 entry['action'].pop('step', None)
                 config = dict(entry.get('input_mapping') or {})
-                config.pop('payload', None)
+                payload = dict(config.get('payload') or {})
+                for retired in ('routes', 'step', 'group'):
+                    payload.pop(retired, None)
+                if payload:
+                    config['payload'] = payload
+                else:
+                    config.pop('payload', None)
                 if 'payload_mappings' in update:
                     payload = update['payload_mappings']
                     if not isinstance(payload, dict) or set(payload) - {'inputs'}:
@@ -310,7 +316,7 @@ def remap_entry_inputs(definition, changes, runtime, document, mapping=None, age
                 if set(mapped) - set(exposed):
                     raise ValueError('Mapped raw inputs must be listed in allowed_variables.')
                 callers.append({'name': kind + ':' + str(identity), 'action': {'type': 'run'}, 'input': saved,
-                                'inputs': exposed if config.get('mode') in ('raw', 'envelope') else entry.get('inputs', [])})
+                                'inputs': entry.get('inputs', []), **({'input_mapping': config} if config else {})})
                 report['mapped_entry_inputs'].append({'kind': kind, 'id': identity})
                 changed = True
             else:
