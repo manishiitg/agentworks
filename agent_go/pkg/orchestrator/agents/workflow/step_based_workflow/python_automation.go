@@ -52,6 +52,32 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonHelperStateRoot() string {
 	return filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder, "helpers"))
 }
 
+func (hcpo *StepBasedWorkflowOrchestrator) writePythonHelperState(ctx context.Context, file, content string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	state := hcpo.pythonHelperStateRoot()
+	full := workflowAPIPath(hcpo.GetWorkspacePath(), file)
+	if !filepath.IsAbs(full) && !strings.HasPrefix(full, hcpo.GetWorkspacePath()+"/") {
+		full = filepath.Join(hcpo.GetWorkspacePath(), full)
+	}
+	full = filepath.ToSlash(filepath.Clean(full))
+	if state == "" || !strings.HasPrefix(full, state+"/") {
+		return fmt.Errorf("helper state must stay in this run")
+	}
+	root, relative, err := workflowfiles.OpenWorkflowDirectory(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), strings.TrimPrefix(state, hcpo.GetWorkspacePath()+"/"))
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	helper, err := workflowfiles.OpenDirectory(root, relative, true)
+	if err != nil {
+		return err
+	}
+	defer helper.Close()
+	return workflowfiles.WriteServerFile(helper, strings.TrimPrefix(full, state+"/"), []byte(content))
+}
+
 // One script launch owns one adapter. Call occurrences, including repeated
 // explicit labels in a loop, are distinct. The saved receipt is only a result
 // cache across an explicit continuation, not a Python execution journal.
@@ -181,7 +207,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			if err != nil {
 				return err
 			}
-			return hcpo.WriteWorkspaceFile(ctx, filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), stateRelative)), string(data))
+			return hcpo.writePythonHelperState(ctx, filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), stateRelative)), string(data))
 		}
 		if err := persist(); err != nil {
 			log.Note("not started: " + err.Error())
@@ -339,7 +365,15 @@ func (hcpo *StepBasedWorkflowOrchestrator) openPythonHelperLog(id string) (*runl
 		return nil, err
 	}
 	defer root.Close()
-	return runlog.Create(root, name)
+	parent, err := workflowfiles.OpenDirectory(root, filepath.ToSlash(filepath.Dir(name)), true)
+	if err != nil {
+		return nil, err
+	}
+	defer parent.Close()
+	if err := workflowfiles.ProtectServerTree(parent); err != nil {
+		return nil, err
+	}
+	return runlog.CreateServerOwned(parent, filepath.Base(name))
 }
 
 func pythonBundleFingerprint(view fs.FS, directory string) (string, error) {
@@ -407,7 +441,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) countPythonHelper(ctx context.Context
 		*count++
 	}
 	data, _ := json.Marshal(state)
-	if err := hcpo.WriteWorkspaceFile(ctx, filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), relative)), string(data)); err != nil {
+	if err := hcpo.writePythonHelperState(ctx, filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), relative)), string(data)); err != nil {
 		return false, "", err
 	}
 	notice := ""

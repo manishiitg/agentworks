@@ -56,6 +56,86 @@ func TestRealSlotChain(t *testing.T) {
 			t.Fatalf("own file: out=%q err=%v stderr=%q", out, err, errOut)
 		}
 	})
+	// PLAT-746: a service-created helper root must be traversable by the slot,
+	// with filesystem-level refusals as well as the normal shell guard.
+	t.Run("Python reads answer and log files but cannot forge helper state", func(t *testing.T) {
+		helper, err := os.MkdirTemp(crew, ".python-helper-read-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(helper) })
+		answers := filepath.Join(helper, "answers")
+		if err := os.Mkdir(answers, 0770); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(answers, os.ModeSetgid|0750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(helper, os.ModeSetgid|0750); err != nil {
+			t.Fatal(err)
+		}
+		logs := filepath.Join(helper, "logs")
+		if err := os.Mkdir(logs, 0750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(logs, os.ModeSetgid|0750); err != nil {
+			t.Fatal(err)
+		}
+		answer, log := filepath.Join(answers, "answer.txt"), filepath.Join(logs, "provider.log")
+		for file, body := range map[string]string{answer: "answer", log: "log"} {
+			if err := os.WriteFile(file, []byte(body), 0640); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(file, 0640); err != nil {
+				t.Fatal(err)
+			}
+		}
+		probe := base
+		// Broad normal project write grant: these first refusals come from Unix modes.
+		command := "python3 -c " + shQuote("from pathlib import Path; import sys; assert Path(sys.argv[1]).read_text() == 'answer'; assert Path(sys.argv[2]).read_text() == 'log'; print('read-ok')") + " " + shQuote(answer) + " " + shQuote(log)
+		out, stderr, err := runThroughShellTool(ctx, probe, command)
+		if err != nil || strings.TrimSpace(out) != "read-ok" {
+			t.Fatalf("slot could not read helper files: out=%q stderr=%q err=%v", out, stderr, err)
+		}
+		ordinary := helper + ".output"
+		t.Cleanup(func() { os.Remove(ordinary) })
+		if out, stderr, err := runThroughShellTool(ctx, probe, "printf writable > "+shQuote(ordinary)); err != nil {
+			t.Fatalf("ordinary granted write failed: out=%q stderr=%q err=%v", out, stderr, err)
+		}
+
+		for _, directory := range []string{answers, logs} {
+			file := answer
+			if directory == logs {
+				file = log
+			}
+			for _, command := range []string{
+				"printf forged > " + shQuote(filepath.Join(directory, "forged.txt")),
+				"printf forged > " + shQuote(file),
+				"mv " + shQuote(file) + " " + shQuote(filepath.Join(directory, "renamed.txt")),
+				"rm " + shQuote(file),
+			} {
+				if out, stderr, err := runThroughShellTool(ctx, probe, command); err == nil || !strings.Contains(stderr, "Permission denied") {
+					t.Fatalf("expected filesystem permission refusal: %s out=%q stderr=%q err=%v", command, out, stderr, err)
+				}
+			}
+		}
+		// Also prove the existing guard independently of the filesystem modes.
+		if err := os.Chmod(answers, os.ModeSetgid|0770); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(answer, 0660); err != nil {
+			t.Fatal(err)
+		}
+		probe.BlockedWritePaths = []string{helper}
+		if out, stderr, err := runThroughShellTool(ctx, probe, "printf forged > "+shQuote(answer)); err == nil {
+			t.Fatalf("helper guard did not refuse write: out=%q stderr=%q", out, stderr)
+		}
+
+		body, err := os.ReadFile(answer)
+		if err != nil || string(body) != "answer" {
+			t.Fatalf("answer changed: %q %v", body, err)
+		}
+	})
 	negatives := map[string]string{
 		"the browser profile (session cookies)": "cat " + filepath.Join(profile, "Cookies"),
 		"the browser profile folder listing":    "ls " + profile,

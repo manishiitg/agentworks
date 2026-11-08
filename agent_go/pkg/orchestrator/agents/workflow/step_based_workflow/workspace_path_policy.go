@@ -8,6 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacepathpolicy"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // materializeWorkflowGuardPaths is the single filesystem-lifecycle boundary
@@ -75,6 +76,25 @@ func (hcpo *StepBasedWorkflowOrchestrator) materializeWorkflowGuardPaths(readPat
 
 	if _, err := workspacepathpolicy.Materialize(docsRoot, grants); err != nil {
 		return fmt.Errorf("materialize workflow Folder Guard paths: %w", err)
+	}
+	if stateRoot := hcpo.pythonHelperStateRoot(); stateRoot != "" {
+		// Slot directories inherit their slot group and setgid bit. Read-only
+		// helper state needs group traversal too; 0700 made answer_file unreadable.
+		// Open through the same anchored path resolver, never chmod a symlink.
+		relative := strings.TrimPrefix(stateRoot, hcpo.GetWorkspacePath()+"/")
+		root, path, err := workflowfiles.OpenWorkflowDirectory(docsRoot, hcpo.GetWorkspacePath(), relative)
+		if err != nil {
+			return err
+		}
+		defer root.Close()
+		helper, err := workflowfiles.OpenDirectory(root, path, false)
+		if err != nil {
+			return err
+		}
+		defer helper.Close()
+		if err := workflowfiles.ProtectServerTree(helper); err != nil {
+			return err
+		}
 	}
 	return nil
 }

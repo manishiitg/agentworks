@@ -1,6 +1,7 @@
 package step_based_workflow
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -88,6 +89,67 @@ func TestWorkflowGuardMaterializationFailsClosedOutsideDocsRoot(t *testing.T) {
 	hcpo.SetWorkspacePath("Workflow/fresh-product")
 	if err := hcpo.materializeWorkflowGuardPaths(nil, []string{"../outside"}); err == nil {
 		t.Fatal("escaping managed path unexpectedly succeeded")
+	}
+}
+
+// A server slot could not traverse helpers/ to read reply.answer_file (PLAT-746).
+// Keep helper state writable only by the service, with read/traverse for its slot group.
+func TestPythonHelperStateIsReadableButNotWritableByItsSlotGroup(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	c := newAgentFactoryTestOrchestrator(t)
+	c.SetWorkspacePath("Workflow/example")
+	c.selectedRunFolder = "run-one"
+	helper := filepath.Join(docs, c.pythonHelperStateRoot())
+	if err := os.MkdirAll(helper, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(helper, os.ModeSetgid|0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(helper), os.ModeSetgid|0770); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(helper, "answers", "old.txt")
+	if err := os.MkdirAll(filepath.Dir(old), 0770); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(old), os.ModeSetgid|0770); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(old, []byte("old"), 0660); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.materializeWorkflowGuardPaths(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(helper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSetgid == 0 || info.Mode().Perm() != 0750 {
+		t.Fatalf("slot helper mode = %v; want setgid 0750", info.Mode())
+	}
+	if err := c.writePythonHelperState(context.Background(), c.pythonHelperStateRoot()+"/receipts/nested/new.json", `{}`); err != nil {
+		t.Fatal(err)
+	}
+	log, err := c.openPythonHelperLog("slot-access")
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Close()
+	for _, path := range []string{helper, filepath.Dir(old), filepath.Join(helper, "receipts"), filepath.Join(helper, "receipts/nested"), filepath.Dir(log.Path())} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != 0750 || info.Mode()&os.ModeSetgid == 0 {
+			t.Fatalf("server helper directory mode %s: %v %v", path, info, err)
+		}
+	}
+	for _, path := range []string{old, filepath.Join(helper, "receipts/nested/new.json"), log.Path()} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != 0640 {
+			t.Fatalf("server helper file mode %s: %v %v", path, info, err)
+		}
 	}
 }
 

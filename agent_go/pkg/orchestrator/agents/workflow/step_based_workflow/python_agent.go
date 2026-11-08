@@ -425,7 +425,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		}
 		writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		return hcpo.WriteWorkspaceFile(writeCtx, path, string(body))
+		return hcpo.writePythonHelperState(writeCtx, path, string(body))
 	}
 	if err = persist(); err != nil {
 		failure = err
@@ -455,7 +455,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	answerPath := filepath.ToSlash(filepath.Join("runs", hcpo.selectedRunFolder, "helpers", "answers", attempt+".txt"))
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if err := hcpo.WriteWorkspaceFile(writeCtx, answerPath, finalAnswer); err != nil {
+	if err := hcpo.writePythonHelperState(writeCtx, answerPath, finalAnswer); err != nil {
 		failure = err
 		reply.Error = "The agent answered, but its full final answer could not be saved: " + redaction.Text(err.Error())
 		return reply
