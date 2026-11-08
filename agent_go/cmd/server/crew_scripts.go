@@ -10,6 +10,7 @@ import (
 	"path"
 	"reflect"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -200,12 +201,29 @@ func saveCrewScriptInputs(ctx context.Context, root string, inputs *VariablesMan
 }
 
 func crewScriptEditableFile(file string) bool {
-	return workflow.CrewScriptBundleFile(file) && (file == "script.json" || strings.HasSuffix(file, ".py"))
+	return workflow.CrewScriptBundleFile(file) && (file == "script.json" || file == "requirements.txt" || strings.HasSuffix(file, ".py"))
 }
 
 func writeCrewScriptFile(ctx context.Context, binding *crewExecutableBinding, file, content string, edits ...*scriptEntryInputEdits) error {
 	if !crewScriptEditableFile(file) {
-		return fmt.Errorf("choose script.json or a Python file from this script")
+		return fmt.Errorf("choose script.json, requirements.txt or a Python file from this script")
+	}
+	if file == "requirements.txt" {
+		if len(content) > 64<<10 {
+			return fmt.Errorf("requirements.txt must be no larger than 64 KB")
+		}
+		if !utf8.ValidString(content) || strings.ContainsRune(content, 0) {
+			return fmt.Errorf("requirements.txt must be UTF-8 text listing the needed packages.")
+		}
+		// Match the installer before saving: one file is the complete package
+		// contract, including continued lines and an optional UTF-8 BOM.
+		text := strings.TrimPrefix(content, "\ufeff")
+		text = strings.ReplaceAll(strings.ReplaceAll(text, "\\\r\n", ""), "\\\n", "")
+		for _, line := range strings.Split(text, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "-") {
+				return fmt.Errorf("Put the package pins directly in requirements.txt; included files, constraints and installer option lines are not supported.")
+			}
+		}
 	}
 	if file != "script.json" && len(edits) > 0 && edits[0] != nil {
 		return fmt.Errorf("save entry_mappings with script.json or Inputs")
@@ -258,7 +276,7 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 	}
 	file := r.URL.Query().Get("file")
 	if !crewScriptEditableFile(file) {
-		http.Error(w, "Choose script.json or a Python file.", 400)
+		http.Error(w, "Choose script.json, requirements.txt or a Python file.", 400)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

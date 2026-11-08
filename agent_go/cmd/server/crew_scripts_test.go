@@ -122,7 +122,23 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if code := request("owner", "VALUE = 7\n", "helper/values.py"); code != 200 {
 		t.Fatalf("Builder nested source HTTP%d", code)
 	}
-	for _, file := range []string{"../outside.py", "/outside.py", "helper/../../outside.py", "helper/../outside.py", "helper/.private.py", "helper\\outside.py", "helper/script.json"} {
+	// PLAT-746-479 / PR1567: packages use the same native source writer.
+	const requirements = "# saved packages\nhttpx==0.28.1\n"
+	if code := request("runner", requirements, "requirements.txt"); code != 403 {
+		t.Fatalf("Run person edited requirements HTTP%d", code)
+	}
+	if code := request("owner", requirements, "requirements.txt"); code != 200 {
+		t.Fatalf("Builder requirements edit HTTP%d", code)
+	}
+	for _, content := range []string{"-r extra.txt\n", " -c constraints.txt\n", "\ufeff--requirement=extra.txt\n", "\\\n-r extra.txt\n", "--index-url https://example.com/simple\n", "bad\x00text", strings.Repeat("x", (64<<10)+1)} {
+		if code := request("owner", content, "requirements.txt"); code != 400 {
+			t.Fatalf("invalid requirements admitted HTTP%d", code)
+		}
+	}
+	if saved, _, err := readFileFromWorkspace(t.Context(), script.Root+"/code/requirements.txt"); err != nil || saved != requirements {
+		t.Fatal("refused requirements changed saved source", err)
+	}
+	for _, file := range []string{"../outside.py", "/outside.py", "helper/../../outside.py", "helper/../outside.py", "helper/.private.py", "helper\\outside.py", "helper/script.json", "helper/requirements.txt"} {
 		if code := request("owner", "refused", file); code != 400 {
 			t.Fatalf("source path %q admitted HTTP%d", file, code)
 		}
@@ -156,7 +172,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	}
 	resolver := &crewWorkflowResources{userID: "owner"}
 	resolved, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "script:qualify")
-	if err != nil || string(resolved.Files["main.py"]) != "print('owner update')\n" || string(resolved.Files["helper/values.py"]) != "VALUE = 7\n" {
+	if err != nil || string(resolved.Files["main.py"]) != "print('owner update')\n" || string(resolved.Files["helper/values.py"]) != "VALUE = 7\n" || string(resolved.Files["requirements.txt"]) != requirements {
 		t.Fatalf("same-Crew script: %+v %v", resolved, err)
 	}
 	if _, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "other-script"); err == nil || !strings.Contains(err.Error(), "shared function") {
