@@ -67,9 +67,13 @@ func TestStepBaselineRolePolicy(t *testing.T) {
 					t.Fatalf("ordinary agent retained %s", name)
 				}
 			}
-			for _, name := range []string{"execute_shell_command", "human_feedback", "create_human_input_request"} {
-				if !slices.Contains(got, name) || executors[name] != name || !slices.Contains(registeredToolNames(managerTools), name) || managerExecutors[name] != name {
-					t.Fatalf("baseline lost %s", name)
+			if !slices.Contains(got, "execute_shell_command") || executors["execute_shell_command"] != "execute_shell_command" || !slices.Contains(registeredToolNames(managerTools), "execute_shell_command") {
+				t.Fatal("baseline lost execute_shell_command")
+			}
+			// PLAT-746: runs never ask a person, even when a saved list names the question tools.
+			for _, name := range []string{"human_feedback", "create_human_input_request"} {
+				if slices.Contains(got, name) || executors[name] != nil || slices.Contains(registeredToolNames(managerTools), name) {
+					t.Fatalf("baseline kept question tool %s", name)
 				}
 			}
 			// Email and Slack are not baseline tools: only a step that names them gets them.

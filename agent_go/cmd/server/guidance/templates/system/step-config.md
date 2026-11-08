@@ -59,8 +59,8 @@ Cite the owning `architecture_review` finding id, the current state, and the evi
 — and the `human_input_id` when the change was user-approved. Clearing a field
 clears its reason; clearing never requires one.
 
-**If the evidence does not settle it, do not make the change.** Raise a decision
-with `needs_you action=create` and park the finding `awaiting_user`.
+**If the evidence does not settle it, do not make the change.** Ask the owner in chat
+and park the finding `awaiting_user`.
 Uncertainty is a legitimate terminal state; an invented reason is worse than no
 change, because a fabricated justification is harder to challenge later than a
 missing one.

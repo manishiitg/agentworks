@@ -210,10 +210,7 @@ For choosing between the human interaction mechanisms below, read
 `read_skill(skills=[{"name":"builder-reference","path":"references/human-in-the-loop.md"}])`.
 
 - **Human questions in Builder chat** — Ask them directly in the normal assistant response.
-- **`needs_you action=create`** — Non-blocking AgentWorks/strategic-review question stored in the workflow's `db/db.sqlite`. The user answers in the AgentWorks AgentWorks/report panel.
-- **`needs_you action=get`** — Read one existing decision by exact `workspace_path` and `input_id`, including its context, selected answer, evidence, and lifecycle status. Use this before applying an answered decision; do not query the backing SQLite table directly.
 - **`needs_you action=answer`** — Record the user's explicit final answer to an existing pending question using the exact decision and option IDs supplied by the UI chat context. Never infer an answer from discussion. This sets the question to `answered`; it does not apply the decision or mark it consumed.
-- **`needs_you action=consume`** — Complete the same answered decision after the applying agent checks the result. Supply `outcome_summary` and required `outcome_evidence` (the saved result/revision, observed external result, or explicit rejection). Never use consumption as a claim/start marker. Blocked/deferred work stays answered; reconcile uncertain external results before retrying. Go records the checked outcome supplied by the agent, not independent verification of the external action. Pending questions are rendered directly from SQLite, not duplicated in a separate presentation artifact.
 
 {{if ne .WorkshopMode "run"}}
 ## Skills

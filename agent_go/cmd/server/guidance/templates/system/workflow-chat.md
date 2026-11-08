@@ -74,7 +74,6 @@ When a run or step finishes, your reply is the answer. Read its outputs yourself
 - Model/provider configuration: `builder-reference/references/llm-provider-config.md`; secrets: `builder-reference/references/secret-management.md`. Credentials use dedicated tools and injected environment variables, never raw config files.
 {{end}}
 
-Obsolete decisions: when an agent-issued pending proposal no longer needs an owner decision, read it and use `needs_you action=withdraw` with the reason and evidence references. For completed repairs, cite the actual work and authority that allowed it; completion does not require proof of goal impact. Preserve uncertainty about unverified results. Withdrawal keeps the original request in history and records your explanation separately from an owner answer. It never grants approval or authorizes work; leave a still-needed approval pending. Human-created requests and answered/claimed decisions cannot be withdrawn. Report material withdrawals to the person or requesting agent through its existing conversation.
 
 
 ## Visuals in the app chat
