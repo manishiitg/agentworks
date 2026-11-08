@@ -80,6 +80,7 @@ if [[ "$INNER" == 0 ]]; then
   chown -R "$USER_AS:$GROUP_AS" "$WORK" "$CACHE"
   SELF="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
   cp "$SELF" "$WORK/verify-change.sh"; chmod 0755 "$WORK/verify-change.sh"; chown "$USER_AS:$GROUP_AS" "$WORK/verify-change.sh"
+  step "Verifier hashes: checkout=$(sha256sum "$WORK/repo/deploy/common/verify-change.sh" | cut -d' ' -f1) inner=$(sha256sum "$WORK/verify-change.sh" | cut -d' ' -f1)"
   # Not exec: the trap must still remove the scratch folder and the lock (fd 8) stays held.
   runuser -u "$USER_AS" -- env "PATH=$PATH" "HOME=$WORK/home" "VERIFY_STARTED=$STARTED" "VERIFY_CACHE=$CACHE" "VERIFY_SLOT=$slot" \
     bash "$WORK/verify-change.sh" --inner --work "$WORK" --url "$URL" --sha "$SHA" --builds-dir "$BUILDS"
@@ -153,6 +154,7 @@ if [[ "$go_needed" == true ]]; then
   # Exercise hosted-folder access outside the launcher's private /tmp grant.
   mkdir -p "$WORK/linux-test-root"
   export AGENTWORKS_LINUX_TEST_ROOT="$WORK/linux-test-root"
+  step "Verifier inner: sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1) AGENTWORKS_LINUX_TEST_ROOT=$AGENTWORKS_LINUX_TEST_ROOT"
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     case "$line" in
