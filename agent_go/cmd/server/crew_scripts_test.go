@@ -278,7 +278,7 @@ sys.exit(1)
 		if err != nil {
 			t.Fatal(err)
 		}
-		req, _ := http.NewRequest(http.MethodGet, manifestEndpoint.URL+"?workspace_path="+script.Root, nil)
+		req, _ := http.NewRequest(http.MethodGet, manifestEndpoint.URL+"/api/workflows/manifest?workspace_path="+script.Root, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		response, err := http.DefaultClient.Do(req)
 		if err != nil {
