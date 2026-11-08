@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -145,7 +146,10 @@ func (api *StreamingAPI) crewChatWorkflowTarget(ctx context.Context, resolved *r
 			continue
 		}
 		if found != nil {
-			return nil, fmt.Errorf("this Crew has conflicting workflows; repair its workflow registration first")
+			// Multiple saved scripts are valid. This shortcut has no target
+			// argument, so omit it rather than guessing or breaking the chat.
+			log.Printf("[CREW_SCRIPT_START] crew=%s reason=multiple_scripts action=omit_bound_tool", root)
+			return nil, nil
 		}
 		checked, err := findCrewExecutable(binding.Root)
 		if err != nil {
