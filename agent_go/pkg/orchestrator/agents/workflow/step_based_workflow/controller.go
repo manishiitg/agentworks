@@ -626,18 +626,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) HasBrowserCapability() bool {
 	return false
 }
 
-// CreateTodoList orchestrates the human-controlled todo planning process
-// - Single execution (no iterations)
-// - Includes validation phase (runs later in the workflow)
-// - Includes critique phase during writer validation loop
-// - Skips cleanup phase
-// - Simple direct planning approach
-// - NEW: Includes human approval loop with iterative plan refinement
+// CreateTodoList runs the saved Python script with its canonical inputs.
 func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, objective, workspacePath string) (string, error) {
 	hcpo.ApplyWorkflowLogContext(workspacePath, "")
 	hcpo.SetObjective(objective)
 	hcpo.SetWorkspacePath(workspacePath)
-	hcpo.observeRunReferences("")
 	if err := hcpo.loadCodeLayout(ctx); err != nil {
 		return "", err
 	}
