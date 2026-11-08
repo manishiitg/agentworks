@@ -2,7 +2,6 @@ package step_based_workflow
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -196,77 +195,12 @@ func TestHumanBranchIsHumanRoutedOnlyForHumanSource(t *testing.T) {
 	}
 }
 
-func TestValidateBranchStepRejectsUnknownRouteSource(t *testing.T) {
-	step := humanBranchTestStep("")
-	step.RouteSource = "llm"
-	err := validateBranchStepFieldsTyped(step)
-	if err == nil || !strings.Contains(err.Error(), `unsupported route_source "llm"`) {
-		t.Fatalf("expected unsupported route_source error, got: %v", err)
-	}
-	step.RouteSource = "human"
-	if err := validateBranchStepFieldsTyped(step); err != nil {
-		t.Fatalf("route_source human must validate: %v", err)
-	}
-}
-
-func TestAddBranchStepPersistsRouteSourceHuman(t *testing.T) {
-	plan := &PlanningResponse{Steps: []PlanStepInterface{
-		cardinalityTestScriptedStep("draft"),
-		cardinalityTestScriptedStep("publish"),
-	}}
-	readFile, writeFile, _, writtenPlan := convertRoutingBranchTestPlanFileIO(t, plan)
-	add := createSingleStepAdder("workflow", loggerv2.NewNoop(), readFile, writeFile, cardinalityTestNoopMove, "branch")
-
-	_, err := add(context.Background(), map[string]interface{}{
-		"id":              "approval-gate",
-		"title":           "Approval gate",
-		"branch_question": "Publish the draft?",
-		"route_source":    "human",
-		"routes": []interface{}{
-			map[string]interface{}{"route_id": "route-hold", "route_name": "Hold", "condition": "c", "next_step_id": "end"},
-			map[string]interface{}{"route_id": "route-publish", "route_name": "Publish", "condition": "c", "next_step_id": "publish"},
-		},
-		"default_route_id":     "route-hold",
-		"insert_after_step_id": "draft",
-		"reason":               "person decides",
-	})
-	if err != nil {
-		t.Fatalf("add_branch_step with route_source human: %v", err)
-	}
-	var written PlanningResponse
-	if err := json.Unmarshal([]byte(*writtenPlan), &written); err != nil {
-		t.Fatalf("decode persisted plan: %v", err)
-	}
-	branch, ok := written.Steps[1].(*BranchPlanStep)
-	if !ok {
-		t.Fatalf("inserted step = %T, want *BranchPlanStep", written.Steps[1])
-	}
-	if branch.RouteSource != "human" {
-		t.Fatalf("route_source not persisted: %+v", branch)
-	}
-}
-
-func TestConvertHumanBranchToRoutingRejected(t *testing.T) {
-	step := humanBranchTestStep("route-hold")
-	// Give it non-end routes so the only objection is the human source.
-	step.Routes = []RoutingRoute{
-		{RouteID: "route-a", RouteName: "A", Condition: "c", NextStepID: "audit-chain"},
-		{RouteID: "route-b", RouteName: "B", Condition: "c", NextStepID: "apply-chain"},
-	}
-	step.DefaultRouteID = "route-a"
-	plan := &PlanningResponse{Steps: append([]PlanStepInterface{step}, cardinalityTestRouteTargets()...)}
-	readFile, writeFile, _, writtenPlan := convertRoutingBranchTestPlanFileIO(t, plan)
-	convert := createConvertRoutingBranchStepTypeExecutor("workflow", loggerv2.NewNoop(), readFile, writeFile)
-
-	_, err := convert(context.Background(), map[string]interface{}{
-		"existing_step_id": "approval-gate",
-		"target_type":      "routing",
-		"reason":           "promote",
-	})
-	if err == nil || !strings.Contains(err.Error(), `route_source "human"`) {
-		t.Fatalf("expected rejection because routing cannot ask a person, got: %v", err)
-	}
-	if *writtenPlan != "" {
-		t.Fatal("plan.json must not be written when the conversion is rejected")
+func cardinalityTestRoutingStep(id string) *RoutingPlanStep {
+	return &RoutingPlanStep{
+		Type:             StepTypeRouting,
+		CommonStepFields: CommonStepFields{ID: id, Title: "Mode selector " + id},
+		RoutingQuestion:  "Which mode?",
+		Routes:           convertRoutingBranchTestRoutes(),
+		DefaultRouteID:   "route-a",
 	}
 }

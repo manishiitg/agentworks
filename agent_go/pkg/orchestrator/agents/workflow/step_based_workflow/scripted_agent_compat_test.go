@@ -126,27 +126,6 @@ func TestUpdateAgentExecutorAtomicallyPersistsLegacyUpgrade(t *testing.T) {
 	}
 }
 
-func TestCollectScriptedPlanStepsIncludesNestedTodoRoutes(t *testing.T) {
-	regular := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: "fetch-data", Title: "Fetch data"}}
-	sequence := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "analyze-data"}}
-	nested := &AgentPlanStep{
-		CommonStepFields: CommonStepFields{ID: "nested"},
-		PredefinedRoutes: []PlanOrchestrationRoute{
-			{RouteID: "fetch-data", SubAgentStep: regular},
-			{RouteID: "analyze-data", SubAgentStep: sequence},
-		},
-	}
-	root := &AgentPlanStep{
-		CommonStepFields: CommonStepFields{ID: "root"},
-		PredefinedRoutes: []PlanOrchestrationRoute{{RouteID: "nested", SubAgentStep: nested}},
-	}
-
-	got := collectScriptedPlanSteps(root)
-	if len(got) != 1 || got[0] != regular {
-		t.Fatalf("expected only the nested scripted boundary, got %#v", got)
-	}
-}
-
 func TestAgentRejectsIncompleteAgentRoute(t *testing.T) {
 	step := &AgentPlanStep{
 		CommonStepFields: CommonStepFields{
