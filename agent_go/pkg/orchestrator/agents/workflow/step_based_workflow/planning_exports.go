@@ -770,16 +770,9 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	bindAgentFunctionTools(controller, cfg.AgentFunctionTools)
 
 	controller.enabledGroupNames = nil
-	var existingManifest *VariablesManifest
-	if controller.directCrewScript != nil {
-		existingManifest = controller.directCrewScript.InputDefinitions()
-	} else {
-		variablesPath := fmt.Sprintf("%s/variables/variables.json", cfg.WorkspacePath)
-		_, existing, varErr := controller.variableManager.checkExistingVariables(ctx, variablesPath)
-		if varErr != nil {
-			return nil, fmt.Errorf("read workflow inputs: %w", varErr)
-		}
-		existingManifest = existing
+	existingManifest, varErr := controller.inputDefinitions(ctx)
+	if varErr != nil {
+		return nil, fmt.Errorf("read workflow inputs: %w", varErr)
 	}
 	controller.variablesManifest = existingManifest
 	if controller.isRelayExecution() {
@@ -983,7 +976,7 @@ func (s *WorkshopChatSession) UpdateBrowserRuntime(mode string, cdpPorts []int) 
 // UpdateInvocationInputs replaces the next invocation's optional values. An
 // omitted preset means defaults; cached chats never retain a previous choice.
 func (s *WorkshopChatSession) UpdateInvocationInputs(ctx context.Context, preset string, inputs map[string]string) error {
-	_, manifest, err := s.controller.variableManager.checkExistingVariables(ctx, s.controller.GetWorkspacePath()+"/variables/variables.json")
+	manifest, err := s.controller.inputDefinitions(ctx)
 	if err != nil {
 		return err
 	}
