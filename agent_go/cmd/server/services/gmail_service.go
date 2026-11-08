@@ -168,13 +168,18 @@ type GmailService struct {
 type gmailAuthCacheEntry struct {
 	status     *GmailAuthStatus
 	cachedAt   time.Time
-	refreshing bool // a background refresh is already in flight for this key
+	verifiedAt time.Time // Last definitive result, never extended by a failed probe.
+	refreshing bool      // a background refresh is already in flight for this key
 }
 
 // gmailAuthCacheTTL bounds how stale a cached auth status may be. Short enough
 // that re-authenticating shows up almost immediately, long enough that opening
 // a popup twice does not pay for two subprocesses.
 const gmailAuthCacheTTL = 60 * time.Second
+
+// A temporary status-check failure must not interrupt a long run's already
+// verified access. Never keep such evidence beyond the maximum script lifetime.
+const gmailAuthVerifiedMaxAge = 6 * time.Hour
 
 var (
 	globalGmailService *GmailService
@@ -341,7 +346,39 @@ type GmailAuthStatus struct {
 	// Checking reports that no fresh result is known yet and a refresh is
 	// running in the background. Callers that must not block (the notification
 	// settings UI) render a pending state and re-read shortly after.
-	Checking bool `json:"checking,omitempty"`
+	Checking         bool `json:"checking,omitempty"`
+	probeUnavailable bool // A transport failure, not a definitive OAuth refusal.
+}
+
+// Called under g.mu at both synchronous and asynchronous cache writes. The
+// connection's existing cache identity/invalidation stays the authority; this
+// never borrows another account or treats requested services as granted scopes.
+func keepVerifiedGoogleStatus(key string, entry *gmailAuthCacheEntry, observed GmailAuthStatus, started time.Time) GmailAuthStatus {
+	now := time.Now()
+	age := -time.Millisecond
+	if !entry.verifiedAt.IsZero() {
+		age = now.Sub(entry.verifiedAt)
+	}
+	reused := false
+	outcome := "verified"
+	if observed.probeUnavailable {
+		outcome = "probe_unavailable"
+		if entry.status != nil && entry.status.Authenticated && len(entry.status.Scopes) > 0 && age >= 0 && age <= gmailAuthVerifiedMaxAge {
+			observed = *entry.status
+			observed.Detail = "Google account check is temporarily unavailable; using this account's last verified access."
+			reused = true
+		}
+	} else {
+		entry.verifiedAt = now
+		age = 0
+		if !observed.Authenticated {
+			outcome = "authorization_refused"
+		}
+	}
+	if observed.Backend == "gog" {
+		log.Printf("[GOOGLE_AUTH] connection=%s outcome=%s reused=%t verified_age_ms=%d probe_ms=%d scope_count=%d", key, outcome, reused, age.Milliseconds(), now.Sub(started).Milliseconds(), len(observed.Scopes))
+	}
+	return observed
 }
 
 // AuthStatus shells out to `gws auth status` and interprets the result. It is
@@ -382,6 +419,7 @@ func (g *GmailService) authStatusBlocking(ctx context.Context, key string, cfg *
 		return *cached
 	}
 
+	started := time.Now()
 	st := g.computeAuthStatus(ctx, gwsPath, useGog, gogPath, cfg)
 	g.mu.Lock()
 	if g.authCaches == nil {
@@ -392,6 +430,7 @@ func (g *GmailService) authStatusBlocking(ctx context.Context, key string, cfg *
 		entry = &gmailAuthCacheEntry{}
 		g.authCaches[key] = entry
 	}
+	st = keepVerifiedGoogleStatus(key, entry, st, started)
 	entry.status, entry.cachedAt = &st, time.Now()
 	g.mu.Unlock()
 	if key != "" {
@@ -1209,9 +1248,11 @@ func (g *GmailService) authStatusCachedFor(key string, cfg *GmailConfig) GmailAu
 				// Detached from the request: the caller has already returned.
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
+				started := time.Now()
 				st := g.computeAuthStatus(ctx, gwsPath, useGog, gogPath, cfg)
 				g.mu.Lock()
 				if e := g.authCaches[key]; e != nil {
+					st = keepVerifiedGoogleStatus(key, e, st, started)
 					e.status, e.cachedAt, e.refreshing = &st, time.Now(), false
 				}
 				g.mu.Unlock()
