@@ -377,6 +377,11 @@ chat:
       - google_workspace_cli
       - list_mcp_servers
       - send_email
+      # Builder and step tools that are not MCP entry points (PLAT-746-467): runs
+      # never ask a person, and contract upgrades and team sources stay in the Builder.
+      - human_feedback
+      - get_contract_upgrades
+      - read_team_source
     # External-native tools: scoped readers plus run operations with no chat
     # equivalent, each with a server implementation. The run-mode `tools`
     # list above is the single source of truth for the run surface and is
