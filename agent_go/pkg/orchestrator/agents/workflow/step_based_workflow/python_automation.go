@@ -163,7 +163,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		redo, _ := args["redo"].(bool)
 		explicit, _ := args["explicit_key"].(bool)
 		reusable := explicit && (action == "agent" || action == "run_script")
-		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script" && action != "agent" && action != "step" && action != "call_function" && action != "function_status" && action != "send_email" && action != "send_slack" && action != "google" && action != "github" && action != "slack_read") {
+		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "ask_agent" && action != "check" && action != "notify" && action != "run_script" && action != "agent" && action != "step" && action != "call_function" && action != "function_status" && action != "send_email" && action != "send_slack" && action != "google" && action != "github" && action != "slack_read") {
 			return encode(pythonHelperReply{Error: "Invalid Python helper request; use the installed agentworks package."})
 		}
 		if action == "check" || action == "notify" {
@@ -248,7 +248,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				}
 				return encode(previous.Reply)
 			}
-			if (action == "run_script" || action == "agent" || action == "call_function" || action == "send_email" || action == "send_slack" || action == "google" || action == "github") && !previous.Complete && !redo {
+			if (action == "ask_agent" || action == "run_script" || action == "agent" || action == "call_function" || action == "send_email" || action == "send_slack" || action == "google" || action == "github") && !previous.Complete && !redo {
 				reply := previous.Reply
 				reply.OK = false
 				reply.Error = "The previous script attempt has no completed receipt. Inspect its run before explicitly trying redo=True; it may already have done work."
@@ -319,6 +319,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			return encode(call.Reply)
 		}
 		switch action {
+		case "ask_agent":
+			call.Reply = hcpo.runPythonAskAgent(ctx, step, arguments, id, log, func(reply pythonHelperReply) error { call.Reply = reply; return persist() })
 		case "google", "github", "slack_read":
 			call.Reply = hcpo.runPythonApp(ctx, action, arguments)
 		case "send_email", "send_slack":
