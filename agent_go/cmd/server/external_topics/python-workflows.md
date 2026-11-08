@@ -58,9 +58,11 @@ secret selection. Sharing and connected-account authority do not change here.
 
 ## Run and inspect
 
-The owning Crew's in-app chat can offer a bound `run_full_workflow` tool with
+The owning Crew's in-app chat can offer a bound `runs action=start` with
 only `input_preset` and typed `inputs`. That tool chooses the workflow from the
-Crew and uses the same input validation as MCP. It starts a real background
+Crew when exactly one saved script matches and uses the same input validation
+as MCP. With several scripts, ask which one and use `functions action=run_trigger`
+with its `workflow:<id>` in `workspace_path`. It starts a real background
 run; the chat's background work control stops it. Workflow run instructions
 belong in the saved Python/Crew setup.
 
