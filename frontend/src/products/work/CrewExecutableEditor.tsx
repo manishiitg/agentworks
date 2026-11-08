@@ -1,4 +1,6 @@
+import { isAxiosError } from 'axios'
 import { Suspense, useMemo, useState } from 'react'
+import api from '../../services/api'
 import { CrewWorkflowRuns, type RunsView } from './CrewWorkflowRuns'
 import { CrewFileView } from './CrewFileView'
 import { CrewWorkflowSteps } from './CrewWorkflowSteps'
@@ -31,6 +33,7 @@ export function CrewExecutableEditor({
   onFile,
   runs,
   onRuns,
+  onStarted,
   onBack,
 }: {
   item: CrewExecutable
@@ -41,9 +44,12 @@ export function CrewExecutableEditor({
   onFile: (file: string | null) => void
   runs: RunsView
   onRuns: (view: RunsView) => void
+  /** A run was started: the page moves to its Runs. */
+  onStarted: () => void
   onBack?: () => void
 }) {
   const [error, setError] = useState('')
+  const [starting, setStarting] = useState(false)
   const workspace = useWorkspaceState(item.workspace_path, null, false)
   const folders = workspace.state?.run_folders ?? []
   // The steps of the latest run, in the order they started: the dots on the Steps page.
@@ -57,6 +63,17 @@ export function CrewExecutableEditor({
     },
     { kinds: ['sessions', 'plan'], workflow: item.workspace_path, fallbackMs: 15_000, minIntervalMs: 1000 },
   )
+  // Run starts the workflow directly, the same way a schedule does: no chat and no model turn.
+  async function run() {
+    setError(''); setStarting(true)
+    try {
+      await api.post('/api/workflow/run', {}, { params: { workspace_path: item.workspace_path } })
+      onStarted()
+    } catch (cause) {
+      const message = isAxiosError(cause) && typeof cause.response?.data === 'string' ? cause.response.data : ''
+      setError(message || 'Could not start the workflow. Try again.')
+    } finally { setStarting(false) }
+  }
   async function ask(task: string) {
     setError('')
     try {
@@ -89,7 +106,7 @@ export function CrewExecutableEditor({
           ) : (
             <div className="space-y-4">
               <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps}
-                onRun={() => void ask('Run this workflow and report the result in this chat.')} onCode={() => onFile('main.py')} onAsk={ask} />
+                onRun={() => void run()} runBusy={starting} onCode={() => onFile('main.py')} onAsk={ask} />
               {!!(item.inputs?.length || item.input_presets?.length) && <PageCard title="Inputs" hint="What you can change before a run." onAsk={() => ask('Help me change the inputs of this workflow.')}>
                 {item.inputs?.map(input => <PageRow key={input.name} title={input.name}
                   lines={[`${inputKind(input.type)}${input.required ? ' · required' : ''}${input.value ? ` · default “${input.value}”` : ''}`, input.description]} />)}
