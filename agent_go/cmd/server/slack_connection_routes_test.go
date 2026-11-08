@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -39,6 +40,13 @@ func setupSlackConnectionTest(t *testing.T) (*StreamingAPI, *fakeWorkspaceDocume
 // saved. Use it to cover first-time saves.
 func setupSlackConnectionWorld(t *testing.T) (*StreamingAPI, *fakeWorkspaceDocumentStore) {
 	t.Helper()
+	// PLAT-746: manifest writes resolve the actual on-disk lock path even
+	// when this fixture serves document content through its fake HTTP API.
+	docs, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, slackConnectionTestDirectory)
 	server, workspace := newSlackListableWorkspaceServer(t)
