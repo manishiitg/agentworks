@@ -8,71 +8,69 @@ import (
 )
 
 func TestFixedMainMigrationKeepsChatIdentities(t *testing.T) {
-	for _, profileID := range []string{"work", "code"} {
-		t.Run(profileID, func(t *testing.T) {
-			store, files := memoryProductConversationStore()
-			ctx := context.Background()
-			root := "_users/u/Chats/Work/projects/crew"
-			profile := routeTestProfile(profileID, true, "")
-			binding := productConversationBinding{ConversationKey: "crew", ResourceID: "crew", WorkspacePath: root, ManifestPath: root + "/product.json", ProjectMainAddress: true}
-			metadata, _ := json.Marshal(productProjectManifest{ID: "crew", Product: profileID, Title: "Crew", SessionID: "original-session"})
-			// PLAT-746: timers live beside the product manifest. Keep their
-			// receiving chat identities untouched during the main-chat move.
-			timers := `{"schedules":[{"id":"scheduled-review","project":{"kind":"crew","id":"crew"},"when":{"cron":"0 9 * * *","timezone":"UTC"},"action":{"type":"message","tab":"crew:chat:reviewer"},"input":{"messages":["Review"]},"run_as":"u","enabled":true}]}`
-			files[root+"/schedules.json"] = timers
-			files[binding.ManifestPath] = string(metadata)
-			legacy, review := profileID+"/crew", profileID+"/crew:chat:reviewer"
-			doc := productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{
-				legacy: {ProfileID: profileID, ConversationKey: "crew", ConversationID: "original-conversation", SessionID: "original-session", ResourceID: "crew", WorkspacePath: root, ModelID: "original-runtime"},
-				review: {ProfileID: profileID, ConversationKey: "crew:chat:reviewer", ConversationID: "review-conversation", SessionID: "review-session", ResourceID: "crew", WorkspacePath: root, ModelID: "review-runtime"},
-			}, Agents: map[string]ProductAgentIdentity{legacy: {Name: "Lead", Engine: "codex-cli", ModelID: "own-original"}, review: {Name: "Reviewer", Purpose: "Review", Position: 3, Engine: "muse-cli", ModelID: "own-review"}}, Previous: map[string][]ProductConversationRecord{legacy: {{ConversationKey: "crew", SessionID: "prior-original"}}}}
-			if err := store.writeDocument(ctx, productConversationRegistryPath("u"), doc); err != nil {
-				t.Fatal(err)
-			}
-			before := files[productConversationRegistryPath("u")]
-			resolved, err := store.resolveProjectMainAddress(ctx, "u", profile, binding)
-			if err != nil {
-				t.Fatal(err)
-			}
-			physical := originalMainChatKey("crew", "original-conversation")
-			if resolved.ConversationKey != physical || files[productConversationRegistryPath("u")+".before-chat-ids.json"] != before {
-				t.Fatal("legacy migration lost its stable ID or registry backup")
-			}
-			migrated := files[productConversationRegistryPath("u")]
-			var metadataAfter productProjectManifest
-			if err := json.Unmarshal([]byte(files[binding.ManifestPath]), &metadataAfter); err != nil {
-				t.Fatal(err)
-			}
-			if metadataAfter.MainChatKey != physical || metadataAfter.SessionID != "original-session" || metadataAfter.Title != "Crew" {
-				t.Fatal("fixed main migration changed the project or lost its pointer")
-			}
-			if files[root+"/schedules.json"] != timers {
-				t.Fatal("fixed main migration retargeted a schedule")
-			}
+	// Crew is the only current project profile; Code is no longer a project.
+	const profileID = "work"
+	store, files := memoryProductConversationStore()
+	ctx := context.Background()
+	root := "_users/u/Chats/Work/projects/crew"
+	profile := routeTestProfile(profileID, true, "")
+	binding := productConversationBinding{ConversationKey: "crew", ResourceID: "crew", WorkspacePath: root, ManifestPath: root + "/product.json", ProjectMainAddress: true}
+	metadata, _ := json.Marshal(productProjectManifest{ID: "crew", Product: profileID, Title: "Crew", SessionID: "original-session"})
+	// PLAT-746: timers live beside the product manifest. Keep their
+	// receiving chat identities untouched during the main-chat move.
+	timers := `{"schedules":[{"id":"scheduled-review","project":{"kind":"crew","id":"crew"},"when":{"cron":"0 9 * * *","timezone":"UTC"},"action":{"type":"message","tab":"crew:chat:reviewer"},"input":{"messages":["Review"]},"run_as":"u","enabled":true}]}`
+	files[root+"/schedules.json"] = timers
+	files[binding.ManifestPath] = string(metadata)
+	legacy, review := profileID+"/crew", profileID+"/crew:chat:reviewer"
+	doc := productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{
+		legacy: {ProfileID: profileID, ConversationKey: "crew", ConversationID: "original-conversation", SessionID: "original-session", ResourceID: "crew", WorkspacePath: root, ModelID: "original-runtime"},
+		review: {ProfileID: profileID, ConversationKey: "crew:chat:reviewer", ConversationID: "review-conversation", SessionID: "review-session", ResourceID: "crew", WorkspacePath: root, ModelID: "review-runtime"},
+	}, Agents: map[string]ProductAgentIdentity{legacy: {Name: "Lead", Engine: "codex-cli", ModelID: "own-original"}, review: {Name: "Reviewer", Purpose: "Review", Position: 3, Engine: "muse-cli", ModelID: "own-review"}}, Previous: map[string][]ProductConversationRecord{legacy: {{ConversationKey: "crew", SessionID: "prior-original"}}}}
+	if err := store.writeDocument(ctx, productConversationRegistryPath("u"), doc); err != nil {
+		t.Fatal(err)
+	}
+	before := files[productConversationRegistryPath("u")]
+	resolved, err := store.resolveProjectMainAddress(ctx, "u", profile, binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	physical := originalMainChatKey("crew", "original-conversation")
+	if resolved.ConversationKey != physical || files[productConversationRegistryPath("u")+".before-chat-ids.json"] != before {
+		t.Fatal("legacy migration lost its stable ID or registry backup")
+	}
+	migrated := files[productConversationRegistryPath("u")]
+	var metadataAfter productProjectManifest
+	if err := json.Unmarshal([]byte(files[binding.ManifestPath]), &metadataAfter); err != nil {
+		t.Fatal(err)
+	}
+	if metadataAfter.MainChatKey != physical || metadataAfter.SessionID != "original-session" || metadataAfter.Title != "Crew" {
+		t.Fatal("fixed main migration changed the project or lost its pointer")
+	}
+	if files[root+"/schedules.json"] != timers {
+		t.Fatal("fixed main migration retargeted a schedule")
+	}
 
-			current, err := store.resolveProjectMainAddress(ctx, "u", profile, binding)
-			if err != nil || current.ConversationKey != physical {
-				t.Fatalf("fixed main address changed: %+v %v", current, err)
-			}
-			if files[productConversationRegistryPath("u")] != migrated || files[productConversationRegistryPath("u")+".before-chat-ids.json"] != before {
-				t.Fatal("resolving fixed main rewrote chat data or the backup")
-			}
-			saved, err := store.loadDocument(ctx, productConversationRegistryPath("u"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, legacyLeft := saved.Entries[legacy]; legacyLeft {
-				t.Fatal("root address still owns chat contents")
-			}
-			main := saved.Entries[profileID+"/"+physical]
-			if main.SessionID != "original-session" || main.ConversationID != "original-conversation" || main.ModelID != "original-runtime" || saved.Agents[profileID+"/"+physical].Name != "Lead" {
-				t.Fatal("fixed main lost its original session, conversation, model or identity")
-			}
-			history := saved.Previous[profileID+"/"+physical]
-			if saved.Agents[review].Name != "Reviewer" || saved.Agents[review].ModelID != "own-review" || saved.Agents[review].Position != 3 || len(history) != 1 || history[0].SessionID != "prior-original" {
-				t.Fatal("fixed main migration changed named callers or models/history")
-			}
-		})
+	current, err := store.resolveProjectMainAddress(ctx, "u", profile, binding)
+	if err != nil || current.ConversationKey != physical {
+		t.Fatalf("fixed main address changed: %+v %v", current, err)
+	}
+	if files[productConversationRegistryPath("u")] != migrated || files[productConversationRegistryPath("u")+".before-chat-ids.json"] != before {
+		t.Fatal("resolving fixed main rewrote chat data or the backup")
+	}
+	saved, err := store.loadDocument(ctx, productConversationRegistryPath("u"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, legacyLeft := saved.Entries[legacy]; legacyLeft {
+		t.Fatal("root address still owns chat contents")
+	}
+	main := saved.Entries[profileID+"/"+physical]
+	if main.SessionID != "original-session" || main.ConversationID != "original-conversation" || main.ModelID != "original-runtime" || saved.Agents[profileID+"/"+physical].Name != "Lead" {
+		t.Fatal("fixed main lost its original session, conversation, model or identity")
+	}
+	history := saved.Previous[profileID+"/"+physical]
+	if saved.Agents[review].Name != "Reviewer" || saved.Agents[review].ModelID != "own-review" || saved.Agents[review].Position != 3 || len(history) != 1 || history[0].SessionID != "prior-original" {
+		t.Fatal("fixed main migration changed named callers or models/history")
 	}
 }
 
