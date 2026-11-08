@@ -174,14 +174,10 @@ func TestLazyCrewListingsLookAheadAndSearchUnloadedFiles(t *testing.T) {
 			t.Fatalf("returned grandchildren: %s", path)
 		}
 	}
-	for _, suffix := range []string{"escape", ".hidden"} {
+	for _, suffix := range []string{"escape", ".agentworks", ".hidden"} {
 		if _, exists := nodes[root+"/"+suffix]; exists {
 			t.Fatalf("disclosed excluded entry %s", suffix)
 		}
-	}
-	// The Crew's own .agentworks folder is listed even with dot entries hidden (owner, 8 Nov).
-	if _, exists := nodes[root+"/.agentworks"]; !exists {
-		t.Fatal(".agentworks should be visible in the Files tree")
 	}
 	for _, suffix := range []string{"empty", "blocked-only"} {
 		hint := nodes[root+"/"+suffix].HasChildren
@@ -298,5 +294,37 @@ func TestCrewWorkflowListingCombinesAuthoredFilesAndPrivateRecords(t *testing.T)
 	}
 	if _, err := os.Stat(filepath.Join(docs, binding.Root)); !os.IsNotExist(err) {
 		t.Fatal("old workflow folder recreated")
+	}
+}
+
+// A Crew's own .agentworks folder (its workflows and code) is listed at the top of the Files tree even with other dot
+// entries hidden (owner, 8 Nov: ".agentworks/ folder should be visible by default").
+func TestFilesTreeListsTheCrewAgentworksFolder(t *testing.T) {
+	docs, _ := setupLocalCrewDocuments(t)
+	plain := filepath.Join(docs, "Crew", "plain")
+	for _, dir := range []string{".agentworks", ".hidden", "code"} {
+		if err := os.MkdirAll(filepath.Join(plain, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	router := setupRouter(docs)
+	recorder := httptest.NewRecorder()
+	params := url.Values{"folder": {"Crew/plain"}, "max_depth": {"0"}, "view_root": {"Crew/plain"}, "hide_dotfiles": {"true"}}
+	router.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/documents?"+params.Encode(), nil))
+	var response models.APIResponse[[]models.Document]
+	if recorder.Code != 200 || json.Unmarshal(recorder.Body.Bytes(), &response) != nil || !response.Success {
+		t.Fatal(recorder.Body.String())
+	}
+	listed := map[string]bool{}
+	var collect func([]models.Document)
+	collect = func(items []models.Document) {
+		for _, item := range items {
+			listed[item.FilePath] = true
+			collect(item.Children)
+		}
+	}
+	collect(response.Data)
+	if !listed["Crew/plain/.agentworks"] || !listed["Crew/plain/code"] || listed["Crew/plain/.hidden"] {
+		t.Fatalf("listed %v, want .agentworks and code but not .hidden", listed)
 	}
 }

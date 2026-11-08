@@ -342,6 +342,42 @@ func crewPanelName(root, workspace string) string {
 	return path.Base(root)
 }
 
+// crewPanelAutomationLine is one kind's summary line in the menu: how many are on, how many paused, whether one is
+// running now, and when the next scheduled run is ("2 on · 1 paused · next 9 Nov 09:00 IST").
+func crewPanelAutomationLine(rows []crewPanelRow) string {
+	on, paused, running := 0, 0, 0
+	var next *crewPanelRow
+	now := time.Now()
+	for i := range rows {
+		row := &rows[i]
+		if row.Detail == "Paused" || row.Detail == "Completed" {
+			paused++
+		} else {
+			on++
+		}
+		if row.Detail == "Running now" {
+			running++
+		}
+		if row.nextRun.After(now) && (next == nil || row.nextRun.Before(next.nextRun)) {
+			next = row
+		}
+	}
+	parts := []string{}
+	if on > 0 {
+		parts = append(parts, fmt.Sprintf("%d on", on))
+	}
+	if paused > 0 {
+		parts = append(parts, fmt.Sprintf("%d paused", paused))
+	}
+	if running > 0 {
+		parts = append(parts, "running now")
+	}
+	if next != nil {
+		parts = append(parts, "next "+strings.TrimPrefix(next.Detail, "Next · "))
+	}
+	return strings.Join(parts, " · ")
+}
+
 func crewPanelDetails(sections []crewPanelSection) map[string]string {
 	details := map[string]string{}
 	groups := map[string][]crewPanelRow{}
@@ -355,9 +391,9 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 		}
 	}
 	for destination, rows := range groups {
-		// The left menu's Automations group lists one row per kind (Schedules, Watchers, Webhooks) with how many.
+		// The left menu's Automations group lists one row per kind (Schedules, Watchers, Webhooks) with a plain summary.
 		if strings.HasPrefix(destination, "schedules:") {
-			details[destination] = fmt.Sprint(len(rows))
+			details[destination] = crewPanelAutomationLine(rows)
 			continue
 		}
 		if !strings.HasPrefix(destination, "mcp:") {
@@ -385,6 +421,17 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 			}
 		}
 		details[destination] = label
+	}
+	// A kind whose list loaded and is empty says so, instead of showing nothing.
+	for _, kind := range []struct{ section, destination string }{{"schedules", "schedules:schedules"}, {"watchers", "schedules:conditions"}, {"webhooks", "schedules:triggers"}} {
+		if _, has := details[kind.destination]; has {
+			continue
+		}
+		for _, section := range sections {
+			if section.ID == kind.section && section.Error == "" {
+				details[kind.destination] = "None yet"
+			}
+		}
 	}
 	if _, ok := details["mcp:connected"]; !ok {
 		for _, section := range sections {
