@@ -18,6 +18,38 @@ type savedCrewScriptFixture struct {
 	directWorkspace string
 }
 
+// PLAT-746-482: zero was silently mapped to one hour, not an unlimited run.
+func TestCrewScriptTimeoutRejectsUnboundedDefinitions(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  int
+	}{
+		{"", 3600}, {"1", 1}, {"7200", 7200}, {"21600", 21600},
+		{"0", 0}, {"-1", 0}, {"21601", 0}, {"1.5", 0}, {`"7200"`, 0},
+	} {
+		t.Run("timeout_"+tc.value, func(t *testing.T) {
+			raw := `{"id":"report","name":"Report"`
+			if tc.value != "" {
+				raw += `,"timeout_seconds":` + tc.value
+			}
+			definition, err := ReadCrewScriptDefinition(t.Context(), "code/report", func(context.Context, string) (string, error) { return raw + "}", nil })
+			if tc.want == 0 {
+				if err == nil || !strings.Contains(err.Error(), "timeout_seconds") {
+					t.Fatalf("invalid timeout admitted or wrong refusal: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := definition.executionTimeoutSeconds()
+			if err != nil || got != tc.want {
+				t.Fatalf("timeout=%d want=%d err=%v", got, tc.want, err)
+			}
+		})
+	}
+}
+
 func (r *savedCrewScriptFixture) ResolveCrewScript(_ context.Context, workspace string, id string) (CrewScriptConfiguration, error) {
 	if id == "" && workspace != r.directWorkspace {
 		return CrewScriptConfiguration{}, nil

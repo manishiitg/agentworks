@@ -53,6 +53,7 @@ source-editing, account and file grants.
 - `inputs` are typed (`string`, `integer`, `number`, `boolean`) with an optional default in `value`; add `"required": true` when there is no sensible default.
 - `input_presets` are optional named sets of values, for example one per market. A run picks one preset or passes its own values.
 - `outputs` names the files the run must leave in its run folder.
+- Optional `timeout_seconds` limits the whole script, including its agent and script calls. The default is 3600 (one hour); choose an integer from 1 to 21600 (six hours). Stop can still end it sooner.
 - Declare needed Vault names in `"secrets": ["API_KEY"]`. The existing selected/lent Vault account supplies them; a missing name stops the run before any step. `from agentworks import secret`, then `secret("API_KEY")`, reads its existing `SECRET_API_KEY` environment value. An undeclared name is refused. Never put values in inputs, files, helper arguments or logs.
 
 ## main.py

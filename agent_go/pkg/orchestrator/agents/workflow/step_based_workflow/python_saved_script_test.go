@@ -54,7 +54,7 @@ func TestPythonSavedScriptsKeepRunOutputsAndRejectRecursiveCalls(t *testing.T) {
 	c.SetWorkspaceEnvRef(map[string]string{"MCP_API_TOKEN": "saved-script-fixture-token"})
 	c.variableValues = map[string]string{"parent_only": "must not become a child's input"}
 	scripts := pythonSavedScripts{}
-	for _, id := range []string{"A", "B", "C", "D", "E", "F", "required", "failing"} {
+	for _, id := range []string{"A", "B", "C", "D", "E", "F", "required", "failing", "timed-out"} {
 		definition := CrewScriptDefinition{ID: id, Name: id, Inputs: []Variable{{Name: "count", Type: "integer", Value: "3"}, {Name: "next", Type: "string"}}, Outputs: []string{"result.json"}}
 		if id == "required" {
 			definition.Inputs = []Variable{{Name: "count", Type: "integer", Required: true}}
@@ -88,6 +88,11 @@ print('saved-script-finished')
 `
 		if id == "failing" {
 			source = "raise RuntimeError('fixture child failure')\n"
+		}
+		if id == "timed-out" {
+			seconds := 1
+			definition.TimeoutSeconds = &seconds
+			source = "import time\nprint('timeout-script-started', flush=True)\ntime.sleep(30)\nraise RuntimeError('timeout did not stop the script')\n"
 		}
 		write("code/"+id+"/main.py", source)
 		raw, _ := json.Marshal(definition)
@@ -176,6 +181,17 @@ print('saved-script-finished')
 	}
 	if reply := call("started-failure", "failing", map[string]interface{}{}, false); reply.OK || !strings.Contains(reply.Error, "fixture child failure") || reply.Value == nil || !strings.Contains(reply.Text, "did not complete") {
 		t.Fatalf("launched failure lost honest receipt: %+v", reply)
+	}
+	// PLAT-746-482: enforce the declared limit through the actual Python/shell
+	// path, not only a captured timeout parameter or a simulated timeout result.
+	timeoutStart := time.Now()
+	if reply := call("whole-script-timeout", "timed-out", map[string]interface{}{}, false); reply.OK || !strings.Contains(reply.Error, "1-second limit") {
+		t.Fatalf("saved script ignored its whole-process limit: %+v", reply)
+	} else if log, err := os.ReadFile(reply.LogFile); err != nil || !strings.Contains(string(log), "timeout-script-started") || strings.Contains(string(log), "timeout did not stop") {
+		t.Fatalf("timeout lost actual execution evidence: %s %v", log, err)
+	}
+	if time.Since(timeoutStart) > 15*time.Second {
+		t.Fatal("declared one-second timeout did not bound the running Python process")
 	}
 	if reply := call("self", "A", map[string]interface{}{}, false); reply.OK || !strings.Contains(reply.Error, "A → A") {
 		t.Fatalf("self recursion: %+v", reply)
