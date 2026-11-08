@@ -46,7 +46,7 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'relays', 'knowledgebase', 'mcp-gateway'], admin = true, seed?: () => void) {
+async function renderNavigation(query: string, allowed = ['agentworks', 'work', 'knowledgebase', 'mcp-gateway'], admin = true, seed?: () => void) {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: allowed, gatewayUrl: 'http://localhost:99999' } as never
   useAuthStore.setState({ user: { id: 'u1', username: 'u1', is_admin: admin, allowed_products: allowed } as never })
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
@@ -70,11 +70,9 @@ it('defaults to running workflows and Crews before idle work, with browse and na
       crew: { tabId: 'crew', name: 'Crew', createdAt: 2, isSyntheticTurn: true, metadata: { agentProfileId: 'work', agentProfileIdentityName: 'Running Crew' } },
     } as never, activeSessionsCache: [
       { session_id: 'workflow-run', agent_mode: 'workflow', status: 'running', preset_query_id: 'workflow' },
-      { session_id: 'relay-run', agent_mode: 'workflow', status: 'running', preset_query_id: 'relay' },
     ] as never })
     useGlobalPresetStore.setState({ workflowPresets: [
       { id: 'workflow', label: 'Running workflow', selectedFolder: { filepath: 'Workflow/example' } },
-      { id: 'relay', label: 'Running Relay', workflowKind: 'relay', selectedFolder: { filepath: 'Workflow/relay' } },
     ] as never })
   })
   const rows = [...host.querySelectorAll('[data-navigation-id]')]
@@ -86,7 +84,6 @@ it('defaults to running workflows and Crews before idle work, with browse and na
   expect(rows[3].textContent).toContain('Idle current')
   expect(rows[4].getAttribute('data-navigation-id')).toBe('browse:active')
   expect(host.querySelector('[data-navigation-id="browse:workflows"]')).not.toBeNull()
-  expect(host.querySelector('[data-navigation-id="browse:relays"]')).toBeNull()
   expect(host.querySelector('[data-navigation-id="menu:providers"]')).not.toBeNull()
   expect(host.querySelector('[aria-label="Quick navigation shortcuts"]')?.textContent).not.toContain('@')
 })
@@ -351,8 +348,8 @@ it('retains a Crew creation request through lazy mounting, opens the real form o
 
 it('hides creation for unavailable products and respects the per-product create gate at activation time', async () => {
   // Each product has its own create permission (PLAT-767): this account may create Crew projects only.
-  const { host } = await renderNavigation('@create ', ['agentworks', 'relays', 'work'], false, () => {
-    useAuthStore.setState({ isMultiUserMode: true, user: { is_admin: false, can_create: false, can_create_in: { work: true }, can_write_workflows: true, allowed_products: ['agentworks', 'relays', 'work'] } as never })
+  const { host } = await renderNavigation('@create ', ['agentworks', 'work'], false, () => {
+    useAuthStore.setState({ isMultiUserMode: true, user: { is_admin: false, can_create: false, can_create_in: { work: true }, can_write_workflows: true, allowed_products: ['agentworks', 'work'] } as never })
   })
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['create:work'])
   const crew = quickNavigationItems(useAuthStore.getState().user, 'work').find(item => item.id === 'create:work')!
@@ -364,7 +361,7 @@ it('hides creation for unavailable products and respects the per-product create 
 })
 
 
-const localProducts = ['agentworks', 'work', 'relays', 'knowledgebase', 'mcp-gateway']
+const localProducts = ['agentworks', 'work', 'knowledgebase', 'mcp-gateway']
 
 it.each([false, true])('filters Ctrl+K products for local server-product opt-in=%s', async optIn => {
   const { host } = await renderNavigation('@products ', localProducts, true, () => {
@@ -497,7 +494,7 @@ it('keeps Home during creation instead of navigating to a remembered project', a
     for (const surface of ['work'] as const) {
       window.history.replaceState({}, '', '/home')
       useProductSurfaceStore.setState({ selectedWorkProjectId: 'existing-crew' })
-      useGlobalPresetStore.setState({ workflowPresets: [{ id: 'existing-goal', label: 'Existing goal', workflowKind: 'workflow' }] as never, activePresetIds: { ...useGlobalPresetStore.getState().activePresetIds, workflow: 'existing-goal' } })
+      useGlobalPresetStore.setState({ workflowPresets: [{ id: 'existing-goal', label: 'Existing goal' }] as never, activePresetIds: { ...useGlobalPresetStore.getState().activePresetIds, workflow: 'existing-goal' } })
       const creation = quickNavigationItems(useAuthStore.getState().user, useProductSurfaceStore.getState().productSurface).find(item => item.id === `create:${surface}`)!
       await act(async () => {
         expect(openQuickNavigation(creation)).toBe(true)
