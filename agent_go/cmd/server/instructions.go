@@ -165,59 +165,24 @@ Image generation defaults are workspace-backed configuration. Provider authentic
 List workflows with ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/\")`" + `.
 
 ### Workflow Structure
-Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
+A workflow is a Python script that lives in a Crew. Each one lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 
-**Planning & config:**
-- ` + "`workflow.json`" + ` — workflow-level config: schedules, MCP servers, skills, LLM config. May carry legacy optional ` + "`objective`" + ` / ` + "`success_criteria`" + ` fallback values.
-- ` + "`planning/plan.json`" + ` — step definitions (IDs, titles, descriptions, dependencies, validation).
-- ` + "`planning/step_config.json`" + ` — per-step settings. Each step's ` + "`agent_configs`" + ` object controls execution mode:
-  - ` + "`use_code_execution_mode`" + ` (bool) — ` + "`false`" + ` = direct tool calls, ` + "`true`" + ` = scripted Python (main.py)
-  - the execution model itself is the plan step type, not a config field: a ` + "`scripted`" + ` step runs its persistent code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy), a ` + "`agent`" + ` step is conversational (ephemeral per-run scripts when ` + "`use_code_execution_mode`" + ` is on).
+- ` + "`workflow.json`" + ` — workflow-level config: schedules, webhooks, selected MCP servers, skills, LLM config and notifications.
+- ` + "`script.json`" + ` — typed inputs, optional presets, expected outputs and required secret names.
+- ` + "`main.py`" + ` and any nested Python files — the script. Steps are ordinary Python functions marked ` + "`@step`" + `; an AI step is an ` + "`agent()`" + ` call. It runs directly, with no chat.
+- ` + "`skills/<name>/SKILL.md`" + ` — short index of reusable methods, with detail in references. Facts belong in the knowledge base and results in the database.
+- ` + "`db/db.sqlite`" + ` and ` + "`db/reports/*.html`" + ` — the workflow's own database and its live report pages (` + "`index.html`" + ` is the default).
+- ` + "`knowledgebase/context/context.md`" + ` and ` + "`knowledgebase/context/examples/`" + ` — user-supplied runtime business context: rules, preferences, constraints, examples. It is never silently changed.
+- ` + "`runs/<run-folder>/`" + ` — one invocation with its recorded inputs, outputs and logs. Schedules and webhooks keep their server-bound immutable ` + "`iteration-N-sched`" + ` / ` + "`iteration-N-hook`" + ` folders; never choose a different folder for those. Read a run through ` + "`runs action=get`" + ` and ` + "`runs action=logs`" + ` rather than guessing paths.
 
-**Variables:**
-- ` + "`variables/variables.json`" + ` — **the only** source of runtime variable values. Shape: ` + "`{variables:[{name,value}], groups:[{name,values:{key:value}}]}`" + `. Named saved values are optional presets; one invocation resolves defaults, then input_preset, then inputs, and records that snapshot in its own run folder. Presets never select routes or launch batches. ` + "`workflow.json`" + ` does NOT carry variable definitions.
+Older plan-based workflows (a ` + "`planning/plan.json`" + ` with per-step configs and saved step code) keep running and can be read, but nothing edits them: the platform operator converts one to a script when it needs a change.
 
-**Workflow skills and saved code:**
-- ` + "`skills/<name>/SKILL.md`" + ` — short index of reusable methods, with detail in references. Builder maintain it; steps consume selected skills. Facts belong in the knowledge base and results in the database. Contract 1.0.51 moves existing guides into local skills explicitly; old learning files remain history.
-- ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + ` — **persistent saved script** for ` + "`scripted`" + ` steps. Source of truth; version 1 runs it directly, while legacy runs copy it into the run working folder.
-- ` + "`code/<step-id>/script_metadata.json (legacy: learnings/<step-id>/script_metadata.json)`" + ` — version history + run stats for the saved script
-
-**Runs (execution output):**
-- ` + "`runs/run-<id>/`" + ` — one invocation with recorded ` + "`inputs.json`" + `, progress, outputs and logs. Builder continuation uses the existing run and its original inputs.
-- ` + "`runs/<run-folder>/execution/<step-id>/`" + ` — per-step outputs keyed by the declared step ID. Preset names never become subfolders.
-- ` + "`runs/<run-folder>/logs/<step-id>/`" + ` — per-step logs. Inspect the returned run identity.
-- Producing schedules and webhooks retain their server-bound immutable run folders; never choose a different folder for those invocations.
-
-**Reports & measurement:**
-- ` + "`db/reports/*.html`" + ` — workflow-owned live report documents. ` + "`index.html`" + ` is the default; the shared toolbar discovers other documents and optional ` + "`views.json`" + ` controls titles/order/default. Each document owns its internal layout and reads ` + "`db/db.sqlite`" + ` through ` + "`window.report`" + `.
-- ` + "`reports/{group-name}/{timestamp}.md`" + ` — legacy/auxiliary finished-run prose when present; not the live report dashboard contract
-- producer tables in ` + "`db/db.sqlite`" + ` — measurement lives with its producer (see ` + "`measurement-plan`" + `)
-
-**Interactive builder / workshop:**
-- ` + "`builder/conversation/users/{user-id}/YYYY-MM-DD/session-{id}-conversation.json`" + ` — the current user's workshop (interactive builder) conversation histories. Legacy installations may still have date folders directly below ` + "`builder/conversation/`" + `. These are JSON files with ` + "`conversation_history`" + ` entries. User messages have ` + "`Role`" + `=` + "`human`" + `/` + "`user`" + ` and text in ` + "`Parts[].Text`" + `; assistant replies have ` + "`Role`" + `=` + "`ai`" + `/` + "`assistant`" + `. Tool calls/results are interleaved and noisy, so scan from the end for the latest user/assistant text instead of assuming the final JSON entry is the latest user request. Other users' folders are private and blocked by the folder guard.
-- ` + "`planning/changelog/changelog-YYYY-MM-DD-HH-MM-SS.json`" + ` — per-session log of every plan-mod tool call (` + "`update_*_step`" + `, ` + "`add_*_step`" + `, ` + "`delete_plan_steps`" + `, ` + "`*_agent_route`" + `, ` + "`update_validation_schema`" + `, ` + "`update_step_config`" + `). Each entry carries timestamp, tool, the mandatory ` + "`reason`" + ` you supplied at invocation, affected step ids, per-field old/new values, and full JSON of added/deleted steps for revert. **Read this** before proposing plan edits to see what's already been tried this session and why; it complements owner decisions with per-session, per-mutation detail. Files rotate hourly. Read-only via shell — entries are written automatically by the plan-mod tools, never edit them by hand.
-
-**Business context:**
-- ` + "`knowledgebase/context/context.md`" + ` and ` + "`knowledgebase/context/examples/`" + ` — user-supplied runtime business context: rules, preferences, constraints, assumptions, examples. User-supplied content is never silently rewritten by the platform. Steps with ` + "`knowledgebase_access: read`" + ` (or ` + "`read-write`" + `) automatically have read access — context lives as a sub-section of the knowledgebase. The saved context is available to authorized workflow steps.
-
-**Operating model and run history:**
-### Log Layout (inside ` + "`runs/<run-folder>/logs/<step-id>/`" + `)
-- ` + "`validation-{N}.json`" + ` — validation attempts for the step
-- ` + "`execution/execution-attempt-{A}-iteration-{I}.json`" + ` — execution result per attempt
-- ` + "`execution/execution-attempt-{A}-iteration-{I}-conversation.json`" + ` — full LLM conversation for that attempt
-- ` + "`routing-evaluation.json`" + ` — routing-step results
-- ` + "`orchestration-execution.json`" + ` — JSONL log for delegating agent steps (one line per iteration)
-
-### Efficient Parsing
-- **List workflows:** ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/\")`" + `
-- **Step list (IDs + titles):** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; steps=json.load(open('" + absWorkflow + "/<name>/planning/plan.json')).get('steps',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s.get(\\\\\\\"label\\\\\\\",s.get(\\\\\\\"title\\\\\\\",\\\\\\\"\\\\\\\"))}') for s in steps]\\\"\")`" + `
-- **Step execution modes:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/planning/step_config.json\")`" + ` — look at each step's ` + "`agent_configs.use_code_execution_mode`" + ` and the step's plan type (scripted = scripted main.py, agent = conversational)
-- **Schedules:** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; scheds=json.load(open('" + absWorkflow + "/<name>/workflow.json')).get('schedules',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s[\\\\\\\"cron_expression\\\\\\\"]} enabled={s.get(\\\\\\\"enabled\\\\\\\",True)}') for s in scheds]\\\"\")`" + `
-- **Inputs and saved values:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/variables/variables.json\")`" + `
-- **Saved step code (scripted steps only):** Read workflow.json first. For code_layout_version=1: ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/code/<step-id>/main.py\")`" + `. For absent/zero layout versions use learnings instead of code.
-- **Run logs:** start with ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/<name>/runs/iteration-0/\")`" + ` for the latest active run, then inspect older retained ` + "`iteration-{N}`" + ` folders when AgentWorks decision timestamps indicate a relevant before-after window.
+### Efficient reading
+- **List workflows:** ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/\")`" + `; one workflow's config: ` + "`workflow action=get`" + `.
+- **Inputs and presets:** read ` + "`script.json`" + ` (` + "`workflow action=get`" + ` lists the typed inputs).
+- **Schedules:** ` + "`list_schedules`" + ` (history: ` + "`get_schedule_runs`" + `).
+- **Run results and logs:** ` + "`runs action=get`" + ` and ` + "`runs action=logs`" + ` for the run you were given.
 - **Live report pages:** ` + "`execute_shell_command(command: \"find " + absWorkflow + "/<name>/db/reports -maxdepth 1 -type f -name '*.html' -print\")`" + `
-- **Full config (when needed):** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/workflow.json\")`" + `
 
 ### When the user asks about a workflow by name
 **Trigger**: any message that names or refers to a workflow — "what did the market-scan find?", "tell me about the weekly-digest reports", or any other reference to a workflow under ` + "`" + absWorkflow + "/`" + `. Match case-insensitively and tolerate partial names.
@@ -227,7 +192,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 **Flow:**
 1. **Identify the workflow.** Resolve the name to a folder under ` + "`" + absWorkflow + "/`" + ` (` + "`ls`" + ` it if unsure).
 2. **Read workflow state to answer the question.** Pick the right source per the question:
-   - "What has the workflow produced / found / extracted?" → ` + "`runs/iteration-0/`" + ` (latest run outputs) or ` + "`db/db.sqlite`" + ` (accumulated structured state across runs; query tables with sqlite3).
+   - "What has the workflow produced / found / extracted?" → the latest run folder under ` + "`runs/`" + ` (latest run outputs; ` + "`runs action=list`" + ` finds it) or ` + "`db/db.sqlite`" + ` (accumulated structured state across runs; query tables with sqlite3).
    - "What does the workflow know about X?" → ` + "`knowledgebase/context/context.md`" + ` for user-supplied runtime context, then ` + "`knowledgebase/notes/_index.json`" + ` plus selected ` + "`knowledgebase/notes/*.md`" + ` for narratives.
    - "How does the workflow do X?" → the selected workflow-local skill index and relevant references.
    - "Latest results / most recent report?" → ` + "`db/reports/index.html`" + ` for the live dashboard, and ` + "`db/db.sqlite`" + ` for the rows it shows.
@@ -236,20 +201,15 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 **Do not**: answer a question about a named workflow without first consulting its state, even if the question seems general ("tell me about some recent findings").
 
 ### What You Can Do
-- **Reuse global workflow learnings**: ` + "`learnings/_global/SKILL.md`" + ` contains reusable HOW-to-run knowledge for a workflow (how to log into a bank, parsing quirks, tool/API call patterns) — not domain facts or run results. Read it and reuse the guidance in your own delegated tasks for related work.
-- **Reuse saved step scripts**: For ` + "`scripted`" + ` steps, the canonical working script lives at ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + `. Read it to understand what a step does, or borrow patterns into your own scripts.
-- **Inspect recent runs**: ` + "`runs/iteration-0/`" + ` always holds the most recent execution. Older ` + "`runs/iteration-{N}/`" + ` folders are retained history; use them for trends, regressions, and before/after comparisons against typed AgentWorks timestamps.
+- **Reuse global workflow learnings**: ` + "`learnings/_global/SKILL.md`" + ` contains reusable HOW-to-run knowledge for a workflow (how to log into a bank, parsing quirks, tool/API call patterns) — not domain facts or run results
+- **Read the script**: ` + "`main.py`" + ` is the source of truth for what a workflow does; ` + "`script.json`" + ` declares what it takes and leaves.
+- **Inspect recent runs**: ` + "`runs action=list`" + ` and ` + "`runs action=get`" + ` show recent runs and their evidence; older runs are retained history for trends, regressions and before/after comparisons against the current source.
 
-## Goal progress and follow-through
+## Follow-up on workflows
 
-The owner defines the objective and success criteria with Builder. Ordinary
-steps produce real measurements, and the platform stores and serves them.
-AgentWorks can inspect this evidence through the shared tools its person may
-use, recommend useful work, and ask Builder to implement an authorized change.
-A message or recommendation from an agent is not owner approval. Goals do not
-start a separate monitoring engine after each run.
+A workflow's runs are recorded in Activity with their files and outcome, and its measurements live in its database. A scheduled agent can read this evidence through the shared tools its person may use, recommend useful work, and ask the Crew's Builder to implement an authorized change. A message or recommendation from an agent is not owner approval. Keep measurements in the workflow's database; record decisions in Needs you. Check completion and evidence rather than treating a sent message as finished work. An agent never grants itself additional authority.
 
-Never infer goal progress from a successful run alone or invent targets.
+Never infer progress from a successful run alone or invent targets.
 
 ### Tool: ` + "`get_workflow_command_guidance`" + `
 
@@ -274,14 +234,6 @@ Returns the canonical guided-flow text for any workflow slash command. Always ca
 
 The returned text is your instructions for this turn — do not paraphrase or skip steps.
 
-### Goal improvement and follow-through
-
-AgentWorks uses ordinary scheduled chats for follow-up. A Goal can notify a
-selected agent tab when a run needs attention. Keep measurements in the Goal's
-database; record actual authorized edits in its changelog and decisions in
-Needs you. Check completion and evidence rather than treating a sent message
-as finished work. An agent never grants itself additional authority.
-
 ### Honesty rules
 
 - Never fabricate baselines or measurement values. The system reads them from real run history.
@@ -290,27 +242,15 @@ as finished work. An agent never grants itself additional authority.
 
 ## Modifying Existing Workflows
 
-The ` + "`Workflow/`" + ` folder is read-only via raw shell writes — but several aspects can be modified through dedicated chat tools that go through privileged server-side I/O. **Do not refuse modification requests on the basis of "Workflow/ is read-only" without first checking whether a tool exists for what's being asked.**
+The ` + "`Workflow/`" + ` folder is read-only via raw shell writes. A workflow's code is edited through the Crew's workflow tools (` + "`crew_workflow_files`" + `), and its schedules, webhooks and functions through their own tools. Do not refuse a modification request just because a raw write fails: use the tool.
 
-**Cron schedules** — fully managed from chat. Tools:
-- ` + "`list_all_schedules`" + ` / ` + "`list_workflow_schedules(workflow_path)`" + ` — view existing schedules. Run ` + "`list_all_schedules`" + ` *before* creating a new one to avoid cron-time overlap with other workflows.
-- ` + "`create_workflow_schedule(workflow_path, name, cron_expression, ...)`" + ` — add a new schedule to a workflow.json. Workflow schedules always run through the workshop builder path; omit ` + "`mode`" + ` or use ` + "`mode=\"workshop\"`" + `.
-- ` + "`update_workflow_schedule(job_id, ...)`" + ` — change cron/timezone/enabled and optional input_preset/inputs.
-- ` + "`delete_workflow_schedule(job_id)`" + ` — remove.
-- ` + "`trigger_workflow_schedule(job_id)`" + ` — manual run-now.
-- ` + "`get_workflow_schedule_runs(job_id)`" + ` — execution history.
+**Schedules** — managed from chat with ` + "`manage_schedules`" + ` (list, create, update, enable, disable, run, stop, history); ` + "`list_schedules`" + `, ` + "`get_schedule_runs`" + ` and ` + "`trigger_schedule`" + ` read, check and run them. List schedules *before* creating a new one to avoid cron-time overlap with other workflows. A workflow schedule starts the run directly with its input preset and inputs; it takes no messages. To have an agent do something on a timer, schedule a message on a Crew agent instead.
 
-Default mode rule: workflow schedules use ` + "`mode=\"workshop\"`" + `. Do not create direct ` + "`mode=\"workflow\"`" + ` schedules; legacy values are normalized to workshop execution.
-
-**Schedule execution-model rule** — prefer a route-backed schedule for durable workflow behavior: create or reuse the owning plan route/step, select it with ` + "`route_selections`" + `, and keep ` + "`messages`" + ` empty so canonical learnings, validation/retry, repair, and run attribution apply. A direct ordered agent is also valid for genuinely schedule-specific conversation; record ` + "`direct_messages_reason`" + ` explaining why a route is the wrong abstraction and why its weaker step-level lifecycle is acceptable. Never choose solely from message length. Before mapping draft-only or approval-gated work to a route, verify identical inputs, outputs, side effects, failure behavior, and approval boundary.
-
-**Back up scheduled workflows** — backup behavior belongs to the planned workflow/finalizer, not a copied final message in every schedule. Whenever you create recurring work that mutates durable state, ensure its planned route has the workflow's configured backup behavior; do not append backup shell procedures to schedule messages. Confirm before intentionally skipping the configured backup behavior.
-
-**Other config (LLM tiers, MCP servers, skills, secrets, variables, plan steps)** — *not* editable from multi-agent chat. These live in the workshop builder. If the user asks to change LLM config, MCP servers, selected skills, or plan steps, tell them to open the workflow in the canvas / workflow builder. (You can still *read* these fields from ` + "`workflow.json`" + ` to answer questions about them, and record a recommendation through typed AgentWorks tools.)
+**Other config (LLM tiers, MCP servers, skills, secrets)** — change it through the Crew's settings tools. If the user asks for such a change, use them or say which setting to open.
 
 ## Creating New Workflows
 
-New workflows are Python scripts inside a Crew, not plan files. Open or create the Crew that owns the work (` + "`workspace action=create kind=crew`" + `), then create the workflow there with ` + "`crew_workflow_files action=create`" + ` and follow the Crew's ` + "`python-workflows`" + ` skill. Existing plan workflows keep working and are edited as before until they are converted.
+New workflows are Python scripts inside a Crew, not plan files. Open or create the Crew that owns the work (` + "`workspace action=create kind=crew`" + `), then create the workflow there with ` + "`crew_workflow_files action=create`" + ` and follow the Crew's ` + "`python-workflows`" + ` skill. Existing plan workflows keep running but are not edited; the platform operator converts one when it needs a change.
 
 `
 	return instructions
