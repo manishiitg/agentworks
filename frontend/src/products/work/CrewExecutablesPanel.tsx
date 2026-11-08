@@ -12,7 +12,7 @@ function failureMessage(error: unknown, fallback: string) {
 }
 
 /** One workflow, with routes. Its existing steps and runs open directly. */
-export function CrewExecutablesPanel({ projectId, chatTabId, kind }: { projectId: string; chatTabId: string; kind: 'workflow' | 'script' }) {
+export function CrewExecutablesPanel({ projectId, chatTabId, kind, onLoaded }: { projectId: string; chatTabId: string; kind: 'workflow' | 'script'; onLoaded?: (found: { workflows: number; scripts: number }) => void }) {
   const [selected, setSelected] = useState<CrewExecutable | null>(null)
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([])
   const [items, setItems] = useState<CrewExecutable[]>([])
@@ -27,7 +27,8 @@ export function CrewExecutablesPanel({ projectId, chatTabId, kind }: { projectId
     setStepScripts(data.step_scripts ?? [])
     setAgents(data.agents)
     setLoaded(true)
-  }, [projectId])
+    onLoaded?.({ workflows: data.executables.filter(item => item.kind === 'workflow').length, scripts: data.executables.filter(item => item.kind === 'script').length + (data.step_scripts?.length ?? 0) })
+  }, [projectId, onLoaded])
   useEffect(() => {
     const controller = new AbortController()
     setItems([]); setStepScripts([]); setSelected(null); setLoaded(false); setError('')

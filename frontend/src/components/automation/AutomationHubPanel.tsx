@@ -1,5 +1,5 @@
 import { cloneElement, isValidElement, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react'
-import { Bot, Braces, CalendarClock, Mail, MessageSquareText, Webhook, Zap, Route, FileCode2 } from 'lucide-react'
+import { Bot, Braces, CalendarClock, Mail, MessageSquareText, Webhook, Zap } from 'lucide-react'
 import api from '../../services/api'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
@@ -18,7 +18,7 @@ const CrewFunctionsView = lazy(() => import('./CrewFunctionsView'))
 const WorkflowFunctionsView = lazy(() => import('../workflow/WorkflowFunctionsView'))
 const ConditionTriggersView = lazy(() => import('./ConditionTriggersView'))
 
-export type AutomationHubSection = 'workflows' | 'scripts' | 'chats' | 'schedules' | 'triggers' | 'functions' | 'bots' | 'conditions' | 'email'
+export type AutomationHubSection = 'chats' | 'schedules' | 'triggers' | 'functions' | 'bots' | 'conditions' | 'email'
 
 type AutomationHubPanelProps = {
   entityType: 'workflow' | 'product'
@@ -27,8 +27,6 @@ type AutomationHubPanelProps = {
   workspacePath: string
   workflowScope?: WorkflowScope
   productTriggerScope?: ProductTriggerScope
-  workflowContent?: ReactNode
-  scriptContent?: ReactNode
   chatContent?: ReactNode
   botContent?: ReactNode
   canManage?: boolean
@@ -39,8 +37,6 @@ type AutomationHubPanelProps = {
 }
 
 const SECTION_DEFS = [
-  { id: 'workflows', label: 'Workflow', icon: Route },
-  { id: 'scripts', label: 'Scripts', icon: FileCode2 },
   { id: 'schedules', label: 'Schedules', icon: CalendarClock },
   { id: 'triggers', label: 'Webhooks', icon: Webhook },
   { id: 'email', label: 'Inbox', icon: Mail },
@@ -83,8 +79,6 @@ export function AutomationHubPanel({
   workspacePath,
   workflowScope,
   productTriggerScope,
-  workflowContent,
-  scriptContent,
   chatContent,
   botContent,
   canManage,
@@ -118,8 +112,6 @@ export function AutomationHubPanel({
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const availableSections = useMemo(() => new Set<AutomationHubSection>([
     ...(incomingEnabled && !isWorkflow && (productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'code') ? ['email' as const] : []),
-    ...(workflowContent ? ['workflows' as const] : []),
-    ...(scriptContent ? ['scripts' as const] : []),
     ...(chatContent ? ['chats' as const] : []),
     ...(!relayMode ? ['schedules' as const] : []),
     ...((isWorkflow || productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'work') ? ['conditions' as const] : []),
@@ -128,7 +120,7 @@ export function AutomationHubPanel({
     // function triggers plus its assistant ask.
     ...(!relayMode && ((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
     ...(!relayMode && botContent ? ['bots' as const] : []),
-  ]), [workflowContent, scriptContent, botContent, chatContent, entityType, productTriggerScope, relayMode, incomingEnabled, isWorkflow])
+  ]), [botContent, chatContent, entityType, productTriggerScope, relayMode, incomingEnabled, isWorkflow])
   const storageKey = sectionStorageKey(entityType, relayMode, productTriggerScope?.profileId)
   const [preferredSection, setPreferredSection] = useState<AutomationHubSection>(() => readRememberedSection(storageKey) ?? initialSection)
   const fallbackSection = availableSections.has(preferredSection) ? preferredSection : relayMode ? 'triggers' : 'schedules'
@@ -195,7 +187,7 @@ export function AutomationHubPanel({
 
       />
 
-      {(workflowContent || scriptContent) && <nav aria-label="Automation sections" className="flex shrink-0 flex-wrap gap-1 border-b px-3 py-2">
+      {entityType === 'product' && productTriggerScope?.profileId === 'work' && <nav aria-label="Automation sections" className="flex shrink-0 flex-wrap gap-1 border-b px-3 py-2">
         {SECTION_DEFS.filter(item => availableSections.has(item.id)).map(item => <button
           key={item.id} aria-current={section === item.id ? 'page' : undefined}
           onClick={() => selectSection(item.id)}
@@ -204,8 +196,6 @@ export function AutomationHubPanel({
       </nav>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>
-        {section === 'workflows' && <div className="h-full overflow-auto">{workflowContent}</div>}
-        {section === 'scripts' && <div className="h-full overflow-auto">{scriptContent}</div>}
         {section === 'chats' && chatContent && (
           <div data-testid="automation-hub-chats" className="flex h-full min-h-0 flex-col">
             {isValidElement(chatContent)
