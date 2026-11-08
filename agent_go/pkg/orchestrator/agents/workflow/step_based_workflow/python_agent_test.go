@@ -373,7 +373,8 @@ for line in sys.stdin:
 	if _, err := os.Stat(filepath.Join(fixtureRoot, "fixture-requests.jsonl")); !os.IsNotExist(err) {
 		t.Fatal("provider launched before database preflight")
 	}
-	handler := c.pythonAutomationHandler(ctx, parent, sourceDir, runRoot)
+	handler, finishSteps := c.pythonAutomationHandler(ctx, parent, sourceDir, runRoot)
+	defer finishSteps(false)
 	rawFirst, firstErr := handler(ctx, map[string]interface{}{"action": "agent", "key": "first", "order": float64(1), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}, "reasoning": "high"}})
 	var first pythonHelperReply
 	if firstErr != nil || json.Unmarshal([]byte(rawFirst), &first) != nil {

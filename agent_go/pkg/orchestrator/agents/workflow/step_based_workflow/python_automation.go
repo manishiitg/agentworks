@@ -84,7 +84,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) writePythonHelperState(ctx context.Co
 // One script launch owns one adapter. Call occurrences, including repeated
 // explicit labels in a loop, are distinct. The saved receipt is only a result
 // cache across an explicit continuation, not a Python execution journal.
-func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent context.Context, step PlanStepInterface, codeDir, outputDir string) func(context.Context, map[string]interface{}) (string, error) {
+func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent context.Context, step PlanStepInterface, codeDir, outputDir string) (func(context.Context, map[string]interface{}) (string, error), func(bool)) {
 	executionID := uuid.NewString()
 	scope := sha256.Sum256([]byte(outputDir))
 	callRoot := filepath.ToSlash(filepath.Join("runs", hcpo.selectedRunFolder, "helpers", hex.EncodeToString(scope[:12])))
@@ -94,6 +94,22 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 	var fingerprintError error
 	var locks sync.Map
 	var activities sync.Map // Only this script invocation may finish its started activities.
+	finishPending := func(success bool) {
+		activities.Range(func(_, pending interface{}) bool {
+			if success {
+				pending.(func(string, error))("finish receipt not received", nil)
+			} else {
+				failure := parent.Err()
+				if failure == nil {
+					failure = errors.New("Python execution ended before this step completed.")
+				}
+				pending.(func(string, error))("Python execution ended before this step completed.", failure)
+			}
+			return true
+		})
+	}
+	stopParent := context.AfterFunc(parent, func() { finishPending(false) })
+	finishInvocation := func(success bool) { stopParent(); finishPending(success) }
 	resume := hcpo.executionOptions != nil && hcpo.executionOptions.AllowRunContinuation && hcpo.executionOptions.ResumeFromStep > 0
 
 	return func(request context.Context, args map[string]interface{}) (string, error) {
@@ -297,7 +313,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 					notifier.OnExecutionStart(WorkshopExecutionStart{ID: id, ParentExecutionID: currentWorkshopParentExecutionID(ctx), Name: title, Kind: "workflow_step", Metadata: metadata})
 				}
 				activities.Store(id, finish)
-				context.AfterFunc(parent, func() { finish("Python execution ended before this step completed.", parent.Err()) })
 				call.Reply.OK, call.Reply.ConversationID = true, id
 			} else if phase == "finish" {
 				execution, _ := arguments["execution_id"].(string)
@@ -395,7 +410,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			call.Reply.LogError = "Helper finished but its result receipt could not be saved: " + err.Error()
 		}
 		return encode(call.Reply)
-	}
+	}, finishInvocation
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) openPythonHelperLog(id string) (*runlog.Log, error) {

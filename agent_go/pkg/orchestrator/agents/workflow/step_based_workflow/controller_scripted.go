@@ -516,7 +516,7 @@ print('[preflight] Python bundle syntax, top-level imports and configuration OK'
 // chat tools. In particular a pinned Run chat has no database tools to lend
 // its group session. Give each invocation its own registry so parallel helpers
 // cannot replace one another's access or leave broader tools on a cached group.
-func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx context.Context, step PlanStepInterface, guard *workspace.FolderGuardConfig, dbAccess string, env map[string]string, codeDir, outputDir string) func() {
+func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx context.Context, step PlanStepInterface, guard *workspace.FolderGuardConfig, dbAccess string, env map[string]string, codeDir, outputDir string) func(...bool) {
 	ctx, finishActivities := context.WithCancel(ctx)
 	sessionID := fmt.Sprintf("script-step-%s-%d", step.GetID(), time.Now().UnixNano())
 	if hcpo.httpSessionID != "" {
@@ -555,7 +555,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 		}
 	}
 	ctx = context.WithValue(ctx, pythonScriptSessionKey{}, sessionID)
-	bridgeTools["python_automation"] = hcpo.pythonAutomationHandler(ctx, step, codeDir, outputDir)
+	helper, finishSteps := hcpo.pythonAutomationHandler(ctx, step, codeDir, outputDir)
+	bridgeTools["python_automation"] = helper
 	allow["python_automation"] = true
 	env["WORKFLOW_RUN_DIR"] = workflowAbsPath(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder)
 	codeexec.InitRegistryForSession(sessionID, bridgeTools, hcpo.GetLogger())
@@ -568,7 +569,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 	registerStepSessionShellEnv(sessionID, env["STEP_OUTPUT_DIR"], env["STEP_EXECUTION_DIR"], env["DB_PATH"], env["RUN_FOLDER"], env)
 	configureWorkshopToolAgentBridgeSession(sessionID)
 	hcpo.GetLogger().Info(fmt.Sprintf("[SCRIPT_BRIDGE] Registered step tools session=%s step=%s db_access=%s tools=%d", sessionID, step.GetID(), dbAccess, len(bridgeTools)))
-	return func() {
+	return func(success ...bool) {
+		finishSteps(len(success) > 0 && success[0])
 		finishActivities()
 		codeexec.CleanupSession(sessionID)
 		common.ClearSessionShellConfig(sessionID)
@@ -700,7 +702,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// leak between concurrently running todo routes.
 	extraEnv = appendScriptedDelegationEnv(ctx, extraEnv)
 	releaseBridge := hcpo.configureScriptBridgeSession(ctx, step, guard, dbAccess, extraEnv, workDirAbsPath, stepExecutionRelPath)
-	defer releaseBridge()
+	defer func() { releaseBridge(execErr == nil && exitCode == 0) }()
 	if len(scriptedParameterDefinitions(step)) > 0 {
 		if _, present := extraEnv[ScriptedParametersEnv]; !present {
 			extraEnv[ScriptedParametersEnv] = "{}"

@@ -125,7 +125,8 @@ print('saved-script-finished')
 	call := func(key, id string, inputs map[string]interface{}, resume bool, redo ...bool) pythonHelperReply {
 		t.Helper()
 		c.SetExecutionOptions(&ExecutionOptions{AllowRunContinuation: resume, ResumeFromStep: 1, CrewResources: &CrewResources{Scripts: scripts}})
-		handler := c.pythonAutomationHandler(ctx, parent, filepath.Join(docs, root, "code/A"), root+"/runs/run-saved/execution/A")
+		handler, finishSteps := c.pythonAutomationHandler(ctx, parent, filepath.Join(docs, root, "code/A"), root+"/runs/run-saved/execution/A")
+		defer finishSteps(false)
 		out, err := handler(ctx, map[string]interface{}{"action": "run_script", "key": key, "order": float64(1), "redo": len(redo) > 0 && redo[0], "arguments": map[string]interface{}{"id": id, "inputs": inputs}})
 		if err != nil {
 			t.Fatal(err)
