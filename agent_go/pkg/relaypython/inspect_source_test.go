@@ -116,14 +116,21 @@ def bill_person(account):
 def send_receipt(account):
     return account
 
+@step("Notify team")
+def notify(account):
+    return send_receipt(account)
+
 def main():
     account = load_account(inputs)
     mode = account["mode"]
     # Corporate accounts
     if mode == "corporate":
         bill_company(account)
+        notify(account)
+    # Personal accounts
     elif mode == "personal":
         bill_person(account)
+        notify(account)
     else:
         send_receipt(account)
     for lead in leads:
@@ -169,8 +176,12 @@ def main():
 		"Choose a path [branch]",
 		"Corporate accounts [case] in Choose a path",
 		"Bill company in Corporate accounts",
-		"mode is personal [case] in Choose a path",
-		"Bill person in mode is personal",
+		"Notify team in Corporate accounts",
+		"Send receipt in Corporate accounts",
+		"Personal accounts [case] in Choose a path",
+		"Bill person in Personal accounts",
+		"Notify team in Personal accounts",
+		"Send receipt in Personal accounts",
 		"Otherwise [case] in Choose a path",
 		"Send receipt in Otherwise",
 		"Repeat for each lead [repeat]",

@@ -255,13 +255,14 @@ def inspect_automation_source(files):
 
         def add(call, module, kind, label, identity, description=None, role=None):
             import hashlib
-            node = dict(id='step-' + hashlib.sha256(identity.encode()).hexdigest()[:20], type=kind,
+            parent = parents[-1] if parents else None
+            # One row per occurrence: the same step reached in two cases gets two ids.
+            node = dict(id='step-' + hashlib.sha256((identity + '|' + (parent or '')).encode()).hexdigest()[:20], type=kind,
                         label=label, call=identity, line=call.lineno)
             if description is not None:
                 node['description'] = description
             if role:
                 node['role'] = role
-            parent = parents[-1] if parents else None
             if parent:
                 node['parent'] = parent
             if any(existing['id'] == node['id'] for existing in graph['nodes']):
