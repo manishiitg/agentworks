@@ -112,9 +112,7 @@ authorized Vault administration. The effective catalog depends on the
 connection's scopes and the caller's live permissions.
 
 Add direct file authoring so the local model can decide an edit and submit it
-without asking a second model to rewrite the file. Existing `builder_chat`
-remains an explicit delegation to the **server's configured Builder model**.
-Likewise, calling run/step/Crew operations invokes the configured service-side
+without asking a second model to rewrite the file. Calling run/step/Crew operations invokes the configured service-side
 execution; adding file writes does not relocate those agents to the laptop.
 
 Provider-native tools on the laptop still operate on laptop resources. Remote

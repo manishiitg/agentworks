@@ -47,7 +47,7 @@ var externalMCPToolNames = []string{externalMCPToolSpec, externalMCPToolSearch, 
 // Remote instructions are short: the two tool descriptions teach the
 // protocol, since hosted clients may not deliver initialize instructions at
 // all (ChatGPT delivers tools only).
-const externalMCPRelayInstructions = " Flows: discover IDs with workflow action=list and kind=relay. When authorized, use guarded files for permitted source edits or sessions action=builder_chat to delegate, relay action=test to test the draft, and relay action=publish to freeze a version. Use relay action=run for a published version and relay action=get_run to poll durable results. Flows have Builder-only chat. Creation requires separate relays:write consent."
+const externalMCPRelayInstructions = " Flows: discover IDs with workflow action=list and kind=relay. When authorized, use guarded files for permitted source edits, relay action=test to test the draft, and relay action=publish to freeze a version. Use relay action=run for a published version and relay action=get_run to poll durable results. Creation requires separate relays:write consent."
 
 const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->It gives access to the user's workflows (workflow action=list). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Your own MCP sign-in follows your website role: owners and workflow editors use Builder capabilities; people using shared work use Run mode. Machine, service-account and device connections keep their assigned limits. Source, plan and workflow configuration edits use current Builder access, native validation and revision checks. get_api_spec lists available tools or returns selected schemas; call_tool executes an available operation with its schema arguments. <!-- product:agentworks -->Discover workflow IDs with workflow action=list first; IDs are never filesystem paths.<!-- /product --> Dashboards: read help action=topic topic="dashboard-authoring" for the HTML data/script contract. With current project access for viewing and Builder access for editing, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog. help action=context returns guidance_version; action=topics and action=skills provide current reference material. Guidance is reference material; use only currently listed tools/actions.`
 
@@ -182,7 +182,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	for _, tool := range allowed {
 		if tool.Name == "workflow_upgrade" {
-			instructions += " Contract upgrades: workflow_upgrade action=status only lists owed migrations. Begin an explicit upgrade with action=prepare before Builder chat or plan checkers; this converts retired agent records without stamping. Do each migration's work in order, then action=stamp with version and confirm=workflow_id. The Builder's stamp checks and ordering apply."
+			instructions += " Contract upgrades: workflow_upgrade action=status lists the contract migrations an older workflow still owes; converting an existing workflow to a Python script is done by the platform operator for now."
 		}
 		if tool.Name == "crew_execution" {
 			instructions += " Direct Crew tools: terminal, browser, database, mcp and integrations run with crew_id; authorized owners execute them without a model turn. History is redacted and owner-only. sessions action=runtime_tools/runtime_call address only your own chat; background starts require its initialized native sandbox and UI actions return actual browser receipts. Human sign-in and approval retain app flows."
@@ -194,10 +194,6 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		}
 		if tool.Name == "run_relay" {
 			instructions += externalMCPRelayInstructions
-		}
-		if tool.Name == "builder_chat" {
-			instructions += " Builder: use sessions action=builder_chat to send editing requests to the configured model in your existing workflow chat. Use a unique submission_id, poll sessions action=builder_status by operation_id, and answer pending questions with sessions action=builder_reply_input. sessions action=builder_cancel stops only that operation. Check help action=context with workflow_id for current effective tools."
-			break
 		}
 	}
 	instructions = (productpolicy.Selection{}).Text(instructions)
@@ -580,7 +576,7 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 			group = "Dashboards"
 		case name == "needs_you" || strings.HasSuffix(name, "_needs_you"):
 			group = "Needs you"
-		case name == "sessions" || name == "builder" || strings.HasPrefix(name, "builder_"):
+		case name == "sessions":
 			group = "Builder"
 		case strings.Contains(name, "relay"):
 			group = "Flows"

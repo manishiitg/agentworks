@@ -79,9 +79,6 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 		if err := api.registerWorkspacePanelChatTools(definitionAgent, nil, userID, sessionID, phaseWorkspacePath, panelProduct); err != nil {
 			return err
 		}
-		if err := api.registerGoalOwnerTabTools(definitionAgent, userID, phaseWorkspacePath); err != nil {
-			return err
-		}
 		if err := api.registerCrewFunctionTools(definitionAgent, userID, sessionID, syntheticReq, workflowTriggerLinkCaller(phaseWorkspacePath), nil); err != nil {
 			return err
 		}

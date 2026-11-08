@@ -295,7 +295,6 @@ func externalTools() ([]externalTool, error) {
 		externalCostsDefinition(add)
 		externalBullpenAdminDefinition(add)
 		externalBrainAdminDefinition(add)
-		externalBuilderDefinitions(add)
 		if err := externalWorkflowCrewDefinition(add); err != nil {
 			externalCatalogErr = err
 			return
@@ -1096,13 +1095,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	// Flow chat is Builder-only; direct API tools handle published execution.
 	if selected.Manifest.Kind == "relay" && (tool.Name == "chat" || tool.Name == "project_functions_call" && externalArg(args, "function") == "ask") {
-		externalError(w, 400, "relay_builder_only", "Use guarded files to edit Flow source, relay action=test for draft tests, or relay action=run for published versions. Builder chat can delegate edits when requested.")
-		return
-	}
-	// Conversation access follows the builder runtime: workflow readers may
-	// chat with its existing read-only tool policy, and control their own turns.
-	if strings.HasPrefix(tool.Name, "builder_") {
-		api.externalBuilderOperationCall(w, r, tool.Name, args, *selected)
+		externalError(w, 400, "relay_builder_only", "Use guarded files to edit Flow source, relay action=test for draft tests, or relay action=run for published versions.")
 		return
 	}
 	if tool.Name == "workflow_crews" {
