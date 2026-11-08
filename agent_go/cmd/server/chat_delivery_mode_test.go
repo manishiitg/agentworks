@@ -98,19 +98,19 @@ func TestChatDeliveryModeDurableQueueActions(t *testing.T) {
 // queued-steer check. Exercise the real query boundary, without starting a model.
 func TestQueuedSteerPolicyMismatchDoesNotCancelCurrentTurn(t *testing.T) {
 	const sid = "queued-steer-policy"
-	env := newProviderAccountsEnv(t, "")
-	api := env.api
+	f, _ := newExternalCrewCommandFixture(t)
+	api := f.api
 	canceled := false
 	api.runningAgents = map[string]*mcpagent.Agent{sid: testCodingAgent(llm.ProviderClaudeCode, "claude-sonnet-4-6")}
 	api.agentCancelFuncs = map[string]context.CancelFunc{sid: func() { canceled = true }}
-	api.activeSessions = map[string]*ActiveSessionInfo{sid: {UserID: "alice", WorkspacePath: "Workflow/w"}}
+	api.activeSessions = map[string]*ActiveSessionInfo{sid: {UserID: "owner", WorkspacePath: externalCommandCrewRoot}}
 	api.internalSteerTransportReady = func(_, _ string) bool { return true }
 	api.lastChatPolicyBySession = map[string]string{sid: "previous-policy"}
-	req := QueryRequest{Query: "Use the connected app", AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: "Workflow/w", Provider: "claude-code", ModelID: "claude-sonnet-4-6", DeliveryMode: "steer"}
-	r := sharedSecretsRequest(http.MethodPost, "/api/query", "alice", req)
+	req := QueryRequest{Query: "Use the connected app", AgentMode: "multi-agent", AgentProfileID: crewProfileID, AgentProfileConversationKey: "team", SelectedFolder: externalCommandCrewRoot, Provider: "claude-code", ModelID: "claude-sonnet-4-6", DeliveryMode: "steer"}
+	r := sharedSecretsRequest(http.MethodPost, "/api/query", "owner", req)
 	r.Header.Set("X-Session-ID", sid)
 	ctx := context.WithValue(r.Context(), queuedMessageSteerKey{}, true)
-	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "queued-input", Owner: "alice", Session: sid, Message: req.Query})
+	ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{ID: "queued-input", Owner: "owner", Session: sid, Message: req.Query})
 	w := httptest.NewRecorder()
 	api.handleQuery(w, r.WithContext(ctx))
 	if w.Code != http.StatusConflict || w.Header().Get("X-Queued-Steer-Unavailable") != "true" || canceled {
