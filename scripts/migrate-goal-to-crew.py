@@ -303,13 +303,24 @@ class RuntimeRelocation:
         self.runtime.parent.mkdir(parents=True,exist_ok=True)
         # Copy and check the final tree before removing the old source. This
         # deliberately runs offline; there is no concurrent-writer protocol.
-        shutil.copytree(self.source,self.runtime)
         expected = tree_hashes(self.source)
-        if tree_hashes(self.runtime) != expected:
-            raise ValueError('Runtime copy verification failed; old files remain intact.')
+        skipped = []
+        try:
+            copy_migration_tree(self.source,self.runtime,skipped)
+            if tree_hashes(self.runtime) != expected:
+                raise ValueError('Runtime copy verification failed; old files remain intact.')
+        except BaseException:
+            if self.runtime.exists():
+                shutil.rmtree(self.runtime)
+            raise
+        # Caches contain installed packages/browser binaries. Move their roots
+        # intact after verification, without inspecting their contents or links.
+        # A failed rename stops before removing the old source.
+        for relative in skipped:
+            (self.source/relative).rename(self.runtime/relative)
         changed = update_runtime_references(self.source,self.runtime)
         shutil.rmtree(self.source)
-        result=self.report();result.update(status='migrated',backup=str(backup),updated_references=changed,completed_at=stamp())
+        result=self.report();result.update(status='migrated',backup=str(backup),updated_references=changed,preserved_transient_roots=skipped,completed_at=stamp())
         self.receipt.write_bytes(encode(result))
         self.done=result
         return result
