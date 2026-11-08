@@ -63,7 +63,7 @@ var (
 
 // noLossNamedRoots are the workflow paths a step's Inputs/Guides may name
 // (design note decision 1).
-var noLossNamedRoots = []string{"learnings/", "knowledgebase/", "code/shared/", "soul/", "db/README.md"}
+var noLossNamedRoots = []string{"learnings/", "knowledgebase/", "code/shared/", "db/README.md"}
 
 // NoLossNamedFiles returns the workflow-relative files the description names
 // under its Inputs and Guides sections, plus brain: references.
@@ -492,7 +492,7 @@ func stringSliceArg(raw interface{}) []string {
 	return out
 }
 
-const checkPlanNoLossDescription = "PLAT-556 consolidator check. Compare a step's current description and items with a proposed rewrite: every rule-bearing token of the old text (identifiers with underscores, VAR_ names, numbers and ranges, thresholds, file paths, quoted literals) must appear in the proposed description, the proposed items, or a workflow file the proposed description names under ## Inputs or ## Guides (learnings/, knowledgebase/, code/shared/, soul/, db/README.md; write moved guides first, then check). pass=true only when nothing is missing. Read-only: it changes nothing. brain: references are listed but not read."
+const checkPlanNoLossDescription = "PLAT-556 consolidator check. Compare a step's current description and items with a proposed rewrite: every rule-bearing token of the old text (identifiers with underscores, VAR_ names, numbers and ranges, thresholds, file paths, quoted literals) must appear in the proposed description, the proposed items, or a workflow file the proposed description names under ## Inputs or ## Guides (learnings/, knowledgebase/, code/shared/, db/README.md; write moved guides first, then check). pass=true only when nothing is missing. Read-only: it changes nothing. brain: references are listed but not read."
 
 func checkPlanNoLossParameters() map[string]interface{} {
 	return map[string]interface{}{

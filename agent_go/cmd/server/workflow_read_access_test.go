@@ -77,8 +77,6 @@ var workflowReadRoutes = []string{
 	"/api/workflow/costs",
 	"/api/workflow/review-data",
 	"/api/workflow/builder-doc",
-	"/api/workflow/framework-health",
-	"/api/workflow/notifications",
 	"/api/workflow/active-executions",
 }
 
@@ -86,7 +84,7 @@ func workflowReadTarget(route, workspacePath string) string {
 	q := url.Values{"workspace_path": {workspacePath}}
 	switch route {
 	case "/api/workflow/builder-doc":
-		q.Set("doc", "soul")
+		q.Set("doc", "card-health")
 	case "/api/workflow/logs":
 		q.Set("run_folder", "iteration-0")
 	}

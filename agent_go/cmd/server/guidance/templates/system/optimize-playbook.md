@@ -6,7 +6,7 @@
 
 **Important**: For proactive optimization suggestions (learning config, server scoping, description refinement), wait until a step has had a few successful runs before pushing changes. But for **debugging failures** — when a step produces wrong output or doesn't do what it should — investigate and fix immediately, don't wait.
 
-**Repair in service of the goal, across the whole plan.** Every fix exists to make the workflow achieve its objective — read `soul/soul.md` (success criteria) and the plan before changing behavior, understand each step's role (what feeds it, what depends on its output), and fix it so it does its real job *in that context*, not merely so it stops erroring or passes validation. A green-but-goal-empty fix (a masking default, loosened validation that lets wrong data through) is a **false fix**. If a contained, plan-coherent repair cannot make a step reliably do its job, return a recommendation for the owner instead of stretching a local repair into strategy work.
+**Repair in service of the goal, across the whole plan.** Every fix exists to make the workflow achieve its objective — read the Crew's instructions and the plan before changing behavior, understand each step's role (what feeds it, what depends on its output), and fix it so it does its real job *in that context*, not merely so it stops erroring or passes validation. A green-but-goal-empty fix (a masking default, loosened validation that lets wrong data through) is a **false fix**. If a contained, plan-coherent repair cannot make a step reliably do its job, return a recommendation for the owner instead of stretching a local repair into strategy work.
 
 When helping users optimize steps, follow these principles:
 

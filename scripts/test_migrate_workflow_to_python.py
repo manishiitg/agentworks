@@ -59,9 +59,10 @@ class SameIdentityConversion(unittest.TestCase):
             binding_file.write_bytes(m.encode(binding))
             (runtime/'runs/old/full.log').write_text('historical full log\n')
             (runtime/'schedules.json').write_text('{"schedules":[]}')
-            (definitions/'planning/plan.json').write_text('{"steps":[{"id":"old"}]}')
+            (definitions/'planning/plan.json').write_text('{"steps":[{"id":"old","write_access":{"knowledgebase":true},"validation_schema":{"required_files":["result.json"]}}]}')
             capabilities={'browser_mode':'cdp','browser_cdp_port':9222,'selected_global_secret_names':['EXAMPLE_TEST_SECRET'],'llm_config':{'mode':'provider','provider':'codex-cli'},'selected_servers':['example-app'],'selected_tools':['example-app:*']}
-            (definitions/'workflow.json').write_bytes(m.encode({'id':'task','capabilities':capabilities}))
+            # A retired tool in carried selections is dropped (PLAT-746).
+            (definitions/'workflow.json').write_bytes(m.encode({'id':'task','capabilities':dict(capabilities,selected_tools=['example-app:*','human_tools:record_summary'])}))
             (definitions/'variables').mkdir()
             presets=[{'name':'Account A','values':{'account':'first'}},{'name':'Account B','values':{'account':'second'}}]
             (definitions/'variables/variables.json').write_bytes(m.encode({'variables':[{'name':'account','type':'string','value':'first'}],'groups':presets}))
@@ -70,6 +71,8 @@ class SameIdentityConversion(unittest.TestCase):
             db = sqlite3.connect(runtime/'db/db.sqlite')
             db.execute('CREATE TABLE historical (id INTEGER PRIMARY KEY, result TEXT)')
             db.execute("INSERT INTO historical VALUES (7, 'kept')")
+            db.execute('CREATE TABLE background_agent_log (id INTEGER PRIMARY KEY, message TEXT)')
+            db.execute("INSERT INTO background_agent_log VALUES (1, 'existing target log')")
             db.commit(); db.close()
             before = hashes(runtime)
             changes, documents, report = m.plan(docs,state,True)
@@ -90,19 +93,32 @@ class SameIdentityConversion(unittest.TestCase):
             db.commit();db.close()
             with self.assertRaisesRegex(ValueError,'already contains rows'):
                 m.plan(docs,state,False,'task',source)
-            db = sqlite3.connect(private/'db/db.sqlite');db.execute('DELETE FROM notes');db.commit();db.close()
+            db = sqlite3.connect(private/'db/db.sqlite');db.execute('DELETE FROM notes')
+            # PLAT-746: testing creates platform log rows before conversion;
+            # those must not turn an otherwise empty Crew into a business clash.
+            db.execute('CREATE TABLE background_agent_log (id INTEGER PRIMARY KEY, message TEXT)')
+            db.execute("INSERT INTO background_agent_log VALUES (1, 'kept log')")
+            db.commit();db.close()
+            crew_db_before = (private/'db/db.sqlite').read_bytes()
             source_definition=json.loads((source/'script.json').read_text())
-            source_definition['capabilities']={'browser_mode':'extension'}
-            (source/'script.json').write_bytes(m.encode(source_definition))
-            with self.assertRaisesRegex(ValueError,'changes the saved browser_mode selection'):
-                m.plan(docs,state,False,'task',source)
-            source_definition['capabilities']={'browser_mode':'cdp'}
+            # Settings and presets come from the saved workflow, never the source.
+            for name in ('capabilities','input_presets'):
+                (source/'script.json').write_bytes(m.encode(dict(source_definition,**{name:{}})))
+                with self.assertRaisesRegex(ValueError,'Remove '+name):
+                    m.plan(docs,state,False,'task',source)
             (source/'script.json').write_bytes(m.encode(source_definition))
             changes,documents,report = m.plan(docs,state,False,'task',source)
-            self.assertEqual(report['conversion']['database_rows'],{'historical':1})
-            backup = Path(m.apply(changes,documents,state,identity="task"))
-            self.assertEqual(hashes(runtime),before)
+            self.assertEqual(report['conversion']['database_rows'],{'historical':1,'background_agent_log':1})
+            self.assertEqual(report['conversion']['removed_tools'],['human_tools:record_summary'])
+            self.assertEqual(report['conversion']['knowledge_write_steps'],['old'])
+            self.assertEqual(report['conversion']['output_check_steps'],['old'])
+            backup = Path(m.apply(changes,documents,state,identity="task", append_platform_rows=bool(report["conversion"]["appended_crew_platform_rows"])))
+            self.assertEqual({k:v for k,v in hashes(runtime).items() if k != 'db/db.sqlite'}, {k:v for k,v in before.items() if k != 'db/db.sqlite'})
             self.assertEqual(hashes(backup/'runtime'),before)
+            self.assertEqual((private/'db/db.sqlite').read_bytes(), crew_db_before)
+            self.assertEqual((backup/'crew-db/db.sqlite').read_bytes(), crew_db_before)
+            self.assertEqual(report['conversion']['crew_database_rows']['background_agent_log'], 1)
+            self.assertEqual(report['conversion']['appended_crew_platform_rows'], 1)
             self.assertTrue((backup/'definitions/planning/plan.json').exists())
             self.assertTrue((definitions/'planning/plan.json').exists())
             self.assertEqual((code/'main.py').read_bytes(),(source/'main.py').read_bytes())
@@ -112,10 +128,37 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertEqual(json.loads(binding_file.read_text()),dict(binding,kind='script',runtime_root='workflows/task'))
             saved=json.loads(projects_file.read_text())['projects']['work/example']
             self.assertEqual(saved['database_root'],'workflows/task/db')
-            self.assertEqual(m.database_rows(runtime/'db/db.sqlite'),{'historical':1})
+            self.assertEqual(m.database_rows(runtime/'db/db.sqlite'),{'historical':1,'background_agent_log':2})
+            db = sqlite3.connect(runtime/'db/db.sqlite')
+            self.assertEqual(db.execute('SELECT id,message FROM background_agent_log ORDER BY id').fetchall(), [(1, 'existing target log'), (2, 'kept log')])
+            db.close()
+            # Retiring the old plan waits for a completed converted run, keeps that
+            # run's plan revision, and leaves workflow.json, code and runs alone.
+            (runtime/'planning/revisions').mkdir(parents=True);(runtime/'planning/changelog').mkdir()
+            (runtime/'planning/revisions/plan-new.json').write_text('{}');(runtime/'planning/revisions/plan-old.json').write_text('{}')
+            (runtime/'planning/changelog/changelog-1.json').write_text('{}')
+            with self.assertRaisesRegex(ValueError,'successfully at least once'):
+                m.retire_old_plan(docs,state,'task')
+            (runtime/'runs/run-1').mkdir(parents=True)
+            (runtime/'runs/run-1/run_metadata.json').write_bytes(m.encode({'status':'completed','required_step_ids':['task'],'plan_revision':'plan-new'}))
+            # A failed run keeps the revision it recorded for inspection and resume.
+            (runtime/'runs/run-2').mkdir()
+            (runtime/'runs/run-2/run_metadata.json').write_bytes(m.encode({'status':'failed','required_step_ids':['task'],'plan_revision':'plan-failed'}))
+            (runtime/'planning/revisions/plan-failed.json').write_text('{}')
+            removals,docs_map,retired=m.retire_old_plan(docs,state,'task')
+            self.assertEqual(retired['completed_converted_runs'],['run-1'])
+            self.assertEqual(sorted(retired['removed']),['planning/changelog/changelog-1.json','planning/plan.json','planning/revisions/plan-old.json'])
+            retire_backup=Path(m.apply_retirement(removals,docs_map,state,None,'task'))
+            self.assertTrue((retire_backup/'definitions-planning/plan.json').exists())
+            self.assertFalse((definitions/'planning').exists())
+            self.assertTrue((runtime/'planning/revisions/plan-new.json').exists() and (runtime/'planning/revisions/plan-failed.json').exists())
+            self.assertTrue((definitions/'workflow.json').exists() and (code/'main.py').exists() and (runtime/'runs/old/full.log').exists())
             # A second conversion refuses instead of silently selecting another DB.
             binding['kind']='workflow';binding['runtime_root']='workflows/task'
             binding_file.write_bytes(m.encode(binding))
+            # A prior explicit --single-db choice already appended platform logs.
+            repeated_changes, repeated_docs, repeated_report = m.plan(docs,state,False,'task',source)
+            self.assertEqual(repeated_report['conversion']['appended_crew_platform_rows'], 0)
             saved['database_root']='workflows/another/db'
             projects['projects']['work/example']=saved;projects_file.write_bytes(m.encode(projects))
             with self.assertRaisesRegex(ValueError,'database_root=workflows/another/db'):
@@ -127,6 +170,75 @@ class SameIdentityConversion(unittest.TestCase):
             binding['crew_root']='Crew/example';binding['runtime_root']='../another';binding_file.write_bytes(m.encode(binding))
             with self.assertRaisesRegex(ValueError,'Invalid private automation runtime root'):
                 m.plan(docs,state,False,'task',source)
+
+
+class SingleDatabase(unittest.TestCase):
+    def test_points_at_the_only_database_with_rows_merges_or_refuses_on_clash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve(); docs, state = base/'docs', base/'state'
+            (state/'ownership/crew-executables').mkdir(parents=True)
+            def make_db(path, table, rows, extra=''):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                db = sqlite3.connect(path); db.execute(f'CREATE TABLE {table} (id INTEGER PRIMARY KEY, v TEXT{extra})')
+                db.executemany(f'INSERT INTO {table} (v) VALUES (?)', [(str(i),) for i in range(rows)]); db.commit(); db.close()
+            projects = {'projects': {}}
+            for crew, flows in (('one', ['a']), ('merge', ['b']), ('clash', ['c']), ('logs', ['d']), ('drift', ['e']), ('crew-target', ['f'])):
+                projects['projects']['work/'+crew] = {'product': 'work', 'project_id': crew, 'owner_id': 'owner', 'folder': crew}
+                for flow in flows:
+                    binding = {'id': flow, 'crew_id': crew, 'kind': 'workflow', 'runtime_root': 'workflows/'+flow}
+                    (state/'ownership/crew-executables'/(flow+'.json')).write_bytes(m.encode(binding))
+            (state/'ownership/projects.json').write_bytes(m.encode(projects))
+            private = docs/'_system/crew-data'
+            make_db(private/'one/db/db.sqlite', 'empty', 0)
+            make_db(private/'one/workflows/a/db/db.sqlite', 'leads', 3)
+            make_db(private/'merge/db/db.sqlite', 'notes', 1)
+            make_db(private/'merge/workflows/b/db/db.sqlite', 'leads', 5)
+            make_db(private/'clash/db/db.sqlite', 'leads', 1)
+            make_db(private/'clash/workflows/c/db/db.sqlite', 'leads', 2)
+            make_db(private/'crew-target/db/db.sqlite', 'notes', 5)
+            make_db(private/'crew-target/workflows/f/db/db.sqlite', 'leads', 1)
+            # Platform tables with identical columns are appended, with new row ids.
+            make_db(private/'logs/db/db.sqlite', 'background_agent_log', 2)
+            make_db(private/'logs/workflows/d/db/db.sqlite', 'background_agent_log', 3)
+            # ...but a platform table whose columns differ still refuses.
+            make_db(private/'drift/db/db.sqlite', 'background_agent_log', 1)
+            make_db(private/'drift/workflows/e/db/db.sqlite', 'background_agent_log', 2, ', extra TEXT')
+            merges, crews = m.single_db_plan(docs, state)
+            actions = {c['crew']: c['action'] for c in crews}
+            self.assertEqual(actions['work/one'], 'use a')
+            self.assertTrue(actions['work/merge'].startswith('copy 1 table(s) into b'))
+            self.assertEqual(actions['work/clash'], 'refused: tables with rows exist in more than one database: leads')
+            self.assertEqual(actions['work/drift'], 'refused: tables with rows exist in more than one database: background_agent_log (platform table columns differ)')
+            self.assertEqual({c['crew']: c.get('append_platform_rows') for c in crews}['work/logs'], {'background_agent_log': 2})
+            backup = Path(m.apply_single_db(merges, docs, state, None))
+            saved = json.loads((state/'ownership/projects.json').read_text())['projects']
+            self.assertEqual(saved['work/one']['database_root'], 'workflows/a/db')
+            self.assertEqual(saved['work/merge']['database_root'], 'workflows/b/db')
+            self.assertNotIn('database_root', saved['work/clash'])
+            self.assertEqual(m.database_rows(private/'merge/workflows/b/db/db.sqlite'), {'leads': 5, 'notes': 1})
+            # Nothing deleted: the source database keeps its rows as history.
+            self.assertEqual(m.database_rows(private/'merge/db/db.sqlite'), {'notes': 1})
+            self.assertTrue((backup/'merge/db.sqlite').exists() and (backup/'projects.json').exists())
+            self.assertEqual(m.database_rows(private/'logs/workflows/d/db/db.sqlite'), {'background_agent_log': 5})
+            self.assertEqual(m.database_rows(private/'crew-target/db/db.sqlite'), {'notes': 5, 'leads': 1})
+            # PLAT-746-456: retained source rows are frozen history. A repeat
+            # inspect/apply must not append their platform events a second time.
+            before = {str(p): m.database_rows(p) for p in private.rglob('db.sqlite')}
+            again, crews = m.single_db_plan(docs, state)
+            actions = {c['crew']: c['action'] for c in crews}
+            self.assertEqual(actions['work/logs'], 'nothing: already uses d')
+            self.assertEqual(actions['work/merge'], 'nothing: already uses b')
+            self.assertEqual(actions['work/crew-target'], 'nothing: already uses crew')
+            self.assertEqual(again, [])
+            self.assertIsNone(m.apply_single_db(again, docs, state, None))
+            self.assertEqual({str(p): m.database_rows(p) for p in private.rglob('db.sqlite')}, before)
+            # A large historical source never takes precedence over a saved choice.
+            db = sqlite3.connect(private/'logs/db/db.sqlite')
+            db.executemany('INSERT INTO background_agent_log(v) VALUES (?)', [('old',)] * 20)
+            db.commit(); db.close()
+            again, crews = m.single_db_plan(docs, state)
+            self.assertEqual(again, [])
+            self.assertEqual(next(c['action'] for c in crews if c['crew'] == 'work/logs'), 'nothing: already uses d')
 
 
 if __name__ == '__main__':

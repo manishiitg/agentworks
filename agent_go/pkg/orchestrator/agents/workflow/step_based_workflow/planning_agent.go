@@ -5336,7 +5336,7 @@ Before adding it, decide the step type by who decides the work, not by habit:
 - add_scripted_step only for deterministic, no-judgment work (fixed API/CLI/data fetch, parsing, mechanical writes). A known list of actions sharing one context is still ONE agent, not one scripted/agentic step per action.
 - predefined_routes are typed scripted helpers only. Put LLM specialist teams in an agent step using its Crew configuration. The Agent owns its task, optional authored follow-ups and validation; it has no automatic reflection phase.
 - add_routing_step / add_branch_step only for a real fixed branch choice (routing: one major sub-workflow fork per plan; branch: a small in-flow decision).
-- Supply known values through run variables/function arguments or per-step human_inputs. Agents use human_feedback for urgent missing values and create_human_input_request for durable decisions.
+- Supply known values through run variables/function arguments or per-step human_inputs. Runs never wait for a person: a missing value fails the run with a clear reason.
 
 For the full decision guide and anti-patterns, call read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}]) before adding the first step.`, planPath), nil
 	}
@@ -5373,7 +5373,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"create_plan",
-		"Initialize an empty planning/plan.json for a new workflow. Call this FIRST when the workflow has no plan.json yet, before using add_scripted_step / add_agent_step / add_routing_step to populate it. Refuses to overwrite an existing plan.json. Takes no arguments. Note: workflow objective lives in soul/soul.md — edit that file separately; plan.json no longer stores it.",
+		"Initialize an empty planning/plan.json for a new workflow. Call this FIRST when the workflow has no plan.json yet, before using add_scripted_step / add_agent_step / add_routing_step to populate it. Refuses to overwrite an existing plan.json. Takes no arguments.",
 		createPlanParams,
 		createCreatePlanExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
@@ -5762,7 +5762,6 @@ func createValidatePlanChangeExecutor(
 			"db/reports/index.html",
 			"db/README.md",
 			"workflow.json",
-			"soul/soul.md",
 			"learnings/_global/SKILL.md",
 			"knowledgebase/_index.json",
 		}

@@ -81,20 +81,6 @@ Built-in categories such as `human_tools`, `workflow`, `workspace_advanced`,
 servers from the workflow's selected server list. Call their tools through
 `$MCP_CUSTOM/{tool_name}` with no category segment in the URL.
 
-```bash
-payload='{"kind":"run_summary","message":"Workflow completed successfully.","slack_title":"Workflow complete","slack_color":"success","slack_fields":[{"label":"Status","value":"Passed"}]}'
-curl --fail-with-body -sS --json "$payload" -H "$MCP_AUTH" "$MCP_CUSTOM/record_summary"
-```
-
-When `record_summary` is listed for this session, it records a run/Goal-update summary;
-the backend applies saved destinations and renders Slack Block Kit. For structured
-summaries, use `slack_title`, `slack_color`, `slack_fields`, `slack_sections`, and
-`slack_footer`; never read a webhook secret or post to a webhook with shell commands.
-
-Do not call `record_summary` as `$MCP_MCP/human_tools/record_summary`; that treats
-`human_tools` as a real MCP server and can be blocked by the session MCP
-server allowlist.
-
 **Response envelope:** `{"success": true|false, "result": ..., "error": "..."}`.
 Always check `success` before treating `result` as authoritative.
 Custom Go tools commonly return JSON text inside the envelope's `result`

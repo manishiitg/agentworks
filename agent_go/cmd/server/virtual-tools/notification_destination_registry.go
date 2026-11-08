@@ -42,24 +42,11 @@ func RegisterSessionNotificationDestination(sessionID string, dest *services.Not
 	if incoming.Slack != nil {
 		current.Slack = incoming.Slack
 	}
-	if incoming.SlackWebhook != nil {
-		current.SlackWebhook = incoming.SlackWebhook
-	}
 	if incoming.WhatsApp != nil {
 		current.WhatsApp = incoming.WhatsApp
 	}
 	if incoming.Gmail != nil {
 		current.Gmail = incoming.Gmail
-	}
-	if len(incoming.ExcludeChannels) > 0 {
-		current.ExcludeChannels = incoming.ExcludeChannels
-	}
-	if len(incoming.RunSummaryChannels) > 0 {
-		current.RunSummaryChannels = incoming.RunSummaryChannels
-	}
-
-	if len(incoming.RunSummaryRecipients) > 0 {
-		current.RunSummaryRecipients = incoming.RunSummaryRecipients
 	}
 
 	sessionNotificationDestinations.values[sessionID] = current
@@ -85,32 +72,6 @@ func InheritSessionNotificationDestination(parentSessionID, childSessionID strin
 		return false
 	}
 	sessionNotificationDestinations.values[childSessionID] = parent
-	return true
-}
-
-// UpdateSessionGmailSender applies a validated workflow sender edit to the
-// current session only. Children created afterward inherit this new selection.
-// Explicit clear must replace, rather than merge, the old sender and overrides.
-func UpdateSessionGmailSender(sessionID, workspacePath, senderID string) bool {
-	sessionID, workspacePath = strings.TrimSpace(sessionID), strings.TrimSpace(workspacePath)
-	if sessionID == "" || workspacePath == "" {
-		return false
-	}
-	sessionNotificationDestinations.Lock()
-	defer sessionNotificationDestinations.Unlock()
-	dest := cloneNotificationDestination(sessionNotificationDestinations.values[sessionID])
-	if dest == nil || dest.WorkspacePath != workspacePath {
-		return false
-	}
-	if dest.Gmail == nil {
-		dest.Gmail = &services.GmailDest{}
-	}
-	dest.Gmail.Workspace = workspacePath
-	dest.Gmail.ConnectionIDs = nil
-	if senderID = strings.TrimSpace(senderID); senderID != "" {
-		dest.Gmail.ConnectionIDs = []string{senderID}
-	}
-	sessionNotificationDestinations.values[sessionID] = dest
 	return true
 }
 

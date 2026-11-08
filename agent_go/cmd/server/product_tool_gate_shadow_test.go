@@ -16,9 +16,9 @@ func TestShadowGateAdmitsEverythingAndRecordsWhatTheListMisses(t *testing.T) {
 	if !slices.Equal(uniqueSortedToolNames(gate.wouldFilter), []string{"read_workspace_file"}) || gate.profileID != "goals-builder" {
 		t.Fatalf("would-filter = %v, surface = %q", gate.wouldFilter, gate.profileID)
 	}
-	// Regression (2026-10-06 to 10-08): the shadow surface name made every Goals chat and Pulse lose record_summary.
+	// Regression (2026-10-06 to 10-08): the shadow surface name made every Goals chat and Pulse lose its notification tools.
 	gate.AllowWorkflowNotifications(true)
-	if !gate.Admit("record_summary") {
+	if !gate.Admit("send_email") {
 		t.Fatal("a shadow gate must not remove workflow notifications")
 	}
 	enforcing := newProductToolGateForAllowlist("relays", []string{"x"})

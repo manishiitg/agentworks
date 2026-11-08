@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import { crewScriptGraphApi } from '../../api/crewScriptGraph'
+import { runEvidenceApi, type RunEvidenceItem } from '../../api/runEvidence'
 import type { RelaySourceGraph } from '../../components/workflow/relayGraphAnnotations'
 import type { ExecutionInspectionTarget, RunFolderInfo, WorkspaceStepInspection } from '../../services/api-types'
 import { PageCard, PageRow, RowButton, RunDot } from '../../components/automation/AutomationKit'
@@ -91,6 +92,26 @@ function useRunInspections(workspacePath: string, runFolder: string) {
   return { records, cursor, error, loading, loadMore: () => void load(cursor ?? undefined) }
 }
 
+/** The checks and messages one run made (server-written, read once per opened run and again when its status changes). */
+function useRunEvidence(workspacePath: string, runFolder: string, status?: string) {
+  const [items, setItems] = useState<RunEvidenceItem[]>([])
+  useEffect(() => {
+    let current = true
+    runEvidenceApi.get(workspacePath, runFolder).then(next => { if (current) setItems(next) }).catch(() => { if (current) setItems([]) })
+    return () => { current = false }
+  }, [workspacePath, runFolder, status])
+  return items
+}
+
+/** A step's own checks (they name the step's source call), as one plain line: "2 checks passed" or "1 of 2 checks failed". */
+export function stepChecksLine(items: RunEvidenceItem[], sourceCall?: string) {
+  if (!sourceCall) return ''
+  const checks = items.filter(item => item.kind === 'check' && item.source_call === sourceCall)
+  if (!checks.length) return ''
+  const failed = checks.filter(item => item.ok === false).length
+  return failed ? `${failed} of ${checks.length} ${checks.length === 1 ? 'check' : 'checks'} failed` : `${checks.length} ${checks.length === 1 ? 'check' : 'checks'} passed`
+}
+
 /** A Python workflow's source outline, so an opened run can list its steps in order, including those it never reached. */
 function useScriptOutline(workspacePath: string, enabled: boolean) {
   const [outline, setOutline] = useState<RelaySourceGraph | null>(null)
@@ -174,6 +195,9 @@ function OpenedRun({ workspacePath, script, folder, cost, onBack, onRefresh, onA
 }) {
   const { records, cursor, error, loading, loadMore } = useRunInspections(workspacePath, folder.name)
   const outline = useScriptOutline(workspacePath, script)
+  const evidence = useRunEvidence(workspacePath, folder.name, folder.metadata?.status)
+  const checks = evidence.filter(item => item.kind === 'check')
+  const messages = evidence.filter(item => item.kind === 'notify')
   // The one opened run's step costs, read for that run only.
   const stepCosts = useCostsData({ workspacePath, selectedRunFolder: folder.name, runOnly: true }).runCosts.find(run => run.runFolder === folder.name)?.costSummary?.stepCosts ?? []
   const [target, setTarget] = useState<ExecutionInspectionTarget | null>(null)
@@ -192,11 +216,19 @@ function OpenedRun({ workspacePath, script, folder, cost, onBack, onRefresh, onA
       const spent = stepCost(record)
       const isOpen = target?.execution_id === record.inspection.execution_id && target.session_id === record.inspection.session_id
       return <PageRow key={line.key} lead={<RunDot state={stepDot(record.status)} />} title={line.title}
-        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · ')]} aside={spent !== undefined ? formatCost(spent) : undefined}
+        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), stepChecksLine(evidence, record.inspection.source_call)]} aside={spent !== undefined ? formatCost(spent) : undefined}
         open={isOpen} onToggle={() => setTarget(isOpen ? null : record.inspection)}>
         <div className="h-[60vh] min-h-72 overflow-hidden rounded-lg border border-border bg-background"><Suspense fallback={<p className="p-3 text-xs text-muted-foreground">Loading…</p>}><Inspect target={record.inspection} /></Suspense></div>
       </PageRow>
     })}
+    {checks.length > 0 && <>
+      <p className="px-4 pt-3 text-xs font-semibold">Checks</p>
+      {checks.map((item, index) => <PageRow key={`check:${index}`} lead={<RunDot state={item.ok === false ? 'stopped' : 'finished'} />} title={item.name || 'Check'} lines={[item.detail]} aside={whenLabel(item.at)} />)}
+    </>}
+    {messages.length > 0 && <>
+      <p className="px-4 pt-3 text-xs font-semibold">Messages</p>
+      {messages.map((item, index) => <PageRow key={`notify:${index}`} title={item.detail} aside={whenLabel(item.at)} />)}
+    </>}
     {!loading && records.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">No step records were saved for this run. The full log may still be available.</p>}
     <div className="flex flex-wrap items-center gap-2 px-4 py-3">
       {cursor && <RowButton disabled={loading} onClick={loadMore}>{loading ? 'Loading…' : 'Load more steps'}</RowButton>}

@@ -107,7 +107,6 @@ Use the paths and grants below. The existing `STEP_OUTPUT_DIR` is your output fo
 **Agent item access:** {{.AgentAccessNote}}
 {{end}}
 
-{{if .WorkflowRoot}}Read `{{.WorkflowRoot}}/soul/soul.md` for owner-approved Constraints when granted. Those constraints win over stale task values; report any conflict as CONCERNS. Do not edit soul or planning files.{{end}}
 {{if ne .DBAccess "none"}}
 - **Database ({{.DBAccess}}):** shared structured state that persists across runs. {{if eq .DBDirectAccess "true"}}Use `agentworks_db` in saved scripts;{{else}}Use `database action=query`{{if eq .DBAccess "read"}} only (read access only); do not call `database action=mutate`{{else}} and `database action=mutate`{{end}};{{end}} never open SQLite files directly or change schema. Open **workflow-database** for query, update and script-helper procedures.
 {{end}}{{if ne .KbAccess "none"}}

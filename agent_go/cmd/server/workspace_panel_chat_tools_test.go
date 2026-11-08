@@ -2,12 +2,13 @@ package server
 
 import (
 	"context"
-	"github.com/gin-gonic/gin"
-	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"net/http/httptest"
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
@@ -97,7 +98,7 @@ func TestWorkspacePanelChatToolsBindCurrentBuilder(t *testing.T) {
 		virtualtools.DeleteSessionNotificationDestination(session)
 		common.ClearSessionShellConfig(session)
 	})
-	if out, err := reg.tools["settings"].exec(ctx, map[string]any{"action": "update", "secrets": map[string]any{"unselect": []any{"RETIRED_EXAMPLE"}}, "notifications": map[string]any{"gmail_connection_id": ""}}); err != nil {
+	if out, err := reg.tools["settings"].exec(ctx, map[string]any{"action": "update", "secrets": map[string]any{"unselect": []any{"RETIRED_EXAMPLE"}}}); err != nil {
 		t.Fatalf("native settings clear: %s %v", out, err)
 	}
 	for _, env := range []map[string]string{controllerEnv, builderEnv} {
@@ -112,10 +113,6 @@ func TestWorkspacePanelChatToolsBindCurrentBuilder(t *testing.T) {
 	}
 	if builderEnv["KEEP_MARKER"] != "keep" {
 		t.Fatal("settings refresh changed unrelated shell environment")
-	}
-	childContext := context.WithValue(ctx, common.ChatSessionIDKey, session)
-	if dest := virtualtools.NotificationDestinationFromContext(childContext); dest == nil || dest.Gmail == nil || len(dest.Gmail.ConnectionIDs) != 0 {
-		t.Fatal("the next child notification retained a cleared Gmail sender")
 	}
 	out, err = reg.tools["workflow_team"].exec(ctx, map[string]any{"action": "get"})
 	if err != nil || !strings.Contains(out, "can_manage") {

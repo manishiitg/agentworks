@@ -1,169 +1,25 @@
-## Human in the loop for workflows
+## People and workflow runs
 
-Use this reference when designing, changing, or operating a workflow that needs
-a human answer, approval, review, or correction. Choose the interaction by
-what must wait and what should happen after the answer. Preserve the user's
-existing choices and authorization; do not ask again for information already
-supplied, invent approval, or expand an approval to unrelated work.
+A workflow run never waits for a person (decisions log, 2026-11-08). There is
+no mid-run question, approval card or OTP prompt. Use this reference when a
+workflow needs something from a person.
 
-This is a map of platform capabilities, not additional tool access. Use only
-the tools available in the current session. A step agent that lacks decision,
-chat, or execution tools reports the missing input to its caller through its
-normal result; it does not manufacture an endpoint, launch another run, or
-edit platform decision tables. Workflow design/report authoring belongs to
-Workshop; executing a workflow does not authorize changing its plan.
+| Situation | What to do |
+| --- | --- |
+| Clarifying scope or discussing an output | Ask in the normal chat. The reply continues the conversation. |
+| A known value or instruction for this run | Supply it at launch through declared inputs or function arguments. |
+| A missing value during a run | The step fails with a clear reason. Fix the input and run again. |
+| The user reviews business items in a dashboard | The dashboard saves each item's status in the database. A later run reads the approved items; the write alone starts nothing. |
+| A dashboard action should hand a task to the agent now | Use the dashboard's chat action, which queues a message in an existing chat. |
+| Correcting an execution that is already running | `runs action=message` forwards to that exact execution. |
+| Telling people about a result | The run record is the summary and the owner is told in the Crew chat. A workflow that must reach other people sends explicitly (`messages action=email_send` or `messages action=slack_send`, or the Python send helpers). |
 
-### Choose the interaction
+Schedules must complete unattended. When a person must review something,
+provide the actual draft/change/evidence to review, not a summary of it. For a
+decision that takes hours or days, save the proposal (for example in the
+database), end the run, and let a later run
+read the person's saved answer. A default or a skipped answer is never
+evidence of approval: the consumer of an action checks for an explicit saved
+approval before acting.
 
-| Situation | Mechanism | What waits / what happens next |
-| --- | --- | --- |
-| Ordinary clarification, choosing scope, or discussing an output | Normal workflow chat | Ask in the conversation. The user's reply continues the conversation; pass known answers into execution where appropriate. |
-| A known value or instruction for this run | Declared variables/function arguments, or per-step `human_inputs` | Supply it at launch; variables render into descriptions, instructions stay scoped to the target step. |
-| A planned fixed-choice decision inside an interactive pipeline | `branch` with `route_source="human"` | The routes are the options. Use an explicit known answer via `route_selections`; otherwise an interactive run prompts, while an unattended run uses a safe non-approval default or fails. |
-| An unexpected, urgent human-only input while a workflow step is running | `needs_you action=ask` | The calling execution agent waits for the bounded response card. Answering returns to the same tool call; expiry is not approval. This tool is unavailable in Builder chat. |
-| A review decision that can wait beyond this turn/run | `needs_you action=create` | Persist a question in the workflow's decision system and finish/park the affected work. A later consumer reads the explicit saved answer. |
-| The user reviews individual business items in a dashboard | Report-owned DB approval | `window.report.updateField`/`updateFields` saves the item's status. An existing consumer route/step reads approved items later; the write alone starts nothing. |
-| A report action should hand a specific task to the agent now | Report `sendChatMessage` | The action queues its message directly in an existing workflow chat, creating one only if none exists. Save an existing business approval first when the request depends on it. |
-| The user corrects an execution already running | `runs action=message` | Forward to the exact active execution, live or at the next safe agent boundary. This does not start, restart, or resume completed work. |
-
-Recorded run summaries and Daily Actions are notifications/evidence,
-not response or approval mechanisms. A notification delivery receipt does not
-mean the human agreed. Route selection is also not blanket authorization for
-every side effect on that route.
-
-### Planned checkpoint versus an unattended run
-
-Supply known values through launch inputs. An agent uses `needs_you action=ask` for an
-urgent value needed during work. Use a human-decided `branch` for a fixed choice
-such as draft → approve/hold → action. Put the review before
-the action it governs and provide the actual draft/change/evidence to review.
-Do not add a checkpoint just to repeat a route choice or answer from chat.
-
-- `runs action=step` (..., human_input=...) can supply the user's known answer to
-  that exact step. It is not permission for the builder to choose an answer.
-- `runs action=start` (..., human_inputs={step_id: instructions}) adds instructions
-  only to the matching executable step, including delegated agents. Use exact step IDs;
-  use `route_selections` for routing and branch choices, not `human_inputs`.
-- Do not pre-supply approval for output the user has not reviewed. Use an
-  interactive human branch when the execution entry point supports waiting;
-  otherwise run through the draft boundary, obtain the real answer, and then
-  execute the consumer, or use durable proposal/approval/consumer stages.
-- Schedules must complete unattended. For decisions that may take hours/days,
-  persist the proposal, leave it pending, and end the producing run. A later
-  authorized run/route consumes the answer. Do not hold a blocking call open
-  until the next human visit.
-- A route default or skipped question is not evidence of human approval. Require
-  explicit approval evidence at the action consumer.
-
-For execution arguments and completion/stop handling, Workshop/Run callers can
-read `builder-reference`, `references/running-steps.md` when available.
-
-### Urgent response card
-
-Running workflow steps may use `needs_you action=ask` for short-lived human-only input such as an OTP, CAPTCHA,
-or an immediate decision that cannot wait. Ordinary Builder questions belong
-in chat. The card is in-app only: it does not fan out through Gmail, Slack,
-webhooks, or notification connectors.
-
-Choose a realistic `timeout_seconds` within 30–1800 seconds (default 300).
-On expiry, the action remains unapproved/incomplete; retry only while the
-input is still needed. For bridge-only CLI calls, keep the tool call in the
-foreground and let its response resume the same turn. Do not background it,
-poll a file, or ask the user to send another message after answering. A shell
-timeout must cover the requested wait. Cursor CLI's silent-call limit requires
-`timeout_seconds <= 45`.
-
-### Durable AgentWorks/review decisions
-
-Use the existing question lifecycle, not a parallel approval table, for AgentWorks
-coordination and technical/strategic review decisions. Attribute the request
-to its real source (`technical_review`, `strategic_review`, or generic `goal`).
-For an authorized workflow change, supply the tool's structured `apply_contract`;
-the consumer must not infer the repair from the question's prose alone.
-
-An obsolete agent-issued pending proposal can be withdrawn by Builder using
-`needs_you action=withdraw` with a reason and evidence references. The original
-question, options and approval contract stay in history. This is agent judgment,
-not an owner answer or permission to perform the proposal. Human-created requests,
-suggestions and answered/claimed decisions are not eligible; provenance that is
-unknown stays unknown. AgentWorks discusses withdrawal with Builder rather than
-answering or withdrawing the owner's decisions itself.
-
-The native card's controls have distinct meanings:
-
-- **Ask in chat** opens a contextual discussion. It does not answer the question.
-- **Save answer**, or an explicit final answer in chat recorded with
-  `needs_you action=answer`, saves the answer. It does not itself apply it.
-- **Take best action** explicitly delegates choosing and the resulting action.
-  Respect that delegation's scope; do not treat an ordinary question as it.
-
-Before applying, read the current decision with `needs_you action=get`,
-check its exact option/scope and application contract, and use the appropriate
-consumer. Builder applies workflow changes in its existing chat; an authorized
-execution agent applies actions within its own scope. The applying agent checks
-the saved or external result, then calls `needs_you action=consume` with
-`outcome_summary` and `outcome_evidence`. Approval, a queued task or a start
-receipt is not proof of completion. These are one approval/apply/completion
-flow using the same decision history, not separate user approvals.
-Never consume to reserve an approval or prevent overlapping runs; execution
-controls handle overlap separately. Blocked/deferred work stays answered with
-its reason recorded. An uncertain external result must be reconciled at the
-destination before retrying, including when the action succeeded but recording
-completion failed. Explicit rejection can be completed using the saved answer
-as evidence. Do not add approval states or reopen an already consumed decision
-to retry an action without separate authorization.
-Do not write platform decision rows through a report's business-field API.
-
-### Report-owned approval and report-to-chat handoff
-
-Keep an existing business approval in the domain's existing record: for
-example, WebsiteAEO's `audit_findings` status. Do not convert every business
-item into an AgentWorks decision just to support a dashboard button.
-
-Choose the button's behavior explicitly:
-
-- **Approve** saves the business approval for its existing consumer.
-- **Approve and apply** saves it, then sends a scoped report-to-chat request.
-- **Ask agent** sends a question about the item without changing its approval.
-
-`window.report.sendChatMessage(message, { requestId })` sends directly from the
-user action without a popup or chat-choice step. It reuses a suitable
-interactive workflow chat, or creates one only if none exists; a
-running foreground turn keeps the message queued. It does not interrupt the
-turn, take over a scheduled/view-only chat, or directly launch a route.
-
-For apply requests, include the workspace item ID, actual proposal version or
-equivalent stable evidence, approved scope, and exact intended route/consumer.
-Ask the agent to re-read approval, skip already applied work, execute only that
-item, verify the result, and refresh the report. A generic full-workflow run
-may repeat the audit or approval gate and is not an equivalent handoff.
-
-Await the DB save before requesting chat. A failed send leaves the approval
-saved and must be retryable without rewriting it; its scheduled consumer may
-still act later. A successful result says `queued`, not started/applied/completed. Per-view request IDs
-reduce duplicate sends; durable already-applied checks still belong to the
-consumer. Chat dispatch and approval saving are not one atomic transaction.
-
-For API limits, receipt fields, error handling, and an authoring example, load
-`read_skill(skills=[{"name":"builder-reference","path":"references/reporting-policy.md"}])`
-in Workshop/Run when that reference is available. Report actions are unavailable
-in headless preview and static published snapshots. Never send from rendering,
-refresh, or polling callbacks. Chat dispatch does not change the report iframe's existing same-origin
-isolation limitation.
-
-### Correcting active work
-
-When the user changes instructions during a running execution, use its actual
-returned `execution_id` with `runs action=message`. `sent_to_cli` and
-`queued_for_injection` describe delivery, not completed work. `no_active_agent`
-means there is no messageable agent at this moment (for example validation or
-script-only work); do not poll or start a duplicate execution. Stop requests
-require the available stop tool, not merely an acknowledgement in chat.
-
-### Make the human interaction concrete
-
-For the selected pattern, identify: the exact item/output being reviewed;
-where the answer is stored; which work pauses or ends pending; which route,
-step, or chat receives it; and what counts as verified completion. Explain
-those facts plainly to the user. Preserve existing authorization, separate
-discussion from a final answer, and do not label saved/queued work as applied.
+Crew chats with their own person are unaffected: they ask in the conversation.

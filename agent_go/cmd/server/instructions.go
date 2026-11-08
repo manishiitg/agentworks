@@ -168,9 +168,8 @@ List workflows with ` + "`execute_shell_command(command: \"ls " + absWorkflow + 
 Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 
 **Planning & config:**
-- ` + "`soul/soul.md`" + ` — canonical stable workflow intent: ` + "`## Objective`" + `, ` + "`## Success Criteria`" + `, and optional explicit user-approved constraints. Read before review, improve, measure, harden, and ambiguous execution decisions. **Do not store architecture, current step design, provider/tool choices, implementation details, historical decisions, references, agent-inferred assumptions, or notification preferences in soul.md** — per-workflow notification preferences live in workflow.json notifications: run_summary_instructions, run_summary_channels, run_summary_recipients configure team run messages. No configured recipients means no summary email; never fall back to the owner's address. The break_alerts setting (“Tell me when something breaks”) controls informational failures in Needs you. Questions requiring an answer and failed Gmail notices remain visible. AgentWorks handles progress reporting; there is no per-Goal digest or Autopilot reporting stream. gmail_connection_id selects the sending Gmail account with existing account access checks. Those describe the revisable "how" and belong in workflow notification configuration, not soul.md. **Stays Markdown — never create a ` + "`soul.html`" + `, a "readable mirror", or any HTML copy.** It is parsed as Markdown (the framework-health check and run-time objective injection read the ` + "`## Objective`" + ` / ` + "`## Success Criteria`" + ` headings), and AgentWorks renders it directly in Goal. Typed AgentWorks records store time-based review, analysis, and improvement history; they may report evidence-stamped goal progress but must not copy a Goal/Profile card. soul.md is the single source; leave it Markdown.
 - ` + "`workflow.json`" + ` — workflow-level config: schedules, MCP servers, skills, LLM config. May carry legacy optional ` + "`objective`" + ` / ` + "`success_criteria`" + ` fallback values.
-- ` + "`planning/plan.json`" + ` — step definitions (IDs, titles, descriptions, dependencies, validation). It no longer owns root objective/success fields; use ` + "`soul/soul.md`" + ` for that.
+- ` + "`planning/plan.json`" + ` — step definitions (IDs, titles, descriptions, dependencies, validation).
 - ` + "`planning/step_config.json`" + ` — per-step settings. Each step's ` + "`agent_configs`" + ` object controls execution mode:
   - ` + "`use_code_execution_mode`" + ` (bool) — ` + "`false`" + ` = direct tool calls, ` + "`true`" + ` = scripted Python (main.py)
   - the execution model itself is the plan step type, not a config field: a ` + "`scripted`" + ` step runs its persistent code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy), a ` + "`agent`" + ` step is conversational (ephemeral per-run scripts when ` + "`use_code_execution_mode`" + ` is on).
@@ -196,7 +195,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 
 **Interactive builder / workshop:**
 - ` + "`builder/conversation/users/{user-id}/YYYY-MM-DD/session-{id}-conversation.json`" + ` — the current user's workshop (interactive builder) conversation histories. Legacy installations may still have date folders directly below ` + "`builder/conversation/`" + `. These are JSON files with ` + "`conversation_history`" + ` entries. User messages have ` + "`Role`" + `=` + "`human`" + `/` + "`user`" + ` and text in ` + "`Parts[].Text`" + `; assistant replies have ` + "`Role`" + `=` + "`ai`" + `/` + "`assistant`" + `. Tool calls/results are interleaved and noisy, so scan from the end for the latest user/assistant text instead of assuming the final JSON entry is the latest user request. Other users' folders are private and blocked by the folder guard.
-- ` + "`planning/changelog/changelog-YYYY-MM-DD-HH-MM-SS.json`" + ` — per-session log of every plan-mod tool call (` + "`update_*_step`" + `, ` + "`add_*_step`" + `, ` + "`delete_plan_steps`" + `, ` + "`*_agent_route`" + `, ` + "`update_validation_schema`" + `, ` + "`update_step_config`" + `). Each entry carries timestamp, tool, the mandatory ` + "`reason`" + ` you supplied at invocation, affected step ids, per-field old/new values, and full JSON of added/deleted steps for revert; Artifact Review later stamps inspected entries with ` + "`artifact_review.done=true`" + ` through ` + "`mark_changelog_artifact_reviewed`" + `. **Read this** before proposing plan edits to see what's already been tried this session and why; it complements owner decisions with per-session, per-mutation detail. Files rotate hourly. Read-only via shell — entries are written automatically by the plan-mod tools, never edit them by hand.
+- ` + "`planning/changelog/changelog-YYYY-MM-DD-HH-MM-SS.json`" + ` — per-session log of every plan-mod tool call (` + "`update_*_step`" + `, ` + "`add_*_step`" + `, ` + "`delete_plan_steps`" + `, ` + "`*_agent_route`" + `, ` + "`update_validation_schema`" + `, ` + "`update_step_config`" + `). Each entry carries timestamp, tool, the mandatory ` + "`reason`" + ` you supplied at invocation, affected step ids, per-field old/new values, and full JSON of added/deleted steps for revert. **Read this** before proposing plan edits to see what's already been tried this session and why; it complements owner decisions with per-session, per-mutation detail. Files rotate hourly. Read-only via shell — entries are written automatically by the plan-mod tools, never edit them by hand.
 
 **Business context:**
 - ` + "`knowledgebase/context/context.md`" + ` and ` + "`knowledgebase/context/examples/`" + ` — user-supplied runtime business context: rules, preferences, constraints, assumptions, examples. User-supplied content is never silently rewritten by the platform. Steps with ` + "`knowledgebase_access: read`" + ` (or ` + "`read-write`" + `) automatically have read access — context lives as a sub-section of the knowledgebase. The saved context is available to authorized workflow steps.
@@ -211,7 +210,6 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 
 ### Efficient Parsing
 - **List workflows:** ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/\")`" + `
-- **Objective + success criteria:** ` + "`execute_shell_command(command: \"sed -n '1,160p' '" + absWorkflow + "/<name>/soul/soul.md'\")`" + `
 - **Step list (IDs + titles):** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; steps=json.load(open('" + absWorkflow + "/<name>/planning/plan.json')).get('steps',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s.get(\\\\\\\"label\\\\\\\",s.get(\\\\\\\"title\\\\\\\",\\\\\\\"\\\\\\\"))}') for s in steps]\\\"\")`" + `
 - **Step execution modes:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/planning/step_config.json\")`" + ` — look at each step's ` + "`agent_configs.use_code_execution_mode`" + ` and the step's plan type (scripted = scripted main.py, agent = conversational)
 - **Schedules:** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; scheds=json.load(open('" + absWorkflow + "/<name>/workflow.json')).get('schedules',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s[\\\\\\\"cron_expression\\\\\\\"]} enabled={s.get(\\\\\\\"enabled\\\\\\\",True)}') for s in scheds]\\\"\")`" + `
@@ -232,7 +230,6 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
    - "What has the workflow produced / found / extracted?" → ` + "`runs/iteration-0/`" + ` (latest run outputs) or ` + "`db/db.sqlite`" + ` (accumulated structured state across runs; query tables with sqlite3).
    - "What does the workflow know about X?" → ` + "`knowledgebase/context/context.md`" + ` for user-supplied runtime context, then ` + "`knowledgebase/notes/_index.json`" + ` plus selected ` + "`knowledgebase/notes/*.md`" + ` for narratives.
    - "How does the workflow do X?" → the selected workflow-local skill index and relevant references.
-   - "Why does the workflow exist / what's its goal?" → ` + "`soul/soul.md`" + ` (objective, success criteria).
    - "Latest results / most recent report?" → ` + "`db/reports/index.html`" + ` for the live dashboard, and ` + "`db/db.sqlite`" + ` for the rows it shows.
 3. **Synthesize a direct answer** grounded in what you read. If none of the workflow state covers the question, say so explicitly and offer to look elsewhere.
 
@@ -335,8 +332,6 @@ Workflow-level manifest. **Required fields**: ` + "`schema_version`" + ` (int, 1
   "version": "` + WorkflowContractCurrentVersion + `",
   "id": "wf_<kebab-name>",
   "label": "Human Readable Name",
-  "objective": "One-sentence fallback copy — the canonical home is soul/soul.md ## Objective",
-  "success_criteria": "Fallback copy — the canonical home is soul/soul.md ## Success Criteria",
   "capabilities": {
     "selected_servers": ["mcp-server-name"],
     "selected_tools": [],
@@ -364,7 +359,7 @@ Workflow-level manifest. **Required fields**: ` + "`schema_version`" + ` (int, 1
 
 ### File 2: ` + "`Workflow/<kebab-name>/planning/plan.json`" + `
 
-Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step). Each step needs ` + "`type`" + `, ` + "`id`" + ` (kebab-case, unique), and ` + "`title`" + ` at minimum. Do NOT add root ` + "`objective`" + `/` + "`success_criteria`" + ` here — plan.json no longer owns them; after creating the files, fill in ` + "`soul/soul.md`" + ` (scaffolded automatically) with the real ` + "`## Objective`" + ` and ` + "`## Success Criteria`" + `.
+Step definitions. **Required field**: ` + "`steps`" + ` (array, at least 1 step). Each step needs ` + "`type`" + `, ` + "`id`" + ` (kebab-case, unique), and ` + "`title`" + ` at minimum. Do NOT add root ` + "`objective`" + `/` + "`success_criteria`" + ` here — plan.json no longer owns them.
 
 **Sensible starter shape**:
 

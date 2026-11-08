@@ -14,49 +14,11 @@ import (
 // All read-only.
 // =====================================================================
 
-// FrameworkHealthResponse is the JSON shape of GET /api/workflow/framework-health.
-// One stop shop for "is the framework wired correctly?": soul preconditions.
-type FrameworkHealthResponse struct {
-	Success           bool   `json:"success"`
-	SoulExists        bool   `json:"soul_exists"`
-	ObjectiveOK       bool   `json:"objective_ok"`
-	SuccessCriteriaOK bool   `json:"success_criteria_ok"`
-	Objective         string `json:"objective,omitempty"`
-	SuccessCriteria   string `json:"success_criteria,omitempty"`
-	Error             string `json:"error,omitempty"`
-}
-
-// handleGetFrameworkHealth surfaces the soul.md preconditions used by workflow
-// setup and improvement flows.
-func (api *StreamingAPI) handleGetFrameworkHealth(w http.ResponseWriter, r *http.Request) {
-	if !setupCORS(w, r, http.MethodGet) {
-		return
-	}
-	workspacePath, ok := requireWorkspacePath(w, r)
-	if !ok {
-		return
-	}
-	pre, err := ReadSoulPreconditions(r.Context(), workspacePath)
-	if err != nil {
-		writeAIJSON(w, FrameworkHealthResponse{Success: false, Error: err.Error()})
-		return
-	}
-	resp := FrameworkHealthResponse{
-		Success:           true,
-		SoulExists:        pre.SoulExists,
-		ObjectiveOK:       pre.ObjectiveOK,
-		SuccessCriteriaOK: pre.SuccessCriteriaOK,
-		Objective:         pre.Objective,
-		SuccessCriteria:   pre.SuccessCriteria,
-	}
-	writeAIJSON(w, resp)
-}
-
 // BuilderDocResponse is the JSON shape of GET /api/workflow/builder-doc.
 // It returns a stable workflow document (or empty if it does not exist yet).
 type BuilderDocResponse struct {
 	Success bool   `json:"success"`
-	Doc     string `json:"doc"`     // "soul" or a compact dashboard card — echoed back
+	Doc     string `json:"doc"`     // a compact dashboard card — echoed back
 	Path    string `json:"path"`    // workspace-relative path that was read
 	Exists  bool   `json:"exists"`  // false if the file does not exist yet
 	Content string `json:"content"` // markdown body, "" when !exists
@@ -75,8 +37,6 @@ func (api *StreamingAPI) handleGetBuilderDoc(w http.ResponseWriter, r *http.Requ
 	requestedPath := strings.TrimSpace(r.URL.Query().Get("path"))
 	var rel string
 	switch doc {
-	case "soul":
-		rel = "soul/soul.md"
 	case "card-health":
 		rel = "builder/card.health.html"
 	case "card-progress":
@@ -84,7 +44,7 @@ func (api *StreamingAPI) handleGetBuilderDoc(w http.ResponseWriter, r *http.Requ
 	case "card-cost":
 		rel = "builder/card.cost.html"
 	default:
-		http.Error(w, "doc must be one of: soul, card-health, card-progress, card-cost", http.StatusBadRequest)
+		http.Error(w, "doc must be one of: card-health, card-progress, card-cost", http.StatusBadRequest)
 		return
 	}
 	if requestedPath != "" {

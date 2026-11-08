@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,20 @@ import (
 // PLAT-746-265: authenticated Run-person admission crosses HTTP, uses the live
 // parent owner, and executes real Python with no model turn or saved plan.
 func TestSharedCrewScriptRunPersonHTTPExecutesRealPython(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		// Hosted storage is outside the launcher's writable private /tmp.
+		// A rebound fixture beneath /tmp inherits that scratch grant.
+		root, err := os.MkdirTemp(".", ".script-http-fixture-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		root, err = filepath.Abs(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(root) })
+		t.Setenv("TMPDIR", root)
+	}
 	for _, local := range []bool{false, true} {
 		t.Run(fmt.Sprintf("attached_project_%v", local), func(t *testing.T) { checkSharedCrewScriptHTTP(t, local) })
 	}
@@ -127,12 +142,19 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 		}
 	}
 	write(filepath.Join(sourceRoot, "script.json"), `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true},{"name":"extended","type":"boolean","value":"false"},{"name":"rate","type":"number","value":"5"},{"name":"RDS_SECRET_ID_DEV","type":"string","value":"example/dev/app"}],"input_presets":[{"name":"Saved","values":{"extended":"false","rate":"5"}}],"outputs":["result.json"]}`)
-	write(filepath.Join(sourceRoot, "helper.py"), "from agentworks import step\n@step('Prepare report')\ndef prepare(): return True\n")
+	write(filepath.Join(sourceRoot, "helper.py"), "from agentworks import step, check\n@step('Prepare report')\ndef prepare():\n    assert check('Prepared', True, 'Fixture ready').ok\n    return True\n")
 	kbPath, err := fsutil.WorkspacePath(docs, binding.Root+"/knowledgebase/context/rules.md")
 	if err != nil {
 		t.Fatal(err)
 	}
 	write(kbPath, "fixture knowledge")
+	// Retired plan settings must not participate in a converted Python run or
+	// its executable revision, even if the old file is malformed.
+	legacyConfig, err := fsutil.WorkspacePath(docs, binding.Root+"/planning/step_config.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(legacyConfig, "retired settings: not a JSON definition")
 	kbJSON, _ := json.Marshal(kbPath)
 	write(filepath.Join(sourceRoot, "main.py"), "from pathlib import Path\nassert Path("+string(kbJSON)+").read_text() == 'fixture knowledge'\n"+`import json, os, sys
 from helper import prepare
@@ -141,20 +163,34 @@ from pathlib import Path
 print('start-marker')
 sys.stdout.write('Q' * 2097152)
 sys.stderr.write('stderr-last-line')
+assert 'VAR_GROUP_NAME' in os.environ
 values = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(values['count'], int)
 assert values['extended'] is False and isinstance(values['rate'], (int,float))
 assert values['RDS_SECRET_ID_DEV'] == 'example/dev/app'
 assert not {'PUBLISH_URL','SLACK_CHANNEL_ID','EXT_DISCOVERY_TCP_SCOPE_NOTE'} & set(values)
+# Persistent files use the runtime store, not a guessed parent of source code.
+data_root = Path(os.environ['WORKFLOW_DATA_ROOT'])
+assert data_root != Path(os.environ['WORKFLOW_CODE_ROOT']).parent
+report = data_root / 'reports' / 'runtime-fixture.json'
+report.parent.mkdir(parents=True, exist_ok=True)
+report.write_text(json.dumps({'count': values['count']}))
+assert json.loads(report.read_text())['count'] == values['count']
+from agentworks import run_folder
+for protected in (Path(os.environ['WORKFLOW_CODE_ROOT']) / 'unexpected.py', run_folder / 'helpers' / 'forged.json'):
+    try: protected.write_text('{}')
+    except OSError: pass
+    else: raise AssertionError('Saved source/helper write was allowed: ' + str(protected))
+
 from agentworks_db import execute, scalar
 execute('CREATE TABLE IF NOT EXISTS fixture_rows (id INTEGER PRIMARY KEY, value TEXT)')
 execute('INSERT INTO fixture_rows(id,value) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value', [values['count'],'through script bridge'])
 assert scalar('SELECT value FROM fixture_rows WHERE id=?', [values['count']]) == 'through script bridge'
 # Ordinary subprocess steps retain the same managed bridge.
 import subprocess
-subprocess.run([sys.executable,'-c',"from agentworks_db import scalar; assert scalar('SELECT COUNT(*) FROM fixture_rows') >= 1"],check=True)
+subprocess.run([sys.executable,'-c',"import os; from pathlib import Path; from agentworks_db import scalar; assert scalar('SELECT COUNT(*) FROM fixture_rows') >= 1; assert (Path(os.environ['WORKFLOW_DATA_ROOT'])/'reports/runtime-fixture.json').is_file()"],check=True)
 
-Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'python_ran':True, 'run_folder':str(__import__('agentworks').run_folder)}))
+Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'preset':os.environ.get('VAR_GROUP_NAME'), 'python_ran':True, 'run_folder':str(__import__('agentworks').run_folder)}))
 `)
 	if err := writeFileToWorkspace(t.Context(), binding.CrewRoot+"/product.json", `{"schema_version":1,"product":"work","id":"crew-script-http","title":"Script HTTP","session_id":"work:project:crew-script-http"}`); err != nil {
 		t.Fatal(err)
@@ -302,6 +338,9 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		}
 		result, err := os.ReadFile(filepath.Join(runtimeRoot, "runs", folder.Name(), "execution/saved/result.json"))
 		if err == nil && strings.Contains(string(result), `"count": 9`) && strings.Contains(string(result), `"python_ran": true`) {
+			if !strings.Contains(string(result), `"preset": "Saved"`) {
+				t.Fatalf("direct script lost selected preset environment: %s", result)
+			}
 			runRoot := filepath.Join(runtimeRoot, "runs", folder.Name())
 			snapshot, readErr := os.ReadFile(filepath.Join(runRoot, "inputs.json"))
 			var inputRecord map[string]interface{}
@@ -339,6 +378,18 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			rel, relErr := filepath.Rel(runRoot, logReceipt.LogFile)
 			if relErr != nil || rel == ".." || strings.HasPrefix(rel, "../") {
 				t.Fatalf("log is outside its run: %s", logReceipt.LogFile)
+			}
+			for _, user := range []string{"owner", "runner"} {
+				request := httptest.NewRequest(http.MethodGet, "/api/workspace/run-evidence?workspace_path="+binding.Root+"&run_folder="+folder.Name(), nil)
+				request = request.WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: user, Username: user}))
+				reply := httptest.NewRecorder()
+				(&StreamingAPI{}).handleWorkspaceRunEvidence(reply, request)
+				var evidence struct {
+					Items []workflow.PythonRunEvidence `json:"items"`
+				}
+				if reply.Code != 200 || json.Unmarshal(reply.Body.Bytes(), &evidence) != nil || len(evidence.Items) != 1 || evidence.Items[0].OK == nil || !*evidence.Items[0].OK || evidence.Items[0].SourceCall == "" {
+					t.Fatalf("converted run evidence user=%s: HTTP%d %s", user, reply.Code, reply.Body)
+				}
 			}
 			verified = true
 			t.Logf("script completed run=%s run_as=%s real_python=true", folder.Name(), runAs)

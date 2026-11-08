@@ -24,7 +24,7 @@ func TestReportPreviewAllowedPath(t *testing.T) {
 		"MEMORY.md":                "MEMORY.md",
 		"../MEMORY.md":             "",
 		".private/MEMORY.md":       "",
-		"soul.md":                  "soul.md",
+		"soul.md":                  "",
 		"db/../workflow.json":      "", // reject ambiguous traversal
 		"db/db.sqlite":             "",
 		"db/reports/.dashboard-state/a/state.json": "",

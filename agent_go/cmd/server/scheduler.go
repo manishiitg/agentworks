@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/robfig/cron/v3"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/robfig/cron/v3"
 
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
@@ -585,12 +586,6 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		}
 		sctx.Schedule.GroupNames = nil
 		sctx.Capabilities.SlackConnectionID = ""
-		notifications := WorkflowNotificationConfig{}
-		if sctx.Capabilities.Notifications != nil {
-			notifications = *sctx.Capabilities.Notifications
-		}
-		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "slack", "whatsapp")
-		sctx.Capabilities.Notifications = &notifications
 	}
 
 	return sctx
@@ -2013,8 +2008,8 @@ func (s *SchedulerService) finishBlockedScheduleOccurrence(ctx context.Context, 
 	})
 	s.logf(sctx, "[SCHEDULER] Schedule %s did not run scheduled_for=%s: %s", sctx.Schedule.ID, sctx.ScheduledFor.Format(time.RFC3339Nano), reason)
 	if manifest != nil {
-		if err := s.sendAfterRunNotification(ctx, sctx, manifest, "", "blocked", "This scheduled run did not start because "+reason+". Fix the earlier schedule in Builder, then run again.", 0); err != nil {
-			s.logf(sctx, "[SCHEDULER] Blocked occurrence notification failed: %v", err)
+		if err := s.recordRunOutcome(ctx, sctx, manifest, "", "blocked", "This scheduled run did not start because "+reason+". Fix the earlier schedule in Builder, then run again.", 0); err != nil {
+			s.logf(sctx, "[SCHEDULER] Blocked occurrence outcome could not be recorded: %v", err)
 		}
 	}
 }
@@ -2481,41 +2476,6 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		return sessionID, nil
 	}
 	return sessionID, execErr
-}
-
-type workflowNotificationContentInstructions struct {
-	runSummary           string
-	runSummaryChannels   []string
-	runSummaryRecipients []string
-}
-
-func notificationInstructionsFromCapabilities(capabilities WorkflowCapabilities) workflowNotificationContentInstructions {
-	notifications := capabilities.Notifications
-	return workflowNotificationContentInstructions{
-		runSummary:           runSummaryInstructionsOrDefault(notifications),
-		runSummaryChannels:   notificationChannels(notifications, true),
-		runSummaryRecipients: notificationRecipients(notifications, true),
-	}
-}
-
-func notificationChannels(config *WorkflowNotificationConfig, run bool) []string {
-	if config == nil {
-		return nil
-	}
-	if run {
-		return append([]string(nil), config.RunSummaryChannels...)
-	}
-	return nil
-}
-
-func notificationRecipients(config *WorkflowNotificationConfig, run bool) []string {
-	if config == nil {
-		return nil
-	}
-	if run {
-		return append([]string(nil), config.RunSummaryRecipients...)
-	}
-	return nil
 }
 
 func compactScheduleMessages(messages []string) []string {

@@ -349,30 +349,35 @@ class Conversion:
             raise ValueError('Destination Crew needs its current private storage layout first.')
         if self.definitions.exists() or self.code.exists() or self.runtime.exists():
             raise ValueError('Destination already has source for this workflow; resolve the collision first.')
-        # No implicit promotion of Goal editors, sharing expansion, owner switch,
-        # or cross-machine transfer. A matching Crew can be created first.
+        # Shared workflows move into a Crew through its Team (decisions log,
+        # 2026-11-08): the Crew owner plus ACCEPTED Team members must cover
+        # everyone with access today (owners, editors and Run people). This
+        # deliberately gives former Run people the Crew's files and agents.
+        # Pending invites do not count; the execution owner never changes.
         access = self.manifest.get('access') or {}
         source_owners = set(access.get('owners') or [self.owner])
-        target_owners = {self.project['owner_id'], *self.project.get('co_owners', [])}
-        # Joined Team members now build like co-owners on the server. They
-        # live outside ownership/projects.json; ignoring that roster would
-        # silently give them write access to a newly imported private Goal.
+        if self.owner != self.project['owner_id']:
+            raise ValueError('Choose a Crew owned by this workflow\'s execution owner.')
+        covered = {self.project['owner_id'], *self.project.get('co_owners', [])}
         team = read(self.state/'team-folders'/crew/'team.json')
         if team:
             if team.get('project_id') != crew or team.get('owner_id') != self.project['owner_id']:
                 raise ValueError('Repair the destination Crew Team ownership record before converting.')
             if team.get('on'):
-                target_owners.update(person['user_id'] for person in team.get('people', []) if not person.get('invited'))
-        if self.owner != self.project['owner_id'] or source_owners != target_owners or access.get('editors'):
-            raise ValueError('Choose a Crew with the same execution owner and owners (including joined Team members); resolve editor access explicitly first.')
-        if bool(access.get('run_everyone')) != (not self.project.get('private', False)) or set(access.get('readers') or []) != set(self.project.get('run_people') or []):
-            raise ValueError('Choose a Crew with the same sharing audience. Migration never broadens or removes access.')
+                covered.update(person['user_id'] for person in team.get('people', []) if not person.get('invited'))
+        if access.get('run_everyone'):
+            raise ValueError('This workflow is shared with everyone. A Crew Team lists people by name: narrow the workflow to named people, or add them to the Crew Team, then convert.')
+        needed = source_owners | set(access.get('editors') or []) | set(access.get('readers') or [])
+        missing = sorted(needed - covered)
+        if missing:
+            raise ValueError('Add these people to the destination Crew Team and have them accept first: ' + ', '.join(missing))
         if self.manifest.get('team') or self.project.get('shared_agents'):
             raise ValueError('Resolve Team permissions or individually shared agents before converting this Goal.')
         sync = self.state / 'crew-sync' / (crew + '.json')
         if sync.exists():
             raise ValueError('Convert an unpaired destination first; publishing/sync conversion is separate.')
-        self.owners = source_owners
+        # Editors built the workflow too; their Builder chats move with it.
+        self.owners = source_owners | set(access.get('editors') or [])
         self.readers = set(access.get("readers") or [])
         self.chat_keys = {}
         self.sessions = {}

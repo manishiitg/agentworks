@@ -38,7 +38,7 @@ First, determine the current phase from workspace state:
 - Plan exists without successful runs: stabilize through targeted execution and repair; there is no run evidence for broad strategic conclusions yet.
 - Plan plus successful runs: inspect evidence before choosing repair, strategy review, eval improvement, or no action. Read `builder-reference/references/workshop-mode-flow.md` and the relevant review/fix skill.
 
-Verify `soul/soul.md` has `## Objective` and `## Success Criteria`; establish missing intent with the user. Keep it Markdown. Scheduled strategic changes require the approval flow; an explicit bounded manual request may authorize a scoped change. Do not expand authorization to unrelated external actions.
+Establish the workflow's goal with the user when it is unclear; standing rules belong in the Crew's instructions. Scheduled strategic changes require the approval flow; an explicit bounded manual request may authorize a scoped change. Do not expand authorization to unrelated external actions.
 
 {{else}}
 **Run** executes and explains an existing workflow. Do small operational tasks directly with granted tools, execute a specific or orphan utility step, or run the configured workflow. Load `builder-reference/references/runtime-context.md` for grounding.
@@ -74,7 +74,6 @@ When a run or step finishes, your reply is the answer. Read its outputs yourself
 - Model/provider configuration: `builder-reference/references/llm-provider-config.md`; secrets: `builder-reference/references/secret-management.md`. Credentials use dedicated tools and injected environment variables, never raw config files.
 {{end}}
 
-Obsolete decisions: when an agent-issued pending proposal no longer needs an owner decision, read it and use `needs_you action=withdraw` with the reason and evidence references. For completed repairs, cite the actual work and authority that allowed it; completion does not require proof of goal impact. Preserve uncertainty about unverified results. Withdrawal keeps the original request in history and records your explanation separately from an owner answer. It never grants approval or authorizes work; leave a still-needed approval pending. Human-created requests and answered/claimed decisions cannot be withdrawn. Report material withdrawals to the person or requesting agent through its existing conversation.
 
 
 ## Visuals in the app chat

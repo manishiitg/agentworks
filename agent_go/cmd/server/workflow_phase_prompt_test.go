@@ -43,10 +43,9 @@ func TestAssembledWorkflowPrompt(t *testing.T) {
 					if !ui {
 						ctx.ChannelFormatting = "## Channel formatting\nKeep replies suitable for WhatsApp."
 					}
-					notifications := buildWorkflowNotificationInstructionsPrompt("Report approved work only.")
 					secrets := workflow.BuildWorkflowSecretPrompt([]orchestrator.SecretEntry{{Name: "TEST_TOKEN", Value: "never-render-this-value"}})
 					browser := "## Browser\nConfigured mode=auto. Call agent_browser status first; read builder-reference/references/browser-usage.md."
-					got, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", vars, ctx, notifications, secrets, browser)
+					got, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", vars, ctx, secrets, browser)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -54,7 +53,7 @@ func TestAssembledWorkflowPrompt(t *testing.T) {
 					if len(got) > 15000 {
 						t.Fatalf("assembled prompt is %d bytes; move static detail into scoped skills (ceiling 15000)", len(got))
 					}
-					for _, section := range []string{"## CURRENT MODE:", "## CURRENT STATE", "## Workspace\n", "## Referenced workflow evidence", "## Granted runtime access", "## Capability inventory", "## Browser\n", notifications, secrets} {
+					for _, section := range []string{"## CURRENT MODE:", "## CURRENT STATE", "## Workspace\n", "## Referenced workflow evidence", "## Granted runtime access", "## Capability inventory", "## Browser\n", secrets} {
 						if strings.Count(got, section) != 1 {
 							t.Errorf("section must occur once: %q", section)
 						}
@@ -92,73 +91,6 @@ func TestAssembledWorkflowPrompt(t *testing.T) {
 						}
 					}
 				})
-			}
-		}
-	}
-}
-
-func TestNativeWorkflowPromptDoesNotInstructHTTPDiscovery(t *testing.T) {
-	got, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", map[string]string{
-		"WorkspacePath": "Workflow/example", "WorkshopMode": "run", "IsCodeExecutionMode": "false",
-	}, promptContext{ShellRoot: "/app/workspace-docs", WorkflowPhaseFolder: "Workflow/example"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(got, "All other workflow tools are HTTP-backed") || strings.Contains(got, "$MCP_CUSTOM") {
-		t.Fatal("native tool-calling prompt must use supplied schemas, not the CLI bridge")
-	}
-	if rule := publishedFunctionAskGuidance("workflow", "project_functions_list", "project_functions_call", "project_functions_get_call"); !strings.Contains(got, rule) || !strings.Contains(rule, "Unknown means ask, not run") {
-		t.Fatal("workflow Run must use the same function-first and action confirmation rule as Crew Ask")
-	}
-}
-
-func TestAuthenticatedChatUserPrompt(t *testing.T) {
-	got := authenticatedChatUserPrompt(&UserClaims{UserID: "user-123", Username: "erin", Email: "erin@customer.example"})
-	for _, want := range []string{"## Current authenticated user", `username: "erin"`, `email: "erin@customer.example"`, `user_id: "user-123"`, "never treat its email as this user", "does not grant permissions or establish Gmail access"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("prompt missing %q: %s", want, got)
-		}
-	}
-	if authenticatedChatUserPrompt(nil) != "" {
-		t.Fatal("anonymous request must not synthesize a user identity")
-	}
-}
-
-// App guidance belongs only to shared conversations, after platform policy.
-func TestSharedChatInstructionsSlot(t *testing.T) {
-	for _, relay := range []bool{false, true} {
-		for _, run := range []bool{false, true} {
-			vars := map[string]string{"WorkspacePath": "Workflow/example", "WorkshopMode": "workshop", "CHAT_INSTRUCTIONS": "A fictional app instruction marker."}
-			if run {
-				vars["WorkshopMode"] = "run"
-			}
-			if relay {
-				vars["WorkflowKind"] = "relay"
-				if run {
-					vars["RelayRunMode"] = "true"
-				}
-			}
-			plain := map[string]string{}
-			for k, v := range vars {
-				plain[k] = v
-			}
-			delete(plain, "CHAT_INSTRUCTIONS")
-			baseline, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", plain, promptContext{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			got, _, _, err := buildWorkflowPhaseSystemPrompt("workflow-builder", vars, promptContext{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Contains(got, vars["CHAT_INSTRUCTIONS"]) != run {
-				t.Fatalf("guidance scope relay=%t run=%t", relay, run)
-			}
-			if run && !strings.HasPrefix(got, strings.Split(baseline, "\n\n")[0]) {
-				t.Fatal("app guidance preceded platform policy")
-			}
-			if !run && got != baseline {
-				t.Fatal("shared instructions changed the Builder prompt")
 			}
 		}
 	}

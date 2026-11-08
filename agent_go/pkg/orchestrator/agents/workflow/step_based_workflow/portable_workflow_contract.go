@@ -176,7 +176,7 @@ func ValidatePortableWorkflowRuntime(ctx context.Context, workspace string, reso
 			return portableReferences(raw, label+"/"+filepath.ToSlash(rel), workspace)
 		})
 	}
-	for _, location := range []struct{ root, label string }{{code, "code"}, {workflowAbsPath(workspace, "skills"), "skills"}, {workflowAbsPath(workspace, "soul"), "soul"}} {
+	for _, location := range []struct{ root, label string }{{code, "code"}, {workflowAbsPath(workspace, "skills"), "skills"}} {
 		if err := scan(location.root, location.label); err != nil {
 			return nil, err
 		}

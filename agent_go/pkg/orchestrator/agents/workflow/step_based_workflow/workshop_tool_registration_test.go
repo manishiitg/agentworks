@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -92,49 +90,6 @@ func TestUpdateWorkflowConfigDoesNotExposeRetiredKnowledgebaseLock(t *testing.T)
 	}
 	if _, exists := properties["lock_knowledgebase"]; exists {
 		t.Fatal("retired workflow-wide lock_knowledgebase is still exposed to agents")
-	}
-}
-
-func TestUpdateWorkflowConfigClearsSenderAndPreservesRecipients(t *testing.T) {
-	agent := newWorkshopDefinitionDraft()
-	controller, workspacePath := newPreValidationConcernTestOrchestrator(t)
-	manifestPath := filepath.Join(workspacePath, "workflow.json")
-	initial := `{"id":"notify-test","capabilities":{"notifications":{"gmail_connection_id":"old","run_summary_recipients":["ops@example.com"]}}}`
-	if err := os.WriteFile(manifestPath, []byte(initial), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	session := &WorkshopChatSession{
-		controller:   controller,
-		StepRegistry: NewWorkshopStepRegistry(),
-		config:       &WorkshopConfig{WorkspacePath: controller.GetWorkspacePath()},
-	}
-	RegisterWorkshopChatTools(agent, session, workshopToolTestLogger{})
-	tool := agent.tools["update_workflow_config"]
-	properties := tool.InputSchema["properties"].(map[string]interface{})
-	if _, ok := properties["notification_gmail_connection_id"]; !ok {
-		t.Fatal("Builder cannot set the Notify Gmail sender")
-	}
-	result, err := tool.Execute(context.Background(), map[string]interface{}{"notification_gmail_connection_id": ""})
-	if err != nil || !strings.Contains(result, "Gmail notification sender: account default") {
-		t.Fatalf("clear sender result = %q, %v", result, err)
-	}
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var saved struct {
-		Capabilities struct {
-			Notifications map[string]json.RawMessage `json:"notifications"`
-		} `json:"capabilities"`
-	}
-	if err := json.Unmarshal(data, &saved); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := saved.Capabilities.Notifications["gmail_connection_id"]; ok {
-		t.Error("cleared sender was retained")
-	}
-	if _, ok := saved.Capabilities.Notifications["run_summary_recipients"]; !ok {
-		t.Fatal("changing sender removed existing recipients")
 	}
 }
 

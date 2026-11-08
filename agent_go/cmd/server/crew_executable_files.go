@@ -174,7 +174,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		clean, valid := cleanWorkspaceReadPath(file, false)
 		pending := workflowVersionUpgradePlan(manifest)
 		upgrading := binding.Kind == "workflow" && len(pending) > 0 && !workflowContractNeedsRecreation(manifest) && manifest.CodeLayoutVersion == 1
-		guide := upgrading && strings.HasSuffix(clean, ".md") && (strings.HasPrefix(clean, "skills/") || strings.HasPrefix(clean, "soul/"))
+		guide := upgrading && strings.HasSuffix(clean, ".md") && strings.HasPrefix(clean, "skills/")
 		oldHelperRead := upgrading && action == "read" && strings.HasPrefix(clean, "learnings/")
 		allowed := guide || oldHelperRead || (binding.Kind == "script" && (clean == "script.json" || clean == "main.py" || strings.HasSuffix(clean, ".py") && !strings.Contains(clean, "/"))) || strings.HasPrefix(clean, "planning/") || strings.HasPrefix(clean, "code/") || clean == "variables/variables.json"
 		if !valid || !allowed {

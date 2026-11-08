@@ -195,6 +195,9 @@ func ReadStepConfigs(ctx context.Context, bo *orchestrator.BaseOrchestrator, wor
 // ReadStepConfigs is a private wrapper that uses receiver fields (for backward compatibility)
 // Uses run folder path if available, otherwise falls back to base workspace path
 func (hcpo *StepBasedWorkflowOrchestrator) ReadStepConfigs(ctx context.Context) ([]StepConfig, error) {
+	if hcpo.directCrewScript != nil {
+		return nil, nil // Saved Python has one script.json, not old plan settings.
+	}
 	workspacePath := hcpo.GetWorkspacePath()
 	// Build run folder path if selectedRunFolder is set
 	var runWorkspacePath string
@@ -217,6 +220,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) ReadStepConfigs(ctx context.Context) 
 // bypasses run-specific configs because workshop config edits should update the
 // durable workspace config, not a selected run's snapshot.
 func (hcpo *StepBasedWorkflowOrchestrator) ReadStepConfigsFromSubdir(ctx context.Context, configSubdir string) ([]StepConfig, error) {
+	if hcpo.directCrewScript != nil {
+		return nil, nil // Saved Python has one script.json, not old plan settings.
+	}
 	workspacePath := hcpo.GetWorkspacePath()
 	if configSubdir == "" {
 		configSubdir = "planning"

@@ -32,6 +32,8 @@ class Migration(unittest.TestCase):
         self.runtime=self.private/'workflows/old-goal'
         write(self.state/'ownership/workflows.json',{'Workflow/old-goal':'owner'})
         write(self.state/'ownership/projects.json',{'projects':{'work/target':{'product':'work','folder':'target','owner_id':'owner','project_id':'crew','private':True,'run_people':['runner']}}})
+        # The Run person joined the destination Crew's Team (decisions log, 2026-11-08).
+        write(self.state/'team-folders/crew/team.json',{'project_id':'crew','owner_id':'owner','on':True,'people':[{'user_id':'runner','invited':False}]})
         (self.docs/'Crew/target').mkdir(parents=True)
         write(self.private/'product.json',{'id':'crew','product':'work','main_chat_key':'crew:chat:existing'})
         write(self.source/'workflow.json',{'id':'old-goal','code_layout_version':1,'label':'Revenue goal','created_by':'owner','access':{'owners':['owner'],'readers':['runner']},'schedules':[], 'capabilities':{'selected_secrets':['api-name']}})
@@ -481,21 +483,20 @@ class Migration(unittest.TestCase):
         self.assertEqual(m.read(self.runtime/'runs/iteration-1/run_metadata.json'), {'run_id':'original-run'})
 
     def test_refuses_access_expansion_collision_and_escaping_source_without_writes(self):
-        registry=self.state/'ownership/projects.json';original=m.read(registry)
-        changed=m.read(registry);changed['projects']['work/target']['private']=False;write(registry,changed)
-        before=hashes(self.base)
-        with self.assertRaisesRegex(ValueError,'sharing audience'):self.conversion()
-        self.assertEqual(before,hashes(self.base));write(registry,original)
+        # Everyone with access today must be an accepted Team member; the refusal names who is missing.
+        # An invitation alone grants nothing, and neither does a switched-off Team.
         team_file=self.state/'team-folders/crew/team.json'
-        write(team_file,{'project_id':'crew','owner_id':'owner','on':True,'people':[{'user_id':'runner','invited':False}]})
-        before=hashes(self.base)
-        with self.assertRaisesRegex(ValueError,'joined Team members'):self.conversion()
-        self.assertEqual(before,hashes(self.base))
-        # An invitation alone grants no access; neither does a switched-off Team.
         for on,invited in [(True,True),(False,False)]:
             write(team_file,{'project_id':'crew','owner_id':'owner','on':on,'people':[{'user_id':'runner','invited':invited}]})
-            self.assertEqual(self.conversion().report()['status'],'ready')
-        team_file.unlink()
+            before=hashes(self.base)
+            with self.assertRaisesRegex(ValueError,'accept first: runner'):self.conversion()
+            self.assertEqual(before,hashes(self.base))
+        write(team_file,{'project_id':'crew','owner_id':'owner','on':True,'people':[{'user_id':'runner','invited':False}]})
+        self.assertEqual(self.conversion().report()['status'],'ready')
+        manifest=m.read(self.source/'workflow.json');original=dict(manifest)
+        manifest['access']=dict(manifest['access'],run_everyone=True);write(self.source/'workflow.json',manifest)
+        with self.assertRaisesRegex(ValueError,'shared with everyone'):self.conversion()
+        write(self.source/'workflow.json',original)
         private_chat=self.docs/'_users/owner/chat_history/2026-11-04/session-original-conversation.json'
         write(private_chat,{'session_id':'session-original','user_id':'another-person'})
         before=hashes(self.base)

@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
@@ -2886,7 +2885,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// a reviewer prompt just to establish whether prompt-contract bloat exists.
 		if err := mcpAgent.RegisterCustomTool(
 			"get_plan_prompt_health",
-			"Measure authored plan-description health without dumping the plan: per-step character counts, 5k/10k/20k thresholds, long verbatim duplicate paragraphs, and the PLAT-556 budget per step (size vs this plan's median with OVER budget above 3x the median, floor 12,000 chars; dated/incident text; 300+ characters repeated verbatim across steps; missing ## Goal/Inputs/Output/Rules/Done when/Guides sections). consolidation_due_steps are the steps that make Architecture (prompt_design) due. reference_map (PLAT-561) lists references that no longer resolve: dependencies no step produces or stages, step folders and retired step ids, missing workflow files and eval routes named by steps, evals, KB notes, soul.md and learnings guides. Budgets and breaks are reports, never gates: they never block a run or an edit.",
+			"Measure authored plan-description health without dumping the plan: per-step character counts, 5k/10k/20k thresholds, long verbatim duplicate paragraphs, and the PLAT-556 budget per step (size vs this plan's median with OVER budget above 3x the median, floor 12,000 chars; dated/incident text; 300+ characters repeated verbatim across steps; missing ## Goal/Inputs/Output/Rules/Done when/Guides sections). consolidation_due_steps are the steps that make Architecture (prompt_design) due. reference_map (PLAT-561) lists references that no longer resolve: dependencies no step produces or stages, step folders and retired step ids, missing workflow files and eval routes named by steps, evals, KB notes and learnings guides. Budgets and breaks are reports, never gates: they never block a run or an edit.",
 			map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -3756,97 +3755,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 
-			// --- One-way notifications (secret references only) ---
-			sb.WriteString("\n### Notifications\n")
-			var runNotificationInstructions string
-			breakAlerts := true
-			var runNotificationChannels []string
-			var notificationExcludeChannels []string
-			var notificationGmailConnectionID string
-			var runNotificationRecipients []string
-			if content, readErr := ctrl.ReadWorkspaceFile(ctx, "workflow.json"); readErr == nil {
-				var manifest struct {
-					Capabilities struct {
-						Notifications struct {
-							BreakAlerts            *bool    `json:"break_alerts"`
-							RunSummaryInstructions string   `json:"run_summary_instructions"`
-							RunSummaryChannels     []string `json:"run_summary_channels"`
-							ExcludeChannels        []string `json:"exclude_channels"`
-							GmailConnectionID      string   `json:"gmail_connection_id"`
-							RunSummaryRecipients   []string `json:"run_summary_recipients"`
-						} `json:"notifications"`
-					} `json:"capabilities"`
-				}
-				if json.Unmarshal([]byte(content), &manifest) == nil {
-					if enabled := manifest.Capabilities.Notifications.BreakAlerts; enabled != nil {
-						breakAlerts = *enabled
-					}
-					runNotificationInstructions = strings.TrimSpace(manifest.Capabilities.Notifications.RunSummaryInstructions)
-
-					notificationExcludeChannels = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.ExcludeChannels)
-					notificationGmailConnectionID = strings.TrimSpace(manifest.Capabilities.Notifications.GmailConnectionID)
-					runNotificationRecipients = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.RunSummaryRecipients)
-					runNotificationChannels = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.RunSummaryChannels)
-				}
-			}
-			sb.WriteString(fmt.Sprintf("- Tell me when something breaks: %v\n", breakAlerts))
-			if runNotificationInstructions == "" {
-				sb.WriteString("- Workflow run summary instructions: not configured\n")
-			} else {
-				sb.WriteString("- Workflow run summary instructions:\n  " + strings.ReplaceAll(runNotificationInstructions, "\n", "\n  ") + "\n")
-			}
-
-			if len(runNotificationChannels) > 0 {
-				sb.WriteString(fmt.Sprintf("- Workflow run summary channels: %s\n", strings.Join(runNotificationChannels, ", ")))
-			}
-
-			if len(notificationExcludeChannels) > 0 {
-				sb.WriteString(fmt.Sprintf("- Excluded channels: %s\n", strings.Join(notificationExcludeChannels, ", ")))
-			}
-			// Show the saved sender and enabled choices so Builder can configure it.
-			if gmailSvc := services.GetGmailService(); gmailSvc != nil {
-				senderUserID, _ := ctx.Value(common.UserIDKey).(string)
-				connections := gmailSvc.ConnectionsUsableFrom(services.GmailUseScope{Workspace: iwm.controller.GetWorkspacePath(), UserID: senderUserID})
-				if notificationGmailConnectionID == "" {
-					sb.WriteString("- Gmail sender: not set — inherits the account default connection\n")
-				} else {
-					label := notificationGmailConnectionID
-					for _, conn := range connections {
-						if conn.ID == notificationGmailConnectionID {
-							label = fmt.Sprintf("%s (%s)", conn.ID, conn.DisplayName)
-							break
-						}
-					}
-					sb.WriteString(fmt.Sprintf("- Gmail sender: %s\n", label))
-				}
-				if len(connections) > 0 {
-					available := make([]string, 0, len(connections))
-					for _, conn := range connections {
-						if !conn.Enabled {
-							continue
-						}
-						entry := conn.ID
-						if conn.DisplayName != "" {
-							entry += " — " + conn.DisplayName
-						}
-						if st, ok := gmailSvc.AuthStatusForConnection(conn.ID); ok && st.Email != "" {
-							entry += " <" + st.Email + ">"
-						}
-						available = append(available, entry)
-					}
-					if len(available) > 0 {
-						sb.WriteString(fmt.Sprintf("- Available Gmail senders (set `notification_gmail_connection_id` with update_workflow_config to choose): %s\n",
-							strings.Join(available, "; ")))
-					}
-				}
-			} else if notificationGmailConnectionID == "" {
-				sb.WriteString("- Gmail sender: not set — inherits the account default connection\n")
-			} else {
-				sb.WriteString(fmt.Sprintf("- Gmail sender connection ID: %s (connection status unavailable)\n", notificationGmailConnectionID))
-			}
-			// Summaries email only explicitly configured recipients.
-			sb.WriteString(fmt.Sprintf("- Workflow run summary recipients: %s\n", notificationRecipientSummary(runNotificationRecipients)))
-
 			// Show available secrets that can be added
 			if iwm.listAvailableSecrets != nil {
 				allSecretNames, listErr := iwm.listAvailableSecrets(ctx)
@@ -4062,33 +3970,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"items":       map[string]interface{}{"type": "string"},
 					"description": "Secret names to stop using in the workflow (their values stay in Vault)",
 				},
-				"break_alerts": map[string]interface{}{
-					"type": "boolean", "description": "Tell me when something breaks: show run failures in Needs you. Enabled by default. Does not change configured team messages or decisions that need an answer.",
-				},
-				"run_notification_instructions": map[string]interface{}{
-					"type":        "string",
-					"maxLength":   2000,
-					"description": "Owner-approved guidance for the workflow execution section of notifications: what happened, outputs, failures, goal movement, metrics, detail, tone, and emphasis. Stored in workflow.json capabilities.notifications.run_summary_instructions. Pass an empty string to clear it. It cannot change recipients, channels, permissions, schedules, plan behavior, or delivery configuration.",
-				},
-
-				"run_notification_channels": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string", "enum": []string{"gmail", "slack", "whatsapp"}},
-					"minItems":    1,
-					"description": "Channels for the workflow run summary only. The backend enforces this allowlist. Omit to retain the current/default routing.",
-				},
-
-				"run_notification_recipients": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Email addresses the workflow run summary is sent TO, stored in workflow.json capabilities.notifications.run_summary_recipients and applied automatically to every run_summary send. This is the positive 'send here' list — set it when the user names who should receive this workflow's run emails. Omit to leave unchanged; pass an empty array to stop summary emails. Never blocks anything: the account-wide denylist are still applied on top, so a blocked address listed here is skipped rather than unblocked.",
-				},
-
-				"notification_gmail_connection_id": map[string]interface{}{
-					"type":        "string",
-					"description": "One enabled Gmail connection ID to send this workflow's workflow summary delivery emails FROM for configured team run messages. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
-				},
-
 				"browser_mode": map[string]interface{}{
 					"type":        "string",
 					"enum":        browserModeValues,
@@ -4436,255 +4317,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				logger.Info(fmt.Sprintf("Updated workflow secrets: %d selected", len(selection)))
 			}
 
-			// --- Informational run failure alerts ---
-			if raw, provided := args["break_alerts"]; provided {
-				enabled, ok := raw.(bool)
-				if !ok {
-					return "Error: break_alerts must be true or false.", nil
-				}
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if err != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", err), nil
-				}
-				var manifest map[string]interface{}
-				if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-					return "Failed to read Goal settings.", nil
-				}
-				caps, _ := manifest["capabilities"].(map[string]interface{})
-				if caps == nil {
-					caps = map[string]interface{}{}
-				}
-				notifications, _ := caps["notifications"].(map[string]interface{})
-				if notifications == nil {
-					notifications = map[string]interface{}{}
-				}
-				notifications["break_alerts"] = enabled
-				caps["notifications"] = notifications
-				manifest["capabilities"] = caps
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-				updated, err := json.MarshalIndent(manifest, "", "  ")
-				if err != nil {
-					return "Failed to save Goal settings.", nil
-				}
-				if err := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); err != nil {
-					return fmt.Sprintf("Failed to save Goal settings: %v", err), nil
-				}
-				anyChanged = true
-				sb.WriteString(fmt.Sprintf("\nTell me when something breaks: %v\n", enabled))
-			}
-			// --- Workflow-scoped notification content instructions ---
-			runRaw, runProvided := args["run_notification_instructions"]
-			runChannelsRaw, runChannelsProvided := args["run_notification_channels"]
-			runRecipientsRaw, runRecipientsProvided := args["run_notification_recipients"]
-			senderRaw, senderProvided := args["notification_gmail_connection_id"]
-			if (runProvided && runRaw != nil) ||
-				(runChannelsProvided && runChannelsRaw != nil) ||
-				(runRecipientsProvided && runRecipientsRaw != nil) ||
-				(senderProvided && senderRaw != nil) {
-				workspacePath := iwm.controller.GetWorkspacePath()
-				parseInstructions := func(name string, raw interface{}, provided bool) (string, error) {
-					if !provided || raw == nil {
-						return "", nil
-					}
-					value, ok := raw.(string)
-					if !ok {
-						return "", fmt.Errorf("%s must be a string", name)
-					}
-					value = strings.TrimSpace(value)
-					if len([]rune(value)) > 2000 {
-						return "", fmt.Errorf("%s must be at most 2000 characters", name)
-					}
-					return value, nil
-				}
-				runInstructions, parseErr := parseInstructions("run_notification_instructions", runRaw, runProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
-
-				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if readErr != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
-				}
-				var manifest map[string]interface{}
-				if parseErr := json.Unmarshal([]byte(content), &manifest); parseErr != nil {
-					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
-				}
-				caps, _ := manifest["capabilities"].(map[string]interface{})
-				if caps == nil {
-					caps = make(map[string]interface{})
-				}
-				notifications, _ := caps["notifications"].(map[string]interface{})
-				if notifications == nil {
-					notifications = make(map[string]interface{})
-				}
-				legacyInstructions, _ := notifications["instructions"].(string)
-				if !runProvided {
-					runInstructions, _ = notifications["run_summary_instructions"].(string)
-					if strings.TrimSpace(runInstructions) == "" {
-						runInstructions = legacyInstructions
-					}
-				}
-
-				parseChannels := func(name string, raw interface{}, provided bool) ([]string, error) {
-					if !provided || raw == nil {
-						return nil, nil
-					}
-					values, ok := raw.([]interface{})
-					if !ok {
-						return nil, fmt.Errorf("%s must be an array", name)
-					}
-					allowed := map[string]bool{"gmail": true, "slack": true, "whatsapp": true}
-					channels := make([]string, 0, len(values))
-					seen := map[string]bool{}
-					for _, rawValue := range values {
-						value, ok := rawValue.(string)
-						if !ok || !allowed[strings.ToLower(strings.TrimSpace(value))] {
-							return nil, fmt.Errorf("%s contains an unsupported channel", name)
-						}
-						value = strings.ToLower(strings.TrimSpace(value))
-						if !seen[value] {
-							channels = append(channels, value)
-							seen[value] = true
-						}
-					}
-					if len(channels) == 0 {
-						return nil, fmt.Errorf("%s must contain at least one channel", name)
-					}
-					return channels, nil
-				}
-				runChannels, parseErr := parseChannels("run_notification_channels", runChannelsRaw, runChannelsProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
-
-				// Recipient lists are stored as-given minus obvious junk. An empty
-				// array is a legitimate value here — it clears the list back to the
-				// disabled email delivery — so unlike channels it is not an error.
-				parseRecipients := func(name string, raw interface{}, provided bool) ([]string, error) {
-					if !provided || raw == nil {
-						return nil, nil
-					}
-					values, ok := raw.([]interface{})
-					if !ok {
-						return nil, fmt.Errorf("%s must be an array of email addresses", name)
-					}
-					recipients := make([]string, 0, len(values))
-					seen := map[string]bool{}
-					for _, rawValue := range values {
-						value, ok := rawValue.(string)
-						if !ok {
-							return nil, fmt.Errorf("%s must contain only email addresses", name)
-						}
-						for _, part := range strings.FieldsFunc(value, func(r rune) bool {
-							return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
-						}) {
-							email := strings.ToLower(strings.TrimSpace(part))
-							if email == "" || seen[email] {
-								continue
-							}
-							if !strings.Contains(email, "@") {
-								return nil, fmt.Errorf("%s contains %q, which is not an email address", name, part)
-							}
-							seen[email] = true
-							recipients = append(recipients, email)
-						}
-					}
-					return recipients, nil
-				}
-				runRecipients, parseErr := parseRecipients("run_notification_recipients", runRecipientsRaw, runRecipientsProvided)
-				if parseErr != nil {
-					return "Error: " + parseErr.Error() + ".", nil
-				}
-
-				var senderID string
-				if senderProvided && senderRaw != nil {
-					var ok bool
-					senderID, ok = senderRaw.(string)
-					if !ok {
-						return "Error: notification_gmail_connection_id must be a string.", nil
-					}
-					senderID = strings.TrimSpace(senderID)
-					if senderID != "" {
-						gmailSvc := services.GetGmailService()
-						if gmailSvc == nil {
-							return "Error: Gmail connections are unavailable; cannot validate notification sender.", nil
-						}
-						conn, found := gmailSvc.GetConnection(senderID)
-						userID, _ := ctx.Value(common.UserIDKey).(string)
-						if !found || !conn.Enabled || !conn.UsableFrom(services.GmailUseScope{Workspace: workspacePath, UserID: userID}) {
-							return "Error: Notify sender must be an enabled Gmail connection added to this workflow.", nil
-						}
-					}
-				}
-				for key, value := range map[string]string{
-					"run_summary_instructions": strings.TrimSpace(runInstructions),
-				} {
-					if value == "" {
-						delete(notifications, key)
-					} else {
-						notifications[key] = value
-					}
-				}
-				if runChannelsProvided {
-					notifications["run_summary_channels"] = runChannels
-				}
-
-				// An explicitly emptied list is stored as "no override" by removing
-				// the key, which disables summary email delivery.
-				if runRecipientsProvided {
-					if len(runRecipients) == 0 {
-						delete(notifications, "run_summary_recipients")
-					} else {
-						notifications["run_summary_recipients"] = runRecipients
-					}
-				}
-
-				if senderProvided && senderRaw != nil {
-					if senderID == "" {
-						delete(notifications, "gmail_connection_id")
-					} else {
-						notifications["gmail_connection_id"] = senderID
-					}
-				}
-				if len(notifications) == 0 {
-					delete(caps, "notifications")
-				} else {
-					caps["notifications"] = notifications
-				}
-				manifest["capabilities"] = caps
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
-				if marshalErr != nil {
-					return fmt.Sprintf("Failed to marshal workflow.json: %v", marshalErr), nil
-				}
-				if writeErr := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); writeErr != nil {
-					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
-				}
-
-				if senderProvided && senderRaw != nil {
-					// Mirror the live Slack refresh: a step started later in this same
-					// Builder turn must inherit the saved sender, including a clear.
-					// Tool resolution reads this locked registry before the request's
-					// context snapshot; do not mutate that shared snapshot in place.
-					virtualtools.UpdateSessionGmailSender(iwm.sessionID, workspacePath, senderID)
-				}
-
-				anyChanged = true
-				sb.WriteString("\n### Notification Instructions (updated)\nSaved team run notification preferences in workflow.json.\n")
-				if runRecipientsProvided {
-					sb.WriteString(fmt.Sprintf("- Run summary recipients: %s\n", notificationRecipientSummary(runRecipients)))
-				}
-
-				if senderProvided && senderRaw != nil {
-					if senderID == "" {
-						sb.WriteString("- Gmail notification sender: account default\n")
-					} else {
-						sb.WriteString(fmt.Sprintf("- Gmail notification sender connection ID: %s\n", senderID))
-					}
-				}
-				logger.Info(fmt.Sprintf("Updated workflow notification instructions: run_configured=%v run_recipients=%d", strings.TrimSpace(runInstructions) != "", len(runRecipients)))
-			}
-
 			// --- Browser mode ---
 			if raw, ok := args["browser_mode"]; ok && raw != nil {
 				mode, _ := raw.(string)
@@ -4792,7 +4424,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			if !anyChanged {
-				return "No changes applied. Provide at least one of: knowledgebase_sources, kb_write_grants, add_servers, remove_servers, add_tools, remove_tools, add_skills, remove_skills, add_secrets, remove_secrets, run_notification_instructions, run_notification_channels, browser_mode.", nil
+				return "No changes applied. Provide at least one of: knowledgebase_sources, kb_write_grants, add_servers, remove_servers, add_tools, remove_tools, add_skills, remove_skills, add_secrets, remove_secrets, browser_mode.", nil
 			}
 
 			// Persist config changes to workflow.json manifest (file-backed)
@@ -6140,8 +5772,6 @@ For shell commands, use absolute workspace paths: `+"`{{.AbsWorkspacePath}}/...`
 Read the workflow's source artifacts yourself before forming findings. The Go
 controller deliberately does not paste or summarize them into this prompt:
 
-- read `+"`soul/soul.md`"+` for the objective and success criteria; report them as
-  missing only after checking the file
 - read `+"`workflow.json`"+` for workflow-selected skills and capability settings
 - inspect `+"`planning/plan.json`"+` with targeted `+"`jq`"+` queries, one relevant
   step/route/field set at a time; do not dump the full plan into the conversation
@@ -6256,8 +5886,6 @@ This is a **read-only review**:
 ## CONTEXT
 
 - **Workspace**: {{.WorkspacePath}}
-{{if .WorkflowObjective}}- **Workflow Objective**: {{.WorkflowObjective}}{{else}}- **Workflow Objective**: ⚠️ NOT SET — treat missing objective as a top-level finding{{end}}
-{{if .WorkflowSuccessCriteria}}- **Success Criteria**: {{.WorkflowSuccessCriteria}}{{else}}- **Success Criteria**: ⚠️ NOT SET — treat missing success criteria as a top-level finding{{end}}
 {{if .TargetRunFolder}}- **Target Run Folder**: {{.TargetRunFolder}}{{else}}- **Target Run Folder**: not preset — find the latest meaningful run evidence before judging speed{{end}}
 
 ## PATH DISCIPLINE
@@ -6377,8 +6005,6 @@ This is a **read-only review**:
 ## CONTEXT
 
 - **Workspace**: {{.WorkspacePath}}
-{{if .WorkflowObjective}}- **Workflow Objective**: {{.WorkflowObjective}}{{else}}- **Workflow Objective**: ⚠️ NOT SET — treat missing objective as a top-level finding{{end}}
-{{if .WorkflowSuccessCriteria}}- **Success Criteria**: {{.WorkflowSuccessCriteria}}{{else}}- **Success Criteria**: ⚠️ NOT SET — treat missing success criteria as a top-level finding{{end}}
 {{if .TargetRunFolder}}- **Target Run Folder**: {{.TargetRunFolder}}{{else}}- **Target Run Folder**: not preset — find the latest meaningful cost/run evidence before judging cost{{end}}
 
 ## PATH DISCIPLINE
@@ -6544,7 +6170,6 @@ agent_browser(command='click', args=['.form > div:nth-child(3)'], session='main'
 ## CONTEXT
 
 - **Workspace**: {{.WorkspacePath}}
-{{if .WorkflowObjective}}- **Workflow Objective**: {{.WorkflowObjective}}{{end}}
 
 ## PATH DISCIPLINE
 
@@ -6780,8 +6405,6 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowTimingAgent(ctx context.
 		stepConfigSummary = sb.String()
 	}
 
-	workflowObjective, workflowSuccessCriteria := iwm.controller.ResolveWorkflowObjective(ctx)
-
 	readPaths := []string{
 		workspacePath,
 		fmt.Sprintf("%s/runs", workspacePath),
@@ -6818,19 +6441,17 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowTimingAgent(ctx context.
 	}
 
 	templateVars := map[string]string{
-		"WorkspacePath":           workspacePath,
-		"AbsWorkspacePath":        absPromptWorkspacePath(workspacePath),
-		"TargetRunFolder":         targetRunFolder,
-		"PlanJSON":                planJSON,
-		"StepConfigSummary":       stepConfigSummary,
-		"WorkflowObjective":       workflowObjective,
-		"WorkflowSuccessCriteria": workflowSuccessCriteria,
-		"Focus":                   focus,
-		"SessionID":               iwm.sessionID,
-		"WorkflowID":              iwm.workflowID,
+		"WorkspacePath":     workspacePath,
+		"AbsWorkspacePath":  absPromptWorkspacePath(workspacePath),
+		"TargetRunFolder":   targetRunFolder,
+		"PlanJSON":          planJSON,
+		"StepConfigSummary": stepConfigSummary,
+		"Focus":             focus,
+		"SessionID":         iwm.sessionID,
+		"WorkflowID":        iwm.workflowID,
 	}
 
-	logger.Info(fmt.Sprintf("⏱️ Running review_workflow_timing agent (target_run_folder: %q, objective: %q, success_criteria: %q, focus: %q)", targetRunFolder, workflowObjective, workflowSuccessCriteria, focus))
+	logger.Info(fmt.Sprintf("⏱️ Running review_workflow_timing agent (target_run_folder: %q, focus: %q)", targetRunFolder, focus))
 	result, _, err := agent.Execute(ctx, templateVars, nil)
 	if err != nil {
 		return "", fmt.Errorf("review_workflow_timing agent failed: %w", err)
@@ -6865,8 +6486,6 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowCostsAgent(ctx context.C
 		}
 		stepConfigSummary = sb.String()
 	}
-
-	workflowObjective, workflowSuccessCriteria := iwm.controller.ResolveWorkflowObjective(ctx)
 
 	readPaths := []string{
 		workspacePath,
@@ -6908,19 +6527,17 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowCostsAgent(ctx context.C
 	}
 
 	templateVars := map[string]string{
-		"WorkspacePath":           workspacePath,
-		"AbsWorkspacePath":        absPromptWorkspacePath(workspacePath),
-		"TargetRunFolder":         targetRunFolder,
-		"PlanJSON":                planJSON,
-		"StepConfigSummary":       stepConfigSummary,
-		"WorkflowObjective":       workflowObjective,
-		"WorkflowSuccessCriteria": workflowSuccessCriteria,
-		"Focus":                   focus,
-		"SessionID":               iwm.sessionID,
-		"WorkflowID":              iwm.workflowID,
+		"WorkspacePath":     workspacePath,
+		"AbsWorkspacePath":  absPromptWorkspacePath(workspacePath),
+		"TargetRunFolder":   targetRunFolder,
+		"PlanJSON":          planJSON,
+		"StepConfigSummary": stepConfigSummary,
+		"Focus":             focus,
+		"SessionID":         iwm.sessionID,
+		"WorkflowID":        iwm.workflowID,
 	}
 
-	logger.Info(fmt.Sprintf("💸 Running review_workflow_costs agent (target_run_folder: %q, objective: %q, success_criteria: %q, focus: %q)", targetRunFolder, workflowObjective, workflowSuccessCriteria, focus))
+	logger.Info(fmt.Sprintf("💸 Running review_workflow_costs agent (target_run_folder: %q, focus: %q)", targetRunFolder, focus))
 	result, _, err := agent.Execute(ctx, templateVars, nil)
 	if err != nil {
 		return "", fmt.Errorf("review_workflow_costs agent failed: %w", err)
@@ -6940,8 +6557,6 @@ func (iwm *InteractiveWorkshopManager) runReviewStepCodeAgent(ctx context.Contex
 	if plan == nil {
 		return "", fmt.Errorf("no approved plan found")
 	}
-
-	workflowObjective, _ := iwm.controller.ResolveWorkflowObjective(ctx)
 
 	// Collect saved code to review — either a specific step/scoring agent or all
 	// saved main.py scripts across workflow, evaluation, and scoring code.
@@ -7067,11 +6682,10 @@ func (iwm *InteractiveWorkshopManager) runReviewStepCodeAgent(ctx context.Contex
 	}
 
 	templateVars := map[string]string{
-		"WorkspacePath":     workspacePath,
-		"AbsWorkspacePath":  absPromptWorkspacePath(workspacePath),
-		"WorkflowObjective": workflowObjective,
-		"StepsToReview":     stepsToReview.String(),
-		"Focus":             focus,
+		"WorkspacePath":    workspacePath,
+		"AbsWorkspacePath": absPromptWorkspacePath(workspacePath),
+		"StepsToReview":    stepsToReview.String(),
+		"Focus":            focus,
 		// Browser-authoring rules slot is populated inside the agent's Execute
 		// method via BrowserAuthoringRulesFromTemplateVars; without this flag
 		// the review agent is blind to the durable-selector contract it's

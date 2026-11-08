@@ -156,17 +156,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createRunFolderStructure(ctx context.
 		}
 	}
 
-	// Create soul folder at workspace root (builder's long-term memory, always enabled).
-	// Only the workflow interactive builder writes here. See SoulFolderName in controller_execution.go.
-	{
-		workspacePath := hcpo.GetWorkspacePath()
-		if err := createFolderViaAPI(ctx, SoulFolderName, workspacePath); err != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to create soul folder via API: %v (continuing)", err))
-		} else {
-			hcpo.GetLogger().Info(fmt.Sprintf("✅ Created soul folder: %s/%s", workspacePath, SoulFolderName))
-		}
-	}
-
 	hcpo.GetLogger().Info(fmt.Sprintf("✅ Created run folder structure: %s", runPath))
 	return nil
 }

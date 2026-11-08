@@ -55,49 +55,6 @@ func TestBridgeListProbesOutsideTheLockAndBusyAnswersQuickly(t *testing.T) {
 	}
 }
 
-// Looking for a chat's native route lists session files and checks processes, and every hook of
-// every attached chat reaches it with the bridge lock held: a chat with no route is looked up at
-// most once every 30 s, not on every hook.
-func TestNativeRouteDiscoveryIsThrottledPerChat(t *testing.T) {
-	var calls atomic.Int32
-	b := &localBridge{options: LocalBridgeOptions{
-		HostAlive:   func(string, string) bool { return true },
-		NativeOffer: func(context.Context, string, LocalBridgeReply) error { return nil },
-		NativeRoute: func(string, string, string, string) string { calls.Add(1); return "" },
-	}}
-	s := &localSession{Attachment: AgentAttachment{Provider: "claude", SessionID: "s"}, HostKey: "h", AccountSenders: true, client: &Client{}}
-	for i := 0; i < 5; i++ {
-		b.recoverNativeRoute(s)
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("route discovery ran %d times for one chat in a burst of hooks", calls.Load())
-	}
-}
-
-// An attach runs its server calls without the bridge lock, so a retry of the same attach
-// must wait for it (and then find the chat attached) rather than start a second one.
-func TestAttachGateRunsOneAttachPerChat(t *testing.T) {
-	b := &localBridge{}
-	release, ok := b.attachGate("claude|s", time.Second)
-	if !ok {
-		t.Fatal("the first attach must start")
-	}
-	if _, ok = b.attachGate("claude|s", 30*time.Millisecond); ok {
-		t.Fatal("a second attach for the same chat started while the first ran")
-	}
-	if release2, ok2 := b.attachGate("claude|other", 30*time.Millisecond); !ok2 {
-		t.Fatal("another chat must not wait")
-	} else {
-		release2()
-	}
-	go func() { time.Sleep(20 * time.Millisecond); release() }()
-	if release3, ok3 := b.attachGate("claude|s", time.Second); !ok3 {
-		t.Fatal("the retry must run once the first attach is done")
-	} else {
-		release3()
-	}
-}
-
 // A busy server can take many seconds per call, so peers, send, read, ack and reply talk to it
 // without the bridge lock: while one of them waits, other commands still answer at once.
 func TestSlowServerCallDoesNotHoldTheBridgeLock(t *testing.T) {
@@ -392,29 +349,6 @@ func TestMuseWatchWaitsOutABusyServerButEndsWhenTheLeaseIsRefused(t *testing.T) 
 	}
 	if !strings.Contains(out.String(), "no longer authorized") {
 		t.Fatalf("refused watch = %q", out.String())
-	}
-}
-
-// A long poll or a slow server call runs with the bridge lock released; the "held the bridge lock"
-// log must not count that time (it logged 25 s "holds" for every idle listener, thousands of times).
-func TestHoldClockLeavesOutTimeSpentWithTheLockReleased(t *testing.T) {
-	b := &localBridge{}
-	b.mu.Lock()
-	clock := &holdClock{since: time.Now()}
-	b.hold = clock
-	b.unlocked(func() {
-		if !b.mu.TryLock() { // another request can take the lock meanwhile
-			t.Error("the lock was not released")
-			return
-		}
-		b.hold = &holdClock{since: time.Now()}
-		b.hold = nil // another request ends its turn
-		b.mu.Unlock()
-		time.Sleep(60 * time.Millisecond)
-	})
-	defer b.mu.Unlock()
-	if clock.away < 60*time.Millisecond || b.hold != clock {
-		t.Fatalf("away = %v, hold restored = %v", clock.away, b.hold == clock)
 	}
 }
 

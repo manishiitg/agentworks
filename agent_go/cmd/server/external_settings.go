@@ -11,7 +11,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -66,12 +65,6 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"kb_write_grants":       names,
 		"browser_mode":          map[string]any{"type": "string", "enum": browser.ConfigurationModes()},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
-			"run_instructions":    map[string]any{"type": "string", "maxLength": 4000},
-			"run_channels":        names,
-			"run_recipients":      names,
-			"gmail_connection_id": map[string]any{"type": "string", "description": "An enabled Gmail account already added to this product. Empty clears the selection."},
-			"exclude_channels":    names,
-			"break_alerts":        map[string]any{"type": "boolean", "description": "Tell me when something breaks: show a run status in Needs you. On unless turned off. AgentWorks reports progress; configured team delivery is separate."},
 			"wake_tab": map[string]any{"type": "object", "additionalProperties": false, "description": "A Crew chat to message straight away when a run of this workflow fails, stops partway, or never actually ran. Pass the Crew id and the chat id from workspace action=chats (main for its main chat); that chat needs an enabled recurring check. Send both empty to clear.", "properties": map[string]any{
 				"crew_id": map[string]any{"type": "string"}, "chat_id": map[string]any{"type": "string"},
 			}},
@@ -462,9 +455,9 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode, BrowserCDPPort: caps.BrowserCDPPort}
 	notifications := func(c WorkflowCapabilities) map[string]any {
 		if n := c.Notifications; n != nil {
-			return map[string]any{"run_instructions": n.RunSummaryInstructions, "run_channels": n.RunSummaryChannels, "run_recipients": n.RunSummaryRecipients, "gmail_connection_id": n.GmailConnectionID, "exclude_channels": n.ExcludeChannels, "break_alerts": n.BreakAlertsEnabled(), "wake_tab": n.WakeTab}
+			return map[string]any{"wake_tab": n.WakeTab}
 		}
-		return map[string]any{"break_alerts": true}
+		return map[string]any{}
 	}
 
 	if name == "get_settings" {
@@ -474,10 +467,6 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 			if vault, err := api.projectVaultInventory(ctx, claims.UserID, target.path); err == nil {
 				view["vault"] = vault
 			}
-		}
-		// Notify status, as the app's view shows it.
-		if status, body := scheduleHandler(r, api.handleGetWorkflowNotifications, http.MethodGet, "/api/workflow/notify", nil, url.Values{"workspace_path": {workflow.WorkspacePath}}, nil); status == http.StatusOK && json.Valid(body) {
-			view["notify"] = json.RawMessage(body)
 		}
 		externalSettingsReply(w, view, modelsOnly)
 		return
@@ -515,29 +504,6 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		req.ChatInstructions = &state.ChatInstructions
 	}
 	if n, ok := args["notifications"].(map[string]any); ok {
-		if v, ok := n["run_instructions"].(string); ok {
-			req.RunNotificationInstructions = &v
-		}
-		if _, ok := n["run_channels"]; ok {
-			v := externalSettingsList(args, "notifications", "run_channels")
-			req.RunNotificationChannels = &v
-		}
-		if _, present := n["run_recipients"]; present {
-			values := externalSettingsList(args, "notifications", "run_recipients")
-			req.RunNotificationRecipients = &values
-		}
-		if value, present := n["gmail_connection_id"].(string); present {
-			req.NotificationGmailConnectionID = &value
-		}
-		if _, present := n["exclude_channels"]; present {
-			if caps.Notifications == nil {
-				caps.Notifications = &WorkflowNotificationConfig{}
-			}
-			caps.Notifications.ExcludeChannels = normalizeNotificationChannels(externalSettingsList(args, "notifications", "exclude_channels"))
-		}
-		if v, ok := n["break_alerts"].(bool); ok {
-			req.BreakAlerts = &v
-		}
 		if w, ok := n["wake_tab"].(map[string]any); ok {
 			crew, _ := w["crew_id"].(string)
 			chat, _ := w["chat_id"].(string)

@@ -49,7 +49,6 @@ func knownWorkshopRegisteredToolNamesOutsideWorkflowPool() map[string]string {
 	)
 	add("workshop review/maintenance tools",
 		"update_step_config", "get_step_prompts", "get_plan_prompt_health", "preview_step_runtime",
-		"mark_changelog_artifact_reviewed",
 		"review_workflow_timing", "review_workflow_costs", "review_step_code",
 		"get_cost_summary",
 	)
@@ -117,11 +116,12 @@ func TestToolSetInvariants(t *testing.T) {
 			t.Fatalf("filtered workflow pool contains %d definitions for %q", count, name)
 		}
 	}
-	for _, n := range []string{"human_feedback", "record_summary", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed"} {
-		if !pool[n] || cats[n] != "human_tools" {
-			t.Fatalf("workflow pool missing human tool %q (in_pool=%v cat=%q)", n, pool[n], cats[n])
+	for _, n := range []string{"record_summary", "get_notification_history", "create_human_input_request"} {
+		if pool[n] {
+			t.Fatalf("workflow pool exposed retired tool %s", n)
 		}
 	}
+
 	if pool["submit_human_answer"] {
 		t.Fatal("workflow pool still exposes removed submit_human_answer tool")
 	}
@@ -219,7 +219,7 @@ func TestToolSetInvariants(t *testing.T) {
 	for _, n := range todo_creation_human.GetToolsForWorkshopMode("run") {
 		run[n] = true
 	}
-	for _, n := range []string{"get_pulse_state", "resolve_run_concern", "mark_changelog_artifact_reviewed", "preview_step_runtime"} {
+	for _, n := range []string{"get_pulse_state", "resolve_run_concern", "preview_step_runtime"} {
 		if run[n] {
 			t.Fatalf("run allow-list must not expose Builder/Autopilot-only tool %q", n)
 		}
@@ -229,9 +229,6 @@ func TestToolSetInvariants(t *testing.T) {
 func TestPrimaryWorkflowBuilderChatExcludesBlockingHumanFeedback(t *testing.T) {
 	if agentworksproduct.ChatAllowsTool("builder", "human_feedback") {
 		t.Fatal("Workflow Builder must not expose human_feedback")
-	}
-	if !agentworksproduct.ChatAllowsTool("builder", "record_summary") {
-		t.Fatal("Workflow Builder must retain non-blocking record_summary")
 	}
 	if !agentworksproduct.ChatAllowsTool("run", "human_feedback") {
 		t.Fatal("non-Builder execution contexts must retain human_feedback")

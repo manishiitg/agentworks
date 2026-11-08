@@ -51,7 +51,7 @@ func TestNormalizeRequiredAbsoluteWorkspaceDocumentPathRejectsOutsideWorkspaceDo
 }
 
 func TestImageGenAndImageEditHaveNoProviderOrModelIDArgs(t *testing.T) {
-	for _, tool := range []func() llmtypes.Tool{GetImageGenToolDefinition, GetImageEditToolDefinition} {
+	for _, tool := range []func() llmtypes.Tool{GetImageEditToolDefinition} {
 		encoded, err := json.Marshal(tool())
 		if err != nil {
 			t.Fatalf("marshal tool definition: %v", err)

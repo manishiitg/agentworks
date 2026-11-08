@@ -143,19 +143,6 @@ func (api *StreamingAPI) handleWorkflowCreatorTool(ctx context.Context, args map
 		return "", fmt.Errorf("failed to write plan.json: %w", err)
 	}
 
-	// Scaffold soul/soul.md with a TODO-marked template. soul.md is the canonical
-	// source for workflow objective + success criteria (plan.json no longer holds
-	// these fields), so seeding the structure at creation time gives the builder
-	// an obvious place to fill in and prevents "dir not found" on first edit.
-	soulLabel, _ := workflowMap["label"].(string)
-	soulPath := pathpkg.Join(workflowFolder, "soul", "soul.md")
-	purpose, _ := args["purpose"].(string)
-	if err := writeRawFileToWorkspace(ctx, soulPath, todo_creation_human.SoulScaffold(soulLabel, purpose)); err != nil {
-		// Non-fatal: log and continue. Builder can create it manually if the API
-		// happens to reject, and ResolveWorkflowObjective falls back to workflow.json.
-		log.Printf("[WORKFLOW CREATOR] Warning: failed to scaffold soul/soul.md for Workflow/%s: %v", folderName, err)
-	}
-
 	// Scaffold db/reports/.gitkeep and db/.gitkeep so the builder can write
 	// HTML report pages on day one without hitting "no such file or directory"
 	// from the workspace write API (which doesn't auto-create parent dirs for

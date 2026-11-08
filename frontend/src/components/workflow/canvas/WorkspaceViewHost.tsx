@@ -46,7 +46,6 @@ const WorkflowScheduleRunsPanel = lazy(() => import('../../scheduler/WorkflowSch
 const WorkflowAPITriggersView = lazy(() => import('../WorkflowAPITriggersView'))
 const WorkflowCapabilitiesPanel = lazy(() => import('../WorkflowCapabilitiesPanel'))
 const HumanActionsView = lazy(() => import('../HumanActionsView'))
-const WorkflowNotificationView = lazy(() => import('../WorkflowNotificationView'))
 const ShareDashboardButton = lazy(() => import('../ShareDashboardButton').then(module => ({ default: module.ShareDashboardButton })))
 const FileWorkspacePane = lazy(() => import('../../FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 
@@ -161,8 +160,6 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
         return workspacePath ? <GoalOverview key={workspacePath} workspacePath={workspacePath} /> : null
       case 'human-actions':
         return <HumanActionsView workspacePath={workspacePath} />
-      case 'notify':
-        return <WorkflowNotificationView workspacePath={workspacePath} />
       case 'access':
         return workspacePath ? <div className="p-4"><ShareDashboardButton workspacePath={workspacePath} variant="panel" /></div> : null
       case 'identity':

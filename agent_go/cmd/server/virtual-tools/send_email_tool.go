@@ -12,10 +12,9 @@ import (
 	llmtypes "github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// send_email addresses named people through Gmail. Summary delivery uses the
-// workflow's saved notification settings independently.
+// send_email addresses named people through the existing Gmail account and recipient rules.
 
-const sendEmailDescription = "Send one email to the recipients you name, by Gmail only. `to` is required (at least one address); `subject` is required; give a plain `body` or an email-safe `html` body (INLINE styles only; Gmail strips <style>, <head> and class CSS). Attach existing server files with `attachments` (absolute paths). The workflow's blocked-recipients list and the account's disallowed-recipients list still apply. This sends to the named recipients. Workflow run and Goal updates use the saved notification settings automatically."
+const sendEmailDescription = "Send one email to the recipients you name, by Gmail only. `to` is required (at least one address); `subject` is required; give a plain `body` or an email-safe `html` body (INLINE styles only; Gmail strips <style>, <head> and class CSS). Attach existing server files with `attachments` (absolute paths). The workflow's blocked-recipients list and the account's disallowed-recipients list still apply. This sends to the named recipients."
 
 func createSendEmailTool() llmtypes.Tool {
 	list := func(description string) map[string]interface{} {
@@ -89,13 +88,6 @@ func handleSendEmail(ctx context.Context, args map[string]interface{}) (string, 
 	}
 	// Routing evidence only: never include addresses, account values or person IDs.
 	log.Printf("[GMAIL_SEND_BINDING] item=%q selected_connection=%t destination_source=%s", item, selected, bindingSource)
-	if base != nil {
-		for _, channel := range base.ExcludeChannels {
-			if strings.EqualFold(strings.TrimSpace(channel), "gmail") {
-				return "", fmt.Errorf("send_email refused: this workflow excludes email (notifications.exclude_channels)")
-			}
-		}
-	}
 	var attachments []string
 	if raw, ok := args["attachments"].([]interface{}); ok {
 		for _, item := range raw {

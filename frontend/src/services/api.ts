@@ -41,7 +41,7 @@ import { apiTimingPathFor, recordApiTiming, sanitizeApiBody } from '../utils/api
 import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
 import { retryTurnRunningSubmission } from './turnRunningRetry'
 import { configureChatDeliveryTelemetryTransport } from '../utils/chatDeliveryTelemetry'
-import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, WorkflowNotificationInfoResponse, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
+import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
 import type { PlanStep, AgentConfigs } from '../utils/stepConfigMatching'
 
 // Re-export types for other components to use
@@ -2457,20 +2457,6 @@ export const agentApi = {
     const response = await api.post('/api/workflow/plan-changelog/prune', { workspace_path: workspacePath, older_than_days: olderThanDays })
     return { success: !!response.data?.success, deleted: response.data?.deleted ?? 0, error: response.data?.error }
   },
-  getFrameworkHealth: async (workspacePath: string): Promise<{
-    success: boolean
-    soul_exists: boolean
-    objective_ok: boolean
-    success_criteria_ok: boolean
-    objective?: string
-    success_criteria?: string
-    declared_criteria: string[]
-    uncovered_criteria: string[]
-    error?: string
-  }> => {
-    const response = await api.get('/api/workflow/framework-health', { params: { workspace_path: workspacePath } })
-    return response.data
-  },
 
   // *** NEW CONSOLIDATED API ***
   // Load all workspace state in a single API call (run folders, variables, phases, progress)
@@ -2637,11 +2623,6 @@ export const agentApi = {
       step: step,
       insert_after_step_id: options?.insertAfterStepId
     })
-    return response.data
-  },
-
-  getWorkflowNotifications: async (workspacePath: string): Promise<WorkflowNotificationInfoResponse> => {
-    const response = await api.get('/api/workflow/notifications', { params: { workspace_path: workspacePath } })
     return response.data
   },
 

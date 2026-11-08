@@ -339,7 +339,7 @@ func readChangelogStepIDs(path string) []string {
 }
 
 // loadDocs reads the prose that names steps and paths: KB notes, rules and
-// context, soul.md, and learnings SKILL.md files and _global references.
+// context, and learnings SKILL.md files and _global references.
 func (m *referenceMap) loadDocs() {
 	var files []string
 	_ = filepath.WalkDir(filepath.Join(m.root, "knowledgebase"), func(path string, d fs.DirEntry, err error) error {
@@ -348,7 +348,6 @@ func (m *referenceMap) loadDocs() {
 		}
 		return nil
 	})
-	files = append(files, filepath.Join(m.root, "soul", "soul.md"))
 	if !m.crewBound {
 		_ = filepath.WalkDir(filepath.Join(m.root, "learnings", "_global"), func(path string, d fs.DirEntry, err error) error {
 			if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), ".md") {
@@ -867,11 +866,11 @@ func ReferenceNotesForFiles(workspacePath string, relPaths []string) string {
 }
 
 // ReferenceMapTracksFile reports whether a workflow-relative path is prose the
-// map reads (KB, soul, evaluation plan, learnings markdown).
+// map reads (KB, evaluation plan, learnings markdown).
 func ReferenceMapTracksFile(rel string) bool {
 	rel = strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(rel)), "./")
 	switch {
-	case rel == "evaluation/evaluation_plan.json", rel == "soul/soul.md":
+	case rel == "evaluation/evaluation_plan.json":
 		return true
 	case strings.HasPrefix(rel, "knowledgebase/") && strings.HasSuffix(rel, ".md"):
 		return true

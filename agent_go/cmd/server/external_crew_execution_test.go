@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
@@ -83,6 +84,26 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	call("mutate", map[string]any{"sql": "CREATE TABLE IF NOT EXISTS example (id INTEGER PRIMARY KEY, value TEXT)"})
 	call("mutate", map[string]any{"sql": "INSERT INTO example (id,value) VALUES (?,?)", "params": []any{1, "saved via MCP"}})
 	call("snapshot", map[string]any{})
+	// PLAT-746-428: an unconverted workflow bound to this Crew uses its
+	// chosen database too. No second database or transport fallback is needed.
+	legacy := crewExecutableBinding{ID: "legacy", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/legacy", Kind: "workflow", RuntimeRoot: "workflows/legacy"}
+	if err := registerCrewExecutable(legacy); err != nil {
+		t.Fatal(err)
+	}
+	const legacySession = "legacy-shared-database"
+	common.SetSessionFolderGuard(legacySession, []string{legacy.Root}, []string{legacy.Root + "/db"})
+	common.SetSessionShellEnv(legacySession, map[string]string{"DB_PATH": legacy.Root + "/db/db.sqlite", "WORKFLOW_DB_ACCESS": "read-write"})
+	t.Cleanup(func() { common.ClearSessionShellConfig(legacySession) })
+	legacyTools := virtualtools.CreateWorkflowDBToolRegistry(server.URL, "owner", legacySession)
+	if _, err := legacyTools.Executors["mutate_workflow_db"](ctx, map[string]any{"sql": "INSERT INTO example(id,value) VALUES (?,?)", "params": []any{2, "same Crew database"}}); err != nil {
+		t.Fatal(err)
+	}
+	legacyResult, err := legacyTools.Executors["query_workflow_db"](ctx, map[string]any{"sql": "SELECT value FROM example WHERE id=1"})
+	if err != nil || !strings.Contains(legacyResult, "saved via MCP") {
+		t.Fatalf("old workflow did not share Crew database: %s %v", legacyResult, err)
+	}
+	call("query", map[string]any{"sql": "SELECT value FROM example WHERE id=2"})
+
 	live, err := sql.Open("sqlite", filepath.Join(f.docs, externalCommandCrewState, "workflows", "saved", "db", "db.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -91,6 +112,9 @@ func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	var value string
 	if err = live.QueryRow("SELECT value FROM example WHERE id=1").Scan(&value); err != nil || value != "saved via MCP" {
 		t.Fatalf("disk value=%q err=%v", value, err)
+	}
+	if err = live.QueryRow("SELECT value FROM example WHERE id=2").Scan(&value); err != nil || value != "same Crew database" {
+		t.Fatalf("old workflow opened a different database: %q %v", value, err)
 	}
 	// PLAT-825: the same real database is readable by a shared Run caller,
 	// while its existing write and unrestricted-file rules remain unchanged.

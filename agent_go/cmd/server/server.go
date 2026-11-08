@@ -894,17 +894,6 @@ type QueryRequest struct {
 	BotUserID    string `json:"bot_user_id,omitempty"`
 	BotUserName  string `json:"bot_user_name,omitempty"`
 	BotUserEmail string `json:"bot_user_email,omitempty"`
-	// Generic-chat wire field: name of the selected encrypted secret that
-	// contains a Slack Incoming Webhook URL. The URL itself is never serialized.
-	NotificationSlackWebhookSecretName string   `json:"notification_slack_webhook_secret_name,omitempty"`
-	NotificationRunSummaryInstructions string   `json:"notification_run_summary_instructions,omitempty"`
-	NotificationRunSummaryChannels     []string `json:"notification_run_summary_channels,omitempty"`
-	NotificationExcludeChannels        []string `json:"notification_exclude_channels,omitempty"`
-	NotificationGmailConnectionID      string   `json:"notification_gmail_connection_id,omitempty"`
-	NotificationRunSummaryRecipients   []string `json:"notification_run_summary_recipients,omitempty"`
-	// Internal-only resolved notification credentials. Unlike selected secrets,
-	// these values are never serialized, prompted, or injected as SECRET_*.
-	notificationSlackWebhookURL string `json:"-"`
 	// Delegation tier configuration: Maps reasoning levels (high/medium/low) to specific provider/model pairs
 	DelegationTierConfig *virtualtools.DelegationTierConfig `json:"delegation_tier_config,omitempty"`
 	// Selected global secret names to include (if nil/absent, no global secrets are included)
@@ -995,13 +984,6 @@ type QueryRequest struct {
 	tokenOwner string `json:"-"`
 }
 
-func buildWorkflowNotificationInstructionsPrompt(runInstructions string) string {
-	if strings.TrimSpace(runInstructions) == "" {
-		return ""
-	}
-	return "\n### Team run notification content\nUse the saved content preference below. It does not change recipients, channels, accounts, access or permissions.\n<workflow_run_summary_preferences>\n" + strings.TrimSpace(runInstructions) + "\n</workflow_run_summary_preferences>\n"
-}
-
 func notificationDestinationFromQuery(req QueryRequest, userID string) *services.NotificationDestination {
 	platform := strings.ToLower(strings.TrimSpace(req.BotPlatform))
 	dest := &services.NotificationDestination{
@@ -1028,114 +1010,13 @@ func notificationDestinationFromQuery(req QueryRequest, userID string) *services
 			}
 		}
 	}
-	if secretName := strings.TrimSpace(req.NotificationSlackWebhookSecretName); secretName != "" {
-		dest.SlackWebhook = &services.SlackWebhookDest{
-			SecretName: secretName,
-			URL:        req.notificationSlackWebhookURL,
-		}
-	}
-	// Per-workflow notification preferences (workflow.json notifications.*).
-	if len(req.NotificationExcludeChannels) > 0 {
-		dest.ExcludeChannels = append([]string(nil), req.NotificationExcludeChannels...)
-	}
-	dest.RunSummaryChannels = append([]string(nil), req.NotificationRunSummaryChannels...)
-	dest.RunSummaryRecipients = append([]string(nil), req.NotificationRunSummaryRecipients...)
-	// Sender selection is validated by the Gmail service independently of recipients.
-	if connID := strings.TrimSpace(req.NotificationGmailConnectionID); connID != "" {
-		if dest.Gmail == nil {
-			dest.Gmail = &services.GmailDest{}
-		}
-		dest.Gmail.ConnectionIDs = []string{connID}
-	}
 	if dest.Gmail != nil {
 		dest.Gmail.Workspace = req.notificationItemWorkspace
 	}
-	if dest.UserID == "" && dest.WorkspacePath == "" && dest.Slack == nil && dest.SlackWebhook == nil && dest.WhatsApp == nil && dest.Gmail == nil &&
-		len(dest.ExcludeChannels) == 0 && len(dest.RunSummaryRecipients) == 0 {
+	if dest.UserID == "" && dest.WorkspacePath == "" && dest.Slack == nil && dest.WhatsApp == nil && dest.Gmail == nil {
 		return nil
 	}
 	return dest
-}
-
-// resolveNotificationSecretForRequest resolves a configured webhook into an
-// internal delivery-only field and removes the same name from the turn's selected secrets.
-// This is the boundary that prevents notification credentials from becoming
-// agent-visible SECRET_* environment variables.
-func (api *StreamingAPI) resolveNotificationSecretForRequest(ctx context.Context, userID, workflowPath string, req *QueryRequest) {
-	if api == nil || req == nil {
-		return
-	}
-	// Generic chat webhook credentials stay outside agent-visible secret injection.
-	defaultSecretName := strings.TrimSpace(req.NotificationSlackWebhookSecretName)
-	secretNames := uniqueNonEmpty([]string{defaultSecretName})
-	if len(secretNames) == 0 {
-		req.notificationSlackWebhookURL = ""
-		return
-	}
-
-	wanted := make(map[string]bool, len(secretNames))
-	for _, name := range secretNames {
-		wanted[name] = true
-	}
-	resolved := make(map[string]string, len(secretNames))
-
-	// nil means "no global secrets", so retain an explicit empty
-	// allow-list before removing the notification credentials. Otherwise a
-	// GLOBAL_SECRET_<NAME> webhook would still leak through mergeGlobalSecrets.
-	if req.SelectedGlobalSecrets == nil {
-		allowed := []string{}
-		req.SelectedGlobalSecrets = &allowed
-	} else {
-		filteredGlobals := *req.SelectedGlobalSecrets
-		for _, name := range secretNames {
-			filteredGlobals = withoutProjectSecret(filteredGlobals, name)
-		}
-		req.SelectedGlobalSecrets = &filteredGlobals
-	}
-
-	for _, name := range secretNames {
-		if strings.TrimSpace(resolved[name]) == "" {
-			if value, ok := api.resolveBackendNotificationSecret(ctx, userID, workflowPath, name); ok {
-				resolved[name] = value
-			}
-		}
-	}
-	req.notificationSlackWebhookURL = resolved[defaultSecretName]
-}
-
-// uniqueNonEmpty trims, drops blanks, and de-duplicates while preserving order.
-func uniqueNonEmpty(values []string) []string {
-	seen := make(map[string]bool, len(values))
-	out := make([]string, 0, len(values))
-	for _, raw := range values {
-		value := strings.TrimSpace(raw)
-		if value == "" || seen[value] {
-			continue
-		}
-		seen[value] = true
-		out = append(out, value)
-	}
-	return out
-}
-
-// resolveBackendNotificationSecret deliberately ignores agent secret-selection
-// lists. Notification configuration is its own backend-only capability.
-func (api *StreamingAPI) resolveBackendNotificationSecret(ctx context.Context, userID, workflowPath, secretName string) (string, bool) {
-	secretName = strings.TrimSpace(secretName)
-	if api == nil || secretName == "" {
-		return "", false
-	}
-	if strings.TrimSpace(workflowPath) != "" {
-		if value, ok := api.projectSecretValueFor(ctx, userID, workflowPath, secretName); ok {
-			return value, true
-		}
-	}
-	for _, secret := range visibleGlobalSecrets(ctx, userID) {
-		if secret.Name == secretName && strings.TrimSpace(secret.Value) != "" {
-			return secret.Value, true
-		}
-	}
-	return "", false
 }
 
 const maxCDPPortsPerRun = 4
@@ -1287,13 +1168,6 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 	if req.BrowserMode == "cdp" && caps.BrowserCDPPort > 0 {
 		port := caps.BrowserCDPPort
 		req.CdpPort = &port
-	}
-	if caps.Notifications != nil {
-		req.NotificationRunSummaryInstructions = caps.Notifications.EffectiveRunSummaryInstructions()
-		req.NotificationRunSummaryChannels = append([]string(nil), caps.Notifications.RunSummaryChannels...)
-		req.NotificationExcludeChannels = append([]string(nil), caps.Notifications.ExcludeChannels...)
-		req.NotificationGmailConnectionID = caps.Notifications.GmailConnectionID
-		req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
 	}
 	if req.BrowserMode == "" {
 		req.BrowserMode = browser.DefaultMode()
@@ -2828,6 +2702,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/inspect", api.handleInspectSessionExecution).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/background-work/{execution_id}/stop", api.handleStopSessionBackgroundWork).Methods("POST")
 	apiRouter.HandleFunc("/workflow/step-inspections", api.handleWorkspaceStepInspections).Methods("GET")
+	apiRouter.HandleFunc("/workspace/run-evidence", api.handleWorkspaceRunEvidence).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/execution-tree", api.runtimeDiagnosticsHandler(api.handleGetSessionExecutionTree)).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/activity-tree", api.runtimeDiagnosticsHandler(api.handleGetSessionActivityTree)).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/dismiss", api.handleDismissSession).Methods("POST", "OPTIONS")
@@ -4136,9 +4011,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	// Scheduled/Chief requests may already carry the configured secret name at
-	// this point. Resolve it for backend delivery and strip it from agent env.
-	api.resolveNotificationSecretForRequest(r.Context(), currentUserID, req.SelectedFolder, &req)
 	if err := api.validateQuerySecretSelection(r.Context(), currentUserID, req); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
@@ -4725,14 +4597,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if strings.TrimSpace(req.BotConnectionID) == "" {
 					req.BotConnectionID = strings.TrimSpace(manifest.Capabilities.SlackConnectionID)
 				}
-				if manifest.Capabilities.Notifications != nil {
-					req.NotificationRunSummaryInstructions = manifest.Capabilities.Notifications.EffectiveRunSummaryInstructions()
-					req.NotificationRunSummaryChannels = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryChannels...)
-					req.NotificationExcludeChannels = append([]string(nil), manifest.Capabilities.Notifications.ExcludeChannels...)
-					req.NotificationGmailConnectionID = manifest.Capabilities.Notifications.GmailConnectionID
-					req.NotificationRunSummaryRecipients = append([]string(nil), manifest.Capabilities.Notifications.RunSummaryRecipients...)
-				}
-				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, resolvedWPath, &req)
 				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.SelectedGlobalSecrets); err != nil {
 					http.Error(w, err.Error(), http.StatusForbidden)
 					return
@@ -4868,14 +4732,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if strings.TrimSpace(req.BotConnectionID) == "" {
 					req.BotConnectionID = strings.TrimSpace(caps.SlackConnectionID)
 				}
-				if caps.Notifications != nil {
-					req.NotificationRunSummaryInstructions = caps.Notifications.EffectiveRunSummaryInstructions()
-					req.NotificationRunSummaryChannels = append([]string(nil), caps.Notifications.RunSummaryChannels...)
-					req.NotificationExcludeChannels = append([]string(nil), caps.Notifications.ExcludeChannels...)
-					req.NotificationGmailConnectionID = caps.Notifications.GmailConnectionID
-					req.NotificationRunSummaryRecipients = append([]string(nil), caps.Notifications.RunSummaryRecipients...)
-				}
-				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, manifestWorkspacePath, &req)
 				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.SelectedGlobalSecrets); err != nil {
 					http.Error(w, err.Error(), http.StatusForbidden)
 					return
@@ -7753,19 +7609,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
-				// Extract workflow objective and success_criteria from soul/soul.md —
-				// the single canonical source (plan.json and workflow.json no longer
-				// hold these fields). See ResolveWorkflowObjective in soul_helpers.go.
-				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-					objective, successCriteria, _ := todo_creation_human.ReadWorkflowObjectiveFromSoul(setupCtx, phaseWorkspacePath, phaseReadFile)
-					if objective != "" {
-						phaseTemplateVars["WorkflowObjective"] = objective
-					}
-					if successCriteria != "" {
-						phaseTemplateVars["WorkflowSuccessCriteria"] = successCriteria
-					}
-				}
-
 				// Default workshop mode if not provided by frontend. Run/Reporting
 				// are explicit user/frontend choices; everything else defaults
 				// to the merged Workshop mode (was previously builder/optimizer).
@@ -7815,10 +7658,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
 					if userPrompt := authenticatedChatUserPrompt(GetUserFromContext(r.Context())); userPrompt != "" {
 						phaseAdditions = append(phaseAdditions, userPrompt)
-					}
-					if notificationPrompt := buildWorkflowNotificationInstructionsPrompt(req.NotificationRunSummaryInstructions); notificationPrompt != "" {
-						phaseAdditions = append(phaseAdditions, notificationPrompt)
-						log.Printf("[WORKFLOW_PHASE] Appended workflow notification preferences to %s system prompt", workflowPhaseID)
 					}
 				}
 

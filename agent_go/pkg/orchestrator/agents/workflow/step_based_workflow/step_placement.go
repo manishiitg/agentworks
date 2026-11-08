@@ -28,13 +28,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildStepPlacement(ctx context.Contex
 		}
 		lines = append(lines, line)
 	}
-	objective, criteria := hcpo.ResolveWorkflowObjective(ctx)
-	if objective != "" {
-		lines = append(lines, "Goal: "+placementLine(objective, 360))
-	}
-	if criteria != "" {
-		lines = append(lines, "Success: "+placementLine(criteria, 360))
-	}
 	parent, child := ctx.Value(stepParentPlacementKey{}).(stepParentPlacement)
 	if child {
 		lines = append(lines, "Parent: "+placementLine(parent.Title, 160), "Delegated task: "+placementLine(parent.Task, 280))
