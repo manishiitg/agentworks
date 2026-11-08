@@ -125,7 +125,7 @@ metadata = json.loads(metadata_file.read_text()) if metadata_file.is_file() else
 if metadata.get('source_snapshot_hash'):
     source = Path(os.environ['SCRIPT_SOURCE_DIR'])
     digest = hashlib.sha256()
-    for file in sorted(p for p in source.rglob('*') if p.is_file() and '__pycache__' not in p.parts):
+    for file in sorted((p for p in source.rglob('*') if p.is_file() and '__pycache__' not in p.parts), key=lambda p: p.relative_to(source).as_posix()):
         digest.update(file.relative_to(source).as_posix().encode() + b'\0' + file.read_bytes() + b'\0')
     assert metadata['source_snapshot_hash'] == digest.hexdigest(), metadata
 assert not any(key.startswith('optional_') for key in params)
@@ -134,6 +134,9 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	write(root+"/main.py", source)
 	resolver := &savedCrewScriptFixture{directWorkspace: directWorkspace, configuration: CrewScriptConfiguration{Definition: definition, Root: root, Files: map[string][]byte{"main.py": []byte(source), "helper/values.py": []byte("def revision(): return 'first'\n"), "template.txt": []byte("template data")}}}
 	resolver.configuration.Files["nested/blob.bin"] = []byte{0, 255, 128, 1}
+	// PR1587: depth-first directory traversal orders these differently from
+	// globally sorted relative filenames. The program verifies the latter.
+	resolver.configuration.Files["nested.py"] = []byte("# Filename ordering regression.\n")
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 	expectMissingSecret := false

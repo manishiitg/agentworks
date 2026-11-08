@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -419,7 +420,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) openPythonHelperLog(id string) (*runl
 }
 
 func pythonBundleFingerprint(view fs.FS, directory string) (string, error) {
-	hash := sha256.New()
+	var paths []string
 	err := fs.WalkDir(view, directory, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -430,19 +431,33 @@ func pythonBundleFingerprint(view fs.FS, directory string) (string, error) {
 			}
 			return nil
 		}
-		file, err := view.Open(path)
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-		_, _ = io.WriteString(hash, strings.TrimPrefix(path, directory+"/")+"\x00")
-		if _, err := io.Copy(hash, file); err != nil {
-			return err
-		}
-		_, _ = hash.Write([]byte{0})
+		paths = append(paths, path)
 		return nil
 	})
-	return hex.EncodeToString(hash.Sum(nil)), err
+	if err != nil {
+		return "", err
+	}
+	// WalkDir sorts each directory but visits it depth-first. The public
+	// fingerprint sorts full relative filenames (nested.py before nested/x).
+	sort.Strings(paths)
+	hash := sha256.New()
+	for _, path := range paths {
+		file, err := view.Open(path)
+		if err != nil {
+			return "", err
+		}
+		_, _ = io.WriteString(hash, strings.TrimPrefix(path, directory+"/")+"\x00")
+		_, copyErr := io.Copy(hash, file)
+		closeErr := file.Close()
+		if copyErr != nil {
+			return "", copyErr
+		}
+		if closeErr != nil {
+			return "", closeErr
+		}
+		_, _ = hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 // Limits apply to presentation only. Every actual call still gets its complete
