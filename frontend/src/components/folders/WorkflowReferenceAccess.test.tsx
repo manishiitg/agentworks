@@ -33,7 +33,7 @@ it('offers Crews only: no Workflows group, and a saved workflow link is listed s
   await act(async () => root?.render(<WorkflowReferenceAccess selectedPaths={['Workflow/old-flow']} onChange={vi.fn()} showAdditionalGroup
     additionalReferences={[{ path: 'Crew/other', label: 'Other' }]} />))
   expect(host.textContent).not.toContain('Attach a workflow')
-  expect(host.textContent).toContain('Attach Crew')
+  expect(host.textContent).toContain('Link a Crew')
   expect(host.textContent).toContain('old-flow')
   expect(host.querySelector('button[aria-label="Remove Workflow/old-flow"]')).not.toBeNull()
 })
