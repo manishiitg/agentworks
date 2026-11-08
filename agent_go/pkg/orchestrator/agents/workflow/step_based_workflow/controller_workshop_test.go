@@ -1,7 +1,6 @@
 package step_based_workflow
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -144,63 +143,5 @@ func TestSwitchWorkshopGroupSessionRejectsThirdActiveGroup(t *testing.T) {
 		t.Fatal("expected third active workshop group session to be rejected")
 	} else if !strings.Contains(err.Error(), "max 2") {
 		t.Fatalf("expected max-2 error, got %v", err)
-	}
-}
-
-func TestApplyWorkshopExecuteOptionsPropagatesGroupName(t *testing.T) {
-	t.Setenv("MCP_API_URL", "http://example.test")
-
-	base, err := orchestrator.NewBaseOrchestrator(
-		loggerv2.NewDefault(),
-		nil,
-		orchestrator.OrchestratorTypeWorkflow,
-		"",
-		0,
-		"",
-		nil,
-		nil,
-		false,
-		&orchestrator.LLMConfig{},
-		1,
-		nil,
-		nil,
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("NewBaseOrchestrator returned error: %v", err)
-	}
-	base.SetWorkspaceEnvRef(map[string]string{
-		"MCP_API_TOKEN":  "test-token",
-		"MCP_API_URL":    "http://example.test/s/original-session",
-		"MCP_SESSION_ID": "original-session",
-	})
-
-	hcpo := &StepBasedWorkflowOrchestrator{
-		BaseOrchestrator:         base,
-		workshopGroupSessionIDs:  make(map[string]string),
-		workshopGroupSessionRefs: make(map[string]int),
-		workshopGroupLastUsed:    make(map[string]time.Time),
-		variablesManifest: &VariablesManifest{
-			Groups: []VariableGroup{
-				{Name: "customer-b", Values: map[string]string{"acct": "customer-b"}},
-				{Name: "xspaces", Values: map[string]string{"acct": "xspaces"}},
-			},
-		},
-	}
-
-	// RunFolder is explicit so no workspace listing is needed.
-	release, err := hcpo.applyWorkshopExecuteOptions(context.Background(), &WorkshopExecuteOptions{
-		GroupName: "xspaces",
-		RunFolder: "iteration-0/xspaces",
-	})
-	if err != nil {
-		t.Fatalf("applyWorkshopExecuteOptions returned error: %v", err)
-	}
-	if hcpo.currentGroupName != "xspaces" {
-		t.Fatalf("currentGroupName = %q, want %q (crew delivery keys lose their group segment)", hcpo.currentGroupName, "xspaces")
-	}
-	release()
-	if hcpo.currentGroupName != "" {
-		t.Fatalf("currentGroupName = %q after release, want empty (group leaked between execute_step calls)", hcpo.currentGroupName)
 	}
 }

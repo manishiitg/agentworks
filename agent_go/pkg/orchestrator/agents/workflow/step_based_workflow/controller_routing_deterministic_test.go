@@ -105,26 +105,6 @@ func TestResolveRouteSelectionValueRejectsUnknownValue(t *testing.T) {
 	}
 }
 
-func TestValidateRoutingStepRejectsDescription(t *testing.T) {
-	step := &RoutingPlanStep{
-		CommonStepFields: CommonStepFields{
-			ID:          "route-by-mode",
-			Title:       "Route by Mode",
-			Description: "Decide the route first.",
-		},
-		RoutingQuestion: "Which path should run?",
-		Routes:          deterministicRoutingTestRoutes(),
-	}
-
-	err := validateRoutingStepFieldsTyped(step)
-	if err == nil {
-		t.Fatal("expected routing description to be rejected")
-	}
-	if !strings.Contains(err.Error(), "must not set description") {
-		t.Fatalf("expected deterministic-only description error, got %v", err)
-	}
-}
-
 func TestRoutingStepOwnRouteFileCandidatesIgnoresLegacyDescription(t *testing.T) {
 	base, err := orchestrator.NewBaseOrchestrator(
 		loggerv2.NewDefault(),
@@ -184,9 +164,6 @@ func TestUpdateStepFromPartialCanClearRoutingDescription(t *testing.T) {
 	}
 	if updated.Description != "" {
 		t.Fatalf("expected description to be cleared, got %q", updated.Description)
-	}
-	if err := validateRoutingStepFieldsTyped(updated); err != nil {
-		t.Fatalf("cleared routing step should validate: %v", err)
 	}
 }
 

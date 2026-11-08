@@ -76,17 +76,23 @@ func TestNativeTerminalObserverReadsPrivateClaudeHome(t *testing.T) {
 	}
 }
 
-func TestTerminalToChatPageRecoversPrivateClaudeTurnsOnce(t *testing.T) {
+// PLAT-525: a chat read restores the platform journal, never historical CLI
+// rows. Live terminal input is captured by the separate native observer above.
+func TestChatPageKeepsSavedHistoryWithoutNativeTranscriptCatchup(t *testing.T) {
 	workingDir, path := privateClaudeHistoryFixture(t)
 	writeClaudeChatTurns(t, path, "initial", "initial reply", "repeat", "reply one", "repeat", "reply two")
-	const owner, session, workspacePath = "alice", "terminal-chat", "_users/alice/Chats/Work/projects/terminal"
+	const owner, session, workspacePath = "alice", "terminal-chat", "Crew/terminal"
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	registerTestCrew(t, "terminal", owner, false, "terminal")
 	conversationPath := workspacePath + "/builder/conversation/2026-09-30/session-" + session + "-conversation.json"
 	initial := []builderConversationMessage{
 		{Role: "human", Parts: []builderConversationPart{{Text: "initial"}}},
 		{Role: "ai", Parts: []builderConversationPart{{Text: "initial reply"}}},
 	}
 	raw, err := json.Marshal(map[string]interface{}{
-		"session_id": session, "user_id": owner, "agent_mode": "workflow_phase", "conversation_history": initial,
+		"session_id": session, "user_id": owner, "agent_mode": "multi-agent", "conversation_history": initial,
 		"runtime": map[string]interface{}{"provider": "claude-code", "external_session_id": "native-private", "agent_session_handle": map[string]interface{}{"provider": map[string]string{"provider": "claude-code", "working_dir": workingDir}}},
 	})
 	if err != nil {
@@ -113,7 +119,7 @@ func TestTerminalToChatPageRecoversPrivateClaudeTurnsOnce(t *testing.T) {
 	store.AddEvent(session, storeevents.Event{ID: "initial-reply", Type: "streaming_chunk", Data: agentevents.NewAgentEvent(&agentevents.StreamingChunkEvent{Content: "initial reply", Source: agentevents.StreamingChunkSourceTranscript})})
 	read := func(user string) GetEventsResponse {
 		t.Helper()
-		req := httptest.NewRequest("GET", "/api/sessions/"+session+"/events?durable_chat=1&limit=100&sync_native_transcript=1", nil)
+		req := httptest.NewRequest("GET", "/api/sessions/"+session+"/events?durable_chat=1&limit=100", nil)
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user}))
 		req = mux.SetURLVars(req, map[string]string{"session_id": session})
 		rec := httptest.NewRecorder()
@@ -143,22 +149,22 @@ func TestTerminalToChatPageRecoversPrivateClaudeTurnsOnce(t *testing.T) {
 		text, _ := eventPayloadMap(row)["content"].(string)
 		texts = append(texts, text)
 	}
-	if want := []string{"initial", "initial reply", "repeat", "reply one", "repeat", "reply two"}; !reflect.DeepEqual(texts, want) {
-		t.Fatalf("recovered terminal conversation = %v, want %v", texts, want)
+	if want := []string{"initial", "initial reply"}; !reflect.DeepEqual(texts, want) {
+		t.Fatalf("chat read merged unsaved private CLI rows: %v, want %v", texts, want)
 	}
-	if next := read(owner); len(next.Events) != 6 || next.LatestSequence != page.LatestSequence {
+	if next := read(owner); len(next.Events) != 2 || next.LatestSequence != page.LatestSequence {
 		t.Fatalf("switch-back duplicated history: %+v", next)
 	}
-	// A restart loses the volatile owner cache, but a later terminal turn is
-	// still recovered under the owner established by the durable journal.
+	// Cold restore uses durable journal ownership and saved events. More
+	// private CLI rows still cannot enter the conversation through a read.
 	store.RemoveSession(session)
 	writeClaudeChatTurns(t, path, "initial", "initial reply", "repeat", "reply one", "repeat", "reply two", "after restart", "restart reply")
-	if next := read(owner); len(next.Events) != 8 || next.Events[6].Type != "user_message" {
-		t.Fatalf("cold restore lost the next terminal turn: %+v", next)
+	if next := read(owner); len(next.Events) != 2 || next.LatestSequence != page.LatestSequence {
+		t.Fatalf("cold restore lost saved rows or merged private CLI history: %+v", next)
 	}
 	var persisted builderConversationLog
-	if err := json.Unmarshal([]byte(workspace.files[conversationPath]), &persisted); err != nil || len(persisted.ConversationHistory) != 8 {
-		t.Fatalf("durable history lost terminal turns: %+v, %v", persisted, err)
+	if err := json.Unmarshal([]byte(workspace.files[conversationPath]), &persisted); err != nil || len(persisted.ConversationHistory) != 2 || workspace.files[conversationPath] != string(raw) {
+		t.Fatalf("chat read changed saved history: %+v, %v", persisted, err)
 	}
 }
 

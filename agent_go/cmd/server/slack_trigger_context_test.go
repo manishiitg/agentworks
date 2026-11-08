@@ -43,11 +43,16 @@ func TestSlackTriggerContextIsSourceBound(t *testing.T) {
 }
 
 func TestSlackTriggerSharesWebhookMappingExecutor(t *testing.T) {
-	server, workspace := newFakeWorkspaceServer(t)
-	defer server.Close()
-	t.Setenv("WORKSPACE_API_URL", server.URL)
-	workspace.files["Workflow/example/planning/plan.json"] = `{"steps":[{"type":"scripted","id":"analyze","title":"Analyze","description":"Analyze"}]}`
-	route := ChannelRoute{WorkspacePath: "Workflow/example", Trigger: &services.SlackTrigger{InputPreset: "Production", Inputs: map[string]string{"REGION": "west"}, PayloadMappings: &workflowtrigger.PayloadMappings{Step: &workflowtrigger.ValueMapping{Source: "text", Values: map[string]string{"incident": "analyze"}}}}}
+	f, _ := newExternalCrewCommandFixture(t)
+	binding := crewExecutableBinding{ID: "analyze", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/example", Kind: "script", RuntimeRoot: "scripts/analyze"}
+	if err := registerCrewExecutable(binding); err != nil {
+		t.Fatal(err)
+	}
+	// The trigger selects a real declared preset, never an input definition
+	// supplied by its payload or a retired plan/group file.
+	f.write(t, externalCommandCrewRoot+"/.agentworks/code/analyze/script.json", `{"id":"analyze","name":"Analyze","inputs":[{"name":"REGION","type":"string","value":"default"}],"input_presets":[{"name":"Production","values":{"REGION":"east"}}]}`)
+	f.write(t, externalCommandCrewRoot+"/.agentworks/code/analyze/main.py", "print('fixture')\n")
+	route := ChannelRoute{WorkspacePath: binding.Root, Trigger: &services.SlackTrigger{InputPreset: "Production", Inputs: map[string]string{"REGION": "west"}, PayloadMappings: &workflowtrigger.PayloadMappings{Step: &workflowtrigger.ValueMapping{Source: "text", Values: map[string]string{"incident": "analyze"}}}}}
 	payload := []byte(`{"text":"incident","message":{"attachments":[{"title":"Production"}]},"group":"unauthorized","variables":{"SECRET":"untrusted"}}`)
 	schedule, input, err := resolveSlackTriggerDelivery(context.Background(), route, "delivery", payload)
 	if err != nil {

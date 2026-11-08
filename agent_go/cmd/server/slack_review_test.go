@@ -113,17 +113,25 @@ func TestSlackImmutableAllocationIsConcurrentAndIdempotent(t *testing.T) {
 	wg.Wait()
 	seen := map[string]bool{}
 	for i := 0; i < len(folders); i += 2 {
-		if folders[i] != folders[i+1] || !strings.Contains(folders[i], "-slack-") || seen[folders[i]] {
+		if folders[i] != folders[i+1] || !strings.HasPrefix(folders[i], "run-") || seen[folders[i]] {
 			t.Fatalf("invalid allocation: %v", folders)
+		}
+		if raw, err := os.ReadFile(filepath.Join(docs, "Workflow/demo/runs", folders[i], ".slack-run-id")); err != nil || string(raw) != string(rune('a'+i/2)) {
+			t.Fatalf("delivery identity not retained: %q %v", raw, err)
 		}
 		seen[folders[i]] = true
 	}
 	if raw, err := os.ReadFile(filepath.Join(manual, "artifact")); err != nil || string(raw) != "builder" {
 		t.Fatal("Builder artifact modified")
 	}
-	scheduled, err := allocateScheduledRunFolder("Workflow/demo", "scheduled")
-	if err != nil || scheduled != "iteration-7-sched" {
+	// PLAT-746: producers have permanent invocation folders. The same raw
+	// invocation ID on a schedule must not reuse a Slack delivery's folder.
+	scheduled, err := allocateScheduledRunFolder("Workflow/demo", "a")
+	if err != nil || !strings.HasPrefix(scheduled, "run-") || seen[scheduled] {
 		t.Fatalf("namespace drift: %s %v", scheduled, err)
+	}
+	if retry, err := allocateScheduledRunFolder("Workflow/demo", "a"); err != nil || retry != scheduled {
+		t.Fatalf("schedule retry changed folder: %s %v", retry, err)
 	}
 }
 
@@ -479,26 +487,26 @@ func TestSlackConversationCannotChangeReplyThreadDuringExecution(t *testing.T) {
 }
 
 func TestSlackProfileTurnUsesWebConversationWithoutWhatsApp(t *testing.T) {
-	server, _ := newFakeWorkspaceServer(t)
-	t.Setenv("WORKSPACE_API_URL", server.URL)
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	t.Setenv("MULTI_USER_MODE", "true")
+	// PLAT-746: conversation discovery lists folders; exercise the real
+	// workspace handlers instead of a document-only mock's object response.
+	f, _ := newExternalCrewCommandFixture(t)
 	profile := singletonConversationProfile()
 	registry := agentprofiles.NewRegistry()
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	api := &StreamingAPI{agentProfiles: registry}
-	webRequest := profileRouteRequest("POST", "/", nil, "alice")
+	api := f.api
+	api.agentProfiles = registry
+	webRequest := profileRouteRequest("POST", "/", nil, "owner")
 	conversation, err := api.resolveAgentProfileConversation(webRequest, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	web, err := prepareProductConversationTurn(webRequest.Context(), "alice", profile, AgentProfileChatRequest{Message: "hello"}, conversation)
+	web, err := prepareProductConversationTurn(webRequest.Context(), "owner", profile, AgentProfileChatRequest{Message: "hello"}, conversation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bot, sid, handled, err := api.botProfileTurn(context.Background(), "bot-route", services.BotIncomingMessage{Platform: "slack", UserID: "external-sender", Text: "hello", PresetProfile: &services.ProfileRoute{ProfileID: profile.ID, ConversationKey: "main", WorkspaceUserID: "alice"}}, services.ThreadID{Platform: "slack", ChannelID: "C123", ThreadTS: "1.2", ConnectionID: "slack_own"})
+	bot, sid, handled, err := api.botProfileTurn(context.Background(), "bot-route", services.BotIncomingMessage{Platform: "slack", UserID: "external-sender", Text: "hello", PresetProfile: &services.ProfileRoute{ProfileID: profile.ID, ConversationKey: "main", WorkspaceUserID: "owner"}}, services.ThreadID{Platform: "slack", ChannelID: "C123", ThreadTS: "1.2", ConnectionID: "slack_own"})
 	if err != nil || !handled || sid != conversation.SessionID {
 		t.Fatalf("Slack binding: %s %v %v", sid, handled, err)
 	}
@@ -558,9 +566,16 @@ func TestSlackAllocatorAcrossProcesses(t *testing.T) {
 	}
 	wg.Wait()
 	for _, result := range results {
-		if result != results[0] || !strings.HasPrefix(result, "iteration-1-slack-") {
+		if result != results[0] || !strings.HasPrefix(result, "run-") {
 			t.Fatalf("retry allocated twice: %q", results)
 		}
+	}
+	entries, err := os.ReadDir(filepath.Join(docs, "Workflow/concurrent/runs"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("retry created extra run folders: %v %v", entries, err)
+	}
+	if raw, err := os.ReadFile(filepath.Join(docs, "Workflow/concurrent/runs", results[0], ".slack-run-id")); err != nil || string(raw) != "same-delivery" {
+		t.Fatalf("cross-process delivery identity not retained: %q %v", raw, err)
 	}
 }
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('migration', Path(__file__).with_name('migrate-workflow-to-python.py'))
 m = importlib.util.module_from_spec(spec)
@@ -155,7 +156,17 @@ class SameIdentityConversion(unittest.TestCase):
             presets=[{'name':'Account A','values':{'account':'first'}},{'name':'Account B','values':{'account':'second'}}]
             (definitions/'variables/variables.json').write_bytes(m.encode({'variables':[{'name':'account','type':'string','value':'first'}],'groups':presets}))
             (runtime/'functions.json').write_text('{"functions":[{"name":"second_account","input":{"input_preset":"Account B"}}]}')
-            (code/'old-step/main.py').write_text('print("old source")\n')
+            (code/'old-step/main.py').write_text('import json, legacy_client, helper\nfrom common import value\nTOKEN = "not_a_dependency"\n')
+            (code/'old-step/helper.py').write_text('value = 1\n')
+            (code/'common.py').write_text('value = 1\n')
+            old_requirements = b'legacy-client==1.0\n# retained declaration contents\n'
+            (code/'old-step/requirements.txt').write_bytes(old_requirements)
+            outside = root/'outside'
+            outside.mkdir()
+            (outside/'linked.py').write_text('import linked_external_marker\n')
+            (outside/'requirements.txt').write_text('outside-package==9\n')
+            (code/'linked.py').symlink_to(outside/'linked.py')
+            (code/'linked-directory').symlink_to(outside, target_is_directory=True)
             db = sqlite3.connect(runtime/'db/db.sqlite')
             db.execute('CREATE TABLE historical (id INTEGER PRIMARY KEY, result TEXT)')
             db.execute("INSERT INTO historical VALUES (7, 'kept')")
@@ -172,7 +183,10 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertFalse((Path(backup)/'hashes.json').exists())
             self.assertEqual(m.plan(docs,state,True)[0],{})
             (source/'script.json').write_text('{"id":"task","name":"Task","outputs":["result.json"]}')
-            (source/'main.py').write_text('print("new Python top")\n')
+            (source/'main.py').write_text('import json, httpx, helper\nfrom requests.sessions import Session\nfrom agentworks import agent\nfrom agentworks_db import db\nfrom . import sibling\nTOKEN = "not_a_dependency"\nunused = __import__("string_import_marker")\npath = "/private/source_path_marker"\n')
+            (source/'helper.py').write_text('value = 1\n')
+            requirements = b'# authored declaration\r\nhttpx==0.28.1\r\nrequests==2.32.3\r\n'
+            (source/'requirements.txt').write_bytes(requirements)
             # A useful Crew DB must be an explicit owner choice, never overwritten.
             (private/'db').mkdir()
             db = sqlite3.connect(private/'db/db.sqlite')
@@ -204,6 +218,22 @@ class SameIdentityConversion(unittest.TestCase):
             projects['projects']['linked'] = missing
             projects_file.write_bytes(m.encode(projects))
             changes,documents,report = m.plan(docs,state,False,'task',source)
+            dependencies = report['conversion']['dependencies']
+            self.assertEqual(dependencies['authored_requirements'], {'present':True, 'sha256':hashlib.sha256(requirements).hexdigest()})
+            self.assertEqual(dependencies['existing_requirements'], [{'path':'old-step/requirements.txt', 'sha256':hashlib.sha256(old_requirements).hexdigest()}])
+            self.assertEqual(dependencies['authored_import_roots'], ['httpx','requests'])
+            self.assertEqual(dependencies['existing_import_roots'], ['legacy_client'])
+            self.assertEqual(dependencies['unparsed_python_files'], 0)
+            for value in ('not_a_dependency', 'string_import_marker', 'source_path_marker', 'linked_external_marker', 'outside-package', 'authored declaration', 'retained declaration contents'):
+                self.assertNotIn(value, json.dumps(dependencies))
+            self.assertEqual(changes[code/'requirements.txt'], requirements)
+            self.assertFalse((code/'requirements.txt').exists())  # inspect never writes
+            without_requirements = dict(m.python_payload(source, 'task', {}, {})[0])
+            without_requirements.pop('requirements.txt')
+            self.assertEqual(m.dependency_inventory(code, without_requirements)['authored_requirements'], {'present':False})
+            with patch.object(m.sys, 'stdlib_module_names', None, create=True):
+                with self.assertRaisesRegex(ValueError, 'Python 3.10 or newer'):
+                    m.dependency_inventory(code, without_requirements)
             self.assertEqual(report['conversion']['carried_crew_links'], ['Crew/linked'])
             self.assertEqual(report['conversion']['database_rows'],{'historical':1,'background_agent_log':1})
             self.assertEqual(report['conversion']['removed_tools'],['human_tools:record_summary'])
@@ -222,6 +252,8 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertTrue((backup/'definitions/planning/plan.json').exists())
             self.assertTrue((definitions/'planning/plan.json').exists())
             self.assertEqual((code/'main.py').read_bytes(),(source/'main.py').read_bytes())
+            self.assertEqual((code/'requirements.txt').read_bytes(), requirements)
+            self.assertEqual((code/'old-step/requirements.txt').read_bytes(), old_requirements)
             self.assertEqual(json.loads((code/'script.json').read_text())['capabilities'],capabilities)
             self.assertEqual(json.loads((code/'script.json').read_text())['secrets'], ['EXAMPLE_TEST_SECRET'])
             self.assertEqual(json.loads((code/'script.json').read_text())['input_presets'],presets)
