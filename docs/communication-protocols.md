@@ -48,7 +48,7 @@ In a Python workflow, `call_function(crew, name, inputs)` calls an authorized pu
 
 A workflow's `script.json` defines typed inputs, defaults and named presets. Python functions, conditions and loops in `main.py` choose the work. `@step` labels make it readable in Steps and Runs.
 
-Start the whole workflow with `runs action=start`, or the offered `functions action=run_trigger`, and keep that path's receipt. Read the actual run with get/logs/status or trigger_status. Do not start both paths for one intended execution. Rerunning repeats real effects, including writes and sends.
+Start the whole workflow with `runs action=start`, or the offered `functions action=run_trigger`, and keep that path's receipt. For runs get/logs/status, keep the same workflow ID; status also takes the returned session ID, while get/logs take its saved run folder. For the function start path, use trigger_status with its receipt. Do not start both paths for one intended execution. Rerunning repeats real effects, including writes and sends.
 
 A schedule either starts a workflow with saved inputs/preset or messages an existing Crew agent. A webhook maps its allowed input fields to declared values. Keep caller identity, authentication and enabled state when changing input mappings; use the canonical combined update. The event cannot choose a different preset or replace saved fixed inputs merely by naming them in its payload.
 

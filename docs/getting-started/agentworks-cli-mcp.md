@@ -73,7 +73,7 @@ agentworks tools call runs --set 'action="start"' --workflow WORKFLOW_ID --set '
 Optional `inputs` supply this run's typed values. Omit the preset when the workflow has none. A start receipt means accepted work, not a completed result. Keep the returned session and query identity.
 
 ```sh
-agentworks tools call runs --set 'action="status"' --set 'session_id="SESSION_ID"'
+agentworks tools call runs --set 'action="status"' --workflow WORKFLOW_ID --set 'session_id="SESSION_ID"'
 agentworks tools call runs --set 'action="get"' --workflow WORKFLOW_ID --set 'run_folder="RUN_FOLDER"'
 agentworks tools call runs --set 'action="logs"' --workflow WORKFLOW_ID --set 'run_folder="RUN_FOLDER"'
 ```
