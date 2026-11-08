@@ -187,7 +187,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   const activeScheduleCount = panelJobs.filter(j => j.enabled).length
   // Each product pauses on its own, besides the pause of everything (PLAT-782).
   const pauseProduct = entityType === 'product' ? (productProfileId === 'code' ? 'code' : 'work') : 'agentworks'
-  const pauseProductLabel = ({ agentworks: 'Goals', work: 'Crew', code: 'Code' } as Record<string, string>)[pauseProduct] ?? 'These'
+  const pauseProductLabel = ({ agentworks: 'Workflow', work: 'Crew', code: 'Code' } as Record<string, string>)[pauseProduct] ?? 'These'
   const isGloballyPaused = !!schedulerConfig?.globally_paused
   const isProductPaused = !!schedulerConfig?.paused_products?.includes(pauseProduct)
   const isSchedulerPaused = isGloballyPaused || isProductPaused

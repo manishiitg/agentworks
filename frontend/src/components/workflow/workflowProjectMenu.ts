@@ -1,4 +1,4 @@
-import { ArrowUpCircle, BookOpen, Cable, Cpu, Database, DollarSign, Laptop, Files, FileText, Hand, LayoutDashboard, MessageSquareText, Monitor, Settings, ShieldCheck, Target, Sparkles, type LucideIcon } from 'lucide-react'
+import { ArrowUpCircle, BookOpen, Cable, Cpu, Database, DollarSign, Laptop, Files, FileText, Hand, LayoutDashboard, MessageSquareText, Monitor, Settings, ShieldCheck, Sparkles, type LucideIcon } from 'lucide-react'
 import { projectAutomationSections, projectConnectionSections } from '../workspace/WorkspaceProjectNavigation'
 import { PROJECT_MENU_GROUPS, type ProjectMenuGroup } from '../workspace/projectMenuGroups'
 import type { WorkspaceViewId } from './workspaceViews'
@@ -27,11 +27,10 @@ export function workflowProjectMenuItems({ isMultiUser = false, allowedProducts,
   for (const item of projectAutomationSections({ incomingEmail })) {
     add('workshop', item.id === 'functions' ? 'Build' : 'Use', item.id === 'email' ? 'Email inbox' : item.label, item.icon, item.id, item.id === 'functions' ? undefined : item.id === 'email' ? 'Use from other apps' : 'Run automatically')
   }
-  add('goals', 'Build', 'Goals & metrics', Target)
   add('human-actions', 'Use', 'Decisions', Hand)
   add('browser', 'Use', 'Browser', Monitor)
   add('workshop', 'Use', 'Chat history', MessageSquareText, 'chats')
-  // These retain the existing Slack destinations: both Goal rows open its Slack page.
+  // Retain the existing Slack destination.
   add('mcp', 'Integrations', 'Slack bot', MessageSquareText, 'slack')
   items[items.length - 1].id = 'mcp:slack-bot'
   add('mcp', 'Use', 'WhatsApp', MessageSquareText, 'whatsapp', 'Use from other apps')
