@@ -3,18 +3,19 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/gin-gonic/gin"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
-	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
-	"github.com/spf13/viper"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"github.com/spf13/viper"
 )
 
 // PLAT-746-471: reach the current private-Crew rule with a real declared
@@ -252,5 +253,45 @@ func TestLinkedPrivateCrewFileReadChecksLiveAccess(t *testing.T) {
 	ownerClient := workspace.NewClient(httpServer.URL, workspace.WithUserID("other"), workspace.WithFolderGuard(&workspace.FolderGuardConfig{Enabled: true, ReadPaths: []string{linkGammaPath}}))
 	if out, err := ownerClient.ReadWorkspaceFile(ownerCtx, workspace.ReadWorkspaceFileParams{Filepath: file}); err != nil || out.Content != marker {
 		t.Fatalf("target owner read: %q %v", out.Content, err)
+	}
+}
+
+// A Crew-shaped path needs a registered current person, even when an old owner
+// lookup was primed before the server's authoritative owner record changed.
+func TestCrewFilePathPolicyRequiresCurrentRegisteredPerson(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	newTriggerLinkEnv(t)
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	if err := requireCurrentCrewPathAccess(ctx, linkAlphaPath); err != nil {
+		t.Fatalf("registered owner refused: %v", err)
+	}
+	for _, path := range []string{linkAlphaPath, "Crew/unknown/file.txt", "Crew/.hidden/file.txt", "Crew", `Crew\alpha/file.txt`, "else/../Crew/alpha/file.txt", filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), linkAlphaPath, "file.txt")} {
+		if err := requireCurrentCrewPathAccess(context.Background(), path); err == nil {
+			t.Errorf("missing person admitted %s", path)
+		}
+	}
+	if err := requireCurrentCrewPathAccess(ctx, "Crew/unknown/file.txt"); err == nil {
+		t.Error("unknown Crew folder admitted")
+	}
+	if err := requireCurrentCrewPathAccess(context.Background(), "runtime/system-output.txt"); err != nil {
+		t.Fatalf("unrelated system path refused: %v", err)
+	}
+	if err := defaultProjectOwners().modify(func(records map[string]projectOwnerRecord) (bool, error) {
+		rec := records[projectOwnerKey("work", "alpha")]
+		rec.OwnerID = "other"
+		rec.Private = true
+		rec.AudienceConfigured = true
+		rec.RunPeople = nil
+		records[projectOwnerKey("work", "alpha")] = rec
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireCurrentCrewPathAccess(ctx, linkAlphaPath); err == nil {
+		t.Error("former owner retained cached access after transfer")
+	}
+	next := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
+	if err := requireCurrentCrewPathAccess(next, linkAlphaPath); err != nil {
+		t.Fatalf("current owner refused: %v", err)
 	}
 }
