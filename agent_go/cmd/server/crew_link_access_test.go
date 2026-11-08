@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
@@ -113,9 +115,16 @@ func TestLinkedPrivateCrewFileReadChecksLiveAccess(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(docs, filepath.FromSlash(file)), []byte(marker), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(docs, linkGammaPath, "skills/context"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(docs, linkGammaPath, "skills/context/SKILL.md"), []byte(marker), 0600); err != nil {
+		t.Fatal(err)
+	}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.GET("/api/documents/*filepath", workspacehandlers.GetDocument)
+	router.GET("/api/documents", workspacehandlers.ListDocuments)
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		recorder := httptest.NewRecorder()
 		router.ServeHTTP(recorder, r)
@@ -150,27 +159,94 @@ func TestLinkedPrivateCrewFileReadChecksLiveAccess(t *testing.T) {
 	}
 	read := func(want bool, stage string) {
 		t.Helper()
-		out, err := client.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: file})
-		if want {
-			if err != nil || out.Content != marker {
-				t.Fatalf("%s allowed read: content=%q err=%v", stage, out.Content, err)
+		for _, path := range []string{file, linkGammaPath + "/skills/context/SKILL.md"} {
+			out, err := client.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: path})
+			if want {
+				if err != nil || out.Content != marker {
+					t.Fatalf("%s allowed read: content=%q err=%v", stage, out.Content, err)
+				}
+			} else if err == nil || out.Content != "" {
+				t.Errorf("%s private linked read returned target bytes=%v err=%v", stage, out.Content == marker, err)
 			}
-		} else if err == nil || out.Content != "" {
-			t.Errorf("%s private linked read returned target bytes=%v err=%v", stage, out.Content == marker, err)
 		}
 	}
+	// Native MCP read/list/search already have their own live admission, which
+	// must remain consistent with linked context and ordinary file tools.
+	env.api.agentProfiles = env.svc.registry
+	mcpClaims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
+	mcpRead := func(want bool, stage string) {
+		t.Helper()
+		for _, tool := range []string{"read_crew_file", "list_crew_files", "search_crew_files"} {
+			args := map[string]any{"crew_id": "gamma", "query": marker}
+			if tool == "read_crew_file" {
+				args["path"] = "linked-proof.txt"
+			}
+			code, out := externalCrewRequest(t, env.triggerLinkEnv, mcpClaims, tool, args)
+			raw, _ := json.Marshal(out)
+			t.Logf("MCP tool=%s stage=%s status=%d", tool, stage, code)
+			if want {
+				if code != http.StatusOK {
+					t.Errorf("allowed MCP %s: %d %s", tool, code, raw)
+				}
+			} else if code != http.StatusForbidden && code != http.StatusNotFound {
+				t.Errorf("private MCP %s: %d %s", tool, code, raw)
+			}
+		}
+	}
+	list := func(want bool, stage string) {
+		t.Helper()
+		request := &QueryRequest{WorkflowContextPaths: []string{linkGammaPath}}
+		if err := admitTurnContextPaths(ctx, request); err != nil {
+			t.Fatalf("context refresh: %v", err)
+		}
+		if (len(request.authorizedWorkflowContextReadPaths) > 0) != want {
+			t.Errorf("%s linked context admitted=%v", stage, request.authorizedWorkflowContextReadPaths)
+		}
+		out, err := client.ListWorkspaceFiles(ctx, workspace.ListWorkspaceFilesParams{Folder: linkGammaPath})
+		if want {
+			if err != nil || !strings.Contains(string(out.Raw), "linked-proof") {
+				t.Errorf("allowed list %s: %s %v", stage, out.Raw, err)
+			}
+		} else if err == nil {
+			t.Errorf("private list %s succeeded", stage)
+		}
+	}
+
 	setAudience(nil)
 	if err := attach(); err == nil {
 		t.Error("initial private Crew link was accepted")
 	}
 	read(false, "initial")
+	list(false, "initial")
+	mcpRead(false, "initial")
 	setAudience([]string{"owner"})
 	if err := attach(); err != nil {
 		t.Fatalf("shared link refused: %v", err)
 	}
 	read(true, "shared")
+	list(true, "shared")
+	mcpRead(true, "shared")
 	setAudience(nil)
 	read(false, "revoked same client/session")
+	list(false, "revoked same client/session")
+	mcpRead(false, "revoked")
+	// Go, CLI and browser shell tools use the same refreshed session guard on
+	// their next request. Exercise that authenticated binder rather than manually
+	// deleting its grant in the fixture.
+	bind := env.api.bindToolExecutionContext(ctx, sid, QueryRequest{AgentProfileID: "work", AgentProfileConversationKey: "alpha", SelectedFolder: linkAlphaPath}, false)
+	if _, err := bind(context.Background(), "execute_shell_command"); err != nil {
+		t.Fatalf("own Crew tool refused after linked audience removal: %v", err)
+	}
+	cfg := common.GetSessionShellConfig(sid)
+	for _, paths := range [][]string{cfg.ReadPaths, cfg.WritePaths} {
+		if containsWorkReferencePath(paths, linkGammaPath) {
+			t.Error("revoked Crew remains in next shell mount grants")
+		}
+	}
+	if !containsWorkReferencePath(cfg.ReadPaths, linkAlphaPath) {
+		t.Error("revoking link removed own Crew")
+	}
+
 	// Its owner can still read the same real file after the other person loses access.
 	ownerCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
 	ownerClient := workspace.NewClient(httpServer.URL, workspace.WithUserID("other"), workspace.WithFolderGuard(&workspace.FolderGuardConfig{Enabled: true, ReadPaths: []string{linkGammaPath}}))
