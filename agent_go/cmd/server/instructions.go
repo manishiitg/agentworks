@@ -124,9 +124,6 @@ func getWorkflowPhaseWorkspaceMapForMode(docsRoot, workflowFolder, mode string) 
 // workflow structure, and workflow creation. This is lower-priority reference material —
 // placed after the operating mode instructions in the prompt.
 func GetWorkspaceReference(docsRoot, chatsFolder string) string {
-	p := newWorkspacePaths(docsRoot, chatsFolder)
-	absWorkflow := p.Workflow
-
 	instructions := utils.GetCommonFileInstructions()
 
 	instructions += "\n\n" + browserinstructions.GetSpecialWorkspaceToolsInstructions() + `
@@ -162,48 +159,29 @@ Image generation defaults are workspace-backed configuration. Provider authentic
 - ` + "`image_gen`" + ` and ` + "`image_edit`" + ` have only one provider (codex-cli) and do not take provider/model_id arguments; there is nothing to discover with ` + "`list_llm_capabilities`" + ` for them.
 
 ## Workflows
-List workflows with ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/\")`" + `.
+Use ` + "`crew_workflow_files action=list`" + ` to discover workflows in this Crew. Keep the returned workflow ID and workspace_path; do not infer a folder from a display name.
 
-### Workflow Structure
-A workflow is a Python script that lives in a Crew. Each one lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
+### Workflow structure
+A workflow is a Python script in its owning Crew. Paths below are relative to the workspace_path returned by the tool:
 
-- ` + "`workflow.json`" + ` — workflow-level config: schedules, webhooks, selected MCP servers, skills, LLM config and notifications.
-- ` + "`script.json`" + ` — typed inputs, optional presets, expected outputs and required secret names.
-- ` + "`main.py`" + ` and any nested Python files — the script. Steps are ordinary Python functions marked ` + "`@step`" + `; an AI step is an ` + "`agent()`" + ` call. It runs directly, with no chat.
-- ` + "`skills/<name>/SKILL.md`" + ` — short index of reusable methods, with detail in references. Facts belong in the knowledge base and results in the database.
-- ` + "`db/db.sqlite`" + ` and ` + "`db/reports/*.html`" + ` — the workflow's own database and its live report pages (` + "`index.html`" + ` is the default).
-- ` + "`knowledgebase/context/context.md`" + ` and ` + "`knowledgebase/context/examples/`" + ` — user-supplied runtime business context: rules, preferences, constraints, examples. It is never silently changed.
-- ` + "`runs/<run-folder>/`" + ` — one invocation with its recorded inputs, outputs and logs. Schedules and webhooks keep their server-bound immutable ` + "`iteration-N-sched`" + ` / ` + "`iteration-N-hook`" + ` folders; never choose a different folder for those. Read a run through ` + "`runs action=get`" + ` and ` + "`runs action=logs`" + ` rather than guessing paths.
+- ` + "`workflow.json`" + ` — workflow configuration and connections. Change configuration through the dedicated tools.
+- ` + "`code/script.json`" + ` — typed inputs, presets, expected outputs and required secret names.
+- ` + "`code/main.py`" + ` and nested Python files under ` + "`code/`" + ` — the authored source. Steps are ordinary Python functions marked ` + "`@step`" + `; an AI step is an ` + "`agent()`" + ` call. A workflow runs directly, without a chat.
+- ` + "`runs/<run-folder>/`" + ` — the recorded inputs, outputs, evidence and logs of one invocation. Use the actual saved folder, never a name constructed from a title or date.
 
-Older plan-based workflows (a ` + "`planning/plan.json`" + ` with per-step configs and saved step code) keep running and can be read, but nothing edits them: the platform operator converts one to a script when it needs a change.
+The Crew owns the database, skills and knowledge used by its workflows. Use the Crew's database tools for structured results and its selected skill references for reusable methods. Old plan files are retained history; the retired plan engine does not run them. Ask the Crew agent to convert a workflow that still uses that format.
 
 ### Efficient reading
-- **List workflows:** ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/\")`" + `; one workflow's config: ` + "`workflow action=get`" + `.
-- **Inputs and presets:** read ` + "`script.json`" + ` (` + "`workflow action=get`" + ` lists the typed inputs).
-- **Schedules:** ` + "`list_schedules`" + ` (history: ` + "`get_schedule_runs`" + `).
-- **Run results and logs:** ` + "`runs action=get`" + ` and ` + "`runs action=logs`" + ` for the run you were given.
-- **Live report pages:** ` + "`execute_shell_command(command: \"find " + absWorkflow + "/<name>/db/reports -maxdepth 1 -type f -name '*.html' -print\")`" + `
+- **Find a workflow:** ` + "`crew_workflow_files action=list`" + ` returns its workspace_path.
+- **Read inputs and source:** ` + "`crew_workflow_files action=read`" + ` with that workspace_path and file ` + "`script.json`" + ` or ` + "`main.py`" + `. The tool resolves these names inside ` + "`code/`" + `; do not add a second code prefix. For shell inspection, use the actual workspace's ` + "`code/script.json`" + ` and ` + "`code/main.py`" + ` beneath the docs root.
+- **Schedules:** use ` + "`crew_workflow_files action=describe operation=manage_schedules`" + ` for its current schema, then ` + "`action=edit operation=manage_schedules`" + ` with the workspace_path and the operation's list or history arguments. Read before changing anything.
+- **Run results and logs:** inspect the returned workspace's ` + "`runs/`" + ` directory with the shell. Read the chosen run's ` + "`run_metadata.json`" + ` and ` + "`inputs.json`" + `, then list its ` + "`execution/`" + ` and ` + "`logs/`" + ` to find output files and program logs. Use quoted absolute paths under the docs root and list before reading; do not assume every run writes result.json.
+- **Executed source:** a run keeps a frozen source copy under its ` + "`execution/`" + ` tree. Locate that run's actual ` + "`code/`" + ` directory when comparing what ran with the authored source; do not edit the frozen copy.
 
 ### When the user asks about a workflow by name
-**Trigger**: any message that names or refers to a workflow — "what did the market-scan find?", "tell me about the weekly-digest reports", or any other reference to a workflow under ` + "`" + absWorkflow + "/`" + `. Match case-insensitively and tolerate partial names.
+Identify it through this Crew's workflow list, then inspect its source, saved run evidence or Crew database according to the question. Answer from those records. Explain a missing result or an access refusal plainly instead of inventing an answer. A completed program alone is not proof that its business result was correct.
 
-**When triggered, treat that workflow's state as the primary source of truth for answering.** Do not answer from general knowledge or ask the user for more context until you have looked at the relevant workflow.
-
-**Flow:**
-1. **Identify the workflow.** Resolve the name to a folder under ` + "`" + absWorkflow + "/`" + ` (` + "`ls`" + ` it if unsure).
-2. **Read workflow state to answer the question.** Pick the right source per the question:
-   - "What has the workflow produced / found / extracted?" → the latest run folder under ` + "`runs/`" + ` (latest run outputs; ` + "`runs action=list`" + ` finds it) or ` + "`db/db.sqlite`" + ` (accumulated structured state across runs; query tables with sqlite3).
-   - "What does the workflow know about X?" → ` + "`knowledgebase/context/context.md`" + ` for user-supplied runtime context, then ` + "`knowledgebase/notes/_index.json`" + ` plus selected ` + "`knowledgebase/notes/*.md`" + ` for narratives.
-   - "How does the workflow do X?" → the selected workflow-local skill index and relevant references.
-   - "Latest results / most recent report?" → ` + "`db/reports/index.html`" + ` for the live dashboard, and ` + "`db/db.sqlite`" + ` for the rows it shows.
-3. **Synthesize a direct answer** grounded in what you read. If none of the workflow state covers the question, say so explicitly and offer to look elsewhere.
-
-**Do not**: answer a question about a named workflow without first consulting its state, even if the question seems general ("tell me about some recent findings").
-
-### What You Can Do
-- **Reuse global workflow learnings**: ` + "`learnings/_global/SKILL.md`" + ` contains reusable HOW-to-run knowledge for a workflow (how to log into a bank, parsing quirks, tool/API call patterns) — not domain facts or run results
-- **Read the script**: ` + "`main.py`" + ` is the source of truth for what a workflow does; ` + "`script.json`" + ` declares what it takes and leaves.
-- **Inspect recent runs**: ` + "`runs action=list`" + ` and ` + "`runs action=get`" + ` show recent runs and their evidence; older runs are retained history for trends, regressions and before/after comparisons against the current source.
+Do not call external-client catalog operations such as ` + "`workflow action=get`" + `, ` + "`runs action=get`" + ` or ` + "`list_schedules`" + ` from this native agent. Use only tools present in this turn; if a referenced tool is absent, read the permitted files with the shell or ask the person to open the Crew's Workflow page.
 
 ## Follow-up on workflows
 
@@ -244,13 +222,13 @@ The returned text is your instructions for this turn — do not paraphrase or sk
 
 The ` + "`Workflow/`" + ` folder is read-only via raw shell writes. A workflow's code is edited through the Crew's workflow tools (` + "`crew_workflow_files`" + `), and its schedules, webhooks and functions through their own tools. Do not refuse a modification request just because a raw write fails: use the tool.
 
-**Schedules** — managed from chat with ` + "`manage_schedules`" + ` (list, create, update, enable, disable, run, stop, history); ` + "`list_schedules`" + `, ` + "`get_schedule_runs`" + ` and ` + "`trigger_schedule`" + ` read, check and run them. List schedules *before* creating a new one to avoid cron-time overlap with other workflows. A workflow schedule starts the run directly with its input preset and inputs; it takes no messages. To have an agent do something on a timer, schedule a message on a Crew agent instead.
+**Schedules** — use ` + "`crew_workflow_files action=describe operation=manage_schedules`" + `, then its ` + "`edit`" + ` action with the returned operation schema and workflow workspace_path. List schedules *before* creating a new one to avoid cron-time overlap with other workflows. A workflow schedule starts the run directly with its input preset and inputs; it takes no messages. To have an agent do something on a timer, schedule a message on a Crew agent instead.
 
 **Other config (LLM tiers, MCP servers, skills, secrets)** — change it through the Crew's settings tools. If the user asks for such a change, use them or say which setting to open.
 
 ## Creating New Workflows
 
-New workflows are Python scripts inside a Crew, not plan files. Open or create the Crew that owns the work (` + "`workspace action=create kind=crew`" + `), then create the workflow there with ` + "`crew_workflow_files action=create`" + ` and follow the Crew's ` + "`python-workflows`" + ` skill. Existing plan workflows keep running but are not edited; the platform operator converts one when it needs a change.
+New workflows are Python scripts inside a Crew. In the owning Crew chat, use ` + "`crew_workflow_files action=create`" + ` and follow its ` + "`python-workflows`" + ` skill. If no Crew is open, ask the person to open or create one. Old plan workflows must be converted before they run; do not promise that the retired engine will execute them.
 
 `
 	return instructions
