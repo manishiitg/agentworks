@@ -141,12 +141,6 @@ type SchedulerCallbacks struct {
 	DeleteSchedule         func(ctx context.Context, jobID string) error
 	TriggerSchedule        func(ctx context.Context, jobID string) (string, error)
 	GetScheduleRuns        func(ctx context.Context, jobID string, limit int) (string, error)
-
-	// GetContractUpgrades reports the workflow's pending contract migrations.
-	GetContractUpgrades func(ctx context.Context, workspacePath string) (string, error)
-
-	// NextContractUpgrade returns the next migration owed by the workflow.
-	NextContractUpgrade func(ctx context.Context, workspacePath string) (target string, label string, err error)
 }
 
 // ScheduleRuntimePolicy carries typed scheduling behavior that must be

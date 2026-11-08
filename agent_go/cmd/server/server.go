@@ -11685,12 +11685,6 @@ func (api *StreamingAPI) buildWorkshopConfig(
 // to the workflow.json manifest and scheduler service. No database dependency.
 func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.SchedulerCallbacks {
 	return &todo_creation_human.SchedulerCallbacks{
-		GetContractUpgrades: func(ctx context.Context, workspacePath string) (string, error) {
-			return describeWorkflowContractUpgrades(ctx, workspacePath)
-		},
-		NextContractUpgrade: func(ctx context.Context, workspacePath string) (string, string, error) {
-			return nextWorkflowContractUpgrade(ctx, workspacePath)
-		},
 		ListSchedules: func(ctx context.Context, workspacePath string) (string, error) {
 			manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
 			if err != nil {
