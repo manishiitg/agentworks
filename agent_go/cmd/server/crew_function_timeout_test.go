@@ -55,8 +55,9 @@ func callClosed(call *crewFunctionCall) bool {
 // quiet the caller stops waiting, and the target's later answer is still
 // accepted and delivered to the caller's chat.
 func TestCrewFunctionTimeoutFollowsActivityAndAcceptsLateAnswer(t *testing.T) {
-	env := newCrewFunctionEnv(t)
+	// The docs folder comes first: registering the Crews creates their folders there, and a run refuses a Crew without them.
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newCrewFunctionEnv(t)
 	env.svc.heldConversation = nil
 	started := make(chan string, 1)
 	release := make(chan struct{})

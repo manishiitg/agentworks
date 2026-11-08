@@ -136,10 +136,14 @@ func TestCrewDatabaseBridgeReadsInBuilderAndRun(t *testing.T) {
 					t.Fatalf("native catalog lost %s: %v", action, actions)
 				}
 			}
-			for _, action := range []string{"mutate", "migrate", "snapshot"} {
+			for _, action := range []string{"mutate", "snapshot"} {
 				if slices.Contains(actions, any(action)) == run {
 					t.Fatalf("wrong %s authority in native catalog: %v", action, actions)
 				}
+			}
+			// The migration-file action is retired (PLAT-746, 8 Nov): additive setup uses mutate. No mode lists it.
+			if slices.Contains(actions, any("migrate")) {
+				t.Fatalf("retired migrate action in native catalog: %v", actions)
 			}
 			readArgs := map[string]any{"action": "query", "sql": "SELECT amount FROM sample_items"}
 			payload, _ := json.Marshal(readArgs)

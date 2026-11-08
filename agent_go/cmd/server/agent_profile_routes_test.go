@@ -372,7 +372,10 @@ func TestGetAgentProfileDoesNotLeakAnotherOwner(t *testing.T) {
 
 func accountSwitchTestSetup(t *testing.T, key string) (*StreamingAPI, *http.Request, agentprofiles.Profile, ProductConversationRecord) {
 	t.Helper()
-	server, _ := newFakeWorkspaceServer(t)
+	// The conversation registry lists workspace folders as well as reading files; the fake document server answers only
+	// single documents, so use the mock that serves listings too.
+	server := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{}})
+	t.Cleanup(server.Close)
 	t.Setenv("WORKSPACE_API_URL", server.URL)
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")

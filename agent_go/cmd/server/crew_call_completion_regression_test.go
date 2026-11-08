@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Exercise the caller tool, durable trigger/run record, runtime reader,
@@ -16,32 +14,27 @@ import (
 func TestCodeAskSharedCrewCompletesOrReportsRevocation(t *testing.T) {
 	for _, revoke := range []bool{false, true} {
 		t.Run(map[bool]string{false: "answer delivered", true: "binding revoked"}[revoke], func(t *testing.T) {
+			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 			env := newCrewFunctionEnv(t)
 			t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 			resetCrewLocationCaches()
 			t.Cleanup(resetCrewLocationCaches)
 			const targetRoot = "Crew/beta"
-			const sourceRoot = "_users/owner/Chats/Code/projects/source"
-			if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "beta", OwnerID: "owner", ProjectID: "beta", Shared: true, Aliases: []string{linkBetaPath}}); err != nil {
-				t.Fatal(err)
-			}
+			const sourceRoot = "Crew/source" // Code is a Crew now
+			// The state root above is new and empty: register Beta again, with its folders, as creation does.
+			registerTestCrew(t, "beta", "owner", true, "beta")
+			registerTestCrew(t, "source", "owner", false, "source")
 			env.mock.mu.Lock()
-			env.mock.files[targetRoot+"/product.json"] = env.mock.files[linkBetaPath+"/product.json"]
-			delete(env.mock.files, linkBetaPath+"/product.json")
-			env.mock.files[sourceRoot+"/product.json"] = `{"schema_version":1,"product":"code","id":"source","title":"Source","session_id":"code:project:source"}`
+			// Crews of one person talk only when linked: the source links Beta.
+			env.mock.files[sourceRoot+"/workflow.json"] = `{"schema_version":1,"id":"source","workflow_context_paths":["` + targetRoot + `"]}`
+			// Beta already lives at the shared root (linkBetaPath is targetRoot): nothing to move.
+			// Functions are declared entries now; a call to "ask" needs Beta to publish one.
+			env.mock.files[targetRoot+"/functions.json"] = `{"functions":[{"id":"ask","name":"ask","description":"Answer a question","enabled":true,"action":{"type":"message"},"input":{"messages":[]},"input_schema":{"type":"object","properties":{"message":{"type":"string"}},"required":["message"]}}]}`
+			env.mock.files[sourceRoot+"/product.json"] = `{"schema_version":1,"product":"work","id":"source","title":"Source","session_id":"sess-source"}`
 			env.mock.mu.Unlock()
-			profile, err := env.svc.registry.Resolve("work", 0, "owner")
-			if err != nil {
-				t.Fatal(err)
-			}
-			profile.ID, profile.Product = "code", "code"
-			profile.Runtime.Workspace.ProjectsRoot = workspaceref.CodeProjectsRoot
-			if err := env.svc.registry.RegisterProfile(profile); err != nil {
-				t.Fatal(err)
-			}
 			tools := env.functionTools(t, sourceRoot, "sess-caller", []string{targetRoot})
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-			out, err := tools["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Beta", "function": "ask", "args": map[string]interface{}{"message": "Summarize the bugs"}, "wait_seconds": 0})
+			out, err := tools["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Beta", "function": "ask", "input": map[string]interface{}{"message": "Summarize the bugs"}, "wait_seconds": 0})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -117,10 +117,11 @@ func TestCrewStepToolsRequireOwnEditableWorkflowAndStayLazy(t *testing.T) {
 		api.workshopChatSessions.Range(func(_, _ interface{}) bool { t.Error("Workshop initialized before admitted tool use"); return false })
 	}
 	assertNoRuntime()
-	manifest.Version = workflowContractSkillsVersion
+	// A workflow one contract behind keeps running (owner, 8 Nov); two behind is refused with the operator pointer.
+	manifest.Version = workflowContractManagedDBScriptsVersion
 	raw, _ := json.Marshal(manifest)
 	files.files[manifestPath(binding.Root)] = string(raw)
-	if _, err := reg.tools["execute_step"].exec(ctx, map[string]interface{}{"step_id": "work"}); err == nil || !strings.Contains(err.Error(), "update") {
+	if _, err := reg.tools["execute_step"].exec(ctx, map[string]interface{}{"step_id": "work"}); err == nil || !strings.Contains(err.Error(), "platform operator") {
 		t.Fatalf("Crew start bypassed contract gate: %v", err)
 	}
 	assertNoRuntime()

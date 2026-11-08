@@ -28,7 +28,7 @@ func conditionCodeFixture(t *testing.T) (triggerLinkEnv, context.Context, string
 	t.Helper()
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
-	root := registerTestCrew(t, "checks", "owner", false)
+	root := registerTestCrew(t, "checks", "owner", false, "checks")
 	env.mock.mu.Lock()
 	env.mock.files[root+"/product.json"] = `{"schema_version":1,"product":"work","id":"checks","title":"Checks","session_id":"sess-condition-main"}`
 	env.mock.files[root+"/code/triggers/check.py"] = "import json\nprint(json.dumps({'events': [], 'state': {}}))\n"

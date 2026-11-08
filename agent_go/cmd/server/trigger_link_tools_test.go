@@ -29,9 +29,9 @@ func newTriggerLinkEnv(t *testing.T) triggerLinkEnv {
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true}]}`)
-	registerTestCrew(t, "alpha", "owner", true)
-	registerTestCrew(t, "beta", "owner", true)
-	registerTestCrew(t, "gamma", "other", true)
+	registerTestCrew(t, "alpha", "owner", true, "alpha")
+	registerTestCrew(t, "beta", "owner", true, "beta")
+	registerTestCrew(t, "gamma", "other", true, "gamma")
 
 	registry := agentprofiles.NewRegistry()
 	if err := registry.RegisterProfile(agentprofiles.Profile{
