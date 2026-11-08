@@ -608,9 +608,9 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	for _, item := range items {
 		byName[item.Name] = item
 	}
-	first, second := byName["Shared first"], byName["Shared second"]
-	if first.StepExecutionID == "" || second.StepExecutionID == "" || first.StepExecutionID == second.StepExecutionID || first.SourceCall != second.SourceCall || first.StepName != "Shared first" || second.StepName != "Shared second" {
-		t.Fatalf("shared Python helper attribution is ambiguous: first=%+v second=%+v", first, second)
+	firstEvidence, secondEvidence := byName["Shared first"], byName["Shared second"]
+	if firstEvidence.StepExecutionID == "" || secondEvidence.StepExecutionID == "" || firstEvidence.StepExecutionID == secondEvidence.StepExecutionID || firstEvidence.SourceCall != secondEvidence.SourceCall || firstEvidence.StepName != "Shared first" || secondEvidence.StepName != "Shared second" {
+		t.Fatalf("shared Python helper attribution is ambiguous: first=%+v second=%+v", firstEvidence, secondEvidence)
 	}
 	if byName["Nested check"].StepName != "Nested evidence" || byName["Restored outer check"].StepName != "Evidence" || byName["Restored outer check"].StepExecutionID != byName["Evidence inside"].StepExecutionID {
 		t.Fatal("nested step context did not restore its outer execution")
@@ -620,7 +620,7 @@ assert first.log_complete and second.log_complete and passed.log_complete
 			t.Fatalf("unproven execution ID gained step attribution: %+v", unassigned)
 		}
 	}
-	t.Logf("shared helper source=%s attributed distinct executions=%s,%s; nested/outer/outside/unknown cases passed", first.SourceCall, first.StepExecutionID, second.StepExecutionID)
+	t.Logf("shared helper source=%s attributed distinct executions=%s,%s; nested/outer/outside/unknown cases passed", firstEvidence.SourceCall, firstEvidence.StepExecutionID, secondEvidence.StepExecutionID)
 	// PR1642: Stop may finalize the invocation while OnExecutionStart is
 	// blocked after the initial durable record but before activity registration.
 	for _, succeeded := range []bool{false, true} {
