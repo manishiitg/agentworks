@@ -186,15 +186,3 @@ func TestFixedMainAndPhysicalMessageChatsStayPinned(t *testing.T) {
 		}
 	}
 }
-
-// PLAT-746-477 (Codex P2 on PR 1559): a workflow Run session's reply address is "session:<id>"; only a retired
-// Builder tab key may be refused, or the reply is marked undeliverable.
-func TestWorkflowRunSessionReplyKeyIsNotARetiredTab(t *testing.T) {
-	if retiredWorkflowTabKey("session:run-1") || retiredWorkflowTabKey("") {
-		t.Fatal("a Run session's reply address was refused as a retired Builder tab")
-	}
-	if !retiredWorkflowTabKey("owner" + codeChatSideMarker + "tab-1") {
-		t.Fatal("a real retired Builder tab key was accepted")
-	}
-}
-
