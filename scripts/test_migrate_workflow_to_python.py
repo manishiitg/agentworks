@@ -71,6 +71,8 @@ class SameIdentityConversion(unittest.TestCase):
             db = sqlite3.connect(runtime/'db/db.sqlite')
             db.execute('CREATE TABLE historical (id INTEGER PRIMARY KEY, result TEXT)')
             db.execute("INSERT INTO historical VALUES (7, 'kept')")
+            db.execute('CREATE TABLE background_agent_log (id INTEGER PRIMARY KEY, message TEXT)')
+            db.execute("INSERT INTO background_agent_log VALUES (1, 'existing target log')")
             db.commit(); db.close()
             before = hashes(runtime)
             changes, documents, report = m.plan(docs,state,True)
@@ -91,7 +93,13 @@ class SameIdentityConversion(unittest.TestCase):
             db.commit();db.close()
             with self.assertRaisesRegex(ValueError,'already contains rows'):
                 m.plan(docs,state,False,'task',source)
-            db = sqlite3.connect(private/'db/db.sqlite');db.execute('DELETE FROM notes');db.commit();db.close()
+            db = sqlite3.connect(private/'db/db.sqlite');db.execute('DELETE FROM notes')
+            # PLAT-746: testing creates platform log rows before conversion;
+            # those must not turn an otherwise empty Crew into a business clash.
+            db.execute('CREATE TABLE background_agent_log (id INTEGER PRIMARY KEY, message TEXT)')
+            db.execute("INSERT INTO background_agent_log VALUES (1, 'kept log')")
+            db.commit();db.close()
+            crew_db_before = (private/'db/db.sqlite').read_bytes()
             source_definition=json.loads((source/'script.json').read_text())
             # Settings and presets come from the saved workflow, never the source.
             for name in ('capabilities','input_presets'):
@@ -100,13 +108,17 @@ class SameIdentityConversion(unittest.TestCase):
                     m.plan(docs,state,False,'task',source)
             (source/'script.json').write_bytes(m.encode(source_definition))
             changes,documents,report = m.plan(docs,state,False,'task',source)
-            self.assertEqual(report['conversion']['database_rows'],{'historical':1})
+            self.assertEqual(report['conversion']['database_rows'],{'historical':1,'background_agent_log':1})
             self.assertEqual(report['conversion']['removed_tools'],['human_tools:record_summary'])
             self.assertEqual(report['conversion']['knowledge_write_steps'],['old'])
             self.assertEqual(report['conversion']['output_check_steps'],['old'])
-            backup = Path(m.apply(changes,documents,state,identity="task"))
-            self.assertEqual(hashes(runtime),before)
+            backup = Path(m.apply(changes,documents,state,identity="task", append_platform_rows=bool(report["conversion"]["appended_crew_platform_rows"])))
+            self.assertEqual({k:v for k,v in hashes(runtime).items() if k != 'db/db.sqlite'}, {k:v for k,v in before.items() if k != 'db/db.sqlite'})
             self.assertEqual(hashes(backup/'runtime'),before)
+            self.assertEqual((private/'db/db.sqlite').read_bytes(), crew_db_before)
+            self.assertEqual((backup/'crew-db/db.sqlite').read_bytes(), crew_db_before)
+            self.assertEqual(report['conversion']['crew_database_rows']['background_agent_log'], 1)
+            self.assertEqual(report['conversion']['appended_crew_platform_rows'], 1)
             self.assertTrue((backup/'definitions/planning/plan.json').exists())
             self.assertTrue((definitions/'planning/plan.json').exists())
             self.assertEqual((code/'main.py').read_bytes(),(source/'main.py').read_bytes())
@@ -116,7 +128,10 @@ class SameIdentityConversion(unittest.TestCase):
             self.assertEqual(json.loads(binding_file.read_text()),dict(binding,kind='script',runtime_root='workflows/task'))
             saved=json.loads(projects_file.read_text())['projects']['work/example']
             self.assertEqual(saved['database_root'],'workflows/task/db')
-            self.assertEqual(m.database_rows(runtime/'db/db.sqlite'),{'historical':1})
+            self.assertEqual(m.database_rows(runtime/'db/db.sqlite'),{'historical':1,'background_agent_log':2})
+            db = sqlite3.connect(runtime/'db/db.sqlite')
+            self.assertEqual(db.execute('SELECT id,message FROM background_agent_log ORDER BY id').fetchall(), [(1, 'existing target log'), (2, 'kept log')])
+            db.close()
             # Retiring the old plan waits for a completed converted run, keeps that
             # run's plan revision, and leaves workflow.json, code and runs alone.
             (runtime/'planning/revisions').mkdir(parents=True);(runtime/'planning/changelog').mkdir()
@@ -141,6 +156,9 @@ class SameIdentityConversion(unittest.TestCase):
             # A second conversion refuses instead of silently selecting another DB.
             binding['kind']='workflow';binding['runtime_root']='workflows/task'
             binding_file.write_bytes(m.encode(binding))
+            # A prior explicit --single-db choice already appended platform logs.
+            repeated_changes, repeated_docs, repeated_report = m.plan(docs,state,False,'task',source)
+            self.assertEqual(repeated_report['conversion']['appended_crew_platform_rows'], 0)
             saved['database_root']='workflows/another/db'
             projects['projects']['work/example']=saved;projects_file.write_bytes(m.encode(projects))
             with self.assertRaisesRegex(ValueError,'database_root=workflows/another/db'):

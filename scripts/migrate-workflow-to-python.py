@@ -10,8 +10,8 @@ workflow manifest. Secret values and account logins are never copied.
 The new --source folder holds flat Python files, script.json and an optional
 agent_mocks.json (agent test fixtures). Its
 script.json must NOT carry capabilities or input_presets: both are copied from
-the saved workflow. The owning Crew database must be empty (no rows) before
-converting. --adopt-into-crew needs the helper scripts that ship beside this
+the saved workflow. The owning Crew database must have no business rows before converting; platform
+run-log rows are appended to the adopted database after the plain backup. --adopt-into-crew needs the helper scripts that ship beside this
 one (listed at start when any is missing) and moves a shared workflow only
 when the Crew owner plus accepted Crew Team members cover everyone with access.
 """
@@ -258,9 +258,7 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     existing = crew.get('database_root')
     if existing and existing != database_root:
         raise ValueError(f'This Crew already uses database_root={existing}. Choose that database or migrate its tables explicitly with a backup before converting another workflow.')
-    rows = database_rows(contained(private, 'db/db.sqlite')) if not existing else {}
-    if any(rows.values()):
-        raise ValueError('The Crew database already contains rows. Choose the authoritative database before converting; both databases are unchanged.')
+    rows = crew_platform_rows(contained(private, 'db/db.sqlite'), runtime / 'db/db.sqlite')['tables'] if not existing else {}
     original_capabilities = json.loads((definitions / 'workflow.json').read_text()).get('capabilities', {})
     variables_file = definitions / 'variables/variables.json'
     original_inputs = json.loads(variables_file.read_text()) if variables_file.exists() else {}
@@ -275,11 +273,11 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     binding['kind'] = 'script'
     changes[binding_file] = encode(binding)
     documents = {'definitions': definitions, 'code': code, 'runtime': runtime, 'crew-db': private / 'db', 'crew-db-source': files / 'db'}
-    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, **knowledge_write_steps(definitions), **output_check_steps(definitions), 'carried_input_presets': len(definition['input_presets'])}}
+    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'appended_crew_platform_rows': sum(rows.values()), 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, **knowledge_write_steps(definitions), **output_check_steps(definitions), 'carried_input_presets': len(definition['input_presets'])}}
     return changes, documents, report
 
 
-def apply(changes, documents, state, backup=None, identity='runtime-roots'):
+def apply(changes, documents, state, backup=None, identity='runtime-roots', append_platform_rows=False):
     if not changes:
         return None
     backup = backup or state / 'migrations' / ('workflow-python-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ'))
@@ -299,6 +297,12 @@ def apply(changes, documents, state, backup=None, identity='runtime-roots'):
                 shutil.copytree(path, backup / label, symlinks=True)
             else:
                 shutil.copy2(path, backup / label)
+    if append_platform_rows:
+        target = {'path': documents['runtime'] / 'db/db.sqlite'}
+        source = crew_platform_rows(documents['crew-db'] / 'db.sqlite', target['path'])
+        if any(source['tables'].values()):
+            target['path'].parent.mkdir(parents=True, exist_ok=True)
+            merge_database_tables(target, [source])
     for path, raw in changes.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
@@ -551,6 +555,45 @@ def single_db_plan(docs, state):
     return merges, crews
 
 
+def crew_platform_rows(source, target):
+    rows = database_rows(source)
+    if any(n for name, n in rows.items() if name not in PLATFORM_TABLES):
+        raise ValueError('The Crew database already contains rows. Choose the authoritative database before converting; both databases are unchanged.')
+    columns, target_columns = table_columns(source), table_columns(target)
+    for table, count in rows.items():
+        if count and table in target_columns and columns[table] != target_columns[table]:
+            raise ValueError('Platform table columns differ: ' + table + '; both databases are unchanged.')
+    return {'path': source, 'tables': rows, 'columns': columns}
+
+
+def merge_database_tables(target, sources):
+    connection = sqlite3.connect(target['path'])
+    try:
+        for index, source in enumerate(sources):
+            alias = f'src{index}'
+            connection.execute(f"ATTACH DATABASE ? AS {alias}", (str(source['path']),))
+            for table in sorted(t for t, n in source['tables'].items() if n):
+                quoted = '"' + table.replace('"', '""') + '"'
+                exists = connection.execute("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+                if exists:
+                    # A platform table with identical columns (checked at plan time):
+                    # append its rows, letting the target assign new row ids.
+                    columns = source['columns'][table]
+                    keep = [c[0] for c in columns if not (c[4] == 1 and c[1].upper() == 'INTEGER')]
+                    names = ', '.join('"' + c.replace('"', '""') + '"' for c in keep)
+                    connection.execute(f'INSERT INTO main.{quoted} ({names}) SELECT {names} FROM {alias}.{quoted}')
+                    continue
+                create = connection.execute(f"SELECT sql FROM {alias}.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()[0]
+                connection.execute(create)
+                connection.execute(f'INSERT INTO main.{quoted} SELECT * FROM {alias}.{quoted}')
+                for (sql,) in connection.execute(f"SELECT sql FROM {alias}.sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL", (table,)).fetchall():
+                    connection.execute(sql)
+            connection.commit()
+            connection.execute(f'DETACH DATABASE {alias}')
+    finally:
+        connection.close()
+
+
 def apply_single_db(merges, docs, state, backup):
     if not merges:
         return None
@@ -572,31 +615,7 @@ def apply_single_db(merges, docs, state, backup):
                 file = target['path'].with_name(target['path'].name + suffix)
                 if file.exists():
                     shutil.copy2(file, target_backup / file.name)
-            connection = sqlite3.connect(target['path'])
-            try:
-                for index, source in enumerate(sources):
-                    alias = f'src{index}'
-                    connection.execute(f"ATTACH DATABASE ? AS {alias}", (str(source['path']),))
-                    for table in sorted(t for t, n in source['tables'].items() if n):
-                        quoted = '"' + table.replace('"', '""') + '"'
-                        exists = connection.execute("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
-                        if exists:
-                            # A platform table with identical columns (checked at plan time):
-                            # append its rows, letting the target assign new row ids.
-                            columns = source['columns'][table]
-                            keep = [c[0] for c in columns if not (c[4] == 1 and c[1].upper() == 'INTEGER')]
-                            names = ', '.join('"' + c.replace('"', '""') + '"' for c in keep)
-                            connection.execute(f'INSERT INTO main.{quoted} ({names}) SELECT {names} FROM {alias}.{quoted}')
-                            continue
-                        create = connection.execute(f"SELECT sql FROM {alias}.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()[0]
-                        connection.execute(create)
-                        connection.execute(f'INSERT INTO main.{quoted} SELECT * FROM {alias}.{quoted}')
-                        for (sql,) in connection.execute(f"SELECT sql FROM {alias}.sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL", (table,)).fetchall():
-                            connection.execute(sql)
-                    connection.commit()
-                    connection.execute(f'DETACH DATABASE {alias}')
-            finally:
-                connection.close()
+            merge_database_tables(target, sources)
         record = projects['projects'][key]
         if target['database_root']:
             record['database_root'] = target['database_root']
@@ -652,7 +671,7 @@ def main():
         return
     changes, documents, report = plan(args.docs.resolve(), args.state.resolve(), args.initialize_runtime_roots, args.workflow_id, args.source)
     report['changed_files'] = len(changes)
-    report['backup'] = apply(changes, documents, args.state.resolve(), args.backup, args.workflow_id or 'runtime-roots') if args.apply else None
+    report['backup'] = apply(changes, documents, args.state.resolve(), args.backup, args.workflow_id or 'runtime-roots', append_platform_rows=bool((report.get('conversion') or {}).get('appended_crew_platform_rows'))) if args.apply else None
     print(json.dumps(report, indent=2))
 
 
