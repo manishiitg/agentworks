@@ -134,6 +134,7 @@ func TestInspectDelegatedConversationBounds(t *testing.T) {
 
 func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	workspace := &mockWorkspaceAPI{files: map[string]string{}}
 	srv := httptest.NewServer(workspace)
 	defer srv.Close()
@@ -145,7 +146,7 @@ func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "review", Kind: "workflow_step", Metadata: map[string]string{}})
 	// A Python @step has no plan step_id; its source_call joins it to the workflow's source outline.
 	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "pystep", Kind: "workflow_step", Metadata: map[string]string{"source_call": "main.py:collect@main.py:8", "inspection_kind": "python_step"}})
-	if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"kind":"workflow"}`); err != nil {
+	if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"id":"inspection-example"}`); err != nil {
 		t.Fatal(err)
 	}
 	if target := api.executionInspectionTarget("chat", "step"); target == nil || target.WorkflowKind != "workflow" || target.ExecutionKind != "workflow_step" {
@@ -186,14 +187,16 @@ func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 		}
 	}
 	checkTreeTargets(2)
-	if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"kind":"relay"}`); err != nil {
-		t.Fatal(err)
-	}
+	// Archived unsupported kinds may remain on disk after product removal;
+	// they cannot be created by current authoring tools or advertise inspection.
+	workspace.mu.Lock()
+	workspace.files["Workflow/example/workflow.json"] = `{"kind":"relay"}`
+	workspace.mu.Unlock()
 	if api.executionInspectionTarget("chat", "step") != nil || workflowStepInspectionWorkspace(context.Background(), "Workflow/example") {
-		t.Fatal("Relay advertised workflow step inspection")
+		t.Fatal("unsupported saved kind advertised workflow step inspection")
 	}
 	checkTreeTargets(0)
-	api.activeSessions["chat"].WorkspacePath = "_users/default/Chats/Work/projects/example"
+	api.activeSessions["chat"].WorkspacePath = registerTestCrew(t, "example", GetDefaultUserID(), false)
 	if api.executionInspectionTarget("chat", "step") != nil {
 		t.Fatal("Crew advertised workflow step inspection")
 	}
@@ -202,6 +205,7 @@ func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 
 func TestExecutionTreeInspectionReceiptsRequireCurrentAccess(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	workspace := &mockWorkspaceAPI{files: map[string]string{}}
 	srv := httptest.NewServer(workspace)
@@ -212,7 +216,7 @@ func TestExecutionTreeInspectionReceiptsRequireCurrentAccess(t *testing.T) {
 	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "step", Kind: "workflow_step", Metadata: map[string]string{"step_id": "research"}})
 	setOwner := func(owner string) {
 		t.Helper()
-		if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"id":"goal","kind":"workflow","created_by":"`+owner+`"}`); err != nil {
+		if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"id":"goal","created_by":"`+owner+`"}`); err != nil {
 			t.Fatal(err)
 		}
 	}
