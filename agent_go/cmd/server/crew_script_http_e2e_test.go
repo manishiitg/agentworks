@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,20 @@ import (
 // PLAT-746-265: authenticated Run-person admission crosses HTTP, uses the live
 // parent owner, and executes real Python with no model turn or saved plan.
 func TestSharedCrewScriptRunPersonHTTPExecutesRealPython(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		// Hosted storage is outside the launcher's writable private /tmp.
+		// A rebound fixture beneath /tmp inherits that scratch grant.
+		root, err := os.MkdirTemp(".", ".script-http-fixture-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		root, err = filepath.Abs(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(root) })
+		t.Setenv("TMPDIR", root)
+	}
 	for _, local := range []bool{false, true} {
 		t.Run(fmt.Sprintf("attached_project_%v", local), func(t *testing.T) { checkSharedCrewScriptHTTP(t, local) })
 	}
@@ -153,13 +168,26 @@ assert isinstance(values['count'], int)
 assert values['extended'] is False and isinstance(values['rate'], (int,float))
 assert values['RDS_SECRET_ID_DEV'] == 'example/dev/app'
 assert not {'PUBLISH_URL','SLACK_CHANNEL_ID','EXT_DISCOVERY_TCP_SCOPE_NOTE'} & set(values)
+# Persistent files use the runtime store, not a guessed parent of source code.
+data_root = Path(os.environ['WORKFLOW_DATA_ROOT'])
+assert data_root != Path(os.environ['WORKFLOW_CODE_ROOT']).parent
+report = data_root / 'reports' / 'runtime-fixture.json'
+report.parent.mkdir(parents=True, exist_ok=True)
+report.write_text(json.dumps({'count': values['count']}))
+assert json.loads(report.read_text())['count'] == values['count']
+from agentworks import run_folder
+for protected in (Path(os.environ['WORKFLOW_CODE_ROOT']) / 'unexpected.py', run_folder / 'helpers' / 'forged.json'):
+    try: protected.write_text('{}')
+    except OSError: pass
+    else: raise AssertionError('Saved source/helper write was allowed: ' + str(protected))
+
 from agentworks_db import execute, scalar
 execute('CREATE TABLE IF NOT EXISTS fixture_rows (id INTEGER PRIMARY KEY, value TEXT)')
 execute('INSERT INTO fixture_rows(id,value) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value', [values['count'],'through script bridge'])
 assert scalar('SELECT value FROM fixture_rows WHERE id=?', [values['count']]) == 'through script bridge'
 # Ordinary subprocess steps retain the same managed bridge.
 import subprocess
-subprocess.run([sys.executable,'-c',"from agentworks_db import scalar; assert scalar('SELECT COUNT(*) FROM fixture_rows') >= 1"],check=True)
+subprocess.run([sys.executable,'-c',"import os; from pathlib import Path; from agentworks_db import scalar; assert scalar('SELECT COUNT(*) FROM fixture_rows') >= 1; assert (Path(os.environ['WORKFLOW_DATA_ROOT'])/'reports/runtime-fixture.json').is_file()"],check=True)
 
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'python_ran':True, 'run_folder':str(__import__('agentworks').run_folder)}))
 `)

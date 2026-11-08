@@ -707,7 +707,7 @@ func isAllowedShellExtraEnvKey(key string) bool {
 		strings.HasPrefix(key, "RUNLOOP_") ||
 		strings.HasPrefix(key, "REPORT_") ||
 		key == "DB_PATH" ||
-		key == "WORKFLOW_CODE_ROOT" || key == "WORKFLOW_CODE_DEPS" || key == "PYTHONPATH" ||
+		key == "WORKFLOW_CODE_ROOT" || key == "WORKFLOW_CODE_DEPS" || key == "WORKFLOW_DATA_ROOT" || key == "PYTHONPATH" ||
 		key == "PYTHONDONTWRITEBYTECODE" ||
 		// Paths and flags the platform sets for a workflow's code steps (code_layout.go codeRuntimeEnv). Dropping them
 		// here meant a step never learned where its trigger delivery was, so a webhook, MCP or Crew-started run always
