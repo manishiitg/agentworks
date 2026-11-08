@@ -148,7 +148,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveWorkshopInputGroup(ctx context
 		return "", err
 	}
 	if hcpo.directCrewScript != nil {
-		manifest = &VariablesManifest{Variables: hcpo.directCrewScript.Inputs}
+		manifest = hcpo.directCrewScript.InputDefinitions()
 	}
 	hcpo.variablesManifest = manifest
 	if requested != "" {

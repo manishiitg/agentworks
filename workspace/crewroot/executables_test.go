@@ -62,6 +62,13 @@ func TestCrewAutomationSeparatesSourceAndRuntime(t *testing.T) {
 			// PLAT-746-428: changing engine keeps all existing runtime identities;
 			// Crew chat and automation database calls adopt the same whole DB.
 			binding.Kind = "script"
+			data, _ = json.Marshal(binding)
+			os.WriteFile(filepath.Join(state, "ownership/crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))), data, 0600)
+			for _, virtual := range []string{"Workflow/sequence/db/db.sqlite", "Crew/example/db/db.sqlite"} {
+				if got, err := resolve(virtual); err != nil || got != filepath.Join(docs, PrivateDirectory, "crew/db/db.sqlite") {
+					t.Fatalf("new script did not use the Crew DB: %q %v", got, err)
+				}
+			}
 			rec.DatabaseRoot = "workflows/sequence/db"
 			saveRouting := func() {
 				t.Helper()

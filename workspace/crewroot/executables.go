@@ -86,6 +86,11 @@ func LookupExecutable(docs, virtual string) (ExecutableLayout, bool, error) {
 
 func (l ExecutableLayout) source(rel string) (root, suffix string, mapped bool) {
 	switch {
+	case l.Binding.Kind == "script" && l.Crew.DatabaseRoot == "" && (rel == "db" || strings.HasPrefix(rel, "db/")):
+		if privatePath(rel) {
+			return l.Crew.Private, rel, true
+		}
+		return l.Crew.Resources, rel, true
 	case l.Crew.DatabaseRoot != "" && (rel == "db" || strings.HasPrefix(rel, "db/")):
 		return l.Crew.Private, filepath.Join(l.Crew.DatabaseRoot, strings.TrimPrefix(strings.TrimPrefix(rel, "db"), "/")), true
 	case rel == "planning/changelog" || strings.HasPrefix(rel, "planning/changelog/") || rel == "planning/revisions" || strings.HasPrefix(rel, "planning/revisions/"):

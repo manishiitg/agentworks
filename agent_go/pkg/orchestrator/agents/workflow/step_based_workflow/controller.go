@@ -676,7 +676,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 
 	if hcpo.directCrewScript != nil {
 		variablesExist = true
-		existingVariablesManifest = &VariablesManifest{Variables: hcpo.directCrewScript.Inputs}
+		existingVariablesManifest = hcpo.directCrewScript.InputDefinitions()
 	}
 	var templatedObjective string
 	if variablesExist && existingVariablesManifest != nil {

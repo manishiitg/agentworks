@@ -62,13 +62,9 @@ func crewScriptManifest(ctx context.Context, binding *crewExecutableBinding) (*W
 	manifest.CreatedBy = owner
 	manifest.Access = &WorkflowAccess{Owners: []string{owner}}
 	manifest.crewExecutable = binding
-	if parent, parentErr := readCrewProjectManifests(ctx, "work", binding.CrewRoot); parentErr == nil {
-		manifest.Capabilities.SelectedServers = append([]string{}, parent.Capabilities.SelectedServers...)
-		manifest.Capabilities.SelectedTools = append([]string{}, parent.Capabilities.SelectedTools...)
-		if parent.Capabilities.SelectedGlobalSecretNames != nil {
-			names := append([]string{}, (*parent.Capabilities.SelectedGlobalSecretNames)...)
-			manifest.Capabilities.SelectedGlobalSecretNames = &names
-		}
+	manifest.Capabilities, err = crewScriptCapabilities(ctx, binding.CrewRoot, definition)
+	if err != nil {
+		return nil, false, err
 	}
 
 	if err := loadWorkflowEntryActions(ctx, binding.Root, manifest); err != nil {
@@ -78,6 +74,33 @@ func crewScriptManifest(ctx context.Context, binding *crewExecutableBinding) (*W
 		return nil, false, err
 	}
 	return manifest, true, nil
+}
+
+// Saved scripts inherit the Crew's existing settings. Explicit overrides use
+// the same capability schema and validation as workflows, not a new authority.
+func crewScriptCapabilities(ctx context.Context, crewRoot string, definition *workflow.CrewScriptDefinition) (WorkflowCapabilities, error) {
+	candidate := NewWorkflowManifest(definition.Name)
+	if parent, err := readCrewProjectManifests(ctx, "work", crewRoot); err == nil {
+		raw, err := json.Marshal(parent.Capabilities)
+		if err != nil {
+			return WorkflowCapabilities{}, err
+		}
+		if err := json.Unmarshal(raw, &candidate.Capabilities); err != nil {
+			return WorkflowCapabilities{}, err
+		}
+	}
+	if len(definition.Capabilities) != 0 {
+		if !strings.HasPrefix(strings.TrimSpace(string(definition.Capabilities)), "{") {
+			return WorkflowCapabilities{}, fmt.Errorf("script capabilities must be a settings object")
+		}
+		if err := json.Unmarshal(definition.Capabilities, &candidate.Capabilities); err != nil {
+			return WorkflowCapabilities{}, fmt.Errorf("read script settings: %w", err)
+		}
+	}
+	if err := ValidateManifest(candidate); err != nil {
+		return WorkflowCapabilities{}, err
+	}
+	return candidate.Capabilities, nil
 }
 
 // Script ids are configuration, never derived from mapped values. Resolve source
@@ -148,9 +171,6 @@ func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace
 }
 
 func saveCrewScriptInputs(ctx context.Context, root string, inputs *VariablesManifest) error {
-	if len(inputs.Groups) > 0 {
-		return fmt.Errorf("save script defaults here; named presets belong to workflows")
-	}
 	definition, err := readCrewScript(ctx, root)
 	if err != nil {
 		return err
@@ -162,6 +182,7 @@ func saveCrewScriptInputs(ctx context.Context, root string, inputs *VariablesMan
 		return err
 	}
 	definition.Inputs = inputs.Variables
+	definition.InputPresets = inputs.Groups
 	if binding, err := findCrewExecutable(root); err != nil {
 		return err
 	} else if binding != nil {
@@ -196,10 +217,13 @@ func writeCrewScriptFile(ctx context.Context, binding *crewExecutableBinding, fi
 		if definition.ID != binding.ID {
 			return fmt.Errorf("keep the saved script identity")
 		}
+		if _, err := crewScriptCapabilities(ctx, binding.CrewRoot, definition); err != nil {
+			return err
+		}
 		if _, err := crewScriptConsumers(ctx, binding, definition); err != nil {
 			return err
 		}
-		if err := workflow.ValidateWorkflowInputReferences(ctx, binding.Root, &workflow.VariablesManifest{Variables: definition.Inputs}); err != nil {
+		if err := workflow.ValidateWorkflowInputReferences(ctx, binding.Root, definition.InputDefinitions()); err != nil {
 			return err
 		}
 	}

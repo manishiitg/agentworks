@@ -193,6 +193,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 			}
 		}
 		if !found {
+			if toolName == "agent_browser" {
+				return nil, nil, fmt.Errorf("This automation's browser is not available. In its Crew chat, ask to choose and connect its browser, then retry.")
+			}
 			return nil, nil, fmt.Errorf("The requested %s tool is unavailable to this automation; connect it in the Crew or turn off that selection.", toolName)
 		}
 	}
