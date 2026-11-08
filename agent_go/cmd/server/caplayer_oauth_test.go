@@ -26,7 +26,8 @@ func TestCapLayerOAuthReusesRefreshAndObservesRevocation(t *testing.T) {
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", secret)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	oauth.SetTokenSealer(platformClientSealer{})
-	defer oauth.SetTokenSealer(nil)
+	// Restore the production sealer that init installs (place_mcp_store.go), not nil, so later tests keep it.
+	t.Cleanup(func() { oauth.SetTokenSealer(credentialSealer{}) })
 	const id = "c-aaaaaaaa"
 	vaultService := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+secret || r.URL.Path != "/api/admin/connectors/"+id {

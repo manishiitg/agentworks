@@ -169,7 +169,7 @@ func TestVaultMeImportKeepsAMovedSignInOnlyAfterOneRenewal(t *testing.T) {
 	t.Setenv("CAPLAYER_SERVICE_TOKEN", secret)
 	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 	oauth.SetTokenSealer(platformClientSealer{})
-	t.Cleanup(func() { oauth.SetTokenSealer(nil) })
+	t.Cleanup(func() { oauth.SetTokenSealer(credentialSealer{}) }) // the production sealer, not nil
 	const upstream = "https://mcp.example.com/mcp"
 	var rejectRefresh atomic.Bool
 	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
