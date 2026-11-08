@@ -1042,9 +1042,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [activeSessionId, isShared, workspacePanels, selectWorkspaceView])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
-    const named = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
-    // The workflow and its scripts have their own page; older callers still say schedules + workflows.
-    const panel = named === 'schedules' && (target === 'workflows' || target === 'scripts') ? 'workflow' : named
+    const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
     if (!isWorkWorkspaceViewEnabled(panel, workspacePanels)) return
     if (isWorkSessionRun(selected) && !sharedPanels.has(panel)) return
     if (panel === 'schedules') {
