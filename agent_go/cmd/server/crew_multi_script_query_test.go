@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,10 +109,12 @@ func TestCrewQueryStartsWithZeroOneAndMultipleSavedScripts(t *testing.T) {
 	api.internalPreparedAgent = func(_ context.Context, prepared *mcpagent.Agent) bool {
 		offered := surface{}
 		for _, tool := range prepared.Definition().Tools {
-			if tool.Name == "run_full_workflow" {
+			// Finalization projects private member names onto the callable
+			// family/action catalog. Assert what the chat agent actually sees.
+			if tool.Name == "runs" && strings.Contains(tool.Description, "\n- start:") {
 				offered.bound = true
 			}
-			if tool.Name == "run_workflow_trigger" {
+			if tool.Name == "functions" && strings.Contains(tool.Description, "\n- run_trigger:") {
 				offered.named = true
 			}
 		}
