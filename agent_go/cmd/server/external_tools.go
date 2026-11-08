@@ -110,12 +110,9 @@ func externalTools() ([]externalTool, error) {
 		// Product declarations admit tools; current roles and existing connection
 		// consent separately authorize reads, execution and direct authoring.
 		// Catalog membership is admitted by product.yaml (chat.run
-		// external_tools plus the run.tools proxy surface); these definitions
+		// external_tools and implemented run.tools entries); these definitions
 		// are implementations only.
-		add("get_plan", "For a saved Python script, read its source outline without executing it; requires the same Builder access as its source editor. For an older workflow, read the plan and configuration. A large plan can be several hundred thousand characters: pass view=outline first (each step's id, type, title and a short description, plus the size of every top-level plan section), then step_id to read one step's plan entry and its configuration. Without either you get everything (plan and step configuration).", false, true, map[string]any{
-			"view":    map[string]any{"type": "string", "enum": []any{"full", "outline"}, "description": "outline: step list and section sizes only. Default full."},
-			"step_id": externalString("Read only this step: its plan entry and its configuration."),
-		})
+		add("get_script_outline", "Read a saved Python workflow's source outline without running it. Requires the same Builder access as its source editor.", false, true, nil)
 		add("save_script_inputs", "Save a Python workflow's input presets, and optionally its typed inputs. Replaces the supplied lists, preserving other script settings. Requires this Crew's Builder and the same source-editing consent as the script editor.", true, true, map[string]any{
 			"inputs":         map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Optional complete typed input definitions; omit to keep current inputs."},
 			"input_presets":  map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Complete list of named presets, each with name and values. An empty list removes all presets."},
@@ -1140,8 +1137,8 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalRunProxy(w, r, tool.Name, args, *selected)
 		return
 	}
-	if tool.Name == "get_plan" {
-		api.externalPlanCall(w, r, *selected, args)
+	if tool.Name == "get_script_outline" {
+		api.externalScriptOutlineCall(w, r, *selected)
 		return
 	}
 	api.externalFileCall(w, r, tool.Name, args, *selected)
@@ -1268,155 +1265,16 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 	externalJSON(w, result)
 }
 
-var externalPlanPaths = []string{"planning/plan.json", "planning/step_config.json"}
-
-func (api *StreamingAPI) externalPlanCall(w http.ResponseWriter, r *http.Request, workflow DiscoveredWorkflow, args map[string]any) {
-	if externalWorkflowIsScript(workflow) {
-		if externalArg(args, "step_id") != "" {
-			externalError(w, 400, "invalid_arguments", "Python steps are labels in the saved source. Read the outline without step_id, or read the script file.")
-			return
-		}
-		forward := r.Clone(r.Context())
-		forward.Method = http.MethodGet
-		forward.URL.Path = "/api/crew-script-graph"
-		forward.URL.RawQuery = "workspace_path=" + url.QueryEscape(workflow.WorkspacePath)
-		externalBuilderForward(w, forward, api.handleCrewScriptGraph)
+func (api *StreamingAPI) externalScriptOutlineCall(w http.ResponseWriter, r *http.Request, item DiscoveredWorkflow) {
+	if !externalWorkflowIsScript(item) {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Choose a saved Python workflow to inspect its source.")
 		return
 	}
-	artifacts := map[string]any{}
-	var revisions strings.Builder
-	for _, p := range externalPlanPaths {
-		result, err := externalFileRequest(r.Context(), wf.Request{Root: workflow.WorkspacePath, Operation: "read", Path: p})
-		if err != nil {
-			externalFailure(w, err)
-			return
-		}
-		revisions.WriteString(p + ":" + result.Revision + "\n")
-		var value any
-		if result.Exists {
-			if err := json.Unmarshal([]byte(result.Content), &value); err != nil {
-				externalFailure(w, fmt.Errorf("invalid JSON in %s: %w", p, err))
-				return
-			}
-		}
-		artifacts[p] = value
-	}
-	revision := wf.Revision([]byte(revisions.String()))
-	plan, config := artifacts["planning/plan.json"], artifacts["planning/step_config.json"]
-	if stepID := externalArg(args, "step_id"); stepID != "" {
-		step := externalPlanFindStep(plan, stepID)
-		if step == nil {
-			externalError(w, 404, "not_found", "No step "+stepID+" in the plan; call workflow action=plan with view=outline for the step ids.")
-			return
-		}
-		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": revision, "step_id": stepID, "step": step, "config": externalPlanConfigFor(config, stepID)})
-		return
-	}
-	if externalArg(args, "view") == "outline" {
-		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": revision, "outline": externalPlanOutline(plan, config)})
-		return
-	}
-	// The plan is returned once: it used to be repeated inside artifacts, doubling the reply.
-	externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "revision": revision, "plan": plan, "artifacts": map[string]any{"planning/step_config.json": config}})
-}
-
-// externalPlanFindStep returns the plan entry of a step: the first object with this id that also has a type.
-func externalPlanFindStep(node any, id string) map[string]any {
-	switch value := node.(type) {
-	case map[string]any:
-		if got, _ := value["id"].(string); got == id {
-			if _, isStep := value["type"].(string); isStep {
-				return value
-			}
-		}
-		for _, child := range value {
-			if found := externalPlanFindStep(child, id); found != nil {
-				return found
-			}
-		}
-	case []any:
-		for _, child := range value {
-			if found := externalPlanFindStep(child, id); found != nil {
-				return found
-			}
-		}
-	}
-	return nil
-}
-
-// externalPlanConfigFor returns a step's entry of step_config.json: the value under its id key, or the first object
-// whose id is this step's. Nil when the configuration has none.
-func externalPlanConfigFor(node any, id string) any {
-	switch value := node.(type) {
-	case map[string]any:
-		if entry, ok := value[id]; ok {
-			return entry
-		}
-		if got, _ := value["id"].(string); got == id {
-			return value
-		}
-		for _, child := range value {
-			if found := externalPlanConfigFor(child, id); found != nil {
-				return found
-			}
-		}
-	case []any:
-		for _, child := range value {
-			if found := externalPlanConfigFor(child, id); found != nil {
-				return found
-			}
-		}
-	}
-	return nil
-}
-
-// externalPlanOutline is the cheap view of a plan: every step's id, type, title and a short description, and the size
-// in characters of each top-level section of the plan and of the step configuration.
-func externalPlanOutline(plan, config any) map[string]any {
-	steps := []map[string]any{}
-	var walk func(node any)
-	walk = func(node any) {
-		switch value := node.(type) {
-		case map[string]any:
-			if id, _ := value["id"].(string); id != "" {
-				if kind, isStep := value["type"].(string); isStep {
-					entry := map[string]any{"id": id, "type": kind, "title": value["title"]}
-					if description, _ := value["description"].(string); description != "" {
-						if runes := []rune(description); len(runes) > 160 {
-							description = string(runes[:160]) + "…"
-						}
-						entry["description"] = description
-					}
-					steps = append(steps, entry)
-				}
-			}
-			keys := make([]string, 0, len(value))
-			for key := range value {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
-			for _, key := range keys {
-				walk(value[key])
-			}
-		case []any:
-			for _, child := range value {
-				walk(child)
-			}
-		}
-	}
-	walk(plan)
-	sizes := func(node any) map[string]int {
-		out := map[string]int{}
-		if object, ok := node.(map[string]any); ok {
-			for key, child := range object {
-				encoded, _ := json.Marshal(child)
-				out[key] = len(encoded)
-			}
-		}
-		return out
-	}
-	return map[string]any{"steps": steps, "plan_sections": sizes(plan), "config_sections": sizes(config),
-		"next": "workflow action=plan with step_id=<id> reads one step and its configuration; without view or step_id returns everything."}
+	forward := r.Clone(r.Context())
+	forward.Method = http.MethodGet
+	forward.URL.Path = "/api/crew-script-graph"
+	forward.URL.RawQuery = "workspace_path=" + url.QueryEscape(item.WorkspacePath)
+	externalBuilderForward(w, forward, api.handleCrewScriptGraph)
 }
 
 // externalWorkflowView is a workflow as an external client may see it: the manifest without the stored webhook

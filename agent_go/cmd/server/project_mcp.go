@@ -100,7 +100,7 @@ func projectMCPToolAllowed(kind, name string) bool {
 		return false
 	}
 	switch name {
-	case "list_workflows", "get_workflow", "get_plan", "list_files", "search_files", "read_file", "list_step_code",
+	case "list_workflows", "get_workflow", "get_script_outline", "list_files", "search_files", "read_file", "list_step_code",
 		"list_runs", "get_run", "get_logs", "run_status", "list_executions", "run_reply_input", "stop_step", "stop_all_executions",
 		"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply",
 		"list_workflow_knowledge", "read_workflow_knowledge":

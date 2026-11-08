@@ -16,7 +16,7 @@ An external MCP agent uses `workspace action=automation_create/read/write` with
 (root `script.json`, `main.py` or a nested Python path). Use `workflow action=list/get`
 for script kind, typed inputs and presets; `workflow action=save_inputs` replaces
 `input_presets` and optionally `inputs` through the same validated editor.
-`workflow action=plan view=outline` inspects saved source without running it and
+`workflow action=outline` inspects saved source without running it and
 keeps Builder source-editor authority. `@step` labels are not independently runnable.
 
 Start with `runs action=start` (`workflow_id`, optional `input_preset`, typed

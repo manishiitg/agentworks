@@ -403,7 +403,7 @@ chat:
       - get_file_link
       - read_file
       - write_file
-      - get_plan
+      - get_script_outline
       - save_script_inputs
       - get_agent_context
       - list_guidance_topics

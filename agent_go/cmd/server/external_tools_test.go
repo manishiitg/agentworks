@@ -201,15 +201,6 @@ func externalTestBody(t *testing.T, w *httptest.ResponseRecorder, want int) map[
 	}
 	return body
 }
-func (f *externalToolsFixture) planRevision(t *testing.T, user string) string {
-	t.Helper()
-	body := externalTestBody(t, f.call(t, user, "get_plan", map[string]any{"workflow_id": "invoices"}), 200)
-	revision, _ := body["revision"].(string)
-	if revision == "" {
-		t.Fatal("missing plan revision")
-	}
-	return revision
-}
 
 func TestExternalDirectoryListingsReportExistingPaths(t *testing.T) {
 	f := newExternalToolsFixture(t)
@@ -340,7 +331,7 @@ func TestExternalRunAuthorityBoundary(t *testing.T) {
 func TestExternalToolsHTTPMutationsAreNotExposed(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	before := f.read(t, "Workflow/invoices/planning/plan.json")
-	revision := f.planRevision(t, "owner")
+	revision := "not-used-by-an-unexposed-tool"
 	calls := map[string]map[string]any{
 		"update_scripted_step": {"workflow_id": "invoices", "expected_revision": revision, "existing_step_id": "fetch-invoices", "title": "Denied", "reason": "Attempt change"},
 		"update_step_config":   {"workflow_id": "invoices", "expected_revision": revision, "step_id": "fetch-invoices", "reason": "Attempt change"},
@@ -378,14 +369,14 @@ func TestExternalToolsHTTPWorkflowVisibilityAndReadonlyOwnerGuard(t *testing.T) 
 	if len(workflows) != 1 || workflows[0].(map[string]any)["id"] != "invoices" || workflows[0].(map[string]any)["manifest"] != nil {
 		t.Fatalf("unauthorized workflow visible: %v", body)
 	}
-	for _, tool := range []string{"get_workflow", "get_plan"} {
+	for _, tool := range []string{"get_workflow"} {
 		externalTestBody(t, f.call(t, "owner", tool, map[string]any{"workflow_id": "secret"}), 404)
 	}
 	for _, user := range []string{"reader", "readonly-owner"} {
-		externalTestBody(t, f.call(t, user, "get_plan", map[string]any{"workflow_id": "invoices"}), 200)
+		externalTestBody(t, f.call(t, user, "get_workflow", map[string]any{"workflow_id": "invoices"}), 200)
 		externalTestBody(t, f.call(t, user, "read_file", map[string]any{"workflow_id": "invoices", "path": "docs/process.md"}), 200)
 	}
-	externalTestBody(t, f.call(t, "outsider", "get_plan", map[string]any{"workflow_id": "invoices"}), 404)
+	externalTestBody(t, f.call(t, "outsider", "get_workflow", map[string]any{"workflow_id": "invoices"}), 404)
 	externalTestBody(t, f.call(t, "", "list_workflows", nil), 401)
 	if strings.Contains(f.read(t, "Workflow/invoices/planning/plan.json"), "Denied") {
 		t.Fatal("unauthorized request changed plan")
@@ -395,7 +386,7 @@ func TestExternalToolsHTTPWorkflowVisibilityAndReadonlyOwnerGuard(t *testing.T) 
 func TestExternalToolsHTTPRejectsUnknownArguments(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	before := f.read(t, "Workflow/invoices/planning/plan.json")
-	externalTestBody(t, f.call(t, "owner", "get_plan", map[string]any{"workflow_id": "invoices", "titel": "Misspelled"}), 400)
+	externalTestBody(t, f.call(t, "owner", "get_workflow", map[string]any{"workflow_id": "invoices", "titel": "Misspelled"}), 400)
 	externalTestBody(t, f.call(t, "owner", "read_file", map[string]any{"workflow_id": "invoices", "path": "docs/process.md", "managed": true}), 400)
 	// Reads reach plan files; there is no write path to protect in v1.
 	externalTestBody(t, f.call(t, "owner", "read_file", map[string]any{"workflow_id": "invoices", "path": "planning/plan.json"}), 200)
@@ -614,15 +605,17 @@ func TestExternalToolsClientTransportThroughJWTAndWorkspace(t *testing.T) {
 			t.Fatalf("write tool %s exposed in client catalog", name)
 		}
 	}
-	raw, err := client.Call(ctx, "workflow", map[string]any{"action": "plan", "workflow_id": "invoices"})
+	raw, err := client.Call(ctx, "workflow", map[string]any{"action": "get", "workflow_id": "invoices"})
 	if err != nil {
-		t.Fatalf("get_plan: %v", err)
+		t.Fatalf("get_workflow: %v", err)
 	}
-	var plan struct {
-		Revision string `json:"revision"`
+	var item struct {
+		Manifest struct {
+			ID string `json:"id"`
+		} `json:"manifest"`
 	}
-	if err := json.Unmarshal(raw, &plan); err != nil || plan.Revision == "" {
-		t.Fatalf("invalid get_plan result %s: %v", raw, err)
+	if err := json.Unmarshal(raw, &item); err != nil || item.Manifest.ID != "invoices" {
+		t.Fatalf("invalid get_workflow result %s: %v", raw, err)
 	}
 	raw, err = client.Call(ctx, "files", map[string]any{"action": "read", "workflow_id": "invoices", "path": "docs/process.md"})
 	if err != nil {
@@ -663,33 +656,13 @@ func TestExternalToolsClientTransportThroughJWTAndWorkspace(t *testing.T) {
 	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
 		t.Fatalf("expired JWT must return client APIError 401, got %v", err)
 	}
-	_, err = expiredClient.Call(ctx, "get_plan", map[string]any{"workflow_id": "invoices"})
+	_, err = expiredClient.Call(ctx, "get_workflow", map[string]any{"workflow_id": "invoices"})
 	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
 		t.Fatalf("expired JWT call must return client APIError 401, got %v", err)
 	}
 	if f.upstreamCalls.Load() != workspaceCalls {
 		t.Fatal("unauthenticated requests reached the workspace")
 	}
-}
-
-// A large plan is read in pieces: the outline lists steps and section sizes, step_id reads one step, and the plan is
-// no longer repeated inside artifacts (PLAT-837).
-func TestExternalPlanCanBeReadInPieces(t *testing.T) {
-	f := newExternalToolsFixture(t)
-	full := externalTestBody(t, f.call(t, "owner", "get_plan", map[string]any{"workflow_id": "invoices"}), 200)
-	if _, repeated := full["artifacts"].(map[string]any)["planning/plan.json"]; repeated || full["plan"] == nil {
-		t.Fatalf("the plan must be returned once, as plan: %v", full)
-	}
-	outline := externalTestBody(t, f.call(t, "owner", "get_plan", map[string]any{"workflow_id": "invoices", "view": "outline"}), 200)
-	steps := outline["outline"].(map[string]any)["steps"].([]any)
-	if len(steps) != 1 || steps[0].(map[string]any)["id"] != "fetch-invoices" || outline["revision"] != full["revision"] {
-		t.Fatalf("outline = %v", outline)
-	}
-	one := externalTestBody(t, f.call(t, "owner", "get_plan", map[string]any{"workflow_id": "invoices", "step_id": "fetch-invoices"}), 200)
-	if one["step"].(map[string]any)["title"] != "Fetch invoices" {
-		t.Fatalf("step = %v", one)
-	}
-	externalTestBody(t, f.call(t, "owner", "get_plan", map[string]any{"workflow_id": "invoices", "step_id": "nope"}), 404)
 }
 
 // The Crew root can be listed: an empty path is not refused by the schema (PLAT-837).
