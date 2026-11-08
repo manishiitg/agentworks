@@ -445,12 +445,16 @@ class Migration(unittest.TestCase):
         self.assertEqual(hashes(self.base), before)
 
     def test_runtime_copy_failure_keeps_source_and_removes_partial_destination(self):
-        # PLAT-746-435 / PR1520: failed relocation must remain retryable.
+        # PLAT-746-435 / PR1588: copy or second-cache-rename failure leaves
+        # every original file/cache intact and permits a plain retry.
         self.conversion().apply()
         self.runtime.rename(self.source)
+        for name in ('.cache', '.sandbox-cache'):
+            cache = self.source/name
+            cache.mkdir()
+            (cache/'installed-package').write_bytes(name.encode())
         source_before = hashes(self.source)
-        conversion = m.RuntimeRelocation(self.docs, self.state, 'old-goal', 'crew')
-        real_copy = m.copy_migration_tree
+        real_copy, real_rename = m.copy_migration_tree, Path.rename
 
         def interrupted_copy(source, target, skipped):
             if target != self.runtime:
@@ -459,13 +463,27 @@ class Migration(unittest.TestCase):
             (target/'partial').write_text('incomplete')
             raise OSError('injected runtime copy failure')
 
-        with mock.patch.object(m, 'copy_migration_tree', side_effect=interrupted_copy):
-            with self.assertRaisesRegex(OSError, 'injected runtime copy failure'):
-                conversion.apply()
-        self.assertEqual(hashes(self.source), source_before)
-        self.assertFalse(self.runtime.exists())
-        self.assertFalse(conversion.receipt.exists())
-        self.assertEqual(m.RuntimeRelocation(self.docs, self.state, 'old-goal', 'crew').report()['status'], 'ready')
+        for failure in ('copy', 'second cache rename'):
+            with self.subTest(failure=failure):
+                moves = []
+
+                def interrupted_rename(path, target):
+                    if path.parent == self.source and path.name in ('.cache', '.sandbox-cache'):
+                        moves.append(path)
+                        if len(moves) == 2:
+                            raise OSError('injected second cache rename failure')
+                    return real_rename(path, target)
+
+                conversion = m.RuntimeRelocation(self.docs, self.state, 'old-goal', 'crew')
+                patch = (mock.patch.object(m, 'copy_migration_tree', side_effect=interrupted_copy)
+                         if failure == 'copy' else mock.patch.object(Path, 'rename', interrupted_rename))
+                with patch:
+                    with self.assertRaisesRegex(OSError, 'injected'):
+                        conversion.apply()
+                self.assertEqual(hashes(self.source), source_before)
+                self.assertFalse(self.runtime.exists())
+                self.assertFalse(conversion.receipt.exists())
+                self.assertEqual(m.RuntimeRelocation(self.docs, self.state, 'old-goal', 'crew').report()['status'], 'ready')
 
     def test_finish_runtime_preserves_authored_files_and_references_without_recreating_old_folder(self):
         # PLAT-746-360: a prior source-only migration left native helpers
