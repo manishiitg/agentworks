@@ -11,11 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/spf13/viper"
 )
 
 func TestKnowledgebaseProjectMCPBuilderAndStepPolicies(t *testing.T) {
@@ -166,15 +171,76 @@ func TestKnowledgebaseProjectUIUsesOwnerAndAudienceChecks(t *testing.T) {
 	}
 }
 
+// Reuse the current Crew registry and real project records for root setup checks.
+func knowledgeCrewSetupFixture(t *testing.T) string {
+	t.Helper()
+	knowledgeIntegrationFixture(t)
+	root := "Crew/brain-setup"
+	owners := withProjectOwnerRegistry(t)
+	if err := owners.Register(projectOwnerRecord{Product: "work", Folder: "brain-setup", ProjectID: "brain-setup", OwnerID: "admin"}); err != nil {
+		t.Fatal(err)
+	}
+	physical := filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), root)
+	if err := os.MkdirAll(physical, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"workflow.json", "product.json"} {
+		if err := os.WriteFile(filepath.Join(physical, name), []byte(`{"id":"brain-setup","created_by":"admin","owner_id":"admin","product":"work"}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	previous := viper.Get("docs-dir")
+	viper.Set("docs-dir", os.Getenv("WORKSPACE_DOCS_PATH"))
+	t.Cleanup(func() { viper.Set("docs-dir", previous) })
+	router := gin.New()
+	router.Any("/api/documents/*filepath", handlers.HandleDocumentRequest)
+	router.GET("/api/documents", handlers.ListDocuments)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	return root
+}
+
 func TestKnowledgebaseProjectBuilderAuthorityMatchesVaultIsolation(t *testing.T) {
+	root := knowledgeCrewSetupFixture(t)
 	claims := &UserClaims{UserID: "admin"}
-	// The shape handleQuery binds tools with: the mode is already rewritten, the admission flag is set (PLAT-600/608).
-	req := QueryRequest{AgentMode: "multi-agent", PhaseID: "workflow-builder", SelectedFolder: "Workflow/payments", admittedWorkflowPhase: true}
+	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", SelectedFolder: root, AgentProfileConversationKey: "brain-setup"}
 	if !knowledgeProjectBuilderQuery(req, claims, "root", "root", false) {
-		t.Fatal("interactive builder missing")
+		t.Fatal("Crew owner root setup missing")
 	}
 	if knowledgeProjectBuilderQuery(req, claims, "root", "child", false) || knowledgeProjectBuilderQuery(req, claims, "root", "root", true) {
-		t.Fatal("delegated or reader setup admitted")
+		t.Fatal("child or Run setup admitted")
+	}
+	for _, field := range []string{"profile", "workspace", "bot", "run", "other-person", "schedule"} {
+		denied := req
+		switch field {
+		case "profile":
+			denied.AgentProfileID = ""
+		case "workspace":
+			denied.SelectedFolder = "Workflow/payments"
+		case "bot":
+			denied.BotPlatform = "slack"
+		case "run":
+			denied.PinRunMode = true
+		case "other-person":
+			denied.AgentMessageFromOtherPerson = true
+		case "schedule":
+			denied.TriggeredBy = "schedule"
+		}
+		if knowledgeProjectBuilderQuery(denied, claims, "root", "root", false) {
+			t.Fatalf("%s setup admitted", field)
+		}
+	}
+	if knowledgeProjectBuilderQuery(req, &UserClaims{UserID: "priya"}, "root", "root", false) {
+		t.Fatal("another person acquired project setup")
+	}
+	connection := &UserClaims{UserID: "admin", AccessToken: &accesstokens.Token{Scopes: []string{"knowledgebase:read", "knowledgebase:write", "crews:read", "crews:write"}}}
+	if !knowledgeProjectBuilderQuery(req, connection, "root", "root", false) {
+		t.Fatal("current Crew/Brain setup connection refused")
+	}
+	connection.AccessToken.Scopes = []string{"knowledgebase:read", "knowledgebase:write"}
+	if knowledgeProjectBuilderQuery(req, connection, "root", "root", false) {
+		t.Fatal("content-only connection acquired project setup")
 	}
 	claims.ExecutionPrincipal = &ExecutionPrincipal{Kind: "scheduled"}
 	if knowledgeProjectBuilderQuery(req, claims, "root", "root", false) {
@@ -183,25 +249,33 @@ func TestKnowledgebaseProjectBuilderAuthorityMatchesVaultIsolation(t *testing.T)
 }
 
 func TestKnowledgebaseProjectSetupUsesAuthenticatedToolBinding(t *testing.T) {
-	_, _, workspace, _ := knowledgeIntegrationFixture(t)
-	workspaceServer, docs := newFakeWorkspaceServer(t)
-	defer workspaceServer.Close()
-	data, err := os.ReadFile(filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), workspace, "workflow.json"))
-	if err != nil {
+	workspace := knowledgeCrewSetupFixture(t)
+	registry := agentprofiles.NewRegistry()
+	if err := registry.RegisterProfile(workproduct.BuiltinAgentProfile()); err != nil {
 		t.Fatal(err)
 	}
-	docs.files[workspace+"/workflow.json"] = string(data)
-	t.Setenv("WORKSPACE_API_URL", workspaceServer.URL)
-	api := &StreamingAPI{}
+	api := &StreamingAPI{agentProfiles: registry}
 	claims := &UserClaims{UserID: "admin", Username: "admin"}
 	input := context.WithValue(t.Context(), UserContextKey, claims)
-	req := QueryRequest{AgentMode: "multi-agent", PhaseID: "workflow-builder", SelectedFolder: workspace, admittedWorkflowPhase: true}
+	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "work", AgentProfileConversationKey: "brain-setup", SelectedFolder: workspace}
 	root, err := api.bindToolExecutionContext(input, "kb-root", req, false)(executor.WithSessionID(t.Context(), "kb-root"), "brain_access")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if value, ok := root.Value(knowledgeProjectBuilderKey{}).(knowledgeProjectBuilderAuthority); !ok || value.UserID != "admin" || value.Workspace != workspace {
 		t.Fatal("missing root authority")
+	}
+	// The admitted root actually uses the same Brain domain action as the app/MCP.
+	inspected, err := knowledgeProjectBuilderExecute(root, "brain_access", map[string]any{"action": "inspect_project", "workspace_path": workspace})
+	if err != nil {
+		t.Fatal("root inspection", err)
+	}
+	var project map[string]any
+	if err := json.Unmarshal([]byte(inspected), &project); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := knowledgeProjectBuilderExecute(root, "brain_access", map[string]any{"action": "set_project_access", "workspace_path": workspace, "mode": "read", "expected_manifest_version": project["manifest_version"], "request_id": "crew-root-brain"}); err != nil {
+		t.Fatal("root setup", err)
 	}
 	child, err := api.bindToolExecutionContextForSession(input, "kb-root", "kb-child", req, false)(root, "brain_access")
 	// The incoming root session is intentionally rejected for a child binding.
