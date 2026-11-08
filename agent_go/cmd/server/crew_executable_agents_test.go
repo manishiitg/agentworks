@@ -124,7 +124,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		{"action": "edit", "workspace_path": child.Root, "operation": "update_step", "arguments": map[string]interface{}{"step_id": "report", "changes": map[string]interface{}{"title": "Updated report"}}},
 		{"action": "edit", "workspace_path": child.Root, "operation": "update_variable", "arguments": map[string]interface{}{"action": "add", "name": "count", "type": "integer", "value": "1"}},
 	} {
-		if out, err := edit(ctx, call); err == nil || !strings.Contains(err.Error(), "can no longer be edited") {
+		if out, err := edit(ctx, call); err == nil || err.Error() != oldPlanWorkflowNotEditable {
 			t.Fatalf("old plan workflow was edited: %v %s %v", call, out, err)
 		}
 	}
@@ -142,7 +142,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		}
 		return out
 	}
-	out := configure("manage_schedules", map[string]interface{}{"action": "create", "schedule": map[string]interface{}{"name": "Daily report", "schedule_type": "cron", "cron_expression": "0 9 * * *", "timezone": "UTC", "enabled": false, "messages": []string{"Prepare report"}}})
+	out := configure("manage_schedules", map[string]interface{}{"action": "create", "schedule": map[string]interface{}{"name": "Daily report", "schedule_type": "cron", "cron_expression": "0 9 * * *", "timezone": "UTC", "enabled": false, "chat_id": chat.ConversationKey}})
 	var timer struct {
 		ID string `json:"id"`
 	}
