@@ -25,6 +25,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/executor"
 	mcpllm "github.com/manishiitg/mcpagent/llm"
@@ -87,14 +88,6 @@ func TestPythonAgentContinuesTurnsBoundsReplyAndPreservesTranscript(t *testing.T
 		if err := os.Chmod(runRoot, os.ModeSetgid|0770); err != nil {
 			t.Fatal(err)
 		}
-		// Use an ordinary output directory, separate from protected run records.
-		fixtureRoot = filepath.Join(runRoot, "fixture-output")
-		if err := os.Mkdir(fixtureRoot, os.ModeSetgid|0770); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(fixtureRoot, os.ModeSetgid|0770); err != nil {
-			t.Fatal(err)
-		}
 	}
 	// A managed Crew already has its database before an agent starts. Keep
 	// only that baseline here; the native child creates and verifies its table.
@@ -118,7 +111,7 @@ func TestPythonAgentContinuesTurnsBoundsReplyAndPreservesTranscript(t *testing.T
 	fixture := "#!" + python + "\n" + fmt.Sprintf(`import json,os,pwd,sys,uuid,urllib.request
 from pathlib import Path
 root=Path(%q)
-rollouts=(root if %s else Path.cwd())/'.codex/sessions/2026/01/01'
+rollouts=Path.cwd()/'.codex/sessions/2026/01/01'
 if '--version' in sys.argv:
     print('codex-cli 1.0.0');raise SystemExit(0)
 def trace(stage, reason=''):
@@ -165,6 +158,17 @@ for line in sys.stdin:
         try:
             if 'first task' in prompt:
                 if %s: assert pwd.getpwuid(os.geteuid()).pw_name=='slot01', 'native provider did not run as slot01'
+                assert Path.cwd()==root, 'native provider did not start in its run root'
+                (root/'new.json').write_text('{"created":true}')
+                (root/'new-folder').mkdir()
+                (root/'new-folder/result.txt').write_text('native-output')
+                try: (root/'execution/frozen/code/main.py').write_text('forged')
+                except PermissionError: pass
+                else: raise AssertionError('native provider changed its frozen source')
+                if %s:
+                    try: (root/'helpers/fixture-record.json').write_text('forged')
+                    except PermissionError: pass
+                    else: raise AssertionError('slot changed a server-owned record')
                 base=os.environ['MCP_CUSTOM']
                 header,credential=os.environ['MCP_AUTH'].split(':',1)
                 def database(action,sql):
@@ -256,6 +260,20 @@ for line in sys.stdin:
 		return c
 	}
 	c := newController()
+	if err := c.materializeScriptBundle(context.Background(), root+"/runs/run-one/execution/frozen/code", map[string][]byte{"main.py": []byte("frozen-source")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(runRoot, "helpers"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	helperRoot, err := os.OpenRoot(filepath.Join(runRoot, "helpers"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workflowfiles.WriteServerFile(helperRoot, "fixture-record.json", []byte(`{"server":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	helperRoot.Close()
 	t.Cleanup(func() { c.finishPythonAgentSessions("failed") })
 	// The executable fixture has no real model or tools. Actual enforcing shell
 	// guards are tested independently below and through the real Python runner.
@@ -306,8 +324,14 @@ for line in sys.stdin:
 	if readErr != nil || !strings.Contains(string(readback), `"row": 1`) || !strings.Contains(string(readback), `python-runtime-`+first.ConversationID) {
 		t.Fatalf("native agent did not write/read a row through its own bridge: %s %v", readback, readErr)
 	}
+	if output, err := os.ReadFile(filepath.Join(runRoot, "new-folder/result.txt")); err != nil || string(output) != "native-output" {
+		t.Fatalf("native root output folder was unavailable: %q %v", output, err)
+	}
+	if source, err := os.ReadFile(filepath.Join(runRoot, "execution/frozen/code/main.py")); err != nil || string(source) != "frozen-source" {
+		t.Fatalf("native launch changed frozen source: %q %v", source, err)
+	}
 	if slotProof {
-		t.Log("native provider fixture ran as slot01 under Landlock; its signed child bridge created, inserted and read a managed database row")
+		t.Log("native slot01 created a run-root file and folder; source and server record writes refused; signed child bridge created, inserted and read a managed database row")
 		return
 	}
 	log, err := os.ReadFile(first.LogFile)
@@ -360,7 +384,7 @@ for line in sys.stdin:
 		if _, err := os.Stat(rollout); err != nil {
 			t.Fatalf("closing a call removed its native rollout: %v", err)
 		}
-		nativeHomes = append(nativeHomes, home)
+		nativeHomes = append(nativeHomes, saved.AgentSessionHandle.Provider.RuntimeDir)
 	}
 	if identities[0] == "" || identities[1] == "" || identities[0] == identities[1] {
 		t.Fatal("different conversations shared the native tool-session identity")
