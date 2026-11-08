@@ -9878,6 +9878,7 @@ func (api *StreamingAPI) cleanupInactiveSessions() {
 	for range ticker.C {
 		now := time.Now()
 		api.cleanupInactiveSessionsAt(now)
+		api.cleanupExpiredPythonAgentSessions(now)
 		api.heartbeatTerminalLeases(now)
 		if closed := api.cleanupStaleCodingAgentTmuxSessions(now); closed > 0 {
 			log.Printf("[ACTIVE_SESSION] Cleanup: Closed %d stale coding-agent tmux session(s)", closed)

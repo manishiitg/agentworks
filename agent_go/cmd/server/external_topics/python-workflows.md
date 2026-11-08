@@ -176,3 +176,5 @@ fields use actual JSON types (`2`, `false`, objects), as declared by the input.
 Discovery also returns `secrets`: required Vault names declared by the script.
 These are names, never values or new grants. Connect or select missing names
 through the existing Vault settings before running.
+
+Failed runs keep native agent conversation history for 72 hours. After that, a continued agent call starts fresh and the run records “conversation expired: this call restarts fresh”. Completed or stopped runs release that history immediately.
