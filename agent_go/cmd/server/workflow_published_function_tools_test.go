@@ -51,7 +51,11 @@ func TestWorkflowRunAskPublishedFunctionBoundary(t *testing.T) {
 	if got, err := reg.tools["project_functions_list"].exec(ctx, nil); err != nil || !strings.Contains(got, "review_pr") {
 		t.Fatalf("list: %s %v", got, err)
 	}
-	if _, err := reg.tools["project_functions_call"].exec(ctx, map[string]any{"function": "review_pr"}); err == nil || !strings.Contains(err.Error(), "missing required input") {
+	_, err = reg.tools["project_functions_call"].exec(ctx, map[string]any{"function": "review_pr"})
+	var refusal struct {
+		Error struct{ Code, Message string }
+	}
+	if err == nil || json.Unmarshal([]byte(err.Error()), &refusal) != nil || refusal.Error.Code != "call_refused" || !strings.Contains(refusal.Error.Message, "function input:") || !strings.Contains(refusal.Error.Message, "PR_NUMBER") {
 		t.Fatalf("Run must reach input validation: %v", err)
 	}
 	if _, err := reg.tools["project_functions_call"].exec(ctx, map[string]any{"function": "review_pr", "input": "wrong"}); err == nil || !strings.Contains(err.Error(), "JSON object") {
