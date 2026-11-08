@@ -36,6 +36,7 @@ func externalWorkflowReadView(ctx context.Context, item DiscoveredWorkflow, comp
 		view["kind"] = "script"
 		view["inputs"] = definition.Inputs
 		view["input_presets"] = definition.InputPresets
+		view["secrets"] = definition.Secrets
 	}
 	return view, nil
 }

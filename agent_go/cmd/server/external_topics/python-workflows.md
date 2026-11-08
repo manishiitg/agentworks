@@ -128,3 +128,7 @@ mapper and input validation.
 Saved definition defaults (`value`) and preset values are text containing the
 value (`"2"`, `"false"`, or JSON for objects). Invocation bodies and raw mapped
 fields use actual JSON types (`2`, `false`, objects), as declared by the input.
+
+Discovery also returns `secrets`: required Vault names declared by the script.
+These are names, never values or new grants. Connect or select missing names
+through the existing Vault settings before running.
