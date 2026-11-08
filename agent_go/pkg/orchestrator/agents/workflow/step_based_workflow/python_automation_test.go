@@ -325,11 +325,33 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		t.Fatal(err)
 	}
 	beforeEvidenceNotices := len(notifications.texts)
+	// Crew-chat script starts may have no live execution notifier.
+	c.SetWorkshopExecutionNotifier(nil)
 	run(false, false, "evidence")
 	if len(notifications.texts) != beforeEvidenceNotices+1 {
 		t.Fatal("evidence notification did not reach the real chat target adapter")
 	}
 
+	metadata, err := os.ReadFile(filepath.Join(docs, root, "runs/run-one/run_metadata.json"))
+	var recorded struct {
+		Steps    map[string]PythonStepEvidence `json:"python_steps"`
+		Evidence []PythonRunEvidence           `json:"python_evidence"`
+	}
+	if err != nil || json.Unmarshal(metadata, &recorded) != nil || len(recorded.Evidence) == 0 || len(recorded.Evidence) > 200 {
+		t.Fatalf("bounded helper results absent from run record: %s %v", metadata, err)
+	}
+	foundCompleted, foundFailure, foundWithoutNotifier := false, false, false
+	for _, item := range recorded.Steps {
+		if item.StartedAt == "" || item.CompletedAt == "" || item.DurationMs < 0 || item.SourceCall == "" || item.LogNote == "" {
+			t.Fatalf("step record lacks timing/source/log explanation: %+v", item)
+		}
+		foundCompleted = foundCompleted || item.Status == "completed"
+		foundFailure = foundFailure || item.Status == "failed"
+		foundWithoutNotifier = foundWithoutNotifier || item.Name == "Evidence" && item.Status == "completed"
+	}
+	if !foundCompleted || !foundFailure || !foundWithoutNotifier {
+		t.Fatalf("notifier-independent step evidence missing: completed=%t failed=%t no_notifier=%t", foundCompleted, foundFailure, foundWithoutNotifier)
+	}
 	items, err := ReadPythonRunEvidence(docs, root, "run-one")
 	if err != nil {
 		t.Fatal(err)
