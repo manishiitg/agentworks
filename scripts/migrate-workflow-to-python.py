@@ -6,6 +6,8 @@ runtime references before starting a binary that requires them. No history moves
 DB table merge, timer activation or startup compatibility path is performed.
 Original model, browser, MCP and selected secret names are copied from the
 workflow manifest. Secret values and account logins are never copied.
+Existing outbound Crew links are carried to the owning Crew before its scripts
+start calling as that Crew; inspect lists the exact targets and refuses missing ones.
 
 The new --source folder holds flat Python files, script.json and an optional
 agent_mocks.json (agent test fixtures). Its
@@ -34,6 +36,40 @@ def safe_id(value):
     if not isinstance(value, str) or not value or value in ('.', '..') or any(c in value for c in '/\\'):
         raise ValueError('Choose an exact saved identity, without a path.')
     return value
+
+
+def carried_crew_links(manifest, projects, private, document):
+    """A converted script calls as its Crew; retain only its existing links."""
+    def references(value):
+        capabilities = value.get('capabilities') or {}
+        if not isinstance(capabilities, dict):
+            raise ValueError('Repair this item\'s Linked projects before converting; its settings cannot be read.')
+        refs = value.get('workflow_context_paths') or capabilities.get('workflow_context_paths') or []
+        if not isinstance(refs, list) or any(not isinstance(ref, str) or not ref.strip() for ref in refs):
+            raise ValueError('Repair this workflow\'s Linked projects before converting; its saved links cannot be read.')
+        return list(dict.fromkeys(ref.strip().rstrip('/') for ref in refs))
+
+    outgoing = references(manifest)
+    if not outgoing:
+        return [], None, None
+    for ref in outgoing:
+        matches = [project for project in projects.values()
+                   if project.get('product') in ('work', 'code') and 'Crew/' + project.get('folder', '') == ref]
+        if len(matches) != 1:
+            raise ValueError('Restore or update this existing Linked project before converting: ' + ref + '. Nothing was changed.')
+    target = private / 'workflow.json'
+    if not target.exists():
+        target = private / 'product.json'
+    contained(private, str(target.relative_to(private)))
+    try:
+        saved = document(target)
+    except (OSError, ValueError):
+        raise ValueError('Open the destination Crew first; its Linked projects settings cannot be read. Nothing was changed.') from None
+    if not isinstance(saved, dict):
+        raise ValueError('Open the destination Crew first; its Linked projects settings are unavailable. Nothing was changed.')
+    # Same target paths; no function definition, scope, sharing or account edits.
+    saved['workflow_context_paths'] = list(dict.fromkeys(references(saved) + outgoing))
+    return outgoing, target, encode(saved)
 
 
 def runtime_root(value, identity):
@@ -259,10 +295,15 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     if existing and existing != database_root:
         raise ValueError(f'This Crew already uses database_root={existing}. Choose that database or migrate its tables explicitly with a backup before converting another workflow.')
     rows = crew_platform_rows(contained(private, 'db/db.sqlite'), runtime / 'db/db.sqlite')['tables'] if not existing else {}
-    original_capabilities = json.loads((definitions / 'workflow.json').read_text()).get('capabilities', {})
+    original_manifest = json.loads((definitions / 'workflow.json').read_text())
+    original_capabilities = original_manifest.get('capabilities', {})
     variables_file = definitions / 'variables/variables.json'
     original_inputs = json.loads(variables_file.read_text()) if variables_file.exists() else {}
     payload, definition, removed = python_payload(source, workflow_id, original_capabilities, original_inputs)
+    links, links_file, links_data = carried_crew_links(original_manifest, projects['projects'], private,
+                                                    lambda file: json.loads(file.read_text()) if file.exists() else None)
+    if links_file is not None:
+        changes[links_file] = links_data
     for name, raw in payload.items():
         target = code / name
         if target.exists() and target.read_bytes() != raw:
@@ -273,7 +314,10 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     binding['kind'] = 'script'
     changes[binding_file] = encode(binding)
     documents = {'definitions': definitions, 'code': code, 'runtime': runtime, 'crew-db': private / 'db', 'crew-db-source': files / 'db'}
+    if links_file is not None:
+        documents['crew-links'] = links_file
     report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'appended_crew_platform_rows': sum(rows.values()), 'old_plan_retained': True, 'carried_capability_fields': sorted(definition['capabilities']), **removed, **knowledge_write_steps(definitions), **output_check_steps(definitions), 'carried_input_presets': len(definition['input_presets'])}}
+    report['conversion']['carried_crew_links'] = links
     return changes, documents, report
 
 
@@ -363,6 +407,11 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
     binding.update(kind='script', runtime_root='workflows/' + workflow_id)
     conversion.writes[conversion.binding_file] = encode(binding)
     conversion.counts.update(carried_input_presets=len(definition['input_presets']), python_scripts=1, **removed, **knowledge_write_steps(conversion.definitions), **output_check_steps(conversion.definitions))
+    links, links_file, links_data = carried_crew_links(manifest, projects['projects'], conversion.private, conversion.document)
+    if links_file is not None:
+        conversion.writes[links_file] = links_data
+    conversion.carried_crew_links = links
+    conversion.counts['carried_crew_links'] = len(links)
     conversion.python_source = True
     return conversion
 

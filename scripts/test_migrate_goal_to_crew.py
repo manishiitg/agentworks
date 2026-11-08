@@ -83,6 +83,13 @@ class Migration(unittest.TestCase):
         # conversion must retain their real records, not create a trial copy.
         spec = importlib.util.spec_from_file_location('workflow_python', Path(__file__).with_name('migrate-workflow-to-python.py'))
         python = importlib.util.module_from_spec(spec); spec.loader.exec_module(python)
+        projects_file = self.state/'ownership/projects.json'
+        projects = m.read(projects_file)
+        projects['projects']['work/linked'] = {'product':'work','owner_id':'owner','project_id':'linked','folder':'linked'}
+        write(projects_file, projects)
+        manifest = m.read(self.source/'workflow.json')
+        manifest['capabilities']['workflow_context_paths'] = ['Crew/linked']
+        write(self.source/'workflow.json', manifest)
         source = self.base/'python-source'
         write(source/'script.json', {'id':'old-goal','name':'Converted report'})
         (source/'main.py').write_text('print("new engine")\n')
@@ -90,6 +97,7 @@ class Migration(unittest.TestCase):
         conversion = python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source,deployment_mode='server')
         self.assertEqual(hashes(self.base),before)
         self.assertEqual(conversion.report()['counts']['python_scripts'],1)
+        self.assertEqual(conversion.report()['carried_crew_links'], ['Crew/linked'])
         backup = self.state/'migrations/one-operator-backup'
         with self.assertRaisesRegex(ValueError,'outside the active workflow'):
             conversion.apply(backup=conversion.code/'bad-backup',plain_backup=True)
@@ -107,7 +115,8 @@ class Migration(unittest.TestCase):
         project = m.read(self.state/'ownership/projects.json')['projects']['work/target']
         self.assertEqual(project['database_root'],'workflows/old-goal/db')
         definition = m.read(conversion.code/'script.json')
-        self.assertEqual(definition['capabilities'],{'selected_secrets':['api-name']})
+        self.assertEqual(definition['capabilities'],{'selected_secrets':['api-name'],'workflow_context_paths':['Crew/linked']})
+        self.assertEqual(m.read(self.private/'product.json')['workflow_context_paths'], ['Crew/linked'])
         self.assertEqual(definition['input_presets'],[{'name':'default','values':{}}])
         with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
             self.assertEqual(db.execute('SELECT value FROM business_data').fetchall(),[('unchanged',)])
