@@ -1,7 +1,7 @@
 ## Dashboard pane
 
 In an interactive Goal or Flow chat that offers them, `perform_ui_action(view="report",
-action="open")` shows the Dashboard in the side pane and `refresh` reloads it; `get_ui_state`
+action="open")` shows the Dashboard in the side pane and `refresh` reloads it; `ui action=get`
 reports what the pane shows. The Dashboard is the only view the agent opens (a `report` target is
 a real dashboard tab label, when offered). Only an `applied` receipt means it opened. For every
 other destination below, tell the person where it is in the project menu. Scheduled, bot and
