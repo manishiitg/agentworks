@@ -116,11 +116,24 @@ if not input_record.is_file():
     input_record = Path(os.environ['WORKFLOW_RUN_DIR'], 'inputs.json')
 assert json.loads(input_record.read_text()) == params
 assert json.loads(Path(os.environ['SCRIPT_SOURCE_DIR'], 'script.json').read_text())['id'] == 'qualify'
+assert Path(os.environ['SCRIPT_SOURCE_DIR'], 'nested/blob.bin').read_bytes() == bytes([0, 255, 128, 1])
+# PLAT-746-481: a program can verify the actual complete frozen bundle before
+# doing work, independently of the synthetic plan revision or mutable source.
+import hashlib
+metadata_file = Path(os.environ['WORKFLOW_RUN_DIR'], 'run_metadata.json')
+metadata = json.loads(metadata_file.read_text()) if metadata_file.is_file() else {}
+if metadata.get('source_snapshot_hash'):
+    source = Path(os.environ['SCRIPT_SOURCE_DIR'])
+    digest = hashlib.sha256()
+    for file in sorted(p for p in source.rglob('*') if p.is_file() and '__pycache__' not in p.parts):
+        digest.update(file.relative_to(source).as_posix().encode() + b'\0' + file.read_bytes() + b'\0')
+    assert metadata['source_snapshot_hash'] == digest.hexdigest(), metadata
 assert not any(key.startswith('optional_') for key in params)
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':params['count'], 'revision':revision()}))
 `
 	write(root+"/main.py", source)
 	resolver := &savedCrewScriptFixture{directWorkspace: directWorkspace, configuration: CrewScriptConfiguration{Definition: definition, Root: root, Files: map[string][]byte{"main.py": []byte(source), "helper/values.py": []byte("def revision(): return 'first'\n"), "template.txt": []byte("template data")}}}
+	resolver.configuration.Files["nested/blob.bin"] = []byte{0, 255, 128, 1}
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 	expectMissingSecret := false
@@ -218,6 +231,9 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		var metadata map[string]interface{}
 		if err != nil || json.Unmarshal(raw, &metadata) != nil || metadata["input_preset"] != expected {
 			t.Fatalf("run lost selected preset: want=%q metadata=%s err=%v", expected, raw, err)
+		}
+		if hash, _ := metadata["source_snapshot_hash"].(string); len(hash) != 64 {
+			t.Fatalf("main Python run lost its frozen bundle hash: %s", raw)
 		}
 		filepath.WalkDir(folder, func(path string, entry os.DirEntry, err error) error {
 			if err != nil {
