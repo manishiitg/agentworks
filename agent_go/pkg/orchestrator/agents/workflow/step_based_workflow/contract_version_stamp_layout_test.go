@@ -38,7 +38,7 @@ func TestMovedWorkflowStampChecksUseDefinitionsCodeAndRuntimeRoots(t *testing.T)
 	project := crewroot.Record{Product: "work", Folder: "example", ID: "crew", Owner: "owner"}
 	raw, _ := json.Marshal(map[string]interface{}{"projects": map[string]crewroot.Record{"work/example": project}})
 	write(filepath.Join(state, "ownership/projects.json"), string(raw))
-	binding := crewroot.ExecutableBinding{ID: "sequence", Root: "Workflow/sequence", CrewID: "crew", CrewRoot: "Crew/example", Kind: "workflow"}
+	binding := crewroot.ExecutableBinding{ID: "sequence", Root: "Workflow/sequence", CrewID: "crew", CrewRoot: "Crew/example", Kind: "workflow", RuntimeRoot: "workflows/sequence"}
 	raw, _ = json.Marshal(binding)
 	write(filepath.Join(state, "ownership/crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))), string(raw))
 	layout, found, err := crewroot.LookupExecutable(docs, binding.Root)

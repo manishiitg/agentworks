@@ -151,7 +151,7 @@ printf '{"success":true,"data":{"messages":["test console"]}}'
 	os.MkdirAll(filepath.Join(root, "Crew/example"), 0700)
 	os.MkdirAll(filepath.Join(root, "_system/crew-data/crew/workflows"), 0700)
 	os.WriteFile(filepath.Join(state, "ownership/projects.json"), []byte(`{"projects":{"work/example":{"product":"work","folder":"example","project_id":"crew","owner_id":"owner"}}}`), 0600)
-	binding := crewroot.ExecutableBinding{ID: "one", Root: "Workflow/one", CrewRoot: "Crew/example", CrewID: "crew", Kind: "workflow"}
+	binding := crewroot.ExecutableBinding{ID: "one", Root: "Workflow/one", CrewRoot: "Crew/example", CrewID: "crew", Kind: "workflow", RuntimeRoot: "workflows/one"}
 	raw, _ := json.Marshal(binding)
 	key := fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))
 	os.WriteFile(filepath.Join(state, "ownership/crew-executables", key), raw, 0600)

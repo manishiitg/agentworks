@@ -16,16 +16,18 @@ const PrivateDirectory = "_system/crew-data"
 
 type Roots struct {
 	ID, Owner, Virtual        string
+	DatabaseRoot              string
 	Files, Resources, Private string
 	Local                     bool
 }
 
 type Record struct {
-	Product   string `json:"product"`
-	Folder    string `json:"folder"`
-	Owner     string `json:"owner_id"`
-	ID        string `json:"project_id"`
-	LocalRoot string `json:"local_root,omitempty"`
+	Product      string `json:"product"`
+	Folder       string `json:"folder"`
+	Owner        string `json:"owner_id"`
+	ID           string `json:"project_id"`
+	LocalRoot    string `json:"local_root,omitempty"`
+	DatabaseRoot string `json:"database_root,omitempty"`
 }
 
 // StateRoot matches the app's private-state selection, including desktop starts
@@ -130,7 +132,13 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 			return Roots{}, err
 		}
 	}
-	return Roots{ID: r.ID, Owner: r.Owner, Virtual: "Crew/" + r.Folder, Files: files, Resources: resources, Private: private, Local: r.LocalRoot != ""}, nil
+	if r.DatabaseRoot != "" {
+		parts := strings.Split(r.DatabaseRoot, "/")
+		if len(parts) != 3 || parts[2] != "db" || !validRuntimeRoot(strings.Join(parts[:2], "/"), parts[1]) {
+			return Roots{}, fmt.Errorf("invalid Crew database root")
+		}
+	}
+	return Roots{DatabaseRoot: r.DatabaseRoot, ID: r.ID, Owner: r.Owner, Virtual: "Crew/" + r.Folder, Files: files, Resources: resources, Private: private, Local: r.LocalRoot != ""}, nil
 }
 
 // Resolver keeps registry decoding and root bindings within one request. It is
@@ -232,7 +240,7 @@ func privatePath(rel string) bool {
 }
 
 func (r Roots) ResourcePathRoot(rel string) string {
-	if privatePath(rel) {
+	if privatePath(rel) || r.DatabaseRoot != "" && (rel == "db" || strings.HasPrefix(rel, "db/")) {
 		return r.Private
 	}
 	return r.Resources
@@ -320,6 +328,9 @@ func (q *Resolver) Resolve(virtual string) (string, bool, error) {
 		if first := strings.SplitN(strings.ToLower(rel), "/", 2)[0]; first == ".agentworks" {
 			return "", true, fmt.Errorf("use the Crew resource paths for .agentworks files")
 		}
+	} else if r.DatabaseRoot != "" && (rel == "db" || strings.HasPrefix(rel, "db/")) {
+		root = r.Private
+		rel = filepath.Join(r.DatabaseRoot, strings.TrimPrefix(strings.TrimPrefix(rel, "db"), "/"))
 	} else if privatePath(rel) {
 		root = r.Private
 	}
