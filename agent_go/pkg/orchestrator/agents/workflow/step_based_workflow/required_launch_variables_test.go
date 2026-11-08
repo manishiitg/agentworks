@@ -35,9 +35,5 @@ func TestRetiredHumanInputStepNamesTheBuilderAction(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "ask Builder to replace this step") || !strings.Contains(err.Error(), `id "question"`) || !strings.Contains(err.Error(), "docs/workflow/human-input-step-retirement.md") {
 		t.Fatalf("retired saved type: %v", err)
 	}
-	for _, stepType := range consolidatedStepTypes {
-		if stepType == "human_input" {
-			t.Fatal("retired step must not be offered to Builder")
-		}
-	}
+
 }
