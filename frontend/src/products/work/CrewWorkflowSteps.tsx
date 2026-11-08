@@ -15,17 +15,17 @@ function OutlineRows({ nodes, byName, parent, open, toggle }: {
   toggle: (id: string) => void
 }) {
   const stepsIn = (id: string): RelaySourceNode[] => nodes.filter(node => node.parent === id).flatMap(node => node.role ? stepsIn(node.id) : [node])
-  const stateOf = (node: RelaySourceNode) => node.type === 'script' ? byName.get(node.label.trim().toLowerCase())?.status : undefined
+  const stepOf = (node: RelaySourceNode) => node.type === 'script' ? byName.get(node.label.trim().toLowerCase()) : undefined
   return <>
     {nodes.filter(node => node.parent === parent).map(node => {
       if (!node.role) {
-        const status = stateOf(node)
-        return <PageRow key={node.id} lead={<RunDot state={dotState(status)} />} title={node.label}
-          lines={[node.type === 'agent' ? 'Agent' : node.label === 'Other code' ? 'Code with no step or agent inside' : '']} />
+        const step = stepOf(node)
+        return <PageRow key={node.id} lead={<RunDot state={dotState(step?.status)} />} title={node.label}
+          lines={[node.type === 'agent' ? 'Agent' : node.label === 'Other code' ? 'Code with no step or agent inside' : '', step?.detail]} />
       }
       const inside = stepsIn(node.id)
       const count = node.role === 'branch' ? `${nodes.filter(child => child.parent === node.id).length} cases` : `${inside.length} step${inside.length === 1 ? '' : 's'}`
-      const failed = inside.some(step => stateOf(step) === 'failed')
+      const failed = inside.some(step => stepOf(step)?.status === 'failed')
       return <PageRow key={node.id} lead={<RunDot state={failed ? 'stopped' : 'idle'} />} title={node.label} lines={[count]} open={open.has(node.id)} onToggle={() => toggle(node.id)}>
         <div className="-mx-4 -my-3 divide-y divide-border">
           <OutlineRows nodes={nodes} byName={byName} parent={node.id} open={open} toggle={toggle} />
