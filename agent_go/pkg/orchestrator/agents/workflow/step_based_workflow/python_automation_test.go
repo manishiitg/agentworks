@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -124,6 +125,11 @@ if os.environ['VAR_PHASE'] == 'unavailable-app':
     try: google.sheets.read('sheet', 'A1')
     except AutomationError as error: assert 'unavailable' in str(error), str(error)
     else: raise AssertionError('unavailable app borrowed an executor outside its tool pool')
+    raise SystemExit(0)
+if os.environ['VAR_PHASE'] == 'missing-finish':
+    @step('Missing finish receipt')
+    def done(): return 42
+    assert done() == 42
     raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'slow-step':
     @step('Delayed receipt')
@@ -262,6 +268,7 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	c.SetWorkshopExecutionNotifier(recorder)
 	notifications := &helperNotificationRecorder{}
 	executorHandlers := executor.NewExecutorHandlers("", loggerv2.NewNoop())
+	var dropFinish atomic.Bool
 	bridge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		if len(parts) != 5 || parts[0] != "s" || r.Header.Get("Authorization") != "Bearer helper-test-token" {
@@ -280,6 +287,13 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		}
 		if arguments["text"] == "fixture-offline" || arguments["detail"] == "fixture-offline" {
 			http.Error(w, "fixture delivery unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if args["action"] == "step" && arguments["phase"] == "start" && arguments["title"] == "Missing finish receipt" {
+			dropFinish.Store(true)
+		}
+		if args["action"] == "step" && arguments["phase"] == "finish" && dropFinish.Swap(false) {
+			http.Error(w, "finish delivery unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		// Exercise the production per-tool envelope, including canonical failure
@@ -355,8 +369,9 @@ assert first.log_complete and second.log_complete and passed.log_complete
 			c.executionOptions.ResumeFromStep = 1
 		}
 		env := map[string]string{"MCP_API_TOKEN": "helper-test-token", "VAR_PHASE": phase, "VAR_REDO": map[bool]string{true: "yes", false: "no"}[redo]}
+		processSucceeded := false
 		release := c.configureScriptBridgeSession(ctx, step, guard, DBAccessNone, env, code, root+"/runs/run-one/execution/task")
-		defer release()
+		defer func() { release(processSucceeded) }()
 		if _, err := codeexec.CallCustomToolWithSession(ctx, "unrelated-script-step", "python_automation", map[string]interface{}{}); err == nil {
 			t.Fatal("unregistered step borrowed the private Python helper")
 		}
@@ -369,6 +384,7 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		// The normal workspace shell adds approved per-call values after isolation.
 		command.Env = security.MergeExtraEnv(command.Env, env)
 		raw, err := command.CombinedOutput()
+		processSucceeded = err == nil
 		if phase == "interrupt" {
 			if err == nil || !strings.Contains(err.Error(), "17") {
 				t.Fatalf("expected interruption after a completed call: %s %v", raw, err)
@@ -458,6 +474,7 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	}
 
 	run(false, false, "slow-step")
+	run(false, false, "missing-finish")
 	// A successful script must not acquire a failed/running step simply
 	// because the already-accepted start response took more than three seconds.
 	deadline := time.Now().Add(2 * time.Second)
@@ -494,10 +511,16 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	if err != nil || json.Unmarshal(metadata, &recorded) != nil || len(recorded.Evidence) == 0 || len(recorded.Evidence) > 200 {
 		t.Fatalf("bounded helper results absent from run record: %s %v", metadata, err)
 	}
-	foundCompleted, foundFailure, foundWithoutNotifier := false, false, false
+	foundCompleted, foundFailure, foundWithoutNotifier, foundMissingFinish := false, false, false, false
 	for _, item := range recorded.Steps {
 		if item.StartedAt == "" || item.CompletedAt == "" || item.DurationMs < 0 || item.SourceCall == "" || item.LogNote == "" {
 			t.Fatalf("step record lacks timing/source/log explanation: %+v", item)
+		}
+		if item.Name == "Missing finish receipt" {
+			if item.Status != "completed" || item.Detail != "finish receipt not received" {
+				t.Fatalf("exit-0 missing finish receipt recorded dishonestly: %+v", item)
+			}
+			foundMissingFinish = true
 		}
 		foundCompleted = foundCompleted || item.Status == "completed"
 		foundFailure = foundFailure || item.Status == "failed"
@@ -508,6 +531,9 @@ assert first.log_complete and second.log_complete and passed.log_complete
 			}
 			foundWithoutNotifier = true
 		}
+	}
+	if !foundMissingFinish {
+		t.Fatal("successful missing-finish step was not recorded")
 	}
 	if !foundCompleted || !foundFailure || !foundWithoutNotifier {
 		t.Fatalf("notifier-independent step evidence missing: completed=%t failed=%t no_notifier=%t", foundCompleted, foundFailure, foundWithoutNotifier)
