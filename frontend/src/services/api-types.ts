@@ -2581,11 +2581,6 @@ export interface WorkflowNotificationInfoResponse {
   effective_state: WorkflowNotificationState
   destinations: WorkflowNotificationDestinationInfo[]
   account_channels: WorkflowNotificationAccountChannelInfo[]
-  // Per-workflow content preferences from workflow.json notifications.
-  run_summary_instructions?: string
-  run_summary_channels?: string[]
-  // Who each summary is emailed to. Empty means summary email delivery is off.
-  run_summary_recipients?: string[]
   /** One sender selected for this workflow's Notify emails; empty inherits the account default. */
   gmail_connection_id?: string
   /** Legacy per-summary sender overrides; Notify now selects one sender. */
@@ -2896,8 +2891,6 @@ export interface WorkflowNotificationConfig {
   slack_webhook_secret_name?: string
   // Legacy shared guidance; new saves use the scoped fields below.
   instructions?: string
-  run_summary_instructions?: string
-  run_summary_channels?: string[]
 }
 
 export interface WorkflowOwnership {
@@ -2988,11 +2981,6 @@ export interface UpdateWorkflowManifestRequest {
   capabilities?: WorkflowCapabilities
   ownership?: WorkflowOwnership
   schedules?: WorkflowScheduleEntry[]
-  run_notification_instructions?: string
-  run_notification_channels?: string[]
-  // Send an empty array to clear a recipient list back to the account default;
-  // omit the field to leave it unchanged.
-  run_notification_recipients?: string[]
   /** One sender for this workflow's Notify emails. Empty inherits the account default. */
   break_alerts?: boolean
   notification_gmail_connection_id?: string
