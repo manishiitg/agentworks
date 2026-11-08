@@ -659,6 +659,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		extraEnv["DB_PATH"] = workflowAbsPath(hcpo.GetWorkspacePath(), DBFolderName, "db.sqlite")
 	}
 	extraEnv = hcpo.codeRuntimeEnv(extraEnv)
+	if saved, ok := step.(*ScriptedPlanStep); ok && saved.crewScript != nil {
+		useExecutedScriptSource(extraEnv, workDirAbsPath)
+	}
 
 	// RUN_FOLDER: the workspace-relative "iteration-N/<group>" segment under
 	// runs/, e.g. "iteration-85/customer-staging". PLAT-185: a script that needs

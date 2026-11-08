@@ -53,6 +53,14 @@ func TestPythonAgentContinuesTurnsBoundsReplyAndPreservesTranscript(t *testing.T
 	const root = "Workflow/python-agent"
 	runRoot := filepath.Join(docs, root, "runs/run-one")
 	fixtureRoot := runRoot
+	sourceDir := filepath.Join(runRoot, "execution/frozen/code")
+	authoredDir := filepath.Join(docs, "Crew/authoring/.agentworks/code/script")
+	if err := os.MkdirAll(filepath.Join(authoredDir, "shared"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(authoredDir, "shared/x.py"), []byte("print('wrong-authoring-source')"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	for name, content := range map[string]string{"workflow.json": `{"code_layout_version":1}`, "soul/soul.md": "# Task\nDo the requested work.", "planning/plan.json": `{"steps":[]}`, "runs/run-one/marker": "run"} {
 		file := filepath.Join(docs, root, name)
 		if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
@@ -108,7 +116,7 @@ func TestPythonAgentContinuesTurnsBoundsReplyAndPreservesTranscript(t *testing.T
 	if err := os.Chmod(bin, 0755); err != nil {
 		t.Fatal(err)
 	}
-	fixture := "#!" + python + "\n" + fmt.Sprintf(`import json,os,pwd,sys,uuid,urllib.request
+	fixture := "#!" + python + "\n" + fmt.Sprintf(`import json,os,pwd,sys,uuid,urllib.request,subprocess
 from pathlib import Path
 root=Path(%q)
 rollouts=Path.cwd()/'.codex/sessions/2026/01/01'
@@ -159,6 +167,11 @@ for line in sys.stdin:
             if 'first task' in prompt:
                 if %s: assert pwd.getpwuid(os.geteuid()).pw_name=='slot01', 'native provider did not run as slot01'
                 assert Path.cwd()==root, 'native provider did not start in its run root'
+                assert Path(os.environ['WORKFLOW_CODE_ROOT'])==root/'execution/frozen/code'
+                assert os.environ['SCRIPT_SOURCE_DIR']==os.environ['WORKFLOW_CODE_ROOT']
+                assert json.loads((Path(os.environ['WORKFLOW_CODE_ROOT'])/'script.json').read_text())['id']=='fixture-script'
+                shared=subprocess.check_output(['/bin/sh','-c','python3 "$WORKFLOW_CODE_ROOT/shared/x.py"'],text=True)
+                assert shared.strip()=='frozen-shared-ok', shared
                 (root/'new.json').write_text('{"created":true}')
                 (root/'new-folder').mkdir()
                 (root/'new-folder/result.txt').write_text('native-output')
@@ -249,6 +262,7 @@ for line in sys.stdin:
 		c := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
 		c.SetMCPSessionID("python-provider-fixture")
 		c.SetWorkspacePath(root)
+		c.crewAutomationCodeRoot = authoredDir
 		c.selectedRunFolder = "run-one"
 		c.WorkspaceClient = workspace.NewClient(files.URL)
 		database := virtualtools.CreateWorkflowDBToolRegistry(files.URL, "", "unusable-parent-session")
@@ -260,7 +274,10 @@ for line in sys.stdin:
 		return c
 	}
 	c := newController()
-	if err := c.materializeScriptBundle(context.Background(), root+"/runs/run-one/execution/frozen/code", map[string][]byte{"main.py": []byte("frozen-source")}); err != nil {
+	if err := c.materializeScriptBundle(context.Background(), root+"/runs/run-one/execution/frozen/code", map[string][]byte{"main.py": []byte("frozen-source"), "shared/x.py": []byte("print('frozen-shared-ok')")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.WriteWorkspaceFile(context.Background(), root+"/runs/run-one/execution/frozen/code/script.json", `{"id":"fixture-script","name":"Fixture"}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(runRoot, "helpers"), 0700); err != nil {
@@ -311,7 +328,12 @@ for line in sys.stdin:
 	if _, err := os.Stat(filepath.Join(fixtureRoot, "fixture-requests.jsonl")); !os.IsNotExist(err) {
 		t.Fatal("provider launched before database preflight")
 	}
-	first := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Research", "messages": []string{"first task"}}, "first")
+	handler := c.pythonAutomationHandler(ctx, parent, sourceDir, runRoot)
+	rawFirst, firstErr := handler(ctx, map[string]interface{}{"action": "agent", "key": "first", "order": float64(1), "arguments": map[string]interface{}{"name": "Research", "messages": []string{"first task"}}})
+	var first pythonHelperReply
+	if firstErr != nil || json.Unmarshal([]byte(rawFirst), &first) != nil {
+		t.Fatalf("Python helper dispatch failed: %v %s", firstErr, rawFirst)
+	}
 	large := "answer-start:" + strings.Repeat("evidence", 3000) + ":answer-end"
 	if !first.OK || !first.LogComplete || first.LogKind != "provider_transcript" || len(first.Text) >= len(large) {
 		errorText, _ := os.ReadFile(filepath.Join(fixtureRoot, "fixture-error.txt"))
@@ -331,9 +353,10 @@ for line in sys.stdin:
 		t.Fatalf("native launch changed frozen source: %q %v", source, err)
 	}
 	if slotProof {
-		t.Log("native slot01 created a run-root file and folder; source and server record writes refused; signed child bridge created, inserted and read a managed database row")
+		t.Log("native slot01 executed shared/x.py from the frozen code root, created run-root outputs, refused source/record writes and used its signed child DB bridge")
 		return
 	}
+	ctx = context.WithValue(ctx, pythonScriptSourceDirKey{}, sourceDir)
 	log, err := os.ReadFile(first.LogFile)
 	if err != nil || !strings.Contains(string(log), large) {
 		t.Fatalf("full answer missing from transcript: %v", err)

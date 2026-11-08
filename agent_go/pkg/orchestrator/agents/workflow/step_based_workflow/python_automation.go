@@ -21,6 +21,7 @@ import (
 )
 
 type pythonSourceCallKey struct{}
+type pythonScriptSourceDirKey struct{}
 
 type pythonHelperReply struct {
 	OK             bool        `json:"ok"`
@@ -98,6 +99,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		// Keep the original execution identity/inspection context, while a caller
 		// disconnect or parent cancellation still cancels this helper invocation.
 		ctx, cancel := context.WithCancel(parent)
+		ctx = context.WithValue(ctx, pythonScriptSourceDirKey{}, codeDir)
 		stop := context.AfterFunc(request, cancel)
 		defer stop()
 		defer cancel()
