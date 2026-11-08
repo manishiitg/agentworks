@@ -99,12 +99,15 @@ func TestCrewPythonStartRequiresOwnEditableWorkflowAndStaysLazy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := crewExecutableBinding{ID: manifest.ID, CrewID: "crew-project-a", CrewRoot: crewWorkflowTestCrewPath, Root: "Workflow/test", Kind: "workflow"}
+	binding := crewExecutableBinding{ID: manifest.ID, CrewID: "crew-project-a", CrewRoot: crewWorkflowTestCrewPath, Root: "Workflow/test", Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
 	if len(register("reader", false).tools) != 0 || len(register("owner", true).tools) != 0 {
 		t.Fatal("Run person received owner step controls")
+	}
+	if err := initializeCrewScriptSource(ctx, binding, "Saved Python"); err != nil {
+		t.Fatal(err)
 	}
 	reg := register("owner", false)
 	start, ok := reg.tools["run_full_workflow"]
