@@ -130,16 +130,16 @@ func TestWorkspaceExternalResultsKeepRunPresentationAndCallBoundaries(t *testing
 	api, _ := newCodePrivacyFixture(t)
 	registry := withProjectOwnerRegistry(t)
 	withProjectSharing(t, true)
-	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
+	if err := registry.SetRunPeople("work", "app-c0de0001", []string{"other"}); err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest("POST", "/api/external/v1/call", nil)
 	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "other"}))
 	recorder := httptest.NewRecorder()
-	api.externalWorkspaceCall(recorder, req, map[string]any{"action": "get", "workspace_id": "code:c0de0001-0000"})
+	api.externalWorkspaceCall(recorder, req, map[string]any{"action": "get", "workspace_id": "work:c0de0001-0000"})
 	var out map[string]any
 	if err := json.Unmarshal(recorder.Body.Bytes(), &out); err != nil || recorder.Code != 200 {
 		t.Fatalf("shared get: %d %s", recorder.Code, recorder.Body.String())
