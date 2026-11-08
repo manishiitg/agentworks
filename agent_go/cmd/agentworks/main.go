@@ -60,14 +60,14 @@ type options struct {
 // cliOperationGroups maps CLI subcommands to external tools. Every tool named
 // here must stay admitted by product.yaml's run mode — external_tools or
 // native workflow operations; `workflows outline` maps
-// to get_plan the same way, while `tools call` and `mcp serve` resolve
+// to get_script_outline the same way, while `tools call` and `mcp serve` resolve
 // against the live server catalog instead. Structured run arguments
 // (declared inputs and the saved input preset) travel through the typed run schema.
 var cliOperationGroups = []struct {
 	name, description string
 	operations        []struct{ command, tool string }
 }{
-	{"workflows", "Find, create and edit saved Python workflows", []struct{ command, tool string }{{"list", "list_workflows"}, {"get", "get_workflow"}, {"outline", "get_plan"}, {"create", "crew_workflows__create"}, {"source", "crew_workflows__read"}, {"save-source", "crew_workflows__write"}, {"save-inputs", "save_script_inputs"}}},
+	{"workflows", "Find, create and edit saved Python workflows", []struct{ command, tool string }{{"list", "list_workflows"}, {"get", "get_workflow"}, {"outline", "get_script_outline"}, {"create", "crew_workflows__create"}, {"source", "crew_workflows__read"}, {"save-source", "crew_workflows__write"}, {"save-inputs", "save_script_inputs"}}},
 	{"files", "Read and edit guarded workspace files", []struct{ command, tool string }{{"code", "list_step_code"}, {"link", "get_file_link"}, {"list", "list_files"}, {"read", "read_file"}, {"write", "write_file"}, {"search", "search_files"}}},
 	{"runs", "Run saved Python workflows and inspect or stop their executions", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"rerun", "rerun_workflow"}, {"resume", "resume_workflow"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
 	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "project_schedules_list"}, {"runs", "project_schedules_runs"}, {"trigger", "project_schedules_run_now"}}},
@@ -200,26 +200,6 @@ func newCommand(o *options) *cobra.Command {
 		}
 		root.AddCommand(groupCmd)
 	}
-	plan := &cobra.Command{
-		Use: "plan get", Args: cobra.MaximumNArgs(1),
-		Short: "Read an older plan-based workflow's plan",
-		Long:  "Read with plan get. Older plan-based workflows keep running but are no longer edited; the platform operator converts them to Python script workflows.",
-	}
-	addOperationFlags(plan, "get_plan")
-	plan.RunE = func(cmd *cobra.Command, args []string) error {
-		if len(args) == 0 {
-			return cmd.Help()
-		}
-		switch args[0] {
-		case "get":
-			return o.call(cmd, "get_plan")
-		case "list", "edit":
-			return fmt.Errorf("older plan-based workflows are no longer edited; converting one to a Python script workflow is done by the platform operator for now")
-		default:
-			return fmt.Errorf("unknown plan operation %q: use get", args[0])
-		}
-	}
-	root.AddCommand(plan)
 	mcpCmd := &cobra.Command{Use: "mcp", Short: "Expose this hosted connection as MCP"}
 	serveMCP := &cobra.Command{Use: "serve", Args: cobra.NoArgs, Short: "Serve MCP over stdio (stdout is reserved for protocol messages)", RunE: func(cmd *cobra.Command, _ []string) error {
 		listenCtx, cancel := context.WithCancel(cmd.Context())
@@ -589,7 +569,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.Int("wait", 0, "Seconds to wait for the result (max 25) before returning a call_id to poll")
 	}
 	if tool == "" {
-		f.String("expected-revision", "", "Current revision from read_file/get_plan for guarded source or plan mutations")
+		f.String("expected-revision", "", "Current revision from read_file for guarded source mutations")
 	}
 	f.StringArray("set", nil, "Set a native argument as key=JSON; repeatable (quote string JSON values)")
 	if strings.Contains(tool, "file") || tool == "read_workflow_knowledge" {
@@ -622,10 +602,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.String("preset", "", "Saved input preset from workflows get")
 		f.String("inputs", "", "Declared input values as a JSON object")
 	}
-	if tool == "get_plan" {
-		f.String("view", "", "outline or full; Python scripts return their saved-source outline")
-		f.String("step-id", "", "Older plan workflows only: read one plan step")
-	}
+
 	if strings.HasPrefix(tool, "crew_workflows__") {
 		if tool == "crew_workflows__create" {
 			f.String("name", "", "Name of the new Python workflow")
@@ -853,9 +830,7 @@ func (o *options) call(cmd *cobra.Command, name string) error {
 	if err != nil {
 		return err
 	}
-	if name == "get_plan" && cmd.Name() == "outline" && arguments["view"] == nil {
-		arguments["view"] = "outline"
-	}
+
 	if name == "messages" && cmd.Name() != "call" {
 		arguments["action"] = cmd.Name()
 		if cmd.Name() == "list" {
@@ -998,8 +973,8 @@ func crewCommandCall(name string, args map[string]any) (string, map[string]any) 
 		family, action = "functions", "run_trigger"
 	case "get_crew_attached_trigger_run":
 		family, action = "functions", "trigger_status"
-	case "get_plan":
-		family, action = "workflow", "plan"
+	case "get_script_outline":
+		family, action = "workflow", "outline"
 	default:
 		return name, args
 	}

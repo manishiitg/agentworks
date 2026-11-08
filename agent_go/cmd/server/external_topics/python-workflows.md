@@ -46,7 +46,7 @@ keeps its original reasoning choice, recorded with its run.
    Optionally supply the complete typed `inputs` list; omitting it preserves
    current inputs. Values in saved definitions/presets use the script contract's
    string encoding; invocation values below are typed JSON.
-5. Use `workflow action=plan` with `view=outline` for the saved Python outline.
+5. Use `workflow action=outline` for the saved Python outline.
    This inspects the syntax without executing or importing authored code and
    requires source-editor access. Python `@step` labels are normal function
    calls, not separate runnable or resumable plan steps. Branches and loops

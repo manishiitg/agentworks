@@ -73,7 +73,7 @@ func TestExternalScriptMCPReadsKeepSourceAndRunBoundaries(t *testing.T) {
 		assertDefinition(rows[0].(map[string]any))
 	}
 	assertDefinition(call("workflow", map[string]any{"action": "get", "workflow_id": script.ID}))
-	graph := call("workflow", map[string]any{"action": "plan", "workflow_id": script.ID, "view": "outline"})
+	graph := call("workflow", map[string]any{"action": "outline", "workflow_id": script.ID})
 	graphJSON, _ := json.Marshal(graph)
 	if !strings.Contains(string(graphJSON), "Prepare report") {
 		t.Fatalf("saved AST labels missing: %s", graphJSON)
@@ -82,7 +82,7 @@ func TestExternalScriptMCPReadsKeepSourceAndRunBoundaries(t *testing.T) {
 	readOnly := crewReader("owner")
 	readOnly.AccessToken.AllWorkflows = true
 	readOnly.AccessToken.Scopes = append(readOnly.AccessToken.Scopes, "workflows:read", "files:read")
-	body, _ := json.Marshal(map[string]any{"name": "workflow", "arguments": map[string]any{"action": "plan", "workflow_id": script.ID}})
+	body, _ := json.Marshal(map[string]any{"name": "workflow", "arguments": map[string]any{"action": "outline", "workflow_id": script.ID}})
 	w := httptest.NewRecorder()
 	f.api.dispatchExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(body), readOnly, nil), false)
 	externalTestBody(t, w, http.StatusForbidden)

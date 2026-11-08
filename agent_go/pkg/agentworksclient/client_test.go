@@ -73,7 +73,7 @@ func TestHTTPRoundtripAndLogin(t *testing.T) {
 			if r.Method != http.MethodGet {
 				t.Error("wrong discovery method")
 			}
-			_, _ = w.Write([]byte(`{"tools":[{"name":"get_plan","description":"Read plan","inputSchema":{"type":"object","properties":{"workflow_id":{"type":"string"}},"required":["workflow_id"]}}]}`))
+			_, _ = w.Write([]byte(`{"tools":[{"name":"get_workflow","description":"Read plan","inputSchema":{"type":"object","properties":{"workflow_id":{"type":"string"}},"required":["workflow_id"]}}]}`))
 		case "/api/external/v1/call":
 			calls++
 			var body struct {
@@ -83,7 +83,7 @@ func TestHTTPRoundtripAndLogin(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Error(err)
 			}
-			if body.Name != "get_plan" || body.Arguments["workflow_id"] != "wf-1" {
+			if body.Name != "get_workflow" || body.Arguments["workflow_id"] != "wf-1" {
 				t.Errorf("unexpected body: %#v", body)
 			}
 			_, _ = w.Write([]byte(`{"revision":"abc","plan":{"steps":[]}}`))
@@ -100,7 +100,7 @@ func TestHTTPRoundtripAndLogin(t *testing.T) {
 	if err != nil || len(definitions) != 1 {
 		t.Fatalf("discovery: %v %v", definitions, err)
 	}
-	result, err := c.Call(context.Background(), "get_plan", map[string]any{"workflow_id": "wf-1"})
+	result, err := c.Call(context.Background(), "get_workflow", map[string]any{"workflow_id": "wf-1"})
 	if err != nil || !strings.Contains(string(result), `"revision":"abc"`) || calls != 1 {
 		t.Fatalf("call: %s %v", result, err)
 	}
@@ -166,7 +166,7 @@ func TestMissingAuthenticationAndCancellation(t *testing.T) {
 	c, _ = New(s.URL, "token")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := c.Call(ctx, "get_plan", nil); !errors.Is(err, context.Canceled) {
+	if _, err := c.Call(ctx, "get_workflow", nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation: %v", err)
 	}
 	if requests.Load() != 0 {
@@ -242,7 +242,7 @@ func (f *fakeCaller) Call(_ context.Context, name string, args map[string]any) (
 
 func TestMCPSchemaParityAndDispatch(t *testing.T) {
 	schema := json.RawMessage(`{"type":"object","properties":{"workflow_id":{"type":"string"},"patch":{"anyOf":[{"type":"string"},{"type":"object"}]}},"required":["workflow_id"],"additionalProperties":false}`)
-	caller := &fakeCaller{definitions: []Tool{{Name: "update_scripted_step", Description: "Native server tool", InputSchema: schema}, {Name: "get_plan", InputSchema: json.RawMessage(`{"type":"object"}`)}}}
+	caller := &fakeCaller{definitions: []Tool{{Name: "update_scripted_step", Description: "Native server tool", InputSchema: schema}, {Name: "get_workflow", InputSchema: json.RawMessage(`{"type":"object"}`)}}}
 	bridge, err := NewMCPServer(context.Background(), caller)
 	if err != nil {
 		t.Fatal(err)

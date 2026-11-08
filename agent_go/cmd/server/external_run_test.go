@@ -41,7 +41,7 @@ func TestExternalRunScopeGate(t *testing.T) {
 		}
 	}
 	// Execution implies workflow visibility, never file content.
-	for _, name := range []string{"list_workflows", "get_workflow", "get_plan", "list_runs", "get_run", "get_logs", "run_status", "list_executions", "list_schedules", "get_schedule_runs", "get_agent_context"} {
+	for _, name := range []string{"list_workflows", "get_workflow", "get_script_outline", "list_runs", "get_run", "get_logs", "run_status", "list_executions", "list_schedules", "get_schedule_runs", "get_agent_context"} {
 		if !externalTokenAllows(executeOnly, byName[name]) {
 			t.Fatalf("execute-only token denies workflow read %s", name)
 		}

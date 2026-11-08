@@ -13185,7 +13185,7 @@ func (e *queryAdmissionError) Error() string {
 func (e *queryAdmissionError) Unwrap() error { return e.err }
 
 // admitQueryTarget resolves a turn's target and the caller's access to it:
-// the agent profile, the workflow-phase folder, then
+// the agent profile and concrete workspace, then
 // conversationTargetAccess. handleQuery and the bot dry run
 // (bot_dry_run.go) share it, so a dry run admits exactly what a real turn
 // admits.
@@ -13200,13 +13200,6 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	if isRetiredGeneralChat(req, resolvedProfile, sessionID) {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: errRetiredGeneralChat, invalidProfile: true}
 	}
-	// Workflow-phase payloads identify the workspace through their preset,
-	// not selected_folder (the client never sends it for these chats).
-	// Resolve it BEFORE access: otherwise conversationTargetAccess skips the
-	// manifest and answers from the account tier, so a manifest reader chats
-	// as Builder while every tool call fails the permission-drift guard
-	// once the folder is backfilled later in handleQuery.
-	api.backfillWorkflowPhaseFolder(ctx, req)
 	// Only the verified Work binding may enter another person's Crew. A
 	// profile-less workflow payload must not bypass Crew access/tool policy.
 	if isCrewProjectPath(req.SelectedFolder) && !crewProjectOwnedByCaller(currentUserID, req.SelectedFolder) && !isProjectProfileID(req.AgentProfileID) {

@@ -282,6 +282,10 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			sourceAPI.handleCrewScriptFile(w, r)
 			return
 		}
+		if r.URL.Path == "/api/external/v1/call" {
+			sourceAPI.handleExternalCall(w, r)
+			return
+		}
 		sourceAPI.handleCrewScriptGraph(w, r)
 	})))
 	defer graphEndpoint.Close()
@@ -325,6 +329,23 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			}
 		} else if response.StatusCode != 200 || !strings.Contains(string(body), "Prepare report") || !strings.Contains(string(body), `"errors": []`) || strings.Contains(string(body), "start-marker") {
 			t.Fatalf("saved source graph did not inspect safely: HTTP%d %s", response.StatusCode, body)
+		}
+		// The new MCP action adds no graph renderer: it must preserve the
+		// route's exact output and current source-owner rule. Other variants
+		// above already exercise the route in managed and attached Crews.
+		if !local && googleScope == "shared_default" {
+			payload, _ := json.Marshal(map[string]any{"name": "workflow", "arguments": map[string]any{"action": "outline", "workflow_id": binding.ID}})
+			outlineRequest, _ := http.NewRequestWithContext(ctx, http.MethodPost, graphEndpoint.URL+"/api/external/v1/call", bytes.NewReader(payload))
+			outlineRequest.Header.Set("Authorization", "Bearer "+token)
+			outlineResponse, err := http.DefaultClient.Do(outlineRequest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			outlineBody, _ := io.ReadAll(outlineResponse.Body)
+			outlineResponse.Body.Close()
+			if outlineResponse.StatusCode != response.StatusCode || user == "owner" && !bytes.Equal(bytes.TrimSpace(outlineBody), bytes.TrimSpace(body)) {
+				t.Fatalf("MCP outline diverged from current source route as %s: HTTP%d %s", user, outlineResponse.StatusCode, outlineBody)
+			}
 		}
 		if user == "owner" {
 			var graph struct {
