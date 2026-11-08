@@ -58,6 +58,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) materializeWorkflowGuardPaths(readPat
 			return err
 		}
 	}
+	if stateRoot := hcpo.pythonHelperStateRoot(); stateRoot != "" {
+		if err := addManagedDirectory(stateRoot); err != nil {
+			return err
+		}
+	}
 	toolOutputPath := filepath.Join(hcpo.GetWorkspacePath(), "tool_output_folder")
 	for _, path := range readPaths {
 		if filepath.Clean(strings.TrimSpace(path)) == toolOutputPath {

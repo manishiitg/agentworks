@@ -18,11 +18,11 @@ import json
 import os
 from pathlib import Path
 import threading
-from typing import Any, Mapping, TypeAlias, Union
+from typing import Any, Mapping, Sequence, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "check", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue"]
+__all__ = ["AutomationError", "Reply", "agent", "check", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue"]
 
 
 
@@ -39,6 +39,7 @@ class Reply:
     log_file: Path | None = None
     log_complete: bool = False
     log_error: str = ""
+    log_kind: str = "activity"
 
 
 JSONValue: TypeAlias = Union[None, bool, int, float, str, list["JSONValue"], dict[str, "JSONValue"]]
@@ -101,13 +102,15 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
                  error=result.get("error", ""),
                  log_file=Path(result["log_file"]) if result.get("log_file") else None,
                  log_complete=bool(result.get("log_complete")),
-                 log_error=result.get("log_error", ""))
+                 log_error=result.get("log_error", ""),
+                 log_kind=result.get("log_kind", "activity"))
     if action == "run_script":
         value = result.get("value") or {}
         directory = value.get("output_dir")
         return ScriptResult(ok=reply.ok, error=reply.error, text=reply.text,
                             conversation_id=reply.conversation_id, log_file=reply.log_file,
                             log_complete=reply.log_complete, log_error=reply.log_error,
+                            log_kind=reply.log_kind,
                             output_dir=Path(directory) if directory else None,
                             outputs=[Path(path) for path in value.get("outputs", [])])
     return reply
@@ -145,3 +148,28 @@ def run_script(script_id: str, inputs: Mapping[str, JSONValue], *,
         return ScriptResult(ok=False, error="The saved script returned an unreadable receipt.")
     except AutomationError as error:
         return ScriptResult(ok=False, error=str(error))
+
+
+def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
+          tier: str | None = None, scripts: Sequence[str] = (),
+          mcp: Sequence[str] = (), skills: Sequence[str] = (),
+          timeout_seconds: float | None = None, conversation_id: str | None = None,
+          key: str | None = None, redo: bool = False) -> Reply:
+    """Run ordinary agent turns in this run folder, with no external MCPs by default.
+
+    A list sends follow-ups to the same agent. To continue later in this run,
+    pass reply.conversation_id; omitted settings retain its original selections.
+    text is a bounded preview. log_file contains the provider transcript the
+    platform received, including available streamed text and tool records;
+    log_complete does not claim uncaptured operating-system output.
+    """
+    messages = [message] if isinstance(message, str) else list(message)
+    if not name.strip() or not messages or any(not isinstance(item, str) or not item.strip() for item in messages):
+        raise ValueError("agent needs a name and at least one non-empty message")
+    try:
+        return _call("agent", {"name": name, "messages": messages, "model": model,
+                     "tier": tier, "scripts": list(scripts), "mcp": list(mcp),
+                     "skills": list(skills), "timeout_seconds": timeout_seconds,
+                     "conversation_id": conversation_id}, key, redo)
+    except AutomationError as error:
+        return Reply(ok=False, error=str(error))
