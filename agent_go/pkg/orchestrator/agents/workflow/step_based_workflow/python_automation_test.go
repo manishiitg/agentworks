@@ -1,9 +1,11 @@
 package step_based_workflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	"github.com/manishiitg/mcpagent/agent/codeexec"
+	"github.com/manishiitg/mcpagent/executor"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
@@ -91,6 +94,7 @@ if os.environ['VAR_PHASE'] == 'limits':
     for fn in (notify, lambda text: check('delivery', True, text)):
         assert not fn('fixture-refusal').ok
         assert not fn('fixture-offline').ok
+        assert not fn('fixture-handler-error').ok
     raise SystemExit(0)
 first = check("same", False, "needs attention", key="same", redo=os.environ['VAR_REDO'] == 'yes')
 if os.environ['VAR_PHASE'] == 'interrupt':
@@ -117,6 +121,7 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	recorder := &helperCheckRecorder{}
 	c.SetWorkshopExecutionNotifier(recorder)
 	notifications := &helperNotificationRecorder{}
+	executorHandlers := executor.NewExecutorHandlers("", loggerv2.NewNoop())
 	bridge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		if len(parts) != 5 || parts[0] != "s" || r.Header.Get("Authorization") != "Bearer helper-test-token" {
@@ -137,12 +142,19 @@ assert first.log_complete and second.log_complete and passed.log_complete
 			http.Error(w, "fixture delivery unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		value, err := codeexec.CallCustomToolWithSession(r.Context(), parts[1], parts[4], args)
-		if err != nil {
-			http.Error(w, err.Error(), 403)
-			return
+		// Exercise the production per-tool envelope, including canonical failure
+		// for a check's ok:false payload. A homemade success envelope hid the
+		// live loss of its log path and completion evidence (PLAT-746).
+		body, _ := json.Marshal(args)
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+		r.Header.Set("X-Session-ID", parts[1])
+		tool := parts[4]
+		if arguments["text"] == "fixture-handler-error" || arguments["detail"] == "fixture-handler-error" {
+			// A missing session-scoped executor is an actual handler failure.
+			tool = "unregistered_fixture_handler"
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "result": value})
+		executorHandlers.HandlePerToolCustomRequest(w, r, tool)
 	}))
 	defer bridge.Close()
 	t.Setenv("MCP_API_URL", bridge.URL)

@@ -202,7 +202,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			}
 
 		}
-		resultJSON, _ := json.Marshal(call.Reply)
+		// This activity event precedes closing the log. Final log evidence
+		// belongs only in the flushed response and durable result receipt.
+		resultJSON, _ := json.Marshal(map[string]interface{}{"ok": call.Reply.OK, "error": call.Reply.Error, "text": call.Reply.Text, "conversation_id": call.Reply.ConversationID})
 		_, _ = log.Stream("result").Write(append(resultJSON, '\n'))
 		log.Note(action + " finished")
 		log.Close()
