@@ -105,10 +105,7 @@ export function AutomationHubPanel({
   // Per-tab refresh, computed from the section. The bots tab has no
   // refreshable list, so it has no header action.
   const crewPage = entityType === 'product' && productTriggerScope?.profileId === 'work'
-  const refreshAll = () => { setSchedulesRefreshToken(token => token + 1); setTriggersRefreshToken(token => token + 1); setEmailRefreshToken(token => token + 1) }
-  const refreshAction = crewPage
-    ? { label: 'Refresh', run: refreshAll, spinning: schedulesStatus?.isLoading }
-    : section === 'email'
+  const refreshAction = section === 'email'
     ? { label: 'Refresh inbox', run: () => setEmailRefreshToken(token => token + 1), spinning: false }
     : section === 'conditions'
     ? { label: 'Refresh watchers', run: () => setTriggersRefreshToken(token => token + 1), spinning: false }
@@ -178,14 +175,15 @@ export function AutomationHubPanel({
 
       />
 
+      {crewPage && <nav aria-label="Automations" className="flex shrink-0 items-center gap-1 border-b px-3 py-2">
+        {([['schedules', 'Schedules', 'Help me set up a schedule for this Crew.'], ['triggers', 'Webhooks', 'Help me set up a webhook for this Crew.'], ['conditions', 'Watchers', 'Help me set up a watcher for this Crew.'], ['email', 'Inbox', 'Help me with this Crew’s inbox.']] as const)
+          .filter(([id]) => availableSections.has(id)).map(([id, label]) => <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}
+            className={`rounded-md px-3 py-1.5 text-sm ${section === id ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>{label}</button>)}
+        <button type="button" onClick={() => void ask(section === 'triggers' ? 'Help me set up a webhook for this Crew.' : section === 'conditions' ? 'Help me set up a watcher for this Crew.' : section === 'email' ? 'Help me with this Crew’s inbox.' : 'Help me set up a schedule for this Crew.')} className="ml-auto rounded-md px-2 py-1 text-xs text-primary hover:bg-muted">Ask</button>
+      </nav>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>
-        {crewPage ? <div className="h-full space-y-4 overflow-auto p-4">
-          <AutomationCard title="Schedules" onAsk={() => ask('Help me set up a schedule for this Crew.')}>{schedulesView}</AutomationCard>
-          <AutomationCard title="Webhooks" hint="Another app starts this by calling a web address." onAsk={() => ask('Help me set up a webhook for this Crew.')}>{productWebhooksView('')}</AutomationCard>
-          <AutomationCard title="Watchers" hint="Keeps checking something, and acts when it finds a match." onAsk={() => ask('Help me set up a watcher for this Crew.')}>{watchersView}</AutomationCard>
-          {availableSections.has('email') && <AutomationCard title="Inbox" hint="Messages sent to this Crew’s email address; each starts a chat." onAsk={() => ask('Help me with this Crew’s inbox.')}>{inboxView('')}</AutomationCard>}
-        </div> : <>
+        <>
         {section === 'chats' && chatContent && (
           <div data-testid="automation-hub-chats" className="flex h-full min-h-0 flex-col">
             {isValidElement(chatContent)
@@ -231,22 +229,9 @@ export function AutomationHubPanel({
           {children.map(child => <WorkflowFunctionsView key={child.id} workspacePath={child.workspace_path} embedded onCounts={count => setChildFunctionCounts(previous => previous[child.id] === count.functions ? previous : { ...previous, [child.id]: count.functions })} refreshToken={functionsRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
         </div>}
         {section === 'bots' && botContent}
-        </>}
+        </>
         </Suspense>
       </div>
     </div>
   )
-}
-
-function AutomationCard({ title, hint, onAsk, children }: { title: string; hint?: string; onAsk: () => void | Promise<void>; children: ReactNode }) {
-  return <section aria-label={title} className="rounded-lg border bg-card">
-    <div className="flex items-start gap-2 border-b px-4 py-3">
-      <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      </div>
-      <button type="button" onClick={() => void onAsk()} className="shrink-0 rounded-md px-2 py-1 text-xs text-primary hover:bg-muted">Ask</button>
-    </div>
-    <div>{children}</div>
-  </section>
 }
