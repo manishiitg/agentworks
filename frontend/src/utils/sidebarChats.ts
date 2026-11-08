@@ -1,4 +1,4 @@
-import type { ActiveSessionInfo, ChatHistorySession, ScheduledJob, WorkflowBuilderSessionResponse } from '../services/api-types'
+import type { ActiveSessionInfo, ChatHistorySession, ScheduledJob } from '../services/api-types'
 import type { ChatTab } from '../stores/useChatStore'
 import type { ProductSurface } from '../products/productSurfaceConfig'
 import type { CustomPreset, PredefinedPreset } from '../types/preset'
@@ -11,7 +11,6 @@ import { isInternalChildSession } from './workflowSessionKinds'
 import { chatHistorySessionTitle } from './chatHistoryTitle'
 import { botPlatformLabel } from './globalActivityPresentation'
 import { readableGeneratedChatTitle } from './generatedChatTitle'
-import type { WorkflowBuilderBindings } from './currentWorkflowBuilder'
 import { compareWorkChatOrder, workChatTabOrder, type WorkChatOrder } from '../products/work/workTabs'
 
 export type SidebarProject = {
@@ -37,7 +36,6 @@ export type SidebarChat = {
   chatOrder?: WorkChatOrder
   originLabel?: string
   builder?: boolean
-  workflowSessionKind?: NonNullable<WorkflowBuilderSessionResponse['sessions']>[string]['kind']
   surface: ProductSurface
   group: 'Running' | 'Open' | 'Recent'
   time: number
@@ -60,13 +58,10 @@ export function isGeneratedSidebarPrompt(title: string) {
 export function sidebarChatDisplayTitle(row: SidebarChat, workspaceTitle?: string, number?: number) {
   if (row.surface === 'work' && row.chatOrder?.isMainChat) return 'Builder'
   const title = row.title.trim()
-  if (row.surface === 'work' && /^(?:new project|new crew|new chat)$/i.test(title)) return row.scheduled || row.workflowSessionKind === 'run' ? 'Run' : number ? `Builder ${number}` : 'Builder'
+  if (row.surface === 'work' && /^(?:new project|new crew|new chat)$/i.test(title)) return row.scheduled ? 'Run' : number ? `Builder ${number}` : 'Builder'
   const generated = readableGeneratedChatTitle(title, row.scheduled)
   if (generated) return generated
   const raw = title.replace(/ · Scheduled run$/i, '').replace(row.scheduled ? /\s*\((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Daily|Weekdays|Weekends|Every)\b[^)]*\)$/i : /$^/, '')
-  if (row.workflowSessionKind === 'run' && !row.scheduled && !row.originLabel &&
-    (raw === workspaceTitle || /^(?:Automation Builder|Builder(?: \d+)?|Main chat|Chat(?: \d+)?)$/i.test(raw)))
-    return 'Run'
   if (row.builder && (title === workspaceTitle || /^(?:Automation Builder|Builder(?: \d+)?|Main chat|Chat)$/i.test(title)))
     return number ? `Builder ${number}` : 'Builder'
   if (workspaceTitle && raw === workspaceTitle)
@@ -128,7 +123,6 @@ export function sidebarChats({
   projectInventoryKnown = false,
   allowedWorkflowIds,
   jobs = [],
-  builders,
 }: {
   tabs: Record<string, ChatTab>
   active: ActiveSessionInfo[]
@@ -139,7 +133,6 @@ export function sidebarChats({
   projectInventoryKnown?: boolean
   allowedWorkflowIds?: string[] | null
   jobs?: ScheduledJob[]
-  builders?: WorkflowBuilderBindings
 }): SidebarChat[] {
   const rows = new Map<string, SidebarChat>()
   const accepts = (row: SidebarChat) =>
@@ -374,43 +367,6 @@ export function sidebarChats({
     if (!row.workspaceTitle) row.workspaceTitle = job.workflow_label
     if (!row.runTime && match && match[2].length >= 16)
       row.runTime = Math.floor(Number(match[2]) / 1e6)
-  }
-  if (builders !== undefined) {
-    // Saved tabs outlive deleted workflows; without a workflow they have no Builder to show.
-    if (presets.length > 0)
-      for (const [id, row] of rows)
-        if (row.workflowId && !presets.some(preset => preset.id === row.workflowId)) rows.delete(id)
-    for (const preset of presets) {
-      const binding = builders[preset.id]
-      const current = binding?.session_id
-      for (const [id, row] of rows) {
-        if (row.workflowId !== preset.id) continue
-        const role = binding?.sessions?.[id]
-        if (!binding || !role || role.kind === 'history') { rows.delete(id); continue }
-        row.builder = role?.is_builder === true
-        if (id === current) {
-          // updated_at belongs to the Builder pointer and may be "now" on
-          // discovery. Only actual conversation activity may affect recency.
-          row.activityTime = Math.max(row.activityTime || 0, Date.parse(binding.activity_updated_at || '') || 0)
-        }
-        row.workflowSessionKind = role.kind
-        if (row.builder && row.group === 'Recent') row.group = 'Open'
-      }
-      if (!current || rows.has(current) || !binding || current !== binding.session_id) continue
-      const row: SidebarChat = {
-        id: current, title: preset.label || 'Builder', builder: true, workflowSessionKind: 'builder',
-        surface: preset.workflowKind === 'relay' ? 'relays' : 'agentworks', workflowId: preset.id,
-        workspace: preset.selectedFolder?.filepath, workspaceTitle: preset.label,
-        group: 'Open', time: Date.parse(binding.activity_updated_at || '') || 0,
-        activityTime: Date.parse(binding.activity_updated_at || '') || 0, waiting: false,
-        activity: {
-          session_id: current, observer_id: '', agent_mode: 'workflow_phase', status: binding.status,
-          preset_query_id: preset.id, workspace_path: preset.selectedFolder?.filepath,
-          created_at: '', last_activity: binding.activity_updated_at || '',
-        },
-      }
-      if (accepts(row)) rows.set(current, row)
-    }
   }
   const rank = { Running: 0, Open: 1, Recent: 2 }
   return [...rows.values()].sort(

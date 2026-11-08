@@ -1,6 +1,5 @@
 import { agentApi } from '../services/api'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
-import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { belongsToWorkProject, isWorkSideChatTab } from '../products/work/workTabs'
 import { activateTab } from './activateTab'
@@ -61,11 +60,6 @@ export async function closeWorkspaceChatTab(tabId: string, canonicalTabId?: stri
     useChatStore.getState().chatTabs[tabId]?.sessionId === tab.sessionId
   // The server decides whether a physical chat can close and releases idle
   // runtime resources. Never stop a running agent as a side effect of Close.
-  if (meta?.isViewOnly !== true && meta?.workflowOwnerTabID && meta.presetQueryId) {
-    const preset = useGlobalPresetStore.getState().workflowPresets.find(item => item.id === meta.presetQueryId)
-    if (!preset?.selectedFolder?.filepath) return
-    await agentApi.manageWorkflowChats(preset.id, preset.selectedFolder.filepath, 'close', meta.workflowOwnerTabID)
-  }
   if (side && meta?.agentProfileConversationKey && meta.agentProfileId) {
     try {
       await agentApi.closeAgentProfileSideChat(meta.agentProfileId, meta.agentProfileConversationKey)

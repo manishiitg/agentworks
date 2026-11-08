@@ -1428,32 +1428,6 @@ export interface GetSessionEventsResponse {
   offset: number;
 }
 
-export interface WorkflowOwnerTab {
-  id: string; name: string; owner_id: string; owner_name: string; session_id: string;
-  is_main: boolean; can_write: boolean; working: boolean; updated_at?: string; position?: number; pinned?: boolean;
-}
-
-export interface WorkflowBuilderSessionResponse {
-  tabs?: WorkflowOwnerTab[];
-  is_builder?: boolean;
-  sessions?: Record<string, { is_builder: boolean; kind: 'builder' | 'history' | 'run' }>;
-  success: boolean;
-  source: 'live' | 'workspace' | 'none';
-  session_id?: string;
-  phase_id?: string;
-  status: 'running' | 'completed' | 'idle' | 'error' | 'stopped' | string;
-  display_status?: string;
-  preset_query_id?: string;
-  workspace_path?: string;
-  workflow_name?: string;
-  updated_at?: string;
-  activity_updated_at?: string;
-  conversation_path?: string;
-  events: PollingEvent[];
-  total?: number;
-  last_processed_index?: number;
-}
-
 // SSE message types (match backend sseEventMessage / sseStatusMessage)
 
 export interface CreateChatSessionRequest {
