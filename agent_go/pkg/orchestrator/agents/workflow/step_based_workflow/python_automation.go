@@ -347,6 +347,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		} else if log.Error() != "" {
 			call.Reply.LogError += " Helper activity log: " + log.Error()
 		}
+		if err := hcpo.savePythonRunEvidence(ctx, id, action, arguments, call.Reply); err != nil {
+			call.Reply.LogError += " Run evidence could not be saved: " + err.Error()
+		}
 		call.Complete = true
 		if err := persist(); err != nil {
 			call.Reply.LogError = "Helper finished but its result receipt could not be saved: " + err.Error()

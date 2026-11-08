@@ -84,6 +84,15 @@ func TestPythonHelpersRepeatCallsAndReuseOnlyResumedOccurrences(t *testing.T) {
 	source := `import json, os
 from pathlib import Path
 from agentworks import check, notify, run_folder, step, call_function, function_status, FunctionResult
+if os.environ['VAR_PHASE'] == 'evidence':
+    @step('Evidence')
+    def evidence():
+        assert check('Evidence inside', True, 'MCP_API_TOKEN=fixture-credential ' + 'λ' * 700).ok
+        assert not check('Evidence expected failure', False, 'expected').ok
+        notify('MCP_API_TOKEN=fixture-credential progress')
+    evidence()
+    check('Evidence outside', True)
+    raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'functions':
     first = call_function('Beta', 'check_build', {'build': '7'})
     second = call_function('Beta', 'check_build', {'build': '7'})
@@ -311,6 +320,40 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	run(true, false, "functions")
 	if functionCalls != 2 || statusReads != 2 {
 		t.Fatalf("function work repeated or status read cached: calls=%d reads=%d", functionCalls, statusReads)
+	}
+	if err := os.Remove(filepath.Join(docs, root, "runs/run-one/helpers/presentation.json")); err != nil {
+		t.Fatal(err)
+	}
+	beforeEvidenceNotices := len(notifications.texts)
+	run(false, false, "evidence")
+	if len(notifications.texts) != beforeEvidenceNotices+1 {
+		t.Fatal("evidence notification did not reach the real chat target adapter")
+	}
+
+	items, err := ReadPythonRunEvidence(docs, root, "run-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundInside, foundFailed, foundOutside, foundNotify := false, false, false, false
+	for _, item := range items {
+		encoded, _ := json.Marshal(item)
+		if strings.Contains(string(encoded), "fixture-credential") || len([]rune(item.Detail)) > 500 {
+			t.Fatalf("run evidence missed existing credential redaction or bounded detail: %s", encoded)
+		}
+		switch item.Name {
+		case "Evidence inside":
+			foundInside = item.OK != nil && *item.OK && strings.HasPrefix(item.SourceCall, "main.py:evidence@")
+		case "Evidence expected failure":
+			foundFailed = item.OK != nil && !*item.OK && item.SourceCall != ""
+		case "Evidence outside":
+			foundOutside = item.SourceCall == ""
+		}
+		if item.Kind == "notify" && strings.Contains(item.Detail, "progress") {
+			foundNotify = item.OK == nil && item.SourceCall != ""
+		}
+	}
+	if !foundInside || !foundFailed || !foundOutside || !foundNotify {
+		t.Fatalf("real Python run evidence missing: inside=%t failed=%t outside=%t notify=%t", foundInside, foundFailed, foundOutside, foundNotify)
 	}
 	t.Log(fmt.Sprintf("real_python=true resumed_first=true repeated_key_runs=true failed_checks_retained=%d", failures))
 	common.ClearSessionShellConfig(c.GetMCPSessionID())

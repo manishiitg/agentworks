@@ -13,6 +13,7 @@ Typed saved-script example::
 from __future__ import annotations
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import wraps
 import inspect
@@ -70,6 +71,7 @@ class FunctionResult(Reply):
     receipt: Mapping[str, JSONValue] = field(default_factory=dict)
 
 
+_active_step: ContextVar[str] = ContextVar("agentworks_step", default="")
 _order = 0
 _order_lock = threading.Lock()
 _run_dir = os.environ.get("WORKFLOW_RUN_DIR", "")
@@ -101,6 +103,8 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
     caller = caller.f_back.f_back if caller and caller.f_back else None
     site = f"{Path(caller.f_code.co_filename).name}:{caller.f_lineno}" if caller else action
     label = key if key is not None else f"{action}:{site}:{order}"
+    if action in ("check", "notify") and _active_step.get():
+        arguments = {**arguments, "source_call": _active_step.get()}
     request = urllib.request.Request(
         base + "/python_automation",
         data=json.dumps({"action": action, "arguments": arguments, "key": label,
@@ -198,6 +202,7 @@ def _step_activity(title: str, function, site: str):
         started = _call("step", {"phase": "start", "title": title, "source_call": identity}, None, True)
     except Exception:
         started = Reply(ok=False)
+    token = _active_step.set(identity)
     failure = ""
     try:
         yield
@@ -205,6 +210,7 @@ def _step_activity(title: str, function, site: str):
         failure = f"{type(error).__name__}: {error}"
         raise
     finally:
+        _active_step.reset(token)
         if started.ok:
             try:
                 _call("step", {"phase": "finish", "execution_id": started.conversation_id,

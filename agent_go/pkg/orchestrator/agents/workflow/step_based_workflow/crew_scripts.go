@@ -226,6 +226,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) ReadWorkspaceFile(ctx context.Context
 			value = map[string]interface{}{"code_layout_version": 1}
 		case "variables/variables.json":
 			value = hcpo.directCrewScript.InputDefinitions()
+		case "planning/step_config.json", "planning/step_override.json":
+			return "", fmt.Errorf("saved Python scripts have no plan settings; edit script.json")
 		case "planning/plan.json":
 			value = CrewScriptPlan(hcpo.directCrewScript, hcpo.directCrewScriptConfig.Root)
 		}
@@ -241,7 +243,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) WriteWorkspaceFile(ctx context.Contex
 	if hcpo.directCrewScriptConfig != nil {
 		relative := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(file)), hcpo.GetWorkspacePath()+"/")
 		switch relative {
-		case "workflow.json", "variables/variables.json", "planning/plan.json":
+		case "workflow.json", "variables/variables.json", "planning/plan.json", "planning/step_config.json", "planning/step_override.json":
 			return fmt.Errorf("edit this saved script in its owning Crew; it has one source definition")
 		}
 	}
