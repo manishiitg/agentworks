@@ -13,7 +13,6 @@ export function canCloseWorkspaceChatTab(tab: ChatTab, tabs: Record<string, Chat
   if (meta?.isViewOnly === true) return meta.mode === 'workflow' || meta.agentProfileId === 'work'
   if (meta?.agentProfileTabCanWrite === false) return false
   if (meta?.mode === 'workflow') {
-    if (meta.workflowOwnerTabID) return meta.agentProfileTabCanWrite === true && !meta.workflowOwnerTabIsMain
     if (meta.phaseId === 'workflow-builder') return false
     return (
       Object.values(tabs).filter(
@@ -77,7 +76,7 @@ export async function closeWorkspaceChatTab(tabId: string, canonicalTabId?: stri
   const surface = useProductSurfaceStore.getState().productSurface
   await useChatStore
     .getState()
-    .closeTab(tabId, !meta?.workflowOwnerTabID && meta?.mode === 'workflow' && meta.isViewOnly !== true)
+    .closeTab(tabId, meta?.mode === 'workflow' && meta.isViewOnly !== true)
   if (
     selected &&
     fallback &&

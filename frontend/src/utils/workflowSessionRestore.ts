@@ -11,10 +11,9 @@ import type { CustomPreset, PredefinedPreset } from '../types/preset'
 import { isScheduledSession, isInternalChildSession } from './workflowSessionKinds'
 import { isVisibleActivitySession } from './activitySessions'
 import { normalizeWorkspacePath } from './workspacePathUtils'
-import { activateWorkflowTab, beginWorkflowNavigation, isCurrentWorkflowNavigation, selectWorkflowPreset } from './workflowNavigation'
+import { activateWorkflowTab, beginWorkflowNavigation, selectWorkflowPreset } from './workflowNavigation'
 import { scheduleTabLabel } from './scheduleTabLabel'
 import { resolveWorkflowTabForSession } from './workflowTabResolution'
-import { captureChatIdentity, isChatIdentityCurrent } from './chatIdentity'
 
 type RestoreWorkflowSessionOptions = {
   preset?: CustomPreset | PredefinedPreset
@@ -326,36 +325,22 @@ export async function openWorkflowPresetPage(
     })
     return
   }
-
-  const identity = captureChatIdentity()
-  if (!preset.selectedFolder?.filepath) return
-  const tabId = await ensureWorkflowComposerTab(preset.id)
-  if (!isChatIdentityCurrent(identity) || !isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
-  activateWorkflowTab(tabId, { expectedGeneration: navigationGeneration })
+  // Opening a workflow again returns to the conversation the person already
+  // has for it, streaming or not. With none open, the workflow screen restores
+  // the latest saved chat itself.
+  const existing = findOpenWorkflowChatTab(preset.id)
+  if (!existing) return
+  activateWorkflowTab(existing.tabId, { expectedGeneration: navigationGeneration })
   useWorkflowStore.getState().setShowChatArea(true)
   if (options.scrollToBottom === true) requestChatScrollToBottom()
 }
 
-// A blank input surface is not a server Builder binding. Discovery is read-only;
-// the first admitted interactive send records its session on the server.
-const pendingComposers = new Map<string, Promise<string>>()
-export async function ensureWorkflowComposerTab(presetId: string): Promise<string> {
-  const identity = captureChatIdentity()
-  const key = JSON.stringify([identity, presetId])
-  const pending = pendingComposers.get(key)
-  if (pending) return pending
-  const store = useChatStore.getState()
-  const existing = Object.values(store.chatTabs).find(tab =>
-    tab.metadata?.presetQueryId === presetId && tab.metadata?.isWorkflowDraft === true &&
-    !tab.metadata?.isViewOnly && !tab.isStreaming &&
-    store.getTabEvents(tab.sessionId || tab.tabId).length === 0)
-  if (existing) return existing.tabId
-  const promise = store.createChatTab('Automation Builder', {
-    mode: 'workflow', phaseId: 'workflow-builder', phaseName: 'Automation Builder',
-    presetQueryId: presetId, isWorkflowDraft: true,
-  }, undefined, { activate: false })
-  pendingComposers.set(key, promise)
-  try { return await promise } finally { pendingComposers.delete(key) }
+/** The workflow's own interactive chat tab, most recently used first. */
+export function findOpenWorkflowChatTab(presetId: string): ChatTab | undefined {
+  return Object.values(useChatStore.getState().chatTabs)
+    .filter(tab => tab.metadata?.mode === 'workflow' && tab.metadata.presetQueryId === presetId &&
+      !tab.metadata.isViewOnly && !tab.metadata.isExecutionRun && !tab.metadata.isScheduledRun && !tab.metadata.isBotRun)
+    .sort((a, b) => (b.lastAccessedAt ?? b.createdAt) - (a.lastAccessedAt ?? a.createdAt))[0]
 }
 
 type ReadOnlyWorkflowRunOptions = RestoreWorkflowSessionOptions & {

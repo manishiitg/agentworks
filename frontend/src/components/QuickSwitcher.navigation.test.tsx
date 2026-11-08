@@ -485,23 +485,6 @@ it('keeps same-named projects separate and a matching child selected beneath its
   expect(useChatStore.getState().activeTabId).toBe('p2')
 })
 
-it.each(['goal'])('finds a named %s Builder chat under its project and opens that exact chat', async kind => {
-  const { host, onClose } = await renderNavigation(`@${kind === 'relay' ? 'relays' : 'workflows'} Research`, ['agentworks', 'relays'], false, () => {
-    useGlobalPresetStore.setState({ workflowPresets: [{ id: 'plan', label: 'Example project', workflowKind: kind === 'relay' ? 'relay' : undefined, selectedFolder: { filepath: 'Workflow/example' } }] as never })
-    useChatStore.setState({ chatTabs: { research: { tabId: 'research', name: 'Research', createdAt: 1, config: {}, events: [], metadata: { mode: 'workflow', presetQueryId: 'plan', phaseId: 'workflow-builder', workflowOwnerTabID: 'owner-tab' } } } as never })
-  })
-  const rows = [...host.querySelectorAll('[role="option"]')]
-  expect(rows).toHaveLength(2)
-  expect(rows[0].getAttribute('data-navigation-id')).toBe('workflow:plan')
-  expect(rows[0].textContent).toContain('Example project')
-  expect(rows[1].getAttribute('data-navigation-parent')).toBe('workflow:plan')
-  expect(rows[1].getAttribute('aria-selected')).toBe('true')
-  await act(async () => { host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })) })
-  expect(useChatStore.getState().activeTabId).toBe('research')
-  expect(useProductSurfaceStore.getState().productSurface).toBe(kind === 'relay' ? 'relays' : 'agentworks')
-  expect(onClose).toHaveBeenCalledOnce()
-})
-
 it('omits global Goal activity from navigation and search', async () => {
   for (const query of ['', 'Goal activity']) {
     const { host } = await renderNavigation(query)
