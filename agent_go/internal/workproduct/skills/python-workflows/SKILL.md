@@ -19,6 +19,14 @@ for script kind, typed inputs and presets; `workflow action=save_inputs` replace
 `workflow action=outline` inspects saved source without running it and
 keeps Builder source-editor authority. `@step` labels are not independently runnable.
 
+In the owning Crew chat, use its bound `run_full_workflow` tool when offered:
+optional `input_preset` selects saved values and `inputs` carries typed JSON
+values (numbers, booleans, objects and arrays stay typed). The workflow is
+selected by the Crew, so do not supply a path or workflow ID. Inputs override
+the preset and defaults; unknown names and wrong types are refused before a
+run starts. Stop it through the chat's background work control. For different
+behavior or instructions, edit the saved Python/Crew configuration first.
+
 Start with `runs action=start` (`workflow_id`, optional `input_preset`, typed
 `inputs`) and poll `runs action=status` with its `session_id`, or use the existing
 `functions action=run_trigger/trigger_status` receipt. Do not start both for one

@@ -28,30 +28,9 @@ func directScriptRunOptions(ctx context.Context, args map[string]interface{}, ta
 	if err != nil {
 		return nil, err
 	}
-	supplied := map[string]interface{}{}
-	if raw, ok := args["inputs"]; ok {
-		var valid bool
-		supplied, valid = raw.(map[string]interface{})
-		if !valid {
-			return nil, fmt.Errorf("inputs must be an object")
-		}
-	}
-	inputs := map[string]string{}
-	for name, value := range supplied {
-		found := false
-		for _, definition := range definitions.Variables {
-			if definition.Name == name {
-				found = true
-				inputs[name], err = workflow.WorkflowInputValue(definition, value)
-				break
-			}
-		}
-		if err != nil {
-			return nil, err
-		}
-		if !found {
-			return nil, fmt.Errorf("Unknown input %q; use this script's declared inputs.", name)
-		}
+	inputs, err := workflow.WorkflowInputOverrides(definitions, args)
+	if err != nil {
+		return nil, err
 	}
 	resolved, err := workflow.ResolveWorkflowInputs(definitions, preset, inputs)
 	if err == nil {
