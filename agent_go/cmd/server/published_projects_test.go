@@ -22,6 +22,7 @@ import (
 	workspaceclient "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
+	"github.com/spf13/viper"
 )
 
 // Website history uses llmtypes human/ai roles, unlike native CLI archives.
@@ -105,6 +106,9 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		docs := os.Getenv("WORKSPACE_DOCS_PATH")
+		previousDocs := viper.Get("docs-dir")
+		viper.Set("docs-dir", docs)
+		t.Cleanup(func() { viper.Set("docs-dir", previousDocs) })
 		if err := os.MkdirAll(filepath.Join(docs, record.Root, "outputs"), 0700); err != nil {
 			t.Fatal(err)
 		}
