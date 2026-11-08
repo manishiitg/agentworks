@@ -18,7 +18,10 @@ const workspaceInspectionReadBudget = 24
 type workspaceStepInspection struct {
 	Inspection *orchEvents.ExecutionInspectionTarget `json:"inspection"`
 	Status     string                                `json:"status"`
-	Parent     workspaceInspectionParent             `json:"parent"`
+	// CompletedAt and Duration come from the execution's own log row, for a runs screen's step lines.
+	CompletedAt string                    `json:"completed_at,omitempty"`
+	Duration    string                    `json:"duration,omitempty"`
+	Parent      workspaceInspectionParent `json:"parent"`
 }
 type workspaceInspectionParent struct {
 	SessionID     string `json:"session_id"`
@@ -119,7 +122,7 @@ func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r
 	if db != nil {
 		defer db.Close()
 		args = append(args, workspaceInspectionScanBudget+1)
-		rows, queryErr := db.QueryContext(r.Context(), `SELECT rowid, session_id, agent_id, kind, parent_execution_id, status, updated_at FROM background_agent_log WHERE `+where+` ORDER BY updated_at DESC, rowid DESC LIMIT ?`, args...)
+		rows, queryErr := db.QueryContext(r.Context(), `SELECT rowid, session_id, agent_id, kind, parent_execution_id, status, completed_at, duration, updated_at FROM background_agent_log WHERE `+where+` ORDER BY updated_at DESC, rowid DESC LIMIT ?`, args...)
 		if queryErr != nil && !isMissingTableError(queryErr) {
 			http.Error(w, "Step records unavailable", http.StatusServiceUnavailable)
 			return
@@ -128,7 +131,7 @@ func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r
 		if queryErr == nil {
 			for rows.Next() {
 				var record workspaceInspectionRecord
-				if err = rows.Scan(&record.RowID, &record.SessionID, &record.AgentID, &record.Kind, &record.ParentExecutionID, &record.Status, &record.UpdatedAt); err != nil {
+				if err = rows.Scan(&record.RowID, &record.SessionID, &record.AgentID, &record.Kind, &record.ParentExecutionID, &record.Status, &record.CompletedAt, &record.Duration, &record.UpdatedAt); err != nil {
 					break
 				}
 				records = append(records, record)
@@ -186,7 +189,7 @@ func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r
 			if target == nil || target.ExecutionKind != record.Kind {
 				continue
 			}
-			response.Items = append(response.Items, workspaceStepInspection{Inspection: target, Status: record.Status, Parent: workspaceInspectionParent{SessionID: parent.SessionID, WorkspacePath: workspace, Status: parent.Status, TriggeredBy: workspaceInspectionTrigger(parent.TriggeredBy), BotPlatform: workspaceInspectionPlatform(parent.BotPlatform)}})
+			response.Items = append(response.Items, workspaceStepInspection{Inspection: target, Status: record.Status, CompletedAt: record.CompletedAt, Duration: record.Duration, Parent: workspaceInspectionParent{SessionID: parent.SessionID, WorkspacePath: workspace, Status: parent.Status, TriggeredBy: workspaceInspectionTrigger(parent.TriggeredBy), BotPlatform: workspaceInspectionPlatform(parent.BotPlatform)}})
 		}
 		if consumed > 0 && consumed < len(records) {
 			last := records[consumed-1]

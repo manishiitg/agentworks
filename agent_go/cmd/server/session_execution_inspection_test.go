@@ -143,11 +143,16 @@ func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "step", Kind: "workflow_step", Metadata: map[string]string{"step_id": "research"}})
 	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "generic", Kind: "sub_agent", Metadata: map[string]string{"step_id": "research"}})
 	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "review", Kind: "workflow_step", Metadata: map[string]string{}})
+	// A Python @step has no plan step_id; its source_call joins it to the workflow's source outline.
+	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "pystep", Kind: "workflow_step", Metadata: map[string]string{"source_call": "main.py:collect@main.py:8", "inspection_kind": "python_step"}})
 	if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"kind":"workflow"}`); err != nil {
 		t.Fatal(err)
 	}
 	if target := api.executionInspectionTarget("chat", "step"); target == nil || target.WorkflowKind != "workflow" || target.ExecutionKind != "workflow_step" {
 		t.Fatalf("workflow step target missing: %+v", target)
+	}
+	if target := api.executionInspectionTarget("chat", "pystep"); target == nil || target.SourceCall != "main.py:collect@main.py:8" || target.StepID != "" {
+		t.Fatalf("python step target missing its source call: %+v", target)
 	}
 	if api.executionInspectionTarget("chat", "generic") != nil || api.executionInspectionTarget("chat", "review") != nil {
 		t.Fatal("ordinary background work advertised step inspection")
@@ -167,7 +172,7 @@ func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 		walk = func(node *SessionExecutionTreeNode) {
 			if node.Inspection != nil {
 				count++
-				if node.ExecutionID != "step" || node.Inspection.SessionID != "chat" || node.Inspection.ExecutionID != node.ExecutionID || node.Inspection.WorkspacePath != "Workflow/example" {
+				if (node.ExecutionID != "step" && node.ExecutionID != "pystep") || node.Inspection.SessionID != "chat" || node.Inspection.ExecutionID != node.ExecutionID || node.Inspection.WorkspacePath != "Workflow/example" {
 					t.Fatalf("execution tree advertised a different inspector: %+v", node.Inspection)
 				}
 			}
@@ -180,7 +185,7 @@ func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 			t.Fatalf("execution tree advertised %d inspection targets; want %d", count, want)
 		}
 	}
-	checkTreeTargets(1)
+	checkTreeTargets(2)
 	if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"kind":"relay"}`); err != nil {
 		t.Fatal(err)
 	}
