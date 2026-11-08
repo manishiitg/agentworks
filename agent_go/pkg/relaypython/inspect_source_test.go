@@ -90,3 +90,98 @@ async def run(INPUT):
 		}
 	}
 }
+
+// PLAT-746: the Script outline draws control flow. Blocks that hold steps or
+// agent() calls become container rows with their steps nested; a block with
+// none stays one "Other code" row.
+func TestAutomationOutlineDrawsControlFlow(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 unavailable")
+	}
+	source := `from agentworks import agent, step
+
+@step("Load account")
+def load_account(inputs):
+    return {"mode": inputs["mode"]}
+
+@step("Bill company")
+def bill_company(account):
+    return account
+
+@step("Bill person")
+def bill_person(account):
+    return account
+
+@step("Send receipt")
+def send_receipt(account):
+    return account
+
+def main():
+    account = load_account(inputs)
+    mode = account["mode"]
+    # Corporate accounts
+    if mode == "corporate":
+        bill_company(account)
+    elif mode == "personal":
+        bill_person(account)
+    else:
+        send_receipt(account)
+    for lead in leads:
+        agent("Writer", "Draft a note")
+    try:
+        send_receipt(account)
+    except Exception:
+        agent("Helper", "Tell the team")
+    with open("log.txt") as handle:
+        print(handle.read())
+`
+	raw, _ := json.Marshal(map[string]string{"main.py": source})
+	cmd := exec.Command("python3", "-I", "-c", SourceInspector)
+	cmd.Env = append(os.Environ(), "VAR_AUTOMATION_CHECK_FILES="+base64.StdEncoding.EncodeToString(raw))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("inspector: %s %v", out, err)
+	}
+	var graph struct {
+		Nodes []struct {
+			ID, Label, Role, Parent string
+		} `json:"nodes"`
+		Errors []string `json:"errors"`
+	}
+	if err := json.Unmarshal(out, &graph); err != nil || len(graph.Errors) != 0 {
+		t.Fatalf("outline: %s %v", out, err)
+	}
+	labels := map[string]string{}
+	var rows []string
+	for _, node := range graph.Nodes {
+		labels[node.ID] = node.Label
+		row := node.Label
+		if node.Role != "" {
+			row += " [" + node.Role + "]"
+		}
+		if node.Parent != "" {
+			row += " in " + labels[node.Parent]
+		}
+		rows = append(rows, row)
+	}
+	want := []string{
+		"Load account",
+		"Choose a path [branch]",
+		"Corporate accounts [case] in Choose a path",
+		"Bill company in Corporate accounts",
+		"mode is personal [case] in Choose a path",
+		"Bill person in mode is personal",
+		"Otherwise [case] in Choose a path",
+		"Send receipt in Otherwise",
+		"Repeat for each lead [repeat]",
+		"Writer in Repeat for each lead",
+		"Try [try]",
+		"Send receipt in Try",
+		"If this fails [failure] in Try",
+		"Helper in If this fails",
+		"Other code",
+	}
+	if strings.Join(rows, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("outline rows:\n%s\nwant:\n%s", strings.Join(rows, "\n"), strings.Join(want, "\n"))
+	}
+}

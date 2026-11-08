@@ -116,6 +116,7 @@ else:
 - `inputs`: this run's typed values, by name.
 - `run_folder`: this run's own folder. Write outputs here.
 - `@step("Title")` on a function: a label in the Plan and Runs views. The function runs normally every time; nothing is cached or retried.
+- A comment on the line above an `if`, `elif`, `else` or `with` names that branch in the outline, like a step title (`# Corporate accounts`); without one the outline words the condition itself.
 - `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None, scripts=(...))`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right, so check its files or `reply.answer_file.read_text()`. Keep task texts as module constants so the Plan can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
 - `run_script(id, inputs)`: run another saved script of this Crew and get its output files.
 - `call_function(crew, name, inputs)`: call another Crew's published function. A running receipt is not the answer; refresh it with `function_status(call_id)`.

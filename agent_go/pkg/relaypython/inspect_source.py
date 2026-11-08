@@ -1,8 +1,10 @@
 """Read-only AST inspection. Never imports or executes authored Python."""
 import ast
 import base64
+import contextlib
 import json
 import os
+import types
 
 
 def inspect_source(source):
@@ -187,7 +189,7 @@ def inspect_automation_source(files):
     try:
         if not isinstance(files, dict) or 'main.py' not in files:
             raise ValueError('Save main.py before viewing this automation.')
-        trees, filenames = {}, {}
+        trees, filenames, sources = {}, {}, {}
         for file, source in files.items():
             parts = file.split('/')
             if (not file.endswith('.py') or '\\' in file or
@@ -198,7 +200,7 @@ def inspect_automation_source(files):
                 module = '.'.join(parts[:-1]) or '__init__'
             if module in trees:
                 raise ValueError('Python module has two source files: ' + module)
-            trees[module], filenames[module] = ast.parse(source, filename=file), file
+            trees[module], filenames[module], sources[module] = ast.parse(source, filename=file), file, source.splitlines()
         imports, constants, functions = {}, {}, {}
         for module, tree in trees.items():
             imports[module], constants[module] = {}, {}
@@ -249,19 +251,90 @@ def inspect_automation_source(files):
         def argument(call, index, name):
             return call.args[index] if len(call.args) > index else next((item.value for item in call.keywords if item.arg == name), None)
 
-        def add(call, module, kind, label, identity, description=None):
+        parents, last = [], {}
+
+        def add(call, module, kind, label, identity, description=None, role=None):
             import hashlib
             node = dict(id='step-' + hashlib.sha256(identity.encode()).hexdigest()[:20], type=kind,
                         label=label, call=identity, line=call.lineno)
             if description is not None:
                 node['description'] = description
+            if role:
+                node['role'] = role
+            parent = parents[-1] if parents else None
+            if parent:
+                node['parent'] = parent
             if any(existing['id'] == node['id'] for existing in graph['nodes']):
-                return
+                return node['id']
             if len(graph['nodes']) >= 200:
                 raise ValueError('Source overview exceeds 200 items')
-            if graph['nodes']:
-                graph['edges'].append({'from': graph['nodes'][-1]['id'], 'to': node['id'], 'line': call.lineno})
+            # Edges join siblings in source order; nesting is carried by `parent`.
+            if last.get(parent):
+                graph['edges'].append({'from': last[parent], 'to': node['id'], 'line': call.lineno})
+            last[parent] = node['id']
             graph['nodes'].append(node)
+            return node['id']
+
+        @contextlib.contextmanager
+        def nested(node_id):
+            parents.append(node_id)
+            last.pop(node_id, None)
+            try:
+                yield
+            finally:
+                parents.pop()
+
+        def line_text(module, number):
+            lines = sources[module]
+            return lines[number - 1] if 0 < number <= len(lines) else ''
+
+        def comment_above(module, number):
+            text = line_text(module, number - 1).strip()
+            return text.lstrip('#').strip() or None if text.startswith('#') else None
+
+        def plain(value, limit=80):
+            return value if len(value) <= limit else value[:limit - 3] + '...'
+
+        def operand(value):
+            if isinstance(value, ast.Constant):
+                return value.value if isinstance(value.value, str) else str(value.value)
+            if isinstance(value, (ast.Tuple, ast.List, ast.Set)) and value.elts:
+                return ' or '.join(operand(item) for item in value.elts)
+            if isinstance(value, (ast.Name, ast.Attribute)):
+                return ast.unparse(value).replace('_', ' ')
+            return ast.unparse(value)
+
+        def words(value):
+            """A short plain-words reading of a condition. Never evaluates it."""
+            compare = {ast.Eq: 'is', ast.NotEq: 'is not', ast.In: 'is one of', ast.NotIn: 'is not one of',
+                       ast.Lt: 'is less than', ast.Gt: 'is more than', ast.LtE: 'is at most',
+                       ast.GtE: 'is at least', ast.Is: 'is', ast.IsNot: 'is not'}
+            if isinstance(value, ast.Compare) and len(value.ops) == 1 and type(value.ops[0]) in compare:
+                text = f'{operand(value.left)} {compare[type(value.ops[0])]} {operand(value.comparators[0])}'
+            elif isinstance(value, ast.BoolOp):
+                text = (' and ' if isinstance(value.op, ast.And) else ' or ').join(words(item) for item in value.values)
+            elif isinstance(value, ast.UnaryOp) and isinstance(value.op, ast.Not):
+                text = 'not ' + words(value.operand)
+            elif isinstance(value, (ast.Name, ast.Attribute)):
+                text = operand(value)
+            else:
+                text = ast.unparse(value)
+            return plain(text)
+
+        def has_step(module, node):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                return False
+            if isinstance(node, ast.Call):
+                name_module, name = target(module, node.func)
+                if (name_module, name) == ('agentworks', 'agent'):
+                    return True
+                if name_module in trees and decorated(name_module, name)[0] is not None:
+                    return True
+            return any(has_step(module, child) for child in ast.iter_child_nodes(node))
+
+        def container(module, number, role, label, identity):
+            return add(types.SimpleNamespace(lineno=number), module, 'decision', label,
+                       f'{identity}@{filenames[module]}:{number}', role=role)
 
         def decorated(module, name):
             fn = functions.get((module, name))
@@ -302,9 +375,85 @@ def inspect_automation_source(files):
                 if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom, ast.Pass)):
                     continue
                 if isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.With, ast.AsyncWith, ast.Match)):
-                    add(statement, module, 'script', 'Other code', f'other@{filenames[module]}:{statement.lineno}')
+                    if has_step(module, statement):
+                        structured(module, statement, expand)
+                    else:
+                        add(statement, module, 'script', 'Other code', f'other@{filenames[module]}:{statement.lineno}')
                 elif not walk_call(module, statement, expand) and any(isinstance(item, ast.Call) for item in ast.walk(statement)):
                     add(statement, module, 'script', 'Other code', f'other@{filenames[module]}:{statement.lineno}')
+
+        def structured(module, statement, expand):
+            """Draw a block that holds steps: a container row, with its steps nested inside."""
+            if isinstance(statement, ast.If):
+                walk_call(module, statement.test, expand)
+                branch = container(module, statement.lineno, 'branch', 'Choose a path', 'branch')
+                with nested(branch):
+                    current, first = statement, True
+                    while True:
+                        case = container(module, current.lineno, 'case',
+                                         comment_above(module, current.lineno) or words(current.test), 'case')
+                        with nested(case):
+                            if not first:
+                                walk_call(module, current.test, expand)
+                            block(module, current.body, expand)
+                        rest = current.orelse
+                        if len(rest) == 1 and isinstance(rest[0], ast.If) and line_text(module, rest[0].lineno).lstrip().startswith('elif'):
+                            current, first = rest[0], False
+                            continue
+                        if rest:
+                            number = next((n for n in range(rest[0].lineno - 1, current.body[-1].end_lineno, -1)
+                                           if line_text(module, n).strip().startswith('else')), rest[0].lineno)
+                            case = container(module, number, 'case', comment_above(module, number) or 'Otherwise', 'case')
+                            with nested(case):
+                                block(module, rest, expand)
+                        break
+            elif isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+                if isinstance(statement, ast.While):
+                    default = 'Repeat while ' + words(statement.test)
+                else:
+                    walk_call(module, statement.iter, expand)
+                    default = 'Repeat for each ' + operand(statement.target)
+                repeat = container(module, statement.lineno, 'repeat', comment_above(module, statement.lineno) or default, 'repeat')
+                with nested(repeat):
+                    if isinstance(statement, ast.While):
+                        walk_call(module, statement.test, expand)
+                    block(module, statement.body + statement.orelse, expand)
+            elif isinstance(statement, ast.Try):
+                outer = container(module, statement.lineno, 'try', comment_above(module, statement.lineno) or 'Try', 'try')
+                with nested(outer):
+                    block(module, statement.body, expand)
+                    for handler in statement.handlers:
+                        failure = container(module, handler.lineno, 'failure', comment_above(module, handler.lineno) or 'If this fails', 'failure')
+                        with nested(failure):
+                            block(module, handler.body, expand)
+                    block(module, statement.orelse, expand)
+                    if statement.finalbody:
+                        number = next((n for n in range(statement.finalbody[0].lineno - 1, statement.finalbody[0].lineno - 4, -1)
+                                       if line_text(module, n).strip().startswith('finally')), statement.finalbody[0].lineno)
+                        always = container(module, number, 'block', comment_above(module, number) or 'Always', 'always')
+                        with nested(always):
+                            block(module, statement.finalbody, expand)
+            elif isinstance(statement, (ast.With, ast.AsyncWith)):
+                outer = container(module, statement.lineno, 'block', comment_above(module, statement.lineno) or 'Block', 'block')
+                with nested(outer):
+                    for item in statement.items:
+                        walk_call(module, item.context_expr, expand)
+                    block(module, statement.body, expand)
+            else:
+                walk_call(module, statement.subject, expand)
+                branch = container(module, statement.lineno, 'branch', 'Choose a path', 'branch')
+                with nested(branch):
+                    for item in statement.cases:
+                        number = item.pattern.lineno
+                        if item.guard is None and isinstance(item.pattern, ast.MatchAs) and item.pattern.pattern is None:
+                            default = 'Otherwise'
+                        elif isinstance(item.pattern, ast.MatchValue):
+                            default = f'{operand(statement.subject)} is {operand(item.pattern.value)}'
+                        else:
+                            default = plain(ast.unparse(item.pattern))
+                        case = container(module, number, 'case', comment_above(module, number) or default, 'case')
+                        with nested(case):
+                            block(module, item.body, expand)
 
         entry = functions.get(('main', 'main'))
         if entry:
