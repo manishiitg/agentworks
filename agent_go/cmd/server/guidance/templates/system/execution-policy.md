@@ -1,19 +1,7 @@
-## Execution policy — one invocation, one run
+# One invocation, one saved-script run
 
-`runs action=start` and `runs action=step` each start one run. Inputs resolve
-from defaults, optional `input_preset`, then explicit `inputs`. No preset is
-chosen automatically, and defining several presets never starts several runs.
-Routes are selected explicitly through `route_selections` or the planned router,
-not through preset names. Group selectors and enabled-group fan-out are retired.
+A direct workflow start executes one saved Python program. Inputs resolve from declared defaults, an optional saved input preset and explicit typed values. A preset supplies values; it does not select work or fan out. `@step` labels describe progress inside the program and cannot be started or debugged independently.
 
-If the user asks to run several sets of inputs, start separate invocations.
-Run them sequentially unless the user asks for parallel work; shared browsers,
-accounts and external systems can still contend even with separate run folders.
-Wait for auto-notifications instead of polling in a loop. A failure in one run
-can be investigated before the next starts.
+Start several input sets as separate invocations only when requested. Each invocation keeps its own saved input values, frozen source, run identity, outputs and records. Scheduling and webhooks use the same script entry and current access; manage them through their own offered tools. See the schedules reference for their current contract.
 
-Each run records its input values once and retains them for continuation.
-Scheduled and webhook invocations keep their server-bound run identity. Builder
-continuation may name an existing run; it never creates a label-based folder or
-changes that run's inputs. Cross-schedule concurrency remains governed by
-`references/schedules.md`.
+Read the returned run record and logs before deciding whether more work is needed. A start receipt is not a completed result. A failed run may already have written records, called an app or sent a message; do not automatically repeat it. Stop only the selected live execution when the person asks, using the current execution control and returned identity. A Python progress label is not an execution identity. For a correction, edit the saved source and run the requested work again; use a continuation operation only when the current schema offers it and its saved-source/input contract matches the request.

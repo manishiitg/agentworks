@@ -5696,7 +5696,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		defer toolGate.logSurface(sessionID)
 		bridgeProvider := usesMCPBridge(finalProvider, finalModelID)
-		useCodeExecutionMode, platformBridgeTools := externalWorkflowTransport(claims, false, toolGate, bridgeProvider)
+		useCodeExecutionMode := true
+		var platformBridgeTools []string
 		if projectTokenChat {
 			useCodeExecutionMode, platformBridgeTools = externalProjectTransport(claims, toolGate, bridgeProvider)
 		}

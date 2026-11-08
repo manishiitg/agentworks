@@ -1236,27 +1236,9 @@
   },
   {
     "family": "runs",
-    "name": "step",
-    "member": "execute_step",
-    "description": "Run one workflow step with real effects."
-  },
-  {
-    "family": "runs",
-    "name": "debug",
-    "member": "debug_step",
-    "description": "Use the existing workflow step debugger."
-  },
-  {
-    "family": "runs",
     "name": "active",
     "member": "list_executions",
     "description": "List current workflow executions."
-  },
-  {
-    "family": "runs",
-    "name": "step_status",
-    "member": "query_step",
-    "description": "Read a tracked step execution\u2019s status."
   },
   {
     "family": "runs",
@@ -1269,12 +1251,6 @@
     "name": "stop_all",
     "member": "stop_all_executions",
     "description": "Stop current workflow executions through their existing control path."
-  },
-  {
-    "family": "runs",
-    "name": "message",
-    "member": "send_step_message",
-    "description": "Send instructions to a live execution."
   },
   {
     "family": "sessions",

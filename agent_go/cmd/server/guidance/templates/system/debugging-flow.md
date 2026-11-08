@@ -1,85 +1,9 @@
-## Debugging Failed Steps
+# Investigate a saved Python run
 
-When a step doesn't do what it should — wrong output, missing actions,
-incomplete results — **don't just re-run it**. You have a smarter
-model — use it to investigate.
+Start with the exact workflow and run identity from the person's report. Read its saved status, outputs, script log and recorded calls/checks. Distinguish an input or source failure from account access, a missing connection, provider failure or cancellation. Quote the concrete evidence; an old failed run is not proof that the current saved source has the same failure.
 
-## Workshop investigation workflow
+Python `@step` labels are progress records inside one program, not separately runnable plan steps. Inspect the saved source snapshot and relevant helper/check record rather than launching a label or starting another assistant. Missing or unfinished evidence is unknown, not success.
 
-1. Read real outputs, logs and validation evidence to identify the failing contract. Investigate and repair it in the current Builder conversation. AgentWorks sends evidence and the expected result to Builder; there is no Bug Review/Fixer handoff.
-2. Use the matching step/plan/configuration tool for a justified repair within current permissions. For a strategy gap, agree the intended goal outcome before changing the approach.
-3. Verify the affected scope with a targeted run when it would resolve uncertainty. Continue useful independent work while an admitted background run finishes.
+When a source correction is requested, edit the saved program through the managed writer and keep the change within that request. Check the changed path proportionally; state what ran and what remains unverified. Do not change permissions, accounts, secrets, timers or unrelated logic as a diagnostic shortcut.
 
-**When a step is stuck or repeatedly failing**, run the task yourself
-using the same tools the step agent would use, but first read
-the selected workflow skill index and any relevant KB/db/run artifacts so
-you reuse what the workflow already learned. Figure out what works,
-then update the step's instructions, validation, config, or skills
-with the correct approach.
-
-## Run investigation workflow
-
-1. If the user asks for live status, call `runs action=step_status` (step_id=...) for
-   the relevant step. Use `runs action=active` (status_filter="running")
-   only if you need to identify running steps.
-2. If a running step appears stuck, use `runs action=step_status` to inspect
-   captured structured MCP tool calls and summarize what is known. If
-   no tool calls are listed for a coding CLI provider, say that
-   terminal/TUI progress is separate and wait for auto-notification
-   unless the user asks you to stop or check again. Do not poll in a
-   tight loop.
-3. If a step already completed or failed, use
-   `runs action=debug` (step_id, iteration="<returned run_folder>") plus targeted reads of run
-   outputs/log summaries. For whole-run questions, use
-   the relevant timing, cost, eval, report, and goal reviews.
-4. Explain the observed failure or data gap in plain English and offer
-   retry/skip/help when appropriate.
-5. If the right action is a targeted retry, utility check, or one-off
-   investigation, run the relevant normal or orphan step with
-   `runs action=step`; if the request needs the whole workflow, call
-   `runs action=start`.
-6. If fixing requires changing step descriptions, validation, config,
-   skills, KB, db shape, report wiring, or evaluation, tell the
-   user to switch to Workshop. Do not mutate
-   workflow design artifacts from Run mode.
-
-**When a step is stuck or repeatedly failing in Run mode**, inspect
-what happened with the available run/review tools and explain the
-likely fix. Do not update step instructions, validation, config, or
-skills in this mode.
-
-## Root cause → fix mapping
-
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| Agent didn't attempt the task | Step description is unclear | Rewrite it |
-| Agent used wrong approach | Missing or stale execution guidance | Fix and wire the relevant skill; add only task-specific constraints to the description |
-| Agent missed fields/data | Output contract or evidence gap | Correct `validation_schema` or the canonical output contract; clarify intended outcome/source evidence in the description |
-| Agent couldn't find data from previous steps | Wiring gap | Fix `context_dependencies` chain |
-| Validation rejected correct output | Schema too strict | Update it |
-| Agent wasted turns on irrelevant tool calls | Description too vague | Tighten it |
-
-## Workshop fix options
-
-The fix should be one of:
-
-- Update step description (most common).
-- Update `validation_schema`.
-- Fix context dependencies.
-- Correct workflow skills.
-- Ask Builder to apply an AgentWorks repair with its evidence.
-- Make an authorized goal-aligned plan change.
-
-**Act on the evidence.** Builder applies authorized changes with its normal tools and verifies them. AgentWorks records the actual result and follows through on goal effects; sending the request alone is not completion.
-
-## Run mode fix options
-
-The fix should be one of:
-
-- Explain the issue.
-- Rerun/inspect safely.
-- Switch to Workshop for any workflow mutation.
-
-**Critical: stay in the runtime boundary.** Do direct runtime work,
-run/inspect steps, and answer from workflow state as requested, but
-redirect workflow design/config/eval/report mutations to Workshop.
+Repeat real work only when requested: a failed program may have completed earlier effects. When stopping is requested, use the returned live execution identity and the current stop operation, then verify its recorded state. Do not treat text saying stop as a cancellation.

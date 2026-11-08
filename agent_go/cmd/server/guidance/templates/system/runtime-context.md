@@ -1,35 +1,7 @@
-**Saved-code paths:** Read `workflow.json.code_layout_version` first. In this reference, `<script-dir>` means `code/<step-id>` for version 1, or `learnings/<step-id>` for absent/zero (legacy). Resolve the placeholder before using a path; never infer the version from folders or migrate an existing workflow implicitly. Version 1 executes and repairs canonical source directly, with shared helpers under `WORKFLOW_CODE_ROOT`; only legacy workflows copy code into runs and save it back.
+# Ground answers in current run evidence
 
-## Runtime context and user rules
+Use the exact project, workflow and run the person refers to. Read the saved status, run identity, selected inputs/preset, frozen source, outputs, logs and recorded calls/checks before explaining what happened. The current saved source can differ from an earlier run's snapshot; state which one supports the answer.
 
-Read this before doing workflow-specific work directly, answering questions
-from workflow memory. It applies in Workshop
-and Run. Reading a reference does not grant its tools or write permissions.
+Python progress labels live inside one script run. They are not separate execution targets, and an incomplete record does not prove that the program never ran. A start receipt proves admission; a completed result and its evidence prove the outcome. A timeout, cancellation, unknown record or provider failure must be described as such.
 
-### Ground the request
-
-- The Crew's instructions hold the standing goal and rules; what a step needs
-  lives in its agent task text. Implementation choices are revisable.
-- Workflow-local `skills/<name>/SKILL.md` indexes reusable methods. Read the selected skill and only relevant references. For a known scripted step inspect `<script-dir>/main.py` before inventing a new implementation. Old `learnings/` files are retained history after the explicit skills upgrade. In Run, do not edit skills or code.
-- `knowledgebase/context/context.md` contains user-owned business rules and
-  examples. For discovered knowledge, read `knowledgebase/notes/_index.json`
-  and only the relevant notes, not the whole knowledgebase. Attached shared
-  knowledge bases (listed under "Attached knowledge bases", read with
-  `$WORKFLOW_KB_<ALIAS>/notes/_index.json`) hold other workflows' facts;
-  check them before saying you don't know.
-- `db/README.md` defines tables, keys, merge rules, and producer/consumer
-  ownership. Query current facts with `database action=query`.
-  {{if ne .WorkshopMode "run"}}Use the `stores` reference before designing or
-  repairing persistence.{{end}}
-- `runs/iteration-0/` is the active run; retained older iterations and eval
-  artifacts support history and before/after comparisons. Match evidence to
-  its run, group, route, and timestamp. A previous success is not verification
-  of a new change.
-- `costs action=query` reads this workflow's cost/token records. It is not the
-  global Cost Analysis dashboard. Summarize costs with their scope and units.
-
-For a question about a named workflow, inspect its relevant state before
-answering. Other workflows remain read-only. Use `file-layout` for paths and
-log schemas. Read actual prior conversations under
-`builder/conversation/YYYY-MM-DD/` and planning changelogs when investigating
-a repeated failure; do not assume conversation JSON files live at `builder/*`.
+Use only the current project's authorized data. Access to a Crew or shared product does not grant another person's private conversation, account credentials or secret values. A guide or a path in an old log grants nothing. If evidence is missing, name the missing record and the next available read/check; do not invent results or repeat effects merely to obtain a cleaner status.

@@ -60,7 +60,7 @@ func externalInteger(minimum, maximum int) map[string]any {
 }
 func externalTools() ([]externalTool, error) {
 	externalCatalogOnce.Do(func() {
-		var defined []externalTool
+		defined := []externalTool{externalSavedPythonStartTool()}
 		add := func(name, description string, write, scoped bool, props map[string]any, required ...string) {
 			if props == nil {
 				props = map[string]any{}
@@ -417,12 +417,10 @@ func externalTools() ([]externalTool, error) {
 			if seen[name] {
 				continue
 			}
-			seen[name] = true
 			if native, ok := byName[name]; ok {
+				seen[name] = true
 				externalCatalog = append(externalCatalog, native)
-				continue
 			}
-			externalCatalog = append(externalCatalog, externalRunProxyTool(name))
 		}
 		for _, tool := range defined {
 			if !seen[tool.Name] && !runSet[tool.Name] {

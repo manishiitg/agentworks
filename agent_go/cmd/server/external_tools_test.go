@@ -315,7 +315,7 @@ func TestExternalRunAuthorityBoundary(t *testing.T) {
 			t.Fatalf("internal tool %s is usable by a Run token through the external API", name)
 		}
 	}
-	for _, name := range []string{"send_slack_message", "trigger_schedule"} {
+	for _, name := range []string{"run_full_workflow", "trigger_schedule"} {
 		tool, ok := byName[name]
 		if !ok {
 			t.Fatalf("deliberately kept run tool %s is not exposed", name)

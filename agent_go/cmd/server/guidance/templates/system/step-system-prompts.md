@@ -16,20 +16,7 @@ learnings, script context and KB contribution targets. The presence of a
 conditional section here does not grant access. Actual tool registration and
 the rendered Folder Guard determine the current session's permissions.
 
-This is the core system template, not a fully rendered conversation. Provider
-instructions, selected skills, shared-KB aliases, browser/secrets context and
-other supplementary sections are assembled separately. Task descriptions and task-specific rules are user instructions. Legacy
-system_rules content is preserved in the opening task; new authoring stores rules
-only in the description. Resolved declared
-inputs, output requirements, and the validation schema are also part of this
-system contract. Live human/delegation input and agent items are user
-messages. To inspect a saved run, use
-`runs action=step_prompts` (step_id="..."); check its attempt/iteration and do not treat
-an older snapshot as current configuration. For new or edited steps, use `runs action=step_runtime` (step_id="...") before execution.
-It uses the runtime core renderer and supplementary skill/context assembler,
-without creating a session or executing tools. Secret values are masked;
-dynamic/provider inputs and unsupported invocation contexts are labelled.
-New steps have no saved run yet.
+These are shared runtime templates, not commands for starting work. Provider instructions, selected skills, account/browser context and supplementary sections are assembled separately. Read current saved run records, source snapshots and logs for execution evidence. A template is not a fully rendered conversation or a permission grant. New workflow authoring uses the saved Python program and its current Crew guide.
 
 {{define "execution"}}# {{if .StepTitle}}{{.StepTitle}}{{else}}Workflow step{{end}}
 
