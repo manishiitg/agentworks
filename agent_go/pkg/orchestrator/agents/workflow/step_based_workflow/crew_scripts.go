@@ -122,7 +122,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) crewScriptParameters(ctx context.Cont
 		}
 	}
 	// A direct script invocation uses its own resolved launch inputs.
-	if len(step.ScriptInputs) == 0 && hcpo.directCrewScript != nil {
+	if len(step.ScriptInputs) == 0 && hcpo.directCrewScript != nil && step.Script == hcpo.directCrewScript.ID {
 		for name, value := range hcpo.variableValues {
 			raw[name] = value
 		}

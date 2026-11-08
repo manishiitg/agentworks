@@ -1,0 +1,218 @@
+package step_based_workflow
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/mcpagent/executor"
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+)
+
+type pythonSavedScripts map[string]CrewScriptConfiguration
+
+func (scripts pythonSavedScripts) ResolveCrewScript(_ context.Context, _, id string) (CrewScriptConfiguration, error) {
+	return scripts[id], nil
+}
+
+// PLAT-746: nested Python uses the existing runner, inputs and saved-source
+// evidence, while server-owned call stacks reject recursive side effects.
+func TestPythonSavedScriptsKeepRunOutputsAndRejectRecursiveCalls(t *testing.T) {
+	docs, files := workflowHTTPTestWorkspace(t)
+	t.Setenv("AGENTWORKS_SLOTS", "off")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE", "saved-helper-"+filepath.Base(docs))
+	const root = "Workflow/python-saved"
+	write := func(name, text string) {
+		t.Helper()
+		name = filepath.Join(docs, root, name)
+		if err := os.MkdirAll(filepath.Dir(name), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("workflow.json", `{"code_layout_version":1}`)
+	write("code/A/main.py", "pass\n")
+	c, err := NewStepBasedWorkflowOrchestrator(t.Context(), "", "", 0, "", nil, nil, false, "", &orchestrator.LLMConfig{}, 1, loggerv2.NewNoop(), nil, nil, nil, nil, nil, nil, nil, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.SetWorkspacePath(root)
+	c.selectedRunFolder = "run-saved"
+	c.WorkspaceClient = workspace.NewClient(files.URL)
+	c.SetWorkspaceEnvRef(map[string]string{"MCP_API_TOKEN": "saved-script-fixture-token"})
+	c.variableValues = map[string]string{"parent_only": "must not become a child's input"}
+	scripts := pythonSavedScripts{}
+	for _, id := range []string{"A", "B", "C", "D", "E", "F", "required"} {
+		definition := CrewScriptDefinition{ID: id, Name: id, Inputs: []Variable{{Name: "count", Type: "integer", Value: "3"}, {Name: "next", Type: "string"}}, Outputs: []string{"result.json"}}
+		if id == "required" {
+			definition.Inputs = []Variable{{Name: "count", Type: "integer", Required: true}}
+		}
+		source := `import json, os
+from pathlib import Path
+from agentworks import run_script, ScriptResult
+inputs = json.loads(os.environ['STEP_PARAMS_JSON'])
+value = {'count': inputs.get('count')}
+if inputs.get('next'):
+    next_id = inputs['next']
+    follow = {'C':'D','D':'E','E':'F'}.get(next_id, '')
+    reply = run_script(next_id, {'next':follow} if follow else {})
+    assert isinstance(reply, ScriptResult) and isinstance(reply.output_dir, (Path, type(None)))
+    assert all(isinstance(path, Path) for path in reply.outputs)
+    value = json.loads(reply.outputs[0].read_text()) if reply.ok else {'error':reply.error}
+Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps(value))
+print('saved-script-finished')
+`
+		write("code/"+id+"/main.py", source)
+		raw, _ := json.Marshal(definition)
+		write("code/"+id+"/script.json", string(raw))
+		scripts[id] = CrewScriptConfiguration{Definition: definition, Root: root + "/code/" + id, Files: map[string]string{"main.py": source, "script.json": string(raw)}}
+	}
+	// The caller is A. Its extra launch value must not leak into B's defaults.
+	c.directCrewScript = &CrewScriptDefinition{ID: "A", Name: "A"}
+	parent := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "A", Title: "A"}, Script: "A", crewScript: &CrewScriptConfiguration{Definition: *c.directCrewScript}}
+	handlers := executor.NewExecutorHandlers("", loggerv2.NewNoop())
+	bridge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(parts) != 5 || parts[0] != "s" || r.Header.Get("Authorization") != "Bearer saved-script-fixture-token" {
+			http.Error(w, "session required", 403)
+			return
+		}
+		r.Header.Set("X-Session-ID", parts[1])
+		handlers.HandlePerToolCustomRequest(w, r, parts[4])
+	}))
+	defer bridge.Close()
+	t.Setenv("MCP_API_URL", bridge.URL)
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	defer common.ClearSessionShellConfig(c.GetMCPSessionID())
+	call := func(key, id string, inputs map[string]interface{}, resume bool, redo ...bool) pythonHelperReply {
+		t.Helper()
+		c.SetExecutionOptions(&ExecutionOptions{AllowRunContinuation: resume, ResumeFromStep: 1, CrewResources: &CrewResources{Scripts: scripts}})
+		handler := c.pythonAutomationHandler(ctx, parent, filepath.Join(docs, root, "code/A"), root+"/runs/run-saved/execution/A")
+		out, err := handler(ctx, map[string]interface{}{"action": "run_script", "key": key, "order": float64(1), "redo": len(redo) > 0 && redo[0], "arguments": map[string]interface{}{"id": id, "inputs": inputs}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var reply pythonHelperReply
+		if err := json.Unmarshal([]byte(out), &reply); err != nil {
+			t.Fatal(err)
+		}
+		return reply
+	}
+	read := func(reply pythonHelperReply) string {
+		t.Helper()
+		if !reply.OK || !reply.LogComplete {
+			t.Fatalf("saved script receipt: %+v", reply)
+		}
+		value := reply.Value.(map[string]interface{})
+		paths := value["outputs"].([]interface{})
+		data, err := os.ReadFile(paths[0].(string))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(value["output_dir"].(string), filepath.Join(docs, root, "runs/run-saved/execution/helpers")) {
+			t.Fatal("child left its caller's run")
+		}
+		if log, err := os.ReadFile(reply.LogFile); err != nil || !strings.Contains(string(log), "saved-script-finished") {
+			t.Fatalf("child full log missing: %v", err)
+		}
+		return string(data)
+	}
+	first := call("saved-b", "B", map[string]interface{}{"count": 3}, false)
+	if !strings.Contains(read(first), `"count": 3`) {
+		t.Fatal("typed input not passed")
+	}
+	if !strings.Contains(read(call("default-b", "B", map[string]interface{}{}, false)), `"count": 3`) {
+		t.Fatal("child defaults lost")
+	}
+	for _, invalid := range []struct {
+		id     string
+		inputs map[string]interface{}
+	}{
+		{"B", map[string]interface{}{"count": "bad"}}, {"required", map[string]interface{}{}},
+	} {
+		if reply := call("invalid-"+invalid.id, invalid.id, invalid.inputs, false); reply.OK || reply.Error == "" || reply.LogFile == "" {
+			t.Fatalf("invalid inputs admitted: %+v", reply)
+		}
+	}
+	if reply := call("self", "A", map[string]interface{}{}, false); reply.OK || !strings.Contains(reply.Error, "A → A") {
+		t.Fatalf("self recursion: %+v", reply)
+	}
+	for _, tc := range []struct{ key, next, expected string }{
+		{"cycle", "A", "A → B → A"},
+		{"depth", "C", "depth limit of 5"},
+	} {
+		data := read(call(tc.key, "B", map[string]interface{}{"next": tc.next}, false))
+		var outcome struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(data), &outcome); err != nil || !strings.Contains(outcome.Error, tc.expected) {
+			t.Fatalf("recursive result %s: %v", data, err)
+		}
+	}
+
+	// Continuation retains completed child output even when the parent's own
+	// disposable output directory is cleared before its Python starts again.
+	if err := os.RemoveAll(filepath.Join(docs, root, "runs/run-saved/execution/A")); err != nil {
+		t.Fatal(err)
+	}
+	if cached := call("saved-b", "B", map[string]interface{}{"count": 3}, true); cached.LogFile != first.LogFile || read(cached) != read(first) {
+		t.Fatal("resume lost completed child files")
+	}
+	unfinished := call("unfinished", "B", map[string]interface{}{}, false)
+	read(unfinished)
+	var stateFile string
+	var state pythonHelperCall
+	if err := filepath.WalkDir(filepath.Join(docs, root, "runs/run-saved/helpers"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		var candidate pythonHelperCall
+		if json.Unmarshal(data, &candidate) == nil && candidate.Reply.LogFile == unfinished.LogFile {
+			stateFile, state = path, candidate
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if stateFile == "" || len(state.ScriptStack) != 2 || state.ScriptStack[0] != "A" || state.ScriptStack[1] != "B" {
+		t.Fatal("server-owned call stack was not saved")
+	}
+	// An interrupted last receipt is not permission to silently repeat work.
+	state.Complete = false
+	pending, _ := json.Marshal(state)
+	if err := os.WriteFile(stateFile, pending, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if reply := call("unfinished", "B", map[string]interface{}{}, true); reply.OK || !strings.Contains(reply.Error, "no completed receipt") {
+		t.Fatalf("uncertain script replayed: %+v", reply)
+	}
+	if redone := call("unfinished", "B", map[string]interface{}{}, true, true); redone.LogFile == unfinished.LogFile || read(redone) == "" {
+		t.Fatal("explicit redo did not retain a fresh attempt")
+	}
+	changed := scripts["B"]
+	changed.Files["main.py"] += "\n# changed source\n"
+	scripts["B"] = changed
+	if reply := call("saved-b", "B", map[string]interface{}{"count": 3}, true); reply.OK || !strings.Contains(reply.Error, "Start a new run") {
+		t.Fatalf("changed child reused old result: %+v", reply)
+	}
+}

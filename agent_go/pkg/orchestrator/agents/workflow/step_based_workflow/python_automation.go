@@ -19,13 +19,14 @@ import (
 )
 
 type pythonHelperReply struct {
-	OK             bool   `json:"ok"`
-	Text           string `json:"text"`
-	ConversationID string `json:"conversation_id"`
-	Error          string `json:"error,omitempty"`
-	LogFile        string `json:"log_file"`
-	LogComplete    bool   `json:"log_complete"`
-	LogError       string `json:"log_error,omitempty"`
+	OK             bool        `json:"ok"`
+	Value          interface{} `json:"value,omitempty"`
+	Text           string      `json:"text"`
+	ConversationID string      `json:"conversation_id"`
+	Error          string      `json:"error,omitempty"`
+	LogFile        string      `json:"log_file"`
+	LogComplete    bool        `json:"log_complete"`
+	LogError       string      `json:"log_error,omitempty"`
 }
 
 type pythonHelperCall struct {
@@ -33,6 +34,7 @@ type pythonHelperCall struct {
 	SourceHash    string            `json:"source_hash"`
 	ArgumentsHash string            `json:"arguments_hash"`
 	Complete      bool              `json:"complete"`
+	ScriptStack   []string          `json:"script_stack,omitempty"`
 	Reply         pythonHelperReply `json:"reply"`
 }
 
@@ -75,7 +77,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		order, _ := args["order"].(float64)
 		arguments, _ := args["arguments"].(map[string]interface{})
 		redo, _ := args["redo"].(bool)
-		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify") {
+		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script") {
 			return encode(pythonHelperReply{Error: "Invalid Python helper request; use the installed agentworks package."})
 		}
 		slot := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d", label, int64(order))))
@@ -89,6 +91,27 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		})
 		if fingerprintError != nil {
 			return encode(pythonHelperReply{Error: "Cannot read this script's executed source: " + fingerprintError.Error()})
+		}
+		callSourceHash := sourceHash
+		stack := pythonScriptStack(parent, step)
+		var child *CrewScriptConfiguration
+		if action == "run_script" {
+			var err error
+			child, stack, err = hcpo.preparePythonScriptCall(ctx, step, arguments)
+			if err != nil {
+				return encode(pythonHelperReply{Error: err.Error()})
+			}
+			bundle, err := json.Marshal(struct {
+				Definition CrewScriptDefinition
+				Files      map[string]string
+			}{child.Definition, child.Files})
+			if err != nil {
+				return encode(pythonHelperReply{Error: err.Error()})
+			}
+			hash := sha256.New()
+			_, _ = io.WriteString(hash, sourceHash+"\x00")
+			_, _ = hash.Write(bundle)
+			callSourceHash = hex.EncodeToString(hash.Sum(nil))
 		}
 		requestJSON, err := json.Marshal(map[string]interface{}{"action": action, "arguments": arguments})
 		if err != nil {
@@ -109,8 +132,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				}
 				return encode(previous.Reply)
 			}
+			if action == "run_script" && !previous.Complete && !redo {
+				reply := previous.Reply
+				reply.OK = false
+				reply.Error = "The previous script attempt has no completed receipt. Inspect its run before explicitly trying redo=True; it may already have done work."
+				return encode(reply)
+			}
 			if resume {
-				if previous.SourceHash != sourceHash || previous.ArgumentsHash != argumentsHash {
+				if previous.SourceHash != callSourceHash || previous.ArgumentsHash != argumentsHash {
 					return encode(pythonHelperReply{Error: "This resumed call has changed code or inputs. Start a new run."})
 				}
 				if previous.Complete && !redo {
@@ -128,7 +157,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		defer log.Close()
 		log.Note(action + " starting")
 		_, _ = log.Stream("request").Write(append(requestJSON, '\n'))
-		call := pythonHelperCall{ExecutionID: executionID, SourceHash: sourceHash, ArgumentsHash: argumentsHash,
+		call := pythonHelperCall{ExecutionID: executionID, SourceHash: callSourceHash, ArgumentsHash: argumentsHash, ScriptStack: stack,
 			Reply: pythonHelperReply{LogFile: log.Path()}}
 		persist := func() error {
 			data, err := json.Marshal(call)
@@ -145,6 +174,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			return encode(call.Reply)
 		}
 		switch action {
+		case "run_script":
+			childCtx := context.WithValue(ctx, pythonScriptStackKey{}, stack)
+			call.Reply = hcpo.runPythonSavedScript(childCtx, step, child, arguments, id)
 		case "check":
 			name, _ := arguments["name"].(string)
 			ok, valid := arguments["ok"].(bool)
@@ -204,11 +236,15 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		}
 		// This activity event precedes closing the log. Final log evidence
 		// belongs only in the flushed response and durable result receipt.
-		resultJSON, _ := json.Marshal(map[string]interface{}{"ok": call.Reply.OK, "error": call.Reply.Error, "text": call.Reply.Text, "conversation_id": call.Reply.ConversationID})
+		resultJSON, _ := json.Marshal(map[string]interface{}{"ok": call.Reply.OK, "error": call.Reply.Error, "text": call.Reply.Text, "conversation_id": call.Reply.ConversationID, "value": call.Reply.Value})
 		_, _ = log.Stream("result").Write(append(resultJSON, '\n'))
 		log.Note(action + " finished")
 		log.Close()
-		call.Reply.LogComplete, call.Reply.LogError = log.Error() == "", log.Error()
+		if call.Reply.LogFile == "" || call.Reply.LogFile == log.Path() {
+			call.Reply.LogFile, call.Reply.LogComplete, call.Reply.LogError = log.Path(), log.Error() == "", log.Error()
+		} else if log.Error() != "" {
+			call.Reply.LogError += " Helper activity log: " + log.Error()
+		}
 		call.Complete = true
 		if err := persist(); err != nil {
 			call.Reply.LogError = "Helper finished but its result receipt could not be saved: " + err.Error()
