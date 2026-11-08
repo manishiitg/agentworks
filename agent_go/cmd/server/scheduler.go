@@ -1267,6 +1267,7 @@ func webhookDeliveryStartError(ctx context.Context, workspace string, sched Work
 		if !sched.IsInternalTrigger() {
 			return errors.New("direct run requires an authenticated internal binding")
 		}
+		sched.InputPreset = input.DirectInputPreset
 		return resolveWorkflowWebhookInputs(ctx, workspace, sched, input)
 	}
 	if sched.Webhook == nil && !sched.IsFunctionTrigger() {
