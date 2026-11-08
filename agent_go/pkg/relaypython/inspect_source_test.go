@@ -116,6 +116,10 @@ def bill_person(account):
 def send_receipt(account):
     return account
 
+@step("Check limit")
+def check_limit(account):
+    return True
+
 @step("Notify team")
 def notify(account):
     return send_receipt(account)
@@ -139,6 +143,9 @@ def main():
         send_receipt(account)
     except Exception:
         agent("Helper", "Tell the team")
+    match mode:
+        case "gold" if check_limit(account):
+            send_receipt(account)
     with open("log.txt") as handle:
         print(handle.read())
 `
@@ -190,6 +197,10 @@ def main():
 		"Send receipt in Try",
 		"If this fails [failure] in Try",
 		"Helper in If this fails",
+		"Choose a path [branch]",
+		"mode is gold, and check_limit(account) [case] in Choose a path",
+		"Check limit in mode is gold, and check_limit(account)",
+		"Send receipt in mode is gold, and check_limit(account)",
 		"Other code",
 	}
 	if strings.Join(rows, "\n") != strings.Join(want, "\n") {

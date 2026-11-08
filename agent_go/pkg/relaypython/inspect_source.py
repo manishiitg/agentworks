@@ -452,8 +452,12 @@ def inspect_automation_source(files):
                             default = f'{operand(statement.subject)} is {operand(item.pattern.value)}'
                         else:
                             default = plain(ast.unparse(item.pattern))
+                        if item.guard is not None and default != 'Otherwise':
+                            default = plain(f'{default}, and {words(item.guard)}')
                         case = container(module, number, 'case', comment_above(module, number) or default, 'case')
                         with nested(case):
+                            if item.guard is not None:
+                                walk_call(module, item.guard, expand)
                             block(module, item.body, expand)
 
         entry = functions.get(('main', 'main'))
