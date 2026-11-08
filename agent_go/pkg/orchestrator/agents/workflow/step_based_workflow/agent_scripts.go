@@ -227,7 +227,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentScripts(ctx context.Conte
 			return "", err
 		}
 		if shared := call.Step.crewScript; shared != nil {
-			if strings.TrimSpace(shared.Files["main.py"]) == "" {
+			if strings.TrimSpace(string(shared.Files["main.py"])) == "" {
 				return "", fmt.Errorf("scripted call %q: saved main.py unavailable", call.Call.ID)
 			}
 			callCtx := withScriptedDelegationContext(ctx, "", call.Call.ID, "", call.Call.Parameters)

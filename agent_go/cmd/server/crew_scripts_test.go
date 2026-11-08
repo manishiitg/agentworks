@@ -91,6 +91,18 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	if code := request("owner", "print('owner update')\n"); code != 200 {
 		t.Fatalf("restored Builder edit HTTP%d", code)
 	}
+	// PLAT-746-459: helper packages use the same source writer and authority.
+	if code := request("runner", "print('forged')", "helper/values.py"); code != 403 {
+		t.Fatalf("Run person edited nested source HTTP%d", code)
+	}
+	if code := request("owner", "VALUE = 7\n", "helper/values.py"); code != 200 {
+		t.Fatalf("Builder nested source HTTP%d", code)
+	}
+	for _, file := range []string{"../outside.py", "/outside.py", "helper/../../outside.py", "helper/../outside.py", "helper/.private.py", "helper\\outside.py", "helper/script.json"} {
+		if code := request("owner", "refused", file); code != 400 {
+			t.Fatalf("source path %q admitted HTTP%d", file, code)
+		}
+	}
 	manifest, found, err := ReadWorkflowManifest(context.Background(), script.Root)
 	if err != nil || !found {
 		t.Fatal(err)
@@ -117,7 +129,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	}
 	resolver := &crewWorkflowResources{userID: "owner"}
 	resolved, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "script:qualify")
-	if err != nil || string(resolved.Files["main.py"]) != "print('owner update')\n" {
+	if err != nil || string(resolved.Files["main.py"]) != "print('owner update')\n" || string(resolved.Files["helper/values.py"]) != "VALUE = 7\n" {
 		t.Fatalf("same-Crew script: %+v %v", resolved, err)
 	}
 	if _, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "other-script"); err == nil || !strings.Contains(err.Error(), "shared function") {

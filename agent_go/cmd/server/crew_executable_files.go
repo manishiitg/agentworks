@@ -176,7 +176,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		upgrading := binding.Kind == "workflow" && len(pending) > 0 && !workflowContractNeedsRecreation(manifest) && manifest.CodeLayoutVersion == 1
 		guide := upgrading && strings.HasSuffix(clean, ".md") && strings.HasPrefix(clean, "skills/")
 		oldHelperRead := upgrading && action == "read" && strings.HasPrefix(clean, "learnings/")
-		allowed := guide || oldHelperRead || (binding.Kind == "script" && (clean == "script.json" || clean == "main.py" || strings.HasSuffix(clean, ".py") && !strings.Contains(clean, "/"))) || strings.HasPrefix(clean, "planning/") || strings.HasPrefix(clean, "code/") || clean == "variables/variables.json"
+		allowed := guide || oldHelperRead || (binding.Kind == "script" && crewScriptEditableFile(clean)) || strings.HasPrefix(clean, "planning/") || strings.HasPrefix(clean, "code/") || clean == "variables/variables.json"
 		if !valid || !allowed {
 			return "", fmt.Errorf("choose a definition file under planning, code or variables; runtime and account files are not part of this editor")
 		}

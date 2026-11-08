@@ -240,7 +240,7 @@ print('saved-script-finished')
 		t.Fatal("explicit redo did not retain a fresh attempt")
 	}
 	changed := scripts["B"]
-	changed.Files["main.py"] += "\n# changed source\n"
+	changed.Files["main.py"] = append(append([]byte{}, changed.Files["main.py"]...), []byte("\n# changed source\n")...)
 	scripts["B"] = changed
 	if reply := call("saved-b", "B", map[string]interface{}{"count": 3}, true); reply.OK || !strings.Contains(reply.Error, "Start a new run") {
 		t.Fatalf("changed child reused old result: %+v", reply)
