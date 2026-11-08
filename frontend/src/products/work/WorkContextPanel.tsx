@@ -16,7 +16,6 @@ import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
-import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPanel'
 import { CREW_MENU_GROUPS, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
@@ -37,7 +36,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', profileId, projectId || workspacePath)
-  const incomingEmail = useAgentInboxEnabled()
   const allowed = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
   const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath, reviewSessionId)
   const section = (id: string) => data?.sections.find(item => item.id === id)
@@ -46,7 +44,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const documents = (section('dashboards')?.rows || []).map((row, order) => ({ id: row.id, title: row.label, path: row.path!, order, motion: row.motion, artifact: row.artifact }))
   const browserRow = section('browser')?.rows[0]
   const browser = { connected: browserRow?.connected === true, name: browserRow?.label === 'Browser' ? undefined : browserRow?.label, label: browserRow?.detail || (section('browser')?.error ? 'Unable to check' : 'Checking…') }
-  const menuOptions = { panels, enabledPanels, incomingEmail, projectId }
+  const menuOptions = { panels, enabledPanels, projectId }
   const inventory = crewProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const byId = new Map(inventory.map(item => [item.id, item]))
   const accessItems = inventory.filter(item => item.group === 'Share' && item.view === 'mcp')
@@ -75,9 +73,16 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
   // One page, opened at the tab the row names (the Automations page listens for the target).
   const automationKinds = [{ target: 'schedules', label: 'Schedules', icon: CalendarClock }, { target: 'triggers', label: 'Webhooks', icon: Webhook }, { target: 'conditions', label: 'Watchers', icon: Eye }] as const
-  const automationRows = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('schedules:'))
-  // The collapsed row's stacked icons: one per kind that has something, with how many (Connections look).
-  const automationChips = automationKinds.map(kind => ({ ...kind, count: automationRows.filter(row => row.destination === `schedules:${kind.target}`).length })).filter(chip => chip.count > 0)
+  const allRows = (data?.sections || []).flatMap(item => item.rows)
+  // The server sends an Inbox row whenever it can do inboxes, On or Off (the server decides, not a browser flag).
+  const inboxRow = allRows.find(row => row.destination === 'schedules:email')
+  // The collapsed row's stacked icons: one per kind that has something, with how many (Connections look): the workflow,
+  // each start, and the Inbox while it is on. Each hint is the server's one-line summary.
+  const automationChips = [
+    { key: 'workflow', detailKey: 'workflow', target: 'workflow', label: 'Workflow', icon: Route, count: allRows.filter(row => row.destination === 'workflow').length },
+    ...automationKinds.map(kind => ({ key: kind.target, detailKey: `schedules:${kind.target}`, target: kind.target, label: kind.label, icon: kind.icon, count: allRows.filter(row => row.destination === `schedules:${kind.target}`).length })),
+    { key: 'email', detailKey: 'schedules:email', target: 'email', label: 'Inbox', icon: Mail, count: inboxRow?.connected ? 1 : 0 },
+  ].filter(chip => chip.count > 0)
   const openAutomation = (target: string) => { const item = byId.get('schedules'); if (item) open({ ...item, target }) }
   // Access is one full-panel page in the Mac app and on the website (owner, 5 Nov: the same Team screens everywhere),
   // with Who can use it where the server lists it; it is never a smaller copy inside this menu.
@@ -164,14 +169,14 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
       detail={automationChips.length ? undefined : data?.details.automations}
       preview={automationChips.length ? <div className="isolate flex -space-x-1.5">{automationChips.map(chip =>
-        <ConnectionIcon key={chip.target} icon={chip.icon} hint={`${chip.label} · ${data?.details[`schedules:${chip.target}`] ?? chip.count}`} count={chip.count} onClick={() => openAutomation(chip.target)} />)}</div> : undefined}>
+        <ConnectionIcon key={chip.key} icon={chip.icon} hint={`${chip.label} · ${data?.details[chip.detailKey] ?? chip.count}`} count={chip.count} onClick={() => chip.target === 'workflow' ? openID('workflow') : openAutomation(chip.target)} />)}</div> : undefined}>
       {/* Everything that sets work off, inside one row like Connections (owner, 8 Nov): the workflow, then its starts,
           each with the server's one-line summary. */}
-      {byId.has('workflow') && <Row icon={Route} onClick={() => openID('workflow')}>Workflow</Row>}
+      {byId.has('workflow') && <Row icon={Route} detail={data?.details.workflow} onClick={() => openID('workflow')}>Workflow</Row>}
       {byId.has('schedules') && <>
         {automationKinds.map(({ target, label, icon: Icon }) =>
           <Row key={target} icon={Icon} detail={data?.details[`schedules:${target}`]} onClick={() => openAutomation(target)}>{label}</Row>)}
-        {incomingEmail && <Row icon={Mail} onClick={() => openAutomation('email')}>Inbox</Row>}
+        {inboxRow && <Row icon={Mail} detail={data?.details['schedules:email']} onClick={() => openAutomation('email')}>Inbox</Row>}
       </>}
     </WorkspaceCompactGroup></TooltipProvider>}
     </>}
