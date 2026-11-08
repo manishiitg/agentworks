@@ -456,6 +456,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		log.Note(note)
 		saved.AgentSessionHandle = nil
 		saved.Session = agentSequenceSession{}
+		saved.FirstMessage = args.Messages[0]
 		saved.NativeExpired = false
 	}
 	step := &AgentPlanStep{Type: StepTypeAgent, CommonStepFields: CommonStepFields{ID: saved.StepID, Title: saved.Name, Description: saved.FirstMessage}, AgentConfigs: &saved.Config}
