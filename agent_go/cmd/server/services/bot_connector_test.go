@@ -313,9 +313,9 @@ func TestRunningSingleUserThreadOtherUserMentionNotInjected(t *testing.T) {
 	}
 }
 
-func TestThreadlessDurableBindingDoesNotCrossWorkflowRoutes(t *testing.T) {
-	oldRoute := &ChannelRoute{WorkflowID: "wf-old", WorkspacePath: "Workflow/old", WorkshopMode: "run"}
-	newRoute := &ChannelRoute{WorkflowID: "wf-new", WorkspacePath: "Workflow/new", WorkshopMode: "run"}
+func TestThreadlessDurableBindingDoesNotCrossCrewRoutes(t *testing.T) {
+	oldRoute := &ChannelRoute{ProfileID: "work", ConversationKey: "crew-old", WorkspacePath: "Crew/old", BotGrant: "run"}
+	newRoute := &ChannelRoute{ProfileID: "work", ConversationKey: "crew-new", WorkspacePath: "Crew/new", BotGrant: "run"}
 	connector := &persistentBindingTestConnector{
 		testBotConnector: &testBotConnector{},
 		binding: BotSessionBinding{
@@ -327,6 +327,9 @@ func TestThreadlessDurableBindingDoesNotCrossWorkflowRoutes(t *testing.T) {
 	}
 	manager := NewBotConversationManager(nil, "", "")
 	manager.RegisterConnector(connector)
+	manager.SetProfileTurnFunc(func(_ context.Context, _ string, _ BotIncomingMessage, _ ThreadID) (map[string]interface{}, string, bool, error) {
+		return map[string]interface{}{"agent_profile_id": "work", "query": "new Crew"}, "new-crew-chat", true, nil
+	})
 
 	started := make(chan string, 1)
 	manager.SetStartSessionFunc(func(_ context.Context, _ map[string]interface{}, sessionID string, _ string, _ func(event *events.AgentEvent)) error {
@@ -338,7 +341,7 @@ func TestThreadlessDurableBindingDoesNotCrossWorkflowRoutes(t *testing.T) {
 		UserID:          "phone-user",
 		WorkspaceUserID: "workspace-user",
 		ChannelID:       "account|15551234567@s.whatsapp.net",
-		Text:            "new workflow",
+		Text:            "new Crew",
 		PresetWorkflow:  newRoute,
 		IsMention:       true,
 	})
@@ -346,7 +349,7 @@ func TestThreadlessDurableBindingDoesNotCrossWorkflowRoutes(t *testing.T) {
 	select {
 	case got := <-started:
 		if got == "bot-whatsapp--old-workflow" {
-			t.Fatal("a persisted session from another workflow was reused")
+			t.Fatal("a persisted session from another Crew was reused")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected a new session to start")
