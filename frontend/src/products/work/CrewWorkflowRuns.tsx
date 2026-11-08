@@ -53,6 +53,19 @@ function statusLine(folder: RunFolderInfo) {
   return [head, by].filter(Boolean).join(' · ')
 }
 
+/** Every run's total spend, added up by the server: one small read for the whole list. */
+function useRunTotals(workspacePath: string, refreshKey: number) {
+  const [totals, setTotals] = useState<Record<string, number> | null>(null)
+  useEffect(() => {
+    let current = true
+    agentApi.getRunCostTotals(workspacePath)
+      .then(response => { if (current) setTotals(Object.fromEntries((response.runs ?? []).map(run => [run.run_folder, run.total_cost_usd]))) })
+      .catch(() => { if (current) setTotals({}) })
+    return () => { current = false }
+  }, [workspacePath, refreshKey])
+  return totals
+}
+
 function useRunInspections(workspacePath: string, runFolder: string) {
   const [records, setRecords] = useState<WorkspaceStepInspection[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
@@ -86,8 +99,8 @@ export function CrewWorkflowRuns({ workspacePath, folders, loading, onRefresh, o
 }) {
   const [open, setOpen] = useState<string | null>(null)
   const [showCosts, setShowCosts] = useState(false)
-  const costs = useCostsData({ workspacePath, selectedRunFolder: null })
-  const costOf = (name: string) => costs.runCosts.find(run => run.runFolder === name)?.costSummary?.totalCost
+  const totals = useRunTotals(workspacePath, folders.length)
+  const costOf = (name: string) => totals?.[name]
   const opened = open ? folders.find(folder => folder.name === open) : undefined
   if (showCosts) return <div className="space-y-3">
     <button type="button" onClick={() => setShowCosts(false)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-3.5 w-3.5" /> Back to runs</button>
@@ -95,11 +108,11 @@ export function CrewWorkflowRuns({ workspacePath, folders, loading, onRefresh, o
       <Costs workspacePath={workspacePath} runFolders={folders.map(folder => folder.name)} selectedRunFolder={null} />
     </Suspense></div>
   </div>
-  if (opened) return <OpenedRun workspacePath={workspacePath} folder={opened} cost={costOf(opened.name)} stepCosts={costs.runCosts.find(run => run.runFolder === opened.name)?.costSummary?.stepCosts ?? []} onBack={() => setOpen(null)} onRefresh={onRefresh} onAsk={onAsk} />
+  if (opened) return <OpenedRun workspacePath={workspacePath} folder={opened} cost={costOf(opened.name)} onBack={() => setOpen(null)} onRefresh={onRefresh} onAsk={onAsk} />
   const weekAgo = Date.now() - 7 * 86_400_000
   const thisWeek = folders.filter(folder => new Date(startedAt(folder)).getTime() >= weekAgo)
   const needLook = thisWeek.filter(folder => folder.metadata?.status === 'failed').length
-  const costsLoaded = costs.runCosts.length > 0
+  const costsLoaded = totals !== null && Object.keys(totals).length > 0
   const spend = (since: number) => folders.filter(folder => new Date(startedAt(folder)).getTime() >= since).reduce((sum, folder) => sum + (costOf(folder.name) ?? 0), 0)
   const startOfToday = new Date(new Date().toDateString()).getTime()
   const hint = [needLook ? `${needLook} this week ${needLook === 1 ? 'needs' : 'need'} a look.` : thisWeek.length ? 'Nothing this week needs a look.' : '', costsLoaded ? `Spent ${formatCost(spend(weekAgo))}.` : ''].filter(Boolean).join(' ')
@@ -117,16 +130,17 @@ export function CrewWorkflowRuns({ workspacePath, folders, loading, onRefresh, o
   </div>
 }
 
-function OpenedRun({ workspacePath, folder, cost, stepCosts, onBack, onRefresh, onAsk }: {
+function OpenedRun({ workspacePath, folder, cost, onBack, onRefresh, onAsk }: {
   workspacePath: string
   folder: RunFolderInfo
   cost?: number
-  stepCosts: Array<{ stepID: string; stepTitle: string; totalCost: number }>
   onBack: () => void
   onRefresh: () => Promise<void>
   onAsk: (task: string) => void | Promise<void>
 }) {
   const { records, cursor, error, loading, loadMore } = useRunInspections(workspacePath, folder.name)
+  // The one opened run's step costs, read for that run only.
+  const stepCosts = useCostsData({ workspacePath, selectedRunFolder: folder.name, runOnly: true }).runCosts.find(run => run.runFolder === folder.name)?.costSummary?.stepCosts ?? []
   const [target, setTarget] = useState<ExecutionInspectionTarget | null>(null)
   const [detail, setDetail] = useState<'log' | 'costs' | null>(null)
   const stepCost = (record: WorkspaceStepInspection) => stepCosts.find(step => (record.inspection.step_id && step.stepID === record.inspection.step_id) || step.stepTitle === record.inspection.name)?.totalCost
