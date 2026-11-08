@@ -86,6 +86,23 @@ class ChosenBuildTest(unittest.TestCase):
         self.assertIn("not an ancestor of origin/main", result.stderr)
         self.assertEqual(result.stdout.strip(), "")
 
+    def test_dev_deploy_needs_dev_in_this_repository_but_not_in_siblings(self):
+        # Review of PR 1540: without origin/dev the app fell back to origin/main, so a main-only build passed as dev.
+        result = self.run_deploy_lib('DEPLOY_BRANCH=dev DEPLOY_BUILD=11111111 ensure_prebuilt_build')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("origin/dev of mcp-agent-builder-go", result.stderr)
+        self.assertEqual(result.stdout.strip(), "")
+        # A pinned app commit takes the other path (no fetch first) and is refused the same way.
+        pin = f'DEPLOY_SHA_MCP_AGENT_BUILDER_GO={self.good["mcp-agent-builder-go"]}'
+        result = self.run_deploy_lib(f'DEPLOY_BRANCH=dev; {pin}; commit_on_branch "{self.root}/mcp-agent-builder-go" "${{DEPLOY_SHA_MCP_AGENT_BUILDER_GO}}"')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no origin/dev", result.stderr)
+        app = self.root / "mcp-agent-builder-go"
+        git(app, "push", "-q", "origin", "origin/main:refs/heads/dev")
+        result = self.run_deploy_lib('DEPLOY_BRANCH=dev DEPLOY_BUILD=11111111 ensure_prebuilt_build')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "11111111-20261001000000")
+
     def test_older_commit_plus_a_change_already_on_main_may_ship_but_nothing_unlanded(self):
         # 7 Nov: a server could not take main's newest work, and finished fixes had no route to it.
         local = self.root / "mcpagent"
