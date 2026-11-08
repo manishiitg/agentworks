@@ -50,6 +50,10 @@ func TestCrewScriptTimeoutRejectsUnboundedDefinitions(t *testing.T) {
 	}
 }
 
+func (r *savedCrewScriptFixture) ResolveCrewScriptScope(ctx context.Context, workspace, id string) (CrewScriptConfiguration, error) {
+	return r.ResolveCrewScript(ctx, workspace, id)
+}
+
 func (r *savedCrewScriptFixture) ResolveCrewScript(_ context.Context, workspace string, id string) (CrewScriptConfiguration, error) {
 	if id == "" && workspace != r.directWorkspace {
 		return CrewScriptConfiguration{}, nil
