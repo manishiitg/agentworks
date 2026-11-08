@@ -142,9 +142,8 @@ func externalTools() ([]externalTool, error) {
 			}
 			add(name, description, false, true, p, "run_folder")
 		}
-		// JSON-direct run operations. The four run.tools names keep these
-		// native implementations instead of the generic proxy below;
-		// run_status has no chat equivalent and is admitted by external_tools.
+		// Saved-script run operations use native handlers and the ordinary
+		// run lifecycle; none starts a workflow assistant.
 		addRun := func(name, description string, executes bool, props map[string]any, required ...string) {
 			if props == nil {
 				props = map[string]any{}
@@ -1113,9 +1112,8 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalWorkflowFunctionCall(w, r, tool.Name, args, *selected, access)
 		return
 	}
-	// Run operations dispatch before the workflow lock: proxy turns forward
-	// to the asynchronous query runtime (which must never run under this
-	// lock), and the status and schedule readers need no lock.
+	// Run operations use their native handlers; script starts retain the
+	// asynchronous query lifecycle and never run under a workflow lock.
 	switch tool.Name {
 	case "run_status", "list_executions", "list_schedules", "get_schedule_runs", "trigger_schedule", "run_reply_input", "stop_step", "stop_all_executions":
 		api.externalRunCall(w, r, tool.Name, args, *selected)
@@ -1129,12 +1127,8 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalScriptRerun(w, r, *selected, args)
 		return
 	}
-	if tool.executes {
-		if selected.Manifest.Kind == "relay" {
-			externalError(w, 400, "relay_builder_only", "Use relay action=test or relay action=run; Flow does not expose Run chat tools.")
-			return
-		}
-		api.externalRunProxy(w, r, tool.Name, args, *selected)
+	if tool.Name == "run_full_workflow" {
+		api.externalScriptStart(w, r, args, *selected)
 		return
 	}
 	if tool.Name == "get_script_outline" {

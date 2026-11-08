@@ -77,13 +77,9 @@ func (api *StreamingAPI) externalRunSessionSetup(w http.ResponseWriter, r *http.
 	return sessionID, persisted, true
 }
 
-// externalRunProxy starts a saved Python workflow directly. Conversation belongs
+// externalScriptStart starts a saved Python workflow directly. Conversation belongs
 // to a Crew agent; a workflow run does not create or instruct an assistant.
-func (api *StreamingAPI) externalRunProxy(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow) {
-	if name != "run_full_workflow" {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "Run the Python workflow with runs start, or inspect its saved run with runs logs. Ask a Crew agent for help.")
-		return
-	}
+func (api *StreamingAPI) externalScriptStart(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
 	if !externalWorkflowIsScript(workflow) {
 		externalError(w, http.StatusBadRequest, "workflow_unavailable", "This workflow uses the retired plan engine. Ask the owner to convert it to a Python workflow in its Crew.")
 		return
