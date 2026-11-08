@@ -41,7 +41,7 @@ import { apiTimingPathFor, recordApiTiming, sanitizeApiBody } from '../utils/api
 import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
 import { retryTurnRunningSubmission } from './turnRunningRetry'
 import { configureChatDeliveryTelemetryTransport } from '../utils/chatDeliveryTelemetry'
-import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
+import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
 
 // Re-export types for other components to use
 export type {
@@ -1115,48 +1115,6 @@ export const agentApi = {
 
   getSessionExecutionTree: async (sessionId: string, workspacePath?: string): Promise<SessionExecutionTreeResponse> => {
     const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/execution-tree`, { timeout: RUNTIME_READ_TIMEOUT_MS, params: workspacePath ? { workspace_path: workspacePath } : undefined })
-    return response.data
-  },
-
-  getWorkflowBuilderSession: async (
-    presetQueryId?: string,
-    workspacePath?: string,
-    summaryOnly = false,
-    sessionId?: string,
-  ): Promise<WorkflowBuilderSessionResponse> => {
-    const params: Record<string, string> = {}
-    if (presetQueryId) params.preset_query_id = presetQueryId
-    if (workspacePath) params.workspace_path = workspacePath
-    if (summaryOnly) params.summary_only = 'true'
-    if (sessionId) params.session_id = sessionId
-    return dedupedGet(
-      `workflow-builder-session:${captureChatIdentity()}:${presetQueryId || ''}:${workspacePath || ''}:${summaryOnly}:${sessionId || ''}`,
-      async () => {
-        const response = await api.get('/api/workflow/builder-session', { params })
-        return response.data
-      }
-    )
-  },
-
-  getWorkflowBuilderSessions: async (workflows: { preset_query_id: string; workspace_path: string; session_ids?: string[] }[]): Promise<{ success: boolean; bindings: Record<string, WorkflowBuilderSessionResponse> }> => {
-    const sorted = [...workflows].sort((a, b) => a.preset_query_id.localeCompare(b.preset_query_id))
-    return dedupedGet(`workflow-builder-batch:${captureChatIdentity()}:${JSON.stringify(sorted)}`,
-      async () => (await api.post('/api/workflow/builder-sessions', { workflows: sorted })).data)
-  },
-
-  manageWorkflowChats: async (presetId: string, workspacePath: string, action: string, chatId?: string, name?: string, options?: { pinned?: boolean; chat_ids?: string[] }): Promise<{ chats?: import('./api-types').WorkflowOwnerTab[]; chat?: import('./api-types').WorkflowOwnerTab }> => {
-    const identity = captureChatIdentity()
-    const response = await api.post('/api/workflow/chats', { preset_query_id: presetId, workspace_path: workspacePath, action, chat_id: chatId, name, ...options }, { chatIdentityGeneration: identity })
-    assertChatIdentityCurrent(identity)
-    invalidateDedupedGetPrefix('workflow-builder-batch:')
-    return response.data
-  },
-
-  startNewWorkflowBuilderSession: async (presetId: string, workspacePath: string): Promise<WorkflowBuilderSessionResponse> => {
-    const identity = captureChatIdentity()
-    const response = await api.post('/api/workflow/builder-session', { preset_query_id: presetId, workspace_path: workspacePath }, { chatIdentityGeneration: identity })
-    assertChatIdentityCurrent(identity)
-    invalidateDedupedGetPrefix('workflow-builder-batch:')
     return response.data
   },
 

@@ -2,7 +2,6 @@ import { activateTab } from './activateTab'
 import { requestChatScrollToBottom } from './chatScrollRequest'
 import { restoreSession } from './sessionRestore'
 import { hydrateExecutionConversation } from './executionConversationRestore'
-import { agentApi } from '../services/api'
 import type { ActiveSessionInfo, RunningWorkflowInfo } from '../services/api-types'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
@@ -16,7 +15,6 @@ import { activateWorkflowTab, beginWorkflowNavigation, isCurrentWorkflowNavigati
 import { scheduleTabLabel } from './scheduleTabLabel'
 import { resolveWorkflowTabForSession } from './workflowTabResolution'
 import { captureChatIdentity, isChatIdentityCurrent } from './chatIdentity'
-import { currentWorkflowBuilderBinding, publishWorkflowBuilderBinding, workflowBuilderMutation } from '../hooks/useWorkflowBuilderBindings'
 
 type RestoreWorkflowSessionOptions = {
   preset?: CustomPreset | PredefinedPreset
@@ -331,30 +329,6 @@ export async function openWorkflowPresetPage(
 
   const identity = captureChatIdentity()
   if (!preset.selectedFolder?.filepath) return
-  const bindingMutation = workflowBuilderMutation()
-  let binding = currentWorkflowBuilderBinding(preset.id)
-  try {
-    const response = await agentApi.getWorkflowBuilderSessions([{
-      preset_query_id: preset.id, workspace_path: preset.selectedFolder.filepath,
-    }])
-    if (!isChatIdentityCurrent(identity) || !isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
-    if (bindingMutation !== workflowBuilderMutation()) return
-    binding = response.bindings[preset.id]
-    if (binding) publishWorkflowBuilderBinding(binding, identity)
-  } catch {
-    // A previously verified server binding can survive a transient outage.
-    // Browser timestamps and remembered tab order never choose a replacement.
-  }
-  if (!binding || !isChatIdentityCurrent(identity) || !isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
-  if (binding.session_id) {
-    await restoreWorkflowSessionChat({
-      session_id: binding.session_id, observer_id: '', agent_mode: 'workflow_phase',
-      status: binding.source === 'live' ? binding.status : 'completed',
-      preset_query_id: preset.id, workspace_path: preset.selectedFolder.filepath,
-      created_at: '', last_activity: binding.updated_at || '',
-    }, { preset, navigationGeneration, scrollToBottom: options.scrollToBottom })
-    return
-  }
   const tabId = await ensureWorkflowComposerTab(preset.id)
   if (!isChatIdentityCurrent(identity) || !isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
   activateWorkflowTab(tabId, { expectedGeneration: navigationGeneration })
