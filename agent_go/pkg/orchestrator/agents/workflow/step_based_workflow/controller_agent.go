@@ -1257,6 +1257,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) getAgentRuntime(ctx context.Context, 
 			return nil, ctx, err
 		}
 		session.runtime = &agentSequenceRuntime{Agent: agent}
+		if selection, ok := ctx.Value(pythonAgentSelectionKey{}).(*pythonAgentSelection); ok && selection != nil {
+			// The helper owns its dedicated runtime. Per-turn shell metadata
+			// must follow that identity, never the empty parent-delegate key.
+			session.runtime.SessionID = agent.GetConfig().MCPSessionID
+		}
 		return session.runtime, ctx, nil
 	}
 

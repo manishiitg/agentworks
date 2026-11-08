@@ -98,6 +98,16 @@ if os.environ['VAR_PHASE'] == 'limits':
     raise SystemExit(0)
 first = check("same", False, "needs attention", key="same", redo=os.environ['VAR_REDO'] == 'yes')
 if os.environ['VAR_PHASE'] == 'interrupt':
+    receipts = list((run_folder / 'helpers').rglob('*.json'))
+    assert receipts, 'server receipt must already exist'
+    original = receipts[0].read_text()
+    try:
+        receipts[0].write_text('{"complete":true,"reply":{"ok":true}}')
+    except OSError:
+        pass
+    else:
+        raise AssertionError('authored script forged a server-owned helper receipt')
+    assert receipts[0].read_text() == original
     (run_folder / 'first.json').write_text(json.dumps({'log_file':str(first.log_file)}))
     raise SystemExit(17)
 second = check("same", False, "needs attention", key="same")
@@ -161,7 +171,10 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
 	step := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "task", Title: "Task"}}
-	guard := &workspace.FolderGuardConfig{Enabled: true, ReadPaths: []string{root}, WritePaths: []string{root + "/runs/run-one"}}
+	guard, err := c.resolveScriptedShellGuard(ctx, step, 0, "task", root+"/runs/run-one/execution/task", false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	read := func(name string) map[string]string {
 		t.Helper()
 		raw, err := os.ReadFile(filepath.Join(docs, root, "runs/run-one", name))
@@ -186,7 +199,7 @@ assert first.log_complete and second.log_complete and passed.log_complete
 		if _, err := codeexec.CallCustomToolWithSession(ctx, "unrelated-script-step", "python_automation", map[string]interface{}{}); err == nil {
 			t.Fatal("unregistered step borrowed the private Python helper")
 		}
-		iso := security.Isolator{BaseDir: docs, WorkDir: code, ReadPaths: []string{filepath.Join(docs, root)}, WritePaths: []string{filepath.Join(docs, root, "runs/run-one")}, BlockedWritePaths: []string{code}, ExtraEnv: env}
+		iso := security.Isolator{BaseDir: docs, WorkDir: code, ReadPaths: guard.ReadPaths, WritePaths: guard.WritePaths, BlockedWritePaths: append(append([]string{}, guard.BlockedWritePaths...), code), ExtraEnv: env}
 		command, cleanup, err := iso.ExecuteIsolated(ctx, "python3", []string{filepath.Join(code, "main.py")})
 		if err != nil {
 			t.Fatal(err)

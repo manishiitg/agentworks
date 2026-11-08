@@ -965,6 +965,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureSubAgentSessionGuard(session
 	}
 	kbRead = kbRead && hcpo.platformStoresEnabled()
 	readPaths, writePaths, readOnlyPaths, folderEnv := appendWorkflowFolderAccess(hcpo.GetWorkspacePath(), readPaths, writePaths, kbRead)
+	if stateRoot := hcpo.pythonHelperStateRoot(); stateRoot != "" {
+		readOnlyPaths = append(readOnlyPaths, stateRoot)
+	}
 	common.SetSessionFolderGuard(sessionID, readPaths, writePaths)
 	if opts := hcpo.GetExecutionOptions(); opts != nil && opts.WebhookInputFile != "" {
 		readOnlyPaths = append(readOnlyPaths, opts.WebhookInputFile)
@@ -1175,6 +1178,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	}
 	readPaths = common.DeduplicateStrings(readPaths)
 	writePaths = common.DeduplicateStrings(writePaths)
+	if stateRoot := hcpo.pythonHelperStateRoot(); stateRoot != "" {
+		// Materialize the deny target before sandbox launch, including on Linux
+		// where the read-only overlay must bind an existing directory.
+		readPaths = append(readPaths, stateRoot)
+	}
 	if err := hcpo.materializeWorkflowGuardPaths(readPaths, writePaths); err != nil {
 		return nil, err
 	}
@@ -1246,6 +1254,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 
 	// Apply step-specific overrides
 	hcpo.applyStepConfigToAgentConfig(ctx, config, stepConfig, isCodeExecutionMode, isScriptedStep(planStep))
+	if selection, ok := ctx.Value(pythonAgentSelectionKey{}).(*pythonAgentSelection); ok && selection != nil {
+		selection.apply(config)
+	}
 	if override, ok := ctx.Value(agentSequenceRuntimeSessionOverrideKey{}).(*agentSequenceRuntimeSessionOverride); ok && override != nil && override.KeepAlive && common.IsCLIProvider(config.LLMConfig.Primary.Provider) && !config.ForceStructuredCodingAgent {
 		config.CodingAgentKeepAlive = true
 		hcpo.GetLogger().Info(fmt.Sprintf("🔁 agent runtime will keep coding-agent session alive: %s", config.MCPSessionID))
@@ -1258,6 +1269,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 
 	// 5. Prepare custom tools (filtered by step config)
 	toolsToRegister, executorsToUse := hcpo.prepareExecutionTools(stepConfig, planStep, subAgentExecCtx, dbAccess)
+	if selection, ok := ctx.Value(pythonAgentSelectionKey{}).(*pythonAgentSelection); ok && selection != nil {
+		toolsToRegister, executorsToUse = selection.filterTools(toolsToRegister, executorsToUse)
+	}
 	if subAgentExecCtx != nil {
 		// Filter out human tools if "no human" execution mode is active
 		execOpts := hcpo.GetExecutionOptions()
@@ -1303,6 +1317,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 			stepExecutionPath = stepEnvOutputPathOverride
 		}
 		stepOutputAbsPath := workflowAbsPath(stepExecutionPath)
+		if selection, ok := ctx.Value(pythonAgentSelectionKey{}).(*pythonAgentSelection); ok && selection != nil {
+			common.SetSessionWorkingDir(config.MCPSessionID, stepOutputAbsPath)
+		}
 		if common.IsCLIProvider(config.LLMConfig.Primary.Provider) {
 			config.CodingAgentOutputDir = stepOutputAbsPath
 		}
@@ -1366,7 +1383,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 
 	// Apply post-setup configuration (folder guard paths and optional registry update)
 	if err := hcpo.applyPostSetupToAgent(agent, agentName); err != nil {
-		if subAgentExecCtx != nil {
+		_, pythonHelper := ctx.Value(pythonAgentSelectionKey{}).(*pythonAgentSelection)
+		if subAgentExecCtx != nil || pythonHelper {
+			_ = agent.Close()
 			return nil, fmt.Errorf("apply script-helper agent guards: %w", err)
 		}
 		// Log warning but don't fail agent creation

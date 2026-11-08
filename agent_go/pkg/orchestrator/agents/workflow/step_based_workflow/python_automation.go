@@ -27,6 +27,7 @@ type pythonHelperReply struct {
 	LogFile        string      `json:"log_file"`
 	LogComplete    bool        `json:"log_complete"`
 	LogError       string      `json:"log_error,omitempty"`
+	LogKind        string      `json:"log_kind,omitempty"`
 }
 
 type pythonHelperCall struct {
@@ -36,6 +37,15 @@ type pythonHelperCall struct {
 	Complete      bool              `json:"complete"`
 	ScriptStack   []string          `json:"script_stack,omitempty"`
 	Reply         pythonHelperReply `json:"reply"`
+}
+
+// Helper receipts and continuation configuration are server-owned evidence.
+// Models and authored Python may read them but must never forge them.
+func (hcpo *StepBasedWorkflowOrchestrator) pythonHelperStateRoot() string {
+	if hcpo.selectedRunFolder == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder, "helpers"))
 }
 
 // One script launch owns one adapter. Call occurrences, including repeated
@@ -77,7 +87,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		order, _ := args["order"].(float64)
 		arguments, _ := args["arguments"].(map[string]interface{})
 		redo, _ := args["redo"].(bool)
-		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script") {
+		if label == "" || order < 1 || order != float64(int64(order)) || arguments == nil || (action != "check" && action != "notify" && action != "run_script" && action != "agent") {
 			return encode(pythonHelperReply{Error: "Invalid Python helper request; use the installed agentworks package."})
 		}
 		slot := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d", label, int64(order))))
@@ -132,7 +142,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				}
 				return encode(previous.Reply)
 			}
-			if action == "run_script" && !previous.Complete && !redo {
+			if (action == "run_script" || action == "agent") && !previous.Complete && !redo {
 				reply := previous.Reply
 				reply.OK = false
 				reply.Error = "The previous script attempt has no completed receipt. Inspect its run before explicitly trying redo=True; it may already have done work."
@@ -174,6 +184,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			return encode(call.Reply)
 		}
 		switch action {
+		case "agent":
+			if conversation, _ := arguments["conversation_id"].(string); conversation != "" {
+				mutex, _ := locks.LoadOrStore("conversation:"+conversation, &sync.Mutex{})
+				mutex.(*sync.Mutex).Lock()
+				defer mutex.(*sync.Mutex).Unlock()
+			}
+			call.Reply = hcpo.runPythonAgent(ctx, step, arguments, id)
 		case "run_script":
 			childCtx := context.WithValue(ctx, pythonScriptStackKey{}, stack)
 			call.Reply = hcpo.runPythonSavedScript(childCtx, step, child, arguments, id)

@@ -466,6 +466,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveScriptedShellGuard(
 		}
 	}
 	readPaths = common.DeduplicateStrings(append(readPaths, writePaths...))
+	if stateRoot := hcpo.pythonHelperStateRoot(); stateRoot != "" {
+		readPaths = append(readPaths, stateRoot)
+		readOnlyPaths = append(readOnlyPaths, stateRoot)
+	}
 	if err := hcpo.materializeWorkflowGuardPaths(readPaths, writePaths); err != nil {
 		return nil, err
 	}

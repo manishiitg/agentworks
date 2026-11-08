@@ -81,6 +81,18 @@ type stream struct {
 }
 
 func (l *Log) Stream(name string) io.Writer { return stream{l, name} }
+
+// WriteAt retains the original provider-event time rather than the later time
+// its callback reaches the log. Stream remains the process-capture interface.
+func (l *Log) WriteAt(name string, data []byte, at time.Time) {
+	if l == nil {
+		return
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	l.write(name, data, at.UTC())
+}
 func (s stream) Write(data []byte) (int, error) {
 	if s.log != nil {
 		s.log.write(s.name, data, time.Now().UTC())
