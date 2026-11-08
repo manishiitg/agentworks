@@ -1,16 +1,12 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import api, { agentApi } from '../../services/api'
 import { CrewWorkflowRuns } from './CrewWorkflowRuns'
-import { CrewScriptPlan } from './CrewScriptPlan'
-import { PageCard, RowButton } from '../../components/automation/AutomationKit'
-import type { WorkspaceViewId } from '../../components/workflow/workspaceViews'
-import type { EmbeddedWorkflowScope } from '../../components/workflow/canvas/workspaceViewData'
+import { CrewWorkflowSteps } from './CrewWorkflowSteps'
+import { PageCard, PageRow, RowButton } from '../../components/automation/AutomationKit'
+import type { RunPythonStep } from '../../services/api-types'
 import { useWorkspaceState } from '../../components/workflow/hooks/useWorkspaceState'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
-import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
-
-const Canvas = lazy(() => import('../../components/workflow/canvas/WorkspaceViewHost'))
 
 export type CrewExecutable = {
   id: string
@@ -24,63 +20,27 @@ const button = 'rounded-md px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-5
 /** The Crew keeps its chat. Only the selected definition/run changes in this pane. */
 export function CrewExecutableEditor({
   item,
-  crewAgents,
-  crewScripts = [],
   chatTabId,
   section,
-  openFile,
   onBack,
 }: {
   item: CrewExecutable
-  crewAgents: Array<{ id: string; name: string }>
-  crewScripts?: Array<{ id: string; name: string }>
   chatTabId: string
-  /** The page owns the Plan | Runs switch (PlanRunsSwitch). */
-  section: 'plan' | 'runs'
-  /** A file to open now (a step's script chosen from the Scripts card); a new object opens it again. */
-  openFile?: { file: string } | null
+  /** The page owns the Steps | Runs switch (StepsRunsSwitch). */
+  section: 'steps' | 'runs'
   onBack?: () => void
 }) {
-  const [view, setView] = useState<WorkspaceViewId>('flow')
   const [file, setFile] = useState<string | null>(null)
-  // Switching Plan | Runs leaves any opened file.
+  // Switching Steps | Runs leaves any opened file.
   useEffect(() => { setFile(null) }, [section])
-  const fileView = useRef<HTMLDivElement>(null)
-  // The Scripts card sits below this page, so bring the opened file into view.
-  useEffect(() => {
-    if (!openFile) return
-    setFile(openFile.file)
-    const frame = requestAnimationFrame(() => fileView.current?.scrollIntoView?.({ block: 'start' }))
-    return () => cancelAnimationFrame(frame)
-  }, [openFile])
-  const [runFolder, setRunFolder] = useState<string | null>(null)
   const [error, setError] = useState('')
-  const workspace = useWorkspaceState(item.workspace_path, runFolder, false)
+  const workspace = useWorkspaceState(item.workspace_path, null, false)
   const folders = workspace.state?.run_folders ?? []
-  const selectedRun = runFolder && folders.some((folder) => folder.name === runFolder) ? runFolder : null
-  const openView = useCallback((next: WorkspaceViewId, target?: string) => {
-    if (next === 'files') {
-      setFile(target ?? null)
-      return
-    }
-    if (next === 'schedules' || next === 'webhooks') {
-      useWorkflowStore.getState().openWorkspaceView('workshop', next === 'webhooks' ? 'triggers' : 'schedules')
-      return
-    }
-    setView(next)
-  }, [])
-  const scope = useMemo<EmbeddedWorkflowScope>(
-    () => ({
-      crewAgents,
-      crewScripts,
-      onEditInputs: () => { void ask('Help me edit the inputs for this workflow.') },
-      view,
-      selectedRunFolder: selectedRun,
-      setSelectedRunFolder: setRunFolder,
-      openView,
-    }),
-    [crewAgents, crewScripts, view, selectedRun, openView, chatTabId, item],
-  )
+  // The steps of the latest run, in the order they started: the dots on the Steps page.
+  const latestSteps = useMemo<RunPythonStep[]>(() => {
+    const latest = [...folders].filter(folder => folder.metadata?.python_steps).sort((a, b) => (b.metadata?.created_at ?? '').localeCompare(a.metadata?.created_at ?? ''))[0]
+    return Object.values(latest?.metadata?.python_steps ?? {}).sort((a, b) => a.started_at.localeCompare(b.started_at))
+  }, [folders])
   useLiveRefetch(
     () => {
       void workspace.refresh()
@@ -98,52 +58,43 @@ export function CrewExecutableEditor({
       setError(cause instanceof Error ? cause.message : 'Open your Crew chat to continue.')
     }
   }
+  const script = item.kind === 'script'
   return (
     <div className="space-y-4">
-      {item.kind === 'script' && !!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes apply to the next run.</p>}
+      {script && !!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes here apply to all of them.</p>}
       {(error || workspace.error) && (
         <p role="alert" className="p-3 text-sm text-destructive">
           {error || workspace.error}
         </p>
       )}
       <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
-        <div>
-          {file ? (
-            <div ref={fileView} className="h-[75vh] min-h-96">
-              <ExecutableFile
-                key={file}
-                workspacePath={item.workspace_path}
-                file={file}
-                onClose={() => setFile(null)}
-              />
-            </div>
-          ) : section === 'plan' && item.kind === 'script' ? (
-            <CrewScriptPlan workspacePath={item.workspace_path} onCode={() => setFile('main.py')} onAsk={ask}
-              code={<ExecutableFile workspacePath={item.workspace_path} file="main.py" crewScript onClose={() => onBack?.()} />} />
-          ) : section === 'plan' ? (
-            <PageCard
-              title={item.manifest.label}
-              onAsk={() => ask('Help me edit this workflow.')}
-              action={<RowButton primary onClick={() => void ask('Run this workflow and report the result in this chat.')}>Run (in chat)</RowButton>}
-              testId="crew-plan-card"
-            >
-            <div className="h-[600px]">
-            <Canvas
-              key={item.id}
-              workspacePath={item.workspace_path}
-              presetQueryId={item.id}
-              embeddedPlanOnly
-              readOnly
-              hideToolbar
-              scope={scope}
-              onCreatePlan={() => void ask('Create the steps for this workflow.')}
-            />
-            </div>
+        {file ? (
+          <div className="h-[75vh] min-h-96">
+            <ExecutableFile key={file} workspacePath={item.workspace_path} file={file} crewScript={script} onClose={() => setFile(null)} />
+          </div>
+        ) : section === 'steps' ? (
+          !script ? (
+            <PageCard title={item.manifest.label} testId="crew-old-workflow-card">
+              <p className="px-4 py-3 text-sm text-muted-foreground">This workflow was made in the old format. Ask your agent to convert it to a new workflow; what it does stays the same.</p>
+              <div className="px-4 pb-3"><RowButton primary onClick={() => void ask('Convert this workflow to a new workflow and keep what it does.')}>Ask your agent to convert it</RowButton></div>
             </PageCard>
-          ) : section === 'runs' ? (
-            <CrewWorkflowRuns workspacePath={item.workspace_path} script={item.kind === 'script'} folders={folders} loading={workspace.loading} onRefresh={workspace.refresh} onAsk={ask} />
-          ) : null}
-        </div>
+          ) : (
+            <div className="space-y-4">
+              <PageCard title={item.manifest.label} onAsk={() => ask('Help me change this workflow.')}
+                action={<RowButton primary onClick={() => void ask('Run this workflow and report the result in this chat.')}>Run</RowButton>} testId="crew-workflow-card">
+                <p className="px-4 py-3 text-xs text-muted-foreground">{!latestSteps.length ? 'Not run yet.' : latestSteps.some(step => step.status === 'failed') ? 'Last run: a step failed.' : latestSteps.some(step => step.status === 'running') ? 'Running now.' : 'Last run: finished.'}</p>
+              </PageCard>
+              <CrewWorkflowSteps workspacePath={item.workspace_path} latestSteps={latestSteps} onCode={() => setFile('main.py')} onAsk={ask}
+                empty={<ExecutableFile workspacePath={item.workspace_path} file="main.py" crewScript onClose={() => onBack?.()} />} />
+              <PageCard title="Files" hint="The workflow's code and what it uses." onAsk={() => ask('Help me understand the files of this workflow.')}>
+                <PageRow title="main.py" lines={['The workflow']} action={<RowButton onClick={() => setFile('main.py')}>Edit</RowButton>} />
+                <PageRow title="script.json" lines={['Name, inputs and saved settings']} action={<RowButton onClick={() => setFile('script.json')}>Edit</RowButton>} />
+              </PageCard>
+            </div>
+          )
+        ) : (
+          <CrewWorkflowRuns workspacePath={item.workspace_path} script={script} folders={folders} loading={workspace.loading} onRefresh={workspace.refresh} onAsk={ask} />
+        )}
       </Suspense>
     </div>
   )
