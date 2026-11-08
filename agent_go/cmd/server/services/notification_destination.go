@@ -9,7 +9,6 @@ package services
 // configured default is" and preserves the pre-routing behavior.
 type NotificationDestination struct {
 	Slack           *SlackDest           // Slack bot channel/thread hint
-	SlackWebhook    *SlackWebhookDest    // generic-chat one-way Incoming Webhook
 	WhatsApp        *WhatsAppDest        // WhatsApp recipient hint
 	Gmail           *GmailDest           // Gmail recipient hint
 	UserID          string               // workspace user ID, used to look up per-user preferences
@@ -17,28 +16,6 @@ type NotificationDestination struct {
 	WorkspacePath   string               // trusted workflow workspace used by internal durable connectors
 	RouteSelections map[string]string    // trusted routing-step ID -> selected top-level route ID
 	Content         *NotificationContent // optional typed per-channel content (nil = plain message only)
-
-	// ExcludeChannels lists account-level connector names ("gmail", "slack",
-	// "whatsapp") to skip for this notification. Sourced from the workflow's
-	// workflow.json notifications.exclude_channels so a per-workflow preference
-	// suppresses an inherited account-level channel without touching the
-	// account-wide configuration. Matched case-insensitively.
-	ExcludeChannels []string
-
-	// Summary-specific allowlists. Empty means inherit the existing workflow
-	// routing. workflow summary delivery selects one by notification_kind and enforces it in
-	// the backend, including the workflow Slack webhook.
-	RunSummaryChannels []string
-
-	RunSummaryRecipients []string
-}
-
-// SlackWebhookDest is a generic-chat, one-way Slack Incoming Webhook.
-// SecretName is safe to report in configuration. URL is resolved from the
-// encrypted secret store only at run time and must never be logged or persisted.
-type SlackWebhookDest struct {
-	SecretName string
-	URL        string
 }
 
 // GmailDest is the Gmail-specific destination hint. Email is the recipient

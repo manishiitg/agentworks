@@ -88,13 +88,6 @@ func handleSendEmail(ctx context.Context, args map[string]interface{}) (string, 
 	}
 	// Routing evidence only: never include addresses, account values or person IDs.
 	log.Printf("[GMAIL_SEND_BINDING] item=%q selected_connection=%t destination_source=%s", item, selected, bindingSource)
-	if base != nil {
-		for _, channel := range base.ExcludeChannels {
-			if strings.EqualFold(strings.TrimSpace(channel), "gmail") {
-				return "", fmt.Errorf("send_email refused: this workflow excludes email (notifications.exclude_channels)")
-			}
-		}
-	}
 	var attachments []string
 	if raw, ok := args["attachments"].([]interface{}); ok {
 		for _, item := range raw {

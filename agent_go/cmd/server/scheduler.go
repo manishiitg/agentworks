@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/robfig/cron/v3"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/robfig/cron/v3"
 
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
@@ -585,12 +586,6 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		}
 		sctx.Schedule.GroupNames = nil
 		sctx.Capabilities.SlackConnectionID = ""
-		notifications := WorkflowNotificationConfig{}
-		if sctx.Capabilities.Notifications != nil {
-			notifications = *sctx.Capabilities.Notifications
-		}
-		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "slack", "whatsapp")
-		sctx.Capabilities.Notifications = &notifications
 	}
 
 	return sctx

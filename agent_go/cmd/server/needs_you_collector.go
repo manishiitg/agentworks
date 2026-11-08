@@ -91,12 +91,6 @@ func (api *StreamingAPI) collectNeedsYou(ctx context.Context, claims *UserClaims
 			if read, _ := reportHumanInputAccess(ctx, place.path); !read {
 				continue
 			}
-			if place.Kind == "workflow" {
-				manifest, found, err := ReadWorkflowManifest(ctx, place.path)
-				if err != nil || !found || manifest == nil || !manifest.Capabilities.Notifications.BreakAlertsEnabled() {
-					continue
-				}
-			}
 			updates, err := services.ListOrgDashboardNotifications(ctx, place.path, 1)
 			if err != nil {
 				result.warnings = append(result.warnings, "Some run summaries could not be loaded.")

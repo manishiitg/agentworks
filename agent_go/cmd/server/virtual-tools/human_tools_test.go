@@ -317,11 +317,10 @@ func TestChildSessionInheritsNotificationDestination(t *testing.T) {
 	const parentSessionID = "notification-parent-session"
 	const childSessionID = "notification-child-session"
 	RegisterSessionNotificationDestination(parentSessionID, &services.NotificationDestination{
-		UserID:             "user-1",
-		WorkflowName:       "demo",
-		WorkspacePath:      "Workflow/demo",
-		RouteSelections:    map[string]string{"org_dashboard": "enabled", "slack": "enabled"},
-		RunSummaryChannels: []string{"org_dashboard", "slack"},
+		UserID:          "user-1",
+		WorkflowName:    "demo",
+		WorkspacePath:   "Workflow/demo",
+		RouteSelections: map[string]string{"org_dashboard": "enabled", "slack": "enabled"},
 	})
 	t.Cleanup(func() {
 		DeleteSessionNotificationDestination(parentSessionID)
@@ -339,9 +338,8 @@ func TestChildSessionInheritsNotificationDestination(t *testing.T) {
 	// Prove the child owns an independent clone rather than an alias of parent
 	// routing state.
 	child.RouteSelections["org_dashboard"] = "disabled"
-	child.RunSummaryChannels[0] = "changed"
 	parent := sessionNotificationDestination(parentSessionID)
-	if parent == nil || parent.RouteSelections["org_dashboard"] != "enabled" || parent.RunSummaryChannels[0] != "org_dashboard" {
+	if parent == nil || parent.RouteSelections["org_dashboard"] != "enabled" {
 		t.Fatalf("child mutation changed parent destination: %#v", parent)
 	}
 }

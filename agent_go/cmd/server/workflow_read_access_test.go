@@ -77,7 +77,6 @@ var workflowReadRoutes = []string{
 	"/api/workflow/costs",
 	"/api/workflow/review-data",
 	"/api/workflow/builder-doc",
-	"/api/workflow/notifications",
 	"/api/workflow/active-executions",
 }
 

@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
@@ -3756,76 +3755,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 
-			// --- One-way notifications (secret references only) ---
-			sb.WriteString("\n### Notifications\n")
-			breakAlerts := true
-			var notificationExcludeChannels []string
-			var notificationGmailConnectionID string
-			if content, readErr := ctrl.ReadWorkspaceFile(ctx, "workflow.json"); readErr == nil {
-				var manifest struct {
-					Capabilities struct {
-						Notifications struct {
-							BreakAlerts       *bool    `json:"break_alerts"`
-							ExcludeChannels   []string `json:"exclude_channels"`
-							GmailConnectionID string   `json:"gmail_connection_id"`
-						} `json:"notifications"`
-					} `json:"capabilities"`
-				}
-				if json.Unmarshal([]byte(content), &manifest) == nil {
-					if enabled := manifest.Capabilities.Notifications.BreakAlerts; enabled != nil {
-						breakAlerts = *enabled
-					}
-
-					notificationExcludeChannels = uniqueStringsPreserveOrder(manifest.Capabilities.Notifications.ExcludeChannels)
-					notificationGmailConnectionID = strings.TrimSpace(manifest.Capabilities.Notifications.GmailConnectionID)
-				}
-			}
-			sb.WriteString(fmt.Sprintf("- Tell me when something breaks: %v\n", breakAlerts))
-			if len(notificationExcludeChannels) > 0 {
-				sb.WriteString(fmt.Sprintf("- Excluded channels: %s\n", strings.Join(notificationExcludeChannels, ", ")))
-			}
-			// Show the saved sender and enabled choices so Builder can configure it.
-			if gmailSvc := services.GetGmailService(); gmailSvc != nil {
-				senderUserID, _ := ctx.Value(common.UserIDKey).(string)
-				connections := gmailSvc.ConnectionsUsableFrom(services.GmailUseScope{Workspace: iwm.controller.GetWorkspacePath(), UserID: senderUserID})
-				if notificationGmailConnectionID == "" {
-					sb.WriteString("- Gmail sender: not set — inherits the account default connection\n")
-				} else {
-					label := notificationGmailConnectionID
-					for _, conn := range connections {
-						if conn.ID == notificationGmailConnectionID {
-							label = fmt.Sprintf("%s (%s)", conn.ID, conn.DisplayName)
-							break
-						}
-					}
-					sb.WriteString(fmt.Sprintf("- Gmail sender: %s\n", label))
-				}
-				if len(connections) > 0 {
-					available := make([]string, 0, len(connections))
-					for _, conn := range connections {
-						if !conn.Enabled {
-							continue
-						}
-						entry := conn.ID
-						if conn.DisplayName != "" {
-							entry += " — " + conn.DisplayName
-						}
-						if st, ok := gmailSvc.AuthStatusForConnection(conn.ID); ok && st.Email != "" {
-							entry += " <" + st.Email + ">"
-						}
-						available = append(available, entry)
-					}
-					if len(available) > 0 {
-						sb.WriteString(fmt.Sprintf("- Available Gmail senders (set `notification_gmail_connection_id` with update_workflow_config to choose): %s\n",
-							strings.Join(available, "; ")))
-					}
-				}
-			} else if notificationGmailConnectionID == "" {
-				sb.WriteString("- Gmail sender: not set — inherits the account default connection\n")
-			} else {
-				sb.WriteString(fmt.Sprintf("- Gmail sender connection ID: %s (connection status unavailable)\n", notificationGmailConnectionID))
-			}
-
 			// Show available secrets that can be added
 			if iwm.listAvailableSecrets != nil {
 				allSecretNames, listErr := iwm.listAvailableSecrets(ctx)
@@ -4041,15 +3970,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"items":       map[string]interface{}{"type": "string"},
 					"description": "Secret names to stop using in the workflow (their values stay in Vault)",
 				},
-				"break_alerts": map[string]interface{}{
-					"type": "boolean", "description": "Tell me when something breaks: show run failures in Needs you. Enabled by default. Does not change configured team messages or decisions that need an answer.",
-				},
-
-				"notification_gmail_connection_id": map[string]interface{}{
-					"type":        "string",
-					"description": "One enabled Gmail connection ID to send this workflow's workflow summary delivery emails FROM for configured team run messages. Inspect available IDs with get_workflow_config. Stored in workflow.json capabilities.notifications.gmail_connection_id. Omit to leave unchanged; pass an empty string to inherit the account default Gmail sender. This does not change recipients or the Gmail connection_id chosen by ordinary workflow and Builder email actions.",
-				},
-
 				"browser_mode": map[string]interface{}{
 					"type":        "string",
 					"enum":        browserModeValues,
@@ -4395,115 +4315,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					}
 				}
 				logger.Info(fmt.Sprintf("Updated workflow secrets: %d selected", len(selection)))
-			}
-
-			// --- Informational run failure alerts ---
-			if raw, provided := args["break_alerts"]; provided {
-				enabled, ok := raw.(bool)
-				if !ok {
-					return "Error: break_alerts must be true or false.", nil
-				}
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if err != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", err), nil
-				}
-				var manifest map[string]interface{}
-				if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-					return "Failed to read Goal settings.", nil
-				}
-				caps, _ := manifest["capabilities"].(map[string]interface{})
-				if caps == nil {
-					caps = map[string]interface{}{}
-				}
-				notifications, _ := caps["notifications"].(map[string]interface{})
-				if notifications == nil {
-					notifications = map[string]interface{}{}
-				}
-				notifications["break_alerts"] = enabled
-				caps["notifications"] = notifications
-				manifest["capabilities"] = caps
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-				updated, err := json.MarshalIndent(manifest, "", "  ")
-				if err != nil {
-					return "Failed to save Goal settings.", nil
-				}
-				if err := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); err != nil {
-					return fmt.Sprintf("Failed to save Goal settings: %v", err), nil
-				}
-				anyChanged = true
-				sb.WriteString(fmt.Sprintf("\nTell me when something breaks: %v\n", enabled))
-			}
-			senderRaw, senderProvided := args["notification_gmail_connection_id"]
-			if senderProvided && senderRaw != nil {
-				workspacePath := iwm.controller.GetWorkspacePath()
-				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if readErr != nil {
-					return fmt.Sprintf("Failed to read workflow.json: %v", readErr), nil
-				}
-				var manifest map[string]interface{}
-				if parseErr := json.Unmarshal([]byte(content), &manifest); parseErr != nil {
-					return fmt.Sprintf("Failed to parse workflow.json: %v", parseErr), nil
-				}
-				caps, _ := manifest["capabilities"].(map[string]interface{})
-				if caps == nil {
-					caps = make(map[string]interface{})
-				}
-				notifications, _ := caps["notifications"].(map[string]interface{})
-				if notifications == nil {
-					notifications = make(map[string]interface{})
-				}
-				var senderID string
-				if senderProvided && senderRaw != nil {
-					var ok bool
-					senderID, ok = senderRaw.(string)
-					if !ok {
-						return "Error: notification_gmail_connection_id must be a string.", nil
-					}
-					senderID = strings.TrimSpace(senderID)
-					if senderID != "" {
-						gmailSvc := services.GetGmailService()
-						if gmailSvc == nil {
-							return "Error: Gmail connections are unavailable; cannot validate notification sender.", nil
-						}
-						conn, found := gmailSvc.GetConnection(senderID)
-						userID, _ := ctx.Value(common.UserIDKey).(string)
-						if !found || !conn.Enabled || !conn.UsableFrom(services.GmailUseScope{Workspace: workspacePath, UserID: userID}) {
-							return "Error: Notify sender must be an enabled Gmail connection added to this workflow.", nil
-						}
-					}
-				}
-				if senderProvided && senderRaw != nil {
-					if senderID == "" {
-						delete(notifications, "gmail_connection_id")
-					} else {
-						notifications["gmail_connection_id"] = senderID
-					}
-				}
-				if len(notifications) == 0 {
-					delete(caps, "notifications")
-				} else {
-					caps["notifications"] = notifications
-				}
-				manifest["capabilities"] = caps
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
-				if marshalErr != nil {
-					return fmt.Sprintf("Failed to marshal workflow.json: %v", marshalErr), nil
-				}
-				if writeErr := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); writeErr != nil {
-					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
-				}
-
-				if senderProvided && senderRaw != nil {
-					// Mirror the live Slack refresh: a step started later in this same
-					// Builder turn must inherit the saved sender, including a clear.
-					// Tool resolution reads this locked registry before the request's
-					// context snapshot; do not mutate that shared snapshot in place.
-					virtualtools.UpdateSessionGmailSender(iwm.sessionID, workspacePath, senderID)
-				}
-
-				anyChanged = true
-				sb.WriteString("\nGmail sending account updated.\n")
 			}
 
 			// --- Browser mode ---

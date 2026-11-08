@@ -32,7 +32,7 @@ Scripts inherit the Crew's model, browser and app selections. To choose a differ
 
 Python scripts use the Crew's one managed database through `agentworks_db`. Use `execute` or `transaction` for rows and additive setup (`CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`). Chat uses `database action=mutate`. ALTER and DROP are refused. Existing `db/migrations/` files remain history and are not executed.
 
-Replacing an existing workflow needs the approved same-ID conversion so its code, data and complete database stay attached. A separate copy is a trial, not a migration. Agent replies have bounded `text`; check task/status text with `reply.answer_file.read_text()` after `reply.ok`, and use `log_file` for the received provider transcript.
+Replacing an existing workflow needs the approved same-ID conversion so its code, data and complete database stay attached. A separate copy is a trial, not a migration. Agent replies have bounded `text`; check task/status text with `reply.answer_file.read_text()` after `reply.ok`, and use `log_file` for the received provider transcript. When an agent's output fails your check, send that check error once to the same agent with `agent(name, error_text, conversation_id=reply.conversation_id)` and check again; if it still fails, fail the run plainly with the reason. There is no automatic repair loop.
 
 
 Script receipts include `log_file`, `log_error` and `log_complete`. Read bounded parts of that file for full output beyond the inline reply limit. Native Claude/Codex shell commands use their own tool history and do not return this platform log receipt.
