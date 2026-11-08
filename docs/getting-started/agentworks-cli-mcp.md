@@ -27,6 +27,24 @@ Pass a unique `submission_id` for each new function call or message; reuse it
 when retrying an uncertain delivery. A function returns `call_id`; a conversational
 send returns an inbox acknowledgement, with optional explicit replies.
 
+## Saved Python workflows
+
+New workflows are saved Python scripts in a Crew. Over MCP, read
+`help action=topic topic=python-workflows` for creation, nested source, typed
+inputs/presets and run records. The laptop CLI uses the same operations:
+
+```sh
+agentworks workflows list
+agentworks workflows outline --workflow <id>
+agentworks runs start-workflow --workflow <id> --preset weekly --inputs '{"LIMIT":3}'
+agentworks runs status --workflow <id> --session <returned-session>
+agentworks runs get --workflow <id> --run-folder <returned-run>
+```
+
+`workflows create`, `source`, `save-source` and `save-inputs` use the Crew's existing
+source editor and input validator. Shared run access does not grant source edits.
+The server runs the workflow; installing the CLI does not move it to your laptop.
+
 ## Use your laptop from MCP
 
 Your Crew keeps running on the server. Its normal shell and files stay there.
