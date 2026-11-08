@@ -52,6 +52,7 @@ func TestPythonAgentContinuesTurnsBoundsReplyAndPreservesTranscript(t *testing.T
 	fixture := "#!" + python + "\n" + fmt.Sprintf(`import json,sys,uuid
 from pathlib import Path
 root=Path(%q)
+rollouts=Path.cwd()/'.codex/sessions/2026/01/01'
 if '--version' in sys.argv:
     print('codex-cli 1.0.0');raise SystemExit(0)
 thread=''
@@ -67,13 +68,16 @@ for line in sys.stdin:
     result={}
     if method=='thread/start':
         thread=str(uuid.uuid4())
-        state=root/(thread+'.json')
+        rollouts.mkdir(parents=True,exist_ok=True)
+        state=rollouts/('rollout-fixture-'+thread+'.jsonl')
         state.write_text('[]')
         result={'thread':{'id':thread},'model':'fixture'}
     elif method=='thread/resume':
         thread=params['threadId']
-        state=root/(thread+'.json')
-        assert state.exists()
+        state=rollouts/('rollout-fixture-'+thread+'.jsonl')
+        if not state.exists():
+            send({'id':request['id'],'error':{'code':-32600,'message':'no rollout found for thread id '+thread}})
+            continue
         result={'thread':{'id':thread},'model':'fixture'}
     elif method=='turn/start':
         turn='turn-'+str(uuid.uuid4())
@@ -117,6 +121,7 @@ for line in sys.stdin:
 		return c
 	}
 	c := newController()
+	t.Cleanup(func() { c.finishPythonAgentSessions("failed") })
 	// The executable fixture has no real model or tools. Actual enforcing shell
 	// guards are tested independently below and through the real Python runner.
 	previousResolver := clisecurity.ResolveWorkflowPolicy
@@ -160,6 +165,7 @@ for line in sys.stdin:
 		t.Fatalf("two conversations shared an identity: %+v", fresh)
 	}
 	var identities []string
+	var nativeHomes []string
 	for _, conversation := range []string{first.ConversationID, fresh.ConversationID} {
 		file, _ := c.pythonAgentConversationPath(conversation)
 		raw, err := c.ReadWorkspaceFile(ctx, file)
@@ -168,6 +174,12 @@ for line in sys.stdin:
 			t.Fatalf("missing native continuation state: %v", err)
 		}
 		identities = append(identities, saved.AgentSessionHandle.SessionID)
+		home := saved.AgentSessionHandle.Provider.WorkingDir
+		rollout := filepath.Join(home, ".codex/sessions/2026/01/01", "rollout-fixture-"+saved.AgentSessionHandle.Provider.NativeSessionID+".jsonl")
+		if _, err := os.Stat(rollout); err != nil {
+			t.Fatalf("closing a call removed its native rollout: %v", err)
+		}
+		nativeHomes = append(nativeHomes, home)
 	}
 	if identities[0] == "" || identities[1] == "" || identities[0] == identities[1] {
 		t.Fatal("different conversations shared the native tool-session identity")
@@ -205,6 +217,19 @@ for line in sys.stdin:
 	if missing.OK || !resolved || !strings.Contains(missing.Error, "No login is available") {
 		t.Fatalf("missing account fell through to a default login or failed at another boundary: %+v", missing)
 	}
+	c.finishPythonAgentSessions("waiting_for_capacity")
+	for _, home := range nativeHomes {
+		if _, err := os.Stat(home); err != nil {
+			t.Fatalf("an unfinished run lost its native home: %v", err)
+		}
+	}
+	c.finishPythonAgentSessions("completed")
+	for _, home := range nativeHomes {
+		if _, err := os.Stat(home); !os.IsNotExist(err) {
+			t.Fatalf("a finished run retained its native home: %s %v", home, err)
+		}
+	}
+	denied.finishPythonAgentSessions("failed")
 }
 
 // A helper has the same whole-automation read / current-run write boundary;

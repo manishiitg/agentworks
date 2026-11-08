@@ -112,8 +112,9 @@ type StepBasedWorkflowOrchestrator struct {
 	// Plans are passed through execution contexts, never cached on a chat session.
 
 	// Run folder management
-	pythonHelperLimitsMu sync.Mutex // Serializes the current run's helper presentation counters.
-	selectedRunFolder    string     // Current run folder name (iteration-0 for full workflow runs)
+	pythonHelperLimitsMu sync.Mutex          // Serializes the current run's helper presentation counters.
+	pythonAgentSessions  map[string]struct{} // Native homes retained until this run finishes.
+	selectedRunFolder    string              // Current run folder name (iteration-0 for full workflow runs)
 
 	// Batch execution context (current group identity for env refs, logs, event metadata)
 	currentGroupName string // Current group name being executed
