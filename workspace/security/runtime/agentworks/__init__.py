@@ -25,7 +25,7 @@ from typing import Any, Mapping, Sequence, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "agent", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step"]
+__all__ = ["AutomationError", "Reply", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step"]
 
 
 
@@ -54,6 +54,20 @@ class ScriptResult(Reply):
     """Saved-script outputs; output_dir is None if no invocation folder was prepared."""
     output_dir: Path | None = None
     outputs: list[Path] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class FunctionResult(Reply):
+    """A published function receipt. Inspect status before using value.
+
+    ok means the call was accepted without an error, not that it has finished.
+    function_status(call_id) refreshes queued/running calls without starting work.
+    receipt contains the existing service's authorized result and pending questions.
+    """
+    call_id: str = ""
+    status: str = ""
+    value: JSONValue = None
+    receipt: Mapping[str, JSONValue] = field(default_factory=dict)
 
 
 _order = 0
@@ -119,6 +133,11 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
                  log_error=result.get("log_error", ""),
                  log_kind=result.get("log_kind", "activity"),
                  answer_file=Path(result["answer_file"]) if result.get("answer_file") else None)
+    if action in ("call_function", "function_status"):
+        receipt = result.get("value") or {}
+        return FunctionResult(**vars(reply), call_id=receipt.get("call_id", ""),
+                              status=receipt.get("status", ""), value=receipt.get("result"),
+                              receipt=receipt)
     if action == "run_script":
         value = result.get("value") or {}
         directory = value.get("output_dir")
@@ -224,9 +243,40 @@ def step(title: str):
     return decorate
 
 
+def call_function(crew: str, name: str, inputs: Mapping[str, JSONValue], *,
+                  wait_seconds: float = 25, timeout_minutes: float = 60,
+                  key: str | None = None, redo: bool = False) -> FunctionResult:
+    """Call a linked Crew's published function with its existing typed inputs.
+
+    The normal function service validates inputs/results, access and timeouts.
+    A queued or running receipt is not a final result; refresh with function_status.
+    No separate notification watcher is created. Deliberate calls in a loop are
+    distinct; delivery retries reuse the saved receipt in this run.
+    """
+    try:
+        reply = _call("call_function", {"crew": crew, "name": name, "inputs": dict(inputs),
+                      "wait_seconds": wait_seconds, "timeout_minutes": timeout_minutes}, key, redo)
+        if isinstance(reply, FunctionResult):
+            return reply
+        return FunctionResult(ok=False, error="The function returned an unreadable receipt.")
+    except AutomationError as error:
+        return FunctionResult(ok=False, error=str(error))
+
+
+def function_status(call_id: str) -> FunctionResult:
+    """Read a function call from this script's run, rechecking current access."""
+    try:
+        reply = _call("function_status", {"call_id": call_id}, None, False)
+        if isinstance(reply, FunctionResult):
+            return reply
+        return FunctionResult(ok=False, error="The function returned an unreadable receipt.")
+    except AutomationError as error:
+        return FunctionResult(ok=False, error=str(error))
+
+
 def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
           tier: str | None = None, scripts: Sequence[str] = (),
-          mcp: Sequence[str] = (), skills: Sequence[str] = (),
+          mcp: Sequence[str] = (), skills: Sequence[str] = (), tools: Sequence[str] = (),
           browser: bool = False, can_ask_person: bool = False,
           timeout_seconds: float | None = None, conversation_id: str | None = None,
           key: str | None = None, redo: bool = False) -> Reply:
@@ -236,6 +286,10 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     pass reply.conversation_id; omitted settings retain its original selections.
     browser uses this automation's connected browser. can_ask_person allows
     questions that wait for a person's answer; both are off by default.
+    tools names existing category:tool selections, for example
+    human_tools:integrations.google. It cannot add an unavailable app or login.
+    An explicit can_ask_person also applies to scheduled runs; question waits
+    stay bounded and do not silently cancel the agent.
     Browser calls share the workflow's existing browser session and profile,
     including its configured operator Chrome connection. timeout_seconds=None
     adds no helper timer beyond the parent deadline. Each person question uses
@@ -259,7 +313,7 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     try:
         return _call("agent", {"name": name, "messages": messages, "model": model,
                      "tier": tier, "scripts": list(scripts), "mcp": list(mcp),
-                     "skills": list(skills), "browser": browser,
+                     "skills": list(skills), "tools": list(tools), "browser": browser,
                      "can_ask_person": can_ask_person, "timeout_seconds": timeout_seconds,
                      "conversation_id": conversation_id, "source_call": source_call}, key, redo)
     except AutomationError as error:

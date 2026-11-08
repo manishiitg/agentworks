@@ -31,7 +31,6 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 		runID := firstNonEmptyTrimmed(scope.ExecutionID, scope.SessionID)
 		identity, _ := json.Marshal([]string{scope.WorkspacePath, runID, scope.StepID, scope.Group})
 		executionScope := crewFunctionArgumentsFingerprint(string(identity))
-		caller := workflowTriggerLinkCaller(scope.WorkspacePath)
 		resolveCaller := func(ctx context.Context) (triggerLinkCaller, error) {
 			if err := ctx.Err(); err != nil {
 				return triggerLinkCaller{}, err
@@ -39,12 +38,30 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 			if userAccessForClaims(&actor).Disabled {
 				return triggerLinkCaller{}, fmt.Errorf("the execution account is disabled")
 			}
+			level, manifest := workflowAccessForWorkspacePath(ctx, &actor, scope.WorkspacePath)
+			if level == WorkflowAccessNone || manifest == nil {
+				return triggerLinkCaller{}, fmt.Errorf("the source automation is unavailable or access denied")
+			}
+			caller := workflowTriggerLinkCaller(scope.WorkspacePath)
+			binding, err := findCrewExecutable(scope.WorkspacePath)
+			if err != nil {
+				return triggerLinkCaller{}, err
+			}
+			if binding != nil && binding.Kind == "script" {
+				// Scripts act as their registered owning Crew. This deliberately
+				// retains Linked projects and function caller checks, with no
+				// standalone-workflow exemption or editable owner stamp.
+				caller = crewTriggerLinkCaller(binding.CrewRoot)
+			}
 			resolved, err := caller(ctx)
 			if err != nil {
 				return triggerLinkCaller{}, err
 			}
+			if binding != nil && binding.Kind == "script" && resolved.Stamp.ID != binding.CrewID {
+				return triggerLinkCaller{}, fmt.Errorf("the source Crew no longer matches this automation")
+			}
 			if token := actor.AccessToken; token != nil {
-				if !token.Allows("runs:execute") || !token.AllowsWorkflow(resolved.Stamp.ID) {
+				if !token.Allows("runs:execute") || !token.AllowsWorkflow(manifest.ID) {
 					return triggerLinkCaller{}, fmt.Errorf("this connection does not allow the source workflow run")
 				}
 				level, _ := workflowAccessForWorkspacePath(ctx, &actor, scope.WorkspacePath)
