@@ -15,7 +15,7 @@ import (
 func TestDirectWebhookRequestPreservesBindingWithoutBuilder(t *testing.T) {
 	sctx := &ScheduleContext{
 		WorkspacePath: "Workflow/smoke",
-		Schedule:      WorkflowSchedule{Name: "PR smoke", GroupNames: []string{"preprod"}, RouteSelections: map[string]string{"router": "auth_gate"}},
+		Schedule:      WorkflowSchedule{Name: "PR smoke", InputPreset: "preprod", Inputs: map[string]string{"COUNT": "4"}, RouteSelections: map[string]string{"router": "auth_gate"}},
 		WebhookInput:  &WorkflowWebhookDelivery{RunID: "delivery-1", Variables: map[string]string{"base_url": "https://preview.test"}},
 	}
 	req := map[string]interface{}{
@@ -24,6 +24,7 @@ func TestDirectWebhookRequestPreservesBindingWithoutBuilder(t *testing.T) {
 		"execution_options": map[string]interface{}{
 			"selected_run_folder": "iteration-0", "execution_strategy": stepworkflow.ExecutionStrategyResumeFromStepNoHuman,
 			"resume_from_step": 3, "capacity_account_key": "account-hash", "pace_threshold_percent": 80, "execution_mode": "close_only",
+			"input_preset": "preprod", "inputs": map[string]string{"COUNT": "4"},
 		},
 	}
 	opts, err := configureDirectWebhookRequest(req, sctx, "iteration-12-hook")
@@ -33,7 +34,9 @@ func TestDirectWebhookRequestPreservesBindingWithoutBuilder(t *testing.T) {
 	if req["agent_mode"] != "workflow" || req["phase_id"] != nil || req["keep_native_session_alive"] != nil {
 		t.Fatalf("builder path retained: %v", req)
 	}
-	if opts.SelectedRunFolder != "iteration-12-hook" || opts.RouteSelections["router"] != "auth_gate" || len(opts.EnabledGroupNames) != 1 || opts.EnabledGroupNames[0] != "preprod" {
+	// PLAT-746: current callers bind one input preset plus overrides; retired
+	// group arrays are no longer translated into execution options.
+	if opts.SelectedRunFolder != "iteration-12-hook" || opts.RouteSelections["router"] != "auth_gate" || opts.InputPreset != "preprod" || opts.Inputs["COUNT"] != "4" {
 		t.Fatalf("binding lost: %+v", opts)
 	}
 	if opts.ResumeFromStep != 3 || opts.CapacityAccountKey != "account-hash" || opts.PaceThresholdPercent != 80 {
@@ -53,7 +56,7 @@ func TestDirectWebhookRequestPreservesBindingWithoutBuilder(t *testing.T) {
 	if err := json.Unmarshal(encoded, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.ExecutionOptions.SelectedRunFolder != "iteration-12-hook" || decoded.ExecutionOptions.RouteSelections["router"] != "auth_gate" || decoded.ExecutionOptions.ExecutionMode != "close_only" {
+	if decoded.ExecutionOptions.SelectedRunFolder != "iteration-12-hook" || decoded.ExecutionOptions.RouteSelections["router"] != "auth_gate" || decoded.ExecutionOptions.ExecutionMode != "close_only" || decoded.ExecutionOptions.InputPreset != "preprod" || decoded.ExecutionOptions.Inputs["COUNT"] != "4" {
 		t.Fatalf("query setup binding lost: %+v", decoded.ExecutionOptions)
 	}
 	sctx.Schedule.RouteSelections = nil
