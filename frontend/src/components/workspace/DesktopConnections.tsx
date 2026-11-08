@@ -163,7 +163,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
         if (status === 'sign_in') return <button key={connection.id} className="block px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
         return null
       })}
-      {!visible.length && locations.every(connection => inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews or Goals here yet.</p>}
+      {!visible.length && locations.every(connection => inventory[connection.id]?.status === 'connected') && <p className="px-2.5 py-2 text-xs text-muted-foreground">No Crews here yet.</p>}
     </div>
     {directoryError && <p role="alert" className="px-3 text-xs text-destructive">{directoryError}</p>}
 
