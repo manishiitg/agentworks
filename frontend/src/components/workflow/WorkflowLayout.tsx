@@ -1,7 +1,6 @@
 import { HomeEntry } from '../workspace/HomeEntry'
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { useWorkflowFilesViewSync } from './hooks/useWorkflowFilesViewSync'
-import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
 import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -157,7 +156,6 @@ import {
 import { isVisibleActivitySession } from '../../utils/activitySessions'
 import { isWorkspacePaneView, resolveWorkspaceView } from './workspaceViews'
 import { WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT } from './workflowContractUpgradeEvents'
-import { ensureWorkflowComposerTab } from '../../utils/workflowSessionRestore'
 // Inactive workflow tabs hydrate lazily and fall back to workflow-scoped chat history.
 
 const WORKFLOW_RESTORE_TIMEOUT_MS = 8000
@@ -984,16 +982,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   // on the open path writes a layout preference -- see the invariant in
   // utils/reportPreviewPreference.ts.
 
-  const createFreshWorkflowBuilderTab = useCallback(async (presetId: string) => {
-    const identity = captureChatIdentity()
-    try {
-      const tabId = await ensureWorkflowComposerTab(presetId)
-      if (!isChatIdentityCurrent(identity) || useGlobalPresetStore.getState().activePresetIds.workflow !== presetId) return
-      activateTab(tabId)
-      setShowChatArea(true)
-    } catch (error) { logger.warn('WorkflowLayout', 'Builder discovery unavailable', error) }
-  }, [setShowChatArea])
-
   useEffect(() => {
     // Re-read this workflow's scoped preference (default Tablet only when it
     // has never been chosen) on mount, on
@@ -1481,7 +1469,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         })
         const newSessions = sessionsToRestore.filter(s => !existingTabsBySession.has(s.sessionId))
         const existingWorkflowTabs = getExistingWorkflowTabsForPreset().filter(tab =>
-          tab.metadata?.workflowOwnerTabID || tab.metadata?.isViewOnly)
+          tab.metadata?.isViewOnly)
         const chatStoreForViewMode = useChatStore.getState()
         const activeWorkflowViewMode = normalizeEventViewMode(
           (chatStoreForViewMode.activeTabId ? chatStoreForViewMode.chatTabs[chatStoreForViewMode.activeTabId]?.viewMode : undefined) ||
@@ -1665,7 +1653,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         // Explicitly opened runs keep their existing panels and permissions.
         const selected = useChatStore.getState().activeTabId
         const selectedTab = selected ? useChatStore.getState().chatTabs[selected] : undefined
-        if (selectedTab?.metadata?.presetQueryId === activePresetId && (selectedTab.metadata.isViewOnly || selectedTab.metadata.workflowOwnerTabID)) {
+        if (selectedTab?.metadata?.presetQueryId === activePresetId && selectedTab.metadata.isViewOnly) {
           setShowChatArea(true)
         }
 
@@ -1691,7 +1679,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       cancelled = true
       clearTimeout(timeoutId)
     }
-  }, [activePresetId, workspacePath, setShowChatArea, rehydrateWorkflowTabs, createFreshWorkflowBuilderTab])
+  }, [activePresetId, workspacePath, setShowChatArea, rehydrateWorkflowTabs])
 
   useEffect(() => {
     if (!activePresetId || selectedModeCategory !== 'workflow') return
@@ -1877,7 +1865,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         // Normal preset switches should not keep reopening stale scheduled-run tabs.
         const interactiveTabs = newPresetTabs.filter(t => !t.metadata?.isViewOnly)
         if (!restoredReadOnlyTab && !isRecentWorkspaceReturnTab(chatStore.activeTabId ? chatStore.chatTabs[chatStore.activeTabId] : undefined, activePresetId) && interactiveTabs.length === 0) {
-          void createFreshWorkflowBuilderTab(activePresetId)
           console.timeEnd(`[WorkflowLayout] preset-switch-effect-${activePresetId?.slice(0,8)}`)
           return
         }
@@ -1886,8 +1873,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         const targetTab = returnedRun || restoredReadOnlyTab
         if (targetTab) {
           revealWorkflowChat(targetTab.tabId)
-        } else {
-          void createFreshWorkflowBuilderTab(activePresetId)
         }
 
         const selectedTarget = targetTab ? useChatStore.getState().chatTabs[targetTab.tabId] : undefined
@@ -1913,7 +1898,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       // Update the ref for non-preset-change re-fires (dep changes only)
       previousPresetIdRef.current = activePresetId
     }
-  }, [activePresetId, minimizeWorkflow, selectedRunFolder, setShowChatArea, rehydrateWorkflowTabs, createFreshWorkflowBuilderTab, workspacePath, revealWorkflowChat])
+  }, [activePresetId, minimizeWorkflow, selectedRunFolder, setShowChatArea, rehydrateWorkflowTabs, workspacePath, revealWorkflowChat])
 
   // Note: Query submission is now handled via chatAreaCallbackRef when ChatArea mounts
   // No need for useEffect with setTimeout - callback ref is the proper React pattern
@@ -2008,22 +1993,8 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
 
   const handleToggleChatArea = useCallback(() => {
     const newShow = !showChatArea
-    if (newShow) {
-      // Ensure a workflow tab is active when showing the chat panel
-      // (activeTabId might point to a chat/multi-agent tab from a different mode)
-      const chatStore = useChatStore.getState()
-      const activeTab = chatStore.getActiveTab()
-      if (
-        !activeTab ||
-        activeTab.metadata?.mode !== 'workflow' ||
-        activeTab.metadata?.presetQueryId !== activePresetId ||
-        activeTab.metadata?.isViewOnly
-      ) {
-        if (activePresetId) void createFreshWorkflowBuilderTab(activePresetId)
-      }
-    }
     setShowChatArea(newShow)
-  }, [activePresetId, showChatArea, setShowChatArea, createFreshWorkflowBuilderTab])
+  }, [showChatArea, setShowChatArea])
 
   // Minimize chat area when drawer opens to reduce renders and stop event processing
   // Open chat area when drawer closes (but not on initial mount)

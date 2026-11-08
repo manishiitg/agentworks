@@ -494,22 +494,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         }
       })
 
-    const workflowChatItems: ChatTabItem[] = Object.values(agentWorksTabs).flatMap(tab => {
-      const meta = tab.metadata
-      if (meta?.mode !== 'workflow' || !meta.workflowOwnerTabID || meta.isViewOnly || meta.isScheduledRun || meta.isBotRun || meta.isExecutionRun) return []
-      const preset = workflowPresets.find(candidate => candidate.id === meta.presetQueryId)
-      if (!preset) return []
-      const activeSession = tab.sessionId ? activeSessionsByID.get(tab.sessionId) : undefined
-      return [{
-        type: 'chat' as const, id: `chat:${tab.tabId}`, label: tab.name || 'Builder',
-        subtitle: `${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`.replace(/^ · /, ''),
-        searchText: `${preset.label} ${activeSessionSearchText(activeSession)}`, preset, tabId: tab.tabId,
-        isActive: productSurface === workflowSurfaceForPreset(preset.id) && tab.tabId === activeTabId,
-        lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0, activeSession, hasLocalActivity: tabHasRunningWork(tab),
-      }]
-    })
-
-    const listedTabIds = new Set([...chatItems, ...crewItems, ...workflowChatItems].map(item => item.tabId))
+    const listedTabIds = new Set([...chatItems, ...crewItems].map(item => item.tabId))
     const activeItems: ActiveWorkItem[] = visibleActiveSessions
       .map(session => {
         const tab = findTabForSession(allTabs, session.session_id)
@@ -545,7 +530,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       return a.label.localeCompare(b.label)
     })
 
-    const projectItems = [...activeItems, ...crewItems, ...chatItems, ...workflowChatItems, ...workflowItems, ...directoryCrewItems].sort((a, b) => {
+    const projectItems = [...activeItems, ...crewItems, ...chatItems, ...workflowItems, ...directoryCrewItems].sort((a, b) => {
       const activityOrder = compareItemActivity(a, b)
       if (activityOrder) return activityOrder
       if (a.type !== b.type) return itemTypeRank(a) - itemTypeRank(b)

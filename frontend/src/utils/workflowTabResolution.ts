@@ -141,7 +141,6 @@ function idleWorkflowBuilderTabId(
         meta.isViewOnly !== true &&
         meta.isExecutionRun !== true &&
         meta.presetQueryId === presetQueryId &&
-        !meta.workflowOwnerTabID &&
         !tab.isStreaming
     })
     .sort((a, b) => {
@@ -267,7 +266,7 @@ export async function resolveWorkflowTabForSession(args: ResolveWorkflowTabArgs)
       args.updateTabSessionId(laneTabId, sessionId)
       return { tabId: laneTabId, via: 'lane' }
     }
-  } else if (isBuilderSession(args.metadata) && !args.metadata.workflowOwnerTabID && args.getTabEvents) {
+  } else if (isBuilderSession(args.metadata) && args.getTabEvents) {
     const chatTabId = idleWorkflowBuilderTabId(tabs, args.presetQueryId, args.getTabEvents())
     if (chatTabId) {
       args.updateTabSessionId(chatTabId, sessionId)

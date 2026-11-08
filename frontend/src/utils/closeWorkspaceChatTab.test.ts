@@ -42,7 +42,6 @@ it.each(['multi-agent', 'workflow'] as const)('closes a %s run view with inherit
     mode, agentProfileId: 'work', agentProfileProjectId: 'p',
     agentProfileConversationKey: 'p', presetQueryId: 'moved-preset',
     isViewOnly: true, isScheduledRun: true,
-    workflowOwnerTabID: 'moved-preset:chat:main', workflowOwnerTabIsMain: true,
     agentProfileTabCanWrite: false,
   }, { isStreaming: true })
   setup(run)

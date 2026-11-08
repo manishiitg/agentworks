@@ -37,12 +37,6 @@ export function beginWorkflowNavigation(workflowId: string): number {
   return context.generation
 }
 
-export function isCurrentWorkflowNavigation(generation: number, workflowId: string): boolean {
-  return generation === context.generation &&
-    context.workflowId === workflowId &&
-    useGlobalPresetStore.getState().activePresetIds.workflow === workflowId
-}
-
 export function getWorkflowNavigationContext(): Readonly<WorkflowNavigationContext> {
   return context
 }

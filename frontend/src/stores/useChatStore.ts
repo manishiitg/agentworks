@@ -458,7 +458,6 @@ export interface ChatTab {
     isRestoringSession?: boolean  // True while session events are being loaded from backend
     isViewOnly?: boolean // True when tab is in view-only mode (e.g. shared session or bot connector)
     stepInspections?: { items: import('../services/api-types').ExecutionInspectionTarget[]; activeId: string | null }
-    isWorkflowDraft?: boolean // Empty input surface; current Builder identity comes from the server.
     isExecutionRun?: boolean // Execution diagnostics use JSON history, not the interactive chat journal.
     isAutomationConversation?: boolean // A schedule's own conversation, opened as a chat; closing it only closes the tab.
     isScheduledRun?: boolean // True when tab is observing a scheduled-run session (read-only live view)
@@ -487,8 +486,6 @@ export interface ChatTab {
     // Singleton products omit it; keyed products use a project/resource id.
     agentProfileConversationKey?: string
     // Project main is a role pointer; the physical conversation key stays fixed.
-    workflowOwnerTabID?: string
-    workflowOwnerTabIsMain?: boolean
     agentProfileTabOwnerID?: string
     agentProfileTabOwnerName?: string
     agentProfileTabCanWrite?: boolean
