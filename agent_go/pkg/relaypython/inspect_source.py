@@ -183,6 +183,54 @@ def inspect_source(source):
     return graph
 
 
+def python_type_notes(files):
+    """Optional static hints. Never import authored files or inherit credentials."""
+    import pathlib
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+    checker = shutil.which('pyright') or shutil.which('basedpyright')
+    if not checker:
+        return [], ['The checker is not installed here. The script can still run.']
+    root = pathlib.Path.cwd().resolve()
+    saved = [file.resolve() for name in files for file in [root / name]
+             if file.is_file() and file.resolve().is_relative_to(root)]
+    sdk = next((entry for entry in os.environ.get('PYTHONPATH', '').split(os.pathsep)
+                if entry and (pathlib.Path(entry) / 'agentworks' / '__init__.py').is_file()), None)
+    if not saved or not sdk:
+        return [], ['Type hints could not be checked this time. The script can still run.']
+    try:
+        with tempfile.TemporaryDirectory(prefix='python-hints-') as directory:
+            config = pathlib.Path(directory) / 'pyrightconfig.json'
+            config.write_text(json.dumps({'include': [str(file) for file in saved],
+                'extraPaths': [sdk, str(root)], 'typeCheckingMode': 'basic',
+                'useLibraryCodeForTypes': True}), encoding='utf-8')
+            environment = {'PATH': os.environ.get('PATH', ''), 'HOME': directory,
+                           'TMPDIR': directory, 'LANG': 'C.UTF-8'}
+            result = subprocess.run([checker, '--outputjson', '--project', str(config),
+                                     '--pythonpath', sys.executable], cwd=root,
+                                    env=environment, capture_output=True, text=True, timeout=10)
+            if result.returncode not in (0, 1):
+                raise ValueError('checker unavailable')
+            diagnostics = json.loads(result.stdout)['generalDiagnostics']
+            notes = []
+            for item in diagnostics:
+                file = pathlib.Path(item['file']).resolve()
+                if file not in saved:
+                    continue
+                line = item.get('range', {}).get('start', {}).get('line', 0)
+                notes.append({'file': file.relative_to(root).as_posix(),
+                              'line': max(1, int(line) + 1), 'message': str(item['message'])})
+            summary = []
+            if notes:
+                noun = 'problem' if len(notes) == 1 else 'problems'
+                summary = [f'Type hints show {len(notes)} possible {noun}. The script can still run.']
+            return notes, summary
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        return [], ['Type hints could not be checked this time. The script can still run.']
+
+
 def inspect_automation_source(files):
     """A source outline, not a Python execution plan. Authored modules never run."""
     graph = {"native": True, "nodes": [], "edges": [], "errors": [], "unkeyed_calls": [], "notes": []}
@@ -484,6 +532,9 @@ def inspect_automation_source(files):
     except (SyntaxError, ValueError, RecursionError, TypeError) as error:
         graph['nodes'], graph['edges'] = [], []
         graph['errors'] = [str(error)]
+    if os.environ.get('VAR_AUTOMATION_TYPE_CHECK') == '1' and isinstance(files, dict):
+        graph['type_notes'], notes = python_type_notes(files)
+        graph['notes'].extend(notes)
     return graph
 
 
