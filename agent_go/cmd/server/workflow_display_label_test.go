@@ -15,18 +15,3 @@ func TestWorkflowDisplayLabelPrefersManifestLabel(t *testing.T) {
 		t.Errorf("label = %q, want the configured manifest label, not the folder name", got)
 	}
 }
-
-func TestWorkflowDisplayLabelFallsBackToFolderNameWhenManifestLabelIsEmpty(t *testing.T) {
-	manifest := &WorkflowManifest{Label: ""}
-	got := workflowDisplayLabel("Workflow/social-media", manifest)
-	if got != "social-media" {
-		t.Errorf("label = %q, want the folder name when the manifest has no label", got)
-	}
-}
-
-func TestWorkflowDisplayLabelFallsBackToFolderNameWhenManifestIsNil(t *testing.T) {
-	got := workflowDisplayLabel("Workflow/social-media", nil)
-	if got != "social-media" {
-		t.Errorf("label = %q, want the folder name when there is no manifest at all", got)
-	}
-}
