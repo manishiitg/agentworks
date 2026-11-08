@@ -24,8 +24,6 @@ import { useLLMStore } from '../../../stores/useLLMStore'
 // Execution phase ID - special phase that should be displayed separately
 const EXECUTION_PHASE_ID = 'execution'
 interface WorkflowToolbarProps {
-  relayMode?: boolean
-  pythonRelay?: boolean
   status: WorkflowExecutionStatus
   currentPhase?: string
   workspacePath?: string | null
@@ -50,7 +48,6 @@ interface WorkflowToolbarProps {
 }
 
 export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
-  relayMode = false,
   status,
   workspacePath,
   presetQueryId,
@@ -87,12 +84,12 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const projectID = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest.id)
-  const menuOptions = { relayMode, isMultiUser, incomingEmail, allowedProducts }
+  const menuOptions = { isMultiUser, incomingEmail, allowedProducts }
   const menuItems = workflowProjectMenuItems(menuOptions)
   const panelSwitcherPanels: PanelSwitcherPanel[] = canWrite
     ? [{ id: 'context', label: 'Project menu' }, ...menuItems.map(item => ({ id: item.id, label: item.label, group: item.group }))]
     : [{ id: 'report', label: 'Dashboard', group: 'Build' }]
-  useRegisterPanelSwitcher(workspacePath ? (relayMode ? 'relays' : 'agentworks') : null, panelSwitcherPanels, (key, section) => {
+  useRegisterPanelSwitcher(workspacePath ? ('agentworks') : null, panelSwitcherPanels, (key, section) => {
     const current = useAuthStore.getState().user
     if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     if (key === 'context' && canWrite) { openWorkspaceView('context'); return }
@@ -102,7 +99,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
     const item = admitted.find(candidate => candidate.id === id)
       ?? admitted.find(candidate => candidate.view === key && !section)
     if (!item) return
-    useProjectMenuHistoryStore.getState().visit(projectMenuHistoryScope(server || 'local', user?.id || 'pending', relayMode ? 'relays' : 'agentworks', projectID || workspacePath || ''), item.id)
+    useProjectMenuHistoryStore.getState().visit(projectMenuHistoryScope(server || 'local', user?.id || 'pending', 'agentworks', projectID || workspacePath || ''), item.id)
     if (item.external) { openProductWorkspace(item.external); return }
     if (item.view) openWorkspaceView(item.view, item.target)
   })
@@ -176,7 +173,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   // Restore selectedGroupIds from execution state when page refreshes during execution
   // This handles the case where execution is running but selectedGroupIds was lost on page refresh
   useEffect(() => {
-    if (relayMode) return
+
     if (isExecutionRunning && selectedGroupIds.length === 0 && currentRunningGroupId) {
       // If execution is running but no groups are selected, restore from currentRunningGroupId
       console.log('[WorkflowToolbar] Restoring selectedGroupIds from currentRunningGroupId:', currentRunningGroupId)
@@ -202,7 +199,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
         }
       }
     }
-  }, [relayMode, isExecutionRunning, selectedGroupIds.length, currentRunningGroupId, variablesManifest, selectedRunFolder, setSelectedGroupIds])
+  }, [isExecutionRunning, selectedGroupIds.length, currentRunningGroupId, variablesManifest, selectedRunFolder, setSelectedGroupIds])
 
   // selectedGroupIds is already included in the batched selector above
 

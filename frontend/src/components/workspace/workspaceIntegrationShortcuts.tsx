@@ -6,15 +6,14 @@ import type { LucideIcon } from 'lucide-react'
 
 /** Mirrors the sections admitted by the existing MCPs & secrets panel. Links only;
  * the destination retains its read/write, account and connection permissions. */
-export function workspaceIntegrationShortcuts({ allowedProducts, relayMode = false, workMode = false, enabledPanels, includeCli = false, onOpen }: {
+export function workspaceIntegrationShortcuts({ allowedProducts, workMode = false, enabledPanels, includeCli = false, onOpen }: {
   allowedProducts?: string[] | null
-  relayMode?: boolean
   workMode?: boolean
   enabledPanels?: Set<string>
   includeCli?: boolean
   onOpen: (section: string) => void
 }): Array<{ id: string; label: string; icon: LucideIcon; subgroup?: string; onClick: () => void }> {
-  const sections = projectIntegrationSections(allowedProducts, relayMode).filter(section =>
+  const sections = projectIntegrationSections(allowedProducts).filter(section =>
     !workMode || isWorkIntegrationTabEnabled(section.value, enabledPanels))
   const tools = sections.some(section => section.value === 'apps')
   const plugins = tools ? projectPluginTabs(allowedProducts).filter(section =>

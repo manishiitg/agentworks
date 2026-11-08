@@ -24,7 +24,6 @@ import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNa
 import { resolveWorkspaceLayout } from './workspaceLayoutResolver'
 import { useRunningWorkflowsStore, useShowRunningDrawer } from '../../stores/useRunningWorkflowsStore'
 import { useAppStore } from '../../stores/useAppStore'
-import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { sanitizeDisplayNameForFolder } from '../../utils/workflowUtils'
 import { logger } from '../../utils/logger'
 import { startRestoredTransportTerminal } from '../../utils/restoredTerminal'
@@ -58,9 +57,7 @@ import {
   writeWorkflowSplitPreference,
 } from '../../utils/reportPreviewPreference'
 import { DashboardLayoutControls, DashboardLayoutProvider } from './DashboardLayoutControls'
-import { ReportView } from './ReportViewer'
 import { AutomationHubPanel } from '../automation/AutomationHubPanel'
-import { RELAY_WORKSPACE_VIEWS } from './workspaceViews'
 
 // Helper component to get observerId and render ChatArea
 // Always renders ChatArea (even without observerId) so it can handle initialization
@@ -93,8 +90,7 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   useWorkflowViewPresentations(workflowTabId)
 
   const isMobile = useMobileViewport()
-  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
-  useWorkflowProductCommands(isRelaySurface)
+  useWorkflowProductCommands()
 
   return (
     <ChatArea
@@ -114,23 +110,9 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   )
 })
 
-import { FlowStarterIllustration } from './FlowStarterIllustration'
 import { GoalStarterGuide } from '../chat/ProductStarterGuide'
 
-const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean }> = ({ relayMode = false }) => {
-  if (relayMode) {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-8">
-        <div className="w-full max-w-lg text-center">
-          <FlowStarterIllustration />
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground">What would you like to automate?</h2>
-          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">Describe the task. Build and test the steps together in chat.</p>
-        </div>
-      </div>
-    )
-  }
-  return <GoalStarterGuide />
-}
+const WorkflowNewChatGuide = () => <GoalStarterGuide />
 
 import { agentApi, workflowManifestApi } from '../../services/api'
 import {
@@ -154,7 +136,7 @@ import {
   workflowTabsNeedingHydration,
 } from '../../utils/workflowTabHydration'
 import { isVisibleActivitySession } from '../../utils/activitySessions'
-import { isWorkspacePaneView, resolveWorkspaceView } from './workspaceViews'
+import { isWorkspacePaneView } from './workspaceViews'
 import { WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT } from './workflowContractUpgradeEvents'
 // Inactive workflow tabs hydrate lazily and fall back to workflow-scoped chat history.
 
@@ -603,7 +585,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
 }) => {
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
   const isMobile = useMobileViewport()
-  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
   // Narrow selectors: bare useChatStore() re-renders on every store update (10x/sec with 2 parallel sessions)
   const currentWorkflowPhase = useChatStore(state => state.currentWorkflowPhase)
   const setCurrentWorkflowPhase = useChatStore(state => state.setCurrentWorkflowPhase)
@@ -812,9 +793,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   // deriving history from that stale object made the new workflow request the
   // previous/empty path until a page reload rebuilt all stores.
   const workflowManifests = useWorkflowManifestStore(state => state.workflows)
-  const activeWorkflowManifest = workflowManifests.find(workflow => workflow.manifest.id === activePresetId || workflow.workspace_path === activeWorkflowPreset?.selectedFolder?.filepath)?.manifest
-  const relayMode = activeWorkflowManifest?.kind === 'relay' || isRelaySurface
-  const effectiveWorkspaceView = resolveWorkspaceView(workflowWorkspaceView ?? lastCanvasView, relayMode && activeWorkflowManifest?.relay_runtime === 'python')
+  const effectiveWorkspaceView = workflowWorkspaceView ?? lastCanvasView
   const dashboardView = effectiveWorkspaceView === 'report'
   const activeWorkflowWorkspacePath = resolveWorkflowHistoryPath(
     activePresetId,
@@ -853,29 +832,13 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     if (selectedModeCategory === 'workflow' && activePresetId && workspacePath) {
       useWorkflowStore.getState().switchToPreset(activePresetId)
     }
-  }, [activePresetId, isRelaySurface, selectedModeCategory, workspacePath])
+  }, [activePresetId, selectedModeCategory, workspacePath])
 
   // Someone who can only run this product (not edit it) lands on its dashboard.
   const runsOnly = workflowManifests.find(workflow => workflow.manifest.id === activePresetId || workflow.workspace_path === workspacePath)?.my_access === 'read'
-  const initializedRelayViewPresetRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (!relayMode || selectedModeCategory !== 'workflow' || !activePresetId || !workspacePath) return
-    const currentView = workflowWorkspaceView ?? lastCanvasView
-    const firstVisit = initializedRelayViewPresetRef.current !== activePresetId
-    initializedRelayViewPresetRef.current = activePresetId
-    if ((firstVisit && !hasSavedWorkflowWorkspaceView(activePresetId)) || !RELAY_WORKSPACE_VIEWS.has(currentView)) {
-      if (runsOnly) {
-        void ensureDefaultDashboard(workspacePath).then(() => {
-          if (useGlobalPresetStore.getState().activePresetIds.workflow === activePresetId) useWorkflowStore.getState().openWorkspaceView('report')
-        })
-        return
-      }
-      useWorkflowStore.getState().openWorkspaceView('flow')
-    }
-  }, [activePresetId, lastCanvasView, relayMode, runsOnly, selectedModeCategory, workflowWorkspaceView, workspacePath])
 
   useEffect(() => {
-    if (relayMode || selectedModeCategory !== 'workflow' || !activePresetId || !workspacePath || hasSavedWorkflowWorkspaceView(activePresetId)) return
+    if (selectedModeCategory !== 'workflow' || !activePresetId || !workspacePath || hasSavedWorkflowWorkspaceView(activePresetId)) return
     let cancelled = false
     const presetId = activePresetId
     void (runsOnly ? ensureDefaultDashboard(workspacePath) : Promise.resolve()).then(() => {
@@ -888,7 +851,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       })
     })
     return () => { cancelled = true }
-  }, [activePresetId, relayMode, runsOnly, selectedModeCategory, workspacePath])
+  }, [activePresetId, runsOnly, selectedModeCategory, workspacePath])
 
   const [workflowStatus, setWorkflowStatus] = useState<{
     workspacePath: string
@@ -1048,7 +1011,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     }
 
     const selectionKey = selectedRunFolder && selectedRunFolder !== 'new' && workspacePath
-      ? `${workspacePath}::${selectedRunFolder}::${relayMode ? '' : (selectedGroupIds ?? []).slice().sort().join(',')}`
+      ? `${workspacePath}::${selectedRunFolder}::${(selectedGroupIds ?? []).slice().sort().join(',')}`
       : null
 
     if (!selectionKey) {
@@ -1118,7 +1081,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         newExpandedFolders.add(iterationFolder)
 
         // If we have selected groups, expand all of them
-        if (!relayMode && selectedGroupIds && selectedGroupIds.length > 0 && variablesManifest?.groups) {
+        if (selectedGroupIds && selectedGroupIds.length > 0 && variablesManifest?.groups) {
           selectedGroupIds.forEach(groupId => {
             // Find the group to get its name
             const group = variablesManifest.groups?.find(g => g.name === groupId)
@@ -1153,7 +1116,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         logger.error('WorkflowLayout', 'Failed to fetch files for auto-expansion:', error)
       })
     }
-  }, [relayMode, selectedRunFolder, selectedGroupIds, workspacePath, variablesManifest, fetchFiles, setExpandedFolders, workspaceMinimized])
+  }, [selectedRunFolder, selectedGroupIds, workspacePath, variablesManifest, fetchFiles, setExpandedFolders, workspaceMinimized])
 
   // Callback ref that gets called when ChatArea mounts/unmounts
   const chatAreaCallbackRef = useCallback((node: ChatAreaRef | null) => {
@@ -1188,7 +1151,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     setWorkflowWorkspaceView,
   })
 
-  useWorkspaceReturn(relayMode ? 'relays' : 'agentworks', activePresetId ?? undefined, workflowWorkspaceView ?? undefined,
+  useWorkspaceReturn('agentworks', activePresetId ?? undefined, workflowWorkspaceView ?? undefined,
     { chat_open: showChatArea, panel_open: showWorkspacePane, split_ratio: workspaceSplitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, focused_pane: focusedPane },
     saved => {
       setShowChatArea(isMobile || saved.chat_open); setShowWorkspacePane(saved.panel_open)
@@ -2024,8 +1987,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     <AutomationHubPanel
       key={`${activePresetId || 'workflow'}:${workspacePath}`}
       entityType="workflow"
-      relayMode={relayMode}
-      relayWorkflowID={activeWorkflowManifest?.id}
       workspacePath={workspacePath}
       workflowScope={{ presetQueryId: activePresetId || undefined, workspacePath }}
       chatContent={<WorkflowPreviousChatsPanel primary chatOnly workspacePath={workspacePath} />}
@@ -2047,7 +2008,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     <WorkflowCanvas
       workspacePath={workspacePath}
       presetQueryId={activePresetId}
-      relayMode={relayMode}
       currentPhase={activePhase || currentWorkflowPhase}
       onStartPhase={handleStartPhase}
       onCreatePlan={onCreatePlan || handleCreatePlan}
@@ -2066,12 +2026,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     </DashboardLayoutProvider>
   )
 
-  // Run enters the product dashboard, including when an old browser preference
-  // retained a Builder pane. The common Flow Run chat policy is still pending;
-  // neither legacy HTML actions nor selection may open its Builder conversation.
-  if (relayMode && workspacePath && activeWorkflowAccess !== 'owner' && activeWorkflowAccess !== 'write') {
-    return <ReportView workspacePath={workspacePath} defaultRelayDashboard dashboardConversation allowContentQuestions={false} />
-  }
 
   return (
     <WorkspacePanelVisibilityContext.Provider value={showChatArea && (activeWorkflowAccess === 'owner' || activeWorkflowAccess === 'write') ? {
@@ -2153,7 +2107,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                   onNewChat={onNewChat}
                   hideHeader
                   compact
-                  workflowLandingContent={workflowWorkspaceView === 'report' && workspacePaneVisible ? <></> : <WorkflowNewChatGuide relayMode={relayMode} />}
+                  workflowLandingContent={workflowWorkspaceView === 'report' && workspacePaneVisible ? <></> : <WorkflowNewChatGuide />}
                   // Writers only: a reader of a shared workflow has no Builder chat to replace. The previous
                   // conversation stays in Previous chats (each Builder session keeps its own transcript file).
                   showNewChatAction={activeWorkflowAccess !== 'read'}

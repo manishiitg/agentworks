@@ -1,10 +1,8 @@
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../utils/workspaceViewPreference'
-import { useProductSurfaceStore } from './useProductSurfaceStore'
 import { create } from 'zustand'
 import { WORKFLOW_REPORT_REFRESH_EVENT } from '../components/workflow/reportRefreshEvent'
 import type { WorkflowPhase, ExecutionOptions, VariablesManifest } from '../services/api-types'
 import type { WorkshopMode } from '../commands/types'
-import type { AgentConfigs } from '../utils/workflowPlan'
 
 // Interactive automation chats always use Workshop. Run remains a backend
 // execution mode for bot and scheduled routes, but is not selectable or
@@ -147,9 +145,7 @@ function loadWorkflowUIStateByPreset(): Record<string, PersistedWorkflowUIState>
   }
 }
 
-function workflowViewProduct(): 'agentworks' | 'relays' {
-  return useProductSurfaceStore.getState().productSurface === 'relays' ? 'relays' : 'agentworks'
-}
+function workflowViewProduct(): 'agentworks' { return 'agentworks' }
 
 function readWorkflowWorkspaceView(presetId: string): WorkflowWorkspaceView {
   return readWorkspaceViewPreference(workflowViewProduct(), presetId, normalizeWorkflowWorkspaceView, () => {
@@ -281,7 +277,7 @@ interface WorkflowStore {
 
   // Track current preset ID to detect page reload vs preset switch
   _currentPresetId: string | null
-  _currentViewProduct: 'agentworks' | 'relays' | null
+  _currentViewProduct: 'agentworks' | null
   // Per-preset state map — saves/restores state when switching between workflows
   _presetStates: Record<string, PresetWorkflowState>
 
@@ -754,9 +750,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
         // Resolve the specific group folder path for phases that need context
         // Uses utility function to consolidate logic
         const activePreset = useGlobalPresetStore.getState().getActivePreset('workflow')
-        const relayMode = useProductSurfaceStore.getState().productSurface === 'relays'
-          || activePreset?.workflowKind === 'relay'
-        const resolvedRunFolder = relayMode ? state.selectedRunFolder ?? undefined : resolveGroupFolderPath({
+        const resolvedRunFolder = resolveGroupFolderPath({
           currentRunningGroupId: state.currentRunningGroupId,
           selectedRunFolder: state.selectedRunFolder,
           selectedGroupIds: state.selectedGroupIds,
@@ -776,7 +770,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
         options.save_validation_responses = state.saveValidationResponses
 
         // A saved set fills inputs for one invocation. Omission uses defaults.
-        if (!relayMode && state.selectedGroupIds.length === 1) {
+        if (state.selectedGroupIds.length === 1) {
           options.input_preset = state.selectedGroupIds[0]
         }
 
@@ -1397,7 +1391,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
           // WorkflowModeHandler re-applies the same preset on mount/effect
           if (oldPresetId === presetId) {
             if (currentState._currentViewProduct !== viewProduct) {
-              const view = readWorkflowWorkspaceView(presetId) ?? (viewProduct === 'relays' ? 'flow' : 'report')
+              const view = readWorkflowWorkspaceView(presetId) ?? 'report'
               set({ workflowWorkspaceView: view, _currentViewProduct: viewProduct,
                 ...(isCanvasView(view) ? { lastCanvasView: view } : {}) })
             }

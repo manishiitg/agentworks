@@ -13,7 +13,6 @@ import React, {
 } from 'react'
 import { useChatStore } from '../../../stores/useChatStore'
 import { WorkflowToolbar } from './WorkflowToolbar'
-import { RelayContextPanel } from '../RelayContextPanel'
 import { ReportView } from '../ReportViewer'
 import { DashboardCreateDraftButton } from '../DashboardEmptyState'
 import { useWorkflowExecution } from '../hooks/useWorkflowExecution'
@@ -23,7 +22,7 @@ import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestSto
 import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
 import { agentApi, workspaceApi } from '../../../services/api'
 import type { ExecutionOptions } from '../../../services/api-types'
-import { assertNeverView, getWorkspaceView, isInspectorView, resolveWorkspaceView, type InspectorViewId, type WorkspaceViewId, type WorkspaceViewKind } from '../workspaceViews'
+import { assertNeverView, getWorkspaceView, isInspectorView, type InspectorViewId, type WorkspaceViewId, type WorkspaceViewKind } from '../workspaceViews'
 import { WorkspaceViewDataContext, useWorkspaceViewData, type WorkspaceViewData } from './workspaceViewData'
 import { WORKFLOW_REPORT_EXPORT_EVENT, usePreviewDevice } from './reportPreview'
 import type { WorkflowCanvasProps } from './workspaceViewTypes'
@@ -35,8 +34,6 @@ import type { WorkflowCanvasProps } from './workspaceViewTypes'
 const WorkflowContextPanel = lazy(() => import('../WorkflowContextPanel').then(module => ({ default: module.WorkflowContextPanel })))
 const CostsPopup = lazy(() => import('../CostsPopup'))
 const ExecutionLogsPopup = lazy(() => import('../ExecutionLogsPopup'))
-const RelayExecutionLogsView = lazy(() => import('../RelayExecutionLogsView'))
-const RelayPythonView = lazy(() => import('../RelayPythonView'))
 const KnowledgeView = lazy(() => import('../KnowledgeView'))
 const WorkflowScheduleRunsPanel = lazy(() => import('../../scheduler/WorkflowScheduleRunsPanel'))
 const WorkflowAPITriggersView = lazy(() => import('../WorkflowAPITriggersView'))
@@ -48,7 +45,7 @@ const FileWorkspacePane = lazy(() => import('../../FileWorkspacePane').then(modu
 const noop = () => {}
 const dispatchReportExport = () => window.dispatchEvent(new CustomEvent(WORKFLOW_REPORT_EXPORT_EVENT))
 
-function ReportBody({ workspacePath, relayMode }: { workspacePath: string | null; relayMode: boolean }) {
+function ReportBody({ workspacePath }: { workspacePath: string | null }) {
   const access = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.my_access)
   const canCreate = access === 'owner' || access === 'write'
   // In Mobile the report sits in a narrow 480px column; when chat is focused we
@@ -64,7 +61,6 @@ function ReportBody({ workspacePath, relayMode }: { workspacePath: string | null
       {workspacePath && <ReportView
         workspacePath={workspacePath}
         dashboardConversation
-        defaultRelayDashboard={relayMode}
         emptyAction={canCreate ? <DashboardCreateDraftButton target={{ workspacePath }} /> : undefined}
         focusTier={reportFocusTier}
       />}
@@ -76,7 +72,7 @@ function FilesBody() {
   return <FileWorkspacePane hideManagedEntriesByDefault />
 }
 
-function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspacePath: string | null; presetQueryId: string | null; relayMode: boolean }) {
+function InspectorBody({ workspacePath, presetQueryId }: { workspacePath: string | null; presetQueryId: string | null }) {
   const workflowWorkspaceView = useWorkflowStore(state => state.workflowWorkspaceView)
   const refreshToken = useWorkflowStore(state => state.workspaceViewRefreshToken)
   const historyLogsTarget = useWorkflowStore(state => state.workspaceViewTarget?.view === 'execution-logs' && state.workspaceViewTarget.target.startsWith('history:') ? state.workspaceViewTarget : null)
@@ -86,7 +82,6 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
     return inspections?.items.find(item => item.workspace_path === workspacePath && item.session_id === tab?.sessionId && inspectionKey(item) === inspections.activeId)
   })
   const { selectedRunFolder, runFolderNames, workspace } = useWorkspaceViewData()
-  const relayID = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest.id)
   const refreshWorkspaceState = workspace.refresh
 
   const closeInspector = useCallback(() => {
@@ -98,7 +93,7 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
   const renderInspector = (view: InspectorViewId) => {
     switch (view) {
       case 'context':
-        return relayMode ? <RelayContextPanel workspacePath={workspacePath}/> : <WorkflowContextPanel workspacePath={workspacePath}/>
+        return <WorkflowContextPanel workspacePath={workspacePath}/>
       case 'costs':
         return (
           <CostsPopup
@@ -108,16 +103,7 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
           />
         )
       case 'execution-logs':
-        if (relayMode && workspacePath && relayID) {
-          return <RelayExecutionLogsView
-            relayID={relayID}
-            draftWorkspacePath={workspacePath}
-            draftSelectedRunFolder={selectedRunFolder}
-            draftRunFolders={runFolderNames}
-            draftRunFolderInfos={workspace.state?.run_folders || []}
-            onRefreshDraftRuns={refreshWorkspaceState}
-          />
-        }
+
         return (
           <ExecutionLogsPopup
             workspacePath={workspacePath}
@@ -160,7 +146,7 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
       case 'identity':
       case 'mcp':
       case 'browser':
-        return <WorkflowCapabilitiesPanel key={view === 'mcp' ? workspacePath : undefined} section={view} workspacePath={workspacePath} presetQueryId={presetQueryId} relayMode={relayMode} />
+        return <WorkflowCapabilitiesPanel key={view === 'mcp' ? workspacePath : undefined} section={view} workspacePath={workspacePath} presetQueryId={presetQueryId} />
       default:
         return assertNeverView(view)
     }
@@ -197,15 +183,13 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
  * re-declared the same hooks and toolbar, and switching between them
  * unmounted and rebuilt the whole pane.
  *
- * Report and Pulse (log) are lightweight preview-pane views with no React
- * Flow tree; the flow canvas is wrapped in its own ReactFlowProvider so
- * report mode never repaints on flow-only store traffic.
+ * Reports and inspectors share this host; source graphs belong to the
+ * Crew workflow views.
  */
 export const WorkspaceViewHost = React.memo((props: WorkflowCanvasProps) => {
   const {
     workspacePath,
     presetQueryId,
-    relayMode = false,
     currentPhase,
     onStartPhase,
     onCreatePlan,
@@ -228,14 +212,11 @@ export const WorkspaceViewHost = React.memo((props: WorkflowCanvasProps) => {
   })
   const globalSelectedRunFolder = useWorkflowStore(state => state.selectedRunFolder)
   const selectedRunFolder = scope ? scope.selectedRunFolder : globalSelectedRunFolder
-  const pythonRelay = useWorkflowManifestStore(state => relayMode && state.workflows.some(item => item.workspace_path === workspacePath && item.manifest.relay_runtime === 'python'))
-  const relayID = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest.id)
   const workflowWorkspaceView = useWorkflowStore(state => state.workflowWorkspaceView)
   const lastCanvasView = useWorkflowStore(state => state.lastCanvasView)
 
-  // The graph destination belongs only to the Python Relay source view.
   const selectedView = scope?.view ?? workflowWorkspaceView ?? lastCanvasView
-  const effectiveView: WorkspaceViewId = resolveWorkspaceView(selectedView, pythonRelay)
+  const effectiveView: WorkspaceViewId = selectedView
   const canWrite = useCanWriteWorkflow(workspacePath)
   const kind: WorkspaceViewKind = getWorkspaceView(effectiveView).kind
 
@@ -344,14 +325,10 @@ export const WorkspaceViewHost = React.memo((props: WorkflowCanvasProps) => {
   const isInspectorKind = kind === 'inspector' || kind === 'capability'
 
   let body: React.ReactNode
-  if (kind === 'canvas' && pythonRelay) {
-    body = toolbarOnly ? null : <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Flow…</div>}>
-      <RelayPythonView workspacePath={workspacePath} relayID={relayID} onBuild={onCreatePlan || noop} scope={scope} />
-    </Suspense>
-  } else if (toolbarOnly) {
+  if (toolbarOnly) {
     body = null
   } else if (kind === 'preview') {
-    body = <ReportBody workspacePath={workspacePath} relayMode={relayMode} />
+    body = <ReportBody workspacePath={workspacePath} />
   } else if (effectiveView === 'workshop') {
     body = workshopPanel ?? null
   } else if (kind === 'files') {
@@ -367,7 +344,7 @@ export const WorkspaceViewHost = React.memo((props: WorkflowCanvasProps) => {
       </Suspense>
     )
   } else {
-    body = <InspectorBody workspacePath={workspacePath} presetQueryId={presetQueryId} relayMode={relayMode} />
+    body = <InspectorBody workspacePath={workspacePath} presetQueryId={presetQueryId} />
   }
 
   return (
@@ -376,8 +353,7 @@ export const WorkspaceViewHost = React.memo((props: WorkflowCanvasProps) => {
         {showToolbar && (
           <div className={gridToolbar ? 'col-start-1 row-start-1 md:col-span-2' : ''}>
             <WorkflowToolbar
-              relayMode={relayMode}
-              pythonRelay={pythonRelay}
+
               status={status}
               currentPhase={currentPhase}
               workspacePath={workspacePath}

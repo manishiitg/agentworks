@@ -83,7 +83,7 @@ export const REPORT_BOOTSTRAP = `<script>(function(){
       });
     };
   }
-  ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'updateField', 'updateFields', 'run', 'getGoalMetrics', 'renderGoalProgress', 'getCosts', 'getRelayRuns', 'renderCosts', 'renderTable', 'renderActivity'].forEach(function(name){
+  ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'updateField', 'updateFields', 'run', 'getGoalMetrics', 'renderGoalProgress', 'getCosts', 'renderCosts', 'renderTable', 'renderActivity'].forEach(function(name){
     api[name] = queueCall(name);
   });
   api.openFile = function(){
@@ -470,10 +470,6 @@ export function installReportDocumentHost(document: Document, options: ReportHos
 
   if (!dataApi) return
 
-  const getRelayRuns = (options?: { version?: string; limit?: number }) => {
-    if (!dataApi.getRelayRuns) return Promise.reject(new Error('Flow run history is unavailable.'))
-    return dataApi.getRelayRuns(options)
-  }
   const getCosts = (costOptions?: ReportCostOptions) => getReportCosts(dataApi, costOptions)
   const renderCosts = (target: string | HTMLElement, costOptions?: ReportCostOptions) => renderReportCosts(doc, dataApi, target, costOptions)
   const getGoalMetrics = () => getReportGoalMetrics(dataApi.query)
@@ -489,7 +485,7 @@ export function installReportDocumentHost(document: Document, options: ReportHos
       open: async () => { throw new Error('Chat widgets require an authenticated project dashboard. Preview does not open conversations.') },
       close: () => {},
     },
-    getCosts, getRelayRuns, renderCosts,
+    getCosts, renderCosts,
     getGoalMetrics,
     renderGoalProgress,
     renderTable,
@@ -525,7 +521,6 @@ export function installReportDocumentHost(document: Document, options: ReportHos
   // array is drained and cleared here, so it stays empty on every later
   // re-injection (data refresh, theme change).
   const realReportMethods: Record<string, ((...args: unknown[]) => unknown) | undefined> = {
-    getRelayRuns: getRelayRuns as (...args: unknown[]) => unknown,
     getCosts: getCosts as (...args: unknown[]) => unknown,
     renderCosts: renderCosts as (...args: unknown[]) => unknown,
     getGoalMetrics,

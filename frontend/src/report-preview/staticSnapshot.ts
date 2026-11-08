@@ -49,7 +49,6 @@ export function staticDataApi(snapshot: StaticSnapshot, renderMarkdown: ReportDa
     get: (...args) => read('get', args),
     getText: (...args) => read('getText', args),
     getHtml: (...args) => read('getHtml', args),
-    getRelayRuns: (...args) => read('getRelayRuns', args),
     getCosts: (...args) => read('getCosts', args),
     run: (...args) => read('run', args),
     fileUrl: (...args) => read('fileUrl', args),
