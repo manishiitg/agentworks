@@ -231,7 +231,7 @@ func (g *productToolGate) allowsLocked(name string) bool {
 	if len(members) > 0 {
 		member = members[0]
 	}
-	if (member == "send_email" || member == "record_summary") && !g.workflowNotifications {
+	if member == "send_email" && !g.workflowNotifications {
 		return false
 	}
 	if g.deny != nil && g.deny(member) {

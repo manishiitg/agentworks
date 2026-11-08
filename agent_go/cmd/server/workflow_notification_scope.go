@@ -37,14 +37,12 @@ func restrictWorkflowNotificationTools(tools []llmtypes.Tool, executors map[stri
 	}
 	kept := make([]llmtypes.Tool, 0, len(tools))
 	for _, tool := range tools {
-		if tool.Function != nil && (tool.Function.Name == "send_email" || tool.Function.Name == "record_summary") {
+		if tool.Function != nil && tool.Function.Name == "send_email" {
 			continue
 		}
 		kept = append(kept, tool)
 	}
 	delete(executors, "send_email")
 	delete(categories, "send_email")
-	delete(executors, "record_summary")
-	delete(categories, "record_summary")
 	return kept
 }

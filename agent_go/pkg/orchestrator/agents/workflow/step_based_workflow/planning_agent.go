@@ -5336,7 +5336,7 @@ Before adding it, decide the step type by who decides the work, not by habit:
 - add_scripted_step only for deterministic, no-judgment work (fixed API/CLI/data fetch, parsing, mechanical writes). A known list of actions sharing one context is still ONE agent, not one scripted/agentic step per action.
 - predefined_routes are typed scripted helpers only. Put LLM specialist teams in an agent step using its Crew configuration. The Agent owns its task, optional authored follow-ups and validation; it has no automatic reflection phase.
 - add_routing_step / add_branch_step only for a real fixed branch choice (routing: one major sub-workflow fork per plan; branch: a small in-flow decision).
-- Supply known values through run variables/function arguments or per-step human_inputs. Agents use human_feedback for urgent missing values and create_human_input_request for durable decisions.
+- Supply known values through run variables/function arguments or per-step human_inputs. Runs never wait for a person: a missing value fails the run with a clear reason.
 
 For the full decision guide and anti-patterns, call read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}]) before adding the first step.`, planPath), nil
 	}

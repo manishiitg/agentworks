@@ -365,8 +365,7 @@ chat:
     # the account's default Google connection, which is not bound to any
     # workflow; list_mcp_servers is the platform's MCP inventory; send_email emails any address the caller
     # names, which a token must not do in the workflow's name (PLAT-736). Deliberately kept: send_slack_message (configured workflow
-    # routes only; arbitrary channels are rejected), record_summary (saved
-    # workflow notification destinations), trigger_schedule (this workflow's own
+    # routes only; arbitrary channels are rejected), trigger_schedule (this workflow's own
     # schedules). Adding a name here is a deliberate API change; pinning
     # test: TestExternalRunAuthorityBoundary.
     external_denylist:

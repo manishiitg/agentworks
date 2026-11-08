@@ -124,12 +124,6 @@
     "external_members": "google_workspace_cli"
   },
   {
-    "family": "needs_you",
-    "name": "ask",
-    "member": "human_feedback",
-    "description": "Use the current needs_you ask operation."
-  },
-  {
     "family": "media",
     "name": "edit",
     "member": "image_edit",

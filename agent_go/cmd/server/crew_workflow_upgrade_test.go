@@ -352,13 +352,13 @@ func TestCrewMainWorkflowUpgradeChecksRepairsAndStampsCurrentDefinitions(t *test
 	if err != nil || !strings.Contains(status, "check_failure") || !strings.Contains(status, "notify_user") || !strings.Contains(status, "files.image") || !strings.Contains(status, "missing_tool") || !strings.Contains(status, "planning/step_override.json") {
 		t.Fatalf("retired tools were not all reported with their locations: %s %v", status, err)
 	}
-	if applied, err := api.checkAndStampWorkflowContract(ctx, child.Root, beforeFailure, workflowContractPortableVersion, "Check retired tools"); err == nil || applied || !strings.Contains(err.Error(), "record_summary") || !strings.Contains(err.Error(), "native image reader") {
+	if applied, err := api.checkAndStampWorkflowContract(ctx, child.Root, beforeFailure, workflowContractPortableVersion, "Check retired tools"); err == nil || applied || !strings.Contains(err.Error(), "send_email") || !strings.Contains(err.Error(), "native image reader") {
 		t.Fatalf("retired selections were stamped or their repairs were unclear: %v %v", applied, err)
 	}
 	if err := writeFileToWorkspace(ctx, configPath, `{"steps":[]}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileToWorkspace(ctx, overridePath, `{"step_override":{"enabled_custom_tools":["human_tools:needs_you.ask","workspace_advanced:terminal.execute","workspace_advanced:*"]}}`); err != nil {
+	if err := writeFileToWorkspace(ctx, overridePath, `{"step_override":{"enabled_custom_tools":["human_tools:messages.email_send","workspace_advanced:terminal.execute","workspace_advanced:*"]}}`); err != nil {
 		t.Fatal(err)
 	}
 	refuseManifestWrite = true
