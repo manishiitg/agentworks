@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { WebhookEndpoint } from '../scheduler/scheduleRuns/WebhookEndpoint'
 import { describeCron } from '../scheduler/scheduleRuns/cron'
 import { Zap } from 'lucide-react'
-import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations, relativeTime } from './AutomationKit'
+import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations, PageRow, relativeTime } from './AutomationKit'
+import { Switch } from '../ui/Switch'
 import { conditionTriggersApi, type ConditionTrigger, type ConditionHistory, type WatcherCaller } from '../../api/conditionTriggers'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
@@ -28,7 +29,7 @@ function targetLabel(t: ConditionTrigger['target'], sideChats: SideChat[] = []) 
   return `${t.name} · trigger ${t.trigger_id}`
 }
 
-export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, canManage = true }: { scope: ProductTriggerScope; refreshToken?: number; onAsk?: (message: string) => void | Promise<void>; canManage?: boolean }) {
+export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, canManage = true, embedded = false }: { embedded?: boolean; scope: ProductTriggerScope; refreshToken?: number; onAsk?: (message: string) => void | Promise<void>; canManage?: boolean }) {
   const [triggers, setTriggers] = useState<ConditionTrigger[]>([])
   const [history, setHistory] = useState<Record<string, ConditionHistory>>({})
   const [savedChats, setSavedChats] = useState<SideChat[]>([])
@@ -77,14 +78,15 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     try { const h = await conditionTriggersApi.history(scope.projectId, id, scope.profileId); setHistory(old => ({ ...old, [id]: h })) }
     catch (e) { setError(messageOf(e)) }
   }
-  return <div className="h-full min-w-0 overflow-y-auto p-4" data-testid="condition-triggers">
-    <div className="mb-4"><AutomationIntro icon={Zap} tone="emerald" title="Watchers" action={canManage ? <button className={buttonClass} onClick={() => void ask(setupMessage)}>Add in chat</button> : undefined}>
+  const Box = embedded ? Fragment : AutomationListBox
+  return <div className={embedded ? 'min-w-0' : 'h-full min-w-0 overflow-y-auto p-4'} data-testid="condition-triggers">
+    {!embedded && <div className="mb-4"><AutomationIntro icon={Zap} tone="emerald" title="Watchers" action={canManage ? <button className={buttonClass} onClick={() => void ask(setupMessage)}>Add in chat</button> : undefined}>
       {loaded ? `${triggers.length} saved · ${triggers.filter(item => item.enabled && !item.completed_at).length} on · ${triggers.filter(item => item.last_status === 'error' || item.once_status === 'failed' || item.once_status === 'needs_reconciliation').length} need attention` : 'Loading watchers…'}
-    </AutomationIntro></div>
-    {error && <p role="alert" className="mb-3 rounded border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
-    {loaded && triggers.length === 0 && <EmptyAutomations>No watchers yet. Add one to start work when something changes.</EmptyAutomations>}
+    </AutomationIntro></div>}
+    {error && <p role="alert" className="m-3 rounded border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
+    {loaded && triggers.length === 0 && (embedded ? <p className="px-4 py-6 text-center text-sm text-muted-foreground">No watchers yet. Ask your agent to add one.</p> : <EmptyAutomations>No watchers yet. Add one to start work when something changes.</EmptyAutomations>)}
     {callers.length > 0 && <details className="mb-4 rounded border border-border p-3 text-xs"><summary className="cursor-pointer">Watchers calling this product</summary><ul className="mt-2 space-y-2">{callers.map(caller => <li key={`${caller.owner_id}:${caller.id}`} className="break-all">{caller.name} · {caller.owner_id} · {targetLabel(caller.target)} · {caller.enabled ? 'Enabled' : 'Paused'}{caller.last_dispatch_at ? ` · Last dispatch ${new Date(caller.last_dispatch_at).toLocaleString()}` : caller.last_status ? ` · ${caller.last_status}` : ''}</li>)}</ul></details>}
-    {triggers.length > 0 && <AutomationListBox>{triggers.map(t => { const attention = t.once_status === 'failed' || t.once_status === 'needs_reconciliation' || t.last_status === 'error'; return <AutomationRow key={t.id} icon={Zap} tone="emerald" open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)} title={t.name} summary={`${t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.mode}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Crew Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'On events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'On a schedule'} · starts ${targetLabel(t.target, sideChats)}`} meta={t.last_run_at ? `Checked ${relativeTime(t.last_run_at)}` : 'Not checked yet'} status={t.completed_at ? 'done' : attention ? 'failing' : t.enabled ? 'on' : 'paused'} statusLabel={t.completed_at ? 'Done' : attention ? 'Needs attention' : t.enabled ? 'On' : 'Paused'}>
+    {triggers.length > 0 && <Box>{triggers.map(t => { const attention = t.once_status === 'failed' || t.once_status === 'needs_reconciliation' || t.last_status === 'error'; const body = <>
 
       <p className="break-all text-xs text-muted-foreground">{t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.login}` : t.script} · {t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Crew Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'Events + backup schedule' : 'On a schedule'}{t.cron_expression ? ` · ${t.cron_expression} · ${t.timezone}` : ''}</p>
       {t.email_source === 'personal_gmail' && <p className="text-xs text-muted-foreground">Your mailbox stays private. Only the content selected by this Watcher is sent to the Crew.</p>}
@@ -134,6 +136,14 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
           {history[t.id]!.events.map(e => <details key={e.event.id} className="mt-2 rounded border border-border p-2"><summary className="cursor-pointer break-all">{e.event.id} · {e.status.replaceAll('_', ' ')}</summary><pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(e.event.payload, null, 2)}</pre>{e.receipt && <p className="mt-1 break-all">Receipt: {e.receipt}</p>}{e.error && <p className="mt-1 text-destructive">{e.error}</p>}</details>)}
         </details>
       </div>}
-    </AutomationRow> })}</AutomationListBox>}
+    </>
+      const how = t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Watches your Gmail' : 'Watches the Crew inbox') : t.check_mode === 'event' ? 'Runs when an event arrives' : t.check_mode === 'both' ? 'Runs on events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'Checks on a schedule'
+      return embedded
+        ? <PageRow key={t.id} testId={`watcher-${t.id}`}
+          lead={<Switch aria-label={`${t.enabled ? 'Turn off' : 'Turn on'} ${t.name}`} checked={t.enabled && !t.completed_at} disabled={busy || !canManage || !!t.completed_at} onCheckedChange={enabled => void manage('update', t.id, { enabled })} />}
+          title={t.name}
+          lines={[`${how} · then ${targetLabel(t.target, sideChats)}`, attention ? (t.last_error || 'Needs attention') : t.completed_at ? 'Done' : t.last_run_at ? `Last check ${relativeTime(t.last_run_at)}` : 'Not checked yet']}
+          open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)}>{body}</PageRow>
+        : <AutomationRow key={t.id} icon={Zap} tone="emerald" open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)} title={t.name} summary={`${t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.mode}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Crew Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'On events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'On a schedule'} · starts ${targetLabel(t.target, sideChats)}`} meta={t.last_run_at ? `Checked ${relativeTime(t.last_run_at)}` : 'Not checked yet'} status={t.completed_at ? 'done' : attention ? 'failing' : t.enabled ? 'on' : 'paused'} statusLabel={t.completed_at ? 'Done' : attention ? 'Needs attention' : t.enabled ? 'On' : 'Paused'}>{body}</AutomationRow> })}</Box>}
   </div>
 }

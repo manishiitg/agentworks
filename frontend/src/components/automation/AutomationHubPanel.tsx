@@ -10,6 +10,7 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { AgentInboxPanel, useAgentInboxEnabled } from '../integrations/AgentInboxPanel'
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
+import { PageCard } from './AutomationKit'
 
 const WorkflowScheduleRunsPanel = lazy(() => import('../scheduler/WorkflowScheduleRunsPanel'))
 const ProductAPITriggersView = lazy(() => import('../workflow/ProductAPITriggersView'))
@@ -136,9 +137,10 @@ export function AutomationHubPanel({
     onStatus={setSchedulesStatus}
     onClose={() => {}}
   />
-  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: relayMode ? 'relays' : 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} />
+  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: relayMode ? 'relays' : 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} embedded={crewPage} />
   const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}><ProductAPITriggersView
     embedded
+    pageRows={crewPage}
     hideEmpty={Object.values(childWebhookCounts).some(count => count.active + count.paused > 0)}
     scope={productTriggerScope}
     workspacePath={workspacePath}
@@ -149,9 +151,14 @@ export function AutomationHubPanel({
     onCounts={setTriggersCounts}
   />
     {childrenError && <p role="alert" className="p-4 text-sm text-destructive">{childrenError}</p>}
-    {children.map(child => <WorkflowAPITriggersView key={child.id} workspacePath={child.workspace_path} embedded hideHeader onCounts={count => setChildWebhookCounts(previous => previous[child.id]?.active === count.active && previous[child.id]?.paused === count.paused ? previous : { ...previous, [child.id]: count })} refreshToken={triggersRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
+    {children.map(child => <WorkflowAPITriggersView key={child.id} workspacePath={child.workspace_path} embedded pageRows={crewPage} title={child.manifest.label} hideHeader onCounts={count => setChildWebhookCounts(previous => previous[child.id]?.active === count.active && previous[child.id]?.paused === count.paused ? previous : { ...previous, [child.id]: count })} refreshToken={triggersRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
   </div> : null
-  const inboxView = (wrap: string) => <div className={wrap}><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} /></div>
+  const inboxView = (wrap: string) => <div className={wrap}><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} embedded={crewPage} /></div>
+
+  const askMessage = section === 'triggers' ? 'Help me set up a webhook for this Crew.' : section === 'conditions' ? 'Help me set up a watcher for this Crew.' : section === 'email' ? 'Help me with this Crew’s inbox.' : 'Help me set up a schedule for this Crew.'
+  const cardTitle = ({ schedules: ['Schedules', undefined], triggers: ['Webhooks', 'Another app starts this by calling a web address.'], conditions: ['Watchers', 'Keeps checking something, and acts when it finds a match.'], email: ['Inbox', 'Only for a Crew that has an email address or a bot.'] } as Record<string, [string, string | undefined]>)[section]
+  // On a Crew page each tab's content sits in one card with its own Ask (owner-approved mock, 8 Nov).
+  const inCard = (content: ReactNode) => crewPage && cardTitle ? <div className="h-full overflow-y-auto p-4"><PageCard title={cardTitle[0]} hint={cardTitle[1]} onAsk={canManage === false ? undefined : () => ask(askMessage)}>{content}</PageCard></div> : content
 
   return (
     <div
@@ -179,7 +186,6 @@ export function AutomationHubPanel({
         {([['schedules', 'Schedules', 'Help me set up a schedule for this Crew.'], ['triggers', 'Webhooks', 'Help me set up a webhook for this Crew.'], ['conditions', 'Watchers', 'Help me set up a watcher for this Crew.'], ['email', 'Inbox', 'Help me with this Crew’s inbox.']] as const)
           .filter(([id]) => availableSections.has(id)).map(([id, label]) => <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}
             className={`rounded-md px-3 py-1.5 text-sm ${section === id ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>{label}</button>)}
-        <button type="button" onClick={() => void ask(section === 'triggers' ? 'Help me set up a webhook for this Crew.' : section === 'conditions' ? 'Help me set up a watcher for this Crew.' : section === 'email' ? 'Help me with this Crew’s inbox.' : 'Help me set up a schedule for this Crew.')} className="ml-auto rounded-md px-2 py-1 text-xs text-primary hover:bg-muted">Ask</button>
       </nav>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>
@@ -191,7 +197,7 @@ export function AutomationHubPanel({
               : chatContent}
           </div>
         )}
-        {!relayMode && section === 'schedules' && schedulesView}
+        {!relayMode && section === 'schedules' && inCard(schedulesView)}
         {section === 'triggers' && entityType === 'workflow' && !relayMode && <WorkflowAPITriggersView
           workspacePath={workspacePath}
           onAsk={onAskAI}
@@ -200,8 +206,8 @@ export function AutomationHubPanel({
           refreshToken={triggersRefreshToken}
           onCounts={setTriggersCounts}
         />}
-        {section === 'email' && inboxView('h-full overflow-y-auto p-4')}
-        {section === 'conditions' && watchersView}
+        {section === 'email' && inCard(inboxView(crewPage ? '' : 'h-full overflow-y-auto p-4'))}
+        {section === 'conditions' && inCard(watchersView)}
         {section === 'triggers' && entityType === 'workflow' && relayMode && <WorkflowFunctionsView
           workspacePath={workspacePath}
           relayMode
@@ -210,7 +216,7 @@ export function AutomationHubPanel({
           onCounts={setFunctionsCounts}
           onAsk={onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))}
         />}
-        {section === 'triggers' && productWebhooksView('h-full overflow-auto')}
+        {section === 'triggers' && inCard(productWebhooksView(crewPage ? '' : 'h-full overflow-auto'))}
         {section === 'functions' && entityType === 'workflow' && <WorkflowFunctionsView
           workspacePath={workspacePath}
           refreshToken={functionsRefreshToken}
