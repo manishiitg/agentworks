@@ -119,7 +119,7 @@ func describeWorkflowContractUpgrades(ctx context.Context, workspacePath string)
 	sb.WriteString(fmt.Sprintf("- Current: `%s`\n- Platform current: `%s`\n\n", current, WorkflowContractCurrentVersion))
 
 	if _, known := workflowContractVersionRank(current); !known && current != WorkflowContractCurrentVersion {
-		sb.WriteString(fmt.Sprintf("**This version is not one this server knows.** Version ranks are a closed set so a workflow written by a newer server is never silently downgraded by an older one. There is no upgrade path from %q. Interactive workflow execution and direct webhooks will refuse to start until that is resolved; schedules continue using the saved contract without modifying it.\n", current))
+		sb.WriteString(fmt.Sprintf("**This version is not one this server knows.** Version ranks are a closed set so a workflow written by a newer server is never silently downgraded by an older one. There is no upgrade path from %q. Interactive workflow execution and direct webhooks will refuse to start until that is resolved; scheduled starts also refuse until it is updated.\n", current))
 		return sb.String(), nil
 	}
 

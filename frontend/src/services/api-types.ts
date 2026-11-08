@@ -2676,7 +2676,7 @@ export interface ScheduledJob {
 
 export interface CreateScheduledJobRequest {
 
-  run_destination?: 'chat' | 'isolated'
+  run_destination?: 'chat' | 'isolated' | 'new'
   name: string
   description?: string
   entity_type: 'workflow' | 'chat' | 'multi-agent' | 'product'
@@ -2773,7 +2773,7 @@ export interface ScheduledJobRun {
   artifacts_expired?: boolean
   session_id?: string
   /** A Crew's run: what to open to see its saved conversation, given by the server. */
-  open?: { session_id: string; crew_project_id: string; workspace_path: string; title?: string }
+  open?: { session_id: string; crew_project_id: string; workspace_path: string; title?: string; conversation_key?: string; writable?: boolean }
   status: 'running' | 'success' | 'error' | 'failed' | 'partial' | 'stopped' | 'interrupted' | 'waiting_for_capacity' | 'waiting_for_workflow'
   error?: string
   /** Exact assistant answer produced by this execution. */

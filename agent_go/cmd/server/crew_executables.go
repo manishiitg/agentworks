@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 
 	"github.com/google/uuid"
@@ -190,6 +191,33 @@ func registerCrewExecutable(binding crewExecutableBinding) error {
 	return writeRegistryFileAtomically(file, data)
 }
 
+// Removing a Crew also removes its executable identities. Use the stable
+// server-owned Crew ID, so a stale folder name cannot retain an orphan binding.
+func removeCrewExecutableBindings(crewID string) error {
+	if strings.TrimSpace(crewID) == "" {
+		return fmt.Errorf("Crew identity is required for executable cleanup")
+	}
+	crewExecutablesMu.Lock()
+	defer crewExecutablesMu.Unlock()
+	bindings, err := readCrewExecutables()
+	if err != nil {
+		return err
+	}
+	for root, binding := range bindings {
+		if binding.CrewID != crewID {
+			continue
+		}
+		file, err := crewExecutableFile(root)
+		if err != nil {
+			return err
+		}
+		if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
 // All actions use the existing Crew resolver, including its co-owner and token
 // checks. A Run person cannot author executables through this Builder endpoint.
 func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Request) {
@@ -221,6 +249,14 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			UsedBy   []crewScriptUsage `json:"used_by,omitempty"`
 		}
 		entries := []entry{}
+		// Python that a workflow's own steps run: listed beside the saved Crew scripts, each labelled by where it is used.
+		type stepScript struct {
+			WorkflowID string `json:"workflow_id"`
+			Workflow   string `json:"workflow"`
+			StepID     string `json:"step_id"`
+			Step       string `json:"step"`
+		}
+		stepScripts := []stepScript{}
 		existingRelays := []map[string]string{}
 		for _, binding := range records {
 			if binding.CrewRoot != root {
@@ -245,6 +281,13 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 					}
 				}
 				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers})
+				if binding.Kind == "workflow" {
+					if plan, planErr := readPlanFromWorkspace(r.Context(), binding.Root); planErr == nil {
+						for _, step := range workflow.CrewWorkflowOwnScriptSteps(plan) {
+							stepScripts = append(stepScripts, stepScript{WorkflowID: binding.ID, Workflow: manifest.Label, StepID: step.ID, Step: firstNonEmptyTrimmed(step.Title, step.ID)})
+						}
+					}
+				}
 			}
 		}
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Manifest.Label < entries[j].Manifest.Label })
@@ -254,7 +297,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			http.Error(w, "Could not load this Crew's agents", http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "agents": agents, "existing_relays": existingRelays})
+		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "step_scripts": stepScripts, "agents": agents, "existing_relays": existingRelays})
 		return
 	}
 	if refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(root), caller) {

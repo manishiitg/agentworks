@@ -35,6 +35,10 @@ func GraphPreflight(workspacePath, stepID string) ([]RefMapIssue, error) {
 	if err != nil || m == nil {
 		return nil, err
 	}
+	return graphPreflightIssues(m, stepID), nil
+}
+
+func graphPreflightIssues(m *referenceMap, stepID string) []RefMapIssue {
 	stepID = strings.TrimSpace(stepID)
 	unconditional := map[string]bool{}
 	for _, s := range m.order {
@@ -54,7 +58,7 @@ func GraphPreflight(workspacePath, stepID string) ([]RefMapIssue, error) {
 		}
 		out = append(out, issue)
 	}
-	return out, nil
+	return out
 }
 
 // GraphPreflightMessage renders the problems as the refusal text.

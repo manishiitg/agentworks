@@ -335,7 +335,7 @@ func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definition
 
 // registerWorkWorkflowReferenceTools lets the Work assistant discover the
 // same authorized workflow set as the AgentWorks picker and persist an exact
-// read-only reference in workflow.json. Names are never accepted for mutation:
+// Crew reference in workflow.json (workflows are not linked to a Crew). Names are never accepted for mutation:
 // the model must first list, disambiguate, and use the returned workspace path.
 func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definitionToolRegistrar, userID, sessionID, workspacePath string, readOnly bool) error {
 	if err := api.registerAccessibleWorkflowListTool(registrar, userID, func(ctx context.Context) ([]string, error) {
@@ -364,15 +364,18 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 
-	if err := register("attach_workflow_reference", "Attach one accessible AgentWorks workflow or any Crew project on the server to this Crew as durable context: Crew references are read-write, workflow references read-only. Pass only an exact workspace_path returned by list_accessible_workflows, and call only after the user explicitly asks to attach it.", map[string]interface{}{
+	if err := register("attach_workflow_reference", "Attach another Crew on the server to this Crew as durable context (read-write). Workflows cannot be attached: to use one, run it with run_workflow_trigger or ask its owner agent. Pass only an exact Crew workspace_path returned by list_accessible_workflows, and call only after the user explicitly asks to attach it.", map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"workspace_path": map[string]interface{}{"type": "string", "description": "Exact workflow or Crew workspace_path returned by list_accessible_workflows."},
+			"workspace_path": map[string]interface{}{"type": "string", "description": "Exact Crew workspace_path returned by list_accessible_workflows."},
 		},
 		"required": []string{"workspace_path"},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
 		path, _ := args["workspace_path"].(string)
+		if strings.HasPrefix(strings.Trim(strings.TrimSpace(path), "/"), "Workflow/") {
+			return "", fmt.Errorf("a workflow cannot be attached to a Crew; run it with run_workflow_trigger, or call its functions")
+		}
 		canonicalCurrent := canonicalChatHistoryWorkspacePath(userID, workspacePath)
 		if strings.TrimSuffix(strings.TrimSpace(path), "/") == canonicalCurrent {
 			return "", fmt.Errorf("a Crew cannot attach itself as reference context")
@@ -401,7 +404,7 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		return err
 	}
 
-	return register("detach_workflow_reference", "Detach one durable AgentWorks workflow or Crew reference from this Crew. Pass the exact saved workspace_path.", map[string]interface{}{
+	return register("detach_workflow_reference", "Detach one durable Crew reference from this Crew. Pass the exact saved workspace_path.", map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"workspace_path": map[string]interface{}{"type": "string"},

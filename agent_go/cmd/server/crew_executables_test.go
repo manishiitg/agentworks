@@ -592,3 +592,41 @@ func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
 		}
 	}
 }
+
+// The Scripts tab lists everything runnable: the Python a workflow's own steps run, with where it is used, beside the
+// saved Crew scripts. A step that runs a saved Crew script is not listed twice, and other step types are not scripts.
+func TestCrewExecutablesListWorkflowStepScripts(t *testing.T) {
+	svc, files, ctx := newCrewCreationTestEnv(t)
+	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Step scripts", Purpose: "Reports", IdempotencyKey: "step-scripts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{projectActions: svc}
+	binding := crewExecutableBinding{ID: "reports", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/reports", Kind: "workflow"}
+	if err := registerCrewExecutable(binding); err != nil {
+		t.Fatal(err)
+	}
+	manifest := NewWorkflowManifest("Reports")
+	manifest.ID = "reports"
+	raw, _ := json.Marshal(manifest)
+	files.files[binding.Root+"/workflow.json"] = string(raw)
+	files.files[binding.Root+"/planning/plan.json"] = `{"steps":[
+		{"type":"scripted","id":"normalize-statement","title":"Normalize statement"},
+		{"type":"scripted","id":"call-saved","title":"Call saved","script":"script:helper"},
+		{"type":"agent","id":"summarize","title":"Summarize"}]}`
+	list := httptest.NewRecorder()
+	api.handleCrewExecutables(list, httptest.NewRequest(http.MethodGet, "/api/crew-executables?crew_id="+crew.CrewID, nil).WithContext(ctx))
+	var response struct {
+		StepScripts []struct {
+			Workflow string `json:"workflow"`
+			StepID   string `json:"step_id"`
+			Step     string `json:"step"`
+		} `json:"step_scripts"`
+	}
+	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &response) != nil {
+		t.Fatalf("list: HTTP%d %s", list.Code, list.Body)
+	}
+	if len(response.StepScripts) != 1 || response.StepScripts[0].StepID != "normalize-statement" || response.StepScripts[0].Step != "Normalize statement" || response.StepScripts[0].Workflow == "" {
+		t.Fatalf("step scripts = %+v, want only the step that runs its own Python", response.StepScripts)
+	}
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { ChevronRight, Folder, Loader2, X } from 'lucide-react'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -9,6 +9,7 @@ import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolderChange, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderChange, type TeamFolderListing, type TeamTabAgent, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
+const CrewFunctionsView = lazy(() => import('../../components/automation/CrewFunctionsView'))
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { LentCard } from './LentCard'
 import { TeamFolderChangeDialog } from './TeamFolderChangeDialog'
@@ -94,7 +95,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
       <CrewWhereRow projectId={projectId} />
       <SharesCard view={view} target={target} projectId={projectId} />
       <AgentsCard view={view} target={target} projectId={projectId} />
-      {!!view.functions?.length && <FunctionsCard functions={view.functions} />}
+      <FunctionsCard view={view} projectId={projectId} />
       {team.lent && <LentCard lent={team.lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} />}
       {team.folder_access && <section aria-label="Sync" className={card}>
         <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
@@ -375,16 +376,23 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
   </section>
 }
 
-/** What the Team can call (owner, 7 Nov, mock "Team tab: a Functions card"): functions are how people use a Crew, so they sit
- * with sharing. Read-only; the owner builds and edits them in Automations. */
-function FunctionsCard({ functions }: { functions: NonNullable<TeamTabView['functions']> }) {
+/** What the Team can call (owner, 8 Nov: functions go on Share, not Automations). The Crew's main owner (the server's
+ * can_switch) gets the full function list with its actions; everyone else gets the list the server sends, read-only. */
+function FunctionsCard({ view, projectId }: { view: TeamTabView; projectId: string }) {
+  if (!view.can_switch && !view.functions?.length) return null
   return <section aria-label="Functions" className={card}>
-    <h3 className="font-semibold">Functions</h3>
-    <p className="text-xs text-muted-foreground">What the Team can call. Each runs in its own agent, which only the owner talks to.</p>
-    {functions.map(fn => <div key={fn.name} className="border-t border-border pt-2">
-      <p className="font-mono text-[13px] font-semibold">{fn.name}</p>
-      {fn.description && <p className="text-xs text-muted-foreground">{fn.description}</p>}
-    </div>)}
+    <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Functions</h3>{view.can_switch && <AskButton projectId={projectId} prompt="Help me add a function to this Crew." />}</div>
+    {view.can_switch
+      ? <Suspense fallback={<p className="text-xs text-muted-foreground">Loading…</p>}>
+        <CrewFunctionsView embedded scope={{ profileId: 'work', projectId }} onEdit={message => { if (!sendToMain(projectId, message)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }} />
+      </Suspense>
+      : <>
+        <p className="text-xs text-muted-foreground">What the Team can call. Each runs in its own agent, which only the owner talks to.</p>
+        {view.functions!.map(fn => <div key={fn.name} className="border-t border-border pt-2">
+          <p className="font-mono text-[13px] font-semibold">{fn.name}</p>
+          {fn.description && <p className="text-xs text-muted-foreground">{fn.description}</p>}
+        </div>)}
+      </>}
   </section>
 }
 

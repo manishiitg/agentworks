@@ -13,7 +13,7 @@ import (
 // mcpagent so the workflow optimizer can capture user-supplied runtime context.
 //
 // Caller wires these into the agent's tool registry alongside other custom
-// tools like reorganize_knowledgebase / consolidate_knowledgebase. Each
+// tools. Each
 // registration captures the workspacePath in a closure so the LLM does not
 // need to supply it.
 // =====================================================================

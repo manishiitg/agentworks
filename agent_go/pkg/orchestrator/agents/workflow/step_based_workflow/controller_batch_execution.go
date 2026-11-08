@@ -27,8 +27,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) runResolvedExecution(ctx context.Cont
 	setup.VariableValues = hcpo.variableValues
 	if execCtx != nil {
 		setup.Context.HumanInputs = cloneWorkflowStringMap(execCtx.HumanInputs)
-		setup.Context.SavedScriptOnly = execCtx.SavedScriptOnly
-		setup.Context.AllowScriptRepair = execCtx.AllowScriptRepair
 	}
 	if err := manager.ApplyCleanup(ctx, setup); err != nil {
 		return err
@@ -51,6 +49,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runResolvedExecution(ctx context.Cont
 		}
 	} else {
 		hcpo.finalizeRunMetadata(ctx, folder, status, started, time.Now())
+		hcpo.finishPythonAgentSessions(status)
 	}
 	if flushErr := hcpo.waitForTokenPersistence(); flushErr != nil {
 		hcpo.GetLogger().Warn(fmt.Sprintf("Run finished, but cost persistence did not: %v", flushErr))

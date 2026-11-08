@@ -456,6 +456,10 @@ func ExecuteShellCommand(c *gin.Context) {
 		}()
 	}
 
+	fullLog := prepareShellCapture(req, docsDir, workingDir)
+	logError := fullLog.Error()
+	logFile := fullLog.Path()
+	logComplete := false
 	// Capture stdout and stderr separately, through pipes this service makes itself (PLAT-645): Wait then returns
 	// when the shell exits, not when the last background job holding the output ends. See shellOutputCapture.
 	stdoutR, stdoutW, pipeErr := os.Pipe()
@@ -467,11 +471,13 @@ func ExecuteShellCommand(c *gin.Context) {
 		}
 	}
 	if pipeErr != nil {
+		fullLog.Note("command not started: " + pipeErr.Error())
+		fullLog.Close()
 		c.JSON(http.StatusInternalServerError, models.APIResponse[models.ExecuteShellResponse]{
 			Success: false,
 			Message: "Failed to start command",
 			Error:   pipeErr.Error(),
-			Data:    models.ExecuteShellResponse{Stderr: pipeErr.Error(), ExitCode: -1, Command: fullCommand},
+			Data:    models.ExecuteShellResponse{LogFile: logFile, LogError: logError, LogComplete: logComplete, Stderr: pipeErr.Error(), ExitCode: -1, Command: fullCommand},
 		})
 		return
 	}
@@ -486,15 +492,36 @@ func ExecuteShellCommand(c *gin.Context) {
 	// The children hold their own copies of the write ends; this process must not, or the readers never see EOF.
 	_ = stdoutW.Close()
 	_ = stderrW.Close()
-	stdoutCap := newShellOutputCapture(stdoutR)
-	stderrCap := newShellOutputCapture(stderrR)
+	stdoutCap := newShellOutputCapture(stdoutR, fullLog.Stream("stdout"))
+	stderrCap := newShellOutputCapture(stderrR, fullLog.Stream("stderr"))
+	logDone := make(chan struct{})
+	finishLog := func(note string) {
+		fullLog.Note(note)
+		go func() {
+			<-stdoutCap.done
+			<-stderrCap.done
+			fullLog.Note("output streams closed")
+			fullLog.Close()
+			if failure := fullLog.Error(); failure != "" {
+				log.Printf("[SHELL_LOG] path=%q persistence_error=%q", fullLog.Path(), failure)
+			}
+			close(logDone)
+		}()
+	}
 	if err := startErr; err != nil {
+		finishLog("command not started: " + err.Error())
+		<-logDone
+		logFile = fullLog.Path()
+		if logError == "" {
+			logError = fullLog.Error()
+		}
+		logComplete = fullLog.Complete()
 		executionTime := time.Since(startTime)
 		c.JSON(http.StatusInternalServerError, models.APIResponse[models.ExecuteShellResponse]{
 			Success: false,
 			Message: "Failed to start command",
 			Error:   err.Error(),
-			Data: models.ExecuteShellResponse{
+			Data: models.ExecuteShellResponse{LogFile: logFile, LogError: logError, LogComplete: logComplete,
 				Stdout:          "",
 				Stderr:          err.Error(),
 				ExitCode:        -1,
@@ -516,21 +543,45 @@ func ExecuteShellCommand(c *gin.Context) {
 	err := cmd.Wait()
 	close(done)
 	executionTime := time.Since(startTime)
+	if ctx.Err() != nil {
+		fullLog.Force("command context ended: " + ctx.Err().Error())
+	}
+	finishLog(fmt.Sprintf("shell exited: error=%v, context=%v", err, ctx.Err()))
 	// A process the command left running in the background still holds its output: return now, tell the caller
-	// what is still running, and stop keeping that output (PLAT-645). Confinement is unchanged: the processes keep
+	// what is still running, and freeze its inline output (PLAT-645). Confinement is unchanged: the processes keep
 	// the sandbox, account and process group they were started in.
 	backgroundNotice := ""
 	if !waitShellOutputs(shellBackgroundGrace, stdoutCap, stderrCap) {
 		stdoutCap.detach()
 		stderrCap.detach()
+		fullLog.Force("background process still holds an output stream")
+		logFile = fullLog.Path()
 		slotted := slots.IsWrapped(cmd)
 		var pids []int
 		if !slotted {
 			pids = shellProcessGroupMembers(processRecord.PGID)
 		}
 		backgroundNotice = shellBackgroundNotice(pids, slotted)
+		if logFile != "" {
+			prefix, _, _ := strings.Cut(backgroundNotice, "Output they write")
+			backgroundNotice = prefix + fmt.Sprintf("Output continues in %s. The log is still growing.\n", logFile)
+		}
 		log.Printf("[SHELL] command_sha256=%s left background process(es) running (pgid=%d pids=%v slotted=%v); returning without waiting for them",
 			commandFingerprint, processRecord.PGID, pids, slotted)
+	} else {
+		<-logDone
+	}
+
+	logFile = fullLog.Path()
+	logError = fullLog.Error()
+
+	select {
+	case <-logDone:
+		if logError == "" {
+			logError = fullLog.Error()
+		}
+		logComplete = fullLog.Complete()
+	default:
 	}
 
 	// Get exit code
@@ -550,7 +601,7 @@ func ExecuteShellCommand(c *gin.Context) {
 				Success: false,
 				Message: "Command execution timed out",
 				Error:   fmt.Sprintf("Command exceeded timeout of %d seconds", timeoutSeconds),
-				Data: models.ExecuteShellResponse{
+				Data: models.ExecuteShellResponse{LogFile: logFile, LogError: logError, LogComplete: logComplete,
 					Stdout:          stdoutCap.String(),
 					Stderr:          timeoutMsg,
 					ExitCode:        -1,
@@ -575,7 +626,7 @@ func ExecuteShellCommand(c *gin.Context) {
 				Success: false,
 				Message: "Failed to execute command",
 				Error:   err.Error(),
-				Data: models.ExecuteShellResponse{
+				Data: models.ExecuteShellResponse{LogFile: logFile, LogError: logError, LogComplete: logComplete,
 					Stdout:          stdoutCap.String(),
 					Stderr:          errorStderr,
 					ExitCode:        -1,
@@ -619,7 +670,7 @@ func ExecuteShellCommand(c *gin.Context) {
 				Success: false,
 				Message: "Browser artifact transfer failed",
 				Error:   transferErr.Error(),
-				Data: models.ExecuteShellResponse{
+				Data: models.ExecuteShellResponse{LogFile: logFile, LogError: logError, LogComplete: logComplete,
 					Stdout:          stdoutCap.String(),
 					Stderr:          stderrCap.String(),
 					ExitCode:        exitCode,
@@ -635,7 +686,7 @@ func ExecuteShellCommand(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse[models.ExecuteShellResponse]{
 		Success: true,
 		Message: "Command executed successfully",
-		Data: models.ExecuteShellResponse{
+		Data: models.ExecuteShellResponse{LogFile: logFile, LogError: logError, LogComplete: logComplete,
 			Stdout:          stdoutCap.String(),
 			Stderr:          stderrCap.String() + backgroundNotice,
 			ExitCode:        exitCode,
@@ -663,7 +714,7 @@ func isAllowedShellExtraEnvKey(key string) bool {
 		// looked like it had no input (PLAT-514), and knowledge-base and database access flags never arrived either.
 		strings.HasPrefix(key, "WORKFLOW_TRIGGER_") ||
 		strings.HasPrefix(key, "WORKFLOW_KB_") ||
-		key == "WORKFLOW_DB_ACCESS" || key == "RUN_FOLDER" ||
+		key == "WORKFLOW_DB_ACCESS" || key == "RUN_FOLDER" || key == "WORKFLOW_RUN_DIR" ||
 		// A Run-mode Crew turn's run folder, the one place it may write (PLAT-756). Dropped here, a Crew's scripts never
 		// learned where to save their output and the agent had to find the folder from its notice each time.
 		key == "CREW_RUN_DIR" ||

@@ -11,16 +11,16 @@ Skills are reusable instruction sets (a `SKILL.md` plus optional bundled files) 
 
 ### Where skills live
 
-Skills belong to the **current product or workflow**, `<current-workspace>/skills/<folder>/SKILL.md`. There is no shared account skills library. `list_skills` also discovers skills installed by native agents in this workspace's `.skills/` and provider skill folders such as `.agents/skills` and `.claude/skills`. Installing in one workspace does not install in another.
+Skills belong to the **current product or workflow**, `<current-workspace>/skills/<folder>/SKILL.md`. There is no shared account skills library. `skills action=list` also discovers skills installed by native agents in this workspace's `.skills/` and provider skill folders such as `.agents/skills` and `.claude/skills`. Installing in one workspace does not install in another.
 
 ### Lifecycle
 
 1. **Find**
-   - `list_skills` — installed skills in this workspace.
-   - `search_skills(query)` — search the public registry.
+   - `skills action=list` — installed skills in this workspace.
+   - `skills action=search` (query) — search the public registry.
 2. **Install**
-   - `install_skill(source)` — from the registry, source format `owner/repo@skill-name`.
-   - `import_skill(github_url)` — from a GitHub folder URL.
+   - `skills action=install` (source) — from the registry, source format `owner/repo@skill-name`.
+   - `skills action=import` (github_url) — from a GitHub folder URL.
    - Both download into `<current-workspace>/skills/<folder>/`. If a folder exists but has no `SKILL.md`, reinstall it with the same method it was originally installed with — **never write `SKILL.md` by hand**.
 3. **Select for workflow/builder context**
    - `settings(action="update", skills={add:["folder-name"]})`. This records the skill as a selected workflow capability for workshop/builder discovery. Do NOT edit `workflow.json` manually.
@@ -30,9 +30,9 @@ Skills belong to the **current product or workflow**, `<current-workspace>/skill
 5. **Remove from the workflow**
    - `settings(action="update", skills={remove:["folder-name"]})`.
 6. **Uninstall**
-   - `uninstall_skill(folder_name)` — deletes its files and clears its main-chat and per-step attachments in this workspace. Platform-managed skills cannot be uninstalled.
+   - `skills action=uninstall` (folder_name) — deletes its files and clears its main-chat and per-step attachments in this workspace. Platform-managed skills cannot be uninstalled.
 
-Inspect at any point with `settings action=get` (the workflow's selected skills) and `list_skills` (everything installed). Inspect `planning/step_config.json` or use step config tools to see per-step `enabled_skills`.
+Inspect at any point with `settings action=get` (the workflow's selected skills) and `skills action=list` (everything installed). Inspect `planning/step_config.json` or use step config tools to see per-step `enabled_skills`.
 
 ### Attachment model: selected vs enabled (important)
 
@@ -53,6 +53,6 @@ So workflow selection is discovery/context for workshop agents, not runtime inhe
 ### Troubleshooting
 
 - **Skill not taking effect on a step** → check that the step explicitly lists it in `enabled_skills`. `settings(action="update", skills={add:[...]})` alone is not enough for runtime execution.
-- **Folder exists but no `SKILL.md`** → reinstall via the original method (`install_skill` / `import_skill`); do not author the file manually.
+- **Folder exists but no `SKILL.md`** → reinstall via the original method (`skills action=install` / `skills action=import`); do not author the file manually.
 - **Too many skills / bloated step prompts** → remove unnecessary skills from each step's `enabled_skills`; keep workflow-level selection as a lightweight capability inventory only when useful.
 - **Need to author or improve a skill** → use the `skill-creator` skill; for sub-agent templates use `subagent-creator`. Neither installs/attaches — that's this doc's tools.

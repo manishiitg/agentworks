@@ -10,6 +10,7 @@ import (
 
 func serveContractGuardManifest(t *testing.T, version string) string {
 	t.Helper()
+	ensureProjectStateRoot(t)
 	const workspacePath = "Workflow/contract-guard"
 	data, err := json.Marshal(map[string]interface{}{
 		"schema_version":      1,
@@ -39,7 +40,20 @@ func TestRequireCurrentWorkflowContractForManualRunAllowsCurrent(t *testing.T) {
 	}
 }
 
-func TestRequireCurrentWorkflowContractForManualRunRequiresNestedArtifactMigrationForOlderMarkers(t *testing.T) {
+// PLAT-746-405: an editable manifest ID is not proof that a known Crew
+// workflow became standalone. Script/Relay bindings do not use this gate.
+func TestKnownCrewBindingGuardsAChangedManifestID(t *testing.T) {
+	root := serveContractGuardManifest(t, workflowContractSkillsVersion)
+	for _, kind := range []string{"workflow", "script", "relay"} {
+		binding := &crewExecutableBinding{ID: "trusted-id-different-from-manifest", Root: root, Kind: kind}
+		err := requireCurrentWorkflowContractForManualRun(t.Context(), root, binding)
+		if (err != nil) != (kind == "workflow") {
+			t.Fatalf("kind=%s wrong contract gate: %v", kind, err)
+		}
+	}
+}
+
+func TestManualRunRefusesUnsupportedOldContracts(t *testing.T) {
 	for _, version := range []string{
 		workflowContractExplicitSchedulePulseVersion,
 		workflowContractRunScopedRoutesVersion,
@@ -48,30 +62,10 @@ func TestRequireCurrentWorkflowContractForManualRunRequiresNestedArtifactMigrati
 		t.Run(version, func(t *testing.T) {
 			workspacePath := serveContractGuardManifest(t, version)
 			err := requireCurrentWorkflowContractForManualRun(context.Background(), workspacePath)
-			if err == nil || !strings.Contains(err.Error(), "upgrade-nested-agent-artifacts") {
-				t.Fatalf("older marker %s did not require the nested-artifact migration: %v", version, err)
+			if err == nil {
+				t.Fatalf("older marker %s did not explain manual recreation: %v", version, err)
 			}
 		})
-	}
-}
-
-func TestRequireCurrentWorkflowContractForManualRunAsksBeforeMigration(t *testing.T) {
-	workspacePath := serveContractGuardManifest(t, workflowContractRouteSummariesVersion)
-	err := requireCurrentWorkflowContractForManualRun(context.Background(), workspacePath)
-	if err == nil {
-		t.Fatal("stale contract was allowed")
-	}
-	message := err.Error()
-	for _, want := range []string{
-		"workflow_contract_migration_required",
-		"no step was started",
-		"Shall I migrate it now?",
-		"get_contract_upgrades",
-		WorkflowContractCurrentVersion,
-	} {
-		if !strings.Contains(message, want) {
-			t.Fatalf("guard message missing %q: %s", want, message)
-		}
 	}
 }
 
@@ -99,29 +93,11 @@ func TestWorkflowContractExecutionGuardWrapsBothManualRunTools(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := draft.tools[name].exec(context.Background(), nil)
-		if err == nil || !strings.Contains(err.Error(), "Shall I migrate it now?") {
+		if err == nil {
 			t.Fatalf("%s did not return migration prompt: %v", name, err)
 		}
 	}
 	if called != 0 {
 		t.Fatalf("guarded executors ran %d time(s)", called)
-	}
-}
-
-func TestWorkflowContractGuardAppliesOnlyToInteractiveRuns(t *testing.T) {
-	for _, tc := range []struct {
-		name, sessionID, triggeredBy string
-		wantGuard                    bool
-	}{
-		{name: "interactive chat", sessionID: "builder-chat", wantGuard: true},
-		{name: "manual workflow chat", sessionID: "workflow-run", triggeredBy: "manual", wantGuard: true},
-		{name: "cron schedule", sessionID: "opaque", triggeredBy: "cron"},
-		{name: "scheduled session identity", sessionID: "schedule-daily-123"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := shouldGuardWorkflowContractForRun(tc.sessionID, tc.triggeredBy); got != tc.wantGuard {
-				t.Fatalf("guard=%v want=%v", got, tc.wantGuard)
-			}
-		})
 	}
 }

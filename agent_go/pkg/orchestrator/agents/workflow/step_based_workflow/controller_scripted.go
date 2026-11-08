@@ -19,8 +19,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/agent/codeexec"
-
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // cleanStepOutputDir deletes all output files/folders in the step execution directory.
@@ -64,40 +62,21 @@ func (hcpo *StepBasedWorkflowOrchestrator) cleanStepOutputDir(ctx context.Contex
 // ScriptedMetadata persists script provenance and runtime statistics.
 type ScriptedMetadata struct {
 	StepID         string         `json:"step_id"`
-	ScriptVersion  int            `json:"script_version"`             // incremented each time the LLM rewrites the script
+	ScriptVersion  int            `json:"script_version"`             // incremented when the saved entry point changes
 	EntryPointHash string         `json:"entry_point_hash,omitempty"` // canonical entry-point revision; helpers remain shared source
 	CreatedAt      string         `json:"created_at"`
 	LastRunAt      string         `json:"last_run_at"`
 	TotalRuns      int            `json:"total_runs"`
 	SuccessfulRuns map[string]int `json:"successful_runs"` // canonical key is "scripted"; legacy aliases are normalized on read
 	FailedRuns     int            `json:"failed_runs"`
-	RelearnCount   int            `json:"relearn_count"` // how many times the LLM had to rewrite
 
 	// Rich run tracking (added for debugging & optimization decisions)
-	RecentRuns    []RunRecord          `json:"recent_runs,omitempty"`     // last N runs with full details (capped at 10)
-	GroupStats    map[string]GroupStat `json:"group_stats,omitempty"`     // per-group success/failure counts
-	DurationStats *DurationStats       `json:"duration_stats,omitempty"`  // execution time statistics
-	LastFailure   *LastFailureInfo     `json:"last_failure,omitempty"`    // details of most recent failure
-	CurrentStreak *StreakInfo          `json:"current_streak,omitempty"`  // consecutive success/failure streak
-	LockCodeStats *LockCodeStats       `json:"lock_code_stats,omitempty"` // failures while main.py is locked
+	RecentRuns    []RunRecord          `json:"recent_runs,omitempty"`    // last N runs with full details (capped at 10)
+	GroupStats    map[string]GroupStat `json:"group_stats,omitempty"`    // per-group success/failure counts
+	DurationStats *DurationStats       `json:"duration_stats,omitempty"` // execution time statistics
+	LastFailure   *LastFailureInfo     `json:"last_failure,omitempty"`   // details of most recent failure
+	CurrentStreak *StreakInfo          `json:"current_streak,omitempty"` // consecutive success/failure streak
 
-	// TODO: Auto lock_code tracking — auto-unlock when main.py changes (hash mismatch),
-	// auto-lock after N consecutive successes across M+ groups.
-}
-
-// LockCodeStats tracks how the locked main.py is performing since lock_code was set.
-// Distinct from FailedRuns/CurrentStreak (which span the script's whole lifetime): a
-// stable script that ran successfully for months before being locked, then started
-// failing after a site change, would show 0 ConsecutiveFailures at first — the counter
-// only ticks while lock_code=true, so the builder gets a clean signal of "is the frozen
-// script still working?" without having to diff against an unknown lock-time baseline.
-type LockCodeStats struct {
-	LockedSince         string `json:"locked_since,omitempty"`        // first observed run while lock_code=true
-	Failures            int    `json:"failures"`                      // runs failed while locked
-	Successes           int    `json:"successes"`                     // runs succeeded while locked
-	ConsecutiveFailures int    `json:"consecutive_failures"`          // current run of locked failures; resets on success or unlock
-	LastLockedFailure   string `json:"last_locked_failure,omitempty"` // timestamp of most recent locked failure
-	NeedsReview         bool   `json:"needs_review,omitempty"`        // derived: ConsecutiveFailures >= 3 → builder should consider unlocking + patching
 }
 
 // RunRecord captures details of a single script execution.
@@ -150,39 +129,22 @@ var ErrScriptedHarnessRejection = errors.New("workspace script invocation failed
 // and must not enter the code-repair loop.
 var ErrScriptedHarnessTimeout = errors.New("script exceeded the workspace harness timeout")
 
-// ScriptedTerminalRefusalExitCode is the reserved exit code a scripted step's
-// main.py uses to signal a DELIBERATE, terminal refusal to proceed -- e.g. a
-// fail-closed data-safety guard that detected an unsafe write and correctly
-// aborted -- as distinct from an ordinary bug (any other non-zero exit code).
-//
-// Without this, decideScriptedFastPath could not tell the two apart: "the
-// fallback is the feature" (see its own doc comment) treats every non-zero
-// exit identically, handing the LLM the script and its error to relearn from.
-// That is correct for a genuine bug, but actively dangerous for a deliberate
-// safety refusal -- confirmed live on HDFC-Personal-Accounts: a BR5-01
-// fail-closed guard refused to overwrite bank balance history it could not
-// verify was current, sys.exit(1)'d with an explicit ABORT message, and the
-// LLM fallback read that refusal, agreed it was correct, and then performed
-// the exact write and database mutation the script had refused to do.
-//
-// A script opts into this by returning sys.exit(2) specifically; any other
-// non-zero code (including the still-conventional sys.exit(1)) keeps today's
-// relearn-fallback behavior unchanged. Code 2 alone is not proof a safety
-// guard fired: scripts and command-line parsers may use it for other errors.
-// Keep the stop behavior, and describe intent only when explicitly reported.
-const ScriptedTerminalRefusalExitCode = 2
-
 // ScriptedFastPathResult is returned by tryRunSavedScriptedScript.
 type ScriptedFastPathResult struct {
+	LogFile         string
+	LogError        string
+	OutputBytes     int
+	OutputTruncated bool
+	LogComplete     bool
 	RanScript       bool   // true if a saved script was found and attempted
 	Success         bool   // true if script ran and validation passed
 	ExitCode        int    // actual Python exit code (0 = success, -1 = not-run/API error)
 	Output          string // combined stdout from script
-	Error           string // stderr / validation error (used as relearn context for LLM)
+	Error           string // execution or validation error
 	ExecutionError  string // raw script execution failure, if any
 	ValidationError string // output/pre-validation failure, if any
 	FailureReason   string // "execution_error", "validation_error", or "execution_and_validation_error"
-	ExistingScript  string // old script content (for LLM relearn prompt)
+	ExistingScript  string // source used for this invocation
 	// HarnessFailure means no reliable execution result was returned. A lost
 	// request may have started the script; this is not evidence of a code defect
 	// and must never enter the automatic repair path.
@@ -193,295 +155,8 @@ type ScriptedFastPathResult struct {
 	// this attempt and must not be presented to the LLM as a code bug.
 	HarnessTimeout bool
 	TimeoutError   string
-	// TerminalRefusal means the script ran and exited
-	// ScriptedTerminalRefusalExitCode. This stops repair conservatively; intent
-	// is unverified without explicit refusal details. Like HarnessFailure,
-	// this must never reach the LLM relearn path --
-	// handing an agent "here is a refusal, fix it" is exactly how the refusal
-	// gets overridden instead of respected.
-	TerminalRefusal       bool
-	TerminalRefusalReason string
 }
 
-// ScriptedFastPathDecision is what the saved-script attempt means for the rest
-// of the step: either the script did the whole job, or the LLM takes over and
-// needs the script (and any error) as repair context.
-type ScriptedFastPathDecision struct {
-	// FastPathDone means the saved script ran AND validated — the LLM is
-	// skipped entirely for this step (the 0-token path).
-	FastPathDone bool
-	// PriorScript is the saved script handed to the LLM so it repairs/adapts
-	// the existing code instead of rewriting from scratch.
-	PriorScript string
-	// PriorError is the failure the saved script produced. Non-empty ONLY when
-	// a script actually ran and failed — an untried script is a reuse case, not
-	// a failure, and must not be presented to the model as one.
-	PriorError string
-	// HarnessFailure aborts on infrastructure failure. The process may have
-	// started, so neither automatic retry nor code repair is justified.
-	HarnessFailure bool
-	HarnessError   string
-	HarnessTimeout bool
-	TimeoutError   string
-	// TerminalRefusal aborts the step: the script deliberately exited
-	// ScriptedTerminalRefusalExitCode rather than proceed. Unlike PriorError,
-	// this must never be handed to the LLM as something to fix -- see
-	// ScriptedTerminalRefusalExitCode's doc comment for why.
-	TerminalRefusal       bool
-	TerminalRefusalReason string
-}
-
-// decideScriptedFastPath maps a saved-script attempt onto the step's next move.
-//
-// Extracted as a pure function because the fallback is the feature: when a
-// scripted step's main.py fails, the run must NOT fail — it must fall back to
-// the LLM carrying the broken script and its error so the model can fix it.
-// Inline, that behavior was three easily-transposed branches with no test
-// coverage at all.
-func decideScriptedFastPath(result *ScriptedFastPathResult) ScriptedFastPathDecision {
-	if result == nil {
-		return ScriptedFastPathDecision{}
-	}
-	switch {
-	case result.HarnessTimeout:
-		return ScriptedFastPathDecision{HarnessTimeout: true, TimeoutError: result.TimeoutError}
-	case result.HarnessFailure:
-		// The script never started. Handing the LLM a script and an error it did
-		// not cause is how working code gets rewritten — abort instead.
-		return ScriptedFastPathDecision{HarnessFailure: true, HarnessError: result.HarnessError}
-	case result.TerminalRefusal:
-		// The script deliberately refused to proceed. Handing this to the LLM
-		// as "here is an error, fix it" is how the refusal gets overridden
-		// instead of respected — abort instead, exactly like HarnessFailure.
-		return ScriptedFastPathDecision{TerminalRefusal: true, TerminalRefusalReason: result.TerminalRefusalReason}
-	case result.RanScript && result.Success:
-		// Saved script executed and validated — skip the LLM entirely.
-		return ScriptedFastPathDecision{FastPathDone: true}
-	case result.RanScript:
-		// Ran but failed: hand the LLM the script AND the error to relearn from.
-		priorError := result.Error
-		if result.Output != "" && !strings.Contains(priorError, result.Output) {
-			priorError += "\n\nScript stdout/stderr:\n" + result.Output
-		}
-		return ScriptedFastPathDecision{
-			PriorScript: result.ExistingScript,
-			PriorError:  priorError,
-		}
-	case result.ExistingScript != "":
-		// A saved script exists but was never executed. Reuse/update path —
-		// deliberately no PriorError, since nothing failed.
-		return ScriptedFastPathDecision{PriorScript: result.ExistingScript}
-	default:
-		// No saved script at all — the LLM writes one from scratch.
-		return ScriptedFastPathDecision{}
-	}
-}
-
-type learnCodeSelfRunInfo struct {
-	Output   string
-	ExitCode int
-}
-
-func parseExecuteShellCommandArgs(argsJSON string) string {
-	if strings.TrimSpace(argsJSON) == "" {
-		return ""
-	}
-	var args struct {
-		Command string `json:"command"`
-	}
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(args.Command)
-}
-
-func parseExecuteShellCommandResult(result string) (stdout, stderr string, exitCode int, ok bool) {
-	if strings.TrimSpace(result) == "" {
-		return "", "", 0, false
-	}
-	var parsed struct {
-		Stdout   string `json:"stdout"`
-		Stderr   string `json:"stderr"`
-		ExitCode int    `json:"exit_code"`
-	}
-	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
-		return "", "", 0, false
-	}
-	return parsed.Stdout, parsed.Stderr, parsed.ExitCode, true
-}
-
-func isReadOnlyMainPyCommand(command, mainPyAbsPath string) bool {
-	cmd := strings.TrimSpace(command)
-	if cmd == "" || !strings.Contains(cmd, mainPyAbsPath) {
-		return false
-	}
-	readPrefixes := []string{
-		"cat " + shellQuotePath(mainPyAbsPath),
-		"cat " + mainPyAbsPath,
-		"sed -n ",
-		"nl -ba ",
-		"ls ",
-		"stat ",
-		"wc ",
-		"head ",
-		"tail ",
-	}
-	for _, prefix := range readPrefixes {
-		if strings.HasPrefix(cmd, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-func detectSuccessfulLLMScriptedSelfRun(history []llmtypes.MessageContent, mainPyAbsPath string) *learnCodeSelfRunInfo {
-	type shellCall struct {
-		command string
-		index   int
-	}
-	pendingShellCalls := map[string]shellCall{}
-	lastSuccessfulRun := -1
-	lastSuccessfulOutput := ""
-	lastSuccessfulExitCode := 0
-	lastMainPyMutation := -1
-	callIndex := 0
-
-	for _, msg := range history {
-		switch msg.Role {
-		case llmtypes.ChatMessageTypeAI:
-			for _, part := range msg.Parts {
-				toolCall, ok := part.(llmtypes.ToolCall)
-				if !ok || toolCall.FunctionCall == nil {
-					continue
-				}
-				callIndex++
-				switch toolCall.FunctionCall.Name {
-				case "execute_shell_command", "mcp_api-bridge_execute_shell_command":
-					command := parseExecuteShellCommandArgs(toolCall.FunctionCall.Arguments)
-					pendingShellCalls[toolCall.ID] = shellCall{command: command, index: callIndex}
-					if strings.Contains(command, mainPyAbsPath) &&
-						!strings.Contains(command, "python3 "+shellQuotePath(mainPyAbsPath)) &&
-						!strings.Contains(command, "python3 "+mainPyAbsPath) &&
-						!isReadOnlyMainPyCommand(command, mainPyAbsPath) {
-						lastMainPyMutation = callIndex
-					}
-				case "diff_patch_workspace_file", "mcp_api-bridge_diff_patch_workspace_file":
-					// A multi-file "*** Begin Patch" names main.py inside the diff.
-					var args map[string]interface{}
-					if err := json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &args); err == nil {
-						for _, target := range workspace.DiffPatchTargetPaths(args) {
-							if strings.TrimSpace(target) == mainPyAbsPath {
-								lastMainPyMutation = callIndex
-							}
-						}
-					}
-				}
-			}
-		case llmtypes.ChatMessageTypeTool:
-			for _, part := range msg.Parts {
-				toolResp, ok := part.(llmtypes.ToolCallResponse)
-				if !ok {
-					continue
-				}
-				call, exists := pendingShellCalls[toolResp.ToolCallID]
-				if !exists {
-					continue
-				}
-				stdout, stderr, exitCode, ok := parseExecuteShellCommandResult(toolResp.Content)
-				if !ok {
-					continue
-				}
-				if exitCode == 0 &&
-					(strings.Contains(call.command, "python3 "+shellQuotePath(mainPyAbsPath)) ||
-						strings.Contains(call.command, "python3 "+mainPyAbsPath)) {
-					lastSuccessfulRun = call.index
-					lastSuccessfulExitCode = exitCode
-					lastSuccessfulOutput = strings.TrimSpace(stdout)
-					if strings.TrimSpace(stderr) != "" {
-						if lastSuccessfulOutput != "" {
-							lastSuccessfulOutput += "\n"
-						}
-						lastSuccessfulOutput += strings.TrimSpace(stderr)
-					}
-				}
-			}
-		}
-	}
-
-	if lastSuccessfulRun == -1 || lastMainPyMutation > lastSuccessfulRun {
-		return nil
-	}
-	return &learnCodeSelfRunInfo{
-		Output:   lastSuccessfulOutput,
-		ExitCode: lastSuccessfulExitCode,
-	}
-}
-
-// extractLastMainPyRunOutput returns the output from the last execution of main.py
-// in the conversation history, regardless of exit code. This is used to provide
-// execution context to repair agents that start with a fresh conversation.
-func extractLastMainPyRunOutput(history []llmtypes.MessageContent, mainPyAbsPath string) (output string, exitCode int, found bool) {
-	type shellCall struct {
-		command string
-	}
-	pendingShellCalls := map[string]shellCall{}
-	var lastOutput string
-	var lastExitCode int
-	lastFound := false
-
-	for _, msg := range history {
-		switch msg.Role {
-		case llmtypes.ChatMessageTypeAI:
-			for _, part := range msg.Parts {
-				toolCall, ok := part.(llmtypes.ToolCall)
-				if !ok || toolCall.FunctionCall == nil {
-					continue
-				}
-				switch toolCall.FunctionCall.Name {
-				case "execute_shell_command", "mcp_api-bridge_execute_shell_command":
-					command := parseExecuteShellCommandArgs(toolCall.FunctionCall.Arguments)
-					pendingShellCalls[toolCall.ID] = shellCall{command: command}
-				}
-			}
-		case llmtypes.ChatMessageTypeTool:
-			for _, part := range msg.Parts {
-				toolResp, ok := part.(llmtypes.ToolCallResponse)
-				if !ok {
-					continue
-				}
-				call, exists := pendingShellCalls[toolResp.ToolCallID]
-				if !exists {
-					continue
-				}
-				if strings.Contains(call.command, "python3 "+shellQuotePath(mainPyAbsPath)) ||
-					strings.Contains(call.command, "python3 "+mainPyAbsPath) {
-					stdout, stderr, ec, ok := parseExecuteShellCommandResult(toolResp.Content)
-					if !ok {
-						continue
-					}
-					combined := strings.TrimSpace(stdout)
-					if strings.TrimSpace(stderr) != "" {
-						if combined != "" {
-							combined += "\n"
-						}
-						combined += strings.TrimSpace(stderr)
-					}
-					lastOutput = combined
-					lastExitCode = ec
-					lastFound = true
-				}
-			}
-		}
-	}
-
-	return lastOutput, lastExitCode, lastFound
-}
-
-// reviewMainPyScript performs static analysis on a main.py script to catch common
-// anti-patterns that would cause failures when the script is reused across groups.
-// declaredEnvVars is the list of env var names actually available to the script (e.g. VAR_USER_ID, SECRET_PASSWORD).
-// If nil, the VAR_*/SECRET_* check is skipped (can't distinguish declared vs invented vars).
-// Returns a list of human-readable issues. Empty list means the script looks clean.
 func reviewMainPyScript(script string, declaredEnvVars ...string) []string {
 	var issues []string
 	lines := strings.Split(script, "\n")
@@ -680,7 +355,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) readScriptedMetadataAPI(ctx context.C
 		TotalRuns      int    `json:"total_runs"`
 		SuccessfulRuns int    `json:"successful_runs"`
 		FailedRuns     int    `json:"failed_runs"`
-		RelearnCount   int    `json:"relearn_count"`
 	}
 	if err := json.Unmarshal([]byte(data), &legacy); err != nil {
 		return nil
@@ -693,7 +367,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) readScriptedMetadataAPI(ctx context.C
 		TotalRuns:      legacy.TotalRuns,
 		SuccessfulRuns: map[string]int{"scripted": legacy.SuccessfulRuns},
 		FailedRuns:     legacy.FailedRuns,
-		RelearnCount:   legacy.RelearnCount,
 	}
 }
 
@@ -718,19 +391,6 @@ func normalizeScriptedSuccessCounts(meta *ScriptedMetadata) {
 	meta.SuccessfulRuns = map[string]int{"scripted": successes}
 }
 
-func scriptArtifactsChanged(before, after map[string]string) bool {
-	if len(before) != len(after) {
-		return true
-	}
-	for name, oldContent := range before {
-		if newContent, ok := after[name]; !ok || newContent != oldContent {
-			return true
-		}
-	}
-	return false
-}
-
-// writeScriptedMetadataAPI writes script_metadata.json via the workspace API.
 func (hcpo *StepBasedWorkflowOrchestrator) writeScriptedMetadataAPI(ctx context.Context, stepID string, meta ScriptedMetadata) error {
 	relPath := hcpo.scriptedMetadataPath(stepID)
 	data, err := json.MarshalIndent(meta, "", "  ")
@@ -747,57 +407,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) hasValidLearnedScriptAPI(ctx context.
 	return err == nil
 }
 
-// buildScriptedVarMappingForPrompt returns a newline-joined list showing how workflow
-// variables map to env vars, e.g. "{{TARGET_USER}} → os.environ['SECRET_TARGET_USER']".
-// Returns "" when scripted mode is disabled or there are no variables.
-func buildScriptedVarMappingForPrompt(isScriptedMode bool, manifest *VariablesManifest) string {
-	if !isScriptedMode || manifest == nil || len(manifest.Variables) == 0 {
-		return ""
-	}
-	lines := make([]string, 0, len(manifest.Variables))
-	for _, v := range manifest.Variables {
-		lines = append(lines, fmt.Sprintf("{{%s}} → os.environ['VAR_%s']", v.Name, v.Name))
-	}
-	return strings.Join(lines, "\n")
-}
-
-// buildScriptedEnvVarNamesForPrompt returns newline-joined env var names for templateVars.
-// Returns "" when scripted mode is disabled.
-func buildScriptedEnvVarNamesForPrompt(isScriptedMode bool, workspaceEnvRef map[string]string) string {
-	if !isScriptedMode {
-		return ""
-	}
-	// Every name the runtime actually injects must appear here. execScriptedScript
-	// sets STEP_OUTPUT_DIR, STEP_EXECUTION_DIR and DB_PATH alongside the workspace
-	// env, but this list used to omit the last two — so a script author was told the
-	// database path did not exist while the runtime was handing it over.
-	//
-	// That mismatch is expensive, not cosmetic. An author reading this list finds no
-	// DB_PATH, concludes the db is unreachable, and works around it: one workflow
-	// removed the required-env read and derived the path from STEP_EXECUTION_DIR,
-	// another shelled out to the sqlite3 CLI and wrote that into its permanent
-	// learnings. Both workarounds are explicitly forbidden by the stores contract,
-	// which insists steps use $DB_PATH and report an open failure as a runtime bug
-	// rather than routing around it. The framework was contradicting itself.
-	fixed := []string{"STEP_OUTPUT_DIR", "STEP_EXECUTION_DIR", "DB_PATH", "RUN_FOLDER", "MCP_API_URL"}
-	seen := make(map[string]bool, len(fixed)+len(workspaceEnvRef))
-	for _, n := range fixed {
-		seen[n] = true
-	}
-	names := append([]string{}, fixed...)
-	for k := range workspaceEnvRef {
-		if seen[k] {
-			continue // already declared above; never list a name twice
-		}
-		seen[k] = true
-		names = append(names, k)
-	}
-	sort.Strings(names[len(fixed):]) // sort only the SECRET_*/VAR_* tail
-	return strings.Join(names, "\n")
-}
-
-// buildScriptedInputArgs returns absolute paths to context_dependency files as positional args.
-// These become: python3 main.py <input1> <input2> ...
 func (hcpo *StepBasedWorkflowOrchestrator) buildScriptedInputArgs(
 	ctx context.Context,
 	step PlanStepInterface,
@@ -857,6 +466,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveScriptedShellGuard(
 		}
 	}
 	readPaths = common.DeduplicateStrings(append(readPaths, writePaths...))
+	if stateRoot := hcpo.pythonHelperStateRoot(); stateRoot != "" {
+		readPaths = append(readPaths, stateRoot)
+		readOnlyPaths = append(readOnlyPaths, stateRoot)
+	}
 	if err := hcpo.materializeWorkflowGuardPaths(readPaths, writePaths); err != nil {
 		return nil, err
 	}
@@ -903,7 +516,7 @@ print('[preflight] Python bundle syntax, top-level imports and configuration OK'
 // chat tools. In particular a pinned Run chat has no database tools to lend
 // its group session. Give each invocation its own registry so parallel helpers
 // cannot replace one another's access or leave broader tools on a cached group.
-func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(step PlanStepInterface, guard *workspace.FolderGuardConfig, dbAccess string, env map[string]string) func() {
+func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx context.Context, step PlanStepInterface, guard *workspace.FolderGuardConfig, dbAccess string, env map[string]string, codeDir, outputDir string) func() {
 	sessionID := fmt.Sprintf("script-step-%s-%d", step.GetID(), time.Now().UnixNano())
 	if hcpo.httpSessionID != "" {
 		mcpagent.RegisterHTTPSession(hcpo.httpSessionID, sessionID)
@@ -931,6 +544,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(step Pla
 			allow[family] = true
 		}
 	}
+	bridgeTools["python_automation"] = hcpo.pythonAutomationHandler(ctx, step, codeDir, outputDir)
+	allow["python_automation"] = true
+	env["WORKFLOW_RUN_DIR"] = workflowAbsPath(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder)
 	codeexec.InitRegistryForSession(sessionID, bridgeTools, hcpo.GetLogger())
 	codeexec.SetSessionToolAllowList(sessionID, allow)
 	env["MCP_SESSION_ID"] = sessionID
@@ -1045,7 +661,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// contract explicitly in this child process. This is context-local and cannot
 	// leak between concurrently running todo routes.
 	extraEnv = appendScriptedDelegationEnv(ctx, extraEnv)
-	releaseBridge := hcpo.configureScriptBridgeSession(step, guard, dbAccess, extraEnv)
+	releaseBridge := hcpo.configureScriptBridgeSession(ctx, step, guard, dbAccess, extraEnv, workDirAbsPath, stepExecutionRelPath)
 	defer releaseBridge()
 	if len(scriptedParameterDefinitions(step)) > 0 {
 		if _, present := extraEnv[ScriptedParametersEnv]; !present {
@@ -1093,6 +709,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		// The bridge and shell use this step session and its existing grants.
 		BridgeSessionID: strings.TrimSpace(extraEnv["MCP_SESSION_ID"]),
 	}
+	logReceipt, _ := ctx.Value(scriptLogKey{}).(*scriptLogReceipt)
+	if logReceipt != nil {
+		reqParams.LogFile = logReceipt.apiPath
+	}
 
 	// Dispatch through the same client the agent's own execute_shell_command uses.
 	//
@@ -1138,14 +758,28 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	if sessionID := strings.TrimSpace(extraEnv["MCP_SESSION_ID"]); sessionID != "" {
 		shellCtx = context.WithValue(ctx, common.ChatSessionIDKey, sessionID)
 	}
+	if logReceipt != nil {
+		logReceipt.dispatched = true
+	}
 	result, err := hcpo.WorkspaceClient.ExecuteShellCommand(shellCtx, reqParams)
+	if logReceipt != nil {
+		if result.LogFile != "" {
+			logReceipt.LogFile = result.LogFile
+		}
+		logReceipt.LogError = result.LogError
+		logReceipt.LogComplete = result.LogComplete
+		if result.LogFile == "" && logReceipt.LogError == "" {
+			logReceipt.LogError = "workspace did not confirm a full log; inspect the saved run before retrying"
+		}
+	}
 	if err != nil {
 		// A transport failure can arrive after the process starts. Preserve the
 		// infrastructure error without claiming it produced no side effects.
 		return "", -1, fmt.Errorf("%w: %w", ErrScriptedHarnessRejection, err)
 	}
 
-	stdout, stderr = result.Stdout, result.Stderr
+	stdout = scriptOutputPreview(result.Stdout, result.LogFile)
+	stderr = scriptOutputPreview(result.Stderr, result.LogFile)
 	combined := result.Stdout
 	if result.Stderr != "" {
 		if combined != "" {
@@ -1153,6 +787,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		}
 		combined += result.Stderr
 	}
+	preview := scriptOutputPreview(combined, result.LogFile)
+	if logReceipt != nil {
+		logReceipt.OutputBytes = len(combined)
+		logReceipt.OutputTruncated = preview != combined
+	}
+	combined = preview
 	exitCode = result.ExitCode
 	if result.TimedOut {
 		return combined, exitCode, fmt.Errorf("%w: %s", ErrScriptedHarnessTimeout, result.Error)
@@ -1173,9 +813,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 }
 
 // tryRunSavedScriptedScript checks for a saved main.py and runs it:
-//   - No saved script               → RanScript=false (fall through to LLM)
+//   - No saved script               → RanScript=false; caller reports missing source
 //   - Script ran + validation passed → RanScript=true, Success=true
-//   - Script failed                  → RanScript=true, Success=false (fall through to LLM for relearn)
+//   - Script failed                  → RanScript=true, Success=false; caller reports the error
 func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	ctx context.Context,
 	step PlanStepInterface,
@@ -1185,7 +825,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	stepExecutionRelPath string, // workspace-relative, e.g. "Workflow/X/runs/iter-1/execution/step-2"
 	executionWorkspacePath string, // workspace-relative execution root
 	dbAccess string,
-) *ScriptedFastPathResult {
+) (finalResult *ScriptedFastPathResult) {
+	ctx, logReceipt := hcpo.prepareScriptLog(ctx, stepExecutionRelPath)
+	defer func() { hcpo.finishScriptLog(ctx, logReceipt, finalResult) }()
 	docsRoot := GetPromptDocsRoot()
 	stepID := step.GetID()
 
@@ -1194,13 +836,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	if !hasShared && !hcpo.hasValidLearnedScriptAPI(ctx, stepID) {
 		scriptRelPath := hcpo.scriptedSourceDir(stepID) + "/main.py"
 		existingScript, _ := hcpo.ReadWorkspaceFile(ctx, scriptRelPath)
-		hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted] No saved script for step %d (%s) — LLM will generate from scratch", stepIndex+1, stepID))
+		hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted] No saved script for step %d (%s) — source must be created in Crew chat", stepIndex+1, stepID))
 		return &ScriptedFastPathResult{RanScript: false, ExistingScript: existingScript}
 	}
 
 	hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted] Executing saved script for step %d (%s) — 0 LLM tokens", stepIndex+1, stepID))
 
-	// Read existing script content for relearn context (if script fails).
+	// Read the source for static checks and this invocation.
 	learnDirRelPath := hcpo.scriptedSourceDir(stepID)
 	scriptRelPath := learnDirRelPath + "/main.py"
 	existingScript, _ := hcpo.ReadWorkspaceFile(ctx, scriptRelPath)
@@ -1270,7 +912,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	// creation and lose run-specific settings like Downloads/output-dir.
 
 	// Clean previous output files before running saved script — fresh slate for this execution.
-	// Preserve code/ — it may contain an LLM-fixed main.py from a previous attempt.
+	// Preserve code/ containing the saved-source bundle.
 	hcpo.cleanStepOutputDir(ctx, stepExecutionRelPath, "code")
 	if hasShared {
 		// Direct chat and workflow invocations record the same resolved inputs and
@@ -1288,8 +930,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	// Always copy saved script from learnings/ to execution/code/.
 	// learnings/{step-id}/main.py is the source of truth — execution/code/ is a disposable
 	// working copy. If the user or workflow builder patches learnings, the next run must
-	// pick up the change. LLM relearn fixes are saved back to learnings/ via
-	// saveScriptedScriptToLearnings, so always copying from learnings is safe.
+	// pick up that explicit edit; execution never copies source back.
 	if !hasShared && !hcpo.usesCodeTree() {
 		if mkErr := createFolderViaAPI(ctx, codeDirRelPath); mkErr != nil {
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to create code/ dir for saved script copy: %v", mkErr))
@@ -1321,7 +962,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	// Static code review before execution — catch anti-patterns that would fail on reuse
 	codeIssues := reviewMainPyScript(existingScript)
 	if len(codeIssues) > 0 {
-		hcpo.GetLogger().Warn(fmt.Sprintf("🔍 [review-code] Saved script for step %d (%s) has %d issue(s) — skipping fast path, falling back to LLM for fix", stepIndex+1, stepID, len(codeIssues)))
+		hcpo.GetLogger().Warn(fmt.Sprintf("🔍 [review-code] Saved script for step %d (%s) has %d issue(s) — script execution refused", stepIndex+1, stepID, len(codeIssues)))
 		var issueReport strings.Builder
 		issueReport.WriteString("Static code review found issues that must be fixed:\n")
 		for idx, issue := range codeIssues {
@@ -1358,11 +999,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		}
 	}
 
-	// Whether main.py was locked at run time — drives LockCodeStats updates so the
-	// builder can spot a frozen-but-broken script via consecutive_failures / needs_review.
-	fastPathAgentCfgs := getAgentConfigs(step)
-	isLocked := fastPathAgentCfgs != nil && fastPathAgentCfgs.LockCode != nil && *fastPathAgentCfgs.LockCode
-
 	// A harness timeout is a run, but not evidence that the workflow code is
 	// faulty. Preserve its partial output and abort before validation/statistics
 	// or the LLM repair path can rewrite the script.
@@ -1394,23 +1030,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 		}
 	}
 
-	// Preserve the reserved-code stop before validation/statistics and repair.
-	// Exit code 2 alone cannot prove why the script stopped; do not describe
-	// it as a successful safety guard without explicit refusal evidence.
-	if execErr == nil && exitCode == ScriptedTerminalRefusalExitCode {
-		hcpo.GetLogger().Warn(fmt.Sprintf(
-			"🛑 [scripted] Step %d (%s) main.py stopped with exit code %d — automatic repair withheld; inspect output for the reason",
-			stepIndex+1, stepID, ScriptedTerminalRefusalExitCode))
-		return &ScriptedFastPathResult{
-			RanScript:             true,
-			ExitCode:              exitCode,
-			Output:                output,
-			TerminalRefusal:       true,
-			TerminalRefusalReason: strings.TrimSpace(output),
-			ExistingScript:        existingScript,
-		}
-	}
-
 	if execErr != nil || exitCode != 0 {
 		var execErrMsg string
 		if execErr != nil {
@@ -1439,7 +1058,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 			errMsg = fmt.Sprintf("%s\n\n%s", execErrMsg, validationErrMsg)
 		}
 		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Script failed for step %d: %s", stepIndex+1, errMsg))
-		hcpo.updateScriptedRunStats(ctx, stepID, buildRunRecord(false, failureReason, errMsg), isLocked)
+		hcpo.updateScriptedRunStats(ctx, stepID, buildRunRecord(false, failureReason, errMsg))
 		return &ScriptedFastPathResult{
 			RanScript:       true,
 			Success:         false,
@@ -1474,7 +1093,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	if preValResults != nil && !preValResults.OverallPass {
 		errMsg := formatWorkspaceResults(preValResults)
 		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Script ran but output validation failed for step %d", stepIndex+1))
-		hcpo.updateScriptedRunStats(ctx, stepID, buildRunRecord(false, "validation_error", errMsg), isLocked)
+		hcpo.updateScriptedRunStats(ctx, stepID, buildRunRecord(false, "validation_error", errMsg))
 		return &ScriptedFastPathResult{
 			RanScript:       true,
 			Success:         false,
@@ -1488,218 +1107,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	}
 
 	hcpo.GetLogger().Info(fmt.Sprintf("✅ [scripted] Script executed and validated for step %d (%s) — 0 LLM tokens used", stepIndex+1, stepID))
-	hcpo.updateScriptedRunStats(ctx, stepID, buildRunRecord(true, "", ""), isLocked)
+	hcpo.updateScriptedRunStats(ctx, stepID, buildRunRecord(true, "", ""))
 	return &ScriptedFastPathResult{RanScript: true, Success: true, Output: output}
 }
 
-// saveScriptedScriptToLearnings copies all files from the step's code/ subfolder to learnings/{step-id}/.
-// This preserves main.py plus any helper modules the LLM wrote alongside it.
-// Uses workspace API (not os.*) — Go server may not have direct filesystem access to Docker workspace.
-func (hcpo *StepBasedWorkflowOrchestrator) saveScriptedScriptToLearnings(
-	step PlanStepInterface,
-	stepExecutionAbsPath string,
-) {
-	// Canonical code was repaired in place. Never copy stale execution code back.
-	if hcpo.usesCodeTree() {
-		return
-	}
-	stepID := step.GetID()
-	ctx := context.Background()
-
-	// File APIs address the workflow key even when runtime lives in Crew storage.
-	workspacePath := hcpo.GetWorkspacePath()
-	stepExecRelPath := strings.TrimPrefix(workflowAPIPath(workspacePath, stepExecutionAbsPath), workspacePath+"/")
-	codeRelPath := stepExecRelPath + "/code"
-	mainPyRelPath := codeRelPath + "/main.py"
-
-	if _, err := hcpo.ReadWorkspaceFile(ctx, mainPyRelPath); err != nil {
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] main.py not found in code/ dir (%s) — skipping save", mainPyRelPath))
-		return
-	}
-
-	learnDirRelPath := hcpo.scriptedSourceDir(stepID)
-
-	// Snapshot old file contents from learnings/ before overwriting — used for diff debugging.
-	oldFileContents := map[string]string{}
-	if oldFiles, listErr := hcpo.BaseOrchestrator.ListWorkspaceFiles(ctx, learnDirRelPath); listErr == nil {
-		for _, f := range oldFiles {
-			fn := filepath.Base(f)
-			if fn == "" || fn == "." || fn == "script_metadata.json" || fn == ".learning_metadata.json" || fn == "diffs" || strings.HasSuffix(fn, ".md") {
-				continue
-			}
-			if content, readErr := hcpo.ReadWorkspaceFile(ctx, learnDirRelPath+"/"+fn); readErr == nil {
-				oldFileContents[fn] = content
-			}
-		}
-	}
-
-	// Delete all existing files AND folders in learnings/{step-id}/ before copying new ones.
-	// Files use DELETE /api/documents/; subdirectories use DELETE /api/folders/.
-	// We try folder delete first (handles "code/" subdir), then fall back to file delete.
-	if existingFiles, listErr := hcpo.BaseOrchestrator.ListWorkspaceFiles(ctx, learnDirRelPath); listErr == nil {
-		for _, f := range existingFiles {
-			fileName := filepath.Base(f)
-			if fileName == "" || fileName == "." || fileName == "script_metadata.json" || fileName == ".learning_metadata.json" || fileName == "diffs" {
-				continue // keep metadata and diffs/; refresh script files only
-			}
-			entryRelPath := learnDirRelPath + "/" + fileName
-			absPath := workflowAbsPath(workspacePath, entryRelPath)
-			// File delete first; fall back to folder delete for subdirectories (e.g. code/).
-			if fileDelErr := hcpo.DeleteWorkspaceFile(ctx, entryRelPath); fileDelErr != nil {
-				if folderErr := deleteFolderViaAPI(ctx, absPath); folderErr != nil {
-					hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to delete %s from learnings: file=%v folder=%v", fileName, fileDelErr, folderErr))
-				}
-			}
-		}
-	}
-
-	// List files in code/ folder and copy each to learnings/{step-id}/
-	newFileContents := map[string]string{}
-	files, listErr := hcpo.BaseOrchestrator.ListWorkspaceFiles(ctx, codeRelPath)
-	if listErr != nil {
-		// ListWorkspaceFiles failed — try to copy just main.py
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to list code/ dir (%s): %v — copying main.py only", codeRelPath, listErr))
-		content, readErr := hcpo.ReadWorkspaceFile(ctx, mainPyRelPath)
-		if readErr != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to read main.py: %v", readErr))
-			return
-		}
-		if writeErr := hcpo.WriteWorkspaceFile(ctx, learnDirRelPath+"/main.py", content); writeErr != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to write main.py to learnings: %v", writeErr))
-			return
-		}
-		newFileContents["main.py"] = content
-	} else {
-		for _, f := range files {
-			if f == "" {
-				continue
-			}
-			// f may be a relative path within codeRelPath or the full path — normalize
-			fileName := filepath.Base(f)
-			if fileName == "" || fileName == "." {
-				continue
-			}
-			srcRelPath := codeRelPath + "/" + fileName
-			content, readErr := hcpo.ReadWorkspaceFile(ctx, srcRelPath)
-			if readErr != nil {
-				hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to read %s: %v", fileName, readErr))
-				continue
-			}
-			if writeErr := hcpo.WriteWorkspaceFile(ctx, learnDirRelPath+"/"+fileName, content); writeErr != nil {
-				hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to write %s to learnings: %v", fileName, writeErr))
-				continue
-			}
-			newFileContents[fileName] = content
-		}
-	}
-
-	oldMeta := hcpo.readScriptedMetadataAPI(ctx, stepID)
-	contentChanged := scriptArtifactsChanged(oldFileContents, newFileContents)
-	// Start from old metadata to preserve rich run history (RecentRuns, GroupStats, etc.)
-	var newMeta ScriptedMetadata
-	if oldMeta != nil {
-		newMeta = *oldMeta
-		if contentChanged {
-			newMeta.ScriptVersion = oldMeta.ScriptVersion + 1
-			newMeta.RelearnCount = oldMeta.RelearnCount + 1
-		}
-	} else {
-		newMeta.CreatedAt = time.Now().UTC().Format(time.RFC3339)
-		newMeta.ScriptVersion = 1
-	}
-	newMeta.StepID = stepID
-	newMeta.LastRunAt = time.Now().UTC().Format(time.RFC3339)
-	if err := hcpo.writeScriptedMetadataAPI(ctx, stepID, newMeta); err != nil {
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to write script_metadata.json: %v", err))
-	} else {
-		if contentChanged || oldMeta == nil {
-			hcpo.GetLogger().Info(fmt.Sprintf("✅ [scripted] Saved changed main.py to learnings for step (%s) — version %d", stepID, newMeta.ScriptVersion))
-		} else {
-			hcpo.GetLogger().Info(fmt.Sprintf("✅ [scripted] main.py for step (%s) was byte-identical — keeping version %d", stepID, newMeta.ScriptVersion))
-		}
-	}
-
-	// Save diffs between old and new script files for debugging.
-	if len(oldFileContents) > 0 {
-		diffsDirRelPath := learnDirRelPath + "/diffs"
-		if mkErr := createFolderViaAPI(ctx, diffsDirRelPath, workspacePath); mkErr != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to create diffs/ dir: %v", mkErr))
-		} else {
-			for fileName, oldContent := range oldFileContents {
-				newContent, readErr := hcpo.ReadWorkspaceFile(ctx, learnDirRelPath+"/"+fileName)
-				if readErr != nil {
-					continue
-				}
-				if oldContent == newContent {
-					continue // no changes
-				}
-				diff := generateSimpleDiff(fileName, oldContent, newContent)
-				diffFileName := fmt.Sprintf("%s.v%d.diff", fileName, newMeta.ScriptVersion)
-				if writeErr := hcpo.WriteWorkspaceFile(ctx, diffsDirRelPath+"/"+diffFileName, diff); writeErr != nil {
-					hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [scripted] Failed to write diff %s: %v", diffFileName, writeErr))
-				} else {
-					hcpo.GetLogger().Info(fmt.Sprintf("📝 [scripted] Saved diff for %s (v%d → v%d)", fileName, newMeta.ScriptVersion-1, newMeta.ScriptVersion))
-				}
-			}
-		}
-	}
-}
-
-// generateSimpleDiff produces a unified-style diff between old and new file contents for debugging.
-func generateSimpleDiff(fileName, oldContent, newContent string) string {
-	oldLines := strings.Split(oldContent, "\n")
-	newLines := strings.Split(newContent, "\n")
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("--- a/%s\n+++ b/%s\n", fileName, fileName))
-
-	// Simple line-by-line diff: show removed and added lines.
-	// Not a true unified diff algorithm, but sufficient for debugging.
-	oldSet := make(map[string]int)
-	for _, l := range oldLines {
-		oldSet[l]++
-	}
-	newSet := make(map[string]int)
-	for _, l := range newLines {
-		newSet[l]++
-	}
-
-	// Show lines only in old (removed)
-	for _, l := range oldLines {
-		if newSet[l] > 0 {
-			newSet[l]--
-		} else {
-			sb.WriteString(fmt.Sprintf("- %s\n", l))
-		}
-	}
-
-	// Reset newSet
-	newSet = make(map[string]int)
-	for _, l := range newLines {
-		newSet[l]++
-	}
-	oldSet2 := make(map[string]int)
-	for _, l := range oldLines {
-		oldSet2[l]++
-	}
-
-	// Show lines only in new (added)
-	for _, l := range newLines {
-		if oldSet2[l] > 0 {
-			oldSet2[l]--
-		} else {
-			sb.WriteString(fmt.Sprintf("+ %s\n", l))
-		}
-	}
-
-	sb.WriteString(fmt.Sprintf("\n@@ old: %d lines, new: %d lines @@\n", len(oldLines), len(newLines)))
-	return sb.String()
-}
-
 // updateScriptedRunStats increments run counters and appends rich run data to script_metadata.json.
-// isLocked indicates whether the step's lock_code was true at run time — when true, the run is
-// also reflected in LockCodeStats so the builder can spot a frozen-but-broken script quickly.
-func (hcpo *StepBasedWorkflowOrchestrator) updateScriptedRunStats(ctx context.Context, stepID string, record RunRecord, isLocked bool) {
+func (hcpo *StepBasedWorkflowOrchestrator) updateScriptedRunStats(ctx context.Context, stepID string, record RunRecord) {
 	meta := hcpo.readScriptedMetadataAPI(ctx, stepID)
 	if meta == nil {
 		if !hcpo.usesCodeTree() {
@@ -1711,9 +1124,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) updateScriptedRunStats(ctx context.Co
 		if source, err := hcpo.ReadWorkspaceFile(ctx, hcpo.scriptedSourceDir(stepID)+"/main.py"); err == nil {
 			hash := fmt.Sprintf("%x", sha256.Sum256([]byte(source)))
 			if hash != meta.EntryPointHash {
-				if meta.EntryPointHash != "" {
-					meta.RelearnCount++
-				}
 				meta.ScriptVersion++
 				meta.EntryPointHash = hash
 			}
@@ -1804,32 +1214,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) updateScriptedRunStats(ctx context.Co
 		}
 	}
 
-	// Locked-script stats: only ticks while lock_code=true. Gives the builder a quick
-	// "is the frozen script still working?" read without diffing TotalRuns against an
-	// unknown lock-time baseline.
-	if isLocked {
-		if meta.LockCodeStats == nil {
-			meta.LockCodeStats = &LockCodeStats{LockedSince: record.Timestamp}
-		}
-		if record.Success {
-			meta.LockCodeStats.Successes++
-			meta.LockCodeStats.ConsecutiveFailures = 0
-			meta.LockCodeStats.NeedsReview = false
-		} else {
-			meta.LockCodeStats.Failures++
-			meta.LockCodeStats.ConsecutiveFailures++
-			meta.LockCodeStats.LastLockedFailure = record.Timestamp
-			if meta.LockCodeStats.ConsecutiveFailures >= 3 {
-				meta.LockCodeStats.NeedsReview = true
-			}
-		}
-	} else if meta.LockCodeStats != nil {
-		// Lock was cleared since last run — keep history but stop the consecutive counter
-		// so an old "needs_review" flag doesn't keep firing after the user already unlocked.
-		meta.LockCodeStats.ConsecutiveFailures = 0
-		meta.LockCodeStats.NeedsReview = false
-	}
-
 	_ = hcpo.writeScriptedMetadataAPI(ctx, stepID, *meta)
 }
 
@@ -1862,6 +1246,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveScriptedFastPathLog(
 	}(), stepID, stepPath)
 
 	logData := map[string]interface{}{
+		"log_file":         result.LogFile,
+		"log_error":        result.LogError,
+		"log_complete":     result.LogComplete,
+		"output_bytes":     result.OutputBytes,
+		"output_truncated": result.OutputTruncated,
 		"step_index":       stepIndex + 1,
 		"step_path":        stepPath,
 		"mode":             "scripted_fast_path",
@@ -1899,146 +1288,4 @@ func (hcpo *StepBasedWorkflowOrchestrator) saveScriptedFastPathLog(
 			hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted] Saved fast path execution log: %s", logPath))
 		}
 	}
-}
-
-// GetScriptedModeInstructions returns system prompt additions for the persistent
-// scripted-code path used by both agentic and legacy scripted steps.
-// codeDirAbsPath is the LLM's working directory (execution/step-x/code/).
-// stepOutputAbsPath is the step output folder (execution/step-x/) — STEP_OUTPUT_DIR env var points here.
-// inputArgPaths are the absolute paths passed as sys.argv[1], sys.argv[2], ...
-// envVarNames are the env var names available to the script (SECRET_*, MCP_API_URL, STEP_OUTPUT_DIR).
-func GetScriptedModeInstructions(codeDirAbsPath, stepOutputAbsPath string, isRelearn bool, priorScript, priorError string, inputArgPaths []string, envVarNames []string, varMappingLines []string, validationSchemaJSON string, isCodeLocked bool, directSource ...bool) string {
-	canonical := len(directSource) > 0 && directSource[0]
-	var sb strings.Builder
-	sb.WriteString("\n\n## Code Execution Mode\n\n")
-	if isCodeLocked {
-		sb.WriteString(fmt.Sprintf("You are in **code execution mode**. A saved `main.py` exists for this step but is **locked** (`lock_code=true`) — it is the source of truth and the controller will not save any rewrite you produce. The previous run executed that locked script (`%s/main.py`) and it failed validation, so this turn is a recovery turn.\n\n", codeDirAbsPath))
-		sb.WriteString("**Do NOT rewrite or replace `main.py` this turn.** Instead, complete the task by calling MCP tools directly via the API step by step:\n")
-		sb.WriteString("1. Read the existing `main.py` and the run-folder failure artifacts (`step_*_status.json`, screenshots, downloaded files, `scripted_fast_path.json`) to understand *why* the saved script failed.\n")
-		sb.WriteString("2. Decide whether the failure is environmental (bad creds, MFA, captcha, expired session, target-site change) or a real bug in the script.\n")
-		sb.WriteString(fmt.Sprintf("3. If environmental, drive the task to completion *interactively* — write outputs directly to `%s` (available as `os.environ['STEP_OUTPUT_DIR']`) using snapshots and direct tool calls so this run produces valid outputs. Do not edit the script.\n", stepOutputAbsPath))
-		sb.WriteString("4. If you find a real script bug, surface it clearly in your reply so the orchestrator can clear `lock_code` and have you patch the script on a future run. Do not patch it now.\n\n")
-	} else {
-		if canonical {
-			sb.WriteString("You are in **code execution mode**. Write or repair the canonical reusable Python solution (`main.py`). The controller executes it with the step's runtime after your turn and returns failures for repair. Do not substitute hand-made outputs for a passing script.\n\n")
-		} else {
-			sb.WriteString("You are in **code execution mode**. Your primary goal is to write a reusable Python solution (`main.py`). If you are unable to write a working main.py, you may fall back to calling MCP tools directly via the API to complete the task — but always prefer writing main.py since it becomes a saved script for future runs.\n\n")
-		}
-		sb.WriteString("**Your working directory (write all code files here):**\n")
-		sb.WriteString(fmt.Sprintf("```\n%s\n```\n\n", codeDirAbsPath))
-		sb.WriteString("**This run's working-directory rules:**\n")
-		sb.WriteString(fmt.Sprintf("- Write `main.py` (the entry point) to `%s/main.py`\n", codeDirAbsPath))
-		sb.WriteString(fmt.Sprintf("- You may also write helper modules (e.g. `utils.py`) to `%s/` — they will be available since the script runs with that as cwd\n", codeDirAbsPath))
-		sb.WriteString(fmt.Sprintf("- Write all **output files** to `%s` (available as `os.environ['STEP_OUTPUT_DIR']`)\n", stepOutputAbsPath))
-		sb.WriteString("- Before writing main.py, you may call tools via the API to inspect the current state (e.g. take a browser snapshot, check page content, read files) to understand the system before coding your solution\n")
-		if !canonical {
-			sb.WriteString(fmt.Sprintf("- To test, just run: `python3 '%s/main.py'` — **all env vars listed below are pre-injected; do NOT manually `export` any values**\n", codeDirAbsPath))
-		}
-		sb.WriteString("- After your turn, the system will run main.py and give you the error output if it fails — you'll get multiple fix attempts\n")
-		sb.WriteString("- A passing `main.py` becomes the saved script for this step and will be tried first on future runs before calling the LLM again\n\n")
-	}
-
-	if !isCodeLocked {
-		sb.WriteString("Before authoring main.py, open workflow-execution and builder-reference/references/code-authoring.md. Browser scripts also use references/playwright-scripted.md.\n\n")
-	}
-
-	// Show workflow variable → env var mapping so LLM knows exactly how to access each one
-	if len(varMappingLines) > 0 {
-		sb.WriteString("**Workflow variable → env var** (`VAR_*` = config values, `SECRET_*` = real credentials):\n")
-		for _, line := range varMappingLines {
-			sb.WriteString(fmt.Sprintf("- `%s`\n", line))
-		}
-		sb.WriteString("\n")
-	}
-
-	// Show exact positional arguments
-	if len(inputArgPaths) > 0 {
-		sb.WriteString("**Script invocation** (exact call the controller will make):\n```\n")
-		sb.WriteString(fmt.Sprintf("python3 %s/main.py", codeDirAbsPath))
-		for _, arg := range inputArgPaths {
-			sb.WriteString(fmt.Sprintf(" \\\n    '%s'", arg))
-		}
-		sb.WriteString("\n```\n\n")
-		sb.WriteString("**Positional arguments** (sys.argv):\n")
-		for i, arg := range inputArgPaths {
-			sb.WriteString(fmt.Sprintf("- `sys.argv[%d]` = `%s`\n", i+1, arg))
-		}
-		sb.WriteString("\n")
-		sb.WriteString("**CRITICAL**: Read ALL input data from `sys.argv` — these are the declared dependencies from upstream steps. Do NOT construct paths to sibling step folders manually (e.g. do NOT build paths like `execution/login-step/output.json`). The controller resolves the correct paths per group/iteration and passes them as positional arguments. If you need data that isn't in sys.argv, add it as a context_dependency in the plan — don't hardcode paths.\n\n")
-	} else {
-		sb.WriteString("- No positional arguments — script takes no inputs\n\n")
-	}
-
-	// Show available env vars
-	if len(envVarNames) > 0 {
-		sb.WriteString("**Available environment variables**:\n")
-		// Always show STEP_OUTPUT_DIR first, then sort the rest
-		shown := map[string]bool{}
-		sb.WriteString(fmt.Sprintf("- `STEP_OUTPUT_DIR` = `%s`  (write output files here)\n", stepOutputAbsPath))
-		shown["STEP_OUTPUT_DIR"] = true
-		stepExecutionDir := filepath.Dir(stepOutputAbsPath)
-		sb.WriteString(fmt.Sprintf("- `STEP_EXECUTION_DIR` = `%s`  (parent execution folder — only use as fallback when data is not available via sys.argv)\n", stepExecutionDir))
-		shown["STEP_EXECUTION_DIR"] = true
-		sorted := make([]string, 0, len(envVarNames))
-		for _, name := range envVarNames {
-			if !shown[name] {
-				sorted = append(sorted, name)
-			}
-		}
-		sort.Strings(sorted)
-		for _, name := range sorted {
-			sb.WriteString(fmt.Sprintf("- `%s`\n", name))
-		}
-		sb.WriteString("\n")
-	}
-
-	// Show validation schema — tells the LLM exactly what output files to produce
-	if validationSchemaJSON != "" {
-		sb.WriteString("**Output requirements (validation schema)** — your script MUST produce these files:\n")
-		sb.WriteString("```json\n")
-		sb.WriteString(validationSchemaJSON)
-		sb.WriteString("\n```\n")
-		sb.WriteString("Write each required file to `STEP_OUTPUT_DIR` with the exact filename and structure shown.\n\n")
-	}
-
-	// NOTE: Prior script context (failed script + error, or existing script for update)
-	// is now included in the USER MESSAGE via BuildScriptedPriorContext(), not in the
-	// system prompt. This ensures the LLM sees it with higher salience and it survives
-	// repair agent transitions where the system prompt is regenerated.
-	return sb.String()
-}
-
-// BuildScriptedPriorContext generates the prior script context section for inclusion
-// in the user message. Returns empty string if no prior context is needed.
-// scriptMetadataPath is optional — when non-empty and there's a failure, the LLM is
-// told to read it to see run history, failure streaks, and per-group stats.
-func BuildScriptedPriorContext(priorScript, priorError, scriptMetadataPath string, isCodeLocked bool) string {
-	if priorScript == "" {
-		return ""
-	}
-	var sb strings.Builder
-	if priorError != "" {
-		sb.WriteString("\n### Previous Script (Failed)\n\n")
-		if isCodeLocked {
-			sb.WriteString("The saved script ran and its output failed validation. The script is locked (`lock_code=true`) — do NOT rewrite it. Read it to understand what it does, then drive the task to completion interactively (tool calls, browser snapshots) so this run produces valid outputs. If you find a real bug in the script, surface it in your reply for the orchestrator to clear the lock and patch on a future run.\n\n")
-		} else {
-			sb.WriteString("The previously saved script failed. Read the current main.py in your working directory, fix the bug, and rewrite it.\n\n")
-		}
-		sb.WriteString("**Error:**\n```\n")
-		sb.WriteString(priorError)
-		sb.WriteString("\n```\n")
-		if scriptMetadataPath != "" {
-			sb.WriteString("\n### Script Run History\n\n")
-			sb.WriteString(fmt.Sprintf("Read `%s` to understand failure patterns — check `recent_runs` for repeated errors, `group_stats` for which groups fail, `current_streak` for consecutive failures, `lock_code_stats` for how the locked script has been doing since `lock_code` was set (look at `consecutive_failures` and `needs_review` — if true, the lock is likely wrong and the script needs unlocking + patching), and `last_failure` for the most recent error details.\n", scriptMetadataPath))
-		}
-	} else {
-		sb.WriteString("\n### Existing Script (Update Required)\n\n")
-		if isCodeLocked {
-			sb.WriteString("A saved script exists at your working directory's main.py and is locked. Read it for context, but do NOT modify it. Use it as the reference for what this step should produce, and complete the task interactively for this run.\n")
-		} else {
-			sb.WriteString("A saved script already exists at your working directory's main.py. Read it, then adapt and improve it to match the current step description above. ")
-			sb.WriteString("Keep all working logic intact unless the current task explicitly requires a change.\n")
-		}
-	}
-	return sb.String()
 }

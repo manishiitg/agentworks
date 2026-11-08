@@ -24,8 +24,8 @@ only in the description. Resolved declared
 inputs, output requirements, and the validation schema are also part of this
 system contract. Live human/delegation input and agent items are user
 messages. To inspect a saved run, use
-`get_step_prompts(step_id="...")`; check its attempt/iteration and do not treat
-an older snapshot as current configuration. For new or edited steps, use `preview_step_runtime(step_id="...")` before execution.
+`runs action=step_prompts` (step_id="..."); check its attempt/iteration and do not treat
+an older snapshot as current configuration. For new or edited steps, use `runs action=step_runtime` (step_id="...") before execution.
 It uses the runtime core renderer and supplementary skill/context assembler,
 without creating a session or executing tools. Secret values are masked;
 dynamic/provider inputs and unsupported invocation contexts are labelled.

@@ -83,7 +83,7 @@ type crewFunction struct {
 	// TriggerID is set on a workflow function: the function trigger it runs.
 	TriggerID string `json:"trigger_id,omitempty"`
 	// Execution is where a Crew function runs (owner, 2026-10-19): "tab" (the default, also when empty) is its own
-	// named tab that keeps earlier calls' history; "fresh" is a new chat for every call.
+	// named tab that keeps earlier calls' history; "new" is a new chat for every call.
 	Execution string `json:"execution,omitempty"`
 	// Agent names the tab for "tab" execution; empty uses the function's name. Functions naming one agent share it.
 	Agent string `json:"agent,omitempty"`
@@ -91,7 +91,7 @@ type crewFunction struct {
 
 // crewFunctionExecutionHelp and crewFunctionAgentHelp describe where a Crew function runs, for every authoring tool.
 const (
-	crewFunctionExecutionHelp = `Where calls run. "tab" (default): the function's own named tab, which keeps earlier calls' history; calls take turns. "fresh": a new chat for every call. A shared tab lets one caller's input steer later calls there, so use "fresh" for functions that take untrusted or private input.`
+	crewFunctionExecutionHelp = `Where calls run. "tab" (default): the function's own named tab, which keeps earlier calls' history; calls take turns. "new": a new chat for every call. A shared tab lets one caller's input steer later calls there, so use "new" for functions that take untrusted or private input.`
 	crewFunctionAgentHelp     = "Optional tab name for execution tab; empty uses the function's name. Functions with the same agent share one tab."
 )
 
@@ -108,7 +108,7 @@ func crewFunctionTabKey(key string) bool {
 
 // tabName is the tab a call of this Crew function runs in, or "" for a fresh chat per call.
 func (fn crewFunction) tabName() string {
-	if strings.EqualFold(strings.TrimSpace(fn.Execution), "fresh") {
+	if strings.EqualFold(strings.TrimSpace(fn.Execution), runDestinationNew) {
 		return ""
 	}
 	return firstNonEmptyTrimmed(fn.Agent, fn.Name)
@@ -292,8 +292,8 @@ func (spec crewFunctionSpec) validate() error {
 	if spec.Description == "" || spec.Instructions == "" {
 		return fmt.Errorf("description and instructions are required")
 	}
-	if spec.Execution != "" && spec.Execution != "tab" && spec.Execution != "fresh" {
-		return fmt.Errorf(`execution is "tab" (its own named tab, the default) or "fresh" (a new chat for every call)`)
+	if spec.Execution != "" && spec.Execution != "tab" && spec.Execution != runDestinationNew {
+		return fmt.Errorf(`execution is "tab" (its own named tab, the default) or "new" (a new chat for every call)`)
 	}
 	if len([]rune(spec.Agent)) > productAgentNameMaxRunes || (spec.Agent != "" && crewAgentChatID(spec.Agent) == "") {
 		return fmt.Errorf("agent must be a short tab name with letters or digits")
@@ -935,6 +935,9 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	}
 	if caller.isTarget(target) {
 		return nil, fmt.Errorf("a %s cannot call its own function", target.Kind)
+	}
+	if err := requireLinkedOwnCrew(ctx, userID, caller, target); err != nil {
+		return nil, err
 	}
 	if args == nil {
 		args = map[string]interface{}{}
@@ -1628,7 +1631,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return err
 	}
 
-	if err := register("project_functions_call", "Call a declared function of a Crew or workflow. In an interactive Builder chat you may also call this Crew's own published functions as the signed-in person. Arguments are validated against its input schema; the target follows its declared execution policy and returns its final message plus file outputs. Crew functions default to their own named tab, retain earlier calls and queue to take turns; execution=fresh starts a new chat per call. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Reuse submission_id after an uncertain retry. Poll with functions action=status and answer pending_inputs with functions action=reply.", map[string]interface{}{
+	if err := register("project_functions_call", "Call a declared function of a Crew or workflow. In an interactive Builder chat you may also call this Crew's own published functions as the signed-in person. Arguments are validated against its input schema; the target follows its declared execution policy and returns its final message plus file outputs. Crew functions default to their own named tab, retain earlier calls and queue to take turns; execution=new starts a new chat per call. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Reuse submission_id after an uncertain retry. Poll with functions action=status and answer pending_inputs with functions action=reply.", map[string]interface{}{
 		"type": "object", "required": []string{"project", "function"}, "properties": map[string]interface{}{
 			"project":         targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from functions action=list."},

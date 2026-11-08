@@ -124,7 +124,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, embedded = 
         {visibleFunctions.map(fn => {
           const open = openFunction === fn.name
           const last = lastCall.get(fn.name)
-          const fresh = (fn.execution || '').toLowerCase() === 'fresh'
+          const fresh = (fn.execution || '').toLowerCase() === 'new'
           const status = last?.status === 'failed' ? 'failing' : last?.status === 'running' || last?.status === 'queued' ? 'on' : 'idle'
           return <AutomationRow key={fn.name} testId={`crew-function-${fn.name}`} icon={Braces} tone="sky" open={open} onToggle={() => setOpenFunction(open ? null : fn.name)}
             title={<span className="font-mono">{fn.name}</span>} summary={fn.description}

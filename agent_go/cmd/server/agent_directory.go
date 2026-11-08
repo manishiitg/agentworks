@@ -39,7 +39,7 @@ func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Req
 
 // listAgentDirectory is the one list of agents a person can use (PLAT-861-297, owner 2026-10-20: "all should be a
 // group of agents users can easily.. once shared"): every Crew, Goal and Relay they own or that is shared with them,
-// and their agents connected through AgentBridge (local Claude Code and others). Nothing has to be linked first.
+// and their agents connected through AgentBridge (local Claude Code and others). From inside a Crew, the person's other Crews show only when linked to it.
 // Rows come only from the existing access paths, and the list is built only when asked, never at message start.
 // directoryThisCrewKey carries the folder of the Crew whose agent is asking, so the list can say which Crew is "this" one.
 type directoryThisCrewKey struct{}
@@ -66,10 +66,28 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	if err != nil {
 		return nil, err
 	}
+	// Asked from inside a Crew, the person's other Crews are listed only when linked to this one (owner, 7 Nov: not all of
+	// a person's Crews talk to each other). Over MCP from outside a Crew there is no "here" and every owned Crew shows.
+	// The person's AgentWorks main agent reaches all their Crews (owner, 7 Nov: "can access other agents.. thats it");
+	// the server decides by its role.
+	linked := map[string]bool{}
+	onlyLinked := here != "" && !isAgentWorksCrew(ctx, here)
+	if onlyLinked {
+		refs, _ := readWorkWorkflowReferences(ctx, here)
+		for _, ref := range refs {
+			linked[canonicalCrewWorkspaceRoot(ref)] = true
+		}
+	}
 	for _, crew := range crews {
 		id, _ := crew["id"].(string)
 		profileID, _ := crew["profile_id"].(string)
 		crewPath, _ := crew["workspace_path"].(string)
+		if onlyLinked && crewProjectOwnedByCaller(claims.UserID, crewPath) {
+			root := canonicalCrewWorkspaceRoot(crewPath)
+			if root != canonicalCrewWorkspaceRoot(here) && !linked[root] {
+				continue
+			}
+		}
 		name, _ := crew["name"].(string)
 		if identity, ok := crew["identity"].(accessibleProjectIdentity); ok && strings.TrimSpace(identity.Name) != "" {
 			name = identity.Name
@@ -201,7 +219,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	out := map[string]interface{}{
 		"signed_in_as": firstNonEmptyTrimmed(claims.Email, claims.Username, claims.UserID),
 		"agents":       agents,
-		"note":         "Every agent you own or that is shared with you. Show name, type, provider, presence and last_seen_at; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
+		"note":         "Every agent you own or that is shared with you. Show name, type, provider, presence and last_seen_at; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it and linked it to this Crew), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
 	}
 	if thisCrew != "" {
 		out["this_crew"] = thisCrew

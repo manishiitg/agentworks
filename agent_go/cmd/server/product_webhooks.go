@@ -53,7 +53,24 @@ func (t productWebhookTrigger) IsInternal() bool {
 // the main chat is for people. An external webhook follows its
 // run_destination.
 func (t productWebhookTrigger) ownConversation() bool {
-	return t.IsInternal() || strings.EqualFold(strings.TrimSpace(t.RunDestination), runDestinationIsolated)
+	return t.IsInternal() || t.runDestinationSetting().Isolated
+}
+
+// runDestinationSetting is the destination a trigger is saved with; an unreadable value means the main chat.
+func (t productWebhookTrigger) runDestinationSetting() runDestinationSetting {
+	setting, err := parseRunDestination(t.RunDestination)
+	if err != nil {
+		return runDestinationSetting{}
+	}
+	return setting
+}
+
+// shownRunDestination is the run_destination the trigger is shown as: a caller binding always has its own conversation.
+func (t productWebhookTrigger) shownRunDestination() string {
+	if t.IsInternal() && !t.runDestinationSetting().New {
+		return runDestinationIsolated
+	}
+	return t.runDestinationSetting().value()
 }
 
 type productWebhookRequest struct {
@@ -96,7 +113,7 @@ func productWebhookDTO(trigger productWebhookTrigger) productWebhookResponse {
 		ID: trigger.ID, Name: trigger.Name, Enabled: trigger.Enabled,
 		Message: trigger.Message, AuthMode: authMode,
 		Path:           path,
-		RunDestination: runDestination(trigger.ownConversation()),
+		RunDestination: trigger.shownRunDestination(),
 		Kind:           normalizeTriggerKind(trigger.Kind),
 		Caller:         trigger.Caller,
 	}
@@ -250,7 +267,7 @@ func (s *ProjectActionDispatcher) listProductWebhookRuns(w http.ResponseWriter, 
 			title = trigger.Name
 		}
 	}
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"runs": crewScheduleRunRows(runs, manifest.ID, runsWorkspace, title), "total": total, "limit": limit, "offset": 0})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"runs": crewScheduleRunRows(runs, manifest.ID, runsWorkspace, title, nil), "total": total, "limit": limit, "offset": 0})
 }
 
 func productWebhookCoordinates(r *http.Request) (string, string) {
@@ -278,7 +295,7 @@ func (s *ProjectActionDispatcher) listProductWebhooks(w http.ResponseWriter, r *
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"triggers": responses})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"triggers": responses, "run_destinations": runDestinationChoices})
 }
 
 func (s *ProjectActionDispatcher) projectWebhookConfigs(ctx context.Context, userID, profileID, projectID string) ([]productWebhookTrigger, error) {
@@ -337,11 +354,11 @@ func (s *ProjectActionDispatcher) saveProductWebhookConfig(ctx context.Context, 
 	if id == "" {
 		id = uuid.NewString()
 	}
-	isolated, err := isolatedForRunDestination(req.RunDestination)
+	destination, err := parseRunDestination(req.RunDestination)
 	if err != nil {
 		return productWebhookResponse{}, false, err
 	}
-	trigger := productWebhookTrigger{WorkspaceFunction: req.WorkspaceFunction, ID: id, Name: strings.TrimSpace(req.Name), Enabled: req.Enabled, Message: strings.TrimSpace(req.Message), RunDestination: runDestination(isolated)}
+	trigger := productWebhookTrigger{WorkspaceFunction: req.WorkspaceFunction, ID: id, Name: strings.TrimSpace(req.Name), Enabled: req.Enabled, Message: strings.TrimSpace(req.Message), RunDestination: destination.value()}
 	if index >= 0 {
 		trigger.Webhook = manifest.Triggers[index].Webhook
 		trigger.Kind = manifest.Triggers[index].Kind
@@ -718,7 +735,7 @@ func (s *ProjectActionDispatcher) deliverProductTrigger(ctx context.Context, mat
 		return internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrProductTriggerNotPersist, err)
 	}
 	message = triggerTurnMessage(match.Trigger.Message, sourceNote, publishedFunctionPayloadReference(match.FunctionCallID, payloadPath, relativePayloadPath))
-	job := productScheduleJob{UserID: match.UserID, GuestCallerID: match.GuestCallerID, PinRunMode: match.PinRunMode, RunAsOwner: match.RunAsOwner, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), Messages: []string{message}}}
+	job := productScheduleJob{UserID: match.UserID, GuestCallerID: match.GuestCallerID, PinRunMode: match.PinRunMode, RunAsOwner: match.RunAsOwner, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), New: match.Trigger.runDestinationSetting().New, Messages: []string{message}}}
 	// Workflow, Crew and Code calls all compare project ownership. The
 	// executing person's guest capabilities remain independent of routing.
 	if projectCallConversation(match) {

@@ -102,7 +102,6 @@ chat_policy:
       - plan_authoring
       - report_authoring
       - secret_management
-      - knowledgebase_maintenance
       - workflow_suggestions
       - improvement_proposals
       - workspace_ui
@@ -151,7 +150,6 @@ chat:
       - migrate_workflow_skills
       - configure_slack_bot
       - manage_slack_bot
-      - consolidate_knowledgebase
       - create_calendar_schedule
       - create_plan
       - create_schedule
@@ -219,7 +217,6 @@ chat:
       - restore_step_from_changelog
       - remove_mcp_server
       - remove_slack_bot_route
-      - reorganize_knowledgebase
       - request_workflow_folder_access
       - review_step_code
       - run_full_workflow

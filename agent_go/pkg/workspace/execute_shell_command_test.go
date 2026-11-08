@@ -155,13 +155,16 @@ func TestExecuteShellCommandPreservesTimedOutProcessOutput(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusRequestTimeout)
-		_, _ = w.Write([]byte(`{"error":"Command exceeded timeout of 3600 seconds","data":{"stdout":"CASE login: starting\n","stderr":"TIMEOUT: Command killed after 3600 seconds\n","exit_code":-1,"execution_time_ms":3600000}}`))
+		_, _ = w.Write([]byte(`{"error":"Command exceeded timeout of 3600 seconds","data":{"stdout":"CASE login: starting\n","stderr":"TIMEOUT: Command killed after 3600 seconds\n","exit_code":-1,"execution_time_ms":3600000,"log_file":"runs/current/partial.log","log_complete":true}}`))
 	}))
 	defer server.Close()
 
 	result, err := NewClient(server.URL).ExecuteShellCommand(context.Background(), ExecuteShellCommandParams{Command: "python3 main.py"})
 	if err != nil {
 		t.Fatalf("structured timeout must be inspectable as a result: %v", err)
+	}
+	if result.LogFile != "runs/current/partial.log" || !result.LogComplete {
+		t.Fatalf("timeout lost log receipt: %+v", result)
 	}
 	if !result.TimedOut || result.ExitCode != -1 {
 		t.Fatalf("timeout classification lost: %#v", result)
@@ -807,5 +810,26 @@ func TestBlockAbsoluteHostPaths_AttachedAutomationGrant(t *testing.T) {
 	}
 	if isAllowedAbsoluteHostPath(source, &FolderGuardConfig{ReadPaths: []string{"Workflow/unknown/code"}}) {
 		t.Fatal("unregistered grant allowed")
+	}
+}
+
+// The model cannot select the trusted sink; only a Go harness supplies it.
+func TestShellLogPathCannotComeFromToolJSON(t *testing.T) {
+	var params ExecuteShellCommandParams
+	if err := json.Unmarshal([]byte(`{"command":"true","log_file":"another-crew/private.log","log_directory":"another-crew","log_buffer_bytes":1}`), &params); err != nil {
+		t.Fatal(err)
+	}
+	if params.LogFile != "" || params.LogDirectory != "" || params.LogBufferBytes != 0 {
+		t.Fatal("tool JSON selected a log destination")
+	}
+	params.LogFile = "runs/current/attempt.log"
+	data, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]interface{}
+	_ = json.Unmarshal(data, &wire)
+	if wire["log_file"] != params.LogFile {
+		t.Fatal("trusted sink was not forwarded")
 	}
 }

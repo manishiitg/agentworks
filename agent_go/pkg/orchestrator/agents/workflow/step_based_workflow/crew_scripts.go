@@ -64,7 +64,7 @@ func CrewScriptPlan(definition *CrewScriptDefinition, root string) *PlanningResp
 	if description == "" {
 		description = definition.Name
 	}
-	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: definition.ID, Title: definition.Name, Description: description, ContextOutput: FlexibleContextOutput(strings.Join(definition.Outputs, ", ")), ValidationSchema: definition.ValidationSchema}, Script: definition.ID, ScriptOnly: true, crewScript: &CrewScriptConfiguration{Definition: *definition, Root: root}}
+	step := &ScriptedPlanStep{CommonStepFields: CommonStepFields{ID: definition.ID, Title: definition.Name, Description: description, ContextOutput: FlexibleContextOutput(strings.Join(definition.Outputs, ", ")), ValidationSchema: definition.ValidationSchema}, Script: definition.ID, crewScript: &CrewScriptConfiguration{Definition: *definition, Root: root}}
 	return &PlanningResponse{Steps: []PlanStepInterface{step}}
 }
 
@@ -94,7 +94,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) hydrateCrewScripts(ctx context.Contex
 			return err
 		}
 		step.crewScript = &resolved
-		step.ScriptOnly = true
 		if step.ContextOutput == "" {
 			step.ContextOutput = FlexibleContextOutput(strings.Join(resolved.Definition.Outputs, ", "))
 		}
@@ -123,7 +122,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) crewScriptParameters(ctx context.Cont
 		}
 	}
 	// A direct script invocation uses its own resolved launch inputs.
-	if len(step.ScriptInputs) == 0 && hcpo.directCrewScript != nil {
+	if len(step.ScriptInputs) == 0 && hcpo.directCrewScript != nil && step.Script == hcpo.directCrewScript.ID {
 		for name, value := range hcpo.variableValues {
 			raw[name] = value
 		}
@@ -171,6 +170,21 @@ func (hcpo *StepBasedWorkflowOrchestrator) crewScriptParameters(ctx context.Cont
 	return typed, nil
 }
 
+// CrewWorkflowOwnScriptSteps lists the scripted steps that run their own saved Python (code/<step>/main.py)
+// rather than a saved Crew script, so a Crew can list everything runnable under its code.
+func CrewWorkflowOwnScriptSteps(plan *PlanningResponse) []*ScriptedPlanStep {
+	var result []*ScriptedPlanStep
+	if plan != nil {
+		steps := append(append([]PlanStepInterface{}, plan.Steps...), plan.OrphanSteps...)
+		for _, info := range collectAllSteps(steps) {
+			if step, ok := info.Step.(*ScriptedPlanStep); ok && strings.TrimSpace(step.Script) == "" {
+				result = append(result, step)
+			}
+		}
+	}
+	return result
+}
+
 func CrewScriptReferencingSteps(plan *PlanningResponse, id string) []*ScriptedPlanStep {
 	var result []*ScriptedPlanStep
 	if plan != nil {
@@ -187,6 +201,9 @@ func CrewScriptReferencingSteps(plan *PlanningResponse, id string) []*ScriptedPl
 // Project the saved script into the runner's existing file interface. These
 // definitions are never saved alongside the owner's canonical script.json.
 func (hcpo *StepBasedWorkflowOrchestrator) ReadWorkspaceFile(ctx context.Context, file string) (string, error) {
+	if hcpo.definitionRead != nil {
+		return hcpo.definitionRead(ctx, normalizePathForWorkspaceAPI(file, hcpo.GetWorkspacePath()))
+	}
 	if hcpo.directCrewScriptConfig != nil {
 		relative := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(file)), hcpo.GetWorkspacePath()+"/")
 		var value interface{}

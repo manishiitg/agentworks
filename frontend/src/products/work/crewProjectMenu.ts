@@ -1,4 +1,4 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Zap, Settings, Sparkles, Target, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -26,11 +26,11 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     if (has(view)) items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
   }
   add('dashboard', 'Build', 'Dashboards', LayoutDashboard)
+  add('workflow', 'Build', 'Workflow', Route)
   add('schedules', 'Build', 'Automations', Zap)
   if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Build', 'Skills', Sparkles, 'skills')
   add('files', 'Build', 'Files', Files)
   add('database', 'Build', 'Database', Database)
-  add('goals', 'Build', 'Goals', Target)
   add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {

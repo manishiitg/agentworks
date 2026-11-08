@@ -130,3 +130,12 @@ it('closes an owned Goal side tab through the shared backend without stopping an
   expect(mocks.stop).not.toHaveBeenCalled()
   expect(mocks.activate).toHaveBeenCalledWith('builder')
 })
+it('closes only the tab of a schedule\'s own conversation, leaving the conversation and its runs alone', async () => {
+  const automation = tab('automation', { agentProfileId: 'work', agentProfileProjectId: 'p', agentProfileConversationKey: 'p:schedule:daily', isAutomationConversation: true })
+  setup(automation)
+  expect(canCloseWorkspaceChatTab(automation, mocks.state.chatTabs)).toBe(true)
+  await closeWorkspaceChatTab('automation')
+  expect(mocks.stop).not.toHaveBeenCalled()
+  expect(mocks.closeSide).not.toHaveBeenCalled()
+  expect(mocks.state.closeTab).toHaveBeenCalledWith('automation', false)
+})

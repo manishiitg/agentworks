@@ -59,18 +59,27 @@ func TestProductScheduleJobActivationBaselinePrecedence(t *testing.T) {
 	}
 }
 
-func TestRunDestinationDefaultsToCrewChatAndAcceptsIsolated(t *testing.T) {
+func TestRunDestinationDefaultsToCrewChatAndAcceptsNewAndIsolated(t *testing.T) {
 	for _, test := range []struct {
 		value    string
 		isolated bool
-	}{{"", false}, {runDestinationChat, false}, {runDestinationIsolated, true}} {
-		got, err := isolatedForRunDestination(test.value)
-		if err != nil || got != test.isolated {
-			t.Fatalf("destination %q = %v, %v", test.value, got, err)
+		fresh    bool
+	}{{"", false, false}, {runDestinationChat, false, false}, {runDestinationIsolated, true, false}, {runDestinationNew, true, true}} {
+		got, err := parseRunDestination(test.value)
+		if err != nil || got.Isolated != test.isolated || got.New != test.fresh {
+			t.Fatalf("destination %q = %+v, %v", test.value, got, err)
+		}
+		if got.value() != firstNonEmptyTrimmed(test.value, runDestinationChat) {
+			t.Fatalf("destination %q is shown as %q", test.value, got.value())
 		}
 	}
-	if _, err := isolatedForRunDestination("new_chat"); err == nil {
+	if _, err := parseRunDestination("new_chat"); err == nil {
 		t.Fatal("invalid destination accepted")
+	}
+	for _, id := range runDestinationEnum() {
+		if _, err := parseRunDestination(id); err != nil {
+			t.Fatalf("the shared list offers %q but the parser refuses it: %v", id, err)
+		}
 	}
 }
 

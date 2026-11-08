@@ -452,6 +452,7 @@ type TmuxLookupFunc func(ctx context.Context, mainSessionID, stepID string) (tmu
 
 // WorkshopStepExecution tracks a single background step execution
 type WorkshopStepExecution struct {
+	RunFolder               string
 	ID                      string
 	StepID                  string
 	AgentSessionID          string // correlation ID used to tag events for this execution
@@ -478,6 +479,7 @@ type WorkshopExecutionStart struct {
 
 // WorkshopStepSnapshot is a read-only copy of a tracked execution for external callers.
 type WorkshopStepSnapshot struct {
+	RunFolder          string
 	ID                 string
 	StepID             string
 	AgentSessionID     string
@@ -499,6 +501,7 @@ func (e *WorkshopStepExecution) Snapshot() WorkshopStepSnapshot {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	snapshot := WorkshopStepSnapshot{
+		RunFolder:      e.RunFolder,
 		ID:             e.ID,
 		StepID:         e.StepID,
 		AgentSessionID: e.AgentSessionID,
@@ -1929,7 +1932,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 	// Tool 1: execute_step — start step in background
 	if err := mcpAgent.RegisterCustomTool(
 		"execute_step",
-		"Run a workflow step for real with its normal permissions, live database and actual tool actions. A user request to run or test a step authorizes that execution; do not ask again for the same request. Start it in the background, including a normal plan step, nested route step, or plan-local orphan utility step. Returns an execution_id immediately. You will be automatically notified when it completes. Idempotent while running: if the step already has a running execution, this returns that existing execution_id instead of starting a duplicate — use send_step_message with the returned execution_id to steer its currently active agent turn. For a scripted step that declares script_parameters, pass matching values in script_parameters; they are validated before main.py starts and exposed through STEP_PARAMS_JSON. Selected skills provide reusable instructions. Contributions are explicit task work; no automatic reflection turn runs after completion. Workshop mode only: set fast_path_only=true to run ONLY the saved main.py (code/{step-id}/main.py for code_layout_version=1, otherwise learnings/{step-id}/main.py) script with no LLM fallback when testing scripted patches.",
+		"Run a workflow step for real with its normal permissions, live database and actual tool actions. A user request to run or test a step authorizes that execution; do not ask again for the same request. Start it in the background, including a normal plan step, nested route step, or plan-local orphan utility step. Returns an execution_id immediately. You will be automatically notified when it completes. Idempotent while running: if the step already has a running execution, this returns that existing execution_id instead of starting a duplicate — use send_step_message with the returned execution_id to steer its currently active agent turn. For a scripted step that declares script_parameters, pass matching values in script_parameters; they are validated before main.py starts and exposed through STEP_PARAMS_JSON. Selected skills provide reusable instructions. Contributions are explicit task work; no automatic reflection turn runs after completion. Scripted steps always execute their saved main.py as-is. Missing or failing scripts fail the step; edit the code from this chat before running again.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -1938,7 +1941,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"description": "The step ID from plan.json or orphan_steps[] (e.g., 'step-create-report', 'validate-environment') or positional reference (e.g., '1', 'step-1', 'step1')",
 				},
 				"inputs":     map[string]interface{}{"type": "object", "description": "Explicit workflow input values overriding defaults and saved inputs.", "additionalProperties": map[string]interface{}{"type": "string"}},
-				"run_folder": map[string]interface{}{"type": "string", "description": "Existing run identity for continuing its steps; omit for a new run."},
+				"run_folder": map[string]interface{}{"type": "string", "description": "An existing run to continue. Crew chats use their current run when omitted, or start one if none is selected. Use new_run=true to start another."},
+				"new_run":    map[string]interface{}{"type": "boolean", "description": "Start a new run instead of continuing this chat's current step run. Cannot be combined with run_folder."},
 				"input_preset": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional exact saved input name. Omit to use workflow defaults. Does not select a route or run folder.",
@@ -1959,10 +1963,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "string",
 					"enum":        []interface{}{"high", "medium", "low"},
 					"description": "Optional LLM tier override for this execution. 'high' = Tier 1 (most capable), 'medium' = Tier 2, 'low' = Tier 3 (fastest/cheapest). Overrides the default maturity-based tier selection. Only works in tiered mode.",
-				},
-				"fast_path_only": map[string]interface{}{
-					"type":        "boolean",
-					"description": "Workshop mode only. If true, run ONLY the saved main.py (code/{step-id}/main.py for code_layout_version=1, otherwise learnings/{step-id}/main.py) script with no LLM fallback. Fails if no saved script exists, the step is not in scripted mode, or the current workshop mode is Run. Use this to quickly test scripted main.py patches.",
 				},
 				"script_parameters": map[string]interface{}{
 					"type":                 "object",
@@ -1986,6 +1986,30 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if _, supplied := args["group_name"]; supplied {
 				return "", fmt.Errorf(RetiredWorkflowGroupsMessage)
 			}
+			// Resolve flexible step ID (handles "1", "step-1", "step1" etc.)
+			plan, err := iwm.controller.ReadCurrentPlan(ctx)
+			if err != nil {
+				return fmt.Sprintf("Failed to load plan: %v. Cannot resolve step ID.", err), nil
+			}
+			resolvedID, resolveErr := resolveWorkshopStepID(plan, stepID)
+			if resolveErr != nil {
+				return resolveErr.Error(), nil
+			}
+			stepID = resolvedID
+
+			// Guard against duplicate concurrent runs of the SAME step. If an
+			// execution for this step is already running (e.g. the agent
+			// re-issued execute_step, or any double-trigger), return the live
+			// execution instead of forking a second concurrent run. Two runs of
+			// one step race on shared state (db/ rows, the browser/CDP session)
+			// and can double-act — e.g. post the same tweet twice.
+			iwm.executeStartMu.Lock()
+			defer iwm.executeStartMu.Unlock()
+			if existing, found, _ := iwm.stepRegistry.LatestSnapshotForStep(stepID); found && existing.Status == WorkshopStepRunning {
+				logger.Info(fmt.Sprintf("⏭️ Workshop: execute_step(%q) skipped — already running (execution_id=%q)", stepID, existing.ID))
+				return fmt.Sprintf("Step %q is ALREADY RUNNING (execution_id: %q, run_folder: %q) — not starting a duplicate. You'll be notified when it completes. End the current agent turn instead of polling; use query_step(step_id=%q) only if the user explicitly requests a live status check, or stop that execution first if the user wants a fresh run.", stepID, existing.ID, existing.RunFolder, stepID), nil
+			}
+
 			// Extract group_name and other options
 			groupNameRaw, _ := args["input_preset"]
 			groupName, _ := groupNameRaw.(string)
@@ -2003,6 +2027,22 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return "", fmt.Errorf("run_folder must be a string")
 				}
 			}
+			newRun, _ := args["new_run"].(bool)
+			if raw, present := args["new_run"]; present {
+				if _, ok := raw.(bool); !ok {
+					return "", fmt.Errorf("new_run must be true or false")
+				}
+			}
+			if newRun && requestedFolder != "" {
+				return "", fmt.Errorf("choose an earlier run or start a new run, not both")
+			}
+			if requestedFolder == "" && !newRun && iwm.workshopConfig != nil && iwm.workshopConfig.CurrentStepRun != nil {
+				var err error
+				requestedFolder, err = iwm.workshopConfig.CurrentStepRun(ctx)
+				if err != nil {
+					return "", err
+				}
+			}
 			boundSchedule := iwm.workshopConfig != nil && iwm.workshopConfig.ScheduleInvocation != nil
 			var recordedInputs map[string]string
 			if requestedFolder != "" && !boundSchedule {
@@ -2016,6 +2056,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					var err error
 					recordedInputs, err = iwm.controller.readExistingRunInputs(ctx, requestedFolder)
 					if err != nil {
+						if iwm.workshopConfig != nil && iwm.workshopConfig.CurrentStepRun != nil {
+							return "", fmt.Errorf("run %s is unavailable; choose another run with the earlier outputs, or use new_run=true and run the earlier steps first", requestedFolder)
+						}
 						return "", err
 					}
 				} else {
@@ -2044,7 +2087,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 
-			iteration, _ := args["run_folder"].(string)
+			iteration := requestedFolder
 			if iteration == "" {
 				iteration = "run-" + workflowExecutionIDToken()
 			}
@@ -2092,6 +2135,16 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 			resolvedInputs := recordedInputs
+			if recordedInputs != nil && iwm.workshopConfig != nil && iwm.workshopConfig.CurrentStepRun != nil {
+				for name, value := range inputValues {
+					if saved, ok := recordedInputs[name]; !ok || saved != value {
+						return "", fmt.Errorf("run %s keeps its saved inputs; use new_run=true to change inputs", requestedFolder)
+					}
+				}
+				if groupName != "" {
+					return "", fmt.Errorf("run %s keeps its saved inputs; omit input_preset or use new_run=true", requestedFolder)
+				}
+			}
 			if resolvedInputs == nil {
 				resolvedInputs, inputErr = ResolveWorkflowInputs(iwm.controller.variablesManifest, groupName, inputValues)
 				if inputErr == nil {
@@ -2121,13 +2174,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 
-			// fast_path_only: run saved script only, no LLM fallback
-			fastPathOnly := false
-			if val, ok := args["fast_path_only"]; ok && val != nil {
-				if b, ok := val.(bool); ok {
-					fastPathOnly = b
-				}
-			}
 			agentSequenceRestart := false
 			if val, ok := args["agent_restart"]; ok && val != nil {
 				if b, ok := val.(bool); ok {
@@ -2147,21 +2193,13 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return "script_parameters must be an object", nil
 				}
 			}
-			if err := validateWorkshopFastPathRequest(iwm.currentWorkshopModeFromConfigs(nil), fastPathOnly); err != nil {
-				return "", err
-			}
 
 			execOpts := &WorkshopExecuteOptions{
-				GroupName:       resolvedGroupName,
-				Inputs:          inputValues,
-				ResolvedInputs:  resolvedInputs,
-				Iteration:       iteration,
-				RunFolder:       runFolder,
-				SavedScriptOnly: fastPathOnly,
-				// The Builder running a step itself may author or repair its
-				// script; a scheduled session never does (PLAT-436).
-				AllowScriptRepair: !fastPathOnly && iwm.currentWorkshopModeFromConfigs(nil) == "workshop" &&
-					(iwm.workshopConfig == nil || iwm.workshopConfig.ScheduleInvocation == nil),
+				GroupName:           resolvedGroupName,
+				Inputs:              inputValues,
+				ResolvedInputs:      resolvedInputs,
+				Iteration:           iteration,
+				RunFolder:           runFolder,
 				Instructions:        instructions,
 				HumanInput:          humanInput,
 				Tier:                tierValue,
@@ -2170,29 +2208,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				ScriptParametersSet: scriptParametersSet,
 			}
 
-			// Resolve flexible step ID (handles "1", "step-1", "step1" etc.)
-			plan, err := iwm.controller.ReadCurrentPlan(ctx)
-			if err != nil {
-				return fmt.Sprintf("Failed to load plan: %v. Cannot resolve step ID.", err), nil
-			}
-			resolvedID, resolveErr := resolveWorkshopStepID(plan, stepID)
-			if resolveErr != nil {
-				return resolveErr.Error(), nil
-			}
-			stepID = resolvedID
-
-			// Guard against duplicate concurrent runs of the SAME step. If an
-			// execution for this step is already running (e.g. the agent
-			// re-issued execute_step, or any double-trigger), return the live
-			// execution instead of forking a second concurrent run. Two runs of
-			// one step race on shared state (db/ rows, the browser/CDP session)
-			// and can double-act — e.g. post the same tweet twice.
-			iwm.executeStartMu.Lock()
-			defer iwm.executeStartMu.Unlock()
-			if existing, found, _ := iwm.stepRegistry.LatestSnapshotForStep(stepID); found && existing.Status == WorkshopStepRunning {
-				logger.Info(fmt.Sprintf("⏭️ Workshop: execute_step(%q) skipped — already running (execution_id=%q)", stepID, existing.ID))
-				return fmt.Sprintf("Step %q is ALREADY RUNNING (execution_id: %q) — not starting a duplicate. You'll be notified when it completes. End the current agent turn instead of polling; use query_step(step_id=%q) only if the user explicitly requests a live status check, or stop that execution first if the user wants a fresh run. (Concurrent runs of the same step race on shared state and can double-act.)", stepID, existing.ID, stepID), nil
-			}
 			if iwm.controller.isRelayExecution() {
 				for _, snap := range iwm.stepRegistry.ListSnapshots() {
 					if snap.Status == WorkshopStepRunning {
@@ -2207,6 +2222,15 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if stepInfo := findWorkshopStepByID(plan.Steps, stepID); stepInfo != nil {
 					resolvedStep = stepInfo.Step
 					scriptedStep = isScriptedStep(stepInfo.Step)
+				}
+			}
+			if requestedFolder == "" && resolvedStep != nil && iwm.workshopConfig != nil && iwm.workshopConfig.CurrentStepRun != nil {
+				for _, dep := range ResolveVariablesArray(resolvedStep.GetContextDependencies(), resolvedInputs) {
+					for _, candidate := range collectAllSteps(plan.Steps) {
+						if candidate.Step.GetID() != stepID && contextOutputMatchesDependency(candidate.Step.GetContextOutput().String(), dep) {
+							return "", fmt.Errorf("step %q needs earlier outputs from %q; run that earlier step first, or choose a previous run with its results", resolvedStep.GetTitle(), candidate.Step.GetTitle())
+						}
+					}
 				}
 			}
 			if scriptParametersSet && !scriptedStep {
@@ -2226,6 +2250,45 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if ctxErr != nil {
 				return "Session was stopped — execution skipped", nil
 			}
+			if iwm.workshopConfig == nil {
+				cancel()
+				return "", fmt.Errorf("workflow session configuration is unavailable")
+			}
+			runConfig := *iwm.workshopConfig
+			runConfig.InputPreset, runConfig.Inputs = groupName, cloneWorkflowStringMap(inputValues)
+			if recordedInputs != nil {
+				runConfig.InputPreset, runConfig.Inputs = "", nil
+			}
+			runConfig.RunFolder = runFolder
+			runConfig.WorkspaceEnvRef = iwm.controller.snapshotWorkspaceEnv()
+			if runConfig.WorkspaceEnvRef == nil {
+				runConfig.WorkspaceEnvRef = map[string]string{}
+			}
+
+			stepSession, setupErr := NewWorkshopChatSession(execCtx, &runConfig)
+			if setupErr != nil {
+				cancel()
+				return "", setupErr
+			}
+			if !iwm.controller.isRelayExecution() {
+				if _, inputErr := stepSession.controller.resolveRunInputs(execCtx, runFolder, resolvedGroupName, resolvedInputs); inputErr != nil {
+					stepSession.Close()
+					cancel()
+					return "", inputErr
+				}
+			}
+			if err := execCtx.Err(); err != nil {
+				stepSession.Close()
+				cancel()
+				return "", err
+			}
+			if iwm.workshopConfig != nil && iwm.workshopConfig.SelectStepRun != nil {
+				if err := iwm.workshopConfig.SelectStepRun(ctx, runFolder); err != nil {
+					stepSession.Close()
+					cancel()
+					return "", fmt.Errorf("could not remember this chat's run; no step started: %w", err)
+				}
+			}
 
 			// Inject correlation IDs so step execution events are tagged as sub-agent
 			// events. ForceCorrelationIDKey survives child agent context overwrites
@@ -2238,6 +2301,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			execCtx = context.WithValue(execCtx, orchestrator_events.IsSubAgentContextKey, true)
 
 			exec := &WorkshopStepExecution{
+				RunFolder:      runFolder,
 				ID:             execID,
 				StepID:         stepID,
 				AgentSessionID: agentSessionID,
@@ -2305,22 +2369,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			execCtx = context.WithValue(execCtx, orchestrator_events.ParentExecutionIDKey, execID)
 			releaseRunningStep := RegisterRunningWorkflowStep(iwm.controller.GetWorkspacePath(), stepID, execID, iwm.mainSessionID)
 
-			if iwm.workshopConfig == nil {
-				cancel()
-				releaseRunningStep()
-				return "", fmt.Errorf("workflow session configuration is unavailable")
-			}
-			runConfig := *iwm.workshopConfig
-			runConfig.InputPreset, runConfig.Inputs = groupName, cloneWorkflowStringMap(inputValues)
-			if recordedInputs != nil {
-				runConfig.InputPreset, runConfig.Inputs = "", nil
-			}
-			runConfig.RunFolder = runFolder
-			runConfig.WorkspaceEnvRef = iwm.controller.snapshotWorkspaceEnv()
-			if runConfig.WorkspaceEnvRef == nil {
-				runConfig.WorkspaceEnvRef = map[string]string{}
-			}
-
 			go func() {
 				defer releaseRunningStep()
 				if workflowSessionID != "" {
@@ -2337,9 +2385,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 
 				// Variables captured after execution for metadata
-				var isLockCode bool
-				var lockCodeConsecutiveFailures int
-				var lockCodeNeedsReview bool
 				var workshopModeForMeta string
 
 				eventBridge := iwm.controller.GetContextAwareBridge()
@@ -2353,15 +2398,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 						execMeta["run_folder"] = execOpts.RunFolder
 						if iwm.controller.isRelayExecution() {
 							delete(execMeta, "input_preset")
-						}
-						if isLockCode {
-							execMeta["lock_code"] = "true"
-						}
-						if lockCodeConsecutiveFailures > 0 {
-							execMeta["lock_code_consecutive_failures"] = fmt.Sprintf("%d", lockCodeConsecutiveFailures)
-						}
-						if lockCodeNeedsReview {
-							execMeta["lock_code_needs_review"] = "true"
 						}
 						// Use frontend-selected mode if available, else fall back to auto-detection
 						if iwm.workshopModeOverride != "" {
@@ -2408,11 +2444,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					})
 				}
 
-				stepSession, setupErr := NewWorkshopChatSession(execCtx, &runConfig)
-				if setupErr != nil {
-					execErr = setupErr
-					return
-				}
 				defer stepSession.Close()
 				stepSession.SetWorkshopExecutionNotifier(iwm.executionNotifier)
 				childSessionID := stepSession.controller.GetMCPSessionID()
@@ -2422,53 +2453,19 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 				result, execErr = stepSession.controller.ExecuteStepForWorkshop(execCtx, stepID, execOpts)
 
-				// Capture step lock flags so the auto-notification can tailor
-				// recovery guidance (e.g. fast-path failure on a locked step has only two
-				// recovery paths: fix main.py after unlocking, or rerun with fast_path_only=false).
 				if configs, configErr := iwm.controller.ReadStepConfigs(execCtx); configErr == nil {
-					for _, sc := range configs {
-						if sc.ID == stepID && sc.AgentConfigs != nil {
-							if sc.AgentConfigs.LockCode != nil && *sc.AgentConfigs.LockCode {
-								isLockCode = true
-							}
-							break
-						}
-					}
 					workshopModeForMeta = detectWorkshopMode(nil, configs)
 				}
 
-				// If the step is locked, surface its locked-script run history so the auto-
-				// notification can flag a "this frozen script keeps failing" pattern to the
-				// builder rather than letting it accumulate silently in script_metadata.json.
-				if isLockCode {
-					if meta := iwm.controller.readScriptedMetadataAPI(execCtx, stepID); meta != nil && meta.LockCodeStats != nil {
-						lockCodeConsecutiveFailures = meta.LockCodeStats.ConsecutiveFailures
-						lockCodeNeedsReview = meta.LockCodeStats.NeedsReview
-					}
-				}
 			}()
 
 			groupInfo := ""
 			if groupName != "" {
 				groupInfo = fmt.Sprintf(", group=%q", groupName)
 			}
-			logger.Info(fmt.Sprintf("🚀 Workshop: step %q started in background, execution_id=%q%s, fast_path_only=%v", stepID, execID, groupInfo, fastPathOnly))
-			// Surface the resolved run_folder/group explicitly. group_name is
-			// optional on this tool and silently falls back to the first
-			// enabled/manifest group when omitted — without this line, an
-			// omitted or mistyped group_name silently lands the run in a
-			// folder the caller never confirmed, discoverable only by reading
-			// runs/ directly (found live: a step run this way was invisible
-			// in the Execution Logs UI because its dropdown never listed the
-			// folder the run actually used).
-			displayGroupName := resolvedGroupName
-			if displayGroupName == "" {
-				displayGroupName = groupName
-			}
+			logger.Info(fmt.Sprintf("🚀 Workshop: step %q started in background, execution_id=%q%s", stepID, execID, groupInfo))
+			// Input presets do not identify runs. Always return the actual run.
 			runFolderNotice := fmt.Sprintf("\nrun_folder: %q", runFolder)
-			if displayGroupName == "" && !iwm.controller.isRelayExecution() {
-				runFolderNotice += " (no group resolved — this workspace may have no defined variable groups)"
-			}
 			return fmt.Sprintf("Step %q started in background.\nexecution_id: %q%s\nYou will be automatically notified when it completes. End the current agent turn now instead of polling. Use query_step(step_id=%q) only if the user explicitly requests a live status check. Use send_step_message(execution_id=%q, message=...) only for a necessary live correction while an agent turn is active.", stepID, execID, runFolderNotice, stepID, execID), nil
 		},
 		"workflow",
@@ -2582,6 +2579,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if isGenericAgent {
 				executionLabel = fmt.Sprintf("Generic agent %q", strings.TrimPrefix(stepID, "generic-agent:"))
 			}
+			if folder := exec.RunFolder; folder != "" {
+				executionLabel += fmt.Sprintf(" (run %s)", folder)
+			}
 
 			switch status {
 			case WorkshopStepRunning:
@@ -2649,7 +2649,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if strings.HasPrefix(execID, "bg-") {
 					return fmt.Sprintf("Background task %q completed.\n\n%s", stepID, result), nil
 				}
-				return fmt.Sprintf("Step %q completed.\nexecution_id: %s\n\n%s", stepID, execID, result), nil
+				return fmt.Sprintf("%s completed.\nexecution_id: %s\n\n%s", executionLabel, execID, result), nil
 			case WorkshopStepFailed:
 				if isGenericAgent {
 					return fmt.Sprintf("%s failed.\nexecution_id: %s\nerror: %v", executionLabel, execID, execErr), nil
@@ -2657,11 +2657,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if strings.HasPrefix(execID, "bg-") {
 					return fmt.Sprintf("Background task %q failed: %v", stepID, execErr), nil
 				}
-				return fmt.Sprintf("Step %q failed.\nexecution_id: %s\nerror: %v", stepID, execID, execErr), nil
+				return fmt.Sprintf("%s failed.\nexecution_id: %s\nerror: %v", executionLabel, execID, execErr), nil
 			case WorkshopStepCancelled:
 				return fmt.Sprintf("%s was cancelled.\nexecution_id: %s", executionLabel, execID), nil
 			default:
-				return fmt.Sprintf("Step %q has unknown status: %s\nexecution_id: %s", stepID, status, execID), nil
+				return fmt.Sprintf("%s has unknown status: %s\nexecution_id: %s", executionLabel, status, execID), nil
 			}
 		},
 		"workflow",
@@ -2883,7 +2883,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			logger.Info(fmt.Sprintf("🛑 Workshop: step %q (execution_id=%q) cancelled", exec.StepID, execID))
-			return fmt.Sprintf("Step %q (execution_id=%q) has been canceled.", exec.StepID, execID), nil
+			return fmt.Sprintf("Step %q (execution_id=%q, run_folder=%q) has been canceled.", exec.StepID, execID, exec.RunFolder), nil
 		},
 		"workflow",
 	); err != nil {
@@ -4910,46 +4910,21 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := json.Unmarshal([]byte(content), &manifest); err != nil {
 				return fmt.Sprintf("Failed to parse workflow.json: %v", err), nil
 			}
-			if err := validateContractVersionStampPrerequisites(version, manifest); err != nil {
-				return fmt.Sprintf("Refused: nested Agent artifact migration is incomplete: %v", err), nil
-			}
-			if err := validateManagedDBScriptsStamp(version, workflowAbsPath(iwm.controller.GetWorkspacePath())); err != nil {
-				return fmt.Sprintf("Refused: the managed database script migration is incomplete: %v", err), nil
-			}
-			if version == AgentDescriptionFirstContractVersion {
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
-				if err != nil {
-					return "", err
+			checked := []string{}
+			if err := CheckContractStamp(version, iwm.controller.GetWorkspacePath(), []byte(content), func() (string, error) {
+				return iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
+			}, func() error {
+				var checkErr error
+				var resources *CrewResources
+				if opts := iwm.controller.GetExecutionOptions(); opts != nil {
+					resources = opts.CrewResources
 				}
-				if err := ValidateAgentDescriptionFirstContractStamp(content); err != nil {
-					return "", err
-				}
-			}
-			if version == WorkflowSkillsContractVersion {
-				if err := ValidateWorkflowSkillsStamp(workflowAbsPath(iwm.controller.GetWorkspacePath())); err != nil {
-					return "", err
-				}
-			}
-			if version == ResourceIntentContractVersion {
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
-				if err != nil {
-					return "", err
-				}
-				if err := ValidateResourceIntentContractStamp(content); err != nil {
-					return "", err
-				}
-			}
-			if version == AgentStepContractVersion {
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
-				if err != nil {
-					return "", err
-				}
-				if err := ValidateAgentStepContractStamp(content); err != nil {
-					return "", err
-				}
-			}
-			if err := validateStepDescriptionLayoutStamp(version, workflowAbsPath(iwm.controller.GetWorkspacePath())); err != nil {
-				return fmt.Sprintf("Refused: the step description layout migration is incomplete: %v", err), nil
+				checked, checkErr = ValidatePortableWorkflowRuntime(ctx, iwm.controller.GetWorkspacePath(), resources, func(callCtx context.Context, file string) (string, error) {
+					return iwm.controller.ReadWorkspaceFile(callCtx, file)
+				})
+				return checkErr
+			}); err != nil {
+				return "", err
 			}
 			if current, _ := manifest["version"].(string); strings.TrimSpace(current) == version {
 				return fmt.Sprintf("Workflow contract version is already %s.", version), nil
@@ -4969,6 +4944,13 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				return refusal, nil
 			}
 
+			if version == PortableWorkflowContractVersion {
+				from, _ := manifest["version"].(string)
+				if err := RecordWorkflowContractUpgrade(ctx, iwm.controller.GetWorkspacePath(), from, version, "Operator completed the portable workflow review.", checked, iwm.controller.ReadWorkspaceFile, iwm.controller.WriteWorkspaceFile); err != nil {
+					contractupgrade.Restore(sessionID, version)
+					return "", err
+				}
+			}
 			appliedAt := time.Now().UTC()
 			manifest["version"] = version
 			manifest["updated_at"] = appliedAt.Format(time.RFC3339)
@@ -6176,11 +6158,11 @@ This is a **read-only review**:
 7. **Do not drift into full redesign**: You may suggest a concrete correction, but the primary task is to review and explain what is wrong with the current decision.
 8. **Check portability and secrecy**: Flag plan-visible secrets, user-specific values, absolute paths, run-folder-specific values, and brittle environment assumptions.
 9. **Check persistent-store discipline**: Stores survive across runs — workflow-local skills (HOW to run), `+"`knowledgebase/context/`"+` (user-supplied runtime business context), `+"`"+`knowledgebase/notes/`+"`"+` (workflow-discovered durable narrative observations), `+"`"+`db/db.sqlite`+"`"+` (structured durable SQLite tables for cross-run state, read live by HTML reports via `+"`window.report.query`"+`), and `+"`db/assets/`"+` (durable media/file assets referenced by db rows or reports). Flag steps that confuse these stores: stashing durable facts in learnings or plan.json, stashing user-owned context in notes, writing report data only to run folders, embedding assets as blobs, or failing to describe explicit task contributions or the `+"`"+`db/README.md`+"`"+` contract when steps produce persistent facts.
-10. **Check skill and mode discipline**: Steps consume selected workflow skills. Builder edits them when asked. Other products use this Goal’s shared entry points and existing access checks. No separate learning store or automatic reflection turn is added. Deterministic API/SDK calls, CLI commands, data fetching, known pagination, stable parsing/normalization/transforms, and mechanical persistence should be `+"`"+`scripted`+"`"+` from initial design with an authored/tested `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+`; no run-history threshold is required to choose that mode. Browser/UI work, adaptive discovery, and judgment stay agentic. The 10+ representative-run bar applies to `+"`"+`lock_code`+"`"+`, not to declaring deterministic work scripted.
+10. **Check execution mode**: Deterministic API/CLI/data work uses saved scripted steps; browser work, adaptive discovery and judgment use agents. Scripts never generate or repair source while running.
 11. **Check KB discipline**: KB writes require explicit task instructions and correct read/write access. `+"`knowledgebase/context/`"+` should contain user-supplied runtime context; `+"`knowledgebase/notes/`"+` should contain workflow-discovered durable narrative observations, not execution recipes, raw rows, or volatile run state. If `+"`"+`knowledgebase/notes/_index.json`+"`"+` exists, it must point to coherent topic notes.
 12. **Check db discipline**: `+"`"+`db/db.sqlite`+"`"+` should be a clean relational surface: each table documented in `+"`"+`db/README.md`+"`"+` with DDL, PRIMARY KEY, upsert rule (`+"`INSERT ... ON CONFLICT`"+`), indexes, writer ownership, group separation, report consumers (the HTML report `+"`window.report.query`"+` SQL that reads it), and correct references to durable assets under `+"`db/assets/`"+`.
 13. **Check skill discipline**: Installed skills live under `+"`skills/{folder}/SKILL.md`"+` and are reusable instructions local to the workflow. Review workflow-selected skills and per-step `+"`enabled_skills`"+` against the actual plan. Flag missing needed skills, selected-but-unused skills, descriptions that reference skills not enabled for the execution agent, malformed skill folders, and skills that duplicate other workflow skills or contain workflow-specific secrets/paths/run state. Do not assume workflow-level selected skills automatically reach step execution; verify step-level `+"`enabled_skills`"+` when runtime requires explicit scoping.
-14. **Check access and code-lock consistency**: `+"`"+`lock_code`+"`"+` freezes scripted `+"`"+`code/{step-id}/main.py (version 1), otherwise learnings/{step-id}/main.py`+"`"+` against fix-loop rewrites; flag it without the scripted evidence gate. KB write eligibility is an access decision, not a lock: review knowledgebase_access against explicit task contributions. Steps do not write skills. Legacy objectives belong in migration notes, never a hidden closing turn. If a step description has meaningfully changed since the last review, recommend clearing `+"`"+`description_reviewed`+"`"+` and re-reviewing before keeping a code lock or write grant.
+14. **Check access**: Review knowledgebase_access against the explicit task. Steps never write skill files or saved script source. Description changes need an explicit source review in this chat.
 
 ## STEP BOUNDARY STANDARD
 
@@ -6267,7 +6249,7 @@ Review the plan through these lenses:
 1. **Decision justification** — Does each important design choice have a clear reason, or does it look accidental?
 2. **Step boundaries** — Are steps split or merged according to the durable-boundary standard above, rather than by raw action/tool-call count?
 3. **Step type choice** — Is each step using the right type for the actual job?
-4. **Execution mode choice** — Does the declared mode fit the work? Deterministic API/SDK/CLI fetchers, known pagination, stable parsing/normalization/transforms, and mechanical persistence should be scripted from initial design and own an authored/tested `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+`; they do not need 10 prior runs just to select scripted mode. The 10+ representative-run threshold applies only before `+"`lock_code=true`"+`. Judgment, adaptive discovery, and browser/UI work should remain agentic. If an agentic step has `+"`main.py`"+`, flag stale mode debt; if an obviously deterministic fetcher is agentic, flag avoidable LLM execution.
+4. **Execution mode** — saved scripts perform deterministic work; agents perform judgment and browser tasks. Author and fix code explicitly in chat.
 5. **Context flow** — Are dependencies/output contracts minimal, correct, and sufficient? Are there artificial file handoffs or missing dependencies?
 6. **Validation & evaluation** — Is the workflow validating and evaluating the things that actually matter for success?
 7. **Portability & secrecy** — Does the current plan leak secrets or overfit to one user, machine, run, or folder structure?
@@ -6565,7 +6547,6 @@ This is a **read-only review** — do not modify any files.
 7. **Check MCP tool usage**: Verify that call_mcp() calls use consistent server/tool naming. Flag suspicious tool names that look guessed rather than discovered via get_api_spec.
 8. **Check browser automation quality**: For scripts using agent_browser, verify:
    - **Browser-heavy scripted is usually the wrong fit.** If a browser-enabled step has a saved `+"`main.py`"+`, flag it unless the user explicitly requested scripted browser execution AND the script uses durable selectors, state-driven waits, fresh snapshots, and has evidence of stability across runs. Browser/UI automation should generally remain `+"`agentic`"+` so the agent can adapt to live UI state, auth, dynamic selectors, pagination, and third-party page timing.
-   - **agentic must not keep main.py.** If a step is declared `+"`agentic`"+` but still has `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+`, flag the file as stale artifact debt. Recommend deleting it and clearing `+"`lock_code`"+`; agentic does not run or maintain persistent scripts.
    - **Selectors are DURABLE, not refs.** Hardcoded string refs like `+"`'abc123'`"+` or `+"`'@e1'`"+` in main.py are BUGS — refs are session-local. The durable alternatives are (in priority order): data-testid / hand-written id / aria-label / role+name / get_by_label|placeholder|text. Flag any ref that appears as a literal string (not a variable parsed from a current-run snapshot).
    - Uses agent_browser `+"`snapshot`"+` before interacting — never clicks or types blindly
    - Ref-based interaction is acceptable ONLY when the ref value is parsed from a snapshot taken earlier in the SAME run (`+"`ref = extract_ref(snapshot, role=..., name=...)` then `browser('click', [ref])`"+`). Hardcoded refs in main.py must be flagged.
@@ -6649,7 +6630,7 @@ For each step reviewed, output:
 - Drifted: N
 - No script: N
 - **Top priority fixes**: List the 3 most critical drifts that should be addressed first.
-- **Stale code-lock warning**: For every step marked `+"`"+`DRIFTED`+"`"+` whose `+"`"+`step_config`+"`"+` has `+"`"+`lock_code=true`+"`"+`, explicitly call out that the frozen main.py may no longer match the description, and the builder should `+"`"+`update_step_config(step_id, lock_code=false, description_reviewed=false)`+"`"+` before regenerating. Review the selected skills for stale instructions.
+- **Changed instructions**: Review saved code when a description changes; running a script does not update it.
 `)
 
 var reviewStepCodeAgentUserTemplate = MustRegisterTemplate("reviewStepCodeAgentUser", `Review the saved main.py scripts against their step descriptions and report any drift.{{if .Focus}} Focus especially on: {{.Focus}}{{end}}
@@ -6846,16 +6827,13 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowTimingAgent(ctx context.
 		for _, sc := range stepConfigs {
 			mode := executionModeLabel(isScriptedStep(planSteps[sc.ID]))
 			successfulRuns := 0
-			lockCode := false
 			if sc.AgentConfigs != nil {
 				if sc.AgentConfigs.SuccessfulRuns != nil {
 					successfulRuns = *sc.AgentConfigs.SuccessfulRuns
 				}
-				if sc.AgentConfigs.LockCode != nil {
-					lockCode = *sc.AgentConfigs.LockCode
-				}
+
 			}
-			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d, lock_code=%v\n", sc.ID, mode, successfulRuns, lockCode))
+			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d\n", sc.ID, mode, successfulRuns))
 		}
 		stepConfigSummary = sb.String()
 	}
@@ -6935,16 +6913,13 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowCostsAgent(ctx context.C
 		for _, sc := range stepConfigs {
 			mode := executionModeLabel(isScriptedStep(planSteps[sc.ID]))
 			successfulRuns := 0
-			lockCode := false
 			if sc.AgentConfigs != nil {
 				if sc.AgentConfigs.SuccessfulRuns != nil {
 					successfulRuns = *sc.AgentConfigs.SuccessfulRuns
 				}
-				if sc.AgentConfigs.LockCode != nil {
-					lockCode = *sc.AgentConfigs.LockCode
-				}
+
 			}
-			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d, lock_code=%v\n", sc.ID, mode, successfulRuns, lockCode))
+			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d\n", sc.ID, mode, successfulRuns))
 		}
 		stepConfigSummary = sb.String()
 	}

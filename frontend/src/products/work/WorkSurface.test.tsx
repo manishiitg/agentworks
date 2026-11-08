@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeWorkWorkspaceView, WorkChatTabs, useWorkChatTab } from './WorkSurface'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
-import { agentApi } from '../../services/api'
+import api, { agentApi } from '../../services/api'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { routeView } from '../../utils/productRoutes'
@@ -56,6 +56,40 @@ describe('fresh deep links keep their view', () => {
 describe('Crew native tab dragging', () => {
   // The full tab strip is shown while the sidebar is closed.
   beforeEach(() => useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: null }))
+  // PLAT-746-410: managed storage returns 404 for native-chat availability;
+  // that must remove only the import action, never the general agent menu.
+  it.each(['unavailable', 'failed', 'available'] as const)('keeps the Main-only agent menu usable when native import is %s', async availability => {
+    const main = { tabId: 'main', sessionId: 'session-main', name: 'Main', config: {}, metadata: {
+      agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: true, agentProfileConversationKey: 'crew',
+    } } as ChatTab
+    useChatStore.setState({ chatTabs: { main }, activeTabId: 'main' })
+    const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([])
+    const get = api.get.bind(api)
+    const requests = vi.spyOn(api, 'get').mockImplementation(async (url, config) => {
+      if (url === '/api/agent-profiles/work/local-project') {
+        if (availability === 'failed') throw new Error('This Crew does not use an existing local folder.')
+        return { data: { can_import_local_chats: availability === 'available' } } as never
+      }
+      return get(url, config)
+    })
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
+      // Both the tab strip and sidebar layout must retain the general menu.
+      for (const sidebar of [null, document.createElement('div')]) {
+        await act(async () => useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: sidebar }))
+        const caret = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')
+        expect(caret).not.toBeNull()
+        await act(async () => caret!.click())
+        const menu = document.querySelector('[role="dialog"][aria-label="Agents"]')!
+        expect(menu).not.toBeNull()
+        expect(menu.textContent).toContain('New agent')
+        expect(menu.textContent?.includes('Continue a local chat')).toBe(availability === 'available')
+        await act(async () => caret!.click())
+      }
+    } finally { await act(async () => root.unmount()); host.remove(); requests.mockRestore(); list.mockRestore() }
+  })
   it('opens a newly imported chat deep link in an already mounted Crew', async () => {
     // PLAT-746-336: Create selects the Crew before the native import completes.
     const main = { tabId: 'main', sessionId: 'session-main', name: 'Main', config: {}, metadata: {

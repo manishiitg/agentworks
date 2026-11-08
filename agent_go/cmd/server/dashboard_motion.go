@@ -29,7 +29,7 @@ func dashboardMotionGuard(claims *UserClaims, target dashboardTarget, compositio
 	guard := &workspace.FolderGuardConfig{Enabled: true, ReadPaths: []string{path.Join(target.Root, composition)}, WritePaths: []string{path.Join(target.Root, output), path.Join(target.Root, cache)}}
 	if grants := dashboardFileGuard(claims); grants != nil {
 		if !grants.Allows(composition, false) || !grants.Allows(output, true) || !grants.Allows(cache, true) {
-			return nil, fmt.Errorf("This connection cannot read the animation and save its export. Use Builder chat or a connection with those project folders selected.")
+			return nil, fmt.Errorf("This connection cannot read the animation and save its export. Use the Crew's chat or a connection with those project folders selected.")
 		}
 		for _, p := range grants.BlockedPaths {
 			guard.BlockedPaths = append(guard.BlockedPaths, path.Join(target.Root, p))

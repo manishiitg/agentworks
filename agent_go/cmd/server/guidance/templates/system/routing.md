@@ -109,7 +109,7 @@ made decision selects exactly one genuinely different downstream path.
 - **Routing vs. Crew**: Crew may coordinate specialists adaptively. Routing runs exactly one fixed
   downstream alternative.
 - **Routing vs. plain agent**: a plain sequence is one ordered conversation; add `predefined_routes` only for adaptive delegation.
-- **Known route choices**: use `route_selections`; supply known values through variables or per-step `human_inputs`. Agents use `human_feedback` for urgent missing values.
+- **Known route choices**: use `route_selections`; supply known values through variables or per-step `human_inputs`. Agents use `needs_you action=ask` for urgent missing values.
 
 ### Example
 
@@ -124,7 +124,7 @@ After a login probe, write:
 Then route among:
 
 - `success` -> `next_step_id: "step-extract-data"`
-- `mfa_required` -> `next_step_id: "step-mfa-prompt"` (an agent that calls human_feedback for the code)
+- `mfa_required` -> `next_step_id: "step-mfa-prompt"` (an agent that calls `needs_you action=ask` for the code)
 - `failed` -> `next_step_id: "step-retry-or-abort"`
 
 Each `next_step_id` must already exist as a step in the plan.

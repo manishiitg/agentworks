@@ -35,7 +35,7 @@ import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { WorkSkillsPanel } from './WorkSkillsPanel'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
-import { CrewExecutablesPanel } from './CrewExecutablesPanel'
+import { CrewWorkflowPage } from './CrewWorkflowPage'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { sharedCrewFileClient } from './sharedCrewFiles'
@@ -54,7 +54,7 @@ const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ d
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
 
-export type WorkWorkspaceView = 'context' | 'dashboard' | 'goals' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
+export type WorkWorkspaceView = 'context' | 'dashboard' | 'goals' | 'workflow' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
@@ -374,10 +374,11 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
               actionLabel="Open"
               onSelectSession={openHistoryChat}
             /></div>}
+          {view === 'workflow' && (canEditConnections
+            ? <CrewWorkflowPage projectId={projectId} chatTabId={tabId} />
+            : <p className="p-6 text-sm text-muted-foreground">{projectAccess?.key !== accessKey ? 'Loading…' : 'Open this Crew’s chat or dashboard.'}</p>)}
           {view === 'schedules' && <AutomationHubPanel
-            initialSection="workflows"
-            workflowContent={canEditConnections ? <CrewExecutablesPanel key={`${projectId}:workflows`} projectId={projectId} chatTabId={tabId} kind="workflow" /> : <p className="p-6 text-sm text-muted-foreground">{projectAccess?.key !== accessKey ? 'Loading…' : 'Open this Crew’s chat or dashboard.'}</p>}
-            scriptContent={canEditConnections ? <CrewExecutablesPanel key={`${projectId}:scripts`} projectId={projectId} chatTabId={tabId} kind="script" /> : <p className="p-6 text-sm text-muted-foreground">{projectAccess?.key !== accessKey ? 'Loading…' : 'Open this Crew’s chat or dashboard.'}</p>}
+            initialSection="schedules"
             entityType="product"
             workspacePath={workspacePath}
             // A Code's schedules and triggers are its owner's: they run as the

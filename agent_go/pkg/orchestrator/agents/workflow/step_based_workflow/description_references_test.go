@@ -29,9 +29,9 @@ func TestDescriptionNamedResourcesAreReadableWithoutInlining(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("learnings/_global/references/job-selection.md", "Skip jobs under $500.\n")
+	write("skills/job-selection/references/selection.md", "Skip jobs under $500.\n")
 	write("knowledgebase/notes/positioning.md", strings.Repeat("x", 5000))
-	write("learnings/_global/SKILL.md", "not named, never attached")
+	write("skills/job-selection/SKILL.md", "not named, never attached")
 
 	previous := BrainNoteReader
 	BrainNoteReader = func(_ context.Context, _, note string) (string, error) {
@@ -39,10 +39,10 @@ func TestDescriptionNamedResourcesAreReadableWithoutInlining(t *testing.T) {
 	}
 	t.Cleanup(func() { BrainNoteReader = previous })
 
-	description := "## Goal\nPick one job. Mentions learnings/_global/SKILL.md outside the sections.\n\n" +
+	description := "## Goal\nPick one job. Mentions skills/job-selection/SKILL.md outside the sections.\n\n" +
 		"## Resources\n- `Workflow/upwork/knowledgebase/notes/positioning.md`\n- knowledgebase/notes/missing.md\n\n" +
 		"## Rules\n- Never bid twice.\n\n" +
-		"## Guides\n- learnings/_global/references/job-selection.md\n- brain:people/example\n"
+		"## Guides\n- skills/job-selection/references/selection.md\n- brain:people/example\n"
 
 	base, err := orchestrator.NewBaseOrchestrator(loggerv2.NewNoop(), nil, orchestrator.OrchestratorTypeWorkflow, "", 0, "", nil, nil, false, &orchestrator.LLMConfig{}, 1, nil, nil, nil)
 	if err != nil {
@@ -51,11 +51,11 @@ func TestDescriptionNamedResourcesAreReadableWithoutInlining(t *testing.T) {
 	base.SetWorkspacePath(workflow)
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base, selectedRunFolder: "iteration-0/default"}
 
-	// Folder Guard: learnings and KB access are off, naming still grants read.
+	// Named current guides grant read access only; retired learning paths do not.
 	cfg := &AgentConfigs{LearningsAccess: LearningsAccessNone, KnowledgebaseAccess: KBAccessNone}
 	readPaths, writePaths := hcpo.setupAgentFolderGuard("step-1", "pick", cfg, AgentWriteAccess{})
 	readPaths = appendDescriptionReferenceReadPaths(readPaths, workflow, description)
-	for _, want := range []string{workflow + "/learnings/_global/references/job-selection.md", workflow + "/knowledgebase/notes/positioning.md"} {
+	for _, want := range []string{workflow + "/skills/job-selection/references/selection.md", workflow + "/knowledgebase/notes/positioning.md"} {
 		if !slices.Contains(readPaths, want) {
 			t.Fatalf("named path %s not readable: %v", want, readPaths)
 		}
@@ -81,7 +81,7 @@ func TestDescriptionNamedResourcesAreReadableWithoutInlining(t *testing.T) {
 		"`knowledgebase/notes/positioning.md`: readable at " + filepath.Join(docs, workflow, "knowledgebase/notes/positioning.md"),
 		"`knowledgebase/notes/missing.md`: does not exist in this workflow.",
 		"`brain:people/example.md`: this project cannot read this Brain note (Brain access is off for this project)",
-		"`learnings/_global/references/job-selection.md`: readable at " + filepath.Join(docs, workflow, "learnings/_global/references/job-selection.md"),
+		"`skills/job-selection/references/selection.md`: readable at " + filepath.Join(docs, workflow, "skills/job-selection/references/selection.md"),
 	} {
 		if !strings.Contains(section, want) {
 			t.Fatalf("referenced guides missing %q:\n%s", want, section)
@@ -96,7 +96,23 @@ func TestDescriptionNamedResourcesAreReadableWithoutInlining(t *testing.T) {
 	if notice := descriptionReferencesEditNotice(workflow, description); !strings.Contains(notice, "knowledgebase/notes/missing.md") || strings.Contains(notice, "job-selection") {
 		t.Fatalf("edit notice = %q", notice)
 	}
-	if got := hcpo.referencedGuidesForStep(context.Background(), "pick", "Pick one job using learnings/_global/references/job-selection.md."); got != "" {
+	if got := hcpo.referencedGuidesForStep(context.Background(), "pick", "Pick one job using skills/job-selection/references/selection.md."); got != "" {
 		t.Fatalf("description without Inputs/Guides changed the prompt: %q", got)
 	}
+	t.Run("binding discovery failure preserves an unmoved guide", func(t *testing.T) {
+		// PLAT-746-396: discovery errors are not evidence that an unmoved
+		// workflow's guide disappeared. KB cutover rules remain independent.
+		state := t.TempDir()
+		t.Setenv("AGENTWORKS_STATE_ROOT", state)
+		if err := os.MkdirAll(filepath.Join(state, "ownership"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(state, "ownership/crew-executables"), []byte("not a directory"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		got := descriptionReferenceReadPaths(workflow, "## Guides\nskills/job-selection/references/selection.md")
+		if !slices.Contains(got, workflow+"/skills/job-selection/references/selection.md") {
+			t.Fatalf("unmoved guide dropped after discovery error: %v", got)
+		}
+	})
 }

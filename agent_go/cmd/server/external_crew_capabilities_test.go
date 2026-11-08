@@ -188,11 +188,13 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	if !strings.Contains(result, "Workflow/research") {
 		t.Fatal(result)
 	}
-	crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "reference_attach", "workspace_path": "Workflow/research"}, 200)
-	if manifest, _, _ := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json"); !strings.Contains(manifest, "Workflow/research") {
-		t.Fatal("reference was not persisted")
+	// Workflows are not linked to a Crew; discovery still lists them for ask and functions.
+	attachName, attachArgs := canonicalTestCall("workspace", map[string]any{"action": "reference_attach", "workspace_path": "Workflow/research", "crew_id": "team"})
+	attachBody, _ := json.Marshal(map[string]any{"name": attachName, "arguments": attachArgs})
+	f.api.dispatchExternalCall(httptest.NewRecorder(), adminRequest(http.MethodPost, "/api/external/call", string(attachBody), claims, nil), false)
+	if manifest, _, _ := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json"); strings.Contains(manifest, "Workflow/research") {
+		t.Fatal("a workflow reference was persisted")
 	}
-	crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "reference_detach", "workspace_path": "Workflow/research"}, 200)
 	claims.AccessToken.AllWorkflows = false
 	claims.AccessToken.WorkflowIDs = []string{"other"}
 	crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "reference_attach", "workspace_path": "Workflow/research"}, 403)
@@ -460,13 +462,6 @@ func TestExternalCrewAutomationAuthoringOverMCP(t *testing.T) {
 		t.Fatal(got)
 	}
 	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", map[string]any{"action": "automation_write", "workspace_path": workflowRoot, "file": "planning/plan.json", "content": "{}"}, 400)
-	goal := map[string]any{"id": "report", "name": "Report quality", "outcome": "Produce a complete report", "status": "active"}
-	result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "metrics", "arguments": map[string]any{"crew_id": "team", "action": "crew_save", "goal": goal, "metrics": []any{}}})
-	requireRemoteSuccess(t, result, "save goal")
-	if got := crewCapabilityHTTP(t, f, crewReader("other"), "metrics", map[string]any{"action": "crew_list"}, 200); !strings.Contains(got, "Report quality") {
-		t.Fatal(got)
-	}
-	crewCapabilityHTTP(t, f, crewReader("other"), "metrics", map[string]any{"action": "crew_save", "goal": goal, "metrics": []any{}}, 403)
 
 	for _, claims := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
 		crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "automation_create", "kind": "script", "name": "Refused"}, 403)

@@ -118,7 +118,7 @@ export function CrewExecutableEditor({
               setFile(null)
             }}
           >
-            {value === 'steps' && item.kind === 'script' ? 'Code' : value[0].toUpperCase() + value.slice(1)}
+            {value === 'steps' ? (item.kind === 'script' ? 'Code' : 'Plan') : 'Runs'}
           </button>
         ))}
       </nav>

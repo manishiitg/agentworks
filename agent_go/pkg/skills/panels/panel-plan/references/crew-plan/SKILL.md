@@ -26,11 +26,17 @@ Use `crew_workflow_files action=describe` with `operation=manage_schedules` or `
 
 Create with `kind=script`; read/write its `script.json` and `main.py`. It runs Python directly, without an AI turn or a second plan. Code edits apply next run; previous runs retain their executed source and resolved inputs. Chat calls and workflow steps use this same runner. Read bundled files from `SCRIPT_SOURCE_DIR`; write results to `STEP_OUTPUT_DIR`. `STEP_EXECUTION_DIR` identifies the current execution. Each invocation has its own permanent run folder; explicit shared destinations are still shared.
 
+Read saved-script arguments from `agentworks.inputs` (the typed `STEP_PARAMS_JSON` object); `VAR_*` holds workflow environment values, not per-child argument exports.
+
+Script receipts include `log_file`, `log_error` and `log_complete`. Read bounded parts of that file for full output beyond the inline reply limit. Native Claude/Codex shell commands use their own tool history and do not return this platform log receipt.
+
 A workflow scripted step can reference `script: "<id>"` and `script_inputs`. Each input selects one source: `{"value":7}`, `{"input":"count"}`, or `{"output":"prior.json","field":"nested.count"}`. Prior outputs must be declared dependencies from this run. Do not copy the script's schema or code into the workflow. Cross-Crew reuse uses a shared function.
 
 ## Run and verify
 
-Call `run_workflow_trigger` with `workspace_path` and optional `inputs`, such as `{"count":7}`. Omit `trigger_id` for a direct run. Defaults, required values and types are validated for workflows and scripts alike. Reuse a delivery ID only to retry the same uncertain delivery. Use the returned run identity, never guess an iteration folder. The run picker selects the latest started run. Existing retention still applies. Poll the returned run until it finishes and report its actual output or failure.
+For this Crew's own workflow, use the normal step tools: `runs action=step`, `runs action=step_status`, `runs action=message`, `runs action=stop_step`, `runs action=stop_all`, `runs action=active`, `runs action=debug`, and `runs action=start`. Start only what the person requested. A step call returns its run folder and execution ID. In this chat, the next `runs action=step` continues the same saved run and its input values, even after a runtime restart. Pass `new_run=true` for a fresh run, or the exact `run_folder` to choose an earlier one; never guess one. Changing run inputs needs a new run. If earlier outputs are missing, run the earlier steps in that run or ask which prior run to use. `runs action=step_status` is one requested status check, not a polling loop: completion returns automatically to this chat once. `runs action=debug` uses the exact run folder. Stop or steer the returned execution ID only when requested. Full workflow runs remain explicit new runs. These controls appear only to people who can edit this Crew and its workflow, and only when it has one.
+
+For a saved reusable script or an internal trigger, call `functions` with `action=run_trigger`, `workspace_path` and optional `inputs`, such as `{"count":7}`. Omit `trigger_id` for a direct run. Defaults, required values and types are validated for workflows and scripts alike. Reuse a delivery ID only to retry the same uncertain delivery. Use the returned run identity, never guess an iteration folder. The run picker selects the latest started run. Existing retention still applies. Poll with `functions action=trigger_status` using the returned identities until it finishes, then report its actual output or failure.
 
 ## Track outcomes
 

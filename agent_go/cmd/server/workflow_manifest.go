@@ -38,7 +38,8 @@ var ErrInvalidWorkflowManifest = errors.New("manifest validation failed")
 // contract version. Unlike schema_version, this gates agent-run workflow
 // upgrades. An operator starts pending migrations from the workflow chat, and
 // the version is stamped only after the workflow has been checked or migrated.
-const WorkflowContractCurrentVersion = workflowContractSkillsVersion
+const WorkflowContractCurrentVersion = workflowContractPortableVersion
+const workflowContractPortableVersion = step_based_workflow.PortableWorkflowContractVersion
 const workflowContractSkillsVersion = step_based_workflow.WorkflowSkillsContractVersion
 const workflowContractGoalAgentVersion = step_based_workflow.GoalAgentContractVersion
 
@@ -632,7 +633,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 
 	if m.Capabilities.BrowserMode != "" {
 		if err := browser.ValidateMode(m.Capabilities.BrowserMode); err != nil {
-			return err
+			return fmt.Errorf("capabilities.browser_mode: %w; in this Crew's chat, check upgrade status and use repair_browser_mode for a retired mode", err)
 		}
 	}
 
@@ -950,7 +951,9 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	// its schedules carry no group_names, so the rewrite failed validation on
 	// every read, and had it passed it would have dropped the product fields.
 	heldRoot, _ := ctx.Value(teamLockHeldKey{}).(string)
-	mayPersistManifestMigrations := persistMigrations && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
+	// A Crew-owned workflow has explicit chat upgrades. Reading its status must
+	// not silently prune fields through the settings writer and rewrite timers.
+	mayPersistManifestMigrations := persistMigrations && binding == nil && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
 	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) {
 		if hasStaleFields {
 			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v capabilities=%v",

@@ -3,12 +3,14 @@ package step_based_workflow
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // Naming a workflow path in Inputs, Resources or Guides grants read access
@@ -157,6 +159,20 @@ func cleanBrainReference(raw string) string {
 // leading out of the workflow counts as missing and is never granted).
 func resolvedWorkflowReference(workspacePath, relativePath string) (abs string, info os.FileInfo, ok bool) {
 	root := workflowAbsPath(workspacePath)
+	if layout, bound, err := crewroot.LookupExecutable(GetPromptDocsRoot(), workspacePath); err != nil {
+		log.Printf("workflow_reference_binding_lookup_failed workspace=%q error=%v; checking original workflow path", workspacePath, err)
+		// workflowAbsPath uses this same resolver and returns an empty path on
+		// discovery errors. The unmoved folder is the original docs-relative path.
+		root = filepath.Join(GetPromptDocsRoot(), filepath.FromSlash(workspacePath))
+	} else if bound {
+		if strings.HasPrefix(relativePath, "learnings/") {
+			return "", nil, false
+		}
+		if strings.HasPrefix(relativePath, "code/") {
+			root = layout.Code
+			relativePath = strings.TrimPrefix(relativePath, "code/")
+		}
+	}
 	abs = filepath.Join(root, filepath.FromSlash(relativePath))
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {

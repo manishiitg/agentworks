@@ -92,7 +92,7 @@ profile:
   # Crew reuses the platform coding and background-agent surfaces (shell,
   # guarded file patching, browser, secrets, web research, run_in_background).
   # Its only product-specific wrappers are folder grants and message-only
-  # project schedules; workflow/plan/route/pulse tools remain excluded.
+  # project schedules; its own workflow uses the existing execution tools.
   tool_policy:
     mode: allowlist
     enabled:
@@ -100,6 +100,14 @@ profile:
       - show_character
       - show_reference
       - show_document
+      - execute_step
+      - query_step
+      - send_step_message
+      - stop_step
+      - stop_all_executions
+      - list_executions
+      - run_full_workflow
+      - debug_step
       - read_project_files
       - get_file_link
       - get_report_link
@@ -219,8 +227,9 @@ profile:
       mode: keyed
       key_type: project
     capabilities:
-      # Crew has no workflows: no plans, phases, steps, or execution.
-      workflow_execution: disabled
+      # Available only for an editable Crew with its own bound workflow.
+      # The normal workflow runtime is initialized on first tool use.
+      workflow_execution: optional
   built_in: true
 
 branding:

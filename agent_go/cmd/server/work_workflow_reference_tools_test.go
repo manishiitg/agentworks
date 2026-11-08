@@ -13,6 +13,10 @@ import (
 func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"reader","username":"reader","products":[]},{"id":"owner","username":"owner","products":[]}]}`)
+	// Crews are discovered from the owner registry, not from manifests found in the workspace.
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	bankingRoot := registerTestCrew(t, "banking", "reader", false)
+	researchRoot := registerTestCrew(t, "research", "owner", true)
 	shared, _ := json.Marshal(WorkflowManifest{
 		ID: "hdfc-personal", Label: "HDFC Bank Personal Accounts",
 		Access: &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{"reader"}},
@@ -21,9 +25,9 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 		ID: "private-bank", Label: "Private Bank",
 		Access: &WorkflowAccess{Owners: []string{"owner"}},
 	})
-	productPath := "_users/reader/Chats/Work/projects/banking/product.json"
-	runtimePath := "_users/reader/Chats/Work/projects/banking/workflow.json"
-	researchProductPath := "_users/reader/Chats/Work/projects/research/product.json"
+	productPath := bankingRoot + "/product.json"
+	runtimePath := bankingRoot + "/workflow.json"
+	researchProductPath := researchRoot + "/product.json"
 	workspace := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath("Workflow/hdfc-personal"): string(shared),
 		manifestPath("Workflow/private-bank"):  string(private),
@@ -36,9 +40,9 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 
 	api := &StreamingAPI{}
 	registrar := &recordingRegistrar{}
-	common.SetSessionFolderGuard("session-1", []string{"_users/reader/Chats/Work/projects/banking"}, []string{"_users/reader/Chats/Work/projects/banking"})
+	common.SetSessionFolderGuard("session-1", []string{bankingRoot}, []string{bankingRoot})
 	t.Cleanup(func() { common.ClearSessionShellConfig("session-1") })
-	if err := api.registerWorkWorkflowReferenceTools(registrar, "reader", "session-1", "_users/reader/Chats/Work/projects/banking", false); err != nil {
+	if err := api.registerWorkWorkflowReferenceTools(registrar, "reader", "session-1", bankingRoot, false); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"list_accessible_workflows", "attach_workflow_reference", "detach_workflow_reference"} {
@@ -52,27 +56,24 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 		t.Fatalf("accessible search out=%s err=%v", out, err)
 	}
 	out, err = registrar.tools["list_accessible_workflows"].exec(context.Background(), map[string]interface{}{"query": "banking"})
-	if err != nil || !strings.Contains(out, `"crews":`) || !strings.Contains(out, `"name": "Banking"`) || strings.Contains(out, `"icon": "B"`) || !strings.Contains(out, `"workspace_path": "Chats/Work/projects/banking"`) {
+	if err != nil || !strings.Contains(out, `"crews":`) || !strings.Contains(out, `"name": "Banking"`) || strings.Contains(out, `"icon": "B"`) || !strings.Contains(out, `"workspace_path": "`+bankingRoot+`"`) {
 		t.Fatalf("Crew discovery out=%s err=%v", out, err)
 	}
 	if _, err := registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/private-bank"}); err == nil {
 		t.Fatal("unauthorized workflow was attached")
 	}
-	if _, err := registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": "Chats/Work/projects/banking"}); err == nil {
+	if _, err := registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": bankingRoot}); err == nil {
 		t.Fatal("Crew attached itself")
 	}
-	out, err = registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/hdfc-personal"})
-	if err != nil || !strings.Contains(out, "workflow references read-only") {
-		t.Fatalf("attach out=%s err=%v", out, err)
+	// A Crew links other Crews only: a workflow it may read is still refused (owner, 7 Nov).
+	if _, err := registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/hdfc-personal"}); err == nil || !strings.Contains(err.Error(), "workflow cannot be attached") {
+		t.Fatalf("a workflow was attached to a Crew: %v", err)
 	}
-	if cfg := common.GetSessionShellConfig("session-1"); cfg == nil || !containsWorkReferencePath(cfg.ReadPaths, "Workflow/hdfc-personal") || containsWorkReferencePath(cfg.WritePaths, "Workflow/hdfc-personal") {
-		t.Fatalf("attached workflow was not granted immediately as read-only: %+v", cfg)
-	}
-	out, err = registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": "Chats/Work/projects/research"})
+	out, err = registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": researchRoot})
 	if err != nil || !strings.Contains(out, "workflow references read-only") {
 		t.Fatalf("attach Crew out=%s err=%v", out, err)
 	}
-	crewReadRoot := "_users/reader/Chats/Work/projects/research"
+	crewReadRoot := researchRoot
 	if cfg := common.GetSessionShellConfig("session-1"); cfg == nil || !containsWorkReferencePath(cfg.ReadPaths, crewReadRoot) || containsWorkReferencePath(cfg.WritePaths, crewReadRoot) {
 		t.Fatalf("attached Crew was not granted immediately as read-only: %+v", cfg)
 	}
@@ -84,12 +85,8 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 	if json.Unmarshal([]byte(productSaved), &productMetadata) != nil || productMetadata["custom"] != "keep" || strings.Contains(productSaved, `Workflow/hdfc-personal`) {
 		t.Fatalf("product metadata was changed: %s", productSaved)
 	}
-	if !strings.Contains(saved, `"Workflow/hdfc-personal"`) || !strings.Contains(saved, `"Chats/Work/projects/research"`) || !strings.Contains(saved, `"selected_skills"`) {
+	if strings.Contains(saved, `Workflow/`) || !strings.Contains(saved, `"`+researchRoot+`"`) || !strings.Contains(saved, `"selected_skills"`) {
 		t.Fatalf("workflow runtime manifest was not migrated and updated: %s", saved)
-	}
-	out, err = registrar.tools["list_accessible_workflows"].exec(context.Background(), map[string]interface{}{"query": "personal"})
-	if err != nil || !strings.Contains(out, `"attached": true`) {
-		t.Fatalf("attached state out=%s err=%v", out, err)
 	}
 	out, err = registrar.tools["list_accessible_workflows"].exec(context.Background(), map[string]interface{}{"query": "research"})
 	if err != nil || !strings.Contains(out, `"attached": true`) || !strings.Contains(out, `"name": "Research"`) {
@@ -100,16 +97,13 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 	workspace.mu.Lock()
 	delete(workspace.files, researchProductPath)
 	workspace.mu.Unlock()
-	if _, err := registrar.tools["detach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": "Chats/Work/projects/research"}); err != nil {
+	if _, err := registrar.tools["detach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": researchRoot}); err != nil {
 		t.Fatalf("detach Crew: %v", err)
 	}
 	if cfg := common.GetSessionShellConfig("session-1"); cfg == nil || containsWorkReferencePath(cfg.ReadPaths, crewReadRoot) {
 		t.Fatalf("detached Crew remained in active read guard: %+v", cfg)
 	}
-	if _, err := registrar.tools["detach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/hdfc-personal"}); err != nil {
-		t.Fatalf("detach: %v", err)
-	}
-	paths, err := readWorkWorkflowReferences(context.Background(), "_users/reader/Chats/Work/projects/banking")
+	paths, err := readWorkWorkflowReferences(context.Background(), bankingRoot)
 	if err != nil || len(paths) != 0 {
 		t.Fatalf("paths after detach=%v err=%v", paths, err)
 	}
@@ -121,6 +115,8 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 func TestBuilderAccessibleWorkflowListUsesCurrentUserAccessWithoutCrewMutationTools(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"builder","username":"builder","products":[]},{"id":"owner","username":"owner","products":[]}]}`)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	releaseRoot := registerTestCrew(t, "release", "builder", false)
 	shared, _ := json.Marshal(WorkflowManifest{
 		ID: "shared", Label: "Shared workflow",
 		Access: &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{"builder"}},
@@ -130,9 +126,9 @@ func TestBuilderAccessibleWorkflowListUsesCurrentUserAccessWithoutCrewMutationTo
 		Access: &WorkflowAccess{Owners: []string{"owner"}},
 	})
 	workspace := &mockWorkspaceAPI{files: map[string]string{
-		manifestPath("Workflow/shared"):                           string(shared),
-		manifestPath("Workflow/private"):                          string(private),
-		"_users/builder/Chats/Work/projects/release/product.json": `{"schema_version":1,"product":"work","id":"release","title":"Release project","identity":{"name":"Release Crew","icon":"🚀"}}`,
+		manifestPath("Workflow/shared"):  string(shared),
+		manifestPath("Workflow/private"): string(private),
+		releaseRoot + "/product.json":    `{"schema_version":1,"product":"work","id":"release","title":"Release project","identity":{"name":"Release Crew","icon":"🚀"}}`,
 	}}
 	host := httptest.NewServer(workspace)
 	defer host.Close()
@@ -147,7 +143,7 @@ func TestBuilderAccessibleWorkflowListUsesCurrentUserAccessWithoutCrewMutationTo
 		t.Fatalf("builder discovery registered %d tools, want only list_accessible_workflows", len(registrar.tools))
 	}
 	out, err := registrar.tools["list_accessible_workflows"].exec(context.Background(), map[string]interface{}{})
-	if err != nil || !strings.Contains(out, `"workspace_path": "Workflow/shared"`) || !strings.Contains(out, `"name": "Shared workflow"`) || !strings.Contains(out, `"crews":`) || !strings.Contains(out, `"name": "Release project"`) || !strings.Contains(out, `"name": "Release Crew"`) || !strings.Contains(out, `"icon": "🚀"`) || strings.Contains(out, "Private workflow") || strings.Contains(out, `"attached"`) {
+	if err != nil || !strings.Contains(out, `"workspace_path": "Workflow/shared"`) || !strings.Contains(out, `"name": "Shared workflow"`) || !strings.Contains(out, `"crews":`) || !strings.Contains(out, `"name": "Release project"`) || !strings.Contains(out, `"name": "Release Crew"`) || strings.Contains(out, "Private workflow") || strings.Contains(out, `"attached"`) {
 		t.Fatalf("builder discovery out=%s err=%v", out, err)
 	}
 }

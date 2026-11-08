@@ -114,11 +114,7 @@ func BuildPromptHealthReport(steps []PlanStepInterface) PromptHealthReport {
 			continue
 		}
 		chars := utf8.RuneCountInString(description)
-		scriptOnly := false
-		if regular, ok := step.(*ScriptedPlanStep); ok {
-			scriptOnly = regular.ScriptOnly
-		}
-		budgetInputs = append(budgetInputs, promptBudgetInput{id: id, stepType: step.StepType(), scriptOnly: scriptOnly, description: description})
+		budgetInputs = append(budgetInputs, promptBudgetInput{id: id, stepType: step.StepType(), scriptOnly: isScriptedStep(step), description: description})
 		report.StepsWithDescriptions++
 		report.TotalDescriptionChars += chars
 		threshold := promptHealthThreshold(chars)

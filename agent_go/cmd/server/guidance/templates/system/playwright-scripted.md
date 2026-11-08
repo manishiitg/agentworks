@@ -182,7 +182,7 @@ claiming code was unchanged, compare the stored source manifest, including share
 
 Run syntax/import and dependency/browser preflight checks first. Validate the harness against a
 small local fixture that exercises pass, assertion failure, and timeout finalization. Use
-`execute_step(fast_path_only=true)` for the real selected group only when a live run is authorized;
+`execute_step()` for the real selected group only when a live run is authorized;
 do not launch an expensive or externally mutating suite merely to prove the harness compiles.
 
 ## Temporary Browser-panel replay

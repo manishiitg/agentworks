@@ -8,7 +8,6 @@ import { useScheduleRunsData } from './scheduleRuns/useScheduleRunsData'
 import type { WorkflowScope } from './scheduleRuns/helpers'
 import { ScheduleRunsHeader } from './scheduleRuns/ScheduleRunsHeader'
 import type { ScheduleStatusSnapshot } from './scheduleRuns/ScheduleStatusPills'
-import { ScheduleOverviewView } from './scheduleRuns/ScheduleOverviewView'
 import { ScheduleCalendarView } from './scheduleRuns/ScheduleCalendarView'
 import { ScheduleGroupsView } from './scheduleRuns/ScheduleGroupsView'
 import { ScheduleListView } from './scheduleRuns/ScheduleListView'
@@ -273,8 +272,6 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
                 </p>
               </div>
             </div>
-          ) : activeView === 'overview' ? (
-            <ScheduleOverviewView panel={panel} />
           ) : activeView === 'calendar' ? (
             <ScheduleCalendarView panel={panel} />
           ) : (

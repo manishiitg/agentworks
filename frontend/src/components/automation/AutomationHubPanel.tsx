@@ -1,5 +1,5 @@
-import { cloneElement, isValidElement, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react'
-import { Bot, Braces, CalendarClock, Mail, MessageSquareText, Webhook, Zap, Route, FileCode2 } from 'lucide-react'
+import { cloneElement, isValidElement, lazy, Suspense, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react'
+import { Zap } from 'lucide-react'
 import api from '../../services/api'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
@@ -18,7 +18,7 @@ const CrewFunctionsView = lazy(() => import('./CrewFunctionsView'))
 const WorkflowFunctionsView = lazy(() => import('../workflow/WorkflowFunctionsView'))
 const ConditionTriggersView = lazy(() => import('./ConditionTriggersView'))
 
-export type AutomationHubSection = 'workflows' | 'scripts' | 'chats' | 'schedules' | 'triggers' | 'functions' | 'bots' | 'conditions' | 'email'
+export type AutomationHubSection = 'chats' | 'schedules' | 'triggers' | 'functions' | 'bots' | 'conditions' | 'email'
 
 type AutomationHubPanelProps = {
   entityType: 'workflow' | 'product'
@@ -27,8 +27,6 @@ type AutomationHubPanelProps = {
   workspacePath: string
   workflowScope?: WorkflowScope
   productTriggerScope?: ProductTriggerScope
-  workflowContent?: ReactNode
-  scriptContent?: ReactNode
   chatContent?: ReactNode
   botContent?: ReactNode
   canManage?: boolean
@@ -38,44 +36,6 @@ type AutomationHubPanelProps = {
   onAskAI?: (message: string) => void | Promise<void>
 }
 
-const SECTION_DEFS = [
-  { id: 'workflows', label: 'Workflow', icon: Route },
-  { id: 'scripts', label: 'Scripts', icon: FileCode2 },
-  { id: 'schedules', label: 'Schedules', icon: CalendarClock },
-  { id: 'triggers', label: 'Webhooks', icon: Webhook },
-  { id: 'email', label: 'Inbox', icon: Mail },
-  { id: 'conditions', label: 'Watchers', icon: Zap },
-  { id: 'functions', label: 'Functions', icon: Braces },
-  { id: 'bots', label: 'Bots', icon: Bot },
-  { id: 'chats', label: 'Chats', icon: MessageSquareText },
-] as const
-
-// The tab a person last chose is remembered per kind of hub (workflow, Flow,
-// or a product such as Code), so coming back to Automation reopens it instead
-// of Schedules. Browser storage can be blocked, so every access is guarded.
-const SECTION_STORAGE_PREFIX = 'automationHub.section.'
-
-function sectionStorageKey(entityType: string, relayMode: boolean, profileId?: string): string {
-  return `${SECTION_STORAGE_PREFIX}${relayMode ? 'relay' : entityType}.${profileId ?? ''}`
-}
-
-function readRememberedSection(key: string): AutomationHubSection | null {
-  try {
-    const value = localStorage.getItem(key)
-    return SECTION_DEFS.some(item => item.id === value) ? (value as AutomationHubSection) : null
-  } catch {
-    return null
-  }
-}
-
-function rememberSection(key: string, section: AutomationHubSection) {
-  try {
-    localStorage.setItem(key, section)
-  } catch {
-    // Not remembered; the tab still works for this visit.
-  }
-}
-
 export function AutomationHubPanel({
   entityType,
   relayMode = false,
@@ -83,8 +43,6 @@ export function AutomationHubPanel({
   workspacePath,
   workflowScope,
   productTriggerScope,
-  workflowContent,
-  scriptContent,
   chatContent,
   botContent,
   canManage,
@@ -118,8 +76,6 @@ export function AutomationHubPanel({
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const availableSections = useMemo(() => new Set<AutomationHubSection>([
     ...(incomingEnabled && !isWorkflow && (productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'code') ? ['email' as const] : []),
-    ...(workflowContent ? ['workflows' as const] : []),
-    ...(scriptContent ? ['scripts' as const] : []),
     ...(chatContent ? ['chats' as const] : []),
     ...(!relayMode ? ['schedules' as const] : []),
     ...((isWorkflow || productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'work') ? ['conditions' as const] : []),
@@ -128,17 +84,9 @@ export function AutomationHubPanel({
     // function triggers plus its assistant ask.
     ...(!relayMode && ((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
     ...(!relayMode && botContent ? ['bots' as const] : []),
-  ]), [workflowContent, scriptContent, botContent, chatContent, entityType, productTriggerScope, relayMode, incomingEnabled, isWorkflow])
-  const storageKey = sectionStorageKey(entityType, relayMode, productTriggerScope?.profileId)
-  const [preferredSection, setPreferredSection] = useState<AutomationHubSection>(() => readRememberedSection(storageKey) ?? initialSection)
-  const fallbackSection = availableSections.has(preferredSection) ? preferredSection : relayMode ? 'triggers' : 'schedules'
+  ]), [botContent, chatContent, entityType, productTriggerScope, relayMode, incomingEnabled, isWorkflow])
+  const fallbackSection = availableSections.has(initialSection) ? initialSection : relayMode ? 'triggers' : 'schedules'
   const [section, setSection] = useState<AutomationHubSection>(fallbackSection)
-  const selectSection = useCallback((next: AutomationHubSection) => {
-    setSection(next)
-    setPreferredSection(next)
-    rememberSection(storageKey, next)
-    useWorkflowStore.getState().openWorkspaceView('workshop', next)
-  }, [storageKey])
 
   useEffect(() => {
     setSection(fallbackSection)
@@ -156,6 +104,7 @@ export function AutomationHubPanel({
 
   // Per-tab refresh, computed from the section. The bots tab has no
   // refreshable list, so it has no header action.
+  const crewPage = entityType === 'product' && productTriggerScope?.profileId === 'work'
   const refreshAction = section === 'email'
     ? { label: 'Refresh inbox', run: () => setEmailRefreshToken(token => token + 1), spinning: false }
     : section === 'conditions'
@@ -172,6 +121,37 @@ export function AutomationHubPanel({
         ? { label: 'Refresh chats', run: () => setChatsRefreshToken(token => token + 1), spinning: false }
         : undefined
   const headerActions = refreshAction ? <WorkspaceViewIconButton label={refreshAction.label} onClick={refreshAction.run} spinning={refreshAction.spinning} /> : undefined
+
+  const ask = onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))
+  const schedulesView = <WorkflowScheduleRunsPanel
+    embedded
+    active
+    entityType={entityType}
+    workflowScope={workflowScope}
+    canManage={canManage}
+    scopeNoun={scopeNoun}
+    showAutomationTabs={false}
+    hideHeader
+    refreshToken={schedulesRefreshToken}
+    onStatus={setSchedulesStatus}
+    onClose={() => {}}
+  />
+  const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: relayMode ? 'relays' : 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} />
+  const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}><ProductAPITriggersView
+    embedded
+    hideEmpty={Object.values(childWebhookCounts).some(count => count.active + count.paused > 0)}
+    scope={productTriggerScope}
+    workspacePath={workspacePath}
+    onAsk={onAskAI}
+    deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workspacePath} entityType="product" productTriggerScope={productTriggerScope} />}
+    hideHeader
+    refreshToken={triggersRefreshToken}
+    onCounts={setTriggersCounts}
+  />
+    {childrenError && <p role="alert" className="p-4 text-sm text-destructive">{childrenError}</p>}
+    {children.map(child => <WorkflowAPITriggersView key={child.id} workspacePath={child.workspace_path} embedded hideHeader onCounts={count => setChildWebhookCounts(previous => previous[child.id]?.active === count.active && previous[child.id]?.paused === count.paused ? previous : { ...previous, [child.id]: count })} refreshToken={triggersRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
+  </div> : null
+  const inboxView = (wrap: string) => <div className={wrap}><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} /></div>
 
   return (
     <div
@@ -195,17 +175,15 @@ export function AutomationHubPanel({
 
       />
 
-      {(workflowContent || scriptContent) && <nav aria-label="Automation sections" className="flex shrink-0 flex-wrap gap-1 border-b px-3 py-2">
-        {SECTION_DEFS.filter(item => availableSections.has(item.id)).map(item => <button
-          key={item.id} aria-current={section === item.id ? 'page' : undefined}
-          onClick={() => selectSection(item.id)}
-          className={`rounded-md px-3 py-1.5 text-sm ${section === item.id ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-        >{item.label}</button>)}
+      {crewPage && <nav aria-label="Automations" className="flex shrink-0 items-center gap-1 border-b px-3 py-2">
+        {([['schedules', 'Schedules', 'Help me set up a schedule for this Crew.'], ['triggers', 'Webhooks', 'Help me set up a webhook for this Crew.'], ['conditions', 'Watchers', 'Help me set up a watcher for this Crew.'], ['email', 'Inbox', 'Help me with this Crew’s inbox.']] as const)
+          .filter(([id]) => availableSections.has(id)).map(([id, label]) => <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}
+            className={`rounded-md px-3 py-1.5 text-sm ${section === id ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>{label}</button>)}
+        <button type="button" onClick={() => void ask(section === 'triggers' ? 'Help me set up a webhook for this Crew.' : section === 'conditions' ? 'Help me set up a watcher for this Crew.' : section === 'email' ? 'Help me with this Crew’s inbox.' : 'Help me set up a schedule for this Crew.')} className="ml-auto rounded-md px-2 py-1 text-xs text-primary hover:bg-muted">Ask</button>
       </nav>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>
-        {section === 'workflows' && <div className="h-full overflow-auto">{workflowContent}</div>}
-        {section === 'scripts' && <div className="h-full overflow-auto">{scriptContent}</div>}
+        <>
         {section === 'chats' && chatContent && (
           <div data-testid="automation-hub-chats" className="flex h-full min-h-0 flex-col">
             {isValidElement(chatContent)
@@ -213,19 +191,7 @@ export function AutomationHubPanel({
               : chatContent}
           </div>
         )}
-        {!relayMode && section === 'schedules' && <WorkflowScheduleRunsPanel
-          embedded
-          active
-          entityType={entityType}
-          workflowScope={workflowScope}
-          canManage={canManage}
-          scopeNoun={scopeNoun}
-          showAutomationTabs={false}
-          hideHeader
-          refreshToken={schedulesRefreshToken}
-          onStatus={setSchedulesStatus}
-          onClose={() => {}}
-        />}
+        {!relayMode && section === 'schedules' && schedulesView}
         {section === 'triggers' && entityType === 'workflow' && !relayMode && <WorkflowAPITriggersView
           workspacePath={workspacePath}
           onAsk={onAskAI}
@@ -234,8 +200,8 @@ export function AutomationHubPanel({
           refreshToken={triggersRefreshToken}
           onCounts={setTriggersCounts}
         />}
-        {section === 'email' && <div className="h-full overflow-y-auto p-4"><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} /></div>}
-        {section === 'conditions' && <ConditionTriggersView scope={productTriggerScope ?? { profileId: relayMode ? 'relays' : 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))} canManage={canManage} />}
+        {section === 'email' && inboxView('h-full overflow-y-auto p-4')}
+        {section === 'conditions' && watchersView}
         {section === 'triggers' && entityType === 'workflow' && relayMode && <WorkflowFunctionsView
           workspacePath={workspacePath}
           relayMode
@@ -244,20 +210,7 @@ export function AutomationHubPanel({
           onCounts={setFunctionsCounts}
           onAsk={onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))}
         />}
-        {section === 'triggers' && entityType === 'product' && productTriggerScope && <div className="h-full overflow-auto"><ProductAPITriggersView
-          embedded
-          hideEmpty={Object.values(childWebhookCounts).some(count => count.active + count.paused > 0)}
-          scope={productTriggerScope}
-          workspacePath={workspacePath}
-          onAsk={onAskAI}
-          deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workspacePath} entityType="product" productTriggerScope={productTriggerScope} />}
-          hideHeader
-          refreshToken={triggersRefreshToken}
-          onCounts={setTriggersCounts}
-        />
-          {childrenError && <p role="alert" className="p-4 text-sm text-destructive">{childrenError}</p>}
-          {children.map(child => <WorkflowAPITriggersView key={child.id} workspacePath={child.workspace_path} embedded hideHeader onCounts={count => setChildWebhookCounts(previous => previous[child.id]?.active === count.active && previous[child.id]?.paused === count.paused ? previous : { ...previous, [child.id]: count })} refreshToken={triggersRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
-        </div>}
+        {section === 'triggers' && productWebhooksView('h-full overflow-auto')}
         {section === 'functions' && entityType === 'workflow' && <WorkflowFunctionsView
           workspacePath={workspacePath}
           refreshToken={functionsRefreshToken}
@@ -276,6 +229,7 @@ export function AutomationHubPanel({
           {children.map(child => <WorkflowFunctionsView key={child.id} workspacePath={child.workspace_path} embedded onCounts={count => setChildFunctionCounts(previous => previous[child.id] === count.functions ? previous : { ...previous, [child.id]: count.functions })} refreshToken={functionsRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
         </div>}
         {section === 'bots' && botContent}
+        </>
         </Suspense>
       </div>
     </div>

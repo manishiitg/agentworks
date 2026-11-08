@@ -493,7 +493,7 @@ func TestCrewCallMessageMatchesWhereItRuns(t *testing.T) {
 	}
 }
 
-// A Crew function runs in its own named tab by default; "fresh" keeps a new chat per call, and functions naming
+// A Crew function runs in its own named tab by default; "new" keeps a new chat per call, and functions naming
 // one agent share its tab (owner, 2026-10-19).
 func TestCrewFunctionRunsInItsNamedTabByDefault(t *testing.T) {
 	if got := (crewFunction{Name: "weekly_report"}).tabName(); got != "weekly_report" || crewAgentChatID(got) != "weekly-report" {
@@ -502,8 +502,8 @@ func TestCrewFunctionRunsInItsNamedTabByDefault(t *testing.T) {
 	if got := (crewFunction{Name: "triage", Agent: "Support desk"}).tabName(); got != "Support desk" {
 		t.Fatalf("named tab = %q", got)
 	}
-	if got := (crewFunction{Name: "private_check", Execution: "fresh", Agent: "x"}).tabName(); got != "" {
-		t.Fatalf("fresh function ran in tab %q", got)
+	if got := (crewFunction{Name: "private_check", Execution: "new", Agent: "x"}).tabName(); got != "" {
+		t.Fatalf("new function ran in tab %q", got)
 	}
 	spec := crewFunctionSpec{Name: "triage", Description: "d", Instructions: "i", Execution: "sometimes"}.normalized()
 	if spec.validate() == nil {

@@ -105,11 +105,11 @@ it('shows the saved execution contract without inventing permissions or a valida
 })
 
 it('explains scripted execution and human branch choice using their own saved contracts', async () => {
-  await inspect({ id: 'script', title: 'Build evidence', type: 'scripted', script_only: true,
+  await inspect({ id: 'script', title: 'Build evidence', type: 'scripted',
     description: 'Build the evidence file.',
   }, host => {
     expect(host.textContent).toContain('Script')
-    expect(host.textContent).toContain('Errors fail the step; automatic repair is off.')
+    expect(host.textContent).toContain('fix it in chat before running again.')
     expect(host.textContent).not.toContain('Errors stop the Flow')
     expect(host.textContent).not.toContain('First user message')
     expect(host.querySelector('button[aria-label="Open code file for Build evidence"]')).not.toBeNull()

@@ -416,14 +416,11 @@ func MergeAgentConfigFields(target *AgentConfigs, source *AgentConfigs, stepID s
 	}
 
 	// PLAT-061/E4. These were missing, so on the merge path — taken whenever the
-	// step already carries in-memory AgentConfigs — a saved lock_code:true or
+	// step already carries in-memory AgentConfigs — saved
 	// knowledgebase_access never reached the runtime, silently. Three of them
 	// gate writes, which is why an incomplete merge here is a correctness bug
 	// rather than untidiness. TestMergeAgentConfigFieldsCoversEveryField fails
 	// when a new field is added without a case.
-	if source.LockCode != nil {
-		target.LockCode = source.LockCode
-	}
 	if source.KnowledgebaseAccess != "" {
 		target.KnowledgebaseAccess = source.KnowledgebaseAccess
 	}

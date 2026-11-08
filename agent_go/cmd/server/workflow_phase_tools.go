@@ -63,11 +63,10 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	}
 	active, _ := api.getActiveSession(sessionID)
 	policy := resolveWorkflowChatPolicy(sessionID, syntheticReq, active, readOnly)
-	if shouldGuardWorkflowContractForRun(sessionID, syntheticReq.TriggeredBy) {
-		definitionAgent = workflowContractExecutionGuardRegistrar{
-			definitionRegistrar: definitionAgent,
-			workspacePath:       phaseWorkspacePath,
-		}
+	definitionAgent = workflowContractExecutionGuardRegistrar{
+		definitionRegistrar: definitionAgent,
+		workspacePath:       phaseWorkspacePath,
+		scheduled:           isScheduledSessionIdentity(sessionID, syntheticReq.TriggeredBy),
 	}
 	if err := api.registerWebhookTools(definitionAgent, userID, phaseWorkspacePath, policy); err != nil {
 		return err
@@ -474,14 +473,6 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 		if workshopSession != nil {
 			todo_creation_human.RegisterRunFullWorkflowTool(definitionAgent, workshopSession, api.logger)
 			log.Printf("[WORKFLOW_PHASE] Registered run_full_workflow in %s", workflowPhaseID)
-			if !policy.allows("knowledgebase_maintenance") {
-				log.Printf("[WORKFLOW_PHASE] PLAT-262: skipping reorganize_knowledgebase/consolidate_knowledgebase in %s (run mode)", workflowPhaseID)
-			} else {
-				todo_creation_human.RegisterReorganizeKnowledgebaseTool(definitionAgent, workshopSession, api.logger)
-				log.Printf("[WORKFLOW_PHASE] Registered reorganize_knowledgebase in %s", workflowPhaseID)
-				todo_creation_human.RegisterConsolidateKnowledgebaseTool(definitionAgent, workshopSession, api.logger)
-				log.Printf("[WORKFLOW_PHASE] Registered consolidate_knowledgebase in %s", workflowPhaseID)
-			}
 			// Guided-flow text for every workflow slash command, returned via
 			// get_workflow_command_guidance(kind=...). Available across modes;
 			// per-kind mode validation lives in the tool itself.
@@ -552,8 +543,4 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	// — at the executor, and at construction for tool agents.
 
 	return nil
-}
-
-func shouldGuardWorkflowContractForRun(sessionID, triggeredBy string) bool {
-	return !isScheduledSessionIdentity(sessionID, triggeredBy)
 }

@@ -45,3 +45,11 @@ it('lists external webhooks only; caller bindings live under Functions', async (
   expect(host.textContent).toContain('Deploy hook')
   expect(host.textContent).not.toContain('Called by Alpha Bot')
 })
+it('offers the server\'s choices for where a webhook runs', async () => {
+  vi.mocked(productWebhooksApi.list).mockResolvedValue({ triggers: [trigger], run_destinations: [{ id: 'new', label: 'New conversation each time' }, { id: 'chat', label: 'Main chat' }, { id: 'isolated', label: 'Own conversation' }] } as never)
+  const { host } = await mount()
+  const toggle = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Deploy hook'))
+  await act(async () => { toggle?.click() })
+  const options = Array.from(host.querySelectorAll('select[aria-label="Run destination for Deploy hook"] option')).map(option => option.textContent)
+  expect(options).toEqual(['New conversation each time', 'Main chat', 'Own conversation'])
+})

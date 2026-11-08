@@ -9,7 +9,7 @@ import (
 )
 
 // PLAT-061/E4. MergeAgentConfigFields copied 19 of 28 fields. The nine it
-// dropped included LockCode, KnowledgebaseAccess and KnowledgebaseContribution
+// dropped included KnowledgebaseAccess and KnowledgebaseContribution
 // — all of which gate writes — so on the merge path a saved lock or KB grant
 // never reached the runtime.
 //
@@ -103,7 +103,7 @@ func TestRetiredClearFieldsAreAcknowledgedNotSilentlySucceeded(t *testing.T) {
 	for _, name := range []string{
 		"transport", "learning_mode", "learnings_write_method",
 		"knowledgebase_write_method", "db_access", "disable_tier_optimization",
-		"enable_context_offloading", "delegating_agent_tier",
+		"enable_context_offloading", "delegating_agent_tier", "lock_code",
 	} {
 		if clearStepConfigField(sc, name) {
 			t.Errorf("%q reported a successful clear, but no such field exists", name)
@@ -134,8 +134,7 @@ func TestRetiredClearFieldsAreAcknowledgedNotSilentlySucceeded(t *testing.T) {
 // script repair — because their legacy items happened to lack a field, not
 // because anyone decided fail-fast was right there.
 //
-// Migrated scripted steps must now inherit the uniform default. lock_code stays
-// the deliberate way to skip the fix loop.
+// Saved scripts never launch an automatic fix loop.
 func TestMigrationNoLongerDerivesAFixIterationCount(t *testing.T) {
 	if _, retired := isRetiredStepConfigClearField("learn_code_max_fix_iterations"); !retired {
 		t.Error("learn_code_max_fix_iterations is not registered as retired, so clearing it would fail the whole update call")

@@ -3,18 +3,21 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 )
 
 // workflowContractExecutionGuardRegistrar blocks manual workflow execution on
-// an old platform contract. Scheduled runs deliberately bypass this interactive
-// boundary; direct webhooks have directWebhookPreflight. Keeping this at tool execution
+// an old platform contract. Unattended starts use directWebhookPreflight with
+// the same contract requirement. Keeping this at tool execution
 // time also covers restored chats and every UI/chat path that invokes these
 // tools.
 type workflowContractExecutionGuardRegistrar struct {
 	definitionRegistrar
 	workspacePath string
+	scheduled     bool
+	boundWorkflow *crewExecutableBinding
 }
 
 func (r workflowContractExecutionGuardRegistrar) RegisterCustomTool(
@@ -36,7 +39,17 @@ func (r workflowContractExecutionGuardRegistrar) RegisterCustomToolWithTimeout(
 	if name == "execute_step" || name == "run_full_workflow" {
 		original := execute
 		execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
-			if err := requireCurrentWorkflowContractForManualRun(ctx, r.workspacePath); err != nil {
+			if r.scheduled {
+				binding, err := findCrewExecutable(r.workspacePath)
+				if err != nil {
+					log.Printf("workflow_binding_lookup_failed workspace=%q error=%v; keeping unmoved schedule behavior", r.workspacePath, err)
+					return original(ctx, args)
+				}
+				if binding == nil {
+					return original(ctx, args) // Unmoved server retains its current schedule behavior.
+				}
+			}
+			if err := requireCurrentWorkflowContractForManualRun(ctx, r.workspacePath, r.boundWorkflow); err != nil {
 				return "", err
 			}
 			stepID := ""
@@ -57,7 +70,7 @@ func (r workflowContractExecutionGuardRegistrar) RegisterCustomToolWithTimeout(
 	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, execute, timeout, group)
 }
 
-func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePath string) error {
+func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePath string, trusted ...*crewExecutableBinding) error {
 	workspacePath = strings.TrimSpace(workspacePath)
 	if workspacePath == "" {
 		return fmt.Errorf("workflow_contract_check_failed: no workflow workspace is attached; no execution was started")
@@ -69,7 +82,16 @@ func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePa
 	if !found {
 		return fmt.Errorf("workflow_contract_check_failed: workflow.json was not found at %s; no execution was started", workspacePath)
 	}
+	// An admitted Crew binding is stronger than the editable manifest ID.
+	if len(trusted) > 0 && trusted[0] != nil && trusted[0].Kind == "workflow" && trusted[0].Root == workspacePath {
+		if workflowContractVersionForUpgrade(manifest) != workflowContractPortableVersion || manifest.CodeLayoutVersion != 1 {
+			return fmt.Errorf("this Crew's workflow needs its current update before running; ask this chat to update it")
+		}
+	}
 	if workflowContractNeedsRecreation(manifest) {
+		if workflowHasCrewBinding(manifest) {
+			return fmt.Errorf("this workflow is too old to update automatically; leave it paused and ask this Crew's chat to recreate it")
+		}
 		return fmt.Errorf("%s", oldWorkflowContractMessage)
 	}
 	current := workflowContractVersionForUpgrade(manifest)
@@ -85,10 +107,15 @@ func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePa
 	if len(pending) > 0 {
 		next = fmt.Sprintf(" The next required migration is %s to v%s.", pending[0].label, pending[0].to)
 	}
+	nextStep := "Open this workflow's Builder chat to complete its next update."
+	if workflowHasCrewBinding(manifest) {
+		nextStep = "Ask this Crew's chat to update this workflow."
+	}
 	return fmt.Errorf(
-		"workflow_contract_migration_required: this workflow is on v%s while the platform requires v%s; no step was started.%s Ask the user: \"This workflow needs a platform migration before it can run. Shall I migrate it now?\" Only after approval, use Workshop get_contract_upgrades, complete and verify each migration in order, then retry the requested run",
+		"workflow_contract_migration_required: this workflow is on v%s while the platform requires v%s; no step was started.%s %s",
 		current,
 		WorkflowContractCurrentVersion,
 		next,
+		nextStep,
 	)
 }

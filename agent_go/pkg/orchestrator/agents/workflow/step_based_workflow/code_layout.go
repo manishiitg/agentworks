@@ -12,7 +12,7 @@ import (
 
 // All controller entry points run the same preflight and interpreter command.
 func scriptedCommand(main string, args []string) string {
-	command := "python3 -B -c " + shellQuotePath(scriptedBundlePreflight) + " " + shellQuotePath(main) + " && python3 -B " + shellQuotePath(main)
+	command := "python3 -B -c " + shellQuotePath(scriptedBundlePreflight) + " " + shellQuotePath(main) + " && python3 -u -B " + shellQuotePath(main)
 	for _, arg := range args {
 		command += " " + shellQuotePath(arg)
 	}
@@ -107,6 +107,18 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptedWorkingDir(stepID, executionP
 	return executionPath + "/code"
 }
 
+// CodeRuntimeEnvironment returns non-secret source and dependency paths. Crew
+// authoring and the saved-script runner must install/import from the same place.
+func CodeRuntimeEnvironment(workspacePath string) map[string]string {
+	root := workflowAbsPath(workspacePath, "code")
+	deps := workflowAbsPath(workspacePath, ".sandbox-cache", "python-packages")
+	return map[string]string{
+		"WORKFLOW_CODE_ROOT": root,
+		"WORKFLOW_CODE_DEPS": deps,
+		"PYTHONPATH":         root + string(filepath.ListSeparator) + deps,
+	}
+}
+
 func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string) map[string]string {
 	if env == nil {
 		env = map[string]string{}
@@ -114,6 +126,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string)
 	// API address and physical runtime directory are different after a Crew move.
 	// Scripts use this server-owned address rather than deriving it from DB_PATH.
 	env["VAR_WORKFLOW_PATH"] = hcpo.GetWorkspacePath()
+	// PLAT-746-396: direct scripts and agent turns need the same server-owned
+	// records root. User inputs must never replace it with an old laptop path.
+	env["VAR_WORKSPACE_PATH"] = workflowAbsPath(hcpo.GetWorkspacePath())
 	if !hcpo.platformStoresEnabled() {
 		delete(env, "DB_PATH")
 		for key := range env {
@@ -136,14 +151,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) codeRuntimeEnv(env map[string]string)
 		env["WORKFLOW_TRIGGER_INPUT_FILE"] = workflowAbsPath(opts.WebhookInputFile)
 	}
 	if hcpo.usesCodeTree() || hcpo.crewAutomationCodeRoot != "" {
-		root := workflowAbsPath(hcpo.GetWorkspacePath(), "code")
-		if hcpo.crewAutomationCodeRoot != "" {
-			root = hcpo.crewAutomationCodeRoot
+		for key, value := range CodeRuntimeEnvironment(hcpo.GetWorkspacePath()) {
+			env[key] = value
 		}
-		env["WORKFLOW_CODE_ROOT"] = root
-		deps := workflowAbsPath(hcpo.GetWorkspacePath(), ".sandbox-cache", "python-packages")
-		env["WORKFLOW_CODE_DEPS"] = deps
-		env["PYTHONPATH"] = root + string(filepath.ListSeparator) + deps
+		if hcpo.crewAutomationCodeRoot != "" {
+			env["WORKFLOW_CODE_ROOT"] = hcpo.crewAutomationCodeRoot
+			env["PYTHONPATH"] = hcpo.crewAutomationCodeRoot + string(filepath.ListSeparator) + env["WORKFLOW_CODE_DEPS"]
+		}
 	}
 	return env
 }

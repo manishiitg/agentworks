@@ -54,6 +54,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 	}
 	info := findWorkshopStepByID(plan.Steps, resolved)
 	if info == nil {
+		info = findWorkshopStepByID(plan.OrphanSteps, resolved)
+	}
+	if info == nil {
 		return nil, fmt.Errorf("step %q not found", resolved)
 	}
 	step := info.Step
@@ -141,9 +144,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 		vars["ScriptedWorkingDir"] = hcpo.scriptedSourceAbsolute(step.GetID())
 		vars["DirectCodeSource"] = "true"
 	}
-	if scripted && stepConfig != nil && stepConfig.LockCode != nil {
-		vars["IsScriptedLocked"] = fmt.Sprint(*stepConfig.LockCode)
-	}
 	if agent, ok := step.(*AgentPlanStep); ok {
 		hadHelpers := len(agent.PredefinedRoutes) > 0
 		if err := validateGoalScriptedRouteAuthoring(agent.PredefinedRoutes); err != nil {
@@ -227,7 +227,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 	vars["UseProjectedReferenceSkills"] = "true"
 	vars["ReferencedGuides"] = hcpo.referencedGuidesForStep(ctx, step.GetID(), step.GetDescription())
 	vars["ScriptedParameterSchema"] = formatScriptParameterContract(scriptedParameterDefinitions(step))
-	vars["ScriptedVarMapping"] = buildScriptedVarMappingForPrompt(config.UseCodeExecutionMode || scripted, hcpo.variablesManifest)
 	vars["VariableNames"] = FormatVariableNames(hcpo.variablesManifest)
 	registeredTools := append(append([]string(nil), result.Tools...), result.InvocationTools...)
 	identity, supplements := hcpo.assembleStepRuntimeIdentity(config, selected, registeredTools, scripted, kbAccessAllowsRead(kbAccess), filepath.Join(executionPath, "Downloads"))

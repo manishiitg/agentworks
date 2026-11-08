@@ -130,7 +130,7 @@ value = json.loads(source.read_text())
 		// Builder node tests also use flat config and a run ID without a group.
 		c = newController("", "Lin", ExecutionStrategyStartFromBeginningNoHuman, 0)
 		c.SetWorkspacePath(workspacePath)
-		if _, err := c.ExecuteStepForWorkshop(ctx, "first", &WorkshopExecuteOptions{RunFolder: "iteration-3-hook", SavedScriptOnly: true}); err != nil {
+		if _, err := c.ExecuteStepForWorkshop(ctx, "first", &WorkshopExecuteOptions{RunFolder: "iteration-3-hook"}); err != nil {
 			t.Fatal(err)
 		}
 		rawNode, err := os.ReadFile(filepath.Join(docs, workspacePath, "runs/iteration-3-hook/execution/first/result.json"))

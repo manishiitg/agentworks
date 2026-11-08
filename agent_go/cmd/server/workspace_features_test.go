@@ -178,22 +178,67 @@ func TestWorkspaceFailedTurnDoesNotHideOrReplaceNewerTurns(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCodeDeletionUsesItsNativeOrigin(t *testing.T) {
-	f := newMultiUserFixture(t, legacyIdentityLayout())
-	key := "code:" + fixtureCodeID
-	req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(f.Ctx(fixtureUserA))
-	rec := httptest.NewRecorder()
-	f.API.externalCrewProjectCall(rec, req, map[string]any{"action": "delete", "confirm": key}, key)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("delete code: %d %s", rec.Code, rec.Body.String())
+// PLAT-746-419: a successful live Crew delete left its workflow/script IDs
+// behind, which can make a later lookup ambiguous. Other Crews stay intact.
+func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
+	// Code routing and per-user Crew roots were retired by 8106ccb9de /
+	// f732afe300. Use the current shared-root Crew identity at this API.
+	layout := legacyIdentityLayout()
+	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
+	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
+	f := newMultiUserFixture(t, layout)
+	profile := f.Crew
+	profile.Version++
+	profile.Runtime.Workspace.ProjectsRoot = "Crew"
+	if err := f.API.agentProfiles.RegisterProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	f.put("Crew/other/product.json", `{"schema_version":1,"product":"work","id":"other-crew","title":"Other","session_id":"work:project:other-crew"}`)
+	f.put("Crew/other/workflow.json", `{"schema_version":1,"id":"other-crew","label":"Other","capabilities":{}}`)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "other", ProjectID: "other-crew", OwnerID: fixtureUserB, Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	withProjectSharing(t, true)
+	if err := defaultProjectOwners().SetRunPeople("work", fixtureCrewFolder, []string{fixtureUserB}); err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range []crewExecutableBinding{
+		{ID: "workflow-delete", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-workflow", Kind: "workflow"},
+		{ID: "script-shared-id", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-script", Kind: "script"},
+		{ID: "script-shared-id", CrewID: "other-crew", CrewRoot: "Crew/other", Root: "Workflow/keep-script", Kind: "script"},
+	} {
+		if err := registerCrewExecutable(binding); err != nil {
+			t.Fatal(err)
+		}
+	}
+	call := func(user string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(f.Ctx(user))
+		rec := httptest.NewRecorder()
+		f.API.externalCrewProjectCall(rec, req, map[string]any{"action": "delete", "confirm": fixtureCrewID}, fixtureCrewID)
+		return rec
+	}
+	if rec := call(fixtureUserB); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "Only the Crew's owner") {
+		t.Fatalf("Run deletion must refuse at owner check: %d %s", rec.Code, rec.Body.String())
+	}
+	if bindings, err := readCrewExecutables(); err != nil || len(bindings) != 3 {
+		t.Fatalf("refused delete changed bindings: %v %v", bindings, err)
+	}
+	if rec := call(fixtureUserA); rec.Code != http.StatusOK {
+		t.Fatalf("owner deletion: %d %s", rec.Code, rec.Body.String())
 	}
 	f.Mock.mu.Lock()
-	defer f.Mock.mu.Unlock()
-	if _, present := f.Mock.files[f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)+"/product.json"]; present {
-		t.Fatal("Code source still present after deletion")
+	_, ownPresent := f.Mock.files[layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)+"/product.json"]
+	_, otherPresent := f.Mock.files["Crew/other/product.json"]
+	f.Mock.mu.Unlock()
+	if ownPresent || !otherPresent {
+		t.Fatal("Crew delete removed the wrong project's source")
 	}
-	if _, present := f.Mock.files[f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)+"/product.json"]; !present {
-		t.Fatal("another origin was deleted")
+	bindings, err := readCrewExecutables()
+	if err != nil || len(bindings) != 1 || bindings["Workflow/keep-script"].CrewID != "other-crew" {
+		t.Fatalf("wrong executable cleanup: %v %v", bindings, err)
+	}
+	if binding, err := findCrewExecutableByID("script-shared-id"); err != nil || binding == nil || binding.CrewID != "other-crew" {
+		t.Fatalf("orphan still shadows another identity: %v %v", binding, err)
 	}
 }
 

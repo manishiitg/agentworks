@@ -24,7 +24,7 @@ export function canCloseWorkspaceChatTab(tab: ChatTab, tabs: Record<string, Chat
     )
   }
   if (meta?.agentProfileId === 'work') {
-    return isWorkSideChatTab(tab, meta.agentProfileProjectId)
+    return meta.isAutomationConversation === true || isWorkSideChatTab(tab, meta.agentProfileProjectId)
   }
   return false
 }

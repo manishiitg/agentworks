@@ -650,7 +650,7 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 				}
 				result := response.Shell
 				log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=shell request=%s exit=%d", activity, caller.UserID, request.RequestID, result.ExitCode)
-				return workspace.MarshalShellResultForAgent(workspace.ShellCommandResult{Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, TimedOut: result.TimedOut})
+				return workspace.MarshalShellResultForAgent(workspace.ShellCommandResult{Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, TimedOut: result.TimedOut, LogFile: result.LogFile, LogError: result.LogError, LogComplete: result.LogComplete})
 			}, time.Duration(localfiles.MaxShellTimeout+15)*time.Second, "workspace_advanced"); err != nil {
 			return err
 		}

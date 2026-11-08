@@ -36,9 +36,9 @@ Delete only the requested trigger. Owner/write checks are enforced by the server
 A Crew invokes a workflow through a platform-internal binding instead of a
 public webhook: `kind: internal` with a caller stamp, no URL or secret, usable
 only by the named caller. Crews manage their own bindings with
-`list_attached_workflows`, `list_workflow_triggers`, `run_workflow_trigger`,
-and `get_workflow_trigger_run`. The read-only attachment authorizes
-`run_workflow_trigger` to create only the secretless internal binding scoped to
+`functions action=triggers`, `functions action=run_trigger`,
+and `functions action=trigger_status`. The caller's owner or editor access authorizes
+`functions action=run_trigger` to create only the secretless internal binding scoped to
 that exact Crew; it does not permit general trigger management. The Builder
 may also create the same binding explicitly with `manage_workflow_webhook`.
 ### Workflow functions (kind=function)
@@ -183,7 +183,7 @@ Rules that keep a multi-path trigger debuggable:
 
 ### Direct route execution
 
-Webhook deliveries dispatch directly to the workflow plan executor with the saved route selections and validated declared inputs. They do not start a Builder chat or ask an agent to call `run_full_workflow`. Plan prerequisites and agent steps still run normally. An empty route selection runs the full plan. Scheduled jobs retain their existing execution path.
+Webhook deliveries dispatch directly to the workflow plan executor with the saved route selections and validated declared inputs. They do not start a Builder chat or ask an agent to call `runs action=start`. Plan prerequisites and agent steps still run normally. An empty route selection runs the full plan. Scheduled jobs retain their existing execution path.
 
 Prepare and upgrade the workflow in Builder before testing the trigger; a webhook never edits or upgrades the plan. Poll the returned status URL (or use `manage_workflow_webhook` action `status`) for progress, step outputs, final success/failure and artifact links. The isolated `iteration-<n>-hook` folders, last-10 retention, cancellation, authentication, idempotency and isolated execution policy still apply.
 

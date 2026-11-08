@@ -14,7 +14,6 @@ export interface AgentLLMConfig {
 export interface AgentConfigs {
   execution_llm?: AgentLLMConfig;
   execution_tier?: 'high' | 'medium' | 'low';
-  lock_code?: boolean;                        // Freeze main.py against LLM rewrites
   selected_servers?: string[];
   selected_tools?: string[];
   enabled_custom_tools?: string[];
@@ -110,7 +109,6 @@ export interface ScriptedPlanStep extends CommonStepFields {
   type: 'scripted' | 'regular'; // regular is a saved-plan compatibility alias.
   script?: string;
   script_inputs?: Record<string, { value?: unknown; input?: string; output?: string; field?: string }>;
-  script_only?: boolean;
   next_step_id?: string;                    // Explicit successor for scripted route chains
 }
 

@@ -3,9 +3,8 @@
 Apply these when writing or patching a step's `main.py`. Scripts must run identically for every group/user, every iteration — so the rules err toward strictness.
 
 **Source layout (read workflow.json first)**
-- `code_layout_version: 1`: saved source is `code/<step-id>/main.py`. Steps execute it directly and may read/write shared helpers anywhere under this workflow's `code/` when unlocked. There is no execution copy or copy-back. Repair the canonical code and retry. `WORKFLOW_CODE_ROOT` is the absolute import root; use packages such as `from shared.utils import ...` with `__init__.py` where needed. Never infer paths from the DB or directory depth.
-- Absent/zero `code_layout_version`: legacy source remains `learnings/<step-id>/main.py` with execution copies and controller save-back. Do not move an existing workflow to the new layout or infer its version from folder existence. The legacy path examples below apply only to this version.
-- New-layout Python dependencies: use `python3 -m pip install --target "$WORKFLOW_CODE_DEPS" <package>`. The controller adds this persistent workflow directory to PYTHONPATH for both execution and repair shells. Verify with the actual `execute_step` runner for the intended group. Keep outputs in `STEP_OUTPUT_DIR` or durable `db/assets/`, never mixed into code.
+- `code_layout_version: 1`: saved source is `code/<step-id>/main.py`. The Crew chat authors source and shared helpers; running steps read them. There is no execution copy or copy-back. Fix the saved source explicitly in chat, then retry. `WORKFLOW_CODE_ROOT` is the absolute import root; use packages such as `from shared.utils import ...` with `__init__.py` where needed. Never infer paths from the DB or directory depth.
+- In Crew chat, call `crew_workflow_files action=list` and use the workflow's `code_environment` paths. They are the same paths used by its runner. A generic chat shell does not inherit step environment variables: explicitly set `WORKFLOW_CODE_DEPS` to the returned dependency path before `python3 -m pip install --target "$WORKFLOW_CODE_DEPS" <package>`. Do not run pip with an empty or guessed target. The runner supplies `PYTHONPATH`; confirm imports with `execute_step`. Keep outputs in `STEP_OUTPUT_DIR` or durable `db/assets/`, never mixed into code.
 
 The saved source layout is managed by the server. Ordinary configuration edits preserve it. Current workflows use `code/`; if an older installation still has a different layout, ask its administrator to update its saved source before continuing.
 
@@ -15,12 +14,12 @@ The saved source layout is managed by the server. Ordinary configuration edits p
   - Reads: `query(sql, params)` returns every row as a dict (pages are fetched for you); `iter_query` streams a very large result; `query_one` / `scalar` for one row or value. Use `?` placeholders; give a big SELECT an `ORDER BY`.
   - Writes (INSERT, UPDATE, DELETE only): `execute(sql, params)` returns rows affected, `insert` the new id, `execute_many(sql, rows)` writes many rows (2000 per call, each call atomic; `atomic=True` for one transaction of at most 5000), `transaction([(sql, params), ...])` for up to 200 statements that must succeed together.
   - Every failure raises `DBError` with the platform's message; let it propagate so the step fails with the real error (a run never rewrites the script; AgentWorks reports it).
-- DDL is known when you write the script. A table or column the script needs is a `db/migrations/` file the Builder applies with `database action=migrate` before the script runs; a script never issues CREATE, ALTER or DROP. If the schema changes, update the script to match; a script that no longer matches the schema fails its run (runs never rewrite scripts; AgentWorks reports it) and the Builder repairs it with `execute_step`.
+- DDL is known when you write the script. A table or column the script needs is a `db/migrations/` file the Builder applies with `database action=migrate` before the script runs; a script never issues CREATE, ALTER or DROP. If the schema changes, update the saved script explicitly in chat, then verify it with `execute_step`. A run never rewrites scripts.
 - Foreign keys declared in the schema are always enforced on managed writes; a script never sets `PRAGMA foreign_keys`. Other `PRAGMA`s, `ATTACH`, `VACUUM`, `executescript` and triggers created at run time are not available; if a step needs one, report it instead of working around the helper.
 - Tests (`test_*.py`) may open the database to check what the script wrote; they are not scanned. Report-data scripts under `code/reports/` read their own read-only snapshot and are unaffected.
 
 **Runs never repair scripts**
-- In a run (schedule, webhook<!-- product:relays -->/Flow<!-- /product -->, `run_full_workflow`, a route called by an agent) a scripted step only executes its saved `main.py`. A missing or failing script fails the step with its real error; no LLM writes, repairs or stands in for it, and AgentWorks reports the failure. Write and fix scripts in the Builder with `execute_step` on that step, which may author or repair `main.py` (not with `fast_path_only`, and not for a `lock_code` step).
+- Scripts execute saved main.py only. Missing or failing source fails the step; create or fix it explicitly in this chat, then run it again. The runner supplies the workflow environment, inputs, permissions and output validation for every invocation.
 
 **Returning a value from a scripted route**
 - A scripted route called by an agent hands its answer back by writing one JSON value to `os.path.join(os.environ['STEP_OUTPUT_DIR'], 'route_result.json')` (at most 1 MiB). Inputs arrive in `json.loads(os.environ['STEP_PARAMS_JSON'])`. A lookup that finds nothing returns e.g. `{"found": false}`; it does not fail.
@@ -29,7 +28,7 @@ The saved source layout is managed by the server. Ordinary configuration edits p
 - Use `os.environ['KEY']` for required configuration, credentials, and paths. A missing required variable must raise KeyError; never mask it with a fallback. Explicitly optional context/diagnostic flags such as `VAR_GROUP_NAME` and `SCRIPT_VERBOSE` may use `.get()` with a documented safe default.
 - Workflow variables → `VAR_<NAME>` (config: user IDs, sheet IDs, URLs).
 - Secrets → `SECRET_<NAME>` (passwords, API keys, tokens).
-- Special vars: `STEP_OUTPUT_DIR` (write all step outputs here), `STEP_EXECUTION_DIR` (parent execution folder; never a write target or a substitute for controller-resolved context dependencies), `DB_PATH` (backward compatibility only, for scripts written before contract 1.0.45: never use it in a new or repaired script, see **Database access** below), `MCP_API_URL`, `MCP_API_TOKEN`, `VAR_GROUP_NAME` (use `.get('VAR_GROUP_NAME', '')` — this one is optional).
+- Special vars: `STEP_OUTPUT_DIR` (write all step outputs here), `STEP_EXECUTION_DIR` (parent execution folder; never a write target or a substitute for controller-resolved context dependencies), `DB_PATH` (backward compatibility only, for scripts written before contract 1.0.45: never use it in a new or edited script, see **Database access** below), `MCP_API_URL`, `MCP_API_TOKEN`, `VAR_GROUP_NAME` (use `.get('VAR_GROUP_NAME', '')` — this one is optional).
 - A parameterized scripted step reads its non-secret, per-call values from `json.loads(os.environ['STEP_PARAMS_JSON'])`. Its plan-level `script_parameters` declaration is the only public contract: do not add a competing CLI flag or free-form instruction path. `context_dependencies` remain positional `sys.argv` inputs.
 - NO hardcoded user IDs, account numbers, URLs, paths, or credentials. Every dynamic value flows from env or sys.argv.
 - **The step description shows RESOLVED current-run values.** Those are for context only. NEVER copy any name, ID, or literal value from the description into the script — or into any `export` you issue manually. The same script runs for every group/user; a copied value from one run breaks the others.
@@ -39,7 +38,7 @@ The saved source layout is managed by the server. Ordinary configuration edits p
 - NEVER use `/tmp` or any other host path outside the workflow, in code or in a step description: the sandbox does not allow `/tmp`. Scratch goes to `$TMPDIR` (private, removed after the command), step output to `$STEP_OUTPUT_DIR`, durable files under the workflow (`code/`, `db/assets/`).
 - NEVER construct paths to sibling step folders (e.g. `execution/login-step/output.json`). The controller resolves correct per-group paths and passes them as sys.argv. If you need data not in sys.argv, add it as a `context_dependency` in `plan.json` — do not hardcode.
 - Write output files to `os.environ['STEP_OUTPUT_DIR']` with the exact filenames and structure the validation_schema requires. `STEP_OUTPUT_DIR` is **volatile** (per-run, wiped on re-run). A durable **file** that later steps, runs, or the builder must reach — a download, generated PDF/CSV/image/zip, any format — goes under `db/assets/` (write it via the workspace root, e.g. `os.path.join(os.path.dirname(os.environ['DB_PATH']), 'assets', name)`), with a reference row in `db.sqlite`. Use `db/assets/` for durable output files. Version 1 source and shared helpers belong in `code/`; other paths require explicit Folder Guard grants.
-- Check `python3 -m pip --version` before installing a Python dependency. Missing pip/venv is a server prerequisite failure; report it rather than repeatedly rewriting the test. For version 1, install with `python3 -m pip install --target "$WORKFLOW_CODE_DEPS" package`; the controller includes that persistent directory in `PYTHONPATH`. Do not choose a separate venv interpreter for a saved script: the runner uses `python3`. For legacy workflows verify the actual runner dependency path before installing. Never disable host package protections. Package caches persist under `.sandbox-cache/`. A saved `main.py` browser suite may use Python Playwright directly. For browser tests, first read `references/playwright-scripted.md`: JS/TS uses `@agentworks/playwright`; Python uses the `agentworks-playwright` helper/pytest fixture, while the saved-step runner remains Python. Anything needing root or `apt` must be installed by the server operator.
+- Check `python3 -m pip --version` before installing a Python dependency. Missing pip/venv is a server prerequisite failure; report it rather than repeatedly rewriting the test. Install into the dependency path returned above; the runner includes it in `PYTHONPATH`. Do not choose a separate venv interpreter for a saved script: the runner uses `python3`. Never disable host package protections. Package caches persist under `.sandbox-cache/`. A saved `main.py` browser suite may use Python Playwright directly. For browser tests, first read `references/playwright-scripted.md`: JS/TS uses `@agentworks/playwright`; Python uses the `agentworks-playwright` helper/pytest fixture, while the saved-step runner remains Python. Anything needing root or `apt` must be installed by the server operator.
 
 **Python input/output example**
 
@@ -69,34 +68,21 @@ never print it. For an HTTP helper, use the routes and response envelope in
 `references/mcp-bridge.md` and the bounded retry rules below. Do not log full
 request payloads or authorization headers. On failure, print useful,
 non-secret diagnostic context before raising; a debug file alone is not
-feedback to the repair turn.
+feedback in the failed run.
 
 **Data authenticity — no fabrication**
 - Every value written to output files MUST trace to a real MCP tool call, API response, or input file. No hardcoded rows, no invented records.
 - If the script writes output without making any external calls or reading real input, it will be rejected.
 
-**Deliberate refusal — fail-closed guards must exit code 2, not 1**
-- In a run, any non-zero exit simply fails the step. The distinction below matters when you run the step yourself with `execute_step`, where a failing script is handed back to you as repair context.
-- Any non-zero exit is treated as a bug by default: the failure is handed back to you as repair context so you fix the script. That is correct for a real error, but wrong for a guard that deliberately detected an unsafe condition (stale data, a write that would overwrite history it could not verify, a precondition that isn't met) and refused to proceed on purpose.
-- Use `sys.exit(2)` — not `sys.exit(1)` or any other code — for that second case. Exit code 2 is reserved and means "this refusal is terminal, do not attempt an agentic workaround." The step fails outright instead of falling back to a relearn turn, and the refusal is never handed to an agent as "here is an error, fix it."
-- Before exiting, print exactly one explicit refusal record on its own stdout line: `AGENTWORKS_REFUSAL: ` followed by JSON with non-empty string fields `reason`, `blocked_action`, and `resolution`. Use `json.dumps` to escape values correctly. For example:
-  ```python
-  print("AGENTWORKS_REFUSAL: " + json.dumps({
-      "reason": "Existing balance history could not be verified",
-      "blocked_action": "Overwrite balance rows",
-      "resolution": "Restore database access and verify existing rows before retrying"
-  }), flush=True)
-  sys.exit(2)
-  ```
-- The platform displays this as the script's reported refusal, not proof the guard was correct. Exit code 2 without a complete record still stops automatic repair conservatively, but the notification states that the reason is unverified and includes captured output. Existing plain-text refusals remain stopped; malformed records never enable an automatic workaround.
-- Get this distinction right: `sys.exit(1)` on a guard that should be terminal lets an agentic retry read your own refusal, agree it was correct, and then perform the exact write the guard existed to prevent — which has happened live. `sys.exit(2)` on an ordinary bug wrongly aborts the step instead of letting the normal repair loop fix the script.
+**Errors**
+- Any nonzero exit fails the step, even when output files look valid. Print the reason without secrets. The platform never launches an agent workaround or rewrites the script.
 
 **Non-fatal concerns — say what went wrong without failing the step**
 - When the script completes but something consequential looks wrong — a source returned nothing or far less than usual, data was stale or conflicting, an optional API failed, a result works against the workflow's goal — print one line per problem to stdout, unconditionally (not behind `VERBOSE`), as the last lines before exiting 0:
   ```python
   print(f"CONCERNS: prospect source returned 0 rows for group {group} (usual 40-60); outreach queue is empty")
   ```
-- Plain text, one line each, with the affected artifact and the evidence. Do not classify or file it anywhere else. AgentWorks reads these lines from the step's retained output and decides whether each is a real issue. Print nothing when everything is normal. Use `CONCERNS:` only for non-fatal problems; a real error still exits non-zero, and a deliberate refusal still uses exit code 2.
+- Plain text, one line each, with the affected artifact and the evidence. Do not classify or file it anywhere else. AgentWorks reads these lines from the step's retained output and decides whether each is a real issue. Print nothing when everything is normal. Use `CONCERNS:` only for non-fatal problems; a real error still exits non-zero.
 
 **Calling platform tools from main.py — which errors to retry**
 - A retry helper must sort errors into two kinds, never "retry everything". Retrying an error that cannot go away only delays the failure and hides a platform defect. A helper that retried every error six times turned a platform bug into a random 30-second delay.
@@ -105,19 +91,19 @@ feedback to the repair turn.
   - validation and SQL errors (HTTP 400, `no such column`, `statements must contain 1-20 operations`) — fix the call instead;
   - HTTP 401/403;
   - any tool-boundary error: `requires an authenticated session`, `session permissions changed`, `session ownership changed`, `session origin changed`, `caller identity conflicts`, `caller does not own this tool session`.
-- The script cannot cause a tool-boundary error, and it also cannot cause `workflow database context is ambiguous`, `workflow database context is unavailable`, or `custom tool ... is not registered for session`. These are platform issues. Print the error verbatim and exit 1. Do not work around it by retrying, rewriting the script, or bypassing the bridge. A repair agent that meets one reports it as a platform issue in its repair report and leaves the script's logic alone.
+- The script cannot cause a tool-boundary error, and it also cannot cause `workflow database context is ambiguous`, `workflow database context is unavailable`, or `custom tool ... is not registered for session`. These are platform issues. Print the error verbatim and exit 1. Do not work around it by retrying, rewriting the script, or bypassing the bridge. Report it as a platform issue and leave the script's logic alone.
 - Make every write safe to repeat before letting the helper retry it: use a natural key with `INSERT ... ON CONFLICT DO NOTHING` / `DO UPDATE`, or check-then-insert inside one transaction. Give external sends (email, Slack, posts) a stable idempotency key. If a write cannot be made safe to repeat, do not retry it.
 - State the retry policy — what is retried, how often, and why the writes are safe to repeat — in a comment next to the helper.
 
 **Logging**
-- `VERBOSE = os.environ.get('SCRIPT_VERBOSE', '') == '1'`. Guard debug prints with `if VERBOSE:`. Log state before and after each major action. Stdout is the ONLY debugging channel available to the fix loop.
+- `VERBOSE = os.environ.get('SCRIPT_VERBOSE', '') == '1'`. Guard debug prints with `if VERBOSE:`. Log state before and after each major action so a person or the Crew chat can diagnose failures.
 
 **Robustness across groups**
 - The same script runs for every group/user with different data. Use `.get()` with safe defaults for optional *data* fields (never required configuration), handle empty lists, `None` values, date-as-string-vs-number variants, missing optional files.
 - Print diagnostic context BEFORE raising. The error output is how the next fix pass understands what broke.
 - If the same script keeps failing for specific groups, branch on `os.environ.get('VAR_GROUP_NAME', '')` rather than forcing one code path.
 
-**Code documentation — builder and repair agents**
+**Code documentation**
 - Apply these requirements when creating or repairing scripts and shared helpers. Keep documentation proportional to the code; a simple test should remain simple.
 - Start each entry point with a concise module docstring explaining its purpose, required environment-variable names and input arguments, outputs/side effects, and how it is executed through the platform. Document names and formats, never actual credentials or sensitive values.
 - Give shared helpers and non-obvious functions docstrings describing their inputs, return values, side effects, and important failure behavior. Use clear names and small functions; do not comment every obvious assignment or repeat the code in prose.
@@ -126,12 +112,11 @@ feedback to the repair turn.
 - Before finishing, check that the documented inputs, outputs, shared-helper behavior, and failure conditions agree with the changed code and the verification actually performed.
 
 **Patching discipline**
-- In builder chat, edit the saved source selected by the manifest: `code/{step-id}/main.py` for version 1, `learnings/{step-id}/main.py` for legacy. During controller-managed authoring/repair, use the explicit working directory supplied in that turn. Version 1 edits canonical source in place; only legacy execution copies are saved back by the controller. Never patch a stale run copy from builder chat.
+- In Crew chat, edit the saved source at `code/{step-id}/main.py`. Never patch a stale run copy. An older source layout must be updated before using these instructions.
 - Prefer a targeted edit — your own Edit tool when native tools are on, otherwise `files action=patch` — preserves working code and reduces regressions. Full rewrite (cat-heredoc) only when restructuring large portions. It accepts a unified diff or your native `*** Begin Patch` / `*** Update File:` format (context-located hunks, no line numbers), and one Begin Patch may change several files: all are checked, then all written or none.
 - Never edit a large file with an ad-hoc script that finds markers and splices the text (`t.find(...)`, slicing, `str.replace` on the whole file): a marker that is not found cuts off everything after it. A real `shared/pw_lib.py` lost its helper functions that way. When a patch is refused, read the reported file region and fix the patch. After any edit to a shared helper, confirm every name its importers use still exists before running the step.
-- Version 1 helpers may live anywhere in the workflow's `code/` tree; import shared packages through `WORKFLOW_CODE_ROOT`, already included in `PYTHONPATH`. Unlocked steps may repair shared helpers in place. Keep outputs in `STEP_OUTPUT_DIR` or durable `db/assets/`, not in source folders.
+- Shared helpers may live anywhere in the workflow's `code/` tree; the runner includes `WORKFLOW_CODE_ROOT` in `PYTHONPATH`. Edit shared helpers explicitly in Crew chat. Keep outputs in `STEP_OUTPUT_DIR` or durable `db/assets/`, not in source folders.
 - Report data scripts live at `code/reports/<name>.py` and run only through a Dashboard's `window.report.run`, not as steps: args in `$REPORT_ARGS`, exactly one JSON value on stdout (logs to stderr), read-only `$DB_PATH` snapshot, writes only in `$REPORT_CACHE_DIR`, 60 s cap, no upstream side effects. They may import shared helpers from `code/`. Contract and caching rules: `reporting-policy.md` "Live data from a script".
-- For legacy workflows, keep helpers adjacent to main.py in `learnings/{step-id}/`; the controller copies them with the entry point. Do not infer source/import roots from `__file__.parents[...]` or `DB_PATH`, or assume `learnings/_global/scripts` is on the runtime import path.
 - Test with `execute_step` for the intended group so the controller supplies the runtime environment and input arguments. When the step declares `script_parameters`, pass its test values in `execute_step(script_parameters={...})`; the controller validates them and supplies the exact same `STEP_PARAMS_JSON` contract used by scripted specialist routes. A generic builder shell is not a step execution: do not invent `STEP_OUTPUT_DIR` or bypass managed DB access to simulate it. Missing declared `VAR_*` in a builder shell is a platform environment issue to report.
 - Shell commands must be POSIX-compatible unless explicitly wrapped in `bash -lc`; `set -o pipefail` requires Bash. Tool JSON does not expand shell variables: resolve `os.environ['VAR_BASE_URL']` before passing the URL to `agent_browser`.
 - Distinguish a failed assertion from a script that could not run. Inspect the actual page/result and diagnostics before repairing an assertion; do not weaken expected behavior merely to obtain a pass.

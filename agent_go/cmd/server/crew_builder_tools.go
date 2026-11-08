@@ -41,14 +41,14 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 		}
 		return ctx, nil
 	}
-	if err := reg.RegisterCustomTool("manage_crew_trigger", "List, create, update, or delete a Crew project's triggers from Builder chat. First list to discover a crew's triggers and their kind/caller bindings. Use kind=internal with a workflow caller to bind a calling workflow without a public URL or secret; the caller defaults to this workflow when omitted. Internal triggers never expose a URL or secret. create returns a one-time secret only for public triggers: provide it only to the requesting user, never shell logs. All calls enforce current crew and workflow permissions.", map[string]interface{}{
+	if err := reg.RegisterCustomTool("manage_crew_trigger", "List, create, update, or delete a Crew project's triggers from the Crew's chat. First list to discover a crew's triggers and their kind/caller bindings. Use kind=internal with a workflow caller to bind a calling workflow without a public URL or secret; the caller defaults to this workflow when omitted. Internal triggers never expose a URL or secret. create returns a one-time secret only for public triggers: provide it only to the requesting user, never shell logs. All calls enforce current crew and workflow permissions.", map[string]interface{}{
 		"type": "object", "additionalProperties": false, "required": []string{"action", "crew_project_id"}, "properties": map[string]interface{}{
 			"action":          map[string]interface{}{"type": "string", "enum": []string{"list", "create", "update", "delete"}},
 			"crew_project_id": map[string]interface{}{"type": "string", "description": "Stable Crew project ID from list_accessible_workflows."},
 			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Crew product profile; defaults to work."},
 			"id":              map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
 			"auth_mode": map[string]interface{}{"type": "string", "enum": []string{"bearer", "github"}}, "enabled": map[string]interface{}{"type": "boolean"}, "rotate_secret": map[string]interface{}{"type": "boolean"},
-			"run_destination": map[string]interface{}{"type": "string", "enum": []string{runDestinationChat, runDestinationIsolated}, "description": "Where trigger runs execute. chat (default) runs in the main Crew conversation; isolated gives this webhook its own continuing conversation. Internal project callers use the main chat when source and target share any owner; otherwise a separate continuing conversation."},
+			"run_destination": map[string]interface{}{"type": "string", "enum": runDestinationEnum(), "description": runDestinationHelp + " Internal project callers use the main chat when source and target share any owner; otherwise a separate continuing conversation."},
 			"kind":            map[string]interface{}{"type": "string", "enum": []string{"internal"}},
 			"caller":          triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
 		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {

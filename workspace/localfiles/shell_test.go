@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -93,12 +94,16 @@ func TestLocalShellRunsAsThePerson(t *testing.T) {
 
 func TestLocalShellTimeoutCancellationAndBoundedOutput(t *testing.T) {
 	e, _ := shellFixture(t)
-	r := shellRequest("sleep 10", "timeout")
+	r := shellRequest("printf timeout-prefix; sleep 10", "timeout")
 	r.TimeoutSeconds = 1
 	started := time.Now()
 	got := e.Execute(t.Context(), r)
 	if got.Status != 200 || got.Shell == nil || !got.Shell.TimedOut || time.Since(started) > 4*time.Second {
 		t.Fatalf("timeout %+v %+v", got, got.Shell)
+	}
+	partial, err := os.ReadFile(got.Shell.LogFile)
+	if err != nil || !strings.Contains(string(partial), "timeout-prefix") || !strings.Contains(string(partial), "deadline exceeded") || !got.Shell.LogComplete {
+		t.Fatalf("timeout lost its partial log: %q %v %+v", partial, err, got.Shell)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	timer := time.AfterFunc(300*time.Millisecond, cancel)
@@ -107,9 +112,13 @@ func TestLocalShellTimeoutCancellationAndBoundedOutput(t *testing.T) {
 	if got.Status != 200 || got.Shell == nil || got.Shell.ExitCode == 0 {
 		t.Fatalf("cancel %+v %+v", got, got.Shell)
 	}
-	got = e.Execute(t.Context(), shellRequest("awk 'BEGIN {for(i=0;i<1100000;i++)printf \"x\"}'", "bounded"))
+	got = e.Execute(t.Context(), shellRequest("awk 'BEGIN {for(i=0;i<1100000;i++)printf \"Q\"}'", "bounded"))
 	if got.Status != 200 || got.Shell == nil || !got.Shell.Truncated || len(got.Shell.Stdout) != MaxShellOutputBytes {
 		t.Fatalf("output %+v", got)
+	}
+	full, err := os.ReadFile(got.Shell.LogFile)
+	if err != nil || got.Shell.LogError != "" || !got.Shell.LogComplete || strings.Count(string(full), "Q") != 1100000 {
+		t.Fatalf("bounded reply lost full log: size=%d err=%v receipt=%+v", len(full), err, got.Shell)
 	}
 }
 
@@ -149,5 +158,36 @@ func TestLocalShellUnknownOutcomeDoesNotExecuteAgain(t *testing.T) {
 	data, err = os.ReadFile(filepath.Join(g.Root, "counter"))
 	if err != nil || string(data) != "once\n" {
 		t.Fatalf("unknown side effect repeated %s %v", data, err)
+	}
+}
+
+// Short and spilled generic commands must not create files in a user's Git tree.
+func TestLocalShellLogsStayOutOfProject(t *testing.T) {
+	e, g := shellFixture(t)
+	if out, err := exec.Command("git", "init", g.Root).CombinedOutput(); err != nil {
+		t.Fatalf("git fixture: %s %v", out, err)
+	}
+	short := e.Execute(t.Context(), shellRequest("git status --porcelain", "short-clean"))
+	if short.Shell == nil || strings.TrimSpace(short.Shell.Stdout) != "" || short.Shell.LogFile != "" {
+		t.Fatalf("short command created a log: %+v", short.Shell)
+	}
+	large := e.Execute(t.Context(), shellRequest("awk 'BEGIN {for(i=0;i<2097152;i++)printf \"Q\"}'", "large-clean"))
+	if large.Shell == nil {
+		t.Fatalf("no result: %+v", large)
+	}
+	full, err := os.ReadFile(large.Shell.LogFile)
+	if err != nil || large.Shell.LogError != "" || !large.Shell.LogComplete || strings.Count(string(full), "Q") != 2097152 {
+		t.Fatalf("full private log missing: size=%d %v", len(full), err)
+	}
+	if rel, err := filepath.Rel(g.State, large.Shell.LogFile); err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+		t.Fatalf("log escaped local journal: %s", large.Shell.LogFile)
+	}
+	read := e.Execute(t.Context(), shellRequest("wc -c < "+"'"+strings.ReplaceAll(large.Shell.LogFile, "'", "'\\''")+"'", "read-private-log"))
+	if read.Shell == nil || read.Shell.ExitCode != 0 || strings.TrimSpace(read.Shell.Stdout) == "" {
+		t.Fatalf("local caller cannot read returned log: %+v", read.Shell)
+	}
+	clean := e.Execute(t.Context(), shellRequest("git status --porcelain", "after-clean"))
+	if clean.Shell == nil || strings.TrimSpace(clean.Shell.Stdout) != "" || clean.Shell.LogFile != "" {
+		t.Fatalf("logs dirtied git: %+v", clean.Shell)
 	}
 }

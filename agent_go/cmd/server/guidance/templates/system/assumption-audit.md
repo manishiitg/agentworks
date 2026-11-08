@@ -58,7 +58,7 @@ a Goal concern. Do not confuse the two.
    remove stale prose, parameterize a literal, stop treating a tactic as a goal,
    or mark a current choice as revisable.
 4. If changing it would alter business intent, risk, cost, external behaviour or
-   a material plan path, ask the owner through `create_human_input_request`.
+   a material plan path, ask the owner through `needs_you action=create`.
    Include the assumption, source, evidence for and against, and what would
    validate it. Keep one pending question for the same decision.
 5. Record authorized work and its evidence in the existing plan changelog or

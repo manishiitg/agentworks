@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	handlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/spf13/viper"
@@ -95,13 +96,19 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 		}
 	}
 	write(filepath.Join(sourceRoot, "script.json"), `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true}],"outputs":["result.json"]}`)
-	write(filepath.Join(sourceRoot, "main.py"), `import json, os
+	write(filepath.Join(sourceRoot, "main.py"), `import json, os, sys
 from pathlib import Path
+print('start-marker')
+sys.stdout.write('Q' * 2097152)
+sys.stderr.write('stderr-last-line')
 values = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(values['count'], int)
-Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'python_ran':True}))
+Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'python_ran':True, 'run_folder':str(__import__('agentworks').run_folder)}))
 `)
-	if err := writeFileToWorkspace(t.Context(), binding.CrewRoot+"/product.json", `{"schema_version":1,"product":"work","id":"crew-script-http","title":"Script HTTP"}`); err != nil {
+	if err := writeFileToWorkspace(t.Context(), binding.CrewRoot+"/product.json", `{"schema_version":1,"product":"work","id":"crew-script-http","title":"Script HTTP","session_id":"work:project:crew-script-http"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileToWorkspace(t.Context(), binding.CrewRoot+"/workflow.json", `{"schema_version":1,"id":"crew-script-http","label":"Script HTTP","capabilities":{}}`); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -175,7 +182,12 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
-	folders, err := os.ReadDir(filepath.Join(docs, binding.Root, "runs"))
+	layout, found, err := crewroot.LookupExecutable(docs, binding.Root)
+	if err != nil || !found {
+		t.Fatalf("script layout: %v", err)
+	}
+	runtimeRoot := layout.Runtime
+	folders, err := os.ReadDir(filepath.Join(runtimeRoot, "runs"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,8 +196,37 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		if !folder.IsDir() || !strings.HasPrefix(folder.Name(), "run-") {
 			continue
 		}
-		result, err := os.ReadFile(filepath.Join(docs, binding.Root, "runs", folder.Name(), "execution/saved/result.json"))
+		result, err := os.ReadFile(filepath.Join(runtimeRoot, "runs", folder.Name(), "execution/saved/result.json"))
 		if err == nil && strings.Contains(string(result), `"count": 9`) && strings.Contains(string(result), `"python_ran": true`) {
+			runRoot := filepath.Join(runtimeRoot, "runs", folder.Name())
+			rawLog, readErr := os.ReadFile(filepath.Join(runRoot, "logs/saved/execution/scripted_fast_path.json"))
+			if readErr != nil {
+				t.Fatal("script log receipt missing", readErr)
+			}
+			var logReceipt struct {
+				LogFile         string `json:"log_file"`
+				LogError        string `json:"log_error"`
+				LogComplete     bool   `json:"log_complete"`
+				OutputBytes     int    `json:"output_bytes"`
+				OutputTruncated bool   `json:"output_truncated"`
+				Output          string `json:"output"`
+			}
+			if err := json.Unmarshal(rawLog, &logReceipt); err != nil || logReceipt.LogFile == "" || logReceipt.LogError != "" || !logReceipt.LogComplete {
+				t.Fatalf("bad script log receipt: %s %v", rawLog, err)
+			}
+			// A native Read of this receipt rejected the previous 2 MiB JSON.
+			// Keep the metadata small and both diagnostic ends, with real size.
+			if len(rawLog) > 32768 || !logReceipt.OutputTruncated || logReceipt.OutputBytes < 2097152 || !strings.Contains(logReceipt.Output, "start-marker") || !strings.Contains(logReceipt.Output, "stderr-last-line") || !strings.Contains(logReceipt.Output, logReceipt.LogFile) {
+				t.Fatalf("unbounded/incomplete output receipt: bytes=%d total=%d truncated=%t", len(rawLog), logReceipt.OutputBytes, logReceipt.OutputTruncated)
+			}
+			full, readErr := os.ReadFile(logReceipt.LogFile)
+			if readErr != nil || strings.Count(string(full), "Q") != 2097152 || !strings.Contains(string(full), "start-marker") || !strings.Contains(string(full), "stderr-last-line") {
+				t.Fatalf("full stdout/stderr missing: size=%d %v", len(full), readErr)
+			}
+			rel, relErr := filepath.Rel(runRoot, logReceipt.LogFile)
+			if relErr != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+				t.Fatalf("log is outside its run: %s", logReceipt.LogFile)
+			}
 			verified = true
 			t.Logf("script completed run=%s run_as=%s real_python=true", folder.Name(), runAs)
 		}
@@ -195,5 +236,8 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	}
 	if !verified {
 		t.Fatal("no real Python result")
+	}
+	if !local {
+		checkSavedScriptTriggerAndSchedule(t, docs, binding)
 	}
 }

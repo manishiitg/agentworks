@@ -153,7 +153,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {/* With a Share row the dashboard is a line in its tree (owner, 5 Nov: one place); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
     <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
-    {inventory.filter(item => item.view === 'goals' || item.view === 'schedules').map(item =>
+    {inventory.filter(item => item.view === 'workflow' || item.view === 'schedules').map(item =>
       <Row key={item.id} icon={item.icon} detail={item.view === 'schedules' ? data?.details.automations : undefined} onClick={() => open(item)}>{item.label}</Row>)}
     </>}
     {error || data?.sections.some(item => item.error || item.stale) ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>{error || (data?.sections.some(item => item.stale) ? 'Showing the last update for some sections.' : 'Some workspace status is unavailable.')}</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}

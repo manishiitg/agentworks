@@ -1,18 +1,25 @@
 package crewroot
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
 )
 
-// MigrateExecutableSources is an explicitly invoked one-off conversion. It is
+// MigrateCrewScripts is an explicitly invoked one-off conversion. It is
 // not called at startup. Stop the selected instance's writers before using it.
-// Reusable scripts only. Workflows use scripts/migrate-goal-to-crew.py so a
+// Reusable script source and runtime data only. Workflows use scripts/migrate-goal-to-crew.py so a
 // source-only move cannot leave their records in the retired folder.
-func MigrateExecutableSources(docs string) (int, string, error) {
+func MigrateCrewScripts(docs string) (int, string, error) {
+	docs, err := filepath.EvalSymlinks(docs)
+	if err != nil {
+		return 0, "", err
+	}
 	layouts, err := ExecutableLayouts(docs)
 	if err != nil {
 		return 0, "", err
@@ -31,6 +38,9 @@ func MigrateExecutableSources(docs string) (int, string, error) {
 		if _, err := os.Lstat(target); err == nil {
 			return fmt.Errorf("destination already exists: %s", target)
 		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if err := unchangedDirectory(source, false); err != nil {
 			return err
 		}
 		moves = append(moves, move{Source: source, Target: target})
@@ -54,6 +64,9 @@ func MigrateExecutableSources(docs string) (int, string, error) {
 		if err != nil {
 			return 0, "", err
 		}
+		if err = add(filepath.Join(docs, filepath.FromSlash(l.Binding.Root)), l.Runtime); err != nil {
+			return 0, "", err
+		}
 	}
 	if len(moves) == 0 {
 		return 0, "", nil
@@ -72,6 +85,9 @@ func MigrateExecutableSources(docs string) (int, string, error) {
 		if err = copyPrivateEntry(moves[i].Source, moves[i].Backup); err != nil {
 			return 0, backup, err
 		}
+		if err = verifyScriptMigrationCopy(moves[i].Source, moves[i].Backup); err != nil {
+			return 0, backup, err
+		}
 	}
 	raw, _ := json.MarshalIndent(moves, "", "  ")
 	if err = os.WriteFile(filepath.Join(backup, "moves.json"), raw, 0600); err != nil {
@@ -84,9 +100,78 @@ func MigrateExecutableSources(docs string) (int, string, error) {
 		if err = copyPrivateEntry(m.Source, m.Target); err != nil {
 			return i, backup, err
 		}
+		if err = verifyScriptMigrationCopy(m.Source, m.Target); err != nil {
+			return i, backup, err
+		}
 		if err = os.RemoveAll(m.Source); err != nil {
 			return i, backup, err
 		}
 	}
 	return len(moves), backup, nil
+}
+
+// Read every copied regular file before removing its original. Links remain
+// links; verifying a backup never follows them into another project's data.
+func verifyScriptMigrationCopy(source, target string) error {
+	digest := func(path string) ([sha256.Size]byte, error) {
+		var result [sha256.Size]byte
+		file, err := os.Open(path)
+		if err != nil {
+			return result, err
+		}
+		defer file.Close()
+		h := sha256.New()
+		if _, err = io.Copy(h, file); err != nil {
+			return result, err
+		}
+		copy(result[:], h.Sum(nil))
+		return result, nil
+	}
+	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		copied := filepath.Join(target, rel)
+		old, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		got, err := os.Lstat(copied)
+		if err != nil {
+			return err
+		}
+		if old.Mode() != got.Mode() {
+			return fmt.Errorf("script migration changed mode: %s", rel)
+		}
+		if old.Mode()&os.ModeSymlink != 0 {
+			a, e := os.Readlink(path)
+			if e != nil {
+				return e
+			}
+			b, e := os.Readlink(copied)
+			if e != nil {
+				return e
+			}
+			if a != b {
+				return fmt.Errorf("script migration changed link: %s", rel)
+			}
+		} else if old.Mode().IsRegular() {
+			a, e := digest(path)
+			if e != nil {
+				return e
+			}
+			b, e := digest(copied)
+			if e != nil {
+				return e
+			}
+			if old.Size() != got.Size() || a != b {
+				return fmt.Errorf("script migration copy differs: %s", rel)
+			}
+		}
+		return nil
+	})
 }

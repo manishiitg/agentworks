@@ -20,11 +20,11 @@ Workshop; executing a workflow does not authorize changing its plan.
 | Ordinary clarification, choosing scope, or discussing an output | Normal workflow chat | Ask in the conversation. The user's reply continues the conversation; pass known answers into execution where appropriate. |
 | A known value or instruction for this run | Declared variables/function arguments, or per-step `human_inputs` | Supply it at launch; variables render into descriptions, instructions stay scoped to the target step. |
 | A planned fixed-choice decision inside an interactive pipeline | `branch` with `route_source="human"` | The routes are the options. Use an explicit known answer via `route_selections`; otherwise an interactive run prompts, while an unattended run uses a safe non-approval default or fails. |
-| An unexpected, urgent human-only input while a workflow step is running | `human_feedback` | The calling execution agent waits for the bounded response card. Answering returns to the same tool call; expiry is not approval. This tool is unavailable in Builder chat. |
-| A review decision that can wait beyond this turn/run | `create_human_input_request` | Persist a question in the workflow's decision system and finish/park the affected work. A later consumer reads the explicit saved answer. |
+| An unexpected, urgent human-only input while a workflow step is running | `needs_you action=ask` | The calling execution agent waits for the bounded response card. Answering returns to the same tool call; expiry is not approval. This tool is unavailable in Builder chat. |
+| A review decision that can wait beyond this turn/run | `needs_you action=create` | Persist a question in the workflow's decision system and finish/park the affected work. A later consumer reads the explicit saved answer. |
 | The user reviews individual business items in a dashboard | Report-owned DB approval | `window.report.updateField`/`updateFields` saves the item's status. An existing consumer route/step reads approved items later; the write alone starts nothing. |
 | A report action should hand a specific task to the agent now | Report `sendChatMessage` | The action queues its message directly in an existing workflow chat, creating one only if none exists. Save an existing business approval first when the request depends on it. |
-| The user corrects an execution already running | `send_step_message` | Forward to the exact active execution, live or at the next safe agent boundary. This does not start, restart, or resume completed work. |
+| The user corrects an execution already running | `runs action=message` | Forward to the exact active execution, live or at the next safe agent boundary. This does not start, restart, or resume completed work. |
 
 Recorded run summaries and Daily Actions are notifications/evidence,
 not response or approval mechanisms. A notification delivery receipt does not
@@ -33,15 +33,15 @@ every side effect on that route.
 
 ### Planned checkpoint versus an unattended run
 
-Supply known values through launch inputs. An agent uses `human_feedback` for an
+Supply known values through launch inputs. An agent uses `needs_you action=ask` for an
 urgent value needed during work. Use a human-decided `branch` for a fixed choice
 such as draft → approve/hold → action. Put the review before
 the action it governs and provide the actual draft/change/evidence to review.
 Do not add a checkpoint just to repeat a route choice or answer from chat.
 
-- `execute_step(..., human_input=...)` can supply the user's known answer to
+- `runs action=step` (..., human_input=...) can supply the user's known answer to
   that exact step. It is not permission for the builder to choose an answer.
-- `run_full_workflow(..., human_inputs={step_id: instructions})` adds instructions
+- `runs action=start` (..., human_inputs={step_id: instructions}) adds instructions
   only to the matching executable step, including delegated agents. Use exact step IDs;
   use `route_selections` for routing and branch choices, not `human_inputs`.
 - Do not pre-supply approval for output the user has not reviewed. Use an
@@ -60,7 +60,7 @@ read `builder-reference`, `references/running-steps.md` when available.
 
 ### Urgent response card
 
-Running workflow steps may use `human_feedback` for short-lived human-only input such as an OTP, CAPTCHA,
+Running workflow steps may use `needs_you action=ask` for short-lived human-only input such as an OTP, CAPTCHA,
 or an immediate decision that cannot wait. Ordinary Builder questions belong
 in chat. The card is in-app only: it does not fan out through Gmail, Slack,
 webhooks, or notification connectors.
@@ -82,7 +82,7 @@ For an authorized workflow change, supply the tool's structured `apply_contract`
 the consumer must not infer the repair from the question's prose alone.
 
 An obsolete agent-issued pending proposal can be withdrawn by Builder using
-`withdraw_human_input_request` with a reason and evidence references. The original
+`needs_you action=withdraw` with a reason and evidence references. The original
 question, options and approval contract stay in history. This is agent judgment,
 not an owner answer or permission to perform the proposal. Human-created requests,
 suggestions and answered/claimed decisions are not eligible; provenance that is
@@ -93,15 +93,15 @@ The native card's controls have distinct meanings:
 
 - **Ask in chat** opens a contextual discussion. It does not answer the question.
 - **Save answer**, or an explicit final answer in chat recorded with
-  `answer_human_input_request`, saves the answer. It does not itself apply it.
+  `needs_you action=answer`, saves the answer. It does not itself apply it.
 - **Take best action** explicitly delegates choosing and the resulting action.
   Respect that delegation's scope; do not treat an ordinary question as it.
 
-Before applying, read the current decision with `get_human_input_request`,
+Before applying, read the current decision with `needs_you action=get`,
 check its exact option/scope and application contract, and use the appropriate
 consumer. Builder applies workflow changes in its existing chat; an authorized
 execution agent applies actions within its own scope. The applying agent checks
-the saved or external result, then calls `mark_human_input_consumed` with
+the saved or external result, then calls `needs_you action=consume` with
 `outcome_summary` and `outcome_evidence`. Approval, a queued task or a start
 receipt is not proof of completion. These are one approval/apply/completion
 flow using the same decision history, not separate user approvals.
@@ -154,7 +154,7 @@ isolation limitation.
 ### Correcting active work
 
 When the user changes instructions during a running execution, use its actual
-returned `execution_id` with `send_step_message`. `sent_to_cli` and
+returned `execution_id` with `runs action=message`. `sent_to_cli` and
 `queued_for_injection` describe delivery, not completed work. `no_active_agent`
 means there is no messageable agent at this moment (for example validation or
 script-only work); do not poll or start a duplicate execution. Stop requests

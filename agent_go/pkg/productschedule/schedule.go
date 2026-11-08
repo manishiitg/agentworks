@@ -71,6 +71,10 @@ type Schedule struct {
 	// rather than in the main conversation transcript.
 	Isolated bool `json:"isolated,omitempty" yaml:"isolated,omitempty"`
 
+	// New, with Isolated, makes that conversation a new one for every run instead
+	// of one kept across runs.
+	New bool `json:"new,omitempty" yaml:"new,omitempty"`
+
 	// ChatKey is the chat (tab) of the project that created the schedule, as
 	// "<projectId>:chat:<id>" (a Code side chat). Runs go to that chat while it
 	// exists and to the project's main chat otherwise; empty means the main chat.

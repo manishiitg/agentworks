@@ -79,7 +79,7 @@ export function activitySessionFromRunTarget(
 /** Open the server-owned Crew chat, or an activity view for an isolated run. */
 export async function openWorkAutomationRunChat(
   session: ActiveSessionInfo,
-  options: { title?: string } = {},
+  options: { title?: string; writableConversationKey?: string } = {},
 ): Promise<void> {
   const started = performance.now()
   const focus = (tabId: string, source: string) => {
@@ -181,6 +181,41 @@ export async function openWorkAutomationRunChat(
     }
     retireWorkActivityCopies(tabId)
     focus(tabId, 'active_work_existing_chat')
+    return
+  }
+
+  // A schedule's own conversation, when the server says it takes replies, opens as a normal chat: a message typed
+  // there lands in the conversation the schedule's runs use.
+  if (options.writableConversationKey) {
+    const key = options.writableConversationKey
+    const resolved = await agentApi.resolveAgentProfileConversation(WORK_PROFILE_ID, { conversation_key: key })
+    const title = (options.title || session.title || 'Schedule').trim() || 'Schedule'
+    const existingChat = Object.values(useChatStore.getState().chatTabs).find(tab =>
+      tab.metadata?.agentProfileId === WORK_PROFILE_ID && tab.metadata?.agentProfileProjectId === project.id &&
+      tab.metadata?.agentProfileConversationKey === key && tab.metadata?.isViewOnly !== true,
+    )
+    const chatTabId = existingChat?.tabId || await chatStore.createChatTab(title, {
+      ...canonical.metadata,
+      agentProfileIsMainChat: false,
+      agentProfileConversationKey: resolved.conversation_key,
+      agentProfileConversationId: resolved.conversation_id,
+      agentProfileTabCanWrite: true,
+      isAutomationConversation: true,
+    }, resolved.session_id)
+    if (!existingChat) {
+      chatStore.setTabConfig(chatTabId, {
+        selectedServers: canonical.config.selectedServers,
+        selectedSkills: canonical.config.selectedSkills,
+      })
+    }
+    if (chatStore.getTabEvents(resolved.session_id).length === 0) {
+      await hydrateTabEvents(resolved.session_id, {
+        workspacePath: project.workspacePath,
+        fallbackToChatHistory: true,
+        preferChatHistory: true,
+      })
+    }
+    focus(chatTabId, 'automation_conversation')
     return
   }
 

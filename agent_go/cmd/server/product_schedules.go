@@ -26,29 +26,6 @@ const productScheduleJobPrefix = "product:"
 const projectScheduleJobPrefix = "product-project:"
 const productScheduleStateFile = "product-schedules.json"
 
-const (
-	runDestinationChat     = "chat"
-	runDestinationIsolated = "isolated"
-)
-
-func runDestination(isolated bool) string {
-	if isolated {
-		return runDestinationIsolated
-	}
-	return runDestinationChat
-}
-
-func isolatedForRunDestination(value string) (bool, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", runDestinationChat:
-		return false, nil
-	case runDestinationIsolated:
-		return true, nil
-	default:
-		return false, fmt.Errorf("run_destination must be %q or %q", runDestinationChat, runDestinationIsolated)
-	}
-}
-
 // productScheduleUserState is one user's bookkeeping for one schedule.
 type productScheduleUserState struct {
 	Watcher *conditionCallerDefinition `json:"watcher,omitempty"`
@@ -1076,7 +1053,7 @@ func (s *ProjectActionDispatcher) runWithOptions(ctx context.Context, job produc
 	}
 	claim, err := s.claimAutomationRun(ctx, job, triggerSource, scheduledFor, options, onStarted)
 	if err != nil {
-		scheduleLogf("[PRODUCT-SCHEDULE] handoff-claim job=%s user=%s profile=%s project=%s destination=%s error=%v", job.ID(), job.UserID, job.Profile.ID, job.ProjectID, runDestination(job.Schedule.Isolated), err)
+		scheduleLogf("[PRODUCT-SCHEDULE] handoff-claim job=%s user=%s profile=%s project=%s destination=%s error=%v", job.ID(), job.UserID, job.Profile.ID, job.ProjectID, scheduleRunDestination(job.Schedule), err)
 		return "", err
 	}
 	if options.Detach {
@@ -1241,7 +1218,12 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	} else if job.ProjectID != "" && job.Schedule.Isolated {
 		kind := firstNonEmptyTrimmed(job.AutomationKind, "schedule")
 		title := job.ProjectTitle + " · " + job.Schedule.Name
-		binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, crewCallIsolatedKey(job.Schedule.ID, job.ConversationKey), title)
+		// A new conversation each time is isolated with this run's own key.
+		conversationKey := job.ConversationKey
+		if job.Schedule.New {
+			conversationKey = runID
+		}
+		binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, crewCallIsolatedKey(job.Schedule.ID, conversationKey), title)
 	} else if job.ProjectID != "" {
 		// A schedule set from a side chat (tab) runs there while that chat
 		// exists; otherwise, and for every other schedule, in the main chat.
@@ -1253,7 +1235,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 			if _, capErr := checkSideChatCapacity(runCtx, defaultProductConversationRegistryStore(), job.UserID, job.Profile.ID, chatKey); capErr != nil {
 				bindErr = fmt.Errorf("This Crew already has %d chats, so agent %q cannot be added. Close a chat in the Crew or reuse an existing agent name.", externalCrewMaxSideChats, job.AgentName)
 				if job.AutomationKind == "function" {
-					bindErr = fmt.Errorf("This Crew already has %d chats, so function tab %q cannot be added. Close a chat in the Crew, or set the function to run fresh.", externalCrewMaxSideChats, job.AgentName)
+					bindErr = fmt.Errorf("This Crew already has %d chats, so function tab %q cannot be added. Close a chat in the Crew, or set the function to run new (a new chat for every call).", externalCrewMaxSideChats, job.AgentName)
 				}
 			}
 			key, newAgentName = chatKey, job.AgentName
@@ -1551,7 +1533,7 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 		LastDurationMs:      job.State.LastDurationMs,
 		RunCount:            job.State.RunCount,
 		ConsecutiveFailures: job.State.ConsecutiveFailures,
-		RunDestination:      runDestination(job.Schedule.Isolated),
+		RunDestination:      scheduleRunDestination(job.Schedule),
 		CadenceHours:        sched.CadenceHours,
 		DeferredReason:      s.deferredReason(job.UserID, job.ID()),
 	}
@@ -1644,7 +1626,7 @@ func projectRunDestinations(job productScheduleJob) []ScheduleRunDestination {
 	if strings.TrimSpace(job.ProjectID) == "" {
 		return nil
 	}
-	out := []ScheduleRunDestination{{ID: runDestinationChat, Label: "Main chat"}}
+	out := []ScheduleRunDestination{{ID: runDestinationNew, Label: runDestinationChoiceNew.Label}, {ID: runDestinationChat, Label: runDestinationChoiceChat.Label}}
 	tabs := []ScheduleRunDestination{}
 	if chats, err := crewOwnerChatRecords(context.Background(), job.UserID, job.Profile.ID, job.ProjectID, job.WorkspacePath); err == nil {
 		side := strings.TrimSpace(job.ProjectID) + codeChatSideMarker
@@ -1660,7 +1642,7 @@ func projectRunDestinations(job productScheduleJob) []ScheduleRunDestination {
 	}
 	sort.Slice(tabs, func(i, j int) bool { return strings.ToLower(tabs[i].Label) < strings.ToLower(tabs[j].Label) })
 	out = append(out, tabs...)
-	return append(out, ScheduleRunDestination{ID: "isolated", Label: "Own conversation"})
+	return append(out, ScheduleRunDestination{ID: runDestinationIsolated, Label: runDestinationChoiceIsolated.Label})
 }
 
 // projectScheduleChatKey turns a tab's chat id (from the project's chat list)

@@ -115,13 +115,16 @@ const MaxShellCommandBytes = 64 << 10
 const MaxShellOutputBytes = 1 << 20
 
 type ShellResult struct {
-	RequestID string          `json:"request_id"`
-	Identity  wf.EditIdentity `json:"identity"`
-	Stdout    string          `json:"stdout"`
-	Stderr    string          `json:"stderr"`
-	ExitCode  int             `json:"exit_code"`
-	TimedOut  bool            `json:"timed_out"`
-	Truncated bool            `json:"truncated"`
+	LogFile     string          `json:"log_file,omitempty"`
+	LogError    string          `json:"log_error,omitempty"`
+	LogComplete bool            `json:"log_complete"`
+	RequestID   string          `json:"request_id"`
+	Identity    wf.EditIdentity `json:"identity"`
+	Stdout      string          `json:"stdout"`
+	Stderr      string          `json:"stderr"`
+	ExitCode    int             `json:"exit_code"`
+	TimedOut    bool            `json:"timed_out"`
+	Truncated   bool            `json:"truncated"`
 }
 
 func (r Request) ShellTimeout() int {

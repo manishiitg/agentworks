@@ -29,7 +29,7 @@ func (api *StreamingAPI) crewHumanAnswerScope(ctx context.Context, session, requ
 		return "", nil, false, nil
 	}
 	refuse := func() (string, *UserClaims, bool, error) {
-		return "", nil, true, fmt.Errorf("only a person in this Crew's Builder chat can answer its decisions; open the Crew's Builder chat")
+		return "", nil, true, fmt.Errorf("only a person in this Crew's chat can answer its decisions; open the Crew's chat")
 	}
 	active, _ := api.getActiveSession(session)
 	readOnly := false
@@ -98,7 +98,7 @@ func (api *StreamingAPI) registerCrewHumanDecisionTools(registrar definitionTool
 				// These retained tools belong only to an interactive Crew Builder.
 				// The shared workflow executors keep their existing wider callers.
 				if _, crew := resolveCrewPath(ctx, claims.UserID, workspace); !crew {
-					return "", fmt.Errorf("open this Crew's Builder chat to review or complete its decisions")
+					return "", fmt.Errorf("open this Crew's chat to review or complete its decisions")
 				}
 				scoped := maps.Clone(args)
 				scoped["workspace_path"] = workspace

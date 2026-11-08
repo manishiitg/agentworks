@@ -3057,6 +3057,16 @@ func runServer(cmd *cobra.Command, args []string) {
 	api.scheduler = schedulerSvc
 	productScheduleSvc := NewProjectActionDispatcher(api, profileRegistry)
 	api.projectActions = productScheduleSvc
+	// One-off, before any function can be called: a function's saved "fresh" becomes "new" (migration file; delete
+	// once every server has started on this version).
+	if err := renameFunctionFreshToNew(); err != nil {
+		log.Printf("[CREW_FUNCTIONS] event=fresh_rename_failed error=%v", err)
+	}
+	// One-off, before any turn: a Crew's saved workflow links are removed, Crew links stay (migration file; delete
+	// once every server has started on this version).
+	if err := clearCrewWorkflowLinks(); err != nil {
+		log.Printf("[CREW_LINKS] event=workflow_links_clear_failed error=%v", err)
+	}
 	// One-off, before any schedule can fire: AgentWorks stops watching Goals (migration file; delete once every
 	// server has started on this version).
 	if err := api.retireAgentWorksGoalWatching(context.Background()); err != nil {
@@ -7124,6 +7134,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				selectedServers,
 				mergedAPIKeys,
 				req,
+				crewReadOnly || currentUserIsReadOnly,
 			); err != nil {
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Failed to register workflow runtime: %v", err)
 				sendError(fmt.Sprintf("Failed to register agent profile workflow runtime: %v", err), true)
@@ -14269,7 +14280,7 @@ func collectQueryToolCallSummaries(api *StreamingAPI, mainSessID, correlationID,
 	// in the parent chat event store before query_step runs, so query the live
 	// bridge log by the deterministic session prefix too.
 	if stepID != "" {
-		for _, kind := range []string{"exec", "todo", "learn", "kb-update", "kb-consolidate", "kb-reorganize"} {
+		for _, kind := range []string{"exec", "todo", "learn"} {
 			addSnapshots(toolcalllog.SnapshotBySessionPrefix(fmt.Sprintf("sub-%s-%s-", kind, stepID)))
 		}
 	}

@@ -60,13 +60,15 @@ func ChainSubAgentNotifiers(notifiers ...SubAgentNotifier) SubAgentNotifier {
 // - Always includes independent steps extraction for parallel execution
 // - Explicit task phases, skills and backend validation without automatic learning
 type StepBasedWorkflowOrchestrator struct {
+	// Construction checks use the caller's current definition view (including
+	// its existing namespace/staged edits), never an unscoped second HTTP reader.
+	definitionRead          func(context.Context, string) (string, error)
 	directCrewScriptConfig  *CrewScriptConfiguration
 	directCrewScript        *CrewScriptDefinition
 	workshopSubAgentCleanup *workshopSubAgentCleanup
 	codeLayoutVersion       atomic.Int32
 	crewAutomationCodeRoot  string
 	platformStoresDisabled  atomic.Bool
-	codeWritableByRun       atomic.Bool
 	relayExecution          atomic.Bool
 	// Base orchestrator for common functionality
 	*orchestrator.BaseOrchestrator
@@ -110,7 +112,8 @@ type StepBasedWorkflowOrchestrator struct {
 	// Plans are passed through execution contexts, never cached on a chat session.
 
 	// Run folder management
-	selectedRunFolder string // Current run folder name (iteration-0 for full workflow runs)
+	pythonHelperLimitsMu sync.Mutex // Serializes the current run's helper presentation counters.
+	selectedRunFolder    string     // Current run folder name (iteration-0 for full workflow runs)
 
 	// Batch execution context (current group identity for env refs, logs, event metadata)
 	currentGroupName string // Current group name being executed

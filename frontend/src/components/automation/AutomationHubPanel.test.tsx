@@ -61,3 +61,18 @@ it('does not open an Inbox without the backend capability',async()=>{
  try{await act(async()=>root.render(<AutomationHubPanel entityType="product" workspacePath="Crew/example" productTriggerScope={{profileId:'work',projectId:'example'}}/>));expect(host.querySelector('[data-testid="incoming-email"]')).toBeNull()}
  finally{inboxCapability.enabled=true;storeState.workspaceViewTarget=null;await act(async()=>root.unmount())}
 })
+it('shows a Crew\'s automations as tabs: Schedules, Webhooks, Watchers, and Inbox only when it has one, no Functions',async()=>{
+ const host=document.createElement('div');const root=createRoot(host)
+ const tabs=()=>[...host.querySelectorAll('nav[aria-label="Automations"] button')].map(node=>node.textContent).filter(label=>label!=='Ask')
+ inboxCapability.enabled=true
+ try{
+  await act(async()=>root.render(<AutomationHubPanel entityType="product" workspacePath="Crew/example" productTriggerScope={{profileId:'work',projectId:'example'}}/>))
+  expect(tabs()).toEqual(['Schedules','Webhooks','Watchers','Inbox'])
+  expect(host.querySelector('[data-testid="schedules"]')).not.toBeNull()
+  expect(host.querySelector('[data-testid="triggers"]')).toBeNull()
+  expect(host.querySelector('[data-testid="functions"]')).toBeNull()
+  inboxCapability.enabled=false
+  await act(async()=>root.render(<AutomationHubPanel entityType="product" workspacePath="Crew/example" productTriggerScope={{profileId:'work',projectId:'example'}}/>))
+  expect(tabs()).toEqual(['Schedules','Webhooks','Watchers'])
+ }finally{inboxCapability.enabled=true;await act(async()=>root.unmount())}
+})

@@ -30,7 +30,6 @@ type stepConfigToolRuntime interface {
 const updateStepConfigToolDescription = "Update planning/step_config.json for a specific workflow step. Changes take effect on the next execute_step or run_full_workflow call. To REMOVE a field (so the step falls back to preset/default behavior where that field has a fallback, or removes the explicit setting otherwise), list its name in clear_fields — sending null in a value field does NOT clear; it's ignored."
 
 func getUpdateStepConfigParameters() map[string]interface{} {
-	lockCodeDescription := "If true, the Builder's own execute_step also stops rewriting the saved main.py (no repair loop). Runs never rewrite a script whatever this says: a run executes the saved main.py and fails on its error, which AgentWorks reports. Only applies to scripted steps."
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
@@ -41,7 +40,7 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 			"clear_fields": map[string]interface{}{
 				"type":        "array",
 				"items":       map[string]interface{}{"type": "string"},
-				"description": "Field names to CLEAR (remove from step_config.json) so the step uses preset/default behavior again. Clearing enabled_skills removes explicit step skills; step execution does not inherit workflow-selected skills, so set enabled_skills explicitly when the step needs installed skills. Only fields with a corresponding setter in this tool are clearable. Valid names: execution_llm, execution_llm_reason, execution_tier, execution_tier_reason, servers, tools, enabled_custom_tools, enabled_skills, additional_read_paths, lock_code, use_code_execution_mode, coding_agent_tmux_lifecycle, description_reviewed, knowledgebase_access, knowledgebase_contribution, review_notes, validation_schema. Unknown names are reported as errors; nothing else in the same call is applied.",
+				"description": "Field names to CLEAR (remove from step_config.json) so the step uses preset/default behavior again. Clearing enabled_skills removes explicit step skills; step execution does not inherit workflow-selected skills, so set enabled_skills explicitly when the step needs installed skills. Only fields with a corresponding setter in this tool are clearable. Valid names: execution_llm, execution_llm_reason, execution_tier, execution_tier_reason, servers, tools, enabled_custom_tools, enabled_skills, additional_read_paths, use_code_execution_mode, coding_agent_tmux_lifecycle, description_reviewed, knowledgebase_access, knowledgebase_contribution, review_notes, validation_schema. Unknown names are reported as errors; nothing else in the same call is applied.",
 			},
 			"servers": map[string]interface{}{
 				"type":        "array",
@@ -52,10 +51,6 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 				"type":        "array",
 				"items":       map[string]interface{}{"type": "string"},
 				"description": "Tool names to enable for this step (format: 'server:tool' or 'server:*')",
-			},
-			"lock_code": map[string]interface{}{
-				"type":        "boolean",
-				"description": lockCodeDescription,
 			},
 			"enabled_custom_tools": map[string]interface{}{
 				"type":        "array",
@@ -236,13 +231,6 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 					}
 				}
 				targetConfig.AgentConfigs.SelectedTools = tools
-			}
-		}
-		if val, ok := args["lock_code"]; ok && val != nil {
-			if b, ok := val.(bool); ok {
-				if b || targetConfig.AgentConfigs.LockCode == nil || !*targetConfig.AgentConfigs.LockCode {
-					targetConfig.AgentConfigs.LockCode = &b
-				}
 			}
 		}
 		if val, ok := args["enabled_custom_tools"]; ok && val != nil {

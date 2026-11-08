@@ -20,8 +20,10 @@ repo_dir() { # the local checkout of a repository: this one, or its sibling
 # commit_on_main <dir> <sha>: main holds this commit, or the commit is an older main commit plus changes that are each already
 # on main. The second case lets a release carry finished fixes without newer work that a server cannot take yet. Nothing that
 # has not landed on main passes. The version file is left out of the comparison: every commit bumps it, so it always differs.
+# Go test files are left out too (reviewer, 7 Nov): deploy builds do not compile tests, and a test file often cannot cherry-pick
+# cleanly because main's earlier test edits sit in its context. All production code in a pinned build must still be on main.
 patch_id() {
-  git -C "$1" diff-tree -p "$2" -- . ':(exclude)frontend/src/version.ts' | git patch-id --stable | cut -d' ' -f1
+  git -C "$1" diff-tree -p "$2" -- . ':(exclude)frontend/src/version.ts' ':(exclude)*_test.go' | git patch-id --stable | cut -d' ' -f1
 }
 commit_on_main() {
   local dir="$1" sha="$2" base commit landed id
@@ -31,7 +33,9 @@ commit_on_main() {
   landed="$(for commit in $(git -C "$dir" rev-list --no-merges "$base..origin/main"); do patch_id "$dir" "$commit"; done)"
   for commit in $(git -C "$dir" rev-list "$base..$sha"); do
     id="$(patch_id "$dir" "$commit")"
-    [[ -n "$id" ]] && grep -qxF "$id" <<<"$landed" || return 1
+    # No ID: the commit changes only the version file or test files, so it carries no production code to compare.
+    [[ -n "$id" ]] || { echo "pin check: ${commit:0:10} changes no production code (version or test files only); skipped" >&2; continue; }
+    grep -qxF "$id" <<<"$landed" || return 1
   done
 }
 

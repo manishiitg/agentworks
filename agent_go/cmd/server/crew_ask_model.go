@@ -16,7 +16,7 @@ var crewAskAllowedTools = map[string]bool{
 	"request_clarification": true, // Registered only for an attended external Ask; no project authority.
 	crewAskFilesToolName:    true, "query_workflow_db": true, "read_skill": true, "search_tools": true, "get_api_spec": true,
 	"list_skills": true, "search_skills": true, "send_message": true, "read_agent_messages": true,
-	"list_mcp_servers": true, "list_accessible_workflows": true, "list_attached_workflows": true,
+	"list_mcp_servers": true, "list_accessible_workflows": true,
 	"list_workflow_triggers": true, "list_project_schedules": true, "list_project_triggers": true,
 	"get_workflow_trigger_run": true, "project_functions_list": true,
 	crewPublishedCallToolName: true, crewPublishedGetToolName: true,
