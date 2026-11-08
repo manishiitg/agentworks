@@ -19,8 +19,21 @@ type CrewScriptDefinition struct {
 	InputPresets     []VariableGroup   `json:"input_presets,omitempty"`
 	Outputs          []string          `json:"outputs,omitempty"`
 	Secrets          []string          `json:"secrets,omitempty"`
+	TimeoutSeconds   *int              `json:"timeout_seconds,omitempty"`
 	ValidationSchema *ValidationSchema `json:"validation_schema,omitempty"`
 	Capabilities     json.RawMessage   `json:"capabilities,omitempty"`
+}
+
+// A script's limit covers its whole Python process, including nested helper calls.
+func (definition *CrewScriptDefinition) executionTimeoutSeconds() (int, error) {
+	if definition == nil || definition.TimeoutSeconds == nil {
+		return 3600, nil
+	}
+	seconds := *definition.TimeoutSeconds
+	if seconds < 1 || seconds > 21600 {
+		return 0, fmt.Errorf("script timeout_seconds must be an integer from 1 to 21600 (6 hours)")
+	}
+	return seconds, nil
 }
 
 func (definition *CrewScriptDefinition) InputDefinitions() *VariablesManifest {
@@ -57,6 +70,9 @@ func ReadCrewScriptDefinition(ctx context.Context, root string, read func(contex
 		return nil, fmt.Errorf("script needs a stable id and a name")
 	}
 	if err := ValidateWorkflowInputDefinitions(definition.InputDefinitions()); err != nil {
+		return nil, err
+	}
+	if _, err := definition.executionTimeoutSeconds(); err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
