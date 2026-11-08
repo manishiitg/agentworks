@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ArrowLeft, ChevronRight, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, ChevronRight, RefreshCw, type LucideIcon } from 'lucide-react'
 
 /** One colour per kind of automation, so a person can tell them apart at a glance (owner, 2026-10-20). */
 export type AutomationTone = 'violet' | 'amber' | 'emerald' | 'sky' | 'rose'
@@ -98,8 +98,9 @@ export function relativeTime(value?: string): string {
  */
 
 /** A page card: title, one hint line and Ask (which posts the request into the Crew chat). */
-export function PageCard({ title, hint, onAsk, action, children, testId }: {
-  title: string; hint?: ReactNode; onAsk?: () => void | Promise<void>; action?: ReactNode; children: ReactNode; testId?: string
+export function PageCard({ title, hint, onAsk, onRefresh, refreshLabel = 'Refresh', refreshing, action, children, testId }: {
+  title: string; hint?: ReactNode; onAsk?: () => void | Promise<void>; onRefresh?: () => void; refreshLabel?: string; refreshing?: boolean
+  action?: ReactNode; children: ReactNode; testId?: string
 }) {
   return <section aria-label={title} data-testid={testId} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
     <div className="flex items-start gap-2 px-4 pt-3 pb-2">
@@ -108,6 +109,9 @@ export function PageCard({ title, hint, onAsk, action, children, testId }: {
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
       {action}
+      {onRefresh && <button type="button" aria-label={refreshLabel} title={refreshLabel} onClick={onRefresh} className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-border text-muted-foreground hover:bg-muted hover:text-foreground">
+        <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
+      </button>}
       {onAsk && <button type="button" onClick={() => void onAsk()} className="shrink-0 rounded-full border border-border px-3 py-0.5 text-xs hover:bg-muted">Ask</button>}
     </div>
     {children != null && children !== false && <div className="divide-y divide-border border-t border-border">{children}</div>}
