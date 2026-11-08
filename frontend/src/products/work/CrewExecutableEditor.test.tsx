@@ -6,6 +6,8 @@ import type { RunFolderInfo, WorkspaceStateResponse } from '../../services/api-t
 
 const api = vi.hoisted(() => ({ loadWorkspaceState: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: {}, agentApi: api }))
+// This editor passes syncWorkflowStore=false; isolate the unrelated store's API dependencies.
+vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({}) } }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 vi.mock('../../utils/workspacePaneChat', () => ({ openWorkspacePaneChatWithDraft: async () => {} }))
 vi.mock('./CrewWorkflowSteps', () => ({ CrewWorkflowSteps: () => <div>Steps</div> }))
