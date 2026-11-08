@@ -30,7 +30,7 @@ func checkSavedScriptRawWebhook(t *testing.T, api *StreamingAPI, binding crewExe
 	if err != nil {
 		t.Fatal(err)
 	}
-	schedule := WorkflowSchedule{ID: id, Name: "Raw script inputs", ScheduleType: "webhook", Enabled: true, ChatID: "main", InputPreset: "Saved", Webhook: &WorkflowWebhookConfig{AuthMode: "bearer", EncryptedSecret: ciphertext, InputMode: "raw", AllowedVariables: []string{"count"}, PayloadMappings: &WorkflowWebhookPayloadMappings{Inputs: map[string]workflowtrigger.InputMapping{"count": {Source: "event.count"}}}}}
+	schedule := WorkflowSchedule{ID: id, Name: "Raw script inputs", ScheduleType: "webhook", Mode: "workshop", WorkshopMode: "run", Enabled: true, ChatID: "main", InputPreset: "Saved", Webhook: &WorkflowWebhookConfig{AuthMode: "bearer", EncryptedSecret: ciphertext, InputMode: "raw", AllowedVariables: []string{"count"}, PayloadMappings: &WorkflowWebhookPayloadMappings{Inputs: map[string]workflowtrigger.InputMapping{"count": {Source: "event.count"}}}}}
 	if err := validateWebhookPayloadMappings(ctx, binding.Root, schedule.Webhook, nil, nil); err != nil {
 		t.Fatal(err)
 	}
