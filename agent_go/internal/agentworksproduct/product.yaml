@@ -147,7 +147,6 @@ chat:
       - get_file_link
       # files action=read/list/search: reading a workflow file is basic (PLAT-856-397).
       - get_llm_config
-      - get_plan_prompt_health
       - get_mcp_server_logs
       - get_report_link
       - get_schedule_runs

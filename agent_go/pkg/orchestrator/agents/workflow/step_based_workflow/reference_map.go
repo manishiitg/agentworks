@@ -890,7 +890,7 @@ func (m *referenceMap) totalsLine() string {
 			warns++
 		}
 	}
-	return fmt.Sprintf("\nWorkflow-wide: %d breaks, %d warnings (get_plan_prompt_health reference_map lists them).", breaks, warns)
+	return fmt.Sprintf("\nWorkflow-wide: %d breaks, %d warnings.", breaks, warns)
 }
 
 // ReferenceMapStepOutputs reads the current context_output files of the given
