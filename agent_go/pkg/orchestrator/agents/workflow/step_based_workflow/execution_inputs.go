@@ -188,6 +188,16 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveRunInputs(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	if hcpo.directCrewScript != nil {
+		// Typed inputs stay a plain value map. Keep their selected label in
+		// the run record so diagnostics/rerun need not guess it from values.
+		// Existing input snapshots return above and never relabel a resumed run.
+		if err := hcpo.upsertRunMetadata(ctx, folder, func(meta map[string]interface{}) {
+			meta["input_preset"] = preset
+		}); err != nil {
+			return nil, fmt.Errorf("save run input preset: %w", err)
+		}
+	}
 	if err := hcpo.WriteWorkspaceFile(ctx, path, string(rawBytes)); err != nil {
 		return nil, fmt.Errorf("save run inputs: %w", err)
 	}
