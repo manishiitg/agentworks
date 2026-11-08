@@ -240,6 +240,7 @@ func TestMutateWorkflowDBRollsBackAllStatements(t *testing.T) {
 	_ = db.Close()
 
 	recorder := postWorkflowDBTest(t, router, "/api/mutate", models.MutationRequest{DBPath: rel, Statements: []models.MutationStatement{
+		{SQL: "CREATE TABLE IF NOT EXISTS staged (id INTEGER)"},
 		{SQL: "INSERT INTO facts(value) VALUES (?)", Params: []any{"same"}},
 		{SQL: "INSERT INTO facts(value) VALUES (?)", Params: []any{"same"}},
 	}})
@@ -252,6 +253,10 @@ func TestMutateWorkflowDBRollsBackAllStatements(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer check.Close()
+	var staged int
+	if err := check.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='staged'").Scan(&staged); err != nil || staged != 0 {
+		t.Fatalf("schema survived rollback: %d %v", staged, err)
+	}
 	var count int
 	if err := check.QueryRow(`SELECT COUNT(*) FROM facts`).Scan(&count); err != nil {
 		t.Fatal(err)

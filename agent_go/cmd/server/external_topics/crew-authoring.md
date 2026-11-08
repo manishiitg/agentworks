@@ -54,8 +54,9 @@ and company receiving setup retain their human consent flows. Every call require
 existing `crews:write` consent and a current editable account. Shell commands
 run inside the Crew sandbox with the connection's file guard, default timeout
 25 seconds. Browser, database and connected integration operations require unrestricted Crew file
-consent. Author migration files in `db/migrations/` through the sandboxed shell,
-then apply their bare filenames with the managed migration tool. Database
+consent. Create tables or indexes with `database action=mutate` and
+`CREATE TABLE IF NOT EXISTS` or `CREATE INDEX IF NOT EXISTS`; ALTER and DROP
+are refused. Database
 reads remain available through `query_database`. These calls do not borrow or
 start the owner's chat; inspect results before retrying a mutation. Use
 `crew_execution action=history` for the last 100 owner-only audit records: connection,

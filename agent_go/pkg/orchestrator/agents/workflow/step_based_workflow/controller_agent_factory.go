@@ -363,8 +363,7 @@ func grantScriptBridgeSessionDB(sessionID, workspacePath, dbAccess string) {
 // steps and workshop child agents, so they need an explicit exported entry
 // point rather than duplicating the logical grant and raw-file deny rules.
 //
-// Managed sessions must use query_workflow_db, mutate_workflow_db, and
-// apply_workflow_db_migration. Raw access to db.sqlite and its WAL/SHM
+// Managed sessions must use query_workflow_db and mutate_workflow_db. Raw access to db.sqlite and its WAL/SHM
 // sidecars stays blocked even when the surrounding db/ folder is writable for
 // migrations, documentation, and db/assets.
 func ConfigureManagedWorkflowDBSession(sessionID, workspacePath string, readWrite bool) {
@@ -1096,14 +1095,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) prepareExecutionTools(stepConfig *Age
 	if dbAccess == DBAccessRead || dbAccess == DBAccessNone {
 		filtered := toolsToRegister[:0]
 		for _, tool := range toolsToRegister {
-			if tool.Function != nil && (tool.Function.Name == "mutate_workflow_db" || tool.Function.Name == "apply_workflow_db_migration" || (dbAccess == DBAccessNone && tool.Function.Name == "query_workflow_db")) {
+			if tool.Function != nil && (tool.Function.Name == "mutate_workflow_db" || (dbAccess == DBAccessNone && tool.Function.Name == "query_workflow_db")) {
 				continue
 			}
 			filtered = append(filtered, tool)
 		}
 		toolsToRegister = filtered
 		delete(executorsToUse, "mutate_workflow_db")
-		delete(executorsToUse, "apply_workflow_db_migration")
 		if dbAccess == DBAccessNone {
 			delete(executorsToUse, "query_workflow_db")
 		}

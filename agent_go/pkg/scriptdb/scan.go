@@ -20,18 +20,16 @@ import (
 type Finding struct {
 	File string   `json:"file"`
 	Raw  []string `json:"raw_db,omitempty"` // direct database access, each "line N: <code>"
-	DDL  []string `json:"ddl,omitempty"`    // schema statements, each "line N: <code>"
 }
 
 // Clean reports that the script needs nothing converted.
-func (f Finding) Clean() bool { return len(f.Raw) == 0 && len(f.DDL) == 0 }
+func (f Finding) Clean() bool { return len(f.Raw) == 0 }
 
 var (
 	// The workflow's own database is reached through $DB_PATH or the db.sqlite
 	// file name. A bare sqlite3 import is not flagged: a script or a Relay
 	// Python tool may read a user's own SQLite file (PLAT-423).
 	rawDBPattern = regexp.MustCompile(`\bDB_PATH\b|\bdb\.sqlite\b`)
-	ddlPattern   = regexp.MustCompile(`(?i)\b(CREATE\s+(TEMP\w*\s+|UNIQUE\s+|VIRTUAL\s+)?(TABLE|INDEX|VIEW|TRIGGER)|ALTER\s+TABLE|DROP\s+(TABLE|INDEX|VIEW|TRIGGER))\b`)
 )
 
 // maxEvidence bounds the lines reported per script and kind.
@@ -69,9 +67,6 @@ func ScanSource(file, source string) Finding {
 		}
 		if rawDBPattern.MatchString(trimmed) && len(finding.Raw) < maxEvidence {
 			finding.Raw = append(finding.Raw, note())
-		}
-		if ddlPattern.MatchString(trimmed) && len(finding.DDL) < maxEvidence {
-			finding.DDL = append(finding.DDL, note())
 		}
 	}
 	return finding
@@ -121,9 +116,6 @@ func Summary(findings []Finding) string {
 		fmt.Fprintf(&b, "- code/%s", f.File)
 		if len(f.Raw) > 0 {
 			fmt.Fprintf(&b, " opens the database directly (%s)", f.Raw[0])
-		}
-		if len(f.DDL) > 0 {
-			fmt.Fprintf(&b, "; schema statement (%s): a migration, not a script", f.DDL[0])
 		}
 		b.WriteString("\n")
 	}
