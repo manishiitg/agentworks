@@ -2,20 +2,27 @@
 
 Each call runs normally. Saved results are reused only when the platform
 explicitly resumes a previous execution in the same run folder.
+
+Typed saved-script example::
+
+    result = run_script("report", {"count": 3})
+    if result.ok and result.output_dir is not None:
+        for output in result.outputs:
+            print(output.read_text())
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import inspect
 import json
 import os
 from pathlib import Path
 import threading
-from typing import Any
+from typing import Any, Mapping, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "check", "notify", "run_folder"]
+__all__ = ["AutomationError", "Reply", "check", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue"]
 
 
 
@@ -32,6 +39,16 @@ class Reply:
     log_file: Path | None = None
     log_complete: bool = False
     log_error: str = ""
+
+
+JSONValue: TypeAlias = Union[None, bool, int, float, str, list["JSONValue"], dict[str, "JSONValue"]]
+
+
+@dataclass(frozen=True)
+class ScriptResult(Reply):
+    """Saved-script outputs; output_dir is None if no invocation folder was prepared."""
+    output_dir: Path | None = None
+    outputs: list[Path] = field(default_factory=list)
 
 
 _order = 0
@@ -79,12 +96,21 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
             raise AutomationError("The helper returned an unreadable receipt. Check this run.") from error
     if not isinstance(result, dict):
         raise AutomationError("The helper returned an unreadable receipt. Check this run.")
-    return Reply(ok=bool(result.get("ok")), text=result.get("text", ""),
+    reply = Reply(ok=bool(result.get("ok")), text=result.get("text", ""),
                  conversation_id=result.get("conversation_id", ""),
                  error=result.get("error", ""),
                  log_file=Path(result["log_file"]) if result.get("log_file") else None,
                  log_complete=bool(result.get("log_complete")),
                  log_error=result.get("log_error", ""))
+    if action == "run_script":
+        value = result.get("value") or {}
+        directory = value.get("output_dir")
+        return ScriptResult(ok=reply.ok, error=reply.error, text=reply.text,
+                            conversation_id=reply.conversation_id, log_file=reply.log_file,
+                            log_complete=reply.log_complete, log_error=reply.log_error,
+                            output_dir=Path(directory) if directory else None,
+                            outputs=[Path(path) for path in value.get("outputs", [])])
+    return reply
 
 
 def notify(text: str, *, key: str | None = None, redo: bool = False) -> Reply:
@@ -104,3 +130,18 @@ def check(name: str, ok: bool, detail: str = "", *, key: str | None = None,
         return _call("check", {"name": name, "ok": ok, "detail": detail}, key, redo)
     except AutomationError as error:
         return Reply(ok=False, error=str(error))
+
+
+def run_script(script_id: str, inputs: Mapping[str, JSONValue], *,
+               key: str | None = None, redo: bool = False) -> ScriptResult:
+    """Run this Crew's saved script; return typed output folder and file paths.
+
+    Output contents stay ordinary files. This helper never parses them.
+    """
+    try:
+        reply = _call("run_script", {"id": script_id, "inputs": dict(inputs)}, key, redo)
+        if isinstance(reply, ScriptResult):
+            return reply
+        return ScriptResult(ok=False, error="The saved script returned an unreadable receipt.")
+    except AutomationError as error:
+        return ScriptResult(ok=False, error=str(error))
