@@ -12,7 +12,7 @@ The server runs it in that Crew with its current permissions and connected apps.
 An optional `timeout_seconds` in `script.json` limits the whole script, including
 its helper calls: default 3600 seconds, allowed integers 1 through 21600 (six
 hours). Stop can end it sooner.
-You can ask the Crew's Builder chat to create or change it; no terminal is needed.
+You can ask the Crew's agent to create or change it; no terminal is needed.
 
 ## Find and edit
 
