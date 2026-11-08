@@ -93,7 +93,6 @@ type pythonAgentArguments struct {
 	Tools          []string `json:"tools"`
 	Browser        bool     `json:"browser"`
 	Knowledge      string   `json:"knowledge"`
-	CanAskPerson   bool     `json:"can_ask_person"`
 	TimeoutSeconds *float64 `json:"timeout_seconds"`
 	ConversationID string   `json:"conversation_id"`
 }
@@ -149,7 +148,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		if saved.WorkspacePath != hcpo.GetWorkspacePath() || saved.RunFolder != hcpo.selectedRunFolder || saved.ParentStepID != parent.GetID() || saved.StepID != args.ConversationID {
 			return nil, nil, fmt.Errorf("This conversation does not belong to this script and run.")
 		}
-		if args.Knowledge != "" && args.Knowledge != saved.Settings.Knowledge || args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || len(args.Tools) > 0 && !reflect.DeepEqual(args.Tools, saved.Settings.Tools) || args.Browser && !saved.Settings.Browser || args.CanAskPerson && !saved.Settings.CanAskPerson {
+		if args.Knowledge != "" && args.Knowledge != saved.Settings.Knowledge || args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || len(args.Tools) > 0 && !reflect.DeepEqual(args.Tools, saved.Settings.Tools) || args.Browser && !saved.Settings.Browser {
 			return nil, nil, fmt.Errorf("A continued conversation keeps its original model, tier and resource selections. Start a fresh agent to change them.")
 		}
 	} else {
@@ -206,9 +205,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 
 	selection := &pythonAgentSelection{Servers: append([]string{}, saved.Settings.MCP...), Browser: saved.Settings.Browser}
 	saved.Config.EnabledCustomTools = []string{"workspace_advanced:*"}
-	if saved.Settings.CanAskPerson {
-		saved.Config.EnabledCustomTools = append(saved.Config.EnabledCustomTools, "human_tools:needs_you.ask")
-	}
 	for _, requested := range saved.Settings.Tools {
 		// Files, terminal and browser use the coding agent's native tools.
 		// Old step lists may carry this category; it adds no optional app.
@@ -233,8 +229,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		}
 		for _, tool := range matched {
 			name := tool.Function.Name
-			if name == "human_feedback" && !saved.Settings.CanAskPerson || name == "agent_browser" && !saved.Settings.Browser {
-				return nil, nil, fmt.Errorf("Use can_ask_person or browser to enable that capability explicitly.")
+			if name == "agent_browser" && !saved.Settings.Browser {
+				return nil, nil, fmt.Errorf("Use browser=True to enable this automation's browser.")
 			}
 			if enabled[name] == nil {
 				return nil, nil, fmt.Errorf("Tool %q is unavailable to this automation.", requested)
@@ -258,7 +254,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 			}
 		}
 	}
-	for toolName, requested := range map[string]bool{"agent_browser": saved.Settings.Browser, "human_feedback": saved.Settings.CanAskPerson} {
+	for toolName, requested := range map[string]bool{"agent_browser": saved.Settings.Browser} {
 		if !requested {
 			continue
 		}
@@ -276,8 +272,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 			return nil, nil, fmt.Errorf("The requested %s tool is unavailable to this automation; connect it in the Crew or turn off that selection.", toolName)
 		}
 	}
-	// A timer starts without a person message; an explicitly authored question
-	// still uses the existing bounded human-feedback service, like a Crew turn.
 	available := append([]string{}, hcpo.GetSelectedServers()...)
 	if PlaceMCPServers != nil {
 		names, _ := PlaceMCPServers(ctx, hcpo.GetWorkspacePath())

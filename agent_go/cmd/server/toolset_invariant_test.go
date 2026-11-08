@@ -117,11 +117,12 @@ func TestToolSetInvariants(t *testing.T) {
 			t.Fatalf("filtered workflow pool contains %d definitions for %q", count, name)
 		}
 	}
-	for _, n := range []string{"human_feedback", "record_summary", "get_human_input_request", "create_human_input_request", "answer_human_input_request", "mark_human_input_consumed"} {
-		if !pool[n] || cats[n] != "human_tools" {
-			t.Fatalf("workflow pool missing human tool %q (in_pool=%v cat=%q)", n, pool[n], cats[n])
+	for _, n := range []string{"record_summary", "get_notification_history", "create_human_input_request"} {
+		if pool[n] {
+			t.Fatalf("workflow pool exposed retired tool %s", n)
 		}
 	}
+
 	if pool["submit_human_answer"] {
 		t.Fatal("workflow pool still exposes removed submit_human_answer tool")
 	}
@@ -230,8 +231,8 @@ func TestPrimaryWorkflowBuilderChatExcludesBlockingHumanFeedback(t *testing.T) {
 	if agentworksproduct.ChatAllowsTool("builder", "human_feedback") {
 		t.Fatal("Workflow Builder must not expose human_feedback")
 	}
-	if !agentworksproduct.ChatAllowsTool("builder", "record_summary") {
-		t.Fatal("Workflow Builder must retain non-blocking record_summary")
+	if agentworksproduct.ChatAllowsTool("builder", "record_summary") {
+		t.Fatal("Workflow Builder exposed retired summary tool")
 	}
 	if !agentworksproduct.ChatAllowsTool("run", "human_feedback") {
 		t.Fatal("non-Builder execution contexts must retain human_feedback")

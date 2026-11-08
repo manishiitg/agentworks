@@ -66,9 +66,6 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"kb_write_grants":       names,
 		"browser_mode":          map[string]any{"type": "string", "enum": browser.ConfigurationModes()},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
-			"run_instructions":    map[string]any{"type": "string", "maxLength": 4000},
-			"run_channels":        names,
-			"run_recipients":      names,
 			"gmail_connection_id": map[string]any{"type": "string", "description": "An enabled Gmail account already added to this product. Empty clears the selection."},
 			"exclude_channels":    names,
 			"break_alerts":        map[string]any{"type": "boolean", "description": "Tell me when something breaks: show a run status in Needs you. On unless turned off. AgentWorks reports progress; configured team delivery is separate."},
@@ -462,7 +459,7 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		GlobalSecrets: caps.SelectedGlobalSecretNames, BrowserMode: caps.BrowserMode, BrowserCDPPort: caps.BrowserCDPPort}
 	notifications := func(c WorkflowCapabilities) map[string]any {
 		if n := c.Notifications; n != nil {
-			return map[string]any{"run_instructions": n.RunSummaryInstructions, "run_channels": n.RunSummaryChannels, "run_recipients": n.RunSummaryRecipients, "gmail_connection_id": n.GmailConnectionID, "exclude_channels": n.ExcludeChannels, "break_alerts": n.BreakAlertsEnabled(), "wake_tab": n.WakeTab}
+			return map[string]any{"gmail_connection_id": n.GmailConnectionID, "exclude_channels": n.ExcludeChannels, "break_alerts": n.BreakAlertsEnabled(), "wake_tab": n.WakeTab}
 		}
 		return map[string]any{"break_alerts": true}
 	}
@@ -515,17 +512,6 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		req.ChatInstructions = &state.ChatInstructions
 	}
 	if n, ok := args["notifications"].(map[string]any); ok {
-		if v, ok := n["run_instructions"].(string); ok {
-			req.RunNotificationInstructions = &v
-		}
-		if _, ok := n["run_channels"]; ok {
-			v := externalSettingsList(args, "notifications", "run_channels")
-			req.RunNotificationChannels = &v
-		}
-		if _, present := n["run_recipients"]; present {
-			values := externalSettingsList(args, "notifications", "run_recipients")
-			req.RunNotificationRecipients = &values
-		}
 		if value, present := n["gmail_connection_id"].(string); present {
 			req.NotificationGmailConnectionID = &value
 		}

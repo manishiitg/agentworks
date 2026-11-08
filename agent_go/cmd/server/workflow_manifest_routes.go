@@ -254,8 +254,6 @@ type UpdateWorkflowManifestRequest struct {
 	WorkflowContextPaths *[]string                                    `json:"workflow_context_paths,omitempty"`
 	// Notification instruction fields are standalone patches so the Notify
 	// popup can update content guidance without replacing workflow capabilities.
-	RunNotificationInstructions *string   `json:"run_notification_instructions,omitempty"`
-	RunNotificationChannels     *[]string `json:"run_notification_channels,omitempty"`
 	// BreakAlerts controls informational run statuses in Needs you.
 	BreakAlerts *bool `json:"break_alerts,omitempty"`
 	// WakeTab names the Crew tab to message when a run fails or never ran; an
@@ -263,7 +261,6 @@ type UpdateWorkflowManifestRequest struct {
 	WakeTab *WorkflowWakeTab `json:"wake_tab,omitempty"`
 	// Recipient lists are pointers so an explicitly sent empty array clears them
 	// (stopping summary email) while omission leaves them untouched.
-	RunNotificationRecipients *[]string `json:"run_notification_recipients,omitempty"`
 	// One sender for this workflow's Gmail notifications. Empty inherits the
 	// account default.
 	NotificationGmailConnectionID *string `json:"notification_gmail_connection_id,omitempty"`
@@ -279,11 +276,8 @@ func mergeWorkflowCapabilitiesUpdate(existing WorkflowCapabilities, incoming *Wo
 	// reference unless the caller explicitly sends that newer field.
 	if updated.Notifications == nil {
 		updated.Notifications = existing.Notifications
-	} else if strings.TrimSpace(updated.Notifications.RunSummaryInstructions) == "" &&
-		len(updated.Notifications.RunSummaryChannels) == 0 &&
-		len(updated.Notifications.ExcludeChannels) == 0 &&
+	} else if len(updated.Notifications.ExcludeChannels) == 0 &&
 		strings.TrimSpace(updated.Notifications.GmailConnectionID) == "" &&
-		len(updated.Notifications.RunSummaryRecipients) == 0 &&
 		updated.Notifications.BreakAlerts == nil && updated.Notifications.WakeTab == nil {
 		// An explicitly supplied empty object clears workflow notification preferences.
 		updated.Notifications = nil
@@ -472,35 +466,11 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		}
 	}
 
-	if req.RunNotificationInstructions != nil ||
-		req.RunNotificationChannels != nil ||
-		req.RunNotificationRecipients != nil ||
-		req.NotificationGmailConnectionID != nil {
-		runInstructions := ""
-		if manifest.Capabilities.Notifications != nil {
-			runInstructions = manifest.Capabilities.Notifications.EffectiveRunSummaryInstructions()
-		}
-		if req.RunNotificationInstructions != nil {
-			runInstructions = strings.TrimSpace(*req.RunNotificationInstructions)
-		}
-		if manifest.Capabilities.Notifications == nil && (runInstructions != "" ||
-			req.RunNotificationChannels != nil ||
-			req.RunNotificationRecipients != nil ||
-			req.NotificationGmailConnectionID != nil) {
+	if req.NotificationGmailConnectionID != nil {
+		if manifest.Capabilities.Notifications == nil {
 			manifest.Capabilities.Notifications = &WorkflowNotificationConfig{}
 		}
-		if manifest.Capabilities.Notifications != nil {
-			manifest.Capabilities.Notifications.RunSummaryInstructions = runInstructions
-			if req.RunNotificationChannels != nil {
-				manifest.Capabilities.Notifications.RunSummaryChannels = normalizeNotificationChannels(*req.RunNotificationChannels)
-			}
-			if req.RunNotificationRecipients != nil {
-				manifest.Capabilities.Notifications.RunSummaryRecipients = normalizeNotificationRecipients(*req.RunNotificationRecipients)
-			}
-			if req.NotificationGmailConnectionID != nil {
-				setWorkflowNotificationSender(manifest.Capabilities.Notifications, *req.NotificationGmailConnectionID)
-			}
-		}
+		setWorkflowNotificationSender(manifest.Capabilities.Notifications, *req.NotificationGmailConnectionID)
 	}
 
 	// Write updated manifest

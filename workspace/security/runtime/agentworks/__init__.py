@@ -26,7 +26,7 @@ from typing import Any, Mapping, Sequence, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step"]
+__all__ = ["AutomationError", "Reply", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack"]
 
 
 
@@ -280,10 +280,29 @@ def function_status(call_id: str) -> FunctionResult:
         return FunctionResult(ok=False, error=str(error))
 
 
+def send_email(to: str | Sequence[str], subject: str, body: str,
+               attachments: Sequence[str | Path] = ()) -> Reply:
+    """Send explicitly through the existing mail account and recipient checks."""
+    recipients = [to] if isinstance(to, str) else list(to)
+    try:
+        return _call("send_email", {"to": recipients, "subject": subject, "body": body,
+                                    "attachments": [str(p) for p in attachments]}, None, False)
+    except AutomationError as error:
+        return Reply(ok=False, error=str(error))
+
+
+def send_slack(channel: str, text: str) -> Reply:
+    """Send to an existing configured Slack route; arbitrary channels are refused."""
+    try:
+        return _call("send_slack", {"route_id": channel, "message": text}, None, False)
+    except AutomationError as error:
+        return Reply(ok=False, error=str(error))
+
+
 def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
           tier: str | None = None, scripts: Sequence[str] = (),
           mcp: Sequence[str] = (), skills: Sequence[str] = (), tools: Sequence[str] = (),
-          browser: bool = False, knowledge: str | None = None, can_ask_person: bool = False,
+          browser: bool = False, knowledge: str | None = None,
           timeout_seconds: float | None = None, conversation_id: str | None = None,
           key: str | None = None, redo: bool = False) -> Reply:
     """Run ordinary agent turns in this run folder, with no external MCPs by default.
@@ -292,17 +311,12 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     pass reply.conversation_id; omitted settings retain its original selections.
     knowledge defaults to "read" for the owning workflow; "write" also allows
     its normal knowledge-note writes. Continued conversations keep their setting.
-    browser uses this automation's connected browser. can_ask_person allows
-    questions that wait for a person's answer; both are off by default.
+    browser uses this automation's connected browser and defaults to False.
     tools names existing category:tool selections, for example
     human_tools:integrations.google. It cannot add an unavailable app or login.
-    An explicit can_ask_person also applies to scheduled runs; question waits
-    stay bounded and do not silently cancel the agent.
-    Browser calls share the workflow's existing browser session and profile,
-    including its configured operator Chrome connection. timeout_seconds=None
-    adds no helper timer beyond the parent deadline. Each person question uses
-    the existing five-minute default, at most thirty minutes. Its timeout is
-    returned to the agent; Python can decide on another call after the reply.
+    Workflow agents never wait for a person. Browser calls share the workflow's
+    existing browser session and profile. timeout_seconds=None adds no helper
+    timer beyond the parent deadline.
     ok means the provider turn completed, not that its task or files are valid.
     Python checks the answer and artifacts, including any failure stated in text.
     text is a bounded preview. For task/status checks, read the full last final
@@ -322,7 +336,7 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
         return _call("agent", {"name": name, "messages": messages, "model": model,
                      "tier": tier, "scripts": list(scripts), "mcp": list(mcp),
                      "skills": list(skills), "tools": list(tools), "browser": browser,
-                     "knowledge": knowledge, "can_ask_person": can_ask_person, "timeout_seconds": timeout_seconds,
+                     "knowledge": knowledge, "timeout_seconds": timeout_seconds,
                      "conversation_id": conversation_id, "source_call": source_call}, key, redo)
     except AutomationError as error:
         return Reply(ok=False, error=str(error))
