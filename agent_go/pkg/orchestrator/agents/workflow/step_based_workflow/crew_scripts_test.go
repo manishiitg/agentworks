@@ -57,9 +57,9 @@ func (r *savedCrewScriptFixture) ResolveCrewScript(_ context.Context, workspace 
 	return r.configuration, nil
 }
 
-// PLAT-746-265: direct script execution and two referencing workflows use the
-// same Python source, typed contract, and invocation-local recorded source.
-func TestCrewSavedScriptRunsDirectlyAndAcrossWorkflowReferences(t *testing.T) {
+// PLAT-746-265/471: saved Python runs keep typed inputs, declared secrets and
+// invocation-local frozen source; old plans no longer launch this runner.
+func TestCrewSavedScriptRunsWithCanonicalInputsAndFrozenSource(t *testing.T) {
 	if runtime.GOOS == "linux" {
 		root, err := os.MkdirTemp(".", ".script-reference-fixture-")
 		if err != nil {
@@ -152,10 +152,6 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		if expectMissingSecret {
 			delete(cfg.WorkspaceEnvRef, "SECRET_DECLARED")
 		}
-		if workspace == "Workflow/second" {
-			// PLAT-746: scheduler options must retain the saved-script resolver.
-			cfg.ScheduleInvocation = &ScheduleInvocation{ScheduleID: "timer", RunID: "scheduled-script", RunFolder: "run-scheduled-script"}
-		}
 		session, err := NewWorkshopChatSession(ctx, cfg)
 		if err != nil {
 			t.Fatal(err)
@@ -196,19 +192,6 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		}
 		for _, folder := range folders {
 			if folder.IsDir() && strings.HasPrefix(folder.Name(), "run-") && !previous[folder.Name()] {
-				if workspace != directWorkspace {
-					// PR498: inspecting an actual flat run must not require a retired group.
-					manager := &InteractiveWorkshopManager{controller: session.controller}
-					output, err := manager.debugStep(ctx, map[string]interface{}{"step_id": "use-script", "run_folder": folder.Name()})
-					if err != nil || !strings.Contains(output, "### Scripted execution") || !strings.Contains(output, "runs/"+folder.Name()+"/logs/") {
-						t.Fatalf("inspect saved script run: %s %v", output, err)
-					}
-					for _, invalid := range []string{"", "../other", "run-one/preset"} {
-						if _, err := manager.debugStep(ctx, map[string]interface{}{"step_id": "use-script", "run_folder": invalid}); err == nil {
-							t.Fatalf("invalid run path accepted: %q", invalid)
-						}
-					}
-				}
 				return filepath.Join(docs, workspace, "runs", folder.Name())
 			}
 		}
@@ -220,6 +203,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	if err != nil || !strings.Contains(string(data), `"count": 3`) {
 		t.Fatalf("direct result %s %v", data, err)
 	}
+	resolver.configuration.Files["helper/values.py"] = []byte("def revision(): return 'second'\n")
 	// PLAT-746: a converted schedule/function preset must select its saved
 	// typed values rather than silently reverting to defaults.
 	preset := run(directWorkspace, map[string]interface{}{"input_preset": "second"})
@@ -227,9 +211,18 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	if err != nil || !strings.Contains(string(data), `"count": 9`) || preset == direct {
 		t.Fatalf("preset result %s %v", data, err)
 	}
+	previousSource, err := os.ReadFile(filepath.Join(direct, "execution/qualify/code/helper/values.py"))
+	if err != nil || !strings.Contains(string(previousSource), "'first'") || !strings.Contains(string(data), `"revision": "second"`) {
+		t.Fatalf("next run changed historical source or ignored the edited source: %s %s %v", previousSource, data, err)
+	}
+	defaults := run(directWorkspace, nil)
+	data, err = os.ReadFile(filepath.Join(defaults, "execution/qualify/result.json"))
+	if err != nil || !strings.Contains(string(data), `"count": 2`) {
+		t.Fatalf("default result %s %v", data, err)
+	}
 	// PLAT-746-468: equal resolved values cannot identify which preset a
 	// person selected; diagnostics and rerun need the saved label as well.
-	for folder, expected := range map[string]string{direct: "", preset: "second"} {
+	for folder, expected := range map[string]string{direct: "", preset: "second", defaults: ""} {
 		raw, err := os.ReadFile(filepath.Join(folder, "run_metadata.json"))
 		var metadata map[string]interface{}
 		if err != nil || json.Unmarshal(raw, &metadata) != nil || metadata["input_preset"] != expected {
@@ -266,69 +259,4 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	if _, err := os.Stat(filepath.Join(docs, root, "workflow.json")); !os.IsNotExist(err) {
 		t.Fatal("script saved a duplicate workflow definition")
 	}
-	var previousSource string
-	for _, workspace := range []string{"Workflow/first", "Workflow/second"} {
-		write(workspace+"/workflow.json", `{"code_layout_version":1}`)
-		write(workspace+"/variables/variables.json", `{"variables":[{"name":"COUNT","type":"integer","value":"7"}]}`)
-		write(workspace+"/planning/plan.json", `{"steps":[{"id":"use-script","type":"scripted","title":"Qualify","description":"Run the saved script","script":"qualify","script_inputs":{"count":{"input":"COUNT"}},"context_output":"result.json"}]}`)
-		expectedCount := `"count": 7`
-		if workspace == "Workflow/second" {
-			resolver.configuration.Files["helper/values.py"] = []byte("def revision(): return 'second'\n")
-			write(workspace+"/planning/plan.json", `{"steps":[{"id":"produce","type":"scripted","script_only":true,"title":"Prior output","description":"Write the prior count","context_output":"prior.json"},{"id":"use-script","type":"scripted","title":"Qualify","description":"Run the saved script","script":"qualify","context_dependencies":["prior.json"],"script_inputs":{"count":{"output":"prior.json","field":"count"}},"context_output":"result.json"}]}`)
-			write(workspace+"/code/produce/main.py", "import json, os\nfrom pathlib import Path\nPath(os.environ['STEP_OUTPUT_DIR'],'prior.json').write_text(json.dumps({'count':11}))\n")
-			expectedCount = `"count": 11`
-		}
-		runRoot := run(workspace, nil)
-		result, err := os.ReadFile(filepath.Join(runRoot, "execution/use-script/result.json"))
-		if err != nil || !strings.Contains(string(result), expectedCount) {
-			t.Fatalf("workflow %s result %s %v", workspace, result, err)
-		}
-		saved, err := os.ReadFile(filepath.Join(runRoot, "execution/use-script/code/main.py"))
-		if err != nil || string(saved) != source {
-			t.Fatal("executed source not retained", err)
-		}
-		if workspace == "Workflow/first" {
-			previousSource = filepath.Join(runRoot, "execution/use-script/code/helper/values.py")
-		} else {
-			old, _ := os.ReadFile(previousSource)
-			if !strings.Contains(string(old), "'first'") || !strings.Contains(string(result), `"revision": "second"`) {
-				t.Fatalf("updated source changed history or was not used on next run: %s %s", old, result)
-			}
-		}
-	}
-	// PLAT-746-353: a required script inside an agent must use the same saved
-	// definition and typed runner, without a duplicate inline parameter schema.
-	const requiredRoot = "Workflow/required"
-	write(requiredRoot+"/workflow.json", `{"code_layout_version":1}`)
-	write(requiredRoot+"/planning/plan.json", `{"steps":[{"id":"agent","type":"agent","title":"Agent","description":"Read inputs","items":[{"id":"batch","type":"scripted","scripted_steps":[{"id":"one","step_id":"saved","parameters":{"count":9}}]}]}],"orphan_steps":[{"id":"saved","type":"scripted","title":"Saved","description":"Use saved source","script":"qualify","script_only":true}]}`)
-	session, err := NewWorkshopChatSession(ctx, &WorkshopConfig{WorkspacePath: requiredRoot, Logger: loggerv2.NewNoop(), CrewResources: &CrewResources{Scripts: resolver}, WorkspaceEnvRef: map[string]string{"SECRET_DECLARED": secretValue, "SECRET_UNDECLARED": "other-selected-fixture-value"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-	plan, err := session.controller.ReadCurrentPlan(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	parent := plan.Steps[0].(*AgentPlanStep)
-	runtime := &agentSequenceSession{scriptedPlan: plan}
-	session.controller.selectedRunFolder = "run-required"
-	item := parent.Items[0]
-	item.ScriptedSteps[0].Parameters["count"] = "invalid"
-	if _, err := session.controller.executeAgentScripts(ctx, parent, item, 0, "agent", runtime); err == nil {
-		t.Fatal("required script accepted wrong input type")
-	}
-	item.ScriptedSteps[0].Parameters["count"] = 9
-	if _, err := session.controller.executeAgentScripts(ctx, parent, item, 0, "agent", runtime); err != nil {
-		t.Fatal(err)
-	}
-	outputs, _ := filepath.Glob(filepath.Join(docs, requiredRoot, "runs/run-required/execution/*/scripts/items/batch/calls/one/result.json"))
-	if len(outputs) != 1 {
-		t.Fatalf("required script result missing: %v", outputs)
-	}
-	result, _ := os.ReadFile(outputs[0])
-	if !strings.Contains(string(result), `"count": 9`) {
-		t.Fatalf("required script result: %s", result)
-	}
-
 }
