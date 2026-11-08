@@ -138,7 +138,7 @@ type StepLine = { key: string; title: string; record?: WorkspaceStepInspection; 
 export function runStepLines(records: WorkspaceStepInspection[], outline: RelaySourceGraph | null, persistedSteps: RunPythonStep[] = []): StepLine[] {
   const recordLine = (record: WorkspaceStepInspection, title?: string): StepLine => ({ key: `${record.inspection.session_id}:${record.inspection.execution_id}`, title: title || record.inspection.name || record.inspection.step_id || '', record })
   const persistedLine = (step: RunPythonStep, title?: string): StepLine => ({ key: `persisted:${step.id}`, title: title || step.name, persisted: step })
-  const extra = [...persistedSteps].filter(step => !records.some(record => record.inspection.execution_id === step.execution_id)).sort((a, b) => a.started_at.localeCompare(b.started_at))
+  const extra = [...persistedSteps].filter(step => !records.some(record => record.inspection.execution_id === step.id)).sort((a, b) => a.started_at.localeCompare(b.started_at))
   if (!outline) return [...records.map(record => recordLine(record)), ...extra.map(step => persistedLine(step))]
   const named = outline.nodes.filter(node => !node.id.startsWith('other-') && (node.type === 'script' || node.type === 'agent'))
   const used = new Set<WorkspaceStepInspection | RunPythonStep>()
@@ -271,7 +271,7 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
       const spent = stepCost(record)
       const isOpen = target?.execution_id === record.inspection.execution_id && target.session_id === record.inspection.session_id
       return <PageRow key={line.key} lead={<RunDot state={stepDot(record.status)} />} title={line.title}
-        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(persistedSteps.find(step => step.execution_id === record.inspection.execution_id)?.id ?? '')]} aside={spent !== undefined ? formatCost(spent) : undefined}
+        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(record.inspection.execution_id)]} aside={spent !== undefined ? formatCost(spent) : undefined}
         open={isOpen} onToggle={() => setTarget(isOpen ? null : record.inspection)}>
         <div className="h-[60vh] min-h-72 overflow-hidden rounded-lg border border-border bg-background"><Suspense fallback={<p className="p-3 text-xs text-muted-foreground">Loading…</p>}><Inspect target={record.inspection} /></Suspense></div>
       </PageRow>

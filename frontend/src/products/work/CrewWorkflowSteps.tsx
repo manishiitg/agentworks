@@ -96,6 +96,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
       ? <OutlineRows nodes={nodes} byName={byName} checkLines={checkLines} numbered open={open} toggle={toggle} />
       : !latestSteps.length ? <div className="flex items-center gap-3 px-4 py-3"><p className="min-w-0 flex-1 text-xs text-muted-foreground">No steps to show yet. They appear once the workflow has run, or you can read its code.</p><RowButton onClick={onCode}>View code</RowButton></div>
       : latestSteps.map((step, index) => <PageRow key={step.id} lead={<StepNumber n={index + 1} status={step.status} />} title={step.name} lines={[step.detail, checkLines.get(step.id)]} />)}
+    {!!state.graph?.unkeyed_calls?.length && <p className="px-4 py-3 text-xs text-muted-foreground">{state.graph.unkeyed_calls.length} calls have no saved-result key; add one so a failed run can continue.</p>}
     {note && <p className="px-4 py-3 text-xs text-muted-foreground">{nodes.length ? note : `${note} The steps above are from the latest run.`}</p>}
   </PageCard>
 }
