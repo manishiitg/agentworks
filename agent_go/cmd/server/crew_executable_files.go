@@ -17,7 +17,7 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's single workflow and reusable Python scripts. Use routes in the existing workflow for different tasks; list before creating. list returns workflow ID, workspace_path and agents. upgrade takes workflow_id: omit version to see status, the next update instructions and current check failures; supply version and reason after completing them to check and stamp. A failed check never stamps. read takes workspace_path and file. edit changes named steps or inputs, or manages schedules/webhooks; describe gives schemas. Functions use functions with project=workspace_path. Omitted steps stay unchanged; deletion is explicit. write is for code/script.json, never whole plans/config/inputs. Run with functions action=run_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's single workflow and reusable Python scripts. Use routes in the existing workflow for different tasks; list before creating. list returns workflow ID, workspace_path and agents. upgrade takes workflow_id: omit version to see status, the next update instructions and current check failures; supply version and reason after completing them to check and stamp. A failed check never stamps. read takes workspace_path and file. edit changes named steps or inputs, or manages schedules/webhooks; describe lists the operations, and describe with operation returns that operation's schema. A large planning/plan.json read comes back in pages; pass step_id/step_ids for named steps. Functions use functions with project=workspace_path. Omitted steps stay unchanged; deletion is explicit. write is for code/script.json, never whole plans/config/inputs. Run with functions action=run_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":              map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "upgrade"}},
 			"workflow_id":         map[string]interface{}{"type": "string"},
@@ -30,6 +30,9 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			"operation":           map[string]interface{}{"type": "string", "enum": crewPlanOperations},
 			"arguments":           map[string]interface{}{"type": "object", "description": "Arguments matching the operation schema returned by describe."},
 			"file":                map[string]interface{}{"type": "string"},
+			"step_id":             map[string]interface{}{"type": "string", "description": "read planning/plan.json only: return this step."},
+			"step_ids":            map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "read planning/plan.json only: return these steps."},
+			"offset":              map[string]interface{}{"type": "integer", "description": "read planning/plan.json only: continue a large reply from next_offset."},
 			"content":             map[string]interface{}{"type": "string"},
 			"name":                map[string]interface{}{"type": "string"},
 			"kind":                map[string]interface{}{"type": "string", "enum": []string{"workflow", "script"}},
@@ -52,15 +55,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		}
 		if action == "describe" {
 			operation, _ := args["operation"].(string)
-			definitions := crewPlanDefinitions()
-			if operation != "" {
-				definitions = slices.DeleteFunc(definitions, func(d workflow.ExternalPlanToolDefinition) bool { return d.Name != operation })
-				if len(definitions) == 0 {
-					return "", fmt.Errorf("choose a supported editing operation")
-				}
-			}
-			encoded, err := json.Marshal(definitions)
-			return string(encoded), err
+			return crewDescribeOperations(operation)
 		}
 		if action == "list" || action == "create" {
 			identity, ok := projectIdentityOf(root)
@@ -196,8 +191,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			if err != nil {
 				return "", err
 			}
-			encoded, err := json.Marshal(map[string]interface{}{"file": clean, "exists": found, "content": content})
-			return string(encoded), err
+			return crewReadReply(clean, content, found, args)
 		case "write":
 			content, ok := args["content"].(string)
 			if !ok {
