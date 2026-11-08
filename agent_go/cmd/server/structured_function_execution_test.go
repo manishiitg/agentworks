@@ -71,7 +71,7 @@ func TestStructuredFunctionsIsolateParallelRunsAndKeepOutputsAfterRestart(t *tes
 			}
 			sessions[sid] = true
 		case <-time.After(3 * time.Second):
-			t.Fatal("isolated trigger did not reach model boundary")
+			t.Fatalf("isolated trigger did not reach model boundary: %v", call.snapshot())
 		}
 	}
 	retry, err := env.api.startCrewFunctionCall(ctx, "owner", caller, target, fn, map[string]interface{}{}, time.Minute, "a")
