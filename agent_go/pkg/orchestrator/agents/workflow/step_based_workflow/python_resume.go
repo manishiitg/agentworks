@@ -17,6 +17,7 @@ import (
 // PythonRunResume is resolved by the authenticated server, never decoded from
 // public query JSON. It binds one failed run to its captured source and inputs.
 type PythonRunResume struct {
+	Release             func() // The server releases one admitted attempt when its runtime ends.
 	Script              CrewScriptConfiguration
 	SourceHash          string
 	InputsHash          string

@@ -34,7 +34,7 @@ func checkSavedScriptMCPResume(t *testing.T, api *StreamingAPI, binding crewExec
 	write := func(source string) {
 		call("workspace", map[string]any{"action": "automation_write", "crew_id": binding.CrewID, "workspace_path": binding.Root, "file": "main.py", "content": source})
 	}
-	source := "import json, os\nfrom pathlib import Path\nfrom agentworks import inputs, run_folder\np=run_folder/'resume-counter.txt'\nn=int(p.read_text())+1 if p.exists() else 1\np.write_text(str(n))\nif n==1: raise RuntimeError('resume-fixture failed once')\ndata=json.dumps({'count':inputs['count'],'attempts':n})\nfor name in ['resumed.json','result.json']: (Path(os.environ['STEP_OUTPUT_DIR'])/name).write_text(data)\n"
+	source := "import json, os, time\nfrom pathlib import Path\nfrom agentworks import inputs, run_folder\np=run_folder/'resume-counter.txt'\nn=int(p.read_text())+1 if p.exists() else 1\np.write_text(str(n))\nif n==1: raise RuntimeError('resume-fixture failed once')\ntime.sleep(1)\ndata=json.dumps({'count':inputs['count'],'attempts':n})\nfor name in ['resumed.json','result.json']: (Path(os.environ['STEP_OUTPUT_DIR'])/name).write_text(data)\n"
 	write(source)
 	layout, found, err := crewroot.LookupExecutable(docs, binding.Root)
 	if err != nil || !found {
@@ -120,6 +120,8 @@ func checkSavedScriptMCPResume(t *testing.T, api *StreamingAPI, binding crewExec
 	if resumed["run_folder"] != folder || resumed["resume_of"] != previous || resumed["source_snapshot_hash"] != expectedSource {
 		t.Fatalf("resume lost its trusted run binding: %v", resumed)
 	}
+	busy := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "runs", "arguments": map[string]any{"action": "resume", "workflow_id": binding.ID, "run_folder": folder}})
+	requireRemoteError(t, busy, "active resume attempt", "run_already_running")
 	wait(resumed["session_id"].(string), folder, "completed", previous)
 	current := readMeta(folder)
 	var original map[string]any
