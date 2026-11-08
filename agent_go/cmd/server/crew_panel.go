@@ -445,6 +445,11 @@ func (api *StreamingAPI) crewPanelInboxRow(ctx context.Context, workspace string
 		return row, nil
 	}
 	result, _ := out.(map[string]any)
+	if inbox, _ := result["inbox"].(gmailinbound.Inbox); inbox.ID == "" {
+		// The inbox could not be provisioned (no Gmail for the owner yet): the page still answers, so say so here too.
+		row.Detail, row.Attention = "On · needs a Gmail account", true
+		return row, nil
+	}
 	page, _ := result["mail"].(gmailinbound.Page)
 	week := 0
 	for _, item := range page.Messages {

@@ -54,7 +54,7 @@ export function AgentInboxPanel({ workspacePath, refreshToken = 0, embedded = fa
       {error && <p role="alert" className="px-4 pt-3 text-xs text-destructive">{error}</p>}
       {notice && <p role="status" className="px-4 pt-3 text-xs">{notice}</p>}
       {state && state.enabled && state.error && <p className="px-4 pt-3 text-xs text-destructive">{state.error}</p>}
-      {!busy && !error && state && state.enabled && !address && mail.length === 0 && <p className="px-4 py-6 text-center text-sm text-muted-foreground">No email yet.</p>}
+      {!busy && !error && state && state.enabled && !state.error && !address && mail.length === 0 && <p className="px-4 py-6 text-center text-sm text-muted-foreground">No email yet.</p>}
       {(address || mail.length > 0) && <PageRow lead={<Mail className="h-4 w-4 text-muted-foreground" />} title={address || 'Inbox'} lines={[status]}
         action={address ? <RowButton onClick={() => void navigator.clipboard.writeText(address).then(() => setNotice('Address copied.'), () => setError('Could not copy the address. Select and copy it.'))}>Copy address</RowButton> : undefined}
         open={open} onToggle={() => setOpen(value => !value)}>

@@ -178,7 +178,9 @@ func (api *StreamingAPI) agentEmailInboxResult(ctx context.Context, args map[str
 	if enabled {
 		inbox, err = api.ensureAgentEmailInbox(ctx, target.ProfileID, target.ProjectID, target.WorkspacePath, target.OwnerID)
 		if err != nil {
-			return nil, err
+			// On, but the owner's Gmail is not ready: still answer, so the page can say so and the owner can turn email off.
+			return map[string]any{"inbox": target, "mail": gmailinbound.Page{Messages: []gmailinbound.Item{}}, "enabled": true, "can_configure": personalConnectionActor(ctx) == target.OwnerID, "receiving": false,
+				"error": "Incoming email is on, but this Crew's owner has no Gmail account connected. Connect one in the Vault panel or in chat, or turn incoming email off."}, nil
 		}
 	} else if saved, savedErr := api.gmailInbound.Store.SavedInbox(ctx, target.ProfileID, target.ProjectID, target.OwnerID); savedErr == nil {
 		inbox = saved
