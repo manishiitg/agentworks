@@ -25,6 +25,9 @@ func admissionRefused(text string) error { return agentAdmissionRefusal{err: err
 // other people and project callers retain their original grant checks.
 func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) error {
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
+	if err := validateMessageDestination(ctx, dest); err != nil {
+		return err
+	}
 	if err := recheckSharedCrewAgentContact(ctx, c.Endpoints[0], c.Endpoints[1]); err != nil {
 		return err
 	}
@@ -124,8 +127,8 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return fmt.Errorf("message participant account is disabled")
 		}
 		if e.Kind == triggerCallerWorkflow {
-			if strings.Contains(e.ChatKey, codeChatSideMarker) && !api.authorizeGoalMessageTab(context.WithValue(ctx, UserContextKey, claims), e) {
-				return fmt.Errorf("project chat was closed or ownership changed")
+			if strings.Contains(e.ChatKey, codeChatSideMarker) {
+				return admissionRefused("Workflow chat tabs are retired. Use a Crew agent instead.")
 			}
 			manifest, found, err := ReadWorkflowManifest(ctx, e.Path)
 			if err != nil || !found || manifest == nil || manifest.ID != e.ID {

@@ -289,6 +289,9 @@ func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLink
 	return false // an undelivered target cannot impersonate a receiving conversation
 }
 func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) error {
+	if e.Kind == triggerCallerWorkflow {
+		return admissionRefused("Workflows run directly. Send your message to a Crew agent instead.")
+	}
 
 	if e.NamedAgentID != "" {
 		_, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID)
@@ -982,32 +985,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 
 	var reqMap map[string]interface{}
 	session := dest.Session
-	if dest.Kind == triggerCallerWorkflow {
-		manifest, exists, err := ReadWorkflowManifest(ctx, dest.Path)
-		if err != nil || !exists || manifest == nil || manifest.ID != dest.ID {
-			return session, fmt.Errorf("workflow unavailable")
-		}
-		// A workflow has no Builder chat or named tabs (owner, 8 Nov: "we only have crew chats"):
-		// everyone who can reach it asks it in Run mode; changes go through its Crew chat.
-		if retiredWorkflowTabKey(dest.ChatKey) {
-			return session, fmt.Errorf("workflow chat tabs no longer exist; message the workflow itself")
-		}
-		access := workflowAccessForManifest(GetUserFromContext(ctx), manifest)
-		if access != WorkflowAccessOwner && access != WorkflowAccessWrite && access != WorkflowAccessRead {
-			return session, fmt.Errorf("workflow unavailable or access denied")
-		}
-		if session == "" {
-			session = "wfmsg-" + strings.TrimPrefix(c.ID, "inbox-")
-		}
-		query := QueryRequest{Query: text, AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: dest.Path, PresetQueryID: manifest.ID, PinRunMode: true, TriggeredBy: "external", TriggeredByLabel: "From " + source.Label, SessionTitle: "Messages: " + source.Label, ExecutionOptions: &ExecutionOptions{WorkshopMode: "run"}}
-		if api.workflowAskSessionExists(session, dest.Path) {
-			query.RestoredConversationSessionID = session
-		}
-		reqMap, err = queryRequestToMap(query)
-		if err != nil {
-			return session, err
-		}
-	} else {
+	{
 		if api.agentProfiles == nil {
 			return session, fmt.Errorf("Crew runtime unavailable")
 		}
@@ -1127,12 +1105,6 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	}
 	_ = result // the receiving tab replies itself; nothing is relayed on its behalf
 	return session, err
-}
-
-// retiredWorkflowTabKey reports a destination that names a retired Builder tab. A "session:<id>" key is not one:
-// it is the reply address of a workflow Run session (registerAgentMessagingTools), which still receives its replies.
-func retiredWorkflowTabKey(chatKey string) bool {
-	return strings.Contains(chatKey, codeChatSideMarker)
 }
 
 func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolRegistrar, userID, sessionID string, parentReq QueryRequest, resolveCaller func(context.Context) (triggerLinkCaller, error), declare func(string)) error {
