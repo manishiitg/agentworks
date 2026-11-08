@@ -32,7 +32,7 @@ branch_ref() {
   branch="$(deploy_branch)" || return 1
   if git -C "$1" rev-parse -q --verify "refs/remotes/origin/$branch^{commit}" >/dev/null 2>&1; then echo "origin/$branch"; return; fi
   if [[ "$1" -ef "$REPO_ROOT" ]]; then
-    git -C "$1" fetch -q origin "$branch" >/dev/null 2>&1 \
+    git -C "$1" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 \
       && git -C "$1" rev-parse -q --verify "refs/remotes/origin/$branch^{commit}" >/dev/null 2>&1 \
       && { echo "origin/$branch"; return; }
     echo "DEPLOY_BRANCH=$branch: this repository has no origin/$branch (cannot fetch it); refusing." >&2
@@ -181,12 +181,12 @@ check_build_on_branch() { # name sha1 sha2 sha3
   for repo in $BUILD_REPOS; do
     sha="$1"; shift
     dir="$(repo_dir "$repo")"
-    git -C "$dir" fetch -q origin main >/dev/null 2>&1 || { echo "Cannot fetch $repo to check ancestry" >&2; return 1; }
+    git -C "$dir" fetch -q origin "+refs/heads/main:refs/remotes/origin/main" >/dev/null 2>&1 || { echo "Cannot fetch $repo to check ancestry" >&2; return 1; }
     if [[ "$branch" != main ]]; then
       if [[ "$repo" == mcp-agent-builder-go ]]; then
-        git -C "$dir" fetch -q origin "$branch" >/dev/null 2>&1 || { echo "Cannot fetch origin/$branch of $repo to check ancestry; refusing." >&2; return 1; }
+        git -C "$dir" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || { echo "Cannot fetch origin/$branch of $repo to check ancestry; refusing." >&2; return 1; }
       else
-        git -C "$dir" fetch -q origin "$branch" >/dev/null 2>&1 || true  # a sibling may have no such branch
+        git -C "$dir" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || true  # a sibling may have no such branch
       fi
     fi
     commit_on_branch "$dir" "$sha" \
