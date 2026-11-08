@@ -2,7 +2,6 @@ package step_based_workflow
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -167,32 +166,6 @@ func validateAndResolveScriptParameters(step PlanStepInterface, supplied map[str
 		resolved[name] = value
 	}
 	return resolved, nil
-}
-
-// applyWorkshopScriptParameters gives direct execute_step calls the same typed
-// input contract as orchestrator-dispatched scripted routes. Values stay in the
-// execution context, so concurrent calls cannot overwrite shared workspace env.
-func applyWorkshopScriptParameters(ctx context.Context, step PlanStepInterface, opts *WorkshopExecuteOptions) (context.Context, error) {
-	provided := opts != nil && opts.ScriptParametersSet
-	if !isScriptedStep(step) {
-		if provided {
-			return ctx, fmt.Errorf("script_parameters is only supported for scripted steps")
-		}
-		return ctx, nil
-	}
-
-	var supplied map[string]interface{}
-	if opts != nil {
-		supplied = opts.ScriptParameters
-	}
-	resolved, err := validateAndResolveScriptParameters(step, supplied)
-	if err != nil {
-		return ctx, err
-	}
-	if len(resolved) == 0 {
-		return ctx, nil
-	}
-	return withScriptedDelegationContext(ctx, "", "", "", resolved), nil
 }
 
 func validateScriptParameterValue(name string, definition ScriptParameterDefinition, value interface{}) error {
