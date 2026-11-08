@@ -15,6 +15,9 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
+// newWorkflowsAreScripts is the plain pointer for a request to create a plan workflow.
+const newWorkflowsAreScripts = "New workflows are Python scripts inside a Crew. Open or create a Crew, then create the workflow there with crew_workflow_files action=create (the python-workflows skill shows how). Existing workflows keep working until they are converted."
+
 // Creation is account-scoped. The containing chat never lends its owner's
 // identity or expands the authenticated caller's connection consent.
 func projectCreateAllowed(c *UserClaims, kind string) bool {
@@ -22,8 +25,6 @@ func projectCreateAllowed(c *UserClaims, kind string) bool {
 		return false
 	}
 	switch kind {
-	case "goal":
-		return externalWorkflowCreationAllowed(c)
 	case "crew":
 		status, _ := projectCreationGate(c, crewProfileID)
 		return status == 0
@@ -34,22 +35,11 @@ func projectCreateAllowed(c *UserClaims, kind string) bool {
 }
 
 func projectCreationAvailable(c *UserClaims) bool {
-	return projectCreateAllowed(c, "goal") || projectCreateAllowed(c, "crew") || projectCreateAllowed(c, "relay")
+	return projectCreateAllowed(c, "crew") || projectCreateAllowed(c, "relay")
 }
 
 func projectCreateSpecSchema(kind string) map[string]any {
 	switch kind {
-	case "goal":
-		raw, _ := json.Marshal(workflowCreatorToolSchema())
-		var schema map[string]any
-		_ = json.Unmarshal(raw, &schema)
-		schema["additionalProperties"] = false
-		props := schema["properties"].(map[string]any)
-		props["name"] = externalString("Goal name. The server supplies its folder, ID, current settings and empty plan; initial workflow_json and plan_json are optional.")
-		props["purpose"] = map[string]any{"type": "string", "description": "Optional outcome this Goal should achieve."}
-		delete(schema, "required")
-		schema["anyOf"] = []any{map[string]any{"required": []any{"name"}}, map[string]any{"required": []any{"folder_name", "workflow_json", "plan_json"}}}
-		return schema
 	case "crew":
 		props, _, _ := externalCrewSpecSchemas()
 		return map[string]any{"type": "object", "properties": props, "required": []any{"name", "purpose"}, "additionalProperties": false}
@@ -63,8 +53,8 @@ func projectCreateDefinition() externalTool {
 	return externalTool{Name: "create_project", Description: platformtools.ProjectActions[0].Description, mutates: true, InputSchema: map[string]any{
 		"type": "object", "additionalProperties": false, "required": []any{"kind", "spec", "idempotency_key"},
 		"properties": map[string]any{
-			"kind":            map[string]any{"type": "string", "enum": []any{"goal", "crew", "relay"}},
-			"spec":            map[string]any{"anyOf": []any{projectCreateSpecSchema("goal"), projectCreateSpecSchema("crew"), projectCreateSpecSchema("relay")}},
+			"kind":            map[string]any{"type": "string", "enum": []any{"crew", "relay"}},
+			"spec":            map[string]any{"anyOf": []any{projectCreateSpecSchema("crew"), projectCreateSpecSchema("relay")}},
 			"idempotency_key": map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "One key per intended project. Reuse it for retries; after a failed creation you may correct the spec. A successfully created project keeps its original spec, including across chats or MCP."},
 		},
 	}}
@@ -103,6 +93,11 @@ func (api *StreamingAPI) externalCreateProject(w http.ResponseWriter, r *http.Re
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, live))
 	}
 	kind := externalArg(args, "kind")
+	if kind == "goal" || kind == "workflow" {
+		// PLAT-746: new workflows are Python scripts inside a Crew.
+		externalError(w, 400, "use_crew_script", newWorkflowsAreScripts)
+		return
+	}
 	if !projectCreateAllowed(claims, kind) {
 		externalError(w, 403, "forbidden", "This account or connection cannot create that kind of project. Use a Builder connection with create permission.")
 		return
@@ -159,8 +154,6 @@ func (api *StreamingAPI) externalCreateProject(w http.ResponseWriter, r *http.Re
 	}
 	result := httptest.NewRecorder()
 	switch kind {
-	case "goal":
-		api.externalCreateWorkflow(result, r, projectGoalCreationSpec(spec, identity))
 	case "relay":
 		input := map[string]any{}
 		for k, v := range spec {
@@ -209,37 +202,6 @@ func (api *StreamingAPI) externalCreateProject(w http.ResponseWriter, r *http.Re
 		return
 	}
 	externalJSON(w, receipt)
-}
-
-// Goal creation starts with the same manifest defaults as the website. Explicit
-// authoring inputs override defaults, and still pass the existing validations.
-func projectGoalCreationSpec(spec map[string]any, identity string) map[string]any {
-	name := strings.TrimSpace(externalArg(spec, "name"))
-	workflow, _ := spec["workflow_json"].(map[string]any)
-	if name == "" {
-		name = externalArg(workflow, "label")
-	}
-	if name == "" {
-		name = externalArg(spec, "folder_name")
-	}
-	manifest := NewWorkflowManifest(name)
-	manifest.ID = "wf_" + identity
-	manifest.Description = strings.TrimSpace(externalArg(spec, "purpose"))
-	raw, _ := json.Marshal(manifest)
-	var defaults map[string]any
-	_ = json.Unmarshal(raw, &defaults)
-	for key, value := range workflow {
-		defaults[key] = value
-	}
-	folder := externalArg(spec, "folder_name")
-	if folder == "" {
-		folder = "goal-" + slugifyCrewTitle(name) + "-" + identity[:8]
-	}
-	plan, exists := spec["plan_json"]
-	if !exists {
-		plan = map[string]any{"steps": []any{}}
-	}
-	return map[string]any{"folder_name": folder, "workflow_json": defaults, "plan_json": plan, "purpose": externalArg(spec, "purpose")}
 }
 
 // The same action member is projected into workspace.create in every native

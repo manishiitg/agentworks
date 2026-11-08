@@ -66,9 +66,7 @@ type ConditionalWriteGrant struct {
 // extensions for multi-agent chat. Add a new grant here — one entry feeds every
 // folder guard site and every system prompt assembly site automatically.
 //
-// NOTE: this only covers "folder-guard extension" style grants. Privileged-tool
-// style grants (like create_workflow, which bypasses the folder guard via direct
-// filesystem I/O) are registered separately via registerWorkflowCreatorTool.
+// NOTE: this only covers "folder-guard extension" style grants.
 var conditionalGrants = []ConditionalWriteGrant{
 	{
 		Name: "work-custom-skills",

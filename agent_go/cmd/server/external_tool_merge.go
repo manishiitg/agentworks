@@ -529,7 +529,7 @@ func externalMergeProperty(props map[string]any, key string, value any) {
 // but only canonical action families are public entry points.
 func projectServiceTool(name string) bool {
 	switch name {
-	case "manage_schedules", "manage_triggers", "manage_condition_triggers", "create_workflow", "create_relay", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
+	case "manage_schedules", "manage_triggers", "manage_condition_triggers", "create_relay", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
 		"ask_crew", "list_crews", "get_crew", "get_crew_costs", "create_crew", "update_crew", "export_crew", "import_crew",
 		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply",
 		"crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff",

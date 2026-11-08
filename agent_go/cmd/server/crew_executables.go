@@ -329,48 +329,24 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Enter a workflow name (up to 120 characters).", http.StatusBadRequest)
 		return
 	}
+	// PLAT-746: every new workflow is a Python script; kind "workflow" from an
+	// older caller creates one too. Existing plan workflows keep working.
 	id := uuid.NewString()
-	binding := crewExecutableBinding{ID: id, CrewID: project.Binding.ResourceID, CrewRoot: root, Root: "Workflow/" + id, Kind: "workflow"}
-	if input.Kind == "script" {
-		binding.Kind = "script"
-		if err := registerCrewExecutable(binding); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		registerWorkflowOwner(binding.Root, project.OwnerID)
-		if err := initializeCrewScriptSource(r.Context(), binding, input.Name); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-
-		if api.scheduler != nil {
-			api.scheduler.InvalidateWorkflowManifestCache()
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(201)
-		json.NewEncoder(w).Encode(binding)
-		return
-	}
-	manifest := NewWorkflowManifest(input.Name)
-	manifest.ID = id
-	manifest.CreatedBy = project.OwnerID
-	manifest.Access = &WorkflowAccess{Owners: []string{project.OwnerID}, Readers: []string{}}
-	manifest.Capabilities.LLMConfig = productDefaultWorkflowLLMConfig(r.Context())
+	binding := crewExecutableBinding{ID: id, CrewID: project.Binding.ResourceID, CrewRoot: root, Root: "Workflow/" + id, Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, errCrewWorkflowExists) {
-			status = http.StatusConflict
-		}
-		http.Error(w, err.Error(), status)
+		http.Error(w, err.Error(), 500)
 		return
 	}
 	registerWorkflowOwner(binding.Root, project.OwnerID)
-	if err := WriteWorkflowManifest(r.Context(), binding.Root, manifest); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := initializeCrewScriptSource(r.Context(), binding, input.Name); err != nil {
+		http.Error(w, err.Error(), 500)
 		return
 	}
+	if api.scheduler != nil {
+		api.scheduler.InvalidateWorkflowManifestCache()
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(binding)
 }
 

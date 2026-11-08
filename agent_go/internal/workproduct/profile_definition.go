@@ -192,6 +192,7 @@ func RegisterProductSkills() error {
 				{Name: "crew-builder", Path: "skills/crew-builder/SKILL.md"},
 				{Name: "crew-agents", Path: "skills/crew-agents/SKILL.md"},
 				{Name: "crew-laptop", Path: "skills/crew-laptop/SKILL.md"},
+				{Name: "python-workflows", Path: "skills/python-workflows/SKILL.md"},
 				{Name: "software-work", Path: "skills/software-work/SKILL.md"},
 				// The person's own AgentWorks Crew (role "agentworks", PLAT-825-99): how it inspects and helps with their other agents.
 				{Name: "agentworks-inspect-crew", Path: "skills/agentworks-inspect-crew/SKILL.md"},
