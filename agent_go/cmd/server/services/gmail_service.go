@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -777,11 +778,13 @@ func (g *GmailService) deliverNotification(ctx context.Context, dest *Notificati
 		msgID, err := g.sendRaw(ctx, cfg, to, cc, subject, body, htmlBody, attachments)
 		g.recordSend("send", resolvedID, workflowName, to, cc, msgID, err)
 		result := "sent"
-		if err != nil {
+		if errors.Is(err, errGmailSendUnconfirmed) {
+			result = "unknown"
+		} else if err != nil {
 			result = "failed"
 		}
 		log.Printf("[NOTIFY] item=%s sender=%s account=%s result=%s reason=transport_result", gmailNotificationWorkspace(dest), senderKind, resolvedID, result)
-		if err != nil && senderKind == "personal" {
+		if err != nil && senderKind == "personal" && !errors.Is(err, errGmailSendUnconfirmed) {
 			err = fmt.Errorf("Email could not be sent using the Google account added to this item; check its connection in Google apps")
 		}
 		if err != nil {
@@ -848,7 +851,7 @@ func (g *GmailService) sendRaw(ctx context.Context, cfg *GmailConfig, to string,
 		detail := strings.TrimSpace(stderr.String() + " " + stdout.String())
 		return "", fmt.Errorf("gws gmail users messages send failed: %w: %s", err, detail)
 	}
-	return parseGwsMessageID(stdout.Bytes()), nil
+	return parseGwsMessageID(stdout.Bytes())
 }
 
 func gmailHTMLBody(body, htmlBody string) string {
@@ -1164,26 +1167,26 @@ func gmailSubject(message string) string {
 	return "[Agent] " + line
 }
 
-// parseGwsMessageID best-effort extracts a message/thread ID from gws JSON
-// output. gws emits structured JSON for agents; field names vary by command,
-// so we probe the common ones and fall back to a non-empty sentinel so the
-// notification manager logs the send as successful.
-func parseGwsMessageID(out []byte) string {
+var errGmailSendUnconfirmed = errors.New("Gmail send outcome is unknown: Google returned no message ID; check Sent before sending again")
+
+// PLAT-746: a successful CLI exit alone does not confirm an email. Thread IDs
+// and missing/unreadable output must never become a synthetic message receipt.
+func parseGwsMessageID(out []byte) (string, error) {
 	trimmed := bytes.TrimSpace(out)
 	if len(trimmed) == 0 {
-		return "sent"
+		return "", errGmailSendUnconfirmed
 	}
 	var m map[string]any
 	if err := json.Unmarshal(trimmed, &m); err == nil {
-		for _, key := range []string{"id", "messageId", "message_id", "threadId", "thread_id"} {
+		for _, key := range []string{"id", "messageId", "message_id"} {
 			if v, ok := m[key]; ok {
-				if s, ok := v.(string); ok && s != "" {
-					return s
+				if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+					return strings.TrimSpace(s), nil
 				}
 			}
 		}
 	}
-	return "sent"
+	return "", errGmailSendUnconfirmed
 }
 
 // AuthStatusCached returns the last known auth status for the legacy singleton

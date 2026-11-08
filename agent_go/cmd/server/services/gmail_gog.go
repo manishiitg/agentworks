@@ -290,7 +290,7 @@ func (g *GmailService) sendGog(ctx context.Context, gogPath string, cfg *GmailCo
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("gog gmail send failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
-	return parseGwsMessageID(stdout.Bytes()), nil
+	return parseGwsMessageID(stdout.Bytes())
 }
 
 // sendComposedGog delegates MIME construction to gog. Rich notifications send
@@ -334,7 +334,7 @@ func (g *GmailService) sendComposedGog(ctx context.Context, gogPath string, cfg 
 		detail := strings.TrimSpace(stderr.String() + " " + stdout.String())
 		return "", fmt.Errorf("gog gmail send failed: %w: %s", err, detail)
 	}
-	return parseGwsMessageID(stdout.Bytes()), nil
+	return parseGwsMessageID(stdout.Bytes())
 }
 
 // ImportRefreshTokenIntoGog stores a token under its exact account/client pair.
