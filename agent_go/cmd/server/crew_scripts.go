@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
@@ -145,6 +146,17 @@ func (r *crewWorkflowResources) ResolveCrewScript(ctx context.Context, workspace
 		}
 		sourceRoot := path.Join(binding.Root, "code")
 		result = workflow.CrewScriptConfiguration{Definition: *definition, Root: sourceRoot, Files: map[string]string{}}
+		// Account selection already belongs to this exact saved item. Listing
+		// its enabled scoped connections does not change accounts or grants.
+		if google := services.GetGmailService(); google != nil {
+			for _, connection := range google.ConnectionsUsableFrom(services.GmailUseScope{Workspace: binding.Root, UserID: r.userID}) {
+				if connection.Enabled && connection.IsPrivate() {
+					result.ToolSelections = []string{"human_tools:integrations.google"}
+					break
+				}
+			}
+		}
+
 		files, err := listWorkspaceFilesRecursive(ctx, sourceRoot)
 		if err != nil {
 			return result, err
