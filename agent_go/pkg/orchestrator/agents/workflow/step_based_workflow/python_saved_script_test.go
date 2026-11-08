@@ -54,7 +54,7 @@ func TestPythonSavedScriptsKeepRunOutputsAndRejectRecursiveCalls(t *testing.T) {
 	c.SetWorkspaceEnvRef(map[string]string{"MCP_API_TOKEN": "saved-script-fixture-token"})
 	c.variableValues = map[string]string{"parent_only": "must not become a child's input"}
 	scripts := pythonSavedScripts{}
-	for _, id := range []string{"A", "B", "C", "D", "E", "F", "required"} {
+	for _, id := range []string{"A", "B", "C", "D", "E", "F", "required", "failing"} {
 		definition := CrewScriptDefinition{ID: id, Name: id, Inputs: []Variable{{Name: "count", Type: "integer", Value: "3"}, {Name: "next", Type: "string"}}, Outputs: []string{"result.json"}}
 		if id == "required" {
 			definition.Inputs = []Variable{{Name: "count", Type: "integer", Required: true}}
@@ -74,6 +74,9 @@ if inputs.get('next'):
 Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps(value))
 print('saved-script-finished')
 `
+		if id == "failing" {
+			source = "raise RuntimeError('fixture child failure')\n"
+		}
 		write("code/"+id+"/main.py", source)
 		raw, _ := json.Marshal(definition)
 		write("code/"+id+"/script.json", string(raw))
@@ -143,9 +146,12 @@ print('saved-script-finished')
 	}{
 		{"B", map[string]interface{}{"count": "bad"}}, {"required", map[string]interface{}{}},
 	} {
-		if reply := call("invalid-"+invalid.id, invalid.id, invalid.inputs, false); reply.OK || reply.Error == "" || reply.LogFile == "" {
+		if reply := call("invalid-"+invalid.id, invalid.id, invalid.inputs, false); reply.OK || reply.Error == "" || reply.LogFile == "" || reply.Value != nil || !strings.Contains(reply.Text, "did not start") {
 			t.Fatalf("invalid inputs admitted: %+v", reply)
 		}
+	}
+	if reply := call("started-failure", "failing", map[string]interface{}{}, false); reply.OK || !strings.Contains(reply.Error, "fixture child failure") || reply.Value == nil || !strings.Contains(reply.Text, "did not complete") {
+		t.Fatalf("launched failure lost honest receipt: %+v", reply)
 	}
 	if reply := call("self", "A", map[string]interface{}{}, false); reply.OK || !strings.Contains(reply.Error, "A → A") {
 		t.Fatalf("self recursion: %+v", reply)
