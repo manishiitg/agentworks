@@ -199,7 +199,6 @@ def verify():
 	write(filepath.Join(sourceRoot, "_vendor", vendorFile), string(extension))
 	write(filepath.Join(sourceRoot, "_vendor/vendor_fixture/__init__.py"), "from pathlib import Path\nimport _json\nassert Path(_json.__file__).parent == Path(__file__).parents[1]\nassert _json.scanstring('\\\"vendored\\\"', 1)[0] == 'vendored'\n")
 	write(filepath.Join(sourceRoot, "script.json"), `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true},{"name":"extended","type":"boolean","value":"false"},{"name":"rate","type":"number","value":"5"},{"name":"RDS_SECRET_ID_DEV","type":"string","value":"example/dev/app"}],"input_presets":[{"name":"Saved","values":{"extended":"false","rate":"5"}}],"outputs":["result.json"]}`)
-	write(filepath.Join(sourceRoot, "helper.py"), "from agentworks import step, check\n@step('Prepare report')\ndef prepare():\n    assert check('Prepared', True, 'Fixture ready').ok\n    return True\n")
 	kbPath, err := fsutil.WorkspacePath(docs, binding.Root+"/knowledgebase/context/rules.md")
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +215,7 @@ def verify():
 	write(filepath.Join(sourceRoot, "main.py"), "from pathlib import Path\nassert Path("+string(kbJSON)+").read_text() == 'fixture knowledge'\n"+`import json, os, sys
 from bridge_probe import verify
 verify()
-from helper import prepare
+from nested.prepare import prepare
 prepare()
 from pathlib import Path
 print('start-marker')
@@ -267,8 +266,34 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	// PLAT-746-440: source inspection uses the file editor's current Builder
 	// access and never imports/executes the bundle, even in an attached folder.
 	sourceAPI := &StreamingAPI{}
-	graphEndpoint := httptest.NewServer(AuthMiddleware(http.HandlerFunc(sourceAPI.handleCrewScriptGraph)))
+	graphEndpoint := httptest.NewServer(AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/crew-script-file" {
+			sourceAPI.handleCrewScriptFile(w, r)
+			return
+		}
+		sourceAPI.handleCrewScriptGraph(w, r)
+	})))
 	defer graphEndpoint.Close()
+	// Save a real nested helper through the same owner-authorized editor that
+	// rejected package paths, then import it in every actual Python entrance.
+	ownerToken, err := GenerateJWT("owner", "owner", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for file, content := range map[string]string{"nested/__init__.py": "", "nested/prepare.py": "from agentworks import step, check\n@step('Prepare report')\ndef prepare():\n    assert check('Prepared', True, 'Fixture ready').ok\n    return True\n"} {
+		body, _ := json.Marshal(map[string]string{"content": content})
+		request, _ := http.NewRequestWithContext(ctx, http.MethodPut, graphEndpoint.URL+"/api/crew-script-file?workspace_path="+binding.Root+"&file="+file, bytes.NewReader(body))
+		request.Header.Set("Authorization", "Bearer "+ownerToken)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(response.Body)
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("nested source save HTTP%d %s", response.StatusCode, raw)
+		}
+	}
 	for _, user := range []string{"owner", "runner"} {
 		token, err := GenerateJWT(user, user, "")
 		if err != nil {

@@ -187,18 +187,31 @@ def inspect_automation_source(files):
     try:
         if not isinstance(files, dict) or 'main.py' not in files:
             raise ValueError('Save main.py before viewing this automation.')
-        trees = {}
+        trees, filenames = {}, {}
         for file, source in files.items():
-            if not file.endswith('.py') or '/' in file or '\\' in file:
-                raise ValueError('Choose flat Python files from this automation.')
-            trees[file[:-3]] = ast.parse(source, filename=file)
+            parts = file.split('/')
+            if (not file.endswith('.py') or '\\' in file or
+                    any(not part or part.startswith('.') or part == '__pycache__' for part in parts)):
+                raise ValueError('Choose relative Python files from this automation.')
+            module = file[:-3].replace('/', '.')
+            if parts[-1] == '__init__.py':
+                module = '.'.join(parts[:-1]) or '__init__'
+            if module in trees:
+                raise ValueError('Python module has two source files: ' + module)
+            trees[module], filenames[module] = ast.parse(source, filename=file), file
         imports, constants, functions = {}, {}, {}
         for module, tree in trees.items():
             imports[module], constants[module] = {}, {}
             for item in tree.body:
                 if isinstance(item, ast.ImportFrom):
                     for alias in item.names:
-                        imports[module][alias.asname or alias.name] = (item.module, alias.name)
+                        origin = item.module
+                        if item.level:
+                            package = module if filenames[module].endswith('/__init__.py') else module.rpartition('.')[0]
+                            parents = package.split('.') if package else []
+                            prefix = parents[:len(parents) - item.level + 1]
+                            origin = '.'.join(prefix + ([item.module] if item.module else []))
+                        imports[module][alias.asname or alias.name] = (origin, alias.name)
                 elif isinstance(item, ast.Import):
                     for alias in item.names:
                         imports[module][alias.asname or alias.name] = (alias.name, None)
@@ -271,12 +284,12 @@ def inspect_automation_source(files):
             name_module, name = target(module, expression.func)
             if (name_module, name) == ('agentworks', 'agent'):
                 add(expression, module, 'agent', literal(module, argument(expression, 0, 'name')),
-                    f'agent@{module}.py:{expression.lineno}', literal(module, argument(expression, 1, 'message')))
+                    f'agent@{filenames[module]}:{expression.lineno}', literal(module, argument(expression, 1, 'message')))
                 return True
             fn, label = decorated(name_module, name) if name_module in trees else (None, None)
             if fn is not None:
                 add(expression, module, 'script', label,
-                    f'{name_module}.py:{name}@{module}.py:{expression.lineno}')
+                    f'{filenames[name_module]}:{name}@{filenames[module]}:{expression.lineno}')
                 if expand:
                     block(name_module, fn.body, False)
                 return True
@@ -289,9 +302,9 @@ def inspect_automation_source(files):
                 if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom, ast.Pass)):
                     continue
                 if isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.With, ast.AsyncWith, ast.Match)):
-                    add(statement, module, 'script', 'Other code', f'other@{module}.py:{statement.lineno}')
+                    add(statement, module, 'script', 'Other code', f'other@{filenames[module]}:{statement.lineno}')
                 elif not walk_call(module, statement, expand) and any(isinstance(item, ast.Call) for item in ast.walk(statement)):
-                    add(statement, module, 'script', 'Other code', f'other@{module}.py:{statement.lineno}')
+                    add(statement, module, 'script', 'Other code', f'other@{filenames[module]}:{statement.lineno}')
 
         entry = functions.get(('main', 'main'))
         if entry:
