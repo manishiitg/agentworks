@@ -41,6 +41,7 @@ class Reply:
     log_complete: bool = False
     log_error: str = ""
     log_kind: str = "activity"
+    answer_file: Path | None = None
 
 
 JSONValue: TypeAlias = Union[None, bool, int, float, str, list["JSONValue"], dict[str, "JSONValue"]]
@@ -114,7 +115,8 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
                  log_file=Path(result["log_file"]) if result.get("log_file") else None,
                  log_complete=bool(result.get("log_complete")),
                  log_error=result.get("log_error", ""),
-                 log_kind=result.get("log_kind", "activity"))
+                 log_kind=result.get("log_kind", "activity"),
+                 answer_file=Path(result["answer_file"]) if result.get("answer_file") else None)
     if action == "run_script":
         value = result.get("value") or {}
         directory = value.get("output_dir")
@@ -183,7 +185,10 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     returned to the agent; Python can decide on another call after the reply.
     ok means the provider turn completed, not that its task or files are valid.
     Python checks the answer and artifacts, including any failure stated in text.
-    text is a bounded preview. log_file contains the provider transcript the
+    text is a bounded preview. For task/status checks, read the full last final
+    answer with reply.answer_file.read_text() after checking ok. It contains the
+    same redacted answer without transcript events or truncation; it is None
+    when no successful final answer was saved. log_file contains the provider transcript the
     platform received, including available streamed text and tool records;
     log_complete does not claim uncaptured operating-system output.
     """

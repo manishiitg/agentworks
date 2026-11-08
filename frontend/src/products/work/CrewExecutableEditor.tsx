@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import api, { agentApi } from '../../services/api'
-import type { ExecutionInspectionTarget, WorkspaceStepInspection } from '../../services/api-types'
+import { CrewWorkflowRuns } from './CrewWorkflowRuns'
+import { PageCard, RowButton } from '../../components/automation/AutomationKit'
 import type { WorkspaceViewId } from '../../components/workflow/workspaceViews'
 import type { EmbeddedWorkflowScope } from '../../components/workflow/canvas/workspaceViewData'
 import { useWorkspaceState } from '../../components/workflow/hooks/useWorkspaceState'
@@ -10,9 +11,6 @@ import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 
 const Canvas = lazy(() => import('../../components/workflow/canvas/WorkspaceViewHost'))
-const Logs = lazy(() => import('../../components/workflow/ExecutionLogsPopup'))
-const Costs = lazy(() => import('../../components/workflow/CostsPopup'))
-const Inspect = lazy(() => import('../../components/chat/StepInspectionPanel'))
 
 export type CrewExecutable = {
   id: string
@@ -29,19 +27,23 @@ export function CrewExecutableEditor({
   crewAgents,
   crewScripts = [],
   chatTabId,
+  section: controlledSection,
   onBack,
 }: {
   item: CrewExecutable
   crewAgents: Array<{ id: string; name: string }>
   crewScripts?: Array<{ id: string; name: string }>
   chatTabId: string
+  /** Set by the Workflow page, which owns the Plan | Runs switch. Without it the editor shows its own header and tabs. */
+  section?: 'plan' | 'runs'
   onBack?: () => void
 }) {
-  const [section, setSection] = useState<'steps' | 'runs'>('steps')
+  const [ownSection, setSection] = useState<'plan' | 'runs'>('plan')
+  const embedded = controlledSection !== undefined
+  const section = controlledSection ?? ownSection
   const [view, setView] = useState<WorkspaceViewId>('flow')
   const [file, setFile] = useState<string | null>(null)
   const [runFolder, setRunFolder] = useState<string | null>(null)
-  const [detail, setDetail] = useState<'logs' | 'inspect' | 'costs'>('logs')
   const [error, setError] = useState('')
   const workspace = useWorkspaceState(item.workspace_path, runFolder, false)
   const folders = workspace.state?.run_folders ?? []
@@ -87,8 +89,8 @@ export function CrewExecutableEditor({
     }
   }
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
+    <div className={embedded ? 'space-y-4' : 'flex h-full min-h-0 flex-col'}>
+      {!embedded && <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
         {onBack && <button className={button} onClick={onBack} aria-label={item.kind === 'script' ? 'Back to scripts' : 'Back to workflows'}>
           <ArrowLeft className="h-4 w-4" />
         </button>}
@@ -105,10 +107,10 @@ export function CrewExecutableEditor({
         >
           {section === 'runs' ? 'Run in chat' : 'Edit in chat'}
         </button>
-      </div>
+      </div>}
       {item.kind === 'script' && !!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes apply to the next run.</p>}
-      <nav aria-label="Workflow" className="flex shrink-0 gap-2 border-b p-2">
-        {(['steps', 'runs'] as const).map((value) => (
+      {!embedded && <nav aria-label="Workflow" className="flex shrink-0 gap-2 border-b p-2">
+        {(['plan', 'runs'] as const).map((value) => (
           <button
             key={value}
             aria-current={section === value ? 'page' : undefined}
@@ -118,27 +120,36 @@ export function CrewExecutableEditor({
               setFile(null)
             }}
           >
-            {value === 'steps' ? (item.kind === 'script' ? 'Code' : 'Plan') : 'Runs'}
+            {value === 'plan' ? (item.kind === 'script' ? 'Code' : 'Plan') : 'Runs'}
           </button>
         ))}
-      </nav>
+      </nav>}
       {(error || workspace.error) && (
         <p role="alert" className="p-3 text-sm text-destructive">
           {error || workspace.error}
         </p>
       )}
       <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
-        <div className="min-h-0 flex-1">
+        <div className={embedded ? '' : 'min-h-0 flex-1'}>
           {file ? (
-            <ExecutableFile
-              key={file}
-              workspacePath={item.workspace_path}
-              file={file}
-              onClose={() => setFile(null)}
-            />
-          ) : section === 'steps' && item.kind === 'script' ? (
+            <div className={embedded ? 'h-[75vh] min-h-96' : 'h-full'}>
+              <ExecutableFile
+                key={file}
+                workspacePath={item.workspace_path}
+                file={file}
+                onClose={() => setFile(null)}
+              />
+            </div>
+          ) : section === 'plan' && item.kind === 'script' ? (
             <ExecutableFile workspacePath={item.workspace_path} file="main.py" crewScript onClose={() => onBack?.()} />
-          ) : section === 'steps' ? (
+          ) : section === 'plan' ? (
+            <PageCard
+              title={item.manifest.label}
+              onAsk={() => ask('Help me edit this workflow.')}
+              action={<RowButton primary onClick={() => void ask('Run this workflow and report the result in this chat.')}>Run (in chat)</RowButton>}
+              testId="crew-plan-card"
+            >
+            <div className="h-[600px]">
             <Canvas
               key={item.id}
               workspacePath={item.workspace_path}
@@ -149,162 +160,13 @@ export function CrewExecutableEditor({
               scope={scope}
               onCreatePlan={() => void ask('Create the steps for this workflow.')}
             />
-          ) : section === 'runs' ? (
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="flex flex-wrap items-center gap-2 border-b p-2">
-                  <label className="text-sm">
-                    Run{' '}
-                    <select
-                      aria-label="Workflow run"
-                      className="ml-2 max-w-full rounded border bg-background p-1.5"
-                      value={selectedRun ?? ''}
-                      onChange={(event) => setRunFolder(event.target.value || null)}
-                    >
-                      <option value="" disabled>
-                        {workspace.loading ? 'Loading runs…' : 'Choose a run'}
-                      </option>
-                      {folders.map((folder) => (
-                        <option key={folder.name} value={folder.name}>
-                          {folder.name}
-                          {folder.metadata?.status ? ` · ${folder.metadata.status}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                <button
-                  className={button}
-                  aria-label="Refresh workflow runs"
-                  onClick={() => void workspace.refresh()}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </button>
-                {(['logs', 'inspect', 'costs'] as const).map((value) => (
-                  <button
-                    key={value}
-                    className={`${button} ${detail === value ? 'bg-muted' : ''}`}
-                    onClick={() => setDetail(value)}
-                  >
-                    {value[0].toUpperCase() + value.slice(1)}
-                  </button>
-                ))}
-              </div>
-              <div className="min-h-0 flex-1">
-                {!selectedRun ? (
-                  <p className="p-6 text-sm text-muted-foreground">
-                    {folders.length
-                      ? 'Choose a run to see its results.'
-                      : 'No runs yet. Run the workflow from your Crew chat.'}
-                  </p>
-                ) : detail === 'costs' ? (
-                  <Costs
-                    key={selectedRun}
-                    workspacePath={item.workspace_path}
-                    runFolders={[selectedRun]}
-                    selectedRunFolder={selectedRun}
-                    runOnly
-                  />
-                ) : detail === 'inspect' ? (
-                  <RunInspections
-                    key={selectedRun}
-                    workspacePath={item.workspace_path}
-                    runFolder={selectedRun}
-                  />
-                ) : (
-                  <Logs
-                    key={selectedRun}
-                    workspacePath={item.workspace_path}
-                    runFolder={selectedRun}
-                    runFolders={[selectedRun]}
-                    runFolderInfos={folders.filter((folder) => folder.name === selectedRun)}
-                    allowDefaultRunFolder={false}
-                    onRefreshRunFolders={workspace.refresh}
-                  />
-                )}
-              </div>
             </div>
+            </PageCard>
+          ) : section === 'runs' ? (
+            <CrewWorkflowRuns workspacePath={item.workspace_path} folders={folders} loading={workspace.loading} onRefresh={workspace.refresh} onAsk={ask} />
           ) : null}
         </div>
       </Suspense>
-    </div>
-  )
-}
-
-function RunInspections({ workspacePath, runFolder }: { workspacePath: string; runFolder: string }) {
-  const [records, setRecords] = useState<WorkspaceStepInspection[]>([])
-  const [cursor, setCursor] = useState<string | null>(null)
-  const [target, setTarget] = useState<ExecutionInspectionTarget | null>(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
-  const load = useCallback(
-    async (after?: string) => {
-      setLoading(true)
-      setError('')
-      try {
-        const page = await agentApi.getWorkspaceStepInspections(workspacePath, { cursor: after })
-        const matches = page.items.filter(
-          (record) =>
-            record.inspection.workspace_path === workspacePath && record.inspection.run_folder === runFolder,
-        )
-        setRecords((current) => (after ? [...current, ...matches] : matches))
-        setCursor(page.next_cursor)
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Could not load step records.')
-      } finally {
-        setLoading(false)
-      }
-    },
-    [workspacePath, runFolder],
-  )
-  useEffect(() => {
-    void load()
-  }, [load])
-  if (target)
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <button className={`${button} self-start`} onClick={() => setTarget(null)}>
-          Back to steps
-        </button>
-        <div className="min-h-0 flex-1">
-          <Inspect target={target} />
-        </div>
-      </div>
-    )
-  return (
-    <div className="h-full overflow-auto p-4">
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <ul className="divide-y">
-        {records.map((record) => (
-          <li key={`${record.inspection.session_id}:${record.inspection.execution_id}`}>
-            <button
-              className="flex w-full items-center justify-between gap-3 py-3 text-left text-sm"
-              onClick={() => setTarget(record.inspection)}
-            >
-              <span>{record.inspection.name || record.inspection.step_id}</span>
-              <span className="text-xs text-muted-foreground">
-                {record.status} · {new Date(record.inspection.started_at).toLocaleString()}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {!loading && !records.length && (
-        <p className="text-sm text-muted-foreground">
-          {cursor
-            ? 'No matching steps in these records.'
-            : 'No inspectable step records were saved for this run. Logs may still be available.'}
-        </p>
-      )}
-      <button
-        className={`${button} mt-3 border`}
-        disabled={loading}
-        onClick={() => void load(cursor ?? undefined)}
-      >
-        {loading ? 'Loading…' : cursor ? 'Load more records' : 'Refresh'}
-      </button>
     </div>
   )
 }

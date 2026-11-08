@@ -1,57 +1,103 @@
 import { useCallback, useEffect, useState } from 'react'
-import { FileCode2, Route } from 'lucide-react'
+import { FileCode2, Route, Zap } from 'lucide-react'
 import { isAxiosError } from 'axios'
 import api from '../../services/api'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
+import { PageCard, PageRow, RowButton } from '../../components/automation/AutomationKit'
 import { CrewExecutableEditor, type CrewExecutable } from './CrewExecutableEditor'
+
+type StepScript = { workflow_id: string; workflow: string; step_id: string; step: string }
 
 function failureMessage(error: unknown, fallback: string) {
   if (isAxiosError(error) && typeof error.response?.data === 'string') return error.response.data
   return error instanceof Error ? error.message : fallback
 }
 
-/** One workflow, with routes. Its existing steps and runs open directly. */
-export function CrewExecutablesPanel({ projectId, chatTabId, kind, onLoaded }: { projectId: string; chatTabId: string; kind: 'workflow' | 'script'; onLoaded?: (found: { workflows: number; scripts: number }) => void }) {
+/**
+ * The Crew's workflow (plan and runs, chosen by `section`) with the Scripts card under it.
+ * With kind "script", or a Crew that has only scripts, just the Scripts card.
+ */
+export function CrewExecutablesPanel({ projectId, chatTabId, kind, section, onScriptsOnly }: { projectId: string; chatTabId: string; kind: 'workflow' | 'script'; section?: 'plan' | 'runs'; onScriptsOnly?: (scriptsOnly: boolean) => void }) {
   const [selected, setSelected] = useState<CrewExecutable | null>(null)
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([])
   const [items, setItems] = useState<CrewExecutable[]>([])
-  const [stepScripts, setStepScripts] = useState<Array<{ workflow_id: string; workflow: string; step_id: string; step: string }>>([])
+  const [stepScripts, setStepScripts] = useState<StepScript[]>([])
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
   const refresh = useCallback(async (signal: AbortSignal) => {
-    const { data } = await api.get<{ executables: CrewExecutable[]; step_scripts?: Array<{ workflow_id: string; workflow: string; step_id: string; step: string }>; agents: Array<{ id: string; name: string }> }>('/api/crew-executables', { params: { crew_id: projectId }, signal })
+    const { data } = await api.get<{ executables: CrewExecutable[]; step_scripts?: StepScript[]; agents: Array<{ id: string; name: string }> }>('/api/crew-executables', { params: { crew_id: projectId }, signal })
     await useWorkflowManifestStore.getState().refreshWorkflows()
     if (signal.aborted) return
     setItems(data.executables)
     setStepScripts(data.step_scripts ?? [])
     setAgents(data.agents)
     setLoaded(true)
-    onLoaded?.({ workflows: data.executables.filter(item => item.kind === 'workflow').length, scripts: data.executables.filter(item => item.kind === 'script').length + (data.step_scripts?.length ?? 0) })
-  }, [projectId, onLoaded])
+    onScriptsOnly?.(!data.executables.some(item => item.kind === 'workflow') && (data.executables.some(item => item.kind === 'script') || (data.step_scripts?.length ?? 0) > 0))
+  }, [projectId, onScriptsOnly])
   useEffect(() => {
     const controller = new AbortController()
     setItems([]); setStepScripts([]); setSelected(null); setLoaded(false); setError('')
     void refresh(controller.signal).catch(e => { if (!controller.signal.aborted) setError(failureMessage(e, 'Could not load. Try again.')) })
     return () => controller.abort()
   }, [refresh])
-  async function ask() {
+  async function ask(message: string) {
     try {
-      await openWorkspacePaneChatWithDraft({ tabId: chatTabId, message: kind === 'script' ? 'Help me create a saved script for this Crew.' : 'Help me set up this Crew’s workflow, using routes for different tasks.' })
+      await openWorkspacePaneChatWithDraft({ tabId: chatTabId, message })
     } catch (e) { setError(failureMessage(e, 'Open your Crew chat to continue.')) }
   }
-  const visibleItems = items.filter(item => item.kind === kind)
-  const item = kind === 'workflow' && visibleItems.length === 1 ? visibleItems[0] : selected
-  if (item) return <CrewExecutableEditor key={item.id} item={item} crewAgents={agents} crewScripts={items.filter(item => item.kind === 'script').map(item => ({ id: item.id, name: item.manifest.label }))} chatTabId={chatTabId} onBack={kind === 'script' || visibleItems.length > 1 ? () => setSelected(null) : undefined} />
-  return <div className="mx-auto w-full max-w-3xl space-y-4 p-6">
+  const workflows = items.filter(item => item.kind === 'workflow')
+  const scripts = items.filter(item => item.kind === 'script')
+  const scriptsCard = <ScriptsCard
+    scripts={scripts}
+    stepScripts={stepScripts}
+    onOpen={setSelected}
+    onOpenWorkflow={id => setSelected(items.find(entry => entry.id === id) ?? null)}
+    onAsk={() => ask('Help me create a saved script for this Crew.')}
+    onRun={script => ask(`Run the saved script "${script.manifest.label}" and report the result in this chat.`)}
+  />
+  const single = kind === 'workflow' && workflows.length === 1 ? workflows[0] : null
+  const item = selected ?? single
+  if (item) {
+    const standalone = item !== single
+    const editor = <CrewExecutableEditor key={item.id} item={item} crewAgents={agents} crewScripts={scripts.map(script => ({ id: script.id, name: script.manifest.label }))} chatTabId={chatTabId} section={standalone ? undefined : section} onBack={standalone ? () => setSelected(null) : undefined} />
+    if (standalone) return <div className="h-[75vh] min-h-96 overflow-hidden rounded-xl border border-border">{editor}</div>
+    return <div className="space-y-4">{editor}{section !== 'runs' && scriptsCard}</div>
+  }
+  const nothing = loaded && workflows.length === 0 && scripts.length === 0 && stepScripts.length === 0
+  return <div className="space-y-4">
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {!loaded && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
     {loaded && <>
-      {kind === 'workflow' && visibleItems.length > 1 && <p className="text-sm text-muted-foreground">This Crew has earlier workflows. Open one to inspect it, or ask chat to combine their tasks into routes.</p>}
-      {visibleItems.length === 0 && (kind !== 'script' || stepScripts.length === 0) && <p className="text-sm text-muted-foreground">{kind === 'script' ? 'No scripts yet.' : 'No workflow yet. Describe the work you want to repeat in chat.'}</p>}
-      <ul className="divide-y divide-border">{visibleItems.map(item => <li key={item.id}><button onClick={() => setSelected(item)} className="flex w-full items-center gap-3 py-4 text-left hover:text-primary">{item.kind === 'workflow' ? <Route className="h-5 w-5" /> : <FileCode2 className="h-5 w-5" />}<span>{item.manifest.label}</span></button></li>)}</ul>
-      {kind === 'script' && stepScripts.length > 0 && <ul className="divide-y divide-border">{stepScripts.map(script => <li key={script.workflow_id + script.step_id}><button onClick={() => setSelected(items.find(entry => entry.id === script.workflow_id) ?? null)} className="flex w-full items-center gap-3 py-4 text-left hover:text-primary"><FileCode2 className="h-5 w-5" /><span>Step: {script.step}<span className="block text-xs text-muted-foreground">in {script.workflow}</span></span></button></li>)}</ul>}
-      <button onClick={() => void ask()} className="text-sm text-primary">{kind === 'script' ? 'Create a script in chat' : visibleItems.length ? 'Discuss in chat' : 'Set up in chat'}</button>
+      {workflows.length > 1 && <PageCard title="Workflows" hint="This Crew has earlier workflows. Open one to inspect it, or ask chat to combine their tasks into routes." onAsk={() => ask('Help me set up this Crew’s workflow, using routes for different tasks.')}>
+        {workflows.map(workflow => <PageRow key={workflow.id} lead={<Route className="h-4 w-4" />} title={workflow.manifest.label} open={false} onToggle={() => setSelected(workflow)}>{null}</PageRow>)}
+      </PageCard>}
+      {scriptsCard}
+      {nothing && <section className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-8 text-center">
+        <Zap className="h-5 w-5 text-amber-500" aria-hidden="true" />
+        <h3 className="text-sm font-semibold">A Crew with nothing saved yet</h3>
+        <p className="text-xs text-muted-foreground">Your agents can save repeatable work as a script or a workflow.</p>
+        <RowButton primary onClick={() => void ask('Help me set up this Crew’s workflow or a saved script for work I want to repeat.')}>Ask your agent to make one</RowButton>
+      </section>}
     </>}
   </div>
+}
+
+/** The Scripts card: every saved script and every script a workflow step runs. */
+function ScriptsCard({ scripts, stepScripts, onOpen, onOpenWorkflow, onAsk, onRun }: {
+  scripts: CrewExecutable[]
+  stepScripts: StepScript[]
+  onOpen: (item: CrewExecutable) => void
+  onOpenWorkflow: (workflowId: string) => void
+  onAsk: () => void | Promise<void>
+  onRun: (item: CrewExecutable) => void | Promise<void>
+}) {
+  if (scripts.length === 0 && stepScripts.length === 0) return null
+  const lead = <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted"><FileCode2 className="h-4 w-4" aria-hidden="true" /></span>
+  return <PageCard title="Scripts" hint="All the runnable code in this Crew." onAsk={onAsk}>
+    {scripts.map(script => <PageRow key={script.id} lead={lead} title={script.manifest.label} lines={['Saved script · runs on its own']}
+      action={<RowButton onClick={() => void onRun(script)}>Run</RowButton>} open={false} onToggle={() => onOpen(script)}>{null}</PageRow>)}
+    {stepScripts.map(script => <PageRow key={script.workflow_id + script.step_id} lead={lead} title={script.step} lines={[`Step: ${script.step}`]}
+      open={false} onToggle={() => onOpenWorkflow(script.workflow_id)}>{null}</PageRow>)}
+  </PageCard>
 }

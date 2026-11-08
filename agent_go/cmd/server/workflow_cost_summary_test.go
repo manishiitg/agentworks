@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 )
 
 func installWorkflowCostTestLedger(t *testing.T) *costledger.Ledger {
@@ -123,5 +124,19 @@ func TestHandleGetCostsSummaryResolvesWorkProjectToOwnerLedgerKey(t *testing.T) 
 	model := day.ByModel["muse-spark-1.3-contributor"]
 	if model == nil || model.Provider != "muse-cli" || model.TotalCostUSD != 0.04 {
 		t.Fatalf("daily model split = %#v, want Muse provider and model cost", day.ByModel)
+	}
+}
+
+// The runs list shows one number per run: its model spend plus its tool spend (the browser used to add both up).
+func TestWorkflowRunTotalAddsModelAndToolSpend(t *testing.T) {
+	usage := &orchestrator.TokenUsageFile{
+		ByModel: map[string]*orchestrator.ModelTokenUsage{"a": {TotalCost: 0.25}, "b": {TotalCost: 0.5}, "gone": nil},
+		ByTool:  map[string]*orchestrator.ToolCostUsage{"search": {TotalCost: 0.125}},
+	}
+	if got := workflowRunTotalFromUsage(usage); got != 0.875 {
+		t.Fatalf("run total = %v, want 0.875", got)
+	}
+	if got := workflowRunTotalFromUsage(&orchestrator.TokenUsageFile{}); got != 0 {
+		t.Fatalf("empty run total = %v, want 0", got)
 	}
 }

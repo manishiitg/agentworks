@@ -95,7 +95,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
       <CrewWhereRow projectId={projectId} />
       <SharesCard view={view} target={target} projectId={projectId} />
       <AgentsCard view={view} target={target} projectId={projectId} />
-      <FunctionsCard view={view} projectId={projectId} />
+      <FunctionsCard projectId={projectId} />
       {team.lent && <LentCard lent={team.lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} />}
       {team.folder_access && <section aria-label="Sync" className={card}>
         <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
@@ -376,23 +376,13 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
   </section>
 }
 
-/** What the Team can call (owner, 8 Nov: functions go on Share, not Automations). The Crew's main owner (the server's
- * can_switch) gets the full function list with its actions; everyone else gets the list the server sends, read-only. */
-function FunctionsCard({ view, projectId }: { view: TeamTabView; projectId: string }) {
-  if (!view.can_switch && !view.functions?.length) return null
+/** What the Team can call (owner, 8 Nov: functions go on Share, not Automations). One view for everyone the Crew is
+ * shared with; the server says whether the viewer may change them (can_manage). */
+function FunctionsCard({ projectId }: { projectId: string }) {
   return <section aria-label="Functions" className={card}>
-    <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Functions</h3>{view.can_switch && <AskButton projectId={projectId} prompt="Help me add a function to this Crew." />}</div>
-    {view.can_switch
-      ? <Suspense fallback={<p className="text-xs text-muted-foreground">Loading…</p>}>
-        <CrewFunctionsView embedded scope={{ profileId: 'work', projectId }} onEdit={message => { if (!sendToMain(projectId, message)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }} />
-      </Suspense>
-      : <>
-        <p className="text-xs text-muted-foreground">What the Team can call. Each runs in its own agent, which only the owner talks to.</p>
-        {view.functions!.map(fn => <div key={fn.name} className="border-t border-border pt-2">
-          <p className="font-mono text-[13px] font-semibold">{fn.name}</p>
-          {fn.description && <p className="text-xs text-muted-foreground">{fn.description}</p>}
-        </div>)}
-      </>}
+    <Suspense fallback={<p className="text-xs text-muted-foreground">Loading…</p>}>
+      <CrewFunctionsView embedded scope={{ profileId: 'work', projectId }} onEdit={message => { if (!sendToMain(projectId, message)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }} />
+    </Suspense>
   </section>
 }
 

@@ -69,11 +69,14 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, embedded = 
   const [filter, setFilter] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // The server says whether this viewer may change the Crew's functions (its owner); everyone it is shared with reads them.
+  const [canManage, setCanManage] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
       const data = await crewFunctionsApi.list(scope)
+      setCanManage(data.can_manage === true)
       setFunctions((data.functions ?? []).filter(fn => !fn.implicit))
       setCalls(data.calls ?? [])
       const triggers = await productWebhooksApi.list(scope).then(result => result.triggers).catch(() => [] as ProductAPITrigger[])
@@ -114,7 +117,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, embedded = 
 
   return <div className={`${embedded ? '' : 'h-full'} min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background`}>
     <div className="space-y-4 p-4">
-      <AutomationIntro icon={Braces} tone="sky" title="Functions" action={onEdit ? <button type="button" className={buttonClass} onClick={() => void onEdit('I want to add a function to this Crew. Ask me what it should do, then set it up.')}>Add in chat</button> : undefined}>
+      <AutomationIntro icon={Braces} tone="sky" title="Functions" action={onEdit && canManage ? <button type="button" className={buttonClass} onClick={() => void onEdit('I want to add a function to this Crew. Ask me what it should do, then set it up.')}>Add in chat</button> : undefined}>
         {loaded ? `${functions.length} functions · ${running} running · ${calls.length} recent calls` : 'Loading functions…'}
       </AutomationIntro>
       {scope.profileId === 'work' && <OnlineOnlyNote projectId={scope.projectId} />}
@@ -134,17 +137,17 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, embedded = 
             <FieldTable label="Asks for" schema={fn.input_schema} />
             <FieldTable label="Gives back" schema={fn.result_schema} />
             <p className="text-[11px] text-muted-foreground">{fresh ? 'A new chat for every call.' : `Runs in its own tab${fn.agent ? ` "${fn.agent}"` : ''}; calls take turns there.`}{fn.updated_at ? ` · Changed ${formatTime(fn.updated_at)}` : ''}</p>
-            {!fn.implicit && <div className="flex flex-wrap gap-1.5">
+            {!fn.implicit && canManage && <div className="flex flex-wrap gap-1.5">
               {onEdit && <button type="button" disabled={busy} className={buttonClass} onClick={() => void onEdit(`I want to update the Crew function "${fn.name}". Show me its current definition and ask me what to change.`)}>Edit in chat</button>}
               <button type="button" disabled={busy} className={buttonClass} onClick={() => void remove(fn.name)}>Remove</button>
             </div>}
           </AutomationRow>
         })}
       </AutomationListBox>}
-      {!hideEmpty && loaded && functions.length === 0 && <EmptyAutomations>No functions yet. Ask the chat to add one.</EmptyAutomations>}
+      {!hideEmpty && loaded && functions.length === 0 && <EmptyAutomations>{canManage ? 'No functions yet. Ask the chat to add one.' : 'No functions yet.'}</EmptyAutomations>}
       {loaded && functions.length > 0 && visibleFunctions.length === 0 && <p className="text-center text-xs text-muted-foreground">No function matches “{filter}”.</p>}
 
-      <section className="space-y-2" data-testid="crew-function-callers">
+      {canManage && <section className="space-y-2" data-testid="crew-function-callers">
         <h3 className="text-sm font-medium">Callers</h3>
         {callers.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Nothing has called this Crew yet.</p>}
         {callers.map(caller => <div key={caller.id} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-border p-2 text-xs">
@@ -152,7 +155,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, embedded = 
           <button type="button" disabled={busy} className={buttonClass} title="Remove this caller's binding; its next call creates a new one" onClick={() => void disconnect(caller.id)}>Disconnect</button>
         </div>)}
         {callers.length > 0 && <p className="text-[11px] text-muted-foreground">Each accepted function call starts a separate execution; calls do not continue these bindings’ chats.</p>}
-      </section>
+      </section>}
 
       <section className="space-y-2">
         <h3 className="text-sm font-medium">Recent calls</h3>

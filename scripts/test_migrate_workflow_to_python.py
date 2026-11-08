@@ -17,6 +17,28 @@ def hashes(path):
 
 
 class SameIdentityConversion(unittest.TestCase):
+    def test_shared_backup_root_keeps_each_workflow_and_refuses_readonly_snapshot_overwrite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            state, backup = root/'state', root/'backups'
+            source = root/'first-source'
+            source.mkdir()
+            original = source/'db.sqlite'
+            original.write_bytes(b'first database')
+            original.chmod(0o444)
+            changed = state/'selected.json'
+            first = Path(m.apply({changed:b'first'}, {'runtime':source}, state, backup, 'first'))
+            source2 = root/'second-source'
+            source2.mkdir()
+            (source2/'db.sqlite').write_bytes(b'second database')
+            second = Path(m.apply({changed:b'second'}, {'runtime':source2}, state, backup, 'second'))
+            self.assertEqual((first/'runtime/db.sqlite').read_bytes(),b'first database')
+            self.assertEqual((second/'runtime/db.sqlite').read_bytes(),b'second database')
+            with self.assertRaisesRegex(ValueError,'already contains a snapshot'):
+                m.apply({changed:b'overwritten'}, {'runtime':source2}, state, backup, 'first')
+            self.assertEqual(changed.read_bytes(),b'second')
+            self.assertEqual((first/'runtime/db.sqlite').read_bytes(),b'first database')
+
     def test_initialize_convert_and_refuse_conflicts_without_history_moves(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -38,6 +60,12 @@ class SameIdentityConversion(unittest.TestCase):
             (runtime/'runs/old/full.log').write_text('historical full log\n')
             (runtime/'schedules.json').write_text('{"schedules":[]}')
             (definitions/'planning/plan.json').write_text('{"steps":[{"id":"old"}]}')
+            capabilities={'browser_mode':'cdp','browser_cdp_port':9222,'selected_global_secret_names':['EXAMPLE_TEST_SECRET'],'llm_config':{'mode':'provider','provider':'codex-cli'},'selected_servers':['example-app'],'selected_tools':['example-app:*']}
+            (definitions/'workflow.json').write_bytes(m.encode({'id':'task','capabilities':capabilities}))
+            (definitions/'variables').mkdir()
+            presets=[{'name':'Account A','values':{'account':'first'}},{'name':'Account B','values':{'account':'second'}}]
+            (definitions/'variables/variables.json').write_bytes(m.encode({'variables':[{'name':'account','type':'string','value':'first'}],'groups':presets}))
+            (runtime/'functions.json').write_text('{"functions":[{"name":"second_account","input":{"input_preset":"Account B"}}]}')
             (code/'old-step/main.py').write_text('print("old source")\n')
             db = sqlite3.connect(runtime/'db/db.sqlite')
             db.execute('CREATE TABLE historical (id INTEGER PRIMARY KEY, result TEXT)')
@@ -63,14 +91,24 @@ class SameIdentityConversion(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'already contains rows'):
                 m.plan(docs,state,False,'task',source)
             db = sqlite3.connect(private/'db/db.sqlite');db.execute('DELETE FROM notes');db.commit();db.close()
+            source_definition=json.loads((source/'script.json').read_text())
+            source_definition['capabilities']={'browser_mode':'extension'}
+            (source/'script.json').write_bytes(m.encode(source_definition))
+            with self.assertRaisesRegex(ValueError,'changes the saved browser_mode selection'):
+                m.plan(docs,state,False,'task',source)
+            source_definition['capabilities']={'browser_mode':'cdp'}
+            (source/'script.json').write_bytes(m.encode(source_definition))
             changes,documents,report = m.plan(docs,state,False,'task',source)
             self.assertEqual(report['conversion']['database_rows'],{'historical':1})
-            backup = Path(m.apply(changes,documents,state))
+            backup = Path(m.apply(changes,documents,state,identity="task"))
             self.assertEqual(hashes(runtime),before)
             self.assertEqual(hashes(backup/'runtime'),before)
             self.assertTrue((backup/'definitions/planning/plan.json').exists())
             self.assertTrue((definitions/'planning/plan.json').exists())
             self.assertEqual((code/'main.py').read_bytes(),(source/'main.py').read_bytes())
+            self.assertEqual(json.loads((code/'script.json').read_text())['capabilities'],capabilities)
+            self.assertEqual(json.loads((code/'script.json').read_text())['input_presets'],presets)
+            self.assertIn('account',[v['name'] for v in json.loads((code/'script.json').read_text())['inputs']])
             self.assertEqual(json.loads(binding_file.read_text()),dict(binding,kind='script',runtime_root='workflows/task'))
             saved=json.loads(projects_file.read_text())['projects']['work/example']
             self.assertEqual(saved['database_root'],'workflows/task/db')

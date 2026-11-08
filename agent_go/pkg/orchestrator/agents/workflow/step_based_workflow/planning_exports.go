@@ -778,7 +778,7 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 		return nil, fmt.Errorf("read workflow inputs: %w", varErr)
 	}
 	if controller.directCrewScript != nil {
-		existingManifest = &VariablesManifest{Variables: controller.directCrewScript.Inputs}
+		existingManifest = controller.directCrewScript.InputDefinitions()
 	}
 	controller.variablesManifest = existingManifest
 	if controller.isRelayExecution() {

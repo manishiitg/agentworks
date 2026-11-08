@@ -22,6 +22,7 @@ type pythonHelperReply struct {
 	OK             bool        `json:"ok"`
 	Value          interface{} `json:"value,omitempty"`
 	Text           string      `json:"text"`
+	AnswerFile     string      `json:"answer_file,omitempty"`
 	ConversationID string      `json:"conversation_id"`
 	Error          string      `json:"error,omitempty"`
 	LogFile        string      `json:"log_file"`

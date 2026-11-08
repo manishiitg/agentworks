@@ -3,6 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { CrewExecutablesPanel } from './CrewExecutablesPanel'
+import { CrewWorkflowPage } from './CrewWorkflowPage'
 import api from '../../services/api'
 import { buildWorkflowPresetsFromManifests } from '../../stores/useGlobalPresetStore'
 import type { DiscoveredWorkflow } from '../../services/api-types'
@@ -40,13 +41,13 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
   const root = createRoot(host)
   const flush = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   const click = async (text: string) => {
-    const button = [...host.querySelectorAll('button')].find(item => item.textContent?.trim() === text)
+    const button = [...host.querySelectorAll('button')].find(item => item.textContent?.trim().startsWith(text))
     expect(button).toBeTruthy()
     await act(async () => button!.click())
     await flush()
   }
   try {
-    await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" kind="workflow" />))
+    await act(async () => root.render(<CrewWorkflowPage projectId="crew" chatTabId="crew-chat" />))
     await flush()
     // The workflow form has one kind; retained Relays link to their existing
     // data is retained without a link or a stale standalone selection.
@@ -63,18 +64,15 @@ it('keeps the Crew chat and unrelated workflow state while inspecting an exact c
     expect(useWorkflowStore.getState().selectedRunFolder).toBe('unrelated-run')
     expect(useWorkflowStore.getState().runFolders.map(folder => folder.name)).toEqual(['unrelated-run'])
     await click('Runs')
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="Workflow run"]')!
-    await act(async () => { select.value = 'run-2'; select.dispatchEvent(new Event('change', { bubbles: true })) })
-    await flush()
+    await click('run-2')
+    await click('Full log')
     expect(host.querySelector('[data-view="logs"]')?.getAttribute('data-workspace')).toBe('Workflow/child')
     expect(host.querySelector('[data-view="logs"]')?.getAttribute('data-run')).toBe('run-2')
-    await click('Costs')
+    await click('Cost details')
     expect(host.querySelector('[data-view="costs"]')?.getAttribute('data-run')).toBe('run-2')
     expect(host.querySelector('[data-view="costs"]')?.getAttribute('data-run-only')).toBe('true')
-    await click('Inspect')
-    const step = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Research'))!
-    await act(async () => step.click())
-    await flush()
+    // Only this run's receipts are listed; opening the step shows the exact execution.
+    await click('Research')
     expect(host.querySelector('[data-view="inspect"]')?.getAttribute('data-execution')).toBe('second-execution')
     expect(useChatStore.getState().activeTabId).toBe('crew-chat')
     expect(useWorkflowStore.getState().selectedRunFolder).toBe('unrelated-run')
@@ -88,7 +86,7 @@ it('opens and saves the shared script source from its Crew', async () => {
   const flush = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   try {
     await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" kind="script" />)); await flush()
-    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Qualify')!.click()); await flush()
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent?.startsWith('Qualify'))!.click()); await flush()
     expect(host.querySelector('[data-view="steps"]')).toBeNull()
     expect(host.querySelector('textarea')?.value).toBe("print('saved script')")
     const save = [...host.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Save')!
@@ -106,7 +104,6 @@ it('lists workflow step scripts in the Scripts tab with where each is used', asy
     await act(async () => root.render(<CrewExecutablesPanel projectId="crew" chatTabId="crew-chat" kind="script" />))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     expect(host.textContent).toContain('Step: Normalize statement')
-    expect(host.textContent).toContain('in Reports')
     expect(host.textContent).not.toContain('No scripts yet')
   } finally {
     spy.mockRestore()

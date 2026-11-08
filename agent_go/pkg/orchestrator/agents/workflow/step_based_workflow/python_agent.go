@@ -193,6 +193,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 			}
 		}
 		if !found {
+			if toolName == "agent_browser" {
+				return nil, nil, fmt.Errorf("This automation's browser is not available. In its Crew chat, ask to choose and connect its browser, then retry.")
+			}
 			return nil, nil, fmt.Errorf("The requested %s tool is unavailable to this automation; connect it in the Crew or turn off that selection.", toolName)
 		}
 	}
@@ -368,11 +371,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		reply.Error = "Cannot save this agent conversation: " + err.Error()
 		return reply
 	}
+	var finalAnswer string
 	for _, message := range args.Messages {
 		item := AgentItem{ID: fmt.Sprintf("turn-%d", saved.Session.ExecutionTurnCount+1), Type: "user_message", Message: message, WriteAccess: AgentWriteAccess{DB: true}}
 		result, turnErr := hcpo.executeAgentUserMessage(agentCtx, step, item, 0, saved.StepID, &saved.Session)
-		log.WriteAt("answer", []byte(redaction.Text(result)+"\n"), time.Now().UTC())
-		reply.Text = scriptOutputPreview(redaction.Text(result), log.Path())
+		finalAnswer = redaction.Text(result)
+		log.WriteAt("answer", []byte(finalAnswer+"\n"), time.Now().UTC())
+		reply.Text = scriptOutputPreview(finalAnswer, log.Path())
 		saved.AgentSessionHandle = currentAgentSessionHandle(runtime)
 		if saveErr := persist(); saveErr != nil {
 			failure = saveErr
@@ -386,6 +391,15 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 			return reply
 		}
 	}
+	answerPath := filepath.ToSlash(filepath.Join("runs", hcpo.selectedRunFolder, "helpers", "answers", attempt+".txt"))
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := hcpo.WriteWorkspaceFile(writeCtx, answerPath, finalAnswer); err != nil {
+		failure = err
+		reply.Error = "The agent answered, but its full final answer could not be saved: " + redaction.Text(err.Error())
+		return reply
+	}
+	reply.AnswerFile = workflowAbsPath(hcpo.GetWorkspacePath(), answerPath)
 	reply.OK = true
 	return reply
 }

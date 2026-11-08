@@ -90,3 +90,69 @@ export function relativeTime(value?: string): string {
   if (hours < 24) return `${hours}h ago`
   return `${Math.round(hours / 24)}d ago`
 }
+
+/*
+ * The Workflow and Automations pages' look (owner-approved mock 8 Nov, docs/design/workflow-automations-pages-mock-20261108.html
+ * in the deployments repo): a card per kind of thing with an Ask button, rows with an optional switch, a bold title,
+ * up to two plain detail lines, one action and a chevron; a row opens in place. Every line is written by the server.
+ */
+
+/** A page card: title, one hint line and Ask (which posts the request into the Crew chat). */
+export function PageCard({ title, hint, onAsk, action, children, testId }: {
+  title: string; hint?: ReactNode; onAsk?: () => void | Promise<void>; action?: ReactNode; children: ReactNode; testId?: string
+}) {
+  return <section aria-label={title} data-testid={testId} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+    <div className="flex items-start gap-2 px-4 pt-3 pb-2">
+      <div className="min-w-0 flex-1">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      </div>
+      {action}
+      {onAsk && <button type="button" onClick={() => void onAsk()} className="shrink-0 rounded-full border border-border px-3 py-0.5 text-xs hover:bg-muted">Ask</button>}
+    </div>
+    {children != null && children !== false && <div className="divide-y divide-border border-t border-border">{children}</div>}
+  </section>
+}
+
+/**
+ * One row of a page card. `lead` is the left control (a Switch, a status dot or an icon), `lines` the plain detail
+ * lines, `action` the one button on the right. With `children` the row opens in place.
+ */
+export function PageRow({ lead, title, lines, action, aside, open, onToggle, children, testId }: {
+  lead?: ReactNode; title: ReactNode; lines?: ReactNode[]; action?: ReactNode; aside?: ReactNode
+  open?: boolean; onToggle?: () => void; children?: ReactNode; testId?: string
+}) {
+  const expandable = children !== undefined && onToggle !== undefined
+  return <div data-testid={testId} className="min-w-0">
+    <div className="flex min-w-0 items-center gap-3 px-4 py-3">
+      {lead && <span className="flex shrink-0 items-center">{lead}</span>}
+      <button type="button" disabled={!expandable} aria-expanded={expandable ? open : undefined} onClick={onToggle} className="min-w-0 flex-1 text-left disabled:cursor-default">
+        <span className="block truncate text-sm font-semibold">{title}</span>
+        {lines?.filter(Boolean).map((line, index) => <span key={index} className="block truncate text-xs text-muted-foreground">{line}</span>)}
+      </button>
+      {aside && <span className="shrink-0 text-right text-xs text-muted-foreground">{aside}</span>}
+      {action && <span className="shrink-0">{action}</span>}
+      {expandable && <button type="button" aria-label={open ? 'Close details' : 'Open details'} onClick={onToggle} className="shrink-0 text-muted-foreground hover:text-foreground">
+        <ChevronRight aria-hidden="true" className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>}
+    </div>
+    {open && children !== undefined && <div className="space-y-1.5 border-t border-border bg-muted/20 px-4 py-3 text-xs">{children}</div>}
+  </div>
+}
+
+/** One "When · …" line inside an opened row. */
+export function DetailLine({ label, children }: { label: string; children: ReactNode }) {
+  return <p className="flex min-w-0 flex-wrap gap-x-2"><span className="w-14 shrink-0 font-semibold">{label}</span><span className="min-w-0 flex-1 text-muted-foreground">{children}</span></p>
+}
+
+/** The small button on a row's right ("Run now", "Stop", "Catch up", "Copy address"). */
+export function RowButton({ children, onClick, disabled, primary, title }: { children: ReactNode; onClick?: () => void; disabled?: boolean; primary?: boolean; title?: string }) {
+  return <button type="button" title={title} disabled={disabled} onClick={onClick}
+    className={`rounded-full px-3 py-1 text-xs font-medium disabled:opacity-50 ${primary ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border border-border hover:bg-muted'}`}>{children}</button>
+}
+
+/** A run's status dot: running, finished, stopped or not reached. */
+export function RunDot({ state }: { state: 'running' | 'finished' | 'stopped' | 'idle' }) {
+  const colour = { running: 'bg-amber-400', finished: 'bg-emerald-500', stopped: 'bg-red-500', idle: 'bg-muted-foreground/40' }[state]
+  return <span aria-hidden="true" className={`inline-block h-2.5 w-2.5 rounded-full ${colour}`} />
+}

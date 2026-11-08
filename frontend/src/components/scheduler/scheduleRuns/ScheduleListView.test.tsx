@@ -64,6 +64,7 @@ describe('ScheduleListView run destination', () => {
       }),
     ])
     try {
+      await act(async () => { (host.querySelector('button[aria-label="Open details"]') as HTMLButtonElement).click() })
       const select = host.querySelector('select[aria-label="Run destination for Upwork check"]') as HTMLSelectElement
       expect(Array.from(select.options).map(option => option.textContent)).toEqual(['Main chat', 'Upwork', 'Own conversation'])
       expect(select.value).toBe('abc12345')
@@ -94,20 +95,18 @@ describe('ScheduleListView declutter', () => {
     try {
       expect(host.textContent).not.toContain('Automation schedules')
       expect(host.textContent).not.toContain('Missed schedules')
-      expect(host.textContent).toContain('Scheduled')
       expect(host.innerHTML).not.toContain('text-warning')
     } finally {
       await unmount()
     }
   })
 
-  it('shows the route as plain secondary text beside the schedule, not as a pill', async () => {
+  it('says which route the schedule runs in a plain detail line', async () => {
     const { host, unmount } = await renderList([
       job({ id: 'a', name: 'Trade', route_selections: { step: 'trade' }, run_count: 1 }),
     ])
     try {
-      expect(host.querySelector('h3')?.textContent).toBe('Trade')
-      expect(host.textContent).toContain('Route: trade')
+      expect(host.textContent).toContain('Runs the trade route')
     } finally {
       await unmount()
     }
