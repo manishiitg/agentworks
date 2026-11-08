@@ -116,6 +116,27 @@ class SameIdentityConversion(unittest.TestCase):
             saved=json.loads(projects_file.read_text())['projects']['work/example']
             self.assertEqual(saved['database_root'],'workflows/task/db')
             self.assertEqual(m.database_rows(runtime/'db/db.sqlite'),{'historical':1})
+            # Retiring the old plan waits for a completed converted run, keeps that
+            # run's plan revision, and leaves workflow.json, code and runs alone.
+            (runtime/'planning/revisions').mkdir(parents=True);(runtime/'planning/changelog').mkdir()
+            (runtime/'planning/revisions/plan-new.json').write_text('{}');(runtime/'planning/revisions/plan-old.json').write_text('{}')
+            (runtime/'planning/changelog/changelog-1.json').write_text('{}')
+            with self.assertRaisesRegex(ValueError,'successfully at least once'):
+                m.retire_old_plan(docs,state,'task')
+            (runtime/'runs/run-1').mkdir(parents=True)
+            (runtime/'runs/run-1/run_metadata.json').write_bytes(m.encode({'status':'completed','required_step_ids':['task'],'plan_revision':'plan-new'}))
+            # A failed run keeps the revision it recorded for inspection and resume.
+            (runtime/'runs/run-2').mkdir()
+            (runtime/'runs/run-2/run_metadata.json').write_bytes(m.encode({'status':'failed','required_step_ids':['task'],'plan_revision':'plan-failed'}))
+            (runtime/'planning/revisions/plan-failed.json').write_text('{}')
+            removals,docs_map,retired=m.retire_old_plan(docs,state,'task')
+            self.assertEqual(retired['completed_converted_runs'],['run-1'])
+            self.assertEqual(sorted(retired['removed']),['planning/changelog/changelog-1.json','planning/plan.json','planning/revisions/plan-old.json'])
+            retire_backup=Path(m.apply_retirement(removals,docs_map,state,None,'task'))
+            self.assertTrue((retire_backup/'definitions-planning/plan.json').exists())
+            self.assertFalse((definitions/'planning').exists())
+            self.assertTrue((runtime/'planning/revisions/plan-new.json').exists() and (runtime/'planning/revisions/plan-failed.json').exists())
+            self.assertTrue((definitions/'workflow.json').exists() and (code/'main.py').exists() and (runtime/'runs/old/full.log').exists())
             # A second conversion refuses instead of silently selecting another DB.
             binding['kind']='workflow';binding['runtime_root']='workflows/task'
             binding_file.write_bytes(m.encode(binding))
