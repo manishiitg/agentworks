@@ -27,6 +27,7 @@ type pythonAgentSelectionKey struct{}
 type pythonAgentSelection struct {
 	Servers []string
 	Scripts []mcpagent.ToolDefinition
+	Browser bool
 }
 
 // The helper omits implicit browser tools; the ordinary factory keeps its own
@@ -35,7 +36,7 @@ func (s *pythonAgentSelection) filterTools(tools []llmtypes.Tool, executors map[
 	filtered := make([]llmtypes.Tool, 0, len(tools))
 	selected := make(map[string]interface{}, len(executors))
 	for _, tool := range tools {
-		if tool.Function == nil || tool.Function.Name == "agent_browser" {
+		if tool.Function == nil || tool.Function.Name == "agent_browser" && !s.Browser {
 			continue
 		}
 		filtered = append(filtered, tool)
@@ -72,6 +73,8 @@ type pythonAgentArguments struct {
 	Scripts        []string `json:"scripts"`
 	MCP            []string `json:"mcp"`
 	Skills         []string `json:"skills"`
+	Browser        bool     `json:"browser"`
+	CanAskPerson   bool     `json:"can_ask_person"`
 	TimeoutSeconds *float64 `json:"timeout_seconds"`
 	ConversationID string   `json:"conversation_id"`
 }
@@ -127,7 +130,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		if saved.WorkspacePath != hcpo.GetWorkspacePath() || saved.RunFolder != hcpo.selectedRunFolder || saved.ParentStepID != parent.GetID() || saved.StepID != args.ConversationID {
 			return nil, nil, fmt.Errorf("This conversation does not belong to this script and run.")
 		}
-		if args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) {
+		if args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || args.Browser && !saved.Settings.Browser || args.CanAskPerson && !saved.Settings.CanAskPerson {
 			return nil, nil, fmt.Errorf("A continued conversation keeps its original model, tier and resource selections. Start a fresh agent to change them.")
 		}
 	} else {
@@ -145,6 +148,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		saved.Config.SelectedTools = nil
 		saved.Config.EnabledSkills = append([]string{}, args.Skills...)
 		saved.Config.EnabledCustomTools = []string{"workspace_advanced:*"}
+		if args.CanAskPerson {
+			saved.Config.EnabledCustomTools = append(saved.Config.EnabledCustomTools, "human_tools:needs_you.ask")
+		}
 		if args.Model != "" {
 			provider, model, valid := strings.Cut(args.Model, "/")
 			if !valid || provider == "" || model == "" {
@@ -172,7 +178,27 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		}
 		saved.Config.ExecutionLLM = &AgentLLMConfig{Provider: resolved.Primary.Provider, ModelID: resolved.Primary.ModelID, ConnectionID: resolved.Primary.ConnectionID, Options: resolved.Primary.Options}
 	}
-	selection := &pythonAgentSelection{Servers: append([]string{}, saved.Settings.MCP...)}
+	selection := &pythonAgentSelection{Servers: append([]string{}, saved.Settings.MCP...), Browser: saved.Settings.Browser}
+	for toolName, requested := range map[string]bool{"agent_browser": saved.Settings.Browser, "human_feedback": saved.Settings.CanAskPerson} {
+		if !requested {
+			continue
+		}
+		found := false
+		for _, tool := range hcpo.WorkspaceTools {
+			if tool.Function != nil && tool.Function.Name == toolName && hcpo.WorkspaceToolExecutors[toolName] != nil {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, nil, fmt.Errorf("The requested %s tool is unavailable to this automation; connect it in the Crew or turn off that selection.", toolName)
+		}
+	}
+	if saved.Settings.CanAskPerson {
+		if opts := hcpo.GetExecutionOptions(); opts != nil && (opts.ExecutionStrategy == ExecutionStrategyStartFromBeginningNoHuman || opts.ExecutionStrategy == ExecutionStrategyResumeFromStepNoHuman) {
+			return nil, nil, fmt.Errorf("This run has questions turned off; allow questions in the Crew before using can_ask_person.")
+		}
+	}
 	available := append([]string{}, hcpo.GetSelectedServers()...)
 	if PlaceMCPServers != nil {
 		names, _ := PlaceMCPServers(ctx, hcpo.GetWorkspacePath())

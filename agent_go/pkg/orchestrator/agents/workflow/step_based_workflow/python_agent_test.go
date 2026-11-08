@@ -267,6 +267,31 @@ func TestPythonAgentGuardsAndResourceSelectionsStayWithinParent(t *testing.T) {
 	if _, admitted := executors["agent_browser"]; admitted {
 		t.Fatal("helper retained browser executor")
 	}
+	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Ask", Messages: []string{"task"}, CanAskPerson: true}); err == nil {
+		t.Fatal("missing question tool was silently admitted")
+	}
+	c.WorkspaceTools = append(c.WorkspaceTools, virtualtools.CreateHumanTools()...)
+	c.WorkspaceToolExecutors["human_feedback"] = func(context.Context, map[string]interface{}) (string, error) { return "unused", nil }
+	withHelp, explicit, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Ask", Messages: []string{"task"}, Browser: true, CanAskPerson: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, executors = c.prepareExecutionTools(&withHelp.Config, parent, nil, DBAccessReadWrite)
+	tools, executors = explicit.filterTools(tools, executors)
+	for _, name := range []string{"agent_browser", "human_feedback"} {
+		if executors[name] == nil {
+			t.Fatalf("explicit existing capability %s was dropped", name)
+		}
+	}
+	for _, tool := range tools {
+		if tool.Function != nil && (tool.Function.Name == "send_email" || tool.Function.Name == "send_slack_message" || tool.Function.Name == "create_human_input_request") {
+			t.Fatalf("asking the person broadened human tools: %s", tool.Function.Name)
+		}
+	}
+	c.WorkspaceTools = nil
+	if _, _, err := c.preparePythonAgent(context.Background(), parent, pythonAgentArguments{Name: "Browser", Messages: []string{"task"}, Browser: true}); err == nil {
+		t.Fatal("missing browser was silently admitted")
+	}
 	for _, args := range []pythonAgentArguments{{Name: "Write", Messages: []string{"task"}, MCP: []string{"not-selected"}}, {Name: "Write", Messages: []string{"task"}, Skills: []string{"missing-fixture-skill"}}} {
 		if _, _, err := c.preparePythonAgent(context.Background(), parent, args); err == nil {
 			t.Fatal("missing resource was silently admitted")
