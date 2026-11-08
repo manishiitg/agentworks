@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	productschedule "github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
 
@@ -57,60 +57,6 @@ func TestWorkflowProjectCallOwnersLegacyLocalOnly(t *testing.T) {
 	}
 }
 
-func TestLegacyWorkflowTriggerRoutesLocalOwnerToMainChat(t *testing.T) {
-	for _, tc := range []struct {
-		name, path string
-		multi      bool
-	}{
-		{"local builder", "Workflow/reports", false},
-		{"local plan step", "", false},
-		{"server builder", "Workflow/reports", true},
-		{"server plan step", "", true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			env := newTriggerLinkEnv(t)
-			t.Setenv("DEFAULT_USER_ID", "owner")
-			if !tc.multi {
-				t.Setenv("MULTI_USER_MODE", "false")
-			}
-			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-			manifest, _, _ := ReadWorkflowManifest(ctx, "Workflow/reports")
-			manifest.Access, manifest.CreatedBy = nil, ""
-			raw, _ := json.Marshal(manifest)
-			env.mock.files[manifestPath("Workflow/reports")] = string(raw)
-			caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}, Path: tc.path}
-			target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
-			if err != nil {
-				t.Fatal(err)
-			}
-			triggerID, _, err := env.api.connectTriggerTarget(ctx, "owner", caller, target)
-			if err != nil {
-				t.Fatal(err)
-			}
-			delivery, err := env.api.dispatchTargetTrigger(ctx, "owner", caller, target, triggerID, "legacy-routing", "test", map[string]interface{}{"task": "test"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			env.svc.mu.Lock()
-			defer env.svc.mu.Unlock()
-			for _, queue := range env.svc.queued {
-				for _, item := range queue {
-					if item.options.RunID == delivery.RunID {
-						if item.job.Schedule.Isolated != tc.multi {
-							t.Fatalf("isolated = %v, want %v", item.job.Schedule.Isolated, tc.multi)
-						}
-						if err := env.svc.validateProjectCallConversation(ctx, item.job); err != nil {
-							t.Fatalf("queued ownership recheck: %v", err)
-						}
-						return
-					}
-				}
-			}
-			t.Fatal("delivery did not queue")
-		})
-	}
-}
-
 func TestQueuedProjectCallRejectsChangedOwners(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
@@ -132,48 +78,25 @@ func TestQueuedProjectCallRejectsChangedOwners(t *testing.T) {
 	}
 }
 
-func TestProjectCallsRouteByProjectOwners(t *testing.T) {
+// Declared functions keep their own tab and owner for every caller; they never
+// enter a person's main chat by inheriting the old implicit-binding routing.
+func TestDeclaredCrewCallsKeepFunctionTabAcrossOwners(t *testing.T) {
 	for _, tc := range []struct {
 		name, source, target string
-		workflow             bool
-		owners               []string
-		isolated             bool
 	}{
-		{"Crew same owner", linkAlphaPath, "Beta", false, nil, false},
-		{"Crew different owner even when actor owns target", linkGammaPath, "Beta", false, nil, true},
-		{"Workflow same owner", "Workflow/reports", "Beta", true, []string{"owner"}, false},
-		{"Workflow shared second owner", "Workflow/reports", "Beta", true, []string{"other", "owner"}, false},
-		{"Workflow different owner even when actor owns target", "Workflow/reports", "Beta", true, []string{"other"}, true},
-		{"Crew cross owner", linkAlphaPath, "Gamma", false, nil, true},
-		{"Code same owner", "_users/owner/Chats/Code/projects/source", "Beta", false, nil, false},
-		{"Code cross owner", "_users/owner/Chats/Code/projects/source", "Gamma", false, nil, true},
+		{"same owner", linkAlphaPath, "Beta"},
+		{"different source owner even when actor owns target", linkGammaPath, "Beta"},
+		{"cross owner", linkAlphaPath, "Gamma"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			env := newTriggerLinkEnv(t)
+			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+			env := newCrewFunctionEnv(t)
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-			if tc.workflow {
-				manifest, _, _ := ReadWorkflowManifest(ctx, tc.source)
-				manifest.Access = &WorkflowAccess{Owners: tc.owners}
-				raw, _ := json.Marshal(manifest)
-				env.mock.mu.Lock()
-				env.mock.files[manifestPath(tc.source)] = string(raw)
-				env.mock.mu.Unlock()
-			} else if tc.source == "_users/owner/Chats/Code/projects/source" {
-				if err := env.svc.registry.RegisterProfile(agentprofiles.Profile{ID: "code", Name: "Code", Version: 1, BuiltIn: true, Product: "code", SystemPromptTemplate: "hi",
-					Runtime: agentprofiles.RuntimePolicy{Conversation: agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject},
-						Workspace: agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Chats/Code/projects"}},
-					Features: []agentprofiles.FeatureBinding{{ID: "triggers"}}, UIPanels: agentprofiles.UIPanels{Schedules: true}}); err != nil {
-					t.Fatal(err)
-				}
-				env.mock.mu.Lock()
-				env.mock.files[tc.source+"/product.json"] = `{"schema_version":1,"product":"code","id":"source","title":"Private source","session_id":"code-source"}`
-				env.mock.mu.Unlock()
-			}
-			resolve := crewTriggerLinkCaller(tc.source)
-			if tc.workflow {
-				resolve = workflowTriggerLinkCaller(tc.source)
-			}
-			caller, err := resolve(ctx)
+			// Links belong to the actual caller, including another person's source.
+			env.mock.mu.Lock()
+			env.mock.files[tc.source+"/workflow.json"] = `{"workflow_context_paths":["` + linkBetaPath + `"]}`
+			env.mock.mu.Unlock()
+			caller, err := crewTriggerLinkCaller(tc.source)(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -181,27 +104,29 @@ func TestProjectCallsRouteByProjectOwners(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			triggerID, _, err := env.api.connectTriggerTarget(ctx, "owner", caller, target)
+			targetCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: target.CrewOwner})
+			fn := savedFunctionForTest(t, targetCtx, target, crewFunction{Name: "routing_task", Description: "Routing task", Instructions: "Complete the task."})
+			call, err := env.api.startCrewFunctionCall(ctx, "owner", caller, target, fn, nil, time.Minute)
 			if err != nil {
 				t.Fatal(err)
 			}
-			delivery, err := env.api.dispatchTargetTrigger(ctx, "owner", caller, target, triggerID, "test-routing", "test", map[string]interface{}{"task": "test"})
-			if err != nil {
-				t.Fatal(err)
-			}
+			defer call.finish("completed", "fixture", "")
 			env.svc.mu.Lock()
 			defer env.svc.mu.Unlock()
 			for _, queue := range env.svc.queued {
 				for _, item := range queue {
-					if item.options.RunID == delivery.RunID {
-						if item.job.Schedule.Isolated != tc.isolated {
-							t.Fatalf("isolated = %v, want %v", item.job.Schedule.Isolated, tc.isolated)
+					if item.options.RunID == call.RunID {
+						if item.job.UserID != target.CrewOwner || !item.job.RunAsOwner || item.job.ProjectCaller != nil {
+							t.Fatalf("function lost target owner authority: user=%q owner=%q run_as_owner=%v project_caller=%+v", item.job.UserID, target.CrewOwner, item.job.RunAsOwner, item.job.ProjectCaller)
+						}
+						if item.job.Schedule.Isolated || item.job.Schedule.ChatKey != target.CrewID+codeChatSideMarker+crewFunctionTabPrefix+"routing-task" {
+							t.Fatalf("function entered the wrong conversation: isolated=%v chat=%q", item.job.Schedule.Isolated, item.job.Schedule.ChatKey)
 						}
 						return
 					}
 				}
 			}
-			t.Fatal("delivery did not queue a turn")
+			t.Fatal("declared call did not queue a turn")
 		})
 	}
 }

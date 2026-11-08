@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
@@ -101,27 +102,6 @@ func newTriggerLinkEnv(t *testing.T) triggerLinkEnv {
 	return triggerLinkEnv{api: api, svc: svc, mock: mock}
 }
 
-// connect binds the caller at callerPath (a Crew, or a workflow when
-// workflow is true) to target the way a first function call does.
-func (env triggerLinkEnv) connect(t *testing.T, callerPath string, workflow bool, target string) (string, bool, error) {
-	t.Helper()
-	claims := &UserClaims{UserID: "owner"}
-	ctx := context.WithValue(context.Background(), UserContextKey, claims)
-	resolveCaller := crewTriggerLinkCaller(callerPath)
-	if workflow {
-		resolveCaller = workflowTriggerLinkCaller(callerPath)
-	}
-	caller, err := resolveCaller(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolved, err := resolveTriggerTarget(ctx, claims, target)
-	if err != nil {
-		return "", false, err
-	}
-	return env.api.connectTriggerTarget(ctx, "owner", caller, resolved)
-}
-
 func decodeToolJSON(t *testing.T, out string) map[string]interface{} {
 	t.Helper()
 	var decoded map[string]interface{}
@@ -129,40 +109,6 @@ func decodeToolJSON(t *testing.T, out string) map[string]interface{} {
 		t.Fatalf("tool output is not JSON: %v\n%s", err, out)
 	}
 	return decoded
-}
-
-// Crew A's first call to Crew B creates an ordinary internal trigger in B's
-// own list, named for and bound to A, that always runs in A's own
-// conversation with B; a second call reuses it.
-func TestConnectCrewToCrewCreatesVisibleBoundTrigger(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	ctx := context.Background()
-
-	firstID, created, err := env.connect(t, linkAlphaPath, false, "#crew:Beta")
-	if err != nil || !created || firstID == "" {
-		t.Fatalf("connect = %q created=%v err=%v", firstID, created, err)
-	}
-	triggers, err := env.svc.projectWebhookConfigs(ctx, "owner", "work", "beta")
-	if err != nil || len(triggers) != 1 {
-		t.Fatalf("beta triggers = %+v err=%v", triggers, err)
-	}
-	bound := triggers[0]
-	if !bound.IsInternal() || !bound.Enabled || bound.Caller == nil || bound.Caller.Type != triggerCallerCrew || bound.Caller.ID != "alpha" {
-		t.Fatalf("created trigger = %+v, want an enabled internal trigger bound to crew alpha", bound)
-	}
-	if bound.Name != "Called by Alpha Bot" || !strings.Contains(bound.Message, "Alpha Bot") {
-		t.Fatalf("trigger does not record its caller: name=%q message=%q", bound.Name, bound.Message)
-	}
-	if !bound.ownConversation() || bound.RunDestination != runDestinationIsolated {
-		t.Fatalf("caller binding must store an isolated fallback: %+v", bound)
-	}
-	if bound.Webhook != nil {
-		t.Fatalf("internal trigger carries secret material: %+v", bound.Webhook)
-	}
-	againID, created, err := env.connect(t, linkAlphaPath, false, "Beta")
-	if err != nil || created || againID != firstID {
-		t.Fatalf("second connect = %q created=%v err=%v, want reuse of %q", againID, created, err, firstID)
-	}
 }
 
 // Internal bindings default to isolation until dispatch resolves project owners.
@@ -179,57 +125,102 @@ func TestCallerBindingDefaultsToIsolationBeforeOwnerRouting(t *testing.T) {
 	}
 }
 
-func TestTriggerLinkPermissions(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	for _, tt := range []struct {
-		name, target, want string
-	}{
-		{"read-only workflow", "workflow:Shared", "only have read access"},
-		{"itself", "Alpha Bot", "cannot connect to itself"},
-		{"unknown", "nope", "no Crew or workflow you can edit"},
-	} {
-		_, _, err := env.connect(t, linkAlphaPath, false, tt.target)
-		if err == nil || !strings.Contains(err.Error(), tt.want) {
-			t.Fatalf("%s: err = %v, want %q", tt.name, err, tt.want)
-		}
+// Shared workflow functions are Run entry points; missing projects still refuse.
+func TestTriggerTargetResolutionUsesCurrentRunAccess(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	newTriggerLinkEnv(t)
+	claims := &UserClaims{UserID: "owner"}
+	ctx := context.WithValue(context.Background(), UserContextKey, claims)
+	if target, err := resolveTriggerTarget(ctx, claims, "workflow:Shared"); err != nil || target.Kind != triggerCallerWorkflow {
+		t.Fatalf("shared workflow Run entry = %+v, err=%v", target, err)
+	}
+	// A real shared target is visible until its audience is removed; the
+	// refusal must come from access, not a missing project fixture.
+	if _, err := resolveTriggerTarget(ctx, claims, "Gamma"); err != nil {
+		t.Fatal(err)
+	}
+	if err := defaultProjectOwners().SetAudience("work", "gamma", true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveTriggerTarget(ctx, claims, "Gamma"); err == nil {
+		t.Fatal("private target remained callable after audience removal")
+	}
+	if _, err := resolveTriggerTarget(ctx, claims, "nope"); err == nil || !strings.Contains(err.Error(), "no Crew or workflow you can use") {
+		t.Fatalf("unknown target: %v", err)
 	}
 }
 
-// Crews are shared server-wide: a Crew calls another user's Crew, by name or
-// physical path, and the binding lands in that Crew's own list under its
-// owner.
-func TestTriggerLinkReachesAnotherUsersCrew(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	ctx := context.Background()
-	for _, target := range []string{"Gamma", linkGammaPath} {
-		if triggerID, _, err := env.connect(t, linkAlphaPath, false, target); err != nil || triggerID == "" {
-			t.Fatalf("connect %q to another user's crew = %q err=%v", target, triggerID, err)
+// PLAT-746: current explicit Crew links remain owner-authored even though
+// shared Run people may call the linked Crew's declared functions.
+func TestCrewLinkEditsRequireOwnerOverMCP(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "peer", ProjectID: "peer", OwnerID: "other", Shared: true, AudienceConfigured: true}); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, "Crew/peer/README.md", "Peer fixture.\n")
+	f.write(t, "_system/crew-data/peer/product.json", `{"schema_version":1,"product":"work","id":"peer","title":"Peer"}`)
+	args := func(action string) map[string]any {
+		return map[string]any{"action": action, "workspace_path": "Crew/peer"}
+	}
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", args("reference_attach"), 200)
+	before, found, err := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json")
+	if err != nil || !found || !strings.Contains(before, "Crew/peer") {
+		t.Fatalf("owner did not create the link: %v", err)
+	}
+	for _, action := range []string{"reference_attach", "reference_detach"} {
+		crewCapabilityHTTP(t, f, crewReader("owner"), "workspace", args(action), 403)
+	}
+	after, _, err := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json")
+	if err != nil || after != before {
+		t.Fatal("a refused Run operation changed the link", err)
+	}
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", args("reference_detach"), 200)
+}
+
+// A shared Crew is resolved by its name or canonical path. Calls use the
+// owner's declared entry and do not synthesize a caller-specific binding.
+func TestSharedCrewFunctionUsesDeclaredEntry(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newCrewFunctionEnv(t)
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	ownerCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
+	target, err := resolveTriggerTarget(ownerCtx, &UserClaims{UserID: "other"}, "Gamma")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := savedFunctionForTest(t, ownerCtx, target, crewFunction{Name: "shared_task", Description: "Shared task", Instructions: "Complete the task."})
+	caller, err := crewTriggerLinkCaller(linkAlphaPath)(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Gamma", linkGammaPath} {
+		resolved, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, name)
+		if err != nil || resolved.CrewOwner != "other" || resolved.CrewID != target.CrewID {
+			t.Fatalf("shared target %s: %+v, %v", name, resolved, err)
 		}
+		call, err := env.api.startCrewFunctionCall(ctx, "owner", caller, resolved, fn, nil, time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if call.TriggerID != fn.TriggerID || call.RunID == "" {
+			t.Fatalf("call lost declared entry/run identity: %+v", call.snapshot())
+		}
+		call.finish("completed", "fixture", "")
 	}
-	triggers, err := env.svc.projectWebhookConfigs(ctx, "other", "work", "gamma")
-	if err != nil || len(triggers) != 1 || !triggers[0].IsInternal() {
-		t.Fatalf("expected one reused binding on gamma, got %+v err=%v", triggers, err)
-	}
-	// A Crew caller from another owner may bind to a Crew trigger.
-	if _, _, err := env.svc.saveProductWebhookConfig(ctx, "owner", productWebhookRequest{
-		ProfileID: "work", ProjectID: "beta", Name: "From gamma", Message: "x", Enabled: true,
-		Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "gamma", ProfileID: "work"},
-	}, ""); err != nil {
-		t.Fatalf("binding another user's crew as caller: %v", err)
+	functions, err := readCrewFunctions(ownerCtx, target)
+	if err != nil || len(functions) != 1 || functions[0].TriggerID != fn.TriggerID {
+		t.Fatalf("calling changed declared entries: %+v, %v", functions, err)
 	}
 	crews, err := listAccessibleCrewProjects(ctx, "owner", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var sawGamma bool
 	for _, crew := range crews {
 		if crew["workspace_path"] == linkGammaPath && crew["access"] == "run" && crew["owner"] == "other" {
-			sawGamma = true
+			return
 		}
 	}
-	if !sawGamma {
-		t.Fatalf("list must include another user's crew with write access: %+v", crews)
-	}
+	t.Fatalf("shared Crew missing from accessible projects: %+v", crews)
 }
 
 // The Work product gate admits the function tools through the
@@ -261,7 +252,8 @@ func TestTriggerLinkToolsDeclaredByFeature(t *testing.T) {
 // A follow-up into a call's run is refused before the run starts and after
 // it ends.
 func TestFollowUpNeedsARunningCall(t *testing.T) {
-	env := newTriggerLinkEnv(t)
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newCrewFunctionEnv(t)
 	claims := &UserClaims{UserID: "owner"}
 	ctx := context.WithValue(context.Background(), UserContextKey, claims)
 	caller, err := crewTriggerLinkCaller(linkAlphaPath)(ctx)
@@ -272,58 +264,22 @@ func TestFollowUpNeedsARunningCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	triggerID, _, err := env.api.connectTriggerTarget(ctx, "owner", caller, target)
+	fn := savedFunctionForTest(t, ctx, target, crewFunction{Name: "follow_up", Description: "Follow up", Instructions: "Complete the task."})
+	call, err := env.api.startCrewFunctionCall(ctx, "owner", caller, target, fn, nil, time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
-	delivery, err := env.api.dispatchTargetTrigger(ctx, "owner", caller, target, triggerID, "d-1", crewFunctionEvent, map[string]interface{}{"task": "x"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := env.api.sendToCrewTriggerRun(ctx, "owner", caller, target, triggerID, delivery.RunID, "more"); err == nil || !strings.Contains(err.Error(), "has not started yet") {
+	defer call.finish("completed", "fixture", "")
+	triggerID := fn.TriggerID
+
+	if _, err := env.api.sendToCrewTriggerRun(ctx, "owner", caller, target, triggerID, call.RunID, "more"); err == nil || !strings.Contains(err.Error(), "has not started yet") {
 		t.Fatalf("follow-up before start: err = %v", err)
 	}
-	if err := UpdateScheduleRun(ctx, agentProfileRuntimeWorkspace("owner", linkBetaPath), delivery.RunID, "success", "", nil, "", "s"); err != nil {
+	if err := UpdateScheduleRun(ctx, agentProfileRuntimeWorkspace("owner", linkBetaPath), call.RunID, "success", "", nil, "", "s"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := env.api.sendToCrewTriggerRun(ctx, "owner", caller, target, triggerID, delivery.RunID, "late"); err == nil || !strings.Contains(err.Error(), "already finished") {
+	if _, err := env.api.sendToCrewTriggerRun(ctx, "owner", caller, target, triggerID, call.RunID, "late"); err == nil || !strings.Contains(err.Error(), "already finished") {
 		t.Fatalf("follow-up after finish: err = %v", err)
-	}
-}
-
-// A workflow (Builder chat) calls a Crew (workflow→crew) and another
-// workflow (workflow→workflow); a workflow cannot call itself.
-func TestWorkflowCallerConnectsToCrewAndWorkflow(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	ctx := context.Background()
-
-	if _, created, err := env.connect(t, "Workflow/pipeline", true, "#crew:Beta"); err != nil || !created {
-		t.Fatalf("workflow→crew connect created=%v err=%v", created, err)
-	}
-	triggers, _ := env.svc.projectWebhookConfigs(ctx, "owner", "work", "beta")
-	if len(triggers) != 1 || triggers[0].Caller.Type != triggerCallerWorkflow || triggers[0].Name != "Called by Pipeline" || !triggers[0].ownConversation() {
-		t.Fatalf("crew trigger for workflow caller = %+v", triggers)
-	}
-
-	triggerID, _, err := env.connect(t, "Workflow/pipeline", true, "#workflow:Reports")
-	if err != nil {
-		t.Fatalf("workflow→workflow connect: %v", err)
-	}
-	manifest, _, err := ReadWorkflowManifest(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner"}), "Workflow/reports")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var bound *WorkflowSchedule
-	for i := range manifest.Schedules {
-		if manifest.Schedules[i].ID == triggerID {
-			bound = &manifest.Schedules[i]
-		}
-	}
-	if bound == nil || !bound.IsInternalTrigger() || bound.Caller == nil || bound.Caller.Type != triggerCallerWorkflow || bound.Name != "Called by Pipeline" {
-		t.Fatalf("workflow binding = %+v", bound)
-	}
-	if _, _, err := env.connect(t, "Workflow/pipeline", true, "workflow:Pipeline"); err == nil || !strings.Contains(err.Error(), "cannot connect to itself") {
-		t.Fatalf("self connect err = %v", err)
 	}
 }
 
@@ -357,14 +313,14 @@ func TestInternalWorkflowTriggerAcceptsWorkflowCaller(t *testing.T) {
 
 func TestWorkflowContextPromptListsTypedTags(t *testing.T) {
 	prompt := buildWorkflowContextPromptWithLabels(
-		[]string{"_users/owner/Chats/Work/projects/beta", "Workflow/reports"},
+		[]string{"Crew/beta", "Workflow/reports"},
 		workflowContextLabels([]workflowContextRef{
-			{Path: "Chats/Work/projects/beta", Label: "Beta `Bot`\n", Kind: "workflow"},
+			{Path: "Crew/beta", Label: "Beta `Bot`\n", Kind: "workflow"},
 			{Path: "Workflow/reports/", Label: "Weekly Reports"},
 		}),
 	)
 	for _, want := range []string{
-		"**#crew:Beta Bot** (Crew) `_users/owner/Chats/Work/projects/beta/`",
+		"**#crew:Beta Bot** (Crew) `Crew/beta/`",
 		"**#workflow:Weekly Reports** (workflow) `Workflow/reports/`",
 		"work-workflow-files",
 	} {
