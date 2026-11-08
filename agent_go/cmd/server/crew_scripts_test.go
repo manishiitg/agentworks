@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -76,7 +77,9 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 from pathlib import Path
 assert not any(k.startswith(('SECRET_', 'VLT_', 'MCP_')) for k in os.environ)
 config=json.loads(Path(sys.argv[sys.argv.index('--project')+1]).read_text())
-assert any((Path(p)/'agentworks/__init__.py').is_file() for p in config['extraPaths'])
+assert len(config['extraPaths'])==2 and str(Path.cwd()) in config['extraPaths']
+assert sum((Path(p)/'agentworks/__init__.py').is_file() for p in config['extraPaths'])==1
+assert all(not Path(p).is_symlink() and Path(p).resolve().is_relative_to(Path.cwd()) for p in config['include'])
 source=Path.cwd()/'main.py'
 print(json.dumps({'generalDiagnostics':[{'file':str(source),'message':'Use an integer; MCP_API_TOKEN=fixture-credential','range':{'start':{'line':2}}}]}))
 sys.exit(1)
@@ -95,6 +98,12 @@ sys.exit(1)
 		var params workspaceclient.ExecuteShellCommandParams
 		if err := c.ShouldBindJSON(&params); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		provided, _ := base64.StdEncoding.DecodeString(params.ExtraEnv["VAR_AUTOMATION_CHECK_FILES"])
+		if strings.Contains(string(provided), `"outside.py"`) {
+			t.Error("source inspection followed a link into another Crew")
+			c.JSON(400, gin.H{"error": "source link refused"})
 			return
 		}
 		guard := params.FolderGuard
@@ -173,6 +182,24 @@ sys.exit(1)
 	}
 	if saved, _, err := readFileFromWorkspace(t.Context(), script.Root+"/code/main.py"); err != nil || saved != "print('owner update')\n" {
 		t.Fatal("checker errors prevented source save", err)
+	}
+	// A planted source link must not give inspection a read into another
+	// Crew. The source resolver must refuse or omit it, and checker includes
+	// must never follow it; inspecting the remaining safe files is allowed.
+	layout, foundLayout, layoutErr := crewroot.LookupExecutable(docs, script.Root)
+	otherLayout, otherFound, otherErr := crewroot.LookupExecutable(docs, other.Root)
+	if layoutErr != nil || otherErr != nil || !foundLayout || !otherFound {
+		t.Fatalf("source layouts unavailable: %v %v", layoutErr, otherErr)
+	}
+	link := filepath.Join(layout.Code, "outside.py")
+	if err := os.Symlink(filepath.Join(otherLayout.Code, "main.py"), link); err != nil {
+		t.Fatal(err)
+	}
+	if code := request("owner", "print('owner update')\n"); code != 200 || strings.Contains(lastReply, "outside.py") {
+		t.Fatalf("source symlink reached inspection or prevented save: HTTP%d %s", code, lastReply)
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.Remove(checker); err != nil {
 		t.Fatal(err)
