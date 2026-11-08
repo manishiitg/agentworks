@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -17,6 +18,7 @@ import (
 	transcriptevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/workspace/runlog"
+	"github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/mcpclient"
@@ -314,12 +316,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	// call closes its live runtime before returning; restore current guards and
 	// resource selection when rebuilding the same conversation's next call.
 	toolsSession := "python-runtime-" + saved.StepID
-	hcpo.pythonHelperLimitsMu.Lock()
-	if hcpo.pythonAgentSessions == nil {
-		hcpo.pythonAgentSessions = map[string]struct{}{}
-	}
-	hcpo.pythonAgentSessions[toolsSession] = struct{}{}
-	hcpo.pythonHelperLimitsMu.Unlock()
 	hcpo.closeAgentRuntime(&agentSequenceSession{runtime: &agentSequenceRuntime{SessionID: toolsSession, Provider: saved.Config.ExecutionLLM.Provider, PreserveWorkspace: true}}, "rebuilding the saved Python agent conversation")
 	mcpagent.ClearSessionsStopped([]string{toolsSession})
 	agentCtx := context.WithValue(ctx, pythonAgentSelectionKey{}, selection)
@@ -397,14 +393,35 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 // Called by the existing run finalizer, never between helper calls or while
 // waiting for capacity. Only these server-generated, run-owned sessions retire.
 func (hcpo *StepBasedWorkflowOrchestrator) finishPythonAgentSessions(status string) {
-	if status != "completed" && status != "failed" {
+	if status != "completed" && status != "failed" && status != "stopped" && status != "cancelled" {
 		return
 	}
-	hcpo.pythonHelperLimitsMu.Lock()
-	sessions := hcpo.pythonAgentSessions
-	hcpo.pythonAgentSessions = nil
-	hcpo.pythonHelperLimitsMu.Unlock()
-	for session := range sessions {
-		mcpagent.CloseSession(session)
+	if hcpo.selectedRunFolder == "" {
+		return
+	}
+	// Existing protected conversation records persist the server-generated
+	// identity before launch. Read that list so terminal cleanup also works
+	// after a controller/process restart; never scan unrelated /tmp homes.
+	view := workflowfiles.WorkflowFS{Docs: GetPromptDocsRoot(), Root: hcpo.GetWorkspacePath()}
+	dir := filepath.ToSlash(filepath.Join("runs", hcpo.selectedRunFolder, "helpers", "conversations"))
+	entries, err := view.ReadDir(dir)
+	if err != nil {
+		hcpo.GetLogger().Warn(fmt.Sprintf("Cannot read Python agent homes for terminal cleanup: %v", err))
+		return
+	}
+	for _, entry := range entries {
+		id := strings.TrimSuffix(entry.Name(), ".json")
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		if _, err := hcpo.pythonAgentConversationPath(id); err != nil {
+			continue
+		}
+		raw, err := fs.ReadFile(view, dir+"/"+entry.Name())
+		var saved pythonAgentConversation
+		if err != nil || json.Unmarshal(raw, &saved) != nil || saved.StepID != id || saved.WorkspacePath != hcpo.GetWorkspacePath() || saved.RunFolder != hcpo.selectedRunFolder || saved.OwnerKind != "python_agent" {
+			continue
+		}
+		mcpagent.CloseSession("python-runtime-" + id)
 	}
 }
