@@ -77,12 +77,24 @@ it('folds clean repositories, preserves explicit choices, and scopes them to the
 })
 
 it('keeps folding usable when browser preference storage is unavailable', async () => {
-  vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => { throw new Error('Storage unavailable') })
-  vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new Error('Storage unavailable') })
-  const { header } = await mount()
-  expect(header('docs').getAttribute('aria-expanded')).toBe('false')
-  await act(async () => header('docs').click())
-  expect(header('docs').getAttribute('aria-expanded')).toBe('true')
+  // happy-dom Storage binds methods through a Proxy; method spies can survive
+  // restoreAllMocks. Replace only this preference boundary and restore it explicitly.
+  const storage = window.localStorage
+  const unavailable = {
+    getItem: vi.fn(() => { throw new Error('Storage unavailable') }),
+    setItem: vi.fn(() => { throw new Error('Storage unavailable') }),
+  }
+  Object.defineProperty(window, 'localStorage', { configurable: true, value: unavailable })
+  try {
+    const { header } = await mount()
+    expect(unavailable.getItem).toHaveBeenCalled()
+    expect(header('docs').getAttribute('aria-expanded')).toBe('false')
+    await act(async () => header('docs').click())
+    expect(unavailable.setItem).toHaveBeenCalled()
+    expect(header('docs').getAttribute('aria-expanded')).toBe('true')
+  } finally {
+    Object.defineProperty(window, 'localStorage', { configurable: true, value: storage })
+  }
 })
 
 // PLAT-746-158 B3: a delayed saved comparison must not replace the current
