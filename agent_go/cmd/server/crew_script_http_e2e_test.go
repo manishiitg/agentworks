@@ -163,6 +163,7 @@ from pathlib import Path
 print('start-marker')
 sys.stdout.write('Q' * 2097152)
 sys.stderr.write('stderr-last-line')
+assert 'VAR_GROUP_NAME' in os.environ
 values = json.loads(os.environ['STEP_PARAMS_JSON'])
 assert isinstance(values['count'], int)
 assert values['extended'] is False and isinstance(values['rate'], (int,float))
@@ -189,7 +190,7 @@ assert scalar('SELECT value FROM fixture_rows WHERE id=?', [values['count']]) ==
 import subprocess
 subprocess.run([sys.executable,'-c',"import os; from pathlib import Path; from agentworks_db import scalar; assert scalar('SELECT COUNT(*) FROM fixture_rows') >= 1; assert (Path(os.environ['WORKFLOW_DATA_ROOT'])/'reports/runtime-fixture.json').is_file()"],check=True)
 
-Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'python_ran':True, 'run_folder':str(__import__('agentworks').run_folder)}))
+Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count':values['count'], 'preset':os.environ.get('VAR_GROUP_NAME'), 'python_ran':True, 'run_folder':str(__import__('agentworks').run_folder)}))
 `)
 	if err := writeFileToWorkspace(t.Context(), binding.CrewRoot+"/product.json", `{"schema_version":1,"product":"work","id":"crew-script-http","title":"Script HTTP","session_id":"work:project:crew-script-http"}`); err != nil {
 		t.Fatal(err)
@@ -337,6 +338,9 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		}
 		result, err := os.ReadFile(filepath.Join(runtimeRoot, "runs", folder.Name(), "execution/saved/result.json"))
 		if err == nil && strings.Contains(string(result), `"count": 9`) && strings.Contains(string(result), `"python_ran": true`) {
+			if !strings.Contains(string(result), `"preset": "Saved"`) {
+				t.Fatalf("direct script lost selected preset environment: %s", result)
+			}
 			runRoot := filepath.Join(runtimeRoot, "runs", folder.Name())
 			snapshot, readErr := os.ReadFile(filepath.Join(runRoot, "inputs.json"))
 			var inputRecord map[string]interface{}
