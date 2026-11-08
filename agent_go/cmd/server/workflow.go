@@ -4118,6 +4118,10 @@ func (api *StreamingAPI) handleGetCosts(w http.ResponseWriter, r *http.Request) 
 		json.NewEncoder(w).Encode(response)
 		return
 	}
+	if r.URL.Query().Get("view") == "runs" {
+		json.NewEncoder(w).Encode(loadWorkflowRunTotals(r.Context(), cleanedWorkspacePath))
+		return
+	}
 	json.NewEncoder(w).Encode(loadWorkflowCosts(r.Context(), cleanedWorkspacePath))
 }
 

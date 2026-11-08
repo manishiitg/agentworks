@@ -2409,6 +2409,14 @@ export const agentApi = {
     })
   },
 
+  // Each run's total spend, added up by the server (the runs list's one cost read).
+  getRunCostTotals: async (workspacePath: string): Promise<{ runs: Array<{ run_folder: string; total_cost_usd: number }> }> => {
+    return dedupedGet(`workflow-run-costs:${workspacePath}`, async () => {
+      const response = await api.get('/api/workflow/costs', { params: { workspace_path: workspacePath, view: 'runs' } })
+      return response.data
+    })
+  },
+
   // Get content of a specific log file
   // Returns string content (may be JSON that needs parsing)
   getLogFile: async (filePath: string): Promise<string | Record<string, unknown>> => {

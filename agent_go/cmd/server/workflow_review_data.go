@@ -113,6 +113,51 @@ func loadWorkflowCosts(ctx context.Context, workspacePath string) workflowCostsR
 	}
 }
 
+// workflowRunTotal is one run's total spend, for a runs list that needs the number and not the ledger.
+type workflowRunTotal struct {
+	RunFolder    string  `json:"run_folder"`
+	TotalCostUSD float64 `json:"total_cost_usd"`
+}
+
+type workflowRunTotalsResponse struct {
+	Success bool               `json:"success"`
+	Runs    []workflowRunTotal `json:"runs"`
+}
+
+// workflowRunTotalFromUsage adds up a run's model and tool spend: the number the runs list shows for it.
+func workflowRunTotalFromUsage(usage *orchestrator.TokenUsageFile) float64 {
+	total := 0.0
+	for _, model := range usage.ByModel {
+		if model != nil {
+			total += model.TotalCost
+		}
+	}
+	for _, tool := range usage.ByTool {
+		if tool != nil {
+			total += tool.TotalCost
+		}
+	}
+	return total
+}
+
+// loadWorkflowRunTotals is the runs list's one cost read (view=runs): each run folder's model and tool spend added up
+// on the server, newest first, instead of every run's token usage sent to the browser to be added up there.
+func loadWorkflowRunTotals(ctx context.Context, workspacePath string) workflowRunTotalsResponse {
+	executionCosts, err := readAllRunTokenUsageFromCosts(ctx, workspacePath, orchestrator.CostScopeExecution)
+	if err != nil {
+		executionCosts = map[string]*storedRunTokenUsage{}
+	}
+	runs := []workflowRunTotal{}
+	for _, entry := range buildWorkflowRunCostEntries(executionCosts) {
+		if entry.TokenUsage == nil {
+			continue
+		}
+		total := workflowRunTotalFromUsage(entry.TokenUsage)
+		runs = append(runs, workflowRunTotal{RunFolder: entry.RunFolder, TotalCostUSD: total})
+	}
+	return workflowRunTotalsResponse{Success: true, Runs: runs}
+}
+
 func loadWorkflowCostSummary(workspacePath string, days int, before string, now time.Time) (workflowCostsResponse, error) {
 	if days <= 0 {
 		days = 30
