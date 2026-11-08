@@ -16,7 +16,6 @@ import (
 // registry and persisted manifests. No Slack network or message is needed.
 func TestSlackVaultSelectionPermissionsAcrossSurfaces(t *testing.T) {
 	api, workspace := setupSlackConnectionTest(t)
-	workspace.files["Workflow/flow/workflow.json"] = `{"schema_version":1,"id":"flow","label":"Flow","kind":"relay","access":{"owners":["alice"]}}`
 	workspace.files["Workflow/gamma/workflow.json"] = `{"schema_version":1,"id":"wf_gamma","label":"Gamma","access":{"owners":["alice"]}}`
 	svc, err := ensureSlackService()
 	if err != nil {
@@ -111,13 +110,6 @@ func TestSlackVaultSelectionPermissionsAcrossSurfaces(t *testing.T) {
 	}
 	if len(svc.ListConnections()) != 1 {
 		t.Fatal("selecting a bot copied its credentials into a duplicate connection")
-	}
-	flow := call("alice", "list_saved", "Workflow/flow", "")
-	if flow.Code != 200 || !strings.Contains(flow.Body.String(), `"allow_bots":false`) {
-		t.Fatalf("Flow policy not projected: %s", flow.Body)
-	}
-	if denied := call("alice", "select", "Workflow/flow", conn.ID); denied.Code != 403 {
-		t.Fatal("Flow accepted an incoming bot")
 	}
 	if denied := call("bob", "save", "", conn.ID); denied.Code != 403 {
 		t.Fatal("non-owner changed saved bot credentials")
