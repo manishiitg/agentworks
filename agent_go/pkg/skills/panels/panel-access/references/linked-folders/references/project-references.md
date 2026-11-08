@@ -16,17 +16,13 @@ by default; do not promise access to another owner's files.
 
 For a tagged Crew:
 
-- Start with `product.json` and `workflow.json` for identity, capabilities,
-  schedule definitions and durable references. Then read relevant `code/`
-  or other files on demand.
+- Start with the returned Crew identity and authorized reference context. Read relevant files on demand; use current workspace tools for managed settings rather than guessing a metadata-file path.
 - Read Dashboard source in `db/reports/`, commonly `index.html`, and query
   its database read-only when needed. The Dashboard stays in the Crew's UI;
   attaching it does not replace the current project's Dashboard. The current
   project's `dashboard action=link` tool does not target another Crew: ask that Crew
   for its Dashboard link when needed.
-- Schedule definitions live in `workflow.json`. For current enablement, next
-  run or latest run status, send the Crew an explicit message and request its
-  `automations action=list` result. Your own `automations action=list` is
+- For schedules, current enablement and latest runs, send the Crew an explicit message and request its `automations action=list` result where offered. Your own `automations action=list` is
   bound to this project, not the tagged Crew.
 - Edit only when the user requests it and the runtime grants write access.
   A referenced Crew's whole `db/` subtree is read-only, including Dashboard
@@ -37,32 +33,8 @@ For a tagged Crew:
 
 ## Inspect progressively
 
-Start with a shallow listing and read only what answers the request. Workflow
-folders can contain large run histories and caches.
+Start with a shallow listing and read only what answers the request. A Crew can contain large histories and caches. Use the identity, file locations and grants returned for the current reference rather than guessing another project's layout.
 
-| Path | Meaning |
-| --- | --- |
-| `workflow.json` | Authoritative workflow identity, version, capabilities, schedules, and durable selections. |
-| `instructions.md` | Human-authored operating instructions, when present. |
-| `code/` | Current step implementations and reusable workflow code. |
-| `knowledgebase/` | Curated source context, notes, and indexes. |
-| `learnings/` | Accumulated global or step-specific lessons. |
-| `db/db.sqlite` | Managed workflow data. Query read-only; never edit SQLite, WAL, or SHM files. |
-| `db/reports/` | Dashboard source, commonly `index.html`, plus Dashboard assets. |
-| `runs/run_index.json` and `runs/iteration-*` | Run metadata, logs, and per-step execution outputs. Select the relevant/latest run instead of crawling all runs. |
-| `reports/` | Published or user-scoped Dashboard artifacts, when present. |
+For a workflow inside a Crew, read its script.json inputs and presets and its main.py source through the current workflow tools. Python functions, conditions and loops determine the order; @step names label them in Steps and Runs. They are not separate run targets. Read the selected run's metadata, output files and bounded logs through runs get/logs or the exact paths returned for that run. Do not read an old plan file or substitute another run's output.
 
-For workflow references, folders such as `builder/`, `planning/`, `config/`, `costs/`, `evaluation/`,
-`pulse/`, `scores/`, `soul/`, `backup/`, `versions/`, hidden provider folders,
-and `tool_output_folder/` are platform/runtime state. Inspect them only when the
-user's question specifically requires diagnostics, history, or architecture
-and the runtime permits it. A referenced Crew's `builder/` stays blocked.
-
-For an attached workflow database, use a read-only shell query such as
-`sqlite3 -readonly "$root/db/db.sqlite" ...`. The project's
-`database action=query` tool targets the current project, not an attached
-workflow. Treat files as evidence that may change while the source workflow is
-running, and state when a conclusion depends on a particular run or snapshot.
-
-Do not search files for credentials. Workflow secrets remain behind the
-Secrets system and are not granted by read-only folder access.
+Workflow knowledge files, Crew Memory and shared Brain remain separate. Query managed data through database tools; never open or change SQLite, WAL or SHM files directly. Use the Crew's current dashboard and file tools for dashboard source. A reference does not grant secret values, private conversations or write access to another Crew's database. The backend's current grants decide every read and write.
