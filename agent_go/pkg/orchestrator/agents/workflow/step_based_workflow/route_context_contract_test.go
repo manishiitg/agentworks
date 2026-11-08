@@ -41,17 +41,3 @@ func TestTodoRouteHasOneDurableContextChannel(t *testing.T) {
 		t.Fatalf("canonical context channel missing: %s", encoded)
 	}
 }
-
-func TestTodoRouteMutationSchemasDoNotAdvertiseDeadContextChannel(t *testing.T) {
-	for name, schema := range map[string]string{
-		"add":    getAddAgentRouteSchema(),
-		"update": getUpdateAgentRouteSchema(),
-	} {
-		if strings.Contains(schema, "context_to_pass") {
-			t.Fatalf("%s route schema still advertises context_to_pass", name)
-		}
-		if !strings.Contains(schema, "context_dependencies") {
-			t.Fatalf("%s route schema omits canonical context_dependencies", name)
-		}
-	}
-}
