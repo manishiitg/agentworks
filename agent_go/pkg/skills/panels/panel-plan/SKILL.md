@@ -13,17 +13,8 @@ metadata:
     - crew_workflow_files
     - run_workflow_trigger
     - get_workflow_trigger_run
-    relays:
-    - settings
-    - test_relay
-    - get_relay_run
-    - get_relay_releases
-    - publish_relay
-    - execute_shell_command
-    - files
   external-tools:
   - get_plan
-  - relay
 ---
 
 # Workflows and scripts

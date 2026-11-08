@@ -36,12 +36,6 @@ metadata:
     - manage_condition_triggers
     - list_gmail_connections
     - update_gmail_connection_grants
-    relays:
-    - manage_slack_account
-    - manage_messaging
-    - manage_google_account
-    - list_gmail_connections
-    - update_gmail_connection_grants
   external-tools:
   - integrations
   - messages

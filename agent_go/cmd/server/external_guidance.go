@@ -22,7 +22,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -67,7 +66,7 @@ type externalGuidanceTopic struct {
 	Description  string
 	ExternalNote string
 	// Source says where the text comes from: the Builder reference (default),
-	// a file under external_topics/ ("embedded") or a Flow Builder skill ("relay").
+	// a file under external_topics/ ("embedded").
 	Source string
 	// Scopes the token must allow for the topic to be listed and served.
 	Scopes        []string
@@ -82,9 +81,7 @@ var externalTopicFiles embed.FS
 // externalTopicVisible reports whether this caller may see a topic. App
 // sessions see all; a token needs every scope the topic names.
 func externalTopicVisible(claims *UserClaims, topic externalGuidanceTopic) bool {
-	if topic.Source == "relay" && !productEnabled("relays") {
-		return false
-	}
+
 	if claims == nil || claims.AccessToken == nil {
 		return true
 	}
@@ -320,10 +317,6 @@ func loadExternalGuidanceTopics() []externalGuidanceTopic {
 	if err != nil {
 		panic(err)
 	}
-	relay, err := relayproduct.ExternalTopics()
-	if err != nil {
-		panic(err)
-	}
 	embedded, err := externalguidance.Load(externalTopicFiles, "external_topics/*.md")
 	if err != nil {
 		panic(err)
@@ -333,7 +326,7 @@ func loadExternalGuidanceTopics() []externalGuidanceTopic {
 	for _, source := range []struct {
 		name   string
 		topics []externalguidance.Topic
-	}{{"", builder}, {"relay", relay}, {"embedded", embedded}} {
+	}{{"", builder}, {"embedded", embedded}} {
 		for _, item := range source.topics {
 			if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(item.Name) || seen[item.Name] {
 				panic("invalid or duplicate external guidance topic: " + item.Name)
@@ -403,7 +396,7 @@ func externalGuidanceContent(topic string) (description, body string, err error)
 
 func externalGuidanceContentForProducts(topic string, selection productpolicy.Selection) (description, body string, err error) {
 	meta := externalGuidanceTopicByName(topic)
-	if meta == nil || meta.Source == "relay" && !productEnabled("relays") {
+	if meta == nil {
 		return "", "", fmt.Errorf("topic %q is not exposed", topic)
 	}
 	topic = meta.Name
@@ -533,9 +526,7 @@ func externalPreparation(claims *UserClaims) []string {
 		steps = append(steps, "Crew owners use terminal, browser and integrations for the direct operations offered by get_api_spec. terminal action=history reads existing owner execution records. sessions runtime_tools/runtime_call use only your own chat. Current authoring, selected account, sandbox and browser checks apply.")
 	}
 	if claims != nil && claims.AccessToken != nil {
-		if productEnabled("relays") {
-			steps = append(steps, "For Flows (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. Everyone else with access chats with a Flow in Run mode in the app: it reads the published source, shows every run and runs a published version, but changes nothing. Creation requires relays:write consent covering all accessible workflows.")
-		}
+
 		steps = append(steps, "This token is restricted: unavailable tools are omitted from the tools list.")
 	}
 	return steps

@@ -95,7 +95,7 @@ Use `dashboard action=catalog` for the actual shared component props. `AskButton
 `ChatPanel` appear only for shared Run users and are hidden for Builders and preview.
 Ask opens the existing composer without sending. FunctionButton opens the current
 published function form; the person presses Run to execute it. Current project and
-function permissions apply; Flow function buttons remain unavailable.
+function permissions apply.
 
 Use `report.motion.create()` for recorded-data playback, pass its clock to
 MotionControls, and drive chart progress through React state. Use this shared toolbar
@@ -250,8 +250,8 @@ for HTML pages; TSX dashboards use the shared components instead.
 
 External connections need `dashboards:read` for discovery, source reads and links.
 Drafts and publication use existing product authoring consent: `builder:chat` for
-workflows,<!-- product:relays --> `relays:write` or Builder consent for Flows,<!-- /product --> `crews:write` for Crews,
- Workflow<!-- product:relays -->/Flow<!-- /product --> authoring retains its
+workflows, `crews:write` for Crews,
+ Workflow authoring retains its
 companion read/run scopes and Builder enablement. Current account and project
 owner permissions (and workflow editor permissions), product access, connection bounds and folder grants apply.
 Preview additionally requires `runs:execute` and project edit access because live
@@ -311,7 +311,7 @@ step rather than silently falling back or claiming completion.
 
 ## HTML pages: optional native chat widgets
 
-In a managed Crew or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
+In a managed Crew or workflow dashboard, the designer may add an open
 chat panel, a button, or both. Choose the placement, size, label, visibility and
 responsive layout in the dashboard's HTML/CSS. There is no required sidebar.
 For example (dimensions are only an example):
@@ -392,7 +392,7 @@ anything else shows that it is unavailable. Button text, placement and styling
 are the designer's choice. Both Crew project origins and workflow dashboards
 support these buttons. The chat’s `/` menu lists the same published functions.
 Current project access and each function’s allowed people are checked by the
-server when called.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product -->
+server when called.
 
 ## HTML page APIs and the shared script contract
 
@@ -420,7 +420,7 @@ read-only snapshot; REPORT_CACHE_DIR is the only writable cache folder.
 Scripts use the project's selected MCP tools/secrets under the authenticated
 viewer's live permissions. A shared dashboard grants no new source credentials.
 Keep data scripts read-only upstream and never print secrets. Publication does
-not run a workflow<!-- product:relays -->, invoke relay.py or publish a Flow API<!-- /product -->.
+not run a workflow.
 
 For requested interactive animation, use `window.report.motion.create` inside
 `window.report.ready`; the designer supplies the visuals and controls. See the
