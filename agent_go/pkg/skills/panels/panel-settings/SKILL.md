@@ -28,7 +28,6 @@ metadata:
     - agent_browser
     - get_contract_upgrades
     - set_workflow_contract_version
-    - migrate_workflow_skills
     relays:
     - manage_custom_commands
     - execute_shell_command

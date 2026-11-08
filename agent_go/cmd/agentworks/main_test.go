@@ -88,8 +88,6 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 		{[]string{"functions", "call", "--project", "crew-sample", "--function", "review", "--function-input", `{"build":"812"}`}, "", "functions", map[string]any{"action": "call", "project": "crew-sample", "function": "review", "input": map[string]any{"build": "812"}}},
 		{[]string{"functions", "call-status", "--call", "call-sample"}, "", "functions", map[string]any{"action": "status", "call_id": "call-sample"}},
 		{[]string{"plan", "get", "--workflow", "wf-1"}, "", "workflow", map[string]any{"action": "plan", "workflow_id": "wf-1"}},
-		{[]string{"plan", "list", "--workflow", "wf-1"}, "", "plan", map[string]any{"workflow_id": "wf-1", "action": "list"}},
-		{[]string{"plan", "edit", "--workflow", "wf-1", "--input", "-"}, `{"action":"update_step","arguments":{"step_id":"fetch","changes":{"title":"Fetch invoices","reason":"Clarify scope"}},"expected_revision":"revision","request_id":"edit-1"}`, "plan", map[string]any{"workflow_id": "wf-1", "action": "update_step", "expected_revision": "revision", "request_id": "edit-1", "arguments": map[string]any{"step_id": "fetch", "changes": map[string]any{"title": "Fetch invoices", "reason": "Clarify scope"}}}},
 		{[]string{"files", "read", "--workflow", "wf-1", "--path", "notes.md"}, "", "files", map[string]any{"action": "read", "workflow_id": "wf-1", "path": "notes.md"}},
 		{[]string{"files", "list", "--workflow", "wf-1", "--path", "code", "--glob", "**/*.py"}, "", "files", map[string]any{"action": "list", "workflow_id": "wf-1", "path": "code", "glob": "**/*.py"}},
 		{[]string{"files", "code", "--workflow", "wf-1", "--step-id", "run-basic-smoke"}, "", "files", map[string]any{"action": "code", "workflow_id": "wf-1", "step_id": "run-basic-smoke"}},

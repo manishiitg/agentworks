@@ -64,11 +64,10 @@ func (api *StreamingAPI) crewWorkflowUpgrade(ctx context.Context, binding *crewE
 		return "", fmt.Errorf("choose this Crew's workflow; saved scripts have no workflow upgrade ladder")
 	}
 	version, _ := args["version"].(string)
-	repair, repairing := args["repair_step"].(map[string]interface{})
 	repairAttachments, _ := args["repair_attachments"].(bool)
 	repairBrowser, _ := args["repair_browser_mode"].(bool)
 	repairs := 0
-	for _, enabled := range []bool{repairing, repairAttachments, repairBrowser} {
+	for _, enabled := range []bool{repairAttachments, repairBrowser} {
 		if enabled {
 			repairs++
 		}
@@ -136,13 +135,6 @@ func (api *StreamingAPI) crewWorkflowUpgrade(ctx context.Context, binding *crewE
 	reason, _ := args["reason"].(string)
 	if repairAttachments || repairBrowser {
 		return repairWorkflowManifest(ctx, binding.Root, current, repairAttachments, repairBrowser, reason)
-	}
-	if repairing {
-		pending := workflowVersionUpgradePlan(current)
-		if len(pending) == 0 || pending[0].to != workflowContractPortableVersion {
-			return "", fmt.Errorf("step repair belongs to the pending portable workflow update; use normal named edits for an updated workflow")
-		}
-		return stepworkflow.RepairPortableWorkflowStep(ctx, binding.Root, repair, reason, readWorkflowUpgradeFile, writeFileToWorkspace)
 	}
 	applied, err := api.checkAndStampWorkflowContract(ctx, binding.Root, current, version, reason)
 	if err != nil {

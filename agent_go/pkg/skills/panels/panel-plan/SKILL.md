@@ -1,15 +1,11 @@
 ---
 name: panel-plan
-description: Manage Crew workflows, reusable scripts and goal tracking, or edit an existing standalone workflow plan.
+description: Manage Crew workflows as Python scripts, reusable scripts and goal tracking; read an older plan-based workflow.
 metadata:
   version: 3.1.0
   panel-tools:
     agentworks:
     - execute_shell_command
-    - create_plan
-    - add_step
-    - update_step
-    - maintain_plan
     - settings
     work:
     - execute_shell_command
@@ -26,7 +22,6 @@ metadata:
     - execute_shell_command
     - files
   external-tools:
-  - plan
   - get_plan
   - relay
 ---
@@ -41,6 +36,6 @@ Use the tools offered in this chat:
 
 Define inputs once, with types and optional defaults. A workflow with no inputs needs no input file or preset. Secrets belong in Vault. Reuse this Crew's saved agents when their role fits; do not copy another person's account or chat history.
 
-To edit an existing plan-based workflow, open `references/crew-plan/SKILL.md`. In a workflow Builder, use its existing plan tools; `references/goal-plan/SKILL.md` contains examples. The backend validates edits even when no guide was read.
+Older plan-based workflows keep running but are no longer edited; to change one, it is converted to a Python script workflow. `references/crew-plan/SKILL.md` covers reading one and managing its schedules and webhooks.
 
 To run work on a schedule or in response to an event, use `panel-automations`. For logs, Inspect and costs, open the workflow's Runs view under Automations. Keep the conversation in its Crew chat.

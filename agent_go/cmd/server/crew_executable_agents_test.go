@@ -126,46 +126,21 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 			t.Fatalf("chat installs dependencies somewhere other than the runner: %s=%q want %q", key, got, want)
 		}
 	}
-	if _, err := edit(ctx, map[string]interface{}{"action": "write", "workspace_path": child.Root, "file": "code/report/main.py", "content": "print('report')"}); err != nil {
-		t.Fatal(err)
-	}
-	read, err := edit(ctx, map[string]interface{}{"action": "read", "workspace_path": child.Root, "file": "code/report/main.py"})
-	if err != nil || !strings.Contains(read, "print('report')") {
-		t.Fatalf("saved definition unavailable: %s %v", read, err)
-	}
-	// PLAT-746-345/346: whole-file replacement is refused; native edits keep
-	// unrelated plan state and still work for an authorized owner.
-	for _, file := range []string{"planning/plan.json", "planning/step_config.json", "variables/variables.json"} {
-		if _, err := edit(ctx, map[string]interface{}{"action": "write", "workspace_path": child.Root, "file": file, "content": "{}"}); err == nil || !strings.Contains(err.Error(), "whole plan") {
-			t.Fatalf("whole replacement admitted: %s %v", file, err)
+	// PLAT-746 (owner, 8 Nov): an older plan workflow keeps running but is no longer
+	// edited, from code files to steps and inputs; changing it means converting it.
+	for _, call := range []map[string]interface{}{
+		{"action": "write", "workspace_path": child.Root, "file": "code/report/main.py", "content": "print('report')"},
+		{"action": "write", "workspace_path": child.Root, "file": "planning/plan.json", "content": "{}"},
+		{"action": "write", "workspace_path": child.Root, "file": "variables/variables.json", "content": "{}"},
+		{"action": "edit", "workspace_path": child.Root, "operation": "update_step", "arguments": map[string]interface{}{"step_id": "report", "changes": map[string]interface{}{"title": "Updated report"}}},
+		{"action": "edit", "workspace_path": child.Root, "operation": "update_variable", "arguments": map[string]interface{}{"action": "add", "name": "count", "type": "integer", "value": "1"}},
+	} {
+		if out, err := edit(ctx, call); err == nil || !strings.Contains(err.Error(), "can no longer be edited") {
+			t.Fatalf("old plan workflow was edited: %v %s %v", call, out, err)
 		}
 	}
-	if _, err := edit(ctx, map[string]interface{}{"action": "edit", "workspace_path": child.Root, "operation": "update_step", "arguments": map[string]interface{}{"step_id": "report", "changes": map[string]interface{}{"title": "Updated report", "reason": "Clarify report label"}}}); err != nil {
-		t.Fatal(err)
-	}
-	plan, err = readPlanFromWorkspace(ctx, child.Root)
-	if err != nil || len(plan.OrphanSteps) != 2 || plan.OrphanSteps[0].GetTitle() != "Updated report" {
-		t.Fatalf("native edit lost plan: %+v %v", plan, err)
-	}
-	if plan.OrphanSteps[1].GetID() != "untouched" {
-		t.Fatal("unrelated step was lost")
-	}
-	rawPlan, _ = json.Marshal(plan.OrphanSteps[0])
-	if !strings.Contains(string(rawPlan), chat.ConversationKey) {
-		t.Fatal("editing title lost saved agent")
-	}
-	for _, name := range []string{"count", "untouched"} {
-		out, err := edit(ctx, map[string]interface{}{"action": "edit", "workspace_path": child.Root, "operation": "update_variable", "arguments": map[string]interface{}{"action": "add", "name": name, "type": "integer", "value": "2"}})
-		if err != nil {
-			t.Fatalf("input add: %s %v", out, err)
-		}
-	}
-	if _, err := edit(ctx, map[string]interface{}{"action": "edit", "workspace_path": child.Root, "operation": "update_variable", "arguments": map[string]interface{}{"action": "update", "existing_variable_name": "count", "value": "3"}}); err != nil {
-		t.Fatal(err)
-	}
-	inputs, err := readWorkflowInputDefinitions(ctx, child.Root)
-	if err != nil || len(inputs.Variables) != 2 || inputs.Variables[1].Value != "2" {
-		t.Fatalf("input edit lost other inputs: %+v %v", inputs, err)
+	if after, err := readPlanFromWorkspace(ctx, child.Root); err != nil || len(after.OrphanSteps) != len(plan.OrphanSteps) || after.OrphanSteps[0].GetTitle() == "Updated report" {
+		t.Fatalf("refused edits changed the plan: %+v %v", after, err)
 	}
 	// PLAT-746-355: removing duplicate settings must leave the same child timers
 	// and webhooks editable from Crew chat, using the real save handlers.

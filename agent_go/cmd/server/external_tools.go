@@ -290,7 +290,6 @@ func externalTools() ([]externalTool, error) {
 		externalBullpenAdminDefinition(add)
 		externalBrainAdminDefinition(add)
 		externalBuilderDefinitions(add)
-		externalPlanMutationDefinition(add)
 		if err := externalWorkflowCrewDefinition(add); err != nil {
 			externalCatalogErr = err
 			return
@@ -1092,10 +1091,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if tool.Name == "workflow_crews" {
 		api.externalWorkflowCrewCall(w, r, args, *selected)
-		return
-	}
-	if tool.Name == "plan" {
-		api.externalPlanMutationCall(w, r, args, *selected)
 		return
 	}
 	if tool.Name == "workflow_upgrade" {
