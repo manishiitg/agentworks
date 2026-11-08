@@ -15,6 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -29,21 +30,44 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newWorkflowFunctionEnv(t)
 	env.api.agentProfiles = env.svc.registry
-	registerTestCrew(t, "gamma", "other", false, "gamma")
-	turns := make(chan string, 2)
-	agentMessageTurn = func(_ *StreamingAPI, _ context.Context, _ map[string]interface{}, sessionID, _ string) (internalSessionTurnResult, error) {
-		turns <- sessionID
+	if err := defaultProjectOwners().SetPrivate("work", "gamma", true); err != nil {
+		t.Fatal(err)
+	}
+	resetCrewOwnerCache()
+	type askTurn struct{ actor, owner string }
+	turns := make(chan askTurn, 3)
+	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, _ map[string]interface{}, sessionID, owner string) (internalSessionTurnResult, error) {
+		turns <- askTurn{actor: costobserver.AttributionFromContext(ctx).ActorID, owner: owner}
 		return internalSessionTurnResult{FinalResponse: "Ordinary final text is not an explicit reply."}, nil
 	}
 	t.Cleanup(func() { agentMessageTurn = nil })
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	scope := stepworkflow.AgentFunctionScope{WorkspacePath: "Workflow/reports", ExecutionID: "run-one", StepID: "ask", SessionID: "python-asks"}
+	binding := crewExecutableBinding{ID: "python-asks", CrewID: "alpha", CrewRoot: linkAlphaPath, Root: "Workflow/python-asks", Kind: "script"}
+	if err := registerCrewExecutable(binding); err != nil {
+		t.Fatal(err)
+	}
+	env.mock.mu.Lock()
+	env.mock.files[binding.Root+"/code/script.json"] = `{"id":"python-asks","name":"Python asks"}`
+	env.mock.mu.Unlock()
+	scope := stepworkflow.AgentFunctionScope{WorkspacePath: binding.Root, ExecutionID: "run-one", StepID: "ask", SessionID: "python-asks"}
 	_, executors, err := env.api.workflowAgentFunctionToolsForRun(ctx)(ctx, scope)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ask := executors["ask_crew"].(func(context.Context, map[string]interface{}) (string, error))
 	read := executors["read_agent_messages"].(func(context.Context, map[string]interface{}) (string, error))
+	if _, err := ask(ctx, map[string]interface{}{"crew": "alpha", "message": "Ask myself", "submission_id": "self"}); err == nil || !strings.Contains(err.Error(), "own Crew") {
+		t.Fatalf("script asked its own Crew: %v", err)
+	}
+	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ask(ctx, map[string]interface{}{"crew": "beta", "message": "Unlinked", "submission_id": "unlinked"}); err == nil || !strings.Contains(err.Error(), "not linked") {
+		t.Fatalf("script bypassed Crew link rule: %v", err)
+	}
+	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return []string{linkBetaPath}, nil }); err != nil {
+		t.Fatal(err)
+	}
 	var unavailable string
 	for _, name := range []string{"gamma", "unknown"} {
 		_, err := ask(ctx, map[string]interface{}{"crew": name, "message": "Please review", "submission_id": name})
@@ -75,7 +99,10 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 			t.Fatalf("allowed ask %d refused: %v %v", i, err, receipts[i])
 		}
 		select {
-		case <-turns:
+		case turn := <-turns:
+			if turn.actor != "owner" || turn.owner != "owner" {
+				t.Fatalf("same-owner attribution changed: %+v", turn)
+			}
 		case <-time.After(5 * time.Second):
 			t.Fatal("accepted ask never reached its agent")
 		}
@@ -114,17 +141,44 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 			t.Fatalf("ask consumed another inbox reply: %s", raw)
 		}
 	}
-	// Revoke the source after admission: a saved executor is no lasting grant.
-	env.mock.mu.Lock()
-	var manifest WorkflowManifest
-	_ = json.Unmarshal([]byte(env.mock.files[manifestPath(scope.WorkspacePath)]), &manifest)
-	manifest.Access = &WorkflowAccess{Owners: []string{"other"}}
-	encoded, _ := json.Marshal(manifest)
-	env.mock.files[manifestPath(scope.WorkspacePath)] = string(encoded)
-	env.mock.mu.Unlock()
-	if _, err := read(ctx, map[string]interface{}{"inbox_id": receipts[0]["inbox_id"]}); err == nil {
-		t.Fatal("revoked source still read an ask reply")
+	// A shared Crew executes as its own owner, while the requesting person
+	// remains the cost actor and the source endpoint in the audit store.
+	if err := defaultProjectOwners().SetPrivate("work", "gamma", false); err != nil {
+		t.Fatal(err)
 	}
+	resetCrewOwnerCache()
+	raw, err := ask(ctx, map[string]interface{}{"crew": "gamma", "message": "Attribution check", "submission_id": "cross-owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	crossOwner := decodeToolJSON(t, raw)
+	select {
+	case turn := <-turns:
+		if turn.actor != "owner" || turn.owner != "other" {
+			t.Fatalf("target borrowed caller authority or lost cost actor: %+v", turn)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cross-owner ask never reached its own owner")
+	}
+	audit, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audited := false
+	for _, conversation := range audit.Conversations {
+		if conversation.ID == crossOwner["inbox_id"] {
+			audited = conversation.Endpoints[0].UserID == "owner" && conversation.Endpoints[1].UserID == "other"
+		}
+	}
+	if !audited {
+		t.Fatal("ask audit record lost source person or target owner")
+	}
+	// Revoke the source account after admission: a saved executor is no lasting grant.
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","disabled":true},{"id":"other","username":"other","can_create":true}]}`)
+	if _, err := read(ctx, map[string]interface{}{"inbox_id": receipts[0]["inbox_id"]}); err == nil {
+		t.Fatal("revoked source account still read an ask reply")
+	}
+
 }
 
 // The older dispatcher fixture names its manifests alpha/beta/gamma. Registry
