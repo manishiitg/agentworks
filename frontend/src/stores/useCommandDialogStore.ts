@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { CrewStarterType } from '../products/work/crewStarterTypes'
 export type ProductCreateIntent = 'studio' | CrewStarterType
 
-export type ProductCreateSurface = 'agentworks' | 'relays' | 'work'
+export type ProductCreateSurface = 'relays' | 'work'
 
 export type DialogName = 'skillImport' | 'mcpDetails' | 'mcpConfig' | 'models' | 'presetSettings' | 'presetCreate'
 

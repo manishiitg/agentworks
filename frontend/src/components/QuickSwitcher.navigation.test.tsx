@@ -170,7 +170,7 @@ it('browses workflows without offering disabled Flows from footer icons without 
   })
   const shortcuts = host.querySelector('[aria-label="Quick navigation shortcuts"]')!
   await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All Goals"]')!.click())
-  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:workflow', 'create:agentworks'])
+  expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:workflow'])
   expect(host.querySelector('input')!.value).toBe('')
   expect(host.querySelector('[aria-label="Show all work and navigation"]')?.textContent).toContain('All Goals')
   expect(shortcuts.querySelector('[aria-label="All Flows"]')).toBeNull()
@@ -304,7 +304,7 @@ it('opens a parent panel with @panels and refuses stale panel selections after a
 
 it('offers creation for every supported product and routes each action from another product', async () => {
   const { host, onClose } = await renderNavigation('@create ')
-  const surfaces: ProductCreateSurface[] = ['agentworks', 'work']
+  const surfaces: ProductCreateSurface[] = ['work']
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(surfaces.map(surface => `create:${surface}`))
   for (const surface of surfaces) {
     await act(async () => {
@@ -351,17 +351,17 @@ it('retains a Crew creation request through lazy mounting, opens the real form o
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
 })
 
-it('hides creation for unavailable products and respects the workflow create gate at activation time', async () => {
+it('hides creation for unavailable products and respects the per-product create gate at activation time', async () => {
   // Each product has its own create permission (PLAT-767): this account may create Crew projects only.
   const { host } = await renderNavigation('@create ', ['agentworks', 'relays', 'work'], false, () => {
     useAuthStore.setState({ isMultiUserMode: true, user: { is_admin: false, can_create: false, can_create_in: { work: true }, can_write_workflows: true, allowed_products: ['agentworks', 'relays', 'work'] } as never })
   })
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['create:work'])
-  await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user!, can_create: true } }))
-  const workflow = quickNavigationItems(useAuthStore.getState().user, 'work').find(item => item.id === 'create:agentworks')!
-  expect(workflow).toBeDefined()
-  await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user!, can_create: false } }))
-  expect(openQuickNavigation(workflow)).toBe(false)
+  const crew = quickNavigationItems(useAuthStore.getState().user, 'work').find(item => item.id === 'create:work')!
+  expect(crew).toBeDefined()
+  // Access is rechecked when the row is chosen: the create permission was withdrawn after the list was shown.
+  await act(async () => useAuthStore.setState({ user: { ...useAuthStore.getState().user!, can_create_in: { work: false } } }))
+  expect(openQuickNavigation(crew)).toBe(false)
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
 })
 
@@ -513,7 +513,7 @@ it('keeps Home during creation instead of navigating to a remembered project', a
   await renderNavigation('@create ')
   const stop = observeProductHistory()
   try {
-    for (const surface of ['work', 'agentworks'] as const) {
+    for (const surface of ['work'] as const) {
       window.history.replaceState({}, '', '/home')
       useProductSurfaceStore.setState({ selectedWorkProjectId: 'existing-crew' })
       useGlobalPresetStore.setState({ workflowPresets: [{ id: 'existing-goal', label: 'Existing goal', workflowKind: 'workflow' }] as never, activePresetIds: { ...useGlobalPresetStore.getState().activePresetIds, workflow: 'existing-goal' } })
