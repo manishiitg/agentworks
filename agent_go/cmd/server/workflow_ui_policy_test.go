@@ -8,7 +8,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
-func TestWorkflowUIRegistrationFollowsCallerNotSharedBuilderPhase(t *testing.T) {
+// PLAT-746: own scheduled/background turns retain the chat tools (owner, 5 Nov; 74206abdd1).
+func TestWorkflowUIRegistrationKeepsOwnAutomaticTurnsAndExcludesBots(t *testing.T) {
 	for _, tc := range []struct {
 		name, session, phase string
 		req                  QueryRequest
@@ -19,20 +20,20 @@ func TestWorkflowUIRegistrationFollowsCallerNotSharedBuilderPhase(t *testing.T) 
 		// No WorkshopMode/read-only flag is consulted: all human Builders keep
 		// presentation tools, even when they lack plan mutation authority.
 		{name: "manual builder", session: "chat-1", req: QueryRequest{TriggeredBy: "manual"}, want: true},
-		{name: "cron same builder phase", session: "opaque-session", req: QueryRequest{TriggeredBy: "cron"}},
-		{name: "manual schedule trigger", session: "schedule-manual--digest_123", req: QueryRequest{TriggeredBy: "manual"}},
-		{name: "restored scheduled identity", session: "schedule-digest_123"},
-		{name: "stored cron origin survives missing request metadata", session: "opaque-session", active: &ActiveSessionInfo{TriggeredBy: "cron"}},
-		{name: "scheduled native process retained", session: "schedule-digest_123", req: QueryRequest{KeepNativeSessionAlive: true}},
-		{name: "scheduled trigger variant", session: "opaque-session", req: QueryRequest{TriggeredBy: "workflow_schedule"}},
-		{name: "Autopilot child", session: "child", req: QueryRequest{ParentSessionID: "chat-1", SessionKind: "pulse_reviewer"}},
-		{name: "restored child", session: "child", active: &ActiveSessionInfo{ParentSessionID: "chat-1"}},
+		{name: "cron same builder phase", session: "opaque-session", req: QueryRequest{TriggeredBy: "cron"}, want: true},
+		{name: "manual schedule trigger", session: "schedule-manual--digest_123", req: QueryRequest{TriggeredBy: "manual"}, want: true},
+		{name: "restored scheduled identity", session: "schedule-digest_123", want: true},
+		{name: "stored cron origin survives missing request metadata", session: "opaque-session", active: &ActiveSessionInfo{TriggeredBy: "cron"}, want: true},
+		{name: "scheduled native process retained", session: "schedule-digest_123", req: QueryRequest{KeepNativeSessionAlive: true}, want: true},
+		{name: "scheduled trigger variant", session: "opaque-session", req: QueryRequest{TriggeredBy: "workflow_schedule"}, want: true},
+		{name: "background child", session: "child", req: QueryRequest{ParentSessionID: "chat-1", SessionKind: "pulse_reviewer"}, want: true},
+		{name: "restored child", session: "child", active: &ActiveSessionInfo{ParentSessionID: "chat-1"}, want: true},
 		{name: "bot", session: "bot", req: QueryRequest{BotPlatform: "slack"}},
 		{name: "product", session: "product", req: QueryRequest{AgentProfileID: "example-product"}},
-		{name: "auto notification", session: "chat-1", req: QueryRequest{IsAutoNotification: true}},
+		{name: "auto notification", session: "chat-1", req: QueryRequest{IsAutoNotification: true}, want: true},
 		{name: "non builder phase", session: "chat-1", phase: "execution"},
 		{name: "explicit promotion", session: "schedule-digest_123", req: QueryRequest{UserInteractiveContinuation: true}, active: &ActiveSessionInfo{TriggeredBy: "cron"}, want: true},
-		{name: "promotion cannot elevate Autopilot child", session: "child", req: QueryRequest{UserInteractiveContinuation: true, SessionKind: "pulse_reviewer"}},
+		{name: "explicit continuation keeps child tools", session: "child", req: QueryRequest{UserInteractiveContinuation: true, SessionKind: "pulse_reviewer"}, want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			phase := tc.phase
@@ -60,7 +61,7 @@ func TestWorkflowUIRegistrationFollowsCallerNotSharedBuilderPhase(t *testing.T) 
 	}
 }
 
-func TestWorkflowUIScheduleReclassificationRevokesOldLease(t *testing.T) {
+func TestWorkflowUIBotReclassificationRevokesOldLease(t *testing.T) {
 	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{}}
 	phase := workflowtypes.WorkflowStatusWorkflowBuilder
 	initial := &recordingRegistrar{}
@@ -68,12 +69,15 @@ func TestWorkflowUIScheduleReclassificationRevokesOldLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := api.uiBroker()
-	client, _ := b.bind("same-session")
-	a, _, err := b.submit("same-session", "notify", "open", "", "", nil)
+	client, err := b.bind("same-session")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := api.registerWorkflowUIForCaller(&recordingRegistrar{}, phase, "same-session", "Workflow/test", QueryRequest{TriggeredBy: "cron"}, false); err != nil {
+	a, _, err := b.submit("same-session", "report", "open", "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.registerWorkflowUIForCaller(&recordingRegistrar{}, phase, "same-session", "Workflow/test", QueryRequest{BotPlatform: "slack"}, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.syncClient("same-session", client.id, client.token, uiSnapshot{}); err == nil {
@@ -84,14 +88,14 @@ func TestWorkflowUIScheduleReclassificationRevokesOldLease(t *testing.T) {
 		t.Fatal(result)
 	}
 	for _, name := range []string{"perform_ui_action"} {
-		out, err := initial.tools[name].exec(context.Background(), map[string]interface{}{"view": "notify", "action": "open"})
+		out, err := initial.tools[name].exec(context.Background(), map[string]interface{}{"view": "report", "action": "open"})
 		if err != nil || !strings.Contains(out, "inactive_scope") {
 			t.Fatalf("retained %s remained callable: %s %v", name, out, err)
 		}
 	}
 }
 
-func TestUnattendedTurnsRegisterSuggestionsWithoutManagementTools(t *testing.T) {
+func TestScheduledTurnsKeepPresentationButDoNotElevateRunAccess(t *testing.T) {
 
 	for _, readOnly := range []bool{false, true} {
 		api := &StreamingAPI{}
@@ -107,11 +111,16 @@ func TestUnattendedTurnsRegisterSuggestionsWithoutManagementTools(t *testing.T) 
 		if err := api.registerWorkflowUIForCaller(reg, "workflow-builder", "schedule-digest_123", "Workflow/test", req, readOnly); err != nil {
 			t.Fatal(err)
 		}
-		if _, present := reg.tools["submit_workflow_suggestion"]; !present {
-			t.Fatalf("false=%v readOnly=%v missing suggestion tool", false, readOnly)
+		for _, name := range []string{"submit_workflow_suggestion", "list_ui_capabilities", "get_ui_state", "perform_ui_action", "list_mcp_servers"} {
+			if _, present := reg.tools[name]; !present {
+				t.Fatalf("readOnly=%v missing %s", readOnly, name)
+			}
 		}
-		if len(reg.tools) != 1 {
-			t.Fatalf("false=%v readOnly=%v unexpected management/UI tools: %v", false, readOnly, reg.tools)
+		for _, name := range []string{"manage_user_access", "install_mcp_server", "update_gmail_connection_grants"} {
+			_, present := reg.tools[name]
+			if present == readOnly {
+				t.Fatalf("readOnly=%v management tool %s present=%v", readOnly, name, present)
+			}
 		}
 	}
 
@@ -136,7 +145,7 @@ func TestWorkspacePresentationDoesNotGrantConnectionWriteAccess(t *testing.T) {
 
 // After a restart the page cannot connect its panel to a live Builder chat until the chat's next
 // turn unless the workflow is restored from the session (the agent saw browser_disconnected).
-func TestRestoredWorkflowUIScopeForOnlyRestoresAnInteractiveBuilderChat(t *testing.T) {
+func TestRestoredWorkflowUIScopeKeepsOwnAutomaticTurnsAndExcludesBots(t *testing.T) {
 	builder := func(mod func(*ActiveSessionInfo)) *ActiveSessionInfo {
 		a := &ActiveSessionInfo{SessionID: "s1", AgentMode: "workflow_phase", WorkspacePath: "Workflow/website-aeo/"}
 		if mod != nil {
@@ -155,8 +164,8 @@ func TestRestoredWorkflowUIScopeForOnlyRestoresAnInteractiveBuilderChat(t *testi
 		{"not a workflow phase", "s1", builder(func(a *ActiveSessionInfo) { a.AgentMode = "chat" }), ""},
 		{"not under Workflow/", "s1", builder(func(a *ActiveSessionInfo) { a.WorkspacePath = "Crew/abc" }), ""},
 		{"bot chat", "s1", builder(func(a *ActiveSessionInfo) { a.BotPlatform = "slack" }), ""},
-		{"child session", "s1", builder(func(a *ActiveSessionInfo) { a.ParentSessionID = "p" }), ""},
-		{"scheduled run", "schedule-cron--job_1", builder(func(a *ActiveSessionInfo) { a.TriggeredBy = "cron" }), ""},
+		{"child session", "s1", builder(func(a *ActiveSessionInfo) { a.ParentSessionID = "p" }), "Workflow/website-aeo"},
+		{"scheduled run", "schedule-cron--job_1", builder(func(a *ActiveSessionInfo) { a.TriggeredBy = "cron" }), "Workflow/website-aeo"},
 	}
 	for _, tc := range cases {
 		if got := restoredWorkflowUIScopeFor(tc.session, tc.active); got != tc.want {
