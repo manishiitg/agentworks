@@ -28,9 +28,12 @@ Create with `kind=script`; read/write its `script.json` and `main.py`. It runs P
 
 Read saved-script arguments from `agentworks.inputs` (the typed `STEP_PARAMS_JSON` object); `VAR_*` holds workflow environment values, not per-child argument exports.
 
-Scripts inherit the Crew's model, browser and app selections. To choose a different connected browser for a script, read its `script.json` and use the existing write action to set `capabilities.browser_mode` (`cdp` or `extension`), preserving its other fields. Same-ID conversion copies settings from the original workflow, including selected secret names and provider references; it never copies secret values.
+Scripts inherit the Crew's model, browser and app selections. To choose a different connected browser for a script, read its `script.json` and use the existing write action to set `capabilities.browser_mode` (`headless`, `extension`, or `none`), preserving its other fields. Same-ID conversion copies settings from the original workflow, including selected secret names and provider references; it never copies secret values.
 
 Python scripts use the Crew's one managed database through `agentworks_db`. Save schema migrations in the Crew's `db/migrations` using its normal file tools, then use `database action=migrate` with `crew_id`. Do not put SQL migrations inside a saved script's Python bundle.
+
+Replacing an existing workflow needs the approved same-ID conversion so its code, data and complete database stay attached. A separate copy is a trial, not a migration. Agent replies have bounded `text`; check task/status text with `reply.answer_file.read_text()` after `reply.ok`, and use `log_file` for the received provider transcript.
+
 
 Script receipts include `log_file`, `log_error` and `log_complete`. Read bounded parts of that file for full output beyond the inline reply limit. Native Claude/Codex shell commands use their own tool history and do not return this platform log receipt.
 

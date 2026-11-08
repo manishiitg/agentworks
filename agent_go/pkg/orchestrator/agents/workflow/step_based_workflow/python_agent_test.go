@@ -141,6 +141,10 @@ for line in sys.stdin:
 	if err != nil || !strings.Contains(string(log), large) {
 		t.Fatalf("full answer missing from transcript: %v", err)
 	}
+	answer, err := os.ReadFile(first.AnswerFile)
+	if err != nil || string(answer) != large {
+		t.Fatalf("full final answer was missing or mixed with transcript events: %v", err)
+	}
 	// Simulate a fresh server-side controller, retaining only disk state,
 	// plus stale registry/env entries left by a crashed prior call.
 	c = newController()
@@ -154,6 +158,10 @@ for line in sys.stdin:
 	mcpagent.MarkSessionsStopped([]string{ownedID, unrelatedID})
 	t.Cleanup(func() { mcpagent.CloseSession(unrelatedID); mcpagent.ClearSessionsStopped([]string{unrelatedID}) })
 	second := c.runPythonAgent(ctx, parent, map[string]interface{}{"name": "Research", "messages": []string{"follow-up"}, "conversation_id": first.ConversationID}, "second")
+	secondAnswer, answerErr := os.ReadFile(second.AnswerFile)
+	if answerErr != nil || string(secondAnswer) != "continued" || second.AnswerFile == first.AnswerFile {
+		t.Fatalf("continuation did not save its own final answer: %v", answerErr)
+	}
 	if !second.OK || second.ConversationID != first.ConversationID || !strings.Contains(second.Text, "continued") {
 		t.Fatalf("continuation failed: %+v", second)
 	}
