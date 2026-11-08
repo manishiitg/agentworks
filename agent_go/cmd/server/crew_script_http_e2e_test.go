@@ -603,6 +603,9 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 		t.Fatal("no real Python result")
 	}
 	if !local {
+		// PLAT-746-500: a valid archived plan with broken old dependencies
+		// must not gate current Python timer/MCP execution or Resume.
+		seedArchivedPlanWithMissingDependency(t, docs, binding.Root)
 		checkSavedScriptTriggerAndSchedule(t, docs, binding)
 	}
 	var sharedExtension os.FileInfo
@@ -636,5 +639,21 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	authored, err := os.Stat(filepath.Join(sourceRoot, "_vendor", vendorFile))
 	if err != nil || sharedExtension == nil || os.SameFile(authored, sharedExtension) {
 		t.Fatal("run linked mutable authored source", err)
+	}
+}
+
+// A converted script may retain its old plan as an archive. Both malformed
+// archives and valid old graphs must stay outside the Python run contract.
+func seedArchivedPlanWithMissingDependency(t *testing.T, docs, root string) {
+	t.Helper()
+	path, err := fsutil.WorkspacePath(docs, root+"/planning/plan.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"steps":[{"type":"scripted","id":"archived-step","title":"Archived step","description":"Archived plan","context_dependencies":["retired-source.csv"]}]}`), 0600); err != nil {
+		t.Fatal(err)
 	}
 }

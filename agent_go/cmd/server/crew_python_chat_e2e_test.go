@@ -103,6 +103,7 @@ func TestCrewChatSavedPythonStartAndHTTPStop(t *testing.T) {
 	if err := initializeCrewScriptSource(ctx, binding, "Chat saved Python"); err != nil {
 		t.Fatal(err)
 	}
+	seedArchivedPlanWithMissingDependency(t, f.docs, binding.Root)
 	if err := saveCrewScriptInputs(ctx, binding.Root, &workflow.VariablesManifest{
 		Variables: []workflow.Variable{{Name: "count", Type: "integer", Value: "2"}, {Name: "enabled", Type: "boolean", Value: "false"}},
 		Groups:    []workflow.VariableGroup{{Name: "Saved", Values: map[string]string{"count": "7"}}},
