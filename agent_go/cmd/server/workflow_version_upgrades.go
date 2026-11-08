@@ -67,9 +67,7 @@ func manifestIsRelay(manifest *WorkflowManifest) bool {
 // Goals-only migration it skipped never blocks it. Callers still require
 // code_layout_version 1.
 func manifestContractIsExecutionCompatible(manifest *WorkflowManifest) bool {
-	if isPythonRelay(manifest) {
-		return true
-	}
+
 	version := workflowContractVersionForUpgrade(manifest)
 	if workflowHasCrewBinding(manifest) {
 		// Older plan workflows keep running (PLAT-746): they are converted to scripts, not updated, so a
@@ -220,18 +218,14 @@ func bindWorkflowUpgradeWorkspacePath(query, workspacePath string) string {
 const oldWorkflowContractMessage = "This workflow is on an old version and cannot run; converting it to a Python script is done by the platform operator for now."
 
 func workflowContractNeedsRecreation(manifest *WorkflowManifest) bool {
-	if isPythonRelay(manifest) {
-		return false
-	}
+
 	rank, known := workflowContractVersionRank(workflowContractVersionForUpgrade(manifest))
 	return known && rank < 43
 }
 
 // workflowVersionUpgradePlan lists supported upgrades for this product.
 func workflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersionUpgrade {
-	if isPythonRelay(manifest) || workflowContractNeedsRecreation(manifest) {
-		return nil
-	}
+
 	return eligibleWorkflowVersionUpgrades(manifest, fullWorkflowVersionUpgradePlan(manifest))
 }
 
@@ -241,9 +235,7 @@ func eligibleWorkflowVersionUpgrades(manifest *WorkflowManifest, plan []workflow
 		if upgrade.label == "upgrade-portable-workflow" && !workflowHasCrewBinding(manifest) {
 			continue
 		}
-		if manifestIsRelay(manifest) && (goalsOnlyWorkflowUpgrades[upgrade.label] || relayStoreUpgrades[upgrade.label]) {
-			continue
-		}
+
 		shared = append(shared, upgrade)
 	}
 	return shared

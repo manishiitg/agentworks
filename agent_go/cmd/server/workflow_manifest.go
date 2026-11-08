@@ -116,6 +116,8 @@ const (
 	DefaultRunRetentionCount = 10
 )
 
+var errUnsupportedWorkflowKind = errors.New("unsupported workflow kind")
+
 // WorkflowManifest is the top-level workflow.json structure that lives in each workspace.
 type WorkflowManifest struct {
 	crewExecutable *crewExecutableBinding // server-resolved; never decoded from workspace JSON
@@ -129,14 +131,10 @@ type WorkflowManifest struct {
 	CodeLayoutVersion            int                                 `json:"code_layout_version,omitempty"` // 0: legacy learnings; 1: persistent code tree
 	SchemaVersion                int                                 `json:"schema_version"`
 	ID                           string                              `json:"id"`
-	// Kind distinguishes a Flow from a general workflow while reusing the
-	// same manifest, schedules, access rules, runner, and run history.
-	Kind              string `json:"kind,omitempty"`
-	RelayRuntime      string `json:"relay_runtime,omitempty"`
-	RelayDurability   string `json:"relay_durability,omitempty"`
-	RelayOutputStepID string `json:"relay_output_step_id,omitempty"`
-	Version           string `json:"version,omitempty"`
-	Label             string `json:"label"`
+	// Kind remains parsed so unsupported saved products are never treated as workflows.
+	Kind    string `json:"kind,omitempty"`
+	Version string `json:"version,omitempty"`
+	Label   string `json:"label"`
 	// Description is one short line about what the workflow is for. Shown next to the name in Slack's "who should answer"
 	// picker, MCP lists and the Slack target list. Optional.
 	Description      string               `json:"description,omitempty"`
@@ -475,25 +473,10 @@ func ValidateManifest(m *WorkflowManifest) error {
 	if m.ID == "" {
 		return fmt.Errorf("id is required")
 	}
-	if m.Kind != "" && m.Kind != "relay" {
-		return fmt.Errorf("kind must be relay or omitted")
-	}
-	if m.RelayRuntime != "" && (m.Kind != "relay" || m.RelayRuntime != "python") {
-		return fmt.Errorf("relay_runtime must be python on a Flow")
-	}
-	if m.RelayDurability != "" && (!isPythonRelay(m) || m.RelayDurability != "dbos") {
-		return fmt.Errorf("relay_durability must be dbos on a Python Flow")
-	}
-	if isPythonRelay(m) && m.RelayOutputStepID != "" {
-		return fmt.Errorf("Python Flows return run(INPUT, ctx); relay_output_step_id is not supported")
-	}
-	if m.Kind != "relay" && m.RelayOutputStepID != "" {
-		return fmt.Errorf("relay_output_step_id requires kind relay")
+	if m.Kind != "" {
+		return errUnsupportedWorkflowKind
 	}
 
-	if m.Kind == "relay" && strings.TrimSpace(m.Capabilities.SlackConnectionID) != "" {
-		return fmt.Errorf("Flows do not support Slack connections")
-	}
 	if m.Label == "" {
 		return fmt.Errorf("label is required")
 	}
@@ -630,15 +613,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 		if err := validateRouteScheduleMessages(sched); err != nil {
 			return fmt.Errorf("schedules[%d]: %w", i, err)
 		}
-		if isPythonRelay(m) && (len(sched.RouteSelections) != 0 || (sched.Webhook != nil && (strings.TrimSpace(sched.Webhook.StepID) != "" || sched.Webhook.PayloadMappings != nil))) {
-			return fmt.Errorf("Python Flows run relay.py; workflow step targets and payload routing are not supported")
-		}
-		if m.Kind == "relay" && !sched.IsFunctionTrigger() {
-			return fmt.Errorf("schedules[%d]: Flows support API function triggers only; cron and calendar schedules are not supported", i)
-		}
-		if m.Kind == "relay" && len(normalizeScheduleGroupNames(sched.GroupNames)) > 1 {
-			return fmt.Errorf("schedules[%d]: a legacy Flow trigger may bind at most one configuration group", i)
-		}
+
 		if sched.ID == "" {
 			return fmt.Errorf("schedules[%d].id is required", i)
 		}
@@ -804,12 +779,13 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 		return nil, false, nil
 	}
 
-	if !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/") {
-
-	}
 	var m WorkflowManifest
 	if err := json.Unmarshal([]byte(content), &m); err != nil {
 		return nil, false, fmt.Errorf("failed to parse workflow.json: %w", err)
+	}
+
+	if m.Kind != "" {
+		return nil, false, errUnsupportedWorkflowKind
 	}
 
 	binding, bindErr = findCrewExecutable(workspacePath)
@@ -817,11 +793,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 		return nil, false, bindErr
 	}
 	if binding != nil {
-		expectedKind := ""
-		if binding.Kind == "relay" {
-			expectedKind = "relay"
-		}
-		if m.ID != binding.ID || m.Kind != expectedKind {
+		if m.ID != binding.ID {
 			return nil, false, fmt.Errorf("executable identity does not match its registered Crew binding")
 		}
 		m.crewExecutable = binding
@@ -862,31 +834,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	// draft or frozen release remains callable; the next draft save removes
 	// them through the normal manifest writer and changelog. Never rewrite a
 	// published snapshot for this product policy change.
-	if m.Kind == "relay" {
-		retired := map[string]bool{}
-		kept := make([]WorkflowSchedule, 0, len(m.Schedules))
-		for _, schedule := range m.Schedules {
-			kind := scheduleTypeOrDefault(schedule.ScheduleType)
-			if kind == "cron" || kind == "calendar" {
-				retired[schedule.ID] = true
-				continue
-			}
-			kept = append(kept, schedule)
-		}
-		if len(retired) > 0 {
-			for i := range kept {
-				deps := []string{}
-				for _, id := range scheduleDependencyIDs(kept[i]) {
-					if !retired[id] {
-						deps = append(deps, id)
-					}
-				}
-				kept[i].AfterScheduleID = ""
-				kept[i].AfterScheduleIDs = deps
-			}
-		}
-		m.Schedules = kept
-	}
+
 	llmConfigMigrated := workflowtypes.NormalizePresetLLMConfig(m.Capabilities.LLMConfig)
 
 	// A field retired from the Go schema (e.g. a past execution_defaults knob
@@ -912,7 +860,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	heldRoot, _ := ctx.Value(teamLockHeldKey{}).(string)
 	// A Crew-owned workflow has explicit chat upgrades. Reading its status must
 	// not silently prune fields through the settings writer and rewrite timers.
-	mayPersistManifestMigrations := persistMigrations && binding == nil && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
+	mayPersistManifestMigrations := persistMigrations && binding == nil && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath)
 	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) {
 		if hasStaleFields {
 			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v capabilities=%v",

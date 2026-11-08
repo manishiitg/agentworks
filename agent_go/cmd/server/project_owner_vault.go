@@ -48,9 +48,7 @@ func (api *StreamingAPI) saveProjectSecret(ctx context.Context, actor, root, nam
 // runSecretsOwner is whose Vault grants a run's selected secrets come from: the project's owner, for the owner, an
 // editor, a schedule and a published Flow version alike (owner-lent). A Flow's release folder answers for its draft.
 func (api *StreamingAPI) runSecretsOwner(ctx context.Context, person, workspace string) string {
-	if draft, err := relayDraftWorkspaceForRelease(ctx, workspace); err == nil && draft != "" {
-		workspace = draft
-	}
+
 	return api.projectSecretsOwner(person, workspace)
 }
 

@@ -43,7 +43,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/platformtools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminalleases"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
@@ -3026,11 +3025,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/publications", api.handlePublicationUpload).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/publications/{operation}", api.handlePublicationUpload).Methods("GET", "POST")
 	apiRouter.HandleFunc("/external/v1/publications/{operation}/{step:plan|chunks}", api.handlePublicationUpload).Methods("POST", "PUT")
-	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
-	apiRouter.HandleFunc("/relays/{id}/runs/{run}", api.handleGetRelayRun).Methods("GET")
-	apiRouter.HandleFunc("/relays/{id}/releases", api.handleListRelayReleases).Methods("GET")
-	apiRouter.HandleFunc("/relays/{id}/releases", api.handlePublishRelayRelease).Methods("POST")
-	apiRouter.HandleFunc("/relays/{id}/graph", api.handleInspectRelayGraph).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/files/content", api.handleExternalAssetContent).Methods("GET", "HEAD")
 	apiRouter.HandleFunc("/external/v1/mcp/project/{kind}/{project}/{access}", api.handleProjectMCP).Methods("POST", "GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/mcp", api.handleExternalMCP).Methods("POST", "GET", "DELETE")
@@ -4442,7 +4436,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// on main (only on the separate, unmerged feature/chief-of-staff-product
 	// branch) — see frontend/src/utils/agentModeDescriptions.ts.
 	isWorkflowPhase := req.AgentMode == "workflow_phase"
-	relayRunChat := false // a non-owner's chat on a Flow (856-78)
+
 	workflowPhaseID := req.PhaseID
 	workflowPhaseFolder := "" // The preset's SelectedFolder — used to auto-grant write access in FolderGuard
 	workflowPhaseRunFolder := ""
@@ -4573,13 +4567,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		// A Flow's Builder chat is its owner's; everyone else with access chats in Run mode (856-78). Run mode is the same
 		// server-side policy as a Crew's: no shell, MCP servers or secrets, and only the Run tool surface.
-		if currentUserIsReadOnly && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && workflowPhaseFolder != "" {
-			if relayManifest, relayFound, relayErr := ReadWorkflowManifest(context.Background(), workflowPhaseFolder); relayErr == nil && relayFound && relayManifest.Kind == "relay" {
-				relayRunChat = true
-				crewAskOnly = true
-				common.SetSessionCrewAskReadOnly(sessionID, true)
-			}
-		}
+
 		// Convert to multi-agent mode so it falls through to the standard agent path
 		req.AgentMode = "multi-agent"
 	}
@@ -5909,30 +5897,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// how a real enabled: list gets seeded from a live session rather than
 		// guessed.
 		toolGate := newProductToolGate(resolvedProfile)
-		relayChat := false
-		if isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && workflowPhaseFolder != "" {
-			// /api/query acknowledges before this worker finishes; the HTTP request
-			// context is already canceled here. Match the workflow setup reads above.
-			manifest, found, manifestErr := ReadWorkflowManifest(context.Background(), workflowPhaseFolder)
-			if manifestErr != nil {
-				sendError(fmt.Sprintf("Failed to read workflow manifest: %v", manifestErr), true)
-				return
-			}
-			if found && manifest.Kind == "relay" {
-				relayChat = true
-				relayToolsFn := relayproduct.BuilderTools
-				if currentUserIsReadOnly {
-					relayToolsFn = relayproduct.RunTools
-				}
-				relayTools, toolErr := relayToolsFn()
-				if toolErr != nil {
-					sendError(fmt.Sprintf("Failed to load Flow Builder tools: %v", toolErr), true)
-					return
-				}
-				toolGate = newProductToolGateForAllowlist("relays", relayTools)
-			}
-		}
-		if isWorkflowPhase && !relayChat && resolvedProfile == nil {
+
+		if isWorkflowPhase && resolvedProfile == nil {
 			toolGate = newWorkflowConversationToolGate(sessionID, req, currentUserIsReadOnly)
 		}
 		toolGate.DenyWhere(func(name string) bool {
@@ -5945,9 +5911,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// keeps the bridge file tools, so it never ends up with neither. The bridge tool list is admitted at launch.
 		fullCLIOn := false
 		toolGate.DenyWhere(func(name string) bool { return fullCLIOn && fullCLIDuplicateTool(name) })
-		toolGate.AllowWorkflowNotifications(isWorkflowPhase && !relayChat && workflowNotificationsForPath(workflowPhaseFolder))
+		toolGate.AllowWorkflowNotifications(isWorkflowPhase && workflowNotificationsForPath(workflowPhaseFolder))
 		claims := GetUserFromContext(r.Context())
-		workflowRun := isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && currentUserIsReadOnly && !relayChat
+		workflowRun := isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && currentUserIsReadOnly
 		projectTokenChat := resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && claims != nil && claims.AccessToken != nil
 		if (workflowRun || projectTokenChat && currentUserIsReadOnly) && claims != nil && claims.AccessToken != nil {
 			// Apply the existing token denylist to registration and the core CLI
@@ -6022,9 +5988,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		// A guest's ask has no shell, and every non-core tool is otherwise reached by curl through the shell, so the
 		// two tools it needs are native bridge tools: reading project files and replying (856-59).
-		if relayRunChat {
-			platformBridgeTools = append(append([]string(nil), platformBridgeTools...), relayRunChatTools...)
-		} else if crewAskOnly {
+		if crewAskOnly {
 			platformBridgeTools = crewAskBridgeTools(platformBridgeTools)
 		}
 
@@ -6596,14 +6560,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// like its workshop children. Give the dedicated DB tools their
 				// trusted logical capability and hard-block raw db.sqlite/WAL/SHM
 				// access so a denied migration cannot fall back to the sqlite CLI.
-				if relayChat {
-					if err := todo_creation_human.ConfigureRelayDashboardBuilderSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly); err != nil {
-						sendError(fmt.Sprintf("Could not prepare Flow dashboard authoring: %v", err), true)
-						return
-					}
-				} else {
-					todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly)
-				}
+
+				todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly)
+
 				protectOtherWorkflowBuilderChats(sessionID, workflowPhaseFolder, currentUserID)
 				if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
 					log.Printf("[WORKFLOW PHASE FOLDER GUARD] Added read-write CDP host Downloads: %s", hostDownloads)
@@ -6815,11 +6774,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						chatMode = "run"
 					}
 					allowedHumanTool := false
-					if relayChat {
-						allowedHumanTool = relayproduct.ChatAllowsTool(map[bool]string{true: "run", false: "builder"}[currentUserIsReadOnly], toolName)
-					} else {
-						allowedHumanTool = agentworksproduct.ChatAllowsTool(chatMode, toolName)
-					}
+
+					allowedHumanTool = agentworksproduct.ChatAllowsTool(chatMode, toolName)
+
 					if isWorkflowPhase && virtualtools.IsHumanToolCategory(toolCategory) && !allowedHumanTool {
 						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because the product chat surface does not admit it in %s mode", toolName, chatMode)
 						continue
@@ -7323,7 +7280,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// correctly run its one allowlisted tool and then, in the very same
 			// turn, tell the user it has no working tool because this stale text
 			// contradicted what actually happened.
-			hasProductAllowlist := relayChat || resolvedProfile != nil && resolvedProfile.Definition.ToolPolicy.IsAllowlist()
+			hasProductAllowlist := resolvedProfile != nil && resolvedProfile.Definition.ToolPolicy.IsAllowlist()
 			if common.IsCLIProvider(req.Provider) && !hasProductAllowlist {
 				promptCtx.CLIToolEnvironment = virtualtools.BuildCLIToolEnvironmentPrompt(req.Provider)
 			}
@@ -7393,14 +7350,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 					// Reapply the managed DB boundary on every setup/restore so old
 					// sessions cannot retain broad raw SQLite or sidecar access.
-					if relayChat {
-						if err := todo_creation_human.ConfigureRelayDashboardBuilderSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly); err != nil {
-							sendError(fmt.Sprintf("Could not prepare Flow dashboard authoring: %v", err), true)
-							return
-						}
-					} else {
-						todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly)
-					}
+
+					todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly)
+
 					if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
 						log.Printf("[WORKFLOW_PHASE] Added read-write CDP host Downloads: %s", hostDownloads)
 					}
@@ -7466,12 +7418,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if manifest, found, err := ReadWorkflowManifest(r.Context(), phaseWorkspacePath); err == nil && found {
 					phaseTemplateVars["CHAT_INSTRUCTIONS"] = manifest.ChatInstructions
 				}
-				if relayChat {
-					phaseTemplateVars["WorkflowKind"] = "relay"
-					if relayRunChat {
-						phaseTemplateVars["RelayRunMode"] = "true"
-					}
-				}
 
 				// Pass workshop mode from frontend override (auto-detection happens after plan is loaded below).
 				// Migrate legacy values to the current 2-mode scheme
@@ -7512,12 +7458,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 				// Build GroupInfo and extra template vars for the interactive-workshop system prompt
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-					if !relayChat {
-						groupInfo := buildWorkshopGroupInfo(setupCtx, phaseWorkspacePath, phaseReadFile, phaseRunFolder, phaseEnabledGroupNames)
-						if groupInfo != "" {
-							phaseTemplateVars["GroupInfo"] = groupInfo
-						}
+
+					groupInfo := buildWorkshopGroupInfo(setupCtx, phaseWorkspacePath, phaseReadFile, phaseRunFolder, phaseEnabledGroupNames)
+					if groupInfo != "" {
+						phaseTemplateVars["GroupInfo"] = groupInfo
 					}
+
 					phaseTemplateVars["RunFolder"] = phaseRunFolder
 					phaseTemplateVars["UseKnowledgebase"] = "true"                 // default; overridden by preset below if needed
 					phaseTemplateVars["KBShape"] = workflowtypes.KBShapeGraphNotes // default; overridden from manifest below if set
@@ -7640,9 +7586,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 								// mega-skill as `browser-usage` and is fetched on demand.
 								browserPrompt := "\n## Browser\n\nThis phase has a browser tool configured (mode=" + configuredBrowserMode +
 									"). CDP availability is live state and is never stored in this prompt. Before the first browser action, call `agent_browser(command=\"status\", session=\"default\")`, then follow its `effective_mode` and authorized endpoints.\n"
-								if !relayChat {
-									browserPrompt += " Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for Builder-specific tab, file, and safety rules.\n"
-								}
+
+								browserPrompt += " Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for Builder-specific tab, file, and safety rules.\n"
+
 								if configuredBrowserMode == "auto" || configuredBrowserMode == "cdp" {
 									_, endpointGuidance := cdpPromptEndpoints(phaseConfiguredCDPPorts, phaseBrowserCfg.CdpPort)
 									browserPrompt += endpointGuidance + " These are configured candidates only; `agent_browser status` is authoritative for current reachability.\n"
@@ -7854,9 +7800,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			currentPolicy := resolveWorkflowChatPolicy(sessionID, req, activeForPolicy, currentUserIsReadOnly)
 			policyWorkflowKind := ""
-			if relayChat {
-				policyWorkflowKind = "relay"
-			}
+
 			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind)
 			laptopPolicy := api.workflowChatLaptopPolicyKey(r.Context(), req, currentUserIsReadOnly)
 			policyKey += laptopPolicy
@@ -12494,9 +12438,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		if mErr != nil {
 			return nil, fmt.Errorf("failed to read workflow manifest from %s: %w", workspacePath, mErr)
 		} else if found {
-			if manifest.Kind == "relay" {
-				cfg.EnabledGroupNames = nil
-			}
+
 			caps := manifest.Capabilities
 			log.Printf("[WORKSHOP] Loaded config from manifest at %s", workspacePath)
 
@@ -12763,13 +12705,13 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 					}
 					sb.WriteString(fmt.Sprintf("- **Run Count**: %d\n", state.RunCount))
 				}
-				if manifest.Kind != "relay" {
-					if len(sched.GroupNames) > 0 {
-						sb.WriteString(fmt.Sprintf("- **Groups**: %v\n", sched.GroupNames))
-					} else {
-						sb.WriteString("- **Groups**: all\n")
-					}
+
+				if len(sched.GroupNames) > 0 {
+					sb.WriteString(fmt.Sprintf("- **Groups**: %v\n", sched.GroupNames))
+				} else {
+					sb.WriteString("- **Groups**: all\n")
 				}
+
 				if len(sched.RouteSelections) > 0 {
 					sb.WriteString(fmt.Sprintf("- **Route selections**: %v\n", sched.RouteSelections))
 				}
@@ -12830,15 +12772,12 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err != nil || !found {
 				return "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
 			}
-			if manifest.Kind == "relay" {
-				return "", fmt.Errorf("Flows support API function triggers only")
+
+			groupNames, err = validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
+			if err != nil {
+				return "", err
 			}
-			if manifest.Kind != "relay" {
-				groupNames, err = validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
-				if err != nil {
-					return "", err
-				}
-			}
+
 			newSched := WorkflowSchedule{
 				ID:             generateScheduleID(),
 				Name:           name,
@@ -12932,9 +12871,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err != nil || !found {
 				return "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
 			}
-			if manifest.Kind == "relay" {
-				return "", fmt.Errorf("Flows support API function triggers only")
-			}
+
 			groupNames, err = validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
 			if err != nil {
 				return "", err
@@ -13027,10 +12964,8 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if timezone != "" {
 				sched.Timezone = timezone
 			}
-			if manifest.Kind == "relay" && setGroupNames && len(normalizeScheduleGroupNames(groupNames)) > 0 {
-				return "", fmt.Errorf("Flows do not accept group_names; configure variables directly")
-			}
-			if manifest.Kind != "relay" && setGroupNames {
+
+			if setGroupNames {
 				validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
 				if err != nil {
 					return "", err
@@ -13124,13 +13059,13 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 					return "", err
 				}
 			}
-			if manifest.Kind != "relay" {
-				validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, sched.GroupNames)
-				if err != nil {
-					return "", err
-				}
-				sched.GroupNames = validGroupNames
+
+			validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, sched.GroupNames)
+			if err != nil {
+				return "", err
 			}
+			sched.GroupNames = validGroupNames
+
 			if err := ValidateManifest(manifest); err != nil {
 				return "", err
 			}

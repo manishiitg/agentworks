@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sort"
 	"strings"
@@ -85,10 +86,10 @@ func (m *WorkflowManifest) hasOwnershipRecord() bool {
 	return len(m.effectiveOwners()) > 0
 }
 
-// relayBuilder is the MAIN owner of a Flow: the one it runs as (owner decision 2026-10-13: runs leave journals in one slot, the
+// executionOwner is the main owner: the one it runs as (owner decision 2026-10-13: runs leave journals in one slot, the
 // owner's). It is the creator when the creator is still a listed owner, else the first listed owner, so the answer is the same on
 // every read. Other listed owners are co-owners: they build it too (2026-10-16) but runs still happen as this person.
-func (m *WorkflowManifest) relayBuilder() string {
+func (m *WorkflowManifest) executionOwner() string {
 	owners := m.effectiveOwners()
 	if len(owners) == 0 {
 		return ""
@@ -154,7 +155,7 @@ func effectiveWorkflowAccessMap(ctx context.Context, claims *UserClaims) (map[st
 }
 
 func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) WorkflowAccessLevel {
-	if m != nil && (m.Kind == "relay" || (m.crewExecutable != nil && m.crewExecutable.Kind == "relay")) && !productEnabled("relays") {
+	if m != nil && m.Kind != "" {
 		return WorkflowAccessNone
 	}
 	if m != nil && m.crewExecutable != nil {
@@ -179,9 +180,7 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 	}
 
 	product := "agentworks"
-	if m != nil && m.Kind == "relay" {
-		product = "relays"
-	}
+
 	// Only a local installation narrows workflows to its product set. On a
 	// server, AGENT_PRODUCTS chooses product homes, not project access: a
 	// workflow reader or bot route may have access without a product-home grant.
@@ -222,20 +221,7 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 	if m == nil || !m.hasOwnershipRecord() {
 		return account
 	}
-	if m.Kind == "relay" {
-		// Every owner of a Flow builds it (owner, 2026-10-16: co-owners); runs happen as the main owner, relayBuilder().
-		// Listed editors and readers run published versions.
-		if containsID(m.effectiveOwners(), claims.UserID) {
-			if !userAccessForClaims(claims).CanEdit {
-				return WorkflowAccessRead
-			}
-			return WorkflowAccessOwner
-		}
-		if containsID(m.effectiveReaders(), claims.UserID) || workflowRunEveryone(claims, m, product) {
-			return WorkflowAccessRead
-		}
-		return WorkflowAccessNone
-	}
+
 	if containsID(m.effectiveOwners(), claims.UserID) {
 		if !userAccessForClaims(claims).CanEdit {
 			return WorkflowAccessRead
@@ -273,6 +259,9 @@ func workflowAccessForBotRouteClaims(claims *UserClaims, m *WorkflowManifest) (W
 // answers with the account tier and a nil manifest.
 func workflowAccessForWorkspacePath(ctx context.Context, claims *UserClaims, workspacePath string) (WorkflowAccessLevel, *WorkflowManifest) {
 	manifest, exists, err := ReadWorkflowManifest(ctx, workspacePath)
+	if errors.Is(err, errUnsupportedWorkflowKind) {
+		return WorkflowAccessNone, nil
+	}
 	if err != nil || !exists {
 		// A registered child never inherits the standalone account-tier fallback.
 		if binding, bindingErr := findCrewExecutable(workspacePath); bindingErr != nil || binding != nil {
@@ -297,59 +286,6 @@ func requireWorkflowOwner(w http.ResponseWriter, r *http.Request, workspacePath 
 	}
 	writeWorkflowPermissionDenied(w, "owner")
 	return false
-}
-
-// requireWorkflowVisible writes a 403 and returns false unless the caller
-// may at least see the workflow at workspacePath.
-func requireWorkflowVisible(w http.ResponseWriter, r *http.Request, workspacePath string) bool {
-	clean, ok := cleanWorkspaceReadPath(workspacePath, true)
-	if !ok {
-		writeWorkflowPermissionDenied(w, "read")
-		return false
-	}
-	workspacePath = clean
-	if clean == "Workflow/.relay_releases" || strings.HasPrefix(clean, "Workflow/.relay_releases/") {
-		return requireRelayReleaseVisible(w, r, workspacePath)
-	}
-
-	claims := GetUserFromContext(r.Context())
-	level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, workspacePath)
-	if level != WorkflowAccessNone && (manifest == nil || userAllowedWorkflowID(claims, manifest.ID)) {
-		return true
-	}
-	writeWorkflowPermissionDenied(w, "read")
-	return false
-}
-
-// Release files have a separate execution path but inherit access from the
-// live Flow. Never authorize them through the manifest-less release parent.
-func requireRelayReleaseVisible(w http.ResponseWriter, r *http.Request, workspacePath string) bool {
-	clean, ok := cleanWorkspaceReadPath(workspacePath, true)
-	if !ok {
-		writeWorkflowPermissionDenied(w, "read")
-		return false
-	}
-	if clean != "Workflow/.relay_releases" && !strings.HasPrefix(clean, "Workflow/.relay_releases/") {
-		return true
-	}
-	if !relayReleaseReadAllowed(r.Context(), GetUserFromContext(r.Context()), clean) {
-		writeWorkflowPermissionDenied(w, "read")
-		return false
-	}
-	return true
-}
-
-func relayReleaseReadAllowed(ctx context.Context, claims *UserClaims, clean string) bool {
-	parts := strings.Split(clean, "/")
-	if len(parts) < 4 {
-		return false
-	}
-	draft, err := relayDraftWorkspaceForRelease(ctx, strings.Join(parts[:4], "/"))
-	if err != nil {
-		return false
-	}
-	level, manifest := workflowAccessForWorkspacePath(ctx, claims, draft)
-	return manifest != nil && level != WorkflowAccessNone && userAllowedWorkflowID(claims, manifest.ID)
 }
 
 // workflowFolderFromWorkspaceProxyPath extracts "Workflow/<folder>" from a
@@ -437,4 +373,13 @@ func workflowManifestBlockedWriteForNonOwner(ctx context.Context, claims *UserCl
 		return ""
 	}
 	return folder + "/workflow.json"
+}
+
+// requireWorkflowVisible uses the same read policy as file and run routes.
+func requireWorkflowVisible(w http.ResponseWriter, r *http.Request, workspacePath string) bool {
+	if !workspaceReadAllowed(r.Context(), GetUserFromContext(r.Context()), workspacePath, logicalPathIsDefaultUser, true) {
+		writeWorkflowPermissionDenied(w, "read")
+		return false
+	}
+	return true
 }

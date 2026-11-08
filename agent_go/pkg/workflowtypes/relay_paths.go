@@ -7,6 +7,9 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 )
 
+// Kept only for the old runner until its retirement; not a public product policy.
+const LegacyRelayPlatformStoresEnabled = false
+
 var relayReleaseVersion = regexp.MustCompile(`^v[1-9][0-9]*$`)
 
 // RelayReleaseRoot is the stable snapshot namespace belonging to a draft.

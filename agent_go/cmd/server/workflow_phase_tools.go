@@ -11,7 +11,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -73,9 +72,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			return err
 		}
 		panelProduct := "agentworks"
-		if phaseTemplateVars["WorkflowKind"] == "relay" {
-			panelProduct = "relays"
-		}
+
 		if err := api.registerWorkspacePanelChatTools(definitionAgent, nil, userID, sessionID, phaseWorkspacePath, panelProduct); err != nil {
 			return err
 		}
@@ -143,19 +140,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	}
 	switch workflowPhaseID {
 	case workflowtypes.WorkflowStatusWorkflowBuilder:
-		if phaseTemplateVars["WorkflowKind"] == "relay" && phaseTemplateVars["RelayRunMode"] == "true" {
-			if err := api.registerRelayRunChatTools(definitionAgent, userID, phaseWorkspacePath); err != nil {
-				return fmt.Errorf("register Flow Run tools: %w", err)
-			}
-		}
-		if phaseTemplateVars["WorkflowKind"] == "relay" && policy.Origin != "bot" && policy.allows("plan_authoring") {
-			if err := api.registerRelayReleaseTools(definitionAgent, phaseWorkspacePath, userID); err != nil {
-				return fmt.Errorf("register Flow release tools: %w", err)
-			}
-			if err := api.registerPythonRelayBuilderTools(definitionAgent, phaseWorkspacePath, userID); err != nil {
-				return fmt.Errorf("register Flow Python tools: %w", err)
-			}
-		}
+
 		// Keep the definition stable across persistent CLI turns. The executor
 		// reads current workflow intent on every call, including disabled mode.
 		if phaseWorkspacePath != "" {
@@ -206,9 +191,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 				if refreshErr != nil {
 					log.Printf("[WORKFLOW_PHASE] Warning: Failed to reload manifest: %v", refreshErr)
 				} else if refreshFound {
-					if refreshManifest.Kind == "relay" {
-						_ = workshopSession.UpdateInvocationInputs(ctx, "", nil)
-					}
+
 					caps := refreshManifest.Capabilities
 					selectedServers = caps.RuntimeServers()
 					configuredBrowserMode := strings.ToLower(strings.TrimSpace(caps.BrowserMode))
@@ -448,28 +431,13 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 
 		}
 
-		if phaseTemplateVars["WorkflowKind"] == "relay" {
-			skillMode := "builder"
-			if phaseTemplateVars["RelayRunMode"] == "true" {
-				skillMode = "run"
-			}
-			skills, err := relayproduct.ChatSkills(skillMode)
-			if err != nil {
-				return fmt.Errorf("load Flow Builder skills: %w", err)
-			}
-			for _, skill := range skills {
-				if err := definitionAgent.AttachSkill(skill); err != nil {
-					return fmt.Errorf("attach Flow Builder skill %s: %w", skill.Name, err)
-				}
-			}
-		} else {
-			workshopMode := phaseTemplateVars["WorkshopMode"]
-			if err := guidance.AttachConfiguredReferenceSurface(workshopMode, mcpManagement, agentworksproduct.ChatSkills(policy.Mode), func(skill *llmtypes.Skill) error {
-				return definitionAgent.AttachSkill(skill)
-			}); err != nil {
-				return fmt.Errorf("attach reference surface in %s (mode=%s): %w", workflowPhaseID, workshopMode, err)
-			}
+		workshopMode := phaseTemplateVars["WorkshopMode"]
+		if err := guidance.AttachConfiguredReferenceSurface(workshopMode, mcpManagement, agentworksproduct.ChatSkills(policy.Mode), func(skill *llmtypes.Skill) error {
+			return definitionAgent.AttachSkill(skill)
+		}); err != nil {
+			return fmt.Errorf("attach reference surface in %s (mode=%s): %w", workflowPhaseID, workshopMode, err)
 		}
+
 	}
 
 	log.Printf("[PHASE_TOOL_RACE] PHASE_TOOL_REGISTER_END for session=%s phase=%s elapsed=%s",

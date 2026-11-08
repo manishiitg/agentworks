@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"slices"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -221,7 +220,7 @@ func readerDeniedToolRefusal(ctx context.Context, tool string, inputs ...map[str
 		if _, found := readerDeniedToolNames[name]; found {
 			denied = true
 		}
-		allowed = allowed || crewAskAllowedTools[name] || slices.Contains(relayRunChatTools, name)
+		allowed = allowed || crewAskAllowedTools[name]
 	}
 	if !denied && !allowed {
 		if cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx)); cfg != nil && cfg.CrewAskReadOnly {

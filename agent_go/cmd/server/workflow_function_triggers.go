@@ -120,12 +120,7 @@ func workflowFunctions(manifest *WorkflowManifest) []crewFunction {
 			continue
 		}
 		resultSchema := workflowFunctionResultSchema()
-		if manifest.Kind == "relay" {
-			// The authored Flow output is JSON chosen by its author. A future
-			// output-schema field can narrow this for specific integrations.
-			resultSchema = nil
-			sched.GroupNames = nil
-		}
+
 		out = append(out, crewFunction{
 			Name:         sched.Function.Name,
 			Description:  firstNonEmptyTrimmed(sched.Function.Description, sched.Name),
@@ -170,18 +165,6 @@ func workflowFunctionCallerAllowed(spec *WorkflowFunctionSpec, caller triggerCal
 	return false
 }
 
-// relayFunctionCallerAllowed is workflowFunctionCallerAllowed for a Flow's
-// PUBLISHED versions: anyone with access to the Flow (a product member in Run
-// mode) may run the whole published Flow, so the per-function allow-list only
-// narrows plain function callers (a workflow, a Crew or a user without access).
-// Draft tests never use it.
-func relayFunctionCallerAllowed(live *WorkflowManifest, spec *WorkflowFunctionSpec, caller triggerCaller) bool {
-	if live != nil && live.Kind != "relay" {
-		return workflowFunctionCallerAllowed(spec, caller)
-	}
-	return sharedFunctionCallerAllowed(live, spec, caller)
-}
-
 // sharedFunctionCallerAllowed: anyone a workflow, Flow or Crew is shared with
 // may run its published functions (owner decision 2026-10-14: sharing a product
 // is sharing what it publishes). The per-function allow-list keeps narrowing
@@ -205,7 +188,7 @@ func workflowFunctionArgs(sched WorkflowSchedule, args map[string]interface{}) (
 	if args == nil {
 		args = map[string]interface{}{}
 	}
-	schema, err := compilePythonRelaySchema(workflowFunctionInputSchema(sched))
+	schema, err := stepworkflow.CompileInputSchema(workflowFunctionInputSchema(sched))
 	if err != nil {
 		return nil, "", err
 	}
@@ -235,11 +218,8 @@ func workflowFunctionArgs(sched WorkflowSchedule, args map[string]interface{}) (
 
 // workflowFunctionCall is one call of a workflow function.
 type workflowFunctionCall struct {
-	WorkflowID   string
-	Function     string
-	RelayVersion string
-	// draftRelay is server-maintained authoring provenance, never a request field.
-	draftRelay bool
+	WorkflowID string
+	Function   string
 	Caller     triggerCaller
 	DeliveryID string
 	Args       map[string]interface{}
@@ -254,47 +234,16 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 	if err != nil {
 		return "", internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)
 	}
-	if manifest.Kind == "relay" {
-		// Revoking a function or caller on the live Flow takes effect at once.
-		// The published copy still supplies the versioned input contract and
-		// executable graph, but never grants authority on its own.
-		liveSchedule, liveErr := findWorkflowFunctionTrigger(manifest, call.Function)
-		if liveErr != nil {
-			return "", internalTriggerDeliveryResult{}, liveErr
-		}
-		if !call.draftRelay && !relayFunctionCallerAllowed(manifest, liveSchedule.Function, call.Caller) || call.draftRelay && !workflowFunctionCallerAllowed(liveSchedule.Function, call.Caller) {
-			return liveSchedule.ID, internalTriggerDeliveryResult{}, fmt.Errorf("%w: function %q does not allow this caller", ErrInternalCallerMismatch, call.Function)
-		}
-		if !call.draftRelay {
-			release, releaseWorkspace, releaseErr := resolveRelayRelease(ctx, workspacePath, call.RelayVersion)
-			if releaseErr != nil {
-				return "", internalTriggerDeliveryResult{}, releaseErr
-			}
-			if err := verifyRelayRelease(ctx, release, releaseWorkspace); err != nil {
-				return "", internalTriggerDeliveryResult{}, err
-			}
-			workspacePath = releaseWorkspace
-			manifest, _, err = ReadWorkflowManifest(ctx, workspacePath)
-			if err != nil || manifest == nil {
-				return "", internalTriggerDeliveryResult{}, fmt.Errorf("read published Flow %s: %w", release.Version, err)
-			}
-			if call.Payload == nil {
-				call.Payload = map[string]interface{}{}
-			}
-			call.Payload["relay_version"] = release.Version
-		}
-	}
+
 	sched, err := findWorkflowFunctionTrigger(manifest, call.Function)
 	if err != nil {
 		return "", internalTriggerDeliveryResult{}, err
 	}
-	if manifest.Kind != "relay" && !sharedFunctionCallerAllowed(manifest, sched.Function, call.Caller) {
+	if !sharedFunctionCallerAllowed(manifest, sched.Function, call.Caller) {
 		return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("%w: function %q does not allow this caller", ErrInternalCallerMismatch, sched.Function.Name)
 	}
 	argumentSchedule := *sched
-	if manifest.Kind == "relay" {
-		argumentSchedule.GroupNames = nil
-	}
+
 	variables, group, err := workflowFunctionArgs(argumentSchedule, call.Args)
 	if err != nil {
 		return sched.ID, internalTriggerDeliveryResult{}, err
@@ -304,35 +253,13 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 		payload = map[string]interface{}{}
 	}
 	payload["function"] = sched.Function.Name
-	if manifest.Kind == "relay" {
-		payload["relay_trigger_caller"] = call.Caller
-	}
+
 	payload["args"] = call.Args
 	deliveryID := strings.TrimSpace(call.DeliveryID)
 	if deliveryID == "" {
 		deliveryID = uuid.NewString()
 	}
-	if manifest.Kind == "relay" {
-		// A replay must return its original run even if the author edited the
-		// plan after dispatch. Keep the existing function-trigger idempotency.
-		if run, lookupErr := s.existingWebhookRun(ctx, webhookDeliveryRunID(manifest.ID, sched.ID, deliveryID)); lookupErr == nil {
-			return sched.ID, internalTriggerDeliveryResult{RunID: run.RunID, DeliveryID: deliveryID, Duplicate: true, Status: string(run.State)}, nil
-		}
-		if isPythonRelay(manifest) {
-			if err := validatePythonRelaySource(ctx, workspacePath); err != nil {
-				return sched.ID, internalTriggerDeliveryResult{}, err
-			}
-			payload["relay_runtime"] = "python"
-		} else {
-			if strings.TrimSpace(manifest.RelayOutputStepID) == "" {
-				return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("Flow %q has no relay_output_step_id", manifest.Label)
-			}
-			if err := validateRelayOutputStep(ctx, workspacePath, manifest.RelayOutputStepID); err != nil {
-				return sched.ID, internalTriggerDeliveryResult{}, err
-			}
-			payload["relay_output_step_id"] = manifest.RelayOutputStepID
-		}
-	}
+
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("invalid payload")
@@ -343,14 +270,6 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 	receiver := webhookReceiver{start: s.triggerSavedSchedule, existing: s.existingWebhookRun}
 	delivery, err := receiver.deliverFunction(ctx, manifest.ID, workspacePath, *sched, deliveryID, body, variables, group)
 	return sched.ID, delivery, err
-}
-
-func validateRelayOutputStep(ctx context.Context, workspacePath, outputStepID string) error {
-	plan, err := readPlanFromWorkspace(ctx, workspacePath)
-	if err != nil {
-		return fmt.Errorf("read Flow plan: %w", err)
-	}
-	return stepworkflow.ValidateRelayPlanStructure(plan, outputStepID)
 }
 
 // deliverFunction is deliver for a function trigger: the validated inputs
