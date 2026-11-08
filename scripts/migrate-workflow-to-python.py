@@ -62,6 +62,38 @@ def database_rows(path):
             connection.close()
 
 
+def python_payload(source, workflow_id, original_capabilities, original_inputs):
+    source = source.resolve()
+    payload = {}
+    for file in source.iterdir():
+        if not file.is_file() or file.is_symlink() or (file.suffix != '.py' and file.name != 'script.json'):
+            raise ValueError('The new source must contain only flat Python files and script.json.')
+        raw = file.read_bytes()
+        if file.suffix == '.py':
+            ast.parse(raw, filename=file.name)
+        payload[file.name] = raw
+    definition = json.loads(payload['script.json'])
+    if not isinstance(original_capabilities, dict):
+        raise ValueError('The saved workflow settings must be an object.')
+    proposed = definition.get('capabilities', {})
+    if not isinstance(proposed, dict):
+        raise ValueError('The Python source settings must be an object.')
+    for name, value in proposed.items():
+        if value != original_capabilities.get(name):
+            raise ValueError(f'The Python source changes the saved {name} selection. Keep the original settings during conversion.')
+    definition['capabilities'] = original_capabilities
+    names = {item['name'] for item in definition.get('inputs', [])}
+    definition.setdefault('inputs', []).extend(item for item in original_inputs.get('variables', []) if item['name'] not in names)
+    presets = original_inputs.get('groups', [])
+    if definition.get('input_presets', presets) != presets:
+        raise ValueError('Keep the original named input presets during conversion.')
+    definition['input_presets'] = presets
+    payload['script.json'] = encode(definition)
+    if definition.get('id') != workflow_id or 'main.py' not in payload:
+        raise ValueError('The Python definition must retain the existing workflow ID and include main.py.')
+    return payload, definition
+
+
 def plan(docs, state, initialize=False, workflow_id=None, source=None):
     documents, changes, roots = {}, {}, []
     projects_file = state / 'ownership/projects.json'
@@ -118,37 +150,10 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     rows = database_rows(contained(private, 'db/db.sqlite')) if not existing else {}
     if any(rows.values()):
         raise ValueError('The Crew database already contains rows. Choose the authoritative database before converting; both databases are unchanged.')
-    source = source.resolve()
-    payload = {}
-    for file in source.iterdir():
-        if not file.is_file() or file.is_symlink() or (file.suffix != '.py' and file.name != 'script.json'):
-            raise ValueError('The new source must contain only flat Python files and script.json.')
-        raw = file.read_bytes()
-        if file.suffix == '.py':
-            ast.parse(raw, filename=file.name)
-        payload[file.name] = raw
-    definition = json.loads(payload['script.json'])
     original_capabilities = json.loads((definitions / 'workflow.json').read_text()).get('capabilities', {})
-    if not isinstance(original_capabilities, dict):
-        raise ValueError('The saved workflow settings must be an object.')
-    proposed = definition.get('capabilities', {})
-    if not isinstance(proposed, dict):
-        raise ValueError('The Python source settings must be an object.')
-    for name, value in proposed.items():
-        if value != original_capabilities.get(name):
-            raise ValueError(f'The Python source changes the saved {name} selection. Keep the original settings during conversion.')
-    definition['capabilities'] = original_capabilities
     variables_file = definitions / 'variables/variables.json'
     original_inputs = json.loads(variables_file.read_text()) if variables_file.exists() else {}
-    names = {item['name'] for item in definition.get('inputs', [])}
-    definition.setdefault('inputs', []).extend(item for item in original_inputs.get('variables', []) if item['name'] not in names)
-    presets = original_inputs.get('groups', [])
-    if definition.get('input_presets', presets) != presets:
-        raise ValueError('Keep the original named input presets during conversion.')
-    definition['input_presets'] = presets
-    payload['script.json'] = encode(definition)
-    if definition.get('id') != workflow_id or 'main.py' not in payload:
-        raise ValueError('The Python definition must retain the existing workflow ID and include main.py.')
+    payload, definition = python_payload(source, workflow_id, original_capabilities, original_inputs)
     for name, raw in payload.items():
         target = code / name
         if target.exists() and target.read_bytes() != raw:
@@ -159,7 +164,7 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     binding['kind'] = 'script'
     changes[binding_file] = encode(binding)
     documents = {'definitions': definitions, 'code': code, 'runtime': runtime, 'crew-db': private / 'db', 'crew-db-source': files / 'db'}
-    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'carried_capability_fields': sorted(original_capabilities), 'carried_input_presets': len(presets)}}
+    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'carried_capability_fields': sorted(original_capabilities), 'carried_input_presets': len(definition['input_presets'])}}
     return changes, documents, report
 
 
@@ -183,6 +188,44 @@ def apply(changes, documents, state, backup=None):
     return str(backup)
 
 
+def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None, deployment_mode="server"):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('goal_to_crew', Path(__file__).with_name('migrate-goal-to-crew.py'))
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    matches = [p.parent for p in (docs/'Workflow').glob('*/workflow.json')
+               if json.loads(p.read_text()).get('id') == workflow_id]
+    if len(matches) != 1:
+        raise ValueError('Choose one existing standalone workflow ID. Create or choose its same-owner destination Crew first.')
+    conversion = migration.Conversion(docs, state, matches[0].name, crew_id, agent_binary, deployment_mode=deployment_mode)
+    if conversion.done:
+        raise ValueError('This standalone workflow has already moved. Inspect its current binding before converting it again.')
+    manifest = conversion.document(conversion.definitions/'workflow.json', conversion.manifest)
+    original_inputs = conversion.document(conversion.definitions/'variables/variables.json', migration.read(conversion.source/'variables/variables.json', {}))
+    payload, definition = python_payload(source, workflow_id, manifest.get('capabilities', {}), original_inputs)
+    for name, raw in payload.items():
+        target = conversion.source/'code'/name
+        if target.exists() and target.read_bytes() != raw:
+            raise ValueError('A top-level source file already exists; choose the source explicitly before replacing it: ' + name)
+        conversion.writes[conversion.code/name] = raw
+    projects_file = state/'ownership/projects.json'
+    projects = conversion.document(projects_file)
+    crew = next(p for p in projects['projects'].values() if p.get('project_id') == crew_id)
+    database_root = 'workflows/' + workflow_id + '/db'
+    if crew.get('database_root') not in (None, '', database_root):
+        raise ValueError('The destination Crew already adopted another database. Choose the authoritative database explicitly.')
+    if any(database_rows(conversion.private/'db/db.sqlite').values()):
+        raise ValueError('The Crew database already contains rows. Merge its tables explicitly before adopting this workflow.')
+    crew['database_root'] = database_root
+    conversion.writes[projects_file] = encode(projects)
+    binding = json.loads(conversion.writes[conversion.binding_file])
+    binding.update(kind='script', runtime_root='workflows/' + workflow_id)
+    conversion.writes[conversion.binding_file] = encode(binding)
+    conversion.counts.update(carried_input_presets=len(definition['input_presets']), python_scripts=1)
+    conversion.python_source = True
+    return conversion
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--docs', type=Path, required=True)
@@ -190,11 +233,21 @@ def main():
     parser.add_argument('--initialize-runtime-roots', action='store_true')
     parser.add_argument('--workflow-id')
     parser.add_argument('--source', type=Path)
+    parser.add_argument('--adopt-into-crew', help='Adopt one standalone workflow into an existing same-owner Crew, reusing the Goal-to-Crew converter.')
+    parser.add_argument('--agent-binary', type=Path, help='Current server binary for importing older chat archives and validating inputs.')
+    parser.add_argument('--deployment-mode', choices=('local', 'server'), default='server')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--backup', type=Path, help='One plain snapshot folder; reuse an existing operator backup if provided.')
     args = parser.parse_args()
     if bool(args.workflow_id) != bool(args.source):
         parser.error('--workflow-id and --source are required together')
+    if args.adopt_into_crew:
+        if not args.workflow_id or args.initialize_runtime_roots:
+            parser.error('--adopt-into-crew needs --workflow-id and --source; initialize existing bindings separately')
+        conversion = adopt_into_crew(args.docs.resolve(), args.state.resolve(), args.workflow_id, args.adopt_into_crew, args.source, args.agent_binary, args.deployment_mode)
+        report = conversion.apply(backup=args.backup, plain_backup=True) if args.apply else conversion.report()
+        print(json.dumps(report, indent=2))
+        return
     changes, documents, report = plan(args.docs.resolve(), args.state.resolve(), args.initialize_runtime_roots, args.workflow_id, args.source)
     report['changed_files'] = len(changes)
     report['backup'] = apply(changes, documents, args.state.resolve(), args.backup) if args.apply else None

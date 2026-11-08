@@ -76,6 +76,52 @@ class Migration(unittest.TestCase):
 
     def conversion(self):return m.Conversion(self.docs,self.state,'old-goal','crew')
 
+    def test_standalone_python_adoption_reuses_chat_entry_and_folder_conversion(self):
+        # PLAT-746: server workflows have no Crew binding; same-ID Python
+        # conversion must retain their real records, not create a trial copy.
+        spec = importlib.util.spec_from_file_location('workflow_python', Path(__file__).with_name('migrate-workflow-to-python.py'))
+        python = importlib.util.module_from_spec(spec); spec.loader.exec_module(python)
+        source = self.base/'python-source'
+        write(source/'script.json', {'id':'old-goal','name':'Converted report'})
+        (source/'main.py').write_text('print("new engine")\n')
+        before = hashes(self.base)
+        conversion = python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source)
+        self.assertEqual(hashes(self.base),before)
+        self.assertEqual(conversion.report()['counts']['python_scripts'],1)
+        backup = self.state/'migrations/one-operator-backup'
+        with self.assertRaisesRegex(ValueError,'outside the active workflow'):
+            conversion.apply(backup=conversion.code/'bad-backup',plain_backup=True)
+        self.assertEqual(hashes(self.base),before)
+        result = conversion.apply(backup=backup,plain_backup=True)
+        self.assertEqual(result['backup'],str(backup))
+        self.assertTrue((backup/'source/db/db.sqlite').is_file())
+        self.assertFalse((backup/'sha256.json').exists())
+        with closing(sqlite3.connect(backup/'chat-journal/structured-chat-events-v2.sqlite')) as db:
+            self.assertEqual(db.execute('SELECT last_sequence FROM structured_chat_sequences').fetchone()[0],2)
+        self.assertFalse(self.source.exists())
+        binding = m.read(conversion.binding_file)
+        self.assertEqual((binding['id'],binding['workspace_path'],binding['kind'],binding['runtime_root']),('old-goal','Workflow/old-goal','script','workflows/old-goal'))
+        project = m.read(self.state/'ownership/projects.json')['projects']['work/target']
+        self.assertEqual(project['database_root'],'workflows/old-goal/db')
+        definition = m.read(conversion.code/'script.json')
+        self.assertEqual(definition['capabilities'],{'selected_secrets':['api-name']})
+        self.assertEqual(definition['input_presets'],[{'name':'default','values':{}}])
+        with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
+            self.assertEqual(db.execute('SELECT value FROM business_data').fetchall(),[('unchanged',)])
+        for name in ('schedules','functions','webhooks'):
+            entry = m.read(self.runtime/(name+'.json'))[name][0]
+            self.assertEqual(entry['id'],name+'-original')
+            self.assertFalse(entry['enabled'])
+            self.assertEqual(entry['input']['input_preset'],'default')
+            self.assertTrue(entry['action']['tab'].startswith('imported-'))
+        registry = m.read(self.docs/'_users/owner/chat_history/product-conversations.json')
+        self.assertTrue(any(item['session_id']=='session-original' and item['profile_id']=='work' for item in registry['entries'].values()))
+        self.assertEqual((conversion.code/'main.py').read_text(),'print("new engine")\n')
+        self.assertTrue((conversion.code/'one/main.py').is_file())
+        self.assertTrue((self.runtime/'runs/iteration-1/run_metadata.json').is_file())
+        with self.assertRaisesRegex(ValueError,'standalone workflow ID'):
+            python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source)
+
     def test_moved_attachment_keeps_target_identity_and_refuses_other_owner_or_missing(self):
         # PLAT-746-396: a saved old root caused preflight refusals after migration.
         file = self.source/'workflow.json'

@@ -387,7 +387,7 @@ class Conversion:
         self.inspect_database()
         self.source_moves()
         self.writes[self.binding_file] = encode({'id': self.workflow, 'crew_id': crew, 'crew_root': self.crew_root,
-                                                 'workspace_path': self.root, 'kind': 'workflow'})
+                                                 'workspace_path': self.root, 'kind': 'workflow', 'runtime_root': 'workflows/' + self.workflow})
         self.counts.update(workflows=1, goals=0,
                            historical_runs=len(list((self.source / 'runs').glob('*'))),
                            dashboards=len(list((self.source / 'db/reports').glob('*.html'))))
@@ -789,20 +789,23 @@ class Conversion:
                 'historical_run_note':'Old run folders remain readable; start a new run instead of resuming a retired grouped run.',
                 'historical_chat_note':'Unregistered owner chats remain unchanged in private workflow records; no chat tabs are created for them.',
                 'needs_chat_import_binary':bool(self.chat_imports),
-                'next':'Ask this Crew’s chat to update this workflow before running it. Task text and code were not rewritten.',
+                'next':('Start the upgraded app and test this Python automation from its Crew chat.' if getattr(self, 'python_source', False) else 'Ask this Crew’s chat to update this workflow before running it. Task text and code were not rewritten.'),
                 'owner_evidence':self.owner_proof,
                 'database_columns_with_old_paths':self.database_path_columns,
                 'generated_caches_backup_only':[str(p.relative_to(self.source)) for p in self.caches],
                 'chat_map':[{'person':user,'from':old,'to':tab} for (user,old),tab in self.chat_keys.items()]}
 
-    def apply(self):
+    def apply(self, backup=None, plain_backup=False):
         if self.done:
             return self.report()
         if self.chat_imports and (not self.agent_binary or not self.agent_binary.is_file() or not os.access(self.agent_binary, os.X_OK)):
             raise ValueError('This Goal has older JSON-only chats. Pass --agent-binary with this refactor build to import their visible history.')
         # The operator stops this installation's writers first. A plain backup
         # is sufficient; this is not an online migration/rollback coordinator.
-        backup = self.state/'migrations/goal-to-crew'/('backup-'+self.workflow+'-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f'))
+        backup = Path(backup).resolve() if backup else self.state/'migrations/goal-to-crew'/('backup-'+self.workflow+'-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f'))
+        for root in (self.source, self.private, self.definitions, self.code):
+            if backup == root or root in backup.parents or backup in root.parents:
+                raise ValueError('Choose a backup outside the active workflow and destination storage.')
         backup.parent.mkdir(parents=True, exist_ok=True)
         try:
             metadata_paths = {}
@@ -810,10 +813,30 @@ class Conversion:
             for i,file in enumerate(self.writes):
                 if file.exists() and self.source not in file.parents and self.private not in file.parents:
                     label='metadata/'+str(i);entries.append((label,file));metadata_paths[label]=str(file)
-            verified_backup(backup,entries,self.caches)
+            if plain_backup:
+                for suffix in ('', '-wal', '-shm'):
+                    file = self.journal.with_name(self.journal.name + suffix)
+                    if file.exists():
+                        entries.append(('chat-journal/' + file.name, file))
+                backup.mkdir(parents=True, exist_ok=True, mode=0o700)
+                for label, file in entries:
+                    if not file.exists():
+                        continue
+                    if backup == file or file in backup.parents:
+                        raise ValueError('Choose a backup outside the active workflow storage.')
+                    target = backup/label
+                    if target.exists():
+                        continue  # Reuse the operator's original snapshot.
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if file.is_dir():
+                        shutil.copytree(file, target, symlinks=True)
+                    else:
+                        shutil.copy2(file, target)
+            else:
+                verified_backup(backup,entries,self.caches)
             # Snapshot DBs through SQLite, including WAL contents.
             for label, file in [('source', self.source_db), ('destination', self.target_db), ('chat-journal', self.journal)]:
-                if file.exists():
+                if file.exists() and not plain_backup:
                     with closing(db_read(file)) as src, closing(sqlite3.connect(backup/(label+'.sqlite'))) as dst:
                         src.backup(dst)
             (backup/'plan.json').write_bytes(encode(self.report()))
