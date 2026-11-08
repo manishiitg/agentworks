@@ -168,18 +168,24 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     return changes, documents, report
 
 
-def apply(changes, documents, state, backup=None):
+def apply(changes, documents, state, backup=None, identity='runtime-roots'):
     if not changes:
         return None
     backup = backup or state / 'migrations' / ('workflow-python-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ'))
-    backup.mkdir(parents=True, exist_ok=True, mode=0o700)
+    backup = backup / safe_id(identity)
+    if backup.exists() and (not backup.is_dir() or any(backup.iterdir())):
+        raise ValueError('This workflow backup already contains a snapshot. Keep it and choose a new backup folder.')
     copies = dict(documents, ownership=state / 'ownership')
+    for source in copies.values():
+        if backup == source or source in backup.parents or backup in source.parents:
+            raise ValueError('Choose a backup outside the active automation storage.')
+    backup.mkdir(parents=True, exist_ok=True, mode=0o700)
     # One plain snapshot for this conversion, including the existing registry.
     # --backup can reuse the operator's already prepared snapshot folder.
     for label, path in copies.items():
         if path.exists():
             if path.is_dir():
-                shutil.copytree(path, backup / label, symlinks=True, dirs_exist_ok=True)
+                shutil.copytree(path, backup / label, symlinks=True)
             else:
                 shutil.copy2(path, backup / label)
     for path, raw in changes.items():
@@ -188,7 +194,9 @@ def apply(changes, documents, state, backup=None):
     return str(backup)
 
 
-def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None, deployment_mode="server"):
+def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None, deployment_mode=None):
+    if deployment_mode not in ("local", "server"):
+        raise ValueError("Choose --deployment-mode local or server for this installation.")
     import importlib.util
     spec = importlib.util.spec_from_file_location('goal_to_crew', Path(__file__).with_name('migrate-goal-to-crew.py'))
     migration = importlib.util.module_from_spec(spec)
@@ -235,22 +243,22 @@ def main():
     parser.add_argument('--source', type=Path)
     parser.add_argument('--adopt-into-crew', help='Adopt one standalone workflow into an existing same-owner Crew, reusing the Goal-to-Crew converter.')
     parser.add_argument('--agent-binary', type=Path, help='Current server binary for importing older chat archives and validating inputs.')
-    parser.add_argument('--deployment-mode', choices=('local', 'server'), default='server')
+    parser.add_argument('--deployment-mode', choices=('local', 'server'), help='Required for standalone adoption: this installation runs locally or on a server.')
     parser.add_argument('--apply', action='store_true')
-    parser.add_argument('--backup', type=Path, help='One plain snapshot folder; reuse an existing operator backup if provided.')
+    parser.add_argument('--backup', type=Path, help='Backup parent folder; each workflow gets its own new snapshot, never overwriting an earlier one.')
     args = parser.parse_args()
     if bool(args.workflow_id) != bool(args.source):
         parser.error('--workflow-id and --source are required together')
     if args.adopt_into_crew:
-        if not args.workflow_id or args.initialize_runtime_roots:
-            parser.error('--adopt-into-crew needs --workflow-id and --source; initialize existing bindings separately')
+        if not args.workflow_id or args.initialize_runtime_roots or not args.deployment_mode:
+            parser.error('--adopt-into-crew needs --workflow-id, --source and --deployment-mode local|server; initialize existing bindings separately')
         conversion = adopt_into_crew(args.docs.resolve(), args.state.resolve(), args.workflow_id, args.adopt_into_crew, args.source, args.agent_binary, args.deployment_mode)
         report = conversion.apply(backup=args.backup, plain_backup=True) if args.apply else conversion.report()
         print(json.dumps(report, indent=2))
         return
     changes, documents, report = plan(args.docs.resolve(), args.state.resolve(), args.initialize_runtime_roots, args.workflow_id, args.source)
     report['changed_files'] = len(changes)
-    report['backup'] = apply(changes, documents, args.state.resolve(), args.backup) if args.apply else None
+    report['backup'] = apply(changes, documents, args.state.resolve(), args.backup, args.workflow_id or 'runtime-roots') if args.apply else None
     print(json.dumps(report, indent=2))
 
 

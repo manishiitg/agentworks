@@ -85,7 +85,7 @@ class Migration(unittest.TestCase):
         write(source/'script.json', {'id':'old-goal','name':'Converted report'})
         (source/'main.py').write_text('print("new engine")\n')
         before = hashes(self.base)
-        conversion = python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source)
+        conversion = python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source,deployment_mode='server')
         self.assertEqual(hashes(self.base),before)
         self.assertEqual(conversion.report()['counts']['python_scripts'],1)
         backup = self.state/'migrations/one-operator-backup'
@@ -93,6 +93,7 @@ class Migration(unittest.TestCase):
             conversion.apply(backup=conversion.code/'bad-backup',plain_backup=True)
         self.assertEqual(hashes(self.base),before)
         result = conversion.apply(backup=backup,plain_backup=True)
+        backup = backup/'old-goal'
         self.assertEqual(result['backup'],str(backup))
         self.assertTrue((backup/'source/db/db.sqlite').is_file())
         self.assertFalse((backup/'sha256.json').exists())
@@ -120,7 +121,7 @@ class Migration(unittest.TestCase):
         self.assertTrue((conversion.code/'one/main.py').is_file())
         self.assertTrue((self.runtime/'runs/iteration-1/run_metadata.json').is_file())
         with self.assertRaisesRegex(ValueError,'standalone workflow ID'):
-            python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source)
+            python.adopt_into_crew(self.docs,self.state,'old-goal','crew',source,deployment_mode='server')
 
     def test_moved_attachment_keeps_target_identity_and_refuses_other_owner_or_missing(self):
         # PLAT-746-396: a saved old root caused preflight refusals after migration.

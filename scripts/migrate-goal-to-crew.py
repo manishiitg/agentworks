@@ -803,6 +803,10 @@ class Conversion:
         # The operator stops this installation's writers first. A plain backup
         # is sufficient; this is not an online migration/rollback coordinator.
         backup = Path(backup).resolve() if backup else self.state/'migrations/goal-to-crew'/('backup-'+self.workflow+'-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f'))
+        if plain_backup:
+            backup = backup / self.workflow
+            if backup.exists() and (not backup.is_dir() or any(backup.iterdir())):
+                raise ValueError('This workflow backup already contains a snapshot. Keep it and choose a new backup folder.')
         for root in (self.source, self.private, self.definitions, self.code):
             if backup == root or root in backup.parents or backup in root.parents:
                 raise ValueError('Choose a backup outside the active workflow and destination storage.')
@@ -825,8 +829,6 @@ class Conversion:
                     if backup == file or file in backup.parents:
                         raise ValueError('Choose a backup outside the active workflow storage.')
                     target = backup/label
-                    if target.exists():
-                        continue  # Reuse the operator's original snapshot.
                     target.parent.mkdir(parents=True, exist_ok=True)
                     if file.is_dir():
                         shutil.copytree(file, target, symlinks=True)

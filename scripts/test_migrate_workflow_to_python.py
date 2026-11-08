@@ -17,6 +17,28 @@ def hashes(path):
 
 
 class SameIdentityConversion(unittest.TestCase):
+    def test_shared_backup_root_keeps_each_workflow_and_refuses_readonly_snapshot_overwrite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            state, backup = root/'state', root/'backups'
+            source = root/'first-source'
+            source.mkdir()
+            original = source/'db.sqlite'
+            original.write_bytes(b'first database')
+            original.chmod(0o444)
+            changed = state/'selected.json'
+            first = Path(m.apply({changed:b'first'}, {'runtime':source}, state, backup, 'first'))
+            source2 = root/'second-source'
+            source2.mkdir()
+            (source2/'db.sqlite').write_bytes(b'second database')
+            second = Path(m.apply({changed:b'second'}, {'runtime':source2}, state, backup, 'second'))
+            self.assertEqual((first/'runtime/db.sqlite').read_bytes(),b'first database')
+            self.assertEqual((second/'runtime/db.sqlite').read_bytes(),b'second database')
+            with self.assertRaisesRegex(ValueError,'already contains a snapshot'):
+                m.apply({changed:b'overwritten'}, {'runtime':source2}, state, backup, 'first')
+            self.assertEqual(changed.read_bytes(),b'second')
+            self.assertEqual((first/'runtime/db.sqlite').read_bytes(),b'first database')
+
     def test_initialize_convert_and_refuse_conflicts_without_history_moves(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -78,7 +100,7 @@ class SameIdentityConversion(unittest.TestCase):
             (source/'script.json').write_bytes(m.encode(source_definition))
             changes,documents,report = m.plan(docs,state,False,'task',source)
             self.assertEqual(report['conversion']['database_rows'],{'historical':1})
-            backup = Path(m.apply(changes,documents,state))
+            backup = Path(m.apply(changes,documents,state,identity="task"))
             self.assertEqual(hashes(runtime),before)
             self.assertEqual(hashes(backup/'runtime'),before)
             self.assertTrue((backup/'definitions/planning/plan.json').exists())
