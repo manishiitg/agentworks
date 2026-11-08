@@ -5,9 +5,52 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// PLAT-746 / PR1660: Pyright ignores absolute include paths and reports zero
+// analyzed files. Use the real installed checker to catch config incompatibility.
+func TestTypeNotesAnalyzeSavedSourceWithInstalledChecker(t *testing.T) {
+	if _, err := exec.LookPath("pyright"); err != nil {
+		if _, err := exec.LookPath("basedpyright"); err != nil {
+			t.Skip("optional checker unavailable")
+		}
+	}
+	root := t.TempDir()
+	source := "raise RuntimeError('Never execute authored source')\nvalue: int = 'wrong'\n"
+	if err := os.WriteFile(filepath.Join(root, "main.py"), []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sdk, err := filepath.Abs("../../../../workspace/security/runtime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(map[string]string{"main.py": source})
+	cmd := exec.Command("python3", "-I", "-c", SourceInspector)
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "PYTHONPATH="+sdk, "VAR_AUTOMATION_TYPE_CHECK=1", "VAR_AUTOMATION_CHECK_FILES="+base64.StdEncoding.EncodeToString(raw))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("inspector: %s %v", out, err)
+	}
+	var graph struct {
+		Notes []struct {
+			File, Message string
+			Line          int
+		} `json:"type_notes"`
+	}
+	if err := json.Unmarshal(out, &graph); err != nil {
+		t.Fatalf("type notes: %s %v", out, err)
+	}
+	for _, note := range graph.Notes {
+		if note.File == "main.py" && note.Line == 2 && strings.Contains(note.Message, "int") {
+			return
+		}
+	}
+	t.Fatalf("checker did not analyze the saved invalid assignment: %s", out)
+}
 
 // PLAT-746: saved-result keys are authored work identities, never inserted by
 // inspection. Aliases, explicit None and helper functions need an honest note.
