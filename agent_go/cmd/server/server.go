@@ -2994,6 +2994,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.PathPrefix("/wp/").Handler(workspaceProxyHandler())
 
 	// Focused workflow endpoints used for mutations and incremental refreshes.
+	apiRouter.HandleFunc("/workflow/run", requireWorkflowWriteAccess(api.handleWorkflowRun)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/run-folder", api.handleCreateRunFolder).Methods("POST", "OPTIONS")
 	// /workflow/progress endpoint removed — steps_done.json progress tracking no longer consumed by frontend
 	apiRouter.HandleFunc("/workflow/run-folder", requireWorkflowWriteAccess(api.handleDeleteRunFolder)).Methods("DELETE", "OPTIONS")
