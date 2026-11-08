@@ -62,6 +62,19 @@ func TestPythonSavedScriptsKeepRunOutputsAndRejectRecursiveCalls(t *testing.T) {
 		source := `import json, os
 from pathlib import Path
 from agentworks import inputs, run_script, ScriptResult
+import subprocess, sys
+# Converted step programs run as subprocesses and must keep this exact bridge.
+program = """import os
+from agentworks import check
+assert os.environ['MCP_API_URL'].endswith('/s/' + os.environ['MCP_SESSION_ID'])
+assert os.environ['MCP_CUSTOM'] == os.environ['MCP_API_URL'] + '/tools/custom'
+assert os.environ['MCP_AUTH'] == 'Authorization: Bearer ' + os.environ['MCP_API_TOKEN']
+reply = check('subprocess bridge', True)
+assert reply.ok and reply.log_complete, reply.error
+print('SUBPROCESS_BRIDGE_OK')
+"""
+child = subprocess.run([sys.executable, '-B', '-c', program], capture_output=True, text=True, timeout=15)
+assert child.returncode == 0 and 'SUBPROCESS_BRIDGE_OK' in child.stdout, child.stderr
 value = {'count': inputs.get('count'), 'input_names': sorted(inputs)}
 if inputs.get('next'):
     next_id = inputs['next']

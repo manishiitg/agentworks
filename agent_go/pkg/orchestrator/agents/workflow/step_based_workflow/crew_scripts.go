@@ -16,8 +16,14 @@ type CrewScriptDefinition struct {
 	Name             string            `json:"name"`
 	Description      string            `json:"description,omitempty"`
 	Inputs           []Variable        `json:"inputs,omitempty"`
+	InputPresets     []VariableGroup   `json:"input_presets,omitempty"`
 	Outputs          []string          `json:"outputs,omitempty"`
 	ValidationSchema *ValidationSchema `json:"validation_schema,omitempty"`
+	Capabilities     json.RawMessage   `json:"capabilities,omitempty"`
+}
+
+func (definition *CrewScriptDefinition) InputDefinitions() *VariablesManifest {
+	return &VariablesManifest{Variables: definition.Inputs, Groups: definition.InputPresets}
 }
 
 type ScriptInputBinding struct {
@@ -48,7 +54,7 @@ func ReadCrewScriptDefinition(ctx context.Context, root string, read func(contex
 	if definition.ID == "" || filepath.Base(definition.ID) != definition.ID || strings.ContainsAny(definition.ID, "/\\.") || strings.TrimSpace(definition.Name) == "" {
 		return nil, fmt.Errorf("script needs a stable id and a name")
 	}
-	if err := ValidateWorkflowInputDefinitions(&VariablesManifest{Variables: definition.Inputs}); err != nil {
+	if err := ValidateWorkflowInputDefinitions(definition.InputDefinitions()); err != nil {
 		return nil, err
 	}
 	for _, output := range definition.Outputs {
@@ -143,7 +149,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) crewScriptParameters(ctx context.Cont
 			}
 		}
 	}
-	definitions := &VariablesManifest{Variables: step.crewScript.Definition.Inputs}
+	definitions := step.crewScript.Definition.InputDefinitions()
 	values, err := ResolveWorkflowInputs(definitions, "", raw)
 	if err != nil {
 		return nil, err
@@ -211,7 +217,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ReadWorkspaceFile(ctx context.Context
 		case "workflow.json":
 			value = map[string]interface{}{"code_layout_version": 1}
 		case "variables/variables.json":
-			value = VariablesManifest{Variables: hcpo.directCrewScript.Inputs}
+			value = hcpo.directCrewScript.InputDefinitions()
 		case "planning/plan.json":
 			value = CrewScriptPlan(hcpo.directCrewScript, hcpo.directCrewScriptConfig.Root)
 		}

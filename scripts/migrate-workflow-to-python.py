@@ -4,8 +4,8 @@
 Inspect by default. Stop this installation's writers before --apply. Initialize
 runtime references before starting a binary that requires them. No history moves,
 DB table merge, timer activation or startup compatibility path is performed.
-Python calls use the owning Crew's current model, browser and Vault selections;
-review that context before converting a business workflow.
+Original model, browser, MCP and selected secret names are copied from the
+workflow manifest. Secret values and account logins are never copied.
 """
 import argparse
 import ast
@@ -128,6 +128,25 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
             ast.parse(raw, filename=file.name)
         payload[file.name] = raw
     definition = json.loads(payload['script.json'])
+    original_capabilities = json.loads((definitions / 'workflow.json').read_text()).get('capabilities', {})
+    if not isinstance(original_capabilities, dict):
+        raise ValueError('The saved workflow settings must be an object.')
+    proposed = definition.get('capabilities', {})
+    if not isinstance(proposed, dict):
+        raise ValueError('The Python source settings must be an object.')
+    for name, value in proposed.items():
+        if value != original_capabilities.get(name):
+            raise ValueError(f'The Python source changes the saved {name} selection. Keep the original settings during conversion.')
+    definition['capabilities'] = original_capabilities
+    variables_file = definitions / 'variables/variables.json'
+    original_inputs = json.loads(variables_file.read_text()) if variables_file.exists() else {}
+    names = {item['name'] for item in definition.get('inputs', [])}
+    definition.setdefault('inputs', []).extend(item for item in original_inputs.get('variables', []) if item['name'] not in names)
+    presets = original_inputs.get('groups', [])
+    if definition.get('input_presets', presets) != presets:
+        raise ValueError('Keep the original named input presets during conversion.')
+    definition['input_presets'] = presets
+    payload['script.json'] = encode(definition)
     if definition.get('id') != workflow_id or 'main.py' not in payload:
         raise ValueError('The Python definition must retain the existing workflow ID and include main.py.')
     for name, raw in payload.items():
@@ -140,7 +159,7 @@ def plan(docs, state, initialize=False, workflow_id=None, source=None):
     binding['kind'] = 'script'
     changes[binding_file] = encode(binding)
     documents = {'definitions': definitions, 'code': code, 'runtime': runtime, 'crew-db': private / 'db', 'crew-db-source': files / 'db'}
-    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'uses_current_crew_execution_settings': True}}
+    report = {'binding_count': len(roots), 'bindings': roots, 'conversion': {'id': workflow_id, 'workspace_path': binding['workspace_path'], 'crew_id': binding['crew_id'], 'runtime_root': binding['runtime_root'], 'database_root': database_root, 'database_rows': database_rows(runtime / 'db/db.sqlite'), 'crew_database_rows': rows, 'old_plan_retained': True, 'carried_capability_fields': sorted(original_capabilities), 'carried_input_presets': len(presets)}}
     return changes, documents, report
 
 

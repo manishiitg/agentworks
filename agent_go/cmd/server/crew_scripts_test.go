@@ -38,20 +38,25 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 		}
 	}
 	files := &mockWorkspaceAPI{files: map[string]string{"Workflow/qualify/code/script.json": `{"id":"qualify","name":"Qualify","inputs":[{"name":"count","type":"integer","value":"2"}]}`, "Workflow/qualify/code/main.py": "print('saved')\n", "Workflow/other-script/code/script.json": `{"id":"other-script","name":"Other"}`, "Workflow/other-script/code/main.py": "print('private')\n"}}
+	files.files["Crew/lab/product.json"] = `{"product":"work","id":"crew-lab","capabilities":{"browser_mode":"headless","llm_config":{"schema_version":1,"mode":"provider_profile","provider":"codex-cli"},"selected_servers":["example-app"],"selected_tools":["example-app:read"],"selected_global_secret_names":["EXAMPLE_CREDENTIAL"]}}`
 	workspace := httptest.NewServer(files)
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	api := &StreamingAPI{}
 	endpoint := httptest.NewServer(AuthMiddleware(http.HandlerFunc(api.handleCrewScriptFile)))
 	defer endpoint.Close()
-	request := func(user, content string) int {
+	request := func(user, content string, names ...string) int {
 		t.Helper()
 		token, err := GenerateJWT(user, user, "")
 		if err != nil {
 			t.Fatal(err)
 		}
 		body, _ := json.Marshal(map[string]string{"content": content})
-		req, _ := http.NewRequest(http.MethodPut, endpoint.URL+"/api/crew-script-file?workspace_path="+script.Root+"&file=main.py", bytes.NewReader(body))
+		file := "main.py"
+		if len(names) > 0 {
+			file = names[0]
+		}
+		req, _ := http.NewRequest(http.MethodPut, endpoint.URL+"/api/crew-script-file?workspace_path="+script.Root+"&file="+file, bytes.NewReader(body))
 		req.Header.Set("Authorization", "Bearer "+token)
 		response, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -89,6 +94,23 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	manifest, found, err := ReadWorkflowManifest(context.Background(), script.Root)
 	if err != nil || !found {
 		t.Fatal(err)
+	}
+	if manifest.Capabilities.BrowserMode != "headless" || manifest.Capabilities.LLMConfig == nil || manifest.Capabilities.LLMConfig.Provider != "codex-cli" || len(manifest.Capabilities.SelectedServers) != 1 || manifest.Capabilities.SelectedGlobalSecretNames == nil || len(*manifest.Capabilities.SelectedGlobalSecretNames) != 1 {
+		t.Fatal("saved script lost the Crew's model/browser/MCP/secret-name selections")
+	}
+	changed := `{"id":"qualify","name":"Qualify","inputs":[{"name":"count","type":"integer","value":"2"}],"capabilities":{"browser_mode":"extension"}}`
+	if code := request("runner", changed, "script.json"); code != 403 {
+		t.Fatalf("Run person changed script settings HTTP%d", code)
+	}
+	if code := request("owner", changed, "script.json"); code != 200 {
+		t.Fatalf("Builder setting HTTP%d", code)
+	}
+	manifest, _, err = ReadWorkflowManifest(context.Background(), script.Root)
+	if err != nil || manifest.Capabilities.BrowserMode != "extension" || manifest.Capabilities.LLMConfig == nil || manifest.Capabilities.LLMConfig.Provider != "codex-cli" || manifest.Capabilities.SelectedGlobalSecretNames == nil || len(*manifest.Capabilities.SelectedGlobalSecretNames) != 1 {
+		t.Fatalf("browser override erased other settings: %v", err)
+	}
+	if code := request("owner", strings.Replace(changed, "extension", "auto", 1), "script.json"); code != 400 {
+		t.Fatalf("invalid browser setting saved HTTP%d", code)
 	}
 	if workflowAccessForManifest(&UserClaims{UserID: "runner", Username: "runner"}, manifest) != WorkflowAccessRead {
 		t.Fatal("Run person lost admitted execution access")
@@ -166,6 +188,16 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 			t.Fatalf("missing input looked like server failure: HTTP%d", response.Code)
 		}
 	}
+	// Converted timers keep the selected named input set using the same
+	// script source contract; a preset is not a separate workflow.
+	if err := saveCrewScriptInputs(context.Background(), script.Root, &workflow.VariablesManifest{Variables: []workflow.Variable{{Name: "count", Type: "integer", Required: true}}, Groups: []workflow.VariableGroup{{Name: "batch", Values: map[string]string{"count": "6"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	projected.Schedules[0].InputPreset = "batch"
+	if err := WriteWorkflowManifest(context.Background(), script.Root, projected); err != nil {
+		t.Fatalf("saved script preset timer refused: %v", err)
+	}
+	projected.Schedules[0].InputPreset = ""
 	projected.Schedules[0].Inputs = map[string]string{"count": "3"}
 	if err := WriteWorkflowManifest(context.Background(), script.Root, projected); err != nil {
 		t.Fatalf("complete timer inputs refused: %v", err)

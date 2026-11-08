@@ -36,7 +36,7 @@ func TestCrewSavedScriptRunsDirectlyAndAcrossWorkflowReferences(t *testing.T) {
 		}
 	}
 	const root = "Crew/lab/code/qualify"
-	definition := CrewScriptDefinition{ID: "qualify", Name: "Qualify lead", Inputs: []Variable{{Name: "count", Type: "integer", Required: true, Value: "2"}}, Outputs: []string{"result.json"}}
+	definition := CrewScriptDefinition{ID: "qualify", Name: "Qualify lead", Inputs: []Variable{{Name: "count", Type: "integer", Required: true, Value: "2"}}, Outputs: []string{"result.json"}, InputPresets: []VariableGroup{{Name: "first", Values: map[string]string{"count": "5"}}, {Name: "second", Values: map[string]string{"count": "9"}}}}
 	// PLAT-746-338 / PR498: omitted optional non-string inputs must remain
 	// absent when direct invocation reuses its resolved launch snapshot.
 	for _, kind := range []string{"integer", "number", "boolean", "object", "array"} {
@@ -61,6 +61,11 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	defer cancel()
 	run := func(workspace string, args map[string]interface{}) string {
 		t.Helper()
+		previous := map[string]bool{}
+		before, _ := os.ReadDir(filepath.Join(docs, workspace, "runs"))
+		for _, folder := range before {
+			previous[folder.Name()] = true
+		}
 		cfg := &WorkshopConfig{WorkspacePath: workspace, Logger: loggerv2.NewNoop(), CrewResources: &CrewResources{Scripts: resolver}}
 		if workspace == "Workflow/second" {
 			// PLAT-746: scheduler options must retain the saved-script resolver.
@@ -96,7 +101,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			t.Fatal(err)
 		}
 		for _, folder := range folders {
-			if folder.IsDir() && strings.HasPrefix(folder.Name(), "run-") {
+			if folder.IsDir() && strings.HasPrefix(folder.Name(), "run-") && !previous[folder.Name()] {
 				if strings.HasPrefix(workspace, "Workflow/") {
 					// PR498: inspecting an actual flat run must not require a retired group.
 					manager := &InteractiveWorkshopManager{controller: session.controller}
@@ -120,6 +125,13 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	data, err := os.ReadFile(filepath.Join(direct, "execution/qualify/result.json"))
 	if err != nil || !strings.Contains(string(data), `"count": 3`) {
 		t.Fatalf("direct result %s %v", data, err)
+	}
+	// PLAT-746: a converted schedule/function preset must select its saved
+	// typed values rather than silently reverting to defaults.
+	preset := run(root, map[string]interface{}{"input_preset": "second"})
+	data, err = os.ReadFile(filepath.Join(preset, "execution/qualify/result.json"))
+	if err != nil || !strings.Contains(string(data), `"count": 9`) || preset == direct {
+		t.Fatalf("preset result %s %v", data, err)
 	}
 	if _, err := os.Stat(filepath.Join(docs, root, "workflow.json")); !os.IsNotExist(err) {
 		t.Fatal("script saved a duplicate workflow definition")

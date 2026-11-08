@@ -21,7 +21,7 @@ func readWorkflowInputDefinitions(ctx context.Context, root string) (*VariablesM
 		if err != nil {
 			return nil, err
 		}
-		return &VariablesManifest{Variables: definition.Inputs}, nil
+		return definition.InputDefinitions(), nil
 	}
 	var definitions VariablesManifest
 	if err := readProjectEntryFile(ctx, root, "variables/variables.json", &definitions); err != nil {
