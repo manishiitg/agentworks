@@ -90,7 +90,7 @@ func checkSavedScriptMCPResume(t *testing.T, api *StreamingAPI, binding crewExec
 		t.Helper()
 		reply := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "runs", "arguments": map[string]any{"action": "resume", "workflow_id": binding.ID, "run_folder": folder}})
 		requireRemoteError(t, reply, reason, "resume_unavailable")
-		if !strings.Contains(marshalStructured(t, reply), "Start a new run") {
+		if !strings.Contains(marshalContent(t, reply), "Start a new run") {
 			t.Fatal("changed/missing proof did not offer a new run")
 		}
 	}
