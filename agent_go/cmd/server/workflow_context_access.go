@@ -6,8 +6,63 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
+
+var errLinkedCrewUnavailable = errors.New("This linked project is unavailable or you no longer have access. Remove the link or choose a project you can open.")
+
+// Recheck the registered Crew and its current audience for every workspace file operation.
+// A session's saved folder grant never supplies permission by itself.
+func requireCurrentCrewPathAccess(ctx context.Context, raw string) error {
+	claims := GetUserFromContext(ctx)
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+		return nil
+	}
+	docs := fsutil.WorkspaceDocsRoot()
+	logical := raw
+	if filepath.IsAbs(logical) {
+		rel, err := filepath.Rel(docs, logical)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil
+		}
+		logical = filepath.ToSlash(rel)
+	}
+	ref, ok := resolveCrewPath(ctx, claims.UserID, logical)
+	if !ok {
+		return nil
+	}
+	if crewAccessFor(claims, ref) == crewAccessNone {
+		return errLinkedCrewUnavailable
+	}
+	if _, err := fsutil.WorkspacePath(docs, logical); err != nil {
+		return errLinkedCrewUnavailable
+	}
+	return nil
+}
+
+// Later tool calls rebuild their mount grants from the live session guard.
+// Remove a linked Crew immediately when its current audience no longer admits
+// this person; the person's own Crew and unrelated grants remain usable.
+func refreshLinkedCrewSessionAccess(ctx context.Context, session string) {
+	cfg := common.GetSessionShellConfig(session)
+	if cfg == nil {
+		return
+	}
+	var remove []string
+	paths := append(append([]string(nil), cfg.ReadPaths...), cfg.WritePaths...)
+	for _, path := range paths {
+		if err := requireCurrentCrewPathAccess(ctx, path); err != nil {
+			remove = appendUniqueStrings(remove, path)
+		}
+	}
+	if len(remove) > 0 {
+		updateWorkSessionWorkflowGuard(session, nil, remove...)
+	}
+}
 
 // Context paths are untrusted request input. Resolve each existing workflow
 // against this request's live user permissions before reading its context or
@@ -135,6 +190,14 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 				logContextDenial(claims, folder, "no user for a crew attachment")
 				return nil, nil, denied
 			}
+			if err := requireCurrentCrewPathAccess(ctx, readRoot); err != nil {
+				logContextDenial(claims, folder, "crew not accessible to this user")
+				if skipMissing {
+					continue
+				}
+				return nil, nil, err
+			}
+
 			rawManifest, exists, err := readFileFromWorkspace(ctx, readRoot+"/product.json")
 			if skipMissing && err == nil && !exists {
 				log.Printf("[WORKFLOW_CONTEXT] Skipping attached crew %s: it no longer exists", folder)
