@@ -152,20 +152,15 @@ func TestCLIRunAndScheduleArguments(t *testing.T) {
 		tool   string
 		fields map[string]any
 	}{
-		{[]string{"runs", "start-step", "--workflow", "wf-1", "--step-id", "fetch", "--group", "g1", "--tier", "high"}, "runs", map[string]any{"action": "step", "workflow_id": "wf-1", "step_id": "fetch", "group_name": "g1", "tier": "high"}},
-		{[]string{"runs", "start-step", "--workflow", "wf-1", "--step-id", "fetch", "--set", `script_parameters={"limit":10}`}, "runs", map[string]any{"action": "step", "workflow_id": "wf-1", "step_id": "fetch", "script_parameters": map[string]any{"limit": float64(10)}}},
 		{[]string{"runs", "start-workflow", "--workflow", "wf-1", "--preset", "weekly", "--inputs", `{"count":3,"active":true}`}, "runs", map[string]any{"action": "start", "workflow_id": "wf-1", "input_preset": "weekly", "inputs": map[string]any{"count": 3, "active": true}}},
 		{[]string{"runs", "rerun", "--workflow", "sample", "--run-folder", "run-one"}, "runs", map[string]any{"action": "rerun", "workflow_id": "sample", "run_folder": "run-one"}},
 		{[]string{"runs", "status", "--workflow", "wf-1", "--session", "s1"}, "runs", map[string]any{"action": "status", "workflow_id": "wf-1", "session_id": "s1"}},
-		{[]string{"runs", "message", "--workflow", "wf-1", "--session", "s1", "--execution-id", "e1", "--message", "slow down"}, "runs", map[string]any{"action": "message", "workflow_id": "wf-1", "session_id": "s1", "execution_id": "e1", "message": "slow down"}},
 		{[]string{"runs", "stop", "--workflow", "wf-1", "--session", "s1", "--execution-id", "e1"}, "runs", map[string]any{"action": "stop_step", "workflow_id": "wf-1", "session_id": "s1", "execution_id": "e1"}},
 		{[]string{"runs", "stop-all", "--workflow", "wf-1", "--session", "s1"}, "runs", map[string]any{"action": "stop_all", "workflow_id": "wf-1", "session_id": "s1"}},
 		{[]string{"runs", "executions", "--workflow", "wf-1"}, "runs", map[string]any{"action": "active", "workflow_id": "wf-1"}},
 		{[]string{"schedules", "list", "--project", "wf-1"}, "automations", map[string]any{"action": "list", "scope": "schedule", "project": "wf-1"}},
 		{[]string{"schedules", "runs", "--project", "wf-1", "--schedule-id", "daily"}, "automations", map[string]any{"action": "runs", "scope": "schedule", "project": "wf-1", "schedule_id": "daily"}},
 		{[]string{"schedules", "trigger", "--project", "wf-1", "--schedule-id", "daily"}, "automations", map[string]any{"action": "run_now", "scope": "schedule", "project": "wf-1", "schedule_id": "daily"}},
-		{[]string{"chat", "ask", "--workflow", "wf-1", "--message", "why did step 1 fail?"}, "chat", map[string]any{"workflow_id": "wf-1", "message": "why did step 1 fail?"}},
-		{[]string{"chat", "ask", "--workflow", "wf-1", "--inbox", "inbox-1", "--message", "and then?"}, "chat", map[string]any{"workflow_id": "wf-1", "inbox_id": "inbox-1", "message": "and then?"}},
 		{[]string{"messages", "send", "--crew", "crew-1", "--message", "Please review", "--submission-id", "msg-1"}, "messages", map[string]any{"action": "send", "crew_id": "crew-1", "message": "Please review", "submission_id": "msg-1"}},
 		{[]string{"messages", "read", "--inbox", "inbox-1", "--after", "2", "--limit", "10", "--wait", "25"}, "messages", map[string]any{"action": "read", "inbox_id": "inbox-1", "after": 2, "limit": 10, "wait_seconds": 25}},
 		{[]string{"functions", "call-status", "--call", "fn-1", "--after", "3", "--after-event", "7", "--message-limit", "5"}, "functions", map[string]any{"action": "status", "call_id": "fn-1", "after": 3, "after_event": 7, "message_limit": 5}},

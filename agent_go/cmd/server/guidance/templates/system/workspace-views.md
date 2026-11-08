@@ -41,7 +41,7 @@ Where things are, for guiding the person through the menu (the agent opens only 
 | `costs`, `execution-logs` | Recorded Costs and usage, or Run logs for real work. |
 | `notify` | The Notify Setup page. |
 
-Use `panel-plan`/`panel-runs` for Goal execution,
+Use `python-workflows` and `panel-runs` for saved Python runs,
 `panel-access` for decisions, and the matching
 shared panel skill for other tasks. Inspect the actual question before answering
 a decision. Discussion alone does not select an option; saving an answer and

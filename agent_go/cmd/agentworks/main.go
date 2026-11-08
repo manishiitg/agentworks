@@ -59,19 +59,18 @@ type options struct {
 
 // cliOperationGroups maps CLI subcommands to external tools. Every tool named
 // here must stay admitted by product.yaml's run mode — external_tools or
-// the proxied run.tools (see TestCLIOperationsStayAdmitted); `plan get` maps
+// native workflow operations; `workflows outline` maps
 // to get_plan the same way, while `tools call` and `mcp serve` resolve
 // against the live server catalog instead. Structured run arguments
-// (script_parameters, human_inputs, route_selections) travel via --set.
+// (declared inputs and the saved input preset) travel through the typed run schema.
 var cliOperationGroups = []struct {
 	name, description string
 	operations        []struct{ command, tool string }
 }{
 	{"workflows", "Find, create and edit saved Python workflows", []struct{ command, tool string }{{"list", "list_workflows"}, {"get", "get_workflow"}, {"outline", "get_plan"}, {"create", "crew_workflows__create"}, {"source", "crew_workflows__read"}, {"save-source", "crew_workflows__write"}, {"save-inputs", "save_script_inputs"}}},
 	{"files", "Read and edit guarded workspace files", []struct{ command, tool string }{{"code", "list_step_code"}, {"link", "get_file_link"}, {"list", "list_files"}, {"read", "read_file"}, {"write", "write_file"}, {"search", "search_files"}}},
-	{"runs", "Start, steer, stop, and inspect runs", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"rerun", "rerun_workflow"}, {"start-step", "execute_step"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"message", "send_step_message"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
+	{"runs", "Run saved Python workflows and inspect or stop their executions", []struct{ command, tool string }{{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"rerun", "rerun_workflow"}, {"start-workflow", "run_full_workflow"}, {"status", "run_status"}, {"stop", "stop_step"}, {"stop-all", "stop_all_executions"}, {"executions", "list_executions"}, {"reply", "run_reply_input"}}},
 	{"schedules", "List, inspect, and trigger schedules", []struct{ command, tool string }{{"list", "project_schedules_list"}, {"runs", "project_schedules_runs"}, {"trigger", "project_schedules_run_now"}}},
-	{"chat", "Send messages to the workflow assistant", []struct{ command, tool string }{{"ask", "chat"}}},
 	{"messages", "Register named agents, discover addresses and manage your inbox", []struct{ command, tool string }{{"register", "messages"}, {"unregister", "messages"}, {"list", "messages"}, {"send", "messages"}, {"read", "messages"}, {"count", "messages"}, {"delete", "messages"}, {"clear", "messages"}}},
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
@@ -619,12 +618,6 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	if tool == "get_run" || tool == "get_logs" || tool == "rerun_workflow" {
 		f.String("run-folder", "", "Run folder from list_runs")
 	}
-	if tool == "execute_step" {
-		f.String("step-id", "", "Plan step ID or positional reference (e.g. '1')")
-		f.String("group", "", "Variable group name")
-		f.String("human-input", "", "Run-specific instructions or human_input response")
-		f.String("tier", "", "LLM tier override: high, medium, or low")
-	}
 	if tool == "run_full_workflow" || tool == "run_crew_attached_trigger" {
 		f.String("preset", "", "Saved input preset from workflows get")
 		f.String("inputs", "", "Declared input values as a JSON object")
@@ -660,22 +653,14 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 			f.String("delivery-id", "", "Reuse only when retrying the same intended delivery")
 		}
 	}
-	if tool == "run_status" || tool == "send_step_message" || tool == "stop_step" || tool == "stop_all_executions" || tool == "run_reply_input" {
+	if tool == "run_status" || tool == "stop_step" || tool == "stop_all_executions" || tool == "run_reply_input" {
 		f.String("session", "", "Run session ID from a previous run call")
 	}
 	if tool == "run_status" {
 		f.Int("since-index", -1, "Event index to poll from (-1 for the latest page)")
 	}
-	if tool == "send_step_message" || tool == "stop_step" {
+	if tool == "stop_step" {
 		f.String("execution-id", "", "Execution ID from list_executions or run_status")
-	}
-	if tool == "send_step_message" {
-		f.String("message", "", "Live correction for the running execution")
-	}
-	if tool == "chat" {
-		f.String("message", "", "Conversational message for the workflow assistant; replies are optional")
-		f.String("inbox", "", "Reuse the inbox_id returned by a previous send")
-		f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")
 	}
 	if tool == "messages" {
 		f.String("agent", "", "Registered agent name: register/remove it, send as it, or read its incoming contacts")
