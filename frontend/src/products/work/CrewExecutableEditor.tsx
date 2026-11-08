@@ -130,7 +130,7 @@ export function CrewExecutableEditor({
             </div>
             </PageCard>
           ) : section === 'runs' ? (
-            <CrewWorkflowRuns workspacePath={item.workspace_path} folders={folders} loading={workspace.loading} onRefresh={workspace.refresh} onAsk={ask} />
+            <CrewWorkflowRuns workspacePath={item.workspace_path} script={item.kind === 'script'} folders={folders} loading={workspace.loading} onRefresh={workspace.refresh} onAsk={ask} />
           ) : null}
         </div>
       </Suspense>
