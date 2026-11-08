@@ -98,6 +98,25 @@ func checkSavedScriptMCPResumeAfterEdit(t *testing.T, api *StreamingAPI, binding
 	previous := metadata["execution_id"].(string)
 	originalMeta, _ := os.ReadFile(metaPath)
 	originalInputs, _ := os.ReadFile(inputPath)
+	assertCapability := func(record map[string]any, want bool) {
+		t.Helper()
+		meta, _ := record["metadata"].(map[string]any)
+		if value, present := meta["can_resume"].(bool); !present || value != want {
+			t.Fatalf("server Resume eligibility=%v want=%t", meta["can_resume"], want)
+		}
+	}
+	assertCapability(call("runs", map[string]any{"action": "get", "workflow_id": binding.ID, "run_folder": folder}), true)
+	delete(metadata, "source_snapshot_hash")
+	metadata["can_resume"] = true // A stored flag never grants capability.
+	missingProof, _ := json.Marshal(metadata)
+	if err := os.WriteFile(metaPath, missingProof, 0600); err != nil {
+		t.Fatal(err)
+	}
+	assertCapability(call("runs", map[string]any{"action": "get", "workflow_id": binding.ID, "run_folder": folder}), false)
+	if err := os.WriteFile(metaPath, originalMeta, 0600); err != nil {
+		t.Fatal(err)
+	}
+	metadata = readMeta(folder)
 	refuse := func(reason string) {
 		t.Helper()
 		reply := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "runs", "arguments": map[string]any{"action": "resume", "workflow_id": binding.ID, "run_folder": folder}})
@@ -127,6 +146,13 @@ func checkSavedScriptMCPResumeAfterEdit(t *testing.T, api *StreamingAPI, binding
 	runnerEndpoint := serveExternalMCP(t, api, &UserClaims{UserID: "runner", Username: "runner"})
 	runner := dialExternalMCP(t, ctx, runnerEndpoint.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, runner)
+	runnerRecord := callRemoteTool(t, ctx, runner, "call_tool", map[string]any{"name": "runs", "arguments": map[string]any{"action": "get", "workflow_id": binding.ID, "run_folder": folder}})
+	requireRemoteSuccess(t, runnerRecord, "Run access can inspect run evidence")
+	var runnerView map[string]any
+	if err := json.Unmarshal([]byte(marshalStructured(t, runnerRecord)), &runnerView); err != nil {
+		t.Fatal(err)
+	}
+	assertCapability(runnerView, false)
 	denied := callRemoteTool(t, ctx, runner, "call_tool", map[string]any{"name": "runs", "arguments": map[string]any{"action": "resume", "workflow_id": binding.ID, "run_folder": folder}})
 	requireRemoteError(t, denied, "Run access cannot continue an owned run", "forbidden")
 	mainPath := filepath.Join(layout.Code, "main.py")
@@ -144,11 +170,27 @@ func checkSavedScriptMCPResumeAfterEdit(t *testing.T, api *StreamingAPI, binding
 	}
 	busy := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "runs", "arguments": map[string]any{"action": "resume", "workflow_id": binding.ID, "run_folder": folder}})
 	requireRemoteError(t, busy, "active resume attempt", "run_already_running")
+	assertCapability(call("runs", map[string]any{"action": "get", "workflow_id": binding.ID, "run_folder": folder}), false)
 	if err := os.WriteFile(releasePath, []byte("finish"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	wait(resumed["session_id"].(string), folder, "completed", previous)
 	current := readMeta(folder)
+	assertCapability(call("runs", map[string]any{"action": "get", "workflow_id": binding.ID, "run_folder": folder}), false)
+	var projected RunMetadata
+	currentJSON, _ := json.Marshal(current)
+	if err := json.Unmarshal(currentJSON, &projected); err != nil {
+		t.Fatal(err)
+	}
+	storedFlag := true
+	projected.CanResume = &storedFlag
+	if err := writeRunMetadata(ctx, binding.Root+"/runs/"+folder+"/run_metadata.json", &projected); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := os.ReadFile(metaPath)
+	if err != nil || strings.Contains(string(stored), "can_resume") {
+		t.Fatalf("derived Resume capability persisted: %s %v", stored, err)
+	}
 	var original map[string]any
 	_ = json.Unmarshal(originalMeta, &original)
 	if current["source_snapshot_hash"] != original["source_snapshot_hash"] || current["inputs_snapshot_hash"] != original["inputs_snapshot_hash"] || current["resume_of"] != previous {

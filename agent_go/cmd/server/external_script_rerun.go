@@ -28,7 +28,7 @@ func (api *StreamingAPI) externalScriptRerun(w http.ResponseWriter, r *http.Requ
 	}
 	folder := externalArg(args, "run_folder")
 	record := map[string]any{}
-	if err := externalScriptRunRecord(r.Context(), item.WorkspacePath, folder, record); err != nil {
+	if err := externalScriptRunRecord(r.Context(), item, folder, record); err != nil {
 		externalFailure(w, err)
 		return
 	}

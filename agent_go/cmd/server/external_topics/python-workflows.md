@@ -178,3 +178,5 @@ These are names, never values or new grants. Connect or select missing names
 through the existing Vault settings before running.
 
 Failed runs keep native agent conversation history for 72 hours. After that, a continued agent call starts fresh and the run records “conversation expired: this call restarts fresh”. Completed or stopped runs release that history immediately.
+
+Run metadata exposes `can_resume`: eligible now under the current account and workflow access, failed status and saved proof headers. It is computed by the server, never saved in run files. Admission still verifies the complete captured source and inputs and can refuse; show its plain message.

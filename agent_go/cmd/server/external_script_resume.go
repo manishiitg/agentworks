@@ -13,10 +13,27 @@ import (
 // and the normal runtime recording its new running status.
 var pythonResumeClaims sync.Map
 
+func canManagePythonResume(ctx context.Context, manifest *WorkflowManifest) bool {
+	claims := GetUserFromContext(ctx)
+	access := workflowAccessForManifest(claims, manifest)
+	return claims != nil && userAccessForClaims(claims).CanEdit && (access == WorkflowAccessOwner || access == WorkflowAccessWrite)
+}
+
+// This is current UI eligibility, not durable run state. Admission still
+// verifies captured bytes and closes races after the person presses Resume.
+func setRunResumeCapability(ctx context.Context, manifest *WorkflowManifest, workspace, folder string, metadata *RunMetadata) {
+	allowed := metadata != nil && manifest != nil && manifest.crewExecutable != nil && manifest.crewExecutable.Kind == "script" && canManagePythonResume(ctx, manifest) && metadata.Status == "failed" && len(metadata.SourceSnapshotHash) == 64 && len(metadata.InputsSnapshotHash) == 64 && externalFileGuard(ctx, false).Allows("runs/"+folder, false)
+	if allowed {
+		_, busy := pythonResumeClaims.Load(workflow.GetPromptDocsRoot() + "\x00" + workspace + "\x00" + folder)
+		allowed = !busy
+	}
+	if metadata != nil {
+		metadata.CanResume = &allowed
+	}
+}
+
 func (api *StreamingAPI) externalScriptResume(w http.ResponseWriter, r *http.Request, item DiscoveredWorkflow, args map[string]any) {
-	claims := GetUserFromContext(r.Context())
-	access := workflowAccessForManifest(claims, item.Manifest)
-	if claims == nil || !userAccessForClaims(claims).CanEdit || (access != WorkflowAccessOwner && access != WorkflowAccessWrite) {
+	if !canManagePythonResume(r.Context(), item.Manifest) {
 		externalError(w, 403, "forbidden", "Only this Crew's Builder can resume a failed run. Start a new run or ask its owner to resume it.")
 		return
 	}

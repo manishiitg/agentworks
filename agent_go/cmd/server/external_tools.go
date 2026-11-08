@@ -1241,7 +1241,7 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 		}
 		if name == "get_run" {
 			if externalWorkflowIsScript(workflow) {
-				if err := externalScriptRunRecord(r.Context(), req.Root, externalArg(args, "run_folder"), linked); err != nil {
+				if err := externalScriptRunRecord(r.Context(), workflow, externalArg(args, "run_folder"), linked); err != nil {
 					externalFailure(w, err)
 					return
 				}
