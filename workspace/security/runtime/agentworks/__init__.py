@@ -167,6 +167,8 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     adds no helper timer beyond the parent deadline. Each person question uses
     the existing five-minute default, at most thirty minutes. Its timeout is
     returned to the agent; Python can decide on another call after the reply.
+    ok means the provider turn completed, not that its task or files are valid.
+    Python checks the answer and artifacts, including any failure stated in text.
     text is a bounded preview. log_file contains the provider transcript the
     platform received, including available streamed text and tool records;
     log_complete does not claim uncaptured operating-system output.
