@@ -96,7 +96,10 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 		}
 	}
 	write(filepath.Join(sourceRoot, "script.json"), `{"id":"saved","name":"Saved Python","inputs":[{"name":"count","type":"integer","required":true}],"outputs":["result.json"]}`)
+	write(filepath.Join(sourceRoot, "helper.py"), "from agentworks import step\n@step('Prepare report')\ndef prepare(): return True\n")
 	write(filepath.Join(sourceRoot, "main.py"), `import json, os, sys
+from helper import prepare
+prepare()
 from pathlib import Path
 print('start-marker')
 sys.stdout.write('Q' * 2097152)
@@ -116,6 +119,32 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
 	if err != nil || !found {
 		t.Fatal(err)
+	}
+	// PLAT-746-440: source inspection uses the file editor's current Builder
+	// access and never imports/executes the bundle, even in an attached folder.
+	sourceAPI := &StreamingAPI{}
+	graphEndpoint := httptest.NewServer(AuthMiddleware(http.HandlerFunc(sourceAPI.handleCrewScriptGraph)))
+	defer graphEndpoint.Close()
+	for _, user := range []string{"owner", "runner"} {
+		token, err := GenerateJWT(user, user, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, graphEndpoint.URL+"/api/crew-script-graph?workspace_path="+binding.Root, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(response.Body)
+		response.Body.Close()
+		if user == "runner" {
+			if response.StatusCode != 403 {
+				t.Fatalf("Run person read source overview HTTP%d", response.StatusCode)
+			}
+		} else if response.StatusCode != 200 || !strings.Contains(string(body), "Prepare report") || !strings.Contains(string(body), `"errors": []`) || strings.Contains(string(body), "start-marker") {
+			t.Fatalf("saved source graph did not inspect safely: HTTP%d %s", response.StatusCode, body)
+		}
 	}
 	if _, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner", Username: "owner"}, "workflow:"+binding.ID); err != nil {
 		t.Fatalf("saved script discovery by stable id: %v", err)

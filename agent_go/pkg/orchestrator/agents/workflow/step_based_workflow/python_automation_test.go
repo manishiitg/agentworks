@@ -82,7 +82,17 @@ func TestPythonHelpersRepeatCallsAndReuseOnlyResumedOccurrences(t *testing.T) {
 	}
 	source := `import json, os
 from pathlib import Path
-from agentworks import check, notify, run_folder
+from agentworks import check, notify, run_folder, step
+if os.environ['VAR_PHASE'] == 'labels':
+    @step('Ordinary code')
+    def increment(value):
+        if value < 0: raise ValueError('original failure')
+        return value + 1
+    for i in range(3): assert increment(i) == i + 1
+    try: increment(-1)
+    except ValueError as error: assert str(error) == 'original failure'
+    else: raise AssertionError('decorator swallowed the function error')
+    raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'limits':
     big = 'large detail ' * 1000
     for i in range(3):
@@ -264,6 +274,12 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	})
 	if !full {
 		t.Fatal("bounded presentation lost its original full log")
+	}
+	beforeFailures, beforePasses = recorder.counts()
+	run(false, false, "labels")
+	failures, passes = recorder.counts()
+	if failures != beforeFailures+1 || passes != beforePasses+3 {
+		t.Fatalf("ordinary decorated calls were skipped or changed outcome: failures=%d passes=%d", failures, passes)
 	}
 	t.Log(fmt.Sprintf("real_python=true resumed_first=true repeated_key_runs=true failed_checks_retained=%d", failures))
 	common.ClearSessionShellConfig(c.GetMCPSessionID())

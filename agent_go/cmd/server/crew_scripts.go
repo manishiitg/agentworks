@@ -236,22 +236,30 @@ func writeCrewScriptFile(ctx context.Context, binding *crewExecutableBinding, fi
 
 // Source authoring uses the Crew's live Builder identity. Runtime steps and
 // Run people receive no write authority from having access to execute a script.
-func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Request) {
+func (api *StreamingAPI) crewScriptAuthoringBinding(w http.ResponseWriter, r *http.Request) *crewExecutableBinding {
 	binding, err := findCrewExecutable(r.URL.Query().Get("workspace_path"))
 	if err != nil || binding == nil || binding.Kind != "script" {
 		http.Error(w, "Choose a saved Crew script.", 404)
-		return
+		return nil
 	}
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || userAccessForClaims(claims).Disabled || !userAccessForClaims(claims).CanEdit || !userAllowedProduct(claims, "work") || !crewProjectOwnedByCaller(claims.UserID, binding.CrewRoot) {
 		http.Error(w, "Only this Crew's Builder can edit its scripts. Run it through chat or a shared function instead.", 403)
-		return
+		return nil
 	}
 	if claims.AccessToken != nil && !api.externalCrewReferenceAllowed(r.Context(), claims, binding.CrewRoot, true) {
 		http.Error(w, "This connection cannot edit this Crew's source. Ask in its chat instead.", 403)
-		return
+		return nil
 	}
 	if r.Method != http.MethodGet && refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(binding.CrewRoot), claims.UserID) {
+		return nil
+	}
+	return binding
+}
+
+func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Request) {
+	binding := api.crewScriptAuthoringBinding(w, r)
+	if binding == nil {
 		return
 	}
 	file := r.URL.Query().Get("file")
@@ -281,6 +289,40 @@ func (api *StreamingAPI) handleCrewScriptFile(w http.ResponseWriter, r *http.Req
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+// The Plan view reads exactly the saved code under the same authoring access
+// check as the file editor. AST inspection never imports that authored code.
+func (api *StreamingAPI) handleCrewScriptGraph(w http.ResponseWriter, r *http.Request) {
+	binding := api.crewScriptAuthoringBinding(w, r)
+	if binding == nil {
+		return
+	}
+	owner, ok := crewProjectOwnerID(binding.CrewRoot)
+	if !ok {
+		http.Error(w, "This Crew is unavailable.", 404)
+		return
+	}
+	resource := &crewWorkflowResources{userID: owner}
+	source, err := resource.ResolveCrewScript(r.Context(), binding.Root, "")
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	files := map[string]string{}
+	for name, content := range source.Files {
+		if strings.HasSuffix(name, ".py") {
+			files[name] = content
+		}
+	}
+	graph, err := inspectPythonAutomationSource(r.Context(), binding.Root, files)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(graph)
 }
 
 type crewScriptUsage struct {
