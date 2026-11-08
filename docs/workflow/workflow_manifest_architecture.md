@@ -2,6 +2,8 @@
 
 A workflow belongs to a Crew. Its editable source is `script.json` plus `main.py`, with optional helper files. Use the current workflow tools to create or change it; keep the identity returned by the server so existing callers still reach the same workflow.
 
+Source tools use filenames relative to the authored source directory, such as `main.py` or `script.json`. For shell inspection, those authored files live at `code/main.py` and `code/script.json` under the returned workflow workspace. Each run uses its own frozen source copy; follow the execution's returned paths to inspect it.
+
 ## Inputs and presets
 
 `script.json` declares the values a run accepts:
