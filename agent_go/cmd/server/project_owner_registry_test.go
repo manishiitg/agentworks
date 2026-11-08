@@ -70,7 +70,7 @@ func TestProjectOwnerRegistryRegisterLookupConflictAndAliases(t *testing.T) {
 
 func TestProjectOwnerRegistryFilesAreServerPrivate(t *testing.T) {
 	r := newTestRegistry(t)
-	if err := r.Register(projectOwnerRecord{Product: "code", Folder: "app-1", OwnerID: "alice"}); err != nil {
+	if err := r.Register(projectOwnerRecord{Product: "work", Folder: "app-1", OwnerID: "alice"}); err != nil {
 		t.Fatal(err)
 	}
 	dirInfo, err := os.Stat(r.dir)

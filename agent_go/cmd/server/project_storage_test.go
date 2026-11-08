@@ -7,8 +7,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
@@ -49,22 +51,41 @@ func TestCanonicalCrewKeepsPrivateBindingsAndAudience(t *testing.T) {
 // The unified public path creates one private Crew, keeps owner discovery, and
 // refuses a second person's discovery/call plus retired public tool names.
 func TestCrewWorkspaceCanonicalLifecycle(t *testing.T) {
-	ensureProjectStateRoot(t)
+	tokenTestSetup(t)
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"other","username":"other","can_create":true,"products":["work"]}]}`)
+	store, err := openAccessTokens()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	connections := map[string]*UserClaims{}
+	for _, user := range []string{"owner", "other"} {
+		now := time.Now()
+		token, _, err := store.Issue(t.Context(), accesstokens.Token{Name: "Creation fixture", UserID: user, Username: user,
+			Scopes:       []string{"builder:chat", "workflows:read", "files:read", "runs:execute", "crews:read", "crews:write"},
+			AllWorkflows: true, AllCrews: true, ExpiresAt: now.Add(time.Hour)}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		connections[user], err = accessTokenClaims(token)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	call := func(user, name string, args map[string]any) *httptest.ResponseRecorder {
 		raw, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
 		w := httptest.NewRecorder()
-		env.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/v1/call", string(raw), crewWriter(user), nil))
+		env.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/v1/call", string(raw), connections[user], nil))
 		return w
 	}
-	w := call("owner", "workspace", map[string]any{"action": "create", "name": "Private example"})
+	w := call("owner", "workspace", testWorkspaceCreate("crew", map[string]any{"name": "Private example", "purpose": "Check private Crew access"}))
 	var created map[string]any
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &created) != nil || created["profile_id"] != "work" {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &created) != nil || created["kind"] != "crew" {
 		t.Fatalf("canonical create: %d %s", w.Code, w.Body.String())
 	}
-	id, _ := created["workspace_id"].(string)
+	id, _ := created["crew_id"].(string)
 	if id == "" {
 		t.Fatal("missing stable workspace identity")
 	}
@@ -77,9 +98,11 @@ func TestCrewWorkspaceCanonicalLifecycle(t *testing.T) {
 			t.Fatalf("private discovery for %s: %s", user, w.Body.String())
 		}
 	}
-	w = call("other", "workspace", map[string]any{"action": "ask", "workspace_id": id, "message": "must not run"})
-	if w.Code != 403 && w.Code != 404 {
-		t.Fatalf("private call: %d %s", w.Code, w.Body.String())
+	for _, user := range []string{"owner", "other"} {
+		w = call(user, "files", map[string]any{"action": "list", "crew_id": id, "path": "."})
+		if user == "owner" && w.Code != http.StatusOK || user != "owner" && w.Code != http.StatusForbidden && w.Code != http.StatusNotFound {
+			t.Fatalf("private files user=%s: HTTP%d %s", user, w.Code, w.Body.String())
+		}
 	}
 	for _, name := range []string{"create_crew", "list_crews", "ask_my_code", "code"} {
 		w = call("owner", name, map[string]any{})
