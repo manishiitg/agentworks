@@ -103,8 +103,15 @@ func TestCrewChatSavedPythonStartAndHTTPStop(t *testing.T) {
 	if err := initializeCrewScriptSource(ctx, binding, "Chat saved Python"); err != nil {
 		t.Fatal(err)
 	}
+	if err := saveCrewScriptInputs(ctx, binding.Root, &workflow.VariablesManifest{
+		Variables: []workflow.Variable{{Name: "count", Type: "integer", Value: "2"}, {Name: "enabled", Type: "boolean", Value: "false"}},
+		Groups:    []workflow.VariableGroup{{Name: "Saved", Values: map[string]string{"count": "7"}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := writeFileToWorkspace(ctx, binding.Root+"/code/main.py", `import time
-from agentworks import run_folder
+from agentworks import inputs, run_folder
+assert inputs['count'] == 7 and inputs['enabled'] is True, inputs
 while True:
     (run_folder / 'heartbeat.txt').write_text(str(time.monotonic_ns()))
     time.sleep(0.05)
@@ -129,8 +136,16 @@ while True:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out, err := start.exec(bound, map[string]any{}); err != nil || !strings.Contains(out, "execution_id") {
-		t.Fatalf("Crew chat start: %s %v", out, err)
+	// PLAT-746-500: the Crew tool used a string-only parser despite the
+	// saved script's typed contract. Reject a wrong type before work starts.
+	if out, err := start.exec(bound, map[string]any{"input_preset": "Saved", "inputs": map[string]any{"count": false}}); err == nil || !strings.Contains(err.Error(), "count") || strings.Contains(out, "execution_id") {
+		t.Fatalf("wrong typed input was admitted or the declared input was not named: %s %v", out, err)
+	}
+	if len(api.bgAgentRegistry.GetAll(sessionID)) != 0 {
+		t.Fatal("wrong typed input started background work")
+	}
+	if out, err := start.exec(bound, map[string]any{"input_preset": "Saved", "inputs": map[string]any{"enabled": true}}); err != nil || !strings.Contains(out, "execution_id") {
+		t.Fatalf("Crew chat start with saved preset and typed override: %s %v", out, err)
 	}
 	layout, found, err := crewroot.LookupExecutable(f.docs, binding.Root)
 	if err != nil || !found {

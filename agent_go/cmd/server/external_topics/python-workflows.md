@@ -58,6 +58,12 @@ secret selection. Sharing and connected-account authority do not change here.
 
 ## Run and inspect
 
+The owning Crew's in-app chat can offer a bound `run_full_workflow` tool with
+only `input_preset` and typed `inputs`. That tool chooses the workflow from the
+Crew and uses the same input validation as MCP. It starts a real background
+run; the chat's background work control stops it. Workflow run instructions
+belong in the saved Python/Crew setup.
+
 Use `runs action=start` with `workflow_id`, optional `input_preset`, and optional
 `inputs` as a JSON object, for example `{"LIMIT":3}`. Explicit values override
 the selected preset; omitted values use saved defaults. Unknown inputs, wrong
