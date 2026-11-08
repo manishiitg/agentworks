@@ -377,10 +377,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if !agentSourceConsentAllowed(c, tool) {
 		return false
 	}
-	// Flow tools appear only where Flows are on (PLAT-746-265: off in every installation for now).
-	if isExternalRelayTool(tool.Name) && !userAllowedProduct(c, "relays") {
-		return false
-	}
 	if source, operation := dataSourceAction(tool.Name); source == "crew_folders" && c != nil && c.AccessToken != nil {
 		scope := "crews:write"
 		if crewCapabilityRead(operation) {
@@ -428,7 +424,10 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return personalLaptopSettingsClaims(c) && (externalWorkspaceAllowed(c) || externalFileAuthoringAllowed(c, nil))
 	}
 	if tool.Name == "workspace" {
-		return externalWorkspaceAllowed(c) || projectCreationAvailable(c)
+		// A workflow-scoped Builder token has no Crew scope but is allowed the workflow_team and workflow_crews
+		// members; the tool shows to a token with Builder consent when at least one member is allowed. Each member
+		// still enforces its own rule. A read-only token keeps its smaller tool list.
+		return externalWorkspaceAllowed(c) || projectCreationAvailable(c) || c != nil && c.AccessToken != nil && c.AccessToken.BuilderAccess() && tool.actions != nil && externalMergedAllows(c, tool)
 	}
 	if tool.Name == "open_dashboard" {
 		return userAllowedProduct(c, crewProfileID) && dashboardScopeAllowed(c, "get")
@@ -526,11 +525,8 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "save_script_inputs" {
 		return userAllowedProduct(c, "work") && (c.AccessToken == nil || c.AccessToken.Allows("crews:write"))
 	}
-	if strings.HasPrefix(tool.Name, "builder_") || tool.Name == "workflow_upgrade" || tool.Name == "workflow_crews" || isExternalWorkflowAccountTool(tool.Name) {
+	if tool.Name == "workflow_upgrade" || tool.Name == "workflow_crews" || isExternalWorkflowAccountTool(tool.Name) {
 		return c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
-	}
-	if isExternalRelayAuthoringTool(tool.Name) {
-		return c.AccessToken != nil && (c.AccessToken.RelayBuilderAccess() || tool.Name != "create_relay" && c.AccessToken.BuilderAccess())
 	}
 	if tool.Name == "write_file" || tool.Name == "patch_file" {
 		return externalFileAuthoringAllowed(c, nil)
@@ -618,10 +614,6 @@ func accessTokenSessionPrefix(c *UserClaims) string { return "pat-" + c.AccessTo
 func accessTokenRunToolDenied(claims *UserClaims, name string) bool {
 	if claims == nil || claims.AccessToken == nil {
 		return false
-	}
-	// An owner's or editor's Builder operation is Builder, not Run.
-	if claims.ExternalBuilderOperationID != "" {
-		return externalBuilderToolDenied(claims, name)
 	}
 	for _, denied := range agentworksproduct.RunExternalDenylist() {
 		if denied == name {

@@ -21,19 +21,19 @@ import { workflowProjectMenuItems, type WorkflowMenuItem } from './workflowProje
 const EMPTY_RECENT: string[] = []
 
 /** Current product admission controls the inventory; recents are presentation only. */
-export function WorkflowContextPanel({ workspacePath, relayMode = false }: { workspacePath: string | null; relayMode?: boolean }) {
+export function WorkflowContextPanel({ workspacePath }: { workspacePath: string | null }) {
   const openView = useWorkflowStore(state => state.openWorkspaceView)
   const canWrite = useCanWriteWorkflow(workspacePath)
   const multiUser = useAuthStore(state => state.isMultiUserMode)
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const manifest = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest)
-  const product = relayMode ? 'relays' : 'agentworks'
+  const product = 'agentworks'
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', product, manifest?.id ?? workspacePath ?? '')
   const storedRecent = useProjectMenuHistoryStore(state => state.recent[scope] || EMPTY_RECENT)
   const incomingEmail = false
   const { documents } = useReportDocuments(workspacePath || '')
-  const decisions = usePendingDecisionState(relayMode ? null : workspacePath)
+  const decisions = usePendingDecisionState(workspacePath)
   const status = useProjectStatus({ kind: 'goal', workspacePath: workspacePath || '', profileId: product, projectId: manifest?.id ?? workspacePath ?? '', enabled: canWrite })
   const [sharing, setSharing] = useState<{ scope: string; allowed: boolean } | null>(null)
   useEffect(() => {
@@ -44,7 +44,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       .catch(() => { if (!controller.signal.aborted) setSharing({ scope, allowed: false }) })
     return () => controller.abort()
   }, [scope, workspacePath, canWrite])
-  const menuOptions = { relayMode, isMultiUser: multiUser, incomingEmail, canShare: sharing?.scope === scope && sharing.allowed }
+  const menuOptions = { isMultiUser: multiUser, incomingEmail, canShare: sharing?.scope === scope && sharing.allowed }
   const inventory = workflowProjectMenuItems({ ...menuOptions, allowedProducts: user?.allowed_products })
   const items = inventory
   const byId = new Map(inventory.map(item => [item.id, item]))

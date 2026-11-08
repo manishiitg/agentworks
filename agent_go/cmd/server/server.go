@@ -43,7 +43,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/platformtools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminalleases"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
@@ -380,7 +379,6 @@ type StreamingAPI struct {
 	codingAgentClarificationsMu sync.Mutex
 	codingAgentClarifications   map[string]*pendingCodingAgentClarification
 
-	externalBuilderRuntime      externalBuilderRuntime
 	internalExternalBuilderTurn func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)
 	postSlackMessage            func(context.Context, string, string, string) (string, error) // test seam; production uses SlackService
 
@@ -791,8 +789,7 @@ func spaStaticFileHandler(root string) http.Handler {
 // QueryRequest represents an agent query request
 type QueryRequest struct {
 	// DeliveryMode is a person’s choice for this message; empty preserves steering.
-	DeliveryMode               string `json:"delivery_mode,omitempty"`
-	ExternalBuilderOperationID string `json:"-"` // Set from authenticated execution claims.
+	DeliveryMode string `json:"delivery_mode,omitempty"`
 	// secretsWorkspacePath is the workflow/project whose selected secrets this turn loaded (PLAT-658): a retained CLI
 	// launched with them is not steered once they change.
 	secretsWorkspacePath string
@@ -1334,7 +1331,7 @@ func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest,
 
 func (api *StreamingAPI) queueOccupiedConversationTurn(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
 	if !shouldUseDurableConversationTurnQueue(req) || conversationTurnQueueExecution(r.Context()) ||
-		!(api.conversationTurnOccupied(sessionID) || api.externalBuilderOwnsSession(sessionID) || api.conversationTurnHasBacklog(userID, sessionID)) {
+		!(api.conversationTurnOccupied(sessionID) || api.conversationTurnHasBacklog(userID, sessionID)) {
 		return false
 	}
 	return api.queueConversationTurnResponse(w, r, userID, sessionID, req)
@@ -1360,8 +1357,8 @@ func (api *StreamingAPI) queueConversationTurnResponse(w http.ResponseWriter, r 
 	api.pendingMu.RLock()
 	pendingResults := len(api.pendingCompletions[sessionID])
 	api.pendingMu.RUnlock()
-	log.Printf("[TURN_QUEUE] message queued session=%s position=%d occupant=%q backlog=%t external_builder=%t pending_results=%d busy_by=%q",
-		sessionID, position, occupant, backlog, api.externalBuilderOwnsSession(sessionID), pendingResults, api.autoNotificationBusyReason(sessionID))
+	log.Printf("[TURN_QUEUE] message queued session=%s position=%d occupant=%q backlog=%t pending_results=%d busy_by=%q",
+		sessionID, position, occupant, backlog, pendingResults, api.autoNotificationBusyReason(sessionID))
 	api.recordQueuedConversationUserMessage(sessionID, turn)
 	api.kickConversationTurnQueue(sessionID)
 	_ = json.NewEncoder(w).Encode(QueryResponse{
@@ -2309,8 +2306,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/oauth/cli/token", api.handleCLIOAuthToken).Methods("POST")
 	apiRouter.HandleFunc("/oauth/cli/revoke", api.handleCLIOAuthRevoke).Methods("POST")
 	// Per-workflow ownership and sharing (workflow_access.go).
-	apiRouter.HandleFunc("/workflow/laptop", api.handleGoalLaptopSettings).Methods("GET", "PUT")
-	apiRouter.HandleFunc("/workflow/laptop/folders", api.handleGoalLaptopBrowse).Methods("GET")
 	apiRouter.HandleFunc("/users/directory", api.handleUserDirectory).Methods("GET", "OPTIONS")
 	api.registerCrewTeamRoutes(apiRouter)
 	apiRouter.HandleFunc("/me/token-usage", api.handleMyTokenUsage).Methods("GET", "OPTIONS")
@@ -2975,10 +2970,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/create", requireWorkflowCreateAccess(api.handleCreateWorkflow)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/update", api.handleUpdateWorkflow).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/constants", orchtypes.HandleWorkflowConstants).Methods("GET")
-	apiRouter.HandleFunc("/workflow/builder-session", api.handleGetWorkflowBuilderSession).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/builder-session", api.handleNewWorkflowBuilderSession).Methods("POST")
-	apiRouter.HandleFunc("/workflow/builder-sessions", api.handleWorkflowBuilderBindings).Methods("POST")
-	apiRouter.HandleFunc("/workflow/chats", api.handleGoalOwnerTabs).Methods("POST")
 	apiRouter.HandleFunc("/dashboards", api.handleDashboards).Methods("POST")
 	api.registerDashboardQuestionRoutes(apiRouter)
 	apiRouter.HandleFunc("/project-ask/conversation", api.handleProjectAskConversation).Methods(http.MethodPost)
@@ -3001,6 +2992,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.PathPrefix("/wp/").Handler(workspaceProxyHandler())
 
 	// Focused workflow endpoints used for mutations and incremental refreshes.
+	apiRouter.HandleFunc("/workflow/run", requireWorkflowWriteAccess(api.handleWorkflowRun)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/run-folder", api.handleCreateRunFolder).Methods("POST", "OPTIONS")
 	// /workflow/progress endpoint removed — steps_done.json progress tracking no longer consumed by frontend
 	apiRouter.HandleFunc("/workflow/run-folder", requireWorkflowWriteAccess(api.handleDeleteRunFolder)).Methods("DELETE", "OPTIONS")
@@ -3011,10 +3003,7 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Auto-improvement framework — see docs/workflow/auto_improvement_framework.md
 	apiRouter.HandleFunc("/org-dashboard/notifications", api.handleGetOrgDashboardNotifications).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan-changelog", api.handleGetPlanChangelog).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan-changelog/prune", requireWorkflowWriteAccess(api.handlePrunePlanChangelog)).Methods("POST", "OPTIONS")
 
-	// Plan and Step Config API routes
 	apiRouter.HandleFunc("/external/v1/devices/connect", api.handleLocalDeviceConnect).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/events", api.handleAgentEvents).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agents/attachment", api.handleAgentAttachment).Methods("POST")
@@ -3035,22 +3024,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/publications", api.handlePublicationUpload).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/publications/{operation}", api.handlePublicationUpload).Methods("GET", "POST")
 	apiRouter.HandleFunc("/external/v1/publications/{operation}/{step:plan|chunks}", api.handlePublicationUpload).Methods("POST", "PUT")
-	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
-	apiRouter.HandleFunc("/relays/{id}/runs/{run}", api.handleGetRelayRun).Methods("GET")
-	apiRouter.HandleFunc("/relays/{id}/releases", api.handleListRelayReleases).Methods("GET")
-	apiRouter.HandleFunc("/relays/{id}/releases", api.handlePublishRelayRelease).Methods("POST")
-	apiRouter.HandleFunc("/relays/{id}/graph", api.handleInspectRelayGraph).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/files/content", api.handleExternalAssetContent).Methods("GET", "HEAD")
 	apiRouter.HandleFunc("/external/v1/mcp/project/{kind}/{project}/{access}", api.handleProjectMCP).Methods("POST", "GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/mcp", api.handleExternalMCP).Methods("POST", "GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/skill.md", api.handleExternalSkillMD).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/skill.zip", api.handleExternalSkillZIP).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/agentworks.plugin", api.handleExternalPlugin).Methods("GET")
-	apiRouter.HandleFunc("/workflow/plan/update-step", requireWorkflowWriteAccess(api.handleUpdatePlanStep)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan/update-step-config", requireWorkflowWriteAccess(api.handleUpdateStepConfig)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan/batch-update-steps", requireWorkflowWriteAccess(api.handleBatchUpdateSteps)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan/delete-step", requireWorkflowWriteAccess(api.handleDeleteStep)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/plan/add-step", requireWorkflowWriteAccess(api.handleAddStep)).Methods("POST", "OPTIONS")
 	// Dynamic report system. The frontend ReportViewer loads db/reports/index.html
 	// directly; HTML pages read durable data through window.report.
 
@@ -3728,19 +3707,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "delivery_mode must be steer or queue", http.StatusBadRequest)
 		return
 	}
-	// External Builder authority is carried only by authenticated dispatch/queue
-	// context. JSON cannot supply it, including when reusing a browser chat.
-	if claims := GetUserFromContext(r.Context()); claims != nil {
-		req.ExternalBuilderOperationID = claims.ExternalBuilderOperationID
-	}
-	if req.ExternalBuilderOperationID != "" {
-		claims, err := api.externalBuilderRunClaims(r.Context(), req.ExternalBuilderOperationID, r.Header.Get("X-Session-ID"), req.SelectedFolder)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusForbidden)
-			return
-		}
-		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
-	}
 	principalContext, principalErr := api.revalidateExecutionPrincipal(r.Context(), req)
 	if principalErr != nil {
 		http.Error(w, principalErr.Error(), http.StatusForbidden)
@@ -3973,23 +3939,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Do not let a browser follow-up reconfigure or steer an MCP operation.
-	// Its own claims are persisted by the queue and restored on its next turn.
-	if api.externalBuilderOwnsSession(sessionID) && !conversationTurnQueueExecution(r.Context()) {
-		// Preserve browser retry idempotency before the early queue return.
-		// Enqueue even if the MCP turn finishes during journal admission;
-		// kickConversationTurnQueue will then execute the idle chat's turn.
-		var finish func()
-		var accepted bool
-		w, r, finish, accepted = api.beginChatSubmission(w, r, sessionID, req.SelectedFolder, req.Query)
-		if !accepted {
-			return
-		}
-		defer finish()
-		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
-		return
-	}
-
 	api.conversationMux.Lock()
 	if api.lastAgentProfileKeyBySession == nil {
 		api.lastAgentProfileKeyBySession = make(map[string]string)
@@ -4118,7 +4067,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
 		return
 	}
-	preferRetainedDelivery := !api.externalBuilderOwnsSession(sessionID) && shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
+	preferRetainedDelivery := shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
 	if !preferRetainedDelivery && api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
 		return
 	}
@@ -4317,17 +4266,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if idleRun == nil && req.AgentMode == "workflow_phase" && req.PhaseID == "workflow-builder" && resolvedProfile == nil && !currentUserIsReadOnly {
-		active, _ := api.getActiveSession(sessionID)
-		policy := resolveWorkflowChatPolicy(sessionID, req, active, currentUserIsReadOnly)
-		if policy.Mode == "builder" && policy.Origin == "interactive" {
-			if err := recordWorkflowBuilderSend(r.Context(), workflowBuilderScope{PresetID: req.PresetQueryID, Workspace: req.SelectedFolder}, sessionID); err != nil {
-				http.Error(w, "could not record Builder chat", http.StatusServiceUnavailable)
-				return
-			}
-		}
-	}
-
 	// Chat sessions are in-memory only — tracked via activeSessions map
 	// below. No persistent session metadata.
 
@@ -4497,7 +4435,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// on main (only on the separate, unmerged feature/chief-of-staff-product
 	// branch) — see frontend/src/utils/agentModeDescriptions.ts.
 	isWorkflowPhase := req.AgentMode == "workflow_phase"
-	relayRunChat := false // a non-owner's chat on a Flow (856-78)
+
 	workflowPhaseID := req.PhaseID
 	workflowPhaseFolder := "" // The preset's SelectedFolder — used to auto-grant write access in FolderGuard
 	workflowPhaseRunFolder := ""
@@ -4628,13 +4566,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		// A Flow's Builder chat is its owner's; everyone else with access chats in Run mode (856-78). Run mode is the same
 		// server-side policy as a Crew's: no shell, MCP servers or secrets, and only the Run tool surface.
-		if currentUserIsReadOnly && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && workflowPhaseFolder != "" {
-			if relayManifest, relayFound, relayErr := ReadWorkflowManifest(context.Background(), workflowPhaseFolder); relayErr == nil && relayFound && relayManifest.Kind == "relay" {
-				relayRunChat = true
-				crewAskOnly = true
-				common.SetSessionCrewAskReadOnly(sessionID, true)
-			}
-		}
+
 		// Convert to multi-agent mode so it falls through to the standard agent path
 		req.AgentMode = "multi-agent"
 	}
@@ -5964,30 +5896,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// how a real enabled: list gets seeded from a live session rather than
 		// guessed.
 		toolGate := newProductToolGate(resolvedProfile)
-		relayChat := false
-		if isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && workflowPhaseFolder != "" {
-			// /api/query acknowledges before this worker finishes; the HTTP request
-			// context is already canceled here. Match the workflow setup reads above.
-			manifest, found, manifestErr := ReadWorkflowManifest(context.Background(), workflowPhaseFolder)
-			if manifestErr != nil {
-				sendError(fmt.Sprintf("Failed to read workflow manifest: %v", manifestErr), true)
-				return
-			}
-			if found && manifest.Kind == "relay" {
-				relayChat = true
-				relayToolsFn := relayproduct.BuilderTools
-				if currentUserIsReadOnly {
-					relayToolsFn = relayproduct.RunTools
-				}
-				relayTools, toolErr := relayToolsFn()
-				if toolErr != nil {
-					sendError(fmt.Sprintf("Failed to load Flow Builder tools: %v", toolErr), true)
-					return
-				}
-				toolGate = newProductToolGateForAllowlist("relays", relayTools)
-			}
-		}
-		if isWorkflowPhase && !relayChat && resolvedProfile == nil {
+
+		if isWorkflowPhase && resolvedProfile == nil {
 			toolGate = newWorkflowConversationToolGate(sessionID, req, currentUserIsReadOnly)
 		}
 		toolGate.DenyWhere(func(name string) bool {
@@ -6000,18 +5910,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// keeps the bridge file tools, so it never ends up with neither. The bridge tool list is admitted at launch.
 		fullCLIOn := false
 		toolGate.DenyWhere(func(name string) bool { return fullCLIOn && fullCLIDuplicateTool(name) })
-		toolGate.AllowWorkflowNotifications(isWorkflowPhase && !relayChat && workflowNotificationsForPath(workflowPhaseFolder))
+		toolGate.AllowWorkflowNotifications(isWorkflowPhase && workflowNotificationsForPath(workflowPhaseFolder))
 		claims := GetUserFromContext(r.Context())
-		workflowRun := isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && currentUserIsReadOnly && !relayChat
+		workflowRun := isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && currentUserIsReadOnly
 		projectTokenChat := resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && claims != nil && claims.AccessToken != nil
 		if (workflowRun || projectTokenChat && currentUserIsReadOnly) && claims != nil && claims.AccessToken != nil {
 			// Apply the existing token denylist to registration and the core CLI
 			// bridge as well as execution, so an unusable shell is not advertised.
 			toolGate.DenyWhere(func(name string) bool { return accessTokenRunToolDenied(claims, name) })
-		}
-		if req.ExternalBuilderOperationID != "" {
-			claims := GetUserFromContext(r.Context())
-			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
 		}
 		if currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
@@ -6081,9 +5987,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		// A guest's ask has no shell, and every non-core tool is otherwise reached by curl through the shell, so the
 		// two tools it needs are native bridge tools: reading project files and replying (856-59).
-		if relayRunChat {
-			platformBridgeTools = append(append([]string(nil), platformBridgeTools...), relayRunChatTools...)
-		} else if crewAskOnly {
+		if crewAskOnly {
 			platformBridgeTools = crewAskBridgeTools(platformBridgeTools)
 		}
 
@@ -6655,14 +6559,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// like its workshop children. Give the dedicated DB tools their
 				// trusted logical capability and hard-block raw db.sqlite/WAL/SHM
 				// access so a denied migration cannot fall back to the sqlite CLI.
-				if relayChat {
-					if err := todo_creation_human.ConfigureRelayDashboardBuilderSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly); err != nil {
-						sendError(fmt.Sprintf("Could not prepare Flow dashboard authoring: %v", err), true)
-						return
-					}
-				} else {
-					todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly)
-				}
+
+				todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly)
+
 				protectOtherWorkflowBuilderChats(sessionID, workflowPhaseFolder, currentUserID)
 				if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
 					log.Printf("[WORKFLOW PHASE FOLDER GUARD] Added read-write CDP host Downloads: %s", hostDownloads)
@@ -6670,11 +6569,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, workflowPhaseFolder)
 				configureWorkflowPhaseCLIShellGuard(sessionID, workflowPhaseFolder, currentUserID, currentUserIsReadOnly)
 				log.Printf("[WORKFLOW PHASE FOLDER GUARD] Applied workflow folder restriction (workflow writes: %v, chats read-only: %s, read-only: %v, blocked-write: %v)", writePaths, perUserChatsWrite, workflowReadOnlyFolders, fileContextBlockedWriteFolders)
-			}
-
-			if err := api.registerExternalBuilderWorkspaceTools(llmAgent, workflowPhaseFolder, GetUserFromContext(r.Context())); err != nil {
-				sendError(fmt.Sprintf("Failed to register external Builder file tools: %v", err), true)
-				return
 			}
 
 			// Coding-agent adapters project system instructions, selected skills,
@@ -6725,9 +6619,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				toolName := tool.Function.Name
-				if externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName) {
-					continue
-				}
 				if profileDisablesVirtualTool(resolvedProfile, toolName) {
 					log.Printf("[AGENT_PROFILE] Skipping disabled virtual tool %s for profile %s", toolName, resolvedProfile.Definition.ID)
 					continue
@@ -6847,7 +6738,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// this, the notification implementation was not registered on the serving agent, so it never landed
 			// in a.customTools and was invisible to CLI agents via get_api_spec.
 			allTools, allExecutors, toolCategories := createCustomTools(isWorkflowPhase, currentUserID, sessionID, req.SelectedFolder) // session-aware
-			if isWorkflowBuilderPhase && !currentUserIsReadOnly {
+			if knowledgeProjectBuilderQuery(req, GetUserFromContext(r.Context()), sessionID, sessionID, currentUserIsReadOnly) {
 				projectTools, projectExecs, projectCategories := createKnowledgeProjectBuilderTools()
 				// Replace content-only browse/access schemas for this root Builder.
 				for _, tool := range projectTools {
@@ -6882,16 +6773,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						chatMode = "run"
 					}
 					allowedHumanTool := false
-					if relayChat {
-						allowedHumanTool = relayproduct.ChatAllowsTool(map[bool]string{true: "run", false: "builder"}[currentUserIsReadOnly], toolName)
-					} else {
-						allowedHumanTool = agentworksproduct.ChatAllowsTool(chatMode, toolName)
-					}
+
+					allowedHumanTool = agentworksproduct.ChatAllowsTool(chatMode, toolName)
+
 					if isWorkflowPhase && virtualtools.IsHumanToolCategory(toolCategory) && !allowedHumanTool {
 						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because the product chat surface does not admit it in %s mode", toolName, chatMode)
 						continue
 					}
-					if isWorkflowPhase && (currentUserIsReadOnly && accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) || externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName)) {
+					if isWorkflowPhase && currentUserIsReadOnly && accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) {
 						log.Printf("[CUSTOM TOOLS] Skipping external-token-denied tool %s in session %s", toolName, sessionID)
 						continue
 					}
@@ -7390,7 +7279,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// correctly run its one allowlisted tool and then, in the very same
 			// turn, tell the user it has no working tool because this stale text
 			// contradicted what actually happened.
-			hasProductAllowlist := relayChat || resolvedProfile != nil && resolvedProfile.Definition.ToolPolicy.IsAllowlist()
+			hasProductAllowlist := resolvedProfile != nil && resolvedProfile.Definition.ToolPolicy.IsAllowlist()
 			if common.IsCLIProvider(req.Provider) && !hasProductAllowlist {
 				promptCtx.CLIToolEnvironment = virtualtools.BuildCLIToolEnvironmentPrompt(req.Provider)
 			}
@@ -7460,14 +7349,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 					// Reapply the managed DB boundary on every setup/restore so old
 					// sessions cannot retain broad raw SQLite or sidecar access.
-					if relayChat {
-						if err := todo_creation_human.ConfigureRelayDashboardBuilderSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly); err != nil {
-							sendError(fmt.Sprintf("Could not prepare Flow dashboard authoring: %v", err), true)
-							return
-						}
-					} else {
-						todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly)
-					}
+
+					todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly)
+
 					if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
 						log.Printf("[WORKFLOW_PHASE] Added read-write CDP host Downloads: %s", hostDownloads)
 					}
@@ -7533,12 +7417,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if manifest, found, err := ReadWorkflowManifest(r.Context(), phaseWorkspacePath); err == nil && found {
 					phaseTemplateVars["CHAT_INSTRUCTIONS"] = manifest.ChatInstructions
 				}
-				if relayChat {
-					phaseTemplateVars["WorkflowKind"] = "relay"
-					if relayRunChat {
-						phaseTemplateVars["RelayRunMode"] = "true"
-					}
-				}
 
 				// Pass workshop mode from frontend override (auto-detection happens after plan is loaded below).
 				// Migrate legacy values to the current 2-mode scheme
@@ -7579,12 +7457,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 				// Build GroupInfo and extra template vars for the interactive-workshop system prompt
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
-					if !relayChat {
-						groupInfo := buildWorkshopGroupInfo(setupCtx, phaseWorkspacePath, phaseReadFile, phaseRunFolder, phaseEnabledGroupNames)
-						if groupInfo != "" {
-							phaseTemplateVars["GroupInfo"] = groupInfo
-						}
+
+					groupInfo := buildWorkshopGroupInfo(setupCtx, phaseWorkspacePath, phaseReadFile, phaseRunFolder, phaseEnabledGroupNames)
+					if groupInfo != "" {
+						phaseTemplateVars["GroupInfo"] = groupInfo
 					}
+
 					phaseTemplateVars["RunFolder"] = phaseRunFolder
 					phaseTemplateVars["UseKnowledgebase"] = "true"                 // default; overridden by preset below if needed
 					phaseTemplateVars["KBShape"] = workflowtypes.KBShapeGraphNotes // default; overridden from manifest below if set
@@ -7707,9 +7585,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 								// mega-skill as `browser-usage` and is fetched on demand.
 								browserPrompt := "\n## Browser\n\nThis phase has a browser tool configured (mode=" + configuredBrowserMode +
 									"). CDP availability is live state and is never stored in this prompt. Before the first browser action, call `agent_browser(command=\"status\", session=\"default\")`, then follow its `effective_mode` and authorized endpoints.\n"
-								if !relayChat {
-									browserPrompt += " Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for Builder-specific tab, file, and safety rules.\n"
-								}
+
+								browserPrompt += " Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for Builder-specific tab, file, and safety rules.\n"
+
 								if configuredBrowserMode == "auto" || configuredBrowserMode == "cdp" {
 									_, endpointGuidance := cdpPromptEndpoints(phaseConfiguredCDPPorts, phaseBrowserCfg.CdpPort)
 									browserPrompt += endpointGuidance + " These are configured candidates only; `agent_browser status` is authoritative for current reachability.\n"
@@ -7760,7 +7638,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// surface — there is no per-turn narrowing for one path to
 				// apply and the other to miss.
 				syntheticReq := QueryRequest{
-					ExternalBuilderOperationID:  req.ExternalBuilderOperationID,
 					TriggeredBy:                 req.TriggeredBy,
 					ParentSessionID:             req.ParentSessionID,
 					SessionKind:                 req.SessionKind,
@@ -7774,7 +7651,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					PresetQueryID:               req.PresetQueryID,
 				}
 				if err := api.installWorkflowPhaseTools(
-					setupCtx, externalBuilderRegistrar(llmAgent, GetUserFromContext(r.Context())), sessionID, currentUserID,
+					setupCtx, llmAgent, sessionID, currentUserID,
 					workflowPhaseID, phaseWorkspacePath, phaseRunFolder,
 					phaseTemplateVars, selectedServers, mergedAPIKeys,
 					phaseReadFile, phaseWriteFile, phaseMoveFile,
@@ -7922,13 +7799,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			currentPolicy := resolveWorkflowChatPolicy(sessionID, req, activeForPolicy, currentUserIsReadOnly)
 			policyWorkflowKind := ""
-			if relayChat {
-				policyWorkflowKind = "relay"
-			}
+
 			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind)
-			laptopPolicy := api.workflowChatLaptopPolicyKey(r.Context(), req, currentUserIsReadOnly)
-			policyKey += laptopPolicy
-			policyRoleKey := currentPolicy.sessionKey() + laptopPolicy
+			policyRoleKey := currentPolicy.sessionKey()
 			codingProvider := common.IsCLIProvider(finalProvider)
 			api.conversationMux.RLock()
 			_, knownInMemory := api.lastChatPolicyBySession[sessionID]
@@ -11780,17 +11653,6 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		http.Error(w, "Workflow session configuration is unavailable; reopen the workflow chat", http.StatusConflict)
 		return
 	}
-	policyRequest.ExternalBuilderOperationID = ""
-	if policyKnown && api.externalBuilderOwnsSession(sessionID) {
-		policyRequest.Query = req.Message
-		policyRequest.Message = ""
-		policyRequest.TriggeredBy = "interactive"
-		policyRequest.IsAutoNotification = false
-		policyRequest.DisableLiveInputDelivery = true
-		if api.queueOccupiedConversationTurn(w, r, GetUserIDFromContext(r.Context()), sessionID, policyRequest) {
-			return
-		}
-	}
 	if policyKnown {
 		compatible, runtimeChanged, policyErr := api.workflowRetainedCompatibility(r.Context(), sessionID, policyRequest)
 		if policyErr != nil {
@@ -12544,9 +12406,6 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		}(),
 	}
 
-	if productEnabled("knowledgebase") && req.PhaseID == "workflow-builder" {
-		cfg.KnowledgebaseProjectTool = knowledgeProjectBuilderExecute
-	}
 	// Build base tools with session-aware workspace executors from the start.
 	// This ensures MCP_API_URL in shell commands includes the session path prefix
 	// (/s/{session_id}/...) so per-tool HTTP calls from inside Docker hit the
@@ -12573,9 +12432,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 		if mErr != nil {
 			return nil, fmt.Errorf("failed to read workflow manifest from %s: %w", workspacePath, mErr)
 		} else if found {
-			if manifest.Kind == "relay" {
-				cfg.EnabledGroupNames = nil
-			}
+
 			caps := manifest.Capabilities
 			log.Printf("[WORKSHOP] Loaded config from manifest at %s", workspacePath)
 
@@ -12842,13 +12699,13 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 					}
 					sb.WriteString(fmt.Sprintf("- **Run Count**: %d\n", state.RunCount))
 				}
-				if manifest.Kind != "relay" {
-					if len(sched.GroupNames) > 0 {
-						sb.WriteString(fmt.Sprintf("- **Groups**: %v\n", sched.GroupNames))
-					} else {
-						sb.WriteString("- **Groups**: all\n")
-					}
+
+				if len(sched.GroupNames) > 0 {
+					sb.WriteString(fmt.Sprintf("- **Groups**: %v\n", sched.GroupNames))
+				} else {
+					sb.WriteString("- **Groups**: all\n")
 				}
+
 				if len(sched.RouteSelections) > 0 {
 					sb.WriteString(fmt.Sprintf("- **Route selections**: %v\n", sched.RouteSelections))
 				}
@@ -12909,15 +12766,12 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err != nil || !found {
 				return "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
 			}
-			if manifest.Kind == "relay" {
-				return "", fmt.Errorf("Flows support API function triggers only")
+
+			groupNames, err = validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
+			if err != nil {
+				return "", err
 			}
-			if manifest.Kind != "relay" {
-				groupNames, err = validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
-				if err != nil {
-					return "", err
-				}
-			}
+
 			newSched := WorkflowSchedule{
 				ID:             generateScheduleID(),
 				Name:           name,
@@ -13011,9 +12865,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if err != nil || !found {
 				return "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
 			}
-			if manifest.Kind == "relay" {
-				return "", fmt.Errorf("Flows support API function triggers only")
-			}
+
 			groupNames, err = validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
 			if err != nil {
 				return "", err
@@ -13106,10 +12958,8 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if timezone != "" {
 				sched.Timezone = timezone
 			}
-			if manifest.Kind == "relay" && setGroupNames && len(normalizeScheduleGroupNames(groupNames)) > 0 {
-				return "", fmt.Errorf("Flows do not accept group_names; configure variables directly")
-			}
-			if manifest.Kind != "relay" && setGroupNames {
+
+			if setGroupNames {
 				validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
 				if err != nil {
 					return "", err
@@ -13203,13 +13053,13 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 					return "", err
 				}
 			}
-			if manifest.Kind != "relay" {
-				validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, sched.GroupNames)
-				if err != nil {
-					return "", err
-				}
-				sched.GroupNames = validGroupNames
+
+			validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, sched.GroupNames)
+			if err != nil {
+				return "", err
 			}
+			sched.GroupNames = validGroupNames
+
 			if err := ValidateManifest(manifest); err != nil {
 				return "", err
 			}

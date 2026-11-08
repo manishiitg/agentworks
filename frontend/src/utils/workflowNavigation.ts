@@ -37,12 +37,6 @@ export function beginWorkflowNavigation(workflowId: string): number {
   return context.generation
 }
 
-export function isCurrentWorkflowNavigation(generation: number, workflowId: string): boolean {
-  return generation === context.generation &&
-    context.workflowId === workflowId &&
-    useGlobalPresetStore.getState().activePresetIds.workflow === workflowId
-}
-
 export function getWorkflowNavigationContext(): Readonly<WorkflowNavigationContext> {
   return context
 }
@@ -52,15 +46,9 @@ export function cancelPendingWorkflowNavigation(): void {
   context = { ...context, workflowId: null, tabId: null, sessionId: null, generation: context.generation + 1 }
 }
 
-/**
- * The product surface a workflow belongs to: a Relay opens in Relays, everything else in Goals. Navigation that
- * lands on a workflow tab (activity pills, the global tab opener) must not force Goals, or opening a Relay
- * shows the Goals page.
- */
-export function workflowSurfaceForPreset(presetId: string | undefined | null): 'relays' | 'agentworks' {
-  if (!presetId) return 'agentworks'
-  const preset = useGlobalPresetStore.getState().workflowPresets.find(item => item.id === presetId)
-  return preset?.workflowKind === 'relay' && isEnabledProductSurface('relays') ? 'relays' : 'agentworks'
+/** Workflow tabs use the workflow workspace. */
+export function workflowSurfaceForPreset(_presetId: string | undefined | null): 'agentworks' {
+  return 'agentworks'
 }
 
 /** Project workflow selection into the existing report/workspace stores. */
@@ -73,7 +61,7 @@ export function selectWorkflowPreset(presetOrId: CustomPreset | PredefinedPreset
     ? presetStore.workflowPresets.find(item => item.id === workflowId)
     : presetOrId
   if (preset) {
-    const surface = preset.workflowKind === 'relay' ? 'relays' : 'agentworks'
+    const surface = 'agentworks'
     if (isEnabledProductSurface(surface)) useProductSurfaceStore.getState().setProductSurface(surface)
   }
 
@@ -98,7 +86,7 @@ export function selectWorkflowPreset(presetOrId: CustomPreset | PredefinedPreset
     useModeStore.getState().setModeCategory('workflow')
   }
   useWorkflowStore.getState().setShowChatArea(true)
-  // Selecting a Goal/Flow on a phone opens its conversation. A deliberate
+  // Selecting a workflow on a phone opens its conversation. A deliberate
   // panel link calls openWorkspaceView after selection and still wins.
   if (window.innerWidth < 768) useWorkflowStore.getState().setFocusedPane('chat')
   return true

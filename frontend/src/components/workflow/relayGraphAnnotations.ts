@@ -20,6 +20,9 @@ export interface RelaySourceNode {
   mcp?: unknown
   sequence?: number
   status?: string
+  /** Script outline only: the container node this one is nested in, and what a container is. */
+  parent?: string
+  role?: 'branch' | 'case' | 'repeat' | 'try' | 'failure' | 'block'
   line: number
 }
 export interface RelaySourceEdge { from: string; to: string; label?: string; line: number }
@@ -67,7 +70,7 @@ export function parseRelaySourceGraph(source: string): RelaySourceGraph {
       if (match[1] === 'node') {
         if (!validID(record.id) || !kinds.includes(record.type) || typeof record.label !== 'string' || !record.label.trim()) throw new Error('Node needs a stable id, supported type and readable label')
         if (ids.has(record.id)) throw new Error(`Duplicate node id: ${record.id}`)
-        for (const field of ['description', 'call', 'system_prompt', 'user_message']) {
+        for (const field of ['description', 'call', 'system_prompt', 'user_message', 'parent', 'role']) {
           if (record[field] !== undefined && typeof record[field] !== 'string') throw new Error(`${field} must be text`)
         }
         for (const field of ['messages', 'tools', 'skills']) {

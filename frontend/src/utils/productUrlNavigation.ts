@@ -35,7 +35,7 @@ export function readProductNavigation(): ProductRoute {
   let view: string | undefined
   let overview: boolean | undefined
   if (surface === 'work') id = state.selectedWorkProjectId ?? undefined
-  if (surface === 'agentworks' || surface === 'relays') {
+  if (surface === 'agentworks') {
     overview = useAppStore.getState().showWorkflowsOverview
     if (!overview) {
       id = useGlobalPresetStore.getState().activePresetIds.workflow ?? undefined
@@ -95,13 +95,13 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
   }
   const navigate = (change: HistoryChange) => schedule(change, true)
   notify = navigate
-  const isWorkflow = () => ['agentworks', 'relays'].includes(useProductSurfaceStore.getState().productSurface) && !useAppStore.getState().showWorkflowsOverview
+  const isWorkflow = () => ['agentworks'].includes(useProductSurfaceStore.getState().productSurface) && !useAppStore.getState().showWorkflowsOverview
   const unsubscribers = [
     useProductSurfaceStore.subscribe((state, previous) => {
       if (state.productSurface !== previous.productSurface ||
         (state.productSurface === 'work' && state.selectedWorkProjectId !== previous.selectedWorkProjectId)) schedule(replacingSelection ? 'redirect' : 'navigation')
     }),
-    useAppStore.subscribe((state, previous) => { if (state.showWorkflowsOverview !== previous.showWorkflowsOverview && ['agentworks', 'relays'].includes(useProductSurfaceStore.getState().productSurface)) schedule('navigation') }),
+    useAppStore.subscribe((state, previous) => { if (state.showWorkflowsOverview !== previous.showWorkflowsOverview && ['agentworks'].includes(useProductSurfaceStore.getState().productSurface)) schedule('navigation') }),
     useGlobalPresetStore.subscribe((state, previous) => { if (isWorkflow() && state.activePresetIds.workflow !== previous.activePresetIds.workflow) schedule('navigation') }),
     useWorkflowStore.subscribe((state, previous) => { if (isWorkflow() && state.workflowWorkspaceView !== previous.workflowWorkspaceView) schedule('navigation') }),
   ]

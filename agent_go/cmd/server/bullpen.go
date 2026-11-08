@@ -18,7 +18,7 @@ func bullpenBrowserClaims(w http.ResponseWriter, r *http.Request, mutate bool) *
 		return nil
 	}
 	if claims.AccessToken != nil || claims.Provider == "bot_route" || claims.Provider == "bot_owner" || !namedAgentOperationAllowed(claims, false) || !productpolicy.Enabled("bullpen") || !userAllowedProduct(claims, "bullpen") ||
-		mutate && (claims.ExecutionPrincipal != nil || claims.Scope != "" || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "") {
+		mutate && (claims.ExecutionPrincipal != nil || claims.Scope != "" || claims.BotRouteGrant != "") {
 		externalError(w, http.StatusForbidden, "access_denied", "AgentBridge is unavailable for this account or connection.")
 		return nil
 	}

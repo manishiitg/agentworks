@@ -60,18 +60,6 @@
     "external_members": "get_agent_inbox"
   },
   {
-    "family": "relay",
-    "name": "releases",
-    "member": "get_relay_releases",
-    "description": "Use the current relay releases operation."
-  },
-  {
-    "family": "relay",
-    "name": "get_run",
-    "member": "get_relay_run",
-    "description": "Use the current relay get run operation."
-  },
-  {
     "family": "integrations",
     "name": "slack_bot_credentials",
     "member": "get_slack_bot_credentials",
@@ -150,22 +138,10 @@
     "external_members": "list_gmail_connections"
   },
   {
-    "family": "relay",
-    "name": "runs",
-    "member": "list_relay_runs",
-    "description": "Use the current relay runs operation."
-  },
-  {
     "family": "ui",
     "name": "capabilities",
     "member": "list_ui_capabilities",
     "description": "Use the current ui capabilities operation."
-  },
-  {
-    "family": "relay",
-    "name": "publish",
-    "member": "publish_relay",
-    "description": "Use the current relay publish operation."
   },
   {
     "family": "messages",
@@ -173,22 +149,6 @@
     "member": "read_agent_messages",
     "description": "Use the current messages read operation.",
     "external_members": "messages__read"
-  },
-  {
-    "family": "relay",
-    "name": "get",
-    "member": "read_relay__source",
-    "description": "Read a published version's relay.py (default the active one).",
-    "source": "read_relay",
-    "source_action": "source"
-  },
-  {
-    "family": "relay",
-    "name": "releases",
-    "member": "read_relay__releases",
-    "description": "List the active and previous published versions with their functions.",
-    "source": "read_relay",
-    "source_action": "releases"
   },
   {
     "family": "integrations",
@@ -202,12 +162,6 @@
     "name": "clarify",
     "member": "request_clarification",
     "description": "Use the current needs_you clarify operation."
-  },
-  {
-    "family": "relay",
-    "name": "run",
-    "member": "run_relay",
-    "description": "Use the current relay run operation."
   },
   {
     "family": "messages",
@@ -272,12 +226,6 @@
     "member": "submit_workflow_suggestion",
     "description": "Use the current needs_you suggest operation.",
     "external_members": "suggest_workflow_change|suggest_crew_change"
-  },
-  {
-    "family": "relay",
-    "name": "test",
-    "member": "test_relay",
-    "description": "Use the current relay test operation."
   },
   {
     "family": "integrations",
@@ -1445,12 +1393,6 @@
     "name": "mail_inbox",
     "member": "agent_inbox",
     "description": "Use the current messages mail inbox operation."
-  },
-  {
-    "family": "relay",
-    "name": "update",
-    "member": "update_relay",
-    "description": "Use the current relay update operation."
   },
   {
     "family": "terminal",

@@ -3,14 +3,14 @@ package server
 import (
 	"context"
 	"fmt"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"log"
 	"strings"
 
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
-	stepbased "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
@@ -54,7 +54,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		}
 		// An MCP connection acts with its person's role: the Run denylist applies
 		// only to a Run turn, never to an owner's or editor's Builder turn.
-		if readOnly && accessTokenRunToolDenied(bound, tool) || externalBuilderToolDenied(bound, tool) {
+		if readOnly && accessTokenRunToolDenied(bound, tool) {
 			return nil, fmt.Errorf("%s is unavailable to external access tokens", tool)
 		}
 		callerSession := executor.SessionIDFromContext(ctx)
@@ -118,21 +118,6 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		if operationID := virtualtools.FeedbackOperationFromContext(requestCtx); operationID != "" {
 			ctx = virtualtools.WithFeedbackOperation(ctx, operationID)
 		}
-		if copy.ExternalBuilderOperationID != "" {
-			// Resolve the persisted grant for every tool, including delegated tools.
-			// The operation is bound to the durable parent, never the child ID.
-			validationCtx := context.WithValue(ctx, UserContextKey, &copy)
-			fresh, err := api.externalBuilderRunClaims(validationCtx, copy.ExternalBuilderOperationID, authoritySession, req.SelectedFolder)
-			if err != nil {
-				return nil, err
-			}
-			copy = *fresh
-			ctx = virtualtools.WithFeedbackOperation(ctx, copy.ExternalBuilderOperationID)
-			ctx = stepbased.WithExternalBuilderPlanOrigin(ctx, copy.ExternalBuilderOperationID, copy.AccessToken.ID, copy.UserID, copy.Username, authoritySession)
-			if externalBuilderToolDenied(&copy, tool) {
-				return nil, fmt.Errorf("%s is unavailable to external Builder operations", tool)
-			}
-		}
 		ctx = context.WithValue(ctx, UserContextKey, &copy)
 		ctx = context.WithValue(ctx, common.UserIDKey, copy.UserID)
 		if strings.TrimSpace(copy.Username) != "" {
@@ -162,7 +147,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		if access == WorkflowAccessNone || (!readOnly && access == WorkflowAccessRead) {
 			return nil, fmt.Errorf("%s session permissions changed; start a new turn", tool)
 		}
-		if !builderProductSelection(&copy).AllowsTool(tool) || readOnly && accessTokenRunToolDenied(&copy, tool) || externalBuilderToolDenied(&copy, tool) {
+		if !builderProductSelection(&copy).AllowsTool(tool) || readOnly && accessTokenRunToolDenied(&copy, tool) {
 			return nil, fmt.Errorf("%s is unavailable to this connection", tool)
 		}
 		if vaultBuilderQuery(req, &copy, authoritySession, toolSession, readOnly) {
@@ -174,7 +159,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		if knowledgeProjectBuilderQuery(req, &copy, authoritySession, toolSession, readOnly) &&
 			(callerSession == "" || callerSession == toolSession) {
 			ctx = context.WithValue(ctx, knowledgeProjectBuilderKey{}, knowledgeProjectBuilderAuthority{copy.UserID, req.SelectedFolder, toolSession})
-		} else if req.PhaseID == "workflow-builder" && isKnowledgeProjectTool(tool) {
+		} else if isProjectProfileID(req.AgentProfileID) && isKnowledgeProjectTool(tool) {
 			log.Printf("[KB_PROJECT] no Builder authority for %s: phase=%s mode=%s triggered_by=%q bot=%q caller=%q tool_session=%q authority=%q owned=%v read_only=%v",
 				tool, req.PhaseID, req.AgentMode, req.TriggeredBy, req.BotPlatform, callerSession, toolSession, authoritySession, callerOwnedBySession, readOnly)
 		}

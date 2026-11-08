@@ -9,7 +9,23 @@ external_tools: [workflow, workspace, runs, functions]
 A workflow belongs to a Crew. Its saved source is `script.json` (typed inputs,
 optional presets and expected outputs), `main.py`, and any nested Python files.
 The server runs it in that Crew with its current permissions and connected apps.
-You can ask the Crew's Builder chat to create or change it; no terminal is needed.
+An optional `timeout_seconds` in `script.json` limits the whole script, including
+its helper calls: default 3600 seconds, allowed integers 1 through 21600 (six
+hours). Stop can end it sooner.
+
+Declare third-party Python packages in `requirements.txt` beside `main.py`.
+Use one plain package list; included files, constraints and installer option
+lines are refused before cache reuse. Put each package pin directly in the file.
+The runner uses bundled uv (pip if uv is unavailable), caches the installation
+per script and requirements hash, and gives its agents the same package path.
+Changed requirements create a new entry; normal runs cannot overwrite installed
+package files. Package setup uses the existing sandbox, never a global install.
+You can ask the Crew's agent to create or change it; no terminal is needed.
+
+`agent(..., reasoning="low" | "medium" | "high")` optionally chooses that
+call’s effort where its model supports the level. Unsupported choices return
+a named error; omit it to keep the existing default. A continued conversation
+keeps its original reasoning choice, recorded with its run.
 
 ## Find and edit
 
@@ -51,8 +67,14 @@ directly; it does not ask a chat agent to launch it.
 Keep the returned `session_id` and poll `runs action=status` with the same
 workflow. Use `runs action=list` to find saved run folders and `runs action=get`
 with `run_folder` for files, `metadata` (including `execution_id` and
-`python_steps`) and `evidence` (checks and notices). Folder grants still apply;
-the summary contains public checks/notices; full run files remain available under the same grants. `runs action=logs` diagnoses that run in one bounded reply: script stdout/stderr
+`python_steps`) and `evidence` (checks and notices). The summary contains public
+checks/notices; full run files remain available under the same file grants.
+
+For Python runs, `metadata.source_snapshot_hash` identifies the main script's
+executed frozen bundle, including `script.json`, nested source and binary files.
+It is a SHA-256 of sorted relative file names and raw bytes, each followed by a
+NUL byte; `__pycache__` is excluded. Child script calls do not replace it.
+`runs action=logs` diagnoses that run in one bounded reply: script stdout/stderr
 tails with full paths, per-label status/durations, checks/notices, saved typed
 inputs/preset, failing labels and traceback, and agent answer/provider-log paths.
 Python labels share their program log; they do not each run a separate program.
@@ -106,3 +128,29 @@ agentworks functions trigger-status --crew team --workspace Workflow/sample --tr
 accepts the complete typed input-definition array when you mean to replace it.
 `tools spec workflow workspace runs functions` reads the server's current
 schemas; `tools call` and `mcp serve` use the same catalog and access checks.
+
+## Webhook and timer inputs
+
+Each webhook or timer chooses one saved `input_preset` plus optional fixed
+`inputs`. The sender cannot choose another preset. For raw webhook JSON, map
+allowed input names with `payload_mappings.inputs`, for example:
+
+```json
+{"input_preset":"weekly","input_mode":"raw","allowed_variables":["LIMIT"],
+ "payload_mappings":{"inputs":{"LIMIT":{"source":"event.limit"}}}}
+```
+
+The JSON value keeps its type. An optional `values` object translates source
+choices to typed input values; `default` supplies a fallback. Types and schema
+come from `script.json`. Missing, disallowed or invalid fields are refused by
+name before starting; fixed inputs cannot be overridden. Timers use their saved
+values through the same direct script execution. Slack raw events use this same
+mapper and input validation.
+
+Saved definition defaults (`value`) and preset values are text containing the
+value (`"2"`, `"false"`, or JSON for objects). Invocation bodies and raw mapped
+fields use actual JSON types (`2`, `false`, objects), as declared by the input.
+
+Discovery also returns `secrets`: required Vault names declared by the script.
+These are names, never values or new grants. Connect or select missing names
+through the existing Vault settings before running.

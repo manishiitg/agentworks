@@ -63,6 +63,7 @@ func TestScriptInspectionFreezesExecutedSourceAndOutput(t *testing.T) {
 	router.POST("/api/execute", func(c *gin.Context) {
 		var request struct {
 			Command     string                             `json:"command"`
+			Timeout     int                                `json:"timeout"`
 			FolderGuard *workspaceclient.FolderGuardConfig `json:"folder_guard"`
 			ExtraEnv    map[string]string                  `json:"extra_env"`
 		}
@@ -73,6 +74,9 @@ func TestScriptInspectionFreezesExecutedSourceAndOutput(t *testing.T) {
 		}
 		if c.GetHeader("X-Workspace-Token") != "fixture-workspace-token" || c.GetHeader("X-User-ID") != "runner" {
 			t.Error("script dispatch lost workspace authentication or caller identity")
+		}
+		if request.Timeout != 7200 {
+			t.Errorf("script dispatch lost its declared limit: got %d", request.Timeout)
 		}
 		guard := request.FolderGuard
 		if guard == nil || !guard.Enabled {
@@ -143,7 +147,8 @@ func TestScriptInspectionFreezesExecutedSourceAndOutput(t *testing.T) {
 	ctx := context.WithValue(context.Background(), common.UserIDKey, "runner")
 	ctx = virtualtools.WithBackgroundAgentID(context.WithValue(ctx, common.ChatSessionIDKey, parentSession), owner)
 	controller.recordInspectionMode(ctx, "script")
-	step := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "task", Title: "Task"}}
+	seconds := 7200
+	step := &ScriptedPlanStep{Type: StepTypeScripted, CommonStepFields: CommonStepFields{ID: "task", Title: "Task"}, crewScript: &CrewScriptConfiguration{Definition: CrewScriptDefinition{ID: "task", TimeoutSeconds: &seconds}}}
 	output, code, err := controller.execScriptedScript(ctx, step, 0, "step-1", sourcePath, nil, filepath.Join(root, workspace, "runs/iteration-0/default/execution/task"), filepath.Dir(sourcePath), outputRel, DBAccessNone)
 	if err != nil || code != 0 || !strings.Contains(output, "first source") {
 		t.Fatalf("execution code=%d output=%q err=%v", code, output, err)

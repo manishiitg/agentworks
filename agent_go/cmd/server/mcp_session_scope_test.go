@@ -3,13 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
-	oauth2 "golang.org/x/oauth2"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -31,78 +30,51 @@ func TestWorkshopMCPScopeReadsUpdatedSelectionOnEveryCall(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	withMCPConnectionsRoot(t)
 	t.Setenv("MULTI_USER_MODE", "false")
+	// MCP connections come only from Vault (PLAT-856, ee0e8ef837): the connection is one live Vault grant.
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"servers": []map[string]any{{"id": "c-notion-1", "label": "c-notion-1", "provider": "notion", "tools": []map[string]any{{"name": "notion_c-notion-1__notion-search"}}}}})
+	}))
+	defer upstream.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", upstream.URL)
+	notion := vaultServerName("c-notion-1")
+	other := vaultServerName("c-other")
 	setSelection := func(names []string) {
-		raw, _ := json.Marshal(map[string]interface{}{"schema_version": 1, "id": "scope-test", "label": "scope-test", "capabilities": map[string]interface{}{"selected_servers": names}})
+		raw, _ := json.Marshal(map[string]interface{}{"schema_version": 1, "id": "scope-test", "label": "scope-test", "capabilities": map[string]interface{}{"selected_servers": names, "chosen_vault_apps_only": true}})
 		ws.mu.Lock()
 		ws.files[workspacePath+"/workflow.json"] = string(raw)
 		ws.mu.Unlock()
 	}
 	configPath := filepath.Join(t.TempDir(), "mcp.json")
-	if err := os.WriteFile(configPath, []byte(`{"mcpServers":{"Jam":{"url":"https://jam.example/mcp"},"Notion":{"url":"https://notion.example/mcp","oauth":{"auth_url":"https://notion.example/auth","token_url":"https://notion.example/token"}}}}`), 0600); err != nil {
+	if err := os.WriteFile(configPath, []byte(`{"mcpServers":{}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{mcpConfigPath: configPath, logger: loggerv2.NewNoop(), eventStore: events.NewEventStore(10)}
 	api.eventStore.SetSessionOwner("same-chat", "alice")
 	api.workshopChatSessions.Store("same-chat", &scopeWorkshop{&workshop.WorkshopConfig{WorkspacePath: workspacePath}})
-	_, _ = addPlaceMCPServer("alice", placeMCPServer{Name: "notion", Catalog: "Notion", URL: "https://notion.example/mcp", Transport: "http", OAuth: &oauth.OAuthConfig{AuthURL: "https://notion.example/auth", TokenURL: "https://notion.example/token"}})
-	dirForLogin, _ := placeMCPDir("alice")
-	if err := oauth.NewTokenStore(placeMCPTokenFile(dirForLogin, "alice", "notion")).Save(&oauth2.Token{AccessToken: "alice-test", Expiry: time.Now().Add(time.Hour)}); err != nil {
-		t.Fatal(err)
-	}
-	setSelection([]string{"Jam"})
-	if _, err := api.resolveWorkshopMCPServer(context.Background(), "same-chat", "Notion", "search"); err == nil {
+	ctx := personContext("alice")
+	setSelection([]string{other})
+	if _, err := api.resolveWorkshopMCPServer(ctx, "same-chat", "notion", "search"); err == nil {
 		t.Fatal("Notion allowed before selection")
 	}
-	setSelection([]string{"Jam", "Notion"})
-	got, err := api.resolveWorkshopMCPServer(context.Background(), "same-chat", "Notion", "search")
-	if err != nil {
-		t.Fatal(err)
+	setSelection([]string{other, notion})
+	got, err := api.resolveWorkshopMCPServer(ctx, "same-chat", "notion", "search")
+	if err != nil || vaultSelectionName(got.Name) != notion {
+		t.Fatalf("selected Notion refused: %v %+v", err, got)
 	}
-	dir, _ := placeMCPDir("alice")
-	if got.Name != placeMCPInternalName("alice", "notion") || !strings.HasPrefix(got.Config.OAuth.TokenFile, dir+string(os.PathSeparator)) || got.ConnectionSessionID == platformMCPConnectionSessionID {
-		t.Fatalf("wrong identity/config: %+v", got)
-	}
-	setSelection([]string{"Jam"})
-	if _, err := api.resolveWorkshopMCPServer(context.Background(), "same-chat", "Notion", "search"); err == nil {
+	setSelection([]string{other})
+	if _, err := api.resolveWorkshopMCPServer(ctx, "same-chat", "notion", "search"); err == nil {
 		t.Fatal("removed Notion remained in scope")
 	}
 	ws.mu.Lock()
 	ws.files[workspacePath+"/workflow.json"] = "invalid"
 	ws.mu.Unlock()
-	if _, err := api.resolveWorkshopMCPServer(context.Background(), "same-chat", "Jam", "search"); err == nil {
+	if _, err := api.resolveWorkshopMCPServer(ctx, "same-chat", "notion", "search"); err == nil {
 		t.Fatal("failed open on invalid manifest")
 	}
 }
 
-func TestSelectedMCPScopeAliasesToolRestrictionsAndPrivateIdentity(t *testing.T) {
-	withMCPConnectionsRoot(t)
-	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv("CAPLAYER_SERVICE_URL", "")
-	cfg := &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{"test-provider": {URL: "https://example.test/mcp"}, "Jam": {URL: "https://jam.example/mcp"}}}
-	for _, person := range []string{"alice", "bob"} {
-		_, err := addPlaceMCPServer(person, placeMCPServer{Name: "test_provider", Catalog: "test-provider", URL: "https://example.test/mcp", Transport: "http"})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	api := &StreamingAPI{}
-	a, err := api.resolveScopedGovernedMCP(context.Background(), cfg, []string{"test-provider"}, []string{"test-provider:search"}, "alice", "test_provider", "search")
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := api.resolveScopedGovernedMCP(context.Background(), cfg, []string{"test-provider"}, nil, "bob", "test-provider", "search")
-	if err != nil || a.ConnectionSessionID == b.ConnectionSessionID {
-		t.Fatal("private connection pool was shared")
-	}
-	for _, tc := range []struct {
-		server, tool    string
-		selected, tools []string
-	}{{"Jam", "search", []string{"test-provider"}, nil}, {"test-provider", "fetch", []string{"test-provider"}, []string{"test-provider:search"}}, {"test-provider", "search", nil, nil}} {
-		if _, err := api.resolveScopedGovernedMCP(context.Background(), cfg, tc.selected, tc.tools, "alice", tc.server, tc.tool); err == nil {
-			t.Fatal("selection failed open")
-		}
-	}
-}
 func TestSelectedMCPScopeDoesNotReuseLegacySharedCredentials(t *testing.T) {
 	withMCPConnectionsRoot(t)
 	t.Setenv("MULTI_USER_MODE", "false")

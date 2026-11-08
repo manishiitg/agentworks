@@ -1,3 +1,4 @@
+import { useWorkflowRunNavigation } from './workflowRunNavigation'
 import { LocalChatPicker, type ImportedLocalChat, type LocalChat } from './LocalChatPicker'
 import { listenForProjectIntegrationNavigation } from '../../utils/projectIntegrationNavigation'
 import { chatFilesNavigationEvent } from '../../components/workspace/chatFileNavigation'
@@ -45,7 +46,6 @@ import { toProductCommandDefinitions } from './productCommands'
 import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { useCrewChatOnly } from './YourComputerPanel'
-import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { localFileError } from './codeLocalFiles'
 import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
@@ -92,7 +92,7 @@ const WORK_UI_PRESENTATION_VIEWS = {
 } as const satisfies Record<string, WorkWorkspaceView>
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
-  history: 'Chat history', context: 'Context', report: 'Dashboard', goals: 'Goals', workflow: 'Workflow', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
+  history: 'Chat history', context: 'Context', report: 'Dashboard', goals: 'Progress', workflow: 'Workflow', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
   suggestions: 'Suggestions', identity: 'Settings', mcp: 'Connections', shell: 'Terminal',
   llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders', share: 'Share', slack: 'Slack',
 }
@@ -979,6 +979,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
   const [viewNavigationRevision, setViewNavigationRevision] = useState(0)
   useProductUrlView(product.profileId, { id: selected?.id, view: selected ? workspaceView : undefined }, viewNavigationRevision)
+  const pendingWorkflowRun = useWorkflowRunNavigation(state => state.target)
   const pendingWorkView = useProductSurfaceStore(state => state.pendingWorkView)
   const setPendingWorkView = useProductSurfaceStore(state => state.setPendingWorkView)
   const [workspaceViewRefresh, setWorkspaceViewRefresh] = useState(0)
@@ -1056,6 +1057,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setPanelOpen(true)
     selectWorkspaceView(panel)
   }, [selected?.shared, selectWorkspaceView, sharedPanels, showShell, workspacePanels])
+  useEffect(() => {
+    if (product.profileId === 'work' && pendingWorkflowRun?.crewId === selected?.id) openWorkPresentationView('workflow')
+  }, [pendingWorkflowRun, selected?.id, product.profileId, openWorkPresentationView])
   useEffect(() => listenForProjectIntegrationNavigation(() => {
     setPanelOpen(true)
     selectWorkspaceView('mcp')

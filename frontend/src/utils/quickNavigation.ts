@@ -8,7 +8,7 @@ import { openWorkspaceSettings } from './workspaceSettingsNavigation'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
 
-export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'chats' | 'products' | 'panels' | 'create'
+export type QuickNavigationScope = 'active' | 'workflows' | 'crew' | 'chats' | 'products' | 'panels' | 'create'
 export type NavigationAction = 'active' | 'browse' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect' | 'create'
 export type QuickNavigationItem = {
   type: 'product' | 'menu'
@@ -28,17 +28,16 @@ export type QuickNavigationItem = {
 }
 
 const CREATION_LABELS: Record<ProductCreateSurface, string> = {
-  relays: 'Create new Flow', work: 'Create new Crew',
+  work: 'Create new Crew',
 }
 
 // Keep this beside the shared creation commands so a product consolidation has
 // one inventory to update; the sidebar does not maintain separate destinations.
 const PROJECT_CREATION_DESCRIPTIONS: Partial<Record<ProductCreateSurface, string>> = {
   work: 'A specialist for repeat work.',
-  relays: 'Run repeatable steps automatically.',
 }
 
-const GLOBAL_PAGE_SURFACES: ProductSurface[] = ['agentworks', 'relays', 'work', 'mcp-gateway', 'bullpen']
+const GLOBAL_PAGE_SURFACES: ProductSurface[] = ['agentworks', 'work', 'mcp-gateway', 'bullpen']
 
 /** The same deployment/account product list and role gates as the sidebar. */
 export function quickNavigationItems(
@@ -61,7 +60,6 @@ export function quickNavigationItems(
   }
   browse('active', 'Running work')
   if (products.includes('agentworks')) { browse('workflows', 'All Goals'); browse('chats', 'All chats') }
-  if (products.includes('relays')) browse('relays', 'All Flows')
   if (products.includes('work')) browse('crew', 'All Crews')
   if (products.length) browse('products', 'All products')
   if (products.includes(current)) browse('panels', 'All panels and tabs')

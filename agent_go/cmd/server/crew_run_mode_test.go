@@ -191,7 +191,7 @@ func TestConfineSharedProjectPath(t *testing.T) {
 	// construction; they must never address outside it.
 	for rel, want := range map[string]string{
 		"../MEMORY.md": "MEMORY.md", "/MEMORY.md": "MEMORY.md",
-		"code/../../MEMORY.md": "MEMORY.md", "code/../../../secret": "secret",
+		"code/../../MEMORY.md": "MEMORY.md", "code/../../../notes.txt": "notes.txt",
 	} {
 		if full, ok := confineSharedProjectPath(root, rel); !ok || full != root+"/"+want {
 			t.Fatalf("confine(%q) = %q,%v want %q", rel, full, ok, root+"/"+want)
@@ -633,11 +633,6 @@ const crewRunModeOwnerRuntime = `{
     "selected_global_secret_names": ["company-key"],
     "workflow_context_paths": ["Workflow/shared", "Workflow/private"]
   },
-  "schedules": [{"id": "sched-1", "name": "Nightly", "enabled": true}],
-  "triggers": [
-    {"id": "trig-internal", "name": "Review", "enabled": true, "kind": "internal", "message": "Review", "caller": {"type": "workflow", "id": "release-pipeline"}},
-    {"id": "trig-public", "name": "Hook", "enabled": true, "message": "Hook", "run_destination": "main", "webhook": {"auth_mode": "bearer", "encrypted_secret": "TOP-SECRET-CIPHERTEXT"}}
-  ],
   "workflow_context_paths": ["Workflow/shared", "Workflow/private"]
 }`
 
@@ -646,8 +641,8 @@ func newCrewRunModeFixture(t *testing.T) *crewRunModeFixture {
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true},{"id":"reader","username":"vaibhav","can_create":true},{"id":"stranger","username":"stranger","can_create":true}]}`)
-	registerTestCrew(t, "alpha", "owner", true)
-	registerTestCrew(t, "beta", "reader", true)
+	registerTestCrew(t, "alpha", "owner", true, "crew-aaa")
+	registerTestCrew(t, "beta", "reader", true, "crew-bbb")
 
 	shared := NewWorkflowManifest("Shared")
 	shared.CreatedBy = "owner"
@@ -661,6 +656,10 @@ func newCrewRunModeFixture(t *testing.T) *crewRunModeFixture {
 	files := map[string]string{
 		crewRunModeOwnerRoot + "/product.json":                        crewRunModeOwnerProduct,
 		crewRunModeOwnerRoot + "/workflow.json":                       crewRunModeOwnerRuntime,
+		// Schedules, webhooks and functions live in their own files, not in workflow.json (PLAT-871).
+		crewRunModeOwnerRoot + "/schedules.json": `{"schedules":[{"id":"sched-1","name":"Nightly","project":{"kind":"crew","id":"crew-aaa"},"when":{"cron":"0 2 * * *"},"action":{"type":"message"},"input":{"messages":["Review"]},"run_as":"owner","enabled":true}]}`,
+		crewRunModeOwnerRoot + "/webhooks.json":  `{"webhooks":[{"id":"trig-public","name":"Hook","project":{"kind":"crew","id":"crew-aaa"},"enabled":true,"path":"/api/hooks/trig-public","action":{"type":"message"},"input":{"messages":["Hook"]},"run_as":"owner","auth":{"mode":"bearer","encrypted_secret":"TOP-SECRET-CIPHERTEXT"}}]}`,
+		crewRunModeOwnerRoot + "/functions.json": `{"functions":[{"id":"trig-internal","name":"review","description":"Review","enabled":true,"action":{"type":"message"},"input":{"messages":["Review"]}}]}`,
 		crewRunModeOwnerRoot + "/MEMORY.md":                           "# Alpha brief",
 		crewRunModeOwnerRoot + "/code/main.py":                        "print('hi')",
 		crewRunModeOwnerRoot + "/code/blob.bin":                       "ab\x00cd",
@@ -1112,10 +1111,14 @@ func TestSharedCallerGuestTurnGetsOutboundFunctionCallsOnly(t *testing.T) {
 		t.Fatalf("reader register: %v", err)
 	}
 	for _, name := range outbound {
-		// A reader's ask may list the owner's published functions; it cannot call them or answer for them.
-		if _, ok := reader.tools[name]; ok && name != "project_functions_list" {
+		// A reader's ask may list the owner's published functions and call them (the published-function tools, this Crew
+		// only, PLAT-750); it cannot answer for other callers' functions.
+		if _, ok := reader.tools[name]; ok && name != "project_functions_list" && name != crewPublishedCallToolName && name != crewPublishedGetToolName {
 			t.Fatalf("an ordinary reader chat registered outbound %q", name)
 		}
+	}
+	if call, ok := reader.tools[crewPublishedCallToolName]; ok && !strings.Contains(call.desc, "owner published") {
+		t.Fatalf("a reader's call tool is not the published-function tool: %q", call.desc)
 	}
 }
 
@@ -1288,7 +1291,7 @@ func TestCrewSessionModeFollowsReadOnlyTurn(t *testing.T) {
 	if !strings.Contains(got, "Run mode") || !strings.Contains(got, "shared chat channel") || strings.Contains(got, "alone") {
 		t.Fatalf("read-only channel turn (running as the owner) notice = %q", got)
 	}
-	if got := crewSessionModeForTurn(req, "owner", "", profile, true); !strings.Contains(got, "alone") || strings.Contains(got, "project_functions_call") {
+	if got := crewSessionModeForTurn(req, "owner", "", profile, true); !strings.Contains(got, "alone") || strings.Contains(got, "functions action=list/call/status") {
 		t.Fatalf("read-only web turn notice = %q", got)
 	}
 	// A shared caller's function call or ask (it runs as the owner for the guest) is told it may call other functions, with the
@@ -1296,7 +1299,7 @@ func TestCrewSessionModeFollowsReadOnlyTurn(t *testing.T) {
 	guestReq := req
 	guestReq.CrewGuestCaller = "someone"
 	got = crewSessionModeForTurn(guestReq, "owner", "", profile, true)
-	if !strings.Contains(got, "project_functions_call") || !strings.Contains(got, "owner's authority") || !strings.HasSuffix(got, sessionModeClose) {
+	if !strings.Contains(got, "functions action=list/call/status") || !strings.Contains(got, "owner's authority") || !strings.HasSuffix(got, sessionModeClose) {
 		t.Fatalf("shared caller notice = %q", got)
 	}
 	code := &resolvedAgentProfile{}

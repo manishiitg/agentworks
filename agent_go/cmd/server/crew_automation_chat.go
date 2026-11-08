@@ -19,17 +19,13 @@ var errScriptTimerInputs = fmt.Errorf("script timer inputs are incomplete")
 // Saved work retains its own run identity; the chat is its durable destination,
 // never a replacement for a workflow checkpoint or a provider session handle.
 func validateExecutableSchedule(ctx context.Context, sctx *ScheduleContext) error {
-	if sctx.WorkflowKind == "relay" && !productEnabled("relays") {
-		return errFlowsDisabled
+
+	if sctx.Schedule.GroupNames != nil {
+		return fmt.Errorf(retiredWorkflowGroupsMessage)
 	}
-	if sctx.WorkflowKind != "relay" {
-		if sctx.Schedule.GroupNames != nil {
-			return fmt.Errorf(retiredWorkflowGroupsMessage)
-		}
-		if sctx.Schedule.InputPreset != "" || len(sctx.Schedule.Inputs) > 0 {
-			if _, err := resolveWorkflowInvocationInputs(ctx, sctx.WorkspacePath, sctx.Schedule.InputPreset, sctx.Schedule.Inputs); err != nil {
-				return err
-			}
+	if sctx.Schedule.InputPreset != "" || len(sctx.Schedule.Inputs) > 0 {
+		if _, err := resolveWorkflowInvocationInputs(ctx, sctx.WorkspacePath, sctx.Schedule.InputPreset, sctx.Schedule.Inputs); err != nil {
+			return err
 		}
 	}
 

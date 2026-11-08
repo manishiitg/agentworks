@@ -19,7 +19,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
@@ -925,25 +924,6 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 		}
 		profileID := mux.Vars(r)["id"]
 		profile, err := registry.Resolve(profileID, version, GetUserIDFromContext(r.Context()))
-		// Relay's product catalog is readable here, but its chats keep using
-		// the authorized workflow Builder path, not generic profile execution.
-		if profileID == "relays" {
-			if !productEnabled("relays") {
-				writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
-				return
-			}
-			profiles, catalogErr := relayproduct.BuiltinAgentProfiles()
-			if catalogErr != nil {
-				writeAgentProfileError(w, http.StatusInternalServerError, "product catalog unavailable")
-				return
-			}
-			profile, err = profiles[0], nil
-			profile.Product = "relays"
-			if version != 0 && version != profile.Version {
-				writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
-				return
-			}
-		}
 		if err != nil {
 			writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 			return
@@ -1008,15 +988,6 @@ func agentProfileSkillDefaults(profile agentprofiles.Profile) (map[string][]stri
 		defaults = map[string][]string{}
 		for _, mode := range []string{"builder", "run"} {
 			defaults[mode] = appendUniqueStrings(append([]string(nil), profile.Skills...), agentworksproduct.ChatSkills(mode)...)
-		}
-	case "relays":
-		manifest, err := relayproduct.Manifest()
-		if err != nil {
-			return nil, err
-		}
-		defaults = map[string][]string{}
-		for _, mode := range []string{"builder", "run"} {
-			defaults[mode] = appendUniqueStrings(append([]string(nil), profile.Skills...), manifest.Chat[mode].Skills...)
 		}
 	}
 	return defaults, nil

@@ -12,7 +12,7 @@ import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
 import { productUrlViewChanged } from '../utils/productUrlNavigation'
 import WelcomeAiReadiness from './WelcomeAiReadiness'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
-import { followAppLink, openAppProduct } from '../utils/appNavigation'
+import { openAppProduct } from '../utils/appNavigation'
 import { OPEN_HOME_EVENT } from '../utils/homeNavigation'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
@@ -29,7 +29,7 @@ import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 
 
 export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
-const WORK_PRODUCT_ORDER: ProductSurface[] = ['work', 'agentworks', 'relays']
+const WORK_PRODUCT_ORDER: ProductSurface[] = ['work', 'agentworks']
 
 export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   // Single-product accounts go straight to their workspace; Getting started can still open this page.

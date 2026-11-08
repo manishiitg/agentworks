@@ -22,7 +22,7 @@ const crewPlanReadLimit = 20000
 func crewDescribeOperations(operation string) (string, error) {
 	definitions := crewPlanDefinitions()
 	if operation != "" {
-		definitions = slices.DeleteFunc(definitions, func(d workflow.ExternalPlanToolDefinition) bool { return d.Name != operation })
+		definitions = slices.DeleteFunc(definitions, func(d workflow.WorkflowToolDefinition) bool { return d.Name != operation })
 		if len(definitions) == 0 {
 			return "", fmt.Errorf("choose a supported editing operation: %s", strings.Join(crewPlanOperations, ", "))
 		}

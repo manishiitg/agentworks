@@ -254,13 +254,11 @@ func workflowWebhookDTO(s WorkflowSchedule) workflowWebhookResponse {
 }
 
 func workflowWebhookRoutes(ctx context.Context, workspacePath string) ([]webhookRouteOption, error) {
-	manifest, _, err := ReadWorkflowManifest(ctx, workspacePath)
+	_, _, err := ReadWorkflowManifest(ctx, workspacePath)
 	if err != nil {
 		return nil, err
 	}
-	if isPythonRelay(manifest) {
-		return []webhookRouteOption{}, nil
-	}
+
 	plan, err := readPlanFromWorkspace(ctx, workspacePath)
 	if err != nil {
 		return nil, err
@@ -333,6 +331,9 @@ func validateWebhookPayloadMappings(ctx context.Context, workspacePath string, c
 		return nil
 	}
 	mappings := cfg.PayloadMappings
+	if err := validateWebhookInputMappings(ctx, workspacePath, cfg); err != nil {
+		return err
+	}
 	if cfg.InputMode == "envelope" {
 		return errors.New("payload_mappings require input_mode=raw")
 	}
@@ -620,7 +621,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 		cfg.AllowedVariables = req.AllowedVariables
 	}
 	if req.PayloadMappings != nil {
-		if req.PayloadMappings.Group == nil && len(req.PayloadMappings.Routes) == 0 && req.PayloadMappings.Step == nil {
+		if req.PayloadMappings.Group == nil && len(req.PayloadMappings.Routes) == 0 && req.PayloadMappings.Step == nil && len(req.PayloadMappings.Inputs) == 0 {
 			cfg.PayloadMappings = nil
 		} else {
 			cfg.PayloadMappings = req.PayloadMappings
@@ -679,6 +680,25 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 		caller = nil
 	}
 	sched := WorkflowSchedule{ChatID: req.ChatID, ID: id, Name: strings.TrimSpace(req.Name), ScheduleType: "webhook", Timezone: "UTC", Enabled: req.Enabled, RouteSelections: req.RouteSelections, InputPreset: req.InputPreset, Inputs: req.Inputs, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", Webhook: cfg, Kind: normalizeTriggerKind(effectiveKind), Caller: caller}
+	if !function && manifest.crewExecutable != nil && manifest.crewExecutable.Kind == "script" {
+		definitions, err := readWorkflowInputDefinitions(r.Context(), req.WorkspacePath)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		if err := validateWebhookInputMappingContract(definitions, cfg, sched.Inputs); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		exposed := webhookMappedInputNames(cfg.PayloadMappings)
+		if cfg.InputMode == "envelope" {
+			exposed = cfg.AllowedVariables
+		}
+		if _, err := workflowCallerInputSchema(definitions, exposed, sched.InputPreset, sched.Inputs); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+	}
 	if function {
 		sched.Function = spec
 		definitions, readErr := readWorkflowInputDefinitions(r.Context(), req.WorkspacePath)

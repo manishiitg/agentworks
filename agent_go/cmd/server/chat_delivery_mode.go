@@ -24,9 +24,6 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 	if refreshing || req.RestartCodingCLI || sessionSecretsChanged(sessionID) || api.retainedCLIProviderDiffers(sessionID, queuedRequestProvider(req)) || api.launchedAgentProfileDiffers(sessionID) {
 		return "refreshing", false
 	}
-	if api.externalBuilderOwnsSession(sessionID) {
-		return "waiting", false
-	}
 	api.runningAgentsMux.RLock()
 	agent := api.runningAgents[sessionID]
 	api.runningAgentsMux.RUnlock()

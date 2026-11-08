@@ -28,7 +28,6 @@ const deprecatedDefaultAuthSecret = "dev-secret-change-in-production"
 
 // UserClaims represents the JWT claims for authenticated users
 type UserClaims struct {
-	ExternalBuilderOperationID string              `json:"-"` // Trusted operation binding; never accepted from JWT/JSON.
 	SlackTrustedApp            bool                `json:"-"` // Set only by the validated server-owned event adapter.
 	ExecutionPrincipal         *ExecutionPrincipal `json:"-"`
 	AccessToken                *accesstokens.Token `json:"-"` // Server-validated PAT restrictions; never read from JWT claims.

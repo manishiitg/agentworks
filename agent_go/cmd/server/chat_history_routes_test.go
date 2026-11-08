@@ -130,6 +130,8 @@ func TestWorkflowPathFromBuilderConversation(t *testing.T) {
 // PLAT-872: an existing Builder saved tmux for Codex, causing resume to
 // prelaunch a terminal even though the installed adapter now uses app-server.
 func TestRestoredRuntimeTransportIgnoresObsoleteTmuxMetadata(t *testing.T) {
+	// Claude Code defaults to the SDK transport; tmux is the opt-in terminal mode this test exercises.
+	t.Setenv("CLAUDE_CODE_TRANSPORT", "tmux")
 	for _, tc := range []struct {
 		provider  string
 		transport string
@@ -137,7 +139,7 @@ func TestRestoredRuntimeTransportIgnoresObsoleteTmuxMetadata(t *testing.T) {
 	}{
 		{"codex-cli", "app-server", false},
 		{"pi-cli", "rpc", false},
-		{"cursor-cli", "acp", false},
+		{"cursor-cli", "sdk", false},
 		{"claude-code", "tmux", true},
 		{"unknown-cli", "", false},
 	} {

@@ -22,21 +22,21 @@ export function listenForProjectIntegrationNavigation(open: () => void) {
   return () => window.removeEventListener(integrationNavigationEvent, receive)
 }
 
-export function isProjectIntegrationChat(tab: ChatTab | undefined, includeRelay = false): tab is ChatTab {
+export function isProjectIntegrationChat(tab: ChatTab | undefined): tab is ChatTab {
   const meta = tab?.metadata
   if (!tab || !meta || meta.isViewOnly || meta.workshopMode === 'run' || meta.isExecutionRun || meta.isScheduledRun || meta.isBotRun || meta.agentProfileTabCanWrite === false) return false
   if (meta.agentProfileId === 'work' && meta.agentProfileProjectId && !meta.agentProfileBuilder) return true
   if (meta.mode !== 'workflow' || meta.phaseId !== 'workflow-builder' || !meta.presetQueryId) return false
-  return useGlobalPresetStore.getState().workflowPresets.some(preset => preset.id === meta.presetQueryId && (includeRelay || preset.workflowKind !== 'relay'))
+  return useGlobalPresetStore.getState().workflowPresets.some(preset => preset.id === meta.presetQueryId)
 }
 
 /** Reveal the actual product as well as its tab, so a draft cannot stay behind
  * another product or an account-settings overlay. Never creates a Vault chat. */
 export function revealProjectIntegrationChat(tab: ChatTab, openVault = false, target: IntegrationSection = 'connected') {
-  if (!isProjectIntegrationChat(tab, true)) throw new Error('Open your own Crew or Goal tab to manage integrations.')
+  if (!isProjectIntegrationChat(tab)) throw new Error('Open your own Crew or Goal tab to manage integrations.')
   const crew = tab.metadata?.agentProfileId === 'work'
   if (crew && openVault) writeWorkspaceViewPreference('work', tab.metadata!.agentProfileProjectId!, 'mcp')
-  openProductWorkspace(crew ? 'work' : useGlobalPresetStore.getState().workflowPresets.find(preset => preset.id === tab.metadata?.presetQueryId)?.workflowKind === 'relay' ? 'relays' : 'agentworks')
+  openProductWorkspace(crew ? 'work' : 'agentworks')
   if (!activateTab(tab.tabId)) throw new Error('This project chat is no longer available.')
   if (openVault) {
     if (crew) {
@@ -51,10 +51,10 @@ export async function openLastProjectIntegrationChat(targetSection: IntegrationS
   await waitForChatStoreHydration()
   const state = useChatStore.getState()
   if (!useGlobalPresetStore.getState().workflowPresetsLoaded && Object.values(state.chatTabs).some(tab => tab.metadata?.phaseId === 'workflow-builder')) await useGlobalPresetStore.getState().refreshPresets()
-  const candidates = Object.values(state.chatTabs).filter(tab => isProjectIntegrationChat(tab, true))
+  const candidates = Object.values(state.chatTabs).filter(tab => isProjectIntegrationChat(tab))
   const target = sessionId ? candidates.find(tab => tab.sessionId === sessionId) : candidates.find(tab => tab.tabId === state.activeTabId)
     ?? candidates.sort((a, b) => (b.lastAccessedAt ?? b.createdAt) - (a.lastAccessedAt ?? a.createdAt))[0]
-  if (!target) throw new Error('Open a Crew, Goal or Flow chat first, then choose Integrations. Setup happens in that chat.')
+  if (!target) throw new Error('Open a Crew or workflow chat first, then choose Integrations. Setup happens in that chat.')
   revealProjectIntegrationChat(target, true, targetSection)
   return target.tabId
 }

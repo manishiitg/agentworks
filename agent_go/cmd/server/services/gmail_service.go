@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -168,13 +169,18 @@ type GmailService struct {
 type gmailAuthCacheEntry struct {
 	status     *GmailAuthStatus
 	cachedAt   time.Time
-	refreshing bool // a background refresh is already in flight for this key
+	verifiedAt time.Time // Last definitive result, never extended by a failed probe.
+	refreshing bool      // a background refresh is already in flight for this key
 }
 
 // gmailAuthCacheTTL bounds how stale a cached auth status may be. Short enough
 // that re-authenticating shows up almost immediately, long enough that opening
 // a popup twice does not pay for two subprocesses.
 const gmailAuthCacheTTL = 60 * time.Second
+
+// A temporary status-check failure must not interrupt a long run's already
+// verified access. Never keep such evidence beyond the maximum script lifetime.
+const gmailAuthVerifiedMaxAge = 6 * time.Hour
 
 var (
 	globalGmailService *GmailService
@@ -341,7 +347,39 @@ type GmailAuthStatus struct {
 	// Checking reports that no fresh result is known yet and a refresh is
 	// running in the background. Callers that must not block (the notification
 	// settings UI) render a pending state and re-read shortly after.
-	Checking bool `json:"checking,omitempty"`
+	Checking         bool `json:"checking,omitempty"`
+	probeUnavailable bool // A transport failure, not a definitive OAuth refusal.
+}
+
+// Called under g.mu at both synchronous and asynchronous cache writes. The
+// connection's existing cache identity/invalidation stays the authority; this
+// never borrows another account or treats requested services as granted scopes.
+func keepVerifiedGoogleStatus(key string, entry *gmailAuthCacheEntry, observed GmailAuthStatus, started time.Time) GmailAuthStatus {
+	now := time.Now()
+	age := -time.Millisecond
+	if !entry.verifiedAt.IsZero() {
+		age = now.Sub(entry.verifiedAt)
+	}
+	reused := false
+	outcome := "verified"
+	if observed.probeUnavailable {
+		outcome = "probe_unavailable"
+		if entry.status != nil && entry.status.Authenticated && len(entry.status.Scopes) > 0 && age >= 0 && age <= gmailAuthVerifiedMaxAge {
+			observed = *entry.status
+			observed.Detail = "Google account check is temporarily unavailable; using this account's last verified access."
+			reused = true
+		}
+	} else {
+		entry.verifiedAt = now
+		age = 0
+		if !observed.Authenticated {
+			outcome = "authorization_refused"
+		}
+	}
+	if observed.Backend == "gog" {
+		log.Printf("[GOOGLE_AUTH] connection=%s outcome=%s reused=%t verified_age_ms=%d probe_ms=%d scope_count=%d", key, outcome, reused, age.Milliseconds(), now.Sub(started).Milliseconds(), len(observed.Scopes))
+	}
+	return observed
 }
 
 // AuthStatus shells out to `gws auth status` and interprets the result. It is
@@ -382,6 +420,7 @@ func (g *GmailService) authStatusBlocking(ctx context.Context, key string, cfg *
 		return *cached
 	}
 
+	started := time.Now()
 	st := g.computeAuthStatus(ctx, gwsPath, useGog, gogPath, cfg)
 	g.mu.Lock()
 	if g.authCaches == nil {
@@ -392,6 +431,7 @@ func (g *GmailService) authStatusBlocking(ctx context.Context, key string, cfg *
 		entry = &gmailAuthCacheEntry{}
 		g.authCaches[key] = entry
 	}
+	st = keepVerifiedGoogleStatus(key, entry, st, started)
 	entry.status, entry.cachedAt = &st, time.Now()
 	g.mu.Unlock()
 	if key != "" {
@@ -738,11 +778,13 @@ func (g *GmailService) deliverNotification(ctx context.Context, dest *Notificati
 		msgID, err := g.sendRaw(ctx, cfg, to, cc, subject, body, htmlBody, attachments)
 		g.recordSend("send", resolvedID, workflowName, to, cc, msgID, err)
 		result := "sent"
-		if err != nil {
+		if errors.Is(err, errGmailSendUnconfirmed) {
+			result = "unknown"
+		} else if err != nil {
 			result = "failed"
 		}
 		log.Printf("[NOTIFY] item=%s sender=%s account=%s result=%s reason=transport_result", gmailNotificationWorkspace(dest), senderKind, resolvedID, result)
-		if err != nil && senderKind == "personal" {
+		if err != nil && senderKind == "personal" && !errors.Is(err, errGmailSendUnconfirmed) {
 			err = fmt.Errorf("Email could not be sent using the Google account added to this item; check its connection in Google apps")
 		}
 		if err != nil {
@@ -809,7 +851,7 @@ func (g *GmailService) sendRaw(ctx context.Context, cfg *GmailConfig, to string,
 		detail := strings.TrimSpace(stderr.String() + " " + stdout.String())
 		return "", fmt.Errorf("gws gmail users messages send failed: %w: %s", err, detail)
 	}
-	return parseGwsMessageID(stdout.Bytes()), nil
+	return parseGwsMessageID(stdout.Bytes())
 }
 
 func gmailHTMLBody(body, htmlBody string) string {
@@ -1125,26 +1167,26 @@ func gmailSubject(message string) string {
 	return "[Agent] " + line
 }
 
-// parseGwsMessageID best-effort extracts a message/thread ID from gws JSON
-// output. gws emits structured JSON for agents; field names vary by command,
-// so we probe the common ones and fall back to a non-empty sentinel so the
-// notification manager logs the send as successful.
-func parseGwsMessageID(out []byte) string {
+var errGmailSendUnconfirmed = errors.New("Gmail send outcome is unknown: Google returned no message ID; check Sent before sending again")
+
+// PLAT-746: a successful CLI exit alone does not confirm an email. Thread IDs
+// and missing/unreadable output must never become a synthetic message receipt.
+func parseGwsMessageID(out []byte) (string, error) {
 	trimmed := bytes.TrimSpace(out)
 	if len(trimmed) == 0 {
-		return "sent"
+		return "", errGmailSendUnconfirmed
 	}
 	var m map[string]any
 	if err := json.Unmarshal(trimmed, &m); err == nil {
-		for _, key := range []string{"id", "messageId", "message_id", "threadId", "thread_id"} {
+		for _, key := range []string{"id", "messageId", "message_id"} {
 			if v, ok := m[key]; ok {
-				if s, ok := v.(string); ok && s != "" {
-					return s
+				if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+					return strings.TrimSpace(s), nil
 				}
 			}
 		}
 	}
-	return "sent"
+	return "", errGmailSendUnconfirmed
 }
 
 // AuthStatusCached returns the last known auth status for the legacy singleton
@@ -1209,9 +1251,11 @@ func (g *GmailService) authStatusCachedFor(key string, cfg *GmailConfig) GmailAu
 				// Detached from the request: the caller has already returned.
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
+				started := time.Now()
 				st := g.computeAuthStatus(ctx, gwsPath, useGog, gogPath, cfg)
 				g.mu.Lock()
 				if e := g.authCaches[key]; e != nil {
+					st = keepVerifiedGoogleStatus(key, e, st, started)
 					e.status, e.cachedAt, e.refreshing = &st, time.Now(), false
 				}
 				g.mu.Unlock()

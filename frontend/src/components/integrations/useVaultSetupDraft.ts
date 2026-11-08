@@ -11,7 +11,7 @@ export function useVaultSetupDraft(tabId?: string) {
     try {
       const state = useChatStore.getState()
       const tab = state.chatTabs[tabId ?? state.activeTabId ?? '']
-      if (!isProjectIntegrationChat(tab, true)) throw new Error('Open your own Crew or Goal chat to manage Vault here.')
+      if (!isProjectIntegrationChat(tab)) throw new Error('Open your own Crew or Goal chat to manage Vault here.')
       revealProjectIntegrationChat(tab)
       await openWorkspacePaneChatWithDraft({ tabId: tab.tabId, message })
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not open this project chat.') }

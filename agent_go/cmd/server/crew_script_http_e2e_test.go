@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -211,6 +213,15 @@ def verify():
 		t.Fatal(err)
 	}
 	write(legacyConfig, "retired settings: not a JSON definition")
+	// PLAT-746-471: stale plan/variable records cannot displace the saved
+	// script, its canonical typed inputs or its real HTTP/timer/MCP execution.
+	for _, old := range []string{"planning/plan.json", "variables/variables.json"} {
+		path, err := fsutil.WorkspacePath(docs, binding.Root+"/"+old)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(path, "retired record: not a JSON definition")
+	}
 	kbJSON, _ := json.Marshal(kbPath)
 	write(filepath.Join(sourceRoot, "main.py"), "from pathlib import Path\nassert Path("+string(kbJSON)+").read_text() == 'fixture knowledge'\n"+`import json, os, sys
 from bridge_probe import verify
@@ -280,7 +291,7 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 	if err != nil {
 		t.Fatal(err)
 	}
-	for file, content := range map[string]string{"nested/__init__.py": "", "nested/prepare.py": "from agentworks import step, check\n@step('Prepare report')\ndef prepare():\n    assert check('Prepared', True, 'Fixture ready').ok\n    return True\n"} {
+	for file, content := range map[string]string{"requirements.txt": "# No third-party packages needed for this fixture.\n", "nested/__init__.py": "", "nested/prepare.py": "from agentworks import step, check\n@step('Prepare report')\ndef prepare():\n    assert check('Prepared', True, 'Fixture ready').ok\n    return True\n"} {
 		body, _ := json.Marshal(map[string]string{"content": content})
 		request, _ := http.NewRequestWithContext(ctx, http.MethodPut, graphEndpoint.URL+"/api/crew-script-file?workspace_path="+binding.Root+"&file="+file, bytes.NewReader(body))
 		request.Header.Set("Authorization", "Bearer "+ownerToken)
@@ -458,6 +469,44 @@ Path(os.environ['STEP_OUTPUT_DIR'], 'result.json').write_text(json.dumps({'count
 			var runRecord RunMetadata
 			if readErr != nil || json.Unmarshal(metadata, &runRecord) != nil || runRecord.ExecutionID == "" || len(runRecord.PythonSteps) != 1 || len(runRecord.PythonEvidence) != 1 {
 				t.Fatalf("actual script run lost durable attempt/step/check record: %s %v", metadata, readErr)
+			}
+			// PR1567: requirements saved through the actual source editor are
+			// retained byte-for-byte and covered by the executed bundle hash.
+			codeRoot := filepath.Join(runRoot, "execution/saved/code")
+			pins, readErr := os.ReadFile(filepath.Join(codeRoot, "requirements.txt"))
+			if readErr != nil || string(pins) != "# No third-party packages needed for this fixture.\n" {
+				t.Fatal("requirements missing from executed snapshot", readErr)
+			}
+			var sourceFiles []string
+			if err := filepath.WalkDir(codeRoot, func(file string, entry os.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if entry.IsDir() && entry.Name() == "__pycache__" {
+					return filepath.SkipDir
+				}
+				if !entry.IsDir() {
+					sourceFiles = append(sourceFiles, file)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			sort.Strings(sourceFiles)
+			digest := sha256.New()
+			for _, file := range sourceFiles {
+				relative, _ := filepath.Rel(codeRoot, file)
+				content, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				fmt.Fprintf(digest, "%s\x00", filepath.ToSlash(relative))
+				digest.Write(content)
+				digest.Write([]byte{0})
+			}
+			var hashRecord map[string]any
+			if json.Unmarshal(metadata, &hashRecord) != nil || hashRecord["source_snapshot_hash"] != fmt.Sprintf("%x", digest.Sum(nil)) {
+				t.Fatal("executed requirements not covered by source hash")
 			}
 			for _, recorded := range runRecord.PythonSteps {
 				start, startErr := time.Parse(time.RFC3339Nano, recorded.StartedAt)

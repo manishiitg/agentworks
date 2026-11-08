@@ -436,7 +436,7 @@ function LinkCode({ link }: { link: string }) {
 
 function LaptopCard({ sessionId }: { sessionId?: string }) {
   const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
-  const endpoint = laptopSettingsEndpoint(undefined, tab?.metadata?.agentProfileId, tab?.metadata?.agentProfileProjectId)
+  const endpoint = laptopSettingsEndpoint(tab?.metadata?.agentProfileId, tab?.metadata?.agentProfileProjectId)
   const { devices } = useLocalFileDevices(Boolean(endpoint), tab?.metadata?.agentProfileWorkspace)
   const [settings, setSettings] = useState<LaptopSettings | null>(null)
   useEffect(() => {

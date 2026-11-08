@@ -7,7 +7,7 @@ export function captureReportData(api: ReportDataApi, enabled: boolean, includeA
   const results = new Map<string, { method: string; args: unknown[]; value?: unknown; pending: Promise<unknown> }>()
   const recorded = { ...api }
   if (enabled) {
-    for (const method of [...(['query', 'get', 'getText', 'getHtml', 'getRelayRuns', 'getCosts', 'run'] as const), ...(includeAssets ? ['fileUrl', 'mediaUrl'] as const : [])]) {
+    for (const method of [...(['query', 'get', 'getText', 'getHtml', 'getCosts', 'run'] as const), ...(includeAssets ? ['fileUrl', 'mediaUrl'] as const : [])]) {
       const original = api[method] as (...args: unknown[]) => Promise<unknown>
       Object.assign(recorded, { [method]: (...args: unknown[]) => {
         const key = JSON.stringify([method, args])

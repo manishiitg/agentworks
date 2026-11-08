@@ -15,7 +15,6 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 // externalRunToolHints documents the heavily used proxied run tools for the
@@ -23,7 +22,7 @@ import (
 // tool without a hint here still proxies with the generic description.
 var externalRunToolHints = map[string]string{
 	"execute_step":      "Start one workflow step in the background. Arguments: step_id (required; plan step ID or positional like '1'), group_name, human_input, script_parameters (object), tier (high|medium|low). Uses normal permissions, live database updates and real tool actions.",
-	"run_full_workflow": "Start a saved Python workflow directly with optional input_preset and typed inputs. Poll runs status with the returned session_id and read runs get for its saved record. Older plans also accept human_inputs and route_selections.",
+	"run_full_workflow": "Start a saved Python workflow directly with optional input_preset and typed inputs. Poll runs status with the returned session_id and read runs get for its saved record.",
 	"send_step_message": "Steer a live execution. Arguments: execution_id (required), message (required).",
 	"query_step":        "One-off live status check for a tracked execution. Arguments: step_id or execution_id.",
 }
@@ -33,7 +32,7 @@ var externalRunToolHints = map[string]string{
 // every other argument passes through to the run-mode tool call verbatim,
 // flat, so a future native implementation keeps the same call shape.
 func externalRunProxyTool(name string) externalTool {
-	description := "Run-mode tool `" + name + "` (requires the runs:execute scope): start a new pinned Run-mode session, or continue session_id, and instruct it to call this tool with the remaining arguments as its parameters. Poll runs action=status for completion."
+	description := "Workflow operation `" + name + "` (requires runs:execute). Start a saved Python workflow directly; poll runs action=status for completion. No assistant turn is started."
 	if hint, ok := externalRunToolHints[name]; ok {
 		description += " " + hint
 	}
@@ -100,53 +99,39 @@ func (api *StreamingAPI) externalRunSessionSetup(w http.ResponseWriter, r *http.
 	return sessionID, persisted, true
 }
 
-// externalRunProxy adapts one run tool call to the existing chat runtime: it
-// synthesizes a session (or continues the caller's own) and sends a single
-// instruction turn invoking the tool. The turn has the caller's role: Run only
-// for someone who cannot edit the workflow.
+// externalRunProxy starts a saved Python workflow directly. Conversation belongs
+// to a Crew agent; a workflow run does not create or instruct an assistant.
 func (api *StreamingAPI) externalRunProxy(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow) {
-	if externalWorkflowIsScript(workflow) && (name == "execute_step" || name == "debug_step") {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "Python step labels are not separate runnable steps. Use runs start for the workflow, or runs logs to inspect a saved run.")
+	if name != "run_full_workflow" {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "Run the Python workflow with runs start, or inspect its saved run with runs logs. Ask a Crew agent for help.")
+		return
+	}
+	if !externalWorkflowIsScript(workflow) {
+		externalError(w, http.StatusBadRequest, "workflow_unavailable", "This workflow uses the retired plan engine. Ask the owner to convert it to a Python workflow in its Crew.")
 		return
 	}
 	sessionID, persisted, ok := api.externalRunSessionSetup(w, r, args, workflow)
 	if !ok {
 		return
 	}
-	access := workflowAccessForManifest(GetUserFromContext(r.Context()), workflow.Manifest)
-	runOnly := access != WorkflowAccessOwner && access != WorkflowAccessWrite
+	options, err := directScriptRunOptions(r.Context(), args, workflow)
+	if err != nil {
+		externalError(w, http.StatusBadRequest, "invalid_arguments", err.Error())
+		return
+	}
 	query := QueryRequest{
-		Query: externalRunInstruction(name, args), AgentMode: "workflow_phase", PhaseID: "workflow-builder",
+		Query: "Run: " + workflow.Manifest.Label, AgentMode: "workflow",
 		PresetQueryID: workflow.Manifest.ID, SelectedFolder: workflow.WorkspacePath,
-		PinRunMode: runOnly, TriggeredBy: "external", SessionTitle: "External run: " + name,
-		ExecutionOptions: &ExecutionOptions{WorkshopMode: map[bool]string{true: "run", false: "workshop"}[runOnly]},
+		TriggeredBy: "external", SessionTitle: "External run",
+		ExecutionOptions: &ExecutionOptions{InputPreset: options.InputPreset, Inputs: options.Inputs, ExecutionStrategy: options.ExecutionStrategy, SelectedRunFolder: options.SelectedRunFolder},
 	}
 	if persisted {
 		query.RestoredConversationSessionID = sessionID
 	}
-	if name == "run_full_workflow" && externalWorkflowIsScript(workflow) {
-		options, err := directScriptRunOptions(r.Context(), args, workflow)
-		if err != nil {
-			externalError(w, http.StatusBadRequest, "invalid_arguments", err.Error())
-			return
-		}
-		query.AgentMode, query.PhaseID, query.Query = "workflow", "", "Run: "+workflow.Manifest.Label
-		query.ExecutionOptions = &ExecutionOptions{InputPreset: options.InputPreset, Inputs: options.Inputs, ExecutionStrategy: options.ExecutionStrategy, SelectedRunFolder: options.SelectedRunFolder}
-		// An external HTTP request ends after the start receipt. Keep values,
-		// while the existing workflow cancel function and token watcher own
-		// this background run's lifetime (as for other external starts).
-		r = r.WithContext(context.WithValue(context.WithoutCancel(r.Context()), directWebhookExecutionKey{}, options))
-	}
+	// The start receipt ends this request, while the existing run cancel function
+	// and token watcher own the background run's lifetime.
+	r = r.WithContext(context.WithValue(context.WithoutCancel(r.Context()), directWebhookExecutionKey{}, options))
 	api.forwardRunTurn(w, r, query, sessionID, workflow)
-}
-
-// externalChat sends the caller's message verbatim as a turn on a pinned
-// Run-mode session: a free-form conversation instead of a tool invocation.
-// Sessions are shared with the run tools, so one conversation can ask,
-// run, and ask about the run.
-func (api *StreamingAPI) externalChat(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
-	target := triggerTarget{Kind: triggerCallerWorkflow, Path: workflow.WorkspacePath, Label: firstNonEmptyTrimmed(workflow.Manifest.Label, workflow.Manifest.ID), Manifest: workflow.Manifest}
-	api.externalSendMessage(w, r, args, target)
 }
 
 func (api *StreamingAPI) forwardRunTurn(w http.ResponseWriter, r *http.Request, query QueryRequest, sessionID string, workflow DiscoveredWorkflow) {
@@ -181,39 +166,12 @@ func (api *StreamingAPI) forwardRunTurn(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
-// externalRunInstruction renders the single turn a proxied call sends. The
-// tool's own arguments pass through verbatim; the scope guard is
-// belt-and-braces behind the Run-mode tool surface, which withholds
-// authoring tools regardless of what the prose says.
-func externalRunInstruction(name string, args map[string]any) string {
-	params := map[string]any{}
-	for key, value := range args {
-		if key == "workflow_id" || key == "session_id" {
-			continue
-		}
-		params[key] = value
-	}
-	name, params = platformtools.Invocation(name, params)
-	var sb strings.Builder
-	sb.WriteString("Call the run-mode tool \"" + name + "\" now")
-	if len(params) == 0 {
-		sb.WriteString(" with no arguments")
-	} else {
-		raw, _ := json.Marshal(params)
-		sb.WriteString(" with these arguments: " + string(raw))
-	}
-	sb.WriteString(". Use this tool for the requested action (you may read workflow files to resolve its arguments); do not modify the plan, configuration, schedules, secrets, or any file outside this run's own execution outputs. Report the tool's result, including any execution_id, run folder, or schedule run reference it returns.")
-	return sb.String()
-}
-
 // externalRunCall serves the JSON-direct run operations: the run_status
 // poller plus the native run.tools implementations.
 func (api *StreamingAPI) externalRunCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow) {
 	switch name {
 	case "run_status":
 		api.externalRunStatus(w, r, args, workflow)
-	case "chat":
-		api.externalChat(w, r, args, workflow)
 	case "run_reply_input":
 		api.externalRunReplyInput(w, r, args, workflow)
 	case "stop_step":

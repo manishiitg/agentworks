@@ -6,8 +6,8 @@
 # Runs on the Linux build host (see deploy/common/build-once.sh, verify_change_remote). It
 #   1. takes one of VERIFY_SLOTS (default 2) slot locks <builds-dir>/.verify.lock.<n>, so at most that many verifications run at
 #      once (it does NOT take the build lock: builds stay unblocked);
-#   2. fetches the commit and main into a kept mirror (<builds-dir>/.verify-mirror, only new objects each time), clones it locally,
-#      and reads what changed against main and the Verify-* lines of the commit message;
+#   2. fetches the commit, main and dev into a kept mirror (<builds-dir>/.verify-mirror, only new objects each time), clones it locally,
+#      and reads what changed against its base (main, or dev when the commit is based on dev) and the Verify-* lines of the commit message;
 #   3. Go (when agent_go, workspace or mcp-gateway changed, or a Verify-Test line exists): build ./..., vet the changed packages,
 #      cross-build and vet the macOS CLI (only when something outside agent_go/cmd/server changed: the CLI never imports it),
 #      the Verify-Deploy checks, then each Verify-Test line as `go test <line> -count=1`;
@@ -63,14 +63,14 @@ if [[ "$INNER" == 0 ]]; then
   install -d -m 1777 "$BUILDS/.verify-logs"
   find "$BUILDS/.verify-logs" -type f -mtime +2 -delete 2>/dev/null || true
   trap 'rm -rf "$WORK"' EXIT
-  step "Fetching the commit and main (slot $slot)"
+  step "Fetching the commit, main and dev (slot $slot)"
   MIRROR="$BUILDS/.verify-mirror"
   (
     flock -w 600 9 || { echo "The verify mirror has been busy for 10 minutes" >&2; exit 1; }
     [[ -d "$MIRROR/objects" ]] || git init -q --bare "$MIRROR"
     git -C "$MIRROR" remote get-url origin >/dev/null 2>&1 || git -C "$MIRROR" remote add origin "$URL"
     git -C "$MIRROR" remote set-url origin "$URL"
-    GIT_TERMINAL_PROMPT=0 git -C "$MIRROR" fetch -q origin "+refs/heads/main:refs/heads/main" "$SHA"
+    GIT_TERMINAL_PROMPT=0 git -C "$MIRROR" fetch -q origin "+refs/heads/main:refs/heads/main" "+refs/heads/dev:refs/heads/dev" "$SHA"
   ) 9>"$BUILDS/.verify-mirror.lock"
   # --shared reads objects from the mirror; the mirror only grows, so no object can vanish under a running verification.
   git clone -q --shared --no-checkout "$MIRROR" "$WORK/repo"
@@ -78,8 +78,9 @@ if [[ "$INNER" == 0 ]]; then
   [[ "$(git -C "$WORK/repo" rev-parse HEAD)" == "$SHA" ]] || { echo "Checked out the wrong commit" >&2; exit 1; }
   GROUP_AS="$(id -gn "$USER_AS")"
   chown -R "$USER_AS:$GROUP_AS" "$WORK" "$CACHE"
-  SELF="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-  cp "$SELF" "$WORK/verify-change.sh"; chmod 0755 "$WORK/verify-change.sh"; chown "$USER_AS:$GROUP_AS" "$WORK/verify-change.sh"
+  # A queued caller may replace the shared launcher; test this commit's script.
+  cp "$WORK/repo/deploy/common/verify-change.sh" "$WORK/verify-change.sh"; chmod 0755 "$WORK/verify-change.sh"; chown "$USER_AS:$GROUP_AS" "$WORK/verify-change.sh"
+  step "Verifier hashes: checkout=$(sha256sum "$WORK/repo/deploy/common/verify-change.sh" | cut -d' ' -f1) inner=$(sha256sum "$WORK/verify-change.sh" | cut -d' ' -f1)"
   # Not exec: the trap must still remove the scratch folder and the lock (fd 8) stays held.
   runuser -u "$USER_AS" -- env "PATH=$PATH" "HOME=$WORK/home" "VERIFY_STARTED=$STARTED" "VERIFY_CACHE=$CACHE" "VERIFY_SLOT=$slot" \
     bash "$WORK/verify-change.sh" --inner --work "$WORK" --url "$URL" --sha "$SHA" --builds-dir "$BUILDS"
@@ -100,6 +101,10 @@ fi
 export GOWORK=off GOTOOLCHAIN=local GOFLAGS="-modcacherw" NODE_OPTIONS=--max-old-space-size=4096
 cd "$WORK/repo"
 base="$(git merge-base HEAD origin/main)"
+# A commit based on dev is compared with dev, so dev's own changes that main lacks are not checked again.
+if dev_base="$(git merge-base HEAD origin/dev 2>/dev/null)" && [[ "$dev_base" != "$base" ]] && git merge-base --is-ancestor "$base" "$dev_base"; then
+  base="$dev_base"
+fi
 git diff --name-only "$base" HEAD > "$WORK/changed.txt"
 git log -1 --format=%B > "$WORK/message.txt"
 echo "changed files:"; sed 's/^/  /' "$WORK/changed.txt"
@@ -146,6 +151,10 @@ if [[ "$go_needed" == true ]]; then
   done < <(grep -E '^Verify-Deploy:' "$WORK/message.txt" | sed 's/^Verify-Deploy:[[:space:]]*//' || true)
   (cd "$WORK/repo/workspace" && go build -o "$WORK/landlock-runner" ./cmd/landlock-runner) >/dev/null 2>&1 || true
   [[ ! -x "$WORK/landlock-runner" ]] || export AGENTWORKS_LANDLOCK_RUNNER="$WORK/landlock-runner"
+  # Exercise hosted-folder access outside the launcher's private /tmp grant.
+  mkdir -p "$WORK/linux-test-root"
+  export AGENTWORKS_LINUX_TEST_ROOT="$WORK/linux-test-root"
+  step "Verifier inner: sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1) AGENTWORKS_LINUX_TEST_ROOT=$AGENTWORKS_LINUX_TEST_ROOT"
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     case "$line" in

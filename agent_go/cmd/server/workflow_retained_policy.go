@@ -69,8 +69,7 @@ func (api *StreamingAPI) workflowRetainedCompatibility(ctx context.Context, sess
 	if found && manifest.Kind == "relay" {
 		workflowKind = "relay"
 	}
-	key := api.chatPolicySessionKey(resolveWorkflowChatPolicy(session, req, active, readOnlyForRequest(access, req)), workflowKind) +
-		api.workflowChatLaptopPolicyKey(validated, req, readOnlyForRequest(access, req))
+	key := api.chatPolicySessionKey(resolveWorkflowChatPolicy(session, req, active, readOnlyForRequest(access, req)), workflowKind)
 	api.conversationMux.RLock()
 	previous, known := api.lastChatPolicyBySession[session]
 	api.conversationMux.RUnlock()
@@ -247,7 +246,7 @@ func closeWorkflowPolicyCLI(session, provider, reason string) {
 // Synthetic notifications and explicit new turns must wait for their normal
 // lane; they cannot interrupt a foreground turn merely to try warm delivery.
 func (api *StreamingAPI) prepareWorkflowRetainedDelivery(ctx context.Context, session string, req QueryRequest, eligible bool) (bool, bool, error) {
-	if !eligible || api.externalBuilderOwnsSession(session) {
+	if !eligible {
 		return false, false, nil
 	}
 	return api.workflowRetainedCompatibility(ctx, session, req)

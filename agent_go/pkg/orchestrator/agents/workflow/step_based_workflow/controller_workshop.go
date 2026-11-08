@@ -80,7 +80,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	// If group_name was passed, applyWorkshopExecuteOptions already loaded group values.
 	// Otherwise, fall back to LoadVariableValues (reads from variables.json).
 	if hcpo.isRelayExecution() {
-		_, manifest, err := hcpo.variableManager.checkExistingVariables(ctx, hcpo.GetWorkspacePath()+"/variables/variables.json")
+		manifest, err := hcpo.inputDefinitions(ctx)
 		if err != nil {
 			return "", fmt.Errorf("load Flow configuration: %w", err)
 		}
@@ -345,7 +345,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyWorkshopExecuteOptions(ctx conte
 		return releaseGroupSession, nil
 	}
 
-	_, manifest, err := hcpo.variableManager.checkExistingVariables(ctx, hcpo.GetWorkspacePath()+"/variables/variables.json")
+	manifest, err := hcpo.inputDefinitions(ctx)
 	if err != nil {
 		return releaseGroupSession, err
 	}

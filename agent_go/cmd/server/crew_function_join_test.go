@@ -8,8 +8,9 @@ import (
 )
 
 func TestCrewFunctionSubmissionIDSurvivesCompletionAndRestart(t *testing.T) {
-	env := newCrewFunctionEnv(t)
+	// The docs folder comes first: registering the Crews creates their folders there, and a run refuses a Crew without them.
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newCrewFunctionEnv(t)
 	env.svc.heldConversation = nil
 	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
 		return internalSessionTurnResult{FinalResponse: `{ "passed": true }`}, nil
@@ -60,8 +61,9 @@ func TestCrewFunctionSubmissionIDSurvivesCompletionAndRestart(t *testing.T) {
 }
 
 func TestInternalCallFunctionPassesSubmissionID(t *testing.T) {
-	env := newCrewFunctionEnv(t)
+	// The docs folder comes first: registering the Crews creates their folders there, and a run refuses a Crew without them.
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newCrewFunctionEnv(t)
 	env.svc.heldConversation = nil
 	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
 		return internalSessionTurnResult{FinalResponse: `{ "passed": true }`}, nil
@@ -106,8 +108,9 @@ func TestInternalCallFunctionPassesSubmissionID(t *testing.T) {
 // PLAT-756: an owner can ask for a call to run in Run mode (MCP run_mode), to see how it behaves for anyone else. The
 // call records it and the delivery to the Crew carries no trace of the flag, so a function cannot see or depend on it.
 func TestCrewFunctionRunModeIsRecordedAndKeptOutOfTheDelivery(t *testing.T) {
-	env := newCrewFunctionEnv(t)
+	// The docs folder comes first: registering the Crews creates their folders there, and a run refuses a Crew without them.
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newCrewFunctionEnv(t)
 	env.svc.heldConversation = nil
 	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
 		return internalSessionTurnResult{FinalResponse: `{ "passed": true }`}, nil

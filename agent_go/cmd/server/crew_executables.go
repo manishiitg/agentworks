@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -89,6 +88,9 @@ func readCrewExecutables() (map[string]crewExecutableBinding, error) {
 		if binding.Root != crewExecutableKey(binding.Root) || filepath.Base(expected) != entry.Name() {
 			continue
 		}
+		if binding.Kind != "workflow" && binding.Kind != "script" {
+			continue
+		}
 		result[binding.Root] = binding
 	}
 	return result, nil
@@ -96,13 +98,7 @@ func readCrewExecutables() (map[string]crewExecutableBinding, error) {
 
 func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
 	workspace := crewExecutableWorkspace(rawRoot)
-	if strings.HasPrefix(workspace, "Workflow/.relay_releases/") {
-		draft, err := relayDraftWorkspaceForRelease(context.Background(), workspace)
-		if err != nil {
-			return nil, err
-		}
-		workspace = draft
-	}
+
 	root := crewExecutableKey(workspace)
 	if root == "" {
 		return nil, nil
@@ -122,7 +118,7 @@ func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
 	if err := json.Unmarshal(data, &binding); err != nil {
 		return nil, fmt.Errorf("read executable binding: %w", err)
 	}
-	if binding.Root != root || binding.ID == "" || binding.CrewID == "" || (binding.Kind != "workflow" && binding.Kind != "relay" && binding.Kind != "script") {
+	if binding.Root != root || binding.ID == "" || binding.CrewID == "" || (binding.Kind != "workflow" && binding.Kind != "script") {
 		return nil, fmt.Errorf("invalid executable binding")
 	}
 	owner, found := crewProjectOwnerID(binding.CrewRoot)
@@ -158,7 +154,7 @@ func registerCrewExecutable(binding crewExecutableBinding) error {
 	crewExecutablesMu.Lock()
 	defer crewExecutablesMu.Unlock()
 	binding.Root = crewExecutableKey(binding.Root)
-	if binding.Kind != "relay" && binding.RuntimeRoot == "" {
+	if binding.RuntimeRoot == "" {
 		binding.RuntimeRoot = "automations/" + binding.ID
 	}
 	if binding.Root == "" {
@@ -250,6 +246,9 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			crewExecutableBinding
 			Manifest *WorkflowManifest `json:"manifest"`
 			UsedBy   []crewScriptUsage `json:"used_by,omitempty"`
+			// What a person can change before a run, and the saved settings that fill it in (a Python workflow's script.json).
+			Inputs       []workflow.Variable      `json:"inputs,omitempty"`
+			InputPresets []workflow.VariableGroup `json:"input_presets,omitempty"`
 		}
 		entries := []entry{}
 		// Python that a workflow's own steps run: listed beside the saved Crew scripts, each labelled by where it is used.
@@ -260,7 +259,6 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			Step       string `json:"step"`
 		}
 		stepScripts := []stepScript{}
-		existingRelays := []map[string]string{}
 		for _, binding := range records {
 			if binding.CrewRoot != root {
 				continue
@@ -271,19 +269,20 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 				return
 			}
 			if found {
-				if binding.Kind == "relay" || manifest.Kind == "relay" {
-					existingRelays = append(existingRelays, map[string]string{"id": binding.ID, "label": manifest.Label})
-					continue
-				}
 				var consumers []crewScriptUsage
+				var inputs []workflow.Variable
+				var presets []workflow.VariableGroup
 				if binding.Kind == "script" {
 					consumers, err = crewScriptConsumers(r.Context(), &binding, nil)
 					if err != nil {
 						http.Error(w, err.Error(), 500)
 						return
 					}
+					if definition, readErr := readCrewScript(r.Context(), binding.Root); readErr == nil {
+						inputs, presets = definition.Inputs, definition.InputPresets
+					}
 				}
-				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers})
+				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers, Inputs: inputs, InputPresets: presets})
 				if binding.Kind == "workflow" {
 					if plan, planErr := readPlanFromWorkspace(r.Context(), binding.Root); planErr == nil {
 						for _, step := range workflow.CrewWorkflowOwnScriptSteps(plan) {
@@ -300,7 +299,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			http.Error(w, "Could not load this Crew's agents", http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "step_scripts": stepScripts, "agents": agents, "existing_relays": existingRelays})
+		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "step_scripts": stepScripts, "agents": agents})
 		return
 	}
 	if refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(root), caller) {
@@ -322,7 +321,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 	}
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Kind != "" && input.Kind != "workflow" && input.Kind != "script" {
-		http.Error(w, "Create a workflow here. Open your existing Relays from the Relays screen.", http.StatusBadRequest)
+		http.Error(w, "Create a Python workflow in this project.", http.StatusBadRequest)
 		return
 	}
 	if input.Name == "" || len(input.Name) > 120 {

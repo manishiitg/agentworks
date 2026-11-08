@@ -17,18 +17,34 @@ func TestConcurrentScheduleDisablesAllPersist(t *testing.T) {
 	server, workspaceStore := newSlackListableWorkspaceServer(t)
 	t.Cleanup(server.Close)
 	t.Setenv("WORKSPACE_API_URL", server.URL)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	ctx := context.Background()
 	const workspace = "Workflow/pausetest"
 	const n = 8
-	schedules := make([]string, 0, n)
+	manifest := NewWorkflowManifest("Pausetest")
+	manifest.ID = "wf_pausetest"
+	manifest.CreatedBy = "owner"
+	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
 	for i := 0; i < n; i++ {
-		schedules = append(schedules, fmt.Sprintf(`{"id":"sched-%d","name":"s%d","cron_expression":"0 9 * * *","timezone":"UTC","group_names":["default"],"enabled":true}`, i, i))
+		manifest.Schedules = append(manifest.Schedules, WorkflowSchedule{
+			ID: fmt.Sprintf("sched-%d", i), Name: fmt.Sprintf("s%d", i),
+			CronExpression: "0 9 * * *", Timezone: "UTC", Enabled: true,
+		})
 	}
-	workspaceStore.files[workspace+"/workflow.json"] = `{"schema_version":1,"id":"wf_pausetest","label":"Pausetest","schedules":[` + strings.Join(schedules, ",") + `]}`
+	// PLAT-746: timers now live in schedules.json; an embedded manifest array
+	// is intentionally ignored and would test only an empty schedule set.
+	if err := WriteWorkflowManifest(ctx, workspace, manifest); err != nil {
+		t.Fatal(err)
+	}
+	workspaceStore.mu.Lock()
+	_, saved := workspaceStore.files[workspace+"/schedules.json"]
+	workspaceStore.mu.Unlock()
+	if !saved {
+		t.Fatal("fixture did not persist the canonical schedule file")
+	}
 
-	// Reading a manifest that needs migrating (older shape) writes it back, which
-	// would race the disables below for a reason unrelated to this test. Real
-	// manifests were normalized long ago, so load it once first.
+	// Normalize before the concurrent writes so this test isolates the lock.
 	if _, found, err := ReadWorkflowManifest(ctx, workspace); err != nil || !found {
 		t.Fatalf("normalize manifest: found=%v err=%v", found, err)
 	}

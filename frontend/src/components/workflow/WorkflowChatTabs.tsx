@@ -1,15 +1,10 @@
 import { closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
-import { agentApi } from '../../services/api'
-import { useWorkflowBuilderBinding, publishWorkflowBuilderBinding } from '../../hooks/useWorkflowBuilderBindings'
-import { hydrateWorkflowOwnerTabs } from '../../utils/ensureWorkflowBuilderTab'
-import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import React, { useMemo, useEffect, useCallback, useRef, useState } from 'react'
+import React, { useMemo, useEffect, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
-import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import {
   convertObservedWorkflowTabToInteractive,
   isMisclassifiedRestoredWorkflowChat,
@@ -50,30 +45,6 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
   const setFocusedPane = useWorkflowStore(state => state.setFocusedPane)
   const activePresetId = useGlobalPresetStore(state => state.activePresetIds.workflow)
   const workflowPresets = useGlobalPresetStore(state => state.workflowPresets)
-  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
-
-  const [opening, setOpening] = useState(false)
-  const binding = useWorkflowBuilderBinding(activePresetId)
-  useEffect(() => {
-    if (binding) void hydrateWorkflowOwnerTabs(binding).catch(() => {})
-  }, [binding])
-  const mutateTab = useCallback(async (action: string, chatId?: string, name?: string, options?: { pinned?: boolean; chat_ids?: string[] }) => {
-    const preset = workflowPresets.find(item => item.id === activePresetId)
-    if (!preset?.selectedFolder?.filepath) return
-    const identity = captureChatIdentity()
-    const changed = await agentApi.manageWorkflowChats(preset.id, preset.selectedFolder.filepath, action, chatId, name, options)
-    const response = await agentApi.getWorkflowBuilderSessions([{ preset_query_id: preset.id, workspace_path: preset.selectedFolder.filepath }])
-    if (!isChatIdentityCurrent(identity)) return
-    const next = response.bindings[preset.id]
-    if (next) {
-      publishWorkflowBuilderBinding(next, identity, true)
-      await hydrateWorkflowOwnerTabs(next)
-    }
-    if (action === 'open' && changed.chat) {
-      const tab = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === changed.chat?.session_id)
-      if (tab) { activateTab(tab.tabId); setShowChatArea(true); onSelectChat?.() }
-    }
-  }, [activePresetId, workflowPresets, setShowChatArea, onSelectChat])
 
   // Repair tabs already corrupted by the old Restore path. The durable
   // restoredConversationPath marker proves this is an interactive restore,
@@ -144,14 +115,10 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
   }, [showTab])
 
   const handleCloseTab = useCallback((tabId: string) => {
-    const tab = useChatStore.getState().getTab(tabId)
-    const close = tab?.metadata?.isViewOnly !== true && tab?.metadata?.workflowOwnerTabID
-      ? mutateTab('close', tab.metadata.workflowOwnerTabID)
-      : closeWorkspaceChatTab(tabId)
-    void close.catch(() => {
+    void closeWorkspaceChatTab(tabId).catch(() => {
       useChatStore.getState().addToast('Could not close this chat. Try again.', 'error')
     })
-  }, [mutateTab])
+  }, [])
 
   // Make the scheduled/bot conversation interactive without changing its
   // identity. The backend routes the next message to this session's retained
@@ -208,27 +175,13 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
     return null
   }
 
-  const ordered = binding?.tabs
-    ? [...binding.tabs.flatMap(chat => activeWorkflowTabs.filter(tab => tab.sessionId === chat.session_id)),
-      ...activeWorkflowTabs.filter(tab => tab.metadata?.isViewOnly || !tab.metadata?.workflowOwnerTabID)]
-    : activeWorkflowTabs
-  const resolvedTabs = ordered.length ? ordered : activeWorkflowTabs
-  const main = resolvedTabs.find(tab => !tab.metadata?.isViewOnly && tab.metadata?.workflowOwnerTabIsMain && tab.metadata.agentProfileTabCanWrite)
-    || resolvedTabs.find(tab => !tab.metadata?.isViewOnly && tab.metadata?.phaseId === 'workflow-builder') || resolvedTabs[0]
-  const tabs = [main, ...resolvedTabs.filter(tab => tab.tabId !== main.tabId)]
-  const listed = (binding?.tabs || []).filter(chat => chat.id !== main.metadata?.workflowOwnerTabID).map(chat => ({
-    conversation_key: chat.id, conversation_id: chat.id, session_id: chat.session_id, name: chat.name,
-    pinned: chat.pinned !== false, position: chat.position || 0, can_write: chat.can_write,
-    tab_owner_id: chat.owner_id, tab_owner_name: chat.owner_name,
-  }))
+  const main = activeWorkflowTabs.find(tab => !tab.metadata?.isViewOnly && tab.metadata?.phaseId === 'workflow-builder') || activeWorkflowTabs[0]
+  const tabs = [main, ...activeWorkflowTabs.filter(tab => tab.tabId !== main.tabId)]
   return <div className={embedded ? 'flex min-w-0 flex-1' : 'shrink-0 border-b border-border bg-background px-2 py-1'}>
-    <ProjectAgentTabs tabs={tabs} listed={listed} canonicalTabId={main.tabId}
-      projectName={workflowPresets.find(preset => preset.id === activePresetId)?.label?.trim() || (isRelaySurface ? 'Relay' : 'Goal')}
-      surface={isRelaySurface ? 'relays' : 'agentworks'} allowSideChats={!!binding?.tabs} opening={opening}
-      onOpen={async name => { setOpening(true); try { await mutateTab('open', undefined, name) } finally { setOpening(false) } }}
-      onRename={async (tab, name) => { await mutateTab('rename', tab.metadata?.workflowOwnerTabID, name) }}
-      onOrder={async chat_ids => { await mutateTab('order', undefined, undefined, { chat_ids }) }}
-      onPin={async (chatId, pinned) => { await mutateTab('pin', chatId, undefined, { pinned }) }}
+    <ProjectAgentTabs tabs={tabs} listed={[]} canonicalTabId={main.tabId}
+      projectName={workflowPresets.find(preset => preset.id === activePresetId)?.label?.trim() || ('Goal')}
+      surface="agentworks" allowSideChats={false} opening={false}
+      onOpen={async () => {}} onRename={async () => {}} onOrder={async () => {}} onPin={async () => {}}
       onSelectTab={handleTabClick} onCloseTab={handleCloseTab} onMakeInteractive={handleMakeInteractive}
       isTabActive={tab => tab.tabId === activeTabId && !stepInspectionState(tab).selected}
       renderAfterTab={tab => <StepInspectionTabItems tab={tab} active={tab.tabId === activeTabId} onActivate={showTab} />} />

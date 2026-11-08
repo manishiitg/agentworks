@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -85,6 +86,34 @@ class ChosenBuildTest(unittest.TestCase):
         self.assertIn("not an ancestor of origin/main", result.stderr)
         self.assertEqual(result.stdout.strip(), "")
 
+    def test_dev_deploy_needs_dev_in_this_repository_but_not_in_siblings(self):
+        # Review of PR 1540: without origin/dev the app fell back to origin/main, so a main-only build passed as dev.
+        result = self.run_deploy_lib('DEPLOY_BRANCH=dev DEPLOY_BUILD=11111111 ensure_prebuilt_build')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("origin/dev of mcp-agent-builder-go", result.stderr)
+        self.assertEqual(result.stdout.strip(), "")
+        # A pinned app commit takes the other path (no fetch first) and is refused the same way.
+        pin = f'DEPLOY_SHA_MCP_AGENT_BUILDER_GO={self.good["mcp-agent-builder-go"]}'
+        result = self.run_deploy_lib(f'DEPLOY_BRANCH=dev; {pin}; commit_on_branch "{self.root}/mcp-agent-builder-go" "${{DEPLOY_SHA_MCP_AGENT_BUILDER_GO}}"')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no origin/dev", result.stderr)
+        app = self.root / "mcp-agent-builder-go"
+        git(app, "push", "-q", "origin", "origin/main:refs/heads/dev")
+        result = self.run_deploy_lib('DEPLOY_BRANCH=dev DEPLOY_BUILD=11111111 ensure_prebuilt_build')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "11111111-20261001000000")
+        # Review of PR 1552: a `--single-branch --branch main` clone maps only main, so `git fetch origin dev` made no origin/dev.
+        origin = git(app, "remote", "get-url", "origin")
+        shutil.move(app / "deploy", self.root / "deploy-kept")
+        shutil.rmtree(app)
+        git(self.root, "clone", "-q", "--single-branch", "--branch", "main", origin, str(app))
+        shutil.move(self.root / "deploy-kept", app / "deploy")
+        result = self.run_deploy_lib(f'DEPLOY_BRANCH=dev; {pin}; commit_on_branch "{app}" "${{DEPLOY_SHA_MCP_AGENT_BUILDER_GO}}"')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        git(app, "update-ref", "-d", "refs/remotes/origin/dev")
+        result = self.run_deploy_lib('DEPLOY_BRANCH=dev DEPLOY_BUILD=11111111 ensure_prebuilt_build')
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_older_commit_plus_a_change_already_on_main_may_ship_but_nothing_unlanded(self):
         # 7 Nov: a server could not take main's newest work, and finished fixes had no route to it.
         local = self.root / "mcpagent"
@@ -95,11 +124,11 @@ class ChosenBuildTest(unittest.TestCase):
         version.write_text("bumped by the commit hook")
         git(local, "add", "-A"); git(local, "commit", "-qm", "the same change as main's")
         patched = git(local, "rev-parse", "HEAD")
-        self.assertEqual(self.run_deploy_lib(f'commit_on_main "{local}" {patched}').returncode, 0)
+        self.assertEqual(self.run_deploy_lib(f'commit_on_branch "{local}" {patched}').returncode, 0)
         (local / "f").write_text("unlanded")
         git(local, "commit", "-qam", "not on main")
         unlanded = git(local, "rev-parse", "HEAD")
-        self.assertNotEqual(self.run_deploy_lib(f'commit_on_main "{local}" {unlanded}').returncode, 0)
+        self.assertNotEqual(self.run_deploy_lib(f'commit_on_branch "{local}" {unlanded}').returncode, 0)
 
     def test_pin_ignores_go_test_files_but_not_production_code(self):
         # 7 Nov: a test file often cannot cherry-pick cleanly (main's earlier test edits are in its context). Production code must still be on main.
@@ -108,15 +137,15 @@ class ChosenBuildTest(unittest.TestCase):
         (local / "f").write_text("2")
         (local / "x_test.go").write_text("package x // differs from main's copy")
         git(local, "add", "-A"); git(local, "commit", "-qm", "main's change plus a different test file")
-        self.assertEqual(self.run_deploy_lib(f'commit_on_main "{local}" {git(local, "rev-parse", "HEAD")}').returncode, 0)
+        self.assertEqual(self.run_deploy_lib(f'commit_on_branch "{local}" {git(local, "rev-parse", "HEAD")}').returncode, 0)
         (local / "y_test.go").write_text("package y")
         git(local, "add", "-A"); git(local, "commit", "-qm", "test only")
-        result = self.run_deploy_lib(f'commit_on_main "{local}" {git(local, "rev-parse", "HEAD")}')
+        result = self.run_deploy_lib(f'commit_on_branch "{local}" {git(local, "rev-parse", "HEAD")}')
         self.assertEqual(result.returncode, 0)
         self.assertIn("changes no production code", result.stderr)
         (local / "f").write_text("unlanded")
         git(local, "commit", "-qam", "production code not on main")
-        self.assertNotEqual(self.run_deploy_lib(f'commit_on_main "{local}" {git(local, "rev-parse", "HEAD")}').returncode, 0)
+        self.assertNotEqual(self.run_deploy_lib(f'commit_on_branch "{local}" {git(local, "rev-parse", "HEAD")}').returncode, 0)
 
     def test_unknown_or_ambiguous_selector_is_refused(self):
         result = self.run_deploy_lib('DEPLOY_BUILD=99999999 ensure_prebuilt_build')
@@ -160,7 +189,9 @@ class EntryPointTest(unittest.TestCase):
         block = entry[entry.index("\n  all-hetzner)\n"):entry.index("\n  -h|--help|help)")]
         # PLAT-856-454: platform batches exclude separately developed products.
         self.assertNotIn("dominion", block.lower().replace("never dominion", ""))
-        self.assertEqual([l.strip() for l in block.splitlines() if l.strip().startswith("deploy_rootless_product ")],
+        # A product deploy may be wrapped as `locked_deploy <server> deploy_rootless_product <product>`.
+        calls = [re.sub(r"^locked_deploy \S+ ", "", l.strip()) for l in block.splitlines()]
+        self.assertEqual([c for c in calls if c.startswith("deploy_rootless_product ")],
                          ["deploy_rootless_product agents", "deploy_rootless_product confida"])
 
 

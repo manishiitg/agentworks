@@ -153,6 +153,7 @@ func TestWatchLiveInputDurableEmitsConfirmedEventForCursor(t *testing.T) {
 	store := internalevents.NewEventStore(10)
 	defer store.Stop()
 	const sessionID = "durable-watch-cursor"
+	t.Setenv("CURSOR_CLI_TRANSPORT", "tmux") // the SDK default has no durable ack
 	const messageID = "steer-message-cursor-1"
 	api := &StreamingAPI{eventStore: store,
 		internalDurableAckHandler: func(_ context.Context, provider llmproviders.Provider, owner, message string) (llmtypes.DurableAck, error) {

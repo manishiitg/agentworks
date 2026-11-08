@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -111,99 +109,4 @@ func authorizeWorkflowBuilderScope(ctx context.Context, scope workflowBuilderSco
 		return scope, http.StatusBadRequest
 	}
 	return scope, 0
-}
-
-// One batch for all visible workflows, without transcripts or runtime actions.
-func (api *StreamingAPI) handleWorkflowBuilderBindings(w http.ResponseWriter, r *http.Request) {
-	if IsMultiUserMode() && GetUserFromContext(r.Context()) == nil {
-		http.Error(w, "authentication required", http.StatusUnauthorized)
-		return
-	}
-	var request struct {
-		Workflows []workflowBuilderScope `json:"workflows"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&request); err != nil || len(request.Workflows) > 100 {
-		http.Error(w, "invalid workflow list", http.StatusBadRequest)
-		return
-	}
-	bindings := map[string]*workflowBuilderSessionResponse{}
-	for _, requested := range request.Workflows {
-		if len(requested.SessionIDs) > 1000 {
-			continue
-		}
-		scope, status := authorizeWorkflowBuilderScope(r.Context(), requested, false)
-		if status != 0 {
-			continue
-		} // No metadata for a denied/invalid workflow.
-		if _, duplicate := bindings[scope.PresetID]; duplicate {
-			continue
-		}
-		binding, err := api.currentWorkflowBuilderSummary(r.Context(), scope.PresetID, scope.Workspace)
-		if err != nil {
-			continue
-		}
-		for _, id := range scope.SessionIDs {
-			if len(id) > 256 {
-				continue
-			}
-			if _, known := binding.Sessions[id]; !known {
-				binding.Sessions[id] = workflowSidebarSession{Kind: "history"}
-			}
-		}
-		bindings[scope.PresetID] = binding
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "bindings": bindings})
-}
-
-// Register only an admitted interactive Builder session. Automated runs and
-// notifications never become owner-controlled tabs.
-func recordWorkflowBuilderSend(ctx context.Context, scope workflowBuilderScope, session string) error {
-	// PLAT-746-149: an owner can have Builder authority during a run without
-	// turning that execution into a named interactive Builder tab.
-	if workflowBuilderHistoryKind(session, "", "", "") == "run" {
-		return nil
-	}
-	scope, status := authorizeWorkflowBuilderScope(ctx, scope, true)
-	if status != 0 {
-		return fmt.Errorf("Builder binding access denied")
-	}
-	user := GetUserIDFromContext(ctx)
-	store := defaultProductConversationRegistryStore()
-	tabs, err := store.projectChats(ctx, user, goalChatProfile, scope.PresetID)
-	if err != nil {
-		return err
-	}
-	main := true
-	for _, tab := range tabs {
-		if tab.WorkspacePath == scope.Workspace && tab.SessionID == session {
-			return nil
-		}
-		if tab.ConversationKey == crewOwnerDefaultChatKey(scope.PresetID, user) {
-			main = false
-		}
-	}
-	_, err = storeGoalOwnerTab(ctx, scope, "Builder", main, session)
-	return err
-}
-
-func (api *StreamingAPI) handleNewWorkflowBuilderSession(w http.ResponseWriter, r *http.Request) {
-	var requested workflowBuilderScope
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&requested); err != nil {
-		http.Error(w, "invalid workflow", http.StatusBadRequest)
-		return
-	}
-	scope, status := authorizeWorkflowBuilderScope(r.Context(), requested, true)
-	if status != 0 {
-		http.Error(w, "Builder access denied", status)
-		return
-	}
-	binding, err := api.resolveWorkflowBuilderBinding(r.Context(), scope.PresetID, scope.Workspace, true)
-	if err != nil {
-		http.Error(w, "could not start Builder chat", http.StatusInternalServerError)
-		return
-	}
-	publishSessionsChanged()
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(binding)
 }

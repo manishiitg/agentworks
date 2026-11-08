@@ -30,5 +30,5 @@ func (api *StreamingAPI) vaultBuilderAuthority(ctx context.Context, person strin
 }
 
 func vaultBuilderQuery(req QueryRequest, claims *UserClaims, authoritySession, toolSession string, readOnly bool) bool {
-	return req.AgentProfileID == caplayerproduct.ProfileID && req.AgentMode == "multi-agent" && req.TriggeredBy == "" && req.BotPlatform == "" && req.SelectedFolder == caplayerproduct.WorkspaceRoot && !readOnly && authoritySession == toolSession && claims != nil && claims.AccessToken == nil && claims.ExecutionPrincipal == nil && claims.ExternalBuilderOperationID == "" && claims.Scope == "" && claims.BotRouteGrant == "" && claims.Provider != "bot_owner" && claims.Provider != "bot_route" && claims.Provider != slackDMProvider
+	return req.AgentProfileID == caplayerproduct.ProfileID && req.AgentMode == "multi-agent" && req.TriggeredBy == "" && req.BotPlatform == "" && req.SelectedFolder == caplayerproduct.WorkspaceRoot && !readOnly && authoritySession == toolSession && claims != nil && claims.AccessToken == nil && claims.ExecutionPrincipal == nil && claims.Scope == "" && claims.BotRouteGrant == "" && claims.Provider != "bot_owner" && claims.Provider != "bot_route" && claims.Provider != slackDMProvider
 }

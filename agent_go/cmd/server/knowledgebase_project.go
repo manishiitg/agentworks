@@ -18,14 +18,16 @@ import (
 type knowledgeProjectBuilderKey struct{}
 type knowledgeProjectBuilderAuthority struct{ UserID, Workspace, Session string }
 
+// Project setup belongs to the current Crew owner's authenticated root turn.
+// Profile names alone grant nothing: the current project owner and session must match.
 func knowledgeProjectBuilderQuery(req QueryRequest, claims *UserClaims, authoritySession, toolSession string, readOnly bool) bool {
-	// The admission decision, not AgentMode: handleQuery rewrites workflow_phase to multi-agent before tools run
-	// (PLAT-600, PLAT-608).
-	return req.admittedWorkflowPhase && req.PhaseID == "workflow-builder" &&
-		!readOnly && authoritySession == toolSession && req.BotPlatform == "" &&
-		(req.TriggeredBy == "" || req.TriggeredBy == "external") && claims != nil &&
-		claims.ExecutionPrincipal == nil && (knowledgeInteractiveAccess(claims) ||
-		claims.AccessToken != nil && claims.AccessToken.BuilderAccess())
+	if claims == nil || !isProjectProfileID(req.AgentProfileID) || !isCrewProjectPath(req.SelectedFolder) {
+		return false
+	}
+	return crewProjectOwnedByCallerStrict(claims.UserID, agentProfileRuntimeWorkspace(claims.UserID, req.SelectedFolder)) &&
+		!readOnly && !req.PinRunMode && !req.AgentMessageFromOtherPerson && authoritySession == toolSession && req.BotPlatform == "" &&
+		(req.TriggeredBy == "" || req.TriggeredBy == "external" || req.TriggeredBy == "interactive") && claims.ExecutionPrincipal == nil &&
+		knowledgebaseConnectionAllowsAction(claims, knowledgebase.ToolAccess, map[string]any{"action": "set_project_access"})
 }
 
 func knowledgeProjectExecute(ctx context.Context, userID, workspace, tool string, args map[string]any) (string, error) {
@@ -83,7 +85,7 @@ func knowledgeProjectBuilderExecute(ctx context.Context, tool string, args map[s
 	if !ok || executor.SessionIDFromContext(ctx) != authority.Session {
 		chat, _ := ctx.Value(common.ChatSessionIDKey).(string)
 		log.Printf("[KB_PROJECT] refused %s: authority=%v authority_session=%q executor_session=%q chat_session=%q", tool, ok, authority.Session, executor.SessionIDFromContext(ctx), chat)
-		return "", fmt.Errorf("Only the current workflow Builder can set the project's Brain access")
+		return "", fmt.Errorf("Only the current Crew owner can set the project's Brain access")
 	}
 	// A step may invoke a parent's registered HTTP bridge; the actual caller
 	// remains in ChatSessionIDKey and must not acquire root Builder authority.

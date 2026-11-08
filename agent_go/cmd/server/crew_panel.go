@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
 )
 
 // PLAT-856-542: one read for the Crew menu. Detail/edit APIs keep their own
@@ -378,12 +379,115 @@ func crewPanelAutomationLine(rows []crewPanelRow) string {
 	return strings.Join(parts, " · ")
 }
 
+// crewPanelAgo says how long ago in plain words ("just now", "5 min ago", "2h ago", "3d ago").
+func crewPanelAgo(since time.Duration) string {
+	switch {
+	case since < time.Minute:
+		return "just now"
+	case since < time.Hour:
+		return fmt.Sprintf("%d min ago", int(since.Minutes()))
+	case since < 48*time.Hour:
+		return fmt.Sprintf("%dh ago", int(since.Hours()))
+	}
+	return fmt.Sprintf("%dd ago", int(since.Hours()/24))
+}
+
+// crewPanelWorkflowLine is one workflow's summary from its newest run: "4 steps · last run finished 2h ago".
+// folders arrive newest first.
+func crewPanelWorkflowLine(folders []RunFolderInfo, now time.Time) string {
+	if len(folders) == 0 || folders[0].Metadata == nil {
+		return "Not run yet"
+	}
+	meta := folders[0].Metadata
+	parts := []string{}
+	if n := len(meta.PythonSteps); n > 0 {
+		parts = append(parts, crewPanelCount(n, "step"))
+	}
+	at, _ := runFolderTime(folders[0])
+	if meta.CompletedAt != nil {
+		at = *meta.CompletedAt
+	}
+	when := ""
+	if !at.IsZero() {
+		when = " " + crewPanelAgo(now.Sub(at))
+	}
+	switch meta.Status {
+	case "running":
+		parts = append(parts, "running now")
+	case "completed":
+		parts = append(parts, "last run finished"+when)
+	case "failed":
+		parts = append(parts, "last run failed"+when)
+	case "canceled":
+		parts = append(parts, "last run canceled"+when)
+	default:
+		parts = append(parts, "not run yet")
+	}
+	return strings.Join(parts, " · ")
+}
+
+// crewPanelInboxRow is the Crew's incoming-email row: "On · N messages this week" or "Off".
+// The access checks are agentEmailCrew's and agentEmailInboxResult's, not repeated here.
+func (api *StreamingAPI) crewPanelInboxRow(ctx context.Context, workspace string) (crewPanelRow, error) {
+	row := crewPanelRow{ID: "inbox", Label: "Inbox", Destination: "schedules:email", Detail: "Off"}
+	_, enabled, err := api.agentEmailCrew(ctx, workspace)
+	if err != nil {
+		return row, err
+	}
+	if !enabled {
+		return row, nil
+	}
+	row.Connected = true
+	out, err := api.agentEmailInboxResult(ctx, map[string]interface{}{"workspace_path": workspace, "recent": true})
+	if err != nil {
+		// On, but the owner's Gmail is not ready: say so instead of failing the whole menu.
+		row.Detail, row.Attention = "On · needs a Gmail account", true
+		return row, nil
+	}
+	result, _ := out.(map[string]any)
+	if inbox, _ := result["inbox"].(gmailinbound.Inbox); inbox.ID == "" {
+		// The inbox could not be provisioned (no Gmail for the owner yet): the page still answers, so say so here too.
+		row.Detail, row.Attention = "On · inbox setup failed", true
+		if missing, _ := result["gmail_missing"].(bool); missing {
+			row.Detail = "On · needs a Gmail account"
+		}
+		return row, nil
+	}
+	page, _ := result["mail"].(gmailinbound.Page)
+	week := 0
+	for _, item := range page.Messages {
+		if item.ReceivedAt > time.Now().Add(-7*24*time.Hour).UnixMilli() {
+			week++
+		}
+	}
+	count := crewPanelCount(week, "message")
+	if page.HasMore && week == len(page.Messages) {
+		count = fmt.Sprintf("%d+ messages", week)
+	}
+	// The address is on the Inbox page; the menu line stays short (approved mock, 8 Nov).
+	row.Detail = "On · " + count + " this week"
+	return row, nil
+}
+
 func crewPanelDetails(sections []crewPanelSection) map[string]string {
 	details := map[string]string{}
 	groups := map[string][]crewPanelRow{}
 	automations := []crewPanelRow{}
+	workflows := []crewPanelRow{}
 	for _, section := range sections {
 		for _, row := range section.Rows {
+			if row.Destination == "workflow" {
+				workflows = append(workflows, row)
+				continue
+			}
+			// Incoming email is listed under Automations always, but counts as one only while it is on.
+			if row.Destination == "schedules:email" {
+				details[row.Destination] = row.Detail
+				if row.Connected {
+					automations = append(automations, row)
+				}
+				continue
+			}
 			groups[row.Destination] = append(groups[row.Destination], row)
 			if strings.HasPrefix(row.Destination, "schedules:") {
 				automations = append(automations, row)
@@ -443,6 +547,11 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 				}
 			}
 		}
+	}
+	if len(workflows) == 1 {
+		details["workflow"] = workflows[0].Detail
+	} else if len(workflows) > 1 {
+		details["workflow"] = fmt.Sprintf("%d workflows", len(workflows))
 	}
 	if len(automations) == 1 {
 		details["automations"] = automations[0].Detail

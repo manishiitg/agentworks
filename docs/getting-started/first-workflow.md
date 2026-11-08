@@ -1,69 +1,35 @@
-# Build Your First Workflow
+# Build your first workflow
 
-The first workflow should be small enough to review but real enough to produce evidence. A recurring research brief, support summary, lead review, or finance check is a better first test than a large autonomous process.
+Start with a small, real job: a recurring research brief, support summary or finance check. A workflow belongs to a Crew. Keep its conversation there and use the workflow's **Steps** and **Runs** views to inspect the saved work and its results.
 
-## 1. Create the Automation
+## Describe the job in Crew chat
 
-1. Open **Automation** mode.
-2. Open **Select Automation** and choose **+ Add Automation**.
-3. Enter an **Automation Name**.
-4. Select an automation provider under **Agent LLM Configuration**.
-5. Set the required **Workflow Folder**.
-6. Choose **Save Automation**.
+Open a Crew, choose its agent, and explain the inputs, permitted sources and result you need. For example:
 
-The workflow folder becomes the durable home for the workflow definition, run artifacts, reports, learnings, and knowledge used in later runs.
+> Review the open support conversations, group them by urgency and cite the source messages. Save a brief for me to review. Do not send replies.
 
-## 2. Define the Operating Contract
+Use the Crew's existing connections and files. If a source needs a sign-in, follow the connection instructions it returns. Creating a workflow does not create an account or grant access to another Crew.
 
-In **Chat**, describe:
+The agent saves the workflow and explains what each step does. Underneath, a workflow is `script.json` plus `main.py`; the `python-workflows` skill covers writing it. Python functions, conditions and loops decide the order. Named `@step` functions appear in Steps and Runs, and `agent()` calls handle work that needs an AI agent.
 
-- the business outcome to achieve;
-- the inputs and systems the workflow may use;
-- the expected output and evidence;
-- the run cadence;
-- decisions that require human approval;
-- the metric or review standard that determines success.
+## Review its inputs and result
 
-Keep the first contract explicit. For example: "Every weekday, review open support conversations, group them by urgency, cite the source messages, draft responses, and ask for approval before sending anything."
+Give changing values names and types, with sensible defaults. A saved preset is a named set of those values. Secrets stay in Vault; a workflow declares the secret names it needs and uses the account already selected for its Crew.
 
-## 3. Review the Plan and Access
+Keep the expected result concrete: a file, a checked calculation, or records with source evidence. An agent finishing its turn is not enough; the workflow checks what it produced. If evidence is missing, the result should say so.
 
-Open **Plan** before the first run. Confirm that each step has the right worker and only the access it needs:
+Discuss any decision that needs a person in Crew chat before running work that depends on it. A workflow never pauses for a question. It either has the required values or stops with a clear reason.
 
-- coding CLI or model provider;
-- MCP servers and tools;
-- browser mode;
-- global or workflow-scoped secrets;
-- human approval boundaries.
+## Run and inspect
 
-See [Workflow Builder Commands and Tools](../workflow/workflow_builder_commands_and_tools.md), [MCP Bridge Layer](../core/mcp_bridge_layer.md), [Browser](../core/browser.md), and [Secrets](../core/secrets.md) for detailed configuration.
+Ask the Crew to run the workflow, or start it from its workflow page. Choose a preset or provide the inputs for that run.
 
-## 4. Run and Observe
+Open Runs to see the outcome, named steps, checks, files, logs and available usage. Reading a failed run does not repeat it. Starting another run repeats real effects, including app calls and sends, so check the saved result before retrying an uncertain action.
 
-Start the workflow and use **Tree** for step progress or **Terminal** for the live agent session. A useful first run should leave an inspectable record rather than only a chat response.
+Fix a correctness or access problem using that evidence, then run the corrected work. The workflow's agent may make one correction turn for an invalid output in the same conversation; it must preserve completed external actions.
 
-After the run, inspect:
+## Add a schedule when wanted
 
-- the generated report and files;
-- logs and per-step execution status;
-- model and token cost;
-- any requested human input;
-- run evidence about reliability or missing data.
+Once the result is useful, request its cadence. A schedule can start the workflow with a saved preset and inputs, or message an existing Crew agent when the job needs the conversation's context. The agent can run the whole workflow as part of that work. A single step label is not a separate schedule target.
 
-See [Workflow Monitoring](../workflow/workflow_monitoring.md), [Cost and Log Measurement](../workflow/cost_and_log_measurement.md), and [Human Feedback](../workflow/human_feedback_system.md).
-
-## 5. Improve the Next Run
-
-Fix correctness and access problems first. Then review proposed changes to instructions, scripts, evaluation criteria, or reusable skills. Approve only changes supported by run evidence and keep a human review step around consequential actions.
-
-Use [Self-Improvement and Reporting](../workflow/self_improvement_and_reporting.md), [Auto Improvement Framework](../workflow/auto_improvement_framework.md), [Evaluation System](../workflow/evaluation_system.md), and [Learning Architecture](../workflow/learning_architecture.md) to extend the loop.
-
-## First-Run Completion Check
-
-The workflow is ready to schedule when:
-
-- the result matches the stated output contract;
-- source evidence is available for review;
-- retries and approval boundaries are clear;
-- cost is acceptable for the planned cadence;
-- the next run can reuse saved workflow context instead of starting from zero.
+Read [schedules](../workflow/workflow_scheduling.md), [run results](../workflow/workflow_monitoring.md) and [CLI/MCP access](agentworks-cli-mcp.md) for those paths.

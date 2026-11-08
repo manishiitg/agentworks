@@ -26,19 +26,19 @@ export const PROJECT_AUTOMATIONS = [
   { id: 'functions', label: 'Functions', icon: Braces },
 ] as const
 
-export function projectAutomationSections({ relay = false, triggers = true, incomingEmail = false }: { relay?: boolean; triggers?: boolean; incomingEmail?: boolean } = {}) {
+export function projectAutomationSections({ triggers = true, incomingEmail = false }: { triggers?: boolean; incomingEmail?: boolean } = {}) {
   return [
-    ...PROJECT_AUTOMATIONS.filter(item => (!relay || item.id === 'triggers' || item.id === 'conditions') && (triggers || item.id === 'schedules')),
+    ...PROJECT_AUTOMATIONS.filter(item => (triggers || item.id === 'schedules')),
     ...(incomingEmail ? [{ id: 'email', label: 'Inbox', icon: Mail }] : []),
   ]
 }
 
 const countText = (value?: number) => (value === undefined ? undefined : value ? String(value) : 'None')
 
-export function WorkspaceAutomationRows({ onOpen, relay = false, triggers = true, counts, excludeSchedules = false }: { onOpen: (section: string) => void; relay?: boolean; triggers?: boolean; counts?: ProjectStatus; excludeSchedules?: boolean }) {
+export function WorkspaceAutomationRows({ onOpen, triggers = true, counts, excludeSchedules = false }: { onOpen: (section: string) => void; triggers?: boolean; counts?: ProjectStatus; excludeSchedules?: boolean }) {
   const byId: Record<string, number | undefined> = { schedules: counts?.schedules, conditions: counts?.conditions, triggers: counts?.triggers, functions: counts?.functions }
   return <div role="group" aria-label="Automations" className="mt-1 space-y-1 border-t border-border/60 pt-2">
-    {projectAutomationSections({ relay, triggers }).filter(item => !excludeSchedules || item.id !== 'schedules').map(item =>
+    {projectAutomationSections({ triggers }).filter(item => !excludeSchedules || item.id !== 'schedules').map(item =>
       <Row key={item.id} icon={item.icon} detail={countText(byId[item.id])} onClick={() => onOpen(item.id)}>{item.label}</Row>)}
   </div>
 }
@@ -58,9 +58,9 @@ export function WorkspaceChannelRows({ onOpen, slack, whatsapp, slackBot = true,
 }
 
 /** Uses the same already-admitted connection options as the existing panels. */
-export function WorkspaceConnectionRows({ onOpen, relayMode = false, workMode = false, enabledPanels, details }: { onOpen: (section: string) => void; relayMode?: boolean; workMode?: boolean; enabledPanels?: Set<string>; details?: Record<string, string | undefined> }) {
+export function WorkspaceConnectionRows({ onOpen, workMode = false, enabledPanels, details }: { onOpen: (section: string) => void; workMode?: boolean; enabledPanels?: Set<string>; details?: Record<string, string | undefined> }) {
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
-  const options = projectConnectionSections({ allowedProducts, relayMode, workMode, enabledPanels, onOpen })
+  const options = projectConnectionSections({ allowedProducts, workMode, enabledPanels, onOpen })
   return <>
     {options.map(item => <Row key={item.id} icon={item.icon} detail={details?.[item.id]} onClick={item.onClick}>{item.label}</Row>)}
   </>

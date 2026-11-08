@@ -67,8 +67,6 @@ func agentSourceMutates(source, operation string, original bool) bool {
 		return operation != "clashes" && operation != "agents" && operation != "invites"
 	case "manage_crew_chats":
 		return operation != "list" && operation != "read" && operation != "tools" && operation != "project_context" && operation != "native_list"
-	case "builder_tabs":
-		return operation != "list" && operation != "read"
 	}
 	return original
 }

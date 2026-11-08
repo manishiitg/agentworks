@@ -116,7 +116,7 @@ chat_policy:
 # the entry file chooses which definitions to render. Runtime values stay in Go.
 chat:
   builder:
-    external_tools: [workflow_upgrade, workflow_crews, workflow_google_account, workflow_slack_account, workflow_slack_bot, builder_chat, builder_tabs, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file]
+    external_tools: [workflow_upgrade, workflow_crews, workflow_google_account, workflow_slack_account, workflow_slack_bot]
     # Default workflow phase tools; integration tests compare real registration.
     tools:
       - brain_browse
@@ -128,7 +128,6 @@ chat:
       - models
       - workflow_team
       - manage_project
-      - manage_builder_chats
       - browser_connections
       - chat_preferences
       - manage_messaging
@@ -157,8 +156,6 @@ chat:
       - get_slack_bot_credentials
       - get_slack_bot_settings
       - slack
-      - get_step_prompts
-      - preview_step_runtime
       - submit_workflow_suggestion
       - get_ui_state
       - get_workflow_command_guidance
@@ -230,7 +227,6 @@ chat:
       # Shared platform and interactive function tools, previously measured
       # outside this declaration by the Goals shadow gate. Admission now
       # happens here before agent construction; executor authority still applies.
-      - apply_workflow_db_migration
       - ask_function_update
       - project_functions_call
       - create_project
@@ -297,8 +293,6 @@ chat:
       - get_schedule_runs
       - get_slack_bot_settings
       - slack
-      - get_step_prompts
-      - preview_step_runtime
       - send_message
       - read_agent_messages
       - list_agents
@@ -430,7 +424,6 @@ chat:
       - get_logs
       - rerun_workflow
       - run_status
-      - chat
       # Normal MCP OAuth: inbox messaging; CLI-issued connections keep the live CLI path.
       - messages
       - run_reply_input

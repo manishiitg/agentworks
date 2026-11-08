@@ -138,7 +138,7 @@ func TestWorkflowRoutesCheckTheNamedWorkflow(t *testing.T) {
 		code   int
 	}{{"Workflow/private", http.StatusForbidden}, {"Workflow/shared", http.StatusOK}, {"Workflow/new-one", http.StatusOK}} {
 		reached = ""
-		req := as("bob", httptest.NewRequest(http.MethodPost, "/api/workflow/plan/update-step", bytes.NewReader([]byte(`{"workspace_path":"`+tc.target+`"}`))))
+		req := as("bob", httptest.NewRequest(http.MethodPost, "/api/workflow/start", bytes.NewReader([]byte(`{"workspace_path":"`+tc.target+`"}`))))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		handler(rec, req)
@@ -162,10 +162,5 @@ func TestWorkflowRoutesCheckTheNamedWorkflow(t *testing.T) {
 		if rec.Code != tc.code {
 			t.Fatalf("%s delete %s: code=%d body=%s", tc.user, tc.target, rec.Code, rec.Body.String())
 		}
-	}
-	rec := httptest.NewRecorder()
-	api.handleGetPlanChangelog(rec, as("bob", httptest.NewRequest(http.MethodGet, "/api/workflow/plan-changelog?workspace_path=Workflow/private", nil)))
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("changelog of a private workflow: %d", rec.Code)
 	}
 }

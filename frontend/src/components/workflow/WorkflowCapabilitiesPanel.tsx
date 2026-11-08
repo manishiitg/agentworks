@@ -1,8 +1,8 @@
 import { ProductSlackPanel } from '../integrations/ProductSlackPanel'
 import { selectWorkspacePaneWorkflowTab } from '../../utils/workspacePaneChat'
 import { capabilitiesEqual, mergeRemoteCapabilities } from './workflowCapabilitiesSync'
-import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { LoaderCircle, Plus, Save, Users } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { LoaderCircle, Save, Users } from 'lucide-react'
 import { WorkspacePanelBack, useWorkspacePanelChatDraft } from '../workspace/WorkspacePanelNavigation'
 import SkillsManagerPanel from '../skills/SkillsManagerPanel'
 import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
@@ -16,7 +16,6 @@ import { ShareDashboardButton } from './ShareDashboardButton'
 import { integrationProductAvailable, projectIntegrationSections } from '../integrations/integrationSections'
 import { ProjectPluginsPanel, projectPluginTabs, type PluginTab } from '../integrations/ProjectPluginsPanel'
 import { ProjectIntegrationPanel, INTEGRATION_LABELS, type IntegrationSection } from '../integrations/ProjectIntegrationPanel'
-import { CodeLocalFilesSettings } from '../../products/work/CodeFilesPanel'
 import { ProjectKnowledgebasePanel } from './ProjectKnowledgebasePanel'
 import { agentApi, workflowManifestApi } from '../../services/api'
 import type { WorkflowCapabilities } from '../../services/api-types'
@@ -46,20 +45,18 @@ export type WorkflowCapabilitySection = CapabilityViewId
 
 type McpTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
-type IdentityTab = 'general' | 'secrets' | 'llm' | 'laptop' | 'upgrades'
+type IdentityTab = 'general' | 'secrets' | 'llm' | 'upgrades'
 
 const IDENTITY_TABS: Array<{ value: IdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'llm', label: 'Models' },
   { value: 'upgrades', label: 'Upgrades' },
 ]
-const RELAY_IDENTITY_TABS = IDENTITY_TABS.filter(option => option.value === 'general' || option.value === 'llm')
 
 interface WorkflowCapabilitiesPanelProps {
   section: WorkflowCapabilitySection
   workspacePath: string | null
   presetQueryId?: string | null
-  relayMode?: boolean
 }
 
 const EMPTY_CAPABILITIES: WorkflowCapabilities = {
@@ -93,7 +90,7 @@ const SECTION_COPY: Record<WorkflowCapabilitySection, { title: string; descripti
   },
 }
 
-export default function WorkflowCapabilitiesPanel({ section, workspacePath, presetQueryId, relayMode = false }: WorkflowCapabilitiesPanelProps) {
+export default function WorkflowCapabilitiesPanel({ section, workspacePath, presetQueryId }: WorkflowCapabilitiesPanelProps) {
   const chatSessionId = useChatStore(state => presetQueryId ? selectWorkspacePaneWorkflowTab(state.chatTabs, presetQueryId, state.activeTabId)?.sessionId ?? undefined : undefined)
   const vaultTabId = useChatStore(state => {
     const active = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
@@ -113,7 +110,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const refreshTools = useMCPStore(state => state.refreshTools)
   const [refreshingServers, setRefreshingServers] = useState(false)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
-  const mcpTabs = projectIntegrationSections(allowedProducts, relayMode)
+  const mcpTabs = projectIntegrationSections(allowedProducts)
   const [tab, setTab] = useState<McpTab>('apps')
   const activeMcpTab = mcpTabs.some(option => option.value === tab) ? tab : mcpTabs[0].value
   const [preferredPluginTab, setPluginTab] = useState<PluginTab>('connected')
@@ -122,12 +119,12 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const [shareChannel, setShareChannel] = useState<ProjectChannel | 'agentbridge'>('cli')
   const pluginTabs = projectPluginTabs(allowedProducts)
   const pluginTab = pluginTabs.some(option => option.value === preferredPluginTab) ? preferredPluginTab : pluginTabs[0].value
-  const identityTabs = relayMode ? RELAY_IDENTITY_TABS : IDENTITY_TABS
-  const [identityTab, setIdentityTab] = usePersistentTab<IdentityTab>(relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general', identityTabs.map(option => option.value))
+  const identityTabs = IDENTITY_TABS
+  const [identityTab, setIdentityTab] = usePersistentTab<IdentityTab>('agentworks.tab.workflow-identity', 'general', identityTabs.map(option => option.value))
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
   const navigationOptions = integrationNavigationOptions(mcpTabs, pluginTabs)
   const selectConnection = (target: string) => {
-    if (['connected', 'available', 'secrets', 'gmail', 'slack-account', ...(!relayMode ? ['laptop'] : [])].includes(target)) { setSharing(false); setTab('apps'); setPluginTab('connected'); setIntegrationSection(target as IntegrationSection); return }
+    if (['connected', 'available', 'secrets', 'gmail', 'slack-account'].includes(target)) { setSharing(false); setTab('apps'); setPluginTab('connected'); setIntegrationSection(target as IntegrationSection); return }
     if (target === 'share' || target === 'agentbridge' && integrationProductAvailable('bullpen', allowedProducts) || target === 'cli' || (target === 'slack' && mcpTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel | 'agentbridge'); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setTab('apps'); setPluginTab(pluginTabs.some(option => option.value === 'connected') ? 'connected' : pluginTabs[0].value); return }
     if (!mcpTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
@@ -223,26 +220,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   }, [])
   const identityRefreshLabel = `Refresh ${identityTabs.find(option => option.value === activeIdentityTab)?.label ?? 'view'}`
 
-  // Agent tools (and shell edits) can change this configuration while the panel
-  // stays open. Refresh both sources, only for the visible MCP panel.
-  useEffect(() => {
-    if (section !== 'mcp' || !workspacePath || !relayMode) return
-    let refreshing = false
-    const refresh = async () => {
-      if (document.hidden || refreshing || latest.current.saving) return
-      refreshing = true
-      try { await handleRefreshServers() } finally { refreshing = false }
-    }
-    const onFocus = () => { void refresh() }
-    const timer = window.setInterval(onFocus, 15000)
-    window.addEventListener('focus', onFocus)
-    return () => {
-      window.clearInterval(timer)
-      window.removeEventListener('focus', onFocus)
-      ++loadVersion.current
-    }
-  }, [relayMode, section, workspacePath, handleRefreshServers])
-
   useEffect(() => {
     void load()
   }, [load])
@@ -335,7 +312,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
               refreshing={section === 'mcp' && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available') && refreshingServers}
               refreshLabel={section === 'mcp' ? sharing ? 'Refresh sharing and channels' : mcpRefreshLabel : section === 'identity' ? identityRefreshLabel : `Refresh ${copy.title}`}
             >
-              {section === 'mcp' && relayMode && !sharing && activeMcpTab === 'apps' && pluginTab === 'connected' && canWriteWorkflow && <button type="button" onClick={() => selectConnection('available')} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-3.5 w-3.5" aria-hidden="true" />Add an MCP</button>}
+
             </WorkspaceViewActions>
           )}
           tabs={section === 'mcp'
@@ -357,18 +334,17 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
               <div>
                 <div data-ui-view-section={sharing ? shareChannel : activeConnection} key={`${workspacePath}:${sharing ? shareChannel : activeMcpTab}:${tabNonce}`}>
                 {sharing ? <>
-                  {workspacePath && (shareChannel === 'agentbridge' ? <ProjectAgentBridgePanel target={`workflow:${presetQueryId}`} tabId={vaultTabId} onAsk={askInCurrentChat} view="others" /> : shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={vaultTabId} onAsk={askInCurrentChat} /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun={relayMode ? 'Flow' : 'Goal'} allowBots={!relayMode} section={relayMode ? 'account' : 'bot'} tabId={vaultTabId} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />}</>)}
+                  {workspacePath && (shareChannel === 'agentbridge' ? <ProjectAgentBridgePanel target={`workflow:${presetQueryId}`} tabId={vaultTabId} onAsk={askInCurrentChat} view="others" /> : shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" tabId={vaultTabId} onAsk={askInCurrentChat} /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun={'Goal'} allowBots section={'bot'} tabId={vaultTabId} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />}</>)}
                 </> : <>
-                {activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <ProjectIntegrationPanel workspacePath={workspacePath} tabId={vaultTabId} placeNoun={relayMode ? 'Flow' : 'Goal'} section={integrationSection} canEdit={canWriteWorkflow} onAsk={askInCurrentChat}
+                {activeMcpTab === 'apps' && pluginTab !== 'skills' && workspacePath && <ProjectIntegrationPanel workspacePath={workspacePath} tabId={vaultTabId} placeNoun={'Goal'} section={integrationSection} canEdit={canWriteWorkflow} onAsk={askInCurrentChat}
                   onAppsSaved={selected_servers => syncVaultSelections({ selected_servers })}
-                  onSecretSelectionSaved={inventory => syncVaultSelections({ selected_global_secret_names: inventory.selected_global_secret_names })}
-                  laptop={!relayMode ? <CodeLocalFilesSettings workflowPath={workspacePath} /> : undefined} />}
+                  onSecretSelectionSaved={inventory => syncVaultSelections({ selected_global_secret_names: inventory.selected_global_secret_names })} />}
                 {activeMcpTab === 'apps' && workspacePath && pluginTab === 'skills' && <ProjectPluginsPanel tab="skills" skills={<SkillsManagerPanel
                       compact
                       manageOwnScroll={false}
                       customOnly
-                      profileId={relayMode ? 'relays' : 'agentworks'}
-                      selectionScopeLabel={relayMode ? 'Flow' : 'Goal'}
+                      profileId={'agentworks'}
+                      selectionScopeLabel={'Goal'}
                       emptySelectionText="No custom skills have been added here yet."
                       workspacePath={workspacePath}
                       selectedSkills={capabilities.selected_skills}
@@ -396,10 +372,10 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                         })
                       }}
                     />} />}
-                {!relayMode && activeMcpTab === 'brain' && workspacePath && (
+                {activeMcpTab === 'brain' && workspacePath && (
                   <ProjectKnowledgebasePanel workspacePath={workspacePath} disabled={!canWriteWorkflow} />
                 )}
-                {!relayMode && activeMcpTab === 'folders' && (
+                {activeMcpTab === 'folders' && (
                   <WorkflowFolderAccessView workspacePath={workspacePath} hideHeader manageOwnScroll={false} />
                 )}
                 {activeMcpTab === 'gmail' && (
@@ -414,14 +390,14 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
             {section === 'identity' && (
               <div key={`${activeIdentityTab}:${identityTabNonce}`}>
                 {activeIdentityTab === 'general' && (
-                  <WorkflowIdentityPanel workspacePath={workspacePath} relayMode={relayMode} />
+                  <WorkflowIdentityPanel workspacePath={workspacePath} />
                 )}
                 {activeIdentityTab === 'llm' && (
                   <><WorkflowLLMConfigurationPanel
                     workspacePath={workspacePath}
                     llmConfig={capabilities.llm_config}
-                    scopeNoun={relayMode ? 'Flow Builder' : 'workflow'}
-                    builderOnly={relayMode}
+                    scopeNoun={'workflow'}
+                    builderOnly={false}
                     onChange={(llm_config) => {
                       const next = { ...capabilities, llm_config }
                       setCapabilities(next)
@@ -430,14 +406,14 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   /></>
                 )}
 
-                {!relayMode && activeIdentityTab === 'upgrades' && (
+                {activeIdentityTab === 'upgrades' && (
                   <WorkflowUpdatesView workspacePath={workspacePath} />
                 )}
               </div>
             )}
             {section === 'browser' && (
               <BrowserWorkspacePanel
-                profileId={relayMode ? 'relay' : 'workflow'}
+                profileId={'workflow'}
                 workspacePath={workspacePath}
                 onSendToAgent={workspacePath ? message => sendWorkspacePaneMessageToChat({ workspacePath, message }) : undefined}
                 browserMode={capabilities.browser_mode as BrowserAutomationMode}

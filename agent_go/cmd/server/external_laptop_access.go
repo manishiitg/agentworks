@@ -122,12 +122,11 @@ func isExternalLaptopFileTool(name string) bool {
 
 func externalLaptopAccessDefinition(register func(string, string, bool, bool, map[string]any, ...string)) {
 	add := func(name, description string, mutation, workflow bool, properties map[string]any, required ...string) {
-		properties["workflow_id"] = externalString("Goal ID from workflow action=list. For a project pass this or workspace_id, exactly one. Only action=devices may omit both for your connected computers.")
-		properties["workspace_id"] = externalString("Crew workspace_id from workspace action=list. For a project pass this or workflow_id, exactly one. Only action=devices may omit both.")
+		properties["workspace_id"] = externalString("Crew workspace_id from workspace action=list. Pass workspace_id or crew_id, exactly one. Only action=devices may omit both.")
 		properties["crew_id"] = externalString("Crew ID, the same Crew as workspace_id; pass one of them.")
 		register(name, description, mutation, workflow, properties, required...)
 	}
-	add("manage_laptop_access", "Manage the shared laptop connection and folders of a Goal or Crew you build. get returns the saved access and setup steps; devices with no project lists your own connected computers and setup steps; with a project it also includes that project's selected computer; browse lists folder names; set saves the complete folder selection with Read or Read & write; remove disconnects the project. Uses the same settings as the project's Local laptop panel. Install and sign in to AgentWorks on that computer once, then keep it running. Folders cover files (terminal action=local_files, terminal action=local_copy, and terminal action=local_write for Read & write); commands (terminal action=local_execute) need the separate commands switch.", true, false, map[string]any{
+	add("manage_laptop_access", "Manage the shared laptop connection and folders of a Crew you own. get returns the saved access and setup steps; devices with no project lists your own connected computers and setup steps; with a project it also includes that project's selected computer; browse lists folder names; set saves the complete folder selection with Read or Read & write; remove disconnects the project. Uses the same settings as the project's Local laptop panel. Install and sign in to AgentWorks on that computer once, then keep it running. Folders cover files (terminal action=local_files, terminal action=local_copy, and terminal action=local_write for Read & write); commands (terminal action=local_execute) need the separate commands switch.", true, false, map[string]any{
 		"action":       map[string]any{"type": "string", "enum": []any{"get", "devices", "browse", "set", "remove"}},
 		"workspace_id": externalString("Your Crew's stable workspace_id from workspace action=list."),
 		"device_id":    externalString("Your connected computer from action=devices; required for browse or set with folders."),
@@ -139,18 +138,18 @@ func externalLaptopAccessDefinition(register func(string, string, bool, bool, ma
 			"access": map[string]any{"type": "string", "enum": []any{"read", "write"}},
 		}, "required": []any{"path", "access"}}},
 	}, "action")
-	add("execute_local_shell_command", "Run a command on the connected laptop for a Goal or Crew you build. Requires commands turned on and a Read & write folder saved by manage_laptop_access. Commands start in that folder and run under your computer's existing permissions. Normal project shell stays on the server; server environment and secrets are never forwarded. A timed-out/disconnected call may have run: do not retry it blindly.", true, false, map[string]any{
+	add("execute_local_shell_command", "Run a command on the connected laptop for a Crew you own. Requires commands turned on and a Read & write folder saved by manage_laptop_access. Commands start in that folder and run under your computer's existing permissions. Normal project shell stays on the server; server environment and secrets are never forwarded. A timed-out/disconnected call may have run: do not retry it blindly.", true, false, map[string]any{
 		"workspace_id": externalString("Your Crew's workspace_id from workspace action=list."), "folder": externalString("Granted folder ID from manage_laptop_access action=get; optional when only one is granted."), "command": externalString("Command to run on your laptop."), "timeout": externalInteger(1, 300),
 	}, "command")
-	add("list_local_files", "List one folder on the connected laptop for a Goal or Crew you build, using a granted Read or Read & write folder. path is relative to that folder; omit it for the folder itself. One level, in name order, a page at a time (200 by default; the reply gives total, truncated and next_offset); find a file in a big folder with query. An error is not an empty folder.", true, false, map[string]any{
+	add("list_local_files", "List one folder on the connected laptop for a Crew you own, using a granted Read or Read & write folder. path is relative to that folder; omit it for the folder itself. One level, in name order, a page at a time (200 by default; the reply gives total, truncated and next_offset); find a file in a big folder with query. An error is not an empty folder.", true, false, map[string]any{
 		"workspace_id": externalString("Your Crew's workspace_id from workspace action=list."), "folder": externalString("Granted folder ID from manage_laptop_access action=get; optional when only one is granted."), "path": externalString("Folder inside the granted folder; omit for the folder itself."),
 		"query": externalString("Only names containing this text (not case-sensitive), for finding a file in a big folder."),
 		"limit": map[string]any{"type": "integer", "description": "Entries per page; default 200, at most 1000."}, "offset": map[string]any{"type": "integer", "description": "Where the page starts, from next_offset of the previous page."},
 	})
-	add("write_local_file", "Create or replace one text file in a Read & write folder on the connected laptop for a Goal or Crew you build. Replaces the whole file; text only, at most 11 MiB.", true, false, map[string]any{
+	add("write_local_file", "Create or replace one text file in a Read & write folder on the connected laptop for a Crew you own. Replaces the whole file; text only, at most 11 MiB.", true, false, map[string]any{
 		"workspace_id": externalString("Your Crew's workspace_id from workspace action=list."), "folder": externalString("Granted folder ID from manage_laptop_access action=get; optional when only one is writable."), "path": externalString("File path relative to the granted folder."), "content": externalString("The complete new text of the file."),
 	}, "path", "content")
-	add("copy_local_file_to_project", "Copy one local file into a Goal or Crew you build, using your granted Read or Read & write folder. local_path is relative to that laptop folder; project_path is relative to the project on the server. Text or binary, at most 11 MiB; bytes go directly to the normal guarded project writer. Replaces the destination; no sync or server-to-laptop copy. File content is not returned through the model.", true, false, map[string]any{
+	add("copy_local_file_to_project", "Copy one local file into a Crew you own, using your granted Read or Read & write folder. local_path is relative to that laptop folder; project_path is relative to the project on the server. Text or binary, at most 11 MiB; bytes go directly to the normal guarded project writer. Replaces the destination; no sync or server-to-laptop copy. File content is not returned through the model.", true, false, map[string]any{
 		"workspace_id": externalString("Your Crew's workspace_id from workspace action=list."), "folder": externalString("Granted folder ID from manage_laptop_access action=get; optional when only one is granted."), "local_path": externalString("File relative to the granted laptop folder."), "project_path": externalString("Editable destination relative to this project."),
 	}, "local_path", "project_path")
 }
@@ -161,7 +160,7 @@ func (api *StreamingAPI) externalLaptopAccessCall(w http.ResponseWriter, r *http
 		externalError(w, 403, "forbidden", "Use your own Builder connection to manage laptop access, or connect a computer in the project's Local laptop panel or in chat and select it in the project’s Local laptop panel.")
 		return
 	}
-	if externalArg(args, "action") == "devices" && externalArg(args, "workspace_id") == "" && externalArg(args, "crew_id") == "" && externalArg(args, "workflow_id") == "" {
+	if externalArg(args, "action") == "devices" && externalArg(args, "workspace_id") == "" && externalArg(args, "crew_id") == "" {
 		w.Header().Set("Cache-Control", "no-store")
 		externalJSON(w, api.personalLaptopConnections(c))
 		return

@@ -57,8 +57,8 @@ func (api *StreamingAPI) dedicatedSlackRoute(ctx context.Context, connectionID, 
 	return route, true
 }
 
-// slackDestinationRoute builds the Run-mode route for a workflow folder or,
-// with profileID, a crew project.
+// slackDestinationRoute resolves a saved trigger or conversation destination.
+// Workflow triggers run directly; the bot turn builder refuses workflow chats.
 func (api *StreamingAPI) slackDestinationRoute(ctx context.Context, workspacePath, profileID string) (*services.ChannelRoute, error) {
 	if profileID != "" {
 		return api.dedicatedSlackProfileRoute(ctx, profileID, workspacePath)

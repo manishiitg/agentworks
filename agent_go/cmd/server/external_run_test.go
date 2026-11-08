@@ -29,7 +29,7 @@ func TestExternalRunScopeGate(t *testing.T) {
 	full := claims("workflows:read", "files:read", "runs:execute")
 
 	// Proxied run tools require runs:execute.
-	for _, name := range []string{"execute_step", "run_full_workflow", "send_step_message", "stop_step", "stop_all_executions", "query_step", "trigger_schedule", "chat", "run_reply_input"} {
+	for _, name := range []string{"execute_step", "run_full_workflow", "send_step_message", "stop_step", "stop_all_executions", "query_step", "trigger_schedule", "run_reply_input"} {
 		if externalTokenAllows(readOnly, byName[name]) {
 			t.Fatalf("read-only token allows %s", name)
 		}
@@ -64,20 +64,23 @@ func TestExternalRunProxyRejectsReadOnlyToken(t *testing.T) {
 	if scoped["error"].(map[string]any)["code"] != "insufficient_scope" {
 		t.Fatalf("wrong error: %v", scoped)
 	}
-}
 
-func TestExternalChatRejectsReadOnlyTokenAndBlankMessage(t *testing.T) {
-	f := newExternalToolsFixture(t)
-	w := httptest.NewRecorder()
-	data := `{"name":"chat","arguments":{"workflow_id":"invoices","message":"hello"}}`
-	f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", data, patClaims("owner", []string{"workflows:read", "files:read"}), nil))
-	scoped := externalTestBody(t, w, 403)
-	if scoped["error"].(map[string]any)["code"] != "insufficient_scope" {
-		t.Fatalf("wrong error: %v", scoped)
+	// PLAT-746-477: authorized execution must not start an assistant for a retired plan.
+	body := externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": "start", "workflow_id": "invoices"}), 400)
+	if body["error"].(map[string]any)["code"] != "workflow_unavailable" {
+		t.Fatalf("wrong retirement refusal: %v", body)
 	}
-	// A whitespace message passes schema validation but is rejected before
-	// any turn starts.
-	externalTestBody(t, f.call(t, "owner", "chat", map[string]any{"workflow_id": "invoices", "message": "  "}), 400)
+	// PLAT-746: inspection used to create an assistant turn through the run
+	// proxy. An authorized owner must still get a refusal, not a start receipt.
+	for _, action := range []string{"step_runtime", "step_prompts"} {
+		inspection := externalTestBody(t, f.call(t, "owner", "runs", map[string]any{"action": action, "workflow_id": "invoices", "step_id": "fetch-invoices"}), 400)
+		if inspection["error"].(map[string]any)["code"] != "invalid_arguments" || inspection["session_id"] != nil {
+			t.Fatalf("inspection action %s reached run startup: %v", action, inspection)
+		}
+	}
+	if len(f.api.activeSessions) != 0 {
+		t.Fatal("a refused read or retired plan started an assistant")
+	}
 }
 
 func TestExternalRunReplyInputRejectsUnknownSession(t *testing.T) {
@@ -125,7 +128,9 @@ func TestExternalRunStatusKeepsDirectRunOwnershipAndBinding(t *testing.T) {
 	active.WorkspacePath = "Workflow/invoices"
 	active.AgentMode = "multi-agent"
 	status(owner, 404)
-	active.AgentMode = "workflow"
+	active.AgentMode, active.PhaseID = "workflow_phase", "workflow-builder"
+	status(owner, 404)
+	active.AgentMode, active.PhaseID = "workflow", ""
 	delete(f.api.activeSessions, sessionID)
 	// The same exact-workflow history reader handles a completed/reaped run.
 	persisted := `{"session_id":"` + sessionID + `","user_id":"owner","agent_mode":"workflow","runtime":{"workspace_path":"Workflow/invoices"},"conversation_history":[]}`
@@ -198,20 +203,20 @@ func TestExternalWebhookRunExposesAcceptedDeployMetadata(t *testing.T) {
 		},
 	}
 	runs, err := json.Marshal([]ScheduleRunEntry{{
-		ID: "run-1", ScheduleID: "deploy-hook", TriggerSource: "webhook", RunFolder: "iteration-6-hook",
+		ID: "run-1", ScheduleID: "deploy-hook", TriggerSource: "webhook", RunFolder: "run-6-hook",
 		Status: "success", StartedAt: time.Now().UTC(), Webhook: webhookRunMetadata(sctx),
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.write(t, "Workflow/invoices/schedule-runs.json", string(runs))
-	f.write(t, "Workflow/invoices/runs/iteration-6-hook/default/result.txt", "passed")
+	f.write(t, "Workflow/invoices/runs/run-6-hook/default/result.txt", "passed")
 	for _, call := range []struct {
 		name string
 		args map[string]any
 	}{
 		{"automations", map[string]any{"scope": "schedule", "action": "runs", "project": "invoices", "schedule_id": "deploy-hook"}},
-		{"runs", map[string]any{"action": "get", "workflow_id": "invoices", "run_folder": "iteration-6-hook/default"}},
+		{"runs", map[string]any{"action": "get", "workflow_id": "invoices", "run_folder": "run-6-hook/default"}},
 	} {
 		body := externalTestBody(t, f.call(t, "owner", call.name, call.args), 200)
 		var webhook map[string]any
@@ -288,24 +293,6 @@ func TestReadOnlyForRequest(t *testing.T) {
 	}
 	if !readOnlyForRequest(WorkflowAccessWrite, QueryRequest{PinRunMode: true}) {
 		t.Fatal("pinned writer turn is not read-only")
-	}
-}
-
-func TestExternalRunInstructionPassesArgumentsThrough(t *testing.T) {
-	got := externalRunInstruction("execute_step", map[string]any{"workflow_id": "invoices", "session_id": "s", "step_id": "fetch", "tier": "high"})
-	for _, want := range []string{`"runs"`, `"action":"step"`, `"step_id":"fetch"`, `"tier":"high"`} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("instruction missing %s: %s", want, got)
-		}
-	}
-	for _, drop := range []string{"workflow_id", "session_id"} {
-		if strings.Contains(got, drop) {
-			t.Fatalf("instruction leaks routing key %s: %s", drop, got)
-		}
-	}
-	got = externalRunInstruction("stop_all_executions", map[string]any{"workflow_id": "invoices"})
-	if !strings.Contains(got, `"action":"stop_all"`) {
-		t.Fatalf("empty instruction wrong: %s", got)
 	}
 }
 

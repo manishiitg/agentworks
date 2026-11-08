@@ -25,10 +25,6 @@ type MCPTaskFamily struct {
 }
 
 func MCPTaskFamilyFor(name string) (MCPTaskFamily, bool) {
-	switch name {
-	case "builder_chat":
-		name = "builder_status"
-	}
 	f, ok := elicitationFamilyFor(name)
 	if name == "run_status" {
 		return MCPTaskFamily{}, false
@@ -37,9 +33,6 @@ func MCPTaskFamilyFor(name string) (MCPTaskFamily, bool) {
 		return MCPTaskFamily{}, false
 	}
 	out := MCPTaskFamily{Poll: f.get, Reply: f.reply, IDField: f.idField, Workflow: f.workflow}
-	if name == "builder_status" {
-		out.Cancel = "builder_cancel"
-	}
 	return out, true
 }
 
@@ -124,8 +117,6 @@ func MCPTaskCandidate(name string, args map[string]any) bool {
 	switch name {
 	case "functions":
 		return action == "call" || action == "status"
-	case "sessions":
-		return action == "builder_chat" || action == "builder_status"
 	}
 	return false
 }

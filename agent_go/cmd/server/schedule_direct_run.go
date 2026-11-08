@@ -11,17 +11,6 @@ import (
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// A run schedule with no messages only starts its saved run, so it starts the
-// run the way a script timer and a webhook do: no launcher agent reads an
-// instruction and calls run_full_workflow. A schedule with messages keeps its
-// agent. execution_mode and the legacy query field apply to agent turns only.
-func scheduleStartsRunDirectly(sctx *ScheduleContext) bool {
-	if sctx == nil || sctx.WebhookInput != nil {
-		return false
-	}
-	return len(compactScheduleMessages(sctx.Schedule.Messages)) == 0
-}
-
 // executeDirectScheduledRun runs the saved workflow in the schedule's own
 // pre-allocated run folder. Cron-side gating (ordering, collision policy,
 // catch-up, ownership, inputs) has already been applied by the caller; a failed

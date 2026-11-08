@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/gorilla/mux"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/mux"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 )
@@ -149,16 +150,6 @@ func TestWorkflowRetainedProviderAndAccountChangesRequireReconnect(t *testing.T)
 	}
 }
 
-func TestWorkflowBrowserFollowupCannotInterruptActiveExternalBuilder(t *testing.T) {
-	canceled := false
-	api := &StreamingAPI{agentCancelFuncs: map[string]context.CancelFunc{"chat": func() { canceled = true }}}
-	api.externalBuilderRuntime.sessions = map[string]*externalBuilderActive{"chat": {id: "external-operation"}}
-	compatible, _, err := api.prepareWorkflowRetainedDelivery(context.Background(), "chat", QueryRequest{SelectedFolder: "Workflow/test"}, true)
-	if err != nil || compatible || canceled {
-		t.Fatal("browser request could reconfigure MCP operation", compatible, err, canceled)
-	}
-}
-
 // An effort-only change must not send the next message to the old Medium CLI.
 // Drive the actual live-input HTTP handler through its rebuild/dispatch route.
 func TestWorkflowEffortChangeRefreshesRetainedLiveInput(t *testing.T) {
@@ -221,35 +212,5 @@ func TestWorkflowEffortChangeRefreshesRetainedLiveInput(t *testing.T) {
 	api.lastQueryRequests["chat"] = query
 	if compatible, err := api.workflowRetainedPolicyCompatible(ctx, "chat", query); err != nil || !compatible {
 		t.Fatalf("unchanged High effort should retain its CLI: compatible=%v err=%v", compatible, err)
-	}
-}
-
-// PLAT-872: retained follow-ups use the same laptop authority as the launch.
-func TestWorkflowBuilderFollowUpKeepsLaptopPolicy(t *testing.T) {
-	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_edit":true}]}`)
-	ws, docs := newFakeWorkspaceServer(t)
-	t.Setenv("WORKSPACE_API_URL", ws.URL)
-	docs.files["Workflow/test/workflow.json"] = `{"id":"wf_test","access":{"owners":["owner"]}}`
-	docs.files["Workflow/test/soul/soul.md"] = "Grow subscribers to 100 by December."
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	req := QueryRequest{SelectedFolder: "Workflow/test", AgentMode: "workflow_phase", PhaseID: "workflow-builder"}
-	api := &StreamingAPI{lastChatPolicyBySession: map[string]string{}}
-	if _, _, err := api.admitQueryTarget(ctx, &req, "owner", "chat"); err != nil {
-		t.Fatal(err)
-	}
-	if !req.admittedWorkflowPhase {
-		t.Fatal("phase admission was not recorded before the retained gate")
-	}
-	// PLAT-872: the actual launch key includes :laptop: even with no laptop
-	// selected. The retained gate omitted it and cancelled every follow-up.
-	laptop := api.goalLaptopPolicyKey(GetUserFromContext(ctx), req.SelectedFolder, false)
-	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false)) + laptop
-	if compatible, err := api.workflowRetainedPolicyCompatible(ctx, "chat", req); err != nil || !compatible {
-		t.Fatal("an unchanged workflow's follow-up was treated as a policy change", compatible, err)
-	}
-	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false)) + api.goalLaptopPolicyKey(GetUserFromContext(ctx), req.SelectedFolder, true)
-	if compatible, err := api.workflowRetainedPolicyCompatible(ctx, "chat", req); err != nil || compatible {
-		t.Fatal("changed laptop authority retained its old admission", compatible, err)
 	}
 }

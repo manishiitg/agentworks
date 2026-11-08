@@ -48,7 +48,6 @@ export type UseScheduleRunsDataArgs = {
   workflowScope?: WorkflowScope
   entityType?: 'workflow' | 'product'
   productProfileId?: string
-  workflowKind?: 'workflow' | 'relay'
   canManage?: boolean
 }
 
@@ -62,7 +61,7 @@ function retainDurationAverage(updated: ScheduledJob, previous: ScheduledJob): S
   }
 }
 
-export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType = 'workflow', productProfileId, workflowKind, canManage, active = true }: UseScheduleRunsDataArgs) {
+export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType = 'workflow', productProfileId, canManage, active = true }: UseScheduleRunsDataArgs) {
   const [jobs, setJobs] = useState<ScheduledJob[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -127,10 +126,8 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   )
 
   const panelJobs = useMemo(() => {
-    return jobs.filter(job => jobMatchesWorkflowScope(job, stableScope, presetMap)
-      && (!workflowKind || workflowPresets.some(preset => (preset.workflowKind || 'workflow') === workflowKind
-        && jobMatchesWorkflowScope(job, { workflowId: preset.id, presetQueryId: preset.id, workspacePath: preset.selectedFolder?.filepath }, presetMap))))
-  }, [jobs, stableScope, presetMap, workflowKind, workflowPresets])
+    return jobs.filter(job => jobMatchesWorkflowScope(job, stableScope, presetMap))
+  }, [jobs, stableScope, presetMap])
 
   const panelTitle = useMemo(() => {
     if (!isWorkflowScoped) return 'Automation Schedules'
@@ -189,8 +186,8 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   const hasRunningJob = panelJobs.some(j => j.last_status === 'running')
   const activeScheduleCount = panelJobs.filter(j => j.enabled).length
   // Each product pauses on its own, besides the pause of everything (PLAT-782).
-  const pauseProduct = entityType === 'product' ? (productProfileId === 'code' ? 'code' : 'work') : (workflowKind === 'relay' ? 'relays' : 'agentworks')
-  const pauseProductLabel = ({ agentworks: 'Goals', relays: 'Flow', work: 'Crew', code: 'Code' } as Record<string, string>)[pauseProduct] ?? 'These'
+  const pauseProduct = entityType === 'product' ? (productProfileId === 'code' ? 'code' : 'work') : 'agentworks'
+  const pauseProductLabel = ({ agentworks: 'Workflow', work: 'Crew', code: 'Code' } as Record<string, string>)[pauseProduct] ?? 'These'
   const isGloballyPaused = !!schedulerConfig?.globally_paused
   const isProductPaused = !!schedulerConfig?.paused_products?.includes(pauseProduct)
   const isSchedulerPaused = isGloballyPaused || isProductPaused

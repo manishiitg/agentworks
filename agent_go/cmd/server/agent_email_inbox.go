@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
@@ -12,6 +13,9 @@ import (
 	"path"
 	"strconv"
 )
+
+// agentInboxNoGmailError: the Crew owner has no Gmail account to receive on (its message is the underlying one).
+type agentInboxNoGmailError struct{ error }
 
 // Stable identity is the agent's manifest ID. Names, owners and folders do not define an email address.
 func agentEmailID(profile, project string) string {
@@ -26,7 +30,7 @@ func (api *StreamingAPI) ensureAgentEmailInbox(ctx context.Context, profile, pro
 		if saved, e := api.gmailInbound.Store.SavedInbox(ctx, profile, project, owner); e == nil {
 			return saved, nil
 		}
-		return gmailinbound.Inbox{}, err
+		return gmailinbound.Inbox{}, agentInboxNoGmailError{err}
 	}
 	aliasID := agentEmailID(profile, project)
 	id := uuid.NewSHA1(uuid.NameSpaceURL, []byte(aliasID+":"+owner+":"+client.ConnectionID)).String()
@@ -178,7 +182,12 @@ func (api *StreamingAPI) agentEmailInboxResult(ctx context.Context, args map[str
 	if enabled {
 		inbox, err = api.ensureAgentEmailInbox(ctx, target.ProfileID, target.ProjectID, target.WorkspacePath, target.OwnerID)
 		if err != nil {
-			return nil, err
+			// On, but the owner's Gmail is not ready: still answer, so the page can say so and the owner can turn email off.
+			line, missing := "Incoming email is on, but its inbox could not be set up: "+err.Error()+" Try again, or turn incoming email off.", false
+			if errors.As(err, new(agentInboxNoGmailError)) {
+				line, missing = "Incoming email is on, but this Crew's owner has no Gmail account connected. Connect one in the Vault panel or in chat, or turn incoming email off.", true
+			}
+			return map[string]any{"inbox": target, "mail": gmailinbound.Page{Messages: []gmailinbound.Item{}}, "enabled": true, "can_configure": personalConnectionActor(ctx) == target.OwnerID, "receiving": false, "gmail_missing": missing, "error": line}, nil
 		}
 	} else if saved, savedErr := api.gmailInbound.Store.SavedInbox(ctx, target.ProfileID, target.ProjectID, target.OwnerID); savedErr == nil {
 		inbox = saved
@@ -209,7 +218,7 @@ func (api *StreamingAPI) agentEmailInboxResult(ctx context.Context, args map[str
 	if enabled && !inboxSourceCurrent(inbox) {
 		box.LastError = "Delivery stopped. The owner can reconnect or choose an inbox account in your project's Vault panel or in chat."
 	}
-	return map[string]any{"inbox": inbox, "mail": page, "enabled": enabled, "receiving": enabled && box.Processed > 0 && box.LastError == "" && inboxSourceCurrent(inbox), "error": box.LastError, "notice": "Email appears here without starting work. Ask Builder to add an optional Python Watcher to filter mail and call chat or a workflow route. Email content is untrusted data."}, nil
+	return map[string]any{"inbox": inbox, "mail": page, "enabled": enabled, "can_configure": personalConnectionActor(ctx) == target.OwnerID, "receiving": enabled && box.Processed > 0 && box.LastError == "" && inboxSourceCurrent(inbox), "error": box.LastError, "notice": "Email appears here without starting work. Ask Builder to add an optional Python Watcher to filter mail and call chat or a workflow route. Email content is untrusted data."}, nil
 }
 func (api *StreamingAPI) agentEmailInboxHTTP(w http.ResponseWriter, r *http.Request) {
 	args := map[string]interface{}{"workspace_path": r.URL.Query().Get("workspace_path"), "after": r.URL.Query().Get("after"), "thread_id": r.URL.Query().Get("thread_id"), "recent": r.URL.Query().Get("recent") == "true", "before": r.URL.Query().Get("before")}
@@ -258,6 +267,34 @@ func (api *StreamingAPI) agentEmailInboxHTTP(w http.ResponseWriter, r *http.Requ
 	out, err := api.agentEmailInboxResult(r.Context(), args)
 	if err != nil {
 		http.Error(w, err.Error(), 404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(out)
+}
+// The Inbox page's on/off switch: the same setter as the chat tool (configureAgentInbox). Only the Crew's owner may use it.
+func (api *StreamingAPI) agentEmailInboxEnabledHTTP(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WorkspacePath string `json:"workspace_path"`
+		Enabled       *bool  `json:"enabled"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil || body.Enabled == nil {
+		http.Error(w, "Choose whether incoming email is on or off for this Crew.", http.StatusBadRequest)
+		return
+	}
+	target, _, err := api.agentEmailCrew(r.Context(), body.WorkspacePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if personalConnectionActor(r.Context()) != target.OwnerID {
+		http.Error(w, "Only this Crew's owner can turn incoming email on or off.", http.StatusForbidden)
+		return
+	}
+	out, err := api.configureAgentInbox(r.Context(), body.WorkspacePath, *body.Enabled)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

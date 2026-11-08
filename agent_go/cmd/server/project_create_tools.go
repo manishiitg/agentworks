@@ -28,14 +28,12 @@ func projectCreateAllowed(c *UserClaims, kind string) bool {
 	case "crew":
 		status, _ := projectCreationGate(c, crewProfileID)
 		return status == 0
-	case "relay":
-		return userAllowedProduct(c, "relays") && userAccessForClaims(c).CanCreateIn("relays") && userAccessForClaims(c).CanEdit && (c.AccessToken == nil || c.AccessToken.RelayBuilderAccess() && c.AccessToken.AllWorkflows)
 	}
 	return false
 }
 
 func projectCreationAvailable(c *UserClaims) bool {
-	return projectCreateAllowed(c, "crew") || projectCreateAllowed(c, "relay")
+	return projectCreateAllowed(c, "crew")
 }
 
 func projectCreateSpecSchema(kind string) map[string]any {
@@ -43,8 +41,6 @@ func projectCreateSpecSchema(kind string) map[string]any {
 	case "crew":
 		props, _, _ := externalCrewSpecSchemas()
 		return map[string]any{"type": "object", "properties": props, "required": []any{"name", "purpose"}, "additionalProperties": false}
-	case "relay":
-		return map[string]any{"type": "object", "properties": map[string]any{"label": externalString("Flow name."), "function": externalString("Initial function name; defaults to process.")}, "required": []any{"label"}, "additionalProperties": false}
 	}
 	return nil
 }
@@ -53,8 +49,8 @@ func projectCreateDefinition() externalTool {
 	return externalTool{Name: "create_project", Description: platformtools.ProjectActions[0].Description, mutates: true, InputSchema: map[string]any{
 		"type": "object", "additionalProperties": false, "required": []any{"kind", "spec", "idempotency_key"},
 		"properties": map[string]any{
-			"kind":            map[string]any{"type": "string", "enum": []any{"crew", "relay"}},
-			"spec":            map[string]any{"anyOf": []any{projectCreateSpecSchema("crew"), projectCreateSpecSchema("relay")}},
+			"kind":            map[string]any{"type": "string", "enum": []any{"crew"}},
+			"spec":            projectCreateSpecSchema("crew"),
 			"idempotency_key": map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "One key per intended project. Reuse it for retries; after a failed creation you may correct the spec. A successfully created project keeps its original spec, including across chats or MCP."},
 		},
 	}}
@@ -123,7 +119,7 @@ func (api *StreamingAPI) externalCreateProject(w http.ResponseWriter, r *http.Re
 	lock := productConversationRegistryMutex("project-create:" + identity)
 	lock.Lock()
 	defer lock.Unlock()
-	store, err := openExternalBuilderStore()
+	store, err := openMCPOAuthStore()
 	if err != nil {
 		externalFailure(w, err)
 		return
@@ -154,13 +150,6 @@ func (api *StreamingAPI) externalCreateProject(w http.ResponseWriter, r *http.Re
 	}
 	result := httptest.NewRecorder()
 	switch kind {
-	case "relay":
-		input := map[string]any{}
-		for k, v := range spec {
-			input[k] = v
-		}
-		input["submission_id"] = identity
-		api.externalCreateRelay(result, r, input)
 	case "crew":
 		var value crewSpec
 		if err = remarshalExternalArgs(spec, &value); err != nil {

@@ -149,7 +149,7 @@ func TestCrewBuilderAnswerSavesThePersonsDecision(t *testing.T) {
 		}
 	}
 	_, ownerCtx := register("identity-check", "owner", rootA, "work", false, nil)
-	for _, claims := range []*UserClaims{{UserID: "co"}, {UserID: "owner", ExternalBuilderOperationID: "mcp-operation"}} {
+	for _, claims := range []*UserClaims{{UserID: "co"}} {
 		refuseLifecycle(context.WithValue(ownerCtx, UserContextKey, claims), args)
 		if _, err := answer(context.WithValue(ownerCtx, UserContextKey, claims), args); err == nil {
 			t.Fatal("a mismatched or external caller answered through the website's tool")

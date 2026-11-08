@@ -122,13 +122,19 @@ func ResolveSelectedInputPreset(manifest *VariablesManifest, selected []string) 
 	return VariableGroup{Name: preset, Values: values}, nil
 }
 
+// Input definitions come from the selected saved script before any old file lookup.
+func (hcpo *StepBasedWorkflowOrchestrator) inputDefinitions(ctx context.Context) (*VariablesManifest, error) {
+	if hcpo.directCrewScript != nil {
+		return hcpo.directCrewScript.InputDefinitions(), nil
+	}
+	_, manifest, err := hcpo.variableManager.checkExistingVariables(ctx, hcpo.GetWorkspacePath()+"/variables/variables.json")
+	return manifest, err
+}
+
 func (hcpo *StepBasedWorkflowOrchestrator) resolveWorkshopInputGroup(ctx context.Context, requested string, selection []string) (string, error) {
-	_, manifest, err := NewVariableManager(hcpo.BaseOrchestrator).checkExistingVariables(ctx, "variables/variables.json")
+	manifest, err := hcpo.inputDefinitions(ctx)
 	if err != nil {
 		return "", err
-	}
-	if hcpo.directCrewScript != nil {
-		manifest = hcpo.directCrewScript.InputDefinitions()
 	}
 	hcpo.variablesManifest = manifest
 	if requested != "" {

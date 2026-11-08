@@ -578,7 +578,7 @@ function AppWorkspace() {
   // former profile-less Chat landing was removed; product-owned chats render
   // outside this shell and continue to use their own agent profiles.
   useEffect(() => {
-    if (dashboardsOpen || productSurface !== 'agentworks' && productSurface !== 'relays') return
+    if (dashboardsOpen || productSurface !== 'agentworks') return
     if (!hasCompletedInitialSetup || selectedModeCategory !== 'workflow') {
       setModeCategory('workflow')
       setShowWorkflowsOverview(productSurface === 'agentworks')
@@ -593,7 +593,7 @@ function AppWorkspace() {
   useEffect(() => {
     // AgentWorks only restores automation presets. Product chats own their
     // profile configuration and never use the removed generic-chat preset.
-    if (!dashboardsOpen && (productSurface === 'agentworks' || productSurface === 'relays') && hasCompletedInitialSetup && selectedModeCategory === 'workflow') {
+    if (!dashboardsOpen && (productSurface === 'agentworks') && hasCompletedInitialSetup && selectedModeCategory === 'workflow') {
       // Add a small delay to ensure stores are fully initialized
       const timer = setTimeout(() => {
         const activePreset = getActivePreset(selectedModeCategory)

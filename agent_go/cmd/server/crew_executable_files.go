@@ -32,6 +32,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			"step_ids":            map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "read planning/plan.json only: return these steps."},
 			"offset":              map[string]interface{}{"type": "integer", "description": "read planning/plan.json only: continue a large reply from next_offset."},
 			"content":             map[string]interface{}{"type": "string"},
+			"entry_mappings":      scriptEntryInputEditsSchema(),
 			"name":                map[string]interface{}{"type": "string"},
 			"kind":                map[string]interface{}{"type": "string", "enum": []string{"script"}, "description": "create only: always script."},
 		},
@@ -181,7 +182,11 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 				return "", fmt.Errorf("%s", oldPlanWorkflowNotEditable)
 			}
 			if binding.Kind == "script" {
-				err = writeCrewScriptFile(ctx, binding, clean, content)
+				entries, decodeErr := decodeScriptEntryInputEdits(args["entry_mappings"])
+				if decodeErr != nil {
+					return "", decodeErr
+				}
+				err = writeCrewScriptFile(ctx, binding, clean, content, entries)
 			} else {
 				err = writeFileToWorkspace(ctx, binding.Root+"/"+clean, content)
 			}
@@ -202,8 +207,8 @@ const oldPlanWorkflowNotEditable = "This workflow uses the older plan format. It
 // The edit operations that remain: a workflow's schedules and webhooks.
 var crewPlanOperations = []string{"manage_schedules", "manage_webhooks"}
 
-func crewPlanDefinitions() []workflow.ExternalPlanToolDefinition {
-	var definitions []workflow.ExternalPlanToolDefinition
+func crewPlanDefinitions() []workflow.WorkflowToolDefinition {
+	var definitions []workflow.WorkflowToolDefinition
 	// Reuse the public action schemas and handlers; only the target is fixed to this Crew's child.
 	add := func(name, description string, _, _ bool, properties map[string]any, required ...string) {
 		delete(properties, "project")
@@ -213,7 +218,7 @@ func crewPlanDefinitions() []workflow.ExternalPlanToolDefinition {
 			name = "manage_webhooks"
 		}
 		schema, _ := json.Marshal(map[string]any{"type": "object", "properties": properties, "required": required})
-		definitions = append(definitions, workflow.ExternalPlanToolDefinition{Name: name, Description: description, InputSchema: schema})
+		definitions = append(definitions, workflow.WorkflowToolDefinition{Name: name, Description: description, InputSchema: schema})
 	}
 	externalScheduleDefinitions(add)
 	externalTriggerDefinitions(add)

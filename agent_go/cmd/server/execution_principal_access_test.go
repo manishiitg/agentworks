@@ -14,7 +14,7 @@ func TestConversationTargetAccessUsesCrewProjectAndWorkflowGrant(t *testing.T) {
 	const projectID = "project-1"
 	const publicPath = "Crew/my-crew"
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	registerTestCrew(t, "my-crew", "owner", true)
+	registerTestCrew(t, "my-crew", "owner", true, "project-1")
 	workspace := &mockWorkspaceAPI{files: map[string]string{
 		publicPath + "/product.json":    `{"schema_version":1,"product":"work","id":"project-1","title":"My Crew","session_id":"crew-session"}`,
 		manifestPath("Workflow/shared"): `{"schema_version":1,"id":"wf_shared","access":{"owners":["other"],"readers":["owner"]}}`,

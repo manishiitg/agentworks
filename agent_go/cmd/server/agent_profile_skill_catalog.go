@@ -3,7 +3,6 @@ package server
 import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
@@ -33,15 +32,7 @@ func agentProfileSkillDefinitions(profile agentprofiles.Profile, defaults map[st
 				return nil, err
 			}
 		}
-		if profile.BuiltIn && profile.ID == "relays" && mode != "profile" {
-			chatSkills, err := relayproduct.ChatSkills(mode)
-			if err != nil {
-				return nil, err
-			}
-			for _, definition := range chatSkills {
-				resolved[definition.Name] = definition
-			}
-		}
+
 		definitions[mode] = []skills.Skill{}
 		for _, name := range names {
 			definition := selection.Skill(resolved[name])

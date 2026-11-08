@@ -1,6 +1,6 @@
 package skills
 
-const agentBrowserSkillContent = `# Agent Browser In Builder
+const agentBrowserSkillContent = `# Agent Browser In AgentWorks
 
 This skill covers interactive managed browsing. For repeatable test suites, call
 read_skill(skills=[{"name":"agent-browser","path":"references/playwright-scripted.md"}]).
@@ -9,13 +9,13 @@ that reference owns installation, custom fixtures, visibility, and Python compat
 Its test sessions use the same Browser panel in watch-only mode. The managed browser
 commands, CDP policies, media defaults, and capture rules below apply to agent-browser.
 
-Use the Builder MCP tool ` + "`workspace_browser.agent_browser`" + `. Do not run the ` + "`agent-browser`" + ` CLI directly through shell. Builder's tool owns CDP validation, shared-tab locking, session isolation, and workspace file guards.
+Use the AgentWorks browser tool ` + "`workspace_browser.agent_browser`" + `. Do not run the ` + "`agent-browser`" + ` CLI directly through shell. AgentWorks' tool owns CDP validation, shared-tab locking, session isolation, and workspace file guards.
 
 ## Query Live Mode First
 
 CDP reachability is runtime state. It is never taken from saved conversation
 history. Before the first browser action—and again after any availability
-error—query Builder's backend-owned status operation:
+error—query AgentWorks' backend-owned status operation:
 
 ` + "```python" + `
 status = agent_browser("status", [], session="main")
@@ -56,7 +56,7 @@ If media still fails, inspect the exact error, page permissions and secure conte
 
 ## Bundled Recording in Builder
 
-When the user/workflow requests recording or reproduction evidence in managed headless mode, prefer Builder's capture command. It uses the same recording service/state as the Browser view and includes video.webm, network.har (without response bodies), console.json, errors.json, manifest.json and capture.zip.
+When the user/workflow requests recording or reproduction evidence in managed headless mode, prefer AgentWorks' capture command. It uses the same recording service/state as the Browser view and includes video.webm, network.har (without response bodies), console.json, errors.json, manifest.json and capture.zip.
 
     agent_browser("capture", ["status"], session="main")
     agent_browser("capture", ["start"], session="main")
@@ -71,7 +71,7 @@ This is a Builder extension, so upstream skills do not document it. CDP currentl
 
 ## Recording Context Handoff
 
-In CDP mode, upstream ` + "`record start`" + ` creates a fresh temporary browser context/page because video cannot be enabled retroactively on the existing context. Builder detects that page and returns an ` + "`AGENTWORKS_RECORDING_CONTEXT`" + ` notice with its real tab id. Discard all refs from the original tab and call ` + "`snapshot`" + ` immediately. Builder blocks interactions until that snapshot succeeds and automatically routes subsequent page actions to the recorded context even if a stale original tab id was supplied. Do not select or create another tab while recording. On ` + "`record stop`" + `, Builder closes the temporary page, restores the original tab, and requires normal snapshot-before-interaction discipline again.
+In CDP mode, upstream ` + "`record start`" + ` creates a fresh temporary browser context/page because video cannot be enabled retroactively on the existing context. AgentWorks detects that page and returns an ` + "`AGENTWORKS_RECORDING_CONTEXT`" + ` notice with its real tab id. Discard all refs from the original tab and call ` + "`snapshot`" + ` immediately. AgentWorks blocks interactions until that snapshot succeeds and automatically routes subsequent page actions to the recorded context even if a stale original tab id was supplied. Do not select or create another tab while recording. On ` + "`record stop`" + `, AgentWorks closes the temporary page, restores the original tab, and requires normal snapshot-before-interaction discipline again.
 
 ## HTTP Tool Call Pattern
 
@@ -197,7 +197,7 @@ HAR files and videos can capture credentials or other visible secrets. Create th
 
 ## Headless Rules
 
-- Managed headless browsing uses one persistent browser per workflow. Its authorized users, builder, runs and steps/groups share it; unrelated workflows have separate browsers. Session labels do not create browsers.
+- Managed headless browsing uses one persistent browser per workflow. Its authorized users, Crew agent, runs and Python steps share it; unrelated workflows have separate browsers. Session labels do not create browsers.
 - Tabs are optional: reuse the current/existing tab or create one when useful. Coordinate parallel tasks and re-snapshot before interacting. Do not close/reset the browser, clear storage, or sign out merely because your step finished.
 - During capture, other runs wait until the recording stops. Preserve the browser and sign-ins at completion.
 - Users can watch and interact in the workflow Browser view. Use workspace view tools to show that view when appropriate.
@@ -211,7 +211,7 @@ CDP caveat: native Chrome downloads can land in the host ` + "`~/Downloads`" + `
 
 The live step prompt and folder guard are authoritative. If they grant a host Downloads path, that path is readable for the current run even when an older workflow learning says it is inaccessible. After a native download, inspect the granted host folder for newly created completed files before declaring the download unavailable; do not infer current access from historical learnings.
 
-Use workspace-relative paths for downloads/uploads. Builder securely stages
+Use workspace-relative paths for downloads/uploads. AgentWorks securely stages
 upload inputs for the persistent daemon and stages explicit ` + "`download`" + `
 outputs before publishing them into the authorized run folder. A normal click
 in visible Chrome can still download into host ` + "`~/Downloads`" + `, which
@@ -219,8 +219,8 @@ remains read-only to the agent.
 
 ## Selector Discipline
 
-This is the shared selector contract for builder chats, workflow steps, saved
-scripts, and browser learnings.
+This is the shared selector contract for Crew chats, Python workflow steps,
+saved scripts, and browser learnings.
 
 1. **Snapshot first.** Start with an interactive snapshot, scoped to the relevant
    region when useful. It provides roles, accessible names, state, and temporary

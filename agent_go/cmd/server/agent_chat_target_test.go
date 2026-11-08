@@ -39,6 +39,14 @@ func TestAgentChatTargetDefaultsToCanonicalCrewMain(t *testing.T) {
 	if _, err := env.api.resolveAgentChatTarget(ctx, target, "unlisted"); err == nil {
 		t.Fatal("invented chat admitted")
 	}
+	// PLAT-746-477: a stored chat pointer cannot turn a workflow into a chat target.
+	retired := triggerTarget{Kind: triggerCallerWorkflow, Chat: &codeChat{SessionID: "run-example"}}
+	if _, err := env.api.resolveAgentChatTarget(ctx, retired, ""); err == nil {
+		t.Fatal("workflow accepted a conversation message")
+	}
+	if err := validateMessageDestination(ctx, agentMessageEndpoint{Kind: triggerCallerWorkflow}); err == nil {
+		t.Fatal("queued workflow conversation remained deliverable")
+	}
 	endpoint := targetMessageEndpoint("other", main)
 	if endpoint.UserID != "owner" || endpoint.Session != main.Chat.SessionID || endpoint.ChatKey != main.Chat.Key {
 		t.Fatal("recipient attribution lost", endpoint)

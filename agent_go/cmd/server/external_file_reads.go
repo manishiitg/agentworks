@@ -40,15 +40,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	}
 	localFiles := localBound && localRoots.Local && rootPath == localRoots.FilesPath()
 	crewRoot = crewRoot || localFiles
-	// A Flow release folder is allowed only when it maps back to a live Flow;
-	// callers pass it after checking access to that Flow.
-	releaseRoot := len(parts) == 4 && parts[0] == "Workflow" && parts[1] == relayReleasesFolder
-	if releaseRoot {
-		if _, err := relayDraftWorkspaceForRelease(ctx, rootPath); err != nil {
-			return wf.Result{}, &externalUpstreamError{400, "unknown Flow release"}
-		}
-	}
-	if !crewRoot && !releaseRoot && (len(parts) != 2 || parts[0] != "Workflow" || parts[1] == ".") {
+	if !crewRoot && (len(parts) != 2 || parts[0] != "Workflow" || parts[1] == ".") {
 		return wf.Result{}, &externalUpstreamError{400, "root must identify one workflow or Crew"}
 	}
 	p, err := wf.CleanRelative(req.Path)

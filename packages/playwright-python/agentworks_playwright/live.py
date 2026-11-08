@@ -7,7 +7,7 @@ import threading
 import time
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
-import websocket
+websocket = None
 
 
 def _endpoint(api_url=None, token=None, session_id=None, label=None):
@@ -34,6 +34,13 @@ def _endpoint(api_url=None, token=None, session_id=None, label=None):
 class _Publisher:
     """Bounded latest-frame transport; never calls Playwright from its worker."""
     def __init__(self, **options):
+        global websocket
+        if websocket is None:
+            try:
+                import websocket as websocket_module
+            except ModuleNotFoundError:
+                raise RuntimeError("AgentWorks' browser helper is missing websocket-client. Ask an admin to update the app.") from None
+            websocket = websocket_module
         url, token = _endpoint(**options)
         self.warning = ""
         self.done = threading.Event()

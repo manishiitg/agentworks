@@ -17,7 +17,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -118,8 +117,9 @@ func externalTools() ([]externalTool, error) {
 			"step_id": externalString("Read only this step: its plan entry and its configuration."),
 		})
 		add("save_script_inputs", "Save a Python workflow's input presets, and optionally its typed inputs. Replaces the supplied lists, preserving other script settings. Requires this Crew's Builder and the same source-editing consent as the script editor.", true, true, map[string]any{
-			"inputs":        map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Optional complete typed input definitions; omit to keep current inputs."},
-			"input_presets": map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Complete list of named presets, each with name and values. An empty list removes all presets."},
+			"inputs":         map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Optional complete typed input definitions; omit to keep current inputs."},
+			"input_presets":  map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Complete list of named presets, each with name and values. An empty list removes all presets."},
+			"entry_mappings": scriptEntryInputEditsSchema(),
 		}, "input_presets")
 		add("get_agent_context", "Describe this connection for an external agent: token capabilities, available tools, and guidance version. No workflow required; pass workflow_id for the caller's role on it.", false, false, map[string]any{"workflow_id": map[string]any{"type": "string", "description": "Optional workflow ID to report the caller's role on."}})
 		add("list_guidance_topics", "List the server-owned external guidance topics and their descriptions.", false, false, nil)
@@ -189,7 +189,6 @@ func externalTools() ([]externalTool, error) {
 		p["compact"] = map[string]any{"type": "boolean", "description": "Default true: id, status, times, duration, error and run folder per run. Pass false for group lists, final responses and usage."}
 		addRun("get_schedule_runs", "Page a schedule's retained run history with limit and offset, including after schedule deletion: status, duration, run folder, errors, and webhook deploy metadata when present. Workflow runs are kept for at least 90 days.", false, p, "schedule_id")
 		addRun("trigger_schedule", "Trigger a schedule to run immediately, outside its normal timing. Requires the runs:execute scope.", true, map[string]any{"schedule_id": externalString("Schedule ID from list_schedules.")}, "schedule_id")
-		addRun("chat", "Send a conversational message to the workflow assistant. Returns an inbox delivery receipt, without call_id or automatic answer capture. The agent explicitly chooses whether and what to send back; read messages action=read with inbox_id. Requires runs:execute.", true, map[string]any{"message": externalString("Message to send."), "inbox_id": externalString("Inbox from an earlier send to continue this external conversation."), "submission_id": externalString("Unique message submission ID; reuse after uncertain delivery.")}, "message")
 		addRun("run_reply_input", "Answer a pending human-input request in a run session (see runs action=status pending_inputs). Requires the runs:execute scope.", true, map[string]any{"session_id": externalString("Run session ID from runs action=status."), "request_id": externalString("Pending input request ID from runs action=status."), "response": externalString("The answer to submit.")}, "session_id", "request_id", "response")
 		// Stop commands execute directly instead of through the assistant
 		// proxy: halting the wrong execution (or none) is not acceptable.
@@ -282,9 +281,9 @@ func externalTools() ([]externalTool, error) {
 		externalMyVaultsDefinition(add)
 		for i := range defined {
 			if defined[i].Name == "manage_laptop_access" || isExternalLaptopFileTool(defined[i].Name) {
-				defined[i].InputSchema["oneOf"] = []any{map[string]any{"required": []any{"workspace_id"}}, map[string]any{"required": []any{"crew_id"}}, map[string]any{"required": []any{"workflow_id"}}}
+				defined[i].InputSchema["oneOf"] = []any{map[string]any{"required": []any{"workspace_id"}}, map[string]any{"required": []any{"crew_id"}}}
 				if defined[i].Name == "manage_laptop_access" {
-					defined[i].InputSchema["oneOf"] = append(defined[i].InputSchema["oneOf"].([]any), map[string]any{"properties": map[string]any{"action": map[string]any{"const": "devices"}}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []any{"workspace_id"}}, map[string]any{"required": []any{"crew_id"}}, map[string]any{"required": []any{"workflow_id"}}}}})
+					defined[i].InputSchema["oneOf"] = append(defined[i].InputSchema["oneOf"].([]any), map[string]any{"properties": map[string]any{"action": map[string]any{"const": "devices"}}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []any{"workspace_id"}}, map[string]any{"required": []any{"crew_id"}}}}})
 				}
 			}
 		}
@@ -295,7 +294,6 @@ func externalTools() ([]externalTool, error) {
 		externalCostsDefinition(add)
 		externalBullpenAdminDefinition(add)
 		externalBrainAdminDefinition(add)
-		externalBuilderDefinitions(add)
 		if err := externalWorkflowCrewDefinition(add); err != nil {
 			externalCatalogErr = err
 			return
@@ -332,7 +330,6 @@ func externalTools() ([]externalTool, error) {
 		}
 		externalDatabaseDefinitions(add)
 		externalMessagingDefinitions(add)
-		externalRelayDefinitions(add)
 		// Dispatch validates against the full external surface; discovery narrows
 		// it per connection and live action/Owner/admin checks still authorize it.
 		// A content-only schema here would reject advertised setup/access/Git
@@ -380,13 +377,7 @@ func externalTools() ([]externalTool, error) {
 		for _, name := range agentworksproduct.RunExternalDenylist() {
 			denied[name] = true
 		}
-		relayTools, err := relayproduct.BuilderExternalTools()
-		if err != nil {
-			externalCatalogErr = err
-			return
-		}
 		admitted := append(agentworksproduct.RunExternalTools(), agentworksproduct.BuilderExternalTools()...)
-		admitted = append(admitted, relayTools...)
 		crewTools, err := workproduct.BuilderExternalTools()
 		if err != nil {
 			externalCatalogErr = err
@@ -936,10 +927,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalCopyProjectFiles(w, r, call.Arguments)
 		return
 	}
-	if tool.Name == "create_relay" {
-		api.externalCreateRelay(w, r, call.Arguments)
-		return
-	}
 
 	discovered, err := discoverWorkflowManifests(r.Context(), tool.Name != "get_secret_sources")
 	if err != nil {
@@ -1083,28 +1070,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalSettingsCall(w, r, tool.Name, args, *selected, access)
 		return
 	}
-	if isExternalRelayTool(tool.Name) {
-		api.externalRelayCall(w, r, tool.Name, args, *selected)
-		return
-	}
-	if selected.Manifest.Kind == "relay" {
-		switch tool.Name {
-		case "list_schedules", "create_schedule", "create_calendar_schedule", "update_schedule", "delete_schedule", "trigger_schedule", "get_schedule_runs":
-			externalError(w, 400, "relay_api_only", "Flows use API function triggers. Use relay action=test or relay action=run and relay action=get_run.")
-			return
-		}
-	}
-	// Flow chat is Builder-only; direct API tools handle published execution.
-	if selected.Manifest.Kind == "relay" && (tool.Name == "chat" || tool.Name == "project_functions_call" && externalArg(args, "function") == "ask") {
-		externalError(w, 400, "relay_builder_only", "Use guarded files to edit Flow source, relay action=test for draft tests, or relay action=run for published versions. Builder chat can delegate edits when requested.")
-		return
-	}
-	// Conversation access follows the builder runtime: workflow readers may
-	// chat with its existing read-only tool policy, and control their own turns.
-	if strings.HasPrefix(tool.Name, "builder_") {
-		api.externalBuilderOperationCall(w, r, tool.Name, args, *selected)
-		return
-	}
 	if tool.Name == "workflow_crews" {
 		api.externalWorkflowCrewCall(w, r, args, *selected)
 		return
@@ -1161,7 +1126,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	// to the asynchronous query runtime (which must never run under this
 	// lock), and the status and schedule readers need no lock.
 	switch tool.Name {
-	case "run_status", "list_executions", "list_schedules", "get_schedule_runs", "trigger_schedule", "chat", "run_reply_input", "stop_step", "stop_all_executions":
+	case "run_status", "list_executions", "list_schedules", "get_schedule_runs", "trigger_schedule", "run_reply_input", "stop_step", "stop_all_executions":
 		api.externalRunCall(w, r, tool.Name, args, *selected)
 		return
 	}
@@ -1260,22 +1225,7 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 	}
 	// A Flow's published version keeps its production runs in its own
 	// release folder, the one the app's version picker reads.
-	if version := externalArg(args, "version"); version != "" {
-		if workflow.Manifest.Kind != "relay" {
-			externalError(w, 400, "invalid_arguments", "version applies to Flows only.")
-			return
-		}
-		if access := workflowAccessForManifest(GetUserFromContext(r.Context()), workflow.Manifest); access != WorkflowAccessOwner && access != WorkflowAccessWrite {
-			externalError(w, 403, "forbidden", "Production runs of a Flow need owner or editor access.")
-			return
-		}
-		root := relayReleaseWorkspace(workflow.WorkspacePath, version)
-		if draft, err := relayDraftWorkspaceForRelease(r.Context(), root); err != nil || draft != workflow.WorkspacePath {
-			externalError(w, 404, "version_not_found", "No published version "+version+"; see relay action=releases.")
-			return
-		}
-		req.Root = root
-	}
+
 	result, err := externalFileRequest(r.Context(), req)
 	if err != nil {
 		externalFailure(w, err)

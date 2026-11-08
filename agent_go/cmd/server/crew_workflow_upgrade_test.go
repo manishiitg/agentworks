@@ -104,8 +104,19 @@ func TestCrewBoundOlderWorkflowKeepsRunning(t *testing.T) {
 		}
 		return ctx, root, read, binding
 	}
+	// PLAT-847-23 / PR1568: removing Relay's exception must not advertise
+	// migrations that old contracts are still refused permission to apply.
+	t.Run("requires conversion instead of advertising updates", func(t *testing.T) {
+		_, _, manifest, _ := bound(t, "1.0.0")
+		if !workflowContractNeedsRecreation(manifest) || len(workflowVersionUpgradePlan(manifest)) != 0 {
+			t.Fatal("operator-only conversion was exposed as an available update")
+		}
+	})
 	t.Run("runs on the previous contract", func(t *testing.T) {
 		ctx, root, manifest, binding := bound(t, workflowContractSkillsVersion)
+		if len(workflowVersionUpgradePlan(manifest)) == 0 {
+			t.Fatal("supported updates disappeared")
+		}
 		if err := requireCurrentWorkflowContractForManualRun(ctx, root, &binding); err != nil {
 			t.Fatalf("a Crew workflow was refused for an update that cannot be done: %v", err)
 		}

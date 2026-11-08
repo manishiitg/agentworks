@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
+	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 // PLAT-856-542: a slow section cannot hold the other sections hostage; cached
@@ -181,5 +185,75 @@ func TestCrewPanelAutomationKindSummaries(t *testing.T) {
 	}
 	if _, has := got["schedules:triggers"]; has {
 		t.Fatalf("a list that failed to load must not claim it is empty: %v", got)
+	}
+}
+
+// The Automations menu: a workflow row and the Inbox line (On counts as an automation, Off does not), and the workflow
+// line says steps and the newest run in plain words.
+func TestCrewPanelWorkflowAndInboxSummaries(t *testing.T) {
+	now := time.Now()
+	done := now.Add(-2 * time.Hour)
+	steps := map[string]todo_creation_human.PythonStepEvidence{"a": {}, "b": {}, "c": {}, "d": {}}
+	line := crewPanelWorkflowLine([]RunFolderInfo{{Name: "run-2", Metadata: &RunMetadata{Status: "completed", CompletedAt: &done, PythonSteps: steps}}}, now)
+	if line != "4 steps · last run finished 2h ago" {
+		t.Fatalf("workflow line: %q", line)
+	}
+	if got := crewPanelWorkflowLine(nil, now); got != "Not run yet" {
+		t.Fatalf("no runs: %q", got)
+	}
+	off := crewPanelDetails([]crewPanelSection{{ID: "inbox", Rows: []crewPanelRow{{Destination: "schedules:email", Detail: "Off"}}}})
+	if off["schedules:email"] != "Off" || off["automations"] != "" {
+		t.Fatalf("an Off inbox must be listed but not counted: %v", off)
+	}
+	on := crewPanelDetails([]crewPanelSection{{ID: "inbox", Rows: []crewPanelRow{{Destination: "schedules:email", Detail: "On · a@example.com · 0 messages this week", Connected: true}}}, {ID: "workflow", Rows: []crewPanelRow{{Destination: "workflow", Detail: line}}}})
+	if on["automations"] != "On · a@example.com · 0 messages this week" || on["workflow"] != line {
+		t.Fatalf("on inbox and workflow: %v", on)
+	}
+}
+
+// The Inbox switch is owner-only, and the menu row follows it (Off, then On with the address).
+func TestCrewInboxSwitchIsOwnerOnlyAndPanelFollows(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	env, ctx, root := agentEmailCrewFixture(t)
+	env.mock.mu.Lock()
+	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"personal","personal":true,"owner_id":"owner","agent_inbox":true,"email":"owner@example.com","allow_read_access":true,"enabled":true}]}`
+	env.mock.mu.Unlock()
+	previous := services.GetGmailService()
+	t.Cleanup(func() { services.SetGmailService(previous) })
+	if _, err := services.InitGmailService(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := gmailinbound.Open(filepath.Join(t.TempDir(), "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	env.api.gmailInbound = &gmailinbound.Service{Store: store}
+	post := func(c context.Context, enabled bool) int {
+		body, _ := json.Marshal(map[string]any{"workspace_path": root, "enabled": enabled})
+		r := httptest.NewRequest("POST", "/api/agent-email/inbox", strings.NewReader(string(body))).WithContext(c)
+		w := httptest.NewRecorder()
+		env.api.agentEmailInboxEnabledHTTP(w, r)
+		return w.Code
+	}
+	other := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other"})
+	if code := post(other, false); code != http.StatusForbidden {
+		t.Fatalf("a Run person turned the Crew's email off: %d", code)
+	}
+	if code := post(ctx, false); code != 200 {
+		t.Fatalf("owner could not turn email off: %d", code)
+	}
+	if row, err := env.api.crewPanelInboxRow(ctx, root); err != nil || row.Detail != "Off" || row.Connected {
+		t.Fatalf("row after off: %+v %v", row, err)
+	}
+	if code := post(other, true); code != http.StatusForbidden {
+		t.Fatalf("a Run person turned the Crew's email on: %d", code)
+	}
+	if code := post(ctx, true); code != 200 {
+		t.Fatalf("owner could not turn email on: %d", code)
+	}
+	if row, err := env.api.crewPanelInboxRow(ctx, root); err != nil || !row.Connected || row.Detail != "On · 0 messages this week" {
+		t.Fatalf("row after on: %+v %v", row, err)
 	}
 }

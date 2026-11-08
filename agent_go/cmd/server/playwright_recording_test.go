@@ -31,9 +31,16 @@ func TestPlaywrightReplayPlaybackDownloadAndDelete(t *testing.T) {
 	}
 	defer producer.Close()
 	id := readPlaywrightType(t, producer, "registered")["browser_session"].(string)
-	api.playwrightLive.Lock()
-	rec := api.playwrightLive.recordings[id]
-	api.playwrightLive.Unlock()
+	// The recording is created just after "registered" is sent; wait for it.
+	var rec *playwrightRecording
+	for start := time.Now(); rec == nil; time.Sleep(10 * time.Millisecond) {
+		api.playwrightLive.Lock()
+		rec = api.playwrightLive.recordings[id]
+		api.playwrightLive.Unlock()
+		if rec == nil && time.Since(start) > 5*time.Second {
+			t.Fatal("recording was not created after registration")
+		}
+	}
 	img := image.NewRGBA(image.Rect(0, 0, 64, 48))
 	img.Set(0, 0, color.White)
 	var jpg bytes.Buffer

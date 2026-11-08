@@ -2,22 +2,18 @@ package server
 
 import (
 	"context"
-	"fmt"
-	"net/url"
-	"os"
-	"path/filepath"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/mcpagent/executor"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
-	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/oauth"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 func TestMCPToolIdentityUsesSessionOwnerAndRejectsMissingOrConflictingUsers(t *testing.T) {
@@ -47,32 +43,31 @@ func TestMCPToolIdentityUsesSessionOwnerAndRejectsMissingOrConflictingUsers(t *t
 	}
 }
 
-func TestMCPToolListUsesOnlyPrivateDiscoveryCache(t *testing.T) {
+// A connector's status comes from the person's own live Vault grants (PLAT-856, ee0e8ef837); the private
+// discovery cache it replaced is gone. One person's grant must not show as connected for another.
+func TestMCPToolStatusShowsOnlyThePersonsVaultGrants(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	name := "test-account-connector-" + t.Name()
-	cfg := mcpclient.MCPServerConfig{URL: "https://provider.example/mcp", OAuth: &oauth.OAuthConfig{}}
-	api := &StreamingAPI{logger: loggerv2.NewNoop()}
 	withMCPConnectionsRoot(t)
-	_, err := addPlaceMCPServer("alice", placeMCPServer{Name: "private_test", Catalog: name, URL: "https://example.com/mcp", Transport: "http"})
-	if err != nil {
-		t.Fatal(err)
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", strings.Repeat("s", 32))
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rows := []map[string]any{}
+		if r.Header.Get("X-CapLayer-Actor") == "status-alice" {
+			rows = append(rows, map[string]any{"id": "c-status-1", "label": "c-status-1", "provider": "notion", "tools": []map[string]any{{"name": "notion_c-status-1__search"}}})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"servers": rows})
+	}))
+	defer upstream.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", upstream.URL)
+	api := &StreamingAPI{logger: loggerv2.NewNoop()}
+	name := vaultServerName("c-status-1")
+	cfg := mcpclient.MCPServerConfig{URL: "https://provider.example/mcp", OAuth: &oauth.OAuthConfig{}}
+	if status := api.mcpToolStatusForUser(name, "status-alice", cfg); status.Connection != connectionConnected {
+		t.Fatalf("granted connection not shown: %+v", status)
 	}
-	internal, owned, err := placeMCPServerConfig("alice", "private_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	cache := mcpcache.GetCacheManager(api.logger)
-	entry := &mcpcache.CacheEntry{ServerName: internal, CreatedAt: time.Now(), IsValid: true, TTLMinutes: 30, Tools: []llmtypes.Tool{{Function: &llmtypes.FunctionDefinition{Name: "account_search"}}}}
-	if err := cache.Put(entry, owned); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = cache.Invalidate(mcpcache.GenerateUnifiedCacheKey(internal, owned)) })
-	if status := api.mcpToolStatusForUser(name, "alice", cfg); status.Status != "ok" || len(status.FunctionNames) != 1 {
-		t.Fatalf("platform discovery not shown: %+v", status)
-	}
-	if status := api.mcpToolStatusForUser(name, "bob", cfg); status.Status == "ok" || len(status.FunctionNames) != 0 {
-		t.Fatal("Alice's discovery was visible to Bob")
+	if status := api.mcpToolStatusForUser(name, "status-bob", cfg); status.Connection == connectionConnected {
+		t.Fatalf("Alice's grant was shown as connected for Bob: %+v", status)
 	}
 	if cfg.OAuth.TokenFile != "" {
 		t.Fatal("status lookup mutated shared OAuth config")
@@ -88,67 +83,6 @@ func TestMCPInstallToolRejectsAnonymousBridgeBeforeConfigMutation(t *testing.T) 
 	_, err := registrar.tools["install_mcp_server"].exec(context.Background(), map[string]interface{}{"name": "Connector", "url": "https://provider.example/mcp"})
 	if err == nil || !strings.Contains(err.Error(), "authenticated user") {
 		t.Fatalf("anonymous install should fail before touching config: %v", err)
-	}
-}
-
-func TestMCPInstallBridgeStartsOAuthInPrivateTokenDirectory(t *testing.T) {
-	for _, reconnect := range []bool{false, true} {
-		t.Run(fmt.Sprintf("reconnect=%v", reconnect), func(t *testing.T) {
-			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-			withMCPConnectionsRoot(t)
-			t.Setenv("MULTI_USER_MODE", "false")
-			t.Setenv("PUBLIC_URL", "https://app.example")
-			name := "TestOwnerConnector"
-			cfg := &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{
-				name: {URL: "https://provider.example/mcp", OAuth: &oauth.OAuthConfig{
-					AuthURL: "https://provider.example/authorize", TokenURL: "https://provider.example/token", ClientID: "test-client",
-				}},
-			}}
-			configPath := filepath.Join(t.TempDir(), "mcp.json")
-			if err := mcpclient.SaveConfig(configPath, cfg); err != nil {
-				t.Fatal(err)
-			}
-			// The definition may already exist after a failed/other-account install.
-			// That must not short-circuit this account's authorization.
-			if err := mcpclient.SaveConfig(strings.Replace(configPath, ".json", "_user.json", 1), cfg); err != nil {
-				t.Fatal(err)
-			}
-			api := &StreamingAPI{mcpConfigPath: configPath, mcpConfig: cfg, logger: loggerv2.NewNoop(), eventStore: events.NewEventStore(10)}
-			api.eventStore.SetSessionOwner("owner-chat", "alice")
-			registrar := &recordingRegistrar{}
-			if err := api.registerMultiAgentMCPServerTools(registrar, nil); err != nil {
-				t.Fatal(err)
-			}
-			if reconnect {
-				ownerToken := getUserTokenFilePath(platformMCPTokenUserID, name)
-				if err := os.MkdirAll(filepath.Dir(ownerToken), 0700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(ownerToken, []byte(`{}`), 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			result, err := registrar.tools["install_mcp_server"].exec(executor.WithSessionID(context.Background(), "owner-chat"), map[string]interface{}{"name": name, "reconnect": reconnect})
-			if err != nil {
-				t.Fatal(err)
-			}
-			authURL, parseErr := url.Parse(result[strings.LastIndex(result, " ")+1:])
-			if parseErr != nil || authURL.Query().Get("state") == "" {
-				t.Fatalf("expected OAuth authorization URL: %v", parseErr)
-			}
-			oauthFlowsMu.Lock()
-			flow := oauthFlows[authURL.Query().Get("state")]
-			oauthFlowsMu.Unlock()
-			if flow == nil {
-				t.Fatal("flow was not registered")
-			}
-			defer func() { flow.ErrChan <- fmt.Errorf("test canceled before authorization") }()
-			dir, _ := placeMCPDir("alice")
-			if got := flow.ServerConfig.OAuth.TokenFile; !strings.HasPrefix(got, dir+string(os.PathSeparator)) {
-				t.Fatalf("OAuth would save under wrong identity: %q", got)
-			}
-
-		})
 	}
 }
 

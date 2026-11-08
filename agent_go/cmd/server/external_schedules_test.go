@@ -95,6 +95,8 @@ func TestExternalCrewOnlyConnectionCannotReachWorkflows(t *testing.T) {
 // tab; WhatsApp pairing is only pointed to, never done over MCP.
 func TestExternalManageMessagingGuards(t *testing.T) {
 	f := newExternalToolsFixture(t)
+	// Slack accounts and bots come from Vault (PLAT-856); status reads them through the Vault service.
+	newOwnerVaultFake(t)
 	if w := f.call(t, "reader", "manage_messaging", map[string]any{"workflow_id": "invoices", "action": "status"}); w.Code != 200 || strings.Contains(w.Body.String(), `"bots"`) {
 		t.Fatalf("Run status leaked setup or stopped working: %d %s", w.Code, w.Body)
 	}

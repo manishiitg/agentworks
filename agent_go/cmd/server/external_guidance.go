@@ -22,7 +22,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/externalguidance"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -67,7 +66,7 @@ type externalGuidanceTopic struct {
 	Description  string
 	ExternalNote string
 	// Source says where the text comes from: the Builder reference (default),
-	// a file under external_topics/ ("embedded") or a Flow Builder skill ("relay").
+	// a file under external_topics/ ("embedded").
 	Source string
 	// Scopes the token must allow for the topic to be listed and served.
 	Scopes        []string
@@ -82,9 +81,7 @@ var externalTopicFiles embed.FS
 // externalTopicVisible reports whether this caller may see a topic. App
 // sessions see all; a token needs every scope the topic names.
 func externalTopicVisible(claims *UserClaims, topic externalGuidanceTopic) bool {
-	if topic.Source == "relay" && !productEnabled("relays") {
-		return false
-	}
+
 	if claims == nil || claims.AccessToken == nil {
 		return true
 	}
@@ -320,10 +317,6 @@ func loadExternalGuidanceTopics() []externalGuidanceTopic {
 	if err != nil {
 		panic(err)
 	}
-	relay, err := relayproduct.ExternalTopics()
-	if err != nil {
-		panic(err)
-	}
 	embedded, err := externalguidance.Load(externalTopicFiles, "external_topics/*.md")
 	if err != nil {
 		panic(err)
@@ -333,7 +326,7 @@ func loadExternalGuidanceTopics() []externalGuidanceTopic {
 	for _, source := range []struct {
 		name   string
 		topics []externalguidance.Topic
-	}{{"", builder}, {"relay", relay}, {"embedded", embedded}} {
+	}{{"", builder}, {"embedded", embedded}} {
 		for _, item := range source.topics {
 			if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(item.Name) || seen[item.Name] {
 				panic("invalid or duplicate external guidance topic: " + item.Name)
@@ -403,7 +396,7 @@ func externalGuidanceContent(topic string) (description, body string, err error)
 
 func externalGuidanceContentForProducts(topic string, selection productpolicy.Selection) (description, body string, err error) {
 	meta := externalGuidanceTopicByName(topic)
-	if meta == nil || meta.Source == "relay" && !productEnabled("relays") {
+	if meta == nil {
 		return "", "", fmt.Errorf("topic %q is not exposed", topic)
 	}
 	topic = meta.Name
@@ -506,7 +499,7 @@ func (api *StreamingAPI) externalAgentContext(w http.ResponseWriter, r *http.Req
 func externalPreparation(claims *UserClaims) []string {
 	steps := []string{
 		"Choose a product with help action=topic topic=product-guide. For an installable MCP usage skill, request help action=skills topics=[agentworks-mcp]. These are versioned server guidance, independent of Brain access.",
-		"Use only tools and actions present in this connection’s catalog. Each call rechecks existing consent, current account/project roles and connection bounds. Workflow Run-session tools start model turns; direct Crew and project handlers execute without a model turn.",
+		"Use only tools and actions present in this connection’s catalog. Each call rechecks existing consent, current account/project roles and connection bounds. Saved Python workflows run directly; Crew conversations use the Crew's chat. Each entry keeps its existing permissions.",
 		"Call workflow action=list to discover workflow IDs; IDs are never filesystem paths.",
 		"Load only the guidance topics relevant to the task; topic list via help action=topics.",
 		"Use files action=link for preview/download URLs; links identify a file and never grant permission.",
@@ -520,11 +513,10 @@ func externalPreparation(claims *UserClaims) []string {
 	}
 	canRun := claims == nil || claims.AccessToken == nil || claims.AccessToken.Allows("runs:execute")
 	if canRun {
-		steps = append(steps, "To run: call a run-mode tool such as runs action=step (its reply carries session_id), then poll runs action=status for completion. Read run evidence with runs action=list, runs action=get, and runs action=logs.")
-		steps = append(steps, "To chat: send questions with the chat tool and read replies with runs action=status; pass session_id to continue a conversation, and answer pending questions with runs action=reply_input.")
+		steps = append(steps, "To run a saved Python workflow, use runs action=start with its declared inputs. Read the returned run record and its outputs/logs using the evidence operations named in the reply.")
 	}
-	if claims != nil && externalTokenAllows(claims, externalTool{Name: "builder_chat"}) {
-		steps = append(steps, "Older plan-based workflows keep running but are no longer edited; the platform operator converts them to Python script workflows. New workflows are Python scripts: create and edit them with workspace action=automation_create and automation_write.")
+	if claims == nil || externalTokenAllows(claims, externalTool{Name: "ask_crew"}) {
+		steps = append(steps, "To talk to a Crew, use workspace action=ask with crew_id and message. Read messages action=read using the returned inbox_id; reuse that inbox for the same conversation. This is separate from a workflow run.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "workflow_google_account"}) {
 		steps = append(steps, "For personal Google or Slack accounts, use integrations with workflow_id or crew_id. Start with action=google_list_saved or slack_list_saved. The corresponding attach/detach action changes only this item; connect/reconnect returns a browser sign-in link; disconnect removes the saved connection everywhere. Existing Builder access, account ownership and current item access apply.")
@@ -533,9 +525,7 @@ func externalPreparation(claims *UserClaims) []string {
 		steps = append(steps, "Crew owners use terminal, browser and integrations for the direct operations offered by get_api_spec. terminal action=history reads existing owner execution records. sessions runtime_tools/runtime_call use only your own chat. Current authoring, selected account, sandbox and browser checks apply.")
 	}
 	if claims != nil && claims.AccessToken != nil {
-		if productEnabled("relays") {
-			steps = append(steps, "For Flows (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it, or sessions action=builder_chat to delegate changes. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. Everyone else with access chats with a Flow in Run mode in the app: it reads the published source, shows every run and runs a published version, but changes nothing. Creation requires relays:write consent covering all accessible workflows.")
-		}
+
 		steps = append(steps, "This token is restricted: unavailable tools are omitted from the tools list.")
 	}
 	return steps
