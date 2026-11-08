@@ -54,6 +54,14 @@ func (r *helperCheckRecorder) counts() (int, int) {
 	return r.failures, r.passes
 }
 
+type blockedStepRecorder struct {
+	helperCheckRecorder
+	started chan struct{}
+	proceed chan struct{}
+}
+
+func (r *blockedStepRecorder) OnExecutionStart(WorkshopExecutionStart) { close(r.started); <-r.proceed }
+
 type helperNotificationRecorder struct {
 	CrewScriptResolver
 	mu    sync.Mutex
@@ -562,6 +570,67 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	}
 	if !foundInside || !foundFailed || !foundOutside || !foundNotify {
 		t.Fatalf("real Python run evidence missing: inside=%t failed=%t outside=%t notify=%t", foundInside, foundFailed, foundOutside, foundNotify)
+	}
+	// PR1642: Stop may finalize the invocation while OnExecutionStart is
+	// blocked after the initial durable record but before activity registration.
+	for _, succeeded := range []bool{false, true} {
+		blocked := &blockedStepRecorder{started: make(chan struct{}), proceed: make(chan struct{})}
+		c.SetWorkshopExecutionNotifier(blocked)
+		env := map[string]string{"MCP_API_TOKEN": "helper-test-token"}
+		closeBridge := c.configureScriptBridgeSession(ctx, step, guard, DBAccessNone, env, code, root+"/runs/run-one/execution/task")
+		title := fmt.Sprintf("Registered after invocation end %t", succeeded)
+		body, _ := json.Marshal(map[string]interface{}{"action": "step", "key": title, "order": 1, "arguments": map[string]interface{}{"phase": "start", "title": title, "source_call": "main.py:late@main.py:1"}})
+		request, _ := http.NewRequestWithContext(ctx, http.MethodPost, env["MCP_API_URL"]+"/tools/custom/python_automation", bytes.NewReader(body))
+		request.Header.Set("Authorization", "Bearer helper-test-token")
+		done := make(chan error, 1)
+		go func() {
+			response, err := http.DefaultClient.Do(request)
+			if err == nil {
+				_, _ = io.Copy(io.Discard, response.Body)
+				response.Body.Close()
+			}
+			done <- err
+		}()
+		select {
+		case <-blocked.started:
+		case <-ctx.Done():
+			close(blocked.proceed)
+			closeBridge(false)
+			t.Fatal(ctx.Err())
+		}
+		closeBridge(succeeded)
+		close(blocked.proceed)
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		data, err := os.ReadFile(filepath.Join(docs, root, "runs/run-one/run_metadata.json"))
+		var record struct {
+			Steps map[string]PythonStepEvidence `json:"python_steps"`
+		}
+		if err != nil || json.Unmarshal(data, &record) != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, item := range record.Steps {
+			if item.Name == title {
+				found = true
+				want := "failed"
+				if succeeded {
+					want = "completed"
+				}
+				if item.Status != want || item.CompletedAt == "" {
+					t.Fatalf("late step remained running after invocation ended: %+v", item)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("late step record missing")
+		}
 	}
 	t.Log(fmt.Sprintf("real_python=true resumed_first=true repeated_key_runs=true failed_checks_retained=%d", failures))
 	common.ClearSessionShellConfig(c.GetMCPSessionID())
