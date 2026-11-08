@@ -91,6 +91,7 @@ type pythonAgentArguments struct {
 	MCP            []string `json:"mcp"`
 	Skills         []string `json:"skills"`
 	Tools          []string `json:"tools"`
+	Apps           []string `json:"apps"`
 	Browser        bool     `json:"browser"`
 	Knowledge      string   `json:"knowledge"`
 	TimeoutSeconds *float64 `json:"timeout_seconds"`
@@ -148,7 +149,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		if saved.WorkspacePath != hcpo.GetWorkspacePath() || saved.RunFolder != hcpo.selectedRunFolder || saved.ParentStepID != parent.GetID() || saved.StepID != args.ConversationID {
 			return nil, nil, fmt.Errorf("This conversation does not belong to this script and run.")
 		}
-		if args.Knowledge != "" && args.Knowledge != saved.Settings.Knowledge || args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || len(args.Tools) > 0 && !reflect.DeepEqual(args.Tools, saved.Settings.Tools) || args.Browser && !saved.Settings.Browser {
+		if args.Knowledge != "" && args.Knowledge != saved.Settings.Knowledge || args.Model != "" && args.Model != saved.Settings.Model || args.Tier != "" && args.Tier != saved.Settings.Tier || len(args.MCP) > 0 && !reflect.DeepEqual(args.MCP, saved.Settings.MCP) || len(args.Skills) > 0 && !reflect.DeepEqual(args.Skills, saved.Settings.Skills) || len(args.Scripts) > 0 && !reflect.DeepEqual(args.Scripts, saved.Settings.Scripts) || len(args.Tools) > 0 && !reflect.DeepEqual(args.Tools, saved.Settings.Tools) || len(args.Apps) > 0 && !reflect.DeepEqual(args.Apps, saved.Settings.Apps) || args.Browser && !saved.Settings.Browser {
 			return nil, nil, fmt.Errorf("A continued conversation keeps its original model, tier and resource selections. Start a fresh agent to change them.")
 		}
 	} else {
@@ -205,7 +206,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 
 	selection := &pythonAgentSelection{Servers: append([]string{}, saved.Settings.MCP...), Browser: saved.Settings.Browser}
 	saved.Config.EnabledCustomTools = []string{"workspace_advanced:*"}
-	for _, requested := range saved.Settings.Tools {
+	appTools, err := pythonAppSelections(saved.Settings.Apps)
+	if err != nil {
+		return nil, nil, err
+	}
+	requestedTools := append(append([]string{}, saved.Settings.Tools...), appTools...)
+	for _, requested := range requestedTools {
 		// Files, terminal and browser use the coding agent's native tools.
 		// Old step lists may carry this category; it adds no optional app.
 		if strings.HasPrefix(requested, "workspace_advanced:") {

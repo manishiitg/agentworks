@@ -554,6 +554,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 			allow[family] = true
 		}
 	}
+	ctx = context.WithValue(ctx, pythonScriptSessionKey{}, sessionID)
 	bridgeTools["python_automation"] = hcpo.pythonAutomationHandler(ctx, step, codeDir, outputDir)
 	allow["python_automation"] = true
 	env["WORKFLOW_RUN_DIR"] = workflowAbsPath(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder)

@@ -26,7 +26,7 @@ from typing import Any, Mapping, Sequence, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack"]
+__all__ = ["AutomationError", "Reply", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack", "google", "slack", "github"]
 
 
 
@@ -312,7 +312,7 @@ def send_slack(channel: str, text: str) -> Reply:
 
 def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
           tier: str | None = None, scripts: Sequence[str] = (),
-          mcp: Sequence[str] = (), skills: Sequence[str] = (), tools: Sequence[str] = (),
+          mcp: Sequence[str] = (), skills: Sequence[str] = (), tools: Sequence[str] = (), apps: Sequence[str] = (),
           browser: bool = False, knowledge: str | None = None,
           timeout_seconds: float | None = None, conversation_id: str | None = None,
           key: str | None = None, redo: bool = False) -> Reply:
@@ -325,6 +325,8 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     browser uses this automation's connected browser and defaults to False.
     tools names existing category:tool selections, for example
     human_tools:integrations.google. It cannot add an unavailable app or login.
+    apps=("google", "slack", "github") is a shorthand for those existing app
+    tools. Choose only what this agent needs; continuing it keeps that choice.
     Workflow agents never wait for a person. Browser calls share the workflow's
     existing browser session and profile. timeout_seconds=None adds no helper
     timer beyond the parent deadline.
@@ -346,8 +348,11 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     try:
         return _call("agent", {"name": name, "messages": messages, "model": model,
                      "tier": tier, "scripts": list(scripts), "mcp": list(mcp),
-                     "skills": list(skills), "tools": list(tools), "browser": browser,
+                     "skills": list(skills), "tools": list(tools), "apps": list(apps), "browser": browser,
                      "knowledge": knowledge, "timeout_seconds": timeout_seconds,
                      "conversation_id": conversation_id, "source_call": source_call}, key, redo)
     except AutomationError as error:
         return Reply(ok=False, error=str(error))
+
+
+from . import google, slack, github
