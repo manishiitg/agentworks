@@ -22,8 +22,8 @@ type ScriptDBToolRegistry struct {
 
 // CreateScriptDBToolRegistry exposes scan_workflow_script_db_usage: the list of
 // this workflow's scripts that still open the database themselves (the contract
-// 1.0.45 migration converts them to the agentworks_db helper) and the schema
-// statements found in scripts. It is read-only; the version stamp runs the same scan.
+// 1.0.45 migration converts them to the agentworks_db helper). SQL validity is
+// decided by the managed tools at execution. The version stamp runs this same scan.
 func CreateScriptDBToolRegistry(fallbackSessionID string) ScriptDBToolRegistry {
 	executor := func(ctx context.Context, args map[string]any) (string, error) {
 		workspacePath, err := ResolveWorkflowWorkspaceFolder(ctx, fallbackSessionID)
@@ -48,7 +48,7 @@ func CreateScriptDBToolRegistry(fallbackSessionID string) ScriptDBToolRegistry {
 			"clean":            len(findings) == 0,
 		}
 		if len(findings) > 0 {
-			result["next"] = "Convert each script to the agentworks_db helper; move each schema statement (ddl) into a db/migrations/ file applied with apply_workflow_db_migration. Test files (test_*.py) are not scanned."
+			result["next"] = "Convert each script to the agentworks_db helper. Use execute or transaction for CREATE TABLE/INDEX IF NOT EXISTS; ALTER and DROP are refused by the server. Test files (test_*.py) are not scanned."
 		}
 		encoded, err := json.Marshal(result)
 		if err != nil {
@@ -58,7 +58,7 @@ func CreateScriptDBToolRegistry(fallbackSessionID string) ScriptDBToolRegistry {
 	}
 	tool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name:        "scan_workflow_script_db_usage",
-		Description: "List this workflow's scripts under code/ that still open the database themselves (import sqlite3, $DB_PATH, db.sqlite: raw_db) and any schema statement (CREATE/ALTER/DROP) inside a script (ddl). Scripts reach the database through the built-in agentworks_db helper (the managed query/mutate tools); contract 1.0.45 is stamped only when this scan is clean. Read-only; test files are not scanned.",
+		Description: "List this workflow's scripts under code/ that still open the database themselves ($DB_PATH, db.sqlite: raw_db). Scripts reach the database through the built-in agentworks_db helper (the managed query/mutate tools); contract 1.0.45 is stamped only when this scan is clean. Read-only; test files are not scanned.",
 		Parameters: llmtypes.NewParameters(map[string]any{
 			"type":                 "object",
 			"properties":           map[string]any{},

@@ -1,9 +1,9 @@
 ## Project data and actions
 
 - Use `window.report.query(sql, params)` for live structured data. Inspect the
-  schema with `database action=query`; create idempotent migrations under
-  `db/migrations/` and apply them with `database action=migrate`. Change rows
-  only through `database action=mutate`. Never open or edit `db/db.sqlite`, WAL, or
+  schema with `database action=query`; use `database action=mutate` for rows
+  and additive setup (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`).
+  ALTER and DROP are refused. Existing `db/migrations/` files are history only. Never open or edit `db/db.sqlite`, WAL, or
   SHM files directly.
 - Dashboard documents can read allowed project files with `window.report.get`,
   `getText`, or `getHtml` when a database is unnecessary. For example,

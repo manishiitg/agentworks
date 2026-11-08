@@ -201,7 +201,6 @@ chat:
       - manage_user_access
       - manage_vault_access
       - manage_workflow_webhook
-      - mark_changelog_artifact_reviewed
       - perform_ui_action
       - create_human_input_request
       - answer_human_input_request

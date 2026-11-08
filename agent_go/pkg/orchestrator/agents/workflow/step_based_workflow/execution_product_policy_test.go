@@ -52,7 +52,7 @@ func TestRelayToolsAndGuardsIgnoreExplicitStoreGrants(t *testing.T) {
 	if err := c.configureExecutionProduct("relay"); err != nil {
 		t.Fatal(err)
 	}
-	names := []string{"execute_shell_command", "query_workflow_db", "mutate_workflow_db", "apply_workflow_db_migration", "create_workflow_database_snapshot"}
+	names := []string{"execute_shell_command", "query_workflow_db", "mutate_workflow_db", "create_workflow_database_snapshot"}
 	c.WorkspaceToolExecutors = map[string]interface{}{}
 	c.ToolCategories = map[string]string{}
 	for _, name := range names {

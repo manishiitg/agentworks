@@ -184,7 +184,7 @@ func CollectPlanChangeBacklog(workspacePath string) *PlanChangeBacklog {
 		backlog.Changes = append(backlog.Changes, p.change)
 	}
 	backlog.Note = fmt.Sprintf(
-		"%d plan-mod change(s) lack a complete structured dependency review, so their knock-on effects across downstream steps, validation, evaluation, reporting, database contracts, and learnings/knowledge may not have been reconciled. Evidence, not a verdict: many changes have no blast radius at all. The reviewer must return an evidence-backed disposition for every surface before mark_changelog_artifact_reviewed can close an entry — read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/plan-change-impact.md\"}]) is the procedure. Entries stay listed until closure, so deferring loses nothing.",
+		"%d plan-mod change(s) lack a complete structured dependency review, so their knock-on effects across downstream steps, validation, evaluation, reporting, database contracts, and learnings/knowledge may not have been reconciled. Evidence, not a verdict: many changes have no blast radius at all. Review the affected surfaces and report findings with evidence; do not edit changelog records to hide unresolved findings.",
 		len(pending))
 	if superseded > 0 {
 		backlog.Note += fmt.Sprintf(" %d older old-format change(s) (no change_id, more than 30 days old) are not listed: the reference map checks the current workflow for anything they could have broken.", superseded)

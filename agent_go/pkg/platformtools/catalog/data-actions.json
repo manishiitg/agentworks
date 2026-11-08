@@ -210,21 +210,11 @@
     "family": "database",
     "name": "mutate",
     "member": "mutate_workflow_db",
-    "description": "Change rows using the current database write setting and grants.",
+    "description": "Change rows or create tables/indexes with IF NOT EXISTS using the current database write setting and grants.",
     "aliases": [
       "mutate_crew_database"
     ],
     "external_members": "mutate_crew_database"
-  },
-  {
-    "family": "database",
-    "name": "migrate",
-    "member": "apply_workflow_db_migration",
-    "description": "Apply a managed database migration with the existing statement checks.",
-    "aliases": [
-      "migrate_crew_database"
-    ],
-    "external_members": "migrate_crew_database"
   },
   {
     "family": "database",

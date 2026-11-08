@@ -1178,7 +1178,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 		// not in the central workspace registry; use the active shell/diff/text/search tools.
 		"execute_shell_command", "diff_patch_workspace_file",
 		"generate_text_llm",
-		"query_workflow_db", "mutate_workflow_db", "apply_workflow_db_migration", "create_workflow_database_snapshot",
+		"query_workflow_db", "mutate_workflow_db", "create_workflow_database_snapshot",
 		// PLAT-184. This workflow's own per-workspace cost ledger.
 		"query_workflow_costs",
 		// Secret management tools. Managed globals require server admin; the
@@ -1359,59 +1359,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 	return uniqueStringsPreserveOrder(projected)
 }
 
-func (iwm *InteractiveWorkshopManager) registerMarkChangelogArtifactReviewedTool(mcpAgent DefinitionToolRegistrar, workspacePath string, logger loggerv2.Logger) error {
-	if mcpAgent == nil {
-		return fmt.Errorf("nil mcp agent")
-	}
-	return mcpAgent.RegisterCustomTool(
-		"mark_changelog_artifact_reviewed",
-		"Mark planning/changelog entries as fully inspected after every dependency surface has an evidence-backed disposition. Generic read-only reviewers must only propose exact marks and must not call this tool. This is the only supported way to set artifact_review.done=true; do not edit changelog JSON directly.",
-		map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"marks": map[string]interface{}{
-					"type":        "array",
-					"description": "Changelog files and zero-based entry indexes to mark reviewed.",
-					"items": map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"file": map[string]interface{}{
-								"type":        "string",
-								"description": "The changelog filename, e.g. changelog-2026-07-02-06-12-46.json. A planning/changelog/... path is accepted; only the basename is used.",
-							},
-							"entry_indexes": map[string]interface{}{
-								"type":        "array",
-								"description": "Zero-based indexes in the file's entries array that were fully inspected or cursor-backfilled.",
-								"items":       map[string]interface{}{"type": "integer"},
-							},
-							"surface_reviews": planDependencySurfaceReviewSchema(),
-						},
-						"required": []string{"file", "entry_indexes"},
-					},
-				},
-				"result": map[string]interface{}{
-					"type":        "string",
-					"enum":        []interface{}{"clean", "findings", "cursor-backfill"},
-					"description": "Review result to stamp on all marked entries.",
-				},
-				"report_entry_id": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional reference ID of the structured AgentWorks review record that records this review.",
-				},
-				"reviewed_at": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional RFC3339 UTC timestamp. Defaults to now.",
-				},
-			},
-			"required": []string{"marks", "result"},
-		},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			return iwm.markChangelogArtifactReviewed(ctx, workspacePath, args, logger)
-		},
-		"workflow",
-	)
-}
-
 func registerWorkshopAgentTools(iwm *InteractiveWorkshopManager, mcpAgent DefinitionRegistrar, workspacePath string, logger loggerv2.Logger) {
 	registerInteractiveWorkshopTools(iwm, mcpAgent, logger)
 	if !iwm.isRunModeRestricted() && iwm.workshopConfig != nil && iwm.workshopConfig.KnowledgebaseProjectTool != nil {
@@ -1424,11 +1371,6 @@ func registerWorkshopAgentTools(iwm *InteractiveWorkshopManager, mcpAgent Defini
 				logger.Warn(fmt.Sprintf("Failed to register knowledge project tool: %v", err))
 			}
 		}
-	}
-	if iwm.isRunModeRestricted() {
-		// PLAT-262: skip changelog artifact-review marker registration for read-only access
-	} else if err := iwm.registerMarkChangelogArtifactReviewedTool(mcpAgent, workspacePath, logger); err != nil {
-		logger.Warn(fmt.Sprintf("Failed to register changelog artifact-review marker tool: %v", err))
 	}
 }
 

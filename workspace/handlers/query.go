@@ -648,6 +648,9 @@ func MutateWorkflowDB(c *gin.Context) {
 			return
 		}
 		lastInsertID, _ := result.LastInsertId()
+		if sqlpolicy.IsAdditiveSchema(statement.SQL) {
+			rowsAffected, lastInsertID = 0, 0
+		}
 		response.Results = append(response.Results, models.MutationStatementResult{RowsAffected: rowsAffected, LastInsertID: lastInsertID})
 		response.TotalRowsAffected += rowsAffected
 	}
@@ -1085,6 +1088,9 @@ func execParamSets(ctx context.Context, tx *sql.Tx, statement models.MutationSta
 		if id, idErr := result.LastInsertId(); idErr == nil {
 			receipt.LastInsertID = id
 		}
+	}
+	if sqlpolicy.IsAdditiveSchema(statement.SQL) {
+		receipt = models.MutationStatementResult{}
 	}
 	return receipt, nil
 }

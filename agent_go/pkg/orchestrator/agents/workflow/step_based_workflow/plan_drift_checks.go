@@ -775,7 +775,7 @@ func CheckOrphanedTables(ctx context.Context, workspacePath string, allDBRuleSQL
 	}
 	check.Status = "fail"
 	check.Evidence = fmt.Sprintf(
-		"%d of %d live table(s) have zero references across report queries, validation_schema db[] rules, scripted main.py queries, and db/README.md: %s — candidates for cleanup via apply_workflow_db_migration (which auto-snapshots before any destructive change), not a raw DROP; verify manually before removing, since this is a heuristic scan of known sources, not a full-plan reference audit",
+		"%d of %d live table(s) have zero references across report queries, validation_schema db[] rules, scripted main.py queries, and db/README.md: %s — review whether these are still needed; managed tools do not remove tables. This is a heuristic scan of known sources, not a full-plan reference audit",
 		len(orphans), len(liveTables), strings.Join(orphans, ", "))
 	return check, nil
 }

@@ -120,6 +120,7 @@ func TestConfigureWorkflowDBSessionRetainsScriptedCompatibility(t *testing.T) {
 }
 
 func TestConfigureManagedWorkflowDBSessionProtectsBuilderSQLiteAndSidecars(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	const (
 		sessionID     = "managed-workflow-builder-db"
 		workspacePath = "Workflow/demo"
@@ -155,8 +156,7 @@ func TestConfigureManagedWorkflowDBSessionProtectsBuilderSQLiteAndSidecars(t *te
 		}
 	}
 
-	// Adjacent managed artifacts remain available: agents still author the
-	// migration file and use the dedicated tool to apply it.
+	// Adjacent documentation and export artifacts remain available.
 	for _, path := range []string{
 		workspacePath + "/db/migrations/add-table.sql",
 		workspacePath + "/db/README.md",
@@ -169,6 +169,7 @@ func TestConfigureManagedWorkflowDBSessionProtectsBuilderSQLiteAndSidecars(t *te
 }
 
 func TestConfigureManagedWorkflowDBSessionKeepsReadOnlyBuilderFailClosed(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	const sessionID = "read-only-workflow-builder-db"
 	t.Cleanup(func() { common.ClearSessionShellConfig(sessionID) })
 	common.SetSessionFolderGuard(sessionID, []string{"Workflow/demo"}, nil)
@@ -212,19 +213,17 @@ func TestPrepareCustomToolsMaterializesDBCapabilityFromDBAccess(t *testing.T) {
 	}
 	noop := func(context.Context, map[string]interface{}) (string, error) { return "", nil }
 	base.WorkspaceTools = []llmtypes.Tool{
-		tool("execute_shell_command"), tool("query_workflow_db"), tool("mutate_workflow_db"), tool("apply_workflow_db_migration"),
+		tool("execute_shell_command"), tool("query_workflow_db"), tool("mutate_workflow_db"),
 	}
 	base.WorkspaceToolExecutors = map[string]interface{}{
-		"execute_shell_command":       noop,
-		"query_workflow_db":           noop,
-		"mutate_workflow_db":          noop,
-		"apply_workflow_db_migration": noop,
+		"execute_shell_command": noop,
+		"query_workflow_db":     noop,
+		"mutate_workflow_db":    noop,
 	}
 	base.ToolCategories = map[string]string{
-		"execute_shell_command":       "workspace_advanced",
-		"query_workflow_db":           "workflow_db",
-		"mutate_workflow_db":          "workflow_db",
-		"apply_workflow_db_migration": "workflow_db",
+		"execute_shell_command": "workspace_advanced",
+		"query_workflow_db":     "workflow_db",
+		"mutate_workflow_db":    "workflow_db",
 	}
 	hcpo := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
 
@@ -255,11 +254,6 @@ func TestPrepareCustomToolsMaterializesDBCapabilityFromDBAccess(t *testing.T) {
 			if !gotMutation {
 				t.Fatalf("db_access=%q missing uniform mutation capability (tools=%v)", tt.access, names)
 			}
-			// Schema migration is Builder-only, including old explicit selections.
-			gotMigration := slices.Contains(names, "apply_workflow_db_migration") && executors["apply_workflow_db_migration"] != nil
-			if gotMigration {
-				t.Fatalf("db_access=%q leaked Builder migration capability (tools=%v)", tt.access, names)
-			}
 		})
 	}
 	// Capability additions must not fabricate tools absent from the parent's
@@ -267,7 +261,7 @@ func TestPrepareCustomToolsMaterializesDBCapabilityFromDBAccess(t *testing.T) {
 	base.WorkspaceTools = []llmtypes.Tool{tool("execute_shell_command"), tool("query_workflow_db")}
 	for _, config := range []*AgentConfigs{nil, {EnabledCustomTools: []string{"workflow_db:*"}}} {
 		tools, executors := hcpo.prepareCustomTools(config)
-		if len(tools) != 2 || executors["mutate_workflow_db"] != nil || executors["apply_workflow_db_migration"] != nil {
+		if len(tools) != 2 || executors["mutate_workflow_db"] != nil {
 			t.Fatal("tool selection exposed DB mutation outside the authorized pool")
 		}
 	}
@@ -338,7 +332,7 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"query_workflow_db", "mutate_workflow_db", "apply_workflow_db_migration"} {
+	for _, name := range []string{"query_workflow_db", "mutate_workflow_db"} {
 		base.WorkspaceTools = append(base.WorkspaceTools, tool(name))
 		base.WorkspaceToolExecutors[name] = noop
 		base.ToolCategories[name] = "workflow_db"
@@ -1447,7 +1441,6 @@ func TestWorkflowReadGrantsListEntriesAndOmitTheRawDatabase(t *testing.T) {
 					t.Fatal("old physical workflow recreated")
 				}
 			}
-
 		})
 	}
 }

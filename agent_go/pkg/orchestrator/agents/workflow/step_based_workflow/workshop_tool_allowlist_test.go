@@ -66,10 +66,7 @@ func TestEveryRegisteredWorkshopToolIsAllowedInSomeMode(t *testing.T) {
 
 	// Tools registered through CreateWorkflowDBToolRegistry / CreateWorkflowCostsToolRegistry
 	// (tool_setup.go) never appear as a RegisterCustomTool call in this file at
-	// all -- the AST scan above cannot see them, which is exactly how
-	// apply_workflow_db_migration shipped registered and tested, but absent
-	// from GetToolsForWorkshopMode's allowlist, and so unreachable by any real
-	// Workshop/Pulse session (PLAT-221 follow-up). Check them from their own
+	// all -- the AST scan above cannot see them (PLAT-221). Check them from their own
 	// canonical name lists instead of trying to widen the AST scan to a
 	// registration path it was never written to see.
 	for name := range virtualtools.WorkflowDBToolNames() {
@@ -80,7 +77,7 @@ func TestEveryRegisteredWorkshopToolIsAllowedInSomeMode(t *testing.T) {
 	}
 
 	allowed := map[string]bool{}
-	for _, mode := range []string{"", "run", "build", "optimizer", "pulse"} {
+	for _, mode := range []string{"builder", "run", "pulse"} {
 		for _, name := range GetToolsForWorkshopMode(mode) {
 			allowed[name] = true
 		}

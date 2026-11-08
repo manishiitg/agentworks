@@ -51,7 +51,7 @@ For each affected dependent:
 **Never leave a plan change with a silently broken dependent.**
 
 ## 4. Record structured dependency closure
-When closing inspected changelog entries, call `mark_changelog_artifact_reviewed` with one evidence-backed disposition for every required surface: `downstream_steps`, `validation`, `evaluation`, `reporting`, `database`, and `learnings_and_knowledge`. Use only `updated`, `already_compatible`, `not_applicable`, `blocked`, or `broken`. A cosmetic change can honestly use `not_applicable`, with a short reason explaining why the surface is unaffected; do not run six audits just to populate these fields. Every `blocked` or `broken` surface must include the durable AgentWorks `issue_ids` that own the unresolved repair. If broader evidence is unavailable, leave that entry open for AgentWorks instead of expanding the interactive check or inventing evidence. A bare `artifact_review.done=true` is no longer sufficient. Recording audit closure is not a prerequisite for the targeted test once its affected dependencies are compatible.
+Record findings and evidence in the current conversation. Do not edit or delete changelog files; historical records stay as evidence. Resolve affected dependencies before the targeted test.
 
 When the change is intended to affect a goal or metric, state that expectation and
 the future comparison boundary in the canonical issue or concise review result.
@@ -62,7 +62,7 @@ later AgentWorks check has comparable outcome evidence.
 ## The changelog is your work-list — keep it lean
 Every plan-mod tool call is auto-written to `planning/changelog/changelog-*.json` (tool, `reason`, affected step ids, old/new values). Treat entries without `artifact_review.done=true` as the **ledger of changes whose blast radius may not be reconciled yet** — your work-list. When you reconcile a change (steps 1–3), record its concrete compatibility result.
 
-Do **not** edit or delete changelog files directly. The current agent records evidence-backed findings/dispositions and marks only inspected entries through `mark_changelog_artifact_reviewed`. AgentWorks uses those saved records to avoid repeating unchanged checks.
+Record findings and evidence in the current conversation. Do not edit or delete changelog files; historical records stay as evidence. Resolve affected dependencies before the targeted test.
 
 The full `run-plan-drift` audit is a backstop inside the same AgentWorks or Builder conversation when due or explicitly requested. Inspect changed steps and affected dependent artifacts directly, asking Builder for repairs as needed. It is not a prerequisite for a normal test run.
 

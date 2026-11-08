@@ -64,7 +64,7 @@ func validateManagedDBScriptsStamp(version, workflowDir string) error {
 		return nil
 	}
 	return fmt.Errorf("%d of %d scripts still open the database themselves or carry schema statements:\n%s"+
-		"Convert each to the agentworks_db helper (schema statements become db/migrations/ files applied with apply_workflow_db_migration), then run scan_workflow_script_db_usage until it is clean before stamping %s",
+		"Convert each to the agentworks_db helper (CREATE TABLE/INDEX IF NOT EXISTS uses ordinary execute/transaction; ALTER and DROP are refused), then run scan_workflow_script_db_usage until it is clean before stamping %s",
 		len(findings), scanned, scriptdb.Summary(findings), version)
 }
 

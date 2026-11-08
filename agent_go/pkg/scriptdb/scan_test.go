@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestScanSourceFindsDirectDatabaseAccessAndSchemaStatements(t *testing.T) {
+func TestScanSourceFindsDirectDatabaseAccess(t *testing.T) {
 	source := `import os
 import sqlite3
 # conn = sqlite3.connect(os.environ["DB_PATH"])  <- a comment is not use
@@ -19,9 +19,6 @@ rows = conn.execute("SELECT * FROM leads").fetchall()
 	finding := ScanSource("step/main.py", source)
 	if len(finding.Raw) != 1 || !strings.Contains(finding.Raw[0], "line 4") {
 		t.Errorf("direct access to the workflow database not found at line 4 only: %v", finding.Raw)
-	}
-	if len(finding.DDL) != 2 || !strings.Contains(finding.DDL[1], "alter table") {
-		t.Errorf("DDL = %v, want the CREATE and the ALTER (case-insensitive)", finding.DDL)
 	}
 	if finding.Clean() {
 		t.Error("a script that opens the database is not clean")
@@ -42,7 +39,8 @@ def run(input):
 }
 
 func TestScanSourceLeavesAHelperScriptAlone(t *testing.T) {
-	source := `from agentworks_db import query, execute_many
+	source := `from agentworks_db import query, execute, execute_many
+execute("CREATE TABLE IF NOT EXISTS leads (id INTEGER PRIMARY KEY, status TEXT)")
 rows = query("SELECT id FROM leads WHERE status = ?", ["new"])
 execute_many("INSERT INTO leads(id) VALUES (?)", [[1], [2]])
 `

@@ -13,6 +13,7 @@ const maximumPragmaErrors = 1_000
 var (
 	readPragmaPattern      = regexp.MustCompile(`(?is)^pragma\s+(?:main\.)?([a-z_]+)\s*(?:\(([^;]*)\))?\s*;?$`)
 	positiveIntegerPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
+	additiveSchemaPattern  = regexp.MustCompile(`(?is)^CREATE\s+(TABLE|(?:UNIQUE\s+)?INDEX)\s+IF\s+NOT\s+EXISTS\b`)
 	sqlIdentifierPattern   = regexp.MustCompile(`(?s)^(?:[A-Za-z_][A-Za-z0-9_]*|"(?:[^"]|"")+"|'(?:[^']|'')+'|\[[^\]]+\]|` + "`(?:[^`]|``)+`" + `)$`)
 )
 
@@ -386,12 +387,38 @@ func ValidateMutation(input string) error {
 	switch keyword {
 	case "INSERT", "UPDATE", "DELETE":
 		return nil
+	case "CREATE":
+		if additiveSchemaPattern.MatchString(trimmed) {
+			return nil
+		}
+		fallthrough
 	default:
-		return fmt.Errorf("only INSERT, UPDATE, and DELETE, optionally prefixed by WITH, are allowed; schema changes use workflow migrations")
+		return fmt.Errorf("use INSERT, UPDATE, DELETE, or CREATE TABLE/INDEX IF NOT EXISTS; ALTER, DROP and other schema changes are not allowed")
 	}
 }
 
-// MutationTarget identifies the top-level DML target after validation. It
+// IsAdditiveSchema identifies allowed schema setup for row-change receipts.
+func IsAdditiveSchema(input string) bool {
+	return additiveSchemaPattern.MatchString(stripSQLCommentsAndSpace(input)) && ValidateMutation(input) == nil
+}
+
+func mutationIdentifier(tokens []sqlPolicyToken, index int) (string, int, error) {
+	if index >= len(tokens) || !tokens[index].identifier {
+		return "", index, fmt.Errorf("missing mutation table")
+	}
+	name := tokens[index].word
+	index++
+	if index < len(tokens) && tokens[index].symbol == '.' {
+		if name != "MAIN" || index+1 >= len(tokens) || !tokens[index+1].identifier {
+			return "", index, fmt.Errorf("unsupported database namespace")
+		}
+		name = tokens[index+1].word
+		index += 2
+	}
+	return strings.ToLower(name), index, nil
+}
+
+// MutationTarget identifies the affected table after validation. It
 // supports CTEs and quoted identifiers without interpreting SQL values.
 func MutationTarget(input string) (string, error) {
 	if err := ValidateMutation(input); err != nil {
@@ -400,6 +427,26 @@ func MutationTarget(input string) (string, error) {
 	tokens, err := tokenizeSQLForPolicy(input)
 	if err != nil {
 		return "", err
+	}
+	if IsAdditiveSchema(input) {
+		// The validated prefix is CREATE TABLE/INDEX IF NOT EXISTS. An index
+		// changes its ON table, so protected-table checks use that table too.
+		index := 5
+		if tokens[1].word == "UNIQUE" {
+			index++
+		}
+		name, next, err := mutationIdentifier(tokens, index)
+		if err != nil {
+			return "", err
+		}
+		if tokens[1].word == "TABLE" {
+			return name, nil
+		}
+		if next >= len(tokens) || tokens[next].word != "ON" || tokens[next].quoted {
+			return "", fmt.Errorf("an index needs its ON table")
+		}
+		name, _, err = mutationIdentifier(tokens, next+1)
+		return name, err
 	}
 	depth := 0
 	for i, t := range tokens {

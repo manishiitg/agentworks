@@ -229,8 +229,7 @@ runtime supplies short workflow-database, workflow-knowledgebase, agent-browser
 and workflow-execution skill listings when applicable. The agent opens a relevant
 skill on demand; do not paste these procedures into descriptions, system_rules
 or verification messages. Keep enabled_skills for useful task/domain skills.
-Ordinary steps do not have the costs query action,
-`database action=migrate` or function-service tools. Report results through the
+Ordinary steps do not have the costs query action or function-service tools. Report results through the
 run summary and workflow notifications. The baseline includes `messages action=email_send` and
 `messages action=slack_send` for task-required sends, subject to actual connection/access
 gates; use `needs_you action=ask` for a needed answer.
