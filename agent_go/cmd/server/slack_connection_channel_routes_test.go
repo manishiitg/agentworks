@@ -64,6 +64,19 @@ func TestOwnerBotChannelRouteResolvesToRoutedWorkflow(t *testing.T) {
 	if w := putChannelRoute(api, "alice", alphaApp, "C1111111111", `{"workspace_path":"Workflow/gamma"}`); w.Code != http.StatusOK {
 		t.Fatalf("add route: %d %s", w.Code, w.Body.String())
 	}
+	// PLAT-746-477: retiring workflow chats must not disable saved direct triggers.
+	if _, err := services.GetSlackService().ModifySlackConnection(context.Background(), alphaApp, func(conn *services.SlackConnection) error {
+		entry := conn.ChannelRoutes["C1111111111"]
+		entry.Trigger = &services.SlackTrigger{Type: "human_message"}
+		conn.ChannelRoutes["C1111111111"] = entry
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	trigger, found, dedicated := api.slackTriggerRoute(context.Background(), alphaApp, "C1111111111")
+	if !found || !dedicated || trigger.WorkflowID != "wf_gamma" || trigger.WorkspacePath != "Workflow/gamma" || trigger.Trigger == nil {
+		t.Fatalf("saved workflow trigger was lost: %+v found=%v dedicated=%v", trigger, found, dedicated)
+	}
 	fallback := func() *ChannelRoute { return &ChannelRoute{WorkflowID: "wf_shared"} }
 	routed := services.ResolveSlackRoute(context.Background(), alphaApp, "C1111111111", fallback)
 	if routed == nil || routed.WorkflowID != "wf_gamma" || routed.WorkspacePath != "Workflow/gamma" || routed.BotGrant != "run" {
