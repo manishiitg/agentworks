@@ -118,6 +118,40 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAgentConversationPath(id string
 	return filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), "runs", hcpo.selectedRunFolder, "helpers", "conversations", id+".json")), nil
 }
 
+// Agent transcripts are service-written evidence, separate from the run's
+// writable output folder. Reuse helper-state modes for the existing slot group.
+func (hcpo *StepBasedWorkflowOrchestrator) protectPythonAgentArtifacts(id string) error {
+	if _, err := hcpo.pythonAgentConversationPath(id); err != nil {
+		return err
+	}
+	root, relative, err := workflowfiles.OpenWorkflowDirectory(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), filepath.ToSlash(filepath.Join("runs", hcpo.selectedRunFolder, "execution")))
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	execution, err := workflowfiles.OpenDirectory(root, relative, true)
+	if err != nil {
+		return err
+	}
+	defer execution.Close()
+	info, err := execution.Stat(".")
+	if err != nil {
+		return err
+	}
+	if info.Mode()&fs.ModeSetgid != 0 {
+		// This parent also holds ordinary outputs: preserve its write bits.
+		if err := execution.Chmod(".", info.Mode()|0050); err != nil {
+			return err
+		}
+	}
+	artifacts, err := workflowfiles.OpenDirectory(execution, id, true)
+	if err != nil {
+		return err
+	}
+	defer artifacts.Close()
+	return workflowfiles.ProtectServerTree(artifacts)
+}
+
 func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Context, parent PlanStepInterface, args pythonAgentArguments) (*pythonAgentConversation, *pythonAgentSelection, error) {
 	if strings.TrimSpace(args.Name) == "" || len(args.Messages) == 0 {
 		return nil, nil, fmt.Errorf("An agent needs a name and at least one message.")
@@ -371,6 +405,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	if err != nil {
 		return pythonHelperReply{Error: err.Error()}
 	}
+	defer func() {
+		if err := hcpo.protectPythonAgentArtifacts(saved.StepID); err != nil {
+			reply.OK = false
+			reply.Error = "The agent's run files could not be made readable: " + redaction.Text(err.Error())
+		}
+	}()
 	if args.TimeoutSeconds != nil {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(*args.TimeoutSeconds*float64(time.Second)))
@@ -413,6 +453,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		runtime = made
 		cleanup.runtime.Agent = made
 		cleanup.runtime.Provider = made.GetConfig().LLMConfig.Primary.Provider
+		if err := hcpo.protectPythonAgentArtifacts(saved.StepID); err != nil {
+			return nil, err
+		}
 		common.SetSessionWorkingDir(toolsSession, workflowAbsPath(runRoot))
 		if err = made.GetBaseAgent().AddObserver(&pythonAgentLogObserver{log: log}); err != nil {
 			return nil, err

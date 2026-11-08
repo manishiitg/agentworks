@@ -95,12 +95,36 @@ func TestRealSlotChain(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		// PLAT-746-474: the actual single-record writer must preserve the
+		// ordinary output directory while making its result readable by a slot.
+		ownerRoot, err := os.OpenRoot(crew)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ownerRoot.Close()
+		before, err := ownerRoot.Stat(".")
+		if err != nil {
+			t.Fatal(err)
+		}
+		recordName := filepath.Base(helper) + ".result.json"
+		record := filepath.Join(crew, recordName)
+		t.Cleanup(func() { os.Remove(record) })
+		if err := workflowfiles.WriteServerRecord(ownerRoot, recordName, []byte("result")); err != nil {
+			t.Fatal(err)
+		}
+		after, err := ownerRoot.Stat(".")
+		if err != nil || before.Mode() != after.Mode() {
+			t.Fatalf("record writer changed output directory: %v", err)
+		}
 		probe := base
 		// Broad normal project write grant: these first refusals come from Unix modes.
-		command := "python3 -c " + shQuote("from pathlib import Path; import sys; assert Path(sys.argv[1]).read_text() == 'answer'; assert Path(sys.argv[2]).read_text() == 'log'; print('read-ok')") + " " + shQuote(answer) + " " + shQuote(log)
+		command := "python3 -c " + shQuote("from pathlib import Path; import sys; assert Path(sys.argv[1]).read_text() == 'answer'; assert Path(sys.argv[2]).read_text() == 'log'; assert Path(sys.argv[3]).read_text() == 'result'; print('read-ok')") + " " + shQuote(answer) + " " + shQuote(log) + " " + shQuote(record)
 		out, stderr, err := runThroughShellTool(ctx, probe, command)
 		if err != nil || strings.TrimSpace(out) != "read-ok" {
 			t.Fatalf("slot could not read helper files: out=%q stderr=%q err=%v", out, stderr, err)
+		}
+		if out, stderr, err := runThroughShellTool(ctx, probe, "printf forged > "+shQuote(record)); err == nil || !strings.Contains(stderr, "Permission denied") {
+			t.Fatalf("slot overwrote service result: out=%q stderr=%q err=%v", out, stderr, err)
 		}
 		ordinary := helper + ".output"
 		t.Cleanup(func() { os.Remove(ordinary) })
