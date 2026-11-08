@@ -48,11 +48,13 @@ func TestSharedCrewScriptRunPersonHTTPExecutesRealPython(t *testing.T) {
 		t.Setenv("TMPDIR", root)
 	}
 	for _, local := range []bool{false, true} {
-		t.Run(fmt.Sprintf("attached_project_%v", local), func(t *testing.T) { checkSharedCrewScriptHTTP(t, local) })
+		for _, googleScope := range []string{"shared_default", "selected_workflow", "unselected_private"} {
+			t.Run(fmt.Sprintf("attached_project_%v/%s", local, googleScope), func(t *testing.T) { checkSharedCrewScriptHTTP(t, local, googleScope) })
+		}
 	}
 }
 
-func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
+func checkSharedCrewScriptHTTP(t *testing.T, local bool, googleScope string) {
 
 	docs := t.TempDir()
 	docs, _ = filepath.EvalSymlinks(docs)
@@ -144,10 +146,14 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 	}
 	// Account selection is separate from script capabilities and tool names.
 	connections := []services.GmailConnection{{ID: "fixture-google", Personal: true, OwnerID: "owner", Enabled: true, Email: "owner@example.com", AuthBackend: "gog"}}
-	if !local {
+	if googleScope == "selected_workflow" {
 		connections[0].Workspaces = []string{binding.Root}
 	}
-	gmailConfig, _ := json.Marshal(services.GmailConfig{Connections: connections})
+	if googleScope == "shared_default" {
+		connections[0].Personal = false
+		connections[0].OwnerID = ""
+	}
+	gmailConfig, _ := json.Marshal(services.GmailConfig{DefaultConnectionID: "fixture-google", Connections: connections})
 	write("config/gmail-config.json", string(gmailConfig))
 	t.Setenv("GMAIL_CONNECTIONS_DIR", t.TempDir())
 	t.Setenv("GMAIL_OAUTH_TOKEN_DIR", t.TempDir())
@@ -157,7 +163,7 @@ func checkSharedCrewScriptHTTP(t *testing.T, local bool) {
 	if _, err := services.InitGmailService(); err != nil {
 		t.Fatal(err)
 	}
-	expectedGoogle, _ := json.Marshal(map[string]bool{"selected": !local})
+	expectedGoogle, _ := json.Marshal(map[string]bool{"selected": googleScope != "unselected_private"})
 	write(filepath.Join(sourceRoot, "bridge_expected.json"), string(expectedGoogle))
 	write(filepath.Join(sourceRoot, "bridge_probe.py"), `import json, os, urllib.request
 from pathlib import Path
