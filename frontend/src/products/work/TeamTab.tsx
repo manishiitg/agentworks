@@ -257,7 +257,6 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
   return <section aria-label="People" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">People</h3>
-      <span className="text-xs text-muted-foreground">{team.on ? everyone.length : 1}</span>
       <AskButton projectId={projectId} card="team" />
       {view.can_switch && <><Saving on={pending === 'team'}>{null}</Saving><Switch aria-label="Team" disabled={Boolean(pending)} checked={team.on} onCheckedChange={on => void turn(on)} /></>}
     </div>

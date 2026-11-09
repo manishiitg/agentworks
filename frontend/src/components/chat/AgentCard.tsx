@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, Eye, EyeOff, Info, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
 import { AGENT_KEY } from './AgentIcon'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
@@ -168,14 +168,11 @@ export function AgentHeaderLine({ tabId, crewName, showName = true, onOpenIdenti
     {onOpenIdentity ? <button type="button" data-project-title onClick={onOpenIdentity} title="Identity & instructions"
       aria-label={`Identity & instructions for ${crewName}`} className="min-w-0 max-w-28 truncate rounded-sm px-1 font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:max-w-40">{crewName}</button>
       : <span data-project-title title={crewName} className="min-w-0 max-w-28 truncate px-1 md:max-w-40 font-semibold text-muted-foreground">{crewName}</span>}
-    {name && <>
-      {/* With the tabs showing, the open agent is the highlighted tab: its name is not repeated here (owner, 4 Nov). */}
-      {showName && <><span aria-hidden="true" className="shrink-0 text-muted-foreground/60">›</span>
-      <span className="min-w-0 max-w-48 truncate font-semibold">{name}</span></>}
-      {/* With the tabs showing, the card opens from the agent's tab; an ⓘ by the Crew name read as the Crew's (owner, 4 Nov). */}
-      {info && showName && <span className="shrink-0"><AgentHoverCard info={info} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
-        <button type="button" aria-label={`About ${name}`} className="grid h-5 w-5 place-items-center max-md:h-8 max-md:w-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Info aria-hidden="true" className="h-3.5 w-3.5" /></button>
-      </AgentHoverCard></span>}
+    {name && showName && <>
+      <span aria-hidden="true" className="shrink-0 text-muted-foreground/60">›</span>
+      <AgentHoverCard info={info || undefined} clickToOpen shortcut={row?.shortcut} actions={row?.actions} pinned={row?.pinned !== false}>
+        <button type="button" aria-label={`About ${name}`} className="block min-w-0 max-w-48 truncate rounded-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
+      </AgentHoverCard>
     </>}
   </div>
 }

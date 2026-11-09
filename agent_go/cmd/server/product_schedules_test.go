@@ -211,17 +211,40 @@ func TestAgentProfileSchedulesRequireSingletonConversation(t *testing.T) {
 // Only the provider turn is replaced. Stop/setup errors cannot strand a run,
 // and a second independent Crew chat must not acquire a new scope-wide lease.
 func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testing.T) {
-	for _, outcome := range []string{"completed", "failed", "stopped", "setup_failed", "ledger_unavailable"} {
+	for _, outcome := range []string{"completed", "failed", "stopped", "setup_failed", "ledger_unavailable", "manual_clock_disabled"} {
 		t.Run(outcome, func(t *testing.T) {
-			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+			docs := t.TempDir()
+			t.Setenv("WORKSPACE_DOCS_PATH", docs)
 			env := newTriggerLinkEnv(t)
 			env.svc.heldConversation = nil
-			store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "schedule.sqlite"))
-			if err != nil {
+			triggerSource := "cron"
+			if outcome == "manual_clock_disabled" {
+				outcome, triggerSource = "completed", "manual"
+				t.Setenv("SCHEDULER_ENABLED", "false")
+				// Existing work belongs to the primary machine. Opening the
+				// shared ledger on a secondary must not mark it interrupted.
+				primary, err := schedulerstate.Open(filepath.Join(docs, "_system/schedule-state.sqlite"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = primary.Close() })
+				if err := primary.RecordAdmittedRun(t.Context(), schedulerstate.Run{RunID: "primary-active", ScopeType: "crew", ScopeID: "primary", ScheduleID: "primary-timer", TriggerSource: "cron"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Production startup opens evidence even when it does not Start
+			// the automatic clock. No test-injected store is used here.
+			if err := env.api.scheduler.initializeRunLedger(); err != nil {
 				t.Fatal(err)
 			}
+			store := env.api.scheduler.stateStore
 			t.Cleanup(func() { _ = store.Close() })
-			env.api.scheduler.stateStore = store
+			if triggerSource == "manual" {
+				primary, err := store.GetRun(t.Context(), "primary-active")
+				if err != nil || primary.State != schedulerstate.StateStarting {
+					t.Fatalf("opening ledger interrupted primary: %+v, %v", primary, err)
+				}
+			}
 			if outcome == "ledger_unavailable" {
 				env.api.scheduler.stateStore = nil
 			}
@@ -259,7 +282,7 @@ func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testin
 			ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner"})
 			occurrence := time.Now().UTC().Truncate(time.Minute)
 			done := make(chan error, 1)
-			go func() { _, err := env.svc.Run(ctx, job, "cron", occurrence); done <- err }()
+			go func() { _, err := env.svc.Run(ctx, job, triggerSource, occurrence); done <- err }()
 			if outcome != "setup_failed" && outcome != "ledger_unavailable" {
 				select {
 				case <-started:
@@ -273,7 +296,7 @@ func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testin
 				if outcome == "completed" {
 					second := job
 					second.Schedule.ID, second.Schedule.Name = "second", "Second"
-					if _, err := env.svc.Run(ctx, second, "cron", occurrence); err != nil {
+					if _, err := env.svc.Run(ctx, second, triggerSource, occurrence); err != nil {
 						t.Fatalf("second independent Crew chat took a scope lease: %v", err)
 					}
 				}
