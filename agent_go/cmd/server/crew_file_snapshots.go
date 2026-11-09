@@ -49,12 +49,13 @@ type crewTurnSnapshot struct {
 	finish                       sync.Once
 	// The before-capture runs beside the send; record and beforeErr are set
 	// before beforeDone closes.
-	sentAt      time.Time
-	sourceLabel string
-	sourceAgent string
-	beforeDone  chan struct{}
-	record      filesnapshots.Record
-	beforeErr   error
+	sentAt       time.Time
+	sourceLabel  string
+	sourceAgent  string
+	beforeDone   chan struct{}
+	beforeCancel context.CancelFunc
+	record       filesnapshots.Record
+	beforeErr    error
 }
 
 // prepareCrewTurnSnapshot runs before provider delivery, outside native input
@@ -102,11 +103,13 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 			snapshot.sourceAgent = projectHistoryAgentNames(context.Background(), owner)[sessionID]
 		}
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotBeforeLimit)
+	snapshot.beforeCancel = cancel
 	if _, loaded := api.crewTurnSnapshots.LoadOrStore(executionID, snapshot); loaded {
+		cancel()
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotBeforeLimit)
 		defer cancel()
 		snapshot.record, snapshot.beforeErr = snapshot.store.BeginGitTurn(ctx, executionID)
 		close(snapshot.beforeDone)
@@ -310,6 +313,7 @@ var crewSnapshotUnavailableText = map[string]string{
 	"busy":       "File changes for this reply weren't saved (the project was too busy to snapshot in time).",
 	"failed":     "Changes couldn't be saved for this reply. Your work is still available in Files.",
 	"timeout":    "File tracking ran out of time for this reply. Your work is still in Files; use a smaller project folder if this keeps happening.",
+	"file_limit": "This project has too many files to track all changes for this reply. Your work is in Files; use a smaller project folder to track all changes.",
 	"filename":   "File tracking couldn't save a filename in this project. Your work is still in Files; update AgentWorks and try again.",
 	"access":     "File tracking couldn't read the project folder. Check its folder access, then try again. Your work is still in Files.",
 	"budget":     "File changes exceeded the capture size limit; some changes could not be saved.",
@@ -374,7 +378,8 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	unchanged := snapshot.store.Unchanged(checkCtx, record)
 	cancelCheck()
 	incomplete := record.Review != nil && len(record.Review.IncompleteRoots) > 0
-	if unchanged && !incomplete {
+	limited := strings.HasSuffix(record.BeforeCapture.Deferred, "file_limit") || strings.HasSuffix(record.AfterCapture.Deferred, "file_limit")
+	if unchanged && !incomplete && !limited {
 		log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s snapshot=%s skipped=no_changes", snapshot.sessionID, snapshot.executionID, record.ID)
 		return
 	}
@@ -398,7 +403,14 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	cancelSummary()
 	// This owning-chat notice contains no repository/path/count. File-scoped
 	// compare/history still require saved, authorized witnesses for details.
-	if incomplete {
+	if limited {
+		if !ok || summary["files"] == 0 {
+			api.publishCrewSnapshotUnavailable(snapshot, "file_limit")
+			return
+		}
+		summary["note"] = crewSnapshotUnavailableText["file_limit"]
+	}
+	if incomplete && !limited {
 		if !ok || summary["files"] == 0 {
 			api.publishCrewSnapshotUnavailable(snapshot, "incomplete")
 			return
@@ -430,6 +442,9 @@ func (api *StreamingAPI) discardUnstartedCrewSnapshot(executionID string) {
 	if value, ok := api.crewTurnSnapshots.Load(executionID); ok {
 		snapshot := value.(*crewTurnSnapshot)
 		if !snapshot.watching.Load() {
+			if snapshot.beforeCancel != nil {
+				snapshot.beforeCancel()
+			}
 			go func() {
 				<-snapshot.beforeDone
 				snapshot.store.Abandon(executionID)

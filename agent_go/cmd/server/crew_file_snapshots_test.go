@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
@@ -218,7 +219,13 @@ func TestCrewSnapshotsKeepTurnHistoryAndCurrentFileAccess(t *testing.T) {
 	}
 	// A rejected delivery leaves no made-up comparison or active observer.
 	api.prepareCrewTurnSnapshot("rejected", "session", QueryRequest{SelectedFolder: linkBetaPath})
+	rejected, _ := api.crewTurnSnapshots.Load("rejected")
 	api.discardUnstartedCrewSnapshot("rejected")
+	select {
+	case <-rejected.(*crewTurnSnapshot).beforeDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("rejected capture kept waiting on the store gate")
+	}
 	if _, exists := api.crewTurnSnapshots.Load("rejected"); exists {
 		t.Fatal("undelivered snapshot remains active")
 	}
