@@ -1,133 +1,63 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import * as Menu from '@radix-ui/react-dropdown-menu'
 import { Bell, BellOff, Check } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { iconButtonClass } from '../ui/IconPopover'
 import { useChatStore } from '../../stores'
 import { playNotificationSound } from '../../utils/sound'
 import {
-  loadNotifySettings, notifyDeviceId, notifyErrorToast, saveNotifyChats, turnNotificationsOff, turnNotificationsOn,
-  type NotifyChats, type NotifySettings,
+  loadNotifySettings, notifyDeviceId, notifyErrorToast, turnNotificationsOff, turnNotificationsOn,
+  type NotifySettings,
 } from '../../services/notifications'
 
 const isMacApp = () => !!window.electronAPI?.getDesktopConnection
 
-/**
- * The notifications bell (owner, 5 Nov, approved mockup): one click turns notifications on or off for this device;
- * hover (or long-press) chooses which chats and, on a computer, the short sound. The server decides every send.
- */
+/** One click-open menu; no overlapping tooltip, hover menu or scope picker. */
 export default function NotifyBell() {
   const [settings, setSettings] = useState<NotifySettings | null>(null)
   const [busy, setBusy] = useState(false)
-  const [menu, setMenu] = useState(false)
-  const wrapper = useRef<HTMLDivElement>(null)
-  const press = useRef<number | null>(null)
-  const leave = useRef<number | null>(null)
-  const longPressed = useRef(false)
   const addToast = useChatStore(state => state.addToast)
 
   useEffect(() => {
     let cancelled = false
-    loadNotifySettings().then(value => { if (!cancelled) setSettings(value) }).catch(() => { /* the bell stays off */ })
+    loadNotifySettings().then(value => { if (!cancelled) setSettings(value) }).catch(() => {})
     return () => { cancelled = true }
   }, [])
 
-  useEffect(() => {
-    if (!menu) return
-    const close = (event: MouseEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !wrapper.current?.contains(event.target as Node)) setMenu(false)
-    }
-    window.addEventListener('mousedown', close)
-    window.addEventListener('keydown', close)
-    return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', close) }
-  }, [menu])
-
-  useEffect(() => () => {
-    if (press.current !== null) window.clearTimeout(press.current)
-    if (leave.current !== null) window.clearTimeout(leave.current)
-  }, [])
-
-  const keepMenu = () => {
-    if (leave.current !== null) window.clearTimeout(leave.current)
-    leave.current = null
-  }
-  const hoverMenu = () => {
-    if (window.matchMedia?.('(hover: hover)').matches === false) return
-    keepMenu()
-    setMenu(true)
-  }
-  const leaveMenu = () => {
-    keepMenu()
-    leave.current = window.setTimeout(() => { setMenu(false); leave.current = null }, 200)
-  }
-  const cancelPress = () => {
-    if (press.current !== null) window.clearTimeout(press.current)
-    press.current = null
-  }
-
   const device = settings?.devices.find(item => item.id === notifyDeviceId())
   const on = !!device
-
   const run = async (change: () => Promise<void>) => {
     if (busy) return
     setBusy(true)
     try { await change() } catch (error) { addToast(...notifyErrorToast(error)) }
     finally { setBusy(false) }
   }
-
   const toggle = () => run(async () => {
     if (!settings) return
     const devices = on ? await turnNotificationsOff() : await turnNotificationsOn(settings, isMacApp())
     setSettings({ ...settings, devices })
   })
-
-  const setSound = (sound: boolean) => run(async () => {
+  const setSound = () => run(async () => {
     if (!settings || !on) return
+    const sound = !device?.sound
     setSettings({ ...settings, devices: await turnNotificationsOn(settings, sound) })
     if (sound) playNotificationSound()
   })
-
-  const setChats = (chats: NotifyChats) => run(async () => {
-    setSettings(await saveNotifyChats(chats))
-  })
-
-  const label = on ? 'Notifications on for this device' : 'Notifications off · click to turn on'
-  const choice = (selected: boolean, text: string, onClick: () => void) => (
-    <button type="button" role="menuitemradio" aria-checked={selected} onClick={onClick}
-      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
-      <Check className={`h-3.5 w-3.5 ${selected ? '' : 'invisible'}`} />{text}
-    </button>
+  const choice = (checked: boolean, label: string, action: () => void, disabled = false) => (
+    <Menu.CheckboxItem checked={checked} disabled={disabled || busy} onCheckedChange={action} onSelect={event => event.preventDefault()}
+      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
+      <span className="h-3.5 w-3.5"><Menu.ItemIndicator><Check className="h-3.5 w-3.5" /></Menu.ItemIndicator></span>{label}
+    </Menu.CheckboxItem>
   )
-
-  return <div ref={wrapper} className="relative" onMouseEnter={hoverMenu} onMouseLeave={leaveMenu}>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button type="button" aria-label={label} aria-pressed={on} disabled={busy || !settings} data-testid="notify-bell"
-          className={`${iconButtonClass} ${on ? 'text-blue-600 dark:text-blue-400' : 'opacity-70'}`}
-          aria-haspopup="menu" aria-expanded={menu}
-          onClick={event => {
-            if (longPressed.current) { longPressed.current = false; event.preventDefault(); return }
-            void toggle()
-          }}
-          onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); keepMenu(); setMenu(true) } }}
-          onTouchStart={() => {
-            cancelPress()
-            longPressed.current = false
-            press.current = window.setTimeout(() => { longPressed.current = true; keepMenu(); setMenu(true) }, 550)
-          }}
-          onTouchEnd={cancelPress}
-          onTouchCancel={() => { cancelPress(); longPressed.current = false }}>
-          {on ? <Bell className="h-4 w-4" fill="currentColor" /> : <BellOff className="h-4 w-4" />}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-    {menu && settings && <div role="menu" onMouseEnter={keepMenu} onMouseLeave={leaveMenu} className="absolute right-0 top-full z-50 mt-1 w-56 rounded-md border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-      {choice(settings.chats !== 'all', 'Chats I started', () => setChats('mine'))}
-      {choice(settings.chats === 'all', 'Every agent I can see', () => setChats('all'))}
-      {on && !window.matchMedia?.('(pointer: coarse)').matches && <>
-        <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
-        {choice(!!device?.sound, 'Play a sound', () => setSound(!device?.sound))}
-      </>}
-    </div>}
-  </div>
+  return <Menu.Root>
+    <Menu.Trigger asChild>
+      <button type="button" aria-label="Notifications" disabled={busy || !settings} data-testid="notify-bell"
+        className={`${iconButtonClass} ${on ? 'text-blue-600 dark:text-blue-400' : 'opacity-70'}`}>
+        {on ? <Bell className="h-4 w-4" fill="currentColor" /> : <BellOff className="h-4 w-4" />}
+      </button>
+    </Menu.Trigger>
+    <Menu.Portal><Menu.Content align="end" sideOffset={4} className="z-50 w-48 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg">
+      {choice(on, 'Show notifications', () => { void toggle() })}
+      {choice(!!device?.sound, 'Play a sound', () => { void setSound() }, !on)}
+    </Menu.Content></Menu.Portal>
+  </Menu.Root>
 }

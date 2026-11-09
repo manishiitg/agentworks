@@ -63,18 +63,6 @@ import { effectiveLLMUnderLock, effectiveProviderUnderLock, runtimeStatusLLMChoi
 import { normalizeEventViewMode, type ChatTabConfig } from '../stores/useChatStore'
 import { getComposerTrigger, replaceComposerTrigger, formatFileReference, removeFileReferences, reconcileFileReferences, isPlainPickerKey, type ComposerTrigger } from '../utils/composerReferences'
 
-const removePasteMarkersFromText = (text: string, markers: string[]) => {
-  return markers.reduce((next, marker) => {
-    const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    return next
-      .replace(new RegExp(escaped, 'g'), '')
-      .replace(/[ \t]{2,}/g, ' ')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n[ \t]+/g, '\n')
-      .trim()
-  }, text)
-}
-
 // Clipboard image helpers live in ./clipboardImages so they can be unit
 // tested without importing this component (which pulls the whole app graph).
 
@@ -145,8 +133,6 @@ import { isBrowserCDPEnabled } from '../utils/runtimeCapabilities'
 import { skillsApi } from '../api/skills'
 import type { Skill } from '../types/skills'
 import { getClipboardImageFiles } from './clipboardImages'
-import { getClipboardText } from './clipboardText'
-import { shouldUsePastedTextAttachment } from '../utils/chatPasteBehavior'
 import { isMainAgentTerminal } from '../utils/terminalIdentity'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
@@ -658,7 +644,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Always use tab-specific config (ChatInput is only in multi-agent mode)
   // Memoize to prevent unnecessary re-renders when other config values change
   const chatFileContext = useMemo(() => tabConfig?.fileContext || [], [tabConfig?.fileContext])
-  const chatPastedAttachments = useMemo(() => tabConfig?.pastedAttachments || [], [tabConfig?.pastedAttachments])
 
   // Get input text from tab config (source of truth for persistence)
   const storedInputText = tabConfig?.inputText || ''
@@ -935,56 +920,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       })
     }
   }, [activeTabId, chatFileContext, inputText, writeComposerText])
-
-  const addPastedAttachment = useCallback((content: string): string | null => {
-    if (!activeTabId) return null
-    const existingAttachments = useChatStore.getState().getTabConfig(activeTabId)?.pastedAttachments || chatPastedAttachments
-    const maxPasteNumber = existingAttachments.reduce((max, item, index) => {
-      const match = item.marker?.match(/^\[paste(\d+)\]$/)
-      const number = match ? Number(match[1]) : index + 1
-      return Number.isFinite(number) ? Math.max(max, number) : max
-    }, 0)
-    const marker = `[paste${maxPasteNumber + 1}]`
-    const lines = content.split('\n').length
-    const item = {
-      id: `paste_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      marker,
-      content,
-      chars: content.length,
-      lines,
-      createdAt: Date.now(),
-    }
-    setTabConfig(activeTabId, { pastedAttachments: [...existingAttachments, item] })
-    return marker
-  }, [activeTabId, chatPastedAttachments, setTabConfig])
-
-  const removePastedAttachment = useCallback((id: string) => {
-    if (!activeTabId) return
-    const attachment = chatPastedAttachments.find(p => p.id === id)
-    const marker = attachment?.marker
-    const nextInputText = marker ? removePasteMarkersFromText(inputText, [marker]) : inputText
-    setLocalInputText(nextInputText)
-    if (syncToStoreTimeoutRef.current) {
-      clearTimeout(syncToStoreTimeoutRef.current)
-      syncToStoreTimeoutRef.current = null
-    }
-    setTabConfig(activeTabId, {
-      inputText: nextInputText,
-      pastedAttachments: chatPastedAttachments.filter(p => p.id !== id)
-    })
-  }, [activeTabId, chatPastedAttachments, inputText, setTabConfig])
-
-  const clearPastedAttachments = useCallback(() => {
-    if (!activeTabId) return
-    const markers = chatPastedAttachments.map((p, index) => p.marker || `[paste${index + 1}]`)
-    const nextInputText = removePasteMarkersFromText(inputText, markers)
-    setLocalInputText(nextInputText)
-    if (syncToStoreTimeoutRef.current) {
-      clearTimeout(syncToStoreTimeoutRef.current)
-      syncToStoreTimeoutRef.current = null
-    }
-    setTabConfig(activeTabId, { inputText: nextInputText, pastedAttachments: [] })
-  }, [activeTabId, chatPastedAttachments, inputText, setTabConfig])
 
   const {
     toolList: mcpToolList,
@@ -1662,19 +1597,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [showSkillPopup, customCommandWorkspacePath])
 
-  // Consolidated query selection logic — pasted attachments are prepended as
-  // fenced blocks so the LLM sees them as distinct sections, separate from the
-  // user's typed message.
-  const queryToSubmit = useMemo(() => {
-    if (!chatPastedAttachments.length) return inputText
-    const blocks = chatPastedAttachments.map((p, i) => {
-      const marker = p.marker || `[paste${i + 1}]`
-      const header = `${marker} Pasted text (${p.lines} line${p.lines === 1 ? '' : 's'}, ${p.chars} char${p.chars === 1 ? '' : 's'})`
-      return `${header}\n\`\`\`\n${p.content}\n\`\`\``
-    }).join('\n\n')
-    const typed = inputText.trim()
-    return typed ? `${blocks}\n\n${inputText}` : blocks
-  }, [inputText, chatPastedAttachments])
+  const queryToSubmit = inputText
   const latestQueryToSubmitRef = useRef(queryToSubmit)
   latestQueryToSubmitRef.current = queryToSubmit
 
@@ -1755,7 +1678,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       syncToStoreTimeoutRef.current = null
     }
     if (activeTabId) {
-      setTabConfig(activeTabId, { inputText: '', pastedAttachments: [] })
+      setTabConfig(activeTabId, { inputText: '' })
     }
   }, [activeTabId, setTabConfig])
 
@@ -1802,46 +1725,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return false
   }, [isMultiAgentMode, showWorkflowsOverview])
 
-  // Keep genuinely large pasted content out of the textarea and insert a stable
-  // marker the message can refer to. Ordinary text remains a normal inline paste.
+  // Text uses the textarea's normal plain-text paste, including Markdown.
+  // Only clipboard images need interception for the existing upload flow.
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const pastedImageFiles = getClipboardImageFiles(e.clipboardData)
     if (pastedImageFiles.length > 0) {
       e.preventDefault()
       void uploadFilesToChatRef.current(pastedImageFiles)
-      return
     }
-
-    const plain = e.clipboardData?.getData('text/plain') || e.clipboardData?.getData('text') || ''
-    const pasted = getClipboardText(e.clipboardData)
-    if (!pasted) return
-
-    const attach = shouldUsePastedTextAttachment(pasted)
-    if (!attach && pasted === plain) return
-
-    const textarea = e.currentTarget
-    const start = textarea.selectionStart ?? inputText.length
-    const end = textarea.selectionEnd ?? inputText.length
-    const before = inputText.slice(0, start)
-    const after = inputText.slice(end)
-    e.preventDefault()
-    const marker = attach ? addPastedAttachment(pasted) : pasted
-    if (!marker) return
-
-    const markerPrefix = attach && before && !/\s$/.test(before) ? ' ' : ''
-    const markerSuffix = attach && after && !/^\s/.test(after) ? ' ' : ''
-    const markerText = `${markerPrefix}${marker}${markerSuffix}`
-    const newValue = `${before}${markerText}${after}`
-    const cursorPosition = before.length + markerText.length
-
-    writeComposerText(newValue)
-
-    setTimeout(() => {
-      textarea.focus()
-      textarea.setSelectionRange(cursorPosition, cursorPosition)
-      adjustTextareaHeight()
-    }, 0)
-  }, [addToast, addPastedAttachment, adjustTextareaHeight, inputText, writeComposerText])
+  }, [])
 
   const closeComposerPickers = useCallback(() => {
     const trigger = composerTriggerRef.current
@@ -1905,8 +1797,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value
     const previousValue = inputText
-    const nextPastedAttachments = chatPastedAttachments.filter(p => !p.marker || newValue.includes(p.marker))
-    const pastedAttachmentsChanged = nextPastedAttachments.length !== chatPastedAttachments.length
 
     // Update local state immediately for fast UI response
     latestInputTextRef.current = newValue
@@ -1921,8 +1811,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const filesChanged = nextFiles.length !== chatFileContext.length
     const workflowContext = tabConfig?.workflowContext || []
     const nextWorkflows = workflowContext.filter(workflow => !textMentionsReference(previousValue, workflow) || textMentionsReference(newValue, workflow))
-    if ((pastedAttachmentsChanged || filesChanged || nextWorkflows.length !== workflowContext.length) && activeTabId) {
-      writeComposerText(newValue, { pastedAttachments: nextPastedAttachments, fileContext: nextFiles, workflowContext: nextWorkflows })
+    if ((filesChanged || nextWorkflows.length !== workflowContext.length) && activeTabId) {
+      writeComposerText(newValue, { fileContext: nextFiles, workflowContext: nextWorkflows })
     } else {
       // Publish the draft revision immediately. Browser persistence already
       // batches disk writes; delaying this lets an old acknowledgement erase
@@ -1934,7 +1824,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     adjustTextareaHeight()
 
     updateComposerPicker(e.target)
-  }, [chatFileContext, chatPastedAttachments, activeTabId, setTabConfig, adjustTextareaHeight, inputText, tabConfig, updateComposerPicker, writeComposerText])
+  }, [chatFileContext, activeTabId, setTabConfig, adjustTextareaHeight, inputText, tabConfig, updateComposerPicker, writeComposerText])
 
   const getEffectiveWorkflowModes = useCallback(() => {
     const workflowState = useWorkflowStore.getState()
@@ -2144,7 +2034,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         const submittedTabId = activeTabId || undefined
         const submittedDraft = {
           inputText,
-          pastedAttachments: chatPastedAttachments,
         }
         // Live-input acknowledgement can lag while the retained CLI wakes up.
         // The conversation adds an optimistic user row immediately, so release
@@ -2197,7 +2086,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         currentTabId: inputOwnerTabIdRef.current,
         submittedMessage: query,
         currentMessage: latestQueryToSubmitRef.current,
-      }) && updateOwnedChatDraft(submittedDraft, { inputText: '', pastedAttachments: [] })) {
+      }) && updateOwnedChatDraft(submittedDraft, { inputText: '' })) {
         if (composerMountedRef.current) {
           latestInputTextRef.current = ''
           setLocalInputText('')
@@ -2209,7 +2098,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
+  }, [deliveryMode, routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
@@ -2989,52 +2878,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       {/* Preserve the chat draft while native terminal input owns all typing.
           Commands and uploads remain available through the terminal toolbar. */}
       <div id={terminalComposerId} hidden={nativeTerminalTools} data-testid="message-composer">
-      {/* Pasted-text Attachments */}
-      {chatPastedAttachments.length > 0 && (
-        <div className={inputPadX}>
-          <div className="border rounded px-1.5 py-0.5 mb-1 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                <Paperclip className="w-3 h-3 inline-block mr-0.5 -mt-0.5" />
-                Pasted text:
-              </span>
-              {chatPastedAttachments.map((p, index) => {
-                const marker = p.marker || `[paste${index + 1}]`
-                const sizeLabel = p.chars >= 1024 ? `${(p.chars / 1024).toFixed(1)}KB` : `${p.chars}ch`
-                return (
-                  <div key={p.id} className="flex items-center gap-0.5">
-                    <span
-                      className="text-xs text-gray-700 dark:text-gray-300 font-mono"
-                      title={`${marker} pasted text, ${p.lines} line${p.lines === 1 ? '' : 's'}, ${p.chars} character${p.chars === 1 ? '' : 's'}`}
-                    >
-                      {marker} · {p.lines}L · {sizeLabel}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removePastedAttachment(p.id)}
-                      className="p-0.5 hover:bg-red-100 dark:hover:bg-red-900/20 rounded text-red-500 hover:text-red-700 dark:hover:text-red-400"
-                      title="Remove pasted attachment"
-                    >
-                      <X className="w-2 h-2" />
-                    </button>
-                    {index < chatPastedAttachments.length - 1 && (
-                      <span className="text-xs text-gray-400">&bull;</span>
-                    )}
-                  </div>
-                )
-              })}
-              <button
-                type="button"
-                onClick={clearPastedAttachments}
-                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline ml-0.5"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Read-only workflow/Crew references — same style as FileContextDisplay */}
       {(tabConfig?.workflowContext?.length ?? 0) > 0 && (
         <div className={inputPadX}>

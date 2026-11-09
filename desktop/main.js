@@ -1695,6 +1695,13 @@ function startNotifications() {
       : { 'X-AgentWorks-Notify': notifySecret, Authorization: `Bearer ${sessionToken(developmentAuthSecret || process.env.AUTH_SECRET, process.env.DEFAULT_USER_ID || 'default')}` },
     log: diagLog,
     show: msg => {
+      // In-app indicators handle every agent while AgentWorks is foreground.
+      // Recheck at delivery time: renderer heartbeats can lag app switching.
+      const focusedWindow = BrowserWindow.getFocusedWindow();
+      if (process.platform === 'darwin' && focusedWindow && !focusedWindow.isDestroyed() && focusedWindow.isVisible() && !focusedWindow.isMinimized()) {
+        diagLog('[notify] delivery=skipped reason=app_focused');
+        return;
+      }
       if (!Notification.isSupported()) { diagLog('[notify] delivery=skipped reason=unsupported'); return; }
       if (typeof msg.title !== 'string') return;
       const notice = new Notification({ title: msg.title, body: typeof msg.body === 'string' ? msg.body : '', silent: !msg.sound });
