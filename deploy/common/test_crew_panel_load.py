@@ -16,7 +16,7 @@ repo = Path(__file__).resolve().parents[2]
 module = repo / "agent_go"
 if os.geteuid() == 0:
     raise SystemExit("Use the normal unprivileged verifier")
-base = "bac24e79ad6a0cf08cae7e7f43f2311996f39f78"
+base = "d5d093f7d8344b048778af86b15128cbb51f0644"
 files = ["crew_panel.go", "crew_panel_sources.go", "crew_scripts.go", "python_source_inspection.go"]
 paths = [module / "cmd/server" / name for name in files]
 fixed = {p: p.read_bytes() for p in paths}

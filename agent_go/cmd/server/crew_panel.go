@@ -78,6 +78,10 @@ type crewPanelSource struct {
 }
 type crewPanelReadError struct{ status int }
 
+type crewPanelRefreshing struct{}
+
+func (crewPanelRefreshing) Error() string { return "workflow summary refresh already in progress" }
+
 func (e crewPanelReadError) Error() string { return "Panel section unavailable" }
 
 const crewPanelTimeout = 2 * time.Second
@@ -183,7 +187,7 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 					section, err = source.read(sourceCtx)
 					c.workflowRead.Unlock()
 				} else {
-					err = fmt.Errorf("workflow summary refresh already in progress")
+					err = crewPanelRefreshing{}
 				}
 			} else {
 				section, err = source.read(sourceCtx)
@@ -219,7 +223,11 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 				delete(pending, i)
 				return
 			}
-			out[i].Error = "Could not refresh. Try again."
+			if _, refreshing := err.(crewPanelRefreshing); refreshing {
+				out[i].Rows = []crewPanelRow{{ID: "workflow:loading", Label: "Loading"}}
+			} else {
+				out[i].Error = "Could not refresh. Try again."
+			}
 		}
 		delete(pending, i)
 	}
