@@ -21,16 +21,6 @@ import (
 	"time"
 )
 
-// Bound metadata and private tree work even when a parent folder contains
-// copied projects, migration output or large untracked backup directories.
-const maxTurnPaths = 10000
-
-var errTurnPathLimit = errors.New("too many files to track for this reply")
-
-func turnFileLimited(stats CaptureStats) bool {
-	return strings.HasSuffix(stats.Deferred, "file_limit")
-}
-
 type gitTurnRepo struct {
 	Label CheckoutLabel `json:"label"`
 	Head  string        `json:"head"`
@@ -123,21 +113,10 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 				return err
 			}
 		} else if validTurnPath(rel) {
-			if len(loose) == maxTurnPaths {
-				// Stop collecting ordinary files, but continue discovering repos.
-				// Skipping later directories hid healthy nested checkouts too.
-				stats.Deferred = "loose_file_limit"
-				return nil
-			}
 			loose = append(loose, rel)
 		}
 		return nil
 	})
-	if stats.Deferred == "loose_file_limit" {
-		// An arbitrary prefix cannot be a trustworthy before/after boundary.
-		// Continue tracking checkouts, but omit loose files on this boundary.
-		loose = nil
-	}
 	return
 }
 
@@ -158,9 +137,6 @@ func (s Store) turnCandidatePaths(ctx context.Context, dir, head string) ([]stri
 			}
 			if validTurnPath(string(rows[i+1])) {
 				paths[string(rows[i+1])] = true
-			}
-			if len(paths) > maxTurnPaths {
-				return errTurnPathLimit
 			}
 		}
 		return nil
@@ -206,11 +182,6 @@ func (s Store) turnCandidatePaths(ctx context.Context, dir, head string) ([]stri
 		candidate := strings.TrimSuffix(p, string([]byte{0}))
 		if validTurnPath(candidate) {
 			paths[candidate] = true
-		}
-		if len(paths) > maxTurnPaths {
-			readErr = errTurnPathLimit
-			stop()
-			break
 		}
 	}
 	_ = pipe.Close()
@@ -265,20 +236,12 @@ func (s Store) turnRepos(ctx context.Context, dirs []string, stats *CaptureStats
 		return nil
 	})
 	out, skipped := map[string]gitTurnRepo{}, map[string]bool{}
-	count := 0
 	for _, r := range results {
-		if count+len(r.repo.Dirty) > maxTurnPaths {
-			r.err = errTurnPathLimit
-		}
-		if errors.Is(r.err, errTurnPathLimit) && stats.Deferred == "" {
-			stats.Deferred = "file_limit"
-		}
 		if r.err != nil {
 			skipped[r.root] = true
 			log.Printf("[SNAPSHOT] checkout_skipped dir=%q reason=%q", r.root, gitReason(r.err))
 		} else {
 			out[r.root] = r.repo
-			count += len(r.repo.Dirty)
 		}
 	}
 	return out, skipped, ctx.Err()
@@ -450,9 +413,9 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 		paths[root] = nil
 		start, existed := r.GitTurn[root]
 		dir := filepath.Join(s.Root, filepath.FromSlash(root))
-		if !existed && (presentBefore[root] || r.BeforeCapture.Deferred == "loose_file_limit") {
-			// No trustworthy before-image, including roots hidden by a capped
-			// ordinary walk. Never call pre-existing dirty files new reply edits.
+		if !existed && presentBefore[root] {
+			// A discovered checkout whose before-capture failed has no trusted
+			// baseline. Never call pre-existing dirty files new reply edits.
 			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
 			continue
 		}
@@ -498,13 +461,6 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 					candidates[string(p)] = true
 				}
 			}
-		}
-		if len(candidates) > maxTurnPaths {
-			if r.AfterCapture.Deferred == "" {
-				r.AfterCapture.Deferred = "file_limit"
-			}
-			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
-			continue
 		}
 		starts[root] = start
 		paths[root] = turnKeys(candidates)
@@ -571,9 +527,6 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 	}
 	candidates := map[string]bool{}
 	for _, p := range append(turnKeys(current), turnKeys(previous)...) {
-		if r.BeforeCapture.Deferred == "loose_file_limit" || r.AfterCapture.Deferred == "loose_file_limit" {
-			break
-		}
 		if _, repo := savedRoot(p, roots); !repo && validTurnPath(p) && !ignored[p] {
 			candidates[p] = true
 		}
@@ -609,7 +562,7 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 	now := time.Now().UTC()
 	r.CompletedAt = &now
 	r.Status = "complete"
-	if len(r.Skipped) > 0 || len(r.Review.IncompleteRoots) > 0 || turnFileLimited(r.BeforeCapture) || turnFileLimited(r.AfterCapture) {
+	if len(r.Skipped) > 0 || len(r.Review.IncompleteRoots) > 0 {
 		r.Status = "partial"
 	}
 	r.AfterCapture.Repos = len(repos)

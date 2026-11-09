@@ -581,55 +581,23 @@ func TestGitTurnKeepsUnicodeFilename(t *testing.T) {
 	}
 }
 
-// PLAT-746-319: a parent-folder import contained 123k backup/untracked paths.
-// Bound those sets without losing a healthy checkout or inventing deletions
-// when the ordinary-file prefix stops fitting at the next boundary.
-func TestTurnFileLimitKeepsHealthyCheckoutAndOmitsUnknownLooseDiff(t *testing.T) {
+// PLAT-746-766: cache trees used to exhaust a shared 10k allowance and
+// prevent later repositories from being captured, regardless of byte size.
+func TestTurnDiscoveryDoesNotLimitFileCount(t *testing.T) {
 	f := newCrew(t)
-	f.repo("huge", map[string]string{"tracked.txt": "original"})
 	f.repo("z-project", map[string]string{"edit.txt": "original"})
-	for i := 0; i <= maxTurnPaths; i++ {
-		f.put(fmt.Sprintf("huge/untracked-%05d", i), "")
+	const count = 10001
+	for i := 0; i < count; i++ {
+		f.put(fmt.Sprintf("cache/file-%05d", i), "")
+		f.put(fmt.Sprintf("z-project/new-%05d", i), "")
 	}
-	f.put("note.md", "before")
-	f.put("z-project/edit.txt", "before")
-	before, err := f.s.BeginGitTurn(t.Context(), "limited")
-	if err != nil || !turnFileLimited(before.BeforeCapture) || len(before.GitTurn) != 1 {
-		t.Fatalf("large untracked checkout was not bounded: %v %+v", err, before.BeforeCapture)
+	var stats CaptureStats
+	dirs, loose, err := f.s.turnPaths(t.Context(), &stats)
+	if err != nil || len(loose) != count || len(dirs) != 1 || stats.Deferred != "" {
+		t.Fatalf("ordinary file count hid a repository: %v loose=%d dirs=%v stats=%+v", err, len(loose), dirs, stats)
 	}
-	for i := 0; i <= maxTurnPaths; i++ {
-		f.put(fmt.Sprintf("backup/copy-%05d", i), "")
-	}
-	f.put("z-project/edit.txt", "after")
-	after, err := f.s.FinishGitTurn(t.Context(), "limited")
-	if err != nil || after.Status != "partial" || after.AfterCapture.Deferred != "loose_file_limit" {
-		t.Fatalf("large ordinary set lost healthy capture: %v %+v", err, after.AfterCapture)
-	}
-	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
-	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-project/edit.txt" {
-		t.Fatalf("bounded prefix invented or lost changes: %v %+v", err, comparison.Changes)
-	}
-	if after.AfterCapture.ImportedBytes > 20 {
-		t.Fatalf("read large untracked/backup contents: %+v", after.AfterCapture)
-	}
-	// PR1807 P1: a nested checkout hidden by the before walk's cap must not
-	// turn pre-existing dirty bytes into this reply's changes or Undo targets.
-	f.repo("m-parent/nested", map[string]string{"old.txt": "committed"})
-	f.put("m-parent/nested/old.txt", "pre-existing dirty work")
-	before, err = f.s.BeginGitTurn(t.Context(), "recovered")
-	if err != nil || before.BeforeCapture.Deferred != "loose_file_limit" {
-		t.Fatalf("before discovery was not capped: %v", err)
-	}
-	if err := os.RemoveAll(filepath.Join(f.s.Root, "backup")); err != nil {
-		t.Fatal(err)
-	}
-	f.put("z-project/edit.txt", "third")
-	after, err = f.s.FinishGitTurn(t.Context(), "recovered")
-	if err != nil {
-		t.Fatal(err)
-	}
-	comparison, err = f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
-	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-project/edit.txt" {
-		t.Fatalf("recovered checkout claimed old dirty work: %v %+v", err, comparison.Changes)
+	repos, skipped, err := f.s.turnRepos(t.Context(), dirs, &stats)
+	if err != nil || len(skipped) != 0 || len(repos["z-project"].Dirty) != count {
+		t.Fatalf("repository paths were capped: %v paths=%d skipped=%v", err, len(repos["z-project"].Dirty), skipped)
 	}
 }

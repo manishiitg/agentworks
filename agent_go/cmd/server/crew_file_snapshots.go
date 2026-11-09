@@ -315,7 +315,6 @@ var crewSnapshotUnavailableText = map[string]string{
 	"busy":       "File changes for this reply weren't saved (the project was too busy to snapshot in time).",
 	"failed":     "Changes couldn't be saved for this reply. Your work is still available in Files.",
 	"timeout":    "File tracking ran out of time for this reply. Your work is still in Files; use a smaller project folder if this keeps happening.",
-	"file_limit": "This project has too many files to track all changes for this reply. Your work is in Files; use a smaller project folder to track all changes.",
 	"filename":   "File tracking couldn't save a filename in this project. Your work is still in Files; update AgentWorks and try again.",
 	"access":     "File tracking couldn't read the project folder. Check its folder access, then try again. Your work is still in Files.",
 	"budget":     "File changes exceeded the capture size limit; some changes could not be saved.",
@@ -389,8 +388,7 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	unchanged := snapshot.store.Unchanged(checkCtx, record)
 	cancelCheck()
 	incomplete := record.Review != nil && len(record.Review.IncompleteRoots) > 0
-	limited := strings.HasSuffix(record.BeforeCapture.Deferred, "file_limit") || strings.HasSuffix(record.AfterCapture.Deferred, "file_limit")
-	if unchanged && !incomplete && !limited {
+	if unchanged && !incomplete {
 		log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s snapshot=%s skipped=no_changes", snapshot.sessionID, snapshot.executionID, record.ID)
 		return
 	}
@@ -414,14 +412,7 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	cancelSummary()
 	// This owning-chat notice contains no repository/path/count. File-scoped
 	// compare/history still require saved, authorized witnesses for details.
-	if limited {
-		if !ok || summary["files"] == 0 {
-			api.publishCrewSnapshotUnavailable(snapshot, "file_limit")
-			return
-		}
-		summary["note"] = crewSnapshotUnavailableText["file_limit"]
-	}
-	if incomplete && !limited {
+	if incomplete {
 		if !ok || summary["files"] == 0 {
 			api.publishCrewSnapshotUnavailable(snapshot, "incomplete")
 			return
