@@ -90,35 +90,36 @@ func cachedCrewStepCount(ctx context.Context, root string) (int, bool) {
 // One directory level and one metadata body, through the same admitted storage
 // resolver as run/file routes. No artifacts, child runs or Resume calculation.
 // Enumeration is bounded even if a workflow has an unexpectedly huge history.
-func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, error) {
+func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, bool, error) {
 	base, relative, err := workflowfiles.OpenWorkflowDirectory(workflow.GetPromptDocsRoot(), root, "runs")
 	if os.IsNotExist(err) {
-		return nil, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer base.Close()
 	file, err := base.Open(relative)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer file.Close()
 	const limit = 4096
 	entries, err := file.ReadDir(limit + 1)
 	if err != nil && err != io.EOF {
-		return nil, err
+		return nil, false, err
 	}
 	if len(entries) > limit {
-		return nil, fmt.Errorf("run history summary exceeds its read budget")
+		// A partial unordered directory cannot identify the latest run honestly.
+		return nil, true, nil
 	}
 	latest, newest := "", time.Time{}
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			continue
@@ -133,26 +134,26 @@ func crewPanelLatestRun(ctx context.Context, root string) ([]RunFolderInfo, erro
 		}
 	}
 	if latest == "" {
-		return nil, nil
+		return nil, false, nil
 	}
 	metadataFile, err := base.Open(path.Join(relative, latest, "run_metadata.json"))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer metadataFile.Close()
 	const maxMetadata = 4 << 20
 	raw, err := io.ReadAll(io.LimitReader(metadataFile, maxMetadata+1))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(raw) > maxMetadata {
-		return nil, fmt.Errorf("run metadata exceeds its summary read budget")
+		return nil, false, fmt.Errorf("run metadata exceeds its summary read budget")
 	}
 	metadata, err := decodeRunMetadata(string(raw))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return []RunFolderInfo{{Name: latest, Metadata: metadata}}, nil
+	return []RunFolderInfo{{Name: latest, Metadata: metadata}}, false, nil
 }
 
 func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection, error) {
@@ -170,26 +171,33 @@ func crewPanelWorkflows(ctx context.Context, workspace string) (crewPanelSection
 		}
 		label := "Workflow"
 		filesystem := workflowfiles.WorkflowFS{Docs: workflow.GetPromptDocsRoot(), Root: binding.Root}
-		if raw, err := fs.ReadFile(filesystem, "code/script.json"); err == nil {
+		if raw, err := fs.ReadFile(filesystem, "workflow.json"); err == nil {
 			var saved struct {
-				Name string `json:"name"`
+				Label string `json:"label"`
 			}
-			if json.Unmarshal(raw, &saved) == nil && saved.Name != "" {
-				label = saved.Name
+			if json.Unmarshal(raw, &saved) == nil && saved.Label != "" {
+				label = saved.Label
 			}
 		}
 		steps, known := crewScriptStepCount(ctx, binding)
 		if !known {
 			steps = -1
 		}
-		folders, err := crewPanelLatestRun(ctx, binding.Root)
+		folders, longHistory, err := crewPanelLatestRun(ctx, binding.Root)
 		if err != nil {
 			return section, err
 		}
 		if len(folders) > 0 && folders[0].Metadata != nil && folders[0].Metadata.Status == "running" {
 			section.Busy = true
 		}
-		section.Rows = append(section.Rows, crewPanelRow{ID: "workflow:" + binding.ID, Label: label, Detail: crewPanelWorkflowLine(folders, steps, time.Now()), Destination: "workflow"})
+		detail := crewPanelWorkflowLine(folders, steps, time.Now())
+		if longHistory {
+			detail = "Step count not loaded · Run history is long"
+			if steps >= 0 {
+				detail = crewPanelCount(steps, "step") + " · Run history is long"
+			}
+		}
+		section.Rows = append(section.Rows, crewPanelRow{ID: "workflow:" + binding.ID, Label: label, Detail: detail, Destination: "workflow"})
 	}
 	sort.Slice(section.Rows, func(i, j int) bool { return section.Rows[i].Label < section.Rows[j].Label })
 	section.Detail = crewPanelCount(len(section.Rows), "workflow")
