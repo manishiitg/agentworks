@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowUp, Eye, EyeOff, GitFork, Pencil, Trash2 } from 'lucide-react'
 import { create } from 'zustand'
+import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY } from './AgentIcon'
 import { AGENT_STATE_WORD, useAgentMenuState } from './agentMenuState'
 import type { TeamTabSetup } from '../../products/work/teamApi'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 
-// A Crew agent's details (owner, 4 Nov, tab option B): the tab strip shows names only; hovering a name (~400 ms, or a
+// A Crew agent's details (owner, 4 Nov, tab option B): the tab strip shows names only; hovering a name deliberately (1 second, or a
 // long press on touch) opens one card, and the open tab's purpose sits in one line at the top of its chat.
 export interface AgentCardInfo {
   name: string
@@ -79,11 +80,27 @@ export const useCrewAgentsStore = create<{ projectId: string | null; name: strin
   set: (projectId, name, agents, canAdd, closed = []) => set({ projectId, name, agents, canAdd, closed }),
 }))
 
+let agentHoverCooldownUntil = 0
+
 export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, pinned, shortcut, onRename }: { info?: AgentCardInfo; children: ReactNode; side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; pinned?: boolean; shortcut?: number; onRename?: () => void }) {
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
   const timer = useRef<number | undefined>(undefined)
+  const activeTabId = useChatStore(state => state.activeTabId)
+  const dismiss = useCallback(() => {
+    window.clearTimeout(timer.current)
+    agentHoverCooldownUntil = Date.now() + 3000
+    setAt(null)
+  }, [])
+  useEffect(() => { dismiss() }, [activeTabId, dismiss])
+  useEffect(() => {
+    const scroll = (event: Event) => {
+      if (!box.current?.contains(event.target as Node)) dismiss()
+    }
+    window.addEventListener('scroll', scroll, true)
+    return () => window.removeEventListener('scroll', scroll, true)
+  }, [dismiss])
   // On a phone the card is a bottom sheet over a backdrop; the backdrop closes it with its own click, so the tap does
   // not fall through to what is underneath.
   const sheet = useMobileViewport()
@@ -91,13 +108,13 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const pressed = useRef(false)
   useEffect(() => {
     if (!at) return
-    const close = (event: MouseEvent | TouchEvent) => { const target = event.target as Node; if (!box.current?.contains(target) && !anchor.current?.contains(target) && !backdrop.current?.contains(target)) setAt(null) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setAt(null) }
+    const close = (event: MouseEvent | TouchEvent) => { const target = event.target as Node; if (!box.current?.contains(target) && !anchor.current?.contains(target) && !backdrop.current?.contains(target)) dismiss() }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss() }
     document.addEventListener('mousedown', close)
     document.addEventListener('touchstart', close)
     document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('touchstart', close); document.removeEventListener('keydown', escape) }
-  }, [at])
+  }, [at, dismiss])
   useEffect(() => () => window.clearTimeout(timer.current), [])
   if (!info) return <>{children}</>
   const open = () => {
@@ -108,20 +125,20 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
     else setAt({ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.left - 8, window.innerWidth - 336)) })
   }
   const later = (ms: number, action: () => void) => { window.clearTimeout(timer.current); timer.current = window.setTimeout(action, ms) }
-  const finish = (action: () => void) => { setAt(null); action() }
+  const finish = (action: () => void) => { dismiss(); action() }
   return <>
     <span ref={anchor} className={side === 'right' ? 'block' : 'min-w-0'}
-      onPointerEnter={event => { if (event.pointerType === 'mouse') later(400, open) }} onPointerLeave={event => { if (event.pointerType === 'mouse') later(200, () => setAt(null)) }}
+      onPointerEnter={event => { if (event.pointerType === 'mouse' && Date.now() >= agentHoverCooldownUntil) later(1000, () => { if (Date.now() >= agentHoverCooldownUntil) open() }) }} onPointerLeave={event => { if (event.pointerType === 'mouse') { window.clearTimeout(timer.current); if (at) later(200, dismiss) } }}
       onTouchStart={() => { pressed.current = false; later(500, () => { pressed.current = true; open() }) }} onTouchEnd={() => { if (!at) window.clearTimeout(timer.current) }}
       onTouchMove={() => { if (!at) window.clearTimeout(timer.current) }}
       /* The click that ends a long press only opened the card; it does not also open the agent. */
-      onClickCapture={event => { if (pressed.current) { pressed.current = false; event.preventDefault(); event.stopPropagation() } }}
-      onClick={clickToOpen ? () => { window.clearTimeout(timer.current); if (at) setAt(null); else open() } : undefined}>
+      onClickCapture={event => { if (pressed.current) { pressed.current = false; event.preventDefault(); event.stopPropagation() } else if (!clickToOpen) dismiss() }}
+      onClick={clickToOpen ? () => { window.clearTimeout(timer.current); if (at) dismiss(); else open() } : undefined}>
       {children}
     </span>
-    {at && createPortal(<>{sheet && <div ref={backdrop} aria-hidden="true" className="fixed inset-0 z-[100] bg-black/40" onClick={event => { event.stopPropagation(); setAt(null) }} />}
+    {at && createPortal(<>{sheet && <div ref={backdrop} aria-hidden="true" className="fixed inset-0 z-[100] bg-black/40" onClick={event => { event.stopPropagation(); dismiss() }} />}
     <div ref={box} role="dialog" aria-label={info.name} style={sheet ? undefined : at} onClick={event => event.stopPropagation()}
-      onPointerEnter={() => window.clearTimeout(timer.current)} onPointerLeave={event => { if (event.pointerType === 'mouse') later(200, () => setAt(null)) }}
+      onPointerEnter={() => window.clearTimeout(timer.current)} onPointerLeave={event => { if (event.pointerType === 'mouse') later(200, dismiss) }}
       className={sheet
         ? 'fixed inset-x-0 bottom-0 z-[100] max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-border bg-popover p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-sm shadow-lg'
         : 'fixed z-[100] w-80 rounded-2xl border border-border bg-popover p-3 text-xs shadow-lg'}>
