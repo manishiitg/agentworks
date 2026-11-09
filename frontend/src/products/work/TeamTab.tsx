@@ -108,7 +108,6 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
         <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div>
         <TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} />
       </section>}
-      {view.can_leave && <LeaveTeam target={target} />}
     </>}
   </div>
 }
@@ -289,8 +288,16 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
       </>}
       {people.gets.length > 0 && <details className="text-xs text-muted-foreground">
         <summary className="cursor-pointer">What each level gets</summary>
-        <table className="mt-1.5 w-full text-left"><thead><tr><th className="py-0.5 pr-2 font-medium" /><th className="py-0.5 pr-2 font-medium">Dashboards only</th><th className="py-0.5 font-medium">Works with me</th></tr></thead>
-          <tbody>{people.gets.map(row => <tr key={row.label} className="border-t border-border"><td className="py-0.5 pr-2">{row.label}</td><td className="py-0.5 pr-2">{row.dashboards_only}</td><td className="py-0.5">{row.works_with_me}</td></tr>)}</tbody></table>
+        <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
+          {people.gets.map(level => <div key={level.title} className="rounded-xl border border-border px-3.5 py-3">
+            <p className="text-sm font-semibold text-foreground">{level.title}</p>
+            <p className="mb-2 text-xs">{level.tagline}</p>
+            {level.items.map(item => <p key={item.text} className="flex gap-2 py-0.5 text-[13px] text-foreground">
+              <span aria-hidden="true" className={item.yes ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground/60'}>{item.yes ? '✓' : '✕'}</span>
+              <span className="sr-only">{item.yes ? 'Included:' : 'Not included:'}</span>{item.text}
+            </p>)}
+          </div>)}
+        </div>
       </details>}
     </>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
@@ -438,14 +445,15 @@ function LentFold({ lent, target, projectId }: { lent: TeamLent; target: TeamTar
   </div>
 }
 
-function LeaveTeam({ target }: { target: TeamTarget }) {
+/** The one Leave control, a full-width button at the end of the Share page (shown when the server says the viewer may leave). */
+export function LeaveTeam({ target }: { target: TeamTarget }) {
   const { pending, error, run } = useSave()
   const leave = () => run('leave', async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/leave', 'POST', {})
     openAppPage('/home')
   })
   return <div className="space-y-1">
-    <Button variant="outline" disabled={Boolean(pending)} onClick={() => void leave()}><Saving on={pending === 'leave'}>{null}</Saving>Leave Team</Button>
+    <Button variant="outline" className="w-full py-3 text-[15px] font-semibold" disabled={Boolean(pending)} onClick={() => void leave()}><Saving on={pending === 'leave'}>{null}</Saving>Leave this Team</Button>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }

@@ -22,6 +22,7 @@ type crewTeamMacOnlyItem struct {
 	Key    string `json:"key"`
 	Name   string `json:"name"`
 	Kind   string `json:"kind"`
+	Label  string `json:"label"` // the words the card prints for Kind
 	Action string `json:"action"` // "copy", "move" or ""
 	Note   string `json:"note,omitempty"`
 }
@@ -91,7 +92,11 @@ func (api *StreamingAPI) crewTeamMacOnly(ctx context.Context, owner string, root
 		}
 		out = append(out, crewTeamMacOnlyItem{Key: "local:" + name, Name: name, Kind: "app on your Mac", Note: crewTeamMacLocalNote})
 	}
-	return crewTeamMacOnlyOneRowPerApp(out), nil
+	out = crewTeamMacOnlyOneRowPerApp(out)
+	for i := range out {
+		out[i].Label = map[string]string{"secret": "key", "app, signed in": "sign-in", "app": "connected app", "app on your Mac": "runs on your Mac"}[out[i].Kind]
+	}
+	return out, nil
 }
 
 // crewTeamAppKey: one app under two spellings ("Context7" in the Vault, "context7" as a Mac program) is one app.
