@@ -659,17 +659,27 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 		}
 	}
 	// The Connections row's one line: how many are on, from the rows above.
-	connectedCount := 0
+	connectedCount, attentionCount := 0, 0
 	for _, section := range sections {
 		for _, row := range section.Rows {
-			if strings.HasPrefix(row.Destination, "mcp:") && row.Connected {
+			if !strings.HasPrefix(row.Destination, "mcp:") {
+				continue
+			}
+			if row.Connected {
 				connectedCount++
+			}
+			if row.Attention {
+				attentionCount++
 			}
 		}
 	}
+	// No total (owner, 9 Nov): the icons already show what is connected; the line only says what needs a person.
 	details["connections"] = "None yet"
-	if connectedCount > 0 {
-		details["connections"] = fmt.Sprintf("%d connected", connectedCount)
+	switch {
+	case attentionCount > 0:
+		details["connections"] = fmt.Sprintf("%d need%s attention", attentionCount, map[bool]string{true: "s", false: ""}[attentionCount == 1])
+	case connectedCount > 0:
+		details["connections"] = "All connected"
 	}
 	if _, ok := details["mcp:connected"]; !ok {
 		for _, section := range sections {
