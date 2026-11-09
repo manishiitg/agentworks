@@ -175,7 +175,7 @@ export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {
 /** The People list (crew_people.go): the Team and the Share as one list with two levels. The server words every line and
  * says what each person may be moved to; the card shows them and sends the person's choice. */
 export type CrewPeopleLevelKey = 'works' | 'dashboards'
-export type CrewPeoplePerson = { user_id: string; name: string; email?: string; level: CrewPeopleLevelKey | 'owner'; level_label: string; line: string; invited?: boolean; owner?: boolean; you?: boolean; moves?: (CrewPeopleLevelKey | 'none')[] }
+export type CrewPeoplePerson = { user_id: string; name: string; email?: string; level: CrewPeopleLevelKey | 'owner'; level_label: string; note?: string; invited?: boolean; owner?: boolean; you?: boolean; moves?: (CrewPeopleLevelKey | 'none')[] }
 export type CrewPeopleLevel = { key: CrewPeopleLevelKey; label: string; line: string; available: boolean; why?: string }
 export type CrewPeopleView = {
   kind: 'server' | 'mac_online' | 'mac_never_online'; team_on: boolean; intro: string; blocked?: string; put_online?: string; add_everyone?: string

@@ -243,10 +243,10 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
     return <div key={person.user_id} className={`flex items-start gap-2 py-2 ${pending === `change:${person.user_id}` ? 'opacity-60' : ''}`}>
       <span aria-hidden="true" className="mt-0.5 grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">{person.name.slice(0, 1).toUpperCase()}</span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate">{person.name}{person.you && <span className="text-muted-foreground"> · you</span>}{person.invited && <span className="text-muted-foreground"> · invited</span>}</span>
-        <span className="block text-xs text-muted-foreground">{person.line}</span>
+        <span className="block truncate">{person.name}{person.owner && <span className="ml-1.5 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Owner</span>}{person.you && <span className="text-muted-foreground"> · you</span>}</span>
+        {person.note && <span className="block text-xs text-muted-foreground">{person.note}</span>}
       </span>
-      {activity?.active_label && <span className="mt-0.5 shrink-0 text-xs text-muted-foreground"><Dot on={activity.active} />{activity.active_label}</span>}
+      {activity && <span className="mt-1.5 shrink-0" title={activity.active_label || undefined}><Dot on={activity.active} /></span>}
       {options.length > 0 && !closed
         ? <span className="inline-flex shrink-0 items-center gap-1.5"><Saving on={pending === `change:${person.user_id}`}>{null}</Saving>
           <select aria-label={`${person.name}: how they use this Crew`} disabled={Boolean(pending)} value={person.level} onChange={event => { const next = event.target.value as CrewPeopleChange['level']; if (next !== person.level) void propose(person.user_id, person.name, next) }}
@@ -254,16 +254,15 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
             <option value={person.level}>{person.level_label}</option>
             {options.map(option => <option key={option.key} value={option.key} disabled={option.off} title={option.why || undefined}>{option.label}</option>)}
           </select></span>
-        : <span className="mt-0.5 shrink-0 text-xs text-muted-foreground">{person.level_label}</span>}
+        : !person.owner && <span className="mt-0.5 shrink-0 text-xs text-muted-foreground">{person.level_label}</span>}
     </div>
   }
   return <section aria-label="People" className={card}>
     <div className="flex items-center gap-2">
       <h3 className="flex-1 font-semibold">People</h3>
-      <span className="text-xs text-muted-foreground">{team.on && view.people.length > 1 ? `${view.people.length} people` : 'Only you'}</span>
+      <span className="text-xs text-muted-foreground">{team.on ? everyone.length : 1}</span>
       <AskButton projectId={projectId} card="team" />
-      {view.can_switch ? <><Saving on={pending === 'team'}>{null}</Saving><Switch aria-label="Team" disabled={Boolean(pending)} checked={team.on} onCheckedChange={on => void turn(on)} /></>
-        : <span className="text-xs text-muted-foreground">{team.on ? 'On' : 'Off'}</span>}
+      {view.can_switch && <><Saving on={pending === 'team'}>{null}</Saving><Switch aria-label="Team" disabled={Boolean(pending)} checked={team.on} onCheckedChange={on => void turn(on)} /></>}
     </div>
     {note && <p className="text-xs text-muted-foreground">{note}</p>}
     {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this Crew with people.</p>}
