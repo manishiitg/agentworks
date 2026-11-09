@@ -58,6 +58,19 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const chatTabs = useChatStore(state => state.chatTabs)
   const canonicalSessionId = useChatStore(state => state.chatTabs[canonicalTabId]?.sessionId)
   const [newTabName, setNewTabName] = useState<string | null>(null)
+  const [addMode, setAddMode] = useState<'choose' | 'fork' | null>(null)
+  const [forking, setForking] = useState(false)
+  const beginAddAgent = () => {
+    if (surface === 'work') setAddMode(onImportLocalChat ? 'choose' : 'fork')
+    else setNewTabName('')
+  }
+  useEffect(() => { setAddMode(null) }, [canonicalTabId])
+  useEffect(() => {
+    if (!addMode) return
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); setAddMode(null) } }
+    window.addEventListener('keydown', escape)
+    return () => window.removeEventListener('keydown', escape)
+  }, [addMode])
   const listedFor = (tab: ChatTab) => listed.find(chat => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
   const ownedListed = listed.filter(chat => chat.can_write !== false)
   const sideChats = tabs.filter(tab => tab.tabId !== canonicalTabId && !tab.metadata?.isViewOnly)
@@ -358,7 +371,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       event.preventDefault()
       markFeatureUsed(action.kind === 'new' ? 'chat-tab-new' : 'chat-tab-keys')
       if (action.kind === 'new') {
-        setNewTabName(current => current ?? '')
+        beginAddAgent()
         return
       }
       const target = numberedTabsRef.current[action.index]
@@ -366,7 +379,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [sideChatsHere, surface, onSelectTab, isTabActive])
+  }, [sideChatsHere, surface, onSelectTab, isTabActive, onImportLocalChat])
   // With many tabs the strip scrolls sideways (tabs keep their width, "+" stays in view) and the
   // active tab is brought into view when it changes.
   const stripRef = useRef<HTMLDivElement>(null)
@@ -497,9 +510,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
                   className="flex min-h-10 w-full min-w-0 items-center rounded-xl px-2.5 text-left text-[13px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"><span className="min-w-0 truncate">{agent.name}</span></button>)}
               </>}
               </div>
-              {sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); setNewTabName('') }}
+              {sideChatsHere && <button type="button" disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT} onClick={() => { setMoreOpen(false); beginAddAgent() }}
                 className="mt-1 flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-2.5 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New agent</button>}
-              {onImportLocalChat && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); onImportLocalChat() }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground"><span aria-label="Claude, Codex and Cursor" className="flex shrink-0 -space-x-1">{['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-5 w-5 place-items-center rounded-full bg-popover ring-2 ring-popover"><img alt="" src={`/provider-icons/${icon}`} className="h-4 w-4 object-contain" /></span>)}</span>Continue a local chat</button>}
+              {onImportLocalChat && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); onImportLocalChat() }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground"><span aria-label="Claude, Codex and Cursor" className="flex shrink-0 -space-x-1">{['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-5 w-5 place-items-center rounded-full bg-popover ring-2 ring-popover"><img alt="" src={`/provider-icons/${icon}`} className="h-4 w-4 object-contain" /></span>)}</span>Import local chat…</button>}
             </div>, document.body
           )}
         </div>
@@ -554,16 +567,39 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
       {!moreBeforePeople && moreMenu}
 
       {newTabForm}
-      {sideChatsHere && newTabName === null && (
+      {addMode && createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!forking) setAddMode(null) }}>
+          <div role="dialog" aria-modal="true" aria-label={addMode === 'choose' ? 'Add agent' : 'Fork existing agent'} className="w-full max-w-sm rounded-xl border border-border bg-popover p-3 shadow-xl" onClick={event => event.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold">{addMode === 'choose' ? 'Add agent' : 'Fork existing agent'}</h2>
+              <button type="button" autoFocus disabled={forking} aria-label="Close" onClick={() => setAddMode(null)} className="rounded p-2 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><X className="h-4 w-4" /></button>
+            </div>
+            {addMode === 'choose' ? <div className="space-y-1">
+              <button type="button" onClick={() => setAddMode('fork')} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Fork existing agent…</button>
+              {onImportLocalChat && <button type="button" onClick={() => { setAddMode(null); onImportLocalChat() }} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Import local chat…</button>}
+            </div> : <>
+              <p className="mb-2 px-2 text-xs text-muted-foreground">Choose an agent to copy its conversation into a separate chat. The original stays unchanged.</p>
+              <div className="max-h-72 overflow-y-auto">
+                {tabs.filter(tab => isAgentTab(tab) && canControl(tab) && tab.metadata?.agentProfileConversationKey).map(tab => <button key={tab.tabId} type="button" disabled={forking} onClick={async () => {
+                  setForking(true)
+                  try { await forkChatTab(tab.tabId); setAddMode(null); phoneNavigation?.onChange('chat') }
+                  finally { setForking(false) }
+                }} className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">{forking && <Loader2 className="h-3.5 w-3.5 animate-spin" />}<span className="truncate">{tabLabel(tab)}</span></button>)}
+              </div>
+            </>}
+          </div>
+        </div>, document.body
+      )}
+      {sideChatsHere && newTabName === null && !addMode && (
         <button
           type="button"
-          onClick={() => setNewTabName('')}
+          onClick={beginAddAgent}
           disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT}
           className={`${menuMode ? 'max-md:h-10 max-md:w-10' : 'max-md:hidden'} ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
           aria-label="New agent"
           title={ownedListed.length >= WORK_SIDE_CHAT_LIMIT
             ? `At most ${WORK_SIDE_CHAT_LIMIT + 1} agents per project`
-            : 'New agent (⌥⇧T on Mac, Alt+Shift+T on Windows): another agent in this project. The main agent keeps Slack, WhatsApp, MCP and schedules'}
+            : 'Add agent (⌥⇧T on Mac, Alt+Shift+T on Windows)'}
           data-testid="work-new-chat-tab"
         >
           {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
