@@ -405,6 +405,12 @@ func (api *StreamingAPI) finalResponseForExecution(sessionID, executionID string
 	if api == nil || api.eventStore == nil {
 		return ""
 	}
+	api.trackedWorkflowExecutionsMux.RLock()
+	nativeTurnID := ""
+	if execution := api.trackedWorkflowExecutions[executionID]; execution != nil && execution.SessionID == sessionID {
+		nativeTurnID = execution.Metadata["native_turn_id"]
+	}
+	api.trackedWorkflowExecutionsMux.RUnlock()
 	fallback := ""
 	// Main-agent turns are scoped to the session ("main:<session>"),
 	// not the query execution ID: match both, newest first.
@@ -415,6 +421,11 @@ func (api *StreamingAPI) finalResponseForExecution(sessionID, executionID string
 		event := all[i]
 		execID := strings.TrimSpace(event.ExecutionID)
 		matched := execID == wantMain || (wantQuery != "" && execID == wantQuery)
+		if nativeTurnID != "" {
+			// A steered request shares its native Run's completion, not its
+			// foreground query ID. Never borrow another message's latest reply.
+			matched = retainedCompletionTurnID(event) == nativeTurnID
+		}
 		if !matched || event.Data == nil {
 			continue
 		}
