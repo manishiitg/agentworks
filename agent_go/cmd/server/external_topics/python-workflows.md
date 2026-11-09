@@ -45,8 +45,10 @@ keeps its original reasoning choice, recorded with its run.
 1. Use `workflow action=list`. Each saved script has `kind=script`, typed `inputs`
    and `input_presets`. Keep its `id` and `workspace_path`; `workflow action=get`
    returns the same contract and full manifest for one workflow.
-2. To create one, use `workspace action=automation_create` with `crew_id` and
-   `name`. New workflows are Python scripts. Keep the returned identity.
+2. Inspect this Crew's existing workflow before creating one. Use
+   `workspace action=automation_create` with `crew_id` and `name` only when it
+   has none; a second workflow is refused with HTTP409. Keep the returned identity.
+   Add task paths and saved settings to the existing workflow instead.
 3. Use `workspace action=automation_read` or `automation_write` with `crew_id`,
    `workspace_path` and `file`, such as `main.py`, `nested/report.py`, or root
    `script.json`. Writes take UTF-8 `content` and use the existing script editor's
@@ -73,9 +75,8 @@ secret selection. Sharing and connected-account authority do not change here.
 
 The owning Crew's in-app chat can offer a bound `runs action=start` with
 only `input_preset` and typed `inputs`. That tool chooses the workflow from the
-Crew when exactly one saved script matches and uses the same input validation
-as MCP. With several scripts, ask which one and use `functions action=run_trigger`
-with its `workflow:<id>` in `workspace_path`. It starts a real background
+Crew and uses the same input validation as MCP. Choose the task through a saved
+setting or typed inputs, rather than creating another workflow. It starts a real background
 run; the chat's background work control stops it. Workflow run instructions
 belong in the saved Python/Crew setup.
 
@@ -120,29 +121,10 @@ Crew/workflow. Choose one start path per intended run. Inspect uncertain
 receipts before starting again; reuse `delivery_id` only for an identical retry
 of `run_trigger`.
 
-Runs do real work, including database writes, app calls and sends. No new
-mid-run question or individual Python step execution is introduced.
-
-## Resume a failed run
-
-Use `runs action=resume` with `workflow_id` and the failed `run_folder`.
-Only the Crew's Builder or an admitted workflow editor can resume. It keeps
-that folder and the captured source and typed inputs, starts a new execution
-attempt, and preserves the old logs. Python starts at the top again.
-
-Only successful `agent()` calls with an explicit `key=`
-can reuse their recorded results. Use a distinct logical key for each call,
-including each loop iteration; reusing a key within one attempt is refused.
-The same key and arguments can reuse a successful result even if unrelated
-calls move. Changed arguments execute fresh and are recorded as such.
-Returned replies expose `reused=true` when reused.
-
-Ordinary Python, database writes, app calls, checks and notices execute again.
-An interrupted call whose completion is uncertain keeps its existing refusal;
-resume never silently repeats an uncertain send. Missing or changed frozen
-source, source hash or input proof says to start a new run. Older runs without
-that proof cannot resume. Use `rerun` when you want current source and a new
-run folder instead.
+Runs do real work, including database writes, app calls and sends. Collect
+needed answers in Crew chat before starting: a workflow does not wait for
+someone to answer. Ordinary chat question cards do not pause a workflow.
+Individual Python labels are not separately executable steps.
 
 ## Laptop CLI
 
@@ -162,7 +144,6 @@ agentworks runs status --workflow sample --session returned-session
 agentworks runs get --workflow sample --run-folder returned-run
 agentworks runs logs --workflow sample --run-folder returned-run
 agentworks runs rerun --workflow sample --run-folder returned-run
-agentworks runs resume --workflow sample --run-folder failed-run
 agentworks functions run-trigger --crew team --workspace Workflow/sample --preset weekly --inputs '{"LIMIT":3}'
 agentworks functions trigger-status --crew team --workspace Workflow/sample --trigger-id returned-trigger --run-id returned-run
 ```
@@ -172,7 +153,9 @@ accepts the complete typed input-definition array when you mean to replace it.
 `tools spec workflow workspace runs functions` reads the server's current
 schemas; `tools call` and `mcp serve` use the same catalog and access checks.
 
-## Webhook and timer inputs
+## Webhook and schedule inputs
+
+Workflow timers are Crew schedules that run the Crew's workflow. A message schedule sends a message to an agent instead. Read the current schedules guidance before creating or changing either; older workflow timers may still need conversion.
 
 Each webhook or timer chooses one saved `input_preset` plus optional fixed
 `inputs`. The sender cannot choose another preset. For raw webhook JSON, map
@@ -198,8 +181,4 @@ Discovery also returns `secrets`: required Vault names declared by the script.
 These are names, never values or new grants. Connect or select missing names
 through the existing Vault settings before running.
 
-Failed runs keep native agent conversation history for 72 hours. After that, a continued agent call starts fresh and the run records “conversation expired: this call restarts fresh”. Completed or stopped runs release that history immediately.
-
-Run metadata exposes `can_resume`: eligible now under the current account and workflow access, failed status and saved proof headers. It is computed by the server, never saved in run files. Admission still verifies the complete captured source and inputs and can refuse; show its plain message.
-
-Parent Python can read fresh own-Crew text with `from agentworks import files; note = files.read("knowledgebase/notes/owner-handled.md")`. Each call reads again through the existing file policy, including on Resume; it does not read a frozen copy or grant the shell access. Use paths relative to the Crew's Files. UTF-8 text up to 256 KiB is supported; private files, other Crews and symlinks are refused. Native agents use their existing file tools.
+Parent Python can read fresh own-Crew text with `from agentworks import files; note = files.read("notes/owner-handled.md")`. Each call reads again through the existing file policy, it does not read a frozen copy or grant the shell access. Use paths relative to the Crew's Files. UTF-8 text up to 256 KiB is supported; private files, credential paths, other Crews and symlinks are refused. Retired local knowledge folders do not become accessible through this helper. It is not a general Brain reader. Native agents use their existing file tools, not this import. Only the parent workflow receives its durable `WORKFLOW_DATA_ROOT`; do not assume a report executor or native shell has that environment.
