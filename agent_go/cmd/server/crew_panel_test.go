@@ -108,7 +108,7 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 	// webhook stays one workflow; starts keep their automation classification.
 	f.api.scheduler = &SchedulerService{api: f.api}
 	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
-	child := crewExecutableBinding{ID: "panel-workflow", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/panel-workflow", Kind: "workflow"}
+	child := crewExecutableBinding{ID: "panel-workflow", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/panel-workflow", Kind: "script"}
 	if err := registerCrewExecutable(child); err != nil {
 		t.Fatal(err)
 	}

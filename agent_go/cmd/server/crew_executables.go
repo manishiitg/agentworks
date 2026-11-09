@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
@@ -89,7 +88,7 @@ func readCrewExecutables() (map[string]crewExecutableBinding, error) {
 		if binding.Root != crewExecutableKey(binding.Root) || filepath.Base(expected) != entry.Name() {
 			continue
 		}
-		if binding.Kind != "workflow" && binding.Kind != "script" {
+		if binding.Kind != "script" {
 			continue
 		}
 		result[binding.Root] = binding
@@ -97,40 +96,19 @@ func readCrewExecutables() (map[string]crewExecutableBinding, error) {
 	return result, nil
 }
 
-// crewShownWorkflow is the one workflow a Crew screen shows: the newest Python workflow record of the Crew (older
-// Crews may still hold several records), else the newest record of any kind. Nil when the Crew has none.
+// crewShownWorkflow is the one workflow a Crew screen shows: the Crew's Python workflow record. Nil when the Crew has none.
 func crewShownWorkflow(crewWorkspace string) *crewExecutableBinding {
 	records, err := readCrewExecutables()
 	if err != nil || crewWorkspace == "" {
 		return nil
 	}
-	var best *crewExecutableBinding
-	var bestTime time.Time
 	for _, binding := range records {
-		if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(crewWorkspace) {
-			continue
-		}
-		var modified time.Time
-		if file, err := crewExecutableFile(binding.Root); err == nil {
-			if info, err := os.Stat(file); err == nil {
-				modified = info.ModTime()
-			}
-		}
-		better := best == nil
-		if !better {
-			// A Python workflow (kind script) wins over an older plan record, which can no longer run.
-			if (binding.Kind == "script") != (best.Kind == "script") {
-				better = binding.Kind == "script"
-			} else {
-				better = modified.After(bestTime)
-			}
-		}
-		if better {
+		if canonicalCrewWorkspaceRoot(binding.CrewRoot) == canonicalCrewWorkspaceRoot(crewWorkspace) {
 			b := binding
-			best, bestTime = &b, modified
+			return &b
 		}
 	}
-	return best
+	return nil
 }
 
 func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
@@ -155,7 +133,7 @@ func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
 	if err := json.Unmarshal(data, &binding); err != nil {
 		return nil, fmt.Errorf("read executable binding: %w", err)
 	}
-	if binding.Root != root || binding.ID == "" || binding.CrewID == "" || (binding.Kind != "workflow" && binding.Kind != "script") {
+	if binding.Root != root || binding.ID == "" || binding.CrewID == "" || binding.Kind != "script" {
 		return nil, fmt.Errorf("invalid executable binding")
 	}
 	owner, found := crewProjectOwnerID(binding.CrewRoot)
@@ -205,17 +183,6 @@ func registerCrewExecutable(binding crewExecutableBinding) error {
 		return fmt.Errorf("executable already registered")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
-	}
-	if binding.Kind == "workflow" {
-		records, err := readCrewExecutables()
-		if err != nil {
-			return err
-		}
-		for _, existing := range records {
-			if existing.CrewID == binding.CrewID && existing.Kind == "workflow" {
-				return fmt.Errorf("%w (%s)", errCrewWorkflowExists, existing.Root)
-			}
-		}
 	}
 	data, err := json.MarshalIndent(binding, "", "  ")
 	if err != nil {
@@ -332,13 +299,6 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 					}
 				}
 				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers, Inputs: inputs, InputPresets: presets, Files: files})
-				if binding.Kind == "workflow" {
-					if plan, planErr := readPlanFromWorkspace(r.Context(), binding.Root); planErr == nil {
-						for _, step := range workflow.CrewWorkflowOwnScriptSteps(plan) {
-							stepScripts = append(stepScripts, stepScript{WorkflowID: binding.ID, Workflow: manifest.Label, StepID: step.ID, Step: firstNonEmptyTrimmed(step.Title, step.ID)})
-						}
-					}
-				}
 			}
 		}
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Manifest.Label < entries[j].Manifest.Label })
@@ -369,7 +329,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		return
 	}
 	input.Name = strings.TrimSpace(input.Name)
-	if input.Kind != "" && input.Kind != "workflow" && input.Kind != "script" {
+	if input.Kind != "" && input.Kind != "script" {
 		http.Error(w, "Create a Python workflow in this project.", http.StatusBadRequest)
 		return
 	}
@@ -378,8 +338,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		return
 	}
 	// One workflow per Crew (owner, 9 Nov): different tasks are paths inside it (branches its inputs choose, each way in
-	// with its own saved settings), not more workflows. An older plan workflow cannot run, so it does not count: it is
-	// replaced by the Python workflow.
+	// with its own saved settings), not more workflows.
 	existing, err := readCrewExecutables()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -391,8 +350,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 			return
 		}
 	}
-	// PLAT-746: every new workflow is a Python script; kind "workflow" from an
-	// older caller creates one too. Existing plan workflows keep working.
+	// PLAT-746: every new workflow is a Python script.
 	id := uuid.NewString()
 	binding := crewExecutableBinding{ID: id, CrewID: project.Binding.ResourceID, CrewRoot: root, Root: "Workflow/" + id, Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {

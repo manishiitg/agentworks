@@ -199,7 +199,7 @@ func TestCrewWorkflowTriggerBindingReuseAndCreate(t *testing.T) {
 	}
 	// An owned child without variables is one ungrouped run, not a request
 	// for a nonexistent "default" input set.
-	child := crewExecutableBinding{ID: "ungrouped", CrewID: "crew-project-a", CrewRoot: crewWorkflowTestCrewPath, Root: "Workflow/ungrouped", Kind: "workflow"}
+	child := crewExecutableBinding{ID: "ungrouped", CrewID: "crew-project-a", CrewRoot: crewWorkflowTestCrewPath, Root: "Workflow/ungrouped", Kind: "script"}
 	if err := registerCrewExecutable(child); err != nil {
 		t.Fatal(err)
 	}

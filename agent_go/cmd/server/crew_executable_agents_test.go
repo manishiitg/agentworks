@@ -61,7 +61,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if err := writeFileToWorkspace(ctx, crew.WorkspacePath+"/PROJECT_INSTRUCTIONS.md", "Cite the sources"); err != nil {
 		t.Fatal(err)
 	}
-	child := crewExecutableBinding{ID: "child", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/child", Kind: "workflow"}
+	child := crewExecutableBinding{ID: "child", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/child", Kind: "script"}
 	if err := registerCrewExecutable(child); err != nil {
 		t.Fatal(err)
 	}
@@ -86,15 +86,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		}
 	}
 	files.files["chat_history/"+chat.SessionID+".json"] = `{"messages":[{"text":"PERSONAL_HISTORY_MUST_NOT_BE_IMPORTED"}]}`
-	// Keep an old plan readable while its editors are retired (PLAT-746-471).
-	if err := writeFileToWorkspace(ctx, child.Root+"/planning/plan.json", `{"steps":[],"orphan_steps":[{"type":"agent","id":"report","title":"Report","description":"Write a report","prompt_contract":"description-first-v1"},{"type":"scripted","id":"untouched","title":"Untouched","description":"Keep this step"}]}`); err != nil {
-		t.Fatal(err)
-	}
 	api := &StreamingAPI{projectActions: svc}
-	plan, err := readPlanFromWorkspace(ctx, child.Root)
-	if err != nil || len(plan.OrphanSteps) != 2 {
-		t.Fatal("specialist plan unavailable", err)
-	}
 	// PLAT-746-265: the chat authoring tool uses the same validated workspace
 	// writers, scoped to this Crew's children rather than shell folder grants.
 	reg := &recordingRegistrar{}
@@ -118,22 +110,6 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 		if got := authoring.Executables[0].Environment[key]; got == "" || got != want {
 			t.Fatalf("chat installs dependencies somewhere other than the runner: %s=%q want %q", key, got, want)
 		}
-	}
-	// PLAT-746 (owner, 8 Nov): an older plan workflow keeps running but is no longer
-	// edited, from code files to steps and inputs; changing it means converting it.
-	for _, call := range []map[string]interface{}{
-		{"action": "write", "workspace_path": child.Root, "file": "code/report/main.py", "content": "print('report')"},
-		{"action": "write", "workspace_path": child.Root, "file": "planning/plan.json", "content": "{}"},
-		{"action": "write", "workspace_path": child.Root, "file": "variables/variables.json", "content": "{}"},
-		{"action": "edit", "workspace_path": child.Root, "operation": "update_step", "arguments": map[string]interface{}{"step_id": "report", "changes": map[string]interface{}{"title": "Updated report"}}},
-		{"action": "edit", "workspace_path": child.Root, "operation": "update_variable", "arguments": map[string]interface{}{"action": "add", "name": "count", "type": "integer", "value": "1"}},
-	} {
-		if out, err := edit(ctx, call); err == nil || err.Error() != oldPlanWorkflowNotEditable {
-			t.Fatalf("old plan workflow was edited: %v %s %v", call, out, err)
-		}
-	}
-	if after, err := readPlanFromWorkspace(ctx, child.Root); err != nil || len(after.OrphanSteps) != len(plan.OrphanSteps) || after.OrphanSteps[0].GetTitle() == "Updated report" {
-		t.Fatalf("refused edits changed the plan: %+v %v", after, err)
 	}
 	// PLAT-746-355: removing duplicate settings must leave the same child timers
 	// and webhooks editable from Crew chat, using the real save handlers.
@@ -184,7 +160,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	*directory = originalDirectory
 	invalidateUserDirectoryCache()
 
-	foreignChild := crewExecutableBinding{ID: "foreign-child", CrewID: foreignCrew.CrewID, CrewRoot: foreignCrew.WorkspacePath, Root: "Workflow/foreign-child", Kind: "workflow"}
+	foreignChild := crewExecutableBinding{ID: "foreign-child", CrewID: foreignCrew.CrewID, CrewRoot: foreignCrew.WorkspacePath, Root: "Workflow/foreign-child", Kind: "script"}
 	if err := registerCrewExecutable(foreignChild); err != nil {
 		t.Fatal(err)
 	}

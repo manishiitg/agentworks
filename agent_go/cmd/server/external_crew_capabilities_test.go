@@ -454,26 +454,6 @@ func TestExternalCrewAutomationAuthoringOverMCP(t *testing.T) {
 		t.Fatal(got)
 	}
 	call("describe", map[string]any{"operation": "manage_schedules"})
-	// PLAT-746 (owner, 8 Nov): an older plan workflow keeps running and is readable, but is not edited.
-	var script crewExecutableBinding
-	for _, binding := range bindings {
-		script = binding
-	}
-	planWorkflow := crewExecutableBinding{ID: "plan-workflow", CrewID: script.CrewID, CrewRoot: script.CrewRoot, Root: "Workflow/plan-workflow", Kind: "workflow"}
-	if err := registerCrewExecutable(planWorkflow); err != nil {
-		t.Fatal(err)
-	}
-	registerWorkflowOwner(planWorkflow.Root, "owner")
-	manifest := NewWorkflowManifest("MCP workflow")
-	manifest.ID = planWorkflow.ID
-	manifest.CreatedBy = "owner"
-	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{}}
-	if err := WriteWorkflowManifest(ctx, planWorkflow.Root, manifest); err != nil {
-		t.Fatal(err)
-	}
-	workflowRoot := planWorkflow.Root
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", map[string]any{"action": "automation_edit", "workspace_path": workflowRoot, "operation": "update_variable", "arguments": map[string]any{"action": "add", "name": "count", "type": "integer", "value": "2"}}, 400)
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", map[string]any{"action": "automation_write", "workspace_path": workflowRoot, "file": "planning/plan.json", "content": "{}"}, 400)
 
 	for _, claims := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
 		crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "automation_create", "kind": "script", "name": "Refused"}, 403)

@@ -201,7 +201,7 @@ func listWorkflowFoldersWithManifestStamps(ctx context.Context) ([]string, map[s
 		return nil, nil, err
 	}
 	for _, binding := range bindings {
-		if binding.Kind == "script" || binding.Kind == "workflow" {
+		if binding.Kind == "script" {
 			if !slices.Contains(folders, binding.Root) {
 				folders = append(folders, binding.Root)
 			}

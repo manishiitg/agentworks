@@ -40,9 +40,9 @@ func TestCrewChatSavedPythonStartAndHTTPStop(t *testing.T) {
 	checkCrewChatPythonStop(t, "bound")
 }
 
-// PLAT-746-506: a trigger in a multi-script Crew must be real background work
+// PLAT-746-506: a trigger in a Crew must be real background work
 // of the calling chat. A shared Run person's published call has the same Stop.
-func TestCrewChatMultiScriptRunTriggerAndFunctionStop(t *testing.T) {
+func TestCrewChatRunTriggerAndFunctionStop(t *testing.T) {
 	for _, entry := range []string{"trigger", "shared-function"} {
 		t.Run(entry, func(t *testing.T) { checkCrewChatPythonStop(t, entry) })
 	}
@@ -218,13 +218,6 @@ child.wait()
 			t.Fatalf("Crew chat start with saved preset and typed override: %s %v", out, err)
 		}
 	} else {
-		second := crewExecutableBinding{ID: "second-script", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/second-script", Kind: "script", RuntimeRoot: "workflows/second-script"}
-		if err := registerCrewExecutable(second); err != nil {
-			t.Fatal(err)
-		}
-		if err := initializeCrewScriptSource(ctx, second, "Second script"); err != nil {
-			t.Fatal(err)
-		}
 		reg := &recordingRegistrar{}
 		args := map[string]any{"action": "run_trigger", "workspace_path": binding.Root, "input_preset": "Saved", "inputs": map[string]any{"enabled": true}}
 		if entry == "shared-function" {
