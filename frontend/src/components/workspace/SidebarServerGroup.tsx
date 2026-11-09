@@ -2,7 +2,7 @@ import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
-import { ChevronRight, LayoutDashboard, Laptop, Network, Pin } from 'lucide-react'
+import { ChevronRight, LayoutDashboard, Laptop, Loader2, Network, Pin } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
@@ -16,7 +16,8 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
       {showIcon && <span className="flex h-4 w-4 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={personal_agent ? <ProductSurfaceIcon surface="agentworks" className="h-4 w-4" /> : sharedDashboard ? <LayoutDashboard className="h-4 w-4" /> : <ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4" />} /></span>}
       <span className="min-w-0 flex-1"><span className={`block truncate text-[13px] leading-5 ${selected ? 'font-medium' : 'font-normal'}`}>{name}</span>{owned_by_caller === false && owner_name && <span className="block truncate text-[11px] leading-3 text-muted-foreground">{owner_name}{where ? ` · ${where === 'mac' ? 'On your Mac' : 'On the web'}` : ''}</span>}{subline && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{subline}</span>}</span>
     </button>
-    {activityLabel && <span role="status" title={activityLabel} aria-label={activityLabel} className={`mr-2 h-2 w-2 shrink-0 rounded-full ${activityLabel === 'Running' ? 'bg-sky-500' : 'bg-amber-400'}`} />}
+    {activityLabel === 'Running' ? <Loader2 role="img" aria-label="Working" className="mr-2 h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
+      : activityLabel ? <span role="status" title={activityLabel} aria-label={activityLabel} className="mr-2 h-2 w-2 shrink-0 rounded-full bg-amber-400" /> : null}
     {/* A Crew that lives on its owner's Mac (the server's row says so): a laptop with the Mac's on/off dot. */}
     {shared_agents ? <span title={`${shared_agents} ${shared_agents === 1 ? 'agent' : 'agents'} others can message`} className="mr-1.5 shrink-0 rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground">{shared_agents} shared</span> : null}
     {onMac && <span title={onMac === 'on' ? 'On your Mac' : 'On your Mac · Mac off'} aria-label={onMac === 'on' ? 'On your Mac' : 'On your Mac, Mac off'} className="relative mr-2 inline-flex shrink-0 text-muted-foreground">
