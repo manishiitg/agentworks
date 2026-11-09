@@ -22,7 +22,7 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL", "")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","products":["work"]},{"id":"member","products":["work"]},{"id":"outsider","products":["work"]},{"id":"disabled","disabled":true,"products":["work"]},{"id":"no-crew","products":["brain"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"member","products":["work"]},{"id":"outsider","products":["work"]},{"id":"disabled","disabled":true,"products":["work"]},{"id":"no-crew","products":["brain"]}]}`)
 	if err := crewroot.WriteSync("p", crewroot.SyncBinding{Side: "server", Editing: "local", Mode: "relay", PairID: "pair-test", PeerProjectID: "local-project"}); err != nil {
 		t.Fatal(err)
 	}
@@ -32,9 +32,19 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 	if err := writeCrewTeam(crewTeam{ProjectID: "p", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}, {UserID: "disabled"}, {UserID: "no-crew"}}}); err != nil {
 		t.Fatal(err)
 	}
-	agents := []macSharedAgent{{Tab: "main", Audience: "team"}, {Tab: "team01", Audience: "team"}, {Tab: "public01", AgentBridgePublic: true}}
+	agents := []macSharedAgent{{Tab: "main", Audience: "team"}, {Tab: "team01", Audience: "team"}, {Tab: "public01", Address: "public-agent", AgentBridgePublic: true}}
 	if err := writeMacSharedAgents("p", agents); err != nil {
 		t.Fatal(err)
+	}
+	// PLAT-856-563: directory discovery succeeded but owner-prefixed sends failed before Mac address lookup.
+	for _, tc := range []struct {
+		address string
+		allowed bool
+	}{{"public-agent", true}, {"private-agent", false}, {"missing-agent", false}} {
+		target, err := resolveSharedMessageAgent(t.Context(), "owner", "attached-agent", "owner/"+tc.address)
+		if (err == nil) != tc.allowed || tc.allowed && (target.CrewID != "p" || target.Chat.Key != macSharedAgentChatKey("p", "public01")) {
+			t.Fatalf("own Mac address %q: target=%+v error=%v", tc.address, target, err)
+		}
 	}
 	api := &StreamingAPI{}
 	for _, tc := range []struct {

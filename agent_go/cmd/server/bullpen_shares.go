@@ -334,7 +334,15 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 		return triggerTarget{}, denied
 	}
 	owner := dir.byUsername(ownerName)
-	if owner == nil || owner.ID == subjectID {
+	if owner == nil {
+		return triggerTarget{}, denied
+	}
+	if owner.ID == subjectID {
+		// A published Mac agent has the same owner-prefixed address in the directory as any shared agent.
+		// Resolve only that explicit publication; private tabs and named-agent shares retain their own rules.
+		if target, ok := macSharedAgentByAddress(owner.ID, name, subjectID); ok {
+			return target, nil
+		}
 		return triggerTarget{}, denied
 	}
 	s, err := readAgentMessageSnapshot(ctx)
