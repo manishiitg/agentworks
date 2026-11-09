@@ -19,6 +19,45 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 afterEach(() => { vi.clearAllMocks(); mocks.authValid = false; window.history.replaceState({}, '', '/') })
 describe('protected deep-link boundary', () => {
+  it('keeps the admitted workspace mounted during a Crew lookup, but removes it on refusal or account change', async () => {
+    // PLAT-746: every sidebar navigation used to unmount the chat for Opening link.
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
+    const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
+    useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    let mounts = 0
+    const Workspace = () => { useEffect(() => { mounts++ }, []); return <button>Admitted workspace</button> }
+    const render = (account: string) => root.render(<ProductRouteBoundary account={account} allowedProducts={['work']}><Workspace /></ProductRouteBoundary>)
+    let complete: (activate: () => void) => void = () => {}
+    const go = (path: string) => { window.history.pushState({}, '', path); window.dispatchEvent(new PopStateEvent('popstate')) }
+    try {
+      window.history.replaceState({}, '', '/crew/projects/first')
+      mocks.resolve.mockResolvedValue(vi.fn())
+      await act(async () => render('owner'))
+      const workspace = host.querySelector('button')
+      const activate = vi.fn()
+      mocks.resolve.mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+      await act(async () => go('/crew/projects/second'))
+      expect(host.querySelector('button')).toBe(workspace)
+      expect(host.querySelector('[inert]')).not.toBeNull()
+      expect(activate).not.toHaveBeenCalled()
+      await act(async () => complete(activate))
+      expect(activate).toHaveBeenCalledOnce()
+      expect(mounts).toBe(1)
+      expect(host.querySelector('[inert]')).toBeNull()
+
+      mocks.resolve.mockRejectedValueOnce({ response: { status: 403 } })
+      await act(async () => go('/crew/projects/denied'))
+      expect(host.textContent).not.toContain('Admitted workspace')
+      mocks.resolve.mockResolvedValueOnce(vi.fn())
+      await act(async () => go('/crew/projects/first'))
+      mocks.resolve.mockImplementationOnce(() => new Promise(() => {}))
+      await act(async () => render('another-account'))
+      expect(host.textContent).not.toContain('Admitted workspace')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it('opens the default product for safe legacy bookmarks and re-checks expired sessions at the requested URL', async () => {
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['bullpen', 'work'], defaultProductSurface: 'bullpen' }
     const host = document.createElement('div'); document.body.append(host)

@@ -106,13 +106,13 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const [selectedLocations, setSelectedLocations] = useState<string[]>([active])
   const invites = useTeamInviteRows()
   useEffect(() => {
-    if (!connections.length) return
+    if (!state.loaded || !isChatIdentityCurrent(state.identity) || !connections.length) return
     setSelectedLocations(previous => {
       const remaining = previous.filter(id => connections.some(connection => connection.id === id))
       const next = remaining.length ? remaining : [connections.find(connection => connection.id === active)?.id || connections[0].id]
       return next.length === previous.length && next.every((id, index) => id === previous[index]) ? previous : next
     })
-  }, [connections, active])
+  }, [connections, active, state.loaded, state.identity])
   useEffect(() => {
     void refresh().then(() => refreshActivity())
     const onFocus = () => { void refresh(); void refreshActivity() }

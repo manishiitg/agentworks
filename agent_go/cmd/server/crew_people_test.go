@@ -86,7 +86,7 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 		t.Fatalf("a builder's People list: %v", view)
 	}
 	change("member", "newbie", "works", func() bool { return teamHas("newbie") })
-	if p := listed("owner", "newbie"); p == nil || p["invited"] != true || p["line"] != "Will get files, agents and dashboards when they accept." || p["level_label"] != "Works with me" {
+	if p := listed("owner", "newbie"); p == nil || p["invited"] != true || p["note"] != "Invited, has not joined yet" || p["level_label"] != "Works with me" {
 		t.Fatalf("the invited person's line: %v", p)
 	}
 	// PLAT-746-463: the invited person sees and accepts the invite over MCP, with no dashboard involved.
@@ -126,7 +126,7 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 	if teamHas("anita") {
 		t.Fatal("dashboards only put the person in the Team")
 	}
-	if p := listed("owner", "anita"); p == nil || p["level"] != crewPeopleDashboards || p["line"] != "All this Crew's dashboards. Can ask this Crew. No files." {
+	if p := listed("owner", "anita"); p == nil || p["level"] != crewPeopleDashboards {
 		t.Fatalf("the dashboards-only line: %v", p)
 	}
 	change("owner", "newbie", "dashboards", func() bool { return shareHas("newbie") && !teamHas("newbie") })
@@ -157,7 +157,7 @@ func TestCrewPeopleLevelsOverTheTeamAndShareRecords(t *testing.T) {
 		t.Fatalf("everyone was added to Works with me: %d %v", code, out)
 	}
 	change("owner", "everyone", "dashboards", everyoneOn)
-	if p := listed("owner", "everyone"); p == nil || p["name"] != crewPeopleEveryoneName || p["line"] != crewPeopleEveryoneLine || p["level"] != crewPeopleDashboards {
+	if p := listed("owner", "everyone"); p == nil || p["name"] != crewPeopleEveryoneName || p["note"] != crewPeopleEveryoneLine || p["level"] != crewPeopleDashboards {
 		t.Fatalf("the everyone row: %v", p)
 	}
 	if _, v := call("owner", map[string]any{}); v["add_everyone"] != nil {

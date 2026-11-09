@@ -72,10 +72,15 @@ type crewPanelSource struct {
 	allowed   bool
 	noCache   bool // Cross-service permissions cannot be rechecked from the Crew record alone.
 	// timeout, when set, is this section's own time limit instead of the panel's (a Git status over several repos).
-	timeout time.Duration
-	read    func(context.Context) (crewPanelSection, error)
+	timeout    time.Duration
+	refreshFor time.Duration // Successful display snapshots; current authority is still checked before and after.
+	read       func(context.Context) (crewPanelSection, error)
 }
 type crewPanelReadError struct{ status int }
+
+type crewPanelRefreshing struct{}
+
+func (crewPanelRefreshing) Error() string { return "workflow summary refresh already in progress" }
 
 func (e crewPanelReadError) Error() string { return "Panel section unavailable" }
 
@@ -88,8 +93,9 @@ type crewPanelCached struct {
 	section crewPanelSection
 }
 type crewPanelCache struct {
-	mu      sync.Mutex
-	entries map[crewPanelCacheKey]crewPanelCached
+	mu           sync.Mutex
+	workflowRead sync.Mutex // At most one cold workflow summary scan; never queue UI reads behind it.
+	entries      map[crewPanelCacheKey]crewPanelCached
 }
 
 func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection) {
@@ -107,12 +113,16 @@ func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection) {
 	section.Rows = append([]crewPanelRow{}, section.Rows...)
 	c.entries[key] = crewPanelCached{now, section}
 }
-func (c *crewPanelCache) previous(key crewPanelCacheKey) (crewPanelSection, bool) {
+func (c *crewPanelCache) previous(key crewPanelCacheKey, maximum ...time.Duration) (crewPanelSection, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	v, ok := c.entries[key]
 	v.section.Rows = append([]crewPanelRow{}, v.section.Rows...)
-	return v.section, ok && time.Since(v.at) < crewPanelCacheTTL
+	age := crewPanelCacheTTL
+	if len(maximum) > 0 {
+		age = maximum[0]
+	}
+	return v.section, ok && time.Since(v.at) < age
 }
 func (c *crewPanelCache) remove(key crewPanelCacheKey) {
 	c.mu.Lock()
@@ -155,6 +165,12 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			c.remove(k)
 			continue
 		}
+		if !source.noCache && source.refreshFor > 0 {
+			if previous, found := c.previous(k, source.refreshFor); found {
+				out[i] = previous
+				continue
+			}
+		}
 		pending[i] = true
 		go func(i int, source crewPanelSource) {
 			limit := timeout
@@ -164,7 +180,18 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			sourceCtx, done := context.WithTimeout(ctx, limit)
 			defer done()
 			began := time.Now()
-			section, err := source.read(sourceCtx)
+			var section crewPanelSection
+			var err error
+			if source.id == "workflow" {
+				if c.workflowRead.TryLock() {
+					section, err = source.read(sourceCtx)
+					c.workflowRead.Unlock()
+				} else {
+					err = crewPanelRefreshing{}
+				}
+			} else {
+				section, err = source.read(sourceCtx)
+			}
 			if err == nil && sourceCtx.Err() != nil {
 				err = sourceCtx.Err()
 			}
@@ -196,7 +223,11 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 				delete(pending, i)
 				return
 			}
-			out[i].Error = "Could not refresh. Try again."
+			if _, refreshing := err.(crewPanelRefreshing); refreshing {
+				out[i].Rows = []crewPanelRow{{ID: "workflow:loading", Label: "Loading"}}
+			} else {
+				out[i].Error = "Could not refresh. Try again."
+			}
 		}
 		delete(pending, i)
 	}
@@ -411,6 +442,9 @@ func crewPanelAgo(since time.Duration) string {
 // folders arrive newest first.
 func crewPanelWorkflowLine(folders []RunFolderInfo, steps int, now time.Time) string {
 	if len(folders) == 0 || folders[0].Metadata == nil {
+		if steps < 0 {
+			return "Step count not loaded · not run yet"
+		}
 		if steps > 0 {
 			return crewPanelCount(steps, "step") + " · not run yet"
 		}
@@ -419,8 +453,8 @@ func crewPanelWorkflowLine(folders []RunFolderInfo, steps int, now time.Time) st
 	meta := folders[0].Metadata
 	parts := []string{}
 	n := steps
-	if n <= 0 {
-		n = len(meta.PythonSteps)
+	if n < 0 {
+		parts = append(parts, "Step count not loaded")
 	}
 	if n > 0 {
 		parts = append(parts, crewPanelCount(n, "step"))

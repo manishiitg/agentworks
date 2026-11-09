@@ -55,10 +55,11 @@ type crewPeoplePerson struct {
 	Email      string `json:"email,omitempty"`
 	Level      string `json:"level"`
 	LevelLabel string `json:"level_label"`
-	Line       string `json:"line"`
-	Invited    bool   `json:"invited,omitempty"`
-	Owner      bool   `json:"owner,omitempty"`
-	You        bool   `json:"you,omitempty"`
+	// Note is the one short line under the name for an unusual state; empty for a normal row.
+	Note    string `json:"note,omitempty"`
+	Invited bool   `json:"invited,omitempty"`
+	Owner   bool   `json:"owner,omitempty"`
+	You     bool   `json:"you,omitempty"`
 	// Moves are the levels (and "none" to remove) this viewer may change the person to.
 	Moves []string `json:"moves,omitempty"`
 }
@@ -177,16 +178,9 @@ func crewPeopleLevelLabel(level string) string {
 	return "Not on this Crew"
 }
 
-func crewPeopleLine(level string, invited, teamOn bool) string {
-	switch {
-	case level == crewPeopleDashboards:
-		return "All this Crew's dashboards. Can ask this Crew. No files."
-	case level == crewPeopleWorks && invited:
-		return "Will get files, agents and dashboards when they accept."
-	case level == crewPeopleWorks && !teamOn:
-		return "Gets files, agents and dashboards when you turn the Team on."
-	case level == crewPeopleWorks:
-		return "Files, agents and dashboards. Has their own copy."
+func crewPeopleNote(invited bool) string {
+	if invited {
+		return "Invited, has not joined yet"
 	}
 	return ""
 }
@@ -227,7 +221,7 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 		}
 		return ""
 	}
-	view := crewPeopleView{Kind: kind, TeamOn: t.On, Intro: "Add someone once. Choose how they use this Crew.", Levels: crewPeopleLevels(kind), Gets: crewPeopleGetsTable(), CanAdd: kind != crewKindMacNever && crewTeamCanManage(t, claims.UserID), CanShare: owner && kind == crewKindServer, People: []crewPeoplePerson{}}
+	view := crewPeopleView{Kind: kind, TeamOn: t.On, Levels: crewPeopleLevels(kind), Gets: crewPeopleGetsTable(), CanAdd: kind != crewKindMacNever && crewTeamCanManage(t, claims.UserID), CanShare: owner && kind == crewKindServer, People: []crewPeoplePerson{}}
 	switch kind {
 	case crewKindMacNever:
 		view.Blocked = crewPeopleNeverOnlineLine
@@ -237,10 +231,10 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 	if owner && kind == crewKindServer && !everyone {
 		view.AddEveryone = crewPeopleEveryoneName
 	}
-	view.Owner = crewPeoplePerson{UserID: t.OwnerID, Name: crewPersonShortName(t.OwnerID), Email: email(t.OwnerID), Level: "owner", LevelLabel: "Owner", Line: "Owner", Owner: true, You: owner}
+	view.Owner = crewPeoplePerson{UserID: t.OwnerID, Name: crewPersonShortName(t.OwnerID), Email: email(t.OwnerID), Level: "owner", LevelLabel: "Owner", Owner: true, You: owner}
 	add := func(id string, invited bool, level string) {
 		view.People = append(view.People, crewPeoplePerson{UserID: id, Name: crewPersonShortName(id), Email: email(id), Level: level, LevelLabel: crewPeopleLevelLabel(level),
-			Line: crewPeopleLine(level, invited, t.On), Invited: invited, You: id == claims.UserID, Moves: crewPeopleMoves(kind, level, owner)})
+			Note: crewPeopleNote(invited), Invited: invited, You: id == claims.UserID, Moves: crewPeopleMoves(kind, level, owner)})
 	}
 	for _, p := range t.People {
 		if crewTeamAccountActive(p.UserID) {
@@ -253,7 +247,7 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 		}
 	}
 	if everyone && kind == crewKindServer {
-		row := crewPeoplePerson{UserID: crewPeopleEveryone, Name: crewPeopleEveryoneName, Level: crewPeopleDashboards, LevelLabel: crewPeopleLevelLabel(crewPeopleDashboards), Line: crewPeopleEveryoneLine}
+		row := crewPeoplePerson{UserID: crewPeopleEveryone, Name: crewPeopleEveryoneName, Level: crewPeopleDashboards, LevelLabel: crewPeopleLevelLabel(crewPeopleDashboards), Note: crewPeopleEveryoneLine}
 		if owner {
 			row.Moves = []string{crewPeopleNone}
 		}
@@ -368,7 +362,9 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 		externalJSON(w, map[string]any{"confirm_needed": true, "preview": crewPeoplePreview(name, from, level, t.On, everyone), "next": "Nothing changed yet. Show the person this summary in plain words and ask. Change it only when they agree: call again with the same arguments and confirm=true."})
 		return
 	}
-	run := func(w http.ResponseWriter, h func(http.ResponseWriter, *http.Request)) bool { return crewPeopleRunShare(w, r, h) }
+	run := func(w http.ResponseWriter, h func(http.ResponseWriter, *http.Request)) bool {
+		return crewPeopleRunShare(w, r, h)
+	}
 	// The Team half: the Team save on the current record with this one change, as the Team tab's people route does.
 	team := func(w http.ResponseWriter, add bool) bool {
 		current, err := readCrewTeamOrNew(project, claims.UserID)

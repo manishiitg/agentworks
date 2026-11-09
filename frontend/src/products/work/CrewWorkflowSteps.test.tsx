@@ -23,3 +23,21 @@ it('shows the decorated step failure and checks after collapsing its agent row',
     expect(host.textContent).not.toContain('Other receipt')
   } finally { await act(async () => root.unmount()) }
 })
+
+// Codex1763 P2: a helper's same source call may appear under two branches.
+// One branch's receipt is ambiguous and must not paint both outline rows.
+it('keeps a shared helper receipt off duplicated outline rows', async () => {
+  vi.mocked(crewScriptGraphApi.get).mockResolvedValue({ nodes: [
+    { id: 'left', type: 'agent', label: 'Inner', line: 4, step_call: 'helpers.py:inner@helpers.py:4' },
+    { id: 'right', type: 'agent', label: 'Inner', line: 4, step_call: 'helpers.py:inner@helpers.py:4' },
+  ], edges: [], errors: [] })
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  try {
+    await act(async () => root.render(<CrewWorkflowSteps workspacePath="Workflow/example" title="Example" onCode={() => {}} onAsk={() => {}} latestSteps={[
+      { execution_id: 'only-run', id: 'only-run', name: 'Inner', source_call: 'helpers.py:inner@helpers.py:4', status: 'failed', started_at: '2026-01-01T00:00:00Z', detail: 'Ambiguous branch receipt' },
+    ]} latestEvidence={[{ id: 'check', at: '2026-01-01T00:00:00Z', kind: 'check', step_execution_id: 'only-run', ok: false, detail: 'Failed' }]} />))
+    expect(host.textContent).not.toContain('Ambiguous branch receipt')
+    expect(host.textContent).not.toContain('check failed')
+  } finally { await act(async () => root.unmount()) }
+})

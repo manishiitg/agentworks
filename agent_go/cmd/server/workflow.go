@@ -429,6 +429,11 @@ func readRunMetadata(ctx context.Context, metadataFilePath string) (*RunMetadata
 	if !exists {
 		return nil, nil
 	}
+	return decodeRunMetadata(content)
+}
+
+// Shared decoding only: run routes still compute their own current Resume eligibility.
+func decodeRunMetadata(content string) (*RunMetadata, error) {
 	var metadata RunMetadata
 	if err := json.Unmarshal([]byte(content), &metadata); err != nil {
 		return nil, nil

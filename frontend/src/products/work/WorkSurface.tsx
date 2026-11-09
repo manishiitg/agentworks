@@ -717,7 +717,10 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         // transcript. ChatArea loads history only when that tab is selected.
         if (cancelled) return
         setListed(listed)
-        const requestedAgent = new URLSearchParams(window.location.search).get('agent')
+        // A different Crew's link can be checking access while this strip is
+        // still mounted. Only consume an agent deep link for this Crew.
+        const route = currentProductRoute()
+        const requestedAgent = route?.surface === profileId && route.id === projectId ? new URLSearchParams(window.location.search).get('agent') : null
         if (requestedAgent && requestedAgent !== 'main') {
           const wanted = `${projectId}:chat:${requestedAgent}`
           const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileConversationKey === wanted)
