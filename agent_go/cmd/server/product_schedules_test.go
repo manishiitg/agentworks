@@ -391,3 +391,94 @@ func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testin
 		})
 	}
 }
+
+// PLAT-746-786: pausing after a real queue admission must not consume the
+// calendar occurrence when the busy conversation releases or admission races.
+// Native binding/workspace/ledger paths run; only the provider turn is replaced.
+func TestPausedCalendarQueueRetainsOccurrenceUntilResume(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newTriggerLinkEnv(t)
+	if err := env.api.scheduler.initializeRunLedger(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = env.api.scheduler.stateStore.Close() })
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+	occurrence := time.Now().UTC().Add(time.Hour).Truncate(time.Minute)
+	job, err := env.svc.CreateProjectSchedule(ctx, "owner", "work", "beta", productschedule.Schedule{
+		ID: "one-time", Name: "One time", Enabled: true, RunAt: occurrence.Format(time.RFC3339), Timezone: "UTC", Messages: []string{"Return the saved result."},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	called := make(chan struct{}, 1)
+	env.svc.automationTurnRunner = func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error) {
+		calls.Add(1)
+		called <- struct{}{}
+		return internalSessionTurnResult{Response: "calendar completed"}, nil
+	}
+	if _, err := env.svc.Run(ctx, job, "cron", occurrence); !errors.Is(err, ErrProductRunQueued) {
+		t.Fatalf("busy timer was not accepted into the conversation queue: %v", err)
+	}
+	if err := SaveSchedulerConfig(ctx, &SchedulerConfig{GloballyPaused: true}); err != nil {
+		t.Fatal(err)
+	}
+	env.svc.heldConversation = nil
+	convKey := job.UserID + "\x1f" + conversationKeyForJob(job)
+	env.svc.finishAutomationRun("finished-turn", convKey)
+	assertRetained := func() {
+		t.Helper()
+		env.svc.mu.Lock()
+		defer env.svc.mu.Unlock()
+		pending := env.svc.queued[convKey]
+		if len(pending) != 1 || !pending[0].scheduledFor.Equal(occurrence) || env.svc.conversations[convKey] || calls.Load() != 0 {
+			t.Fatalf("pause consumed or started the calendar occurrence: pending=%+v calls=%d", pending, calls.Load())
+		}
+	}
+	assertRetained()
+	// Exercise the second boundary: pause begins after queue selection but
+	// before actual admission. The popped occurrence must return to the queue.
+	env.svc.mu.Lock()
+	pending, ok := popProductQueueLocked(env.svc.queued, convKey, false)
+	env.svc.mu.Unlock()
+	if !ok {
+		t.Fatal("accepted occurrence disappeared")
+	}
+	claim, err := env.svc.claimAutomationRun(ctx, pending.job, pending.triggerSource, pending.scheduledFor, pending.options, pending.onStarted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.svc.executeAutomationRun(claim.runCtx, claim.cancel, pending.job, pending.triggerSource, pending.scheduledFor, pending.options, claim.run, claim.jobKey, claim.convKey, pending.onStarted); !errors.Is(err, ErrProductRunQueued) {
+		t.Fatalf("racing pause did not retain admitted queue item: %v", err)
+	}
+	assertRetained()
+	if err := SaveSchedulerConfig(ctx, &SchedulerConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	env.svc.resumeQueuedRuns()
+	env.svc.resumeQueuedRuns()
+	select {
+	case <-called:
+	case <-time.After(3 * time.Second):
+		t.Fatal("resume did not execute the retained occurrence")
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, running := env.svc.Running(job.UserID, job.ID()); !running {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("retained occurrence did not finish")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	store := env.api.scheduler.stateStore
+	decisions, err := store.ListFireDecisions(ctx, "crew", "beta", job.Schedule.ID, 10)
+	if err != nil || len(decisions) != 1 || !decisions[0].ScheduledFor.Equal(occurrence) || calls.Load() != 1 {
+		t.Fatalf("resume lost or duplicated the accepted occurrence: %+v calls=%d error=%v", decisions, calls.Load(), err)
+	}
+	run, err := store.GetRun(ctx, decisions[0].RunID)
+	if err != nil || run.State != schedulerstate.StateCompleted {
+		t.Fatalf("retained occurrence lacks its terminal receipt: %+v %v", run, err)
+	}
+}

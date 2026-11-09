@@ -44,6 +44,9 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 	if pauseErr != nil {
 		scheduleLogf("[PRODUCT-SCHEDULE] cannot read the scheduler pause, timed runs continue: %v", pauseErr)
 	}
+	if pauseConfig == nil || !pauseConfig.GloballyPaused {
+		s.resumeQueuedRuns()
+	}
 	for userID := range users {
 		jobs, err := s.JobsForUser(ctx, userID)
 		if err != nil {
