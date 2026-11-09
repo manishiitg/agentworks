@@ -34,26 +34,10 @@ func TestRegisteredProductIDsIncludesBuiltInProducts(t *testing.T) {
 	for _, id := range registeredProductIDs() {
 		found[id] = true
 	}
-	for _, id := range []string{"work", "relays"} {
-		if !found[id] {
-			t.Fatalf("registeredProductIDs() = %v, want it to include %s", registeredProductIDs(), id)
-		}
-	}
-}
-
-func TestRegisteredRelayProductFollowsWorkflowDeployment(t *testing.T) {
-	for _, tc := range []struct {
-		products string
-		want     bool
-	}{{"agentworks", true}, {"relays", true}, {"work,code", false}, {"example-product", false}} {
-		t.Setenv("AGENT_PRODUCTS", tc.products)
-		found := false
-		for _, id := range registeredProductIDs() {
-			found = found || id == "relays"
-		}
-		if found != tc.want {
-			t.Fatalf("AGENT_PRODUCTS=%q: relays=%v want %v", tc.products, found, tc.want)
-		}
+	// PLAT-746 / PLAT-847: the Relay product was retired on 8 November.
+	// Work remains a built-in product; retirement does not remove it.
+	if !found["work"] {
+		t.Fatalf("registeredProductIDs() = %v, missing Work", registeredProductIDs())
 	}
 }
 

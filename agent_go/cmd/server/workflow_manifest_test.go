@@ -267,6 +267,8 @@ func TestNewWorkflowManifestDefaultsGlobalSecretsToNone(t *testing.T) {
 }
 
 func TestReadWorkflowManifestMigratesMissingLabelFromWorkspacePath(t *testing.T) {
+	// PLAT-746: the anchored writer needs a real temporary workspace root.
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	const workspacePath = "Workflow/instagram"
 	manifestJSON, err := json.Marshal(map[string]interface{}{
 		"schema_version": 1,
@@ -307,6 +309,8 @@ func TestReadWorkflowManifestMigratesMissingLabelFromWorkspacePath(t *testing.T)
 }
 
 func TestReadWorkflowManifestPrunesRetiredDefaultsAndPreservesCurrentSettings(t *testing.T) {
+	// PLAT-746: the anchored writer needs a real temporary workspace root.
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	const workspacePath = "Workflow/linkedin"
 	manifestJSON, err := json.Marshal(map[string]interface{}{
 		"schema_version": 1,
@@ -396,6 +400,8 @@ func TestReadWorkflowManifestDoesNotRewriteCrewRuntimeManifest(t *testing.T) {
 // 2026-10-15: a workflow whose workflow.json still carried the retired top-level objective and success_criteria was rewritten on
 // EVERY read (about 270 times a minute): the writer kept every key the schema has no field for, so the prune never removed them.
 func TestReadWorkflowManifestPrunesRetiredTopLevelFieldsOnce(t *testing.T) {
+	// PLAT-746: the anchored writer needs a real temporary workspace root.
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	const workspacePath = "Workflow/x-post-drafts"
 	manifestJSON, err := json.Marshal(map[string]interface{}{
 		"schema_version": 1, "id": "wf_x", "version": "1.0.20", "label": "x-post-drafts",
