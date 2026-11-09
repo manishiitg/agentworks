@@ -1,3 +1,4 @@
+import { markViewSwitchStart } from '../utils/chatDeliveryTelemetry'
 import { workspaceSettingsPage } from '../utils/workspaceSettingsRoutes'
 import { syncWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -33,6 +34,8 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
       // path can have the same cached URL string, but is still a new intent.
       setAttempt(value => value + 1)
       const next = window.location.pathname + window.location.search
+      const nextRoute = parseProductRoute(next)
+      if (nextRoute?.surface === 'work' && nextRoute.agent) markViewSwitchStart()
       const settings = workspaceSettingsPage()
       syncWorkspaceSettings(settings)
       setLocation(next)
@@ -113,7 +116,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         const activate = await resolveProductRoute(destination, controller.signal)
         if (controller.signal.aborted) return
         activate()
-        if (saved) {
+        if (saved && !destination.agent) {
           await restoreWorkspaceChat(saved, controller.signal).catch(() => {
             if (!controller.signal.aborted) useWorkspaceReturnStore.setState({ note: 'Your workspace opened, but its saved chat could not be restored.' })
           })

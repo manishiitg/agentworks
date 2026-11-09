@@ -3852,6 +3852,15 @@ func ownedWorkProjectWorkspacePath(userID, workspacePath string) (string, bool) 
 	return canonical.Physical(userID), true
 }
 
+// PLAT-746: deleting saved chat history also removes its resume projection.
+// Remove the projection first so a failed unlink leaves the source discoverable.
+func removeChatHistoryConversationAndResume(conversationPath string) error {
+	if err := os.Remove(chatHistoryResumeSnapshotPath(conversationPath)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return os.Remove(conversationPath)
+}
+
 func deleteWorkspaceChatHistorySession(result ChatHistoryCleanupResult, userID, sessionID, workspacePath string) (ChatHistoryCleanupResult, error) {
 	if crewBuilderDiskHiddenFromUser(userID, workspacePath) {
 		return deleteUserChatHistorySession(result, userID, sessionID)
@@ -3885,7 +3894,7 @@ func deleteWorkspaceChatHistorySession(result ChatHistoryCleanupResult, userID, 
 		if err := deleteBackgroundTranscriptHistory(userID, workspacePath, sessionID); err != nil {
 			return result, err
 		}
-		if err := os.Remove(convPath); err != nil {
+		if err := removeChatHistoryConversationAndResume(convPath); err != nil {
 			return result, err
 		}
 		result.DeletedCount++
@@ -3952,7 +3961,7 @@ func deleteUserChatHistorySession(result ChatHistoryCleanupResult, userID, sessi
 				continue
 			}
 
-			if err := os.Remove(convPath); err != nil {
+			if err := removeChatHistoryConversationAndResume(convPath); err != nil {
 				return result, err
 			}
 			result.DeletedCount++

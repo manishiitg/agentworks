@@ -45,20 +45,24 @@ var agentMessageWorkers sync.Map
 var agentMessageLanes sync.Map
 
 type agentMessageEndpoint struct {
-	ConditionJob   string `json:"condition_job,omitempty"`
-	NamedAgentID   string `json:"named_agent_id,omitempty"`
-	UserID         string `json:"user_id"`
-	Kind           string `json:"kind"`
-	ID             string `json:"id"`
-	Profile        string `json:"profile,omitempty"`
-	Path           string `json:"path,omitempty"`
-	Label          string `json:"label"`
-	Session        string `json:"session,omitempty"`
-	ChatKey        string `json:"chat_key,omitempty"`
-	External       bool   `json:"external,omitempty"`
-	Mode           string `json:"mode,omitempty"`
-	Guest          string `json:"guest,omitempty"`
-	FunctionCallID string `json:"function_call_id,omitempty"`
+	// Set only by an admitted originating Mac pair; replies return to that exact chat.
+	NetworkTab            string `json:"network_tab,omitempty"`
+	NetworkPairID         string `json:"network_pair_id,omitempty"`
+	NetworkConversationID string `json:"network_conversation_id,omitempty"`
+	ConditionJob          string `json:"condition_job,omitempty"`
+	NamedAgentID          string `json:"named_agent_id,omitempty"`
+	UserID                string `json:"user_id"`
+	Kind                  string `json:"kind"`
+	ID                    string `json:"id"`
+	Profile               string `json:"profile,omitempty"`
+	Path                  string `json:"path,omitempty"`
+	Label                 string `json:"label"`
+	Session               string `json:"session,omitempty"`
+	ChatKey               string `json:"chat_key,omitempty"`
+	External              bool   `json:"external,omitempty"`
+	Mode                  string `json:"mode,omitempty"`
+	Guest                 string `json:"guest,omitempty"`
+	FunctionCallID        string `json:"function_call_id,omitempty"`
 	// OwnerAuthority is set at send time, from the validated connection, only for the person's own unrestricted external
 	// connection (externalOwnerAuthority). It is the one positive evidence, besides a Crew builder chat, that a message
 	// to a Crew may start the owner's turn (856-59); absent means the message is treated as a guest's.
@@ -387,6 +391,11 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			return nil, fmt.Errorf("choose another agent or chat")
 		}
 		e := callerMessageEndpoint(userID, caller)
+		if origin, ok := ctx.Value(crewNetworkOriginKey{}).(crewNetworkOrigin); ok {
+			e.NetworkPairID = origin.Pair
+			e.NetworkConversationID = origin.Conversation
+			e.NetworkTab = origin.Tab
+		}
 		e = api.agentMessageCallerRole(e)
 		dest := targetMessageEndpoint(userID, target)
 		if dest.ShareID != "" {
@@ -959,6 +968,9 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	if err := validateMessageDestination(ctx, dest); err != nil {
 		return dest.Session, err
 	}
+	if dest.NetworkPairID != "" {
+		return dest.Session, api.deliverCrewNetworkReply(ctx, c, m, source, dest)
+	}
 	if dest.FunctionCallID != "" {
 		call := lookupCrewFunctionCall(dest.FunctionCallID)
 		if call == nil {
@@ -1164,6 +1176,18 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				encoded, err := json.Marshal(out)
 				return string(encoded), err
 			}
+			networkAddress := stringToolArg(args, "target")
+			if strings.HasPrefix(id, "network:") {
+				networkAddress = id
+			}
+			if IsLocalMode() && strings.HasPrefix(networkAddress, "network:") {
+				out, e := api.crewNetworkMessageFromMac(ctx, userID, caller, networkAddress, crewNetworkMessage{Message: stringToolArg(args, "message"), SubmissionID: stringToolArg(args, "submission_id")})
+				if e != nil {
+					return "", e
+				}
+				raw, e := json.Marshal(out)
+				return string(raw), e
+			}
 			if id == "" {
 				raw, _ := args["target"].(string)
 				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "agent:") {
@@ -1197,6 +1221,14 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				return "", err
 			}
 			id, _ := args["inbox_id"].(string)
+			if IsLocalMode() && strings.HasPrefix(id, "network:") {
+				out, e := api.crewNetworkMessageFromMac(ctx, userID, caller, id, crewNetworkMessage{Read: true, After: externalInt(args, "after", 0), Limit: externalInt(args, "limit", 30)})
+				if e != nil {
+					return "", e
+				}
+				raw, e := json.Marshal(out)
+				return string(raw), e
+			}
 			out, err := api.readAgentMessages(ctx, userID, caller, id, externalInt(args, "after", 0), externalInt(args, "limit", 30), 0)
 			if err != nil {
 				return "", err

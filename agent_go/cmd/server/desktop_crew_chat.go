@@ -128,17 +128,18 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 			ConversationKey string `json:"conversation_key"`
 			ConversationID  string `json:"conversation_id"`
 			Name            string `json:"name"`
+			Purpose         string `json:"purpose,omitempty"`
 			Position        int    `json:"position,omitempty"`
 			Pinned          bool   `json:"pinned"`
 		}
 		rows := []tabRow{}
 		for _, tab := range tabs {
-			rows = append(rows, tabRow{ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Position: tab.Position, Pinned: tab.Pinned})
+			rows = append(rows, tabRow{ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Purpose: tab.Purpose, Position: tab.Position, Pinned: tab.Pinned})
 		}
 		data, _ := json.Marshal(rows)
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}
 	}
-	if call.Operation == "agent_ask" || call.Operation == "agent_read" || call.Operation == "agent_answer" {
+	if call.Operation == "agent_ask" || call.Operation == "agent_read" || call.Operation == "agent_answer" || call.Operation == "network_reply" {
 		return api.desktopMacSharedAgent(ctx, claims, profile, project, call)
 	}
 	if call.Tab != "" && !crewMacTabID(call.Tab) {
@@ -371,7 +372,8 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		CanMakeChanges bool   `json:"can_make_changes"`
 		// TeamInbox marks a Team message, with its inbox on the server: it goes into the agent's real chat, like an agent
 		// message on the server, and the agent answers with a message if it wants to (owner, 7 Nov).
-		TeamInbox string `json:"team_inbox"`
+		TeamInbox    string `json:"team_inbox"`
+		NetworkInbox string `json:"network_inbox"`
 	}
 	_ = json.Unmarshal(call.Args, &args)
 	refuse := func(reason string) crewChatResult {
@@ -380,6 +382,29 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	}
 	if args.SenderID == "" || !crewMacTabID(call.Tab) {
 		return refuse("bad_request")
+	}
+	networkReply := call.Operation == "network_reply"
+	networkKey := ""
+	if networkReply {
+		// An authenticated pair can return mail only to the exact conversation
+		// that originated it. A fresh/rotated tab never inherits an old inbox.
+		if !strings.HasPrefix(args.NetworkInbox, "inbox-") || call.ConversationID == "" {
+			return refuse("invalid_network_reply")
+		}
+		records, e := defaultProductConversationRegistryStore().projectChats(ctx, claims.UserID, crewProfileID, project)
+		found := false
+		if e == nil {
+			for _, record := range records {
+				if (record.ConversationKey == macSharedAgentChatKey(project, call.Tab) || call.Tab == macMainTab && record.IsMainChat) && record.ConversationID == call.ConversationID {
+					found = true
+					networkKey = record.ConversationKey
+					break
+				}
+			}
+		}
+		if !found {
+			return refuse("network_sender_changed")
+		}
 	}
 	var agent *macSharedAgent
 	// Only serverAgentCall starts a standby turn (the context marker); nothing else makes a member's turn theirs.
@@ -405,6 +430,10 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	if agent == nil && readCrewTeamState(project).MemberOf != "" {
 		agent = &macSharedAgent{Tab: call.Tab, Audience: "team"}
 	}
+	if networkReply {
+		agent = &macSharedAgent{Tab: call.Tab}
+		args.TeamInbox = args.NetworkInbox
+	}
 	if agent == nil {
 		return refuse("not_shared")
 	}
@@ -413,6 +442,9 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	key := sharedThreadKey(project, call.Tab, args.SenderID)
 	if args.TeamInbox != "" {
 		key = macSharedAgentChatKey(project, call.Tab)
+	}
+	if networkReply {
+		key = networkKey
 	}
 	// The shared tab must still exist on this Mac.
 	if tabKey := macSharedAgentChatKey(project, call.Tab); call.Tab != macMainTab && !memberStandby {
@@ -446,7 +478,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		}
 		return reply(200, map[string]any{"success": true})
 	}
-	if call.Operation == "agent_ask" {
+	if call.Operation == "agent_ask" || networkReply {
 		message := strings.TrimSpace(call.Message)
 		if message == "" || len([]rune(message)) > codeChatMessageMaxRune {
 			return reply(400, map[string]string{"error": "Give a message within the chat size limit."})
@@ -469,7 +501,14 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		ask := &crewMacSharedAsk{Sender: args.SenderID, SenderName: call.Caller, WhenOthersAsk: args.WhenOthersAsk}
 		text := crewMacSharedAgentText(*agent, args.CanMakeChanges, call.Caller, message)
 		if args.TeamInbox != "" {
-			text = crewTeamMessageText(args.CanMakeChanges, call.Caller, "team:"+project+":"+args.TeamInbox, message)
+			replyTo := "team:" + project + ":" + args.TeamInbox
+			if networkReply {
+				replyTo = "network:" + project + ":" + args.NetworkInbox
+			}
+			text = crewTeamMessageText(args.CanMakeChanges, call.Caller, replyTo, message)
+			if networkReply {
+				text = strings.Replace(text, "a teammate.", "an agent on your connected network.", 1)
+			}
 		}
 		if owner, err := api.resolveAgentProfileConversation(r, profile, macSharedAgentChatKey(project, call.Tab), ""); err == nil {
 			ask.Owner = owner

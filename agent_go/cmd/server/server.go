@@ -2374,6 +2374,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/switch", api.handleSwitchAgentProfileConversation).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/close", api.handleCloseAgentProfileSideChat).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/side-chats", api.handleListAgentProfileSideChats).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/fork", api.handleForkCrewChat).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/side-chats/order", api.handleOrderAgentProfileSideChats).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/side-chats/pin", api.handlePinAgentProfileSideChat).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/chat-models", api.handleAgentProfileChatModels).Methods("GET", "POST", "OPTIONS")

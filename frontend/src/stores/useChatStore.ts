@@ -357,17 +357,6 @@ export interface TabSessionStatus {
   lastActivity: string | null
 }
 
-// Pasted text can become an attachment chip rather than inline text.
-// Stored per-tab; serialized into the outgoing message as fenced blocks.
-export interface PastedAttachment {
-  id: string
-  marker?: string
-  content: string
-  chars: number
-  lines: number
-  createdAt: number
-}
-
 // Tab-specific configuration (all settings that should be per-tab)
 export interface ChatTabConfig {
   /** Auto-notification IDs already placed in this conversation’s durable message queue. */
@@ -398,7 +387,6 @@ export interface ChatTabConfig {
   restoredConversationNativeResume?: boolean  // Whether restore should use the CLI path instead of visible file-context fallback
   sendDeliveryMode?: 'steer' | 'queue'  // Remember the person’s choice within this chat.
   queuedMessages: string[]  // Queue of messages to send one by one when chat completes
-  pastedAttachments?: PastedAttachment[]  // Long pastes captured as attachment chips, prepended on send
   pendingSubmission?: { id: string; message: string; sessionId: string; targetTabId?: string; status?: 'pending' | 'uncertain'; deliveryMode?: 'steer' | 'queue' }
   queuedSubmission?: { id: string; messages: string[]; sessionId: string; queueIndex?: number; queuePrefix?: string[]; accepted?: boolean }
   queueError?: string
@@ -571,7 +559,6 @@ const getDefaultTabConfig = (mode: 'workflow' | 'multi-agent' = 'multi-agent'): 
     selectedSkills: appStore?.lastSelectedSkills ?? [],
     delegationTierConfig: undefined,
     queuedMessages: [],
-    pastedAttachments: [],
     autoRun: false,
   }
 }
@@ -1041,6 +1028,17 @@ export const reconcileSessionTabStreamingState = (
     const activeSession = activeSessionById.get(tab.sessionId)
     const activity = activeSession ? sessionStreamingState(activeSession) : undefined
 
+    // A background tab may have no live chat event reader. Recover its unseen reply from the
+    // server's completed turn, not from a disappearing session or a stale streaming flag.
+    const completedAt = Date.parse(activeSession?.runtime_state?.completed_at || activeSession?.last_activity || '')
+    const completedUnseen = state.activeTabId !== tabId && activity?.status === 'completed' &&
+      !activity.hasRunningBgAgents && Number.isFinite(completedAt) &&
+      completedAt > (tab.lastAccessedAt || 0) && completedAt >= (tab.lastStreamingStartedAt || 0)
+    if (completedUnseen && !tab.hasUnreadCompletion) {
+      if (!nextChatTabs) nextChatTabs = { ...state.chatTabs }
+      nextChatTabs[tabId] = { ...tab, hasUnreadCompletion: true }
+    }
+
     // Recover externally started work or a dead SSE stream using the same
     // foreground/background decision as event polling. Raw status=running
     // alone can describe an idle retained CLI or background-only work; forcing
@@ -1053,6 +1051,7 @@ export const reconcileSessionTabStreamingState = (
       nextChatTabs[tabId] = {
         ...tab,
         isStreaming: activity.isStreaming,
+        hasUnreadCompletion: false,
         isCompleted: false,
         lastStreamingStartedAt: activity.isStreaming ? (tab.lastStreamingStartedAt ?? now) : undefined,
         hasRunningBgAgents: activity.hasRunningBgAgents,
@@ -1071,7 +1070,7 @@ export const reconcileSessionTabStreamingState = (
 
     if (!nextChatTabs) nextChatTabs = { ...state.chatTabs }
     nextChatTabs[tabId] = {
-      ...tab,
+      ...(nextChatTabs[tabId] || tab),
       isStreaming: false,
       lastStreamingStartedAt: undefined,
       hasRunningBgAgents: false,
@@ -2629,6 +2628,7 @@ export const useChatStore = create<ChatState>()(
               const events = state.tabEvents[previousTab.sessionId] || []
               updates[state.activeTabId] = {
                 ...previousTab,
+                lastAccessedAt: Date.now(),
                 lastViewedEventCount: events.length, // @deprecated - kept for compat
                 lastViewedEventCounts: computePerModeCounts(events)
               }
@@ -3124,9 +3124,7 @@ export const useChatStore = create<ChatState>()(
                 config: {
                   ...freshTab.config,
                   ...configUpdate,
-                  composerRevision: (['inputText', 'pastedAttachments'] as const).some(
-                    key => key in configUpdate && configUpdate[key] !== freshTab.config[key],
-                  ) ? (freshTab.config.composerRevision ?? 0) + 1 : (freshTab.config.composerRevision ?? 0)
+                  composerRevision: ('inputText' in configUpdate && configUpdate.inputText !== freshTab.config.inputText) ? (freshTab.config.composerRevision ?? 0) + 1 : (freshTab.config.composerRevision ?? 0)
                 }
               }
             }

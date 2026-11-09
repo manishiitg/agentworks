@@ -6,7 +6,7 @@ import { useWorkflowStore } from '../stores/useWorkflowStore'
 import type { ProductSurface } from '../products/productSurfaceConfig'
 import { currentProductRoute, productRoutePath, type ProductRoute } from './productRoutes'
 
-type ViewReader = () => { id?: string; view?: string; folder?: string }
+type ViewReader = () => { id?: string; view?: string; folder?: string; agent?: string }
 type HistoryChange = 'projection' | 'navigation' | 'redirect'
 const readers = new Map<ProductSurface, Set<ViewReader>>()
 let notify: ((change: HistoryChange) => void) | undefined
@@ -50,11 +50,23 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
   let lastSelection = productRoutePath(readProductNavigation())
   let timer: ReturnType<typeof setTimeout> | undefined
   let replace = false
+  let traversing = false
+  // PLAT-746-758: popstate changes the URL before React settles the old view.
+  // Cancel its pending write synchronously; pushing that stale selection here
+  // would discard Forward. The route boundary installs a fresh observer only
+  // after the destination has been admitted and activated.
+  const onPop = () => {
+    traversing = true
+    clearTimeout(timer)
+    timer = undefined
+  }
+  window.addEventListener('popstate', onPop)
   const sameDestination = () => {
     const route = currentProductRoute(), selection = readProductNavigation()
     return route?.surface === selection.surface && route.id === selection.id && Boolean(route.overview) === Boolean(selection.overview)
   }
   const schedule = (change: HistoryChange, explicit = false) => {
+    if (traversing) return
     // Background hydration must not navigate away from the Home page.
     const scheduledOnHome = window.location.pathname === '/home' || Boolean(workspaceSettingsPage())
     if (scheduledOnHome && (!explicit || change !== 'navigation')) return
@@ -81,6 +93,7 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
       // A fresh deep link names its view before the mounted surface has
       // applied it; a projection must not rewrite the link to the default.
       if (replaceEntry && currentProductRoute()?.view && projected.view !== currentProductRoute()?.view) { lastSelection = productRoutePath(projected); return }
+      if (replaceEntry && currentProductRoute()?.agent && projected.agent !== currentProductRoute()?.agent) { lastSelection = productRoutePath(projected); return }
       onSelection?.(projected)
       const path = productRoutePath(projected)
       if (path === lastSelection && !replaceEntry && !fromDashboards && !fromHome && !fromSettings) return
@@ -106,6 +119,7 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
     useWorkflowStore.subscribe((state, previous) => { if (isWorkflow() && state.workflowWorkspaceView !== previous.workflowWorkspaceView) schedule('navigation') }),
   ]
   return () => {
+    window.removeEventListener('popstate', onPop)
     clearTimeout(timer)
     if (notify === navigate) notify = undefined
     unsubscribers.forEach(unsubscribe => unsubscribe())
