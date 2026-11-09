@@ -155,6 +155,52 @@ type crewTeamTabReply struct {
 	// NewTeam: this Crew has no Team yet and the viewer is its owner, so the page opens the first-time wizard
 	// (crew_team_wizard.go) instead of the empty Team screen.
 	NewTeam bool `json:"new_team,omitempty"`
+	// Help is the agent menu's "How this works" card (owner, 9 Nov): one line for each state that exists in this Crew,
+	// worded here; the page only prints it. HelpAsk is the draft the card's "Ask the Crew to change this" opens in the
+	// viewer's Main; empty for a viewer who changes nothing here, and then the page shows no button.
+	Help    []crewTeamHelpLine `json:"help"`
+	HelpAsk string             `json:"help_ask,omitempty"`
+}
+
+type crewTeamHelpLine struct {
+	Badge string `json:"badge"`
+	Title string `json:"title"`
+	Text  string `json:"text"`
+}
+
+// crewTeamHelp words the agent menu's help card from the rows the viewer sees, so a state that no agent here is in
+// (such as "On your Mac") is not explained.
+func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
+	var server, mac, inTeam, answersOnly, mine bool
+	for _, a := range r.Agents {
+		server = server || a.Place == "server"
+		mac = mac || a.Place == "mac"
+		inTeam = inTeam || a.InTeam
+		answersOnly = answersOnly || (a.CanMakeChanges != nil && !*a.CanMakeChanges)
+		mine = mine || a.Mine
+	}
+	lines := []crewTeamHelpLine{}
+	if server {
+		lines = append(lines, crewTeamHelpLine{Badge: "On the server", Title: "Where it runs", Text: "It keeps working when your computer is off."})
+	}
+	if mac {
+		lines = append(lines, crewTeamHelpLine{Badge: "On your Mac", Title: "Where it runs", Text: "It runs on your computer. Shared agents still answer your team from the server while your Mac is off."})
+	}
+	if server || (mac && inTeam) {
+		lines = append(lines, crewTeamHelpLine{Badge: "always on", Title: "Always on", Text: "Answers your team's messages any time, not only when you are here."})
+	}
+	if inTeam {
+		lines = append(lines, crewTeamHelpLine{Badge: "Shared", Title: "Shared with my team", Text: "People in this Crew's Team can talk to it. Turn it off to keep an agent only for you."})
+	}
+	if answersOnly {
+		lines = append(lines, crewTeamHelpLine{Badge: "answers only", Title: "For them it answers only", Text: "Teammates can ask questions. They cannot change the Crew or its files through it."})
+	}
+	lines = append(lines, crewTeamHelpLine{Badge: "+", Title: "Add an agent", Text: "Press + next to the names, or ask in chat: \"add an agent for bug triage\"."})
+	ask := ""
+	if mine || r.CanSwitch || r.CanAddFolder {
+		ask = "Explain how the agents in this Crew work: where each one runs, which are shared with my team and which are always on, and what teammates can do through them. Then help me change any of it. Change it only when I say so."
+	}
+	return lines, ask
 }
 
 // crewTeamAskPrompts are the Access and Team cards' Ask messages (owner, 6 Nov: each looks at the current state
@@ -184,6 +230,7 @@ func (api *StreamingAPI) handleCrewTeamTab(w http.ResponseWriter, r *http.Reques
 	if crewOwnerOnlineOfMacCrew(r, t.ProjectID, claims.UserID) {
 		reply.changeOnMac()
 	}
+	reply.Help, reply.HelpAsk = crewTeamHelp(reply)
 	// Every screen re-reads this on each crew_panel notice: a slow reply shows here with the Crew and its size.
 	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
 		log.Printf("[CREW_TEAM_TAB] project=%s viewer=%s team_on=%v agents=%d elapsed_ms=%d", t.ProjectID, claims.UserID, t.On, len(reply.Agents), elapsed.Milliseconds())
