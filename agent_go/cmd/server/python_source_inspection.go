@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/relaypython"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pythonruntime"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
 
@@ -48,9 +48,9 @@ func inspectPythonSourceEnvironment(ctx context.Context, workspacePath, workingD
 	if IsMultiUserMode() && client.UserID == "" {
 		return nil, fmt.Errorf("Flow execution owner unavailable")
 	}
-	const check = `import base64,os; exec(compile(base64.b64decode(os.environ["VAR_RELAY_INSPECTOR"]),"<platform-inspector>","exec"))`
+	const check = `import base64,os; exec(compile(base64.b64decode(os.environ["VAR_PYTHON_INSPECTOR"]),"<platform-inspector>","exec"))`
 	timeout := 15
-	environment["VAR_RELAY_INSPECTOR"] = base64.StdEncoding.EncodeToString([]byte(relaypython.SourceInspector))
+	environment["VAR_PYTHON_INSPECTOR"] = base64.StdEncoding.EncodeToString([]byte(pythonruntime.SourceInspector))
 	result, err := client.ExecuteShellCommand(validationCtx, workspace.ExecuteShellCommandParams{
 		Command: "python3 -I -c '" + check + "'", WorkingDirectory: workingDirectory, Timeout: &timeout,
 		ExtraEnv: environment,

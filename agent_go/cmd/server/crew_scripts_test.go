@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/relaypython"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pythonruntime"
 	workspaceclient "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
@@ -117,7 +117,7 @@ sys.exit(1)
 			c.JSON(500, gin.H{"error": "source unavailable"})
 			return
 		}
-		cmd := exec.CommandContext(c.Request.Context(), python, "-I", "-c", relaypython.SourceInspector)
+		cmd := exec.CommandContext(c.Request.Context(), python, "-I", "-c", pythonruntime.SourceInspector)
 		cmd.Dir = layout.Code
 		cmd.Env = []string{"PATH=" + checkerDir, "PYTHONPATH=" + sdk, "SECRET_FIXTURE=must-not-reach-checker", "MCP_AUTH=fixture-only"}
 		for key, value := range params.ExtraEnv {
