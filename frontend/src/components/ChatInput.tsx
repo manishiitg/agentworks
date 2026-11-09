@@ -2849,12 +2849,17 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || isUploadingFiles
   const sendButtonLabel = isStreaming || transcriptTurnActive ? (deliveryMode === 'queue' ? 'Queue next' : 'Steer') : 'Send'
 
+  const showComposerHints = isProductSurface || activeTab?.metadata?.agentProfileId === 'work'
+
   // Memoized placeholder
   const placeholder = useMemo(() => {
     if (pendingNativeChoice) return 'Choose an option above to continue…'
     if (isViewOnly && viewOnlyWriter) return `This is ${viewOnlyWriter}'s chat. Only they can write here.`
     if (isViewOnly) return "View only — cannot continue this conversation"
-    if (isProductSurface) return isStreaming ? 'Add a message…' : (placeholderOverride || 'Describe what you want to create…')
+    if (showComposerHints) {
+      const prompt = placeholderOverride || 'Ask anything…'
+      return `${prompt} (/ commands · @ files · # Crews${isTurnInFlight ? ' · Shift+Enter to queue' : ''})`
+    }
     if (placeholderOverride) return placeholderOverride
     if (agentProfileWorkspace) return 'Describe the video you want to make… (@ files, / commands)'
     if (isWorkflowPhaseChat) {
@@ -2864,7 +2869,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
     if (isMultiAgentMode) return `Ask anything... (${baseHints})`
     return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, isProductSurface, isStreaming, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
+  }, [agentProfileWorkspace, showComposerHints, isTurnInFlight, isViewOnly, viewOnlyWriter, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -3156,7 +3161,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               onCompositionEnd={event => { composingRef.current = false; updateComposerPicker(event.currentTarget) }}
               role="combobox"
               aria-label="Message"
-              aria-describedby={isProductSurface ? `${composerIdRef.current}-hints` : undefined}
+              aria-describedby={showComposerHints ? `${composerIdRef.current}-hints` : undefined}
               aria-autocomplete="list"
               aria-expanded={showCommandDialog || showFileDialog}
               aria-controls={showCommandDialog ? commandListId : showFileDialog ? fileListId : undefined}
@@ -3174,7 +3179,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               data-chat-composer
             />
             </div>
-            {isProductSurface && <p id={`${composerIdRef.current}-hints`} className="px-1.5 pt-1 text-[10px] leading-4 text-muted-foreground">
+            {showComposerHints && <p id={`${composerIdRef.current}-hints`} className="px-1.5 pt-1 text-[10px] leading-4 text-muted-foreground">
               {isTurnInFlight ? `Enter to ${deliveryMode === 'queue' ? 'queue' : 'steer'} · Shift+Enter to queue · ${AGENT_NEWLINE_KEY} for a new line` : 'Enter to send · Shift+Enter for a new line'}
               <span className="ml-2">/ commands · @ files · # Crews</span>
             </p>}
