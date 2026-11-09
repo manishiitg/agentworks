@@ -872,7 +872,7 @@ class Conversion:
             backup = backup / self.workflow
             if backup.exists() and (not backup.is_dir() or any(backup.iterdir())):
                 raise ValueError('This workflow backup already contains a snapshot. Keep it and choose a new backup folder.')
-        for root in (self.source, self.private, self.definitions, self.code):
+        for root in (self.source, self.private, self.definitions, self.code, *(target for _, target in self.moves)):
             if backup == root or root in backup.parents or backup in root.parents:
                 raise ValueError('Choose a backup outside the active workflow and destination storage.')
         backup.parent.mkdir(parents=True, exist_ok=True)

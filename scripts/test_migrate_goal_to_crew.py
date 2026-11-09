@@ -114,6 +114,14 @@ class Migration(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'outside the active workflow'):
             conversion.apply(backup=conversion.code/'bad-backup',plain_backup=True)
         self.assertEqual(hashes(self.base),before)
+        # Codex1730: standalone adoption has extra dashboard move destinations;
+        # both plain and archive backups must refuse before creating reports/.
+        canonical_reports = self.docs/'Crew/target/code/reports'
+        for plain in (False, True):
+            with self.assertRaisesRegex(ValueError, 'outside the active workflow'):
+                conversion.apply(backup=canonical_reports/'bad-backup', plain_backup=plain)
+            self.assertEqual(hashes(self.base), before)
+            self.assertFalse(canonical_reports.exists())
         result = conversion.apply(backup=backup,plain_backup=True)
         backup = backup/'old-goal'
         self.assertEqual(result['backup'],str(backup))
