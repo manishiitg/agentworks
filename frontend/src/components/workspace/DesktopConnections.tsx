@@ -64,12 +64,12 @@ function AllProjects({ children }: { children: ReactNode }) {
   const key = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
   const expanded = useSidebarExpansionStore(state => state.expanded[key] ?? false)
   const toggle = useSidebarExpansionStore(state => state.toggle)
-  return <section aria-label="All projects">
-    <button type="button" aria-expanded={expanded} onClick={() => toggle(key)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+  return <section aria-label="All projects" className={`min-h-0 shrink-0 ${expanded ? 'flex max-h-[65%] flex-col' : 'mt-auto'}`}>
+    <button type="button" aria-expanded={expanded} onClick={() => toggle(key)} className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span className="min-w-0 flex-1">All projects</span>
       <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
     </button>
-    {expanded && <div className="mt-1">{children}</div>}
+    {expanded && <div className="mt-1 min-h-0 overflow-y-auto">{children}</div>}
   </section>
 }
 function StandaloneWork({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
@@ -106,8 +106,8 @@ function StandaloneWork({ children, projects }: { children?: ReactNode; projects
     return project ? [project] : []
   })
   const { macs, server } = groupByMac(orderedProjects.filter(project => !pinnedProjects.includes(project)))
-  return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-    {pinnedProjects.length > 0 && <section aria-label="Pinned Crews" className="mb-3 space-y-1">{pinnedProjects.map(renderProject)}</section>}
+  return <div className="flex min-h-0 flex-1 flex-col px-2 pb-3">
+    {pinnedProjects.length > 0 && <section aria-label="Pinned Crews" className="mb-3 min-h-0 overflow-y-auto space-y-1">{pinnedProjects.map(renderProject)}</section>}
     <AllProjects>
     {macs.map(({ mac, rows }) => <section key={mac.device_id} aria-label={`On your Mac: ${mac.name}`} className="mb-3 space-y-1">
       <h2 className="flex min-w-0 items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
@@ -196,8 +196,8 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const locations = connections.filter(connection => selectedLocations.includes(connection.id))
   const unpinnedRows = visible.filter(project => !pinnedKeys.has(keyFor(project)))
   return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
-    <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className="mb-3 space-y-1">
+    <div className="flex min-h-0 flex-1 flex-col px-2 pb-3">
+      {pinnedRows.length > 0 && <section aria-label="Pinned Crews" className="mb-3 min-h-0 overflow-y-auto space-y-1">
         {pinnedRows.map(project => renderProject(project, true))}
       </section>}
       <AllProjects>

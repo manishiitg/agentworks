@@ -13,11 +13,15 @@ import { followAppLink } from '../../utils/appNavigation'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
 import { DesktopConnections } from './DesktopConnections'
 import { NewProjectMenu } from './NewProjectMenu'
+import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
+import { connectedWorkHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 
 type Crew = Awaited<ReturnType<typeof agentApi.listWorkspaceNavigation>>['workspaces'][number]
 
 /** The sidebar chooses a project; its chats belong to the header tabs. */
 export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: ReactNode; footer?: ReactNode }) {
+  const allProjectsKey = sidebarExpansionKey(connectedWorkHistoryScope(), 'all-projects')
+  const allProjectsExpanded = useSidebarExpansionStore(state => state.expanded[allProjectsKey] ?? false)
   const user = useAuthStore(state => state.user)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = `${workspace}:${user?.id || ''}`
@@ -70,6 +74,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       {!current && <p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Loading projects…</p>}
       {current?.error && <button type="button" className="px-2.5 py-2 text-left text-xs text-muted-foreground underline" onClick={() => setRefresh(value => value + 1)}>Could not load Crews. Try again.</button>}
     </DesktopConnections>
-    {footer && <div className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}
+    {footer && <div hidden={!allProjectsExpanded} className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}
   </aside>
 }
