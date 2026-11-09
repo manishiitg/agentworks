@@ -370,8 +370,18 @@ func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Req
 			}
 		}
 	}
+	// from is where each connection comes from (the Vault group or the person's own vault), shown only to tell apart
+	// two connections with the same name (a company "Notion" and a personal "Notion" are two different accounts).
+	from := map[string]string{}
+	for _, g := range access.Groups {
+		for _, s := range g.Servers {
+			if _, ok := from[s.ID]; !ok && strings.TrimSpace(g.Name) != "" {
+				from[s.ID] = g.Name
+			}
+		}
+	}
 	for _, s := range access.Servers {
-		if actor != owner && len(picks) > 0 && !picks[vaultServerName(s.ID)] {
+		if seen[s.ID] || actor != owner && len(picks) > 0 && !picks[vaultServerName(s.ID)] {
 			continue
 		}
 		rows = append(rows, map[string]any{"id": s.ID, "label": s.Label, "provider": s.Provider, "tools": s.Tools, "status": "active", "can_manage": api.vaultActorCanManage(r.Context(), actor, s.ID)})
@@ -388,6 +398,25 @@ func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Req
 					continue
 				}
 				rows = append(rows, map[string]any{"id": s.ID, "label": s.Label, "provider": s.Provider, "tools": []any{}, "status": s.Status, "can_manage": actor == owner})
+				seen[s.ID] = true
+				if _, ok := from[s.ID]; !ok && strings.TrimSpace(v.Group.Name) != "" {
+					from[s.ID] = v.Group.Name
+				}
+			}
+		}
+	}
+	labels := map[string]int{}
+	for _, row := range rows {
+		labels[strings.ToLower(strings.TrimSpace(row["label"].(string)))]++
+	}
+	for _, row := range rows {
+		if labels[strings.ToLower(strings.TrimSpace(row["label"].(string)))] > 1 {
+			switch group := from[row["id"].(string)]; group {
+			case "":
+			case personalVaultName:
+				row["detail"] = "Personal account"
+			default:
+				row["detail"] = "Shared through " + group
 			}
 		}
 	}

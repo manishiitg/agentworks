@@ -18,7 +18,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update API triggers'
 }
 
-export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false, pageRows = false, title }: { pageRows?: boolean; title?: string; embedded?: boolean; workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
+export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, hideHeader = false, refreshToken = 0, onCounts, onAsk, embedded = false, pageRows = false }: { pageRows?: boolean; embedded?: boolean; workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const canWrite = useCanWriteWorkflow(workspacePath)
   const [options, setOptions] = useState<APITriggerOptions>(emptyOptions)
   const [issued, setIssued] = useState<WorkflowAPITrigger | null>(null)
@@ -104,7 +104,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
       {webhooks.map(trigger => <PageRow key={trigger.id} testId={`webhook-${trigger.id}`}
         lead={<Switch aria-label={`${trigger.enabled ? 'Turn off' : 'Turn on'} ${trigger.name}`} checked={trigger.enabled} disabled={busy || !canWrite} onCheckedChange={enabled => void save({ ...trigger, enabled })} />}
         title={trigger.name}
-        lines={[[trigger.starts, title].filter(Boolean).join(' · '), trigger.enabled ? undefined : 'Off']}
+        lines={[trigger.starts, trigger.enabled ? undefined : 'Off']}
         action={<RowButton onClick={() => void copy(apiTriggerURL(trigger.path), 'Address copied')}>Copy address</RowButton>}
         open={openId === trigger.id} onToggle={() => setOpenId(openId === trigger.id ? null : trigger.id)}>
         <DetailLine label="When">{trigger.auth_mode === 'github' ? 'GitHub sends a signed request to' : 'A request with the secret key to'} <code className="break-all select-all">{apiTriggerURL(trigger.path)}</code> · <button type="button" className="text-primary hover:underline" onClick={() => void copy(apiTriggerURL(trigger.path), 'Address copied')}>Copy</button>{canWrite && <> · <button type="button" disabled={busy} className="text-primary hover:underline disabled:opacity-50" onClick={() => void save(trigger, true)}>New secret</button></>}</DetailLine>

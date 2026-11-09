@@ -441,19 +441,29 @@ function LentFold({ lent, target, projectId }: { lent: TeamLent; target: TeamTar
     <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="flex items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground">
       {lent.title}<ChevronRight className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
     </button>
-    {open && <div className="mt-2"><LentCard lent={lent} target={target} ask={<AskButton projectId={projectId} card="lent" />} /></div>}
+    {open && <div className="mt-2"><LentCard lent={lent} target={target} titled={false} ask={<AskButton projectId={projectId} card="lent" />} /></div>}
   </div>
 }
 
 /** The one Leave control, a full-width button at the end of the Share page (shown when the server says the viewer may leave). */
-export function LeaveTeam({ target }: { target: TeamTarget }) {
+export function LeaveTeam({ target, confirm }: { target: TeamTarget; confirm?: string }) {
   const { pending, error, run } = useSave()
+  // The first click only asks, in place; Leave sends the request.
+  const [asking, setAsking] = useState(false)
   const leave = () => run('leave', async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/leave', 'POST', {})
     openAppPage('/home')
   })
   return <div className="space-y-1">
-    <Button variant="outline" className="w-full py-3 text-[15px] font-semibold" disabled={Boolean(pending)} onClick={() => void leave()}><Saving on={pending === 'leave'}>{null}</Saving>Leave this Team</Button>
+    {asking
+      ? <div className="space-y-2 rounded-xl border border-border px-4 py-3 text-sm">
+          <p>{confirm || "Leave this Team? You'll lose access to its files and agents."}</p>
+          <div className="flex gap-2">
+            <Button variant="destructive" disabled={Boolean(pending)} onClick={() => void leave()}><Saving on={pending === 'leave'}>{null}</Saving>Leave</Button>
+            <Button variant="outline" disabled={Boolean(pending)} onClick={() => setAsking(false)}>Cancel</Button>
+          </div>
+        </div>
+      : <Button variant="outline" className="w-full py-3 text-[15px] font-semibold" onClick={() => setAsking(true)}>Leave this Team</Button>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }

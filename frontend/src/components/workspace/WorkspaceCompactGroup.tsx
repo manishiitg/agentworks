@@ -11,8 +11,9 @@ export function WorkspaceCompactGroup({ title, icon: Icon, detail, preview, chil
     <div className="flex min-h-9 items-center gap-2">
       <button type="button" aria-expanded={expanded} aria-controls={id} aria-label={title} onClick={() => setExpanded(value => !value)} className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 rounded-md px-1 text-left text-xs text-foreground/85 hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/>
-        <span className="min-w-0 flex-1 truncate">{title}</span>
-        {detail !== undefined && detail !== null && <span className="shrink-0 text-[10px] text-muted-foreground">{detail}</span>}
+        {/* The label keeps its full width; a detail beside it takes what is left and is cut instead. */}
+        <span className={detail !== undefined && detail !== null ? 'shrink-0' : 'min-w-0 flex-1 truncate'}>{title}</span>
+        {detail !== undefined && detail !== null && <span className="min-w-0 flex-1 truncate text-right text-[10px] text-muted-foreground">{detail}</span>}
         {!preview && <ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}/>}
       </button>
       {preview && <>

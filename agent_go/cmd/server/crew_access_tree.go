@@ -26,14 +26,16 @@ type crewAccessPerson struct {
 }
 
 type crewAccessLine struct {
-	Kind     string             `json:"kind"` // mac, team, where, agents, dashboard, public, folder, clash
-	Title    string             `json:"title"`
-	Detail   string             `json:"detail,omitempty"`
-	Path     string             `json:"path,omitempty"`   // dashboard: the document the line opens
-	Ask      string             `json:"ask,omitempty"`    // dashboard: none yet; the words put in the person's Main chat box
-	Target   string             `json:"target,omitempty"` // dashboard: the Share tab the line opens ("dashboards")
-	People   []crewAccessPerson `json:"people,omitempty"`
-	Progress *crewTeamRound     `json:"progress,omitempty"`
+	Kind   string `json:"kind"` // mac, team, where, agents, dashboard, public, folder, clash
+	Title  string `json:"title"`
+	Detail string `json:"detail,omitempty"`
+	Path   string `json:"path,omitempty"`   // dashboard: the document the line opens
+	Ask    string `json:"ask,omitempty"`    // dashboard: none yet; the words put in the person's Main chat box
+	Target string `json:"target,omitempty"` // dashboard: the Share tab the line opens ("dashboards")
+	// Dashboards (dashboard line): each dashboard the viewer may open, by name; each opens that dashboard.
+	Dashboards []crewAccessDashboard `json:"dashboards,omitempty"`
+	People     []crewAccessPerson    `json:"people,omitempty"`
+	Progress   *crewTeamRound        `json:"progress,omitempty"`
 }
 
 // crewAccessFacts is what the tree is made from; the Mac and the server each fill it from where they stand.
@@ -158,15 +160,40 @@ func crewAccessTree(f crewAccessFacts) []crewAccessLine {
 
 // crewAccessDashboardLine is the Crew's dashboard in the Share tree (owner, 5 Nov: one place for Share and the
 // dashboard): who it is shared with, or, with none, an Ask to make one. Nothing creates a dashboard on its own.
-func crewAccessDashboardLine(paths []string, shared string) crewAccessLine {
-	if len(paths) == 0 {
-		return crewAccessLine{Kind: "dashboard", Title: "No dashboard", Detail: "Ask AI to make one", Ask: "Help me make a dashboard for this Crew", Target: "dashboards"}
+// One line (owner, 9 Nov): "2 dashboards · not shared", then each dashboard by name.
+func crewAccessDashboardLine(items []crewAccessDashboard, shared string) crewAccessLine {
+	if len(items) == 0 {
+		return crewAccessLine{Kind: "dashboard", Title: "No dashboard yet · ask AI to make one", Ask: "Help me make a dashboard for this Crew", Target: "dashboards"}
 	}
-	title := "Dashboard"
-	if len(paths) > 1 {
-		title = fmt.Sprintf("%d dashboards", len(paths))
+	title := "1 dashboard"
+	if len(items) > 1 {
+		title = fmt.Sprintf("%d dashboards", len(items))
 	}
-	return crewAccessLine{Kind: "dashboard", Title: title, Detail: shared, Path: paths[0], Target: "dashboards"}
+	if words := crewAccessDashboardShared(shared); words != "" {
+		title += " · " + words
+	}
+	return crewAccessLine{Kind: "dashboard", Title: title, Path: items[0].Path, Target: "dashboards", Dashboards: items}
+}
+
+// crewAccessDashboard is one dashboard under the dashboard line: its name and the document it opens.
+type crewAccessDashboard struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// crewAccessDashboardShared words the sharing read (crewDashboardSharing) for the one line.
+func crewAccessDashboardShared(shared string) string {
+	switch shared = strings.TrimSpace(shared); shared {
+	case "":
+		return ""
+	case "Not shared":
+		return "not shared"
+	case "Shared with you":
+		return "shared with you"
+	case "Everyone":
+		return "shared with everyone"
+	}
+	return "shared with " + shared
 }
 
 // crewAccessWithDashboard puts the dashboard line after "Shared with the team" (or after the Mac and Team lines when

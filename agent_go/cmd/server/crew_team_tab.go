@@ -143,6 +143,8 @@ type crewTeamTabReply struct {
 	// control), and Always on for the owner of a Mac Crew.
 	AgentsLine string `json:"agents_line,omitempty"`
 	CanLeave   bool   `json:"can_leave"`
+	// LeaveConfirm is the line shown in place after Leave this Team is clicked, before the leave is sent.
+	LeaveConfirm string `json:"leave_confirm,omitempty"`
 	// CanChoose: the viewer switches Folders / Whole Crew and stops sharing a folder, the main owner only (owner, 5 Nov).
 	// CanAddFolder: the viewer adds a folder to share, anyone in the Team, picked from the Crew's folders (GET
 	// /folders, crew_team_folders.go) or by name while a Mac Crew's Mac is off; a missing one is made.
@@ -245,6 +247,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	out := crewTeamTabReply{Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, Asks: crewTeamAskPrompts, CanSwitch: view.CanManage && viewer == t.OwnerID,
 		CanLeave: viewer != t.OwnerID && t.member(viewer), Intro: "People work with you here. Everything is kept on the server.",
 		AgentsLine: crewTeamAgentsLine}
+	if out.CanLeave {
+		out.LeaveConfirm = "Leave this Team? You'll lose access to its files and agents."
+	}
 	if twin {
 		out.Intro = "People work with you here. The shared folder is kept on the server. While the Mac is off, shared agents answer teammates from the server; agents that are not shared wait for it."
 	}

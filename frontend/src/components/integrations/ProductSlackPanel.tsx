@@ -100,11 +100,11 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew', embedded = false,
       <span className="min-w-0 flex-1"><span className="block break-words font-medium">{slackBotName(chosen)}</span><span role="status" className="block text-xs text-muted-foreground">{[chosen.identity?.workspace, status].filter(Boolean).join(' · ')}</span></span>
       {checkButton}
       {data.can_select && <Button size="sm" variant="outline" disabled={busy} onClick={() => setChanging(true)}>Change bot</Button>}
-     </div> : <>
+     </div> : data.can_select ? <>
       {!chosen && <p><span className="block font-medium">No Slack bot yet</span><span className="block text-xs text-muted-foreground">Use your company's shared bot, or add your own.</span></p>}
       <VaultSlackBots data={data} workspacePath={workspacePath} busy={busy} onSelect={select} onUpdated={refresh}/>
       {chosen && <Button size="sm" variant="ghost" disabled={busy} onClick={() => setChanging(false)}>Done</Button>}
-     </>}
+     </> : null}
      {checkDetails}
      {ownerOnly}
     </div>

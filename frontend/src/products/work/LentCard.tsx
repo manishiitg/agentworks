@@ -15,7 +15,7 @@ const button = 'ml-auto shrink-0 rounded-full border border-primary bg-primary p
  * from you"). The server writes the card: its title and line, and what is ready for the team. In the owner's Mac app,
  * the Mac's own server adds what only this Mac has, with Copy (a secret) or Move (a signed-in app) to the server.
  */
-export function LentCard({ lent, target, ask }: { lent: TeamLent; target: TeamTarget; ask?: ReactNode }) {
+export function LentCard({ lent, target, ask, titled = true }: { lent: TeamLent; target: TeamTarget; ask?: ReactNode; titled?: boolean }) {
   const [macOnly, setMacOnly] = useState<MacOnlyItem[]>([])
   const [results, setResults] = useState<Record<string, ItemResult>>({})
   const [busy, setBusy] = useState('')
@@ -42,8 +42,9 @@ export function LentCard({ lent, target, ask }: { lent: TeamLent; target: TeamTa
 
   return <section aria-label={lent.title} className={card}>
     <div>
-      <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">{lent.title}</h3>{ask}</div>
-      <p className="text-[12.5px] text-muted-foreground">{lent.line}</p>
+      {/* Opened from its fold line, the fold line is the title: the card does not repeat it. */}
+      <div className="flex items-center gap-2">{titled ? <h3 className="flex-1 font-semibold">{lent.title}</h3> : <p className="flex-1 text-[12.5px] text-muted-foreground">{lent.line}</p>}{ask}</div>
+      {titled && <p className="text-[12.5px] text-muted-foreground">{lent.line}</p>}
     </div>
     <div className={lent.yours ? 'border-t border-border pt-2' : ''}>
       {lent.yours && <p className="mb-1 text-xs text-muted-foreground">Ready for the team</p>}
