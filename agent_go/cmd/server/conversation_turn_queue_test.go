@@ -353,3 +353,41 @@ func TestRetainedSendRechecksIdleBacklogAtDeliveryBoundary(t *testing.T) {
 		})
 	}
 }
+
+// PLAT-746: a queued network message must keep its server-stamped display
+// attribution, without trusting envelope text or changing turn authority.
+func TestQueuedAgentMessageKeepsServerDisplayAttribution(t *testing.T) {
+	ctx := internalBotRequestContext(context.Background(), GetDefaultUserID(), nil)
+	stamp := map[string]interface{}{"source": "agent_message", "sender_label": "Reviewer", "display_content": "Actual message"}
+	ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, stamp)
+	principal := queuedPrincipalFromContext(ctx)
+	principal.DeliveredMessageSession = "chat"
+	stamp["display_content"] = "changed after capture"
+	raw, err := json.Marshal(principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved queuedConversationPrincipal
+	if err = json.Unmarshal(raw, &saved); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := (&StreamingAPI{}).queuedConversationTurnContext(queuedConversationTurn{UserID: GetDefaultUserID(), SessionID: "chat", Principal: saved}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := restored.Value(deliveredAgentMessageKey{}).(map[string]interface{})
+	if got["display_content"] != "Actual message" || got["sender_label"] != "Reviewer" {
+		t.Fatalf("lost admitted display attribution: %#v", got)
+	}
+	other, err := (&StreamingAPI{}).queuedConversationTurnContext(queuedConversationTurn{UserID: GetDefaultUserID(), SessionID: "different-chat", Principal: saved}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.Value(deliveredAgentMessageKey{}) != nil {
+		t.Fatal("attribution crossed conversations")
+	}
+	plain := queuedPrincipalFromContext(internalBotRequestContext(context.Background(), GetDefaultUserID(), nil))
+	if len(plain.DeliveredMessage) != 0 {
+		t.Fatal("ordinary input acquired sender attribution")
+	}
+}
