@@ -3,6 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { RunFolderInfo, RunMetadata } from '../../services/api-types'
+import { externalCallPath } from '../../api/externalCall'
 
 const http = vi.hoisted(() => ({ post: vi.fn(), inspections: vi.fn(), file: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: http, agentApi: {
@@ -50,7 +51,7 @@ it.each([false, true])('resumes the same selected folder without overrides, even
     await act(async () => button.click())
     expect(button.disabled).toBe(true)
     // Air-2 regression: /api/external/call is unregistered and returns 404 before Resume admission.
-    expect(http.post).toHaveBeenCalledExactlyOnceWith('/api/external/v1/call', { name: 'runs', arguments: { action: 'resume', workflow_id: 'report', run_folder: 'run-failed' } })
+    expect(http.post).toHaveBeenCalledExactlyOnceWith(externalCallPath, { name: 'runs', arguments: { action: 'resume', workflow_id: 'report', run_folder: 'run-failed' } })
     await act(async () => accept({ data: { status: 'started', session_id: 'resume-session', run_folder: 'run-failed', resume_of: 'attempt-1', inputs_reused: true } }))
     expect(refresh).toHaveBeenCalledOnce()
     expect(page.onView).not.toHaveBeenCalled()
@@ -70,6 +71,19 @@ it('shows the server refusal verbatim and leaves the selected run available', as
     expect(page.onView).not.toHaveBeenCalled()
     expect(page.refresh).not.toHaveBeenCalled()
     expect(page.resume()?.disabled).toBe(false)
+  } finally { await page.close() }
+})
+
+// PLAT-746-507: a version without this action must not show the raw HTTP route failure.
+it('explains an unavailable action instead of displaying a raw route 404', async () => {
+  http.post.mockRejectedValueOnce({ isAxiosError: true, response: { status: 404, data: '404 page not found\n' } })
+  const page = await screen()
+  try {
+    await act(async () => page.resume()!.click())
+    expect(page.host.textContent).toContain('This action is not available in this version.')
+    expect(page.host.textContent).not.toContain('404 page not found')
+    expect(page.refresh).not.toHaveBeenCalled()
+    expect(page.onView).not.toHaveBeenCalled()
   } finally { await page.close() }
 })
 

@@ -1,10 +1,11 @@
 import { stepChecks } from './workflowStepChecks'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import api, { agentApi } from '../../services/api'
+import { agentApi } from '../../services/api'
 import { isAxiosError } from 'axios'
 import { crewScriptGraphApi } from '../../api/crewScriptGraph'
 import { runEvidenceApi, type RunEvidenceItem } from '../../api/runEvidence'
+import { callExternal } from '../../api/externalCall'
 import type { RelaySourceGraph } from '../../components/workflow/relayGraphAnnotations'
 import type { ExecutionInspectionTarget, RunFolderInfo, RunMetadata, RunPythonStep, WorkspaceStepInspection } from '../../services/api-types'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
@@ -276,12 +277,12 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
   async function resume() {
     setResuming(true); setResumeError('')
     try {
-      await api.post('/api/external/v1/call', { name: 'runs', arguments: { action: 'resume', workflow_id: workflowId, run_folder: folder.name } })
+      await callExternal('runs', { action: 'resume', workflow_id: workflowId, run_folder: folder.name })
       setResumed(true)
     } catch (cause) {
       const data: unknown = isAxiosError(cause) ? cause.response?.data : undefined
       const message = typeof data === 'string' ? data : (data as { error?: { message?: string } } | undefined)?.error?.message
-      setResumeError(message || 'Could not resume this run. Try again.')
+      setResumeError(message || (cause instanceof Error ? cause.message : 'Could not resume this run. Try again.'))
       return
     } finally { setResuming(false) }
     // Keep this folder selected. A refresh failure must not offer to submit an already accepted Resume again.
