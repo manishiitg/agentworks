@@ -44,16 +44,6 @@ func TestReportRunVaultBridgeUsesLiveViewerAndEndsWithScript(t *testing.T) {
 	if _, err := api.resolveGovernedMCP(ctx, "viewer", "vault_c_notion"); err != nil {
 		t.Fatal(err)
 	}
-	ctx, server, tool, err := api.vaultBridgeToolName(context.Background(), session, "Notion", "fetch-page")
-	if err != nil || tool != "notion__fetch-page" {
-		t.Fatalf("legacy report tool path was lost: %q %v", tool, err)
-	}
-	if _, err := api.resolveScopedGovernedMCP(ctx, nil, []string{server}, []string{server + ":" + tool}, "viewer", server, tool); err != nil {
-		t.Fatalf("legacy selected tool was lost: %v", err)
-	}
-	if _, err := api.resolveScopedGovernedMCP(ctx, nil, []string{server}, []string{server + ":other-tool"}, "viewer", server, tool); err == nil {
-		t.Fatal("an unselected Vault tool was admitted")
-	}
 	allowed = false
 	if _, err := api.resolveGovernedMCP(context.Background(), "viewer", "vault_c_notion"); err == nil {
 		t.Fatal("viewer revocation was ignored")

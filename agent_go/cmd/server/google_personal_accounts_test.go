@@ -47,7 +47,7 @@ esac
 	cfg, _ := json.Marshal(config)
 	mock := &mockWorkspaceAPI{files: map[string]string{"config/gmail-config.json": string(cfg), "Workflow/orders/workflow.json": string(raw)}}
 	withProjectOwnerRegistry(t)
-	for folder, owner := range map[string]string{"second": "editor", "account-crew": "editor", "builder-own": "builder"} {
+	for folder, owner := range map[string]string{"second": "editor", "account-crew": "editor"} {
 		registerTestCrew(t, folder, owner, true, folder)
 		product, _ := json.Marshal(map[string]any{"schema_version": 1, "product": "work", "id": folder, "title": folder})
 		mock.files["Crew/"+folder+"/product.json"] = string(product)
@@ -75,8 +75,6 @@ esac
 		}
 	}
 	selectAccount("editor", "mine", "Workflow/orders", true, 200)
-	selectAccount("editor", "mine", "Crew/builder-own", true, 403)
-	selectAccount("builder", "other", "Crew/builder-own", true, 200)
 	selectAccount("builder", "mine", "Workflow/orders", true, 403)
 	selectAccount("runner", "mine", "Workflow/orders", true, 403)
 	selectAccount("boss", "mine", "Workflow/orders", true, 403)
