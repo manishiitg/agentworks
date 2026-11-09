@@ -183,8 +183,8 @@ func TestCrewPanelAutomationKindSummaries(t *testing.T) {
 	if got["schedules:conditions"] != "None yet" {
 		t.Fatalf("an empty loaded list should say so: %q", got["schedules:conditions"])
 	}
-	if _, has := got["schedules:triggers"]; has {
-		t.Fatalf("a list that failed to load must not claim it is empty: %v", got)
+	if got["schedules:triggers"] != "Could not load" {
+		t.Fatalf("a list that failed to load must say so, not claim it is empty: %v", got)
 	}
 }
 
@@ -194,11 +194,11 @@ func TestCrewPanelWorkflowAndInboxSummaries(t *testing.T) {
 	now := time.Now()
 	done := now.Add(-2 * time.Hour)
 	steps := map[string]todo_creation_human.PythonStepEvidence{"a": {}, "b": {}, "c": {}, "d": {}}
-	line := crewPanelWorkflowLine([]RunFolderInfo{{Name: "run-2", Metadata: &RunMetadata{Status: "completed", CompletedAt: &done, PythonSteps: steps}}}, now)
+	line := crewPanelWorkflowLine([]RunFolderInfo{{Name: "run-2", Metadata: &RunMetadata{Status: "completed", CompletedAt: &done, PythonSteps: steps}}}, 0, now)
 	if line != "4 steps · last run finished 2h ago" {
 		t.Fatalf("workflow line: %q", line)
 	}
-	if got := crewPanelWorkflowLine(nil, now); got != "Not run yet" {
+	if got := crewPanelWorkflowLine(nil, 0, now); got != "Not run yet" {
 		t.Fatalf("no runs: %q", got)
 	}
 	off := crewPanelDetails([]crewPanelSection{{ID: "inbox", Rows: []crewPanelRow{{Destination: "schedules:email", Detail: "Off"}}}})

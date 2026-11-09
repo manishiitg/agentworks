@@ -390,6 +390,8 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 				if manifest, found, manifestErr := ReadWorkflowManifest(ctx, binding.Root); manifestErr == nil && found && manifest.Label != "" {
 					label = manifest.Label
 				}
+				// The same step count as the Workflow page: the outline, not the steps a run happened to record.
+				steps, _ := crewScriptStepCount(ctx, binding)
 				folders, foldersErr := api.loadRunFoldersInternal(ctx, binding.Root)
 				if foldersErr != nil {
 					return section, foldersErr
@@ -397,7 +399,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 				if len(folders) > 0 && folders[0].Metadata != nil && folders[0].Metadata.Status == "running" {
 					section.Busy = true
 				}
-				section.Rows = append(section.Rows, crewPanelRow{ID: "workflow:" + binding.ID, Label: label, Detail: crewPanelWorkflowLine(folders, time.Now()), Destination: "workflow"})
+				section.Rows = append(section.Rows, crewPanelRow{ID: "workflow:" + binding.ID, Label: label, Detail: crewPanelWorkflowLine(folders, steps, time.Now()), Destination: "workflow"})
 			}
 			sort.Slice(section.Rows, func(i, j int) bool { return section.Rows[i].Label < section.Rows[j].Label })
 			section.Detail = crewPanelCount(len(section.Rows), "workflow")

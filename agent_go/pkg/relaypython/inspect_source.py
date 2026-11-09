@@ -310,7 +310,7 @@ def inspect_automation_source(files):
                 else:
                     origin = target(module, value)
                 if origin in seen or origin[0] not in constants or origin[1] not in constants[origin[0]]:
-                    return 'built at run time'
+                    return None
                 seen.add(origin)
                 module = origin[0]
                 value = constants[module][origin[1]]
@@ -419,7 +419,7 @@ def inspect_automation_source(files):
             if fn:
                 for decoration in fn.decorator_list:
                     if isinstance(decoration, ast.Call) and target(module, decoration.func) == ('agentworks', 'step'):
-                        return fn, literal(module, argument(decoration, 0, 'title'))
+                        return fn, literal(module, argument(decoration, 0, 'title')) or name
             return None, None
 
         def walk_call(module, expression, expand=True):
@@ -434,7 +434,7 @@ def inspect_automation_source(files):
                 return found
             name_module, name = target(module, expression.func)
             if (name_module, name) == ('agentworks', 'agent'):
-                add(expression, module, 'agent', literal(module, argument(expression, 0, 'name')),
+                add(expression, module, 'agent', literal(module, argument(expression, 0, 'name')) or 'Agent',
                     f'agent@{filenames[module]}:{expression.lineno}', literal(module, argument(expression, 1, 'message')),
                     settings=call_settings(expression))
                 return True
