@@ -125,41 +125,9 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 				// Schedules due the same minute would otherwise all open their
 				// provider connection in the same instant; spread them by a few seconds.
 				time.Sleep(time.Duration(rand.Int63n(int64(scheduledStartJitter))))
-				if when := job.Schedule.When; when != nil {
-					loc, err := time.LoadLocation(when.Timezone)
-					if err != nil {
-						scheduleLogf("[SCHEDULER] invalid calendar timezone job=%s", job.ID())
-						return
-					}
-					for _, date := range when.Dates {
-						at, err := time.ParseInLocation("2006-01-02 15:04", date.Date+" "+date.Time, loc)
-						if err != nil || !at.Equal(scheduledFor) || len(date.Input) == 0 {
-							continue
-						}
-						var input scheduleExecutionInput
-						if err := json.Unmarshal(date.Input, &input); err != nil {
-							scheduleLogf("[SCHEDULER] invalid calendar input job=%s", job.ID())
-							return
-						}
-						if input.Messages != nil {
-							job.Schedule.Messages = input.Messages
-						}
-						if job.Schedule.WorkflowID != "" {
-							var fields map[string]json.RawMessage
-							if err := json.Unmarshal(date.Input, &fields); err != nil {
-								return
-							}
-							if _, set := fields["input_preset"]; set {
-								job.Schedule.InputPreset = input.InputPreset
-							}
-							if input.Inputs != nil {
-								job.Schedule.Inputs = input.Inputs
-							}
-							if input.Routes != nil {
-								job.Schedule.RouteSelections = input.Routes
-							}
-						}
-					}
+				job, err := applyCalendarOccurrenceInput(job, scheduledFor)
+				if err != nil {
+					return
 				}
 				if _, err := s.Run(context.Background(), job, triggerSource, scheduledFor); err != nil && !errors.Is(err, productschedule.ErrAlreadyRunning) && !errors.Is(err, productschedule.ErrSkip) {
 					scheduleLogf("[PRODUCT-SCHEDULE] %s failed for %s: %v", job.ID(), job.UserID, err)
@@ -167,6 +135,48 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 			}(job, d.ScheduledFor, triggerSource)
 		}
 	}
+}
+
+// applyCalendarOccurrenceInput applies the saved date's overrides after a job
+// load, including when a dependency retry reloads its current definition.
+func applyCalendarOccurrenceInput(job productScheduleJob, scheduledFor time.Time) (productScheduleJob, error) {
+	if when := job.Schedule.When; when != nil {
+		loc, err := time.LoadLocation(when.Timezone)
+		if err != nil {
+			scheduleLogf("[SCHEDULER] invalid calendar timezone job=%s", job.ID())
+			return job, err
+		}
+		for _, date := range when.Dates {
+			at, err := time.ParseInLocation("2006-01-02 15:04", date.Date+" "+date.Time, loc)
+			if err != nil || !at.Equal(scheduledFor) || len(date.Input) == 0 {
+				continue
+			}
+			var input scheduleExecutionInput
+			if err := json.Unmarshal(date.Input, &input); err != nil {
+				scheduleLogf("[SCHEDULER] invalid calendar input job=%s", job.ID())
+				return job, err
+			}
+			if input.Messages != nil {
+				job.Schedule.Messages = input.Messages
+			}
+			if job.Schedule.WorkflowID != "" {
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(date.Input, &fields); err != nil {
+					return job, err
+				}
+				if _, set := fields["input_preset"]; set {
+					job.Schedule.InputPreset = input.InputPreset
+				}
+				if input.Inputs != nil {
+					job.Schedule.Inputs = input.Inputs
+				}
+				if input.Routes != nil {
+					job.Schedule.RouteSelections = input.Routes
+				}
+			}
+		}
+	}
+	return job, nil
 }
 
 func projectTimerDecision(job productScheduleJob, now time.Time) productschedule.Decision {
