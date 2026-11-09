@@ -42,6 +42,12 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 		scopes               []string
 		bound, send, allowed bool
 	}{
+		// PLAT-856: same-owner Mac relay messages used the hosted-Crew route and were held forever.
+		{"own published Mac send", "owner", "public01", []string{"messages:send"}, true, true, true},
+		{"own published Mac reply read", "owner", "public01", []string{"messages:read"}, true, false, true},
+		{"own unpublished Mac tab", "owner", "team01", []string{"messages:send"}, true, true, false},
+		{"own private Mac tab", "owner", "private01", []string{"messages:read"}, true, false, false},
+		{"own read permission cannot send", "owner", "public01", []string{"messages:read"}, true, true, false},
 		{"team send", "member", "team01", []string{"messages:send"}, true, true, true},
 		{"team reply read", "member", "main", []string{"messages:read"}, true, false, true},
 		{"outside team", "outsider", "team01", []string{"messages:send"}, true, true, false},
@@ -64,6 +70,14 @@ func TestMacSharedAgentMessagingConnectionUsesCurrentAudience(t *testing.T) {
 				t.Fatalf("allowed=%t, error=%v", tc.allowed, err)
 			}
 		})
+	}
+	// The same-owner public exception is only for AgentBridge; no people-directory access is added.
+	if _, reason := macSharedAgentFor("p", "public01", "owner", "owner"); reason == "" {
+		t.Fatal("own public agent bypassed the normal people owner route")
+	}
+	forgedOwner := agentMessageEndpoint{Kind: triggerCallerCrew, ID: "p", UserID: "outsider", ChatKey: macSharedAgentChatKey("p", "public01")}
+	if err := api.externalAuthorizeMessagePeer(t.Context(), &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{BoundAgentID: "attached-agent", Scopes: []string{"messages:read"}}}, forgedOwner, false); err == nil {
+		t.Fatal("a Mac peer with the wrong registered owner was admitted")
 	}
 	// Owner, 5 Nov: Public is AgentBridge only. An agent may message a public agent; the person's own lists (Shared
 	// with me, the agent directory) and their workspace ask still go by the audience alone.

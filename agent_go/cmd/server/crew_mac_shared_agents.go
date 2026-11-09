@@ -261,12 +261,17 @@ func macSharedAgentAccess(project, tab, caller, owner string, byAgent bool) (mac
 // only through Team (owner, 5 Nov): Team on, the caller a joined member, the agent In team; with the Team off,
 // members is only the owner, so only Public on AgentBridge counts.
 func macSharedAudience(agents []macSharedAgent, tab, caller, owner string, members []string, byAgent bool) (macSharedAgent, string) {
-	if caller == "" || caller == owner {
+	if caller == "" || caller == owner && !byAgent {
 		return macSharedAgent{}, "owner"
 	}
 	for _, agent := range agents {
 		if agent.Tab != tab {
 			continue
+		}
+		// The owner's attached coding chat reaches only agents explicitly published to AgentBridge.
+		// Their website continues to use the normal owner route.
+		if caller == owner && !agent.AgentBridgePublic {
+			return macSharedAgent{}, "owner"
 		}
 		if byAgent && agent.AgentBridgePublic || agent.Audience == "team" && slices.Contains(members, caller) {
 			return agent, ""
