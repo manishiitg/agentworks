@@ -30,7 +30,7 @@ var revisionID = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var documentTitle = regexp.MustCompile(`(?is)<title\b[^>]*>\s*([^<]+?)\s*</title>`)
 
 // Names come from authored metadata/HTML, never from another discovery tree.
-func authoredDashboardTitles(root *os.Root, guard *wf.FolderGuard) map[string]string {
+func authoredDashboardTitles(root *projectRoot, guard *wf.FolderGuard) map[string]string {
 	titles := map[string]string{}
 	const manifestPath = "db/reports/views.json"
 	if guard != nil && !guard.Allows(manifestPath, false) {
@@ -55,7 +55,7 @@ func authoredDashboardTitles(root *os.Root, guard *wf.FolderGuard) map[string]st
 	return titles
 }
 
-func authoredDashboardTitle(root *os.Root, p string, titles map[string]string) string {
+func authoredDashboardTitle(root *projectRoot, p string, titles map[string]string) string {
 	if title := titles[p]; title != "" {
 		return title
 	}
@@ -159,7 +159,7 @@ func renderFile(id, rev, p string) string {
 	}
 	return Prefix + id + "/" + rev + "/" + p
 }
-func readJSON(root *os.Root, p string, out any) error {
+func readJSON(root *projectRoot, p string, out any) error {
 	if err := checkParents(root, p); err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func readJSON(root *os.Root, p string, out any) error {
 	d := json.NewDecoder(io.LimitReader(f, MaxBytes+1))
 	return d.Decode(out)
 }
-func safeParents(root *os.Root, p string) error {
+func safeParents(root *projectRoot, p string) error {
 	project, err := root.Stat(".")
 	if err != nil {
 		return err
@@ -210,7 +210,7 @@ func safeParents(root *os.Root, p string) error {
 	}
 	return nil
 }
-func atomicWrite(root *os.Root, p string, data []byte) error {
+func atomicWrite(root *projectRoot, p string, data []byte) error {
 	if err := safeParents(root, p); err != nil {
 		return err
 	}
@@ -261,12 +261,12 @@ func summary(s state, snap Snapshot, draft bool) Dashboard {
 	}
 	return d
 }
-func loadState(root *os.Root, id string) (state, error) {
+func loadState(root *projectRoot, id string) (state, error) {
 	var s state
 	err := readJSON(root, StatePath(id), &s)
 	return s, err
 }
-func loadSnapshot(root *os.Root, id, rev string) (Snapshot, error) {
+func loadSnapshot(root *projectRoot, id, rev string) (Snapshot, error) {
 	var s Snapshot
 	if !revisionID.MatchString(rev) {
 		return s, fail(404, "dashboard revision not found")
@@ -300,24 +300,7 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 		return out, err
 	}
 	defer release()
-	docsRoot, err := os.OpenRoot(docs)
-	if err != nil {
-		return out, err
-	}
-	defer docsRoot.Close()
-	// Reject links in every project-root component, not merely escapes from docs.
-	current := ""
-	for _, part := range strings.Split(clean, "/") {
-		current = path.Join(current, part)
-		info, e := docsRoot.Lstat(current)
-		if e != nil {
-			return out, e
-		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return out, fail(403, "unsafe project root")
-		}
-	}
-	root, err := docsRoot.OpenRoot(clean)
+	root, err := openProjectRoot(docs, clean)
 	if err != nil {
 		return out, err
 	}
@@ -648,7 +631,7 @@ func assetBytes(p, content string) ([]byte, error) {
 	return data, nil
 }
 
-func checkParents(root *os.Root, p string) error {
+func checkParents(root *projectRoot, p string) error {
 	current := ""
 	for _, part := range strings.Split(path.Dir(p), "/") {
 		current = path.Join(current, part)
