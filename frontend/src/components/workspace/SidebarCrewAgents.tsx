@@ -83,17 +83,15 @@ function AgentRow({ agent, status, active, dragging, onDrag }: { agent: CrewAgen
     draggable={!!key} onDragStart={key ? event => { event.dataTransfer.effectAllowed = 'move'; onDrag(key) } : undefined} onDragEnd={() => { onDrag(null); setOver(false) }}
     onDragOver={dragging && key ? event => { event.preventDefault(); setOver(true) } : undefined} onDragLeave={() => setOver(false)}
     onDrop={dragging && key ? event => { event.preventDefault(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
-    <AgentHoverCard info={agent.info} shortcut={agent.shortcut}>
       <button type="button" role="listitem" aria-current={active ? 'page' : undefined} onClick={() => openAgent(agent.tabId)}
         className={`flex w-full min-w-0 items-center gap-2 rounded-md py-1 pl-2 pr-7 text-left text-[13px] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-        <span className="min-w-0 truncate">{agent.name}</span>
+        <AgentHoverCard info={agent.info} shortcut={agent.shortcut}><span className="block min-w-0 truncate">{agent.name}</span></AgentHoverCard>
         <AgentSetupMark setup={agent.info?.setup} />
         {status && <span className="shrink-0 text-[10px] text-muted-foreground">{status}</span>}
         <span className="flex-1" />
         {agent.shortcut && <span className="hidden shrink-0 text-[10px] text-muted-foreground group-hover:inline">{AGENT_KEY}{agent.shortcut}</span>}
         <AgentMark state={state} asking={agent.asking} />
       </button>
-    </AgentHoverCard>
     {hasActions && <button type="button" aria-label={`More for ${agent.name}`} aria-expanded={menu} onClick={() => setMenu(value => !value)}
       className={`absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
       <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
