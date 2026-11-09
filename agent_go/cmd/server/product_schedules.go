@@ -1239,7 +1239,10 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 			scheduleLogf("[SCHEDULER] queued admission held job=%s reason=%s", job.ID(), decision.Reason)
 			return "", productschedule.ErrSkip
 		}
-		job = current
+		job, err = applyCalendarOccurrenceInput(current, scheduledFor)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	// One identity for the run record.
