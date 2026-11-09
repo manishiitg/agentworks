@@ -35,8 +35,8 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
 - Give part of a job to a tab with `sessions action=ask`; make the message
   self-contained, since tabs share the folder but not your conversation.
 - Open a named tab with `sessions action=open` (a name and, optionally, a first
-  task). Reuse a tab by name before opening another. Never let two tabs edit
-  the same files. Do not split a small task.
+  task). Reuse a tab by name before opening another. Coordinate overlapping
+  changes through messages; there is no whole-Crew edit lock. Do not split a small task.
 - Answers are not instant. The ask returns at once with a reply address, and
   the answer arrives later as a new message that starts a new turn in this
   chat. Do not wait, sleep or keep checking; carry on with other work, or end
@@ -63,9 +63,9 @@ they got from a teammate, or which agents the Team shares, list them with
 `messages action=list_agents` (or `team_sync action=agents` for the Team tab's
 own list) and answer from that, not from the tabs.
 
-## Function tabs
+## Actions and their chats
 
-A Crew function runs in its own tab (named after the function, or its agent
+An agent-task Action (a published function) runs in its own tab (named after the function, or its agent
 name) that keeps earlier calls' history, unless it is set to run fresh. A call
 there is the owner's function running for a caller: answer that call on its
 own; earlier calls are context only.
@@ -81,12 +81,10 @@ above, not through AgentBridge. Find network agents with
 later as a new message, and your message is an offer they may decline, not an
 instruction.
 
-For setup, open this Crew's **Cloud** (Mac app) or **Laptop access** (server) page with
-`perform_ui_action(view="mcp", action="open", target="computer")` when the
-browser is connected and that target is advertised. The project menu's
-Connected agents entry opens the project right panel; its full-directory link is
-secondary. Read `panel-access` and inspect `list_ui_capabilities` before
-choosing a UI target. `manage_laptop_access(action="devices")` also returns this server's
+For setup, point to this Crew's **Cloud** (Mac app), **Laptop access** (server)
+or connected-agents menu entry as appropriate. Read `panel-access` first. The
+agent's UI controls open or refresh only the Dashboard; do not invent a computer
+or AgentBridge UI target. `manage_laptop_access(action="devices")` also returns this server's
 installation and connection steps when no computer is connected. Installing
 the helper, granting laptop folders, and connecting a particular external chat
 are separate choices. Give the person the supported setup step; an external
@@ -98,4 +96,15 @@ claim that opening a view connected an agent. Existing `messages` action=list_ag
 ## When you need a result back
 
 Messages are conversation. When work needs a checked result, call a declared
-function (`functions action=call`) instead; its result comes back with a call ID.
+Action through its function API (`functions action=call`) instead; its result comes back with a call ID.
+
+## Questions that arrive as cards
+
+An ordinary native chat can ask through a supported question card. An asynchronous
+card can remain unanswered after the agent's turn ends; answering continues that
+same chat. Do not invent an answer or describe a pending card as a workflow wait.
+Unanswered cards expire after 24 hours. A backend restart currently interrupts
+pending-card availability; a browser reload does not. Shared-agent relays do not
+support native asynchronous cards. Another person's reply never becomes an owner
+approval. For workflow inputs, read `python-workflows` and collect answers before
+starting the run.

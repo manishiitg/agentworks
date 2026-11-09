@@ -62,7 +62,7 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 - Server secrets are never sent to the laptop. What you read there reaches the server and the chat history, so say so before opening anything personal.
 - Change the saved folders only when the person asks.
 
-Connect the computer once in the project's Local laptop panel or in chat (manage_my_vaults operation=laptops lists your computers and setup steps), then choose it in this project. Goals use the same optional connection for Builder chats; their steps and schedules stay on the server. copy_local_file_to_project takes local_path and project_path.
+Connect the computer once in the project's Local laptop panel or in chat (manage_my_vaults operation=laptops lists your computers and setup steps), then choose it in this project. copy_local_file_to_project takes local_path and project_path.
 
 ## Recognize an existing local project
 
@@ -80,8 +80,9 @@ Previewing makes no changes. Create the Crew with that folder, then use the
 chosen `native_id` with `native_resume` and the new Crew ID. In New project,
 choose a folder and use Continue a previous chat to do this in one flow.
 When the person asks to continue one, pass that `native_id` to
-`sessions action=native_resume`. It copies the native conversation to a new session ID in a separate private
-chat tab, including its saved history. The original is untouched. The next
+`sessions action=native_resume`. For a supported native journal within the copy budget, it copies the native
+conversation to a new session ID in a separate private chat tab. The displayed
+imported history is a bounded recent window, not the complete transcript. The original is untouched. The next
 message resumes this independent copy with the Crew's current tools and
 permissions. Both chats still work on the same project files. Never copy native history between accounts, select a different
 folder's conversation or imply that opening a tab ran the agent. Other people's
@@ -93,3 +94,18 @@ person to close that conversation in Cursor before sending in the Crew tab.
 The picker shows the saved history without starting a model turn. Cursor CLI and
 tmux must be installed; its SDK store is separate and is not a substitute.
 Claude/Codex still open independent copies with their original history unchanged.
+
+### Recent history and large chats
+
+The Claude/Codex picker and imported display show up to three conversation days,
+200 messages and 512 KiB of prose. Older history stays in the original chat; show
+the returned notice rather than claiming a complete import. Full native copying
+has a separate 64 MiB budget and free-space check. When refused, offer the explicit
+**Import recent messages** action: it starts a new provider chat with recent
+messages, not native continuation, and leaves the original journal untouched.
+Never silently substitute it for a native copy or copy between accounts.
+
+If a result says **Delivery not confirmed**, inspect the saved state before
+retrying; never automatically resend an uncertain message. If the platform says a
+prompt could not be saved in full, report that limitation rather than claiming
+its shortened display preserves the full prompt.
