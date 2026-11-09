@@ -16,15 +16,28 @@ Use the current action families returned by discovery. Project and chat identiti
 A Crew can have standing instructions (`purpose`), skills, typed **functions**,
 schedules, a dashboard and project files. Memory is optional; existing projects
 keep their setting. A Crew runs where it is installed. Local workflows stay on the laptop; connecting or syncing a Crew does not move its workflows or schedules to another server.
-A Crew has one main owner (its creator). While its Team is on, the Team's joined members build and edit it with them and share its project resources; with the Team off, only the main owner builds. Each builder may choose their personal provider account or an available company account for their own named chat; inherited Crew model/account settings still run as the main owner. All Builders can see every chat in their project. People with Run access see the dashboard and explicitly selected existing agents. Generic Ask keeps its caller conversation. Builders share the full Crew configuration, including schedules, Watchers, functions, skills, files, memory, connections, selected secrets and laptop access. People join as builders through the Crew's Team tab. Each builder has their own named Builder tab and controls any further tabs they create. All builders can view every builder’s tabs, while typing, steering, stopping, terminal input, renaming, resetting, closing and model changes belong to that tab’s owner, equally on the website and MCP. There is no whole-Crew edit lock. Use `sessions action=list` and `sessions action=ask` for attributed messages between agents; a message does not impersonate the receiving person. Use Share to give others access to its dashboard, Ask and published functions. Shared people can also list, search and read its files over MCP, including skills, memory, knowledge, instructions, runs and logs. Secret values and private logs stay excluded.
+A Crew has one main owner. Its joined Team members can work together under the
+saved Team policy; people using shared work keep their own caller identity.
+Each person's tab controls remain theirs. Other agents send attributed requests,
+not instructions from the receiving person. There is no whole-Crew edit lock.
+Files, conversations, accounts and secrets keep their current server checks;
+sharing never exposes secret values or unrelated private chats.
 
-Over MCP, use `share action=get` to inspect the audience, then `share action=set` with `crew_id` and the owner's chosen mode: `private` (Only me), `people` (Chosen people, with `emails`) or `everyone`. Only the owner changes sharing, with existing authoring consent. The people list replaces the saved list: preserve people the owner did not ask to remove. A standard dashboard is created when needed.
+Read `panel-access` and its Sharing and Team references before changing access.
+Share separates working with a Team, sharing agents, Slack and dashboards. People
+have the current **Works with me** or **Dashboards only** level. Agent Ask,
+change permission and chat visibility are separate settings; Actions form one
+Crew-wide list. Discover the current tools, inspect saved state, preserve omitted
+people/settings and read back the result. An invitation is not an accepted Team
+membership. If a dashboard is needed, ask before creating it and pass
+`create_dashboard=true` only after agreement. Listing or publishing an Action
+does not create a dashboard. A copied URL grants no access.
 
 ## Build a first version for a business team
 
 Start from the person's process, using the `agentworks-mcp` journey. Identify the desired result, inputs/policy, intended team and timing from what they already said. Ask only for material missing details. Inspect existing work and available knowledge/connections; do not invent company rules or sign-ins.
 
-For a simple specialist, `workspace action=create` can set its name, purpose and files, plus functions when a defined action is needed, in one spec. Keep sensible existing defaults. Give the team a useful Ask conversation or published action, with a standard dashboard first when sufficient; a custom dashboard is optional. External actions need the actual selected connection; name any missing setup plainly.
+For a simple specialist, `workspace action=create` can set its name, purpose and files, plus functions when a defined action is needed, in one spec. Keep sensible existing defaults. Give the team a useful Ask conversation or published action, with a standard dashboard when needed and agreed; a custom dashboard is optional. External actions need the actual selected connection; name any missing setup plainly.
 
 Try a representative request through the actual shared entry point and inspect the completed result. If the live tool offers a Run-mode preview, it uses the same real execution rules; it is not a simulation. Owner-only success does not prove another person's access. Use Share with the requested audience, read it back and retrieve the working dashboard/link. Return that link, one example request, who can use it and how teammates supply context or suggest improvements. Add someone to the Crew's Team only when the person wants others to help build; explain Builder-chat visibility. Shared knowledge editing retains its own access.
 
@@ -86,7 +99,7 @@ operation, timing and outcome, with commands, values and payloads withheld.
   Product-defined commands remain immutable. Listing needs `crews:read`;
   changes need `crews:write` and current Crew ownership. Accounts without editing access cannot change them, even if they own the Crew.
 
-## Functions
+## Actions (published functions)
 
 A function is a typed entry point: `name` (snake_case), `description` (for callers), `instructions`
 (what the Crew does when called), `input_schema` and optionally `result_schema` (JSON Schema subset:
@@ -180,8 +193,13 @@ connection's Crew bounds apply. These calls execute directly without a model tur
 
 ## Schedules and settings
 
-- A schedule sends an instruction (`message` or `messages`) on a cron or cadence, with a timezone; a
-  schedule whose name already exists counts as added. Scheduler pauses hold timed runs.
+- Use `automations scope=schedule` for Crew schedules. List first. A schedule
+  either runs the Crew's Python workflow with typed inputs and saved settings,
+  or sends an agent a message. New message schedules default to their own
+  persistent chat; ask whether to use that or an existing chat when unstated.
+  Read `panel-automations`' timing procedure for dependencies, deadlines,
+  local-day expiry, Run now overrides and the single administrator scheduler
+  pause. Existing standalone timers still need conversion into Crew schedules.
 - `settings` (with `crew_id`): models, MCP servers and tools, skills, secrets (owner, write-only),
   browser mode.
 
@@ -244,9 +262,24 @@ Use `workspace action=chat_tools` with `workspace_id` and an explicit `chat_id` 
 
 ## Import work from your computer
 
-Import a laptop-native coding project's files and exact chat into a new Crew or a named agent in an existing Crew. Adding keeps that Crew's Main, instructions and Share. Raw history stays private to Builders; server continuation uses a summary and the disclosed company account. Login files and `.env` are excluded. Native chat resume comes later.
+A Crew can use an existing local folder in place. Read `crew-laptop` for
+`root_path`, folder-bound native discovery and preview, and the actual provider's
+continuation behavior. Claude/Codex supported native imports open an independent
+copy; Cursor CLI continuation has different limits. Do not promise server-native
+resume for every provider just because a conversation is visible.
 
-Crews run on the server. An optional laptop connection in Settings adds local command and local-to-Crew file copy tools for every builder’s interactive chat. Team members share that Crew’s selected laptop and grants; people only shared with use its dashboard and selected existing agents. Initial imports of native laptop coding chats use the CLI import flow; a hosted Crew does not publish a second copy.
+Recent imported display is bounded. Large native copies or insufficient storage
+are refused; **Import recent messages** explicitly starts a fresh provider chat
+with recent dialogue, leaving the original journal untouched. Account and exact
+folder boundaries still apply. Opening a tab starts no model turn. For moving an
+agent online, read `panel-access`' Crew-on-Mac procedure and inspect the returned
+preview, destination account and supported provider before making any claim.
+Never copy CLI sign-in files as conversation history.
+
+A hosted Crew can separately use an authorized laptop connection for file and
+command tools; this is not project sync or proof that a local native agent is
+running. Inspect the selected device, folders and commands switch. Follow the
+current caller checks and say when the computer is offline.
 
 ## Crew email inboxes
 
@@ -261,16 +294,37 @@ It watches new received mail, including archived arrivals, about every60seconds;
 
 ## Shared Crew agents
 
-Share has one audience for the dashboard, published functions and selected existing agents. Inspect sharing first. For a Crew, `shared_agents` replaces the selected stable chat IDs from the returned agents list; an empty list clears them and omission preserves them. `agent_purposes` changes the saved one-line purpose by chat ID, only for tabs this person controls. Every selected agent needs a purpose. Read the saved selection back.
+Read the current Sharing procedure in `panel-access`. Inspect the saved audience,
+selected agents and each agent's chat visibility before promising transcript
+access. Discover agents through `workspace action=chats` or
+`messages action=list_agents`; use the exact returned target/chat_id to read or
+send an attributed request. Live, Saved only and Hidden have different chat
+visibility. Published Main and last-shared-agent restrictions are server-owned;
+do not bypass a refused switch. Only the tab's owner controls its steering,
+Stop, reset, model and owner confirmations. Acceptance is not a completed answer.
 
-People in the audience can read a selected agent's conversation from sharing onward, and send requests as themselves from the website, another Crew or MCP. Messages enter that same existing tab and use its configured context and working tools. Use `workspace action=chats` to discover selected agents, `read_chat` with its chat_id for the transcript (before_seq reads earlier messages), and `ask` to send an attributed request. `messages action=list_agents` and `send` expose the same targets; use the returned target/chat_id or complete agent address. Generic Crew Ask and published functions keep their current behavior.
+## The Crew's Python workflow
 
-Sharing an agent never gives the recipient its tab controls, private account credentials, other unselected chats or Builder setup panels. Only its tab owner can steer, stop, reset, rename, close, change its model or answer owner confirmations. Current audience and agent selection are checked again for reads, sends and queued delivery. A stored message receipt is acceptance, not a completed answer; agent replies remain explicit messages.
+A Crew has one Python workflow: `script.json` holds typed inputs, saved settings
+and outputs; `main.py` holds its work. Load `python-workflows` before writing it.
+Different tasks use input-selected paths and ordinary helper files. List with
+`workspace action=automation_list` before creating; a second creation is refused
+with HTTP 409. Read with `automation_read`, save through `automation_write`, and
+use `automation_describe` for currently supported management schemas. Old plan
+files are reference only and cannot run; do not teach new plan editing or Goals.
 
-## Workflows, saved scripts and goals
+Parent workflow Python can use `agentworks` and `agentworks_db` under its existing
+Crew guards. Native agents use tools or return artifacts to parent Python;
+helpers they execute must not import those parent-only modules. Read the Python
+topic for authorized own-Crew files, durable data and declared secret boundaries.
 
-A workflow is a Python script inside this Crew: `script.json` (typed inputs, presets, outputs) and `main.py` (the steps; an AI step is an `agent()` call). Load the `python-workflows` topic before writing one. Operator-authored helpers that agents are told to run must not import `agentworks` or `agentworks_db`: agents use the `database` tool or hand an artifact to parent Python. Use `workspace action=automation_list` with `crew_id` to discover this Crew’s workflows. `automation_create` makes a new script workflow from a name. Read it with `automation_read`; `automation_write` saves `script.json` or its Python files. `automation_edit` manages its schedules and webhooks (`automation_describe` returns those schemas). Older plan-based workflows keep running but are not edited here; read their files to inspect them, and ask for one to be converted when it needs a change. These actions use the same validators and current Builder access as Crew chat.
+Run with `functions action=run_trigger`, the exact returned Crew binding and
+typed inputs; inspect `trigger_status` and actual outputs. It starts the Python
+workflow directly without a model turn. Each invocation retains executed source,
+inputs and its own run folder. A schedule can run this workflow directly; it does
+not need an agent message as an intermediary. Collect required answers in Crew
+chat first: workflow execution does not wait for a person to answer.
 
-Run a workflow with `functions action=run_trigger`, crew_id, the returned workspace_path and typed inputs; inspect with `trigger_status`. It runs directly, with no chat. A schedule that should involve an agent is a scheduled message to an existing Crew agent, which can run the workflow. Each invocation has its own permanent run folder; the inputs and executed source stay with its results.
-
-Use `metrics action=crew_list` for goals and evidence, `crew_save` to update one goal with its metrics, and `crew_record` for sourced observations. A successful workflow is not evidence that its goal is achieved. CLI clients use the same actions through `agentworks tools spec` and `agentworks tools call NAME --input FILE`; `mcp serve` discovers these schemas from the connected server. Migration is an operator operation with a backup and stopped writers, not an agent tool or automatic startup action.
+CLI clients discover the same schemas through `agentworks tools spec` and
+`agentworks tools call NAME --input FILE`. Source guidance is not proof that the
+connected server has deployed a feature; inspect its returned capabilities.
