@@ -8,7 +8,10 @@ export async function callExternal(name: string, args: Record<string, unknown>) 
   try {
     return await api.post(externalCallPath, { name, arguments: args })
   } catch (cause) {
-    if (isAxiosError(cause) && cause.response?.status === 404) throw new Error('This action is not available in this version.')
+    if (isAxiosError(cause) && cause.response?.status === 404) {
+      const code = (cause.response.data as { error?: { code?: string } } | undefined)?.error?.code
+      if (!code || code === 'unknown_tool') throw new Error('This action is not available in this version.')
+    }
     throw cause
   }
 }

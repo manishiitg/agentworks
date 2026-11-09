@@ -61,9 +61,11 @@ it.each([false, true])('resumes the same selected folder without overrides, even
   } finally { await page.close() }
 })
 
-it('shows the server refusal verbatim and leaves the selected run available', async () => {
-  const message = "This run's frozen source, hash or inputs are unavailable or changed. Start a new run."
-  http.post.mockRejectedValueOnce({ isAxiosError: true, response: { data: { error: { code: 'resume_unavailable', message } } } })
+it.each([
+  [400, 'resume_unavailable', "This run's frozen source, hash or inputs are unavailable or changed. Start a new run."],
+  [404, 'workflow_not_found', 'This workflow is unavailable.'],
+])('shows the server refusal %s/%s verbatim and leaves the selected run available', async (status, code, message) => {
+  http.post.mockRejectedValueOnce({ isAxiosError: true, response: { status, data: { error: { code, message } } } })
   const page = await screen()
   try {
     await act(async () => page.resume()!.click())
@@ -75,8 +77,8 @@ it('shows the server refusal verbatim and leaves the selected run available', as
 })
 
 // PLAT-746-507: a version without this action must not show the raw HTTP route failure.
-it('explains an unavailable action instead of displaying a raw route 404', async () => {
-  http.post.mockRejectedValueOnce({ isAxiosError: true, response: { status: 404, data: '404 page not found\n' } })
+it.each(['404 page not found\n', { error: { code: 'unknown_tool', message: 'Refresh the tool catalog.' } }])('explains an unavailable action instead of displaying a raw route 404 (%j)', async data => {
+  http.post.mockRejectedValueOnce({ isAxiosError: true, response: { status: 404, data } })
   const page = await screen()
   try {
     await act(async () => page.resume()!.click())
