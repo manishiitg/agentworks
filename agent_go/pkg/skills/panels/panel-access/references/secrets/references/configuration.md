@@ -2,10 +2,9 @@
 
 Manage secrets through the tools in this chat. If the person asks to inspect
 them, open **Secrets** in Integrations or Recent, or Ctrl+K (Cmd+K on Mac),
-search Secrets. To show it in the current project with
-`ui`, use `view="mcp", action="open", target="secrets"`.
-Secrets is a direct menu entry, not a tab to find under Connections. Never claim it opened unless
-the UI action confirms success.
+search Secrets. Agent UI controls open only the Dashboard; point to the current
+menu destination instead of inventing a Secrets UI-open target. Opening a page
+is not a saved selection or successful secret write.
 
 - Call `vault action=list` before creating, replacing, or deleting a secret.
 - `vault action=set` saves a value in the project owner's own Vault and uses it
