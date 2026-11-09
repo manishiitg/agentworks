@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -85,25 +88,26 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		}
 		return projectScheduleJobID(profileID, projectID, value)
 	}
-	if err := register("list_project_schedules", "List this project's recurring message schedules and their latest run status.", map[string]interface{}{
+	if err := register("list_project_schedules", "List this Crew's timers, including its workflow timers, with the same scope as its Schedules panel. Workflow timers must be converted to Crew schedules before these project tools can edit them. This chat is already bound to its project: use automations action=list scope=schedule, without a project argument.", map[string]interface{}{
 		"type": "object", "properties": map[string]interface{}{},
 	}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
-		jobs, err := api.projectActions.JobsForBuilder(ctx, listUserID)
+		out, err := api.chatProjectScheduleRows(ctx, userID, projectWorkspace)
 		if err != nil {
 			return "", err
 		}
-		var out []ScheduledJobResponse
-		for _, job := range jobs {
-			if strings.EqualFold(job.Profile.ID, profileID) && job.ProjectID == projectID && job.Schedule.Condition == nil {
-				runsWorkspace, _ := api.projectActions.RunsWorkspace(ctx, job)
-				out = append(out, withScheduleStatusText(ctx, api.projectActions.jobResponse(job, runsWorkspace)))
+		result := map[string]interface{}{"schedules": out}
+		for _, job := range out {
+			if job.EntityType == "workflow" {
+				result["notice"] = "This list includes workflow timers shown in this Crew's Schedules panel. Timers with entity_type=workflow still need conversion to Crew schedules before the project schedule tools can change them. Do not guess a product schedule ID or recreate these timers."
+				break
 			}
 		}
-		encoded, err := json.MarshalIndent(map[string]interface{}{"schedules": out}, "", "  ")
+		encoded, err := json.MarshalIndent(result, "", "  ")
 		return string(encoded), err
 	}); err != nil {
 		return err
 	}
+
 	if !readOnly {
 		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Where the message goes: isolated is its own chat (a new chat for this schedule that every run continues, listed with the Crew's chats; the default), chat is an existing chat (this chat, the main chat, or a tab by chat_id; steering it if already running). When the person did not say, ask them first: its own chat, or an existing chat (which one)?", map[string]interface{}{
 			"type": "object",
@@ -430,4 +434,32 @@ func oneTimeRunAt(args map[string]interface{}, now time.Time) (string, error) {
 		return "", fmt.Errorf("run_at %s is not in the future", runAt)
 	}
 	return at.UTC().Format(time.RFC3339), nil
+}
+
+// PLAT-746: the Schedules panel includes workflow timers inside a Crew.
+// Chat must list the same owner-filtered, workspace-scoped rows rather than
+// only the Crew message schedules in ProjectActionDispatcher.
+func (api *StreamingAPI) chatProjectScheduleRows(ctx context.Context, user, root string) ([]ScheduledJobResponse, error) {
+	if api.scheduler == nil {
+		return nil, fmt.Errorf("the scheduler is unavailable")
+	}
+	r := httptest.NewRequest(http.MethodGet, "/api/scheduler/jobs", nil).WithContext(internalBotRequestContext(ctx, user))
+	status, body := scheduleHandler(r, listScheduledJobsHandler(api.scheduler), http.MethodGet, "/api/scheduler/jobs", nil,
+		url.Values{"entity_type": {"product"}, "workspace_path": {root}, "limit": {"1000"}}, nil)
+	if status >= 400 {
+		return nil, fmt.Errorf("could not list this project's schedules: %s", strings.TrimSpace(string(body)))
+	}
+	var page struct {
+		Jobs []ScheduledJobResponse `json:"jobs"`
+	}
+	if err := json.Unmarshal(body, &page); err != nil {
+		return nil, err
+	}
+	out := make([]ScheduledJobResponse, 0, len(page.Jobs))
+	for _, job := range page.Jobs {
+		if job.ScheduleType != "webhook" && job.Kind != "condition" {
+			out = append(out, job)
+		}
+	}
+	return out, nil
 }
