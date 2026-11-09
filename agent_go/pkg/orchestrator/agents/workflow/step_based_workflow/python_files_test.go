@@ -55,6 +55,12 @@ func TestPythonCrewFileReadIsFreshScopedAndKeepsRawSandboxClosed(t *testing.T) {
 	write(note, "first")
 	write(filepath.Join(private, "knowledgebase/notes/big.md"), strings.Repeat("x", pythonCrewFileLimit+1))
 	write(filepath.Join(private, "knowledgebase/notes/binary.md"), string([]byte{0xff}))
+	write(filepath.Join(private, "knowledgebase2/private.md"), "must not be returned")
+	write(filepath.Join(private, "Knowledgebase/private.md"), "must not be returned")
+	write(filepath.Join(private, "knowledgebase/notes/huge.md"), "")
+	if err := os.Truncate(filepath.Join(private, "knowledgebase/notes/huge.md"), 1<<30); err != nil {
+		t.Fatal(err)
+	}
 	write(filepath.Join(private, "workflow.json"), `{"private":true}`)
 	outside := filepath.Join(docs, "Crew/other/private-note.md")
 	write(outside, "must not be returned")
@@ -76,7 +82,7 @@ else:
     raise AssertionError('parent received a raw Crew knowledge grant')
 assert files.read('knowledgebase/notes/owner-handled.md') == 'first'
 assert files.read('knowledgebase/notes/owner-handled.md') == 'second', 'read reused a saved helper result'
-for path in ('Crew/other/private-note.md', '../other/private-note.md', os.environ['FIXTURE_NOTE'], '.env', 'builder/conversation/chat.json', 'workflow.json', 'knowledgebase/notes/link.md', 'knowledgebase/linked/private-note.md', 'knowledgebase/notes/big.md', 'knowledgebase/notes/binary.md'):
+for path in ('Crew/other/private-note.md', '../other/private-note.md', os.environ['FIXTURE_NOTE'], '.env', 'builder/conversation/chat.json', 'workflow.json', 'knowledgebase/notes/link.md', 'knowledgebase/linked/private-note.md', 'knowledgebase/notes/big.md', 'knowledgebase/notes/binary.md', 'knowledgebase/notes/huge.md', 'knowledgebase2/private.md', 'Knowledgebase/private.md'):
     try:
         files.read(path)
     except AutomationError as error:
@@ -107,10 +113,16 @@ print('fresh-own-Crew-read-and-refusals-ok')
 			return
 		}
 		r.Header.Set("X-Session-ID", parts[1])
-		handlers.HandlePerToolCustomRequest(w, r, parts[4])
+		reply := httptest.NewRecorder()
+		handlers.HandlePerToolCustomRequest(reply, r, parts[4])
 		if reads.Add(1) == 1 {
 			write(note, "second")
 		}
+		for key, values := range reply.Header() {
+			w.Header()[key] = values
+		}
+		w.WriteHeader(reply.Code)
+		_, _ = w.Write(reply.Body.Bytes())
 	}))
 	defer bridge.Close()
 	t.Setenv("MCP_API_URL", bridge.URL)
