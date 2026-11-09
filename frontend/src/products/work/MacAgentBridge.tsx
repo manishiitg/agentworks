@@ -7,7 +7,7 @@ import { teamError, teamRequest, useTeamTab } from './teamApi'
 import { AskButton, Saving, teamCard } from './TeamTab'
 import { askAgentPurpose } from './AgentSharingRow'
 import { ProjectAgentBridgePanel } from '../../components/workspace/ProjectAgentBridgePanel'
-import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { fillMainDraft, sendToTab } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
 
 /** The Mac online tab's AgentBridge card (owner, 6 Nov, approved mockup): the owner's own agents from the server's
@@ -64,6 +64,14 @@ export function MacAgentBridge({ projectId }: { projectId: string }) {
     <p className="text-[12.5px] text-muted-foreground">Agents currently online. You don’t need to publish your own agent to find them.</p>
     <ProjectAgentBridgePanel target={`workspace:work:${projectId}`} view="network" onAsk={message => {
       if (!fillMainDraft(projectId, message)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'info')
+    }} onSend={message => {
+      const store = useChatStore.getState()
+      const owned = (tab: (typeof store.chatTabs)[string] | undefined) => tab?.metadata?.agentProfileProjectId === projectId && !tab.metadata.isViewOnly && tab.metadata.agentProfileTabCanWrite !== false
+      const active = store.chatTabs[store.activeTabId || '']
+      const source = owned(active) ? active : Object.values(store.chatTabs).find(tab => owned(tab) && tab.metadata?.agentProfileIsMainChat)
+      if (!source) throw new Error('Open your own agent chat in this Crew, then try again.')
+      if (source.config?.inputText?.trim() || source.config?.fileContext?.length) throw new Error('Your chat has an unfinished draft. Send or clear it first, then try again. Your message here is kept.')
+      if (!sendToTab(source.tabId, message)) throw new Error('Could not open your agent chat. Your message here is kept.')
     }} />
   </section>}
   </>

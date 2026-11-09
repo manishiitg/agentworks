@@ -8,15 +8,16 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIden
 
 type Agent = {
   id: string; target?: string; name?: string; agent_name?: string; label?: string; kind: string; provider?: string; network?: string
-  purpose?: string; description?: string; online?: boolean; presence?: string
+  purpose?: string; description?: string; online?: boolean; presence?: string; published?: boolean
   chats?: { chat_id: string; name: string; purpose?: string; owner_name?: string }[]
 }
 const name = (agent: Agent) => agent.label || agent.name || agent.agent_name || 'Agent'
 const providerLabel = (provider?: string) => ({ claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', muse: 'Muse', pi: 'Pi' } as Record<string, string>)[(provider || '').toLowerCase()] || provider || 'On your computer'
 
 /** The same authorized directory as chat/MCP, opened beside this project's chat. */
-export function ProjectAgentBridgePanel({ target, tabId, onAsk, view }: {
+export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: {
   target: string; tabId?: string; onAsk: (message: string) => void | Promise<unknown>
+  onSend?: (message: string) => void | Promise<unknown>
   /** coding: coding apps on this Mac (Connections); others: published agents (Full menu, Message other agents). */
   view: 'coding' | 'others' | 'network'
 }) {
@@ -30,6 +31,10 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, view }: {
   const [attempt, setAttempt] = useState(0)
   const [query, setQuery] = useState('')
   const [showAll, setShowAll] = useState(false)
+  const [compose, setCompose] = useState<string | null>(null)
+  const [message, setMessage] = useState('')
+  const [sending, setSending] = useState(false)
+  useEffect(() => { setCompose(null); setMessage('') }, [scope])
   useEffect(() => {
     const identity = captureChatIdentity(), controller = new AbortController()
     setSnapshot(null); setError('')
@@ -70,6 +75,18 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, view }: {
           <p className="whitespace-pre-wrap break-words text-muted-foreground">{agent.purpose || agent.description || 'No purpose provided.'}</p>
           {agent.provider && <p className="text-muted-foreground">{providerLabel(agent.provider)}</p>}
           <button type="button" onClick={() => ask(`Help me contact ${JSON.stringify(name(agent))} through AgentBridge (target ${JSON.stringify(agent.target || agent.id)}). Ask what I want to send before sending anything. Use this exact target and report actual delivery status; do not substitute another agent.`)} className="rounded-full border border-border px-3 py-1 font-medium hover:bg-muted">Ask</button>
+          {agent.published === true && onSend && <button type="button" className="ml-2 rounded-full border border-border px-3 py-1 font-medium hover:bg-muted" onClick={() => { setCompose(agent.id); setMessage(''); setError('') }}>Ask AI</button>}
+          {compose === agent.id && agent.published === true && onSend && <form className="space-y-2" onSubmit={event => {
+            event.preventDefault()
+            if (!message.trim() || sending) return
+            setSending(true); setError('')
+            const prompt = `Send this message through AgentBridge to ${JSON.stringify(name(agent))} at exact target ${JSON.stringify(agent.target || agent.id)} using messages action=send: ${JSON.stringify(message.trim())}. This is my request to send it now. Do not substitute another agent. Report the actual delivery status, not just tool acceptance. Keep replies in this originating chat.`
+            void Promise.resolve().then(() => onSend(prompt)).then(() => { setCompose(null); setMessage('') }).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not start your request.')).finally(() => setSending(false))
+          }}>
+            <label className="block">Message {name(agent)}<textarea autoFocus rows={3} required value={message} disabled={sending} onChange={event => setMessage(event.target.value)} className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2" /></label>
+            <p className="text-muted-foreground">Your agent sends it through AgentBridge. Delivery updates and replies appear in chat.</p>
+            <div className="flex gap-2"><button type="submit" disabled={sending || !message.trim()} className="rounded-full border border-border px-3 py-1 disabled:opacity-50">{sending ? 'Starting…' : 'Send'}</button><button type="button" disabled={sending} onClick={() => setCompose(null)} className="px-2 py-1 text-muted-foreground">Cancel</button></div>
+          </form>}
         </div>
       </details>)}
     </div>

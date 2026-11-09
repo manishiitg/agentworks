@@ -1,4 +1,8 @@
+import type { FileContextItem } from '../stores/types'
+
 export interface ChatSubmissionOptions {
+  fileContext?: FileContextItem[]
+  fileContextConsumed?: boolean
   deliveryMode?: 'steer' | 'queue'
   isAutoNotification?: boolean
   sourceTabId?: string
