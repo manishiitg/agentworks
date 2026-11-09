@@ -634,7 +634,7 @@ type accessTokenSessionRegistry struct {
 	sessions map[string]accessTokenSession
 }
 
-func (api *StreamingAPI) cancelAccessTokenSessions(id string) {
+func (api *StreamingAPI) cancelAccessTokenSessions(id string) []string {
 	api.accessTokenSessions.Lock()
 	sessions := []string{}
 	for sid, s := range api.accessTokenSessions.sessions {
@@ -647,6 +647,7 @@ func (api *StreamingAPI) cancelAccessTokenSessions(id string) {
 	for _, sid := range sessions {
 		api.cancelSessionRuntimeWork(sid, "access token revoked or expired", runtimePhaseCanceled)
 	}
+	return sessions
 }
 
 func (api *StreamingAPI) watchAccessTokenSession(c *UserClaims, sessionID, workspace string, access WorkflowAccessLevel) {
@@ -759,7 +760,12 @@ func (api *StreamingAPI) recheckAccessTokenSession(ctx context.Context, entry ac
 	log.Printf("[TOKEN_WATCH] denied token=%s session=%s reason=%s confirmed_reads=2 checked_at=%s", prefix, entry.sessionID, verdict.reason, time.Now().UTC().Format(time.RFC3339Nano))
 	if verdict.token {
 		logTokenWatchOAuthExpiry(ctx, entry.tokenID)
-		api.cancelAccessTokenSessions(entry.tokenID)
+		canceled := api.cancelAccessTokenSessions(entry.tokenID)
+		// Setup may have registered its runtime after an earlier revocation
+		// already removed this session from the watch registry (Codex1758 P1).
+		if !containsID(canceled, entry.sessionID) {
+			api.cancelSessionRuntimeWork(entry.sessionID, "access token revoked or expired", runtimePhaseCanceled)
+		}
 	} else {
 		api.accessTokenSessions.Lock()
 		delete(api.accessTokenSessions.sessions, entry.sessionID)

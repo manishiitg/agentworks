@@ -97,4 +97,13 @@ func TestTokenWatcherKeepsRunningProcessOnLookupTimeoutAndStopsRevokedToken(t *t
 	if unrelatedCtx.Err() != nil {
 		t.Fatal("revocation canceled another token's run")
 	}
+	// Codex1758 P1: revocation removed the watch entry during setup, but setup
+	// subsequently installed its runtime cancel function and cleared Stop.
+	lateCtx, lateStop := context.WithCancel(context.Background())
+	defer lateStop()
+	f.api.agentCancelFuncs[entry.sessionID] = lateStop
+	delete(f.api.stoppedSessions, entry.sessionID)
+	if !f.api.recheckAccessTokenSession(t.Context(), entry) || lateCtx.Err() == nil {
+		t.Fatal("post-setup revocation missed runtime whose watch entry was already removed")
+	}
 }
