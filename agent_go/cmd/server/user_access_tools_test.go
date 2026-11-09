@@ -10,6 +10,7 @@ import (
 
 func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
 	api := managedGlobalTestAPI(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","role":"admin"},{"id":"a1","username":"owner","email":"owner@example.com","role":"creator"},{"id":"c3","username":"reader","email":"reader@example.com","role":"viewer"}]}`)
 	policy := workflowChatPolicy{Capabilities: map[string]bool{"user_management": true}}
 	register := func(id string) recordedTool {
 		t.Helper()
@@ -44,9 +45,13 @@ func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
 	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{}, "readers": []string{"c3"}}); err == nil {
 		t.Fatal("last owner removed")
 	}
-	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"a1"}, "readers": []string{"c3"}}); err != nil {
+	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"owner@example.com"}, "readers": []string{"reader@example.com"}}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"missing@example.com"}}); err == nil || !strings.Contains(err.Error(), "email address of someone in your company") {
+		t.Fatalf("unknown email did not explain the next step: %v", err)
+	}
+
 	dir, err := readUserDirectoryFile()
 	if err != nil {
 		t.Fatal(err)
