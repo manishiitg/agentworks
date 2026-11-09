@@ -2570,7 +2570,7 @@ export interface ScheduledJob {
   run_destination?: 'chat' | 'isolated' | 'new'
   /** The tab a Crew or Goal schedule runs in; empty is the main chat. */
   chat_id?: string
-  /** Where this Crew or Goal message schedule can run, listed by the server: main chat, each tab, own conversation. */
+  /** Where this Crew or Goal message schedule can run, listed by the server: its own chat (Crew default), main chat, each tab. */
   run_destinations?: { id: string; label: string }[]
 }
 

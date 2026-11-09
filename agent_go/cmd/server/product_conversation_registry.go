@@ -337,17 +337,21 @@ func (store productConversationRegistryStore) setSideChatOrder(ctx context.Conte
 	if document.Agents == nil {
 		document.Agents = map[string]ProductAgentIdentity{}
 	}
-	prefix := productConversationRegistryEntryKey(profileID, projectID) + codeChatSideMarker
+	project := productConversationRegistryEntryKey(profileID, projectID)
+	// A tab is a side chat or a message schedule's own chat (listed with the side chats).
+	isTab := func(entryKey string) bool {
+		return strings.HasPrefix(entryKey, project+codeChatSideMarker) || strings.HasPrefix(entryKey, project+scheduleOwnChatMarker)
+	}
 	positions := map[string]int{}
 	for i, key := range conversationKeys {
 		entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(key))
-		if _, ok := document.Entries[entryKey]; !ok || !strings.HasPrefix(entryKey, prefix) {
+		if _, ok := document.Entries[entryKey]; !ok || !isTab(entryKey) {
 			return fmt.Errorf("that tab is not open in this project")
 		}
 		positions[entryKey] = i + 1
 	}
 	for entryKey := range document.Entries {
-		if !strings.HasPrefix(entryKey, prefix) {
+		if !isTab(entryKey) {
 			continue
 		}
 		identity := document.Agents[entryKey]
@@ -376,8 +380,9 @@ func (store productConversationRegistryStore) setSideChatPinned(ctx context.Cont
 		document.Agents = map[string]ProductAgentIdentity{}
 	}
 	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
-	prefix := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID)) + codeChatSideMarker
-	if _, ok := document.Entries[entryKey]; (!ok && !otherOwners) || !strings.HasPrefix(entryKey, prefix) {
+	project := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID))
+	isTab := strings.HasPrefix(entryKey, project+codeChatSideMarker) || strings.HasPrefix(entryKey, project+scheduleOwnChatMarker)
+	if _, ok := document.Entries[entryKey]; (!ok && !otherOwners) || !isTab {
 		return fmt.Errorf("that tab is not open in this project")
 	}
 	identity, saved := document.Agents[entryKey]
@@ -403,7 +408,7 @@ func (store productConversationRegistryStore) agentIdentities(ctx context.Contex
 	out := map[string]ProductAgentIdentity{}
 	main := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID))
 	for entryKey, identity := range document.Agents {
-		if entryKey == main || strings.HasPrefix(entryKey, main+":chat:") {
+		if entryKey == main || strings.HasPrefix(entryKey, main+":chat:") || strings.HasPrefix(entryKey, main+scheduleOwnChatMarker) {
 			out[strings.TrimPrefix(entryKey, strings.TrimSpace(profileID)+"/")] = identity
 		}
 	}
@@ -591,6 +596,45 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 		}
 	}
 	return chats, nil
+}
+
+// scheduleOwnChatMarker sits between a project and a message schedule's id in the key of that schedule's own chat
+// ("<project>:schedule:<schedule id>", isolatedAutomationConversationKey). A new chat each run adds the run's id, so
+// only the one kept across runs has a single id after the marker.
+const scheduleOwnChatMarker = ":schedule:"
+
+// isScheduleOwnChatKey reports a message schedule's own chat, kept across runs (owner, 9 Nov: listed with the Crew's
+// chats). Function, webhook and new-chat-each-run conversations stay out of chat lists.
+func isScheduleOwnChatKey(key string) bool {
+	project, id, ok := strings.Cut(strings.TrimSpace(key), scheduleOwnChatMarker)
+	return ok && project != "" && !strings.Contains(project, ":") && id != "" && !strings.Contains(id, ":")
+}
+
+// scheduleOwnChats returns the person's message-schedule own chats of one project that have a conversation yet,
+// keyed by conversation key.
+func (store productConversationRegistryStore) scheduleOwnChats(ctx context.Context, userID, profileID, projectID string) (map[string]ProductConversationRecord, error) {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" || strings.Contains(projectID, ":") {
+		return nil, fmt.Errorf("project id is required")
+	}
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]ProductConversationRecord{}
+	prefix := productConversationRegistryEntryKey(profileID, projectID) + scheduleOwnChatMarker
+	for entryKey, record := range document.Entries {
+		key := strings.TrimPrefix(entryKey, strings.TrimSpace(profileID)+"/")
+		if strings.TrimSpace(record.SessionID) == "" || !strings.HasPrefix(entryKey, prefix) || !isScheduleOwnChatKey(key) {
+			continue
+		}
+		out[key] = record
+	}
+	return out, nil
 }
 
 // switchTo makes an earlier conversation the slot's live one again; the one

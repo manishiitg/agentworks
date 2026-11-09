@@ -56,8 +56,9 @@ func workflowScheduleStartsLine(manifest *WorkflowManifest, sched WorkflowSchedu
 }
 
 // productScheduleStartsLine is the line for a Crew (or product) schedule. A schedule with a workflow target runs the
-// Crew's workflow; any other schedule sends its messages to an agent: the tab (named agent) it was set in, else Main.
-// A Watcher keeps checking something and is listed on its own page, so it has no line here.
+// Crew's workflow; any other schedule sends its messages to an agent and says which chat (owner, 9 Nov): "Sends a
+// message to Main · its own chat" for the schedule's own chat, or "· <chat name>" for an existing chat (the tab it
+// was set in, else Main). A Watcher keeps checking something and is listed on its own page, so it has no line here.
 func productScheduleStartsLine(job productScheduleJob) string {
 	sched := job.Effective()
 	switch {
@@ -68,11 +69,19 @@ func productScheduleStartsLine(job productScheduleJob) string {
 	case strings.TrimSpace(job.ProjectID) == "":
 		return automationStartsMessageLine(job.Profile.Name)
 	}
-	chatKey := scheduleChatKey(job)
-	if chatKey == "" || job.Schedule.Isolated {
-		return automationStartsMessageLine("Main")
+	agent := firstNonEmptyTrimmed(job.AgentName, "Main")
+	if job.Schedule.New {
+		return automationStartsMessageLine(agent) + " · a new chat each time"
 	}
-	return automationStartsMessageLine(projectScheduleAgentName(job, chatKey))
+	if job.Schedule.Isolated {
+		return automationStartsMessageLine(agent) + " · its own chat"
+	}
+	chatKey := scheduleChatKey(job)
+	if chatKey == "" {
+		return automationStartsMessageLine("Main") + " · Main chat"
+	}
+	name := projectScheduleAgentName(job, chatKey)
+	return automationStartsMessageLine(name) + " · " + name
 }
 
 // projectScheduleAgentName is the name of the tab a schedule sends to, as the Crew's tab list shows it.

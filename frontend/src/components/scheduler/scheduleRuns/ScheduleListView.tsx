@@ -69,7 +69,8 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
 
         // First line: what it starts (one plain line from the server) and when it runs next.
         const what = job.query ? `Asks: "${job.query}"` : job.starts || localizedJobName
-        const where = job.run_destination === 'new' ? 'new chat each time' : job.run_destination === 'isolated' ? 'own conversation' : ''
+        // A Crew schedule's starts line already names its chat (server); older workflow schedules still say it here.
+        const where = job.entity_type === 'product' ? '' : job.run_destination === 'new' ? 'new chat each time' : job.run_destination === 'isolated' ? 'its own chat' : ''
         const next = !quiet && !isMissedJob && !isRunningJob && !isWebhook ? nextLabel(job.next_run_at) : ''
         const firstLine = [showWorkflowIdentityInScheduleRows ? workflowDisplayLabel : '', what, next ? `next ${next}` : '', where].filter(Boolean).join(' · ')
 
@@ -129,7 +130,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                     onChange={event => void handleRunDestination(job, event.target.value)}
                     className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"
                   >
-                    {(job.run_destinations?.length ? job.run_destinations : [{ id: 'chat', label: 'Main chat' }, { id: 'isolated', label: 'Own conversation' }]).map(item => (
+                    {(job.run_destinations?.length ? job.run_destinations : [{ id: 'isolated', label: 'Its own chat' }, { id: 'chat', label: 'Main chat' }]).map(item => (
                       <option key={item.id} value={item.id}>{item.label}</option>
                     ))}
                   </select>
