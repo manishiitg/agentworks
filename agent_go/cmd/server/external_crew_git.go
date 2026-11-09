@@ -75,7 +75,7 @@ func (api *StreamingAPI) externalCrewGit(w http.ResponseWriter, r *http.Request,
 		}
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), workspaceGitTimeout)
+	ctx, cancel := context.WithTimeout(context.WithValue(r.Context(), workspaceGitRootKey{}, realBase), workspaceGitTimeout)
 	defer cancel()
 	if op == "status" {
 		repos := []workspaceGitRepo{}
