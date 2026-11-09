@@ -52,7 +52,7 @@ func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
 	if _, manifest := workflowAccessForWorkspacePath(ctx, &UserClaims{UserID: "a1"}, sharedSecretsTestWorkflow); manifest == nil || !containsID(manifest.effectiveOwners(), "a1") {
 		t.Fatal("main owner was removed")
 	}
-	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"owner@example.com"}, "readers": []string{"reader@example.com"}}); err != nil {
+	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"a1"}, "readers": []string{"reader@example.com"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"missing@example.com"}}); err == nil || !strings.Contains(err.Error(), "email address of someone in your company") {

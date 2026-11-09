@@ -40,8 +40,8 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 		"properties": map[string]interface{}{
 			"action":         map[string]interface{}{"type": "string", "enum": []string{"get_workflow_access", "set_workflow_access", "list_users", "update_user", "delete_user"}},
 			"workspace_path": str("Workflow/<folder>; defaults to the active workflow for access and owner directory operations."),
-			"owners":         map[string]interface{}{"type": "array", "items": str("Company email address; complete owner list (they build and change it). Omit to keep.")},
-			"readers":        map[string]interface{}{"type": "array", "items": str("Company email address; complete list of people who can use it. Omit to keep.")},
+			"owners":         map[string]interface{}{"type": "array", "items": str("User ID, username or email; complete owner list (they build and change it). Omit to keep.")},
+			"readers":        map[string]interface{}{"type": "array", "items": str("User ID, username or email; complete list of people who can use it. Omit to keep.")},
 			"user_id":        str("Existing account ID for update_user/delete_user."),
 			"username":       str("Account username (update_user may rename)."),
 			"email":          str("Account email."), "password": str("User-provided account password only; never echo it."),
@@ -101,7 +101,7 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 			}
 			if err != nil {
 				if strings.Contains(err.Error(), "no account with an email matches") {
-					return "", fmt.Errorf("Use the email address of someone in your company. %w", err)
+					return "", fmt.Errorf("Use the email address of someone in your company. If their account has no email, ask an admin to add it. %w", err)
 				}
 				return "", err
 			}
