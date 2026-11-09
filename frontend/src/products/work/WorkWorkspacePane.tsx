@@ -65,8 +65,10 @@ function sendWorkProjectPaneMessage(projectId: string, message: string, profileI
 export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ projectId = '', workspacePath, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { sessionId?: string; projectId?: string; tabId?: string; onOpenChat?: () => void; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
   // Both legacy origins use the merged Crew suggestion feature.
   const product = useProjectProduct()
+  // Open Crew chats already show activity in the sidebar, across projects.
+  // PLAT-746: do not repeat another open project's agent in the global monitor.
   const representedSessionIds = useChatStore(useShallow(state => Object.values(state.chatTabs)
-    .filter(tab => tab.metadata?.agentProfileWorkspace === workspacePath)
+    .filter(tab => tab.metadata?.agentProfileId === 'work' && !tab.metadata?.isViewOnly)
     .map(tab => tab.sessionId).filter((id): id is string => Boolean(id))))
   const incomingEmail = useAgentInboxEnabled()
   const user = useAuthStore(state => state.user)
