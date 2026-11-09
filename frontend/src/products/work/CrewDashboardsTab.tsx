@@ -3,7 +3,9 @@ import { FileText, Film, LayoutDashboard, type LucideIcon } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { PublicLinkControl } from '../../components/workflow/PublicLinkControl'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
-import { AskButton, teamCard } from './TeamTab'
+import { teamCard } from './TeamTab'
+import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { useChatStore } from '../../stores/useChatStore'
 import { crewDashboardsTab, teamFailure, teamPublicLink, useTeamTab, type CrewDashboardsTab as DashboardsTab, type TeamTarget } from './teamApi'
 
 const kindIcon: Record<string, LucideIcon> = { dashboard: LayoutDashboard, artifact: FileText, motion: Film }
@@ -14,7 +16,7 @@ const openAccess = (projectId: string, section: 'mac' | 'team') => window.dispat
  * /dashboards-tab writes every line and says what this person may change (owner: Change and the link; a teammate: the
  * list), and a Crew on a Mac says it needs to be online first; this only shows them. The same tab in the Mac app and on
  * the website. */
-export function CrewDashboardsTab({ projectId }: { projectId: string }) {
+export function CrewDashboardsTab({ projectId, embedded = false }: { projectId: string; embedded?: boolean }) {
   const { target, unbound } = useTeamTab(projectId)
   // A Mac Crew that was never online has no server copy: its own Mac app's server answers.
   const where: TeamTarget | undefined = unbound ? { project: projectId } : target
@@ -30,8 +32,9 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [where?.project, where?.connection, kind]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!where || !tab) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading dashboards…</p>
-  return <section aria-label="Dashboards" className={teamCard}>
-    <h3 className="font-semibold">Dashboards</h3>
+  // Embedded in the Share page's Read only option, which already has the heading and the card.
+  return <section aria-label="Dashboards" className={embedded ? 'space-y-2.5 text-sm' : teamCard}>
+    {!embedded && <h3 className="font-semibold">Dashboards</h3>}
     {tab.intro && <p className="text-xs text-muted-foreground">{tab.intro}</p>}
     {tab.filters.length > 1 && <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
       {tab.filters.map(filter => <button key={filter.key} type="button" aria-pressed={tab.filter === filter.key} onClick={() => setKind(filter.key)}
@@ -45,7 +48,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
       {tab.empty.kinds && <ul className="space-y-0.5 text-muted-foreground">
         {tab.empty.kinds.map(kind => <li key={kind.name}><span className="font-medium text-foreground">{kind.name}</span>: {kind.line}</li>)}
       </ul>}
-      {tab.empty.ask && <AskButton projectId={projectId} prompt={tab.empty.ask} label="Ask your agent to make one" />}
+      {tab.empty.ask && <Button size="sm" className="h-7 rounded-full px-3" onClick={() => { if (!fillMainDraft(projectId, tab.empty?.ask || '')) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask the Crew</Button>}
       {tab.empty.example && <p className="text-xs text-muted-foreground">{tab.empty.example}</p>}
     </div>}
     <div className="divide-y divide-border">

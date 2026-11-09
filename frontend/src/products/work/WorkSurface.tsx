@@ -1344,7 +1344,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       let imported: ImportedLocalChat | undefined
       if (localChat && rootPath) {
         try {
-          const { data } = await api.post<ImportedLocalChat>('/api/agent-profiles/work/local-project', { project_id: created.id, id: localChat.id })
+          const { data } = await api.post<ImportedLocalChat>('/api/agent-profiles/work/local-project', { project_id: created.id, id: localChat.id, recent_only: !!localChat.recent_only })
           if (!isCurrent()) return
           imported = data
         } catch {

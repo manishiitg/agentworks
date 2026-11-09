@@ -177,11 +177,9 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		tab.Intro, tab.Note, tab.PutOnline = "", "", false
 		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this Crew yet."}
 		if owner {
-			tab.Empty = &crewDashboardsTabEmpty{Title: "No dashboards yet", Line: "Show this Crew's work to people in a form they can open and use. Your agents make these for you.", Kinds: []crewDashboardsTabKind{
-				{Name: "Dashboard", Line: "live numbers and buttons people can use"},
-				{Name: "Artifact", Line: "a document or page to read"},
-				{Name: "Motion", Line: "a short video"},
-			}, Ask: "Help me make a dashboard for this Crew", Example: "make a dashboard of this week's sales"}
+			// The Share page's Read only option (owner, 9 Nov mock): one line and "Ask the Crew", which opens Main with this draft.
+			tab.Empty = &crewDashboardsTabEmpty{Title: "No dashboard yet", Line: "Ask the Crew to make one from its results.",
+				Ask: "Make a dashboard for this Crew from its results, so people can look at them without changing anything. Show me before you publish it."}
 		}
 	}
 	return tab, true
