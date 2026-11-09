@@ -25,6 +25,7 @@ import (
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/executor"
@@ -62,6 +63,9 @@ func checkCrewChatPythonStop(t *testing.T, entry string) {
 	}
 	tokenTestSetup(t)
 	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE", t.Name()+f.docs)
+	managedBrowserRoot := browserconfig.ManagedSocketRoot()
+	t.Cleanup(func() { _ = os.RemoveAll(managedBrowserRoot) })
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"other","username":"other","can_create":false,"products":["work"]}]}`)
 	t.Setenv("AGENTWORKS_SLOTS", "off")
 	t.Setenv("LOCAL_MODE", "true")
@@ -151,8 +155,8 @@ func checkCrewChatPythonStop(t *testing.T, entry string) {
 	defer cancel()
 	stopRun := func(id string) {
 		api.scheduler.cancelScheduleRunContext(id)
-		if run, err := api.scheduler.existingWebhookRun(context.Background(), id); err == nil && run.SessionID != "" {
-			api.scheduler.cancelScheduledSessionWork(run.SessionID, "fixture cleanup", runtimePhaseCanceled)
+		if run, err := api.scheduler.existingWebhookRun(context.Background(), id); err == nil && run.ActiveSessionID != "" {
+			api.scheduler.cancelScheduledSessionWork(run.ActiveSessionID, "fixture cleanup", runtimePhaseCanceled)
 		}
 	}
 	binding := crewExecutableBinding{ID: "chat-saved", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/chat-saved", Kind: "script", RuntimeRoot: "workflows/chat-saved"}
