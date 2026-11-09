@@ -353,6 +353,12 @@ func (api *StreamingAPI) handleCrewScriptGraph(w http.ResponseWriter, r *http.Re
 		http.Error(w, err.Error(), 400)
 		return
 	}
+	// The server resolves each agent's model, so the page only prints it.
+	if manifest, _, err := crewScriptManifest(r.Context(), binding); err == nil {
+		if withModels, err := addOutlineModels(graph, manifest.Capabilities.LLMConfig); err == nil {
+			graph = withModels
+		}
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(graph)

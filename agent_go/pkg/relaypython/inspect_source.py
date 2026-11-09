@@ -318,9 +318,17 @@ def inspect_automation_source(files):
         def argument(call, index, name):
             return call.args[index] if len(call.args) > index else next((item.value for item in call.keywords if item.arg == name), None)
 
+        def call_settings(call):
+            # Only plain string values written on the call itself; anything computed is left to the run.
+            found = {}
+            for item in call.keywords:
+                if item.arg in ('model', 'tier', 'reasoning') and isinstance(item.value, ast.Constant) and isinstance(item.value.value, str):
+                    found[item.arg] = item.value.value
+            return found
+
         parents, last = [], {}
 
-        def add(call, module, kind, label, identity, description=None, role=None):
+        def add(call, module, kind, label, identity, description=None, role=None, settings=None):
             import hashlib
             parent = parents[-1] if parents else None
             # One row per occurrence: the same step reached in two cases gets two ids.
@@ -330,6 +338,8 @@ def inspect_automation_source(files):
                 node['description'] = description
             if role:
                 node['role'] = role
+            if settings:
+                node['settings'] = settings
             if parent:
                 node['parent'] = parent
             if any(existing['id'] == node['id'] for existing in graph['nodes']):
@@ -425,7 +435,8 @@ def inspect_automation_source(files):
             name_module, name = target(module, expression.func)
             if (name_module, name) == ('agentworks', 'agent'):
                 add(expression, module, 'agent', literal(module, argument(expression, 0, 'name')),
-                    f'agent@{filenames[module]}:{expression.lineno}', literal(module, argument(expression, 1, 'message')))
+                    f'agent@{filenames[module]}:{expression.lineno}', literal(module, argument(expression, 1, 'message')),
+                    settings=call_settings(expression))
                 return True
             fn, label = decorated(name_module, name) if name_module in trees else (None, None)
             if fn is not None:
