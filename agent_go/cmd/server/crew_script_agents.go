@@ -86,6 +86,13 @@ func resolveOutlineAgent(tiers *workflowtypes.TieredLLMConfig, model, tier, reas
 	if reasoning != "" {
 		result.Reasoning, result.Source = reasoning, "call"
 	}
+	// The name the model picker shows, when the platform's catalog knows the id; otherwise the id as saved.
+	for _, known := range providerModelMetadata(result.Provider) {
+		if known.ModelID == result.Model && strings.TrimSpace(known.ModelName) != "" {
+			result.Model = strings.TrimSpace(known.ModelName)
+			break
+		}
+	}
 	result.Provider = providerLabel(result.Provider)
 	return result
 }
