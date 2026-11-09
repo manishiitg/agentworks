@@ -1226,6 +1226,22 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		return "", productschedule.ErrSkip
 	}
 
+	if triggerSource == "queued" && job.Profile.ID == "work" && job.ProjectID != "" && job.AutomationKind == "" && job.Schedule.Condition == nil {
+		current, err := s.Job(runCtx, job.UserID, job.ID())
+		if err != nil {
+			return "", err
+		}
+		if s.api == nil || s.api.scheduler == nil {
+			return "", fmt.Errorf("Crew timer run ledger is unavailable")
+		}
+		decision, source := s.api.scheduler.crewTimerDependencyDecision(runCtx, current, time.Now().UTC())
+		if !decision.Run || source != "queued" || !decision.ScheduledFor.Equal(scheduledFor) {
+			scheduleLogf("[SCHEDULER] queued admission held job=%s reason=%s", job.ID(), decision.Reason)
+			return "", productschedule.ErrSkip
+		}
+		job = current
+	}
+
 	// One identity for the run record.
 	runID := firstNonEmptyTrimmed(options.RunID, uuid.NewString())
 	ledger, err := s.recordCrewTimerAdmission(runCtx, job, runID, triggerSource, scheduledFor, run.StartedAt)
