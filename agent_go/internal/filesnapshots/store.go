@@ -264,7 +264,7 @@ func excluded(path string, dir bool) bool {
 	// matcher below additionally handles ignore files within nested repositories.
 	for _, part := range strings.Split(path, "/") {
 		switch strings.ToLower(part) {
-		case "dist", "build", "target", "vendor", "coverage":
+		case "dist", "build", "target", "vendor", "coverage", "node_modules", ".next", ".venv":
 			return true
 		}
 	}
