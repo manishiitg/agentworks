@@ -373,28 +373,40 @@ def inspect_automation_source(files):
         def plain(value, limit=80):
             return value if len(value) <= limit else value[:limit - 3] + '...'
 
-        def operand(value):
+        def step_title(module, value):
+            """The title of the @step a call in a condition runs, or None."""
+            if isinstance(value, ast.Call):
+                call_module, call_name = target(module, value.func)
+                if call_module in trees:
+                    return decorated(call_module, call_name)[1]
+            return None
+
+        def operand(module, value):
+            title = step_title(module, value)
+            if title:
+                return title
             if isinstance(value, ast.Constant):
                 return value.value if isinstance(value.value, str) else str(value.value)
             if isinstance(value, (ast.Tuple, ast.List, ast.Set)) and value.elts:
-                return ' or '.join(operand(item) for item in value.elts)
+                return ' or '.join(operand(module, item) for item in value.elts)
             if isinstance(value, (ast.Name, ast.Attribute)):
                 return ast.unparse(value).replace('_', ' ')
             return ast.unparse(value)
 
-        def words(value):
+        def words(module, value):
             """A short plain-words reading of a condition. Never evaluates it."""
             compare = {ast.Eq: 'is', ast.NotEq: 'is not', ast.In: 'is one of', ast.NotIn: 'is not one of',
                        ast.Lt: 'is less than', ast.Gt: 'is more than', ast.LtE: 'is at most',
                        ast.GtE: 'is at least', ast.Is: 'is', ast.IsNot: 'is not'}
             if isinstance(value, ast.Compare) and len(value.ops) == 1 and type(value.ops[0]) in compare:
-                text = f'{operand(value.left)} {compare[type(value.ops[0])]} {operand(value.comparators[0])}'
+                says = step_title(module, value.left) and isinstance(value.ops[0], (ast.Eq, ast.Is))
+                text = f'{operand(module, value.left)} {"says" if says else compare[type(value.ops[0])]} {operand(module, value.comparators[0])}'
             elif isinstance(value, ast.BoolOp):
-                text = (' and ' if isinstance(value.op, ast.And) else ' or ').join(words(item) for item in value.values)
+                text = (' and ' if isinstance(value.op, ast.And) else ' or ').join(words(module, item) for item in value.values)
             elif isinstance(value, ast.UnaryOp) and isinstance(value.op, ast.Not):
-                text = 'not ' + words(value.operand)
-            elif isinstance(value, (ast.Name, ast.Attribute)):
-                text = operand(value)
+                text = 'not ' + words(module, value.operand)
+            elif isinstance(value, (ast.Name, ast.Attribute)) or step_title(module, value):
+                text = operand(module, value)
             else:
                 text = ast.unparse(value)
             return plain(text)
@@ -422,6 +434,25 @@ def inspect_automation_source(files):
                         return fn, literal(module, argument(decoration, 0, 'title')) or name
             return None, None
 
+        def step_agents(module, fn):
+            """The agent calls and other steps written directly in a step's body (nested functions are not entered)."""
+            found = []
+
+            def visit(node):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                    return
+                if isinstance(node, ast.Call):
+                    call_module, call_name = target(module, node.func)
+                    if (call_module, call_name) == ('agentworks', 'agent'):
+                        found.append(node)
+                    elif call_module in trees and decorated(call_module, call_name)[0] is not None:
+                        found.append(None)
+                for child in ast.iter_child_nodes(node):
+                    visit(child)
+            for statement in fn.body:
+                visit(statement)
+            return found
+
         def walk_call(module, expression, expand=True):
             found = False
             # Visit arguments before their surrounding call, as Python does.
@@ -440,8 +471,14 @@ def inspect_automation_source(files):
                 return True
             fn, label = decorated(name_module, name) if name_module in trees else (None, None)
             if fn is not None:
-                add(expression, module, 'script', label,
-                    f'{filenames[name_module]}:{name}@{filenames[module]}:{expression.lineno}')
+                identity = f'{filenames[name_module]}:{name}@{filenames[module]}:{expression.lineno}'
+                inner = step_agents(name_module, fn)
+                if len(inner) == 1 and inner[0] is not None:
+                    # A step whose body is one agent call is that agent: one row with the step's title and the call's own settings.
+                    add(expression, module, 'agent', label, identity,
+                        literal(name_module, argument(inner[0], 1, 'message')), settings=call_settings(inner[0]))
+                    return True
+                add(expression, module, 'script', label, identity)
                 if expand:
                     block(name_module, fn.body, False)
                 return True
@@ -468,7 +505,7 @@ def inspect_automation_source(files):
                     current, first = statement, True
                     while True:
                         case = container(module, current.lineno, 'case',
-                                         comment_above(module, current.lineno) or words(current.test), 'case')
+                                         comment_above(module, current.lineno) or words(module, current.test), 'case')
                         with nested(case):
                             if not first:
                                 walk_call(module, current.test, expand)
@@ -486,10 +523,10 @@ def inspect_automation_source(files):
                         break
             elif isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
                 if isinstance(statement, ast.While):
-                    default = 'Repeat while ' + words(statement.test)
+                    default = 'Repeat while ' + words(module, statement.test)
                 else:
                     walk_call(module, statement.iter, expand)
-                    default = 'Repeat for each ' + operand(statement.target)
+                    default = 'Repeat for each ' + operand(module, statement.target)
                 repeat = container(module, statement.lineno, 'repeat', comment_above(module, statement.lineno) or default, 'repeat')
                 with nested(repeat):
                     if isinstance(statement, ast.While):
@@ -525,11 +562,11 @@ def inspect_automation_source(files):
                         if item.guard is None and isinstance(item.pattern, ast.MatchAs) and item.pattern.pattern is None:
                             default = 'Otherwise'
                         elif isinstance(item.pattern, ast.MatchValue):
-                            default = f'{operand(statement.subject)} is {operand(item.pattern.value)}'
+                            default = f'{operand(module, statement.subject)} is {operand(module, item.pattern.value)}'
                         else:
                             default = plain(ast.unparse(item.pattern))
                         if item.guard is not None and default != 'Otherwise':
-                            default = plain(f'{default}, and {words(item.guard)}')
+                            default = plain(f'{default}, and {words(module, item.guard)}')
                         case = container(module, number, 'case', comment_above(module, number) or default, 'case')
                         with nested(case):
                             if item.guard is not None:

@@ -7,14 +7,16 @@ interface SyntaxHighlightedCodeProps {
   language: string
   isDark: boolean
   showLineNumbers?: boolean
+  wrapLongLines?: boolean
 }
 
-const SyntaxHighlightedCode: React.FC<SyntaxHighlightedCodeProps> = ({ code, language, isDark, showLineNumbers = false }) => (
+const SyntaxHighlightedCode: React.FC<SyntaxHighlightedCodeProps> = ({ code, language, isDark, showLineNumbers = false, wrapLongLines = false }) => (
   <SyntaxHighlighter
     style={isDark ? (oneDark as { [key: string]: React.CSSProperties }) : (prism as { [key: string]: React.CSSProperties })}
     language={language}
     PreTag="div"
     showLineNumbers={showLineNumbers}
+    wrapLongLines={wrapLongLines}
     className="!m-0 !p-0"
     customStyle={{
       margin: 0,

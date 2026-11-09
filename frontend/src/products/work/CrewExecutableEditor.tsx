@@ -68,7 +68,7 @@ export function CrewExecutableEditor({
     try {
       await openWorkspacePaneChatWithDraft({
         tabId: chatTabId,
-        message: `${task}\n\nWorkflow: ${item.manifest.label}\nWorkspace: ${item.workspace_path}`,
+        message: `${task}\n\nWorkflow: ${item.manifest.label}`,
       })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Open your Crew chat to continue.')

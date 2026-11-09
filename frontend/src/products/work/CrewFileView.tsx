@@ -27,6 +27,6 @@ export function CrewFileView({ workspacePath, file }: {
   return <PageCard title={file} testId="crew-file-view">
     {error ? <p role="alert" className="px-4 py-3 text-sm text-destructive">{error}</p>
       : content === null ? <p className="px-4 py-3 text-sm text-muted-foreground">Loading…</p>
-      : <div className="max-h-[75vh] overflow-auto"><Suspense fallback={<p className="px-4 py-3 text-sm text-muted-foreground">Loading…</p>}><Code code={content} language={languageOf(file)} isDark={isDark} showLineNumbers /></Suspense></div>}
+      : <div className="max-h-[75vh] overflow-auto"><Suspense fallback={<p className="px-4 py-3 text-sm text-muted-foreground">Loading…</p>}><Code code={content} language={languageOf(file)} isDark={isDark} showLineNumbers wrapLongLines /></Suspense></div>}
   </PageCard>
 }

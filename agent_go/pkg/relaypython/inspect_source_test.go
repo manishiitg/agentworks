@@ -281,9 +281,9 @@ def main():
 		"If this fails [failure] in Try",
 		"Helper in If this fails",
 		"Choose a path [branch]",
-		"mode is gold, and check_limit(account) [case] in Choose a path",
-		"Check limit in mode is gold, and check_limit(account)",
-		"Send receipt in mode is gold, and check_limit(account)",
+		"mode is gold, and Check limit [case] in Choose a path",
+		"Check limit in mode is gold, and Check limit",
+		"Send receipt in mode is gold, and Check limit",
 	}
 	if strings.Join(rows, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("outline rows:\n%s\nwant:\n%s", strings.Join(rows, "\n"), strings.Join(want, "\n"))

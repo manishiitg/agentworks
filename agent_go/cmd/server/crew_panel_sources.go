@@ -306,6 +306,10 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 		{id: "schedules", title: "Schedules", allowed: owner && api.scheduler != nil, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data struct{ Jobs []ScheduledJobResponse }
 			err := read(ctx, listScheduledJobsHandler(api.scheduler), "/api/schedules", url.Values{"entity_type": {"product"}, "limit": {"100000"}, "workspace_path": {workspace}}, &data)
+			// A person who may not see this Crew's schedules gets the plain empty list, like Watchers and Webhooks.
+			if denied, ok := err.(crewPanelReadError); ok && (denied.status == http.StatusForbidden || denied.status == http.StatusNotFound) {
+				err = nil
+			}
 			section := crewPanelSection{}
 			for _, job := range data.Jobs {
 				if strings.TrimRight(job.WorkspacePath, "/") != strings.TrimRight(workspace, "/") {
@@ -383,7 +387,8 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace, c
 				return section, err
 			}
 			for _, binding := range records {
-				if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(workspace) {
+				// Kind "script" records are the Crew's saved helper functions, not workflows.
+				if binding.Kind != "workflow" || canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(workspace) {
 					continue
 				}
 				label := "Workflow"
