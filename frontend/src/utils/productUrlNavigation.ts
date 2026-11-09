@@ -50,11 +50,23 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
   let lastSelection = productRoutePath(readProductNavigation())
   let timer: ReturnType<typeof setTimeout> | undefined
   let replace = false
+  let traversing = false
+  // PLAT-746-758: popstate changes the URL before React settles the old view.
+  // Cancel its pending write synchronously; pushing that stale selection here
+  // would discard Forward. The route boundary installs a fresh observer only
+  // after the destination has been admitted and activated.
+  const onPop = () => {
+    traversing = true
+    clearTimeout(timer)
+    timer = undefined
+  }
+  window.addEventListener('popstate', onPop)
   const sameDestination = () => {
     const route = currentProductRoute(), selection = readProductNavigation()
     return route?.surface === selection.surface && route.id === selection.id && Boolean(route.overview) === Boolean(selection.overview)
   }
   const schedule = (change: HistoryChange, explicit = false) => {
+    if (traversing) return
     // Background hydration must not navigate away from the Home page.
     const scheduledOnHome = window.location.pathname === '/home' || Boolean(workspaceSettingsPage())
     if (scheduledOnHome && (!explicit || change !== 'navigation')) return
@@ -107,6 +119,7 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
     useWorkflowStore.subscribe((state, previous) => { if (isWorkflow() && state.workflowWorkspaceView !== previous.workflowWorkspaceView) schedule('navigation') }),
   ]
   return () => {
+    window.removeEventListener('popstate', onPop)
     clearTimeout(timer)
     if (notify === navigate) notify = undefined
     unsubscribers.forEach(unsubscribe => unsubscribe())
