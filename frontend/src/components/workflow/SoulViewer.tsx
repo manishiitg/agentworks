@@ -45,7 +45,6 @@ export function SoulViewer({ workspacePath, embedded = false }: SoulViewerProps)
   }, [load])
 
   if (loading && !content) {
-
     return (
       <div className={`flex items-center justify-center gap-2 text-sm text-muted-foreground ${embedded ? 'min-h-40' : 'h-full'}`}>
         <Loader2 className="h-4 w-4 animate-spin" /> Loading soul…
@@ -54,7 +53,6 @@ export function SoulViewer({ workspacePath, embedded = false }: SoulViewerProps)
   }
 
   if (error) {
-
     return (
       <div className={`flex items-center justify-center p-6 ${embedded ? 'min-h-40' : 'h-full'}`}>
         <div className="max-w-md rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
@@ -65,7 +63,6 @@ export function SoulViewer({ workspacePath, embedded = false }: SoulViewerProps)
   }
 
   if (exists === false || !content.trim()) {
-
     return (
       <div className={`flex items-center justify-center p-6 text-center ${embedded ? 'min-h-40' : 'h-full'}`}>
         <div className="max-w-md text-sm text-muted-foreground">
@@ -74,7 +71,6 @@ export function SoulViewer({ workspacePath, embedded = false }: SoulViewerProps)
       </div>
     )
   }
-
 
   return (
     <div className={embedded ? 'px-4 py-4 sm:px-5' : 'h-full overflow-y-auto px-6 py-5'}>
