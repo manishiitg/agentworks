@@ -34,6 +34,9 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
     }
   } else if (route.id && (route.surface === 'work')) {
     const { cachedWorkSession, rememberWorkAgentList, normalizeWorkWorkspaceView, SHARED_CREW_WORKSPACE_PANELS } = await import('../products/work/WorkSurface')
+    // Captured here: `route` is reassigned below, which would drop the narrowing of surface and id.
+    const workSurface = route.surface
+    const projectId = route.id
     const project = cachedWorkSession(route.id)
     const key = route.agent === 'main' ? route.id : route.agent ? `${route.id}:chat:${route.agent}` : undefined
     const cached = project && (!project.shared || project.shared.canBuild) && key ? Object.values(useChatStore.getState().chatTabs).find(tab =>
@@ -65,17 +68,17 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
       const [{ loadProductProjects }, { projectProductConfig }, { loadSharedWorkSessions }] = await Promise.all([
         import('../platform/chat/productProjects'), import('../products/work/projectProduct'), import('../products/work/workSessions'),
       ])
-      const product = projectProductConfig(route.surface)
+      const product = projectProductConfig(workSurface)
       const [owned, shared] = await Promise.all([
         loadProductProjects(product.projectsRoot, product.profileId, { includeOwnSharedProjects: product.listsSharedProjects }),
         loadSharedWorkSessions(product),
       ])
-      const item = [...owned, ...shared].find(item => item.id === route.id)
+      const item = [...owned, ...shared].find(item => item.id === projectId)
       if (!item) {
         // The server gives a plain, non-identifying reason. Missing inventory is
         // not a browser-side decision about membership or why it was removed.
         try {
-          await api.get(`/api/crew-teams/${encodeURIComponent(route.id)}`, { signal, skipSessionContext: true })
+          await api.get(`/api/crew-teams/${encodeURIComponent(projectId)}`, { signal, skipSessionContext: true })
         } catch (error) {
           const detail = (error as { response?: { data?: { error?: { code?: string; message?: string } } } })?.response?.data?.error
           if (detail?.code === 'team_forbidden' && detail.message) throw new ProductUnavailable(detail.message)
