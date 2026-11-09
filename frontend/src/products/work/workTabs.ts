@@ -111,7 +111,7 @@ export type WorkChatTabShortcut = { kind: 'tab'; index: number } | { kind: 'new'
  * same modifier as Cmd/Ctrl+K (owner 2026-10-07). In a browser tab, Chrome
  * keeps Cmd/Ctrl+1..8 for its own tabs, so Alt+1..5 stays as the fallback.
  * Alt+Shift+T opens a new chat (Cmd/Ctrl+Shift+T reopens a browser tab).
- * Cmd/Ctrl+Left/Right follows browser Back/Forward, throughout the app, including composers and terminals.
+ * Cmd/Ctrl+Left/Right follows browser Back/Forward, except while typing in a text field, editor or terminal.
  * The physical key is read, because Option changes the character on a Mac.
  */
 export function workChatTabShortcut(event: Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'code' | 'key'>): WorkChatTabShortcut | null {
