@@ -83,7 +83,6 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
-  const [removing, setRemoving] = useState(false)
   const timer = useRef<number | undefined>(undefined)
   // On a phone the card is a bottom sheet over a backdrop; the backdrop closes it with its own click, so the tap does
   // not fall through to what is underneath.
@@ -145,15 +144,9 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         {info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
         {info.onAutomations && <button type="button" onClick={() => finish(info.onAutomations!)} className="text-primary hover:underline">Automations…</button>}
       </div>
-      {info.onRemove && <div className="mt-2 flex items-center gap-3 border-t border-border pt-1.5">
-        {removing ? <>
-          <span className="text-muted-foreground">Remove {info.name}? Its chat is deleted.</span>
-          <button type="button" onClick={() => { setRemoving(false); finish(info.onRemove!) }} className="text-destructive hover:underline">Remove</button>
-          <button type="button" onClick={() => setRemoving(false)} className="text-muted-foreground hover:underline">Keep</button>
-        </> : <button type="button" onClick={() => setRemoving(true)} className="text-muted-foreground hover:text-destructive hover:underline max-md:min-h-10">Remove agent…</button>}
+      {info.onRemove && <div className="mt-2 border-t border-border pt-1.5">
+        <button type="button" onClick={() => confirmRemoveAgent(info.name, () => finish(info.onRemove!))} className="text-muted-foreground hover:text-destructive hover:underline max-md:min-h-10">Remove agent…</button>
       </div>}
-      {actions && <div className="mt-2 border-t border-border pt-1.5"><AgentActionsMenu name={info.name} actions={actions} pinned={pinned} onDone={() => setAt(null)} /></div>}
-      {!sheet && <p className="mt-2 border-t border-border pt-1.5 text-[11px] text-muted-foreground">{AGENT_KEY}← {AGENT_KEY}→ back / forward</p>}
     </div></>, document.body)}
   </>
 }
@@ -178,11 +171,15 @@ export function AgentHeaderLine({ tabId, crewName, showName = true, onOpenIdenti
   </div>
 }
 
+/** One explicit popup, shared by the agent card and its actions menu. */
+function confirmRemoveAgent(name: string, remove: () => void) {
+  if (window.confirm(`Remove ${name}?\n\nThis permanently deletes this agent and its saved AgentWorks chat history, including earlier chats for this agent. This cannot be undone.\n\nProject files and other agents are not deleted. To keep the history, choose Cancel and use Hide from list instead.`)) remove()
+}
+
 /** One agent's actions, the same as the tab strip's (owner, 4 Nov): rename, move up or down, hide from or show in the
  * list (owner, 4 Nov: Close = Hide). Used by the left menu's "…" and the agent card in the collapsed rail. */
 export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: string; actions: CrewAgentActions; pinned?: boolean; onDone: () => void }) {
   const [draft, setDraft] = useState<string | null>(null)
-  const [removing, setRemoving] = useState(false)
   const item = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs max-md:min-h-10 max-md:text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const run = (action: () => void) => { action(); onDone() }
   if (draft !== null) return <input autoFocus aria-label={`New name for ${name}`} value={draft} onChange={event => setDraft(event.target.value)}
@@ -199,9 +196,6 @@ export function AgentActionsMenu({ name, actions, pinned, onDone }: { name: stri
     {actions.setPinned && (pinned
       ? <button type="button" role="menuitem" className={item} onClick={() => run(() => actions.setPinned!(false))}><EyeOff aria-hidden="true" className="h-3.5 w-3.5" />Hide from list</button>
       : <button type="button" role="menuitem" className={item} onClick={() => run(() => actions.setPinned!(true))}><Eye aria-hidden="true" className="h-3.5 w-3.5" />Show in list</button>)}
-    {actions.remove && (removing
-      ? <div className="border-t border-border px-2 pt-1.5 text-xs"><p className="text-muted-foreground">Remove {name}? Its chat is deleted.</p>
-          <div className="mt-1 flex gap-3"><button type="button" className="text-destructive hover:underline" onClick={() => run(actions.remove!)}>Remove</button><button type="button" className="text-muted-foreground hover:underline" onClick={() => setRemoving(false)}>Keep</button></div></div>
-      : <button type="button" role="menuitem" className={`${item} border-t border-border text-destructive`} onClick={() => setRemoving(true)}><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>)}
+    {actions.remove && <button type="button" role="menuitem" className={`${item} border-t border-border text-destructive`} onClick={() => confirmRemoveAgent(name, () => run(actions.remove!))}><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>}
   </div>
 }
