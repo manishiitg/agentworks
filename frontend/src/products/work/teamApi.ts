@@ -330,5 +330,11 @@ export function teamWizard(target: TeamTarget): Promise<TeamWizardView> {
   return teamRequest<TeamWizardView>({ project: target.project, connection: target.connection }, '/setup')
 }
 export async function finishTeamWizard(target: TeamTarget, choice: TeamWizardChoice): Promise<void> {
-  try { await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/setup', 'POST', choice) } finally { changed() }
+  try { await teamRequest<unknown>({ project: target.project, connection: target.connection }, '/setup', 'POST', choice) }
+  catch (cause) {
+    // A partly saved Team reloads the tab (the wizard is gone), so the server's line goes to the tab to keep showing.
+    const failure = teamFailure(cause)
+    if (failure.code === 'setup_partial') window.dispatchEvent(new CustomEvent('agentworks:team-notice', { detail: failure.message }))
+    throw cause
+  } finally { changed() }
 }

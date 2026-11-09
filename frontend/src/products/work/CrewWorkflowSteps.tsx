@@ -45,7 +45,7 @@ function OutlineRows({ nodes, byName, checkLines, parent, numbered = false, open
           lines={[node.type === 'agent' ? 'Agent' : '',
             agent && <span>{modelText(agent, false)}{agent.source === 'default' && <span className="ml-1.5 text-[11px] text-muted-foreground/70">default</span>}</span>,
             step?.detail, checkLines.get(step?.id ?? '')]}
-          action={agent && <ChangeButton label={`Change the model for ${node.label}`} onClick={() => void onAsk(`Change the model for “${node.label}” in ${workflow}. It uses ${agent.provider} · ${agent.model} today. I want: `)} />} />
+          action={agent && <ChangeButton label={`Change the model for ${node.label}`} onClick={() => void onAsk(`Change the model for “${node.label}” in ${workflow}. It uses ${modelText(agent, false)} today. I want: `)} />} />
       }
       const inside = stepsIn(node.id)
       const count = node.role === 'branch' ? `${nodes.filter(child => child.parent === node.id).length} cases` : `${inside.length} step${inside.length === 1 ? '' : 's'}`
@@ -104,7 +104,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   return <PageCard title={title} hint={<>
       {`${count} step${count === 1 ? '' : 's'} · ${lastRun}`}
       {defaultAgent && <span className="mt-1 flex flex-wrap items-center gap-2"><span className="rounded-full border border-border px-2 py-0.5 text-foreground"><span className="text-muted-foreground">Default agent</span> {modelText(defaultAgent, true)}</span>
-        <ChangeButton label="Change the default model of this workflow" onClick={() => void onAsk(`Change the default model of “${title}”. It uses ${defaultAgent.provider} · ${defaultAgent.model} today. I want: `)} /></span>}
+        <ChangeButton label="Change the default model of this workflow" onClick={() => void onAsk(`Change the default model of “${title}”. It uses ${modelText(defaultAgent, false)} today. I want: `)} /></span>}
     </>} onAsk={() => onAsk('Help me change this workflow.')}
     testId="crew-workflow-steps">
     {nodes.length

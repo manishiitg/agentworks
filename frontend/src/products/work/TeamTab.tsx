@@ -77,6 +77,12 @@ function useFolderSize(target: TeamTarget, query?: string) {
 export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?: () => void }) {
   const state = useTeamTab(projectId)
   const { view, target, error } = state
+  const [notice, setNotice] = useState('') // the server's line after a partly saved wizard, until dismissed
+  useEffect(() => {
+    const show = (event: Event) => setNotice(String((event as CustomEvent).detail || ''))
+    window.addEventListener('agentworks:team-notice', show)
+    return () => window.removeEventListener('agentworks:team-notice', show)
+  }, [])
   const [noTeam, setNoTeam] = useState(false) // step 1 "No": nothing is saved, the normal tab shows until it is reopened
   // The Mac app's own Crew before Mac online pairs it: the Team is off, and turning it on turns Mac online on too.
   if (state.unbound) return <section aria-label="People" className={card}>
@@ -92,6 +98,7 @@ export function TeamTab({ projectId, onTurnOn }: { projectId: string; onTurnOn?:
   const { team } = view
   if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} />
   return <div className="space-y-3">
+    {notice && <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1">{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="shrink-0 hover:text-foreground"><X className="h-3.5 w-3.5" /></button></p>}
     {team.on && <p className="px-1 text-[13px] text-muted-foreground">{view.intro}</p>}
     <PeopleCard view={view} target={target} projectId={projectId} />
     {team.on && <>

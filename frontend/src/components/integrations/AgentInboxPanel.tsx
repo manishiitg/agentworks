@@ -46,11 +46,10 @@ export function AgentInboxPanel({ workspacePath, refreshToken = 0, embedded = fa
   if (embedded) {
     const address = state?.inbox.address
     const week = mail.filter(message => message.received_at > Date.now() - 7 * 86400000).length
-    const status = !state ? 'Loading…' : !state.enabled ? 'Incoming email is off for this Crew.' : state.receiving ? `${week} ${week === 1 ? 'message' : 'messages'} this week · each starts a chat` : 'Checking the Crew owner’s Gmail…'
+    if (state && !state.enabled && !state.can_configure) return <section aria-label="Agent inbox"><p className="px-4 py-3 text-sm text-muted-foreground">Incoming email is off for this Crew.</p></section>
+    const status = !state ? 'Loading…' : !state.enabled ? 'Off.' : state.receiving ? `${week} ${week === 1 ? 'message' : 'messages'} this week · each starts a chat` : 'Checking the Crew owner’s Gmail…'
     return <section aria-label="Agent inbox">
-      {state && (state.can_configure
-        ? <PageRow title="Incoming email" lines={[state.enabled ? 'Anyone can email this Crew’s address.' : 'Off. Email to this Crew is not received.']} action={<Switch aria-label={state.enabled ? 'Turn incoming email off' : 'Turn incoming email on'} checked={state.enabled} disabled={busy} onCheckedChange={on => void setIncoming(on)} />} />
-        : !state.enabled && <p className="px-4 pt-3 text-xs text-muted-foreground">Incoming email is off for this Crew.</p>)}
+      {state?.can_configure && <PageRow title="Incoming email" lines={[state.enabled ? 'Anyone can email this Crew’s address.' : 'Off. Email to this Crew is not received.']} action={<Switch aria-label={state.enabled ? 'Turn incoming email off' : 'Turn incoming email on'} checked={state.enabled} disabled={busy} onCheckedChange={on => void setIncoming(on)} />} />}
       {error && <p role="alert" className="px-4 pt-3 text-xs text-destructive">{error}</p>}
       {notice && <p role="status" className="px-4 pt-3 text-xs">{notice}</p>}
       {state && state.enabled && state.error && <p className="px-4 pt-3 text-xs text-destructive">{state.error}</p>}

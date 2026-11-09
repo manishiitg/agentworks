@@ -132,10 +132,17 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 	}
 	ctx, cancel := context.WithTimeout(ctx, longest)
 	defer cancel()
+	started := time.Now()
+	slowest, slowestFor := "", time.Duration(0)
+	defer func() {
+		// One line per panel read: which section made it slow (no user data).
+		log.Printf("[CREW_PANEL] project=%s total_ms=%d slowest=%s slowest_ms=%d", key.project, time.Since(started).Milliseconds(), slowest, slowestFor.Milliseconds())
+	}()
 	type result struct {
 		index   int
 		section crewPanelSection
 		err     error
+		took    time.Duration
 	}
 	results := make(chan result, len(sources))
 	out := make([]crewPanelSection, len(sources))
@@ -156,11 +163,12 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			}
 			sourceCtx, done := context.WithTimeout(ctx, limit)
 			defer done()
+			began := time.Now()
 			section, err := source.read(sourceCtx)
 			if err == nil && sourceCtx.Err() != nil {
 				err = sourceCtx.Err()
 			}
-			results <- result{i, section, err}
+			results <- result{i, section, err, time.Since(began)}
 		}(i, source)
 	}
 	finish := func(i int, section crewPanelSection, err error) {
@@ -195,6 +203,9 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 	for len(pending) > 0 {
 		select {
 		case result := <-results:
+			if result.took > slowestFor {
+				slowest, slowestFor = sources[result.index].id, result.took
+			}
 			finish(result.index, result.section, result.err)
 		case <-ctx.Done():
 			for i := range pending {
@@ -549,6 +560,19 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 				details[kind.destination] = "Could not load"
 			}
 		}
+	}
+	// The Connections row's one line: how many are on, from the rows above.
+	connectedCount := 0
+	for _, section := range sections {
+		for _, row := range section.Rows {
+			if strings.HasPrefix(row.Destination, "mcp:") && row.Connected {
+				connectedCount++
+			}
+		}
+	}
+	details["connections"] = "None yet"
+	if connectedCount > 0 {
+		details["connections"] = fmt.Sprintf("%d connected", connectedCount)
 	}
 	if _, ok := details["mcp:connected"]; !ok {
 		for _, section := range sections {
