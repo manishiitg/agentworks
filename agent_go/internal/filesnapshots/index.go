@@ -458,7 +458,7 @@ func (s Store) captureListed(ctx context.Context, ref, prior string, stats *Capt
 	// non-regular types too so policy size exclusions cannot hide them. Read
 	// failures without usable metadata remain unknown.
 	rememberSkipped := func(path string, info os.FileInfo) {
-		skippedState[path] = fmt.Sprintf("%d:%d:%d", info.Size(), info.ModTime().UnixNano(), info.Mode())
+		skippedState[path] = skippedFingerprint(info)
 	}
 	// Concurrent deletes are ordinary working-tree changes. An unreadable path
 	// is omitted on both sides of the comparison, never shown as a deletion.
