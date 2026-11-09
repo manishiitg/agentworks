@@ -192,6 +192,8 @@ func crewAccessDashboardShared(shared string) string {
 		return "shared with you"
 	case "Everyone":
 		return "shared with everyone"
+	case "your team":
+		return "your team"
 	}
 	return "shared with " + shared
 }
