@@ -48,7 +48,6 @@ function ProjectList<T extends SidebarProject>({ projects, render, invites }: { 
 function useWorkHistory(projects: SidebarProject[]) {
   const active = getRawActiveWorkspaceId()
   const historyScope = connectedWorkHistoryScope()
-  const recent = useProjectMenuHistoryStore(state => state.recent[historyScope])
   const pinned = useProjectMenuHistoryStore(state => state.pinned[historyScope])
   const setPinned = useProjectMenuHistoryStore(state => state.setPinned)
   const movePinned = useProjectMenuHistoryStore(state => state.movePinned)
@@ -56,7 +55,7 @@ function useWorkHistory(projects: SidebarProject[]) {
   const selectedProject = projects.find(project => project.selected)
   const selectedKey = selectedProject ? connectedProjectKey(active, selectedProject.kind, selectedProject.id) : ''
   useEffect(() => { if (selectedKey) visit(historyScope, selectedKey) }, [historyScope, selectedKey, visit])
-  return { recent, pinned, movePinned: (key: string, target: string) => movePinned(historyScope, key, target), canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value), visit: (key: string) => visit(historyScope, key) }
+  return { pinned, movePinned: (key: string, target: string) => movePinned(historyScope, key, target), canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value), visit: (key: string) => visit(historyScope, key) }
 }
 export function DesktopConnections({ children, projects = [] }: { children?: ReactNode; projects?: SidebarProject[] }) {
   const crews = projects.filter(project => project.kind === 'crew')
@@ -80,14 +79,9 @@ function AllProjects({ children }: { children: ReactNode }) {
 }
 function StandaloneWork({ children, projects }: { children?: ReactNode; projects: SidebarProject[] }) {
   const allProjectsExpanded = useAllProjectsExpanded()
-  const { recent, pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
-  const orderedProjects = [...projects].sort((a, b) => {
-    const rank = (project: SidebarProject) => {
-      const index = recent?.indexOf(connectedProjectKey(getRawActiveWorkspaceId(), project.kind, project.id)) ?? -1
-      return project.selected && index < 0 ? -1 : index < 0 ? Infinity : index
-    }
-    return rank(a) - rank(b) || a.name.localeCompare(b.name)
-  })
+  const { pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
+  // The full directory stays put when a project is visited. Pins retain their explicit order.
+  const orderedProjects = [...projects].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
   // The open Crew lists its agents under it (owner, 4 Nov, "Left menu").
   const renderProject = ({ location, mac, state, ...project }: SidebarProject) => {
     const pinnedIndex = pinnedProjects.findIndex(item => item.id === project.id && item.kind === project.kind)
@@ -139,7 +133,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
   const connections = connectedLocations(state)
   const inventory = isChatIdentityCurrent(state.identity) ? state.inventory : {}
   const { refresh, refreshActivity, error: directoryError } = state
-  const { recent, pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
+  const { pinned, canPin, setPinned, movePinned, visit } = useWorkHistory(projects)
   const [selectedLocations, setSelectedLocations] = useState<string[]>([active])
   const invites = useTeamInviteRows()
   useEffect(() => {
@@ -167,10 +161,7 @@ function ConnectedServers({ children, projects }: { children?: ReactNode; projec
     }
     if (connection.id === active) for (const project of projects) byId.set(`${project.kind}:${project.id}`, { ...byId.get(`${project.kind}:${project.id}`), ...project })
     return [...byId.values()].map(project => ({ ...project, connection }))
-  }).sort((a, b) => {
-    const rank = (row: typeof a) => { const index = recent?.indexOf(connectedProjectKey(row.connection.id, row.kind, row.id)) ?? -1; return index < 0 ? Infinity : index }
-    return rank(a) - rank(b) || a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.id.localeCompare(b.id)
-  })
+  }).sort((a, b) => a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.connection.id.localeCompare(b.connection.id) || a.id.localeCompare(b.id))
   // Location buttons only filter navigation; the current chat keeps its connection.
   const visible = rows.filter(row => selectedLocations.includes(row.connection.id))
   const keyFor = (project: typeof rows[number]) => connectedProjectKey(project.connection.id, project.kind, project.id)
