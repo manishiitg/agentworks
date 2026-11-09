@@ -91,7 +91,7 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
   // An outline row has no execution identity. Match a single recorded label only; repeated labels stay in Runs.
   const nameOf = (name: string) => name.trim().toLowerCase()
   const byName = new Map(latestSteps.filter(step => latestSteps.filter(other => nameOf(other.name) === nameOf(step.name)).length === 1 && nodes.filter(node => !node.role && nameOf(node.label) === nameOf(step.name)).length === 1).map(step => [nameOf(step.name), step]))
-  const byCall = new Map(latestSteps.filter(step => step.source_call && latestSteps.filter(other => other.source_call === step.source_call).length === 1).map(step => [step.source_call!, step]))
+  const byCall = new Map(latestSteps.filter(step => step.source_call && latestSteps.filter(other => other.source_call === step.source_call).length === 1 && nodes.filter(node => !node.role && node.step_call === step.source_call).length === 1).map(step => [step.source_call!, step]))
   const typeNotes = state.graph?.type_notes ?? []
   // Saved-key guidance already has its own line, and detailed type notes have one expandable summary.
   const advisoryNotes = (state.graph?.notes ?? []).filter(note =>
