@@ -31,10 +31,7 @@ func crewTeamForTab(w http.ResponseWriter, r *http.Request, write bool) (crewTea
 		return crewTeam{}, nil, false
 	}
 	owner := ownerOfCrewProjectID(project)
-	t, err := readCrewTeam(project)
-	if os.IsNotExist(err) && crewProjectOwnedByCallerStrict(claims.UserID, crewProjectRootByID(project)) {
-		t, err = crewTeam{ProjectID: project, OwnerID: owner, People: []crewTeamPerson{}}, nil
-	}
+	t, err := readCrewTeamOrNew(project, claims.UserID)
 	if err != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
 		externalError(w, 403, "team_forbidden", "The Team tab is for people in this Crew's Team. Ask its owner to add you.")
 		return crewTeam{}, nil, false

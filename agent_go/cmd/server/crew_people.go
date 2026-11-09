@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -323,8 +324,9 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 		externalError(w, 400, "invalid_person", "Choose one person and a level: works, dashboards or none.")
 		return
 	}
-	t, err := readCrewTeam(project)
+	t, err := readCrewTeamOrNew(project, claims.UserID)
 	if err != nil || !crewTeamCanManage(t, claims.UserID) {
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=person_refused level=%s reason=team_owner_required", project, logUsernameForUserID(claims.UserID), level)
 		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its people.")
 		return
 	}
@@ -369,7 +371,7 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 	run := func(w http.ResponseWriter, h func(http.ResponseWriter, *http.Request)) bool { return crewPeopleRunShare(w, r, h) }
 	// The Team half: the Team save on the current record with this one change, as the Team tab's people route does.
 	team := func(w http.ResponseWriter, add bool) bool {
-		current, err := readCrewTeam(project)
+		current, err := readCrewTeamOrNew(project, claims.UserID)
 		if err != nil {
 			externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its people.")
 			return false
@@ -439,6 +441,7 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		fresh = t
 	}
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=person_changed level=%s team_on=%t people=%d", project, logUsernameForUserID(claims.UserID), level, fresh.On, len(fresh.People))
 	externalJSON(w, map[string]any{"changed": true, "view": api.crewPeopleViewFor(claims, fresh)})
 }
 
@@ -500,6 +503,7 @@ func (api *StreamingAPI) changeCrewEveryone(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		fresh = t
 	}
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=person_changed level=%s team_on=%t people=%d", project, logUsernameForUserID(claims.UserID), level, fresh.On, len(fresh.People))
 	externalJSON(w, map[string]any{"changed": true, "view": api.crewPeopleViewFor(claims, fresh)})
 }
 
