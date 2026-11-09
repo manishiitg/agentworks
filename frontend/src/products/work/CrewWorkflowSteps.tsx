@@ -83,7 +83,8 @@ export function CrewWorkflowSteps({ workspacePath, title, latestSteps, latestEvi
       .catch(() => { if (current) setState({ workspacePath }) })
     return () => { current = false }
   }, [workspacePath])
-  if (state?.workspacePath !== workspacePath) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>
+  // The card keeps its place while the outline loads, so nothing below it moves when the steps arrive.
+  if (state?.workspacePath !== workspacePath) return <PageCard title={title} testId="crew-workflow-steps"><p className="px-4 py-3 text-xs text-muted-foreground">Loading steps…</p></PageCard>
   const nodes = state.graph?.nodes ?? []
   const checkLines = stepChecks(latestEvidence)
   // An outline row has no execution identity. Match a single recorded label only; repeated labels stay in Runs.

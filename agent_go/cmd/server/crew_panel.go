@@ -296,11 +296,12 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 // reads (owner, 5 Nov: the side menu's separate Dashboards item moved here).
 func crewPanelDashboardLine(sections []crewPanelSection) {
 	var access *crewPanelAccess
+	accessAt := -1
 	shared, listed, paths := "", false, []string{}
 	for i := range sections {
 		switch s := &sections[i]; s.ID {
 		case "access":
-			access = s.Access
+			access, accessAt = s.Access, i
 		case "sharing":
 			if s.Error == "" {
 				shared = s.shared
@@ -317,7 +318,10 @@ func crewPanelDashboardLine(sections []crewPanelSection) {
 	if access == nil || !listed {
 		return
 	}
-	access.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(paths, shared))
+	// A copy: the cached section shares its Access, and adding the line in place would add it again on every read.
+	shown := *access
+	shown.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(paths, shared))
+	sections[accessAt].Access = &shown
 }
 
 func crewPanelRead(r *http.Request, handler http.HandlerFunc, method, route string, vars map[string]string, query url.Values, body, out any) error {
@@ -394,13 +398,20 @@ func crewPanelAgo(since time.Duration) string {
 
 // crewPanelWorkflowLine is one workflow's summary from its newest run: "4 steps · last run finished 2h ago".
 // folders arrive newest first.
-func crewPanelWorkflowLine(folders []RunFolderInfo, now time.Time) string {
+func crewPanelWorkflowLine(folders []RunFolderInfo, steps int, now time.Time) string {
 	if len(folders) == 0 || folders[0].Metadata == nil {
+		if steps > 0 {
+			return crewPanelCount(steps, "step") + " · not run yet"
+		}
 		return "Not run yet"
 	}
 	meta := folders[0].Metadata
 	parts := []string{}
-	if n := len(meta.PythonSteps); n > 0 {
+	n := steps
+	if n <= 0 {
+		n = len(meta.PythonSteps)
+	}
+	if n > 0 {
 		parts = append(parts, crewPanelCount(n, "step"))
 	}
 	at, _ := runFolderTime(folders[0])
@@ -534,6 +545,8 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 		for _, section := range sections {
 			if section.ID == kind.section && section.Error == "" {
 				details[kind.destination] = "None yet"
+			} else if section.ID == kind.section {
+				details[kind.destination] = "Could not load"
 			}
 		}
 	}

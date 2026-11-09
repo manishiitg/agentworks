@@ -223,11 +223,11 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, fo
       <Costs workspacePath={workspacePath} runFolders={folders.map(folder => folder.name)} selectedRunFolder={null} />
     </Suspense></div>
   </div>
-  if (opened) return <OpenedRun key={`${workflowId}:${opened.name}`} workflowId={workflowId} canResume={opened.metadata?.can_resume === true} workspacePath={workspacePath} script={script} folder={opened} cost={costOf(opened.name)} detail={view.detail} onDetail={detail => onView({ ...view, detail })} onBack={() => view.detail ? onView({ ...view, detail: null }) : setOpen(null)} onRefresh={onRefresh} onAsk={onAsk} />
+  if (opened) return <OpenedRun key={`${workflowId}:${opened.name}`} workflowId={workflowId} canResume={opened.metadata?.can_resume === true} workspacePath={workspacePath} script={script} folder={opened} cost={costOf(opened.name)} detail={view.detail} onDetail={detail => onView({ ...view, detail })} onRefresh={onRefresh} onAsk={onAsk} />
   const weekAgo = Date.now() - 7 * 86_400_000
   const finishedCount = folders.filter(folder => folder.metadata?.status === 'completed').length
   const failedCount = folders.filter(folder => folder.metadata?.status === 'failed').length
-  const costsLoaded = totals !== null && Object.keys(totals).length > 0
+  const costsLoaded = totals !== null && Object.values(totals).some(amount => amount > 0)
   const spend = (since: number) => folders.filter(folder => new Date(startedAt(folder)).getTime() >= since).reduce((sum, folder) => sum + (costOf(folder.name) ?? 0), 0)
   const startOfToday = new Date(new Date().toDateString()).getTime()
   const hint = folders.length ? [`${folders.length} run${folders.length === 1 ? '' : 's'}`, finishedCount ? `${finishedCount} finished` : '', failedCount ? `${failedCount} failed` : '', costsLoaded ? `${formatCost(spend(weekAgo))} this week` : ''].filter(Boolean).join(' · ') : undefined
@@ -237,7 +237,7 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, fo
       {folders.map(folder => {
         const cost = costOf(folder.name)
         return <PageRow key={folder.name} lead={<RunDot state={runDot(folder.metadata?.status)} />} title={runTitle(folder)} lines={[statusLine(folder)]}
-          aside={cost !== undefined ? formatCost(cost) : undefined}
+          aside={cost ? formatCost(cost) : undefined}
           open={false} onToggle={() => setOpen(folder.name)}>{null}</PageRow>
       })}
     </PageCard>
@@ -245,7 +245,7 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, fo
   </div>
 }
 
-function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost, detail, onDetail: setDetail, onBack, onRefresh, onAsk }: {
+function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost, detail, onDetail: setDetail, onRefresh, onAsk }: {
   workflowId: string
   canResume: boolean
   workspacePath: string
@@ -254,7 +254,6 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
   cost?: number
   detail: RunsView['detail']
   onDetail: (detail: RunsView['detail']) => void
-  onBack: () => void
   onRefresh: () => Promise<void>
   onAsk: (task: string) => void | Promise<void>
 }) {
@@ -292,9 +291,8 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
   const stepCost = (record: WorkspaceStepInspection) => stepCosts.find(step => (record.inspection.step_id && step.stepID === record.inspection.step_id) || step.stepTitle === record.inspection.name)?.totalCost
   const failed = records.find(record => stepDot(record.status) === 'stopped')
   const meta = folder.metadata
-  const summary = [statusLine(folder).toLowerCase(), cost !== undefined ? formatCost(cost) : ''].filter(Boolean).join(' · ')
-  return <PageCard title={runTitle(folder)} hint={summary} onAsk={() => onAsk(`Tell me what happened in the run "${folder.name}".`)}
-    action={<button type="button" onClick={onBack} aria-label={detail ? "Back to run" : "Back to runs"} className="shrink-0 text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /></button>}>
+  const summary = [statusLine(folder).toLowerCase(), cost ? formatCost(cost) : ''].filter(Boolean).join(' · ')
+  return <PageCard title={runTitle(folder)} hint={summary} onAsk={() => onAsk(`Tell me what happened in the run "${folder.name}".`)}>
     {meta?.status === 'failed' && <p role="alert" className="px-4 py-3 text-xs text-red-600 dark:text-red-400">{failed ? `Stopped at ${failed.inspection.name || failed.inspection.step_id}.` : 'This run stopped.'}</p>}
     {resumeError && <p role="alert" className="px-4 py-3 text-xs text-destructive">{resumeError}</p>}
     {resumed && <p role="status" className="px-4 py-3 text-xs text-muted-foreground">Resume started in this run.</p>}
@@ -308,7 +306,7 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
       const spent = stepCost(record)
       const isOpen = target?.execution_id === record.inspection.execution_id && target.session_id === record.inspection.session_id
       return <PageRow key={line.key} lead={<RunDot state={stepDot(record.status)} />} title={line.title}
-        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(record.inspection.execution_id)]} aside={spent !== undefined ? formatCost(spent) : undefined}
+        lines={[[whenLabel(record.inspection.started_at), record.duration].filter(Boolean).join(' · '), checkLines.get(record.inspection.execution_id)]} aside={spent ? formatCost(spent) : undefined}
         open={isOpen} onToggle={() => setTarget(isOpen ? null : record.inspection)}>
         <div className="h-[60vh] min-h-72 overflow-hidden rounded-lg border border-border bg-background"><Suspense fallback={<p className="p-3 text-xs text-muted-foreground">Loading…</p>}><Inspect target={record.inspection} /></Suspense></div>
       </PageRow>
