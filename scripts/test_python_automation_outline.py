@@ -45,6 +45,22 @@ class StepOutline(unittest.TestCase):
         self.assertIsNone(nodes[0]['settings']['model'])
         self.assertIsNone(nodes[1]['settings']['tier'])
         self.assertEqual(nodes[2]['settings']['model'],'example/model')
+        # Codex1730: a continuation inherits its saved model, not High/default.
+        graph = inspector.inspect_automation_source({'main.py': 'from agentworks import agent\ndef main():\n    first = agent("First", "Work", tier="low")\n    agent("Continue", "More", conversation_id=first.conversation_id)\n    agent("Fresh", "Work", conversation_id=None)\n'})
+        agents = [n for n in graph['nodes'] if n['type'] == 'agent']
+        self.assertEqual(agents[0]['settings'], {'tier':'low'})
+        self.assertEqual(agents[1]['settings'], {'model':None})
+        self.assertNotIn('settings', agents[2])
+        # One syntactic call in a loop or branch is not one unconditional turn.
+        for body, role in [('for item in items:\n        agent("Worker", "Work")', 'repeat'),
+                           ('if enabled:\n        agent("Worker", "Work")', 'branch')]:
+            source = 'from agentworks import agent, step\n@step("Batch")\ndef batch():\n    '+body+'\ndef main():\n    batch()\n'
+            graph = inspector.inspect_automation_source({'main.py':source})
+            self.assertEqual(graph['errors'], [])
+            self.assertEqual(graph['nodes'][0]['type'], 'script')
+            self.assertTrue(any(n.get('role') == role for n in graph['nodes']))
+            self.assertTrue(any(n['type'] == 'agent' and n.get('parent') for n in graph['nodes']))
+
 
     def test_decorator_preserves_results_errors_repeated_calls_and_source_identity(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -322,8 +322,9 @@ def inspect_automation_source(files):
             # Null means supplied but unresolved; omission alone means default.
             found = {}
             for item in call.keywords:
-                if item.arg is None:
-                    return {'model': None}  # **settings may choose an override.
+                if item.arg is None or (item.arg == 'conversation_id' and not (isinstance(item.value, ast.Constant) and not item.value.value)):
+                    # Continued conversations inherit their saved selection.
+                    return {'model': None}  # **settings may also override it.
                 elif item.arg in ('model', 'tier', 'reasoning'):
                     if isinstance(item.value, ast.Constant) and item.value.value is None:
                         continue
@@ -447,6 +448,8 @@ def inspect_automation_source(files):
             def visit(node):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
                     return
+                if isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.With, ast.AsyncWith, ast.Match, ast.IfExp, ast.BoolOp, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)) and has_step(module, node):
+                    found.append(None)  # Conditional/repeated work must keep its body outline.
                 if isinstance(node, ast.Call):
                     call_module, call_name = target(module, node.func)
                     if (call_module, call_name) == ('agentworks', 'agent'):
