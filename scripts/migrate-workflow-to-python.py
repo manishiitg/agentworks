@@ -671,7 +671,7 @@ def repair_dashboard_links(docs, state, workflow_id):
     return changes, {'dashboard-registry': registry}, {'workflow_id': workflow_id, 'dashboard_retargets': rows, 'dashboard_source_moves':moved_files}, moves
 
 
-def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None, deployment_mode=None, entry_inputs=None):
+def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None, deployment_mode=None, entry_inputs=None, leave_schedules=False):
     if deployment_mode not in ("local", "server"):
         raise ValueError("Choose --deployment-mode local or server for this installation.")
     import importlib.util
@@ -682,14 +682,14 @@ def adopt_into_crew(docs, state, workflow_id, crew_id, source, agent_binary=None
                if json.loads(p.read_text()).get('id') == workflow_id]
     if len(matches) != 1:
         raise ValueError('Choose one existing standalone workflow ID. Create or choose its same-owner destination Crew first.')
-    conversion = migration.Conversion(docs, state, matches[0].name, crew_id, agent_binary, deployment_mode=deployment_mode)
+    conversion = migration.Conversion(docs, state, matches[0].name, crew_id, agent_binary, deployment_mode=deployment_mode, leave_schedules=leave_schedules)
     if conversion.done:
         raise ValueError('This standalone workflow has already moved. Inspect its current binding before converting it again.')
     manifest = conversion.document(conversion.definitions/'workflow.json', conversion.manifest)
     original_inputs = conversion.document(conversion.definitions/'variables/variables.json', migration.read(conversion.source/'variables/variables.json', {}))
     payload, definition, removed = python_payload(source, workflow_id, manifest.get('capabilities', {}), original_inputs)
     entry_report = remap_entry_inputs(definition, conversion.writes, conversion.runtime,
-        lambda f, default: conversion.document(f, migration.read(conversion.source/f.relative_to(conversion.runtime), default)), entry_inputs, agent_binary)
+        lambda f, default: default if leave_schedules and f == conversion.runtime/'schedules.json' else conversion.document(f, migration.read(conversion.source/f.relative_to(conversion.runtime), default)), entry_inputs, agent_binary)
     payload['script.json'] = encode(definition)
     for name, raw in payload.items():
         target = conversion.source/'code'/name
@@ -1006,6 +1006,7 @@ def main():
     parser.add_argument('--workflow-id')
     parser.add_argument('--source', type=Path)
     parser.add_argument('--entry-inputs', type=Path, help='Explicit JSON maps keyed by existing entry IDs; optional additional presets. Preserves entry identity, state, timing, auth and caller. Without --source, maps one already converted workflow.')
+    parser.add_argument('--leave-schedules', action='store_true', help='With --adopt-into-crew, preserve already-disabled timers in an inactive private migration archive; no timer is converted or registered.')
     parser.add_argument('--adopt-into-crew', help='Adopt one standalone workflow into an existing same-owner Crew, reusing the Goal-to-Crew converter.')
     parser.add_argument('--agent-binary', type=Path, help='Current server binary for importing older chat archives and validating inputs.')
     parser.add_argument('--deployment-mode', choices=('local', 'server'), help='Required for standalone adoption: this installation runs locally or on a server.')
@@ -1015,6 +1016,8 @@ def main():
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--backup', type=Path, help='Backup parent folder; each workflow gets its own new snapshot, never overwriting an earlier one.')
     args = parser.parse_args()
+    if args.leave_schedules and (not args.adopt_into_crew or args.single_db or args.retire_old_plan or args.repair_dashboard_links or args.initialize_runtime_roots):
+        parser.error('--leave-schedules is only for standalone adoption')
     if args.entry_inputs and (args.single_db or args.retire_old_plan or not args.workflow_id):
         parser.error('--entry-inputs needs --workflow-id, separately from database or plan retirement')
     if args.repair_dashboard_links:
@@ -1052,7 +1055,7 @@ def main():
             parser.error('copy these helper scripts beside this one first: ' + ', '.join(missing))
         if not args.workflow_id or args.initialize_runtime_roots or not args.deployment_mode:
             parser.error('--adopt-into-crew needs --workflow-id, --source and --deployment-mode local|server; initialize existing bindings separately')
-        conversion = adopt_into_crew(args.docs.resolve(), args.state.resolve(), args.workflow_id, args.adopt_into_crew, args.source, args.agent_binary, args.deployment_mode, entry_inputs)
+        conversion = adopt_into_crew(args.docs.resolve(), args.state.resolve(), args.workflow_id, args.adopt_into_crew, args.source, args.agent_binary, args.deployment_mode, entry_inputs, args.leave_schedules)
         report = conversion.apply(backup=args.backup, plain_backup=True) if args.apply else conversion.report()
         print(json.dumps(report, indent=2))
         return

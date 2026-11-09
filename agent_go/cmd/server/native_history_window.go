@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"strings"
@@ -23,11 +24,12 @@ type nativeHistoryRow struct {
 	stamp   time.Time
 }
 type nativeHistoryCache struct {
-	mu     sync.Mutex
-	info   os.FileInfo
-	offset int64
-	rows   []nativeHistoryRow
-	stamp  time.Time
+	mu       sync.Mutex
+	info     os.FileInfo
+	offset   int64
+	rows     []nativeHistoryRow
+	stamp    time.Time
+	complete bool // Every visible prompt is retained verbatim from the file start.
 }
 
 var nativeHistoryWindows = struct {
@@ -78,6 +80,9 @@ func (cache *nativeHistoryCache) trim() {
 		total += size
 		start--
 	}
+	if start > 0 {
+		cache.complete = false
+	}
 	cache.rows = append([]nativeHistoryRow(nil), cache.rows[start:]...)
 }
 
@@ -119,9 +124,9 @@ func readRecentNativeTranscript(path, provider string, since time.Time) ([]build
 				break
 			}
 		}
-		rows, stamp := cache.rows, cache.stamp
+		rows, stamp, complete := cache.rows, cache.stamp, cache.complete
 		if reset {
-			rows, stamp = nil, time.Time{}
+			rows, stamp, complete = nil, time.Time{}, start == 0
 		}
 		end := bytes.LastIndexByte(raw, '\n') + 1
 		consumed := end
@@ -139,7 +144,8 @@ func readRecentNativeTranscript(path, provider string, since time.Time) ([]build
 			line := raw[:next]
 			raw = raw[next+1:]
 			// Large tool/image rows are not visible prose; skip before JSON decoding.
-			if len(line) > 1<<20 {
+			if len(line) > 1<<20 || !json.Valid(line) {
+				complete = false
 				continue
 			}
 			var message builderConversationMessage
@@ -153,7 +159,11 @@ func readRecentNativeTranscript(path, provider string, since time.Time) ([]build
 			if !ok {
 				continue
 			}
-			message.Parts = []builderConversationPart{{Text: boundedNativeText(builderConversationMessageText(message))}}
+			text := builderConversationMessageText(message)
+			if len(text) > nativeHistoryMessageBytes {
+				complete = false
+			}
+			message.Parts = []builderConversationPart{{Text: boundedNativeText(text)}}
 			if at.IsZero() {
 				at = info.ModTime()
 			}
@@ -162,10 +172,11 @@ func readRecentNativeTranscript(path, provider string, since time.Time) ([]build
 			}
 			rows = append(rows, nativeHistoryRow{message, at})
 			if len(rows) > nativeHistoryMessages*2 {
+				complete = false
 				rows = append([]nativeHistoryRow(nil), rows[len(rows)-nativeHistoryMessages:]...)
 			}
 		}
-		cache.rows, cache.stamp, cache.offset, cache.info = rows, stamp, start+int64(consumed), info
+		cache.rows, cache.stamp, cache.offset, cache.info, cache.complete = rows, stamp, start+int64(consumed), info, complete
 		cache.trim()
 	}
 	messages := make([]builderConversationMessage, 0, len(cache.rows))
@@ -191,4 +202,16 @@ func recentNativePromptTime(path, provider, text string, fallback time.Time) tim
 		}
 	}
 	return fallback
+}
+
+// A missing prompt in a bounded or truncated view cannot prove non-delivery.
+// Other providers retain their existing complete-reader contract.
+func nativeHistoryCanProveAbsence(provider, path string) bool {
+	if provider != "claude-code" && provider != "codex-cli" {
+		return true
+	}
+	cache := nativeHistoryWindow(path, provider)
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	return cache.complete && cache.info != nil && cache.offset == cache.info.Size()
 }

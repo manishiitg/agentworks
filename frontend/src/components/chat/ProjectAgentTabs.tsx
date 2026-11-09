@@ -653,7 +653,7 @@ function PersonChip({ name, presence, agents, watching, onPick, help, onAskHelp 
           <p className="pb-1 text-[13px] font-semibold">How agents work here</p>
           <p className="pb-1 text-[12px] text-muted-foreground">Each name is an agent in this Crew. Pick one to talk to it.</p>
           {help.map(line => <div key={line.badge + line.title} className="flex gap-2.5 border-t border-border py-2">
-            <span className="h-fit shrink-0 whitespace-nowrap rounded-full border border-border px-2 text-[11px] leading-5">{line.badge}</span>
+            <span className="w-[92px] shrink-0"><span className="inline-block whitespace-nowrap rounded-full border border-border px-2 text-[11px] leading-5">{line.badge}</span></span>
             <p className="min-w-0 text-[12px] text-muted-foreground"><b className="block text-[13px] font-semibold text-foreground">{line.title}</b>{line.text}</p>
           </div>)}
           {onAskHelp && <button type="button" onClick={() => { setOpen(false); onAskHelp() }} className="mt-1 rounded-full border border-primary px-3 py-0.5 text-xs text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Ask the Crew to change this</button>}

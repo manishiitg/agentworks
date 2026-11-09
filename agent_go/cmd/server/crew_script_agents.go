@@ -89,7 +89,12 @@ func resolveOutlineAgent(tiers *workflowtypes.TieredLLMConfig, model, tier, reas
 	// The name the model picker shows, when the platform's catalog knows the id; otherwise the id as saved.
 	for _, known := range providerModelMetadata(result.Provider) {
 		if known.ModelID == result.Model && strings.TrimSpace(known.ModelName) != "" {
-			result.Model = strings.TrimSpace(known.ModelName)
+			// "Auto (Cursor Agent CLI, estimated average price)" reads "Auto": the part before the parenthesis.
+			name := strings.TrimSpace(known.ModelName)
+			if short := strings.TrimSpace(strings.SplitN(name, "(", 2)[0]); short != "" {
+				name = short
+			}
+			result.Model = name
 			break
 		}
 	}

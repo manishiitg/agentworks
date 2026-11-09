@@ -21,10 +21,18 @@ func OpenWorkflowDirectory(docs, virtual, relative string) (*os.Root, string, er
 		return nil, "", err
 	}
 	anchor, folder, name := docs, virtual, clean
-	if layout, found, e := crewroot.LookupExecutable(docs, virtual); found || e != nil {
+	crew, found, err := crewroot.Lookup(docs, virtual)
+	if err != nil {
+		return nil, "", err
+	}
+	if !found {
+		layout, bound, e := crewroot.LookupExecutable(docs, virtual)
 		if e != nil {
 			return nil, "", e
 		}
+		crew, found = layout.Crew, bound
+	}
+	if found {
 		scope, _, e := crewroot.ScopeRoot(docs, virtual, clean)
 		if e != nil {
 			return nil, "", e
@@ -33,9 +41,11 @@ func OpenWorkflowDirectory(docs, virtual, relative string) (*os.Root, string, er
 		if e != nil {
 			return nil, "", e
 		}
-		anchor = layout.Crew.Files
-		if crewroot.Within(layout.Crew.Private, scope) {
-			anchor = layout.Crew.Private
+		anchor = crew.Files
+		for _, root := range []string{crew.Resources, crew.Private} {
+			if crewroot.Within(root, scope) && (!crewroot.Within(anchor, scope) || len(root) > len(anchor)) {
+				anchor = root
+			}
 		}
 		if !crewroot.Within(anchor, scope) || !crewroot.Within(scope, target) {
 			return nil, "", fmt.Errorf("workflow file leaves its owning storage")

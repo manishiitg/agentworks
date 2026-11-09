@@ -79,6 +79,58 @@ class Migration(unittest.TestCase):
 
     def conversion(self):return m.Conversion(self.docs,self.state,'old-goal','crew')
 
+    def test_leave_schedules_adopts_python_with_byte_identical_inactive_batch_timers(self):
+        # PLAT-871-33: Sales-style batches block adoption, but their disabled
+        # records must survive unchanged outside all active timer stores.
+        definition_file = self.source/'variables/variables.json'
+        variables = m.read(definition_file)
+        variables['groups'] += [{'name':'group-'+str(i), 'values':{}, 'enabled':True} for i in range(1,8)]
+        write(definition_file, variables)
+        file = self.source/'schedules.json'
+        original = m.read(file)['schedules'][0]
+        groups = [g['name'] for g in variables['groups']]
+        rows = [dict(original, id='timer-'+str(i), input={'groups':groups[:i % 8+1]}) for i in range(13)]
+        raw = (json.dumps({'schedules':rows}, indent=4)+'\n').encode()
+        file.write_bytes(raw)
+        source = self.base/'python-source'
+        write(source/'script.json', {'id':'old-goal','name':'Converted report'})
+        (source/'main.py').write_text('print("new engine")\n')
+        command = [sys.executable,str(Path(m.__file__).with_name('migrate-workflow-to-python.py')),
+                   '--docs',str(self.docs),'--state',str(self.state),'--workflow-id','old-goal',
+                   '--adopt-into-crew','crew','--source',str(source),'--deployment-mode','server']
+        before = hashes(self.base)
+        ordinary = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(ordinary.returncode,0)
+        self.assertEqual(hashes(self.base),before)
+        rows[0]['enabled'] = True
+        write(file, {'schedules':rows})
+        enabled_before = hashes(self.base)
+        refused = subprocess.run(command+['--leave-schedules'], capture_output=True, text=True)
+        self.assertNotEqual(refused.returncode,0)
+        self.assertIn('timer-0',refused.stdout+refused.stderr)
+        self.assertEqual(hashes(self.base),enabled_before)
+        file.write_bytes(raw)
+        inspect = subprocess.run(command+['--leave-schedules'], check=True, capture_output=True, text=True)
+        report = json.loads(inspect.stdout)
+        self.assertEqual(hashes(self.base),before)
+        left = report['left_schedules']
+        self.assertEqual(left['timer_ids'],['timer-'+str(i) for i in range(13)])
+        self.assertEqual(left['sha256'],hashlib.sha256(raw).hexdigest())
+        self.assertFalse(left['registered'])
+        subprocess.run(command+['--leave-schedules','--apply','--backup',str(self.base/'backup')], check=True, capture_output=True, text=True)
+        archive = Path(left['path'])
+        self.assertEqual(archive.read_bytes(), raw)
+        self.assertEqual(archive.parent.parent.parent, self.private/'migration-archives')
+        self.assertFalse((self.runtime/'schedules.json').exists())
+        self.assertFalse((self.private/'schedules.json').exists())
+        self.assertFalse((self.docs/'Crew/target/schedules.json').exists())
+        binding = m.read(self.state/'ownership/crew-executables'/(hashlib.sha256(b'Workflow/old-goal').hexdigest()+'.json'))
+        self.assertEqual(binding['kind'],'script')
+        self.assertNotEqual(archive.parent, self.private/binding['runtime_root'])
+        self.assertEqual(m.read(self.runtime/'functions.json')['functions'][0]['input'], {'input_preset':'default'})
+        with closing(sqlite3.connect(self.runtime/'db/db.sqlite')) as db:
+            self.assertEqual(db.execute('SELECT value FROM business_data').fetchall(), [('unchanged',)])
+
     def test_standalone_python_adoption_reuses_chat_entry_and_folder_conversion(self):
         # PLAT-746: server workflows have no Crew binding; same-ID Python
         # conversion must retain their real records, not create a trial copy.

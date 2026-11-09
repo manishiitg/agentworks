@@ -49,6 +49,9 @@ func TestNativeHistoryPreviewLargeJournalUsesBoundedIncrementalWindow(t *testing
 			if after.TotalAlloc-before.TotalAlloc > 64<<20 || time.Since(start) > 3*time.Second {
 				t.Fatalf("preview loaded full journal: allocation=%d elapsed=%s", after.TotalAlloc-before.TotalAlloc, time.Since(start))
 			}
+			if nativeHistoryCanProveAbsence(provider, path) {
+				t.Fatal("bounded tail was treated as complete delivery evidence")
+			}
 			cache := nativeHistoryWindow(path, provider)
 			beforeOffset := cache.offset
 			f, err = os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
@@ -72,5 +75,26 @@ func TestNativeHistoryPreviewLargeJournalUsesBoundedIncrementalWindow(t *testing
 				t.Fatal("append/partial row recovery lost recent history")
 			}
 		})
+	}
+}
+
+// PLAT-746-531: Cursor's full SQLite reader must not create an unbounded UI response.
+func TestLocalCursorHistoryResponseIsBounded(t *testing.T) {
+	messages := make([]builderConversationMessage, 240)
+	for i := range messages {
+		messages[i] = builderConversationMessage{Role: "human", Parts: []builderConversationPart{{Text: strings.Repeat("x", 20000)}}}
+	}
+	messages[len(messages)-1].Parts = []builderConversationPart{{Text: "latest"}}
+	got := boundedLocalCursorMessages(messages)
+	total := 0
+	for _, message := range got {
+		text := builderConversationMessageText(message)
+		total += len(text)
+		if len(text) > nativeHistoryMessageBytes+3 {
+			t.Fatal("unbounded Cursor message")
+		}
+	}
+	if len(got) > 60 || total > nativeHistoryTextBytes || builderConversationMessageText(got[len(got)-1]) != "latest" {
+		t.Fatal("Cursor history response lost bounds or newest message")
 	}
 }
