@@ -73,9 +73,7 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		// Crew deletion belongs to its lifecycle route; retired Code paths have no authority.
 		{"alice", http.MethodDelete, "/api/wp/api/folders/Crew/test-crew?confirm=true", nil, false},
 		{"root", http.MethodDelete, "/api/wp/api/folders/Crew/test-crew?confirm=true", nil, false},
-		{"alice", http.MethodDelete, "/api/wp/api/folders/Crew/test-crew?confirm=true", nil, false},
 		{"alice", http.MethodDelete, "/api/wp/api/folders/Crew/test-crew/files?confirm=true", nil, false},
-		{"alice", http.MethodDelete, "/api/wp/api/folders/Crew?confirm=true", nil, false},
 		{"alice", http.MethodDelete, "/api/wp/api/folders/Crew?confirm=true", nil, false},
 		{"alice", http.MethodDelete, "/api/wp/api/documents/Crew/test-crew/product.json", nil, false},
 		{"alice", http.MethodDelete, "/api/wp/api/documents/Crew/test-crew/workflow.json", nil, false},
