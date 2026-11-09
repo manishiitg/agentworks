@@ -78,6 +78,58 @@ func linkedGitDir(root, dir, file string) (string, bool) {
 	return gitDir, true
 }
 
+// CheckoutInside recognizes a plain repository or a real linked worktree.
+// Its Git directory, common objects and worktree backlink must stay in root;
+// borrowed object stores and symlinked markers are not admitted by this view.
+func CheckoutInside(root, dir string) (gitDir, common string, ok bool) {
+	real, ok := confined(root, dir)
+	if !ok {
+		return "", "", false
+	}
+	marker := filepath.Join(real, ".git")
+	info, err := os.Lstat(marker)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 {
+		return "", "", false
+	}
+	gitDir = marker
+	if !info.IsDir() {
+		if !info.Mode().IsRegular() {
+			return "", "", false
+		}
+		gitDir, ok = linkedGitDir(root, real, marker)
+		if !ok {
+			return "", "", false
+		}
+		backlink, err := os.ReadFile(filepath.Join(gitDir, "gitdir"))
+		if err != nil {
+			return "", "", false
+		}
+		back, ok := confined(root, strings.TrimSpace(string(backlink)))
+		if !ok || back != marker {
+			return "", "", false
+		}
+	}
+	common = gitDir
+	if raw, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil {
+		p := strings.TrimSpace(string(raw))
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(gitDir, p)
+		}
+		common, ok = confined(root, p)
+		if !ok {
+			return "", "", false
+		}
+	} else if !os.IsNotExist(err) {
+		return "", "", false
+	}
+	for _, objects := range []string{gitDir, common} {
+		if _, err := os.Lstat(filepath.Join(objects, "objects", "info", "alternates")); !os.IsNotExist(err) {
+			return "", "", false
+		}
+	}
+	return gitDir, common, true
+}
+
 // CommandIn is Command for checkouts that may have a .git file; every git
 // dir it uses must resolve inside root.
 func CommandIn(ctx context.Context, root, dir string, extraConfig []string, args ...string) *exec.Cmd {

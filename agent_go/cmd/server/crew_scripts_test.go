@@ -53,7 +53,7 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	}
 	script := crewExecutableBinding{ID: "qualify", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/qualify", Kind: "script"}
 	other := crewExecutableBinding{ID: "other-script", CrewID: "crew-other", CrewRoot: "Crew/other", Root: "Workflow/other-script", Kind: "script"}
-	parent := crewExecutableBinding{ID: "sequence", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/sequence", Kind: "workflow"}
+	parent := crewExecutableBinding{ID: "sequence", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/sequence", Kind: "script"}
 	for _, binding := range []crewExecutableBinding{script, other, parent} {
 		if err := registerCrewExecutable(binding); err != nil {
 			t.Fatal(err)

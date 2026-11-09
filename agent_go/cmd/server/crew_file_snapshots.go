@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"log"
 	"mime"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -47,12 +49,13 @@ type crewTurnSnapshot struct {
 	finish                       sync.Once
 	// The before-capture runs beside the send; record and beforeErr are set
 	// before beforeDone closes.
-	sentAt      time.Time
-	sourceLabel string
-	sourceAgent string
-	beforeDone  chan struct{}
-	record      filesnapshots.Record
-	beforeErr   error
+	sentAt       time.Time
+	sourceLabel  string
+	sourceAgent  string
+	beforeDone   chan struct{}
+	beforeCancel context.CancelFunc
+	record       filesnapshots.Record
+	beforeErr    error
 }
 
 // prepareCrewTurnSnapshot runs before provider delivery, outside native input
@@ -100,13 +103,16 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 			snapshot.sourceAgent = projectHistoryAgentNames(context.Background(), owner)[sessionID]
 		}
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotBeforeLimit)
+	snapshot.beforeCancel = cancel
 	if _, loaded := api.crewTurnSnapshots.LoadOrStore(executionID, snapshot); loaded {
+		cancel()
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), crewSnapshotBeforeLimit)
 		defer cancel()
 		snapshot.record, snapshot.beforeErr = snapshot.store.BeginGitTurn(ctx, executionID)
+		snapshot.beforeErr = crewSnapshotContextError(ctx, snapshot.beforeErr)
 		close(snapshot.beforeDone)
 		api.logCrewBeforeCapture(snapshot)
 	}()
@@ -187,8 +193,10 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		if err != nil || !found || roots.Files != snapshot.store.Root || roots.Private != snapshot.store.Private {
 			return
 		}
-		if snapshot.record.ID == "" {
-			api.publishCrewSnapshotUnavailable(snapshot, "failed")
+		if snapshot.beforeErr != nil || snapshot.record.ID == "" {
+			reason := crewSnapshotFailureReason(snapshot.beforeErr)
+			log.Printf("[FILE_SNAPSHOT] phase=before_failed session=%s execution=%s snapshot=%s reason=%s error=%v", snapshot.sessionID, snapshot.executionID, snapshot.record.ID, reason, snapshot.beforeErr)
+			api.publishCrewSnapshotUnavailable(snapshot, reason)
 			return
 		}
 		// This runs asynchronously, just like the before boundary. Large
@@ -197,12 +205,13 @@ func (api *StreamingAPI) finishCrewTurnSnapshot(snapshot *crewTurnSnapshot) {
 		defer cancel()
 		started := time.Now()
 		record, err := snapshot.store.FinishGitTurn(ctx, snapshot.executionID)
+		err = crewSnapshotContextError(ctx, err)
 		log.Printf("[FILE_SNAPSHOT] phase=after session=%s execution=%s snapshot=%s status=%s output_done=%t elapsed_ms=%d success=%t error=%v capture=%+v", snapshot.sessionID, snapshot.executionID, record.ID, record.Status, snapshot.outputDone.Load(), time.Since(started).Milliseconds(), err == nil, err, record.AfterCapture)
 		switch {
 		case err == nil && (record.Status == "complete" || record.Status == "partial"):
 			api.publishCrewSnapshot(snapshot, roots, record)
 		default:
-			api.publishCrewSnapshotUnavailable(snapshot, "failed")
+			api.publishCrewSnapshotUnavailable(snapshot, crewSnapshotFailureReason(err))
 		}
 	})
 }
@@ -304,9 +313,37 @@ func (api *StreamingAPI) crewSnapshotReplyEnd(snapshot *crewTurnSnapshot) (int64
 var crewSnapshotUnavailableText = map[string]string{
 	"setting_up": "File changes for this reply weren't saved (setting up file tracking for this Crew).",
 	"busy":       "File changes for this reply weren't saved (the project was too busy to snapshot in time).",
-	"failed":     "File changes for this reply weren't saved (the file snapshot failed).",
+	"failed":     "Changes couldn't be saved for this reply. Your work is still available in Files.",
+	"timeout":    "File tracking ran out of time for this reply. Your work is still in Files; use a smaller project folder if this keeps happening.",
+	"file_limit": "This project has too many files to track all changes for this reply. Your work is in Files; use a smaller project folder to track all changes.",
+	"filename":   "File tracking couldn't save a filename in this project. Your work is still in Files; update AgentWorks and try again.",
+	"access":     "File tracking couldn't read the project folder. Check its folder access, then try again. Your work is still in Files.",
 	"budget":     "File changes exceeded the capture size limit; some changes could not be saved.",
 	"incomplete": "Some file changes could not be saved for this reply.",
+}
+
+// CommandContext can return "signal: killed" when its deadline stops Git.
+// Preserve the boundary's context cause instead of classifying it as I/O.
+func crewSnapshotContextError(ctx context.Context, err error) error {
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
+}
+
+// Classify only known capture failures. Never put raw Git output, filenames
+// or a private store path into the owning-chat notice.
+func crewSnapshotFailureReason(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		return "timeout"
+	case errors.Is(err, os.ErrPermission):
+		return "access"
+	case err != nil && strings.Contains(err.Error(), "fatal: invalid path"):
+		return "filename"
+	default:
+		return "failed"
+	}
 }
 
 // crewSetupNoticeShown remembers chats (per Crew store) that already got the
@@ -352,7 +389,8 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	unchanged := snapshot.store.Unchanged(checkCtx, record)
 	cancelCheck()
 	incomplete := record.Review != nil && len(record.Review.IncompleteRoots) > 0
-	if unchanged && !incomplete {
+	limited := strings.HasSuffix(record.BeforeCapture.Deferred, "file_limit") || strings.HasSuffix(record.AfterCapture.Deferred, "file_limit")
+	if unchanged && !incomplete && !limited {
 		log.Printf("[FILE_SNAPSHOT] phase=reply_reference session=%s execution=%s snapshot=%s skipped=no_changes", snapshot.sessionID, snapshot.executionID, record.ID)
 		return
 	}
@@ -376,7 +414,14 @@ func (api *StreamingAPI) publishCrewSnapshot(snapshot *crewTurnSnapshot, roots c
 	cancelSummary()
 	// This owning-chat notice contains no repository/path/count. File-scoped
 	// compare/history still require saved, authorized witnesses for details.
-	if incomplete {
+	if limited {
+		if !ok || summary["files"] == 0 {
+			api.publishCrewSnapshotUnavailable(snapshot, "file_limit")
+			return
+		}
+		summary["note"] = crewSnapshotUnavailableText["file_limit"]
+	}
+	if incomplete && !limited {
 		if !ok || summary["files"] == 0 {
 			api.publishCrewSnapshotUnavailable(snapshot, "incomplete")
 			return
@@ -408,6 +453,9 @@ func (api *StreamingAPI) discardUnstartedCrewSnapshot(executionID string) {
 	if value, ok := api.crewTurnSnapshots.Load(executionID); ok {
 		snapshot := value.(*crewTurnSnapshot)
 		if !snapshot.watching.Load() {
+			if snapshot.beforeCancel != nil {
+				snapshot.beforeCancel()
+			}
 			go func() {
 				<-snapshot.beforeDone
 				snapshot.store.Abandon(executionID)

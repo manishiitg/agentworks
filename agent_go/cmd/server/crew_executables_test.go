@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
-	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
-	"io/fs"
 	"net/http"
 	"net/http/httptest"
 
@@ -33,7 +31,7 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	if err := writeCrewTeam(crewTeam{ProjectID: "crew-lab", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "builder"}}}); err != nil {
 		t.Fatal(err)
 	}
-	binding := crewExecutableBinding{ID: "executable", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/executable", Kind: "workflow"}
+	binding := crewExecutableBinding{ID: "executable", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/executable", Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +212,7 @@ func TestCrewKnowledgeSourceUsesInheritedAudienceAtEndpoint(t *testing.T) {
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "kb-lab", ProjectID: "kb-crew", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true, RunPeople: []string{"reader"}}); err != nil {
 		t.Fatal(err)
 	}
-	binding := crewExecutableBinding{ID: "kb-child", CrewID: "kb-crew", CrewRoot: "Crew/kb-lab", Root: "Workflow/kb-child", Kind: "workflow"}
+	binding := crewExecutableBinding{ID: "kb-child", CrewID: "kb-crew", CrewRoot: "Crew/kb-lab", Root: "Workflow/kb-child", Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
@@ -362,6 +360,7 @@ func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{projectActions: svc}
+	made := false
 	for _, role := range []string{"creator", "viewer", "creator"} {
 		*directory = `{"users":[{"id":"owner","username":"owner","role":"` + role + `"}]}`
 		invalidateUserDirectoryCache()
@@ -373,13 +372,23 @@ func TestCrewExecutableCreationRechecksDemotedOwner(t *testing.T) {
 			if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "account cannot edit") || len(after) != len(before) {
 				t.Fatalf("demoted owner: HTTP%d %s", w.Code, w.Body)
 			}
-		} else if w.Code != http.StatusCreated || len(after) != len(before)+1 {
-			t.Fatalf("editable owner: HTTP%d %s", w.Code, w.Body)
+		} else if !made {
+			if w.Code != http.StatusCreated || len(after) != len(before)+1 {
+				t.Fatalf("editable owner: HTTP%d %s", w.Code, w.Body)
+			}
+			made = true
+		} else if w.Code != http.StatusConflict || len(after) != len(before) {
+			// One workflow per Crew: a second one is refused, and nothing is added.
+			t.Fatalf("second workflow: HTTP%d %s", w.Code, w.Body)
 		}
 	}
-	// PLAT-746: a new workflow is always a Python script, even when an older caller asks for kind "workflow".
+	crew, err = svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Second lab", Purpose: "Reports", IdempotencyKey: "account-edit-second"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// PLAT-746: a new workflow is always a Python script.
 	w := httptest.NewRecorder()
-	api.handleCrewExecutables(w, httptest.NewRequest(http.MethodPost, "/api/crew-executables?crew_id="+crew.CrewID, strings.NewReader(`{"name":"Daily work","kind":"workflow"}`)).WithContext(ctx))
+	api.handleCrewExecutables(w, httptest.NewRequest(http.MethodPost, "/api/crew-executables?crew_id="+crew.CrewID, strings.NewReader(`{"name":"Daily work","kind":"script"}`)).WithContext(ctx))
 	var created crewExecutableBinding
 	if w.Code != http.StatusCreated || json.Unmarshal(w.Body.Bytes(), &created) != nil || created.Kind != "script" {
 		t.Fatalf("workflow creation: HTTP%d %s, want a script", w.Code, w.Body)
@@ -397,7 +406,7 @@ func TestCrewWorkflowsHideUnsupportedKindsWithoutChangingFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{projectActions: svc}
-	for _, kind := range []string{"workflow", "retired"} {
+	for _, kind := range []string{"script", "retired"} {
 		binding := crewExecutableBinding{ID: kind, CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/" + kind, Kind: kind}
 		if err := registerCrewExecutable(binding); err != nil {
 			t.Fatal(err)
@@ -420,7 +429,7 @@ func TestCrewWorkflowsHideUnsupportedKindsWithoutChangingFiles(t *testing.T) {
 	var response struct {
 		Executables []crewExecutableBinding `json:"executables"`
 	}
-	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &response) != nil || len(response.Executables) != 1 || response.Executables[0].Kind != "workflow" {
+	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &response) != nil || len(response.Executables) != 1 || response.Executables[0].Kind != "script" {
 		t.Fatalf("Crew list: %d %s", list.Code, list.Body)
 	}
 	before, _ := readCrewExecutables()
@@ -452,82 +461,6 @@ func TestCrewWorkflowsHideUnsupportedKindsWithoutChangingFiles(t *testing.T) {
 	}
 }
 
-// PLAT-746-265: a Team writer holding its native lock must use the same moved
-// source as HTTP editors, rather than recreate a second plan in runtime storage.
-func TestCrewAutomationNativeCommitUsesMovedSource(t *testing.T) {
-	docs := t.TempDir()
-	docs, _ = filepath.EvalSymlinks(docs)
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	root := registerTestCrew(t, "native-source", "owner", false)
-	b := crewExecutableBinding{ID: "native-source", Root: "Workflow/native-source", CrewID: "crew-native-source", CrewRoot: root, Kind: "workflow"}
-	if err := registerCrewExecutable(b); err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.WithValue(t.Context(), teamLockHeldKey{}, b.Root)
-	for _, rel := range []string{"planning/plan.json", "code/step/main.py", "planning/changelog/entry.json"} {
-		target := filepath.Join(docs, root, ".agentworks/workflows", b.ID, rel)
-		if strings.HasPrefix(rel, "code/") {
-			target = filepath.Join(docs, root, ".agentworks/code", b.ID, strings.TrimPrefix(rel, "code/"))
-		}
-		if strings.Contains(rel, "changelog") {
-			target = filepath.Join(docs, "_system/crew-data", b.CrewID, "automations", b.ID, rel)
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
-			t.Fatal(err)
-		}
-		if handled, err := writeHeldTeamFile(ctx, b.Root+"/"+rel, "saved"); err != nil || !handled {
-			t.Fatal(rel, handled, err)
-		}
-		raw, err := os.ReadFile(target)
-		if err != nil || string(raw) != "saved" {
-			t.Fatal(rel, string(raw), err)
-		}
-		opened, name, err := wf.OpenWorkflowDirectory(docs, b.Root, rel)
-		if err != nil {
-			t.Fatal(rel, err)
-		}
-		raw, err = opened.ReadFile(name)
-		opened.Close()
-		if err != nil || string(raw) != "saved" {
-			t.Fatal("direct plan routing", rel, err)
-		}
-		if !strings.Contains(rel, "changelog") {
-			if _, err := os.Stat(filepath.Join(docs, b.Root, rel)); !os.IsNotExist(err) {
-				t.Fatal("recreated old source", rel)
-			}
-		}
-	}
-	if _, err := os.Stat(filepath.Join(docs, b.Root)); !os.IsNotExist(err) {
-		t.Fatal("retired root recreated")
-	}
-	listed := map[string]bool{}
-	err := fs.WalkDir(wf.WorkflowFS{Docs: docs, Root: b.Root}, ".", func(path string, d fs.DirEntry, err error) error {
-		if err == nil {
-			listed[path] = true
-		}
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, p := range []string{"planning/plan.json", "code/step/main.py", "planning/changelog/entry.json"} {
-		if !listed[p] {
-			t.Fatalf("moved file missing from listing: %s (%v)", p, listed)
-		}
-	}
-
-	// A planted source directory cannot redirect native plan edits.
-	source := filepath.Join(docs, root, ".agentworks/workflows", b.ID, "planning")
-	os.RemoveAll(source)
-	os.Symlink(t.TempDir(), source)
-	if opened, _, err := wf.OpenWorkflowDirectory(docs, b.Root, "planning/plan.json"); err == nil {
-		opened.Close()
-		t.Fatal("source symlink admitted")
-	}
-
-}
-
 // PLAT-746: the Crew's single Schedules tab must retain its workflow timers,
 // without including another Crew or granting a stranger access.
 func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
@@ -544,7 +477,7 @@ func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
 		if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: name, ProjectID: name, OwnerID: owner, Private: true, AudienceConfigured: true}); err != nil {
 			t.Fatal(err)
 		}
-		binding := crewExecutableBinding{ID: name, CrewID: name, CrewRoot: root, Root: "Workflow/" + name, Kind: "workflow"}
+		binding := crewExecutableBinding{ID: name, CrewID: name, CrewRoot: root, Root: "Workflow/" + name, Kind: "script"}
 		if err := registerCrewExecutable(binding); err != nil {
 			t.Fatal(err)
 		}
@@ -591,40 +524,3 @@ func TestCrewScheduleListIncludesOnlyAuthorizedChildren(t *testing.T) {
 	}
 }
 
-// The Scripts tab lists everything runnable: the Python a workflow's own steps run, with where it is used, beside the
-// saved Crew scripts. A step that runs a saved Crew script is not listed twice, and other step types are not scripts.
-func TestCrewExecutablesListWorkflowStepScripts(t *testing.T) {
-	svc, files, ctx := newCrewCreationTestEnv(t)
-	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Step scripts", Purpose: "Reports", IdempotencyKey: "step-scripts"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	api := &StreamingAPI{projectActions: svc}
-	binding := crewExecutableBinding{ID: "reports", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/reports", Kind: "workflow"}
-	if err := registerCrewExecutable(binding); err != nil {
-		t.Fatal(err)
-	}
-	manifest := NewWorkflowManifest("Reports")
-	manifest.ID = "reports"
-	raw, _ := json.Marshal(manifest)
-	files.files[binding.Root+"/workflow.json"] = string(raw)
-	files.files[binding.Root+"/planning/plan.json"] = `{"steps":[
-		{"type":"scripted","id":"normalize-statement","title":"Normalize statement"},
-		{"type":"scripted","id":"call-saved","title":"Call saved","script":"script:helper"},
-		{"type":"agent","id":"summarize","title":"Summarize"}]}`
-	list := httptest.NewRecorder()
-	api.handleCrewExecutables(list, httptest.NewRequest(http.MethodGet, "/api/crew-executables?crew_id="+crew.CrewID, nil).WithContext(ctx))
-	var response struct {
-		StepScripts []struct {
-			Workflow string `json:"workflow"`
-			StepID   string `json:"step_id"`
-			Step     string `json:"step"`
-		} `json:"step_scripts"`
-	}
-	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &response) != nil {
-		t.Fatalf("list: HTTP%d %s", list.Code, list.Body)
-	}
-	if len(response.StepScripts) != 1 || response.StepScripts[0].StepID != "normalize-statement" || response.StepScripts[0].Step != "Normalize statement" || response.StepScripts[0].Workflow == "" {
-		t.Fatalf("step scripts = %+v, want only the step that runs its own Python", response.StepScripts)
-	}
-}

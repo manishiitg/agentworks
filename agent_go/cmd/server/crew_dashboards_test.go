@@ -24,8 +24,8 @@ func TestCrewDashboardDiscoveryKeepsProjectAccessWithoutTrackingStore(t *testing
 	}
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"},{"id":"runner","username":"runner","role":"creator"},{"id":"stranger","username":"stranger","role":"creator"}]}`)
 	for _, binding := range []crewExecutableBinding{
-		{ID: "report", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/report", Kind: "workflow"},
-		{ID: "foreign", CrewID: "another", CrewRoot: "Crew/another", Root: "Workflow/foreign", Kind: "workflow"},
+		{ID: "report", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: "Workflow/report", Kind: "script"},
+		{ID: "foreign", CrewID: "another", CrewRoot: "Crew/another", Root: "Workflow/foreign", Kind: "script"},
 	} {
 		if err := registerCrewExecutable(binding); err != nil {
 			t.Fatal(err)
@@ -81,7 +81,7 @@ func TestWorkflowMeasurementReadRefusesCrewRootsAndCreatesNothing(t *testing.T) 
 		t.Fatal(err)
 	}
 	root := "Workflow/report"
-	binding := crewExecutableBinding{ID: "report", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: root, Kind: "workflow"}
+	binding := crewExecutableBinding{ID: "report", CrewID: crew.CrewID, CrewRoot: crew.WorkspacePath, Root: root, Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}

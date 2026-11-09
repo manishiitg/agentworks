@@ -635,6 +635,17 @@ type crewTeamLent struct {
 	Empty string             `json:"empty,omitempty"`
 	Yours bool               `json:"yours"`
 	Items []crewTeamLentItem `json:"items"`
+	// Groups is what the card prints: the same names under group titles (connected apps, keys). Items stays for the
+	// Mac app's own comparison (crewTeamMacOnly).
+	Groups []crewTeamLentGroup `json:"groups"`
+}
+
+// crewTeamLentGroup is one group of the card: a title with its line, and the names (Key: shown in monospace).
+type crewTeamLentGroup struct {
+	Title string   `json:"title"`
+	Line  string   `json:"line"`
+	Key   bool     `json:"key,omitempty"`
+	Names []string `json:"names"`
 }
 
 type crewTeamLentItem struct {
@@ -647,13 +658,13 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 	if IsLocalMode() || !t.On || root == "" {
 		return nil
 	}
-	out := &crewTeamLent{Items: []crewTeamLentItem{}, Yours: viewer == t.OwnerID}
+	out := &crewTeamLent{Items: []crewTeamLentItem{}, Groups: []crewTeamLentGroup{}, Yours: viewer == t.OwnerID}
 	if out.Yours {
-		out.Title, out.Line = "What teammates' agents use from you", "Their agents in this Crew use these as you. Values are never shown."
-		out.Empty = "Nothing shared yet. Pick apps and secrets for this Crew from your Vault, or ask your agent."
+		out.Title, out.Line = "Accounts and keys your teammates' agents use", "Their agents in this Crew use these as you. Nobody sees passwords or keys."
+		out.Empty = "Nothing shared yet. Pick apps and keys for this Crew from your Vault, or ask your agent."
 	} else {
 		owner := crewPersonShortName(t.OwnerID)
-		out.Title, out.Line = "What your agents use from "+owner, "Your agents in this Crew use these as "+owner+". Values are never shown."
+		out.Title, out.Line = "Accounts and keys your agents use", "Agents in this Crew use these as "+owner+". Nobody sees passwords or keys."
 	}
 	apps, secrets := []string{}, []string{}
 	if servers, err := vaultServersFor(ctx, t.OwnerID); err == nil {
@@ -675,6 +686,20 @@ func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLe
 	}
 	for _, name := range slices.Compact(secrets) {
 		out.Items = append(out.Items, crewTeamLentItem{Name: name, Kind: "secret"})
+	}
+	var appNames, keyNames []string
+	for _, item := range out.Items {
+		if item.Kind == "secret" {
+			keyNames = append(keyNames, item.Name)
+		} else {
+			appNames = append(appNames, item.Name)
+		}
+	}
+	if len(appNames) > 0 {
+		out.Groups = append(out.Groups, crewTeamLentGroup{Title: "Connected apps and tools", Line: "sign-ins you added", Names: appNames})
+	}
+	if len(keyNames) > 0 {
+		out.Groups = append(out.Groups, crewTeamLentGroup{Title: "Keys", Line: "saved secrets, value never shown", Key: true, Names: keyNames})
 	}
 	if !out.Yours && len(out.Items) == 0 {
 		return nil // a teammate sees the card only when something is lent (owner, 5 Nov)

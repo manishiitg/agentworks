@@ -12,7 +12,7 @@ import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 
 export type CrewExecutable = {
   id: string
-  kind: 'workflow' | 'script'
+  kind: 'script'
   workspace_path: string
   manifest: { label: string }
   used_by?: Array<{ workflow: string; step: string }>
@@ -74,10 +74,9 @@ export function CrewExecutableEditor({
       setError(cause instanceof Error ? cause.message : 'Open your Crew chat to continue.')
     }
   }
-  const script = item.kind === 'script'
   return (
     <div className="space-y-4">
-      {script && !!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes here apply to all of them.</p>}
+      {!!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes here apply to all of them.</p>}
       {(error || workspace.error) && (
         <p role="alert" className="p-3 text-sm text-destructive">
           {error || workspace.error}
@@ -87,12 +86,7 @@ export function CrewExecutableEditor({
         {file ? (
           <CrewFileView key={file} workspacePath={item.workspace_path} file={file} />
         ) : section === 'steps' ? (
-          !script ? (
-            <PageCard title={item.manifest.label} testId="crew-old-workflow-card">
-              <p className="px-4 py-3 text-sm text-muted-foreground">This workflow was made in the old format. Ask your agent to convert it to a new workflow; what it does stays the same.</p>
-              <div className="px-4 pb-3"><RowButton primary onClick={() => void ask('Convert this workflow to a new workflow and keep what it does.')}>Ask your agent to convert it</RowButton></div>
-            </PageCard>
-          ) : (
+          (
             <div className="space-y-4">
               <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []} onCode={() => onFile('main.py')} onAsk={ask} />
               {!!(item.inputs?.length || item.input_presets?.length) && <PageCard title="Inputs" hint="What you can change before a run." onAsk={() => ask('Help me change the inputs of this workflow.')}>
@@ -108,7 +102,7 @@ export function CrewExecutableEditor({
             </div>
           )
         ) : (
-          <CrewWorkflowRuns workflowId={item.id} workspacePath={item.workspace_path} script={script} view={runs} onView={onRuns} folders={folders} loading={workspace.loading || !workspace.state} onRefresh={workspace.refresh} onAsk={ask} />
+          <CrewWorkflowRuns workflowId={item.id} workspacePath={item.workspace_path} script view={runs} onView={onRuns} folders={folders} loading={workspace.loading || !workspace.state} onRefresh={workspace.refresh} onAsk={ask} />
         )}
       </Suspense>
     </div>

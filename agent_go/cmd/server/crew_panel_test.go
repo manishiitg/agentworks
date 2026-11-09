@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -74,6 +75,25 @@ func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 	if got := cache.collect(t.Context(), key, []crewPanelSource{denied}, time.Second); len(got[0].Rows) != 0 {
 		t.Fatal("section not admitted")
 	}
+	// PLAT-746-513: pending reads back off and stop; stale failures cannot
+	// restart a fast polling loop in every connected browser tab.
+	for attempt, minimum := range []int64{100, 250, 500, 1000, 0} {
+		reply := crewPanelReply{Sections: []crewPanelSection{{ID: "workflow", refreshAt: time.Now()}}}
+		applyCrewPanelRefresh(&reply, strconv.Itoa(attempt))
+		if attempt == 4 {
+			if reply.RefreshAfterMS != 0 || reply.RefreshNote == "" {
+				t.Fatal("pending panel retry budget was unlimited")
+			}
+		} else if reply.RefreshAfterMS < minimum || reply.RefreshAttempt != attempt+1 {
+			t.Fatalf("pending panel retry backoff: %+v", reply)
+		}
+	}
+	stale := crewPanelReply{Sections: []crewPanelSection{{ID: "workflow", Stale: true, refreshAt: time.Now().Add(-time.Second)}}}
+	applyCrewPanelRefresh(&stale, "0")
+	if stale.RefreshAfterMS < 2000 {
+		t.Fatal("stale workflow snapshot requested a fast polling loop")
+	}
+
 }
 
 // Exercise the actual HTTP route and normal Crew resolver, including a warm
@@ -88,7 +108,7 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 	// webhook stays one workflow; starts keep their automation classification.
 	f.api.scheduler = &SchedulerService{api: f.api}
 	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
-	child := crewExecutableBinding{ID: "panel-workflow", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/panel-workflow", Kind: "workflow"}
+	child := crewExecutableBinding{ID: "panel-workflow", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/panel-workflow", Kind: "script"}
 	if err := registerCrewExecutable(child); err != nil {
 		t.Fatal(err)
 	}
@@ -107,8 +127,11 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 	router := mux.NewRouter()
 	router.HandleFunc("/api/crews/{project}/panel", f.api.handleCrewPanel).Methods("GET")
 	claims := &UserClaims{UserID: "owner", Username: "owner"}
-	call := func(c *UserClaims) *httptest.ResponseRecorder {
+	call := func(c *UserClaims, attempt ...int) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("GET", "/api/crews/team/panel", nil)
+		if len(attempt) > 0 {
+			r.URL.RawQuery = "refresh_attempt=" + strconv.Itoa(attempt[0])
+		}
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, c))
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, r)
@@ -147,6 +170,51 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 		t.Fatalf("workflow starts misclassified: counts=%v details=%v", counts, result.Details)
 	}
 	t.Logf("PANEL_TRIGGERS workflows=%d timers=%d webhooks=%d timers_detail=%q webhooks_detail=%q", counts["workflow"], counts["schedules"], counts["webhooks"], result.Details["schedules:schedules"], result.Details["schedules:triggers"])
+	// A connected session notification inside the cache window must provide
+	// a bounded trailing read, rather than freeze a completed run as running.
+	setRun := func(status string) {
+		t.Helper()
+		raw, _ := json.Marshal(map[string]string{"status": status, "started_at": "2026-11-09T00:00:00Z"})
+		if err := writeFileToWorkspace(t.Context(), child.Root+"/runs/run-live/run_metadata.json", string(raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expireWorkflow := func() {
+		f.api.crewPanels.mu.Lock()
+		defer f.api.crewPanels.mu.Unlock()
+		for key, value := range f.api.crewPanels.entries {
+			if key.project == "team" && key.section == "workflow" {
+				value.at = time.Now().Add(-6 * time.Second)
+				f.api.crewPanels.entries[key] = value
+			}
+		}
+	}
+	readPanel := func(attempt int) crewPanelReply {
+		t.Helper()
+		response := call(claims, attempt)
+		var panel crewPanelReply
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &panel) != nil {
+			t.Fatalf("lifecycle panel: %d %s", response.Code, response.Body)
+		}
+		return panel
+	}
+	setRun("running")
+	expireWorkflow()
+	if running := readPanel(0); !running.Busy || running.RefreshAfterMS != 0 {
+		t.Fatalf("fresh running panel: %+v", running)
+	}
+	setRun("completed")
+	publishSessionsChanged()
+	cached := readPanel(0)
+	if cached.Busy && (cached.RefreshAfterMS <= 0 || cached.RefreshAttempt != 1) {
+		t.Fatalf("notification cached running without trailing read: %+v", cached)
+	}
+	// Advance the server snapshot clock, not a five-second test sleep.
+	expireWorkflow()
+	settled := readPanel(cached.RefreshAttempt)
+	if settled.Busy || settled.RefreshAfterMS != 0 || !strings.Contains(settled.Details["workflow"], "last run finished") {
+		t.Fatalf("trailing read did not settle: %+v", settled)
+	}
 	found := false
 	for _, section := range result.Sections {
 		if section.ID == "dashboards" {

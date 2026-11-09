@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
 
 // PLAT-746: importing a months-long journal previously ReadFile'd gigabytes
@@ -96,5 +98,129 @@ func TestLocalCursorHistoryResponseIsBounded(t *testing.T) {
 	}
 	if len(got) > 60 || total > nativeHistoryTextBytes || builderConversationMessageText(got[len(got)-1]) != "latest" {
 		t.Fatal("Cursor history response lost bounds or newest message")
+	}
+}
+
+// PLAT-746-531 / PR1730: a sliding display window must not lose repeated
+// terminal inputs or reuse the durable event ID of a different assistant reply.
+func TestNativeHistorySlidingWindowKeepsOccurrenceIdentities(t *testing.T) {
+	for _, provider := range []string{"claude-code", "codex-cli"} {
+		t.Run(provider, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "journal.jsonl")
+			file, err := os.Create(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			appendRow := func(role, text string) {
+				t.Helper()
+				var row string
+				if provider == "codex-cli" {
+					block := "input_text"
+					if role == "assistant" {
+						block = "output_text"
+					}
+					row = fmt.Sprintf(`{"timestamp":"2026-11-09T10:00:00Z","type":"response_item","payload":{"type":"message","role":%q,"content":[{"type":%q,"text":%q}]}}`, role, block, text)
+				} else {
+					row = fmt.Sprintf(`{"timestamp":"2026-11-09T10:00:00Z","type":%q,"message":{"role":%q,"content":%q}}`, role, role, text)
+				}
+				if _, err := fmt.Fprintln(file, row); err != nil {
+					t.Fatal(err)
+				}
+			}
+			defer file.Close()
+			for i := 0; i < nativeHistoryMessages/2; i++ {
+				appendRow("user", "continue")
+				appendRow("assistant", "working")
+			}
+			before, _, err := readRecentNativeTranscript(path, provider, time.Time{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			appendRow("user", "continue")
+			appendRow("assistant", "working")
+			after, _, err := readRecentNativeTranscript(path, provider, time.Time{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			inputs := nativeTerminalNewUserOccurrences(before, after)
+			if len(inputs) != 1 || builderConversationMessageText(inputs[0]) != "continue" {
+				t.Fatalf("new input occurrences = %v", inputs)
+			}
+			if before[2].NativeID == "" || before[2].NativeID != after[0].NativeID {
+				t.Fatal("retained occurrence changed identity")
+			}
+			oldReply := nativeRecoveredMessageID("chat", before[len(before)-1], len(before)-1, false)
+			newReply := nativeRecoveredMessageID("chat", after[len(after)-1], len(after)-1, false)
+			if oldReply == newReply {
+				t.Fatal("two recovered replies share a durable event ID")
+			}
+			// Eviction/restart must derive the same identities without scanning a prefix.
+			cache := nativeHistoryWindow(path, provider)
+			cache.mu.Lock()
+			cache.info = nil
+			cache.mu.Unlock()
+			cold, _, err := readRecentNativeTranscript(path, provider, time.Time{})
+			if err != nil || cold[len(cold)-1].NativeID != after[len(after)-1].NativeID {
+				t.Fatal("cold read changed occurrence identity")
+			}
+			o := nativeInputObserverFixture(t)
+			defer o.api.eventStore.Stop()
+			journal, err := storeevents.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			o.api.eventStore.SetDurableJournal(journal)
+			if err := o.api.eventStore.SetSessionPersistenceClass(o.snapshot.SessionID, storeevents.SessionPersistenceInteractiveChat); err != nil {
+				t.Fatal(err)
+			}
+			o.provider = provider
+			o.consume(before, path, true)
+			o.mu.Lock()
+			o.nativeInputs = true
+			o.mu.Unlock()
+			o.consume(after, path, false)
+			if counts := nativeTerminalEventUserCounts(o.api.eventStore, o.snapshot.SessionID); counts["continue"] != 1 {
+				t.Fatalf("input was not adopted: %v", counts)
+			}
+			replies := liveAssistantMessageCounts(o.api.eventStore.GetAllEventsRaw(o.snapshot.SessionID))
+			if replies["working"] != 1 {
+				t.Fatalf("reply was not recovered: %v", replies)
+			}
+			o.consume(cold, path, false)
+			if counts := nativeTerminalEventUserCounts(o.api.eventStore, o.snapshot.SessionID); counts["continue"] != 1 {
+				t.Fatal("cold reread duplicated input")
+			}
+			appendRow("user", "continue")
+			appendRow("assistant", "next reply")
+			next, _, err := readRecentNativeTranscript(path, provider, time.Time{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			o.consume(next, path, false)
+			replies = liveAssistantMessageCounts(o.api.eventStore.GetAllEventsRaw(o.snapshot.SessionID))
+			if replies["working"] != 1 || replies["next reply"] != 1 {
+				t.Fatalf("sliding window lost a durable reply: %v", replies)
+			}
+			if counts := nativeTerminalEventUserCounts(o.api.eventStore, o.snapshot.SessionID); counts["continue"] != 2 {
+				t.Fatalf("second repeated input was lost: %v", counts)
+			}
+			// Reattaching an observer resets its bounded counters, not source identities.
+			fresh := &nativeTerminalObserver{api: o.api, snapshot: o.snapshot, provider: provider}
+			fresh.consume(next, path, true)
+			fresh.mu.Lock()
+			fresh.nativeInputs = true
+			fresh.mu.Unlock()
+			appendRow("user", "continue")
+			appendRow("assistant", "reply after reattach")
+			reattached, _, err := readRecentNativeTranscript(path, provider, time.Time{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fresh.consume(reattached, path, false)
+			if counts := nativeTerminalEventUserCounts(o.api.eventStore, o.snapshot.SessionID); counts["continue"] != 3 {
+				t.Fatalf("reattached observer reused a user event ID: %v", counts)
+			}
+
+		})
 	}
 }

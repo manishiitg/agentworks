@@ -386,3 +386,53 @@ func TestWorkspaceGitBranchCompareUsesMergeBaseNotUpstream(t *testing.T) {
 		t.Fatalf("option-looking base accepted: %d", code)
 	}
 }
+
+// PLAT-746-319: the imported parent folder's panel skipped real linked
+// worktrees because it recognized only .git directories.
+func TestWorkspaceGitLinkedWorktreeKeepsProjectBoundary(t *testing.T) {
+	docs, repo := gitTestEnv(t)
+	root := filepath.Join(docs, filepath.FromSlash(gitTestProject))
+	linked := filepath.Join(root, "feature")
+	gitRun(t, repo, "worktree", "add", "-q", "-b", "feature", linked)
+	writeFile(t, filepath.Join(linked, "a.txt"), "worktree change\n")
+	code, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	if code != http.StatusOK {
+		t.Fatalf("worktree status: %d %+v", code, body)
+	}
+	found := false
+	for _, value := range body["repos"].([]any) {
+		r := value.(map[string]any)
+		if r["root"] == "feature" {
+			found = r["branch"] == "feature" && len(r["files"].([]any)) == 1
+		}
+	}
+	if !found {
+		t.Fatalf("worktree absent from panel: %+v", body)
+	}
+	code, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "repo": {"feature"}, "op": {"diff"}, "file": {"a.txt"}})
+	if code != http.StatusOK || !strings.Contains(body["diff"].(string), "+worktree change") {
+		t.Fatalf("worktree diff: %d %+v", code, body)
+	}
+	code, body = gitPost(t, "alice", map[string]any{"workspace_path": gitTestProject, "repo": "feature", "op": "stage", "files": []string{"a.txt"}})
+	if code != http.StatusOK || gitOut(t, linked, "diff", "--cached", "--name-only") != "a.txt" {
+		t.Fatalf("worktree stage: %d %+v", code, body)
+	}
+	// The shared repository config still supplies the existing filter refusal.
+	gitRun(t, repo, "config", "filter.example.clean", "unused-fixture-command")
+	code, _ = gitPost(t, "alice", map[string]any{"workspace_path": gitTestProject, "repo": "feature", "op": "stage", "files": []string{"a.txt"}})
+	if code != http.StatusConflict {
+		t.Fatalf("worktree bypassed common config refusal: %d", code)
+	}
+	// A real worktree whose common Git directory is outside this project stays refused.
+	external := t.TempDir()
+	gitRun(t, external, "init", "-q", "-b", "main")
+	writeFile(t, filepath.Join(external, "private.txt"), "private")
+	gitRun(t, external, "add", "-A")
+	gitRun(t, external, "commit", "-q", "-m", "fixture")
+	outside := filepath.Join(root, "outside")
+	gitRun(t, external, "worktree", "add", "-q", "-b", "outside", outside)
+	code, _ = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "repo": {"outside"}, "op": {"diff"}, "file": {"private.txt"}})
+	if code != http.StatusNotFound {
+		t.Fatalf("external Git directory admitted: %d", code)
+	}
+}

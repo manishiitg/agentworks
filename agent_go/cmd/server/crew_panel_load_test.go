@@ -215,14 +215,9 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 		t.Fatal("retained nested history presented as empty or a current flat result")
 	}
 	t.Log("PANEL_LOAD lifecycle_order=pass nested_summary=unavailable")
-	// One Python workflow with two helper files and one legacy workflow means
-	// exactly two menu rows, not zero Python rows or one row per helper file.
+	// One Python workflow with two helper files means exactly one menu row,
+	// not zero Python rows or one row per helper file.
 	write("Workflow/panel-load-01/code/another_helper.py", "def another_helper(): return 2\n")
-	legacy := crewExecutableBinding{ID: "panel-legacy", CrewID: "panel-crew-01", CrewRoot: "Crew/panel-crew-01", Root: "Workflow/panel-legacy", Kind: "workflow"}
-	if err := registerCrewExecutable(legacy); err != nil {
-		t.Fatal(err)
-	}
-	write(legacy.Root+"/workflow.json", `{"id":"panel-legacy","label":"Legacy workflow","created_by":"owner"}`)
 	f.api.crewPanels.mu.Lock()
 	for key, value := range f.api.crewPanels.entries {
 		value.at = time.Now().Add(-6 * time.Second)
@@ -236,10 +231,10 @@ func TestCrewPanelTwentyWorkflowsAvoidsInspectionAndDeepHistory(t *testing.T) {
 			mixedRows = len(section.Rows)
 		}
 	}
-	if mixedCode != 200 || mixedRows != 2 {
-		t.Fatalf("Python/legacy menu lost workflows or listed helper files: status=%d rows=%d", mixedCode, mixedRows)
+	if mixedCode != 200 || mixedRows != 1 {
+		t.Fatalf("Python menu lost the workflow or listed helper files: status=%d rows=%d", mixedCode, mixedRows)
 	}
-	t.Logf("PANEL_LOAD mixed_python_legacy_rows=%d helper_files=2", mixedRows)
+	t.Logf("PANEL_LOAD python_rows=%d helper_files=2", mixedRows)
 	// A normal saved-script outline read, not the menu, supplies its saved-source count.
 	graphRoot := "Workflow/panel-saved-script"
 	if err := registerCrewExecutable(crewExecutableBinding{ID: "panel-saved-script", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: graphRoot, Kind: "script"}); err != nil {

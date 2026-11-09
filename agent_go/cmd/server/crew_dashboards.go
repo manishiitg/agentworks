@@ -50,7 +50,7 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 		return
 	}
 	for _, binding := range records {
-		if binding.CrewRoot != root || (binding.Kind != "workflow" && binding.Kind != "script") {
+		if binding.CrewRoot != root || binding.Kind != "script" {
 			continue
 		}
 		_, exists, err := readFileFromWorkspace(r.Context(), binding.Root+"/db/reports/index.html")

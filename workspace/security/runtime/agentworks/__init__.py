@@ -435,4 +435,5 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
         return Reply(ok=False, error=str(error))
 
 
-from . import google, slack, github
+from . import google, slack, github, files
+__all__.append("files")

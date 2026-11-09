@@ -16,7 +16,7 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. Older plan definitions may be read for reference; convert one to Python before editing it. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit"}},
 			"workspace_path": map[string]interface{}{"type": "string"},
@@ -96,7 +96,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		}
 		target, _ := args["workspace_path"].(string)
 		binding, err := findCrewExecutable(target)
-		if err != nil || binding == nil || (binding.Kind != "workflow" && binding.Kind != "script") || crewExecutableWorkspace(target) != binding.Root || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
+		if err != nil || binding == nil || binding.Kind != "script" || crewExecutableWorkspace(target) != binding.Root || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
 			return "", fmt.Errorf("choose a workflow from this Crew's own list")
 		}
 		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
@@ -128,10 +128,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 				}
 				return response.body.String(), nil
 			}
-			if binding.Kind != "workflow" {
-				return "", fmt.Errorf("edit script.json or Python source with write for a saved script")
-			}
-			return "", fmt.Errorf("%s", oldPlanWorkflowNotEditable)
+			return "", fmt.Errorf("edit script.json or Python source with write for a saved script")
 		}
 		file, _ := args["file"].(string)
 		clean, valid := cleanWorkspaceReadPath(file, false)
@@ -158,9 +155,6 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			if !ok {
 				return "", fmt.Errorf("provide the file content")
 			}
-			if binding.Kind == "workflow" {
-				return "", fmt.Errorf("%s", oldPlanWorkflowNotEditable)
-			}
 			entries, decodeErr := decodeScriptEntryInputEdits(args["entry_mappings"])
 			if decodeErr != nil {
 				return "", decodeErr
@@ -179,10 +173,6 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		}
 	}, "work_workflow_reference_tools")
 }
-
-// PLAT-746 (owner, 8 Nov: "the old plan tools would be removed"): an older
-// plan-based workflow is kept only as reference; new work uses saved Python.
-const oldPlanWorkflowNotEditable = "This workflow uses the older plan format and can no longer run or be edited. Create a saved Python workflow in this Crew instead; the old files remain available for reference. Schedules and webhooks can still be managed with edit."
 
 // The edit operations that remain: a workflow's schedules and webhooks.
 var crewPlanOperations = []string{"manage_schedules", "manage_webhooks"}
