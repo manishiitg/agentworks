@@ -24,7 +24,9 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
   const [runsOn, setRunsOn] = useState<RunsOnSelection | undefined>()
   const [choosingChat, setChoosingChat] = useState(false)
   const [localChat, setLocalChat] = useState<LocalChat>()
-  const changeFolder = (folder: string) => { setRootPath(folder); setLocalChat(undefined); setChoosingChat(false) }
+  const [chatChoiceFolder, setChatChoiceFolder] = useState('')
+  const createAfterChatChoice = useRef(false)
+  const changeFolder = (folder: string) => { setRootPath(folder); setLocalChat(undefined); setChatChoiceFolder(''); setChoosingChat(false); createAfterChatChoice.current = false }
   const formRef = useRef<HTMLFormElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const canChangeFolder = allowExistingFolder && location?.can_choose_folder === true
@@ -67,10 +69,28 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
     }, 200)
     return () => { active = false; window.clearTimeout(timer) }
   }, [title, locationRevision])
+  const create = (chat?: LocalChat) => {
+    void onCreate(title.trim(), '', runsOn, {}, canChangeFolder ? rootPath.trim() || undefined : undefined, canChangeFolder && rootPath.trim() ? chat : undefined)
+  }
+  const chooseChat = (chat?: LocalChat) => {
+    setLocalChat(chat)
+    setChatChoiceFolder(rootPath.trim())
+    setChoosingChat(false)
+    if (createAfterChatChoice.current) {
+      createAfterChatChoice.current = false
+      create(chat)
+    }
+  }
+  const closeChatPicker = () => { setChoosingChat(false); createAfterChatChoice.current = false }
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (submitting || !title.trim()) return
-    void onCreate(title.trim(), '', runsOn, {}, canChangeFolder ? rootPath.trim() || undefined : undefined, canChangeFolder && rootPath.trim() ? localChat : undefined)
+    if (canChangeFolder && rootPath.trim() && chatChoiceFolder !== rootPath.trim()) {
+      createAfterChatChoice.current = true
+      setChoosingChat(true)
+      return
+    }
+    create(localChat)
   }
   return <><div className="fixed inset-0 z-50 grid place-items-center bg-black/65 p-3 backdrop-blur-sm sm:p-6">
     <form ref={formRef} tabIndex={-1} onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="crew-wizard-title" aria-busy={submitting} className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
@@ -108,7 +128,7 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
             <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{localChat?.title || 'Continue a previous chat'}</p><p className="mt-1 text-xs text-muted-foreground">{localChat ? localChat.provider === 'cursor-cli' ? 'Continues the same Cursor chat after creation' : 'A separate copy will open after creation' : 'Optional · Claude, Codex and Cursor CLI chats from this folder'}</p></div>
             <button type="button" disabled={submitting} onClick={() => setChoosingChat(true)} className="shrink-0 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50">{localChat ? 'Change chat' : 'Choose chat'}</button>
           </div>
-          {localChat && <button type="button" disabled={submitting} onClick={() => setLocalChat(undefined)} className="mt-2 text-xs text-muted-foreground hover:text-foreground">Start fresh instead</button>}
+          {localChat && <button type="button" disabled={submitting} onClick={() => chooseChat()} className="mt-2 text-xs text-muted-foreground hover:text-foreground">Start fresh instead</button>}
         </section>}
         <RunsOnPicker profileId="work" onChange={setRunsOn} disabled={submitting} saveAccount="when-needed" />
         {error && <p role="alert" className="flex items-start gap-2 text-sm text-destructive"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</p>}
@@ -120,5 +140,5 @@ export function CreateCrewWizard({ onClose, onCreate, submitting, error, allowEx
         </button>
       </footer>
     </form>
-  </div>{choosingChat && canChangeFolder && rootPath.trim() && <LocalChatPicker folder={rootPath.trim()} onClose={() => setChoosingChat(false)} onSelected={setLocalChat} />}</>
+  </div>{choosingChat && canChangeFolder && rootPath.trim() && <LocalChatPicker folder={rootPath.trim()} onClose={closeChatPicker} onSelected={chooseChat} onStartFresh={() => chooseChat()} />}</>
 }
