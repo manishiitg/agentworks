@@ -9,16 +9,18 @@ import (
 )
 
 func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	const accessWorkspace = "Workflow/invoices" // Served by the real workspace fixture.
 	f := newExternalToolsFixture(t)
 	api := f.api
-	f.write(t, sharedSecretsTestWorkflow+"/workflow.json", `{"id":"wf_shared","label":"Renewals","created_by":"a1","access":{"owners":["a1"],"readers":["c3"]}}`)
-	registerWorkflowOwner(sharedSecretsTestWorkflow, "a1")
+	f.write(t, accessWorkspace+"/workflow.json", `{"id":"wf_shared","label":"Renewals","created_by":"a1","access":{"owners":["a1"],"readers":["c3"]}}`)
+	registerWorkflowOwner(accessWorkspace, "a1")
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","role":"admin"},{"id":"a1","username":"owner","email":"owner@example.com","role":"creator"},{"id":"c3","username":"reader","email":"reader@example.com","role":"viewer"}]}`)
 	policy := workflowChatPolicy{Capabilities: map[string]bool{"user_management": true}}
 	register := func(id string) recordedTool {
 		t.Helper()
 		r := &recordingRegistrar{}
-		if err := api.registerUserAccessTools(r, id, sharedSecretsTestWorkflow, policy); err != nil {
+		if err := api.registerUserAccessTools(r, id, accessWorkspace, policy); err != nil {
 			t.Fatal(err)
 		}
 		return r.tools["manage_user_access"]
@@ -49,7 +51,7 @@ func TestUserAccessToolsPermissionsAndRevocation(t *testing.T) {
 	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, manifest := workflowAccessForWorkspacePath(ctx, &UserClaims{UserID: "a1"}, sharedSecretsTestWorkflow); manifest == nil || !containsID(manifest.effectiveOwners(), "a1") {
+	if _, manifest := workflowAccessForWorkspacePath(ctx, &UserClaims{UserID: "a1"}, accessWorkspace); manifest == nil || !containsID(manifest.effectiveOwners(), "a1") {
 		t.Fatal("main owner was removed")
 	}
 	if _, err := owner.exec(ctx, map[string]interface{}{"action": "set_workflow_access", "owners": []string{"a1"}, "readers": []string{"reader@example.com"}}); err != nil {
