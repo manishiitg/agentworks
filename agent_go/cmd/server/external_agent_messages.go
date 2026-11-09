@@ -102,10 +102,13 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		}
 		return nil
 	}
-	// A person may contact a shared Mac agent through their attached chat just as on the website.
+	// An attached chat may contact a shared Mac agent, including its own person's published Mac agent.
 	// Check the current audience before the own-hosted-chat receive guard: this is an explicit share,
 	// and the attached connection carries messaging permissions, not general Crew tool permissions.
-	if peer.Kind == triggerCallerCrew && peer.UserID != claims.UserID && peer.ChatKey != "" && !strings.HasPrefix(peer.ChatKey, "messages:") && !IsLocalMode() && crewRelayTwin(peer.ID) {
+	if peer.Kind == triggerCallerCrew && peer.ChatKey != "" && !strings.HasPrefix(peer.ChatKey, "messages:") && !IsLocalMode() && crewRelayTwin(peer.ID) {
+		if ownerOfCrewProjectID(peer.ID) != peer.UserID {
+			return denied
+		}
 		tab := macSharedAgentTab(peer.ID, peer.ChatKey)
 		_, reason := macSharedAgentForAgent(peer.ID, tab, claims.UserID, peer.UserID)
 		if reason == "" && token != nil {
