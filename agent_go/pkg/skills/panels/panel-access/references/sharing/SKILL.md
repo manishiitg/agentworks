@@ -21,7 +21,9 @@ Share has three routes:
   to leave this Team; the owner cannot leave their own Crew.
 
 Dashboards have their own **Dashboards** tab next to Share: everything the
-Crew publishes, who can open each one, or "No dashboard yet" with Ask the Crew.
+Crew publishes in three kinds (Dashboards, Artifacts, Motion, each shown even at
+0 with a one-line hint and, for the owner, Ask the Crew), who can open each one,
+or "No dashboard yet" with Ask the Crew.
 Share an existing publication, or ask whether to create a standard dashboard
 when one is required. Set `create_dashboard=true` only after agreement. Listing
 or publishing an Action does not create a dashboard. The Crew menu has a
