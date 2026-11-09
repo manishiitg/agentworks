@@ -49,7 +49,8 @@ it.each([false, true])('resumes the same selected folder without overrides, even
     const button = page.resume()!
     await act(async () => button.click())
     expect(button.disabled).toBe(true)
-    expect(http.post).toHaveBeenCalledExactlyOnceWith('/api/external/call', { name: 'runs', arguments: { action: 'resume', workflow_id: 'report', run_folder: 'run-failed' } })
+    // Air-2 regression: /api/external/call is unregistered and returns 404 before Resume admission.
+    expect(http.post).toHaveBeenCalledExactlyOnceWith('/api/external/v1/call', { name: 'runs', arguments: { action: 'resume', workflow_id: 'report', run_folder: 'run-failed' } })
     await act(async () => accept({ data: { status: 'started', session_id: 'resume-session', run_folder: 'run-failed', resume_of: 'attempt-1', inputs_reused: true } }))
     expect(refresh).toHaveBeenCalledOnce()
     expect(page.onView).not.toHaveBeenCalled()

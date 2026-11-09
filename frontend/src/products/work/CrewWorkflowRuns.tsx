@@ -276,7 +276,7 @@ function OpenedRun({ workflowId, canResume, workspacePath, script, folder, cost,
   async function resume() {
     setResuming(true); setResumeError('')
     try {
-      await api.post('/api/external/call', { name: 'runs', arguments: { action: 'resume', workflow_id: workflowId, run_folder: folder.name } })
+      await api.post('/api/external/v1/call', { name: 'runs', arguments: { action: 'resume', workflow_id: workflowId, run_folder: folder.name } })
       setResumed(true)
     } catch (cause) {
       const data: unknown = isAxiosError(cause) ? cause.response?.data : undefined
