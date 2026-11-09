@@ -543,3 +543,40 @@ func TestTurnSlowCheckoutKeepsHealthyReplyChanges(t *testing.T) {
 		})
 	}
 }
+
+// PLAT-746-319: a U+202F filename produced a Go \u escape that Git rejects,
+// failing every reply capture for the newly imported project.
+func TestGitTurnKeepsUnicodeFilename(t *testing.T) {
+	f := newCrew(t)
+	name := "report 2026.md"
+	repo := "repo 2026"
+	f.repo(repo, map[string]string{name: "committed\n"})
+	paths := []string{name, repo + "/" + name}
+	for _, p := range paths {
+		f.put(p, "before\n")
+	}
+	if _, err := f.s.BeginGitTurn(t.Context(), "unicode"); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range paths {
+		f.put(p, "after\n")
+	}
+	r, err := f.s.FinishGitTurn(t.Context(), "unicode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(c.Changes) != 2 {
+		t.Fatalf("Unicode changes lost: %v %+v", err, c.Changes)
+	}
+	for _, p := range paths {
+		diff, err := f.s.CompareSaved(t.Context(), []string{r.ID}, p, "", func(string) bool { return true })
+		if err != nil || !strings.Contains(diff.Diff, "+after") || !strings.Contains(diff.Diff, "-before") {
+			t.Fatalf("saved Unicode diff: %v %+v", err, diff)
+		}
+	}
+	plan, err := f.s.PlanUndo(t.Context(), r.ID, func(string) bool { return true }, func(string) bool { return true })
+	if err != nil || len(plan.Restore) != 2 || len(plan.Skipped) != 0 {
+		t.Fatalf("Unicode Undo paths lost: %v %+v", err, plan)
+	}
+}

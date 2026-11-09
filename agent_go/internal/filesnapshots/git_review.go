@@ -544,9 +544,9 @@ func (s Store) carryDirty(ctx context.Context, base, before, oldHead, segmentHea
 			}
 		}
 		if e, ok := s.entry(ctx, before, p); ok {
-			edits = append(edits, fmt.Sprintf("M %s %s %s\n", e.mode, e.oid, strconv.Quote(p)))
+			edits = append(edits, fmt.Sprintf("M %s %s %s\n", e.mode, e.oid, gitQuotePath(p)))
 		} else {
-			edits = append(edits, "D "+strconv.Quote(p)+"\n")
+			edits = append(edits, "D "+gitQuotePath(p)+"\n")
 		}
 	}
 	if len(edits) == 0 {

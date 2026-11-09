@@ -269,10 +269,10 @@ func (s Store) writeTurnFiles(ctx context.Context, ref string, files map[string]
 	for _, p := range turnKeys(files) {
 		b := files[p]
 		if b.oid != "" {
-			fmt.Fprintf(&input, "M %s %s %s\n", b.mode, b.oid, strconv.Quote(p))
+			fmt.Fprintf(&input, "M %s %s %s\n", b.mode, b.oid, gitQuotePath(p))
 			continue
 		}
-		fmt.Fprintf(&input, "M %s inline %s\ndata %d\n", b.mode, strconv.Quote(p), len(b.data))
+		fmt.Fprintf(&input, "M %s inline %s\ndata %d\n", b.mode, gitQuotePath(p), len(b.data))
 		input.Write(b.data)
 		input.WriteByte('\n')
 	}
