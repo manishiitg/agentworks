@@ -405,11 +405,16 @@ func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Req
 			}
 		}
 	}
+	// Only the owner of these connections sees where each comes from: a teammate viewing the owner's Crew must not
+	// learn the names of Vault groups they are not in, nor which row is the owner's personal account.
 	labels := map[string]int{}
 	for _, row := range rows {
 		labels[strings.ToLower(strings.TrimSpace(row["label"].(string)))]++
 	}
 	for _, row := range rows {
+		if actor != owner {
+			break
+		}
 		if labels[strings.ToLower(strings.TrimSpace(row["label"].(string)))] > 1 {
 			switch group := from[row["id"].(string)]; group {
 			case "":
